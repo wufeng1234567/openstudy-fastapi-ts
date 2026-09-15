@@ -1,0 +1,43 @@
+﻿node.exe : npm error code EPERM
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "D:\nvm\nvm\v22.20.0/node_module ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm error code EPERM:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+npm error syscall open
+npm error path D:\nodeJs16\node-v16.20.2-win-x64\node_cache\_cacache\tmp\03ac6e36
+npm error errno EPERM
+npm error FetchError: Invalid response body while trying to fetch https://registry.npmmirror.com/vue-tsc: EPERM: operat
+ion not permitted, open 'D:\nodeJs16\node-v16.20.2-win-x64\node_cache\_cacache\tmp\03ac6e36'
+npm error     at D:\nvm\nvm\v22.20.0\node_modules\npm\node_modules\minipass-fetch\lib\body.js:170:15
+npm error     at async Response.json (D:\nvm\nvm\v22.20.0\node_modules\npm\node_modules\minipass-fetch\lib\body.js:75:1
+7)
+npm error     at async RegistryFetcher.packument (D:\nvm\nvm\v22.20.0\node_modules\npm\node_modules\pacote\lib\registry
+.js:98:25)
+npm error     at async RegistryFetcher.manifest (D:\nvm\nvm\v22.20.0\node_modules\npm\node_modules\pacote\lib\registry.
+js:128:23)
+npm error     at async getManifest (D:\nvm\nvm\v22.20.0\node_modules\npm\node_modules\libnpmexec\lib\index.js:27:22)
+npm error     at async missingFromTree (D:\nvm\nvm\v22.20.0\node_modules\npm\node_modules\libnpmexec\lib\index.js:60:22
+)
+npm error     at async D:\nvm\nvm\v22.20.0\node_modules\npm\node_modules\libnpmexec\lib\index.js:182:32
+npm error     at async Promise.all (index 0)
+npm error     at async exec (D:\nvm\nvm\v22.20.0\node_modules\npm\node_modules\libnpmexec\lib\index.js:180:3)
+npm error     at async Npm.exec (D:\nvm\nvm\v22.20.0\node_modules\npm\lib\npm.js:207:9) {
+npm error   code: 'EPERM',
+npm error   errno: 'EPERM',
+npm error   syscall: 'open',
+npm error   path: 'D:\\nodeJs16\\node-v16.20.2-win-x64\\node_cache\\_cacache\\tmp\\03ac6e36',
+npm error   type: 'system'
+npm error }
+npm error
+npm error The operation was rejected by your operating system.
+npm error It's possible that the file was already in use (by a text editor or antivirus),
+npm error or that you lack permissions to access it.
+npm error
+npm error If you believe this might be a permissions issue, please double-check the
+npm error permissions of the file and its containing directories, or try running
+npm error the command again as root/Administrator.
+npm error Log files were not written due to an error writing to the directory: D:\nodeJs16\node-v16.20.2-win-x64\node_c
+ache\_logs
+npm error You can rerun the command with `--loglevel=verbose` to see the logs in your terminal

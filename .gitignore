@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+eggs/
+*.egg
+.venv/
+venv/
+ENV/
+env/
+
+# FastAPI
+.env
+.env.local
+.env.production
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Vue/TypeScript
+*.local
+*.local.ts
+
+# IDE
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+*.log
+
+# Test
+tests/**/coverage/
+tests/e2e/reports
+selenium-debug.log
+
+# Build
+dist/
+build/
+
+# Misc
+*.bak
+*.bak-*
+.workbuddy/
+.trae/
+.题库域后端接口功能测试用例表.ref/
+
+# Lock files (keep one)
+# package-lock.json
+# pnpm-lock.yaml
+# yarn.lock

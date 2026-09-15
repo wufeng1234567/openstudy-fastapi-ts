@@ -1,0 +1,196 @@
+{
+  "prefix": "评论管理",
+  "uid1": 105,
+  "uid2": 106,
+  "uid_admin": 1,
+  "rows": [
+    {
+      "cid": "R01",
+      "module": "评论管理(后台)",
+      "title": "列表-管理员查询返回分页结构",
+      "pre": "已造 4 条评论（含 1 条回复）",
+      "steps": "GET /system/comment/list",
+      "expected": "code=200；顶层含 total 与 rows（修复前列表永远为空）",
+      "actual": "code=200 total=8 rows=8",
+      "status": "通过"
+    },
+    {
+      "cid": "R02",
+      "module": "评论管理(后台)",
+      "title": "列表-按笔记ID筛选",
+      "pre": "noteA=39 下有 3 条评论",
+      "steps": "admin 请求 list?noteId=39",
+      "expected": "rows 的 noteId 全为 noteA，且命中 c1/c2/c4",
+      "actual": "命中 3 条 noteId集合=[39]",
+      "status": "通过"
+    },
+    {
+      "cid": "R03",
+      "module": "评论管理(后台)",
+      "title": "列表-按评论内容模糊筛选",
+      "pre": "本次造的评论内容都含「09122349」",
+      "steps": "admin 请求 list?content=09122349",
+      "expected": "命中 4 条且 content 均含关键字",
+      "actual": "命中 4 条",
+      "status": "通过"
+    },
+    {
+      "cid": "R04",
+      "module": "评论管理(后台)",
+      "title": "列表-按用户名称筛选",
+      "pre": "noteA 下 user2 有 2 条评论",
+      "steps": "admin 请求 list?noteId=noteA&userName=演示用户2",
+      "expected": "命中且 userId 全为 user2",
+      "actual": "命中 2 条 userId集合=[106]",
+      "status": "通过"
+    },
+    {
+      "cid": "R05",
+      "module": "评论管理(后台)",
+      "title": "列表-按状态筛选（正常）",
+      "pre": "noteA 的评论当前都是正常(0)",
+      "steps": "admin 请求 list?noteId=noteA&status=0",
+      "expected": "命中且 status 全为 '0'（字符串，页面用 === '0' 判断）",
+      "actual": "命中 3 条 status集合=['0']",
+      "status": "通过"
+    },
+    {
+      "cid": "R06",
+      "module": "评论管理(后台)",
+      "title": "列表-按评论时间范围筛选（params[beginTime]/params[endTime]）",
+      "pre": "评论 create_time 在 2020~2030",
+      "steps": "分别用宽区间与空区间请求",
+      "expected": "宽区间命中 >=3；空区间命中 0",
+      "actual": "宽区间=3 空区间=0",
+      "status": "通过"
+    },
+    {
+      "cid": "R07",
+      "module": "评论管理(后台)",
+      "title": "列表-分页返回条数受 pageSize 约束",
+      "pre": "评论总数 > 2",
+      "steps": "admin 请求 list?pageSize=2",
+      "expected": "rows<=2 且 total>=3",
+      "actual": "total=8 rows=2",
+      "status": "通过"
+    },
+    {
+      "cid": "R08",
+      "module": "评论管理(后台)",
+      "title": "前端契约-列表字段覆盖页面表格",
+      "pre": "c1=146",
+      "steps": "比对 index.vue 表格 prop 与返回字段",
+      "expected": "含 commentId/noteId/noteTitle/userName/content/status/createTime，且 status 为字符串",
+      "actual": "缺失=无 status类型=str",
+      "status": "通过"
+    },
+    {
+      "cid": "R09",
+      "module": "评论管理(后台)",
+      "title": "详情-返回完整字段（含回复对象）",
+      "pre": "c4=149 是 user2 对 c1 的回复",
+      "steps": "admin GET /system/comment/{c4}",
+      "expected": "code=200；commentId/replyUserName/content/noteTitle 均正确",
+      "actual": "code=200 replyUserName=演示用户1 replyToUserId=105",
+      "status": "通过"
+    },
+    {
+      "cid": "R10",
+      "module": "评论管理(后台)",
+      "title": "详情-评论不存在时的异常处理",
+      "pre": "commentId=99999999 不存在",
+      "steps": "admin GET /system/comment/99999999",
+      "expected": "code!=200（修复前会落到 catch_all 返回 success(null)）",
+      "actual": "HTTP 200 code=500 评论不存在",
+      "status": "通过"
+    },
+    {
+      "cid": "R11",
+      "module": "评论管理(后台)",
+      "title": "修改-隐藏评论（status=1）真正生效",
+      "pre": "c1=146 当前为正常",
+      "steps": "admin PUT /system/comment {commentId,status:'1'} 后直读库 + 查前台列表",
+      "expected": "code=200；库中 status=1；前台评论列表不再返回 c1（修复前只是假成功）",
+      "actual": "code=200 库status=1 前台含c1=False",
+      "status": "通过"
+    },
+    {
+      "cid": "R12",
+      "module": "评论管理(后台)",
+      "title": "修改-重新显示评论（status=0）真正生效",
+      "pre": "c1 已被隐藏",
+      "steps": "admin PUT {commentId,status:'0'} 后直读库 + 查前台列表",
+      "expected": "code=200；库中 status=0；前台列表恢复返回 c1",
+      "actual": "code=200 库status=0 前台含c1=True",
+      "status": "通过"
+    },
+    {
+      "cid": "R13",
+      "module": "评论管理(后台)",
+      "title": "修改-评论不存在时的异常处理",
+      "pre": "commentId=99999999 不存在",
+      "steps": "admin PUT {commentId:99999999}",
+      "expected": "code!=200（修复前假成功）",
+      "actual": "HTTP 200 code=500 评论不存在",
+      "status": "通过"
+    },
+    {
+      "cid": "R14",
+      "module": "评论管理(后台)",
+      "title": "删除-删一级评论连带删除其下回复",
+      "pre": "c1=146 有 1 条回复 c4=149",
+      "steps": "admin DELETE /system/comment/{c1} 后直读库",
+      "expected": "code=200；c1 与 c4 均已删除（修复前只是假成功）",
+      "actual": "code=200 c1/c4剩余=0",
+      "status": "通过"
+    },
+    {
+      "cid": "R15",
+      "module": "评论管理(后台)",
+      "title": "删除-同步扣减笔记评论数",
+      "pre": "noteA 原 comment_count=3，实际评论 3 条",
+      "steps": "删除 c1+c4 后对比 note.comment_count 与实际条数",
+      "expected": "comment_count = 1（= 原值 - 2）；且与实际评论条数一致（1）",
+      "actual": "comment_count=1 实际=1",
+      "status": "通过"
+    },
+    {
+      "cid": "R16",
+      "module": "评论管理(后台)",
+      "title": "删除-不存在的 id 不应 500",
+      "pre": "commentId=99999999 不存在",
+      "steps": "admin DELETE /system/comment/99999999",
+      "expected": "返回业务响应（200 幂等），不得 500",
+      "actual": "HTTP 200 code=200 操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "R17",
+      "module": "评论管理(后台)",
+      "title": "权限-普通用户不能使用评论管理（列表/详情/修改/删除均 403）",
+      "pre": "user1 登录（评论管理属后台功能）",
+      "steps": "user1 依次请求 list / {id} / PUT / DELETE",
+      "expected": "四个接口均 code=403；c2 未被改动删除",
+      "actual": "list=403 get=403 put=403 delete=403 仍存在=1",
+      "status": "通过"
+    },
+    {
+      "cid": "R18",
+      "module": "评论管理(后台)",
+      "title": "清理-无测试数据残留（评论/通知）",
+      "pre": "清理完成",
+      "steps": "直连库核对测试评论、孤儿评论、本次通知",
+      "expected": "测试评论=0、孤儿评论=0、本次通知=0",
+      "actual": "测试评论=0 孤儿评论=0 本次通知=0",
+      "status": "通过"
+    }
+  ],
+  "cleanup": {
+    "comment_ids": [
+      146,
+      147,
+      148,
+      149
+    ]
+  }
+}

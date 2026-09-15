@@ -1,0 +1,328 @@
+/* src/assets/styles/my-favorite-bank.css */
+.my-favorite-container {
+  padding: 20px;
+  background-color: #f5f7fa;
+  min-height: calc(100vh - 100px);
+}
+
+/* 搜索区域 */
+.search-area {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+}
+
+.title-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.page-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #e6a23c;
+  margin: 0;
+}
+
+.total-count {
+  font-size: 14px;
+  color: #909399;
+  background: #fdf6ec;
+  padding: 6px 12px;
+  border-radius: 16px;
+  border: 1px solid #f5dab1;
+}
+
+.search-section {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.search-input {
+  flex: 1;
+  max-width: 400px;
+}
+
+/* 加载状态 */
+.loading-container {
+  padding: 60px 0;
+  text-align: center;
+}
+
+/* 空状态 */
+.empty-state {
+  padding: 80px 0;
+  text-align: center;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+}
+
+/* 卡片列表 */
+.favorite-list {
+  margin-top: 20px;
+}
+
+.bank-card-col {
+  margin-bottom: 24px;
+}
+
+.bank-card {
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.bank-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+  border-color: #409EFF;
+}
+
+/* 卡片封面 */
+.card-cover {
+  position: relative;
+  height: 160px;
+  overflow: hidden;
+}
+
+.cover-image {
+  width: 100%;
+  height: 100%;
+  background-color: #f5f7fa;
+  transition: transform 0.3s ease;
+}
+
+.bank-card:hover .cover-image {
+  transform: scale(1.05);
+}
+
+.image-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  color: #909399;
+}
+
+.image-error .el-icon {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
+
+.favorite-status {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+}
+
+.favorite-tag {
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.star-icon {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  z-index: 1;
+}
+
+.star-icon:hover {
+  background: rgba(255, 255, 255, 1);
+  transform: scale(1.1);
+}
+
+.star-icon .el-icon {
+  font-size: 18px;
+}
+
+/* 卡片内容 */
+.card-content {
+  padding: 16px;
+  flex: 1;
+}
+
+.bank-name {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.bank-name h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+  line-height: 1.4;
+  flex: 1;
+  margin-right: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.bank-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: #606266;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stat-item .el-icon {
+  font-size: 14px;
+  color: #909399;
+}
+
+.create-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.create-time .el-icon {
+  font-size: 14px;
+}
+
+.bank-notes {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 8px;
+  background: #fdf6ec;
+  border-radius: 4px;
+  border-left: 3px solid #e6a23c;
+}
+
+.bank-notes .el-icon {
+  color: #e6a23c;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.notes-text {
+  font-size: 12px;
+  color: #e6a23c;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.study-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.study-info .el-icon {
+  font-size: 12px;
+}
+
+.last-study {
+  font-size: 11px;
+  color: #c0c4cc;
+}
+
+/* 操作按钮 */
+.card-actions {
+  padding: 12px 16px;
+  border-top: 1px solid #f0f0f0;
+  display: flex;
+  gap: 8px;
+}
+
+.card-actions .el-button {
+  flex: 1;
+}
+
+/* 分页 */
+.pagination-section {
+  margin-top: 32px;
+  display: flex;
+  justify-content: center;
+  background: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .my-favorite-container {
+    padding: 12px;
+  }
+  
+  .search-section {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .search-input {
+    max-width: 100%;
+  }
+  
+  .search-btn,
+  .refresh-btn {
+    width: 100%;
+  }
+  
+  .card-cover {
+    height: 140px;
+  }
+  
+  .bank-name h3 {
+    font-size: 15px;
+  }
+  
+  .card-actions {
+    flex-direction: column;
+  }
+  
+  .card-actions .el-button {
+    width: 100%;
+  }
+}

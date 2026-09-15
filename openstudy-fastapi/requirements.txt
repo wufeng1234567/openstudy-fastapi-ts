@@ -1,0 +1,44 @@
+# OpenStudy FastAPI Dependencies
+
+# Web Framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+python-multipart==0.0.19
+
+# Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Database
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+aiomysql==0.2.0
+alembic==1.14.1
+
+# Redis
+redis[hiredis]==5.2.1
+
+# LangChain & AI
+langchain==0.3.14
+langchain-core==0.3.29
+langchain-community==0.3.14
+langchain-openai==0.2.14
+openai==1.58.1
+zhipuai==2.1.5.20230904
+httpx==0.28.1
+
+# Document Processing
+pypdf==5.1.0
+python-docx==1.1.2
+pytesseract==0.3.13
+Pillow==11.1.0
+
+# Utilities
+loguru==0.7.3
+python-dateutil==2.9.0
+python-jose==3.3.0
+
+# Excel Export
+openpyxl==3.1.5

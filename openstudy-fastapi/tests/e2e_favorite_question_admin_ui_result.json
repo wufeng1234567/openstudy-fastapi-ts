@@ -1,0 +1,125 @@
+{
+  "module": "题目收藏(后台·前端)",
+  "rows": [
+    {
+      "cid": "U01",
+      "module": "题目收藏(后台·前端)",
+      "title": "页面可加载并渲染（无白屏/编译错误）",
+      "pre": "Vite dev server(3167) 运行中，admin 已登录",
+      "steps": "headless Chrome 打开 /favoriteQuestion/favoriteQuestion",
+      "expected": "URL 停在题目收藏路由、页面出现 el-table",
+      "actual": "url=http://localhost:3167/favoriteQuestion/favoriteQuestion 标题=true 表格=true",
+      "status": "通过"
+    },
+    {
+      "cid": "U02",
+      "module": "题目收藏(后台·前端)",
+      "title": "列表数据渲染出表格行",
+      "pre": "库中存在收藏记录",
+      "steps": "读取 tbody tr 数量",
+      "expected": "行数 > 0",
+      "actual": "行数=10",
+      "status": "通过"
+    },
+    {
+      "cid": "U03",
+      "module": "题目收藏(后台·前端)",
+      "title": "查询表单 12 个筛选条件齐全",
+      "pre": "打开列表页",
+      "steps": "读取 .el-form--inline 的 label 文本",
+      "expected": "包含用户ID/题目ID/收藏备注/标签/难度评级/错误次数/正确次数/最后复习时间/下次复习时间/复习次数/是否标星/收藏状态",
+      "actual": "缺失=无",
+      "status": "通过"
+    },
+    {
+      "cid": "U04",
+      "module": "题目收藏(后台·前端)",
+      "title": "操作按钮齐全（admin 权限 *:*:* 下 v-hasPermi 放行）",
+      "pre": "admin 角色 = admin",
+      "steps": "读取工具栏按钮文本",
+      "expected": "出现 新增/修改/删除/导出",
+      "actual": "缺失=无",
+      "status": "通过"
+    },
+    {
+      "cid": "U05",
+      "module": "题目收藏(后台·前端)",
+      "title": "搜索「用户ID=105」后列表只剩该用户的记录",
+      "pre": "user1 有收藏记录（含本次造的私密题库题目）",
+      "steps": "填 用户ID=105 → 点搜索 → 读表格",
+      "expected": "每行用户ID 均为 105，且行数 > 0",
+      "actual": "行数=9 用户ID=105",
+      "status": "通过"
+    },
+    {
+      "cid": "U06",
+      "module": "题目收藏(后台·前端)",
+      "title": "表格「所属题库」列显示真实题库名（不被题库下拉冲成\"未知题库\"）",
+      "pre": "user1 的私密题库《题目收藏UI校验题库-私有》不在 admin 的题库下拉里",
+      "steps": "读取表格 所属题库 列",
+      "expected": "出现《题目收藏UI校验题库-私有》，且不出现「未知题库」",
+      "actual": "名称=题目收藏UI校验题库-私有 | 计算机网络基础（演示题库） | 数据结构基础（演示题库）",
+      "status": "通过"
+    },
+    {
+      "cid": "U07",
+      "module": "题目收藏(后台·前端)",
+      "title": "表格「难度评级 / 错误次数 / 正确次数 / 复习次数」列显示库中真实值",
+      "pre": "该收藏 difficultyRating=5 errorTimes=7 correctTimes=8 reviewCount=9",
+      "steps": "读取这 4 列文本",
+      "expected": "出现 5星、7、8、9（接口漏字段时这些列恒为 0/空）",
+      "actual": "评级=5星|星|星|星|星|星|星|星|星 错=7|0|5|6|4|5|0|4|0 对=8|5|4|6|6|5|8|6|6 复习=9|5|9|12|10|10|8|10|6",
+      "status": "通过"
+    },
+    {
+      "cid": "U08",
+      "module": "题目收藏(后台·前端)",
+      "title": "点「新增」弹出对话框且表单字段齐全",
+      "pre": "列表页点新增",
+      "steps": "读取 el-dialog 内 .el-form-item__label",
+      "expected": "包含 13 个表单字段（与 index.vue 一致）",
+      "actual": "标题=添加用户题目收藏 缺失=无",
+      "status": "通过"
+    },
+    {
+      "cid": "U09",
+      "module": "题目收藏(后台·前端)",
+      "title": "对话框填题目ID后校验通过并自动填充所属题库（不再误报\"题目ID不存在\"）",
+      "pre": "输入存在的题目ID=1704（《题目收藏UI校验题库-私有》）后按 Tab 失焦",
+      "steps": "读取校验提示 / 所属题库区域 / check 请求",
+      "expected": "发出 check 请求；提示不含「不存在」；所属题库显示真实题库名",
+      "actual": "聚焦=true check请求=1 所属题库=\"所属题库\n题库名称：题目收藏UI校验题库-私有\"",
+      "status": "通过"
+    },
+    {
+      "cid": "U10",
+      "module": "题目收藏(后台·前端)",
+      "title": "未通过题目ID校验时禁用「确定」（不再\"报错也照样入库\"）",
+      "pre": "新增对话框：校验前 / 校验通过后 分别读取「确定」按钮 disabled",
+      "steps": "读取 .dialog-footer 中「确定」按钮的 disabled 属性",
+      "expected": "校验前 disabled=true；校验通过后 disabled=false",
+      "actual": "校验前=true 校验后=false",
+      "status": "通过"
+    },
+    {
+      "cid": "U11",
+      "module": "题目收藏(后台·前端)",
+      "title": "点「导出」调用后端导出接口且筛选条件拼在 URL 上",
+      "pre": "搜索框已填 用户ID=105",
+      "steps": "点「导出」并抓取 Network 请求 URL",
+      "expected": "POST /favoriteQuestion/favoriteQuestion/export 且 URL 含 userId=105",
+      "actual": "请求=/favoriteQuestion/favoriteQuestion/export?pageNum=1&pageSize=10&userId=105",
+      "status": "通过"
+    },
+    {
+      "cid": "U12",
+      "module": "题目收藏(后台·前端)",
+      "title": "页面运行期间无 JS 异常",
+      "pre": "整个交互过程",
+      "steps": "监听 Runtime.exceptionThrown 与 console.error",
+      "expected": "无未捕获异常",
+      "actual": "无",
+      "status": "通过"
+    }
+  ]
+}

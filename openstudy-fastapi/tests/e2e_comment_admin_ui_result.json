@@ -1,0 +1,119 @@
+{
+  "module": "评论管理(后台·前端)",
+  "createdIds": [
+    152,
+    153
+  ],
+  "rows": [
+    {
+      "cid": "V01",
+      "module": "评论管理(后台·前端)",
+      "title": "页面可加载并渲染（无白屏/编译错误）",
+      "pre": "Vite dev server(3167) 运行中，admin 已登录",
+      "steps": "headless Chrome 打开 /system/comment",
+      "expected": "URL 停在评论管理路由、页面出现 el-table",
+      "actual": "url=http://localhost:3167/system/comment 标题=true 表格=true",
+      "status": "通过"
+    },
+    {
+      "cid": "V02",
+      "module": "评论管理(后台·前端)",
+      "title": "列表渲染出评论（修复前后端缺接口 → 列表恒为空）",
+      "pre": "库中存在评论（含本次造的 2 条）",
+      "steps": "读取 tbody tr 数量",
+      "expected": "行数 > 0",
+      "actual": "行数=6",
+      "status": "通过"
+    },
+    {
+      "cid": "V03",
+      "module": "评论管理(后台·前端)",
+      "title": "查询表单筛选条件齐全",
+      "pre": "打开列表页",
+      "steps": "读取 .el-form--inline 的 label 文本",
+      "expected": "包含 笔记ID/用户名称/评论内容/状态/评论时间",
+      "actual": "缺失=无",
+      "status": "通过"
+    },
+    {
+      "cid": "V04",
+      "module": "评论管理(后台·前端)",
+      "title": "状态列正常渲染（后端 status 必须回字符串 \"0\"/\"1\"）",
+      "pre": "评论默认 status=0",
+      "steps": "读取表头定位「状态」列并取值",
+      "expected": "状态值出现在 {正常, 隐藏} 中（若后端回数字，页面会恒显示「隐藏」）",
+      "actual": "状态集合=正常",
+      "status": "通过"
+    },
+    {
+      "cid": "V05",
+      "module": "评论管理(后台·前端)",
+      "title": "列表包含本次造的测试评论",
+      "pre": "内容 UI校验-评论A-525485 / UI校验-评论B-525485",
+      "steps": "读取「评论内容」列",
+      "expected": "两条都在列表中",
+      "actual": "命中A=true 命中B=true",
+      "status": "通过"
+    },
+    {
+      "cid": "V06",
+      "module": "评论管理(后台·前端)",
+      "title": "按「笔记ID」搜索真正生效",
+      "pre": "填 笔记ID=76 后点搜索",
+      "steps": "抓请求 URL + 读表格内容列",
+      "expected": "请求 URL 含 noteId；列表仍包含本次造的评论",
+      "actual": "请求=/system/comment/list?pageNum=1&pageSize=10&noteId=76",
+      "status": "通过"
+    },
+    {
+      "cid": "V07",
+      "module": "评论管理(后台·前端)",
+      "title": "点「查看」弹出对话框并回显评论内容",
+      "pre": "UI校验-评论A-525485 所在行点「查看」",
+      "steps": "等待 el-dialog__wrapper 显示并读取 textarea 的值",
+      "expected": "对话框可见且包含该评论内容（修复前后端无接口 → 弹出空白）",
+      "actual": "点击=成功 可见=true 内容=\"UI校验-评论A-525485\"",
+      "status": "通过"
+    },
+    {
+      "cid": "V08",
+      "module": "评论管理(后台·前端)",
+      "title": "点「隐藏」后该行状态变为「隐藏」（真的改了库）",
+      "pre": "UI校验-评论A-525485 所在行点隐藏并确认",
+      "steps": "轮询列表直到状态变为「隐藏」（最多 12s）",
+      "expected": "点击/确认均成功，且该行状态最终=隐藏（修复前只弹「隐藏成功」，刷新后仍是正常）",
+      "actual": "点击=成功 确认=成功 最终状态=隐藏",
+      "status": "通过"
+    },
+    {
+      "cid": "V09",
+      "module": "评论管理(后台·前端)",
+      "title": "点「显示」后该行状态恢复「正常」",
+      "pre": "UI校验-评论A-525485 所在行点显示并确认",
+      "steps": "轮询列表直到状态变为「正常」（最多 12s）",
+      "expected": "点击/确认均成功，且该行状态最终=正常",
+      "actual": "点击=成功 确认=成功 最终状态=正常",
+      "status": "通过"
+    },
+    {
+      "cid": "V10",
+      "module": "评论管理(后台·前端)",
+      "title": "点「删除」后评论真的被删除（修复前只弹「删除成功」）",
+      "pre": "UI校验-评论B-525485 所在行点删除并确认",
+      "steps": "刷新列表 + 调接口按内容查询",
+      "expected": "页面不再出现该评论，且接口查询结果为空",
+      "actual": "页面已消失=true 接口total=0",
+      "status": "通过"
+    },
+    {
+      "cid": "V11",
+      "module": "评论管理(后台·前端)",
+      "title": "页面运行期间无 JS 异常",
+      "pre": "整个交互过程",
+      "steps": "监听 Runtime.exceptionThrown 与 console.error",
+      "expected": "无未捕获异常",
+      "actual": "无",
+      "status": "通过"
+    }
+  ]
+}

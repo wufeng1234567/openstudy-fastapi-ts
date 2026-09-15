@@ -1,0 +1,1 @@
+# OpenStudy FastAPI Application

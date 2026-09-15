@@ -1,0 +1,602 @@
+{
+  "prefix": "错题整理",
+  "uid1": 105,
+  "uid2": 106,
+  "rows": [
+    {
+      "cid": "F01",
+      "module": "错题本",
+      "title": "记录错题-首次作答做错（新建错题记录）",
+      "pre": "q1 存在且 user1 无该题错题记录",
+      "steps": "POST /questionError/questionError/recordOrUpdateError  body={questionId:q1}",
+      "expected": "code=200；列表出现该题错题记录，errorCount=1",
+      "actual": "errorId=218 errorCount=1",
+      "status": "通过"
+    },
+    {
+      "cid": "F02",
+      "module": "错题本",
+      "title": "记录错题-同题重复做错（覆盖累加，不新增行）",
+      "pre": "user1 已有 q1 的错题记录（errorId=218）",
+      "steps": "再次 POST recordOrUpdateError  body={questionId:q1}",
+      "expected": "errorId 不变；errorCount 由 1 累加为 2；列表中该题仍只有 1 条",
+      "actual": "errorId=218 errorCount=2",
+      "status": "通过"
+    },
+    {
+      "cid": "F03",
+      "module": "错题本",
+      "title": "记录错题-题目不存在时的异常处理",
+      "pre": "题目 99999999 不存在",
+      "steps": "POST recordOrUpdateError  body={questionId:99999999}",
+      "expected": "code!=200 且提示「题目不存在」",
+      "actual": "code=500 msg=题目不存在",
+      "status": "通过"
+    },
+    {
+      "cid": "F04",
+      "module": "错题本",
+      "title": "错题列表-默认只返回活跃错题（status=1）",
+      "pre": "user1 有活跃错题记录",
+      "steps": "GET /questionError/questionError/list（不传 status）",
+      "expected": "code=200；返回项 status 全为 1",
+      "actual": "total=6",
+      "status": "通过"
+    },
+    {
+      "cid": "F05",
+      "module": "错题本",
+      "title": "错题列表-按题目ID精确筛选",
+      "pre": "q1 有错题记录",
+      "steps": "GET /questionError/questionError/list?questionId={q1}&status=1",
+      "expected": "命中且仅命中 1 条，questionId=q1",
+      "actual": "命中 1 条",
+      "status": "通过"
+    },
+    {
+      "cid": "F06",
+      "module": "错题本",
+      "title": "错题列表-分页返回结构",
+      "pre": "user1 有错题记录",
+      "steps": "GET /questionError/questionError/list?pageNum=1&pageSize=2",
+      "expected": "code=200；顶层含 total 与 rows",
+      "actual": "total=6 rows=2",
+      "status": "通过"
+    },
+    {
+      "cid": "F07",
+      "module": "错题本",
+      "title": "检查当前用户是否存在某题错题记录",
+      "pre": "q1 有错题 / q2 无错题",
+      "steps": "GET /questionError/questionError/checkUserErrorExists/{q1} 与 /{q2}",
+      "expected": "q1 返回 true、q2 返回 false",
+      "actual": "q1=True q2=False",
+      "status": "通过"
+    },
+    {
+      "cid": "F08",
+      "module": "错题本",
+      "title": "批量检查错题状态",
+      "pre": "q1 有错题 / q2 无错题",
+      "steps": "POST /questionError/questionError/batchCheck  body={questionIds:[q1,q2]}",
+      "expected": "返回 {q1:true, q2:false}",
+      "actual": "结果={'1683': True, '1684': False}",
+      "status": "通过"
+    },
+    {
+      "cid": "F09",
+      "module": "错题本",
+      "title": "标记错题为已掌握-从活跃错题中移出",
+      "pre": "q1 为活跃错题",
+      "steps": "POST /questionError/questionError/markMastered  body={questionId:q1}",
+      "expected": "code=200；checkUserErrorExists 变为 false（status 已置 0）",
+      "actual": "标记=200 活跃校验=False",
+      "status": "通过"
+    },
+    {
+      "cid": "F10",
+      "module": "错题本",
+      "title": "已掌握错题可通过 isMastered 筛选查到",
+      "pre": "q1 已被标记已掌握",
+      "steps": "GET /questionError/questionError/list?questionId={q1}&status=0&isMastered=1",
+      "expected": "命中 1 条，isMastered=1、status=0",
+      "actual": "命中 1 条 isMastered=1",
+      "status": "通过"
+    },
+    {
+      "cid": "F11",
+      "module": "错题本",
+      "title": "已掌握的题再做错-自动回到错题本",
+      "pre": "q1 已标记已掌握（status=0/is_mastered=1）",
+      "steps": "再次 POST recordOrUpdateError  body={questionId:q1}",
+      "expected": "重新活跃：status=1、isMastered=0；errorCount 继续累加为 3",
+      "actual": "status=1 isMastered=0 errorCount=3",
+      "status": "通过"
+    },
+    {
+      "cid": "F12",
+      "module": "错题本",
+      "title": "错题详情-返回错题与题目信息",
+      "pre": "errorId=218 存在",
+      "steps": "GET /questionError/questionError/{errorId}",
+      "expected": "code=200；errorId 与 questionId 匹配",
+      "actual": "errorId=218 questionId=1683",
+      "status": "通过"
+    },
+    {
+      "cid": "F13",
+      "module": "错题本",
+      "title": "错题详情-记录不存在时的异常处理",
+      "pre": "errorId 不存在",
+      "steps": "GET /questionError/questionError/99999999",
+      "expected": "code!=200 且提示「错题记录不存在」",
+      "actual": "code=500 msg=错题记录不存在",
+      "status": "通过"
+    },
+    {
+      "cid": "F14",
+      "module": "错题本",
+      "title": "修改错题记录（备注 / 难度评级）",
+      "pre": "errorId=218 属于 user1",
+      "steps": "PUT /questionError/questionError  body={errorId,notes,difficultyRating:4}",
+      "expected": "code=200；备注与难度均已更新",
+      "actual": "notes=错题整理-备注 difficultyRating=4",
+      "status": "通过"
+    },
+    {
+      "cid": "F15",
+      "module": "错题本",
+      "title": "修改错题-记录不存在时的异常处理",
+      "pre": "errorId 不存在",
+      "steps": "PUT /questionError/questionError  body={errorId:99999999}",
+      "expected": "code!=200 且提示「错题记录不存在」",
+      "actual": "code=500 msg=错题记录不存在",
+      "status": "通过"
+    },
+    {
+      "cid": "F16",
+      "module": "错题本",
+      "title": "后台新增错题记录",
+      "pre": "q2 存在且 user1 无该题错题记录",
+      "steps": "POST /questionError/questionError  body={questionId:q2}",
+      "expected": "code=200；返回 errorId",
+      "actual": "errorId=219",
+      "status": "通过"
+    },
+    {
+      "cid": "F17",
+      "module": "错题本",
+      "title": "后台新增错题-题目不存在时的异常处理",
+      "pre": "题目 99999999 不存在",
+      "steps": "POST /questionError/questionError  body={questionId:99999999}",
+      "expected": "code!=200 且提示「题目不存在」",
+      "actual": "code=500 msg=题目不存在",
+      "status": "通过"
+    },
+    {
+      "cid": "F18",
+      "module": "错题本",
+      "title": "后台新增错题-重复新增的幂等处理",
+      "pre": "user1 已有 q2 的错题记录",
+      "steps": "再次 POST /questionError/questionError  body={questionId:q2}",
+      "expected": "给出明确的业务冲突提示（不应是 500 服务器内部错误）",
+      "actual": "code=400 msg=该用户已存在此题的错题记录，请改用更新接口",
+      "status": "通过"
+    },
+    {
+      "cid": "F19",
+      "module": "错题本",
+      "title": "导出错题列表（Excel）",
+      "pre": "user1 已登录",
+      "steps": "POST /questionError/questionError/export",
+      "expected": "返回文件流（非 JSON），HTTP 200",
+      "actual": "HTTP 200 文件流 大小=5987 字节",
+      "status": "通过"
+    },
+    {
+      "cid": "F20",
+      "module": "错题本",
+      "title": "删除错题记录",
+      "pre": "q2 有错题记录（errorId=219）",
+      "steps": "DELETE /questionError/questionError/{errorId}",
+      "expected": "code=200；该题错题记录不再存在",
+      "actual": "删除=200 剩余校验=False",
+      "status": "通过"
+    },
+    {
+      "cid": "F21",
+      "module": "错题本",
+      "title": "数据隔离-user2 不能查看 user1 的错题详情",
+      "pre": "errorId=220 属于 user1",
+      "steps": "user2 请求 GET /questionError/questionError/{errorId}",
+      "expected": "code=403 或提示无权访问（按归属校验）",
+      "actual": "code=403 msg=无权访问该错题记录",
+      "status": "通过"
+    },
+    {
+      "cid": "F22",
+      "module": "错题本",
+      "title": "数据隔离-user2 不能修改 user1 的错题记录",
+      "pre": "errorId=220 属于 user1",
+      "steps": "user2 请求 PUT /questionError/questionError  body={errorId:eid3}",
+      "expected": "code=403；user1 的记录不被篡改",
+      "actual": "code=403 msg=无权访问该错题记录；user1 记录被改=False",
+      "status": "通过"
+    },
+    {
+      "cid": "F23",
+      "module": "错题本",
+      "title": "数据隔离-user2 不能删除 user1 的错题记录",
+      "pre": "errorId=220 属于 user1",
+      "steps": "user2 请求 DELETE /questionError/questionError/{errorId}",
+      "expected": "code=403；user1 的记录仍存在",
+      "actual": "code=403 msg=无权删除他人的错题记录；user1 记录仍在=True",
+      "status": "通过"
+    },
+    {
+      "cid": "G01",
+      "module": "斩题",
+      "title": "标记斩题",
+      "pre": "q1 存在",
+      "steps": "POST /questionMarked/questionMarked  body={questionId:q1} 后 GET check",
+      "expected": "code=200；check 返回 true",
+      "actual": "标记=200 check=True",
+      "status": "通过"
+    },
+    {
+      "cid": "G02",
+      "module": "斩题",
+      "title": "重复标记斩题的幂等处理",
+      "pre": "q1 已被标记斩题",
+      "steps": "再次 POST /questionMarked/questionMarked  body={questionId:q1}",
+      "expected": "给出明确的业务提示（不应是 500 服务器内部错误）",
+      "actual": "code=400 msg=已标记该题目",
+      "status": "通过"
+    },
+    {
+      "cid": "G03",
+      "module": "斩题",
+      "title": "斩题状态校验-未标记的题目",
+      "pre": "q2 未标记斩题",
+      "steps": "GET /questionMarked/questionMarked/check?questionId={q2}",
+      "expected": "返回 false",
+      "actual": "check=False",
+      "status": "通过"
+    },
+    {
+      "cid": "G04",
+      "module": "斩题",
+      "title": "批量检查斩题状态",
+      "pre": "q1 已斩 / q2 未斩",
+      "steps": "POST /questionMarked/questionMarked/batchCheck  body={questionIds:[q1,q2]}",
+      "expected": "返回 {q1:true, q2:false}",
+      "actual": "结果={'1683': True, '1684': False}",
+      "status": "通过"
+    },
+    {
+      "cid": "G05",
+      "module": "斩题",
+      "title": "斩题列表-分页且只含本人数据",
+      "pre": "user1 已斩 q1",
+      "steps": "GET /questionMarked/questionMarked/list",
+      "expected": "code=200；顶层含 total/rows；命中 q1 且 userId=user1",
+      "actual": "total=6 userId=105",
+      "status": "通过"
+    },
+    {
+      "cid": "G06",
+      "module": "斩题",
+      "title": "斩题列表-不分页并按题库筛选",
+      "pre": "q1 属于 bank_id",
+      "steps": "GET /questionMarked/questionMarked/all?bankId={bank_id}",
+      "expected": "code=200；返回数组且 bankId 全部匹配",
+      "actual": "共 1 条",
+      "status": "通过"
+    },
+    {
+      "cid": "G07",
+      "module": "斩题",
+      "title": "斩题详情",
+      "pre": "markedId=194 存在",
+      "steps": "GET /questionMarked/questionMarked/{markedId}",
+      "expected": "code=200；questionId 匹配",
+      "actual": "questionId=1683",
+      "status": "通过"
+    },
+    {
+      "cid": "G08",
+      "module": "斩题",
+      "title": "修改斩题记录（备注 / 斩题类型）",
+      "pre": "markedId=194 属于 user1",
+      "steps": "PUT /questionMarked/questionMarked  body={markedId,notes,markedType:2}",
+      "expected": "code=200；备注与类型均已更新",
+      "actual": "notes=错题整理-斩题备注 markedType=2",
+      "status": "通过"
+    },
+    {
+      "cid": "G09",
+      "module": "斩题",
+      "title": "导出斩题列表（Excel）",
+      "pre": "user1 已登录",
+      "steps": "POST /questionMarked/questionMarked/export",
+      "expected": "返回文件流（非 JSON），HTTP 200",
+      "actual": "HTTP 200 文件流 大小=6172 字节",
+      "status": "通过"
+    },
+    {
+      "cid": "G10",
+      "module": "斩题",
+      "title": "取消斩题-按用户与题目删除（自己）",
+      "pre": "user1 已斩 q1",
+      "steps": "DELETE /questionMarked/questionMarked/deleteByUserAndQuestion/{uid1}/{q1}",
+      "expected": "code=200；check 变为 false",
+      "actual": "删除=200 check=False",
+      "status": "通过"
+    },
+    {
+      "cid": "G11",
+      "module": "斩题",
+      "title": "取消斩题-按记录ID删除",
+      "pre": "q2 已斩（markedId=195）",
+      "steps": "DELETE /questionMarked/questionMarked/{markedId}",
+      "expected": "code=200；check 变为 false",
+      "actual": "删除=200 check=False",
+      "status": "通过"
+    },
+    {
+      "cid": "G12",
+      "module": "斩题",
+      "title": "标记斩题-题目不存在时的异常处理",
+      "pre": "题目 99999999 不存在",
+      "steps": "POST /questionMarked/questionMarked  body={questionId:99999999}",
+      "expected": "code!=200 且提示「题目不存在」",
+      "actual": "code=500 msg=题目不存在",
+      "status": "通过"
+    },
+    {
+      "cid": "G13",
+      "module": "斩题",
+      "title": "数据隔离-user2 不能查看 user1 的斩题详情",
+      "pre": "markedId=196 属于 user1",
+      "steps": "user2 请求 GET /questionMarked/questionMarked/{markedId}",
+      "expected": "code=403 或提示无权访问（按归属校验）",
+      "actual": "code=403 msg=无权访问该斩题记录",
+      "status": "通过"
+    },
+    {
+      "cid": "G14",
+      "module": "斩题",
+      "title": "数据隔离-user2 不能修改 user1 的斩题记录",
+      "pre": "markedId=196 属于 user1",
+      "steps": "user2 请求 PUT /questionMarked/questionMarked  body={markedId:mid3}",
+      "expected": "code=403；user1 的记录不被篡改",
+      "actual": "code=403 msg=无权访问该斩题记录；user1 记录被改=False",
+      "status": "通过"
+    },
+    {
+      "cid": "G15",
+      "module": "斩题",
+      "title": "数据隔离-user2 不能删除 user1 的斩题记录（按记录ID）",
+      "pre": "markedId=196 属于 user1",
+      "steps": "user2 请求 DELETE /questionMarked/questionMarked/{markedId}",
+      "expected": "code=403；user1 的记录仍存在",
+      "actual": "code=403 msg=无权删除他人的斩题记录；user1 记录仍在=True",
+      "status": "通过"
+    },
+    {
+      "cid": "G16",
+      "module": "斩题",
+      "title": "数据隔离-路径传入他人 user_id 不能删除他人斩题",
+      "pre": "user1 已斩 q3；路径参数 {user_id} 可被篡改",
+      "steps": "user2 请求 DELETE .../deleteByUserAndQuestion/{uid1}/{q3}（路径写的是 user1 的 id）",
+      "expected": "code=403；user1 的记录仍存在",
+      "actual": "code=403 msg=无权操作他人的斩题记录；user1 记录仍在=True",
+      "status": "通过"
+    },
+    {
+      "cid": "H01",
+      "module": "答题上报",
+      "title": "上报-答对",
+      "pre": "q1 存在",
+      "steps": "POST /questionPractice/report  body={questionId:q1,isCorrect:true,answer:'A'}",
+      "expected": "code=200；返回 isCorrect=true；errorId 为空",
+      "actual": "isCorrect=True errorId=None",
+      "status": "通过"
+    },
+    {
+      "cid": "H02",
+      "module": "答题上报",
+      "title": "上报-答错并自动生成错题记录",
+      "pre": "q2 无错题记录",
+      "steps": "POST /questionPractice/report  body={questionId:q2,isCorrect:false}",
+      "expected": "code=200；返回 errorId（已 upsert 错题记录）",
+      "actual": "isCorrect=False errorId=221",
+      "status": "通过"
+    },
+    {
+      "cid": "H03",
+      "module": "答题上报",
+      "title": "上报-同题连续答错（错题记录覆盖累加）",
+      "pre": "q2 已有错题记录（errorId=221）",
+      "steps": "再次上报 isCorrect=false",
+      "expected": "errorId 不变；errorCount 累加为 2",
+      "actual": "errorId=221 errorCount=2",
+      "status": "通过"
+    },
+    {
+      "cid": "H04",
+      "module": "答题上报",
+      "title": "上报-同步已收藏题目的练习/正确/错误次数",
+      "pre": "user1 已收藏 q3",
+      "steps": "对 q3 先上报答对 1 次、再上报答错 1 次，读接口 correctTimes/errorTimes/reviewCount，并直读库表交叉校验",
+      "expected": "收藏记录 correctTimes=1、errorTimes=1、reviewCount=2（接口与库表一致）",
+      "actual": "接口 correctTimes=1 errorTimes=1 reviewCount=2；库表=None/None/None",
+      "status": "通过"
+    },
+    {
+      "cid": "H05",
+      "module": "答题上报",
+      "title": "上报-反映到学习统计总览",
+      "pre": "已累计上报若干次",
+      "steps": "GET /userStats/overview",
+      "expected": "code=200；totalPracticeCount 为流水条数、correctRate 为答对占比",
+      "actual": "共作答=148 正确率=77.7",
+      "status": "通过"
+    },
+    {
+      "cid": "H06",
+      "module": "答题上报",
+      "title": "上报-题目不存在时的异常处理",
+      "pre": "题目 99999999 不存在",
+      "steps": "POST /questionPractice/report  body={questionId:99999999}",
+      "expected": "code!=200 且提示「题目不存在」（不污染统计）",
+      "actual": "code=500 msg=题目不存在",
+      "status": "通过"
+    },
+    {
+      "cid": "H07",
+      "module": "答题上报",
+      "title": "上报-缺少 isCorrect 字段的校验",
+      "pre": "isCorrect 为必填",
+      "steps": "POST /questionPractice/report  body={questionId:q1}",
+      "expected": "校验失败（HTTP 422）",
+      "actual": "HTTP 422",
+      "status": "通过"
+    },
+    {
+      "cid": "H08",
+      "module": "答题上报",
+      "title": "上报-未登录访问被拒绝",
+      "pre": "不带 token",
+      "steps": "POST /questionPractice/report  body={questionId:q1,isCorrect:true}",
+      "expected": "返回 401 未登录",
+      "actual": "HTTP 200 code=401",
+      "status": "通过"
+    },
+    {
+      "cid": "I01",
+      "module": "题目收藏",
+      "title": "取消收藏题目（按记录ID）",
+      "pre": "user1 已收藏 q3（favoriteId=193）",
+      "steps": "DELETE /favoriteQuestion/favoriteQuestion/{favoriteId}",
+      "expected": "code=200；收藏校验变为 false",
+      "actual": "code=200 msg=操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "I02",
+      "module": "题目收藏",
+      "title": "收藏列表-不分页并按题库筛选",
+      "pre": "user1 已收藏 q3",
+      "steps": "GET /favoriteQuestion/favoriteQuestion/all?bankId={bank_id}",
+      "expected": "code=200；返回数组且 bankId 匹配",
+      "actual": "共 1 条",
+      "status": "通过"
+    },
+    {
+      "cid": "I03",
+      "module": "题目收藏",
+      "title": "批量检查题目收藏状态",
+      "pre": "q3 已收藏 / q2 未收藏",
+      "steps": "POST /favoriteQuestion/favoriteQuestion/batchCheck  body={questionIds:[q3,q2]}",
+      "expected": "返回 {q3:true, q2:false}",
+      "actual": "结果={'1685': True, '1684': False}",
+      "status": "通过"
+    },
+    {
+      "cid": "I04",
+      "module": "题目收藏",
+      "title": "收藏详情",
+      "pre": "favoriteId=194 存在",
+      "steps": "GET /favoriteQuestion/favoriteQuestion/{favoriteId}",
+      "expected": "code=200；questionId 匹配",
+      "actual": "questionId=1685",
+      "status": "通过"
+    },
+    {
+      "cid": "I05",
+      "module": "题目收藏",
+      "title": "修改收藏记录（备注 / 标签 / 星标）",
+      "pre": "favoriteId=194 属于 user1",
+      "steps": "PUT /favoriteQuestion/favoriteQuestion  body={favoriteId,notes,tags,isStarred:1}",
+      "expected": "code=200；备注/标签/星标均已更新",
+      "actual": "notes=错题整理-收藏备注 tags=重点 isStarred=1",
+      "status": "通过"
+    },
+    {
+      "cid": "I06",
+      "module": "题目收藏",
+      "title": "导出题目收藏列表（Excel）",
+      "pre": "user1 已登录",
+      "steps": "POST /favoriteQuestion/favoriteQuestion/export",
+      "expected": "返回文件流（非 JSON），HTTP 200",
+      "actual": "HTTP 200 文件流 大小=6785 字节",
+      "status": "通过"
+    },
+    {
+      "cid": "I07",
+      "module": "题目收藏",
+      "title": "数据隔离-user2 不能查看 user1 的收藏详情",
+      "pre": "favoriteId=194 属于 user1",
+      "steps": "user2 请求 GET /favoriteQuestion/favoriteQuestion/{favoriteId}",
+      "expected": "code=403 或提示无权访问（按归属校验）",
+      "actual": "code=403 msg=无权访问该收藏记录",
+      "status": "通过"
+    },
+    {
+      "cid": "I08",
+      "module": "题目收藏",
+      "title": "数据隔离-user2 不能修改 user1 的收藏记录",
+      "pre": "favoriteId=194 属于 user1",
+      "steps": "user2 请求 PUT /favoriteQuestion/favoriteQuestion  body={favoriteId:fid3}",
+      "expected": "code=403；user1 的记录不被篡改",
+      "actual": "code=403 msg=无权访问该收藏记录；user1 记录被改=False",
+      "status": "通过"
+    },
+    {
+      "cid": "I09",
+      "module": "题目收藏",
+      "title": "数据隔离-user2 不能删除 user1 的收藏（按记录ID）",
+      "pre": "favoriteId=194 属于 user1",
+      "steps": "user2 请求 DELETE /favoriteQuestion/favoriteQuestion/{favoriteId}",
+      "expected": "code=403；user1 的收藏仍存在",
+      "actual": "code=403 msg=无权删除他人的收藏记录；user1 收藏仍在=True",
+      "status": "通过"
+    },
+    {
+      "cid": "I10",
+      "module": "题目收藏",
+      "title": "数据隔离-路径传入他人 user_id 不能取消他人收藏",
+      "pre": "user1 已收藏 q3；路径参数 {user_id} 可被篡改",
+      "steps": "user2 请求 DELETE .../deleteByUserAndQuestion/{uid1}/{q3}（路径写的是 user1 的 id）",
+      "expected": "code=403；user1 的收藏仍存在",
+      "actual": "code=403 msg=无权操作他人的收藏记录；user1 收藏仍在=True",
+      "status": "通过"
+    },
+    {
+      "cid": "J01",
+      "module": "测试清理",
+      "title": "清理临时题库（级联删除题目与学习记录）",
+      "pre": "测试题库 bank=363 属于 user1",
+      "steps": "DELETE /questionBank/questionBank/{bank_id} 后查详情",
+      "expected": "code=200；删除后详情返回不存在",
+      "actual": "删除=200 详情 code=500",
+      "status": "通过"
+    },
+    {
+      "cid": "J02",
+      "module": "测试清理",
+      "title": "无数据残留（统计/错题本不被污染）",
+      "pre": "清理完成",
+      "steps": "直连库核对孤儿答题流水与测试题目/题库",
+      "expected": "孤儿流水=0，测试题目与题库均已删除",
+      "actual": "孤儿流水=0",
+      "status": "通过"
+    }
+  ],
+  "cleanup": {
+    "bank_ids": [
+      363
+    ]
+  }
+}

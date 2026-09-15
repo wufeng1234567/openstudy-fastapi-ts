@@ -1,0 +1,403 @@
+{
+  "prefix": "斩题整理",
+  "uid_admin": 1,
+  "uid1": 105,
+  "uid2": 106,
+  "rows": [
+    {
+      "cid": "N01",
+      "module": "斩题管理(后台)",
+      "title": "列表-管理员查询返回分页结构",
+      "pre": "admin 已登录",
+      "steps": "GET /questionMarked/questionMarked/list?pageNum=1&pageSize=10",
+      "expected": "code=200；顶层包含 total 与 rows（若依分页契约）",
+      "actual": "code=200 total=11 rows=10",
+      "status": "通过"
+    },
+    {
+      "cid": "N02",
+      "module": "斩题管理(后台)",
+      "title": "列表-按用户ID筛选（后台按用户查斩题）",
+      "pre": "user1(105) 有 7 条活跃斩题",
+      "steps": "admin 请求 list?userId=105",
+      "expected": "total=7 且 rows 的 userId 全为 105",
+      "actual": "total=7 rows=7 userId集合=[105]",
+      "status": "通过"
+    },
+    {
+      "cid": "N03",
+      "module": "斩题管理(后台)",
+      "title": "列表-按题目ID精确筛选",
+      "pre": "user1 在 q1=1689 上有 1 条斩题",
+      "steps": "admin 请求 list?questionId=1689",
+      "expected": "命中 1 条且 questionId=q1",
+      "actual": "命中 1 条 questionIds=[1689]",
+      "status": "通过"
+    },
+    {
+      "cid": "N04",
+      "module": "斩题管理(后台)",
+      "title": "列表-按所属题库筛选",
+      "pre": "测试题库 bank=366 有 3 条活跃斩题",
+      "steps": "admin 请求 list?bankId=366",
+      "expected": "total=3 且 rows 的 bankId 全为该题库",
+      "actual": "total=3 rows=3 bankId集合=[366]",
+      "status": "通过"
+    },
+    {
+      "cid": "N05",
+      "module": "斩题管理(后台)",
+      "title": "列表-按斩题类型筛选",
+      "pre": "全库 markedType=3 共 1 条",
+      "steps": "admin 请求 list?markedType=3",
+      "expected": "total=1 且 rows 的 markedType 全为 3",
+      "actual": "total=1 rows=1 markedType集合=[3]",
+      "status": "通过"
+    },
+    {
+      "cid": "N06",
+      "module": "斩题管理(后台)",
+      "title": "列表-按难度等级筛选",
+      "pre": "存在 difficultyLevel=4 的记录",
+      "steps": "admin 请求 list?difficultyLevel=4",
+      "expected": "code=200 且 rows 的 difficultyLevel 全为 4",
+      "actual": "total=1 rows=1 difficulty集合=[4]",
+      "status": "通过"
+    },
+    {
+      "cid": "N07",
+      "module": "斩题管理(后台)",
+      "title": "列表-按掌握状态筛选",
+      "pre": "全库未掌握(isMastered=0)共 3 条",
+      "steps": "admin 请求 list?isMastered=0",
+      "expected": "total=3 且 rows 的 isMastered 全为 0",
+      "actual": "total=3 rows=3 isMastered集合=[0]",
+      "status": "通过"
+    },
+    {
+      "cid": "N08",
+      "module": "斩题管理(后台)",
+      "title": "列表-按斩题时间范围筛选",
+      "pre": "全库活跃斩题 11 条 create_time 均落在 2020~2030",
+      "steps": "admin 请求 list?beginCreateTime=2020-01-01&endCreateTime=2030-12-31",
+      "expected": "code=200；total=11（时间条件生效且不丢他人数据）",
+      "actual": "total=11",
+      "status": "通过"
+    },
+    {
+      "cid": "N09",
+      "module": "斩题管理(后台)",
+      "title": "列表-分页返回条数受 pageSize 约束",
+      "pre": "全库活跃斩题 > 2 条",
+      "steps": "admin 请求 list?pageSize=2",
+      "expected": "code=200；rows 条数 <= 2；total 为全量条数",
+      "actual": "total=11 rows=2",
+      "status": "通过"
+    },
+    {
+      "cid": "N10",
+      "module": "斩题管理(后台)",
+      "title": "列表-管理员不传 userId 时可看到全部用户的记录",
+      "pre": "admin 与 user1 均有斩题记录",
+      "steps": "admin 请求 list（不传 userId）",
+      "expected": "rows 中出现 >=2 个不同 userId（后台总览语义）",
+      "actual": "total=11 涉及用户=[1, 105, 106]",
+      "status": "通过"
+    },
+    {
+      "cid": "N11",
+      "module": "斩题管理(后台)",
+      "title": "列表-组合条件筛选（userId + bankId）",
+      "pre": "user1 在测试题库下 2 条",
+      "steps": "admin 请求 list?userId=105&bankId=366",
+      "expected": "total=2 且 rows 同时满足 userId/bankId",
+      "actual": "total=2 rows=2",
+      "status": "通过"
+    },
+    {
+      "cid": "N12",
+      "module": "斩题管理(后台)",
+      "title": "新增-管理员代 user1 录入斩题（提交后台表单全字段）",
+      "pre": "q3=1691 未被斩题",
+      "steps": "admin 请求 POST /questionMarked/questionMarked  body 含 userId=105 与全部表单字段",
+      "expected": "code=200",
+      "actual": "HTTP 200 code=200 操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "N13",
+      "module": "斩题管理(后台)",
+      "title": "新增-表单字段全部落库（归属=被代录用户）",
+      "pre": "N12 已提交全字段",
+      "steps": "直读 user_question_marked WHERE question_id=q3，逐字段比对",
+      "expected": "user_id=105；markedType=2 难度=4 已掌握=1 状态=1；错误次数=3 正确次数=2 复习=5；lastReviewTime/nextReviewTime 非空；备注/标签一致",
+      "actual": "库中={'user_id': 105, 'bank_id': 366, 'marked_type': 2, 'difficulty_level': 4, 'is_mastered': 1, 'marked_status': 1, 'error_times_before_mark': 3, 'correct_times_before_mark': 2, 'review_count': 5, 'last_review_time': datetime.datetime(2026, 9, 1, 10, 0), 'next_review_time': datetime.datetime(2026, 9, 20, 10, 0), 'notes': '斩题整理-后台新增备注', 'tags': '难题,重点'}",
+      "status": "通过"
+    },
+    {
+      "cid": "N14",
+      "module": "斩题管理(后台)",
+      "title": "详情-后台修改对话框所需字段完整回显",
+      "pre": "markedId=200",
+      "steps": "admin 请求 GET /questionMarked/questionMarked/{markedId}",
+      "expected": "返回体包含后台列表/表单展示的 16 个字段（缺一即后台显示 0/空）",
+      "actual": "code=200 缺失字段=无",
+      "status": "通过"
+    },
+    {
+      "cid": "N15",
+      "module": "斩题管理(后台)",
+      "title": "新增-同一用户重复斩同一题给出业务提示",
+      "pre": "user1 在 q3 已有斩题记录",
+      "steps": "admin 再次 POST 同一 body",
+      "expected": "code=400 且提示「已标记」，不应 500",
+      "actual": "code=400 msg=已标记该题目",
+      "status": "通过"
+    },
+    {
+      "cid": "N16",
+      "module": "斩题管理(后台)",
+      "title": "新增-题目不存在时的异常处理",
+      "pre": "题目 99999999 不存在",
+      "steps": "admin POST body={questionId:99999999}",
+      "expected": "code!=200 且提示「题目不存在」",
+      "actual": "code=500 msg=题目不存在",
+      "status": "通过"
+    },
+    {
+      "cid": "N17",
+      "module": "斩题管理(后台)",
+      "title": "修改-本人提交后台表单全字段，字段全部更新",
+      "pre": "markedId=201（user1 本人记录）",
+      "steps": "user1 请求 PUT /questionMarked/questionMarked，body 含后台表单全部字段",
+      "expected": "code=200；库中 markedType=5 难度=2 已掌握=1 状态=1；错误次数=9 正确次数=4 复习=7；lastReviewTime/nextReviewTime 非空；备注/标签一致",
+      "actual": "code=200 库中={'marked_type': 5, 'difficulty_level': 2, 'is_mastered': 1, 'marked_status': 1, 'error_times_before_mark': 9, 'correct_times_before_mark': 4, 'review_count': 7, 'last_review_time': datetime.datetime(2026, 9, 5, 8, 30), 'next_review_time': datetime.datetime(2026, 9, 25, 8, 30), 'notes': '斩题整理-修改后备注', 'tags': '易错,高频'}",
+      "status": "通过"
+    },
+    {
+      "cid": "N18",
+      "module": "斩题管理(后台)",
+      "title": "修改-管理员可修改他人（user1）的斩题记录",
+      "pre": "markedId=201 属于 user1；admin 登录",
+      "steps": "admin 请求 PUT /questionMarked/questionMarked  body={markedId:201,...}",
+      "expected": "code=200；库中 markedType=4、reviewCount=11、备注已更新",
+      "actual": "code=200 msg=操作成功 库中={'marked_type': 4, 'notes': '斩题整理-管理员修改备注', 'review_count': 11}",
+      "status": "通过"
+    },
+    {
+      "cid": "N19",
+      "module": "斩题管理(后台)",
+      "title": "详情-管理员可查看他人斩题记录",
+      "pre": "markedId=201 属于 user1",
+      "steps": "admin 请求 GET /questionMarked/questionMarked/{markedId}",
+      "expected": "code=200 且 userId=105，reviewCount=11（与库一致）",
+      "actual": "code=200 userId=105 reviewCount=11",
+      "status": "通过"
+    },
+    {
+      "cid": "N20",
+      "module": "斩题管理(后台)",
+      "title": "修改-记录不存在时的异常处理",
+      "pre": "markedId=99999999 不存在",
+      "steps": "admin PUT body={markedId:99999999}",
+      "expected": "code!=200 且提示「斩题记录不存在」",
+      "actual": "code=500 msg=斩题记录不存在",
+      "status": "通过"
+    },
+    {
+      "cid": "N21",
+      "module": "斩题管理(后台)",
+      "title": "删除-管理员删除他人（user1）单条斩题记录",
+      "pre": "markedId=202 属于 user1",
+      "steps": "admin 请求 DELETE /questionMarked/questionMarked/{markedId}",
+      "expected": "code=200；库中该记录已物理删除",
+      "actual": "code=200 msg=操作成功 剩余=0",
+      "status": "通过"
+    },
+    {
+      "cid": "N22",
+      "module": "斩题管理(后台)",
+      "title": "删除-管理员批量删除他人斩题记录（逗号分隔 id）",
+      "pre": "user1 在 q6/q7 各 1 条，ids=203,204",
+      "steps": "admin 请求 DELETE /questionMarked/questionMarked/{ids}",
+      "expected": "code=200；库中这两条均已删除",
+      "actual": "code=200 msg=操作成功 剩余=0",
+      "status": "通过"
+    },
+    {
+      "cid": "N23",
+      "module": "斩题管理(后台)",
+      "title": "删除-普通用户不能删除他人记录（越权拦截）",
+      "pre": "markedId=205 属于 user1；user2 登录",
+      "steps": "user2 请求 DELETE /questionMarked/questionMarked/{markedId}",
+      "expected": "code=403；user1 的记录仍存在",
+      "actual": "code=403 msg=无权删除他人的斩题记录 仍存在=1",
+      "status": "通过"
+    },
+    {
+      "cid": "N24",
+      "module": "斩题管理(后台)",
+      "title": "删除-不存在的 id 不应 500",
+      "pre": "markedId=99999999 不存在",
+      "steps": "admin 请求 DELETE /questionMarked/questionMarked/99999999",
+      "expected": "返回业务响应（200 幂等 或 明确提示），不得 500",
+      "actual": "HTTP 200 code=200 操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "N25",
+      "module": "斩题管理(后台)",
+      "title": "导出-管理员导出斩题列表为 Excel",
+      "pre": "admin 已登录",
+      "steps": "POST /questionMarked/questionMarked/export",
+      "expected": "HTTP 200 且返回文件流（非 JSON）",
+      "actual": "HTTP 200 文件流 大小=7077 字节",
+      "status": "通过"
+    },
+    {
+      "cid": "N26",
+      "module": "斩题管理(后台)",
+      "title": "导出-带时间范围参数（query）导出内容非空",
+      "pre": "存在 2020~2030 的斩题记录",
+      "steps": "POST export?beginCreateTime=2020-01-01&endCreateTime=2030-12-31",
+      "expected": "HTTP 200；xlsx 数据行数 > 0",
+      "actual": "HTTP 200 文件流 大小=7077 字节 数据行=14",
+      "status": "通过"
+    },
+    {
+      "cid": "N36",
+      "module": "斩题管理(后台)",
+      "title": "导出-筛选条件真正生效（空区间应导出 0 行）",
+      "pre": "1990-01-01~1990-01-02 区间内无斩题记录",
+      "steps": "POST export?beginCreateTime=1990-01-01&endCreateTime=1990-01-02（等价于修复后 utils/request.download 拼出的 URL）",
+      "expected": "HTTP 200 且 xlsx 数据行=0（页面搜索条件应带进导出）",
+      "actual": "HTTP 200 文件流 大小=5346 字节 数据行=0",
+      "status": "通过"
+    },
+    {
+      "cid": "N38",
+      "module": "斩题管理(后台)",
+      "title": "导出-管理员可按 userId 导出指定用户",
+      "pre": "user1 当前活跃斩题 10 条",
+      "steps": "admin POST export?userId=105",
+      "expected": "HTTP 200；xlsx 数据行数 = user1 活跃斩题数",
+      "actual": "数据行=10 期望=10",
+      "status": "通过"
+    },
+    {
+      "cid": "N27",
+      "module": "斩题管理(后台)",
+      "title": "权限-普通用户列表只能看自己的记录",
+      "pre": "user2 自己有 1 条斩题，且 user1 也有记录",
+      "steps": "user2 请求 list?pageSize=100",
+      "expected": "total=1；rows 的 userId 全为 106（不得出现 user1 的记录）",
+      "actual": "total=1 rows=1 userId集合=[106]",
+      "status": "通过"
+    },
+    {
+      "cid": "N28",
+      "module": "斩题管理(后台)",
+      "title": "权限-普通用户不能代他人新增斩题记录",
+      "pre": "user1 登录，body 里 userId=106（q10 双方均无记录）",
+      "steps": "user1 请求 POST /questionMarked/questionMarked  body={userId:user2,questionId:q10}",
+      "expected": "code=403；user2 名下不新增记录，user1 名下也不应被悄悄写入",
+      "actual": "code=403 msg=无权为他人新增斩题记录；user2记录=0 user1记录=0",
+      "status": "通过"
+    },
+    {
+      "cid": "N29",
+      "module": "斩题管理(后台)",
+      "title": "权限-普通用户不能查看他人斩题详情",
+      "pre": "markedId=201 属于 user1",
+      "steps": "user2 请求 GET /questionMarked/questionMarked/{markedId}",
+      "expected": "code=403",
+      "actual": "code=403 msg=无权访问该斩题记录",
+      "status": "通过"
+    },
+    {
+      "cid": "N30",
+      "module": "斩题管理(后台)",
+      "title": "权限-未登录访问被拒绝",
+      "pre": "不带 token",
+      "steps": "GET /questionMarked/questionMarked/list",
+      "expected": "HTTP 401 或 code=401",
+      "actual": "HTTP 200 code=401",
+      "status": "通过"
+    },
+    {
+      "cid": "N31",
+      "module": "斩题管理(后台)",
+      "title": "前端契约-后台列表页 8 个查询条件同时生效",
+      "pre": "user1 在测试题库 q2 上的一条筛选样本（类型3/难度4/已掌握）",
+      "steps": "按后台 index.vue 的 queryParams 原样请求：userId+questionId+bankId+markedType+difficultyLevel+isMastered",
+      "expected": "命中 1 条且各字段与条件一致",
+      "actual": "命中 1 条",
+      "status": "通过"
+    },
+    {
+      "cid": "N32",
+      "module": "斩题管理(后台)",
+      "title": "前端契约-列表返回字段覆盖后台表格所有列",
+      "pre": "测试题库下存在斩题记录",
+      "steps": "GET list?bankId=... 后比对 index.vue 表格 el-table-column 的 prop",
+      "expected": "返回字段包含表格全部 13 个 prop（缺失即该列恒显示 0/-）",
+      "actual": "缺失字段=无",
+      "status": "通过"
+    },
+    {
+      "cid": "N33",
+      "module": "斩题管理(后台)",
+      "title": "列表-按备注关键字筛选",
+      "pre": "存在备注含「斩题整理-筛选样本」的记录",
+      "steps": "admin 请求 list?notes=斩题整理-筛选样本",
+      "expected": "code=200；命中且 rows 的 notes 均命中关键字",
+      "actual": "命中 1 条",
+      "status": "通过"
+    },
+    {
+      "cid": "N34",
+      "module": "斩题管理(后台)",
+      "title": "修改-管理员修改本人记录（基础 CRUD 可用性）",
+      "pre": "admin 在 q10 有自己的记录 markedId=206",
+      "steps": "admin PUT /questionMarked/questionMarked  body={markedId,notes,markedType:2}",
+      "expected": "code=200；库中备注与斩题类型已更新",
+      "actual": "code=200 库中={'notes': '斩题整理-管理员自己的备注', 'marked_type': 2}",
+      "status": "通过"
+    },
+    {
+      "cid": "N35",
+      "module": "斩题管理(后台)",
+      "title": "业务闭环-后台代录后用户前台「我的斩题」立即可见",
+      "pre": "N12 已由后台为 user1 录入 q3 的斩题",
+      "steps": "user1 请求 GET /questionMarked/questionMarked/all 并查找 q3",
+      "expected": "user1 的斩题列表包含 q3（后台代录数据落到被代录用户名下）",
+      "actual": "user1 列表 10 条，命中 q3=1 条",
+      "status": "通过"
+    },
+    {
+      "cid": "N39",
+      "module": "斩题管理(后台)",
+      "title": "清理-删除临时题库（级联清理测试斩题数据）",
+      "pre": "测试题库 bank=366",
+      "steps": "DELETE /questionBank/questionBank/{bank_id} 后查详情",
+      "expected": "code=200；删除后详情不可见",
+      "actual": "删除=200 详情code=500",
+      "status": "通过"
+    },
+    {
+      "cid": "N40",
+      "module": "斩题管理(后台)",
+      "title": "清理-无测试数据残留（不污染演示数据）",
+      "pre": "清理完成",
+      "steps": "直连库核对测试题目/题库/斩题记录",
+      "expected": "题目=0 题库=0 斩题记录=0",
+      "actual": "斩题残留=0 题目残留=0 题库残留=0",
+      "status": "通过"
+    }
+  ],
+  "cleanup": {
+    "bank_ids": [
+      366
+    ]
+  }
+}

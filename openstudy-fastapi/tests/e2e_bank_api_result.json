@@ -1,0 +1,826 @@
+{
+  "prefix": "随堂练习",
+  "uid1": 105,
+  "uid2": 106,
+  "rows": [
+    {
+      "cid": "A01",
+      "module": "题库管理",
+      "title": "创建题库-题库名称必填校验",
+      "pre": "user1 已登录",
+      "steps": "POST /questionBank/questionBank  body={bankName:''}",
+      "expected": "校验失败（HTTP 422 或 code!=200）",
+      "actual": "HTTP 422 / code=None",
+      "status": "通过"
+    },
+    {
+      "cid": "A02",
+      "module": "题库管理",
+      "title": "创建题库-成功且自动推断科目与描述",
+      "pre": "user1 已登录",
+      "steps": "POST /questionBank/questionBank  body={bankName:'随堂练习数据结构测试'}（不传 subject/description）",
+      "expected": "code=200；返回 bankId；subject 按名称推断为「计算机基础」；description 自动生成非空",
+      "actual": "bankId=357 subject=计算机基础 desc长度=43",
+      "status": "通过"
+    },
+    {
+      "cid": "A03",
+      "module": "题库管理",
+      "title": "创建题库-私有题库（isPublic=1）",
+      "pre": "user1 已登录",
+      "steps": "POST /questionBank/questionBank  body={bankName:'随堂练习私有题库', isPublic:1}",
+      "expected": "code=200；返回值 isPublic=1（私有）",
+      "actual": "bankId=359 isPublic=1",
+      "status": "通过"
+    },
+    {
+      "cid": "A04",
+      "module": "题库管理",
+      "title": "创建题库-设置「不允许他人复制」（allowFork=0）",
+      "pre": "user1 已登录",
+      "steps": "POST /questionBank/questionBank  body={bankName:'随堂练习禁止复制题库', allowFork:0}",
+      "expected": "code=200；返回值 allowFork=0",
+      "actual": "bankId=360 allowFork=0",
+      "status": "通过"
+    },
+    {
+      "cid": "A05",
+      "module": "题库管理",
+      "title": "我的题库-只返回自己名下题库",
+      "pre": "user1 已建 3 个测试题库",
+      "steps": "GET /questionBank/questionBank/my",
+      "expected": "code=200；列表包含 A02/A03/A04 三个题库；且全部 userId=自己",
+      "actual": "共 6 个题库，含测试题库=True",
+      "status": "通过"
+    },
+    {
+      "cid": "A06",
+      "module": "题库管理",
+      "title": "题库详情-题库主查看自己的题库",
+      "pre": "bank_a 属于 user1",
+      "steps": "GET /questionBank/questionBank/{bank_a}",
+      "expected": "code=200；bankName 与创建时一致",
+      "actual": "bankName=随堂练习数据结构测试",
+      "status": "通过"
+    },
+    {
+      "cid": "A07",
+      "module": "题库管理",
+      "title": "题库详情-题库不存在时的异常处理",
+      "pre": "user1 已登录",
+      "steps": "GET /questionBank/questionBank/99999999",
+      "expected": "code!=200 且提示「题库不存在」",
+      "actual": "code=500 msg=题库不存在",
+      "status": "通过"
+    },
+    {
+      "cid": "A08",
+      "module": "题库管理",
+      "title": "题库列表-分页返回（pageSize=2）",
+      "pre": "user1 名下有多个题库",
+      "steps": "GET /questionBank/questionBank/list?pageNum=1&pageSize=2",
+      "expected": "code=200；total>=3；rows 长度=2",
+      "actual": "total=17 rows=2",
+      "status": "通过"
+    },
+    {
+      "cid": "A09",
+      "module": "题库管理",
+      "title": "题库列表-分页参数越界校验（pageSize=101）",
+      "pre": "接口约定 pageSize<=100",
+      "steps": "GET /questionBank/questionBank/list?pageSize=101",
+      "expected": "校验失败（HTTP 422）",
+      "actual": "HTTP 422",
+      "status": "通过"
+    },
+    {
+      "cid": "A10",
+      "module": "题库管理",
+      "title": "题库列表-按题库名模糊筛选",
+      "pre": "测试题库名带统一前缀",
+      "steps": "GET /questionBank/questionBank/list?bankName=随堂练习",
+      "expected": "返回结果全部包含该关键字",
+      "actual": "命中 3 条，全部匹配=True",
+      "status": "通过"
+    },
+    {
+      "cid": "A11",
+      "module": "题库管理",
+      "title": "题库列表-按科目筛选",
+      "pre": "bank_a 科目=计算机基础",
+      "steps": "GET /questionBank/questionBank/list?subject=计算机基础",
+      "expected": "code=200；返回结果 subject 全部为「计算机基础」",
+      "actual": "命中 2 条，科目一致=True",
+      "status": "通过"
+    },
+    {
+      "cid": "A12",
+      "module": "题库管理",
+      "title": "权限-非题库主不能查看他人私有题库",
+      "pre": "bank_b 为 user1 的私有题库",
+      "steps": "user2 请求 GET /questionBank/questionBank/{bank_b}",
+      "expected": "code=403（无权访问）",
+      "actual": "code=403 msg=无权访问该题库（私密题库仅作者与已获取分享的用户可见）",
+      "status": "通过"
+    },
+    {
+      "cid": "A13",
+      "module": "题库管理",
+      "title": "权限-公开题库任何人可查看",
+      "pre": "bank_a 为公开题库",
+      "steps": "user2 请求 GET /questionBank/questionBank/{bank_a}",
+      "expected": "code=200",
+      "actual": "code=200 bankName=随堂练习数据结构测试",
+      "status": "通过"
+    },
+    {
+      "cid": "A14",
+      "module": "题库管理",
+      "title": "可见性-他人私有题库不出现在列表中",
+      "pre": "bank_b 为 user1 的私有题库",
+      "steps": "user2 请求 /questionBank/questionBank/list?bankName={BANK_B}",
+      "expected": "total=0（不可见）",
+      "actual": "total=0",
+      "status": "通过"
+    },
+    {
+      "cid": "A15",
+      "module": "题库管理",
+      "title": "公开题库广场-只返回公开题库",
+      "pre": "存在公开题库与私有题库",
+      "steps": "user2 请求 GET /questionBank/questionBank/all?onlyPublic=true",
+      "expected": "code=200；列表全部 isPublic=0；不含 bank_b（私有）",
+      "actual": "共 14 个，全部公开=True，含私有题库=False",
+      "status": "通过"
+    },
+    {
+      "cid": "A16",
+      "module": "题库管理",
+      "title": "修改题库-题库主修改题库信息",
+      "pre": "bank_a 属于 user1",
+      "steps": "PUT /questionBank/questionBank  body={bankId,bankName,subject} 后查详情",
+      "expected": "code=200；名称与科目均已更新",
+      "actual": "bankName=随堂练习数据结构测试改名 subject=算法与数据结构",
+      "status": "通过"
+    },
+    {
+      "cid": "A17",
+      "module": "题库管理",
+      "title": "修改题库-兼容前端 id 字段（AliasChoices）",
+      "pre": "前端历史实现使用 id 字段",
+      "steps": "PUT /questionBank/questionBank  body={id:bankId,description:...}",
+      "expected": "code=200",
+      "actual": "code=200 msg=操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "A18",
+      "module": "题库管理",
+      "title": "权限-非题库主不能修改他人题库",
+      "pre": "bank_a 属于 user1",
+      "steps": "user2 请求 PUT /questionBank/questionBank  body={bankId:bank_a}",
+      "expected": "code=403（只有题库主才能修改）",
+      "actual": "code=403 msg=只有题库主才能修改该题库",
+      "status": "通过"
+    },
+    {
+      "cid": "A19",
+      "module": "题库管理",
+      "title": "修改题库-题库不存在时的异常处理",
+      "pre": "user1 已登录",
+      "steps": "PUT /questionBank/questionBank  body={bankId:99999999}",
+      "expected": "code!=200 且提示「题库不存在」",
+      "actual": "code=500 msg=题库不存在",
+      "status": "通过"
+    },
+    {
+      "cid": "A20",
+      "module": "题库管理",
+      "title": "修改题库-缺少题库ID的校验",
+      "pre": "user1 已登录",
+      "steps": "PUT /questionBank/questionBank  body={bankName:'无ID'}（不传 bankId/id）",
+      "expected": "code!=200 且提示「题库ID不能为空」",
+      "actual": "code=500 msg=题库ID不能为空",
+      "status": "通过"
+    },
+    {
+      "cid": "A21",
+      "module": "题库管理",
+      "title": "复制题库-复制自己的题库",
+      "pre": "bank_a 属于 user1",
+      "steps": "POST /questionBank/questionBank/copy/{bank_a}",
+      "expected": "code=200；返回新 bankId（≠原题库）；副本 userId=自己",
+      "actual": "新 bankId=361 userId=105",
+      "status": "通过"
+    },
+    {
+      "cid": "A22",
+      "module": "题库管理",
+      "title": "复制题库-他人公开题库二创并自定义副本名",
+      "pre": "bank_a 为公开且允许复制",
+      "steps": "user2 请求 copy/{bank_a}  body={bankName:'随堂练习二创副本'}",
+      "expected": "code=200；副本 userId=user2；bankName=自定义名",
+      "actual": "副本 bankId=362 userId=106 bankName=随堂练习二创副本",
+      "status": "通过"
+    },
+    {
+      "cid": "A23",
+      "module": "题库管理",
+      "title": "权限-题库主关闭复制开关后不可复制",
+      "pre": "bank_c 设置 allowFork=0 且为公开题库",
+      "steps": "user2 请求 copy/{bank_c}",
+      "expected": "code=403（题库主未开放复制）",
+      "actual": "code=403 msg=题库主未开放复制",
+      "status": "通过"
+    },
+    {
+      "cid": "A24",
+      "module": "题库管理",
+      "title": "权限-未获分享不可复制他人私有题库",
+      "pre": "bank_b 为 user1 私有题库、user2 未领取分享",
+      "steps": "user2 请求 copy/{bank_b}",
+      "expected": "code=403（无权复制）",
+      "actual": "code=403 msg=无权复制该题库",
+      "status": "通过"
+    },
+    {
+      "cid": "A25",
+      "module": "题库管理",
+      "title": "导出题库列表（Excel 文件流）",
+      "pre": "user1 已登录",
+      "steps": "POST /questionBank/questionBank/export",
+      "expected": "返回文件流（非 JSON），HTTP 200",
+      "actual": "HTTP 200 文件流 大小=6633 字节",
+      "status": "通过"
+    },
+    {
+      "cid": "B01",
+      "module": "题目管理",
+      "title": "新增题目-单选题",
+      "pre": "bank_a 属于 user1",
+      "steps": "POST /questionMain/questionMain  body={bankId,questionType:1,questionText,options,answer}",
+      "expected": "code=200；返回 questionId；bankId 正确",
+      "actual": "questionId=1679 bankId=357",
+      "status": "通过"
+    },
+    {
+      "cid": "B02",
+      "module": "题目管理",
+      "title": "新增题目-判断题（difficulty=2）",
+      "pre": "bank_a 属于 user1",
+      "steps": "POST /questionMain/questionMain  body={questionType:3,difficulty:2}",
+      "expected": "code=200；difficulty=2",
+      "actual": "questionId=1680 difficulty=2",
+      "status": "通过"
+    },
+    {
+      "cid": "B03",
+      "module": "题目管理",
+      "title": "新增题目-组合题（含 2 个子题）",
+      "pre": "bank_a 属于 user1",
+      "steps": "POST /questionMain/questionMain  body={questionType:6, questionSubList:[2 条]}",
+      "expected": "code=200；hasSubQuestions=1；subQuestions 数量=2",
+      "actual": "questionId=1681 hasSub=1 子题数=2",
+      "status": "通过"
+    },
+    {
+      "cid": "B04",
+      "module": "题目管理",
+      "title": "新增题目后自动重算题库题目总数",
+      "pre": "bank_a 原有 0 题",
+      "steps": "建 3 题（含 1 组合题）后 GET 题库详情",
+      "expected": "totalQuestions=3",
+      "actual": "totalQuestions=3",
+      "status": "通过"
+    },
+    {
+      "cid": "B05",
+      "module": "题目管理",
+      "title": "权限-非题库主不能在他人的题库下新增题目",
+      "pre": "bank_a 属于 user1",
+      "steps": "user2 请求 POST /questionMain/questionMain  body={bankId:bank_a}",
+      "expected": "code=403（只有题库主才能新增）",
+      "actual": "code=403 msg=只有题库主才能在该题库下新增题目",
+      "status": "通过"
+    },
+    {
+      "cid": "B06",
+      "module": "题目管理",
+      "title": "新增题目-题库不存在时的异常处理",
+      "pre": "bankId=99999999 不存在",
+      "steps": "POST /questionMain/questionMain  body={bankId:99999999}",
+      "expected": "code!=200 且提示「题库不存在」",
+      "actual": "code=500 msg=题库不存在",
+      "status": "通过"
+    },
+    {
+      "cid": "B07",
+      "module": "题目管理",
+      "title": "题目列表-按题库筛选",
+      "pre": "bank_a 下有 3 题",
+      "steps": "GET /questionMain/questionMain/list?bankId={bank_a}",
+      "expected": "code=200；total=3；返回项 bankId 全部匹配",
+      "actual": "total=3",
+      "status": "通过"
+    },
+    {
+      "cid": "B08",
+      "module": "题目管理",
+      "title": "题目列表-按题型筛选（单选）",
+      "pre": "bank_a 有单选题",
+      "steps": "GET /questionMain/questionMain/list?bankId={bank_a}&questionType=1",
+      "expected": "code=200；返回项 questionType 全部=1",
+      "actual": "total=1",
+      "status": "通过"
+    },
+    {
+      "cid": "B09",
+      "module": "题目管理",
+      "title": "题目列表-按题干关键字搜索",
+      "pre": "题干含统一前缀",
+      "steps": "GET /questionMain/questionMain/list?bankId={bank_a}&keyword={P}-判断题",
+      "expected": "code=200；命中 1 条且题干包含关键字",
+      "actual": "total=1",
+      "status": "通过"
+    },
+    {
+      "cid": "B10",
+      "module": "题目管理",
+      "title": "题目详情-含子题",
+      "pre": "q3 为组合题",
+      "steps": "GET /questionMain/questionMain/{q3}",
+      "expected": "code=200；subQuestions 数量=2",
+      "actual": "子题数=2",
+      "status": "通过"
+    },
+    {
+      "cid": "B11",
+      "module": "题目管理",
+      "title": "修改题目-题库主修改题干与难度",
+      "pre": "q1 属于 user1 的题库",
+      "steps": "PUT /questionMain/questionMain  body={id:q1,questionText,difficulty:3}",
+      "expected": "code=200；题干与难度均已更新",
+      "actual": "difficulty=3 questionText=随堂练习-单选题-1+1=?（已修改）",
+      "status": "通过"
+    },
+    {
+      "cid": "B12",
+      "module": "题目管理",
+      "title": "权限-非题库主不能修改题目",
+      "pre": "q1 属于 user1 的题库",
+      "steps": "user2 请求 PUT /questionMain/questionMain  body={id:q1}",
+      "expected": "code=403（只有题库主才能修改）",
+      "actual": "code=403 msg=只有题库主才能修改题目",
+      "status": "通过"
+    },
+    {
+      "cid": "B13",
+      "module": "题目管理",
+      "title": "修改题目-子题全量替换（2 条 -> 1 条）",
+      "pre": "q3 原有 2 个子题",
+      "steps": "PUT /questionMain/questionMain  body={id:q3, questionSubList:[1 条]}",
+      "expected": "code=200；子题数量变为 1 且内容为新子题",
+      "actual": "子题数=1",
+      "status": "通过"
+    },
+    {
+      "cid": "B14",
+      "module": "题目管理",
+      "title": "题目搜索接口（供选择器使用，分页返回）",
+      "pre": "存在带统一前缀的题目",
+      "steps": "GET /questionMain/questionMain/search?keyword={P}&pageSize=50",
+      "expected": "code=200；total>=3；rows 为题目的分页结构",
+      "actual": "total=3 rows=3",
+      "status": "通过"
+    },
+    {
+      "cid": "B15",
+      "module": "题目管理",
+      "title": "题目存在性校验",
+      "pre": "q1 存在 / 99999999 不存在",
+      "steps": "GET /questionMain/questionMain/checkExists/{q1} 与 /99999999",
+      "expected": "data.exists 分别为 true / false",
+      "actual": "存在=True 不存在=False",
+      "status": "通过"
+    },
+    {
+      "cid": "B16",
+      "module": "题目管理",
+      "title": "题目精简信息查询",
+      "pre": "q1 存在",
+      "steps": "GET /questionMain/questionMain/simpleInfo/{q1}",
+      "expected": "code=200；返回 questionId 与题干",
+      "actual": "questionId=1679",
+      "status": "通过"
+    },
+    {
+      "cid": "B17",
+      "module": "题目管理",
+      "title": "题目与用户联合存在性校验",
+      "pre": "q1 存在且 user1 存在",
+      "steps": "GET /questionMain/questionMain/checkQuestionAndUser/{q1}/{uid1}",
+      "expected": "code=200；data.allValid=true",
+      "actual": "allValid=True",
+      "status": "通过"
+    },
+    {
+      "cid": "B18",
+      "module": "题目管理",
+      "title": "题目批量查询（batchInfo）",
+      "pre": "q1/q2 均存在",
+      "steps": "POST /questionMain/questionMain/batchInfo  body={questionIds:[q1,q2]}",
+      "expected": "code=200；返回 2 条",
+      "actual": "返回 2 条",
+      "status": "通过"
+    },
+    {
+      "cid": "B19",
+      "module": "题目管理",
+      "title": "导出题目-按题库导出（数据干净的题库）",
+      "pre": "bank_a 下 3 道题、题干无非法字符",
+      "steps": "POST /questionMain/questionMain/export?bankId={bank_a}",
+      "expected": "返回文件流（非 JSON），HTTP 200",
+      "actual": "HTTP 200 文件流 大小=5576 字节",
+      "status": "通过"
+    },
+    {
+      "cid": "B20",
+      "module": "题目管理",
+      "title": "导出题目-全量导出（含历史题库数据）",
+      "pre": "库中存在含 0x0C 控制字符的题干",
+      "steps": "POST /questionMain/questionMain/export（不传 bankId）",
+      "expected": "code=200 且返回文件流",
+      "actual": "HTTP 200 文件流 大小=68008 字节",
+      "status": "通过"
+    },
+    {
+      "cid": "B21",
+      "module": "题目管理",
+      "title": "删除题目-题库主删除自己的题目",
+      "pre": "qdel 属于 user1 的题库",
+      "steps": "DELETE /questionMain/questionMain/{qdel}",
+      "expected": "code=200；删除后 data.exists=false",
+      "actual": "删除 code=200 存在性=False",
+      "status": "通过"
+    },
+    {
+      "cid": "B22",
+      "module": "题目管理",
+      "title": "删除题目-级联清理用户题目收藏记录",
+      "pre": "user2 已收藏 qdel",
+      "steps": "删除 qdel 后再次校验收藏状态",
+      "expected": "收藏记录被级联物理删除（false）",
+      "actual": "删除前收藏=True 删除后收藏=False",
+      "status": "通过"
+    },
+    {
+      "cid": "C01",
+      "module": "题库分享",
+      "title": "生成题库分享（题库主）",
+      "pre": "bank_b 属于 user1",
+      "steps": "POST /bankShare/bankShare/create  body={bankId:bank_b,expireDays:7}",
+      "expected": "code=200；返回 shareId/shareToken/shareCode；effective=true",
+      "actual": "shareId=29 token=KYnXijq0 code=E750I1",
+      "status": "通过"
+    },
+    {
+      "cid": "C02",
+      "module": "题库分享",
+      "title": "权限-非题库主不能生成分享",
+      "pre": "bank_b 属于 user1",
+      "steps": "user2 请求 POST /bankShare/bankShare/create  body={bankId:bank_b}",
+      "expected": "code=403（只有题库主才能分享）",
+      "actual": "code=403 msg=只有题库主才能分享该题库",
+      "status": "通过"
+    },
+    {
+      "cid": "C03",
+      "module": "题库分享",
+      "title": "我的分享列表",
+      "pre": "user1 刚生成 1 个分享",
+      "steps": "GET /bankShare/bankShare/my",
+      "expected": "code=200；列表包含刚生成的 shareId；并带 bankName",
+      "actual": "共 3 条，含目标分享=True",
+      "status": "通过"
+    },
+    {
+      "cid": "C04",
+      "module": "题库分享",
+      "title": "按分享令牌查看分享落地页信息",
+      "pre": "user2 已登录且持 token",
+      "steps": "GET /bankShare/bankShare/info/{token}",
+      "expected": "code=200；返回 bankId=bank_b 与题库名",
+      "actual": "bankId=359 bankName=随堂练习私有题库",
+      "status": "通过"
+    },
+    {
+      "cid": "C05",
+      "module": "题库分享",
+      "title": "按分享码查看分享信息",
+      "pre": "分享码有效",
+      "steps": "GET /bankShare/bankShare/infoByCode/{code}",
+      "expected": "code=200；返回 bankId=bank_b",
+      "actual": "bankId=359",
+      "status": "通过"
+    },
+    {
+      "cid": "C06",
+      "module": "题库分享",
+      "title": "查询我与题库的关系-未领取分享时",
+      "pre": "user2 尚未领取该分享",
+      "steps": "GET /bankShare/bankShare/checkSource/{bank_b}",
+      "expected": "code=200；isOwner=false、canEdit=false",
+      "actual": "isOwner=False canEdit=False",
+      "status": "通过"
+    },
+    {
+      "cid": "C07",
+      "module": "题库分享",
+      "title": "领取分享-首次领取",
+      "pre": "user2 首次领取该分享",
+      "steps": "POST /bankShare/bankShare/receive  body={token}",
+      "expected": "code=200；resultStatus=created",
+      "actual": "resultStatus=created",
+      "status": "通过"
+    },
+    {
+      "cid": "C08",
+      "module": "题库分享",
+      "title": "领取分享-重复领取（幂等）",
+      "pre": "user2 已领取过",
+      "steps": "再次 POST /bankShare/bankShare/receive  body={token}",
+      "expected": "code=200；resultStatus=exists（不重复计数）",
+      "actual": "resultStatus=exists",
+      "status": "通过"
+    },
+    {
+      "cid": "C09",
+      "module": "题库分享",
+      "title": "领取后可查看他人私有题库",
+      "pre": "user2 已领取 bank_b 的分享",
+      "steps": "user2 请求 GET /questionBank/questionBank/{bank_b}",
+      "expected": "code=200（分享授予只读可见性）",
+      "actual": "code=200 bankName=随堂练习私有题库",
+      "status": "通过"
+    },
+    {
+      "cid": "C10",
+      "module": "题库分享",
+      "title": "领取分享后自动进入「题库收藏」",
+      "pre": "user2 已领取分享",
+      "steps": "GET /favoriteBank/favoriteBank/checkFavorite/{uid2}/{bank_b}",
+      "expected": "返回 true（领取=只写入收藏，只读）",
+      "actual": "已收藏=True",
+      "status": "通过"
+    },
+    {
+      "cid": "C11",
+      "module": "题库分享",
+      "title": "查询我与题库的关系-领取后",
+      "pre": "user2 已领取分享",
+      "steps": "GET /bankShare/bankShare/checkSource/{bank_b}",
+      "expected": "code=200；isShare=true；canEdit=false",
+      "actual": "isShare=True canEdit=False",
+      "status": "通过"
+    },
+    {
+      "cid": "C12",
+      "module": "题库分享",
+      "title": "查询我与题库的关系-题库主视角",
+      "pre": "bank_b 属于 user1",
+      "steps": "user1 请求 GET /bankShare/bankShare/checkSource/{bank_b}",
+      "expected": "code=200；isOwner=true、canEdit=true",
+      "actual": "isOwner=True canEdit=True",
+      "status": "通过"
+    },
+    {
+      "cid": "C13",
+      "module": "题库分享",
+      "title": "取消收藏后按分享码重新领取",
+      "pre": "user2 先取消对该题库的收藏",
+      "steps": "取消收藏 -> POST /bankShare/bankShare/receive  body={code}",
+      "expected": "code=200；resultStatus=restored（重新加入）",
+      "actual": "resultStatus=restored",
+      "status": "通过"
+    },
+    {
+      "cid": "C14",
+      "module": "题库分享",
+      "title": "权限-非分享发起人不能撤销分享",
+      "pre": "分享由 user1 发起",
+      "steps": "user2 请求 POST /bankShare/bankShare/revoke/{share_id}",
+      "expected": "code=403（无权撤销）",
+      "actual": "code=403 msg=无权撤销该分享",
+      "status": "通过"
+    },
+    {
+      "cid": "C15",
+      "module": "题库分享",
+      "title": "撤销分享-题库主撤销后分享立即失效",
+      "pre": "分享由 user1 发起",
+      "steps": "POST /bankShare/bankShare/revoke/{share_id} 后按 token 查看与领取",
+      "expected": "撤销 code=200；查看接口失效（非200 或 effective=false）；再次领取失败",
+      "actual": "撤销=200 查看 code=410 再领取 code=410",
+      "status": "通过"
+    },
+    {
+      "cid": "D01",
+      "module": "收藏管理",
+      "title": "收藏题库",
+      "pre": "bank_a 为公开题库",
+      "steps": "user2 请求 POST /favoriteBank/favoriteBank  body={bankId:bank_a}",
+      "expected": "code=200",
+      "actual": "code=200 msg=操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "D02",
+      "module": "收藏管理",
+      "title": "题库收藏状态校验",
+      "pre": "user2 刚收藏 bank_a",
+      "steps": "GET /favoriteBank/favoriteBank/checkFavorite/{uid2}/{bank_a}",
+      "expected": "返回 true",
+      "actual": "已收藏=True",
+      "status": "通过"
+    },
+    {
+      "cid": "D03",
+      "module": "收藏管理",
+      "title": "重复收藏题库的处理",
+      "pre": "user2 已收藏 bank_a",
+      "steps": "再次 POST /favoriteBank/favoriteBank  body={bankId:bank_a}",
+      "expected": "明确提示「已收藏该题库」（code!=200）",
+      "actual": "code=400 msg=该用户已收藏此题库，请不要重复收藏",
+      "status": "通过"
+    },
+    {
+      "cid": "D04",
+      "module": "收藏管理",
+      "title": "我的题库收藏列表",
+      "pre": "user2 已收藏若干题库",
+      "steps": "GET /favoriteBank/favoriteBank/list",
+      "expected": "code=200；列表包含 bank_a",
+      "actual": "命中 bank_a 条数=1",
+      "status": "通过"
+    },
+    {
+      "cid": "D05",
+      "module": "收藏管理",
+      "title": "取消题库收藏（物理删除）",
+      "pre": "user2 已收藏 bank_a",
+      "steps": "DELETE /favoriteBank/favoriteBank/deleteByUserAndBank/{uid2}/{bank_a}",
+      "expected": "code=200；再校验收藏状态=false",
+      "actual": "取消 code=200 状态=False",
+      "status": "通过"
+    },
+    {
+      "cid": "D06",
+      "module": "收藏管理",
+      "title": "收藏题目",
+      "pre": "q1 属于 bank_a（公开）",
+      "steps": "user2 请求 POST /favoriteQuestion/favoriteQuestion  body={questionId:q1}",
+      "expected": "code=200",
+      "actual": "code=200 msg=操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "D07",
+      "module": "收藏管理",
+      "title": "题目收藏状态校验",
+      "pre": "user2 刚收藏 q1",
+      "steps": "GET /favoriteQuestion/favoriteQuestion/checkFavorite/{uid2}/{q1}",
+      "expected": "返回 true",
+      "actual": "已收藏=True",
+      "status": "通过"
+    },
+    {
+      "cid": "D08",
+      "module": "收藏管理",
+      "title": "我的题目收藏列表",
+      "pre": "user2 已收藏 q1",
+      "steps": "GET /favoriteQuestion/favoriteQuestion/list",
+      "expected": "code=200；列表包含 q1",
+      "actual": "命中 q1 条数=1",
+      "status": "通过"
+    },
+    {
+      "cid": "D09",
+      "module": "收藏管理",
+      "title": "题目收藏批量校验",
+      "pre": "user2 只收藏了 q1",
+      "steps": "POST /favoriteQuestion/favoriteQuestion/batchCheck  body={questionIds:[q1,q2]}",
+      "expected": "code=200；q1=true、q2=false",
+      "actual": "结果={'1679': True, '1680': False}",
+      "status": "通过"
+    },
+    {
+      "cid": "D10",
+      "module": "收藏管理",
+      "title": "取消题目收藏",
+      "pre": "user2 已收藏 q1",
+      "steps": "DELETE /favoriteQuestion/favoriteQuestion/deleteByUserAndQuestion/{uid2}/{q1}",
+      "expected": "code=200",
+      "actual": "code=200 msg=操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "D11",
+      "module": "收藏管理",
+      "title": "数据隔离-user2 不能查看 user1 的题库收藏详情",
+      "pre": "favoriteId=239 属于 user1",
+      "steps": "user2 请求 GET /favoriteBank/favoriteBank/{favoriteId}",
+      "expected": "code=403（按归属校验）",
+      "actual": "code=403 msg=无权访问该收藏记录",
+      "status": "通过"
+    },
+    {
+      "cid": "D12",
+      "module": "收藏管理",
+      "title": "数据隔离-user2 不能修改 user1 的题库收藏",
+      "pre": "favoriteId=239 属于 user1",
+      "steps": "user2 请求 PUT /favoriteBank/favoriteBank  body={favoriteId}",
+      "expected": "code=403；user1 的记录未被篡改",
+      "actual": "code=403 msg=无权访问该收藏记录；被改=False",
+      "status": "通过"
+    },
+    {
+      "cid": "D13",
+      "module": "收藏管理",
+      "title": "数据隔离-user2 不能按记录ID删除 user1 的题库收藏",
+      "pre": "favoriteId=239 属于 user1",
+      "steps": "user2 请求 DELETE /favoriteBank/favoriteBank/{favoriteId}",
+      "expected": "code=403；user1 的收藏仍存在",
+      "actual": "code=403 msg=无权删除他人的收藏记录；仍存在=True",
+      "status": "通过"
+    },
+    {
+      "cid": "D14",
+      "module": "收藏管理",
+      "title": "数据隔离-路径传他人 uid 不能取消他人题库收藏",
+      "pre": "bank_a 已被 user1 收藏",
+      "steps": "user2 请求 DELETE .../deleteByUserAndBank/{uid1}/{bank_a}",
+      "expected": "code=403；user1 的收藏仍存在",
+      "actual": "code=403 msg=无权操作他人的收藏记录；仍存在=True",
+      "status": "通过"
+    },
+    {
+      "cid": "E01",
+      "module": "题库管理",
+      "title": "权限-非题库主不能删除他人题库",
+      "pre": "bank_c 属于 user1",
+      "steps": "user2 请求 DELETE /questionBank/questionBank/{bank_c}",
+      "expected": "code=403（只能删除自己的题库）",
+      "actual": "code=403 msg=只能删除自己的题库",
+      "status": "通过"
+    },
+    {
+      "cid": "E02",
+      "module": "题库管理",
+      "title": "删除题库-删除自己名下的题库",
+      "pre": "bank_c 属于 user1",
+      "steps": "DELETE /questionBank/questionBank/{bank_c} 后查详情",
+      "expected": "code=200；删除后查详情返回「题库不存在」",
+      "actual": "删除 code=200 msg=操作成功；删除后详情 code=500",
+      "status": "通过"
+    },
+    {
+      "cid": "E03",
+      "module": "题库管理",
+      "title": "删除题库-批量删除并级联清理题目",
+      "pre": "bank_a/bank_b 属于 user1，且 bank_a 下有题目",
+      "steps": "DELETE /questionBank/questionBank/{bank_a},{bank_b}",
+      "expected": "code=200；其下题目被级联删除（checkExists=false）",
+      "actual": "删除 code=200 msg=操作成功；原题目存在性=False",
+      "status": "通过"
+    },
+    {
+      "cid": "E04",
+      "module": "题库管理",
+      "title": "删除题库-删除复制产生的副本",
+      "pre": "copy1 属于 user1、copy2 属于 user2",
+      "steps": "各自题库主删除副本",
+      "expected": "两次均 code=200",
+      "actual": "copy1=200 copy2=200",
+      "status": "通过"
+    },
+    {
+      "cid": "E05",
+      "module": "题库管理",
+      "title": "无数据残留（学习统计与消息中心不被污染）",
+      "pre": "清理完成",
+      "steps": "直连库核对孤儿答题流水、测试题库与死链通知",
+      "expected": "孤儿流水=0，测试题库均已删除，死链通知=0",
+      "actual": "孤儿流水=0 死链通知=0",
+      "status": "通过"
+    }
+  ],
+  "cleanup": {
+    "bank_ids": [
+      357,
+      359,
+      360,
+      361,
+      362
+    ]
+  }
+}

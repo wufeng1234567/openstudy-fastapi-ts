@@ -1,0 +1,115 @@
+{
+  "module": "斩题管理(后台·前端)",
+  "rows": [
+    {
+      "cid": "F01",
+      "module": "斩题管理(后台·前端)",
+      "title": "页面可加载并渲染（无白屏/编译错误）",
+      "pre": "Vite dev server(3167) 运行中，admin 已登录",
+      "steps": "headless Chrome 打开 /questionMarked/questionMarked",
+      "expected": "URL 停在斩题管理路由、页面含标题、出现 el-table",
+      "actual": "url=http://localhost:3167/questionMarked/questionMarked 标题=true 表格=true",
+      "status": "通过"
+    },
+    {
+      "cid": "F02",
+      "module": "斩题管理(后台·前端)",
+      "title": "列表数据渲染出表格行",
+      "pre": "admin 名下有斩题记录（演示数据 3 条）",
+      "steps": "读取 .el-table__body-wrapper tbody tr 数量",
+      "expected": "行数 > 0",
+      "actual": "行数=8",
+      "status": "通过"
+    },
+    {
+      "cid": "F03",
+      "module": "斩题管理(后台·前端)",
+      "title": "查询表单 7 个筛选条件 + 搜索按钮齐全",
+      "pre": "打开列表页",
+      "steps": "读取 .el-form--inline 的 label 文本",
+      "expected": "包含 用户ID/题目ID/所属题库/斩题类型/难度等级/掌握状态/斩题时间",
+      "actual": "缺失=无",
+      "status": "通过"
+    },
+    {
+      "cid": "F04",
+      "module": "斩题管理(后台·前端)",
+      "title": "操作按钮齐全（admin 权限 *:*:* 下 v-hasPermi 放行）",
+      "pre": "admin 角色 = admin（拥有 *:*:*）",
+      "steps": "读取工具栏按钮文本",
+      "expected": "出现 新增/修改/删除/导出 四个按钮",
+      "actual": "缺失=无；实际=搜索 重置 新增 修改 删除 导出",
+      "status": "通过"
+    },
+    {
+      "cid": "F05",
+      "module": "斩题管理(后台·前端)",
+      "title": "表格「用户ID」列显示记录归属",
+      "pre": "列表 loaded",
+      "steps": "按表头网格定位「用户ID」列并逐行取值",
+      "expected": "每行都有用户ID（admin 视角当前应全为 1）",
+      "actual": "表头索引=2 值=105,1",
+      "status": "通过"
+    },
+    {
+      "cid": "F06",
+      "module": "斩题管理(后台·前端)",
+      "title": "表格「错误次数/复习次数/最后复习」列展示库中真实值",
+      "pre": "库中 admin 记录已置为 错误次数=5/复习次数=7/最后复习=2026-09-01",
+      "steps": "读取这 3 列每行文本",
+      "expected": "出现 5、7、2026-09-01（接口若丢字段，页面只能显示 0 / -）",
+      "actual": "错误次数=0|0|0|0|0|5|5|5 复习次数=0|0|0|0|0|7|7|7 最后复习=-|-|-|-|-|2026-9-1|2026-9-1|2026-9-1",
+      "status": "通过"
+    },
+    {
+      "cid": "F07",
+      "module": "斩题管理(后台·前端)",
+      "title": "点击「搜索」后前端确实把 userId=105 发给了后端",
+      "pre": "在「用户ID」输入框填 105 后点搜索",
+      "steps": "抓取 Network 请求 URL",
+      "expected": "请求 URL 含 userId=105",
+      "actual": "请求=/questionMarked/questionMarked/list?pageNum=1&pageSize=10&userId=105",
+      "status": "通过"
+    },
+    {
+      "cid": "F08",
+      "module": "斩题管理(后台·前端)",
+      "title": "搜索「用户ID=105」后列表只剩该用户的记录（筛选真正生效）",
+      "pre": "user1(105) 有 7 条斩题，admin(1) 有 3 条",
+      "steps": "点搜索 → 读表格「用户ID」列",
+      "expected": "表格中出现的用户ID 全部为 105",
+      "actual": "行数=5 出现的用户ID=105",
+      "status": "通过"
+    },
+    {
+      "cid": "F09",
+      "module": "斩题管理(后台·前端)",
+      "title": "点「新增」弹出对话框且表单字段齐全",
+      "pre": "列表页点新增",
+      "steps": "读取 el-dialog 内 .el-form-item__label",
+      "expected": "包含 用户ID/题目ID/所属题库/斩题类型/难度等级/掌握状态/错误次数/复习次数/最后复习时间/下次复习时间/斩题备注/标签",
+      "actual": "标题=添加用户斩题 缺失=无 按钮=确 定/取 消",
+      "status": "通过"
+    },
+    {
+      "cid": "F11",
+      "module": "斩题管理(后台·前端)",
+      "title": "点「导出」时筛选条件拼在 URL 查询串上（导出按条件过滤）",
+      "pre": "搜索框里已填 用户ID=105",
+      "steps": "点击「导出」并抓取 Network 请求 URL",
+      "expected": "导出请求 URL 含 userId=105（修复前参数在请求体里，后端 Query 读不到）",
+      "actual": "请求=/questionMarked/questionMarked/export?pageNum=1&pageSize=10&userId=105",
+      "status": "通过"
+    },
+    {
+      "cid": "F10",
+      "module": "斩题管理(后台·前端)",
+      "title": "页面运行期间无 JS 异常 / 接口 5xx",
+      "pre": "整个交互过程",
+      "steps": "监听 Runtime.exceptionThrown 与 console.error",
+      "expected": "无未捕获异常",
+      "actual": "无",
+      "status": "通过"
+    }
+  ]
+}

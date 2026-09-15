@@ -1,0 +1,135 @@
+{
+  "module": "题库收藏(后台·前端)",
+  "rows": [
+    {
+      "cid": "F01",
+      "module": "题库收藏(后台·前端)",
+      "title": "页面可加载并渲染（无白屏/编译错误）",
+      "pre": "Vite dev server(3167) 运行中，admin 已登录",
+      "steps": "headless Chrome 打开 /favoriteBank/favoriteBank",
+      "expected": "URL 停在题库收藏路由、页面出现 el-table",
+      "actual": "url=http://localhost:3167/favoriteBank/favoriteBank 标题=true 表格=true",
+      "status": "通过"
+    },
+    {
+      "cid": "F02",
+      "module": "题库收藏(后台·前端)",
+      "title": "列表数据渲染出表格行",
+      "pre": "库中存在收藏记录",
+      "steps": "读取 tbody tr 数量",
+      "expected": "行数 > 0",
+      "actual": "行数=10",
+      "status": "通过"
+    },
+    {
+      "cid": "F03",
+      "module": "题库收藏(后台·前端)",
+      "title": "查询表单筛选条件 + 搜索按钮齐全",
+      "pre": "打开列表页",
+      "steps": "读取 .el-form--inline 的 label 文本",
+      "expected": "包含 用户ID/题库名称/收藏备注/标签/是否标星/收藏状态/最后学习时间/学习次数",
+      "actual": "缺失=无",
+      "status": "通过"
+    },
+    {
+      "cid": "F04",
+      "module": "题库收藏(后台·前端)",
+      "title": "操作按钮齐全（admin 权限 *:*:* 下 v-hasPermi 放行）",
+      "pre": "admin 角色 = admin",
+      "steps": "读取工具栏按钮文本",
+      "expected": "出现 新增/修改/删除/导出",
+      "actual": "缺失=无；实际=搜索 重置 新增 修改 删除 导出 修改 删除 修改 删除 修改 删除 修改 删除 修改 删除 修改 删除 修改 删除 修改 删除 修改 删除 修改 删除",
+      "status": "通过"
+    },
+    {
+      "cid": "F13",
+      "module": "题库收藏(后台·前端)",
+      "title": "表格操作列已移除「进入题库」入口（只剩 修改/删除）",
+      "pre": "按需求去掉「进入题库」功能",
+      "steps": "读取表格所有 td 文本",
+      "expected": "不出现「进入题库」字样，且仍然出现 修改/删除",
+      "actual": "含进入题库=false；操作列文本=",
+      "status": "通过"
+    },
+    {
+      "cid": "F05",
+      "module": "题库收藏(后台·前端)",
+      "title": "搜索「用户ID=105」后列表只剩该用户的记录",
+      "pre": "user1 有收藏记录（含本次造的私密题库）",
+      "steps": "填 用户ID=105 → 点搜索 → 读表格",
+      "expected": "每行用户ID 均为 105，且行数 > 0",
+      "actual": "行数=5 用户ID=105",
+      "status": "通过"
+    },
+    {
+      "cid": "F06",
+      "module": "题库收藏(后台·前端)",
+      "title": "表格「题库名称」列显示真实题库名（不被题库下拉冲成\"未知题库\"）",
+      "pre": "user1 的私密题库《收藏UI校验题库-私有》不在 admin 的题库下拉里",
+      "steps": "读取表格 题库名称 列",
+      "expected": "出现《收藏UI校验题库-私有》，且不出现「未知题库」",
+      "actual": "名称=收藏UI校验题库-私有 | 微积分基础题库 | 高考英语核心词汇 | Python2 | Python入门100题",
+      "status": "通过"
+    },
+    {
+      "cid": "F07",
+      "module": "题库收藏(后台·前端)",
+      "title": "表格「排序 / 学习次数 / 收藏备注」列显示库中真实值",
+      "pre": "该收藏 sortOrder=8 studyCount=6 notes=UI校验-收藏备注",
+      "steps": "读取这 3 列文本",
+      "expected": "出现 8、6、UI校验-收藏备注（接口漏字段时该列恒空白/0）",
+      "actual": "排序=8|0|0|0|0 学习次数=6|4|4|5|3 备注=UI校验-收藏备注||||",
+      "status": "通过"
+    },
+    {
+      "cid": "F08",
+      "module": "题库收藏(后台·前端)",
+      "title": "点「新增」弹出对话框且表单字段齐全",
+      "pre": "列表页点新增",
+      "steps": "读取 el-dialog 内 .el-form-item__label",
+      "expected": "包含 用户ID/题库ID/题库名称/收藏备注/标签/排序/是否标星/收藏状态/最后学习时间/学习次数",
+      "actual": "标题=添加用户题库收藏 缺失=无",
+      "status": "通过"
+    },
+    {
+      "cid": "F11",
+      "module": "题库收藏(后台·前端)",
+      "title": "对话框填题库ID后校验通过并自动填充题库名称（不再误报\"题库ID不存在\"）",
+      "pre": "输入存在的题库ID=379（《收藏UI校验题库-私有》）后按 Tab 失焦触发校验",
+      "steps": "读取输入框/校验提示/「题库名称」输入框，并抓 check 请求",
+      "expected": "发出 check 请求；提示不含「不存在」；题库名称自动填充为真实题库名",
+      "actual": "聚焦=true 输入值=\"379\" check请求=1 题库名称=\"收藏UI校验题库-私有\" 提示=\"收藏UI校验题库-私有 (ID: 379)\"",
+      "status": "通过"
+    },
+    {
+      "cid": "F12",
+      "module": "题库收藏(后台·前端)",
+      "title": "未通过题库ID校验时禁用「确定」（不再\"报错也照样入库\"）",
+      "pre": "新增对话框：校验前 / 校验通过后 分别读取「确定」按钮 disabled",
+      "steps": "读取 .dialog-footer 中「确定」按钮的 disabled 属性",
+      "expected": "校验前 disabled=true；校验通过后 disabled=false",
+      "actual": "校验前=true 校验后=false",
+      "status": "通过"
+    },
+    {
+      "cid": "F09",
+      "module": "题库收藏(后台·前端)",
+      "title": "点「导出」调用后端导出接口且筛选条件拼在 URL 上",
+      "pre": "搜索框已填 用户ID=105",
+      "steps": "点「导出」并抓取 Network 请求 URL",
+      "expected": "POST /favoriteBank/favoriteBank/export 且 URL 含 userId=105",
+      "actual": "请求=/favoriteBank/favoriteBank/export?pageNum=1&pageSize=10&userId=105",
+      "status": "通过"
+    },
+    {
+      "cid": "F10",
+      "module": "题库收藏(后台·前端)",
+      "title": "页面运行期间无 JS 异常",
+      "pre": "整个交互过程",
+      "steps": "监听 Runtime.exceptionThrown 与 console.error",
+      "expected": "无未捕获异常",
+      "actual": "无",
+      "status": "通过"
+    }
+  ]
+}

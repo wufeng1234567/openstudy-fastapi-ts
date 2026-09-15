@@ -1,0 +1,163 @@
+{
+  "overview": {
+    "total": 15,
+    "passed": 15,
+    "failed": 0
+  },
+  "rows": [
+    {
+      "cid": "U01",
+      "module": "用户管理",
+      "title": "角色列表可用（创建/分配角色的前置）",
+      "pre": "admin 已登录",
+      "steps": "GET /system/role/list",
+      "expected": "code=200 且存在 common 角色",
+      "actual": "roles=3 common=2",
+      "status": "通过"
+    },
+    {
+      "cid": "U02",
+      "module": "用户管理",
+      "title": "归属部门树可用",
+      "pre": "admin 已登录",
+      "steps": "GET /system/user/deptTree",
+      "expected": "code=200 且能取到叶子部门",
+      "actual": "deptId=103 节点数=1",
+      "status": "通过"
+    },
+    {
+      "cid": "U03",
+      "module": "用户管理",
+      "title": "新增用户弹窗能拿到角色下拉（GET /system/user/）",
+      "pre": "admin 已登录",
+      "steps": "GET /system/user/",
+      "expected": "code=200，data.roles / 顶层 roles 均非空",
+      "actual": "dataRoles=3 topRoles=3",
+      "status": "通过"
+    },
+    {
+      "cid": "U04",
+      "module": "用户管理",
+      "title": "列表支持 userName 筛选（camelCase 参数）",
+      "pre": "admin 已登录",
+      "steps": "GET /system/user/list?userName=admin",
+      "expected": "只返回 admin",
+      "actual": "rows=1 first=admin",
+      "status": "通过"
+    },
+    {
+      "cid": "U05",
+      "module": "用户管理",
+      "title": "新增用户（camelCase 请求体）",
+      "pre": "已取到 common 角色与部门 deptId",
+      "steps": "POST /system/user",
+      "expected": "code=200 且返回 user_id",
+      "actual": "uid=112 HTTP 200 code=200 操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "U06",
+      "module": "用户管理",
+      "title": "新增后可查详情并回显角色/部门",
+      "pre": "用户已创建",
+      "steps": "GET /system/user/{id}",
+      "expected": "deptId/roleIds/userName 与创建一致，且顶层 roleIds 兼容旧前端",
+      "actual": "detail={\"roles\": [{\"roleId\": 2, \"roleName\": \"普通角色\", \"roleKey\": \"common\", \"roleSort\": 2, \"status\": \"0\", \"createTime\": \"2025-10-23T20:06:49\", \"remark\": \"普通角色\"}, {\"roleId\": 100, \"roleName\": ",
+      "status": "通过"
+    },
+    {
+      "cid": "U07",
+      "module": "用户管理",
+      "title": "列表能按新用户登录账号精确命中",
+      "pre": "用户已创建",
+      "steps": "GET /system/user/list?userName=新账号",
+      "expected": "返回 1 条且 dept.deptName 有值",
+      "actual": "rows=1 dept={'deptId': 103, 'deptName': '研发部门'}",
+      "status": "通过"
+    },
+    {
+      "cid": "U15",
+      "module": "用户管理",
+      "title": "重复登录账号创建被拦截",
+      "pre": "用户已创建且未删除",
+      "steps": "再次 POST 同 userName",
+      "expected": "非 200 且提示用户名已存在",
+      "actual": "HTTP 200 code=500 用户名已存在",
+      "status": "通过"
+    },
+    {
+      "cid": "U08",
+      "module": "用户管理",
+      "title": "修改用户基础字段与角色",
+      "pre": "用户已创建",
+      "steps": "PUT /system/user 后 GET 详情",
+      "expected": "昵称/邮箱/性别/角色均更新",
+      "actual": "nick=临时用户848改 roles=[2, 100]",
+      "status": "通过"
+    },
+    {
+      "cid": "U09",
+      "module": "用户管理",
+      "title": "重置密码（camelCase JSON body）",
+      "pre": "用户已创建",
+      "steps": "PUT /system/user/resetPwd",
+      "expected": "code=200",
+      "actual": "HTTP 200 code=200 操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "U10",
+      "module": "用户管理",
+      "title": "停用用户（PUT JSON body）",
+      "pre": "用户已创建",
+      "steps": "PUT /system/user/changeStatus {status:1}",
+      "expected": "code=200 且详情 status=1",
+      "actual": "status=1 HTTP 200 code=200 操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "U11",
+      "module": "用户管理",
+      "title": "启用用户",
+      "pre": "用户已停用",
+      "steps": "PUT /system/user/changeStatus {status:0}",
+      "expected": "code=200 且详情 status=0",
+      "actual": "status=0 HTTP 200 code=200 操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "U12",
+      "module": "用户管理",
+      "title": "分配角色页返回全部角色且已授权 flag=true",
+      "pre": "用户拥有 common 角色",
+      "steps": "GET /system/user/authRole/{id}",
+      "expected": "角色列表包含 common 且 flag=true，不是只返回已分配角色",
+      "actual": "roles=2 commonFlag=True",
+      "status": "通过"
+    },
+    {
+      "cid": "U13",
+      "module": "用户管理",
+      "title": "分配角色（PUT + query userId/roleIds）",
+      "pre": "已打开分配角色页",
+      "steps": "PUT /system/user/authRole",
+      "expected": "详情 roleIds 与分配一致",
+      "actual": "assigned=[2, 100] HTTP 200 code=200 操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "U14",
+      "module": "用户管理",
+      "title": "删除用户（逻辑删除后列表不可见）",
+      "pre": "用户已创建",
+      "steps": "DELETE /system/user/{id} 后查列表",
+      "expected": "code=200 且列表 0 条",
+      "actual": "rows=0 HTTP 200 code=200 操作成功",
+      "status": "通过"
+    }
+  ],
+  "cleanup": {
+    "prefix": "后台对接测试用户_",
+    "created_user_ids": []
+  }
+}

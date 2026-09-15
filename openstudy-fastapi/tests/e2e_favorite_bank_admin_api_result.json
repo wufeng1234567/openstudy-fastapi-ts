@@ -1,0 +1,445 @@
+{
+  "prefix": "题库收藏",
+  "uid_admin": 1,
+  "uid1": 105,
+  "uid2": 106,
+  "rows": [
+    {
+      "cid": "P01",
+      "module": "题库收藏(后台)",
+      "title": "列表-管理员查询返回分页结构",
+      "pre": "admin 已登录",
+      "steps": "GET /favoriteBank/favoriteBank/list?pageNum=1&pageSize=10",
+      "expected": "code=200；顶层含 total 与 rows",
+      "actual": "code=200 total=13 rows=10",
+      "status": "通过"
+    },
+    {
+      "cid": "P02",
+      "module": "题库收藏(后台)",
+      "title": "列表-按用户ID筛选",
+      "pre": "user1 有 6 条活跃收藏",
+      "steps": "admin 请求 list?userId=105",
+      "expected": "total=6 且 rows 的 userId 全为 105",
+      "actual": "total=6 userId集合=[105]",
+      "status": "通过"
+    },
+    {
+      "cid": "P03",
+      "module": "题库收藏(后台)",
+      "title": "列表-按题库ID筛选",
+      "pre": "bankA=369 被 user1 收藏",
+      "steps": "admin 请求 list?bankId=369",
+      "expected": "rows 全部 bankId=bankA 且非空",
+      "actual": "命中 1 条 bankId集合=[369]",
+      "status": "通过"
+    },
+    {
+      "cid": "P04",
+      "module": "题库收藏(后台)",
+      "title": "列表-按题库名称模糊筛选",
+      "pre": "题库《题库收藏A-测试题库》",
+      "steps": "admin 请求 list?bankName=收藏A",
+      "expected": "命中且 rows 的 bankName 均含「收藏A」",
+      "actual": "命中 1 条 bankName=['题库收藏A-测试题库']",
+      "status": "通过"
+    },
+    {
+      "cid": "P05",
+      "module": "题库收藏(后台)",
+      "title": "列表-按收藏备注模糊筛选",
+      "pre": "存在备注含「备注A」的收藏",
+      "steps": "admin 请求 list?notes=备注A",
+      "expected": "命中且 rows 的 notes 均含关键字",
+      "actual": "命中 1 条 notes=['收藏备注A-重点整理']",
+      "status": "通过"
+    },
+    {
+      "cid": "P06",
+      "module": "题库收藏(后台)",
+      "title": "列表-按标签模糊筛选",
+      "pre": "存在标签含「高频」的收藏",
+      "steps": "admin 请求 list?tags=高频",
+      "expected": "命中且 rows 的 tags 均含关键字",
+      "actual": "命中 1 条 tags=['重点,高频']",
+      "status": "通过"
+    },
+    {
+      "cid": "P07",
+      "module": "题库收藏(后台)",
+      "title": "列表-按是否标星筛选",
+      "pre": "全库已标星 2 条",
+      "steps": "admin 请求 list?isStarred=1",
+      "expected": "total=2 且 rows 的 isStarred 全为 1",
+      "actual": "total=2 isStarred集合=[1]",
+      "status": "通过"
+    },
+    {
+      "cid": "P08",
+      "module": "题库收藏(后台)",
+      "title": "列表-按收藏状态筛选（默认只返回有效）",
+      "pre": "user1 对 bankB 的收藏已置为 favorite_status=0",
+      "steps": "① list 不传 favoriteStatus ② list?favoriteStatus=0",
+      "expected": "① 默认结果不含失效记录 ② favoriteStatus=0 精确命中该条",
+      "actual": "默认含失效=False；favoriteStatus=0 命中 1 条",
+      "status": "通过"
+    },
+    {
+      "cid": "P09",
+      "module": "题库收藏(后台)",
+      "title": "列表-按学习次数筛选",
+      "pre": "全库 studyCount=3 共 2 条",
+      "steps": "admin 请求 list?studyCount=3",
+      "expected": "total=2 且 rows 的 studyCount 全为 3",
+      "actual": "total=2 studyCount集合=[3]",
+      "status": "通过"
+    },
+    {
+      "cid": "P10",
+      "module": "题库收藏(后台)",
+      "title": "列表-按最后学习时间筛选（当天）",
+      "pre": "存在 last_study_time=2026-09-01 的收藏",
+      "steps": "admin 请求 list?lastStudyTime=2026-09-01",
+      "expected": "命中且 rows 的 lastStudyTime 落在 2026-09-01",
+      "actual": "命中 1 条 ['2026-09-01T09:00:00']",
+      "status": "通过"
+    },
+    {
+      "cid": "P11",
+      "module": "题库收藏(后台)",
+      "title": "列表-分页返回条数受 pageSize 约束",
+      "pre": "全库活跃收藏 > 2 条",
+      "steps": "admin 请求 list?pageSize=2",
+      "expected": "rows<=2 且 total 为全量",
+      "actual": "total=13 rows=2",
+      "status": "通过"
+    },
+    {
+      "cid": "P12",
+      "module": "题库收藏(后台)",
+      "title": "列表-管理员不传 userId 时可看到全部用户",
+      "pre": "admin/user1/user2 均有收藏",
+      "steps": "admin 请求 list（不传 userId）",
+      "expected": "rows 中出现 >=2 个不同 userId",
+      "actual": "total=13 涉及用户=[1, 103, 105, 106]",
+      "status": "通过"
+    },
+    {
+      "cid": "P13",
+      "module": "题库收藏(后台)",
+      "title": "列表-组合条件筛选（userId + bankId）",
+      "pre": "user1 对 bankA 有 1 条收藏",
+      "steps": "admin 请求 list?userId=105&bankId=369",
+      "expected": "命中 1 条且两者都匹配",
+      "actual": "命中 1 条",
+      "status": "通过"
+    },
+    {
+      "cid": "P14",
+      "module": "题库收藏(后台)",
+      "title": "列表-普通用户只能看到自己的收藏",
+      "pre": "user2 有 1 条活跃收藏",
+      "steps": "user2 请求 list?pageSize=100",
+      "expected": "rows 的 userId 全为 106",
+      "actual": "total=1 userId集合=[106]",
+      "status": "通过"
+    },
+    {
+      "cid": "P15",
+      "module": "题库收藏(后台)",
+      "title": "新增-管理员代 user1 收藏题库（提交后台表单全字段）",
+      "pre": "bankC=371 未被 user1 收藏",
+      "steps": "admin POST /favoriteBank/favoriteBank  body 含 userId=105 与全部表单字段",
+      "expected": "code=200",
+      "actual": "HTTP 200 code=200 操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "P16",
+      "module": "题库收藏(后台)",
+      "title": "新增-表单字段全部落库（归属=被代录用户）",
+      "pre": "P15 已提交全字段",
+      "steps": "直读 user_bank_favorite 逐字段比对",
+      "expected": "user_id=105；备注/标签一致；sortOrder=9 标星=1 状态=1；lastStudyTime 非空；studyCount=4",
+      "actual": "库中={'user_id': 105, 'bank_id': 371, 'notes': '题库收藏-后台新增备注', 'tags': '必考,重点', 'sort_order': 9, 'is_starred': 1, 'favorite_status': 1, 'last_study_time': datetime.datetime(2026, 9, 5, 8, 0), 'study_count': 4}",
+      "status": "通过"
+    },
+    {
+      "cid": "P17",
+      "module": "题库收藏(后台)",
+      "title": "详情-后台修改对话框所需字段完整回显",
+      "pre": "favoriteId=244",
+      "steps": "admin GET /favoriteBank/favoriteBank/{favoriteId}",
+      "expected": "返回体包含后台表格/表单的 13 个字段（缺一即页面显示空白）",
+      "actual": "code=200 缺失字段=无",
+      "status": "通过"
+    },
+    {
+      "cid": "P18",
+      "module": "题库收藏(后台)",
+      "title": "新增-同一用户重复收藏同一题库给出业务提示",
+      "pre": "user1 已收藏 bankC",
+      "steps": "admin 再次 POST 同一 body",
+      "expected": "code=400 且提示「已收藏」，不应 500",
+      "actual": "code=400 msg=该用户已收藏此题库，请不要重复收藏",
+      "status": "通过"
+    },
+    {
+      "cid": "P19",
+      "module": "题库收藏(后台)",
+      "title": "新增-题库不存在时的异常处理",
+      "pre": "题库 99999999 不存在",
+      "steps": "admin POST body={bankId:99999999}",
+      "expected": "code!=200 且提示「题库不存在」",
+      "actual": "code=500 msg=题库ID 99999999 不存在，请输入有效的题库ID",
+      "status": "通过"
+    },
+    {
+      "cid": "P20",
+      "module": "题库收藏(后台)",
+      "title": "新增-用户不存在时的异常处理",
+      "pre": "userId=99999999 不存在",
+      "steps": "admin POST body={userId:99999999}",
+      "expected": "code!=200 且提示「用户不存在」",
+      "actual": "code=500 msg=用户ID 99999999 不存在，请输入有效的用户ID",
+      "status": "通过"
+    },
+    {
+      "cid": "P21",
+      "module": "题库收藏(后台)",
+      "title": "修改-本人提交后台表单全字段，字段全部更新",
+      "pre": "favoriteId=241（user1 本人记录）",
+      "steps": "user1 PUT body 含后台表单全部字段",
+      "expected": "code=200；库中备注/标签/sortOrder=6/标星=0/状态=1/最后学习时间非空/studyCount=12",
+      "actual": "code=200 库中={'notes': '题库收藏-本人修改备注', 'tags': '重做', 'sort_order': 6, 'is_starred': 0, 'favorite_status': 1, 'last_study_time': datetime.datetime(2026, 9, 8, 20, 0), 'study_count': 12}",
+      "status": "通过"
+    },
+    {
+      "cid": "P22",
+      "module": "题库收藏(后台)",
+      "title": "修改-管理员可修改他人（user1）的收藏记录",
+      "pre": "favoriteId=244 属于 user1",
+      "steps": "admin PUT /favoriteBank/favoriteBank  body={favoriteId:244,...}",
+      "expected": "code=200；库中备注/studyCount=20/sortOrder=3 均已更新",
+      "actual": "code=200 库中={'notes': '题库收藏-管理员修改备注', 'study_count': 20, 'sort_order': 3}",
+      "status": "通过"
+    },
+    {
+      "cid": "P23",
+      "module": "题库收藏(后台)",
+      "title": "详情-管理员可查看他人收藏记录",
+      "pre": "favoriteId=244 属于 user1",
+      "steps": "admin GET /favoriteBank/favoriteBank/{favoriteId}",
+      "expected": "code=200 且 userId=105、studyCount=20",
+      "actual": "code=200 userId=105 studyCount=20",
+      "status": "通过"
+    },
+    {
+      "cid": "P24",
+      "module": "题库收藏(后台)",
+      "title": "修改-记录不存在时的异常处理",
+      "pre": "favoriteId=99999999 不存在",
+      "steps": "admin PUT body={favoriteId:99999999}",
+      "expected": "code!=200 且提示「收藏记录不存在」",
+      "actual": "code=500 msg=收藏记录不存在",
+      "status": "通过"
+    },
+    {
+      "cid": "P25",
+      "module": "题库收藏(后台)",
+      "title": "修改-普通用户不能修改他人收藏（越权拦截）",
+      "pre": "favoriteId=241 属于 user1；user2 登录",
+      "steps": "user2 PUT body={favoriteId:241}",
+      "expected": "code=403；user1 的记录未被篡改",
+      "actual": "code=403 msg=无权访问该收藏记录 现值=题库收藏-本人修改备注",
+      "status": "通过"
+    },
+    {
+      "cid": "P26",
+      "module": "题库收藏(后台)",
+      "title": "删除-管理员删除他人（user1）单条收藏",
+      "pre": "favoriteId=244 属于 user1",
+      "steps": "admin DELETE /favoriteBank/favoriteBank/{favoriteId}",
+      "expected": "code=200；库中该记录已物理删除",
+      "actual": "code=200 msg=操作成功 剩余=0",
+      "status": "通过"
+    },
+    {
+      "cid": "P27",
+      "module": "题库收藏(后台)",
+      "title": "删除-管理员批量删除多人收藏（逗号分隔 id）",
+      "pre": "bankC 下有 2 条收藏，ids=243,245",
+      "steps": "admin DELETE /favoriteBank/favoriteBank/{ids}",
+      "expected": "code=200；这些记录均已删除",
+      "actual": "code=200 剩余=0",
+      "status": "通过"
+    },
+    {
+      "cid": "P28",
+      "module": "题库收藏(后台)",
+      "title": "删除-普通用户不能删除他人收藏（越权拦截）",
+      "pre": "favoriteId=241 属于 user1；user2 登录",
+      "steps": "user2 DELETE /favoriteBank/favoriteBank/{favoriteId}",
+      "expected": "code=403；记录仍存在",
+      "actual": "code=403 msg=无权删除他人的收藏记录 仍存在=1",
+      "status": "通过"
+    },
+    {
+      "cid": "P29",
+      "module": "题库收藏(后台)",
+      "title": "删除-不存在的 id 不应 500",
+      "pre": "favoriteId=99999999 不存在",
+      "steps": "admin DELETE /favoriteBank/favoriteBank/99999999",
+      "expected": "返回业务响应（200 幂等 或 明确提示），不得 500",
+      "actual": "HTTP 200 code=200 操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "P30",
+      "module": "题库收藏(后台)",
+      "title": "导出-后台「导出」按钮对应的接口存在并返回 Excel",
+      "pre": "admin 已登录",
+      "steps": "POST /favoriteBank/favoriteBank/export",
+      "expected": "HTTP 200 且返回 xlsx 文件流（当前该路由缺失会落到 catch_all 返回 JSON）",
+      "actual": "HTTP 200 文件流 大小=6344 字节，是xlsx",
+      "status": "通过"
+    },
+    {
+      "cid": "P31",
+      "module": "题库收藏(后台)",
+      "title": "导出-按 userId 筛选生效",
+      "pre": "user1 当前活跃收藏 6 条",
+      "steps": "admin POST export?userId=105",
+      "expected": "xlsx 数据行数 = user1 活跃收藏数",
+      "actual": "全量行=12 user1行=6 期望=6",
+      "status": "通过"
+    },
+    {
+      "cid": "P32",
+      "module": "题库收藏(后台)",
+      "title": "分享领取-写入收藏并标记来源（source=share/canEdit=false）",
+      "pre": "user1 分享 bankB；user2 领取（token=v9HyNZeAy2fu）",
+      "steps": "POST /bankShare/bankShare/receive 后 user2 请求收藏列表",
+      "expected": "code=200；user2 收藏列表出现 bankB，且 source=share、canEdit=false、shareStatus=valid",
+      "actual": "HTTP 200 code=200 操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "P33",
+      "module": "题库收藏(后台)",
+      "title": "分享领取-收藏列表回显分享来源字段",
+      "pre": "user2 已领取 bankB 分享",
+      "steps": "user2 GET /favoriteBank/favoriteBank/all 查找 bankB",
+      "expected": "source=share、canEdit=False、shareStatus=valid、shareOwnerName 非空",
+      "actual": "命中=1 行={'source': 'share', 'canEdit': False, 'shareStatus': 'valid', 'shareOwnerName': '演示用户1'}",
+      "status": "通过"
+    },
+    {
+      "cid": "P34",
+      "module": "题库收藏(后台)",
+      "title": "分享撤销-收藏标记为已失效（shareStatus=invalid）",
+      "pre": "user1 已撤销该分享",
+      "steps": "user2 GET /favoriteBank/favoriteBank/all 再查 bankB",
+      "expected": "shareStatus=invalid",
+      "actual": "shareStatus=invalid",
+      "status": "通过"
+    },
+    {
+      "cid": "P35",
+      "module": "题库收藏(后台)",
+      "title": "前端契约-列表返回字段覆盖后台表格所有列",
+      "pre": "user1 有收藏记录",
+      "steps": "比对 index.vue 表格 el-table-column 的 prop 与返回字段",
+      "expected": "返回字段包含表格全部 11 个 prop（缺 sortOrder 等会显示空白）",
+      "actual": "缺失字段=无",
+      "status": "通过"
+    },
+    {
+      "cid": "P36",
+      "module": "题库收藏(后台)",
+      "title": "前端契约-后台列表页 9 个查询条件同时生效",
+      "pre": "user1 对 bankA 的收藏（备注/标签/排序/学习次数/时间均已设置）",
+      "steps": "按 index.vue 的 queryParams 原样请求 9 个条件",
+      "expected": "命中 1 条且各字段与条件一致",
+      "actual": "命中 1 条",
+      "status": "通过"
+    },
+    {
+      "cid": "P37",
+      "module": "题库收藏(后台)",
+      "title": "校验-题库ID存在时返回对象体 {exists, bankId, bankName}",
+      "pre": "bankA=369（《题库收藏A-测试题库》）存在",
+      "steps": "GET /favoriteBank/favoriteBank/check/{bank_a}",
+      "expected": "data 为对象且 exists=true、bankId 正确、bankName=题库名（前端靠它自动填充）",
+      "actual": "data={'exists': True, 'bankId': 369, 'bankName': '题库收藏A-测试题库', 'description': '《题库收藏A-测试题库》是未分类科目的练习题库，包含多种题型，适合系统复习与自测。', 'subject': '未分类', 'totalQuestions': 0, 'isPublic': 0, 'userId': 105}",
+      "status": "通过"
+    },
+    {
+      "cid": "P38",
+      "module": "题库收藏(后台)",
+      "title": "校验-不存在的题库ID返回 exists=false（而非报错）",
+      "pre": "题库 99999999 不存在",
+      "steps": "GET /favoriteBank/favoriteBank/check/99999999",
+      "expected": "code=200 且 data.exists=false",
+      "actual": "data={'exists': False, 'bankId': 99999999}",
+      "status": "通过"
+    },
+    {
+      "cid": "P39",
+      "module": "题库收藏(后台)",
+      "title": "校验-库中真实存在的题库不会被误判为不存在",
+      "pre": "取库中任意题库 id=1（含用户反馈的 175 这类记录）",
+      "steps": "GET /favoriteBank/favoriteBank/check/{id}",
+      "expected": "exists=true 且 bankName 非空（历史实现返回裸布尔，前端读 data.exists 必为 undefined）",
+      "actual": "data={'exists': True, 'bankId': 1, 'bankName': '高考英语核心词汇', 'description': '高考必考3500词专项练习', 'subject': '英语', 'totalQuestions': 59, 'isPublic': 0, 'userId': 1}",
+      "status": "通过"
+    },
+    {
+      "cid": "P40",
+      "module": "题库收藏(后台)",
+      "title": "权限-普通用户不能查询他人的收藏状态（路径 uid 不可信）",
+      "pre": "user2 登录；bankA 的收藏属于 user1",
+      "steps": "user2 请求 checkFavorite/{uid1}/{bankA}（他人），再请求 checkFavorite/{uid2}/{bankC}（自己）",
+      "expected": "查他人 code=403；查自己 code=200",
+      "actual": "查他人 code=403 msg=无权查看他人的收藏状态；查自己 code=200",
+      "status": "通过"
+    },
+    {
+      "cid": "P41",
+      "module": "题库收藏(后台)",
+      "title": "权限-普通用户不能代他人新增收藏记录",
+      "pre": "user1 登录，body 里 userId=106",
+      "steps": "user1 请求 POST /favoriteBank/favoriteBank  body={userId:user2,bankId:bankA}",
+      "expected": "code=403；不得写进 user2 名下，也不应悄悄写到自己名下（user1 本就已收藏 bankA）",
+      "actual": "code=403 msg=无权为他人新增收藏记录；user2记录=0 user1记录=1",
+      "status": "通过"
+    },
+    {
+      "cid": "P42",
+      "module": "题库收藏(后台)",
+      "title": "清理-删除临时题库（级联清理收藏/分享）",
+      "pre": "测试题库 bankA=369",
+      "steps": "DELETE 后查详情",
+      "expected": "code=200；删除后详情不可见",
+      "actual": "详情code=500",
+      "status": "通过"
+    },
+    {
+      "cid": "P43",
+      "module": "题库收藏(后台)",
+      "title": "清理-无测试数据残留（不污染演示数据）",
+      "pre": "清理完成",
+      "steps": "直连库核对测试题库/收藏/分享/领取记录",
+      "expected": "题库=0 收藏=0 分享=0 领取记录=0",
+      "actual": "题库=0 收藏=0 分享=0 领取=0",
+      "status": "通过"
+    }
+  ],
+  "cleanup": {
+    "bank_ids": [
+      369,
+      370,
+      371
+    ]
+  }
+}

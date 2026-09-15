@@ -1,0 +1,868 @@
+{
+  "prefix": "章节整理",
+  "uid1": 105,
+  "uid2": 106,
+  "rows": [
+    {
+      "cid": "K01",
+      "module": "学习统计",
+      "title": "学习总览-返回结构完整",
+      "pre": "user1 已登录",
+      "steps": "GET /userStats/overview",
+      "expected": "code=200 且包含 9 个统计字段",
+      "actual": "字段齐全",
+      "status": "通过"
+    },
+    {
+      "cid": "K02",
+      "module": "学习统计",
+      "title": "学习总览-作答总数与答题流水一致",
+      "pre": "user1 有答题流水",
+      "steps": "GET /userStats/overview，并与 user_practice_log 比对",
+      "expected": "totalPracticeCount == 流水条数",
+      "actual": "接口=143 流水=143",
+      "status": "通过"
+    },
+    {
+      "cid": "K03",
+      "module": "学习统计",
+      "title": "学习总览-正确率口径（答对数/作答数）",
+      "pre": "user1 有答题流水",
+      "steps": "GET /userStats/overview，与流水答对数比对",
+      "expected": "correctRate ≈ 答对数/作答数*100（百分数）",
+      "actual": "接口=79.0 期望≈79.0",
+      "status": "通过"
+    },
+    {
+      "cid": "K04",
+      "module": "学习统计",
+      "title": "分科目统计-返回结构与字段",
+      "pre": "user1 已登录",
+      "steps": "GET /userStats/bySubject",
+      "expected": "code=200；每项含 subject/bankCount/questionCount/errorCount/markedCount",
+      "actual": "科目数=6",
+      "status": "通过"
+    },
+    {
+      "cid": "K05",
+      "module": "学习统计",
+      "title": "分科目统计-错题数与错题表一致",
+      "pre": "user1 有活跃错题",
+      "steps": "GET /userStats/bySubject 汇总 errorCount，与错题表比对",
+      "expected": "ΣerrorCount == 活跃错题数",
+      "actual": "接口合计=5 库表=5",
+      "status": "通过"
+    },
+    {
+      "cid": "K06",
+      "module": "学习统计",
+      "title": "学习趋势-最近7天日期连续",
+      "pre": "user1 已登录",
+      "steps": "GET /userStats/trend?days=7",
+      "expected": "code=200；返回 7 条且日期递增连续",
+      "actual": "条数=7 首=2026-09-06 末=2026-09-12",
+      "status": "通过"
+    },
+    {
+      "cid": "K07",
+      "module": "学习统计",
+      "title": "学习趋势-每日字段完整",
+      "pre": "user1 已登录",
+      "steps": "检查 trend 每项字段",
+      "expected": "含 date/practiceCount/correctCount/errorCount/markedCount",
+      "actual": "字段=['correctCount', 'date', 'errorCount', 'markedCount', 'practiceCount']",
+      "status": "通过"
+    },
+    {
+      "cid": "K08",
+      "module": "学习统计",
+      "title": "学习趋势-自定义区间 days=30",
+      "pre": "user1 已登录",
+      "steps": "GET /userStats/trend?days=30",
+      "expected": "code=200；返回 30 条",
+      "actual": "条数=30",
+      "status": "通过"
+    },
+    {
+      "cid": "K09",
+      "module": "学习统计",
+      "title": "学习趋势-当天作答实时计入",
+      "pre": "记录上报前 trend 当天 practiceCount",
+      "steps": "上报 1 次作答后重新拉取 trend",
+      "expected": "当天 practiceCount +1",
+      "actual": "上报前=13 上报后=14",
+      "status": "通过"
+    },
+    {
+      "cid": "K10",
+      "module": "学习统计",
+      "title": "学习趋势-days 越界参数校验",
+      "pre": "days 允许 1~90",
+      "steps": "GET /userStats/trend?days=0 与 days=200",
+      "expected": "两次均返回 HTTP 422（参数校验拒绝）",
+      "actual": "days=0 -> 422；days=200 -> 422",
+      "status": "通过"
+    },
+    {
+      "cid": "K11",
+      "module": "学习统计",
+      "title": "错题分析-返回结构完整",
+      "pre": "user1 已登录",
+      "steps": "GET /userStats/errorAnalysis",
+      "expected": "code=200 且含 8 个分析字段",
+      "actual": "字段齐全",
+      "status": "通过"
+    },
+    {
+      "cid": "K12",
+      "module": "学习统计",
+      "title": "错题分析-总数/已掌握口径",
+      "pre": "user1 有错题记录",
+      "steps": "GET /userStats/errorAnalysis，与错题表比对",
+      "expected": "totalErrors==全部错题记录数；mastered==is_mastered=1 的条数",
+      "actual": "接口 totalErrors=7 mastered=2；库表=7/2",
+      "status": "通过"
+    },
+    {
+      "cid": "K13",
+      "module": "学习统计",
+      "title": "成长档案-返回结构完整",
+      "pre": "user1 已登录",
+      "steps": "GET /userStats/growth",
+      "expected": "code=200 且含 7 个成长字段",
+      "actual": "字段齐全",
+      "status": "通过"
+    },
+    {
+      "cid": "K14",
+      "module": "学习统计",
+      "title": "成长档案-totalNotes 与笔记表一致（回归）",
+      "pre": "user1 有笔记",
+      "steps": "GET /userStats/growth 的 totalNotes 与 note 表比对",
+      "expected": "totalNotes == 该用户未删除笔记数",
+      "actual": "接口=13 库表=13",
+      "status": "通过"
+    },
+    {
+      "cid": "K15",
+      "module": "学习统计",
+      "title": "未登录访问统计接口被拒绝",
+      "pre": "不携带 token",
+      "steps": "GET /userStats/overview 与 /userStats/errorAnalysis",
+      "expected": "两次均 code=401（或 HTTP 401）",
+      "actual": "overview code=401 / errorAnalysis code=401",
+      "status": "通过"
+    },
+    {
+      "cid": "K16",
+      "module": "学习统计",
+      "title": "数据隔离-两名用户统计互不影响",
+      "pre": "user1/user2 各自数据",
+      "steps": "分别请求 overview 并与各自的流水比对",
+      "expected": "user2 的 totalPracticeCount == user2 的流水数（不等于 user1）",
+      "actual": "user2接口=0 user2流水=0 user1接口=143",
+      "status": "通过"
+    },
+    {
+      "cid": "L01",
+      "module": "学习时长",
+      "title": "记录刷题学习时间",
+      "pre": "bank=365 属于 user1",
+      "steps": "POST /questionMain/questionMain/recordStudyTime  body={bankId,questionIds:[q1,q2]}",
+      "expected": "code=200；返回 bankStudyTime 与 questionCount=2",
+      "actual": "code=200 questionCount=2",
+      "status": "通过"
+    },
+    {
+      "cid": "L02",
+      "module": "学习时长",
+      "title": "记录学习时间-累加收藏题库学习次数",
+      "pre": "user1 已收藏 bank",
+      "steps": "recordStudyTime 后重新拉取收藏题库列表",
+      "expected": "studyCount +1",
+      "actual": "前=0 后=1",
+      "status": "通过"
+    },
+    {
+      "cid": "L03",
+      "module": "学习时长",
+      "title": "收藏题库-单独记录学习一次",
+      "pre": "user1 已收藏 bank",
+      "steps": "POST /favoriteBank/favoriteBank/recordStudy/{bank_id}",
+      "expected": "code=200；studyCount 再 +1",
+      "actual": "code=200 studyCount=1->2",
+      "status": "通过"
+    },
+    {
+      "cid": "L04",
+      "module": "学习时长",
+      "title": "记录学习时间-未收藏/不存在的题库不报错",
+      "pre": "bank 99999999 不存在且未收藏",
+      "steps": "POST recordStudyTime body={bankId:99999999,questionIds:[]}",
+      "expected": "code=200（静默跳过，不产生脏数据）",
+      "actual": "code=200 msg=操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "L05",
+      "module": "学习看板",
+      "title": "仪表盘统计-返回结构完整",
+      "pre": "user1 已登录",
+      "steps": "GET /system/dashboard/stats",
+      "expected": "code=200 且含 userCount/bankCount/questionCount/noteCount/categoryStats/userGrowth",
+      "actual": "字段齐全",
+      "status": "通过"
+    },
+    {
+      "cid": "L06",
+      "module": "学习看板",
+      "title": "仪表盘统计-计数与数据库一致",
+      "pre": "全站数据",
+      "steps": "GET /system/dashboard/stats 与 question_bank / note 表比对",
+      "expected": "bankCount==题库数；noteCount==未删除笔记数",
+      "actual": "接口 bankCount=15 noteCount=43；库表=15/43",
+      "status": "通过"
+    },
+    {
+      "cid": "L07",
+      "module": "学习看板",
+      "title": "最近活动-合并三类且倒序取前10",
+      "pre": "存在题库/题目/笔记数据",
+      "steps": "GET /system/dashboard/recent",
+      "expected": "code=200；条数 <=10 且 createTime 倒序",
+      "actual": "条数=10 倒序=True",
+      "status": "通过"
+    },
+    {
+      "cid": "L08",
+      "module": "学习看板",
+      "title": "最近活动-单项字段完整",
+      "pre": "存在活动数据",
+      "steps": "检查 recent 每项字段",
+      "expected": "含 type/id/title/createTime",
+      "actual": "字段=['createTime', 'id', 'subject', 'title', 'type']",
+      "status": "通过"
+    },
+    {
+      "cid": "M01",
+      "module": "笔记管理",
+      "title": "笔记分类列表-分页结构",
+      "pre": "user1 已登录",
+      "steps": "GET /noteCategory/noteCategory/list",
+      "expected": "code=200；含 total 与 rows",
+      "actual": "total=2 rows=2",
+      "status": "通过"
+    },
+    {
+      "cid": "M02",
+      "module": "笔记管理",
+      "title": "新建笔记分类（前端传参 name）",
+      "pre": "user1 已登录",
+      "steps": "POST /noteCategory/noteCategory  body={name:'章节整理-分类'}",
+      "expected": "code=200；返回分类 id",
+      "actual": "code=200 id=55 msg=操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "M03",
+      "module": "笔记管理",
+      "title": "新建分类-名称必填校验",
+      "pre": "categoryName 为空",
+      "steps": "POST /noteCategory/noteCategory  body={categoryName:''}",
+      "expected": "code!=200 且提示「分类名称不能为空」",
+      "actual": "code=400 msg=分类名称不能为空",
+      "status": "通过"
+    },
+    {
+      "cid": "M04",
+      "module": "笔记管理",
+      "title": "分类不分页列表-包含新建分类",
+      "pre": "刚新建分类 id=55",
+      "steps": "GET /noteCategory/noteCategory/all",
+      "expected": "返回包含该分类",
+      "actual": "命中=True",
+      "status": "通过"
+    },
+    {
+      "cid": "M05",
+      "module": "笔记管理",
+      "title": "分类详情（前端 getNoteCategory 使用该路由）",
+      "pre": "分类 id=55",
+      "steps": "GET /noteCategory/noteCategory/{id}",
+      "expected": "code=200；返回该分类且 name 正确",
+      "actual": "HTTP状态=200 code=200 name=章节整理-分类",
+      "status": "通过"
+    },
+    {
+      "cid": "M06",
+      "module": "笔记管理",
+      "title": "修改分类名称-真实生效",
+      "pre": "分类 id=55",
+      "steps": "PUT /noteCategory/noteCategory  body={categoryId,categoryName}",
+      "expected": "code=200；列表返回新名称",
+      "actual": "code=200 改名后命中=True",
+      "status": "通过"
+    },
+    {
+      "cid": "M07",
+      "module": "笔记管理",
+      "title": "修改分类排序-真实写库",
+      "pre": "分类 id=55",
+      "steps": "PUT /noteCategory/noteCategory  body={categoryId,sortOrder:66}，直读库表",
+      "expected": "code=200；order_num 更新为 66",
+      "actual": "code=200 order_num=66",
+      "status": "通过"
+    },
+    {
+      "cid": "M08",
+      "module": "笔记管理",
+      "title": "数据隔离-user2 不能修改 user1 的分类",
+      "pre": "分类 id=55 属于 user1",
+      "steps": "user2 请求 PUT /noteCategory/noteCategory  body={categoryId}",
+      "expected": "code=403；user1 分类未被改名",
+      "actual": "code=403 msg=无权修改他人的分类；被改=False",
+      "status": "通过"
+    },
+    {
+      "cid": "M09",
+      "module": "笔记管理",
+      "title": "新建笔记",
+      "pre": "分类 id=55 存在",
+      "steps": "POST /notes/note  body={title,content,categoryId,isPublic:0}",
+      "expected": "code=200；返回 noteId",
+      "actual": "code=200 noteId=114",
+      "status": "通过"
+    },
+    {
+      "cid": "M10",
+      "module": "笔记管理",
+      "title": "新建笔记-响应同时兼容前端 id 字段",
+      "pre": "刚创建笔记 noteId=114",
+      "steps": "检查 POST /notes/note 响应体字段",
+      "expected": "响应 data 中同时存在 noteId 与 id（前端取 data.id）",
+      "actual": "noteId=114 id=114",
+      "status": "通过"
+    },
+    {
+      "cid": "M11",
+      "module": "笔记管理",
+      "title": "新建笔记-标题必填校验",
+      "pre": "title 为空",
+      "steps": "POST /notes/note  body={content:'无标题'}",
+      "expected": "code!=200 且提示「标题不能为空」",
+      "actual": "code=400 msg=标题不能为空",
+      "status": "通过"
+    },
+    {
+      "cid": "M12",
+      "module": "笔记管理",
+      "title": "新建笔记-不传分类的异常处理（库列 NOT NULL）",
+      "pre": "不传 categoryId",
+      "steps": "POST /notes/note  body={title,content}",
+      "expected": "给出明确业务提示（code=400，而非 500 数据库错误）",
+      "actual": "code=400 msg=请先选择笔记分类",
+      "status": "通过"
+    },
+    {
+      "cid": "M13",
+      "module": "笔记管理",
+      "title": "笔记列表-按标题检索",
+      "pre": "笔记 noteId=114",
+      "steps": "GET /notes/note/list?title=章节整理-笔记A",
+      "expected": "code=200；命中该笔记",
+      "actual": "命中=1",
+      "status": "通过"
+    },
+    {
+      "cid": "M14",
+      "module": "笔记管理",
+      "title": "笔记列表-按分类筛选",
+      "pre": "笔记归属分类 55",
+      "steps": "GET /notes/note/list?categoryId={cat_id}",
+      "expected": "code=200；命中该笔记",
+      "actual": "命中=1",
+      "status": "通过"
+    },
+    {
+      "cid": "M15",
+      "module": "笔记管理",
+      "title": "笔记详情",
+      "pre": "笔记 noteId=114",
+      "steps": "GET /notes/note/{noteId}",
+      "expected": "code=200；返回标题与分类",
+      "actual": "title=章节整理-笔记A",
+      "status": "通过"
+    },
+    {
+      "cid": "M16",
+      "module": "笔记管理",
+      "title": "修改笔记（前端传参 id）",
+      "pre": "笔记 noteId=114",
+      "steps": "PUT /notes/note  body={id,title}",
+      "expected": "code=200；标题已更新",
+      "actual": "code=200 msg=操作成功 现标题=章节整理-笔记A改",
+      "status": "通过"
+    },
+    {
+      "cid": "M17",
+      "module": "笔记管理",
+      "title": "修改笔记（标准字段 noteId）",
+      "pre": "笔记 noteId=114",
+      "steps": "PUT /notes/note  body={noteId,content,tags}",
+      "expected": "code=200；正文已更新",
+      "actual": "code=200 content=正文A改",
+      "status": "通过"
+    },
+    {
+      "cid": "M18",
+      "module": "笔记管理",
+      "title": "数据隔离-user2 不能查看 user1 的私有笔记",
+      "pre": "笔记 noteId=114 为私有（isPublic=0）",
+      "steps": "user2 请求 GET /notes/note/{noteId}",
+      "expected": "code=403（按归属校验）",
+      "actual": "code=403 msg=无权访问该笔记",
+      "status": "通过"
+    },
+    {
+      "cid": "M19",
+      "module": "笔记管理",
+      "title": "数据隔离-user2 不能修改 user1 的笔记",
+      "pre": "笔记 noteId=114 属于 user1",
+      "steps": "user2 请求 PUT /notes/note  body={noteId,title}",
+      "expected": "code=403；user1 笔记未被篡改",
+      "actual": "code=403 msg=无权访问该笔记；被改=False",
+      "status": "通过"
+    },
+    {
+      "cid": "M20",
+      "module": "笔记管理",
+      "title": "数据隔离-不能按 userId 拉取他人笔记列表",
+      "pre": "user1 有笔记",
+      "steps": "user2 请求 GET /notes/note/list?userId={uid1}",
+      "expected": "code=403（或至少不返回他人笔记）",
+      "actual": "code=403 返回他人笔记=0 条",
+      "status": "通过"
+    },
+    {
+      "cid": "M21",
+      "module": "笔记管理",
+      "title": "数据隔离-user2 不能删除 user1 的分类",
+      "pre": "分类 id=55 属于 user1",
+      "steps": "user2 请求 DELETE /noteCategory/noteCategory/{id}",
+      "expected": "code=403；user1 分类仍存在",
+      "actual": "code=403 msg=无权操作他人的分类；仍存在=1",
+      "status": "通过"
+    },
+    {
+      "cid": "M22",
+      "module": "笔记管理",
+      "title": "导出笔记列表（Excel）",
+      "pre": "user1 有笔记",
+      "steps": "POST /notes/note/export",
+      "expected": "返回文件流（非 JSON），HTTP 200",
+      "actual": "HTTP 200 文件流 大小=6931 字节",
+      "status": "通过"
+    },
+    {
+      "cid": "M23",
+      "module": "笔记管理",
+      "title": "新建笔记-默认状态为前端可识别的 draft",
+      "pre": "笔记 noteId=114",
+      "steps": "直读 note.status",
+      "expected": "status == 'draft'（前端只识别 draft/published）",
+      "actual": "status=draft",
+      "status": "通过"
+    },
+    {
+      "cid": "N01",
+      "module": "笔记互动",
+      "title": "设为公开后出现在公开笔记列表",
+      "pre": "笔记 noteId=114",
+      "steps": "PUT 设 isPublic=1 后 GET /notes/note/public/list",
+      "expected": "code=200；公开列表中命中该笔记",
+      "actual": "命中=1",
+      "status": "通过"
+    },
+    {
+      "cid": "N02",
+      "module": "笔记互动",
+      "title": "公开笔记接口-isPublic 类型与前端判断一致",
+      "pre": "笔记已公开",
+      "steps": "检查公开列表返回的 isPublic 字段类型",
+      "expected": "isPublic 为数字 1（前端用 isPublic === 1 判断）",
+      "actual": "isPublic=1 类型=int",
+      "status": "通过"
+    },
+    {
+      "cid": "N03",
+      "module": "笔记互动",
+      "title": "公开笔记详情-浏览量自增",
+      "pre": "笔记已公开",
+      "steps": "user2 请求 GET /notes/note/public/{id}",
+      "expected": "code=200；view_count +1",
+      "actual": "code=200 浏览量 0->1",
+      "status": "通过"
+    },
+    {
+      "cid": "N04",
+      "module": "笔记互动",
+      "title": "记录笔记点击-浏览量自增",
+      "pre": "笔记 noteId=114",
+      "steps": "POST /notes/note/public/click/{id}",
+      "expected": "code=200；view_count 再 +1",
+      "actual": "code=200 浏览量 1->2",
+      "status": "通过"
+    },
+    {
+      "cid": "N05",
+      "module": "笔记互动",
+      "title": "笔记排行榜-按综合热度倒序且限流",
+      "pre": "存在公开笔记",
+      "steps": "GET /notes/note/public/ranking?limit=5",
+      "expected": "code=200；条数 <=5 且 hotScore 倒序（热度=浏览+点赞*3+评论*5）",
+      "actual": "条数=5 热度=[430, 364, 340, 326, 313] 倒序=True",
+      "status": "通过"
+    },
+    {
+      "cid": "N06",
+      "module": "笔记互动",
+      "title": "公开分区列表",
+      "pre": "note_public_section 有数据",
+      "steps": "GET /notes/note/publicSection/list",
+      "expected": "code=200；返回分区列表且含 name",
+      "actual": "分区数=8",
+      "status": "通过"
+    },
+    {
+      "cid": "N07",
+      "module": "笔记互动",
+      "title": "发表一级评论",
+      "pre": "笔记 noteId=114 存在",
+      "steps": "POST /notes/comment/create?noteId=&content=",
+      "expected": "code=200；返回 commentId",
+      "actual": "code=200 commentId=144",
+      "status": "通过"
+    },
+    {
+      "cid": "N08",
+      "module": "笔记互动",
+      "title": "评论列表-包含刚发表的评论",
+      "pre": "已发表评论 cid=144",
+      "steps": "GET /notes/comment/list?noteId={noteId}",
+      "expected": "code=200；列表中命中该评论",
+      "actual": "评论数=1 命中=True",
+      "status": "通过"
+    },
+    {
+      "cid": "N09",
+      "module": "笔记互动",
+      "title": "评论后笔记评论数自增",
+      "pre": "刚发表 1 条评论",
+      "steps": "直读 note.comment_count",
+      "expected": "comment_count >= 1",
+      "actual": "comment_count=1",
+      "status": "通过"
+    },
+    {
+      "cid": "N10",
+      "module": "笔记互动",
+      "title": "回复评论（带 parentId）",
+      "pre": "父评论 cid=144",
+      "steps": "POST /notes/comment/create?noteId=&content=&parentId=&replyToUserId=",
+      "expected": "code=200；返回回复 id",
+      "actual": "code=200 replyId=145",
+      "status": "通过"
+    },
+    {
+      "cid": "N11",
+      "module": "笔记互动",
+      "title": "回复列表-包含该回复",
+      "pre": "回复 rid=145 挂在 cid 下",
+      "steps": "GET /notes/comment/replies?parentId={cid}",
+      "expected": "code=200；列表中命中该回复",
+      "actual": "回复数=1",
+      "status": "通过"
+    },
+    {
+      "cid": "N12",
+      "module": "笔记互动",
+      "title": "评论楼层详情-含子回复",
+      "pre": "父评论 cid=144 有 1 条回复",
+      "steps": "GET /notes/comment/thread/{cid}",
+      "expected": "code=200；返回该评论且 children 含回复",
+      "actual": "HTTP=200 code=200",
+      "status": "通过"
+    },
+    {
+      "cid": "N13",
+      "module": "笔记互动",
+      "title": "数据隔离-user2 不能删除 user1 的评论",
+      "pre": "评论 cid=144 属于 user1",
+      "steps": "user2 请求 DELETE /notes/comment/delete/{cid}",
+      "expected": "code=403；评论仍存在",
+      "actual": "code=403 msg=无权删除该评论；仍存在=1",
+      "status": "通过"
+    },
+    {
+      "cid": "N14",
+      "module": "笔记互动",
+      "title": "收藏公开笔记",
+      "pre": "user2 已登录",
+      "steps": "POST /favoriteNote/favoriteNote?noteId={noteId}",
+      "expected": "code=200",
+      "actual": "code=200 msg=操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "N15",
+      "module": "笔记互动",
+      "title": "重复收藏笔记的幂等处理",
+      "pre": "user2 已收藏该笔记",
+      "steps": "再次 POST /favoriteNote/favoriteNote?noteId={noteId}",
+      "expected": "给出明确业务冲突提示（code=400，不应是 500）",
+      "actual": "code=400 msg=已收藏该笔记",
+      "status": "通过"
+    },
+    {
+      "cid": "N16",
+      "module": "笔记互动",
+      "title": "收藏笔记列表-包含已收藏笔记",
+      "pre": "user2 已收藏该笔记",
+      "steps": "GET /favoriteNote/favoriteNote/list",
+      "expected": "code=200；列表中命中该笔记且含 favoriteId",
+      "actual": "命中=1",
+      "status": "通过"
+    },
+    {
+      "cid": "N17",
+      "module": "笔记互动",
+      "title": "数据隔离-路径传他人 uid 不能取消他人笔记收藏",
+      "pre": "收藏属于 user2，路径写 user1 的 uid",
+      "steps": "user2 请求 DELETE .../deleteByUserAndNote/{uid1}/{noteId}",
+      "expected": "code!=200（无权操作）",
+      "actual": "code=403 msg=无权操作他人的收藏",
+      "status": "通过"
+    },
+    {
+      "cid": "N18",
+      "module": "笔记互动",
+      "title": "取消收藏笔记（按 favoriteId）",
+      "pre": "favoriteId=26 属于 user2",
+      "steps": "user2 请求 DELETE /favoriteNote/favoriteNote/{favoriteId}",
+      "expected": "code=200",
+      "actual": "code=200 msg=操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "N19",
+      "module": "笔记互动",
+      "title": "搜索框支持按作者昵称匹配",
+      "pre": "公开笔记作者=演示用户1",
+      "steps": "GET /notes/note/public/list?keyword={作者昵称}",
+      "expected": "code=200；命中结果全部为该作者的公开笔记",
+      "actual": "total=12 命中作者=['演示用户1']",
+      "status": "通过"
+    },
+    {
+      "cid": "N20",
+      "module": "笔记互动",
+      "title": "搜索框按标题片段匹配",
+      "pre": "公开笔记标题=章节整理-笔记A改",
+      "steps": "GET /notes/note/public/list?keyword={标题前3字}",
+      "expected": "code=200；该笔记在命中结果中",
+      "actual": "total=1 命中该笔记=True",
+      "status": "通过"
+    },
+    {
+      "cid": "N21",
+      "module": "笔记互动",
+      "title": "「内容最长」排序与真实内容长度一致",
+      "pre": "存在多篇公开笔记（部分正文仅在 markdown_content 中）",
+      "steps": "GET /notes/note/public/list?sortBy=content_length&sortOrder=desc，直连库核算每篇 content+markdown 字符总长",
+      "expected": "接口顺序与真实总长度降序一致（只按 content 排序会把 markdown 长文判为最短）",
+      "actual": "长度序列=[4315, 703, 595, 573, 572, 569, 567, 550, 543, 518]",
+      "status": "通过"
+    },
+    {
+      "cid": "O01",
+      "module": "笔记关联",
+      "title": "笔记关联题目",
+      "pre": "noteId=114 q1=1686",
+      "steps": "POST /noteQuestion/noteQuestion  body={noteId,questionId,questionBankId}",
+      "expected": "code=200",
+      "actual": "code=200 msg=操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "O02",
+      "module": "笔记关联",
+      "title": "校验笔记与题目的关联",
+      "pre": "已建立关联",
+      "steps": "GET /noteQuestion/noteQuestion/check/{noteId}/{q1}",
+      "expected": "code=200；返回已关联",
+      "actual": "data=True",
+      "status": "通过"
+    },
+    {
+      "cid": "O03",
+      "module": "笔记关联",
+      "title": "按笔记查询关联题目",
+      "pre": "笔记已关联 q1",
+      "steps": "GET /noteQuestion/noteQuestion/byNote/{noteId}",
+      "expected": "code=200；包含 q1",
+      "actual": "关联数=1",
+      "status": "通过"
+    },
+    {
+      "cid": "O04",
+      "module": "笔记关联",
+      "title": "按题目查询关联笔记",
+      "pre": "q1 已关联该笔记",
+      "steps": "GET /noteQuestion/noteQuestion/byQuestion/{q1}",
+      "expected": "code=200；包含该笔记",
+      "actual": "关联数=1",
+      "status": "通过"
+    },
+    {
+      "cid": "O05",
+      "module": "笔记关联",
+      "title": "重复关联题目的幂等处理",
+      "pre": "关联已存在",
+      "steps": "再次 POST /noteQuestion/noteQuestion  body={noteId,q1}",
+      "expected": "给出明确业务冲突提示（code=400，不应是 500）",
+      "actual": "code=400 msg=关联已存在",
+      "status": "通过"
+    },
+    {
+      "cid": "O06",
+      "module": "笔记关联",
+      "title": "批量关联题目",
+      "pre": "q2/q3 尚未关联",
+      "steps": "POST /noteQuestion/noteQuestion/batchLink  body={noteId,questionIds:[q2,q3]}",
+      "expected": "code=200；created=2",
+      "actual": "created=2 skipped=0",
+      "status": "通过"
+    },
+    {
+      "cid": "O07",
+      "module": "笔记关联",
+      "title": "解除笔记与题目的关联",
+      "pre": "关联存在",
+      "steps": "DELETE /noteQuestion/noteQuestion/note/{noteId}/question/{q1}",
+      "expected": "code=200；校验变为未关联",
+      "actual": "解除=200 校验=False",
+      "status": "通过"
+    },
+    {
+      "cid": "O08",
+      "module": "笔记关联",
+      "title": "笔记关联题库（关联列表可查）",
+      "pre": "noteId=114 bank=365",
+      "steps": "GET /noteQuestionBank/noteQuestionBank/list?noteId={noteId}",
+      "expected": "code=200；存在该题库的关联记录",
+      "actual": "code=200 关联id=57",
+      "status": "通过"
+    },
+    {
+      "cid": "O09",
+      "module": "笔记关联",
+      "title": "按笔记查询关联题库",
+      "pre": "已关联 bank",
+      "steps": "GET /noteQuestionBank/noteQuestionBank/byNote/{noteId}",
+      "expected": "code=200；包含该题库",
+      "actual": "关联数=1",
+      "status": "通过"
+    },
+    {
+      "cid": "O10",
+      "module": "笔记关联",
+      "title": "关联题库列表-分页结构",
+      "pre": "已有关联",
+      "steps": "GET /noteQuestionBank/noteQuestionBank/list?noteId=",
+      "expected": "code=200；含 total 与 rows",
+      "actual": "total=1",
+      "status": "通过"
+    },
+    {
+      "cid": "O11",
+      "module": "笔记关联",
+      "title": "修改题库关联明细",
+      "pre": "关联 id=57",
+      "steps": "PUT /noteQuestionBank/noteQuestionBank  body={id,noteId}",
+      "expected": "code=200",
+      "actual": "code=200 msg=操作成功",
+      "status": "通过"
+    },
+    {
+      "cid": "O12",
+      "module": "笔记关联",
+      "title": "重复关联题库的幂等处理",
+      "pre": "关联已存在（O01 已自动建立）",
+      "steps": "POST /noteQuestionBank/noteQuestionBank",
+      "expected": "给出明确业务冲突提示（code=400，不应是 500）",
+      "actual": "code=400 msg=关联已存在",
+      "status": "通过"
+    },
+    {
+      "cid": "O13",
+      "module": "笔记关联",
+      "title": "数据隔离-user2 不能往 user1 的笔记里加关联",
+      "pre": "noteId=114 属于 user1",
+      "steps": "user2 请求 POST /noteQuestion/noteQuestion  body={noteId,q2}",
+      "expected": "code=403（按笔记归属校验）",
+      "actual": "code=403 msg=无权操作他人笔记的关联",
+      "status": "通过"
+    },
+    {
+      "cid": "P01",
+      "module": "测试清理",
+      "title": "清理临时笔记与关联",
+      "pre": "测试笔记 noteId=114",
+      "steps": "解除关联后 DELETE /notes/note/{noteId}（逻辑删除）",
+      "expected": "code=200；笔记不再出现在有效笔记中",
+      "actual": "删除=200 剩余有效笔记=0",
+      "status": "通过"
+    },
+    {
+      "cid": "P02",
+      "module": "测试清理",
+      "title": "残留检查-user1",
+      "pre": "测试结束",
+      "steps": "统计该用户下以 章节整理 开头的笔记/分类/题库/评论及关联通知",
+      "expected": "全部为 0",
+      "actual": "笔记=0 分类=0 题库=0 评论=0 通知=0",
+      "status": "通过"
+    },
+    {
+      "cid": "P03",
+      "module": "测试清理",
+      "title": "残留检查-user2",
+      "pre": "测试结束",
+      "steps": "统计该用户下以 章节整理 开头的笔记/分类/题库/评论及关联通知",
+      "expected": "全部为 0",
+      "actual": "笔记=0 分类=0 题库=0 评论=0 通知=0",
+      "status": "通过"
+    },
+    {
+      "cid": "P04",
+      "module": "测试清理",
+      "title": "无死链残留（消息中心可安全跳转）",
+      "pre": "清理完成",
+      "steps": "检查孤儿答题流水与指向已删笔记的评论",
+      "expected": "孤儿流水=0 且 死链评论=0",
+      "actual": "孤儿流水=0 死链评论=0",
+      "status": "通过"
+    }
+  ],
+  "cleanup": {
+    "note_ids": [
+      114
+    ],
+    "category_ids": [
+      55
+    ],
+    "bank_ids": [
+      365
+    ]
+  }
+}
