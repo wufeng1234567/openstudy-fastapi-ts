@@ -13,7 +13,7 @@
       - hide-footer：消息中心、笔记编辑器页面隐藏底部页脚
       - notes-editor-mode：笔记编辑器全屏模式，去掉内边距
     -->
-    <div class="front-layout" :class="{ 'hide-footer': hideFooter, 'notes-editor-mode': isNotesEditorPage }">
+    <div class="front-layout" :class="{ 'hide-footer': hideFooter, 'notes-editor-mode': isNotesEditorPage, 'agent-mode': isAgentPage }">
 
         <!-- ==================== 顶部导航栏 ==================== -->
         <header class="front-header">
@@ -46,6 +46,15 @@
                     <a @click.prevent="goToModule('notes', 'list')"
                         :class="{ 'router-link-active': isModuleActive('notes') }">
                         学习分享
+                    </a>
+                    <!--
+                      智能体：大屏版 OS 助手 + 工具调用。
+                      直连子页（只有一个子页），所以用 router.push 而不是 goToModule ——
+                      后者依赖 frontPageCache 的「上次子页」记忆，单子页场景没必要。
+                    -->
+                    <a @click.prevent="goToAgent"
+                        :class="{ 'router-link-active': isModuleActive('agent') }">
+                        智能体
                     </a>
                 </nav>
 
@@ -278,6 +287,17 @@ const goToStudio = async () => {
     router.push('/front/studio/create?type=public')
 }
 
+/**
+ * 跳转到智能体（大屏对话）
+ *
+ * 与「学习分享」不同：智能体会写用户的题库数据，所以必须先登录。
+ */
+const goToAgent = async () => {
+    if (isModuleActive('agent')) return
+    if (!(await ensureLogin('使用智能体'))) return
+    router.push('/front/agent/chat')
+}
+
 // ==================== 页面缓存管理 ====================
 /**
  * 监听路由变化，自动将页面注册到 keep-alive 缓存列表
@@ -323,6 +343,16 @@ watch(() => route.path, () => {
             path: '/front/notes',
             fullPath: '/front/notes',
             meta: { title: '学习分享' }
+        })
+    }
+
+    // 智能体聚合页缓存
+    if (path.startsWith('/front/agent') && !tagsViewStore.cachedViews.includes('FrontAgent')) {
+        tagsViewStore.addView({
+            name: 'FrontAgent',
+            path: '/front/agent',
+            fullPath: '/front/agent',
+            meta: { title: '智能体' }
         })
     }
 
@@ -374,8 +404,19 @@ const isMessagesPage = computed(() => route.path.startsWith('/front/messages'))
 /** 是否为笔记编辑器页面（全屏模式，隐藏页脚） */
 const isNotesEditorPage = computed(() => route.path === '/front/notes/editor')
 
+/**
+ * 是否为智能体页面
+ *
+ * 智能体是「大屏对话」形态：消息区必须自己占满剩余高度并内部滚动，
+ * 不能靠整页滚动（否则输入框会被挤到视口外）。所以给它一个专属的全屏模式，
+ * 同时隐藏页脚（页脚会把对话区顶短）。
+ */
+const isAgentPage = computed(() => route.path.startsWith('/front/agent'))
+
 /** 是否隐藏底部页脚 */
-const hideFooter = computed(() => isMessagesPage.value || isNotesEditorPage.value)
+const hideFooter = computed(
+    () => isMessagesPage.value || isNotesEditorPage.value || isAgentPage.value
+)
 
 // ==================== 用户操作 ====================
 
@@ -618,6 +659,44 @@ function logout() {
         max-width: 100%;
         height: calc(100vh - 68px);
         overflow: hidden;
+    }
+}
+
+/*
+  智能体全屏模式：对话区吃满「视口 - 顶栏」的剩余高度，内部自己滚动。
+  与 notes-editor-mode 的区别只在留白 —— 智能体保留一点内边距，
+  让卡片式外壳（圆角 + 描边）看起来像一块独立的对话面板。
+
+  ⚠️ 这里必须给**容器**一个确定高度（`height: 100vh` + `overflow: hidden`），
+  不能只写 `min-height`。原因（CDP 实测，别改回去）：
+    · `.front-main` 是 `flex: 1`，即 `flex-basis: 0%` —— 它的主轴尺寸**完全**由
+      「容器高度 - 兄弟项高度」分配而来，写在它自己身上的 `height` 是死代码；
+    · 只给 `min-height: 100vh` 时，容器的 height 仍是 auto（由内容决定），
+      于是 `.front-main` 的尺寸变成**内容驱动、且对子元素而言是「不确定」的**：
+      下面 `.agent-page { height: 100% }` 因此退化成 auto，整条链跟着内容长高 ——
+      `.chat-messages` 的 clientHeight 会等于 scrollHeight（永远不滚），
+      滚动条跑到整份文档上，输入框被顶到几千像素之外（「要滚到底才看得见」）。
+    · 实测（1400×950 窗口里塞 3000px 内容）：
+        只加 `height:100vh` 前 —— 文档 scrollHeight 3631 / 视口 665、输入框 bottom 3617（不可见）
+        只加 `height:100vh` 后 —— 文档 scrollHeight 665（不再滚）、
+                              `.chat-messages` 524/3491 自己滚、输入框 bottom 650（钉在底部）
+    · `.front-main` 自己的 `height: calc(100vh - 68px)` 保留只是为了让「内容不足时」
+      的观感不变（它的 flex-basis 仍是 0%，不参与高度计算）。
+*/
+.front-layout.agent-mode {
+    /* 撑满且不产生文档级滚动 —— 滚动只允许发生在消息区内部 */
+    height: 100vh;
+    overflow: hidden;
+
+    .front-main {
+        margin: 0;
+        padding: 0 16px;
+        max-width: 100%;
+        height: calc(100vh - 68px);
+        /* 兜底：即使将来有人把 flex 改回 auto，也不让内容把这一层顶高 */
+        min-height: 0;
+        overflow: hidden;
+        box-sizing: border-box;
     }
 }
 

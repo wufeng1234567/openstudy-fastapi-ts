@@ -10,6 +10,9 @@ tests/**/coverage/
 tests/e2e/reports
 selenium-debug.log
 
+# ds-free 自检生成的产物（每次跑都会重写）
+tests/check_agent_dsfree_result.json
+
 # Editor directories and files
 .idea
 .vscode

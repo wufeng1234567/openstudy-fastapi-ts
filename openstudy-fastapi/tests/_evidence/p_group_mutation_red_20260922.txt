@@ -1,0 +1,32 @@
+[32m2026-09-22 16:28:28.780[0m | [1mINFO    [0m | [36mapp.services.ai.dynamic_ai[0m:[36mregister_client[0m:[36m26[0m - [1mRegistered AI client: deepseek with models: ['deepseek-flash', 'deepseek-v4-pro', 'deepseek-v4-flash', 'deepseek-chat', 'deepseek-coder', 'deepseek-reasoner'][0m
+[32m2026-09-22 16:28:28.792[0m | [1mINFO    [0m | [36mapp.services.ai.dynamic_ai[0m:[36mregister_client[0m:[36m26[0m - [1mRegistered AI client: zhipu with models: ['glm-4', 'deepseek-chat', 'glm-4v', 'glm-3', 'embedding-3'][0m
+[32m2026-09-22 16:28:28.792[0m | [1mINFO    [0m | [36mapp.services.ai.dynamic_ai[0m:[36mregister_client[0m:[36m26[0m - [1mRegistered AI client: siliconflow with models: ['Qwen/Qwen2.5-7B-Instruct', 'Qwen/Qwen2.5-14B-Instruct', 'Qwen/Qwen2.5-32B-Instruct', 'Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-V2-Chat', 'THUDM/glm-4-9b-chat', 'BAAI/bge-m3', 'BAAI/bge-large-zh-v1.5', 'Qwen/Qwen3-Embedding-0.6B'][0m
+[32m2026-09-22 16:28:28.833[0m | [34m[1mDEBUG   [0m | [36mapp.services.ai.conversation_service[0m:[36m<module>[0m:[36m576[0m - [34m[1mconversation_service loaded (SQL backend)[0m
+[32m2026-09-22 16:28:30.768[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/agent/execute status=200 duration=0.119s[0m
+[32m2026-09-22 16:28:30.794[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mGET /ai/agent/tools status=200 duration=0.014s[0m
+[32m2026-09-22 16:28:30.800[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/agent/execute status=200 duration=0.004s[0m
+[32m2026-09-22 16:28:30.962[0m | [34m[1mDEBUG   [0m | [36mapp.services.ai.agent.memory_hook[0m:[36mrecord_tool_memory[0m:[36m137[0m - [34m[1m[memory] 已记录：已把「__e2e_agent__PROBE_P他人题干」标记为「已掌握」（记录保留；以后再做错会自动回到错题本）[0m
+[32m2026-09-22 16:28:30.965[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/agent/execute status=200 duration=0.165s[0m
+[32m2026-09-22 16:28:31.020[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/agent/preview status=200 duration=0.043s[0m
+[32m2026-09-22 16:28:31.084[0m | [34m[1mDEBUG   [0m | [36mapp.services.ai.agent.memory_hook[0m:[36mrecord_tool_memory[0m:[36m137[0m - [34m[1m[memory] 已记录：已从错题本删除：__e2e_agent__PROBE_P他人题干[0m
+[32m2026-09-22 16:28:31.089[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/agent/execute status=200 duration=0.066s[0m
+[32m2026-09-22 16:28:31.170[0m | [34m[1mDEBUG   [0m | [36mapp.services.ai.agent.memory_hook[0m:[36mrecord_tool_memory[0m:[36m137[0m - [34m[1m[memory] 已记录：已从错题本删除：__e2e_agent__PROBE_P自己题干[0m
+[32m2026-09-22 16:28:31.174[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/agent/execute status=200 duration=0.060s[0m
+[32m2026-09-22 16:28:31.218[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/agent/preview status=200 duration=0.036s[0m
+[32m2026-09-22 16:28:31.260[0m | [1mINFO    [0m | [36mapp.services.rag.rag_write_service[0m:[36mdelete_knowledge_base[0m:[36m265[0m - [1m[rag] 删除知识库 id=514 name=__e2e_agent__PROBE_P他人知识库 连带 1 文档 / 0 分块[0m
+[32m2026-09-22 16:28:31.289[0m | [34m[1mDEBUG   [0m | [36mapp.services.ai.agent.memory_hook[0m:[36mrecord_tool_memory[0m:[36m137[0m - [34m[1m[memory] 已记录：已删除知识库「__e2e_agent__PROBE_P他人知识库」及其 1 篇文档、0 个分块[0m
+[32m2026-09-22 16:28:31.289[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/agent/execute status=200 duration=0.069s[0m
+[FIXTURE] 他人 bank=1046 q=2606 err=247 kb=514 doc=396；自己 own_err=248
+[BASE-P10] 未变异：master 别人的记录 → success=False message='None' → P10 判据=True
+[M1-registry] 去掉 5 个新工具后：payload 里还有 question_flag_manage=False；execute 回='工具不存在：question_flag_manage' → 判据变红=True
+[M2-get_record] 去掉 get_record 的 user_id 后：master 别人的记录 → success=True isMastered=1 message='已把「__e2e_agent__PROBE_P他人题干」标记为「已掌握」（记录保'；库里 is_mastered=0 → P10 判据变红=True（谎报成功）
+[M3-remove-scope] 两个守卫都去掉后：remove 别人的记录 → success=True deleted=1；库里还在=False → P9 判据变红=True（真的删掉了别人的记录）
+[M4-ticket-gate] 把确认闸门关掉后：不带票据 remove 自己的记录 → success=True 库里还在=False → P16 判据变红=True（无票据也能删）
+[M5-kb-scope] 去掉知识库归属校验后：delete 别人的知识库 → success=True del_flag='2' → P12 判据变红=True（真的删掉了别人的知识库）
+
+MUTATION-RED: M1-registry
+MUTATION-RED: M2-get_record
+MUTATION-RED: M3-remove-scope
+MUTATION-RED: M4-ticket-gate
+MUTATION-RED: M5-kb-scope
+共 5 个变异，5 个成功变红

@@ -1,0 +1,100 @@
+镜像 app/api/v1/ai.py md5=985fbd72288d2057f6ee23538a18766f（期望 985fbd72288d2057f6ee23538a18766f）OK
+镜像 app/services/ai/conversation_service.py md5=64a5dd9e8612b1be89d50995a25c264f（期望 64a5dd9e8612b1be89d50995a25c264f）OK
+
+=== M0 未变异基线 ===
+  退出码=0 红=（无） app=D:\OpenStudy\.fixdrop_mirror_tmp\app
+  输出=D:\OpenStudy\.fixdrop_mirror_tmp\_mut_output\M0-baseline.txt
+
+=== M1 matched 的 COUNT 也筛 del_flag='0'（退化成第二个 dropped） ===
+  app/services/ai/conversation_service.py 变异后 md5=80a37363d73c05d43bb570a25aa44175；还原后 md5=64a5dd9e8612b1be89d50995a25c264f  OK
+  退出码=1 红=['D1', 'D11', 'D5', 'D9b']
+  期望只亮 D5（matched 变成 0）—— 但 D1 也会亮（UPDATE 之后那两行已经是 '2'）
+  输出=D:\OpenStudy\.fixdrop_mirror_tmp\_mut_output\M1.txt
+  探针自报的 md5：[('app/api/v1/ai.py', '985fbd72288d2057f6ee23538a18766f'), ('app/services/ai/conversation_service.py', '80a37363d73c05d43bb570a25aa44175')]
+
+=== M2 matched 的 COUNT 少了 user_id（越权读数） ===
+  app/services/ai/conversation_service.py 变异后 md5=81aba2c30edc37da13003ddd03913ff9；还原后 md5=64a5dd9e8612b1be89d50995a25c264f  OK
+  退出码=1 红=['D6', 'D6b']
+  期望亮 D6 / D6b（别人的轮次 matched 变成 2）
+  输出=D:\OpenStudy\.fixdrop_mirror_tmp\_mut_output\M2.txt
+  探针自报的 md5：[('app/api/v1/ai.py', '985fbd72288d2057f6ee23538a18766f'), ('app/services/ai/conversation_service.py', '81aba2c30edc37da13003ddd03913ff9')]
+
+=== M3 matched 的 COUNT 少了 session_id ===
+  app/services/ai/conversation_service.py 变异后 md5=20f2b4533ccea6f98adcea4d4c60f6f5；还原后 md5=64a5dd9e8612b1be89d50995a25c264f  OK
+  退出码=1 红=['D11']
+  期望亮 D11（同名轮次在两个会话里）与 D6b
+  输出=D:\OpenStudy\.fixdrop_mirror_tmp\_mut_output\M3.txt
+  探针自报的 md5：[('app/api/v1/ai.py', '985fbd72288d2057f6ee23538a18766f'), ('app/services/ai/conversation_service.py', '20f2b4533ccea6f98adcea4d4c60f6f5')]
+
+=== M4 matched 的 COUNT 少了 turn_id（数成「这个会话里有多少行」） ===
+  app/services/ai/conversation_service.py 变异后 md5=a7938a2dcd9cde1c87c0ae026524b94a；还原后 md5=64a5dd9e8612b1be89d50995a25c264f  OK
+  退出码=1 红=['D1', 'D11', 'D12', 'D5', 'D6', 'D9b']
+  期望亮 D12（旧数据形态）以及 D1/D5/D6/D6b/D9b/D11 —— 这一条是「matched 必须按轮次定位」的总闸
+  输出=D:\OpenStudy\.fixdrop_mirror_tmp\_mut_output\M4.txt
+  探针自报的 md5：[('app/api/v1/ai.py', '985fbd72288d2057f6ee23538a18766f'), ('app/services/ai/conversation_service.py', 'a7938a2dcd9cde1c87c0ae026524b94a')]
+
+=== M5 matched = dropped（别名，退化成第二个 dropped） ===
+  app/services/ai/conversation_service.py 变异后 md5=f12018b561c1b96b70840c36c3e1e0b5；还原后 md5=64a5dd9e8612b1be89d50995a25c264f  OK
+  退出码=1 红=['D5']
+  期望**只**亮 D5
+  输出=D:\OpenStudy\.fixdrop_mirror_tmp\_mut_output\M5.txt
+  探针自报的 md5：[('app/api/v1/ai.py', '985fbd72288d2057f6ee23538a18766f'), ('app/services/ai/conversation_service.py', 'f12018b561c1b96b70840c36c3e1e0b5')]
+
+=== M6 端点删掉空 sessionId 闸门（回到「静默成功」） ===
+  app/api/v1/ai.py 变异后 md5=3895ac1199617402adc375e46b2c42ba；还原后 md5=985fbd72288d2057f6ee23538a18766f  OK
+  退出码=1 红=['D13']
+  期望只亮 D13
+  输出=D:\OpenStudy\.fixdrop_mirror_tmp\_mut_output\M6.txt
+  探针自报的 md5：[('app/api/v1/ai.py', '3895ac1199617402adc375e46b2c42ba'), ('app/services/ai/conversation_service.py', '64a5dd9e8612b1be89d50995a25c264f')]
+
+=== M7 UPDATE 不筛 del_flag（幂等被打破） ===
+  app/services/ai/conversation_service.py 变异后 md5=9eefacf2a2e4abace4bc15e247aa2130；还原后 md5=64a5dd9e8612b1be89d50995a25c264f  OK
+  退出码=1 红=['D5']
+  期望亮 D5（dropped 变成 2）—— dropped 语义没被改坏的守卫
+  输出=D:\OpenStudy\.fixdrop_mirror_tmp\_mut_output\M7.txt
+  探针自报的 md5：[('app/api/v1/ai.py', '985fbd72288d2057f6ee23538a18766f'), ('app/services/ai/conversation_service.py', '9eefacf2a2e4abace4bc15e247aa2130')]
+
+=== M8 响应退回修复前的形状（只回 dropped，没有 matched） ===
+  app/api/v1/ai.py 变异后 md5=2f1576e294cdd180657e3fc6b21f6c8a；还原后 md5=985fbd72288d2057f6ee23538a18766f  OK
+  退出码=1 红=['D1', 'D11', 'D12', 'D5', 'D6', 'D6b', 'D9b']
+  期望亮所有读 matched 的断言：D1/D5/D6/D6b/D9b/D11/D12
+  输出=D:\OpenStudy\.fixdrop_mirror_tmp\_mut_output\M8.txt
+  探针自报的 md5：[('app/api/v1/ai.py', '2f1576e294cdd180657e3fc6b21f6c8a'), ('app/services/ai/conversation_service.py', '64a5dd9e8612b1be89d50995a25c264f')]
+
+=== M9 服务层空值闸门退回 int 0（修复前的形状） ===
+  app/services/ai/conversation_service.py 变异后 md5=b4f32a657ae087b187ebfba6383278dc；还原后 md5=64a5dd9e8612b1be89d50995a25c264f  OK
+  退出码=1 红=['D14', 'D8']
+  期望亮 D8 / D14（同一个 return 语句，两层空值闸门共用）
+  输出=D:\OpenStudy\.fixdrop_mirror_tmp\_mut_output\M9.txt
+  探针自报的 md5：[('app/api/v1/ai.py', '985fbd72288d2057f6ee23538a18766f'), ('app/services/ai/conversation_service.py', 'b4f32a657ae087b187ebfba6383278dc')]
+
+==============================================================================
+变异表
+==============================================================================
+M1   matched 的 COUNT 也筛 del_flag='0'（退化成第二个 dropped）
+     红=D1, D11, D5, D9b
+     预期=期望只亮 D5（matched 变成 0）—— 但 D1 也会亮（UPDATE 之后那两行已经是 '2'）
+M2   matched 的 COUNT 少了 user_id（越权读数）
+     红=D6, D6b
+     预期=期望亮 D6 / D6b（别人的轮次 matched 变成 2）
+M3   matched 的 COUNT 少了 session_id
+     红=D11
+     预期=期望亮 D11（同名轮次在两个会话里）与 D6b
+M4   matched 的 COUNT 少了 turn_id（数成「这个会话里有多少行」）
+     红=D1, D11, D12, D5, D6, D9b
+     预期=期望亮 D12（旧数据形态）以及 D1/D5/D6/D6b/D9b/D11 —— 这一条是「matched 必须按轮次定位」的总闸
+M5   matched = dropped（别名，退化成第二个 dropped）
+     红=D5
+     预期=期望**只**亮 D5
+M6   端点删掉空 sessionId 闸门（回到「静默成功」）
+     红=D13
+     预期=期望只亮 D13
+M7   UPDATE 不筛 del_flag（幂等被打破）
+     红=D5
+     预期=期望亮 D5（dropped 变成 2）—— dropped 语义没被改坏的守卫
+M8   响应退回修复前的形状（只回 dropped，没有 matched）
+     红=D1, D11, D12, D5, D6, D6b, D9b
+     预期=期望亮所有读 matched 的断言：D1/D5/D6/D6b/D9b/D11/D12
+M9   服务层空值闸门退回 int 0（修复前的形状）
+     红=D14, D8
+     预期=期望亮 D8 / D14（同一个 return 语句，两层空值闸门共用）

@@ -1,0 +1,129 @@
+[1m
+=== ds-free OS 助手自检 ===[0m
+[2m  用例 9 条 · 轮次 10 · 套件 LOOP[0m
+[2m  用例表：tests/df_cases.mjs[0m
+
+[1m
+── LOOP (9) ──────────────────────────────────────────────[0m
+[2m
+  第 1/10 轮[0m
+  [[32mPASS[0m] [1mDF-LOOP-01[0m 普通问答：不调工具，直接给最终回复
+  [[32mPASS[0m] [1mDF-LOOP-02[0m 单次工具调用：tool_start → tool_result → 回复
+  [[32mPASS[0m] [1mDF-LOOP-03[0m 多轮连续工具调用：上下文一轮不丢
+  [[32mPASS[0m] [1mDF-LOOP-04[0m 协议块被逐字分帧：残缺标记不能流给用户
+  [[32mPASS[0m] [1mDF-LOOP-05[0m ⚠️ 实测踩过：`<=tool_call>` 结尾少一个等号 → 必须纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-06[0m 模型改用 DSML 自家语法 → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-07[0m 模型把 JSON 包进 ``` 围栏 → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-08[0m 模型吐裸 JSON → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-09[0m 死活不按协议 → 明确报错并停下，不空转到 12 轮
+[2m
+  第 2/10 轮[0m
+  [[32mPASS[0m] [1mDF-LOOP-01[0m 普通问答：不调工具，直接给最终回复
+  [[32mPASS[0m] [1mDF-LOOP-02[0m 单次工具调用：tool_start → tool_result → 回复
+  [[32mPASS[0m] [1mDF-LOOP-03[0m 多轮连续工具调用：上下文一轮不丢
+  [[32mPASS[0m] [1mDF-LOOP-04[0m 协议块被逐字分帧：残缺标记不能流给用户
+  [[32mPASS[0m] [1mDF-LOOP-05[0m ⚠️ 实测踩过：`<=tool_call>` 结尾少一个等号 → 必须纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-06[0m 模型改用 DSML 自家语法 → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-07[0m 模型把 JSON 包进 ``` 围栏 → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-08[0m 模型吐裸 JSON → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-09[0m 死活不按协议 → 明确报错并停下，不空转到 12 轮
+[2m
+  第 3/10 轮[0m
+  [[32mPASS[0m] [1mDF-LOOP-01[0m 普通问答：不调工具，直接给最终回复
+  [[32mPASS[0m] [1mDF-LOOP-02[0m 单次工具调用：tool_start → tool_result → 回复
+  [[32mPASS[0m] [1mDF-LOOP-03[0m 多轮连续工具调用：上下文一轮不丢
+  [[32mPASS[0m] [1mDF-LOOP-04[0m 协议块被逐字分帧：残缺标记不能流给用户
+  [[32mPASS[0m] [1mDF-LOOP-05[0m ⚠️ 实测踩过：`<=tool_call>` 结尾少一个等号 → 必须纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-06[0m 模型改用 DSML 自家语法 → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-07[0m 模型把 JSON 包进 ``` 围栏 → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-08[0m 模型吐裸 JSON → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-09[0m 死活不按协议 → 明确报错并停下，不空转到 12 轮
+[2m
+  第 4/10 轮[0m
+  [[32mPASS[0m] [1mDF-LOOP-01[0m 普通问答：不调工具，直接给最终回复
+  [[32mPASS[0m] [1mDF-LOOP-02[0m 单次工具调用：tool_start → tool_result → 回复
+  [[32mPASS[0m] [1mDF-LOOP-03[0m 多轮连续工具调用：上下文一轮不丢
+  [[32mPASS[0m] [1mDF-LOOP-04[0m 协议块被逐字分帧：残缺标记不能流给用户
+  [[32mPASS[0m] [1mDF-LOOP-05[0m ⚠️ 实测踩过：`<=tool_call>` 结尾少一个等号 → 必须纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-06[0m 模型改用 DSML 自家语法 → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-07[0m 模型把 JSON 包进 ``` 围栏 → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-08[0m 模型吐裸 JSON → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-09[0m 死活不按协议 → 明确报错并停下，不空转到 12 轮
+[2m
+  第 5/10 轮[0m
+  [[32mPASS[0m] [1mDF-LOOP-01[0m 普通问答：不调工具，直接给最终回复
+  [[32mPASS[0m] [1mDF-LOOP-02[0m 单次工具调用：tool_start → tool_result → 回复
+  [[32mPASS[0m] [1mDF-LOOP-03[0m 多轮连续工具调用：上下文一轮不丢
+  [[32mPASS[0m] [1mDF-LOOP-04[0m 协议块被逐字分帧：残缺标记不能流给用户
+  [[32mPASS[0m] [1mDF-LOOP-05[0m ⚠️ 实测踩过：`<=tool_call>` 结尾少一个等号 → 必须纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-06[0m 模型改用 DSML 自家语法 → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-07[0m 模型把 JSON 包进 ``` 围栏 → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-08[0m 模型吐裸 JSON → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-09[0m 死活不按协议 → 明确报错并停下，不空转到 12 轮
+[2m
+  第 6/10 轮[0m
+  [[32mPASS[0m] [1mDF-LOOP-01[0m 普通问答：不调工具，直接给最终回复
+  [[32mPASS[0m] [1mDF-LOOP-02[0m 单次工具调用：tool_start → tool_result → 回复
+  [[32mPASS[0m] [1mDF-LOOP-03[0m 多轮连续工具调用：上下文一轮不丢
+  [[32mPASS[0m] [1mDF-LOOP-04[0m 协议块被逐字分帧：残缺标记不能流给用户
+  [[32mPASS[0m] [1mDF-LOOP-05[0m ⚠️ 实测踩过：`<=tool_call>` 结尾少一个等号 → 必须纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-06[0m 模型改用 DSML 自家语法 → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-07[0m 模型把 JSON 包进 ``` 围栏 → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-08[0m 模型吐裸 JSON → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-09[0m 死活不按协议 → 明确报错并停下，不空转到 12 轮
+[2m
+  第 7/10 轮[0m
+  [[32mPASS[0m] [1mDF-LOOP-01[0m 普通问答：不调工具，直接给最终回复
+  [[32mPASS[0m] [1mDF-LOOP-02[0m 单次工具调用：tool_start → tool_result → 回复
+  [[32mPASS[0m] [1mDF-LOOP-03[0m 多轮连续工具调用：上下文一轮不丢
+  [[32mPASS[0m] [1mDF-LOOP-04[0m 协议块被逐字分帧：残缺标记不能流给用户
+  [[32mPASS[0m] [1mDF-LOOP-05[0m ⚠️ 实测踩过：`<=tool_call>` 结尾少一个等号 → 必须纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-06[0m 模型改用 DSML 自家语法 → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-07[0m 模型把 JSON 包进 ``` 围栏 → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-08[0m 模型吐裸 JSON → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-09[0m 死活不按协议 → 明确报错并停下，不空转到 12 轮
+[2m
+  第 8/10 轮[0m
+  [[32mPASS[0m] [1mDF-LOOP-01[0m 普通问答：不调工具，直接给最终回复
+  [[32mPASS[0m] [1mDF-LOOP-02[0m 单次工具调用：tool_start → tool_result → 回复
+  [[32mPASS[0m] [1mDF-LOOP-03[0m 多轮连续工具调用：上下文一轮不丢
+  [[32mPASS[0m] [1mDF-LOOP-04[0m 协议块被逐字分帧：残缺标记不能流给用户
+  [[32mPASS[0m] [1mDF-LOOP-05[0m ⚠️ 实测踩过：`<=tool_call>` 结尾少一个等号 → 必须纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-06[0m 模型改用 DSML 自家语法 → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-07[0m 模型把 JSON 包进 ``` 围栏 → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-08[0m 模型吐裸 JSON → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-09[0m 死活不按协议 → 明确报错并停下，不空转到 12 轮
+[2m
+  第 9/10 轮[0m
+  [[32mPASS[0m] [1mDF-LOOP-01[0m 普通问答：不调工具，直接给最终回复
+  [[32mPASS[0m] [1mDF-LOOP-02[0m 单次工具调用：tool_start → tool_result → 回复
+  [[32mPASS[0m] [1mDF-LOOP-03[0m 多轮连续工具调用：上下文一轮不丢
+  [[32mPASS[0m] [1mDF-LOOP-04[0m 协议块被逐字分帧：残缺标记不能流给用户
+  [[32mPASS[0m] [1mDF-LOOP-05[0m ⚠️ 实测踩过：`<=tool_call>` 结尾少一个等号 → 必须纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-06[0m 模型改用 DSML 自家语法 → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-07[0m 模型把 JSON 包进 ``` 围栏 → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-08[0m 模型吐裸 JSON → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-09[0m 死活不按协议 → 明确报错并停下，不空转到 12 轮
+[2m
+  第 10/10 轮[0m
+  [[32mPASS[0m] [1mDF-LOOP-01[0m 普通问答：不调工具，直接给最终回复
+  [[32mPASS[0m] [1mDF-LOOP-02[0m 单次工具调用：tool_start → tool_result → 回复
+  [[32mPASS[0m] [1mDF-LOOP-03[0m 多轮连续工具调用：上下文一轮不丢
+  [[32mPASS[0m] [1mDF-LOOP-04[0m 协议块被逐字分帧：残缺标记不能流给用户
+  [[32mPASS[0m] [1mDF-LOOP-05[0m ⚠️ 实测踩过：`<=tool_call>` 结尾少一个等号 → 必须纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-06[0m 模型改用 DSML 自家语法 → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-07[0m 模型把 JSON 包进 ``` 围栏 → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-08[0m 模型吐裸 JSON → 纠正重试
+  [[32mPASS[0m] [1mDF-LOOP-09[0m 死活不按协议 → 明确报错并停下，不空转到 12 轮
+[1m
+=== 结果 ===[0m
+  [32m90 通过[0m / 0 失败  （共 90 条）
+[2m  总耗时 15.0s[0m
+[2m
+  没有偶发用例（每轮结果一致）[0m
+[2m
+  结果 JSON：D:\OpenStudy\apps\fastapi-v2\openstudy-vue3-ts\tests\check_agent_dsfree_result.json[0m
+[2m  过程日志 ：D:\OpenStudy\apps\fastapi-v2\openstudy-vue3-ts\tests\logs\dsfree-check-2026-09-20T11-54-41.log[0m
+[2m  ⚠️ 日志文件只保留最近 20 份，更早的已自动清掉[0m
+
+结束时间：2026/9/20 19:54:56  退出码：0  （0=全通过）

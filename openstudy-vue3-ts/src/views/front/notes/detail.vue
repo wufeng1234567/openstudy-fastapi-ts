@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="notes-detail-container">
     <div class="header">
       <div class="header-left">
@@ -8,12 +8,6 @@
       </div>
       <h2 class="header-title">{{ noteData.title || '笔记详情' }}</h2>
       <div class="header-right">
-        <el-button v-if="noteData.noteId" class="export-btn" size="small" @click="exportNote">
-          导出 MD
-        </el-button>
-        <el-button v-if="noteData.noteId" class="copy-btn" :icon="DocumentCopy" size="small" @click="copyNote">
-          复制全文
-        </el-button>
         <FavoriteButton type="note" :target-id="noteData.noteId" :initial-collected="noteData.isFavorited" size="small" plain />
         <el-button v-if="noteData.userId === userStore.id" class="edit-btn" :icon="Edit" size="small"
           @click="goEditor(noteData.noteId)">
@@ -41,16 +35,31 @@
               {{ tag }}
             </el-tag>
           </template>
-          <!-- 关联题库（黄色 chips，作者可取消关联） -->
-          <template v-if="linkedBanks.length > 0">
+          <!-- 关联题库：只露前几个，其余收进「+N」弹层 ——
+               关联十几个库时，平铺会把整行元信息挤爆 -->
+          <template v-if="canManageLinks && linkedBanks.length > 0">
             <span class="separator">·</span>
-            <el-tag v-for="bank in linkedBanks" :key="getBankId(bank)" size="small" class="bank-chip"
-              :closable="isAuthor" @close="unlinkBank(getBankId(bank))" @click="goToBank(getBankId(bank))">
+            <el-tag v-for="bank in visibleBanks" :key="getBankId(bank)" size="small" class="bank-chip"
+              :closable="canManageLinks" @close="unlinkBank(getBankId(bank))" @click="goToBank(getBankId(bank))">
               {{ getBankName(bank) }}
             </el-tag>
+            <el-popover v-if="hiddenBanks.length > 0" placement="bottom" :width="220" trigger="click">
+              <template #reference>
+                <el-tag size="small" class="bank-chip bank-chip-more">+{{ hiddenBanks.length }}</el-tag>
+              </template>
+              <div class="more-banks">
+                <div class="more-banks-title">其余 {{ hiddenBanks.length }} 个关联题库</div>
+                <div v-for="bank in hiddenBanks" :key="getBankId(bank)" class="more-bank-item"
+                  @click="goToBank(getBankId(bank))">
+                  <el-icon><Collection /></el-icon>
+                  <span class="more-bank-name">{{ getBankName(bank) }}</span>
+                  <el-icon class="more-bank-remove" @click.stop="unlinkBank(getBankId(bank))"><Close /></el-icon>
+                </div>
+              </div>
+            </el-popover>
           </template>
           <!-- 关联题目按钮 + popover -->
-          <el-popover v-if="linkedQuestions.length > 0" placement="bottom" :width="440" trigger="click">
+          <el-popover v-if="canManageLinks && linkedQuestions.length > 0" placement="bottom" :width="440" trigger="click">
             <template #reference>
               <el-button text size="small" class="linked-questions-btn">
                 Linked {{ linkedQuestions.length }} questions
@@ -63,13 +72,22 @@
                   <span class="q-type">{{ getQuestionTypeText(q.questionType) }}</span>
                   <span class="q-text">{{ truncate(getQuestionText(q), 60) }}</span>
                 </div>
-                <el-button v-if="isAuthor" text size="small" class="unlink-q-btn"
+                <el-button v-if="canManageLinks" text size="small" class="unlink-q-btn"
                   @click="unlinkQuestion(q.id || q.questionId)">
                   取消关联
                 </el-button>
               </div>
             </div>
           </el-popover>
+          <!-- 复制 / 导出：从顶栏移到此处（右对齐），顶栏留给收藏与编辑 -->
+          <div v-if="noteData.noteId" class="title-actions">
+            <el-tooltip content="复制全文" placement="top" :show-after="300">
+              <el-button class="icon-action-btn" :icon="DocumentCopy" circle @click="copyNote" />
+            </el-tooltip>
+            <el-tooltip content="导出 Markdown" placement="top" :show-after="300">
+              <el-button class="icon-action-btn" :icon="Download" circle @click="exportNote" />
+            </el-tooltip>
+          </div>
         </div>
         <div class="markdown-content">
           <div class="rendered-content">
@@ -107,7 +125,7 @@ defineOptions({ name: 'FrontNotesDetail' })
 import { ref, computed, onMounted, onActivated, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElIcon } from 'element-plus'
-import { ArrowLeft, ArrowRight, ArrowUp, Edit, Download, DocumentCopy } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, ArrowUp, Close, Collection, Edit, Download, DocumentCopy } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import { getPublicNote, listPublicNotes, recordClick } from '@/api/notes/public'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
@@ -148,6 +166,16 @@ const linkedQuestions = ref<any[]>([])
 const isAuthor = computed(() => {
   return noteData.value && noteData.value.userId && noteData.value.userId === userStore.id
 })
+
+// 谁能维护「笔记-题库/题目」关联：作者本人，或收藏了这篇笔记的用户。
+// 关联数据按 user_id 隔离（见后端 _deny_not_note_accessible），
+// 收藏者维护的是自己那一套，不会改动作者的关联。
+const canManageLinks = computed(() => isAuthor.value || !!noteData.value?.isFavorited)
+
+// 关联题库一多（十几个）就会把元信息行挤爆：默认只露出前几个，其余收进「+N」弹层
+const MAX_VISIBLE_BANKS = 3
+const visibleBanks = computed(() => linkedBanks.value.slice(0, MAX_VISIBLE_BANKS))
+const hiddenBanks = computed(() => linkedBanks.value.slice(MAX_VISIBLE_BANKS))
 
 // 截断文本
 const truncate = (text: string, len: number) => {
@@ -203,7 +231,7 @@ const loadLinkedQuestions = async (noteId: any) => {
 
 // 取消关联题库（仅作者）
 const unlinkBank = async (bankId: any) => {
-  if (!isAuthor.value || !noteData.value.noteId) return
+  if (!canManageLinks.value || !noteData.value.noteId) return
   try {
     const res = await removeNoteQuestionBank(noteData.value.noteId, bankId)
     if (res.code === 200) {
@@ -220,7 +248,7 @@ const unlinkBank = async (bankId: any) => {
 
 // 取消关联题目（仅作者）
 const unlinkQuestion = async (questionId: any) => {
-  if (!isAuthor.value || !noteData.value.noteId) return
+  if (!canManageLinks.value || !noteData.value.noteId) return
   try {
     const res = await deleteNoteQuestion(noteData.value.noteId, questionId)
     if (res.code === 200) {
@@ -335,11 +363,13 @@ const fetchNoteDetail = async () => {
       error.value = true
     } else {
       await fetchNavigationNotes(id)
-      // 加载关联题库与题目
-      await Promise.all([
-        loadLinkedBanks(id),
-        loadLinkedQuestions(id)
-      ])
+      // 关联题库 / 题目属于作者的私人整理信息，仅作者本人加载
+      if (canManageLinks.value) {
+        await Promise.all([
+          loadLinkedBanks(id),
+          loadLinkedQuestions(id)
+        ])
+      }
     }
   } catch (err) {
     console.error(err)
@@ -555,6 +585,34 @@ onActivated(async () => {
       font-size: 13px;
       color: #6b7280;
 
+      /* 复制 / 导出图标：推到元信息行最右侧，与左侧文字拉开距离 */
+      .title-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-left: auto;
+        flex-shrink: 0;
+      }
+
+      .icon-action-btn {
+        width: 28px;
+        height: 28px;
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        color: #9ca3af;
+        transition: all 0.2s ease;
+
+        &:hover {
+          color: #4b5563;
+          border-color: #d1d5db;
+          background: #f9fafb;
+        }
+
+        &:active {
+          transform: scale(0.96);
+        }
+      }
+
       .separator {
         color: #d1d5db;
       }
@@ -582,6 +640,58 @@ onActivated(async () => {
           background: #fef9c3;
           border-color: #ca8a04;
           color: #854d0e;
+        }
+      }
+
+      /* 「+N」折叠标签：与题库 chip 同色系，但用虚线和略深的字重暗示「这只是入口」 */
+      .bank-chip-more {
+        border-style: dashed;
+        font-weight: 600;
+      }
+
+      .more-banks {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .more-banks-title {
+        font-size: 12px;
+        color: #9ca3af;
+        padding: 2px 4px 6px;
+      }
+
+      .more-bank-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        border-radius: 6px;
+        font-size: 13px;
+        color: #4b5563;
+        cursor: pointer;
+        transition: background 0.15s ease;
+
+        &:hover {
+          background: #f3f4f6;
+        }
+      }
+
+      .more-bank-name {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .more-bank-remove {
+        flex-shrink: 0;
+        color: #c0c4cc;
+        font-size: 13px;
+
+        &:hover {
+          color: #f56c6c;
         }
       }
 

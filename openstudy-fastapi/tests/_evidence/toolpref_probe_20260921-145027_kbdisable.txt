@@ -1,0 +1,60 @@
+[32m2026-09-21 14:51:35.616[0m | [1mINFO    [0m | [36mapp.services.ai.dynamic_ai[0m:[36mregister_client[0m:[36m26[0m - [1mRegistered AI client: deepseek with models: ['deepseek-flash', 'deepseek-v4-pro', 'deepseek-v4-flash', 'deepseek-chat', 'deepseek-coder', 'deepseek-reasoner'][0m
+[32m2026-09-21 14:51:35.634[0m | [1mINFO    [0m | [36mapp.services.ai.dynamic_ai[0m:[36mregister_client[0m:[36m26[0m - [1mRegistered AI client: zhipu with models: ['glm-4', 'deepseek-chat', 'glm-4v', 'glm-3', 'embedding-3'][0m
+[32m2026-09-21 14:51:35.634[0m | [1mINFO    [0m | [36mapp.services.ai.dynamic_ai[0m:[36mregister_client[0m:[36m26[0m - [1mRegistered AI client: siliconflow with models: ['Qwen/Qwen2.5-7B-Instruct', 'Qwen/Qwen2.5-14B-Instruct', 'Qwen/Qwen2.5-32B-Instruct', 'Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-V2-Chat', 'THUDM/glm-4-9b-chat', 'BAAI/bge-m3', 'BAAI/bge-large-zh-v1.5', 'Qwen/Qwen3-Embedding-0.6B'][0m
+[32m2026-09-21 14:51:35.700[0m | [34m[1mDEBUG   [0m | [36mapp.services.ai.conversation_service[0m:[36m<module>[0m:[36m576[0m - [34m[1mconversation_service loaded (SQL backend)[0m
+[32m2026-09-21 14:51:37.298[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /rag/knowledgeBase status=200 duration=0.141s[0m
+[32m2026-09-21 14:51:37.330[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /rag/knowledgeBase status=200 duration=0.031s[0m
+[32m2026-09-21 14:51:37.365[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPUT /rag/knowledgeBase/479 status=200 duration=0.032s[0m
+[32m2026-09-21 14:51:37.375[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mGET /rag/knowledgeBase/479 status=200 duration=0.010s[0m
+[32m2026-09-21 14:51:37.396[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mGET /rag/knowledgeBase/list status=200 duration=0.016s[0m
+[32m2026-09-21 14:51:37.408[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mGET /rag/knowledgeBase/list status=200 duration=0.010s[0m
+[32m2026-09-21 14:51:37.413[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPUT /rag/knowledgeBase/479 status=422 duration=0.004s[0m
+[32m2026-09-21 14:51:37.428[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mGET /rag/knowledgeBase/479 status=200 duration=0.015s[0m
+[32m2026-09-21 14:51:37.492[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPUT /rag/knowledgeBase/480 status=200 duration=0.061s[0m
+[32m2026-09-21 14:51:37.507[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mGET /rag/knowledgeBase/480 status=200 duration=0.010s[0m
+[32m2026-09-21 14:51:37.534[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mGET /ai/agent/context status=200 duration=0.024s[0m
+[32m2026-09-21 14:51:37.607[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/agent/execute status=200 duration=0.052s[0m
+[32m2026-09-21 14:51:37.653[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPUT /rag/knowledgeBase/479 status=200 duration=0.033s[0m
+[32m2026-09-21 14:51:37.665[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mGET /rag/knowledgeBase/479 status=200 duration=0.012s[0m
+[32m2026-09-21 14:51:37.680[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mGET /ai/agent/context status=200 duration=0.015s[0m
+[32m2026-09-21 14:51:37.751[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPUT /rag/knowledgeBase/479 status=200 duration=0.060s[0m
+[32m2026-09-21 14:51:37.781[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPUT /rag/knowledgeBase/480 status=200 duration=0.030s[0m
+[32m2026-09-21 14:51:37.811[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/agent/execute status=200 duration=0.020s[0m
+[md5] rag_write_service.py 跑前 = 1d617eb33db830475c2902ce56f8192c
+  [PASS] M0 建两个空知识库作夹具（不传文档 → 零 embedding） -> kbId=479/480 创建回显disabled=0
+  [PASS] M1 PUT {disabled:1} 后**库里真的变了**（重读详情 + 重读列表） -> status=200 code=200 回显=1 详情=1 列表=1 name保持=True
+  [PASS] M2 管理列表仍含被屏蔽的库，且**每一行**都带整数 0/1 的 disabled -> 含M_A=True 行数=2 非法行=无
+  [PASS] M3 字段名写错（blocked）→ 422 且库没被动；正常改名仍 200 -> 写错status=422 复查M_A disabled=1；改名status=200 name='__e2e_agent__M组对照1789973497123改' disabled=0
+  [PASS] M4 L1 运行时背景下发给模型时不含被屏蔽的库（名字/kbId/计数三路） -> 含M_A名=False 含M_A的kbId=False 提示词库数=1 启用=1 未删=2 对照M_B出现=True
+  [PASS] M5 knowledge_search.list 不含被屏蔽的库，且回灌载荷里没有 disabled 键 -> success=True 条数=1 含M_A=False 含M_B=True 带disabled键=0
+  [PASS] M6 resolve_knowledge_bases：两个分支都排除被屏蔽的库，且静默丢弃不抛错 -> 抛错=None 默认分支含M_A=False 含M_B=True 显式分支=[480]
+  [PASS] M7 PUT {disabled:0} 真的取消屏蔽（0 不能被当成「没传」） -> status=200 回显=0 详情=0 context含M_A=True 提示词库数=2/2 显式解析=[479]
+  [PASS] M8 全部被屏蔽时的话术不再说「你还没有知识库」（D8） -> count=0 message='你名下有 2 个知识库，但都被屏蔽了，暂时不能检索'
+  [PASS] M9 读侧永远下发整数 0/1（null / 空串 / 字符串 / 越界值都漏不出去） -> 取值→下发：[('None', 0), ("''", 0), ('0', 0), ('1', 1), ('2', 1), ("'0'", 0), ("'1'", 1)]
+  [PASS] M10 只删自己造的：本组夹具残留 0，真实用户（无标记）的库一行没少/没被改 -> 残留=0 无标记行 3→3 变动=无
+
+---- M 组结果 ----
+  [通过] M0 建两个空知识库作夹具（不传文档 → 零 embedding）
+        实际: kbId=479/480 创建回显disabled=0
+  [通过] M1 PUT {disabled:1} 后**库里真的变了**（重读详情 + 重读列表）
+        实际: status=200 code=200 回显=1 详情=1 列表=1 name保持=True
+  [通过] M2 管理列表仍含被屏蔽的库，且**每一行**都带整数 0/1 的 disabled
+        实际: 含M_A=True 行数=2 非法行=无
+  [通过] M3 字段名写错（blocked）→ 422 且库没被动；正常改名仍 200
+        实际: 写错status=422 复查M_A disabled=1；改名status=200 name='__e2e_agent__M组对照1789973497123改' disabled=0
+  [通过] M4 L1 运行时背景下发给模型时不含被屏蔽的库（名字/kbId/计数三路）
+        实际: 含M_A名=False 含M_A的kbId=False 提示词库数=1 启用=1 未删=2 对照M_B出现=True
+  [通过] M5 knowledge_search.list 不含被屏蔽的库，且回灌载荷里没有 disabled 键
+        实际: success=True 条数=1 含M_A=False 含M_B=True 带disabled键=0
+  [通过] M6 resolve_knowledge_bases：两个分支都排除被屏蔽的库，且静默丢弃不抛错
+        实际: 抛错=None 默认分支含M_A=False 含M_B=True 显式分支=[480]
+  [通过] M7 PUT {disabled:0} 真的取消屏蔽（0 不能被当成「没传」）
+        实际: status=200 回显=0 详情=0 context含M_A=True 提示词库数=2/2 显式解析=[479]
+  [通过] M8 全部被屏蔽时的话术不再说「你还没有知识库」（D8）
+        实际: count=0 message='你名下有 2 个知识库，但都被屏蔽了，暂时不能检索'
+  [通过] M9 读侧永远下发整数 0/1（null / 空串 / 字符串 / 越界值都漏不出去）
+        实际: 取值→下发：[('None', 0), ("''", 0), ('0', 0), ('1', 1), ('2', 1), ("'0'", 0), ("'1'", 1)]
+  [通过] M10 只删自己造的：本组夹具残留 0，真实用户（无标记）的库一行没少/没被改
+        实际: 残留=0 无标记行 3→3 变动=无
+
+M 组：11/11 通过；红的 = 无

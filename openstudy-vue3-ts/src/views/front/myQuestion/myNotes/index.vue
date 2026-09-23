@@ -1,7 +1,9 @@
 <template>
-  <div class="my-notes-page">
+  <div ref="pageRef" class="my-notes-page">
+    <div ref="searchAreaRef" class="search-area-wrapper">
     <PageHeader title="我的笔记" :total="total" unit="篇" itemName="笔记" placeholder="搜索笔记..." v-model="searchKeyword"
-      @search="handleSearch" @refresh="handleRefresh">
+      show-filter :filter-open="filterOpen" :filter-active="filterActive"
+      @search="handleSearch" @refresh="handleRefresh" @toggle-filter="toggleFilterSidebar">
       <template #extra>
         <el-button v-if="notesList.length > 0" class="delete-all-btn" @click="handleDeleteAll">
           <el-icon>
@@ -17,6 +19,24 @@
         </el-button>
       </template>
     </PageHeader>
+    </div>
+
+    <!-- 筛选下拉面板（触发按钮已内嵌到搜索框最左侧） -->
+    <CommonFilterSidebar
+      ref="filterSidebarRef"
+      title="笔记筛选"
+      hide-trigger
+      :filter-groups="filterGroups"
+      :filter-form="filterForm"
+      :default-filter="defaultFilter"
+      :default-collapsed="true"
+      :style="{ '--filter-top': searchAreaHeight + 'px', '--filter-left': '16px' }"
+      @filter-change="handleFilterChange"
+      @reset-filters="handleResetFilters"
+      @collapse-change="handleFilterCollapseChange"
+      @active-change="handleFilterActiveChange"
+    />
+
 
     <div v-if="currentBankName" class="bank-filter-tag">
       <el-tag type="warning" closable @close="clearBankFilter">
@@ -102,11 +122,12 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'FrontMyNotes' })
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Edit, Calendar, Document, Delete } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader/index.vue'
+import CommonFilterSidebar from '@/components/CommonFilterSidebar/index.vue'
 import { listNote } from '@/api/notes/note'
 import { delNote, batchDelNote } from '@/api/notes/note'
 import { getAllNoteCategory } from '@/api/noteCategory/noteCategory'
@@ -143,56 +164,115 @@ const questionBankList = ref<any[]>([])
 const selectedCategoryId = ref<number | string | null>(null)
 const selectedBankId = ref<number | string | null>(null)
 const searchKeyword = ref('')
+
+/* ===== 筛选（内嵌在搜索框左侧的「筛选」按钮 → 下方下拉面板） ===== */
+const pageRef = ref<HTMLElement | null>(null)
+const searchAreaRef = ref<HTMLElement | null>(null)
+const searchAreaHeight = ref(0)
+const filterSidebarRef = ref<any>(null)
+/* filterOpen = 面板是否展开（按钮箭头翻转）；filterActive = 是否有生效条件（按钮小圆点） */
+const filterOpen = ref(false)
+const filterActive = ref(false)
+
+type NoteFilterForm = {
+  isPublic: number[]
+  hasTags: number[]
+  createRange: string[] | null
+}
+
+/* 空条件常量：defaultFilter（判断「是否生效」的基准）与重置后的初值共用同一份形状 */
+const emptyFilter = (): NoteFilterForm => ({ isPublic: [], hasTags: [], createRange: null })
+const defaultFilter = emptyFilter()
+const filterForm = ref<NoteFilterForm>(emptyFilter())
+
+const filterGroups = computed(() => [
+  {
+    key: 'isPublic',
+    label: '可见性',
+    type: 'checkbox',
+    options: [
+      { value: 1, label: '公开' },
+      { value: 0, label: '私有' }
+    ]
+  },
+  {
+    key: 'hasTags',
+    label: '标签',
+    type: 'checkbox',
+    options: [
+      { value: 1, label: '有标签' },
+      { value: 0, label: '无标签' }
+    ]
+  },
+  {
+    key: 'createRange',
+    label: '创建时间',
+    type: 'dateRange'
+  }
+])
 const pageNum = ref(1)
 const pageSize = ref(12)
 const total = ref(0)
 const currentBankName = ref('')
 const bankFilteredNoteIds = ref<(number | string)[]>([])
 
+/**
+ * 拉取笔记列表。
+ *
+ * 筛选分两类：可见性 / 关键词后端支持（isPublic、title），走服务端分页；
+ * 标签有无 / 创建时间后端 list 无对应参数，只能取回后本地过滤 ——
+ * 这类条件生效时改为整包取回 + 前端切片分页，否则第 2 页起会因 pageSize 截断而漏数据。
+ */
+const hasLocalOnlyFilter = computed(() =>
+  (filterForm.value.hasTags?.length || 0) > 0 || filterForm.value.createRange?.length === 2
+)
+
+/** 本地条件（标签有无 / 创建时间）：后端无对应查询参数 */
+const matchLocalFilter = (n: NoteItem) => {
+  const tags = filterForm.value.hasTags || []
+  if (tags.length > 0) {
+    const has = !!String(n.tags || '').trim()
+    // 勾了「有标签」要求有、勾了「无标签」要求无；两个都勾 = 不限制
+    if (!tags.some((t: number) => (t === 1 ? has : !has))) return false
+  }
+  const range = filterForm.value.createRange
+  if (range && range.length === 2) {
+    const startTs = new Date(range[0] + ' 00:00:00').getTime()
+    const endTs = new Date(range[1] + ' 23:59:59').getTime()
+    const ts = n.createTime ? new Date(n.createTime).getTime() : 0
+    if (!ts || ts < startTs || ts > endTs) return false
+  }
+  return true
+}
+
 const fetchNotes = async () => {
   loading.value = true
   try {
-    if (selectedBankId.value && bankFilteredNoteIds.value.length > 0) {
-      const query: any = {
-        userId: userStore.id,
-        pageNum: 1,
-        pageSize: 1000
-      }
-
-      if (selectedCategoryId.value) {
-        query.categoryId = selectedCategoryId.value
-      }
-
-      if (searchKeyword.value.trim()) {
-        query.title = searchKeyword.value.trim()
-      }
-
-      const res: any = await listNote(query)
-      if (res.code === 200) {
-        let notes: NoteItem[] = res.rows || []
+    // 需本地过滤（题库交集 / 标签 / 时间）时整包取回，再在前端切片分页
+    const fetchAll = !!selectedBankId.value || hasLocalOnlyFilter.value
+    const query: any = {
+      userId: userStore.id,
+      pageNum: fetchAll ? 1 : pageNum.value,
+      pageSize: fetchAll ? 1000 : pageSize.value
+    }
+    if (selectedCategoryId.value) query.categoryId = selectedCategoryId.value
+    if (searchKeyword.value.trim()) query.title = searchKeyword.value.trim()
+    // 只勾一个可见性才交给后端；两个都勾 = 不限制，让本地判断
+    if (filterForm.value.isPublic?.length === 1) query.isPublic = filterForm.value.isPublic[0]
+    const res: any = await listNote(query)
+    if (res.code === 200) {
+      let notes: NoteItem[] = res.rows || []
+      const serverTotal = res.total || 0
+      if (selectedBankId.value) {
         notes = notes.filter((n: NoteItem) => bankFilteredNoteIds.value.includes(n.id))
+      }
+      notes = notes.filter(matchLocalFilter)
+      if (fetchAll) {
         total.value = notes.length
-        notesList.value = notes
-      }
-    } else {
-      const query: any = {
-        userId: userStore.id,
-        pageNum: pageNum.value,
-        pageSize: pageSize.value
-      }
-
-      if (selectedCategoryId.value) {
-        query.categoryId = selectedCategoryId.value
-      }
-
-      if (searchKeyword.value.trim()) {
-        query.title = searchKeyword.value.trim()
-      }
-
-      const res: any = await listNote(query)
-      if (res.code === 200) {
-        let notes: NoteItem[] = res.rows || []
-        total.value = res.total || 0
+        const start = (pageNum.value - 1) * pageSize.value
+        notesList.value = notes.slice(start, start + pageSize.value)
+      } else {
+        total.value = serverTotal
         notesList.value = notes
       }
     }
@@ -202,7 +282,6 @@ const fetchNotes = async () => {
     loading.value = false
   }
 }
-
 const fetchCategories = async () => {
   try {
     const res: any = await getAllNoteCategory({ userId: userStore.id })
@@ -283,7 +362,44 @@ const handleRefresh = () => {
   currentBankName.value = ''
   bankFilteredNoteIds.value = []
   pageNum.value = 1
+  filterForm.value = emptyFilter()
   fetchNotes()
+}
+
+/** 点击搜索框里的「筛选」：切换面板展开/收起 */
+const toggleFilterSidebar = () => {
+  filterSidebarRef.value?.toggleCollapse?.()
+}
+
+/** 面板展开态同步到按钮（事件值 = 是否已收起） */
+const handleFilterCollapseChange = (collapsed: boolean) => {
+  filterOpen.value = !collapsed
+}
+
+/** 是否已有生效条件（按钮小圆点），由组件内部与 defaultFilter 比对后抛出 */
+const handleFilterActiveChange = (active: boolean) => {
+  filterActive.value = !!active
+}
+
+const handleFilterChange = (newFilter: any) => {
+  filterForm.value = { ...newFilter }
+  pageNum.value = 1
+  fetchNotes()
+}
+
+
+/* 「清空筛选」：组件会紧接着再 emit 一次 filter-change，所以这里只重置本地状态，
+   请求交给 handleFilterChange 统一发，避免一次点击打两次接口 */
+const handleResetFilters = () => {
+  filterForm.value = emptyFilter()
+  pageNum.value = 1
+}
+
+/** 面板按搜索区高度定位（--filter-top），窗口尺寸变化要重算 */
+const updateSearchAreaHeight = () => {
+  nextTick(() => {
+    if (searchAreaRef.value) searchAreaHeight.value = searchAreaRef.value.offsetHeight
+  })
 }
 
 const handlePageChange = () => {
@@ -374,6 +490,9 @@ onMounted(async () => {
     await fetchBankName(route.query.bankId as string)
   }
   fetchNotes()
+  // 量一次搜索区高度：筛选面板靠它定位到搜索框正下方
+  updateSearchAreaHeight()
+  window.addEventListener('resize', updateSearchAreaHeight)
 })
 
 watch(() => route.query.bankId, async (newBankId) => {
@@ -388,10 +507,26 @@ watch(() => route.query.bankId, async (newBankId) => {
   }
   fetchNotes()
 })
+
+onUnmounted(() => {
+  window.removeEventListener('resize', updateSearchAreaHeight)
+})
 </script>
 
 <style scoped lang="scss">
 .my-notes-page {
+  position: relative;
+
+  /* 筛选面板：由 --filter-top（搜索区高度）定位到搜索框正下方 */
+  :deep(.filter-sidebar.embedded) {
+    z-index: 60;
+  }
+
+  /* 搜索区：筛选面板的定位锚点 */
+  .search-area-wrapper {
+    position: relative;
+  }
+
   .bank-filter-tag {
     margin-bottom: 16px;
   }

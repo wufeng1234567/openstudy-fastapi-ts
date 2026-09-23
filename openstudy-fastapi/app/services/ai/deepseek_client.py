@@ -5,12 +5,37 @@ DeepSeek 客户端（使用 LangChain）
 from typing import List, AsyncIterator
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-from app.services.ai.base_client import BaseAiClient, ChatMessage, ChatResponse, TextBlock, ImageBlock
+from app.services.ai.base_client import (
+    BaseAiClient,
+    ChatMessage,
+    ChatResponse,
+    ImageBlock,
+    TextBlock,
+    to_lc_content,
+    to_lc_text,
+)
 from app.config import settings
 
 
 class DeepSeekClient(BaseAiClient):
     """DeepSeek 客户端"""
+
+    # 官方 API 模型名映射。
+    #
+    # ⚠️ 官方当前只提供两个模型：**`deepseek-flash`**（DeepSeek-V4.1-Flash）与 `deepseek-v4-pro`。
+    #    新配置一律用 `deepseek-flash`。
+    #    旧名 `deepseek-v4-flash` / `deepseek-v4-flash-vision-exp` 仍可调用，
+    #    但**对应模型已下线** —— 请求由 DeepSeek-V4.1-Flash 提供服务、按 Flash 价格计费。
+    #    `deepseek-chat` / `deepseek-coder` / `deepseek-reasoner` 也不再作为独立模型。
+    #
+    # 这里做别名映射，保证前端 / 数据库里遗留的旧模型名仍然可用。
+    MODEL_ALIASES = {
+        # 已下线模型的遗留名 —— 统一收敛到官方名，别让废弃名继续发到上游
+        "deepseek-v4-flash": "deepseek-flash",
+        "deepseek-chat": "deepseek-flash",
+        "deepseek-coder": "deepseek-flash",
+        "deepseek-reasoner": "deepseek-flash",
+    }
 
     def __init__(self, api_key: str = None):
         self._api_key = api_key or settings.DEEPSEEK_API_KEY
@@ -21,12 +46,32 @@ class DeepSeekClient(BaseAiClient):
 
     @property
     def supported_models(self) -> List[str]:
-        return ["deepseek-chat", "deepseek-coder", "deepseek-reasoner"]
+        # ⚠️ 顺序有讲究：**官方名排最前**，后面是**兼容用的遗留别名**。
+        #
+        # `base_client.supports_model()` 用的是 `model.startswith(m)`，
+        # 所以 `deepseek-flash` 必须出现在这个列表里，否则
+        # `dynamic_ai.get_client_for_model("deepseek-flash")` 会匹配不到任何 provider，
+        # 只能退化到「用默认 provider」的兜底分支（db_config 的回落路径正好传的就是
+        # `deepseek-flash`）。新增官方名时记得同步这里。
+        return [
+            # ---- 官方名 ----
+            "deepseek-flash",
+            "deepseek-v4-pro",
+            # ---- 以下均为已下线模型的遗留名，仅为让库里的旧配置仍能解析 ----
+            "deepseek-v4-flash",
+            "deepseek-chat",
+            "deepseek-coder",
+            "deepseek-reasoner",
+        ]
+
+    def _resolve_model(self, model: str) -> str:
+        """把（可能已下线的）模型名解析为当前可用的官方模型 ID"""
+        return self.MODEL_ALIASES.get(model, model)
 
     def _get_llm(self, model: str, temperature: float, max_tokens: int) -> ChatOpenAI:
         """获取 LangChain LLM 实例"""
         return ChatOpenAI(
-            model=model,
+            model=self._resolve_model(model),
             temperature=temperature,
             max_tokens=max_tokens,
             openai_api_key=self._api_key,
@@ -34,19 +79,20 @@ class DeepSeekClient(BaseAiClient):
         )
 
     def _convert_messages(self, messages: List[ChatMessage]) -> list:
-        """转换消息格式（支持文本和图片混合内容）"""
+        """转换消息格式（支持文本和图片混合内容）
+
+        ⚠️ content 为多模态块列表时必须 `to_lc_content()` 转 dict：
+        TextBlock / ImageBlock 是 pydantic 模型，LangChain 只接受
+        `list[str | dict]`，直接塞会抛 validation errors（发图即失败）。
+        """
         lc_messages = []
         for msg in messages:
             if msg.role == "system":
-                lc_messages.append(SystemMessage(content=msg.content if isinstance(msg.content, str) else "\n".join(b.text for b in msg.content if isinstance(b, TextBlock))))
+                lc_messages.append(SystemMessage(content=to_lc_text(msg.content)))
             elif msg.role == "user":
-                # 支持多模态内容（文本+图片）
-                if isinstance(msg.content, list):
-                    lc_messages.append(HumanMessage(content=msg.content))
-                else:
-                    lc_messages.append(HumanMessage(content=msg.content))
+                lc_messages.append(HumanMessage(content=to_lc_content(msg.content)))
             elif msg.role == "assistant":
-                lc_messages.append(AIMessage(content=msg.content if isinstance(msg.content, str) else ""))
+                lc_messages.append(AIMessage(content=to_lc_text(msg.content)))
         return lc_messages
 
     async def chat(
@@ -135,7 +181,7 @@ class DeepSeekClient(BaseAiClient):
             user_content = "\n".join(user_parts)
 
         payload = {
-            "model": model,
+            "model": self._resolve_model(model),
             "stream": True,
             "messages": [
                 {"role": "system", "content": "\n".join(system_parts)},

@@ -1,0 +1,53 @@
+async def _send_comment_notification(db: AsyncSession, comment, note, user_id: int):
+    """发送评论通知：回复 / 一级评论 + 正文里 @ 到的人
+
+    ⚠️ `mention` 此前只出现在 `notices.USER_NOTICE_TYPES` 白名单和前端标签里，
+        **后端从未产生过** —— 用户被 @ 了收不到任何提醒，「回复与@」页永远缺这一类。
+        这里补上：与主通知分开发，因为被 @ 的人通常不是被回复的那个人。
+
+    ⚠️ 去重是必须的：一条评论可能既回复了 A、又 @ 了 A，
+        不去重的话 A 会收到两条指向同一条评论的通知。
+    """
+    from app.models.notice import SysNotice
+    import json
+    import re
+
+    content = comment.content or ""
+    notice_content = content[:50] + "..." if len(content) > 50 else content
+
+    # 本条评论已经通知过谁（起始含自己 —— 给自己发通知没有意义）
+    notified = {int(user_id or 0)}
+
+    def _build(target_user_id, ntype: str, title: str) -> None:
+        target = int(target_user_id or 0)
+        if not target or target in notified:
+            return
+        notified.add(target)
+        db.add(SysNotice(
+            notice_title=title,
+            notice_content=notice_content,
+            notice_type="1",
+            status="0",
+            create_by="system",
+            remark=json.dumps({
+                "type": ntype,
+                "fromUserId": user_id,
+                "toUserId": target,
+                "noteId": comment.note_id,
+                "commentId": comment.id,
+            }, ensure_ascii=False),
+        ))
+
+    # ── 1) 主通知：回复 → 父评论作者；一级评论 → 笔记作者 ──
+    if comment.parent_id:
+        parent = (await db.execute(
+            select(NoteComment).where(NoteComment.id == comment.parent_id)
+        )).scalar_one_or_none()
+        if parent:
+            _build(parent.user_id, "reply", "有人回复了你的评论")
+    elif note:
+        _build(note.user_id, "comment", "有人评论了你的笔记")
+
+    # ── 2) @ 通知：正文里的 @{userId}（格式见 CommentInput.handleAtSelect） ──
+    for uid in dict.fromkeys(re.findall(r"@\{(\d+)\}", content)):
+        _build(uid, "mention", "有人在评论中 @ 了你")

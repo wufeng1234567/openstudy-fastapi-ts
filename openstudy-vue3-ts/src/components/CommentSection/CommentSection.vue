@@ -43,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onDeactivated, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { listComments, createComment, getCommentThread } from '@/api/comment'
@@ -76,6 +76,24 @@ const previewThreadLoading = ref(false)
 const previewThreadComment = ref(null)
 const threadReplyTarget = ref(null)
 const threadInputRef = ref(null)
+
+/**
+ * keep-alive 会把本组件的弹窗状态一起缓存下来：离开页面 / 换一篇笔记时若不主动关，
+ * 下次再进「学习分享」的笔记页，上一次通知跳转打开的「查看对话」会原样重现。
+ */
+const closeOverlays = () => {
+  showModal.value = false
+  previewThreadVisible.value = false
+  threadReplyTarget.value = null
+  focusLocked.value = false
+}
+
+// ⚠️ 这里**不要**去 router.replace 摘掉 ?focusComment=。
+//    父级 views/front/notes/index.vue:10 是用 :key="route.fullPath" 渲染本页的，
+//    改 query 就等于换 key → detail.vue + 本组件当场 UNMOUNT + MOUNT（已用真实 router
+//    实测：after replace: ["Detail UNMOUNT","Detail MOUNT"]），
+//    而 handleFocusFromRoute 正处在 await 中间 → 弹窗会随实例一起被拆掉，点通知将不再弹。
+//    一次性参数的重放问题在源头解决：lastVisited 不再记录 focusComment。
 
 const onReplyFromPreview = async (comment) => {
   if (!(await ensureLogin('回复评论'))) return
@@ -147,7 +165,7 @@ const fetchPreview = async () => {
   }
 }
 
-watch(() => props.noteId, () => { fetchPreview() }, { immediate: true })
+watch(() => props.noteId, () => { closeOverlays(); fetchPreview() }, { immediate: true })
 
 onMounted(() => { fetchPreview() })
 
@@ -210,6 +228,9 @@ onMounted(() => {
     handleFocusFromRoute(focusId)
   }
 })
+
+// 被 keep-alive 缓存：离开页面时收掉所有弹窗，回来时不该看见上一次的弹窗
+onDeactivated(() => { closeOverlays() })
 
 // 监听路由变化（非首次加载）
 watch(() => route.query.focusComment, (newVal, oldVal) => {

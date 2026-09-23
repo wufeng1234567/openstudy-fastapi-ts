@@ -5,7 +5,13 @@
 from typing import List, AsyncIterator
 from langchain_community.chat_models import ChatZhipuAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-from app.services.ai.base_client import BaseAiClient, ChatMessage, ChatResponse
+from app.services.ai.base_client import (
+    BaseAiClient,
+    ChatMessage,
+    ChatResponse,
+    to_lc_content,
+    to_lc_text,
+)
 from app.config import settings
 
 
@@ -33,15 +39,19 @@ class ZhipuAiClient(BaseAiClient):
         )
 
     def _convert_messages(self, messages: List[ChatMessage]) -> list:
-        """转换消息格式"""
+        """转换消息格式
+
+        多模态块必须走 `to_lc_content()`（pydantic 模型 → dict），
+        否则 HumanMessage 构造时会被 pydantic 打回。
+        """
         lc_messages = []
         for msg in messages:
             if msg.role == "system":
-                lc_messages.append(SystemMessage(content=msg.content))
+                lc_messages.append(SystemMessage(content=to_lc_text(msg.content)))
             elif msg.role == "user":
-                lc_messages.append(HumanMessage(content=msg.content))
+                lc_messages.append(HumanMessage(content=to_lc_content(msg.content)))
             elif msg.role == "assistant":
-                lc_messages.append(AIMessage(content=msg.content))
+                lc_messages.append(AIMessage(content=to_lc_text(msg.content)))
         return lc_messages
 
     async def chat(

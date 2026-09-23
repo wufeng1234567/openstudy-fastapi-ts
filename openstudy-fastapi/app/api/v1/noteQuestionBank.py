@@ -110,7 +110,11 @@ async def list_banks_by_note(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """按笔记查关联题库(JOIN question_bank，返回题库详情列表)"""
+    """按笔记查关联题库(JOIN question_bank，返回题库详情列表；仅笔记作者可见)"""
+    # 归属校验：关联题库属于作者的私人整理信息，不对他人暴露（水平越权防护）
+    denied = await _deny_not_note_owner(db, note_id, current_user.get("user_id"))
+    if denied:
+        return denied
     link_query = select(NoteQuestionBank.question_bank_id).where(
         NoteQuestionBank.note_id == note_id,
     )

@@ -1,6 +1,6 @@
-﻿<template>
+<template>
   <div class="note-question-selector">
-    <label class="sidebar-label">关联题目</label>
+    <label v-if="showLabel" class="sidebar-label">关联题目</label>
 
     <!-- 已关联题目列表 -->
     <div v-if="linkedQuestions.length > 0" class="linked-questions">
@@ -71,7 +71,9 @@ import useUserStore from '@/store/modules/user'
 
 const props = defineProps({
   noteId: { type: [Number, String], default: null },
-  bankList: { type: Array as () => any[], default: () => [] }
+  bankList: { type: Array as () => any[], default: () => [] },
+  /* 是否渲染自带标题：宿主已提供同名 label 时置 false，避免出现两个「关联题目」 */
+  showLabel: { type: Boolean, default: true }
 })
 
 const emit = defineEmits(['change'])
@@ -208,7 +210,7 @@ watch(showDialog, (v) => {
   if (v) {
     // 默认选中第一个题库
     if (!selectedBankId.value && props.bankList.length > 0) {
-      selectedBankId.value = props.bankList[0].id
+      selectedBankId.value = props.bankList[0].bankId ?? props.bankList[0].id
     }
     page.value = 1
     loadQuestions()

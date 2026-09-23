@@ -26,11 +26,14 @@ async def convert_document(
     current_user: dict = Depends(get_current_user),
 ):
     """转换文档格式(提取为纯文本)"""
+    import asyncio
+
     from app.services.file_parser import parse_file
 
     content = await file.read()
     try:
-        parsed = parse_file(file.filename, content)
+        # ⚠️ 丢到线程池：解析是同步的，老版 .doc 还会借 Word COM 转换，别冻住事件循环
+        parsed = await asyncio.to_thread(parse_file, file.filename, content)
         return success({
             "textContent": parsed.get("textContent", ""),
             "format": target_format,

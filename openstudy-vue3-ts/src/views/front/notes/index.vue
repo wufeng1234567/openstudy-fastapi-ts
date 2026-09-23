@@ -53,8 +53,15 @@ function updateCachedPath() {
   if (path.startsWith('/front/notes/')) {
     const subPath = path.replace('/front/notes/', '')
     if (subPath) {
-      const queryStr = route.fullPath.includes('?') ? route.fullPath.substring(route.fullPath.indexOf('?')) : ''
-      cacheStore.setLastVisited('notes', subPath + queryStr)
+      // ⚠️ focusComment 是「一次性」跳转意图（私信 / 通知里点某条回复 → 跳到笔记并定位它）。
+      //    它一旦进了 lastVisitedMap 就会被持久化到 localStorage，之后每次点顶部「学习分享」
+      //    都原样重放那条 URL → 已经关掉的「查看对话」对话框又自己弹出来。
+      //    位置记忆只记位置、不记命令；`editor?id=` 这种确实要记住的参数不受影响。
+      const raw = route.fullPath.includes('?') ? route.fullPath.slice(route.fullPath.indexOf('?')) : ''
+      const params = new URLSearchParams(raw)
+      params.delete('focusComment')
+      const queryStr = params.toString()
+      cacheStore.setLastVisited('notes', subPath + (queryStr ? '?' + queryStr : ''))
     }
   }
 }

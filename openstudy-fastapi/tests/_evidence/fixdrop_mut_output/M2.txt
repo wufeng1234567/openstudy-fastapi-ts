@@ -1,0 +1,87 @@
+[32m2026-09-23 10:54:33.736[0m | [1mINFO    [0m | [36mapp.services.ai.dynamic_ai[0m:[36mregister_client[0m:[36m26[0m - [1mRegistered AI client: deepseek with models: ['deepseek-flash', 'deepseek-v4-pro', 'deepseek-v4-flash', 'deepseek-chat', 'deepseek-coder', 'deepseek-reasoner'][0m
+[32m2026-09-23 10:54:33.749[0m | [1mINFO    [0m | [36mapp.services.ai.dynamic_ai[0m:[36mregister_client[0m:[36m26[0m - [1mRegistered AI client: zhipu with models: ['glm-4', 'deepseek-chat', 'glm-4v', 'glm-3', 'embedding-3'][0m
+[32m2026-09-23 10:54:33.750[0m | [1mINFO    [0m | [36mapp.services.ai.dynamic_ai[0m:[36mregister_client[0m:[36m26[0m - [1mRegistered AI client: siliconflow with models: ['Qwen/Qwen2.5-7B-Instruct', 'Qwen/Qwen2.5-14B-Instruct', 'Qwen/Qwen2.5-32B-Instruct', 'Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-V2-Chat', 'THUDM/glm-4-9b-chat', 'BAAI/bge-m3', 'BAAI/bge-large-zh-v1.5', 'Qwen/Qwen3-Embedding-0.6B'][0m
+[32m2026-09-23 10:54:33.793[0m | [34m[1mDEBUG   [0m | [36mapp.services.ai.conversation_service[0m:[36m<module>[0m:[36m766[0m - [34m[1mconversation_service loaded (SQL backend)[0m
+[32m2026-09-23 10:54:35.535[0m | [1mINFO    [0m | [36mapp.database[0m:[36minit_db[0m:[36m311[0m - [1mDatabase tables created successfully[0m
+[32m2026-09-23 10:54:35.797[0m | [1mINFO    [0m | [36mapp.services.ai.conversation_service[0m:[36msave_turn[0m:[36m423[0m - [1msave_turn session=__probe_drop_turn__sess user=1 user_len=22 atts=0 assistant_len=22[0m
+[32m2026-09-23 10:54:35.866[0m | [1mINFO    [0m | [36mapp.services.ai.conversation_service[0m:[36msave_turn[0m:[36m423[0m - [1msave_turn session=__probe_drop_turn__sess_w user=1 user_len=21 atts=0 assistant_len=21[0m
+[32m2026-09-23 10:54:35.874[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/conversation/__probe_drop_turn__sess_w/messages status=200 duration=0.033s[0m
+[32m2026-09-23 10:54:35.900[0m | [1mINFO    [0m | [36mapp.services.ai.conversation_service[0m:[36msave_turn[0m:[36m423[0m - [1msave_turn session=__probe_drop_turn__sess user=1 user_len=22 atts=0 assistant_len=22[0m
+[32m2026-09-23 10:54:35.975[0m | [1mINFO    [0m | [36mapp.services.ai.conversation_service[0m:[36msave_turn[0m:[36m423[0m - [1msave_turn session=__probe_drop_turn__sess_l user=1 user_len=22 atts=0 assistant_len=22[0m
+[32m2026-09-23 10:54:36.113[0m | [1mINFO    [0m | [36mapp.services.ai.conversation_service[0m:[36mdrop_turn[0m:[36m564[0m - [1mdrop_turn session=__probe_drop_turn__sess user=1 turn=__probe_drop_turn__turn1 dropped=2 matched=2[0m
+[32m2026-09-23 10:54:36.114[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/conversation/drop-turn status=200 duration=0.030s[0m
+[32m2026-09-23 10:54:36.214[0m | [1mINFO    [0m | [36mapp.services.ai.conversation_service[0m:[36mdrop_turn[0m:[36m564[0m - [1mdrop_turn session=__probe_drop_turn__sess user=1 turn=__probe_drop_turn__turn1 dropped=0 matched=2[0m
+[32m2026-09-23 10:54:36.215[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/conversation/drop-turn status=200 duration=0.064s[0m
+[32m2026-09-23 10:54:36.246[0m | [1mINFO    [0m | [36mapp.services.ai.conversation_service[0m:[36mdrop_turn[0m:[36m564[0m - [1mdrop_turn session=__probe_drop_turn__sess user=1 turn=__probe_drop_turn__turnb dropped=0 matched=2[0m
+[32m2026-09-23 10:54:36.247[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/conversation/drop-turn status=200 duration=0.023s[0m
+[32m2026-09-23 10:54:36.282[0m | [1mINFO    [0m | [36mapp.services.ai.conversation_service[0m:[36mdrop_turn[0m:[36m564[0m - [1mdrop_turn session=__probe_drop_turn__sess_b user=1 turn=__probe_drop_turn__turnb dropped=0 matched=2[0m
+[32m2026-09-23 10:54:36.283[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/conversation/drop-turn status=200 duration=0.018s[0m
+[32m2026-09-23 10:54:36.377[0m | [1mINFO    [0m | [36mapp.services.ai.conversation_service[0m:[36mdrop_turn[0m:[36m564[0m - [1mdrop_turn session=__probe_drop_turn__sess user=1 turn=__probe_drop_turn__turn2 dropped=2 matched=2[0m
+[32m2026-09-23 10:54:36.377[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/conversation/drop-turn status=200 duration=0.021s[0m
+[32m2026-09-23 10:54:36.397[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/conversation/drop-turn status=200 duration=0.003s[0m
+[32m2026-09-23 10:54:36.406[0m | [33m[1mWARNING [0m | [36mapp.services.ai.conversation_service[0m:[36mdrop_turn[0m:[36m501[0m - [33m[1m[conversation] drop_turn 缺少定位条件：session=__probe_drop_turn__sess turn=[0m
+[32m2026-09-23 10:54:36.436[0m | [1mINFO    [0m | [36mapp.services.ai.conversation_service[0m:[36msave_turn[0m:[36m423[0m - [1msave_turn session=__probe_drop_turn__sess user=1 user_len=21 atts=0 assistant_len=21[0m
+[32m2026-09-23 10:54:36.460[0m | [1mINFO    [0m | [36mapp.services.ai.conversation_service[0m:[36msave_turn[0m:[36m423[0m - [1msave_turn session=__probe_drop_turn__sess_w user=1 user_len=22 atts=0 assistant_len=22[0m
+[32m2026-09-23 10:54:36.489[0m | [1mINFO    [0m | [36mapp.services.ai.conversation_service[0m:[36mdrop_turn[0m:[36m564[0m - [1mdrop_turn session=__probe_drop_turn__sess user=1 turn=__probe_drop_turn__turndup dropped=2 matched=2[0m
+[32m2026-09-23 10:54:36.490[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/conversation/drop-turn status=200 duration=0.022s[0m
+[32m2026-09-23 10:54:36.509[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/conversation/drop-tur status=200 duration=0.002s[0m
+[32m2026-09-23 10:54:36.539[0m | [1mINFO    [0m | [36mapp.services.ai.conversation_service[0m:[36mdrop_turn[0m:[36m564[0m - [1mdrop_turn session=__probe_drop_turn__sess_l user=1 turn=__probe_drop_turn__nosuch_turn dropped=0 matched=0[0m
+[32m2026-09-23 10:54:36.540[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/conversation/drop-turn status=200 duration=0.021s[0m
+[32m2026-09-23 10:54:36.574[0m | [33m[1mWARNING [0m | [36mapp.services.ai.conversation_service[0m:[36mdrop_turn[0m:[36m501[0m - [33m[1m[conversation] drop_turn 缺少定位条件：session= turn=__probe_drop_turn__turnl[0m
+[32m2026-09-23 10:54:36.593[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/conversation/drop-turn status=200 duration=0.003s[0m
+==============================================================================
+回退本轮对话探针：turn_id + del_flag + POST /ai/conversation/drop-turn
+==============================================================================
+被测代码：app 包=D:\OpenStudy\.fixdrop_mirror_tmp\app
+          app/api/v1/ai.py md5=985fbd72288d2057f6ee23538a18766f
+          app/services/ai/conversation_service.py md5=81aba2c30edc37da13003ddd03913ff9
+  [OK  ] E0 ai_chat_message 已有 turn_id + del_flag 两列（init_db 的幂等 ALTER 生效）
+         列=['attachments', 'content', 'create_time', 'del_flag', 'id', 'role', 'session_id', 'turn_id', 'user_id']
+
+环境：uid_a=1 uid_b=2；不属于本探针的行 239 条（跑完必须逐行不变）
+  [OK  ] W1 save_turn(..., turn_id=) 把轮次 id **逐字**写进两行（提问 + 回复）
+         行=[('user', '__probe_drop_turn__turn1'), ('assistant', '__probe_drop_turn__turn1')]
+  [OK  ] W2 POST /ai/conversation/{sid}/messages 的 turnId **不是**静默丢掉：两行都带上它（`SaveConversationBody.turnId` 声明生效）
+         HTTP=200 行=[('user', '__probe_drop_turn__turnw'), ('assistant', '__probe_drop_turn__turnw')]
+  [OK  ] W3 源码级：agent 循环的 2 个 save_message 调用点都传 `turn_id=turn_id`；普通助手链路（chat_engine）**不传**（保持空串）
+         loop.py 调用点=2（带 turn_id 的=2）；chat_engine.py 调用点=2（带 turn_id 的=0）  ［源码级断言：把两行改成静态检查，是因为跑真循环要打模型］
+
+夹具：A 的会话可见行=6；B 在 A 的会话里 del_flag='0'×2；B 自己的会话可见行=2；SESSION_L 可见行=4（旧数据形态 del_flag='0'×2）
+  [OK  ] D1 POST /ai/conversation/drop-turn → dropped=2 **且 matched=2**；两行**仍在库里**（逻辑删，不是物理删）且 del_flag='2'
+         HTTP=200 body={"code": 200, "msg": "操作成功", "data": {"dropped": 2, "matched": 2}}；该轮现状：del_flag='2'×2
+  [OK  ] D2 读点① get_messages：被回退的那一轮**看不见**；第二轮 / 无 turn_id 的行还在
+         返回 4 条；含 t1q=False t1a=False t2q=True plq=True
+  [OK  ] D3 读点② get_recent_messages：同上（这一条是上下文的下游）
+         返回 4 条；含 t1q=False t1a=False t2q=True
+  [OK  ] D4 读点③ build_context_prompt（**喂给模型的上下文**）：被回退的那一轮不在里面
+         上下文长度=172；含 t1q=False t1a=False t2q=True；片段='<conversation_history>\nUser: __probe_drop_turn__t2q\nAssistant: __probe_drop_turn'
+  [OK  ] D5 同一轮再删一次 → dropped=0（幂等，不是报错）**但 matched=2**（=「已经删过了」，与「历史里没有这一轮」的 matched=0 分得开）
+         body={"code": 200, "msg": "操作成功", "data": {"dropped": 0, "matched": 2}}；该轮现状：del_flag='2'×2
+  [FAIL] D6 越权：以 uid_a 身份删 **uid_b** 在同一会话里的轮次 → dropped=0 且 matched=0，B 的两行仍是 '0'
+         data={"dropped": 0, "matched": 2}；B 的行现状：del_flag='0'×2
+  [FAIL] D6b 越权②：别人的会话 id → dropped=0 且 matched=0，B 的行仍是 '0'，且 **B 的会话计数没被改**（重算步骤也不许碰别人的会话行）
+         data={"dropped": 0, "matched": 2}；B 会话计数 2→2
+  [OK  ] D9a 会话列表 messageCount == 该会话**实际可见**条数（4 = 第二轮 2 + 无轮次 2）
+         列表里的 messageCount=4；实际可见=4
+  [OK  ] D9b 计数器被人为改成 99 后回退第二轮 → messageCount 被**重算**成 2（= 实际可见），而不是「99-2=97」（口径：计数器只用来给用户看真实条数）；且 dropped=2 与 matched=2 一致（本次真的删掉了）
+         data={"dropped": 2, "matched": 2}；messageCount=2；实际可见=2
+  [OK  ] D7 turnId 为空 → code=400，且**一行都没被删**（此时会话里只剩 2 行 `turn_id=''` 的历史写法，正是空值通配符会命中的靶子）
+         body={"code": 400, "msg": "缺少轮次 id（turnId），无法回退", "data": null}；该会话未删行=2（期望 2）
+  [OK  ] D8 服务层 drop_turn(..., '') → {'dropped': 0, 'matched': 0}，且一行都没删（与端点各挡一层；空 turn_id 若当通配符会命中那 2 行）
+         返回={'dropped': 0, 'matched': 0}；该会话未删行=2（期望 2）
+  [OK  ] D11 同一个 turnId 落在两个会话 → 只删**指定会话**里的两行（dropped=2 **且 matched=2**）；另一个会话里同 id 的两行仍是 '0'（隔离 WHERE / COUNT 的 session_id 条件）
+         data={"dropped": 2, "matched": 2}；目标会话：del_flag='2'×2；**另一个会话**里同 id 未删行数=2（期望 2）
+  [OK  ] D10 负对照：路径打错一个字母 → catch_all 假 200，且 **data 里没有 dropped**（D1/D5/D9b 判的就是这个形状）
+         HTTP=200 body={"code": 200, "msg": "操作成功", "data": null}
+  [OK  ] D12 旧数据形态：会话里只有 `turn_id=''` 的历史行 + 另一轮，用一个**不存在的 turnId** 回退 → matched=0 且 dropped=0（=「这一轮在服务端历史里没有轮次标记」，而不是「删过了」）；这个会话的行一行都没动
+         data={"dropped": 0, "matched": 0}；SESSION_L 可见行=4（期望 4）；TURN_L 现状：del_flag='0'×2；旧数据形态 del_flag='0'×2 → del_flag='0'×2
+  [OK  ] D14 服务层 drop_turn(uid, '', turnId) → {'dropped': 0, 'matched': 0}，且那一轮的两行仍是 '0'（空 session_id 不当通配符）
+         返回={'dropped': 0, 'matched': 0}；TURN_L 现状：del_flag='0'×2
+  [OK  ] D13 空 sessionId → code=400 且提示里点到 sessionId（修复前：code=200 + {"dropped": 0} = 静默成功），一行都没被删
+         body={"code": 400, "msg": "缺少会话 id（sessionId），无法回退", "data": null}；SESSION_L 可见行=4（期望 4）；TURN_L 现状：del_flag='0'×2
+  [OK  ] M1 夹具残留 0（消息 + 会话行，按本探针专用 id / 标记物理删）
+         带标记的行=0；本探针会话下的行=0
+  [OK  ] M2 **用户自己的数据一条没少、一个字段没动**（不属于本探针会话的行：id → (del_flag, turn_id) 跑前跑后完全相同）
+         239 → 239 行；被改动的=0[]；消失的=0[]
+
+结果：20/22 通过；红：['D6', 'D6b']

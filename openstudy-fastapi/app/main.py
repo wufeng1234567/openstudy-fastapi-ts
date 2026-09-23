@@ -84,7 +84,8 @@ from app.api.v1 import (
     carousel, courses, words, notes, system, leave_message,
     sensitive_word, chat, ocr, document, notice_front, user_front,
     noteQuestionBank, noteQuestion, user_stats,
-    common, catch_all, ai_config, bankShare, notification, systemComment
+    common, catch_all, ai_config, bankShare, notification, systemComment,
+    rag,
 )
 
 app.include_router(auth.router, tags=["认证"])
@@ -113,6 +114,7 @@ app.include_router(ai_config.router, tags=["AI模型配置"])
 app.include_router(bankShare.router, tags=["题库分享"])
 app.include_router(notification.router, tags=["站内通知"])
 app.include_router(systemComment.router, tags=["评论管理"])  # 后台 /system/comment/*（此前缺失，落到 catch_all 假成功）
+app.include_router(rag.router, tags=["RAG知识库"])
 # Catch-all 路由必须最后注册
 app.include_router(catch_all.router, tags=["默认路由"])
 

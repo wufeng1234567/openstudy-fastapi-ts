@@ -2,7 +2,7 @@
     <el-dialog v-model="visible" title="🤖 AI 题目解析" width="600px" :close-on-click-modal="false" @close="handleClose">
         <div class="model-select-bar">
             <span class="model-label">模型：</span>
-            <AiModelSelector v-model="selectedProvider" width="180px" :disabled="deepThink" />
+            <AiModelSelector v-model="selectedModel" scene="analysis" width="180px" :disabled="deepThink" />
             <AiThinkingToggle v-model="deepThink" size="small" @change="handleDeepThinkChange" />
         </div>
         <div class="analysis-container">
@@ -15,9 +15,15 @@
             </div>
 
             <!-- 流式输出内容 -->
-            <div class="analysis-content" ref="contentRef">
+            <!-- overflow-anchor: none —— 关闭浏览器的滚动锚定。流式过程中上方
+                 内容持续重排，浏览器会自动调整 scrollTop 去「保持锚点」，
+                 结果就是用户的滚动位置被反复推走，表现为抢手。 -->
+            <div class="analysis-content" ref="contentRef" style="overflow-anchor: none;">
                 <template v-if="deepThink">
-                    <div v-if="reasoningContent" class="reasoning-block">
+                    <!-- 思考块限高 + 内部滚动：否则它在答案上方持续长高，
+                         会把下面的正文不断往下推，用户读到的位置一直变。 -->
+                    <div v-if="reasoningContent" class="reasoning-block" ref="reasoningRef"
+                        style="max-height: 160px; overflow-y: auto; overflow-anchor: none;">
                         <div class="reasoning-title">🧠 深度思考过程</div>
                         <div class="reasoning-text">{{ reasoningContent }}</div>
                     </div>
@@ -75,6 +81,8 @@ import { analyzeQuestionStream } from '@/api/ai/ai'
 import { ElMessage } from 'element-plus'
 import AiModelSelector from '@/components/AiModelSelector/index.vue'
 import AiThinkingToggle from '@/components/AiThinkingToggle/index.vue'
+import { useDsDeepThinkSync } from '@/composables/useDsDeepThinkSync'
+import { useSmoothAutoScroll } from '@/composables/useSmoothAutoScroll'
 import LoadingDots from '@/components/LoadingDots/index.vue'
 import useUserStore from '@/store/modules/user'
 import { getPlainText } from '@/utils/questionUtils'
@@ -96,18 +104,38 @@ const emit = defineEmits(['close', 'update-cache', 'generating'])
 
 const visible = ref(true)
 const streamContent = ref(props.cachedContent || '')
-const selectedProvider = ref('')
+// 当前选中的模型名；历史记忆按 scene=analysis 单独保存
+const selectedModel = ref('')
 const deepThink = ref(false)
+
+useDsDeepThinkSync(selectedModel, deepThink)
 const reasoningContent = ref('')
 
 const isGenerating = ref(false)
 const contentRef = ref(null)
 
-// 深度思考开关：reasoner 模型仅 DeepSeek 官方支持，开启时锁定 provider
-const handleDeepThinkChange = (val: boolean) => {
-    if (val) {
-        selectedProvider.value = 'deepseek'
-    }
+// 流式输出时的「丝滑跟随滚动」：
+// 只在用户本来就在底部附近时才自动跟随；用户往上翻会立即停止抢滚动条，
+// 回到底部附近又自动恢复。同一帧内多次内容更新只滚一次（rAF 合并）。
+// 如需「回到底部」按钮，再解构出 isFollowing / scrollToBottom 即可。
+const reasoningRef = ref(null)
+
+// 正文区：流式跟随滚动（用户往上翻就停止抢滚动条，回到底部自动恢复）
+const { keepAtBottom } = useSmoothAutoScroll(contentRef)
+// 思考区：它现在是独立的限高滚动容器，需要自己的跟随实例
+const { keepAtBottom: keepReasoningAtBottom } = useSmoothAutoScroll(reasoningRef)
+
+// 深度思考开关
+//
+// ⚠️ 旧实现在开启时会把 provider 强制改成 'deepseek'（原注释：「reasoner 模型
+// 仅 DeepSeek 官方支持，开启时锁定 provider」）。这个前提**已不成立**：
+//   · ds-free 通过同步 DS 网页端的「深度思考」按钮同样支持思考
+//     （见 composables/useDsDeepThinkSync）
+//   · zhipu / siliconflow 的思考由后端 thinking 参数处理
+// 而且它会把用户选的 ds-free **直接改掉**（连下拉框都会跳回付费模型），
+// 表现为「一开深度思考就自动切到付费 API」。所以这里不再动 provider。
+const handleDeepThinkChange = (_val: boolean) => {
+    // 开关状态由 useDsDeepThinkSync 负责与 DS 网页端双向同步，此处无需额外处理。
 }
 
 // 监听缓存变化
@@ -197,11 +225,7 @@ const startAnalysis = async () => {
         (content) => {
             streamContent.value = content
             emit('update-cache', content)
-            setTimeout(() => {
-                if (contentRef.value) {
-                    contentRef.value.scrollTop = contentRef.value.scrollHeight
-                }
-            }, 50)
+            keepAtBottom()
         },
         () => {
             isGenerating.value = false
@@ -213,16 +237,17 @@ const startAnalysis = async () => {
             isGenerating.value = false
             emit('generating', false)
         },
-        deepThink.value ? 'deepseek' : selectedProvider.value,
+        // 原实现是 `deepThink ? 'deepseek' : selectedProvider` —— 前提是
+        // 「只有官方 deepseek 支持深度思考」。这个前提已不成立，
+        // 思考由后端 thinking 参数统一处理。这里尊重用户的选择，
+        // 否则一开思考就会被强制切走，等于用不了。
+        selectedModel.value,
         userStore.id,
         deepThink.value,
         (reasoning) => {
             reasoningContent.value = reasoning
-            setTimeout(() => {
-                if (contentRef.value) {
-                    contentRef.value.scrollTop = contentRef.value.scrollHeight
-                }
-            }, 50)
+            // 思考过程滚思考区，不要去滚正文区（否则思考阶段会把正文一直拽到底）
+            keepReasoningAtBottom()
         }
     )
 }

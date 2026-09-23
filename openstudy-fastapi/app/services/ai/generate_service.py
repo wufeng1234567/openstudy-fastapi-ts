@@ -25,10 +25,12 @@ class AiGenerateService:
         provider: str = None,
         db=None,
         thinking: Optional[bool] = None,
+        user_id: Optional[int] = None,
     ) -> List[dict]:
         """生成题目（传入 db 时优先使用 sys_ai_config 表配置）
 
         thinking: True/False 覆盖 DB 的 thinking_mode，None 表示跟随配置。
+        user_id: 模型可见范围（系统模型 + 该用户自己的自定义模型）；不传只用系统模型。
         """
         prompt = self._build_prompt(topic, question_type, count, difficulty)
 
@@ -40,7 +42,8 @@ class AiGenerateService:
         if db is not None:
             from app.services.ai import db_config
             response = await db_config.chat_with_config(
-                db, messages, provider=provider, temperature=0.8, thinking=thinking
+                db, messages, provider=provider, temperature=0.8, thinking=thinking, model=model,
+                user_id=user_id,
             )
         else:
             response = await dynamic_ai.chat(

@@ -509,6 +509,24 @@ export const constantRoutes: AppRouteRecordRaw[] = [
             hidden: true
           }
         ]
+      },
+
+      // 智能体（大屏 OS 助手 + 工具调用）
+      // 形态对齐 sp3：聚合页只负责「回到上次访问的子页」，真正的页面在 children 里。
+      {
+        path: 'agent',
+        name: 'FrontAgent',
+        component: () => import('@/views/front/agent/index.vue'),
+        meta: { title: '智能体', layout: 'front', requiresLogin: true },
+        hidden: true,
+        children: [
+          {
+            path: 'chat',
+            name: 'FrontAgentChat',
+            component: () => import('@/views/front/agent/chat.vue'),
+            meta: { title: '智能体', layout: 'front', keepAlive: true, requiresLogin: true }
+          }
+        ]
       }
     ]
   }

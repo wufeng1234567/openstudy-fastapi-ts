@@ -1,0 +1,1556 @@
+[
+  {
+    "id": "DF-LOOP-01",
+    "status": "通过",
+    "asserts": [
+      [
+        "事件以 done 收尾",
+        true,
+        ""
+      ],
+      [
+        "回复内容正确",
+        true,
+        ""
+      ],
+      [
+        "没有调用任何工具",
+        true,
+        ""
+      ],
+      [
+        "没有报错",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-02",
+    "status": "通过",
+    "asserts": [
+      [
+        "执行了 1 次工具",
+        true,
+        ""
+      ],
+      [
+        "调用的是 bank_manage.list",
+        true,
+        ""
+      ],
+      [
+        "发了 tool_start",
+        true,
+        ""
+      ],
+      [
+        "发了 tool_result 且成功",
+        true,
+        ""
+      ],
+      [
+        "最终有回复",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-03",
+    "status": "通过",
+    "asserts": [
+      [
+        "两轮工具都执行了",
+        true,
+        ""
+      ],
+      [
+        "顺序正确",
+        true,
+        ""
+      ],
+      [
+        "最终有回复",
+        true,
+        ""
+      ],
+      [
+        "没有报错",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-04",
+    "status": "通过",
+    "asserts": [
+      [
+        "文字流里没有残缺的协议标记",
+        true,
+        ""
+      ],
+      [
+        "工具照常执行",
+        true,
+        ""
+      ],
+      [
+        "最终回复完整",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-05",
+    "status": "通过",
+    "asserts": [
+      [
+        "识别为格式错",
+        true,
+        ""
+      ],
+      [
+        "撤掉已流出的协议文本",
+        true,
+        ""
+      ],
+      [
+        "重试后真的执行了工具",
+        true,
+        ""
+      ],
+      [
+        "最终给出回复",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-06",
+    "status": "通过",
+    "asserts": [
+      [
+        "识别为格式错",
+        true,
+        ""
+      ],
+      [
+        "工具最终执行成功",
+        true,
+        ""
+      ],
+      [
+        "DSML 文本没有当回答返回",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-07",
+    "status": "通过",
+    "asserts": [
+      [
+        "识别为格式错",
+        true,
+        ""
+      ],
+      [
+        "工具最终执行成功",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-08",
+    "status": "通过",
+    "asserts": [
+      [
+        "识别为格式错",
+        true,
+        ""
+      ],
+      [
+        "工具最终执行成功",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-09",
+    "status": "通过",
+    "asserts": [
+      [
+        "发了 error 事件",
+        true,
+        ""
+      ],
+      [
+        "一次工具都没执行",
+        true,
+        ""
+      ],
+      [
+        "没有把协议文本当回答返回",
+        true,
+        ""
+      ],
+      [
+        "纠正次数受控（≤2 次）",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-10",
+    "status": "通过",
+    "asserts": [
+      [
+        "两个调用都执行了",
+        true,
+        ""
+      ],
+      [
+        "分别是两个工具",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-11",
+    "status": "通过",
+    "asserts": [
+      [
+        "发了告警（黄）而不是错误（红）—— 纯空转不是失败",
+        true,
+        ""
+      ],
+      [
+        "恰好 4 轮 LLM（第 2/3 轮警告、第 4 轮硬中断）",
+        true,
+        "len=4"
+      ],
+      [
+        "被警告的那两次**没有执行**（一共只跑了 1 次工具）",
+        true,
+        "toolCalls=1 exec=1"
+      ],
+      [
+        "警告文案点出了「重复」",
+        true,
+        "len=3"
+      ],
+      [
+        "硬中断时把原因也写进了正文（与后端同形态，用户不会只看到「话说到一半」）",
+        true,
+        "\"\\n\\n（检测到重复调用（bank_manage 以完全相同的参数连续调用了 4 次），已自动停止以免空转）\""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-12",
+    "status": "通过",
+    "asserts": [
+      [
+        "三次都执行了",
+        true,
+        ""
+      ],
+      [
+        "成功那次之后计数清零（没有后续 error）",
+        true,
+        ""
+      ],
+      [
+        "最终有回复",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-13",
+    "status": "通过",
+    "asserts": [
+      [
+        "发了 error",
+        true,
+        ""
+      ],
+      [
+        "错误里带上了最后一条原因",
+        true,
+        ""
+      ],
+      [
+        "刚好 3 次，没跑到 12 轮",
+        true,
+        ""
+      ],
+      [
+        "前两次各回灌一次 self_correct",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-14",
+    "status": "通过",
+    "asserts": [
+      [
+        "弹了确认",
+        true,
+        ""
+      ],
+      [
+        "确认被标记为破坏性",
+        true,
+        ""
+      ],
+      [
+        "取消后没有真的执行工具",
+        true,
+        ""
+      ],
+      [
+        "回灌里说了「用户拒绝」",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-15",
+    "status": "通过",
+    "asserts": [
+      [
+        "回灌里带 questionId",
+        true,
+        ""
+      ],
+      [
+        "回灌里带 questionIndex",
+        true,
+        ""
+      ],
+      [
+        "回灌里带 bankName（跨库搜索时定位用）",
+        true,
+        ""
+      ],
+      [
+        "回灌里带 total / hasMore",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-16",
+    "status": "通过",
+    "asserts": [
+      [
+        "回灌条数收敛到 20",
+        true,
+        ""
+      ],
+      [
+        "告诉模型还有更多",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-17",
+    "status": "通过",
+    "asserts": [
+      [
+        "重试后拿到了结果",
+        true,
+        ""
+      ],
+      [
+        "没有报 error 给用户",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-18",
+    "status": "通过",
+    "asserts": [
+      [
+        "确认时目标为「开」",
+        true,
+        ""
+      ],
+      [
+        "提示了「已自动开启」",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-19",
+    "status": "通过",
+    "asserts": [
+      [
+        "确认了一次",
+        true,
+        ""
+      ],
+      [
+        "没有任何多余提示",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-20",
+    "status": "通过",
+    "asserts": [
+      [
+        "没有触发纠正",
+        true,
+        ""
+      ],
+      [
+        "当成正常回复返回",
+        true,
+        ""
+      ],
+      [
+        "没有调用工具",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-21",
+    "status": "通过",
+    "asserts": [
+      [
+        "第一次失败被回灌给模型",
+        true,
+        ""
+      ],
+      [
+        "模型改正后成功了",
+        true,
+        ""
+      ],
+      [
+        "最终有回复",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-22",
+    "status": "通过",
+    "asserts": [
+      [
+        "写了协议块长什么样",
+        true,
+        ""
+      ],
+      [
+        "要求「一轮只输出一个块」",
+        true,
+        ""
+      ],
+      [
+        "明确禁止其它工具语法（DSML / invoke / 裸 JSON）",
+        true,
+        ""
+      ],
+      [
+        "要求参数放顶层、不许塞进 params",
+        true,
+        ""
+      ],
+      [
+        "点明「少一个等号也不行」（实测最容易写错的形式）",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-23",
+    "status": "通过",
+    "asserts": [
+      [
+        "产出了 thinking 事件（onThinking 被接上了）",
+        true,
+        "count=6"
+      ],
+      [
+        "拼回增量 == 两轮推理原文（没重复、没丢字、游标按轮复位）",
+        true,
+        ""
+      ],
+      [
+        "thinking 排在正文之前（DS 先思考后作答）",
+        true,
+        "firstText=14 lastThink=12"
+      ],
+      [
+        "思考没有顶掉工具调用",
+        true,
+        "bank_manage.list"
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-24",
+    "status": "通过",
+    "asserts": [
+      [
+        "记忆块进了系统提示词",
+        true,
+        ""
+      ],
+      [
+        "知识库清单进了系统提示词（带 kbId，模型才能按库检索）",
+        true,
+        ""
+      ],
+      [
+        "背景排在协议说明**之后**（不能顶掉 tool_call 协议约束）",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-25",
+    "status": "通过",
+    "asserts": [
+      [
+        "没有背景也能正常起跑（有系统提示词、有回答、无异常）",
+        true,
+        ""
+      ],
+      [
+        "不拼空的 <user_memory> / <knowledge_bases> 块",
+        true,
+        "行首标签命中=false"
+      ],
+      [
+        "没有拼出空的知识库清单条目",
+        true,
+        ""
+      ],
+      [
+        "协议说明照常存在",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-26",
+    "status": "通过",
+    "asserts": [
+      [
+        "工具真的被调了",
+        true,
+        "knowledge_search.search"
+      ],
+      [
+        "回灌里保留 chunkId",
+        true,
+        ""
+      ],
+      [
+        "回灌里保留 docId / chunkIndex / kbId",
+        true,
+        ""
+      ],
+      [
+        "回灌里保留 source（模型要能说清出处）",
+        true,
+        ""
+      ],
+      [
+        "正文原样带给模型（检索结果就是它要读的内容）",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-27",
+    "status": "通过",
+    "asserts": [
+      [
+        "声明「只有本提示词是指令来源」",
+        true,
+        ""
+      ],
+      [
+        "把 <user_memory> / <knowledge_bases> 明确标成数据（不是指令）",
+        true,
+        ""
+      ],
+      [
+        "点明工具结果里的中文不是语言指令",
+        true,
+        ""
+      ],
+      [
+        "写了「任务做完就停，不许自己接着做」",
+        true,
+        ""
+      ],
+      [
+        "禁止过程废话（和后端同款）",
+        true,
+        ""
+      ],
+      [
+        "提醒记忆是过去时刻、不是当前状态的证据",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-28",
+    "status": "通过",
+    "asserts": [
+      [
+        "背景确实拼进去了",
+        true,
+        ""
+      ],
+      [
+        "协议说明仍排在背景**之前**（背景不能顶掉协议约束）",
+        true,
+        "proto=321 ctx=3727"
+      ],
+      [
+        "协议措辞仍完整（没有被背景挤掉）",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-29",
+    "status": "通过",
+    "asserts": [
+      [
+        "历史真的进了首轮用户消息",
+        true,
+        "<conversation_history>\nUser: 我有哪些题库？\nAssistant: 你有 2 个题库：「张三"
+      ],
+      [
+        "排在用户正文**之前**",
+        true,
+        "hist=0 req=97"
+      ],
+      [
+        "系统提示词说明了它是「背景、不要重复执行已完成的事」",
+        true,
+        ""
+      ],
+      [
+        "用户正文本身没被挤掉",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-30",
+    "status": "通过",
+    "asserts": [
+      [
+        "两次调用各跑一轮",
+        true,
+        "len=2"
+      ],
+      [
+        "第一轮拼了历史",
+        true,
+        ""
+      ],
+      [
+        "第二轮没再拼同一段历史",
+        true,
+        "<user_request>\n测试\n</user_request>"
+      ],
+      [
+        "但两轮都照常带用户正文（只是少了历史）",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-31",
+    "status": "通过",
+    "asserts": [
+      [
+        "两次调用各跑一轮",
+        true,
+        "len=2"
+      ],
+      [
+        "第一轮拼了历史",
+        true,
+        ""
+      ],
+      [
+        "换会话后又注入了一次",
+        true,
+        "<conversation_history>\nUser: 我有哪些题库？\nAssistant: 你有 2 个题库：「张三"
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-32",
+    "status": "通过",
+    "asserts": [
+      [
+        "不出现空的 <conversation_history> 块",
+        true,
+        "<user_request>\n测试\n</user_request>"
+      ],
+      [
+        "正文照常发（少历史不影响主流程）",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-33",
+    "status": "通过",
+    "asserts": [
+      [
+        "没有拼任何历史",
+        true,
+        "<user_request>\n测试\n</user_request>"
+      ],
+      [
+        "正文照常发",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-34",
+    "status": "通过",
+    "asserts": [
+      [
+        "后端给的整块**逐字**进了消息",
+        true,
+        "<conversation_history>\nUser: 我有哪些题库？\nAssistant: 你有 2 个题库：「张三的题库」和「错题本」。\n</conver"
+      ],
+      [
+        "没有额外再包一层（开标签只出现 1 次）",
+        true,
+        "opens=1"
+      ],
+      [
+        "闭标签也只出现 1 次",
+        true,
+        "closes=1"
+      ],
+      [
+        "整块排在用户正文**之前**",
+        true,
+        "hist=0 req=97"
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-35",
+    "status": "通过",
+    "asserts": [
+      [
+        "工具真的被调了",
+        true,
+        "knowledge_search.search"
+      ],
+      [
+        "回灌确实超过 6000 字符（否则这条用例测不到东西）",
+        true,
+        "len=7944"
+      ],
+      [
+        "最后一条命中的 chunkId 没被丢掉",
+        true,
+        ""
+      ],
+      [
+        "最后一条命中的**正文尾部**也还在（不是拦腰切断）",
+        true,
+        ""
+      ],
+      [
+        "没有截断标记",
+        true,
+        ""
+      ],
+      [
+        "JSON 完整闭合（尾部 hits 数组与对象的括号都还在）",
+        true,
+        "正正正正正正正正__HIT_5_END__\"}]}\n</tool_result>"
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-36",
+    "status": "通过",
+    "asserts": [
+      [
+        "弹卡片前调了一次预演接口",
+        true,
+        "len=1"
+      ],
+      [
+        "请求体口径与 /ai/agent/execute 一致（tool 顶层 + params 嵌套）",
+        true,
+        "{\"tool\":\"bank_manage\",\"params\":{\"action\":\"delete_many\",\"bank_ids\":[1,2]},\"userId\":1,\"sessionId\":\"\",\"autoConfirm\":true}"
+      ],
+      [
+        "确认卡片确实弹了",
+        true,
+        "len=1"
+      ],
+      [
+        "preview 原样透传到卡片（前端不许改写 / 不许只挑字段）",
+        true,
+        "{\"summary\":\"将删除 2 个题库（共 23 道题目）\",\"bankName\":\"张三的题库\",\"questionCount\":23,\"sampleQuestions\":[\"二叉搜索树的时间复杂度\",\"红黑树的性质\"]}"
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-37",
+    "status": "通过",
+    "asserts": [
+      [
+        "预演接口确实被调了（不是压根没走这条路）",
+        true,
+        "len=1"
+      ],
+      [
+        "卡片**照常弹出**（否则用户连确认都点不到）",
+        true,
+        "len=1"
+      ],
+      [
+        "preview 退化成空对象（不是 undefined / null —— 消费方要能直接摊平）",
+        true,
+        "{}"
+      ],
+      [
+        "用户确认后工具照常执行（预演失败不影响主流程）",
+        true,
+        "bank_manage.delete_many"
+      ],
+      [
+        "没有把预演失败当成 error 事件报给用户",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-38",
+    "status": "通过",
+    "asserts": [
+      [
+        "预演接口确实被调了",
+        true,
+        "len=1"
+      ],
+      [
+        "卡片照常弹出",
+        true,
+        "len=1"
+      ],
+      [
+        "preview 退化成空对象",
+        true,
+        "{}"
+      ],
+      [
+        "工具照常执行",
+        true,
+        "bank_manage.delete_many"
+      ],
+      [
+        "没有 error 事件",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-39",
+    "status": "通过",
+    "asserts": [
+      [
+        "预演接口确实被调了（不是压根没走这条路）",
+        true,
+        "len=1"
+      ],
+      [
+        "卡片**照常弹出**（否则用户连确认都点不到）",
+        true,
+        "len=1"
+      ],
+      [
+        "preview 退化成空对象（不是 undefined / null —— 消费方要能直接摊平）",
+        true,
+        "{}"
+      ],
+      [
+        "用户确认后工具照常执行（假成功不该影响主流程）",
+        true,
+        "bank_manage.delete_many"
+      ],
+      [
+        "没有把这件事当成 error 事件报给用户",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-40",
+    "status": "通过",
+    "asserts": [
+      [
+        "预演接口确实被调了",
+        true,
+        "len=1"
+      ],
+      [
+        "缺 preview 键时留下了一条 warn",
+        true,
+        "[agent/ds-free] 预演响应里没有 preview 字段（路由没匹配上？被 catch_all 兜成 200 假成功？）: {\"code\":200,\"msg\":\"操作成功\",\"data\":null}"
+      ],
+      [
+        "warn 说的是「响应里没有 preview 字段」这件事（不是别的噪音）",
+        true,
+        "[agent/ds-free] 预演响应里没有 preview 字段（路由没匹配上？被 catch_all 兜成 200 假成功？）: {\"code\":200,\"msg\":\"操作成功\",\"data\":null}"
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-41",
+    "status": "通过",
+    "asserts": [
+      [
+        "发了 3 次 metrics（每轮 LLM 后一次 + 该轮工具跑完后一次）",
+        true,
+        "len=3"
+      ],
+      [
+        "(轮, 步) 序列与后端同口径",
+        true,
+        "[[1,0],[1,1],[2,1]]"
+      ],
+      [
+        "每次都是完整 6 个字段（消费方按字段算增量，缺一个就会把会话总量算歪）",
+        true,
+        "{\"type\":\"metrics\",\"rounds\":2,\"steps\":1,\"llmMs\":3,\"toolMs\":0,\"firstTokenSamples\":1,\"firstTokenMs\":1}"
+      ],
+      [
+        "只吐工具调用、没有正文的轮**不进**首 token 样本",
+        true,
+        "firstTokenMs=null samples=0"
+      ],
+      [
+        "有正文的那轮进了样本，且轮数 > 样本数",
+        true,
+        "rounds=2 samples=1 firstTokenMs=1"
+      ],
+      [
+        "LLM 累计耗时是数字且非负",
+        true,
+        "3"
+      ],
+      [
+        "工具执行耗时是数字且非负（这次真的执行了工具）",
+        true,
+        "0"
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-42",
+    "status": "通过",
+    "asserts": [
+      [
+        "确实发了 metrics（否则这条测的是「没实现」而不是 null）",
+        true,
+        "len=1"
+      ],
+      [
+        "空回复也算「完成了一次 LLM 往返」",
+        true,
+        "1"
+      ],
+      [
+        "没有工具条目",
+        true,
+        "0"
+      ],
+      [
+        "firstTokenMs 严格等于 null（不是 0、不是 undefined）",
+        true,
+        "null (typeof=object)"
+      ],
+      [
+        "样本数也必须是 0（否则前端会拿 null × n 去还原总和）",
+        true,
+        "0"
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-43",
+    "status": "通过",
+    "asserts": [
+      [
+        "确实流出了思考正文（否则这条测不到东西）",
+        true,
+        "meta → waiting → thinking → thinking → thinking → metrics → done"
+      ],
+      [
+        "确实发了 metrics",
+        true,
+        "len=1"
+      ],
+      [
+        "整轮没有正文事件（气泡里本来就没东西）",
+        true,
+        "meta → waiting → thinking → thinking → thinking → metrics → done"
+      ],
+      [
+        "思考正文也给出了首 token 样本 → 不是 null",
+        true,
+        "0 (typeof=number)"
+      ],
+      [
+        "样本数跟着 +1（前端要靠它还原总和）",
+        true,
+        "1"
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-44",
+    "status": "通过",
+    "asserts": [
+      [
+        "短正文确实补发进气泡了（这条前提不成立就测不到扣尾保护）",
+        true,
+        "meta → waiting → metrics → text → done"
+      ],
+      [
+        "补发的正文一个字不少",
+        true,
+        "\"好的。\""
+      ],
+      [
+        "这一轮进了首 token 样本（不能被算成「一次都没测到」）",
+        true,
+        "1"
+      ],
+      [
+        "平均首 token 是数字（不是 null）",
+        true,
+        "122 (typeof=number)"
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-45",
+    "status": "通过",
+    "asserts": [
+      [
+        "没有触发纠正（这是讲解，不是调用）",
+        true,
+        ""
+      ],
+      [
+        "没有撤掉已流出的正文",
+        true,
+        ""
+      ],
+      [
+        "没有报错",
+        true,
+        ""
+      ],
+      [
+        "没有调用工具",
+        true,
+        ""
+      ],
+      [
+        "回答里保留了被引用的那段调用 JSON",
+        true,
+        ""
+      ],
+      [
+        "正文一个字不少地进了气泡",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-46",
+    "status": "通过",
+    "asserts": [
+      [
+        "没有触发纠正",
+        true,
+        ""
+      ],
+      [
+        "没有撤掉正文",
+        true,
+        ""
+      ],
+      [
+        "没有报错",
+        true,
+        ""
+      ],
+      [
+        "当成正常回复返回",
+        true,
+        ""
+      ],
+      [
+        "没有调用工具",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-47",
+    "status": "通过",
+    "asserts": [
+      [
+        "没有触发纠正",
+        true,
+        ""
+      ],
+      [
+        "没有撤掉正文",
+        true,
+        ""
+      ],
+      [
+        "当成正常回复返回",
+        true,
+        ""
+      ],
+      [
+        "没有调用工具",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-48",
+    "status": "通过",
+    "asserts": [
+      [
+        "识别为格式错（标记残缺）",
+        true,
+        ""
+      ],
+      [
+        "撤掉已流出的协议文本",
+        true,
+        ""
+      ],
+      [
+        "纠正后真的执行了工具",
+        true,
+        ""
+      ],
+      [
+        "残缺标记没有当回答返回",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-49",
+    "status": "通过",
+    "asserts": [
+      [
+        "识别为格式错（一行式围栏）",
+        true,
+        ""
+      ],
+      [
+        "撤掉已流出的协议文本",
+        true,
+        ""
+      ],
+      [
+        "纠正后真的执行了工具",
+        true,
+        ""
+      ],
+      [
+        "围栏文本没有当回答返回",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-50",
+    "status": "通过",
+    "asserts": [
+      [
+        "弹了确认卡片",
+        true,
+        "len=1"
+      ],
+      [
+        "执行请求里带的就是预演下发的那张票据（前端只搬运，不自造）",
+        true,
+        "\"tk-confirm-1\""
+      ],
+      [
+        "服务端票据校验通过 → 工具真的执行成功",
+        true,
+        "[[true,\"已删除 2 个题库\"]]"
+      ],
+      [
+        "这次调用在服务端确实属于「需要确认」（破坏性 + autoConfirm 开着也要）",
+        true,
+        "{\"action\":\"delete_many\",\"autoConfirm\":true}"
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-51",
+    "status": "通过",
+    "asserts": [
+      [
+        "没有弹确认卡片（只读调用不该确认）",
+        true,
+        "len=0"
+      ],
+      [
+        "没有调预演接口",
+        true,
+        "len=0"
+      ],
+      [
+        "执行请求体里**根本没有** confirmTicket 这个键",
+        true,
+        "[\"tool\",\"params\",\"userId\",\"sessionId\",\"autoConfirm\",\"confirmed\"]"
+      ],
+      [
+        "工具照常执行成功",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-52",
+    "status": "通过",
+    "asserts": [
+      [
+        "弹了确认卡片（fail-closed 的核心断言）",
+        true,
+        "len=1"
+      ],
+      [
+        "卡片上的工具 / 动作对得上（是这次删除，不是别的）",
+        true,
+        "[\"bank_manage\",\"delete\"]"
+      ],
+      [
+        "预演照常调了（票据只能从这条路取）",
+        true,
+        "len=1"
+      ],
+      [
+        "保守只多一次确认，不阻断任务：用户确认后工具仍然执行",
+        true,
+        "bank_manage.delete"
+      ],
+      [
+        "没有因此报 error 给用户",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-53",
+    "status": "通过",
+    "asserts": [
+      [
+        "弹了确认卡片（票据缺失也不许卡住确认流程）",
+        true,
+        "len=1"
+      ],
+      [
+        "预览照常取到（这次坏的只是票据那一路）",
+        true,
+        "{\"summary\":\"将删除 2 个题库（共 23 道题目）\",\"bankName\":\"张三的题库\",\"questionCount\":23,\"sampleQuestions\":[\"二叉搜索树的时间复杂度\",\"红黑树的性质\"]}"
+      ],
+      [
+        "执行请求里没带票据（前端不伪造）",
+        true,
+        "null"
+      ],
+      [
+        "服务端拒绝了执行，且原因写在 message 里（用户看得见的那一行）",
+        true,
+        "[false,\"确认票据缺失或已失效，已拒绝执行\"]"
+      ],
+      [
+        "原因说清了是「已拒绝执行」，不是含糊的失败",
+        true,
+        "确认票据缺失或已失效，已拒绝执行"
+      ],
+      [
+        "没有升级成 error 事件（可重试的业务失败 ≠ 链路故障）",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-54",
+    "status": "通过",
+    "asserts": [
+      [
+        "第 2 次重复没有掐掉整轮任务：模型拿到了第 3 轮（共 4 轮）",
+        true,
+        "len=4"
+      ],
+      [
+        "被警告的那次**没有执行**（只跑了改道前后那两次）",
+        true,
+        "exec=2 bank_manage.detail|bank_manage.list"
+      ],
+      [
+        "回灌给模型的话里带上了「不要重复调用」的提示（它就是模型改道的依据）",
+        true,
+        "<tool_result>\nTool bank_manage failed.\n检测到重复调用（bank_manage 以完全相同的参数连续调用了 2 次），已自动停止以免空转\nHint: 你刚刚已经用完全相同的参数调用过这个工具了，请不要重"
+      ],
+      [
+        "是告警（黄）不是错误（红）",
+        true,
+        ""
+      ],
+      [
+        "最终给出了回复",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-55",
+    "status": "通过",
+    "asserts": [
+      [
+        "第 11 次才硬中断（11 轮 LLM，前 8 轮执行、第 9/10 轮只警告）",
+        true,
+        "len=11"
+      ],
+      [
+        "前 8 次真的执行了，被警告的那两次没有",
+        true,
+        "len=8"
+      ],
+      [
+        "三次告警都说的是「超出上限」",
+        true,
+        "len=3"
+      ],
+      [
+        "是告警（黄）不是错误（红）—— 全成功的空转不是失败",
+        true,
+        ""
+      ],
+      [
+        "硬中断原因进了正文（与后端同形态）",
+        true,
+        "\"\\n\\n（工具 bank_manage 在一次任务里被调用了 11 次，超出上限，已停止）\""
+      ],
+      [
+        "没有退化成「轮数用尽」那种含糊收尾",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-56",
+    "status": "通过",
+    "asserts": [
+      [
+        "预演请求体里带上了 autoConfirm=false（开关透传，不是缺省）",
+        true,
+        "false"
+      ],
+      [
+        "预演与执行传的是**同一个值**（不一致正是死锁的成因）",
+        true,
+        "{\"preview\":false,\"execute\":false}"
+      ],
+      [
+        "弹了确认卡片（非破坏性写 + 关掉自动执行 ⇒ 必须确认）",
+        true,
+        "len=1"
+      ],
+      [
+        "服务端据此下发了票据，执行请求里带的就是那一张",
+        true,
+        "\"tk-1\""
+      ],
+      [
+        "**工具真的执行成功**（用户建得了笔记）",
+        true,
+        "[[\"note_manage\",true,\"已创建笔记\"]]"
+      ],
+      [
+        "没有 error 事件（这是正常流程，不是故障）",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-57",
+    "status": "通过",
+    "asserts": [
+      [
+        "卡片照常弹（票据缺失不许卡住确认流程）",
+        true,
+        "len=1"
+      ],
+      [
+        "预览照常取到（这次坏的只是票据那一路）",
+        true,
+        "{\"title\":\"二叉搜索树的时间复杂度\",\"contentLength\":320,\"categoryName\":\"算法\",\"visibility\":\"私密\"}"
+      ],
+      [
+        "前端不伪造票据：执行请求里没有 confirmTicket",
+        true,
+        "null"
+      ],
+      [
+        "工具请求确实发出去了（不是压根没走到执行那一步）",
+        true,
+        "note_manage.create"
+      ],
+      [
+        "服务端拒绝了执行，且原因（票据）写在 message 里（用户看得见的那一行）",
+        true,
+        "[false,\"确认票据缺失或已失效，已拒绝执行\"]"
+      ],
+      [
+        "没有升级成 error 事件（可重试的业务失败 ≠ 链路故障）",
+        true,
+        ""
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-58",
+    "status": "通过",
+    "asserts": [
+      [
+        "没有弹确认卡片（自动执行开着，非破坏性写不需要确认）",
+        true,
+        "len=0"
+      ],
+      [
+        "没有调预演接口（零额外开销）",
+        true,
+        "len=0"
+      ],
+      [
+        "执行请求体里是 autoConfirm=true（不是缺省、也不是恒填的 false）",
+        true,
+        "true"
+      ],
+      [
+        "不需要确认的调用不带票据键",
+        true,
+        "[\"tool\",\"params\",\"userId\",\"sessionId\",\"autoConfirm\",\"confirmed\"]"
+      ],
+      [
+        "工具照常执行成功",
+        true,
+        "[[\"note_manage\",true]]"
+      ]
+    ]
+  },
+  {
+    "id": "DF-LOOP-59",
+    "status": "通过",
+    "asserts": [
+      [
+        "回灌里的 total 是**总量**（10），不是本页条数（2）",
+        true,
+        "<tool_result>\nTool bank_manage succeeded.\nResult: {\"action\":\"list\",\"count\":2,\"total\":10,\"hasMore\":true,\"offset\":2,\"banks\":[{\"bankId\":3,\"bankName\":\"线性代数\",\"totalQuestions\":9,\"subject\":\"数学\"},{\"bankId\":4,"
+      ],
+      [
+        "回灌里的 hasMore 为 true（offset+本页 < total ⇒ 后面还有）",
+        true,
+        ""
+      ],
+      [
+        "回灌里带上了 offset（模型据此继续翻页）",
+        true,
+        ""
+      ],
+      [
+        "反面：没有把本页条数当成总量回灌",
+        true,
+        "\"\\\"total\\\":10\""
+      ],
+      [
+        "本页两个题库的 bankId 都还在（压缩不许丢定位字段）",
+        true,
+        ""
+      ]
+    ]
+  }
+]

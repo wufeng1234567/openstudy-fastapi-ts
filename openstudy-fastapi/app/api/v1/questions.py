@@ -40,6 +40,7 @@ from app.schemas.question import (
 )
 from app.utils.excel_util import export_to_excel
 from app.services.bank_copy_service import copy_bank_to_user
+from app.services import question_write_service
 from datetime import datetime
 
 router = APIRouter()
@@ -48,35 +49,17 @@ router = APIRouter()
 # ========== 辅助函数 ==========
 
 def _infer_subject(bank_name: str) -> str:
-    """根据题库名自动推断科目"""
-    name_lower = bank_name.lower()
-    subject_map = {
-        "java": "Java",
-        "python": "Python",
-        "mysql": "MySQL",
-        "数据结构": "计算机基础",
-        "算法": "计算机基础",
-        "英语": "英语",
-        "数学": "数学",
-        "物理": "物理",
-        "化学": "化学",
-        "历史": "历史",
-        "政治": "政治",
-    }
-    for key, subject in subject_map.items():
-        if key in name_lower:
-            return subject
-    return "未分类"
+    """根据题库名自动推断科目
+
+    实现已搬到 `app/services/question_write_service.py` —— AI Agent 建题库时
+    也要用同一套推断规则，否则「Agent 建的」和「UI 建的」科目会不一致。
+    """
+    return question_write_service.infer_subject(bank_name)
 
 
 def _generate_description(bank_name: str, subject: str) -> str:
-    """根据题库名自动生成 10-50 字符描述"""
-    desc = f"《{bank_name}》是{subject}科目的练习题库，包含多种题型，适合系统复习与自测。"
-    if len(desc) > 50:
-        desc = desc[:50]
-    elif len(desc) < 10:
-        desc = f"《{bank_name}》练习题库，包含多种题型，助你高效学习。"
-    return desc
+    """根据题库名自动生成 10-50 字符描述（实现见 question_write_service）"""
+    return question_write_service.generate_description(bank_name, subject)
 
 
 def _score_to_float(score) -> Optional[float]:
@@ -405,38 +388,17 @@ def _get_difficulty_text(value) -> str:
 
 
 async def _recalc_bank_total(db: AsyncSession, bank_id: int):
-    """重算题库题目总数（COUNT status='0' 的题目，与 SpringBoot 一致）"""
-    count_query = select(func.count()).where(
-        QuestionMain.bank_id == bank_id,
-        QuestionMain.status == "0",
-    )
-    count = await db.scalar(count_query) or 0
-    from sqlalchemy import update as sa_update
-    stmt = (
-        sa_update(QuestionBank)
-        .where(QuestionBank.id == bank_id)
-        .values(total_questions=count)
-    )
-    await db.execute(stmt)
+    """重算题库题目总数（COUNT status='0' 的题目，与 SpringBoot 一致）
+
+    实现见 `question_write_service.recalc_bank_total`（AI Agent 导入题目后
+    也要刷新总数，必须同一套口径）。
+    """
+    return await question_write_service.recalc_bank_total(db, bank_id)
 
 
 async def _insert_sub_questions(db: AsyncSession, main_id: int, sub_questions: list):
-    """批量插入子题（参考 SpringBoot insertQuestionSub）"""
-    if not sub_questions:
-        return
-    for idx, sub_data in enumerate(sub_questions):
-        sub = QuestionSub(
-            main_id=main_id,
-            question_text=sub_data.questionText,
-            question_type=sub_data.questionType or 1,
-            options=sub_data.options,
-            answer=sub_data.answer,
-            analysis=sub_data.analysis,
-            sort_order=sub_data.sortOrder if sub_data.sortOrder is not None else idx,
-            score=sub_data.score if sub_data.score is not None else 0,
-        )
-        db.add(sub)
-    await db.flush()
+    """批量插入子题（参考 SpringBoot insertQuestionSub；实现见 question_write_service）"""
+    return await question_write_service.insert_sub_questions(db, main_id, sub_questions)
 
 
 # ========== 权限辅助（分享 = 只读；编辑权只属于题库主） ==========
@@ -2467,7 +2429,7 @@ async def update_favorite_question(
         )).scalar_one_or_none()
         if not question:
             return error("题目ID %s 不存在，请输入有效的题目ID" % new_question_id)
-        # 预检唯一约束 uk_user_question，避免直接抛 IntegrityError（500）
+        # 预检唯一约束 uk_uq_favorite，避免直接抛 IntegrityError（500）
         dup = (await db.execute(
             select(UserQuestionFavorite.favorite_id).where(
                 UserQuestionFavorite.user_id == new_user_id,
@@ -2723,7 +2685,7 @@ async def create_error_question(
     if not question:
         return error("题目不存在")
 
-    # 防止重复插入：user_id + question_id 上有唯一约束 uk_user_question，
+    # 防止重复插入：user_id + question_id 上有唯一约束 uk_uq_error，
     # 直接 INSERT 会抛 IntegrityError（500），这里提前拦下并给出明确提示
     dup = (await db.execute(
         select(UserQuestionError.error_id).where(
@@ -3513,7 +3475,7 @@ async def update_marked_question(
         )).scalar_one_or_none()
         if not question:
             return error("题目不存在")
-        # 预检唯一约束 uk_user_question，避免直接抛 IntegrityError（500）
+        # 预检唯一约束 uk_uq_favorite，避免直接抛 IntegrityError（500）
         dup = (await db.execute(
             select(UserQuestionMarked.marked_id).where(
                 UserQuestionMarked.user_id == new_user_id,

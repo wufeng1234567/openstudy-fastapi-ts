@@ -1,0 +1,134 @@
+[32m2026-09-21 14:50:58.438[0m | [1mINFO    [0m | [36mapp.services.ai.dynamic_ai[0m:[36mregister_client[0m:[36m26[0m - [1mRegistered AI client: deepseek with models: ['deepseek-flash', 'deepseek-v4-pro', 'deepseek-v4-flash', 'deepseek-chat', 'deepseek-coder', 'deepseek-reasoner'][0m
+[32m2026-09-21 14:50:58.448[0m | [1mINFO    [0m | [36mapp.services.ai.dynamic_ai[0m:[36mregister_client[0m:[36m26[0m - [1mRegistered AI client: zhipu with models: ['glm-4', 'deepseek-chat', 'glm-4v', 'glm-3', 'embedding-3'][0m
+[32m2026-09-21 14:50:58.448[0m | [1mINFO    [0m | [36mapp.services.ai.dynamic_ai[0m:[36mregister_client[0m:[36m26[0m - [1mRegistered AI client: siliconflow with models: ['Qwen/Qwen2.5-7B-Instruct', 'Qwen/Qwen2.5-14B-Instruct', 'Qwen/Qwen2.5-32B-Instruct', 'Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-V2-Chat', 'THUDM/glm-4-9b-chat', 'BAAI/bge-m3', 'BAAI/bge-large-zh-v1.5', 'Qwen/Qwen3-Embedding-0.6B'][0m
+[32m2026-09-21 14:50:58.478[0m | [34m[1mDEBUG   [0m | [36mapp.services.ai.conversation_service[0m:[36m<module>[0m:[36m576[0m - [34m[1mconversation_service loaded (SQL backend)[0m
+[32m2026-09-21 14:51:00.233[0m | [1mINFO    [0m | [36mapp.services.ai.agent.tool_pref_service[0m:[36mset_tool_disabled[0m:[36m120[0m - [1m[tool_pref] 已保存工具开关 user=999999 tool=note_manage disabled=1[0m
+[32m2026-09-21 14:51:00.242[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPUT /ai/agent/tools status=200 duration=0.163s[0m
+[32m2026-09-21 14:51:00.258[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mGET /ai/agent/tools status=200 duration=0.010s[0m
+[32m2026-09-21 14:51:00.274[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPUT /ai/agent/tools status=422 duration=0.006s[0m
+[32m2026-09-21 14:51:00.338[0m | [1mINFO    [0m | [36mapp.services.ai.agent.tool_pref_service[0m:[36mset_tool_disabled[0m:[36m120[0m - [1m[tool_pref] 已保存工具开关 user=999999 tool=note_manage disabled=1[0m
+[32m2026-09-21 14:51:00.349[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPUT /ai/agent/tools status=200 duration=0.075s[0m
+[32m2026-09-21 14:51:00.354[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPUT /ai/agent/tools status=200 duration=0.005s[0m
+[32m2026-09-21 14:51:00.378[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/agent/execute status=200 duration=0.024s[0m
+[32m2026-09-21 14:51:00.388[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/agent/preview status=200 duration=0.010s[0m
+[32m2026-09-21 14:51:00.408[0m | [1mINFO    [0m | [36mapp.services.ai.agent.tool_pref_service[0m:[36mset_tool_disabled[0m:[36m120[0m - [1m[tool_pref] 已保存工具开关 user=999999 tool=note_manage disabled=0[0m
+[32m2026-09-21 14:51:00.418[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPUT /ai/agent/tools status=200 duration=0.030s[0m
+[32m2026-09-21 14:51:00.458[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/agent/execute status=200 duration=0.040s[0m
+[32m2026-09-21 14:51:00.482[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/agent/execute status=200 duration=0.023s[0m
+[32m2026-09-21 14:51:00.488[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPOST /ai/sessions status=200 duration=0.007s[0m
+[32m2026-09-21 14:51:00.649[0m | [1mINFO    [0m | [36mapp.services.ai.agent.tool_pref_service[0m:[36mset_tool_disabled[0m:[36m120[0m - [1m[tool_pref] 已保存工具开关 user=999999 tool=note_manage disabled=1[0m
+[32m2026-09-21 14:51:00.668[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPUT /ai/agent/tools status=200 duration=0.092s[0m
+[32m2026-09-21 14:51:00.725[0m | [1mINFO    [0m | [36mapp.services.ai.agent.tool_pref_service[0m:[36mset_tool_disabled[0m:[36m120[0m - [1m[tool_pref] 已保存工具开关 user=999999 tool=memory_search disabled=1[0m
+[32m2026-09-21 14:51:00.734[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPUT /ai/agent/tools status=200 duration=0.065s[0m
+[32m2026-09-21 14:51:01.378[0m | [1mINFO    [0m | [36mapp.services.ai.db_config[0m:[36mbuild_agent_llm[0m:[36m520[0m - [1m[db_config] Agent 客户端: config_id=6 provider=deepseek model=deepseek-flash thinking=None（None=不传，跟随上游默认）[0m
+[32m2026-09-21 14:51:01.458[0m | [34m[1mDEBUG   [0m | [36mapp.services.ai.agent.loop[0m:[36mrun_agent_stream[0m:[36m802[0m - [34m[1m[agent] 第 1 轮，消息数=2[0m
+[32m2026-09-21 14:51:01.480[0m | [1mINFO    [0m | [36mapp.services.ai.agent.tool_pref_service[0m:[36mset_tool_disabled[0m:[36m120[0m - [1m[tool_pref] 已保存工具开关 user=999999 tool=note_manage disabled=0[0m
+[32m2026-09-21 14:51:01.492[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPUT /ai/agent/tools status=200 duration=0.030s[0m
+[32m2026-09-21 14:51:01.509[0m | [1mINFO    [0m | [36mapp.services.ai.agent.tool_pref_service[0m:[36mset_tool_disabled[0m:[36m120[0m - [1m[tool_pref] 已保存工具开关 user=999999 tool=memory_search disabled=0[0m
+[32m2026-09-21 14:51:01.518[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPUT /ai/agent/tools status=200 duration=0.026s[0m
+[32m2026-09-21 14:51:02.178[0m | [1mINFO    [0m | [36mapp.services.ai.db_config[0m:[36mbuild_agent_llm[0m:[36m520[0m - [1m[db_config] Agent 客户端: config_id=6 provider=deepseek model=deepseek-flash thinking=None（None=不传，跟随上游默认）[0m
+[32m2026-09-21 14:51:02.202[0m | [34m[1mDEBUG   [0m | [36mapp.services.ai.agent.loop[0m:[36mrun_agent_stream[0m:[36m802[0m - [34m[1m[agent] 第 1 轮，消息数=2[0m
+[32m2026-09-21 14:51:02.258[0m | [1mINFO    [0m | [36mapp.services.ai.agent.tool_pref_service[0m:[36mset_tool_disabled[0m:[36m120[0m - [1m[tool_pref] 已保存工具开关 user=999999 tool=note_manage disabled=1[0m
+[32m2026-09-21 14:51:02.268[0m | [1mINFO    [0m | [36mapp.core.middleware[0m:[36mdispatch[0m:[36m31[0m - [1mPUT /ai/agent/tools status=200 duration=0.064s[0m
+[32m2026-09-21 14:51:02.292[0m | [34m[1mDEBUG   [0m | [36mapp.services.ai.agent.loop[0m:[36mrun_agent_stream[0m:[36m802[0m - [34m[1m[agent] 第 1 轮，消息数=2[0m
+[32m2026-09-21 14:51:02.313[0m | [34m[1mDEBUG   [0m | [36mapp.services.ai.agent.loop[0m:[36mrun_agent_stream[0m:[36m802[0m - [34m[1m[agent] 第 2 轮，消息数=4[0m
+[md5] ai.py 跑前 = a41168beabb29891fc2b73cad609eaf3
+[md5] loop.py 跑前 = a1665966643f1469457535a834e1d7e2
+[mutate:inloop] run_agent_stream 内联分支不再拦屏蔽工具: 命中 1 次 → 已替换
+[mutate:inloop] 已写入变异体
+
+---- 结果 ----
+  [通过] P0a 新表已由 create_all 建出来（模型模块进了 register_all_models）
+        期望: ai_agent_tool_pref 存在
+        实际: 跑前 exists=True （本来就 exists=True）
+        说明: 表不存在时下面所有开关用例都会连带红 —— 这条单独判，便于定位
+  [通过] P0b 专用 uid 是干净的
+        期望: ai_chat_session 里 user_id=999999 的行数为 0
+        实际: count=0
+  [通过] P1 definitions/describe 的 exclude 真的在过滤（两边口径一致）
+        期望: 未过滤含 note_manage；exclude 后不含；其余工具两边一致；describe 的条目名与 definitions 的工具名集合相同
+        实际: defs含=True defs排除后=False desc条目含=True desc排除后=False desc条目=['bank_manage', 'note_manage', 'question_manage', 'knowledge_search', 'memory_search']
+  [通过] P2a PUT 返回与 GET 同形状（含 tools 键）
+        期望: HTTP 200 且 body 有 tools 键（catch_all 的假 200 没有）
+        实际: status=200 has_tools=True
+        说明: body_keys=['tools', 'actions']
+  [通过] P2b 被屏蔽的工具**仍以整行出现**且 disabled=1
+        期望: note_manage 在清单里、disabled=1、function 子对象完好
+        实际: found=True disabled=1
+        说明: 这条就是「用户还能把它打开回来」的性质：过滤掉就再也点不到了
+  [通过] P2c 其余工具未被误伤（disabled 全为 0）
+        期望: 除 note_manage 外每一项 disabled 都是整数 0
+        实际: all_zero=True
+  [通过] P3 开关真的落库（复读 GET + 直连 SQL 两路一致）
+        期望: GET.disabled==1 且库里的 disabled==1
+        实际: get_disabled=1 db_disabled=1
+  [通过] P4a 字段名写错 → 422（不是静默 200）
+        期望: HTTP 422
+        实际: status=422 body_keys=['detail']
+        说明: pydantic v2 默认 extra='ignore' 会把它吃成 200 + 什么都没保存
+  [通过] P4b 正对照：字段名写对 → 200 且带 tools
+        期望: HTTP 200 且有 tools 键
+        实际: status=200 has_tools=True
+  [通过] P5 未知工具名 → 明确拒绝（且不是 catch_all 的假 200）
+        期望: code==400 且 msg 指明工具不存在；body 里没有 tools 键
+        实际: status=200 code=400 msg='工具不存在：no_such_tool__probe' keys=['code', 'msg', 'data']
+  [通过] P6a 被屏蔽时 /ai/agent/execute 返回 fail 信封且无业务数据
+        期望: success is False、有 error 与 hint、且没有 notes 字段
+        实际: success=False error='「note_manage」已被用户在工具设置里屏蔽' has_hint=True has_notes=False
+  [通过] P6b 被屏蔽时预演同样被拒（两条链路一致）
+        期望: success is False（不给预览）
+        实际: keys=['success', 'error', 'hint'] success=False
+  [通过] P6c 重新打开后同一调用成功（正对照）
+        期望: success is True 且带 notes 字段
+        实际: success=True has_notes=True
+  [通过] P6d 屏蔽是**按工具**的，同用户其它工具照常
+        期望: bank_manage.list 仍然 success is True
+        实际: success=True keys=['action', 'banks', 'count', 'success']
+  [通过] P7a POST /ai/sessions 只发 id、不写库
+        期望: 响应有 sessionId，且库里查不到这一行
+        实际: status=200 sessionId=asst_1789973460488_84c0e3 rows=0
+  [通过] P7b 首条消息把它懒建出来，且标题取首条用户消息
+        期望: 行存在、title == 首条消息截到 30 字、message_count == 1
+        实际: row=('__toolpref_probe__ 第一条消息 17899', 1) expect_title='__toolpref_probe__ 第一条消息 17899'
+  [通过] P7c 懒建只造出这一个会话（没有顺手多写）
+        期望: user_id=999999 的会话集合 == {刚建的那个}
+        实际: ids=['asst_1789973460488_84c0e3']
+  [通过] P8a meta 事件的可用工具 = 生效后清单
+        期望: 不含 note_manage / memory_search，含 bank_manage
+        实际: names=['bank_manage', 'knowledge_search', 'question_manage']
+  [通过] P8b 系统提示词的工具清单同样排除（describe(exclude=…)）
+        期望: tools_text 的条目行里没有 note_manage / memory_search，但有 bank_manage
+        实际: entries=['bank_manage', 'question_manage', 'knowledge_search']
+        说明: ⚠️ 按条目行判，不按子串 —— memory_search 的描述里会引用 note_manage
+  [通过] P8c 正对照：没有屏蔽时两处都含 note_manage
+        期望: meta 与提示词的条目行都含 note_manage / memory_search
+        实际: meta=['bank_manage', 'knowledge_search', 'memory_search', 'note_manage', 'question_manage'] prompt_entries=['bank_manage', 'note_manage', 'question_manage', 'knowledge_search', 'memory_search']
+  [通过] P10a 内联循环：绑给模型的 tools 里没有被屏蔽的工具
+        期望: bind_tools 收到的名字里不含 note_manage
+        实际: bound=['bank_manage', 'knowledge_search', 'memory_search', 'question_manage']
+        说明: 这是出口 #1（真·Function Calling 参数），不是提示词文本
+  [失败] P10b 内联循环：模型硬调被屏蔽工具 → 被拒并回灌（含 hint）
+        期望: 有 tool_result(success=False, 文案含「屏蔽」) 与 self_correct
+        实际: tool_result=[{'type': 'tool_result', 'tool': 'note_manage', 'action': 'list', 'success': True, 'message': '', 'data': {'success': True, 'action': 'list', 'count': 0, 'total': 0, 'notes': []}}] self_correct=[]
+  [通过] P10c 内联循环：被拒后循环**继续**跑到收尾（不是死掉）
+        期望: 拿到 done 事件，且 answer 是第 2 轮的正文
+        实际: done='收尾：我没有可用的笔记工具。' types=['meta', 'waiting', 'metrics', 'tool_start', 'tool_result', 'metrics', 'waiting', 'text', 'metrics', 'done']
+        说明: 这一条就是「不要因为用户关了工具就把整轮弄死」的机器断言
+  [通过] P9a 工具开关表：真实用户的行一字未变（整表回比）
+        期望: 跑前集合 == 跑后集合，且本 uid 残留 0 行
+        实际: before=0 after=0 left_probe=0
+        说明: ⚠️ 若本次是**探针自己补建**的表（跑前不存在），跑前快照是空集，这条就只等于「探针没留下残留行」；表本来就存在时它才是「真实用户行集合的回比」（本次 bootstrapped=False）
+  [通过] P9b ai_chat_session / ai_chat_message 真实数据一字未变
+        期望: 会话 id 集合与消息 id 集合都与跑前完全相同
+        实际: sessions 18→18 msgs 195→195
+
+合计：24/25 通过；红的 = ['P10b']
+NOT RUN（本跑手不覆盖；不是「通过」）：
+  · **真实**模型端到端：真 provider 流式返回 tool_call 那一段（P10 把模型那一层
+    换成了假 LLM —— 循环其余部分是真代码，但「真模型会不会真去调被屏蔽的工具」
+    仍需一次付费 LLM 往返）
+  · 全部工具被屏蔽时「退化成纯聊天」的回复质量（同上，要一次 LLM 往返；
+    本跑手只保证了不 bind_tools、提示词里说了本轮没有工具、不报服务端配置错）
+  · 前端工具面板的开关 UI 与 ds-free 消费侧（属前端产权，需浏览器，本跑手不碰）
+[md5] ai.py 还原后 = a41168beabb29891fc2b73cad609eaf3 / 与跑前一致 = True
+[md5] loop.py 还原后 = a1665966643f1469457535a834e1d7e2 / 与跑前一致 = True

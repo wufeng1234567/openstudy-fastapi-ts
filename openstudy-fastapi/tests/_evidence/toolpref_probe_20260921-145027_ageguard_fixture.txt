@@ -1,0 +1,25 @@
+夹具已建：A(age20)=__ageguard_probe__old  B(age0)=__ageguard_probe__fresh  C(age20+有消息)=__ageguard_probe__race
+本地 now() = 2026-09-21 14:59:25.950286
+脚本退出码 = 0（输出已落盘：D:\OpenStudy\apps\fastapi-v2\openstudy-fastapi\tests\_evidence\_tmp_ageguard_probe_out.txt）
+
+---- 结果 ----
+  [通过] G1 A(age20) 出现在候选区
+        实际: A_in_candidates=True
+  [通过] G2 B(age0) 不在候选区
+        实际: B_in_candidates=False
+  [通过] G3 B(age0) 出现在「按年龄闸门保留」区
+        实际: B_in_kept=True
+  [通过] G4 C(有消息) 两处都不出现（三条判据就不成立）
+        实际: C_in_candidates=False C_in_kept=False
+  [通过] G5 只删了 1 行且是 A
+        实际: deleted=True A=True
+  [通过] G6 脚本自检全通过
+        实际: ok=True
+  [通过] G7 A 已删、B 仍在
+        实际: alive=['__ageguard_probe__fresh', '__ageguard_probe__race']
+  [通过] G8 TOCTOU 守卫：给 DELETE 一个「已长出消息」的 id → 删 0 行
+        实际: deleted_rows=[]
+  [通过] G9 真实用户的 session 集合跑前跑后完全一致
+        实际: before=18 after=18 left_probe=0
+
+合计：9/9 通过；红的 = 无

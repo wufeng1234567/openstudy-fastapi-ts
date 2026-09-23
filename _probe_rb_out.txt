@@ -1,0 +1,72 @@
+[32m2026-09-23 08:38:11.550[0m | [1mINFO    [0m | [36mapp.services.ai.dynamic_ai[0m:[36mregister_client[0m:[36m26[0m - [1mRegistered AI client: deepseek with models: ['deepseek-flash', 'deepseek-v4-pro', 'deepseek-v4-flash', 'deepseek-chat', 'deepseek-coder', 'deepseek-reasoner'][0m
+[32m2026-09-23 08:38:11.550[0m | [1mINFO    [0m | [36mapp.services.ai.dynamic_ai[0m:[36mregister_client[0m:[36m26[0m - [1mRegistered AI client: zhipu with models: ['glm-4', 'deepseek-chat', 'glm-4v', 'glm-3', 'embedding-3'][0m
+[32m2026-09-23 08:38:11.550[0m | [1mINFO    [0m | [36mapp.services.ai.dynamic_ai[0m:[36mregister_client[0m:[36m26[0m - [1mRegistered AI client: siliconflow with models: ['Qwen/Qwen2.5-7B-Instruct', 'Qwen/Qwen2.5-14B-Instruct', 'Qwen/Qwen2.5-32B-Instruct', 'Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-V2-Chat', 'THUDM/glm-4-9b-chat', 'BAAI/bge-m3', 'BAAI/bge-large-zh-v1.5', 'Qwen/Qwen3-Embedding-0.6B'][0m
+[32m2026-09-23 08:38:11.582[0m | [34m[1mDEBUG   [0m | [36mapp.services.ai.conversation_service[0m:[36m<module>[0m:[36m576[0m - [34m[1mconversation_service loaded (SQL backend)[0m
+[32m2026-09-23 08:38:12.831[0m | [1mINFO    [0m | [36mapp.database[0m:[36minit_db[0m:[36m274[0m - [1mDatabase tables created successfully[0m
+[32m2026-09-23 08:38:13.243[0m | [1mINFO    [0m | [36mapp.services.ai.agent.rollback_service[0m:[36mrollback_turn[0m:[36m537[0m - [1m[rollback] session=__probe_rb__ turn=__probe_rollback_turn__-t1 user=1 → 撤了 1 / 跳过 0 / 失败 0 / 部分 0[0m
+[32m2026-09-23 08:38:13.265[0m | [1mINFO    [0m | [36mapp.services.ai.agent.rollback_service[0m:[36mrollback_turn[0m:[36m537[0m - [1m[rollback] session=__probe_rb__ turn=__probe_rollback_turn__-t1 user=1 → 撤了 0 / 跳过 0 / 失败 0 / 部分 0[0m
+[32m2026-09-23 08:38:13.346[0m | [1mINFO    [0m | [36mapp.services.ai.agent.rollback_service[0m:[36mrollback_turn[0m:[36m537[0m - [1m[rollback] session=__probe_rb__ turn=__probe_rollback_turn__-t2 user=1 → 撤了 1 / 跳过 0 / 失败 0 / 部分 0[0m
+[32m2026-09-23 08:38:13.414[0m | [1mINFO    [0m | [36mapp.services.ai.agent.rollback_service[0m:[36mrollback_turn[0m:[36m537[0m - [1m[rollback] session=__probe_rb__ turn=__probe_rollback_turn__-t3 user=1 → 撤了 0 / 跳过 0 / 失败 0 / 部分 0[0m
+[32m2026-09-23 08:38:13.455[0m | [1mINFO    [0m | [36mapp.services.ai.agent.rollback_service[0m:[36mrollback_turn[0m:[36m537[0m - [1m[rollback] session=__probe_rb__ turn=__probe_rollback_turn__-t4 user=1 → 撤了 1 / 跳过 1 / 失败 0 / 部分 0[0m
+[32m2026-09-23 08:38:13.550[0m | [1mINFO    [0m | [36mapp.services.ai.agent.rollback_service[0m:[36mrollback_turn[0m:[36m537[0m - [1m[rollback] session=__probe_rb__ turn=__probe_rollback_turn__-t5 user=1 → 撤了 0 / 跳过 1 / 失败 0 / 部分 0[0m
+[32m2026-09-23 08:38:13.676[0m | [1mINFO    [0m | [36mapp.services.ai.agent.rollback_service[0m:[36mrollback_turn[0m:[36m537[0m - [1m[rollback] session=__probe_rb__ turn=__probe_rollback_turn__-t7 user=1 → 撤了 1 / 跳过 0 / 失败 0 / 部分 0[0m
+[32m2026-09-23 08:38:13.787[0m | [1mINFO    [0m | [36mapp.services.ai.agent.rollback_service[0m:[36mrollback_turn[0m:[36m537[0m - [1m[rollback] session=__probe_rb__ turn=__probe_rollback_turn__-t9 user=1 → 撤了 1 / 跳过 0 / 失败 0 / 部分 0[0m
+[32m2026-09-23 08:38:13.869[0m | [1mINFO    [0m | [36mapp.services.ai.agent.rollback_service[0m:[36mrollback_turn[0m:[36m537[0m - [1m[rollback] session=__probe_rb__ turn=__probe_rollback_turn__-t10 user=1 → 撤了 1 / 跳过 0 / 失败 0 / 部分 0[0m
+[32m2026-09-23 08:38:13.993[0m | [1mINFO    [0m | [36mapp.services.ai.agent.rollback_service[0m:[36mrollback_turn[0m:[36m537[0m - [1m[rollback] session=__probe_rb__ turn=__probe_rollback_turn__-t11 user=103 → 撤了 1 / 跳过 0 / 失败 0 / 部分 0[0m
+[32m2026-09-23 08:38:14.595[0m | [1mINFO    [0m | [36mapp.services.ai.db_config[0m:[36mbuild_agent_llm[0m:[36m520[0m - [1m[db_config] Agent 客户端: config_id=6 provider=deepseek model=deepseek-flash thinking=None（None=不传，跟随上游默认）[0m
+[32m2026-09-23 08:38:14.595[0m | [33m[1mWARNING [0m | [36mapp.services.ai.agent.rollback_service[0m:[36mrollback_turn[0m:[36m479[0m - [33m[1m[rollback] 拒绝执行：turn_id 为空（空值不许当通配符）[0m
+[32m2026-09-23 08:38:14.595[0m | [33m[1mWARNING [0m | [36mapp.services.ai.agent.rollback_service[0m:[36mrollback_turn[0m:[36m476[0m - [33m[1m[rollback] 拒绝执行：user_id 非法（0）[0m
+  [OK  ] M0 ai_agent_op_log 已由 create_all 建出，且列与模型逐字一致（漏了 register_all_models 这一条就是「查无此表」）
+         模型列=['action', 'before', 'create_time', 'id', 'op', 'op_index', 'reason', 'session_id', 'target_ids', 'target_table', 'tool', 'turn_id', 'undoable', 'undone_at', 'user_id']
+         库里的列=['action', 'before', 'create_time', 'id', 'op', 'op_index', 'reason', 'session_id', 'target_ids', 'target_table', 'tool', 'turn_id', 'undoable', 'undone_at', 'user_id']
+uid_a=1  uid_b=2  借用题目 q1=135 q2=136
+
+跑前无标记行：note=39  memory=36  question_bank=21  op_log=0
+
+  [OK  ] M1 夹具登记齐（4 篇笔记 + 1 分类 + 2 条记忆 + 1 个题库，id 都拿到了）
+         notes=[425, 426, 427, 428] cat=186 mem=3049(a)/3050(b) bank=1152
+  [OK  ] P1 note delete：数据真的被逻辑删（del_flag='2'），且账本记下了「怎么撤」
+         回执 success=True note.del_flag='2'
+         账本行(tool,action,op,table,ids,undoable,reason,undone)=[('note_manage', 'delete', 'restore', 'note', '[425]', True, '', False, 'null')]
+  [OK  ] P2 rollback_turn 把这一轮删掉的笔记恢复（del_flag 回 '0'）
+         结果={"reverted": 1, "skipped": [], "failed": [], "partial": []} note.del_flag='0'
+  [OK  ] P3 **幂等**：第二次回退 reverted=0、一行数据不动（undone_at 作判据）
+         第二次结果={"reverted": 0, "skipped": [], "failed": [], "partial": []} note.del_flag='0' undone_at 已置=True
+  [OK  ] P4 memory forget → 逻辑删（'2'）；回退 → 恢复（'0'）（复用 restore_memory）
+         forget 后 del_flag='2' 账本 op=restore_memory 回退={"reverted": 1, "skipped": [], "failed": [], "partial": []} 现在 del_flag='0'
+  [OK  ] P5 **越权闸门**：别人的账本行不在我的回退范围内（用 uid_a 跑 uid_b 的 turn）
+         uid_b 的账本行(user_id,op,undoable,undone)=[(2, 'restore_memory', True, False)]；uid_a 跑同一 turn 的结果={"reverted": 0, "skipped": [], "failed": [], "partial": []}
+         uid_b 那条记忆 del_flag='2' → '2'（必须仍是 '2'）
+  [OK  ] P6 undoable=False 的条目**一个都没执行**（负对照跳过 / 正对照照撤）
+         结果={"reverted": 1, "skipped": [{"tool": "note_manage", "action": "delete", "reason": "not_declared", "reasonText": "这个操作还没有回退实现"}], "failed": [], "partial": []}
+         负对照 n2.del_flag='0'（必须 '0'=没被撤）；正对照 n3.del_flag='2'（必须 '2'=真撤了）
+  [OK  ] P7 题库删除（物理删、本轮不做）：账本如实记「不可回退 + 原因」，回退只跳过不执行
+         删除后 bank 行数=0 账本(tool,action,op,table,ids,undoable,reason)=('bank_manage', 'delete', '', '', 'null', False, 'missing_soft_delete')
+         回退结果={"reverted": 0, "skipped": [{"tool": "bank_manage", "action": "delete", "reason": "missing_soft_delete", "reasonText": "题库与题目目前是**物理删除**，暂时无法回退（下一阶段支持）"}], "failed": [], "partial": []}
+  [OK  ] P8 账本行**跟着数据同一个事务**：未提交时别的会话看不到；一起回滚则一起消失（所以 api 链路靠 `run_agent_stream` 那句显式 commit 落库）
+         本会话可见=1（同会话内 del_flag='2'）另一会话可见=0（必须 0）
+         回滚后 del_flag='0'（必须 '0'）账本残留=0（必须 0）
+  [OK  ] P9 标记 add（新建那条）→ 回退把它删掉（delete_record）
+         回执 created=True recordId=277 账本 op=delete_record
+         回退={"reverted": 1, "skipped": [], "failed": [], "partial": []} 该题收藏剩余=0（必须 0）
+  [OK  ] P9b 标记 remove（**物理删**）→ 回退按改前值插回一行（备注等字段还在）
+         删除回执 success=True 账本 op=insert_record
+         回退={"reverted": 1, "skipped": [], "failed": [], "partial": []} 插回的行=[(279, '__probe_rollback_turn__-fav2', 1)]（notes 必须是 __probe_rollback_turn__-fav2、favorite_status=1）
+  [OK  ] P11 note update：账本留下**改前值**，且信封里的私有键**没有泄漏**到回执/模型
+         回执里有 __undo_before__ 吗=False（必须 False）改后标题='__probe_rollback_turn__-改过标题'
+         账本 op=restore_fields before={'title': '__probe_rollback_turn__-删除后回退', 'content': '__probe_rollback_turn__正文-删除后回退'}
+  [OK  ] P11b 回退 update：标题与正文都写回改前值（restore_fields 走到执行）
+         回退={"reverted": 1, "skipped": [], "failed": [], "partial": []} 现在的行(title,content)=[('__probe_rollback_turn__-删除后回退', '__probe_rollback_turn__正文-删除后回退')]
+  [OK  ] P12 memory clear：账本记下**将被删的 id 列表**（before.memoryIds），回退逐条恢复
+         清空后(id,del_flag)=[(3051, '2'), (3052, '2')] 账本 before=[3052, 3051]（期望集合 [3051, 3052]）
+         回退={"reverted": 1, "skipped": [], "failed": [], "partial": []} 恢复后=[(3051, '0'), (3052, '0')]
+  [OK  ] P10 meta 事件**原样回显** turnId（前端据此调回退）
+         meta.turnId='__probe_rollback_turn__-t10'（期望 '__probe_rollback_turn__-t10'）type='meta' error=None
+  [OK  ] P10b 空 turn_id / uid=0 的回退**返回空结果**（空值绝不许当通配符扫全表）
+         _resolve_turn_id('')='auto_411b332ac9c1'；空turn={"reverted": 0, "skipped": [], "failed": [], "partial": []} uid=0={"reverted": 0, "skipped": [], "failed": [], "partial": []}
+  [OK  ] M2 夹具残留 0（按登记的精确 id + 标记物理删；逻辑删的行只能裸 SQL 清）
+         残留={'note': 0, 'memory': 0, 'bank': 0, 'fav': 0, 'category': 0, 'op_log': 0}
+  [OK  ] M3 **用户自己的数据一条没少**（各表「无标记行」的 id 集合仍包含跑前那批）
+         note: 39→39；memory: 36→36；question_bank: 21→21；op_log: 0→0
+
+结果：19/19 通过

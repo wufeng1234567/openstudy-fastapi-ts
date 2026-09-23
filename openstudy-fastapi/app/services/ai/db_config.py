@@ -4,75 +4,255 @@
 provider 为空时使用表中 is_default=1 的系统默认模型。
 """
 
-from typing import List, Optional, AsyncIterator
-from sqlalchemy import select
+from typing import Any, List, Optional, AsyncIterator
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from loguru import logger
 
 from app.models.ai_config import SysAiConfig
-from app.services.ai.base_client import ChatMessage, ChatResponse
+from app.services.ai.base_client import ChatMessage, ChatResponse, to_lc_content, to_lc_text
 from app.services.ai.dynamic_ai import dynamic_ai
 from app.config import settings
 
+# 让 LangChain 把流式分片里的 reasoning_content 透出来（原因见该模块 docstring：
+# langchain-openai 的白名单转换会把它静默丢弃，导致深度思考链路根本读不到）。
+# ⚠️ 必须在这里 import —— 本模块是**所有** LLM 的构造工厂，补丁在 import 时安装，
+#    放别处容易出现「某条链路还没打上补丁就已经开始流式」的时序问题。
+from app.services.ai import langchain_reasoning_patch as _reasoning_patch  # noqa: F401
+
 # provider 未配置 base_url 时的默认 API 地址（OpenAI 兼容）
+# DeepSeek 官方文档：base_url = https://api.deepseek.com（OpenAI 兼容）
+#
+# ⚠️ 键必须同时覆盖**前端配置表单里用的 provider 值**：前端「我的模型」表单
+# 下拉给的是 `zhipuai` / `siliconflow` / `openai` / `deepseek`，而这里历史上有
+# `zhipu`（没有 `zhipuai`）、也没有 `openai` —— 于是用户建智谱/OpenAI 模型时
+# 只要留空 API 地址，就会被兜底成 DeepSeek 的地址，报一堆看不懂的错。
 PROVIDER_BASE_URLS = {
-    "deepseek": "https://api.deepseek.com/v1",
+    "deepseek": "https://api.deepseek.com",
     "zhipu": "https://open.bigmodel.cn/api/paas/v4",
+    "zhipuai": "https://open.bigmodel.cn/api/paas/v4",
     "siliconflow": "https://api.siliconflow.cn/v1",
+    "openai": "https://api.openai.com/v1",
 }
 
+# ds-free（DeepSeek 官网 Web 版）由前端浏览器扩展代发请求，后端不能直接服务
+DS_FREE_PROVIDER = "deepseek-free"
 
-async def get_default_config(db: AsyncSession) -> Optional[SysAiConfig]:
-    """获取系统默认模型配置（is_default=1 且启用）"""
-    result = await db.execute(
-        select(SysAiConfig)
-        .where(SysAiConfig.is_default == 1, SysAiConfig.is_enabled == 1)
-        .order_by(SysAiConfig.config_id.asc())
-        .limit(1)
+
+def _visible_scope(user_id: Optional[int]):
+    """「这条配置对该用户可见」的 SQL 条件
+
+    两级来源（与 `ai_config.format_config` 的 source 字段同一口径）：
+      - `user_id IS NULL`  → **系统提供**（官方模型，所有登录用户可用）
+      - `user_id = N`      → **用户自定义**（只属于 N，别人既看不到也用不到）
+
+    ⚠️ `user_id=None`（没有登录上下文的老调用方 / 一次性生成场景）只允许系统行。
+    旧实现按 `user_id.desc()` 排序却**不过滤**，等于「任意用户的自定义模型
+    （与其 API Key）会顶掉系统行被他人用上」，是明确的越权隐患，此处一并收口。
+    """
+    if user_id:
+        return or_(SysAiConfig.user_id.is_(None), SysAiConfig.user_id == user_id)
+    return SysAiConfig.user_id.is_(None)
+
+
+def has_credentials(config: SysAiConfig) -> bool:
+    """这条配置有没有「能真正调用模型」的凭据
+
+    - ds-free 走网页端反代，本来就不需要 API Key，永远算有凭据；
+    - 其它 provider 必须有表里的 api_key，或 .env 里的 DEEPSEEK_API_KEY。
+    """
+    if config.provider == DS_FREE_PROVIDER:
+        return True
+    return bool(
+        (config.api_key or "").strip() or (settings.DEEPSEEK_API_KEY or "").strip()
     )
-    return result.scalar_one_or_none()
 
 
-async def get_config_by_provider(db: AsyncSession, provider: str) -> Optional[SysAiConfig]:
-    """按 provider 获取启用的模型配置（优先默认）"""
+def is_servable_by_backend(config: SysAiConfig) -> bool:
+    """后端是否能直接服务这条配置（ds-free 由前端扩展处理 → 不能）"""
+    return config.provider != DS_FREE_PROVIDER
+
+
+async def get_default_config(
+    db: AsyncSession, user_id: Optional[int] = None
+) -> Optional[SysAiConfig]:
+    """获取默认模型配置（is_default=1 且启用）
+
+    可见范围：系统行 + 该用户自己的行；**用户自己设的默认优先于系统默认**
+    （个人中心把自己的模型设为默认后，只有他自己会走这条）。
+
+    ⚠️ 表里可能同时存在多条 is_default=1 的行（线上就出现过
+    `deepseek-v4-flash` 与 `deepseek-free` 两条都是默认）。按 config_id 取第一条
+    会选中「provider=deepseek 但 api_key 为空」的那条，于是每次对话都以
+    `The api_key client option must be set` 失败，历史里只剩用户提问。
+
+    这里改成：在默认行里优先挑「后端能直接服务且凭据齐全」的；一条都没有时
+    仍然返回第一条（保持原有行为，让上层拿到明确报错而不是找不到配置）。
+    """
     result = await db.execute(
         select(SysAiConfig)
-        .where(SysAiConfig.provider == provider, SysAiConfig.is_enabled == 1)
-        .order_by(SysAiConfig.is_default.desc(), SysAiConfig.config_id.asc())
-        .limit(1)
+        .where(
+            SysAiConfig.is_default == 1,
+            SysAiConfig.is_enabled == 1,
+            _visible_scope(user_id),
+        )
+        .order_by(SysAiConfig.user_id.desc(), SysAiConfig.config_id.asc())
     )
-    return result.scalar_one_or_none()
+    rows = list(result.scalars().all())
+    if not rows:
+        return None
+
+    for cfg in rows:
+        if is_servable_by_backend(cfg) and has_credentials(cfg):
+            if cfg is not rows[0]:
+                logger.warning(
+                    "[db_config] 默认配置 config_id={} 不可用（backend_servable={} credentials={}），"
+                    "改用 config_id={} provider={} model={}",
+                    rows[0].config_id,
+                    is_servable_by_backend(rows[0]),
+                    has_credentials(rows[0]),
+                    cfg.config_id,
+                    cfg.provider,
+                    cfg.model,
+                )
+            return cfg
+    return rows[0]
 
 
-async def get_enabled_configs(db: AsyncSession) -> List[SysAiConfig]:
-    """获取所有启用的模型配置"""
+async def get_config_by_provider(
+    db: AsyncSession, provider: str, user_id: Optional[int] = None
+) -> Optional[SysAiConfig]:
+    """按 provider 获取启用的模型配置（优先默认、其次凭据齐全）
+
+    同一个 provider 在表里往往有多条（例如 provider=deepseek 有 3 条，
+    只有其中一条填了 api_key）。原来只按 is_default desc 取第一条，会稳定选中
+    那条空 Key 的默认行 —— 用户在模型下拉框里选了个「有 Key 的」也照样失败。
+    这里改成：先按优先级排序，再取第一条凭据齐全的；全都没有则回退第一条。
+    用户自定义行优先于系统行（同 provider 时用自己的配置）。
+    """
     result = await db.execute(
         select(SysAiConfig)
-        .where(SysAiConfig.is_enabled == 1)
-        .order_by(SysAiConfig.is_default.desc(), SysAiConfig.config_id.asc())
+        .where(
+            SysAiConfig.provider == provider,
+            SysAiConfig.is_enabled == 1,
+            _visible_scope(user_id),
+        )
+        .order_by(
+            SysAiConfig.user_id.desc(),
+            SysAiConfig.is_default.desc(),
+            SysAiConfig.config_id.asc(),
+        )
+    )
+    rows = list(result.scalars().all())
+    if not rows:
+        return None
+
+    for cfg in rows:
+        if has_credentials(cfg):
+            if cfg is not rows[0]:
+                logger.warning(
+                    "[db_config] provider={} 的首选配置 config_id={} 缺凭据，"
+                    "改用 config_id={} model={}",
+                    provider,
+                    rows[0].config_id,
+                    cfg.config_id,
+                    cfg.model,
+                )
+            return cfg
+    return rows[0]
+
+
+async def get_config_by_model(
+    db: AsyncSession, model: str, user_id: Optional[int] = None
+) -> Optional[SysAiConfig]:
+    """按模型名获取启用的模型配置（前端模型下拉框现在按 model 选择）
+
+    同一个 model 名可能同时存在「系统提供」和「用户自定义」两行：
+    优先取**用户自己的**（user_id 非空排前面），其次系统行；
+    再在候选里优先挑凭据齐全、后端可直接服务的。
+    别人的自定义行在这里被 `_visible_scope` 直接过滤掉。
+    """
+    result = await db.execute(
+        select(SysAiConfig)
+        .where(
+            SysAiConfig.model == model,
+            SysAiConfig.is_enabled == 1,
+            _visible_scope(user_id),
+        )
+        .order_by(SysAiConfig.user_id.desc(), SysAiConfig.is_default.desc(), SysAiConfig.config_id.asc())
+    )
+    rows = list(result.scalars().all())
+    if not rows:
+        return None
+
+    for cfg in rows:
+        if is_servable_by_backend(cfg) and has_credentials(cfg):
+            return cfg
+    return rows[0]
+
+
+async def get_enabled_configs(
+    db: AsyncSession, user_id: Optional[int] = None
+) -> List[SysAiConfig]:
+    """获取对该用户可用的、已启用的模型配置（系统行 + 自己的行）"""
+    result = await db.execute(
+        select(SysAiConfig)
+        .where(SysAiConfig.is_enabled == 1, _visible_scope(user_id))
+        .order_by(
+            SysAiConfig.user_id.desc(),
+            SysAiConfig.is_default.desc(),
+            SysAiConfig.config_id.asc(),
+        )
     )
     return list(result.scalars().all())
 
 
-async def resolve_config(db: AsyncSession, provider: Optional[str]) -> Optional[SysAiConfig]:
-    """解析模型配置：provider 为空 → 系统默认；否则按 provider 查表"""
+async def resolve_config(
+    db: AsyncSession,
+    provider: Optional[str],
+    model: Optional[str] = None,
+    user_id: Optional[int] = None,
+) -> Optional[SysAiConfig]:
+    """解析模型配置：model 优先（前端下拉框按模型选择）→ provider → 默认
+
+    `user_id` 决定可见范围（系统行 + 自己的行）；不传则只用系统行。
+    """
+    if model:
+        cfg = await get_config_by_model(db, model, user_id)
+        if cfg:
+            return cfg
     if provider:
-        return await get_config_by_provider(db, provider)
-    return await get_default_config(db)
+        return await get_config_by_provider(db, provider, user_id)
+    return await get_default_config(db, user_id)
 
 
 def _to_lc_messages(messages: List[ChatMessage]) -> list:
+    """ChatMessage → LangChain 消息
+
+    ⚠️ 必须走 `to_lc_content()` 转换：带图片时 content 是
+    `[TextBlock, ImageBlock]` 这样的 pydantic 块列表，而 LangChain 只接受
+    `list[str | dict]`，直接塞会抛一串 validation errors（症状：纯文字正常、
+    一并发图就「发送失败」）。system / assistant 一律压成纯文本。
+    """
     lc_messages = []
     for msg in messages:
         if msg.role == "system":
-            lc_messages.append(SystemMessage(content=msg.content))
+            lc_messages.append(SystemMessage(content=to_lc_text(msg.content)))
         elif msg.role == "user":
-            lc_messages.append(HumanMessage(content=msg.content))
+            lc_messages.append(HumanMessage(content=to_lc_content(msg.content)))
         elif msg.role == "assistant":
-            lc_messages.append(AIMessage(content=msg.content))
+            lc_messages.append(AIMessage(content=to_lc_text(msg.content)))
     return lc_messages
+
+
+#: `_build_llm(thinking=...)` 的哨兵值 —— 明确表示「什么思考参数都不要发」。
+#:
+#: ⚠️ 不能用 `None` 代替：`None` 的既有语义是「去读 config.thinking_mode」，
+#:    两者会撞车 —— Agent 模式想「不传」，却会被解析成「按配置关闭」，
+#:    于是又发出 `{"thinking":{"type":"disabled"}}` 把思考掐掉（实测踩过）。
+_OMIT_THINKING = object()
 
 
 def _resolve_thinking(config: SysAiConfig, thinking: Optional[bool]) -> Optional[bool]:
@@ -99,7 +279,7 @@ def _build_llm(
     config: SysAiConfig,
     temperature: float = 0.7,
     max_tokens: int = 8000,
-    thinking: Optional[bool] = None,
+    thinking: Any = None,
 ) -> ChatOpenAI:
     """根据表配置动态构建 OpenAI 兼容客户端（支持深度思考开关）
 
@@ -107,11 +287,14 @@ def _build_llm(
     - 开启：{"thinking": {"type": "enabled"}, "reasoning_effort": <配置值>}
     - 关闭：{"thinking": {"type": "disabled"}}
     - 跟随默认：不传，交给模型自己决定
+
+    `thinking` 传 `_OMIT_THINKING` 表示**强制什么都不发**（不看配置），
+    Agent 模式用它来避免发出 `disabled` 形状 —— 详见 `build_agent_llm`。
     """
     base_url = (config.base_url or "").strip() or PROVIDER_BASE_URLS.get(config.provider) or "https://api.deepseek.com/v1"
 
     extra_body: dict = {}
-    resolved = _resolve_thinking(config, thinking)
+    resolved = None if thinking is _OMIT_THINKING else _resolve_thinking(config, thinking)
     if resolved is True:
         extra_body["thinking"] = {"type": "enabled"}
         effort = (config.reasoning_effort or "").strip()
@@ -120,11 +303,22 @@ def _build_llm(
     elif resolved is False:
         extra_body["thinking"] = {"type": "disabled"}
 
+    # 缺 Key 时提前抛「人话」错误。
+    # 否则 openai SDK 会抛英文的 "The api_key client option must be set either by
+    # passing api_key to the client or by setting the OPENAI_API_KEY environment
+    # variable"，既看不出是哪条配置的问题，也不知道该怎么修。
+    api_key = (config.api_key or "").strip() or (settings.DEEPSEEK_API_KEY or "").strip()
+    if not api_key:
+        raise RuntimeError(
+            f"模型「{config.provider_name or config.provider} · {config.model}」未配置 API Key，"
+            "无法调用官方接口。请在「系统管理 → AI 模型配置」里补全该模型的 API Key。"
+        )
+
     kwargs = dict(
         model=config.model,
         temperature=temperature,
         max_tokens=max_tokens,
-        openai_api_key=config.api_key or settings.DEEPSEEK_API_KEY,
+        openai_api_key=api_key,
         openai_api_base=base_url,
     )
     if extra_body:
@@ -140,15 +334,30 @@ async def stream_with_config(
     temperature: float = 0.7,
     max_tokens: int = 8000,
     thinking: Optional[bool] = None,
+    model: Optional[str] = None,
+    user_id: Optional[int] = None,
 ) -> AsyncIterator[str]:
     """流式输出：优先使用 sys_ai_config 表配置；表无配置时回退内置 dynamic_ai 路由
 
+    model / provider 都为空时使用默认；model 优先于 provider。
+    user_id 决定可见范围（系统模型 + 自己的自定义模型）。
     注意：这里**只输出正式回答（content）**，深度思考的 reasoning_content 会被丢弃，
     前端用「思考中」动画来占位即可。
     """
-    config = await resolve_config(db, provider)
+    config = await resolve_config(db, provider, model, user_id)
     if config:
-        logger.info(f"[db_config] Using table config: provider={config.provider}, model={config.model}")
+        # ds-free 走网页端反代，不是 OpenAI 兼容接口，单独分支
+        if config.provider == DS_FREE_PROVIDER:
+            logger.info("[db_config] Using ds-free web client")
+            async for kind, text in _stream_via_web_client(config, messages, include_reasoning=False):
+                if kind == "answer":
+                    yield text
+            return
+
+        logger.info(
+            "[db_config] Using table config: config_id={} provider={} model={} has_key={}",
+            config.config_id, config.provider, config.model, has_credentials(config),
+        )
         llm = _build_llm(config, temperature, max_tokens, thinking)
         async for chunk in llm.astream(_to_lc_messages(messages)):
             # 只转发正式回答；reasoning_content 不输出
@@ -157,11 +366,33 @@ async def stream_with_config(
         return
 
     # 回退：内置注册的客户端（provider 可能为 None，走默认 provider）
-    logger.info(f"[db_config] No table config for provider={provider}, fallback to dynamic_ai")
+    logger.info(f"[db_config] No table config for provider={provider} model={model}, fallback to dynamic_ai")
     async for chunk in dynamic_ai.chat_stream(
-        messages, model="deepseek-chat", provider=provider, temperature=temperature
+        messages, model="deepseek-flash", provider=provider, temperature=temperature
     ):
         yield chunk
+
+
+async def _stream_via_web_client(config: SysAiConfig, messages: List[ChatMessage], include_reasoning: bool = False):
+    """ds-free 已改由前端浏览器扩展实现，后端不再走 HTTP 反代。
+
+    当前架构（v2）：
+        ds-free = 浏览器扩展方案
+          前端 utils/ds-proxy.ts → window.DSProxy（扩展注入）
+            → 扩展 background 定位 chat.deepseek.com 标签页
+            → 该页 DOM 自动化发送；MAIN world 劫持自身 SSE 流读回复
+        因此 ds-free 的请求根本不该走到后端。
+
+    历史上这里用 DeepSeekWebClient 做过纯 HTTP 反代（能跑通，但需要每 24 小时
+    人工从浏览器导出 token/cookie，且依赖官方 wasm 解 PoW），已废弃。
+    代码保留在 app/services/ai/deepseek_web_client.py 与 pow_wasm/ 备查。
+    """
+    raise RuntimeError(
+        "ds-free 由前端浏览器扩展处理，请勿在后端调用。"
+        "如果这条错误出现在前端的模型下拉框选 ds-free 时，说明前端还没接上 "
+        "utils/ds-proxy.ts 里的 chatWithDS()。"
+    )
+    yield  # pragma: no cover  保持异步生成器语义
 
 
 async def chat_with_config(
@@ -171,16 +402,127 @@ async def chat_with_config(
     temperature: float = 0.7,
     max_tokens: int = 8000,
     thinking: Optional[bool] = None,
+    model: Optional[str] = None,
+    user_id: Optional[int] = None,
 ) -> ChatResponse:
-    """非流式输出：优先使用 sys_ai_config 表配置"""
-    config = await resolve_config(db, provider)
+    """非流式输出：优先使用 sys_ai_config 表配置（model 优先于 provider）"""
+    config = await resolve_config(db, provider, model, user_id)
     if config:
+        if config.provider == "deepseek-free":
+            logger.info("[db_config] Using ds-free web client (non-stream)")
+            answer = ""
+            async for kind, text in _stream_via_web_client(config, messages):
+                if kind == "answer":
+                    answer += text
+            return ChatResponse(content=answer)
+
         logger.info(f"[db_config] Using table config: provider={config.provider}, model={config.model}")
         llm = _build_llm(config, temperature, max_tokens, thinking)
         response = await llm.ainvoke(_to_lc_messages(messages))
         return ChatResponse(content=response.content)
 
     response = await dynamic_ai.chat(
-        messages, model="deepseek-chat", provider=provider, temperature=temperature
+        messages, model="deepseek-flash", provider=provider, temperature=temperature
     )
     return response
+
+
+# ============================================================
+# Agent（Function Calling）专用
+# ============================================================
+
+
+def supports_tools(config: SysAiConfig) -> bool:
+    """该配置能否用于 Agent 的**原生 Function Calling**
+
+    ds-free 走浏览器扩展代发网页端请求，协议上挂不了 `tools` 参数 → 不能。
+    官方 API（DeepSeek / 智谱 / 硅基流动）都是 OpenAI 兼容且支持工具调用 → 能。
+    """
+    return is_servable_by_backend(config)
+
+
+async def resolve_agent_config(
+    db: AsyncSession,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    user_id: Optional[int] = None,
+) -> SysAiConfig:
+    """解析 Agent 要用的模型配置；不可用时抛出**中文可行动**错误
+
+    错误文案直接面向用户，因为它会通过 SSE 的 `Error: ` 契约显示在聊天区 ——
+    「The api_key client option must be set」这种英文堆栈对用户毫无帮助。
+    """
+    config = await resolve_config(db, provider, model, user_id)
+    if config is None:
+        raise RuntimeError(
+            "没有可用的 AI 模型配置，无法启动 Agent。"
+            "请在「系统管理 → AI 模型配置」里启用一个官方 API 模型。"
+        )
+    if not supports_tools(config):
+        raise RuntimeError(
+            f"Agent 模式需要官方 API 模型，当前选中的「{config.provider_name or config.provider}」"
+            "是 DS 网页版（ds-free），它的请求由浏览器扩展代发、无法携带工具定义。"
+            "请在模型下拉框里切换到 deepseek-flash / deepseek-v4-pro 等官方模型。"
+        )
+    if not has_credentials(config):
+        raise RuntimeError(
+            f"模型「{config.provider_name or config.provider} · {config.model}」未配置 API Key，"
+            "无法调用官方接口。请在「系统管理 → AI 模型配置」里补全该模型的 API Key。"
+        )
+    return config
+
+
+async def build_agent_llm(
+    db: AsyncSession,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    temperature: float = 0.7,
+    max_tokens: int = 8000,
+    user_id: Optional[int] = None,
+):
+    """构建 Agent 用的 ChatOpenAI（**不主动关闭深度思考**）
+
+    ⚠️ 这里曾经强制 `thinking={"type":"disabled"}`，依据是「DeepSeek 的 thinking
+    模式与 Function Calling 互斥」。该依据**已被实测推翻**：绑定工具 + 开启思考后，
+    上游照常返回 tool_call 分片，工具调用完全正常（实测 10 个分片）。
+
+    反过来「主动关闭」才是真正的坑：`disabled` 会在**上游**就把 reasoning_content
+    掐掉（实测：传 disabled → 0 字；不传 → 66 字），于是思考卡片永远不可能出现。
+
+    现在的规则（provider 无关）：
+
+    | 配置意图 | provider | 发出的 extra_body |
+    |---|---|---|
+    | 显式开启 | deepseek 系 | `{"thinking":{"type":"enabled"}, ...}` |
+    | 显式开启 | 其它 | 不传（别把 DeepSeek 专有参数塞给别家） |
+    | 显式关闭 / auto | 任意 | 不传 → 跟随上游默认 |
+
+    「显式关闭」之所以也走「不传」：`{"thinking":{"type":"disabled"}}` 是 DeepSeek
+    专有形状，对别的 OpenAI 兼容接口是脏参数；而且 Agent 模式的产品目标就是
+    「能思考就展示」，真按关闭处理等于该功能不可用。
+    非 Agent 的普通对话链路（`stream_with_config`）仍然照常尊重 `thinking_mode`。
+
+    Returns:
+        (llm, config)
+    """
+    config = await resolve_agent_config(db, provider, model, user_id)
+
+    # 「要思考」这件事只透传给认这套参数的 deepseek 系；其余一律不传，
+    # 由上游按自己的默认行为决定 —— 支持的会吐 reasoning_content，不支持的就没有。
+    # 不需要开启时用 `_OMIT_THINKING` 而不是 None/False，理由见该哨兵的注释。
+    wants_thinking = _resolve_thinking(config, None) is True
+    is_deepseek = (config.provider or "").startswith("deepseek")
+    thinking_arg: Any = True if (wants_thinking and is_deepseek) else _OMIT_THINKING
+
+    llm = _build_llm(
+        config, temperature=temperature, max_tokens=max_tokens, thinking=thinking_arg
+    )
+    logger.info(
+        "[db_config] Agent 客户端: config_id={} provider={} model={} thinking={}"
+        "（None=不传，跟随上游默认）",
+        config.config_id,
+        config.provider,
+        config.model,
+        None if thinking_arg is _OMIT_THINKING else thinking_arg,
+    )
+    return llm, config

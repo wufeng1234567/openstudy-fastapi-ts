@@ -87,7 +87,7 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'MyQuestion' })
-import { ref, reactive, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, onBeforeUnmount, onDeactivated, computed, watch, nextTick } from 'vue'
 import { getCurrentInstance } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Star } from '@element-plus/icons-vue'
@@ -788,6 +788,23 @@ const closeDetailDialog = () => {
   resetAnswerState()
 }
 
+// 关掉弹窗时，必须连同「Element Plus 的 body 滚动锁」一起放掉。
+//
+// ⚠️ 本页是 keep-alive 缓存的（见 views/front/myQuestion/index.vue 里的 <keep-alive>）。
+//    带着**打开的详情弹窗**从浏览器回退到「学习统计」时，组件走的是 deactivated
+//    而不是 unmounted —— detailDialogVisible 会原样保留成 true，el-dialog 的
+//    useLockscreen 就永远等不到 visible 变 false，document.body 上的
+//    `el-popup-parent--hidden`（theme-chalk 里是 overflow:hidden）因此一直挂着，
+//    表现为回到上一页后整页滚不动。这里在失活 / 卸载时把弹窗收掉。
+onDeactivated(() => {
+  if (detailDialogVisible.value) closeDetailDialog()
+})
+
+// 卸载同样收一次：不依赖上面那条（比如页面被移出 keep-alive 缓存时）
+onBeforeUnmount(() => {
+  if (detailDialogVisible.value) closeDetailDialog()
+})
+
 const toggleFullscreen = () => {
   isFullscreen.value = !isFullscreen.value
 }
@@ -973,18 +990,53 @@ const reportQuestion = () => {
   emit('report')
 }
 
+// 从多个候选值里取第一个「有内容」的（undefined / null / 空串 / 空数组都跳过）
+const firstNonEmpty = (...vals: any[]) => {
+  for (const v of vals) {
+    if (v === undefined || v === null) continue
+    if (typeof v === 'string' && v.trim() === '') continue
+    if (Array.isArray(v) && v.length === 0) continue
+    return v
+  }
+  return ''
+}
+
 // AI 解析功能
+//
+// ⚠️ 题干字段名在两条链路上是**不一样**的，这里必须都认：
+//   · 列表接口给的 item.questionDetail —— 字段名 questionText（原始题目表字段）；
+//   · 详情接口经 transformQuestionForDisplay() 转出来的 currentQuestionDetail
+//     —— 字段名 question（转换器里写的是 `question: q.questionText`），
+//     答案也从 answer 变成了 correctAnswer。
+// 旧实现只读 questionText / answer，于是从详情弹窗点「AI 解析」时题干恒为空串，
+// 发给 ds-free（DeepSeek 网页版）的提示词里「## 题目」那一节整段是空的
+// —— 就是「题干缺失」。
+// 阅读理解 / 完形填空的正文在 mainContent 里（此时 question 是空串），一并兜住。
 const openAiAnalysis = (questionDetail) => {
-  if (!questionDetail) return
+  const source = questionDetail || currentQuestionDetail.value
+  if (!source) return
 
-  const questionId = questionDetail.id || currentQuestionDetail.value?.id
-  if (!questionId) return
+  const questionId = firstNonEmpty(source.id, currentQuestionDetail.value?.id)
+  if (!questionId) {
+    proxy.$modal.msgError('题目信息不完整，无法发起 AI 解析')
+    return
+  }
 
-  // 获取题目信息
-  const question = questionDetail.questionText || currentQuestionDetail.value?.questionText || ''
-  const questionType = getQuestionTypeName(questionDetail.questionType || currentQuestionDetail.value?.questionType)
-  const options = questionDetail.options || currentQuestionDetail.value?.options || ''
-  const answer = questionDetail.answer || currentQuestionDetail.value?.answer || ''
+  // 题干：questionText / question_text / question 三种名字都试；都空则退回文章正文
+  const stemRaw = firstNonEmpty(source.questionText, source.question_text, source.question)
+  const stem = typeof stemRaw === 'string' ? stemRaw : String(stemRaw ?? '')
+  const question = stem.trim() ? stem : String(firstNonEmpty(source.mainContent) ?? '')
+
+  const questionType = getQuestionTypeName(
+    firstNonEmpty(source.questionType, source.question_type, currentQuestionDetail.value?.questionType)
+  )
+  const options = firstNonEmpty(source.options, currentQuestionDetail.value?.options)
+  const answer = firstNonEmpty(
+    source.answer,
+    source.correctAnswer,
+    currentQuestionDetail.value?.answer,
+    currentQuestionDetail.value?.correctAnswer
+  )
 
   // 检查缓存
   let cachedContent = ''
@@ -998,14 +1050,14 @@ const openAiAnalysis = (questionDetail) => {
     text: question,
     type: questionType,
     options: typeof options === 'string' ? options : JSON.stringify(options),
-    answer: answer,
+    answer: answer as string,
     cachedContent: cachedContent
   }
 
   showAiAnalysis.value = true
 }
 
-// 获取题型名称
+// 获取题型名称（同时接受数字题型与转换器产出的字符串题型）
 const getQuestionTypeName = (type) => {
   const typeMap = {
     1: '单选题',
@@ -1013,9 +1065,20 @@ const getQuestionTypeName = (type) => {
     3: '判断题',
     4: '填空题',
     5: '简答题',
-    6: '组合题'
+    6: '组合题',
+    7: '组合题'
   }
-  return typeMap[type] || '未知题型'
+  const strMap = {
+    single: '单选题',
+    multiple: '多选题',
+    truefalse: '判断题',
+    fillblank: '填空题',
+    essay: '简答题',
+    readingComprehension: '组合题',
+    cloze: '组合题'
+  }
+  const key = String(type ?? '')
+  return typeMap[key] || strMap[key] || '未知题型'
 }
 
 // 更新 AI 缓存

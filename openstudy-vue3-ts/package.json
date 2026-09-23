@@ -10,7 +10,11 @@
     "build:prod": "vite build",
     "build:stage": "vite build --mode staging",
     "preview": "vite preview",
-    "type-check": "vue-tsc --noEmit"
+    "type-check": "vue-tsc --noEmit",
+    "check:dsfree": "node tests/check_agent_dsfree.mjs",
+    "check:dsfree:live": "node tests/check_agent_dsfree.mjs --suite LIVE --headed",
+    "check:dsfree:stress": "node tests/check_agent_dsfree.mjs --repeat 20",
+    "check:dsfree:clean": "node tests/check_agent_dsfree.mjs --clean"
   },
   "repository": {
     "type": "git",

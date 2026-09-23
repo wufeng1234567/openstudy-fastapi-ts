@@ -1,0 +1,96 @@
+
+[1mLOOP[0m  [2m(49)[0m
+  DF-LOOP-01     普通问答：不调工具，直接给最终回复
+  DF-LOOP-02     单次工具调用：tool_start → tool_result → 回复
+  DF-LOOP-03     多轮连续工具调用：上下文一轮不丢
+  DF-LOOP-04     协议块被逐字分帧：残缺标记不能流给用户
+  DF-LOOP-05     ⚠️ 实测踩过：`<=tool_call>` 结尾少一个等号 → 必须纠正重试
+  DF-LOOP-06     模型改用 DSML 自家语法 → 纠正重试
+  DF-LOOP-07     模型把 JSON 包进 ``` 围栏 → 纠正重试
+  DF-LOOP-08     模型吐裸 JSON → 纠正重试
+  DF-LOOP-09     死活不按协议 → 明确报错并停下，不空转到 12 轮
+  DF-LOOP-10     一轮里连着两个协议块 → 两个都执行
+  DF-LOOP-11     同一调用原地重复 → 重复保护拦下
+  DF-LOOP-12     工具失败两次后成功 → 不能误判成连续失败
+  DF-LOOP-13     工具连续失败 3 次 → 报错并停下（带最后一条原因）
+  DF-LOOP-14     破坏性操作必须弹确认；用户取消 → 不执行
+  DF-LOOP-15     压缩回灌必须保留 questionId / questionIndex（Bug⑤ 回归）
+  DF-LOOP-16     长列表压缩：只回灌 20 条 + hasMore，别撑爆上下文
+  DF-LOOP-17     扩展调用抛异常、还没吐过字 → 重试
+  DF-LOOP-18     Agent 模式自动开启 DS 深度思考（快速模式 → 提示用户）
+  DF-LOOP-19     深度思考本来就开着 → 不该多嘴
+  DF-LOOP-20     正常回答里引用了带 tool 的 JSON → 不能被误判成调用
+  DF-LOOP-21     参数校验失败（缺 action）→ 回灌纠正而不是直接失败
+  DF-LOOP-22     系统提示词必须写清协议约束（模型跑偏的第一道防线）
+  DF-LOOP-23     思考过程：累积的推理被无损拆成增量 thinking 事件
+  DF-LOOP-24     运行时背景（记忆 + 知识库清单）被拼进系统提示词
+  DF-LOOP-25     后端拿不到运行时背景时不报错、不拼空壳标签
+  DF-LOOP-26     检索类工具结果回灌给模型时保留定位字段（chunkId / docId / source）
+  DF-LOOP-27     系统提示词写清「注入防护 / 工具跑完就停 / 工具结果的中文不是语言指令」
+  DF-LOOP-28     知识库清单里的库名不会覆盖 tool_call 协议（数据不能变成指令）
+  DF-LOOP-29     本会话第一轮：短期历史拼进用户消息，且排在提问之前
+  DF-LOOP-30     同一会话的第二轮不再重复注入历史（DS 网页自己记得，别白烧 token）
+  DF-LOOP-31     换会话后必须重新注入历史（DS 网页记得的是上一个会话）
+  DF-LOOP-32     后端没给历史时不拼空标签（回归护栏）
+  DF-LOOP-33     没有 sessionId 时一切照旧（历史归不到会话上，宁可不拼）
+  DF-LOOP-34     历史由前端**原样**搬运：不改一个字、不额外再包一层标签
+  DF-LOOP-35     回灌不做前端单边截断：超长的检索命中一条都不许丢（双链路漂移回归）
+  DF-LOOP-36     确认卡片带上 preview：弹卡片前调 /ai/agent/preview，并把结果原样塞进 onConfirm
+  DF-LOOP-37     预演接口网络异常 → 卡片照常弹、preview 退化成 {}（绝不阻断确认）
+  DF-LOOP-38     预演接口 HTTP 500 → 同样退化成 {} 且卡片照常弹（与网络异常同口径）
+  DF-LOOP-39     预演响应是「兜底路由的 200 假成功」→ 卡片照常弹、preview 退化成 {}、不报错
+  DF-LOOP-40     预演响应里没有 preview 键 → 必须留一条 console.warn（「路由没对上」的唯一信号）
+  DF-LOOP-41     metrics 累计口径：每轮 LLM 后 + 该轮工具跑完后各发一次，rounds / steps / 首 token 样本与后端同口径
+  DF-LOOP-42     没有任何可读内容时 firstTokenMs 必须是 null、样本数是 0（不是 0 毫秒）
+  DF-LOOP-43     首 token 把思考正文算进去：整轮只有思考、没有正文时也要有样本
+  DF-LOOP-44     短回复也要进首 token 样本：正文被「扣尾保护」挡住、从没走过 delta 分支
+  DF-LOOP-45     ⚠️ 实测踩过：最终回复里**引用**了一段调用 JSON（写在一句话中间）→ 必须当回答交付
+  DF-LOOP-46     最终回复里**提到** `tool_call` 这个词（没有任何标记）→ 必须当回答交付
+  DF-LOOP-47     最终回复里**提到** `DSML` 这个词（没有 `<|DSML|>` 标记）→ 必须当回答交付
+  DF-LOOP-48     自家标记的**残缺形式**不能被漏判（标记 + 句中的 JSON，围栏里没有）
+  DF-LOOP-49     围栏**收开在同一行**的 JSON 也不能被漏判
+
+[1mPROXY[0m  [2m(11)[0m
+  DF-PROXY-01    onChunk 给增量 → 对外统一成「累积全文」
+  DF-PROXY-02    onChunk 给整段替换（扩展另一版语义）→ 也能归一成累积
+  DF-PROXY-03    DS 页面没打开 → 报可读的错（不是 undefined 崩）
+  DF-PROXY-04    扩展返回的状态形状不对 → 明确提示版本问题
+  DF-PROXY-05    图片附件裸字符串 → 自动包成对象（Bug③ 回归：扩展读 img.base64）
+  DF-PROXY-06    图片附件已经是对象 → 原样透传且保留文件名
+  DF-PROXY-07    ensureDeepThink：状态一致时**不该**再写一次（省一次往返）
+  DF-PROXY-08    ensureDeepThink：读不到状态 → 不硬写，返回 ok=false
+  DF-PROXY-09    setDeepThink：扩展回 ok:false → 判为失败（判据不能写成 ok===false）
+  DF-PROXY-10    思考过程节流：高频 onThinking 不该每次都往 UI 推
+  DF-PROXY-11    答案开始前思考必须已发完（节流尾发不许落在正文之后）
+
+[1mRAG[0m  [2m(10)[0m
+  DF-RAG-01      知识库列表：GET /rag/knowledgeBase/list，不带多余参数
+  DF-RAG-02      建知识库：POST /rag/knowledgeBase，body 带 name
+  DF-RAG-03      上传文档：kbId 走 query、文件走 FormData 且带原始文件名
+  DF-RAG-04      上传无文件名的 Blob：兜底成「未命名文档」而不是 blob
+  DF-RAG-05      删除 / 重试：方法与路径要对得上后端的 @router 声明
+  DF-RAG-06      重试文档：POST /rag/document/reprocess/{id}（不是 PUT、不是 /retry）
+  DF-RAG-07      可上传类型判定：扩展名大小写、多点名、无扩展名、不支持的类型
+  DF-RAG-08      文档状态映射：DOC_PARSED(3) 不算「可检索」
+  DF-RAG-09      试检索：POST /rag/search，kbIds 限定在选中的库（不跨库乱搜）
+  DF-RAG-10      试检索不传 kbIds：允许跨全部库（后端按「全部知识库」处理）
+
+[1mUI[0m  [2m(7)[0m
+  DF-UI-01       discard_text 真的把协议文本气泡撤掉（不是说一声就算）
+  DF-UI-02       tool_start → 运行中卡片；tool_result → 回填 ok / fail
+  DF-UI-03       error 事件 → 记进 errors + 插一张红提示
+  DF-UI-04       done.answer 整体替换已开气泡，不重复叠加
+  DF-UI-05       waiting 占位不会留在消息流里
+  DF-UI-06       迟到的思考增量不新开块（一轮只应有一个思考块，且在答案之前）
+  DF-UI-07       执行统计是**会话累计**：第二次提问不覆盖第一次，首 token 平均按样本数加权
+
+[1mLIVE[0m  [2m(4)[0m
+  DF-LIVE-01     问「我有什么题库」→ 必须真的调工具拿到数据
+  DF-LIVE-02     一句话闲聊 → 不该乱调工具
+  DF-LIVE-03     列题库 → 再追问详情（测多轮上下文没断）
+  DF-LIVE-04     穷举协议健康度：整轮里「格式错误」出现次数应为 0
+
+共 81 条。筛选用 --only / --suite，跑真浏览器加 --live
+[2m
+过程日志：D:\OpenStudy\apps\fastapi-v2\openstudy-vue3-ts\tests\logs\dsfree-check-2026-09-20T11-54-01.log
+[0m

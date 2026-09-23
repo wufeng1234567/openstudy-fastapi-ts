@@ -188,8 +188,8 @@
         <el-icon><Setting /></el-icon>
         <span>生成模式</span>
         <div class="model-selector-wrap">
-          <!-- 与悬浮助手 / AI 解析共用同一个模型选择器（localStorage: openstudy_ai_provider） -->
-          <AiModelSelector v-model="selectedProvider" width="180px" />
+          <!-- 模型选择器（历史记忆按 scene=ai-builder 单独保存） -->
+          <AiModelSelector v-model="selectedModel" scene="ai-builder" width="180px" />
           <!-- 深度思考开关（原子轨道图标，颜色表示状态） -->
           <AiThinkingToggle v-model="deepThink" size="small" />
         </div>
@@ -523,9 +523,10 @@ import {
   VideoPause, View, Edit, Delete, CircleCheck, Plus, InfoFilled, FullScreen, DocumentCopy, ArrowDown, Loading, Picture
 } from '@element-plus/icons-vue'
 import { addQuestionMain } from '@/api/questionMain/questionMain'
-import { parseFileBlocks, assistantStream, generateWithImagesStream } from '@/api/ai/ai'
+import { parseFileBlocks, assistantStream } from '@/api/ai/ai'
 import AiThinkingToggle from '@/components/AiThinkingToggle/index.vue'
 import AiModelSelector from '@/components/AiModelSelector/index.vue'
+import { useDsDeepThinkSync } from '@/composables/useDsDeepThinkSync'
 import BankInfoDialog from './BankInfoDialog.vue'
 import useUserStore from '@/store/modules/user'
 import { getToken } from '@/utils/auth'
@@ -671,10 +672,11 @@ const generating = ref(false)
 // 生成模式：all=全部转换，custom=自定义要求
 const generateMode = ref('all')
 
-// AI 模型选择：与悬浮助手 / AI 解析共用 AiModelSelector
-// （选择结果存在 localStorage: openstudy_ai_provider，'' 表示系统默认模型）
-const selectedProvider = ref('')
+// AI 模型选择：当前选中的模型名（历史记忆按 scene=ai-builder 单独保存）
+const selectedModel = ref('')
 const deepThink = ref(localStorage.getItem('openstudy_ai_thinking') === '1')  // 深度思考开关，跟随全局偏好
+
+useDsDeepThinkSync(selectedModel, deepThink, 'openstudy_ai_thinking')
 const abortController = ref(null)          // 用于停止生成
 
 // 监听模式变化，切换提示词
@@ -1043,7 +1045,7 @@ const sendViaBackendStream = (content) => {
       resolve()
     })
 
-    const provider = selectedProvider.value || undefined
+    const model = selectedModel.value || undefined
     const userId = (typeof window !== 'undefined' && window.__userStore?.id) || undefined
 
     // 回调函数
@@ -1086,32 +1088,26 @@ const sendViaBackendStream = (content) => {
       reject(err)
     }
 
-    // 如果有 Vision 图片，使用新的 POST 接口
-    if (visionImages.value.length > 0) {
-      console.log('[AI Builder] Using generate-with-images endpoint, images:', visionImages.value.length)
-      generateWithImagesStream(
-        content,
-        visionImages.value,
-        onChunk,
-        onComplete,
-        onError,
-        signal,
-        provider,
-        deepThink.value
-      )
-    } else {
-      assistantStream(
-        content,
-        onChunk,
-        onComplete,
-        onError,
-        signal,
-        provider,
-        userId,
-        undefined,
-        deepThink.value
-      )
-    }
+    // 统一走**同一个入口**（scene=question-bank）：
+    // 后端 chat_engine 会把图片作为多模态内容块、文档正文抽出来并入提示词，
+    // 与 OS 助手共用同一条链路 —— 不再有「搭建题库单独调一个接口」这回事。
+    // sessionId 传空串：题库搭建是一次性生成，不写聊天历史。
+    assistantStream(
+      content,
+      onChunk,
+      onComplete,
+      onError,
+      signal,
+      model,
+      userId,
+      '',
+      deepThink.value,
+      {
+        scene: 'question-bank',
+        // visionImages 是 base64 data URL 字符串数组，assistantStream 两种写法都支持
+        images: visionImages.value
+      }
+    )
   })
 }
 

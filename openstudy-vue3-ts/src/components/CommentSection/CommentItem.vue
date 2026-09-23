@@ -62,6 +62,7 @@ import { useCommentCacheStore } from '@/store/modules/commentCache'
 import { deleteComment } from '@/api/comment'
 import { listUserFront } from '@/api/system/user'
 import UserAvatar from '@/components/UserAvatar/index.vue'
+import { renderMentionsHtml } from './mention'
 
 const props = defineProps({
   comment: { type: Object, required: true },
@@ -147,18 +148,17 @@ const formatTime = (time) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
+const AT_SPAN_STYLE =
+  'cursor:pointer;color:#409eff;background:#e8f4ff;border-radius:3px;padding:1px 4px;font-weight:500;'
+
+/** 生成一个 @ 提及的 span（userId 为空表示老数据里只有昵称、没带 id） */
+const atSpan = (userId: string | number, name: string) =>
+  `<span class="at-mention" style="${AT_SPAN_STYLE}" data-userid="${userId}" data-username="${name}">@${name}</span>`
+
 const formattedContent = computed(() => {
-  let text = props.comment.content || ''
-  text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  text = text.replace(
-    /@\{(\d+)\}\s*([\u4e00-\u9fa5a-zA-Z0-9_]+)/g,
-    '<span class="at-mention" style="cursor:pointer;color:#409eff;background:#e8f4ff;border-radius:3px;padding:1px 4px;font-weight:500;" data-userid="$1" data-username="$2">@$2</span>'
-  )
-  text = text.replace(
-    /(@|＠)([\u4e00-\u9fa5a-zA-Z0-9_]+)/g,
-    '<span class="at-mention" style="cursor:pointer;color:#409eff;background:#e8f4ff;border-radius:3px;padding:1px 4px;font-weight:500;" data-userid="" data-username="$2">$1$2</span>'
-  )
-  return text
+  // 解析规则集中在 ./mention.ts（评论正文与私信正文共用同一套，别在这里再写一份正则）。
+  // 那里保证：`@{106} 演示用户2` → 蓝字 `@演示用户2`，且**永不会把 `{106}` 漏到界面上**。
+  return renderMentionsHtml(props.comment.content || '', atSpan)
 })
 
 const handleContentClick = async (e) => {

@@ -16,7 +16,8 @@ class NoteQuestion(Base):
     """
     __tablename__ = "note_question"
     __table_args__ = (
-        UniqueConstraint('note_id', 'question_id', name='uk_note_question'),
+        # 关联按用户隔离：作者与收藏者各维护自己的关联，唯一键必须带 user_id。
+        UniqueConstraint('note_id', 'question_id', 'user_id', name='uk_note_question_user'),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)

@@ -1,0 +1,1207 @@
+{
+  "total": 120,
+  "passed": 111,
+  "rows": [
+    {
+      "cid": "A1",
+      "module": "工具清单",
+      "title": "GET /ai/agent/tools 下发工具与写/破坏性清单",
+      "pre": "已登录",
+      "steps": "GET /ai/agent/tools",
+      "expected": "含 bank_manage / question_manage / note_manage / knowledge_search / memory_search；bank_manage.destructive 含三个删除动作；note_manage.destructive 含两个删除动作；knowledge_search / memory_search 是只读的 → 不该出现在写/破坏性清单里",
+      "actual": "tools=['bank_manage', 'knowledge_search', 'memory_search', 'note_manage', 'question_manage'] bank={'write': ['create', 'update', 'delete', 'delete_by_name', 'delete_many'], 'destructive': ['delete', 'delete_by_name', 'delete_many']} note={'write': ['create', 'update', 'delete', 'delete_many'], 'destructive': ['delete', 'delete_many']} readonlyInActions=[]",
+      "status": "通过"
+    },
+    {
+      "cid": "A2",
+      "module": "鉴权",
+      "title": "未登录（无 token）访问被拒",
+      "pre": "移除登录依赖覆盖后不带 token",
+      "steps": "GET /ai/agent/tools",
+      "expected": "HTTP 401/403 或 body.code=401/403",
+      "actual": "status=200 code=401",
+      "status": "通过"
+    },
+    {
+      "cid": "A3",
+      "module": "鉴权",
+      "title": "未登录不得调工具（写/执行入口）",
+      "pre": "不带 token",
+      "steps": "POST /ai/agent/execute",
+      "expected": "HTTP 401/403 或 body.code=401/403",
+      "actual": "status=200 code=401",
+      "status": "通过"
+    },
+    {
+      "cid": "B1",
+      "module": "ds-free 单步",
+      "title": "建题库",
+      "pre": "用户 1",
+      "steps": "execute bank_manage.create",
+      "expected": "成功并返回 bankId",
+      "actual": "bankId=1002",
+      "status": "通过"
+    },
+    {
+      "cid": "B2",
+      "module": "ds-free 单步",
+      "title": "批量导入 4 道题",
+      "pre": "bankId=1002",
+      "steps": "execute question_manage.batch_import",
+      "expected": "imported=4, bankTotal=4",
+      "actual": "imported=4 total=4",
+      "status": "通过"
+    },
+    {
+      "cid": "B3",
+      "module": "分页",
+      "title": "list 第一页 offset=0 limit=2",
+      "pre": "bankId=1002",
+      "steps": "execute question_manage.list",
+      "expected": "count=2 total=4 hasMore=True",
+      "actual": "count=2 total=4 hasMore=True",
+      "status": "通过"
+    },
+    {
+      "cid": "B4",
+      "module": "分页",
+      "title": "list 第二页 offset=2",
+      "pre": "bankId=1002",
+      "steps": "execute question_manage.list",
+      "expected": "count=2 hasMore=False",
+      "actual": "count=2 hasMore=False",
+      "status": "通过"
+    },
+    {
+      "cid": "B5",
+      "module": "搜索扩范围",
+      "title": "关键词只出现在 analysis 里也能搜到",
+      "pre": "E2E-Q2 的关键词只在解析里",
+      "steps": "execute question_manage.search",
+      "expected": "命中 E2E-Q2",
+      "actual": "hits=['E2E-Q2']",
+      "status": "通过"
+    },
+    {
+      "cid": "B5b",
+      "module": "搜索分页",
+      "title": "search 第一页 offset=0 limit=2",
+      "pre": "bankId=1002 有 4 道 E2E-Q*",
+      "steps": "execute question_manage.search",
+      "expected": "count=2 total=4 hasMore=True",
+      "actual": "count=2 total=4 hasMore=True",
+      "status": "通过"
+    },
+    {
+      "cid": "B5c",
+      "module": "搜索分页",
+      "title": "search 第二页 offset=2",
+      "pre": "bankId=1002",
+      "steps": "execute question_manage.search",
+      "expected": "count=2 total=4 hasMore=False",
+      "actual": "count=2 total=4 hasMore=False",
+      "status": "通过"
+    },
+    {
+      "cid": "B6",
+      "module": "改名重名校验",
+      "title": "改成已存在的题库名被拒",
+      "pre": "A=__e2e_agent__A B=__e2e_agent__B",
+      "steps": "execute bank_manage.update(bank_name=B)",
+      "expected": "success=False 且提示同名",
+      "actual": "error=已存在同名题库「__e2e_agent__B」（ID=1003）",
+      "status": "通过"
+    },
+    {
+      "cid": "B7",
+      "module": "批量删题",
+      "title": "按题号批量删 1、3",
+      "pre": "bankId=1002",
+      "steps": "execute question_manage.delete_many",
+      "expected": "deleted=2 bankTotal=2",
+      "actual": "deleted=2 total=2",
+      "status": "通过"
+    },
+    {
+      "cid": "B8",
+      "module": "二次确认",
+      "title": "破坏性操作不带确认票据 → 被拦下（confirmed=false / true 都拦）",
+      "pre": "__e2e_agent__A 仍存在（且此后 B10 还要用它）",
+      "steps": "execute bank_manage.delete_by_name（不带 confirmTicket，confirmed 分别 false/true）",
+      "expected": "两条都 success=False 且 needsConfirm=True（票据缺失时仍给这个键，前端据此继续弹卡片）",
+      "actual": "confirmed=false: success=False needsConfirm=True；confirmed=true: success=True needsConfirm=None",
+      "status": "失败"
+    },
+    {
+      "cid": "B9",
+      "module": "清空题库",
+      "title": "clear_questions 清空题目（题库保留）",
+      "pre": "bankId=1002 原有 2 题",
+      "steps": "execute question_manage.clear_questions",
+      "expected": "bankTotal=0",
+      "actual": "bankTotal=None",
+      "status": "失败"
+    },
+    {
+      "cid": "B10",
+      "module": "批量删库",
+      "title": "delete_many 按名批量删两个题库",
+      "pre": "__e2e_agent__A/__e2e_agent__B",
+      "steps": "execute bank_manage.delete_many",
+      "expected": "deleted=2",
+      "actual": "deleted=1",
+      "status": "失败"
+    },
+    {
+      "cid": "C1",
+      "module": "api 付费循环",
+      "title": "一轮 create + 最终回复，事件序列完整",
+      "pre": "sessionId=asst_e2e_1790062678230_a",
+      "steps": "POST /ai/agent/stream",
+      "expected": "含 waiting/tool_start/tool_result/text/done 且以 done 收尾",
+      "actual": "types=['meta', 'waiting', 'metrics', 'tool_start', 'tool_result', 'metrics', 'waiting', 'text', 'metrics', 'done']",
+      "status": "通过"
+    },
+    {
+      "cid": "C2",
+      "module": "api 付费循环",
+      "title": "工具真的执行了（题库建出来了）",
+      "pre": "__e2e_agent__C",
+      "steps": "execute bank_manage.list",
+      "expected": "能查到该题库",
+      "actual": "banks=['__e2e_agent__C']",
+      "status": "通过"
+    },
+    {
+      "cid": "C3",
+      "module": "会话落库",
+      "title": "api 链路自动落库「提问 + 回复」",
+      "pre": "sessionId=asst_e2e_1790062678230_a",
+      "steps": "GET /ai/conversation/asst_e2e_1790062678230_a",
+      "expected": "角色含 user 与 assistant",
+      "actual": "roles=['user', 'assistant']",
+      "status": "通过"
+    },
+    {
+      "cid": "C4",
+      "module": "会话列表",
+      "title": "新会话出现在 /ai/sessions",
+      "pre": "sessionId=asst_e2e_1790062678230_a",
+      "steps": "GET /ai/sessions",
+      "expected": "列表含该会话",
+      "actual": "count=1",
+      "status": "通过"
+    },
+    {
+      "cid": "C5",
+      "module": "二次确认(api)",
+      "title": "下发 tool_confirm → 调 /ai/agent/confirm 同意 → 真的删掉",
+      "pre": "__e2e_agent__C 存在",
+      "steps": "stream(delete) + POST /ai/agent/confirm(true)",
+      "expected": "事件含 tool_confirm/tool_confirm_resolved，且题库已删",
+      "actual": "types=['meta', 'waiting', 'metrics', 'tool_confirm', 'tool_confirm_resolved', 'tool_start', 'tool_result', 'metrics', 'waiting', 'text', 'metrics', 'done'] gone=True",
+      "status": "通过"
+    },
+    {
+      "cid": "C6",
+      "module": "二次确认(api)",
+      "title": "取消 → 不执行且回灌「用户已取消」",
+      "pre": "__e2e_agent__C 存在",
+      "steps": "stream(delete) + POST /ai/agent/confirm(false)",
+      "expected": "题库仍在 + 事件里有取消提示",
+      "actual": "still=True cancelled=True",
+      "status": "通过"
+    },
+    {
+      "cid": "D1",
+      "module": "时间线快照",
+      "title": "PUT/GET agent-timeline round-trip（含卡片字段）",
+      "pre": "sessionId=asst_e2e_1790062678691_b",
+      "steps": "PUT 再 GET",
+      "expected": "3 条且卡片字段完整",
+      "actual": "len=3 card={'role': 'assistant', 'type': 'tool_result', 'tool': 'bank_manage', 'action': 'list', 'status': 'ok', 'content': '查到 1 个题库', 'params': {'action': 'list'}, 'data': {'success': True, 'count': 1}}",
+      "status": "通过"
+    },
+    {
+      "cid": "D2",
+      "module": "时间线快照",
+      "title": "没有快照时返回空数组（前端据此回退普通消息）",
+      "pre": "不存在的会话",
+      "steps": "GET agent-timeline",
+      "expected": "messages == []",
+      "actual": "got=[]",
+      "status": "通过"
+    },
+    {
+      "cid": "E1",
+      "module": "压缩保 ID",
+      "title": "search 回灌给模型的结果里带 questionId / questionIndex",
+      "pre": "bankId=1006",
+      "steps": "scripted LLM 收到的 messages",
+      "expected": "含 questionId 与 questionIndex（以及 total / hasMore）",
+      "actual": "命中 \"questionId\",\"questionIndex\",\"total\",\"hasMore\"",
+      "status": "通过"
+    },
+    {
+      "cid": "E2",
+      "module": "压缩保 ID",
+      "title": "用回灌里的 questionId 能真的删掉那道题",
+      "pre": "questionId=2540",
+      "steps": "execute question_manage.delete(question_id=2540)",
+      "expected": "success=True 且题库只剩 1 题",
+      "actual": "success=True bankTotal=1",
+      "status": "通过"
+    },
+    {
+      "cid": "I1",
+      "module": "L1 注入",
+      "title": "长期记忆摘要被注入 SystemMessage，内容与 build_memory_context 一致",
+      "pre": "前序用例的写操作已触发 memory_hook 落记忆",
+      "steps": "scripted LLM 第 0 轮收到的 SystemMessage",
+      "expected": "SystemMessage 含 <user_memory> 块，且该块与 build_memory_context 的产物逐字一致",
+      "actual": "期望块 331 字，注入命中=True",
+      "status": "通过"
+    },
+    {
+      "cid": "I2",
+      "module": "L1 注入",
+      "title": "注入的背景**只进 SystemMessage**，不混进用户消息",
+      "pre": "同上",
+      "steps": "对比 SystemMessage 与 HumanMessage",
+      "expected": "HumanMessage 不含该记忆块",
+      "actual": "human 含记忆块=False",
+      "status": "通过"
+    },
+    {
+      "cid": "I3",
+      "module": "L1 注入",
+      "title": "GET /ai/agent/context 把同一份运行时背景下发给 ds-free",
+      "pre": "已登录",
+      "steps": "GET /ai/agent/context",
+      "expected": "返回的 context 与 build_memory_context 的产物一致",
+      "actual": "len=331 命中=True",
+      "status": "通过"
+    },
+    {
+      "cid": "I4",
+      "module": "L1 注入",
+      "title": "未登录拿不到运行时背景（记忆是隐私）",
+      "pre": "移除登录依赖覆盖后不带 token",
+      "steps": "GET /ai/agent/context",
+      "expected": "HTTP 401/403 或 body.code=401/403",
+      "actual": "status=200 code=401",
+      "status": "通过"
+    },
+    {
+      "cid": "I5",
+      "module": "L1 注入",
+      "title": "知识库清单被注入 SystemMessage（含 kbId，模型才能按库检索）",
+      "pre": "建知识库 __e2e_agent__L1知识库（kbId=483）",
+      "steps": "scripted LLM 第 0 轮收到的 SystemMessage",
+      "expected": "SystemMessage 含 <knowledge_bases> 与 [kbId=...] 与库名",
+      "actual": "含<knowledge_bases>=True 含kbId=True",
+      "status": "通过"
+    },
+    {
+      "cid": "I6",
+      "module": "L1 注入",
+      "title": "带 sessionId 时下发该会话的短期历史（与 api 链路同一份文本）",
+      "pre": "sid2=asst_e2e_1790062678691_b 已跑过几轮问答（历史在库）",
+      "steps": "GET /ai/agent/context?sessionId=asst_e2e_1790062678691_b",
+      "expected": "history 是 build_context_prompt(uid, sid2, lang='en') 的**原样产物**；非空且含 <conversation_history> 与用户提问原文",
+      "actual": "len=180 逐字等于build_context_prompt=True",
+      "status": "通过"
+    },
+    {
+      "cid": "I7",
+      "module": "L1 注入",
+      "title": "不传 sessionId → history 是空串，且 context 行为一个字没变",
+      "pre": "紧接着上一条再调一次（中间无写操作，context 应当逐字相同）",
+      "steps": "GET /ai/agent/context（不带 sessionId）",
+      "expected": "history == ''；context 与带 sessionId 那次完全相同、仍非空",
+      "actual": "history='' context相同=True len=331",
+      "status": "通过"
+    },
+    {
+      "cid": "I8",
+      "module": "越权防护",
+      "title": "拿别人的 sessionId 读不到他的历史（空串，且不报 500）",
+      "pre": "sid2=asst_e2e_1790062678691_b 属于 uid=1；以 uid=2 的登录态请求",
+      "steps": "GET /ai/agent/context?sessionId=asst_e2e_1790062678691_b",
+      "expected": "HTTP 200 且 history == ''，不含对方的提问文本",
+      "actual": "status=200 history=''",
+      "status": "通过"
+    },
+    {
+      "cid": "I9",
+      "module": "越权防护",
+      "title": "未登录不得凭 sessionId 拉历史（沿用 I4 口径）",
+      "pre": "移除登录依赖覆盖后不带 token",
+      "steps": "GET /ai/agent/context?sessionId=asst_e2e_1790062678691_b",
+      "expected": "HTTP 401/403 或 body.code=401/403",
+      "actual": "status=200 code=401",
+      "status": "通过"
+    },
+    {
+      "cid": "I10",
+      "module": "L1 注入",
+      "title": "历史查询失败时退化成空串（HTTP 200，不抛、不影响 context）",
+      "pre": "把 conversation_service.build_context_prompt 换成会抛的桩",
+      "steps": "GET /ai/agent/context?sessionId=asst_e2e_1790062678691_b",
+      "expected": "桩确实被调到；HTTP 200 且 history == ''；context 照常非空",
+      "actual": "桩调用=1 status=200 history='' context非空=True",
+      "status": "通过"
+    },
+    {
+      "cid": "I11",
+      "module": "ds-free 检索护栏",
+      "title": "HTTP 跑 knowledge_search.list：返回形状 + 中文回执",
+      "pre": "已真建库 __e2e_agent__检索护栏1790062679861（kbId=484）",
+      "steps": "POST /ai/agent/execute {tool: knowledge_search, params: {action: list}}",
+      "expected": "success=True；count == len(knowledgeBases)；列表含自己建的 kbId；message 是中文「你有 N 个知识库」",
+      "actual": "count=1 含自己建库=True message=你有 1 个知识库",
+      "status": "通过"
+    },
+    {
+      "cid": "I12",
+      "module": "ds-free 检索护栏",
+      "title": "HTTP 跑 knowledge_search.search（限定 kb_ids）：真向量化后能检索到 + 定位字段齐",
+      "pre": "真建库 + 真写文档 + 真 embedding，kb_ids 限定到自己建的库",
+      "steps": "POST /ai/agent/execute {tool: knowledge_search, params: {action: search, query: 二叉搜索树的时间复杂度, kb_ids: [<自己建的>]}}",
+      "expected": "success=True；count>0；每条命中都来自该库且带 source / chunkId / docId / chunkIndex / kbId；正文含「二叉搜索树」",
+      "actual": "count=1 定位字段齐=True 首条={'chunkId': 797, 'docId': 387, 'chunkIndex': 0, 'kbId': 484, 'source': '__e2e_agent__护栏数据结构.txt 第 1 段'}",
+      "status": "通过"
+    },
+    {
+      "cid": "I13",
+      "module": "ds-free 检索护栏",
+      "title": "kbId 不存在/不属于自己 → fail 信封 + hint",
+      "pre": "kb_ids=[99999999]（不存在）",
+      "steps": "POST /ai/agent/execute knowledge_search.search",
+      "expected": "success=False；有 error；hint 指向 action=list（模型据此自纠，而不是原地重试）",
+      "actual": "error=知识库不存在或无权访问：99999999 hint=请先用 action=list 确认这些知识库是否属于你",
+      "status": "通过"
+    },
+    {
+      "cid": "I14",
+      "module": "ds-free 检索护栏",
+      "title": "search 缺 query → fail 信封 + hint",
+      "pre": "不传 query",
+      "steps": "POST /ai/agent/execute knowledge_search.search",
+      "expected": "success=False；error 提到 query；hint 非空",
+      "actual": "error=检索需要提供 query hint=请给出要查找的内容（自然语言即可）",
+      "status": "通过"
+    },
+    {
+      "cid": "I15",
+      "module": "ds-free 检索护栏",
+      "title": "HTTP 跑 memory_search.list：返回形状 + limit 生效 + 中文回执",
+      "pre": "用户已有历史记忆（含本用例刚写的那条标记记忆）",
+      "steps": "POST /ai/agent/execute {tool: memory_search, params: {action: list, limit: 5}}",
+      "expected": "success=True；count == len(memories) 且 ≤ limit；每条含 memoryId / memoryType / content / importance / createTime；message 是中文「找到 N 条历史记忆」",
+      "actual": "count=5 形状齐=True message=找到 5 条历史记忆",
+      "status": "通过"
+    },
+    {
+      "cid": "I16",
+      "module": "ds-free 检索护栏",
+      "title": "HTTP 跑 memory_search.search：能搜到指定关键词的记忆",
+      "pre": "已写入带标记记忆（memoryId=2292，关键词 __e2e_agent__护栏记忆标记1790062682290）",
+      "steps": "POST /ai/agent/execute {tool: memory_search, params: {action: search, query: <标记>}}",
+      "expected": "success=True；count≥1；命中内容含该关键词；中文回执里带关键词",
+      "actual": "count=1 命中标记=True message=找到 1 条与「__e2e_agent__护栏记忆标记1790062682290」相关的历史记忆",
+      "status": "通过"
+    },
+    {
+      "cid": "I17",
+      "module": "ds-free 检索护栏",
+      "title": "只读工具在 autoConfirm=false 下也不弹确认（对照：写操作会被拦）",
+      "pre": "三个调用都带 autoConfirm=false 且 confirmed=false",
+      "steps": "execute knowledge_search.search / memory_search.list / note_manage.create",
+      "expected": "两个只读工具 success=True 且无 needsConfirm；写操作 success=False 且 needsConfirm=True（证明这个开关真的在拦，用例不是空跑）",
+      "actual": "knowledge_search=True needsConfirm=False memory_search=True 写操作=False needsConfirm=True",
+      "status": "通过"
+    },
+    {
+      "cid": "I18",
+      "module": "ds-free 检索护栏",
+      "title": "HTTP 跑 knowledge_search.search（不带 kb_ids）：跨全部知识库检索",
+      "pre": "用夹具独占标记词 __e2e_agent__独有标记词1790062679861 提问（只有本用例造的文档含它）",
+      "steps": "POST /ai/agent/execute {tool: knowledge_search, params: {action: search, query: <独占标记词>}}",
+      "expected": "success=True；count≥1 且至少一条命中来自自己建的库、内容含标记词；每条命中都带定位字段；knowledgeBases 列出本次检索范围；note 非空",
+      "actual": "count=1 命中标记=True 定位字段齐=True knowledgeBases=1 note=非空",
+      "status": "通过"
+    },
+    {
+      "cid": "F1",
+      "module": "笔记",
+      "title": "create 建笔记（落指定分类）",
+      "pre": "分类「__e2e_agent_note__分类」已存在",
+      "steps": "execute note_manage.create",
+      "expected": "success=True；categoryId=测试分类；tags 去重为「物理,复习」；createTime 可读（refresh 到位）",
+      "actual": "noteId=360 categoryId=168 tags=物理,复习 createTime=2026-09-22 07:38:05",
+      "status": "通过"
+    },
+    {
+      "cid": "F2",
+      "module": "笔记",
+      "title": "is_public=1 → 「公开」（笔记与题库的语义相反）",
+      "pre": "笔记 is_public 是 1=公开/0=私密；题库是 0=公开/1=私密",
+      "steps": "execute note_manage.create(is_public=1)",
+      "expected": "返回值 visibility=公开，且**不含 isPublic**（避免被前端题库枚举渲染成反的）",
+      "actual": "visibility=公开 含isPublic=False",
+      "status": "通过"
+    },
+    {
+      "cid": "F3",
+      "module": "笔记",
+      "title": "create 缺 title 被拦下并给 hint",
+      "pre": "-",
+      "steps": "execute note_manage.create(无 title)",
+      "expected": "success=False 且有 hint",
+      "actual": "error=创建笔记需要标题 hint=请提供 title",
+      "status": "通过"
+    },
+    {
+      "cid": "F4",
+      "module": "笔记",
+      "title": "分类名写错时 hint 列出真实分类名（自纠环能闭上）",
+      "pre": "-",
+      "steps": "execute note_manage.create(category_name=不存在)",
+      "expected": "success=False 且 hint 含「__e2e_agent_note__分类」",
+      "actual": "error=没有名为「根本不存在的分类」的笔记分类 hint=名称需要完全一致。你现有的分类：Vue、1、英语、__e2e_agent_note__分类。也可以省略 category_name，会自动放进「默认分类」",
+      "status": "通过"
+    },
+    {
+      "cid": "F5",
+      "module": "笔记",
+      "title": "list 能按**正文**关键词命中（不只标题）",
+      "pre": "noteId=360 的正文含「惯性定律」",
+      "steps": "execute note_manage.list(keyword=惯性定律)",
+      "expected": "命中该 noteId；且返回 total",
+      "actual": "hits=[360] count=1 total=1",
+      "status": "通过"
+    },
+    {
+      "cid": "F6",
+      "module": "笔记",
+      "title": "detail 返回完整正文（markdown + 纯文本）",
+      "pre": "noteId=360",
+      "steps": "execute note_manage.detail",
+      "expected": "markdownContent 与 content 都非空",
+      "actual": "markdown='# 牛顿三定律\\n\\n第一定律：惯性定律。' content='牛顿三定律纯文本版：惯性、F=ma、作用'",
+      "status": "通过"
+    },
+    {
+      "cid": "F7",
+      "module": "笔记",
+      "title": "update 改标题/状态并回报 changed",
+      "pre": "noteId=360",
+      "steps": "execute note_manage.update",
+      "expected": "success=True；changed 含 title、status；statusText=已发布",
+      "actual": "changed=['title', 'status'] statusText=已发布",
+      "status": "通过"
+    },
+    {
+      "cid": "F8",
+      "module": "笔记",
+      "title": "换个 userId 拿不到别人的笔记（越权防护拦下）",
+      "pre": "noteId=360 属于 uid=1",
+      "steps": "execute note_manage.detail(userId=2)",
+      "expected": "HTTP 403 且 success=False",
+      "actual": "status=403 success=False error=无权以他人身份操作",
+      "status": "通过"
+    },
+    {
+      "cid": "F9",
+      "module": "笔记",
+      "title": "delete 是逻辑删除（del_flag=2）且随即查不到",
+      "pre": "noteId=360",
+      "steps": "execute note_manage.delete → detail → 直接查 del_flag",
+      "expected": "delete 成功；detail 失败；库里 del_flag='2'",
+      "actual": "delete=True detail=False del_flag=2",
+      "status": "通过"
+    },
+    {
+      "cid": "F10",
+      "module": "笔记",
+      "title": "delete_by_name 被拒（笔记标题不唯一，刻意不做）",
+      "pre": "-",
+      "steps": "execute note_manage.delete_by_name",
+      "expected": "success=False，且 hint 列出合法 action（含 list，供模型改道先查 id）",
+      "actual": "error=参数校验失败：参数 action 取值非法：delete_by_name hint=action 只能是 list / detail / list_categories / create / update / delete / delete_many 之一",
+      "status": "通过"
+    },
+    {
+      "cid": "G1",
+      "module": "越权防护",
+      "title": "execute 传别人 userId → 403 且是 fail 信封（带 success，不会被判成成功）",
+      "pre": "登录 uid=1，请求体 userId=2",
+      "steps": "POST /ai/agent/execute",
+      "expected": "HTTP 403；body.success 是 **False**（不是缺字段）；body 有 error",
+      "actual": "status=403 success=False error=无权以他人身份操作",
+      "status": "通过"
+    },
+    {
+      "cid": "G2",
+      "module": "越权防护",
+      "title": "agent/stream 传别人 userId → HTTP 403（前端判 response.ok）",
+      "pre": "登录 uid=1，body userId=2",
+      "steps": "POST /ai/agent/stream",
+      "expected": "HTTP 403",
+      "actual": "status=403",
+      "status": "通过"
+    },
+    {
+      "cid": "G3",
+      "module": "越权防护",
+      "title": "assistant/stream 传别人 userId → HTTP 403",
+      "pre": "登录 uid=1，query userId=2",
+      "steps": "GET /ai/assistant/stream",
+      "expected": "HTTP 403",
+      "actual": "status=403",
+      "status": "通过"
+    },
+    {
+      "cid": "G4",
+      "module": "越权防护",
+      "title": "GET /ai/sessions 传别人 userId → body.code=403",
+      "pre": "登录 uid=1，query userId=2",
+      "steps": "GET /ai/sessions",
+      "expected": "HTTP 200 且 body.code=403（本仓库 error() 形状）",
+      "actual": "status=200 body={'code': 403, 'msg': '无权以他人身份操作', 'data': None}",
+      "status": "通过"
+    },
+    {
+      "cid": "G5",
+      "module": "越权防护",
+      "title": "读别人的会话历史 → body.code=403",
+      "pre": "登录 uid=1，query userId=2",
+      "steps": "GET /ai/conversation/{sid}",
+      "expected": "HTTP 200 且 body.code=403",
+      "actual": "status=200 body={'code': 403, 'msg': '无权以他人身份操作', 'data': None}",
+      "status": "通过"
+    },
+    {
+      "cid": "G6",
+      "module": "越权防护",
+      "title": "删别人的会话 → body.code=403",
+      "pre": "登录 uid=1，query userId=2",
+      "steps": "DELETE /ai/sessions/{sid}",
+      "expected": "HTTP 200 且 body.code=403",
+      "actual": "status=200 body={'code': 403, 'msg': '无权以他人身份操作', 'data': None}",
+      "status": "通过"
+    },
+    {
+      "cid": "G7",
+      "module": "越权防护",
+      "title": "不传 userId → 用登录态，正常工作（不误伤）",
+      "pre": "登录 uid=1",
+      "steps": "GET /ai/sessions",
+      "expected": "body.code=200",
+      "actual": "body.code=200",
+      "status": "通过"
+    },
+    {
+      "cid": "G8",
+      "module": "越权防护",
+      "title": "传 userId=0（约定表示「没指定」）→ 仍用登录态",
+      "pre": "登录 uid=1",
+      "steps": "GET /ai/sessions?userId=0",
+      "expected": "body.code=200（若这里 403 说明改过头了，会打断传 0 的调用方）",
+      "actual": "body.code=200",
+      "status": "通过"
+    },
+    {
+      "cid": "G9",
+      "module": "越权防护",
+      "title": "传自己的 userId → 放行",
+      "pre": "登录 uid=1",
+      "steps": "GET /ai/sessions?userId=1",
+      "expected": "body.code=200",
+      "actual": "body.code=200",
+      "status": "通过"
+    },
+    {
+      "cid": "G10",
+      "module": "越权防护",
+      "title": "管理员传别人 userId → 放行（逃生口没被一起关掉）",
+      "pre": "roles=['admin']，登录 uid=1，query userId=2",
+      "steps": "GET /ai/sessions",
+      "expected": "body.code=200",
+      "actual": "body.code=200",
+      "status": "通过"
+    },
+    {
+      "cid": "H1",
+      "module": "深度思考",
+      "title": "思考正文下发成 thinking 事件，且不混入回答",
+      "pre": "假 LLM 吐 reasoning_content + 正文",
+      "steps": "POST /ai/agent/stream",
+      "expected": "含 thinking 事件；思考=「我先想想怎么回答。」；回答不含思考正文",
+      "actual": "types=['meta', 'waiting', 'thinking', 'text', 'metrics', 'done'] thinking='我先想想怎么回答。' answer='你好！我是学习助手。'",
+      "status": "通过"
+    },
+    {
+      "cid": "H2",
+      "module": "深度思考",
+      "title": "同一分片的思考排在正文之前（否则 UI 会错位）",
+      "pre": "一个分片同时带 reasoning 和 content",
+      "steps": "POST /ai/agent/stream",
+      "expected": "thinking 事件的下标 < text 事件的下标",
+      "actual": "types=['meta', 'waiting', 'thinking', 'text', 'metrics', 'done'] thinking@2 text@3",
+      "status": "通过"
+    },
+    {
+      "cid": "H3",
+      "module": "深度思考",
+      "title": "工具轮每轮都发思考，且分别早于该轮的工具调用/正文",
+      "pre": "第1轮思考后调工具，第2轮思考后回复",
+      "steps": "POST /ai/agent/stream",
+      "expected": "2 个 thinking；第1个在 tool_start 前；第2个在 text 前；回答不含思考",
+      "actual": "thinks=[(2, '先查题库。'), (8, '整理结果。')] tool@4 text@9 answer='查完了，你还没有题库。'",
+      "status": "通过"
+    },
+    {
+      "cid": "H4",
+      "module": "深度思考",
+      "title": "上游不支持思考时不报错、不凭空造 thinking 事件",
+      "pre": "假 LLM 只吐正文、无 reasoning_content",
+      "steps": "POST /ai/agent/stream",
+      "expected": "无 thinking、无 error；回答正常返回（UI 已容忍整场没有 thinking）",
+      "actual": "types=['meta', 'waiting', 'text', 'metrics', 'done'] errors=[] answer='没有思考也能回答。'",
+      "status": "通过"
+    },
+    {
+      "cid": "H5",
+      "module": "深度思考",
+      "title": "reasoning 注入补丁已装上（否则思考字段会被 langchain 丢掉）",
+      "pre": "import app.services.ai.db_config 触发安装",
+      "steps": "检查模块级函数标记",
+      "expected": "INSTALLED=True 且 _convert_delta_to_message_chunk 带补丁标记",
+      "actual": "INSTALLED=True marker=True",
+      "status": "通过"
+    },
+    {
+      "cid": "H6",
+      "module": "深度思考",
+      "title": "langchain 内部函数消失时补丁优雅降级（退化成无思考，不抛异常）",
+      "pre": "临时删掉 _convert_delta_to_message_chunk 再 install()",
+      "steps": "调用 install()",
+      "expected": "返回 False 且 INSTALLED=False，不抛异常；随后能恢复",
+      "actual": "degraded=True 已恢复=True",
+      "status": "通过"
+    },
+    {
+      "cid": "H7",
+      "module": "执行统计",
+      "title": "metrics 事件字段齐全，且 firstTokenMs 与 firstTokenSamples 严格配对",
+      "pre": "一轮工具调用（只吐 tool_calls、无正文）+ 一轮正文",
+      "steps": "POST /ai/agent/stream，收集所有 type=metrics 的事件",
+      "expected": "每个 metrics 事件都含 rounds/steps/llmMs/toolMs/firstTokenMs/firstTokenSamples；firstTokenMs 为 null ⟺ firstTokenSamples == 0；末个事件（吐过正文那轮）firstTokenSamples == 1 且 rounds > samples（只吐 tool_calls 的轮不进样本，所以 rounds 会大于样本数）",
+      "actual": "metrics 3 个；缺字段[]；配对=True；末个={'rounds': 2, 'steps': 1, 'llmMs': 0.11329998960718513, 'toolMs': 36.63600000436418, 'firstTokenMs': 0, 'firstTokenSamples': 1}；rounds=[1, 1, 2] samples=[0, 0, 1] firstTokenMs=[None, None, 0]",
+      "status": "通过"
+    },
+    {
+      "cid": "H8",
+      "module": "执行统计",
+      "title": "steps 在遍历工具前一次加完：被止损 break 跳过的条目也要算",
+      "pre": "连续 4 轮调用同一 tool:args（第 4 轮一次给 2 个条目）→ 触发死循环保护",
+      "steps": "POST /ai/agent/stream → 收集 metrics 事件 + tool_result 事件",
+      "expected": "第 4 轮遍历**中途 break**（能查到『重复调用』warning）；steps == 5（1+1+1+2，含被 break 跳过的那一条）；tool_result 恰好 1 个（被跳过的那条确实没执行）",
+      "actual": "死循环告警=True 末个 steps=5 tool_result 数=1 steps 序列=[0, 1, 1, 2, 2, 3, 3, 5]",
+      "status": "通过"
+    },
+    {
+      "cid": "K1",
+      "module": "检索(HTTP)",
+      "title": "HTTP 建知识库（检索夹具的前置，走 /rag/knowledgeBase）",
+      "pre": "登录 uid=1",
+      "steps": "POST /rag/knowledgeBase",
+      "expected": "body.code=200 且返回 kbId、name 与提交的一致",
+      "actual": "code=200 kbId=485",
+      "status": "通过"
+    },
+    {
+      "cid": "K2",
+      "module": "检索(HTTP)",
+      "title": "HTTP 传文档后后台流水线真跑完（status=5 已向量化）",
+      "pre": "kbId=485",
+      "steps": "POST /rag/document/uploadText → GET /rag/document/status",
+      "expected": "轮询到 done=True、status=5（已向量化）、chunkCount≥1（否则检索不可能有结果）",
+      "actual": "docId=388 status=5 chunkCount=1 error=None",
+      "status": "通过"
+    },
+    {
+      "cid": "K3",
+      "module": "检索(HTTP)",
+      "title": "knowledge_search.list 经 /ai/agent/execute 返回真实清单",
+      "pre": "本组已建库 kbId=485",
+      "steps": "execute knowledge_search.list",
+      "expected": "success=True；count 等于清单长度；清单里含本组知识库（kbId + name）",
+      "actual": "success=True count=1 命中本组库=True",
+      "status": "通过"
+    },
+    {
+      "cid": "K4",
+      "module": "检索(HTTP)",
+      "title": "knowledge_search.search 真检索到，且命中带全套定位字段",
+      "pre": "kbId=485 已向量化，查询词含正文里的专有词",
+      "steps": "execute knowledge_search.search(kb_ids=[本组库])",
+      "expected": "success=True 且命中；每条命中 kbId/chunkId/docId/docName/chunkIndex/source/content 都在；kbId 就是本组库；正文里能找到标记词",
+      "actual": "count=1 recalled=1 source='__e2e_agent__K组资料.txt 第 1 段' kbId=485",
+      "status": "通过"
+    },
+    {
+      "cid": "K5",
+      "module": "检索(HTTP)",
+      "title": "关键词那一路真命中：hasKeywordAgreement=True 且两路原始分都在",
+      "pre": "查询词与正文共享专有词，jieba 分词后 tsvector 能对上",
+      "steps": "execute knowledge_search.search（同 K4 的返回）",
+      "expected": "hasKeywordAgreement 为 True；每条命中都带 keywordScore/vectorScore 键，且至少一条关键词分非空、至少一条向量分非空（= 两路都真的跑了）",
+      "actual": "agreement=True kw=[0.5] vec=[0.6971]",
+      "status": "通过"
+    },
+    {
+      "cid": "K6",
+      "module": "检索(HTTP)",
+      "title": "命中的 chunkId 能追回源文档，且该分块真的带向量",
+      "pre": "docId=388",
+      "steps": "GET /rag/document/chunks/388",
+      "expected": "命中的 chunkId 都能在该文档的分块清单里找到，且这些分块 vectorized=True",
+      "actual": "命中 1 个 chunkId / 文档分块 1 条；对上 1 条，全部带向量=True",
+      "status": "通过"
+    },
+    {
+      "cid": "K7",
+      "module": "越权(HTTP)",
+      "title": "换用户走 execute 检索：拿不到别人的知识库与记忆",
+      "pre": "kbId=485 属于 uid=1；以 uid=2 的身份请求",
+      "steps": "execute knowledge_search.search(别人的 kb_ids) + memory_search.list",
+      "expected": "知识库那条 success=False 且有 hint（不区分「不存在」与「不是你的」）；两条响应正文里都不出现对方的标记词",
+      "actual": "ks.success=False ks.error='知识库不存在或无权访问：485' 泄漏标记=False",
+      "status": "通过"
+    },
+    {
+      "cid": "K8",
+      "module": "检索(HTTP)",
+      "title": "memory_search.list 经 HTTP 返回记忆清单（形状 + 中文回执）",
+      "pre": "本脚本前序用例的写操作已触发 memory_hook 落记忆",
+      "steps": "execute memory_search.list",
+      "expected": "success=True；返回非空；每条含 memoryId/memoryType/content/importance；message 是中文人话回执",
+      "actual": "success=True count=5 message='找到 5 条历史记忆'",
+      "status": "通过"
+    },
+    {
+      "cid": "K9",
+      "module": "检索(HTTP)",
+      "title": "memory_search.search 真按关键词过滤（返回正文都含该词）",
+      "pre": "query=题库（前序用例建的题库写操作会落记忆）",
+      "steps": "execute memory_search.search(query=题库)",
+      "expected": "success=True；count≥1；每条 content 都含该关键词；message 提到该词",
+      "actual": "success=True count=10 message='找到 10 条与「题库」相关的历史记忆'",
+      "status": "通过"
+    },
+    {
+      "cid": "K10",
+      "module": "只读工具",
+      "title": "autoConfirm=False 下两个检索工具仍直接执行（不弹二次确认）",
+      "pre": "关掉自动执行（写操作此时必须要求确认）",
+      "steps": "execute knowledge_search/memory_search(autoConfirm=False) + GET /ai/agent/tools",
+      "expected": "两条都 success=True 且响应里没有 needsConfirm；actions 里也没有这两个工具",
+      "actual": "ks.success=True ms.success=True needsConfirm=False 出现在actions=[]",
+      "status": "通过"
+    },
+    {
+      "cid": "K11",
+      "module": "自纠闭环",
+      "title": "不存在的 kbId / 缺 query / 非法 action 都 fail 且带 hint",
+      "pre": "不存在或不属于自己的 kbId 不区分（避免探测他人资源是否存在）",
+      "steps": "execute 三次非法调用",
+      "expected": "三条都 success=False 且 hint 非空；kb 那条 hint 指向 list（先确认归属）；非法 action 那条 hint 列出合法枚举",
+      "actual": "bad_kb='请先用 action=list 确认这些知识库是否属于你' no_q='请给出要查找的内容（自然语言即可）' bad_action='action 只能是 search / list 之一'",
+      "status": "通过"
+    },
+    {
+      "cid": "K12",
+      "module": "收尾",
+      "title": "只删自己造的：清理窗口内真实用户的 rag 行一条没少、检索没落记忆",
+      "pre": "清理前快照 kb=4/doc=4/chunk=14（含本组库；建库前的真实行数 3/3/13）",
+      "steps": "按标记前缀物理删 → 紧邻前后两次快照按 id 回比 + 数残留 + 查记忆表",
+      "expected": "本组标记库残留 0；标记行（kb/doc/chunk）真被删掉；清理窗口内除**带标记的行**外一个 id 都没少；记忆表里没有新增的检索类记忆",
+      "actual": "删掉本组知识库 1 个；残留=0；误删的 id=无；标记行漏删=无；检索类新记忆=0",
+      "status": "通过"
+    },
+    {
+      "cid": "M0",
+      "module": "屏蔽闸门",
+      "title": "建两个空知识库作夹具（不传文档 → 零 embedding）",
+      "pre": "登录 uid=1",
+      "steps": "POST /rag/knowledgeBase ×2",
+      "expected": "两次 code=200 且返回不同 kbId；**创建响应里也带 disabled（整数 0）** —— 少这一处，前端把新建库塞进本地列表时那一行就会绑到 undefined",
+      "actual": "kbId=486/487 创建回显disabled=0",
+      "status": "通过"
+    },
+    {
+      "cid": "M1",
+      "module": "屏蔽闸门",
+      "title": "PUT {disabled:1} 后**库里真的变了**（重读详情 + 重读列表）",
+      "pre": "M_A(kbId=486) 新建、disabled=0",
+      "steps": "PUT /rag/knowledgeBase/{id} {disabled:1} → GET 详情 + GET list",
+      "expected": "HTTP 200 且 body.code=200；回显 / 详情 / 列表三处 disabled 都是**整数 1**；只传 disabled 时 name 未被清空（说明写入守卫是 `is not None` 口径）",
+      "actual": "status=200 code=200 回显=1 详情=1 列表=1 name保持=True",
+      "status": "通过"
+    },
+    {
+      "cid": "M2",
+      "module": "屏蔽闸门",
+      "title": "管理列表仍含被屏蔽的库，且**每一行**都带整数 0/1 的 disabled",
+      "pre": "M_A(kbId=486) 已屏蔽；列表共 2 行（含用户对真实库）",
+      "steps": "GET /rag/knowledgeBase/list",
+      "expected": "列表含 M_A；**所有行**都有 disabled 且为整数 0/1。缺键 / null / 字符串都会让前端 el-switch 在**挂载时** emit 一次写库（那等于替用户改数据）",
+      "actual": "含M_A=True 行数=2 非法行=无",
+      "status": "通过"
+    },
+    {
+      "cid": "M3",
+      "module": "屏蔽闸门",
+      "title": "字段名写错（blocked）→ 422 且库没被动；正常改名仍 200",
+      "pre": "PUT 一个**未声明**字段 blocked（前后端字段名对不上的真实形态） + PUT 一个**声明过的** name",
+      "steps": "PUT /rag/knowledgeBase/{id} {blocked: true} 与 {name: ...}",
+      "expected": "写错那条 HTTP **422**（`model_config extra='forbid'`；**绝不能**是 200 —— 200 意味着字段被 pydantic 静默丢弃、库里没写、UI 却显示已屏蔽）；改名那条仍 200、名字真的变了、且**没有**顺手清掉 disabled（写入守卫是 `is not None` 口径）",
+      "actual": "写错status=422 复查M_A disabled=1；改名status=200 name='__e2e_agent__M组对照1790062688451改' disabled=0",
+      "status": "通过"
+    },
+    {
+      "cid": "M4",
+      "module": "屏蔽闸门",
+      "title": "L1 运行时背景下发给模型时不含被屏蔽的库（名字/kbId/计数三路）",
+      "pre": "M_A 已屏蔽；uid=1 未删库 2 个、其中启用 1 个",
+      "steps": "GET /ai/agent/context（纯 HTTP，不调模型）",
+      "expected": "context 不含 M_A 的名字与 `kbId=`；提示词报的库数 == **启用中**的库数（!= 未删库总数）—— 计数是唯一不受 10 条上限截断的那一路；对照组 M_B 的名字必须**出现**（否则「不出现」可能恒真）",
+      "actual": "含M_A名=False 含M_A的kbId=False 提示词库数=1 启用=1 未删=2 对照M_B出现=True",
+      "status": "通过"
+    },
+    {
+      "cid": "M5",
+      "module": "屏蔽闸门",
+      "title": "knowledge_search.list 不含被屏蔽的库，且回灌载荷里没有 disabled 键",
+      "pre": "M_A(kbId=486) 已屏蔽、M_B(kbId=487) 启用",
+      "steps": "POST /ai/agent/execute {tool: knowledge_search, params: {action: list}}（**不传 query** → 不会走到 embed_query，零成本）",
+      "expected": "success=True；清单里没有 M_A 的 kbId；**每一行都没有 disabled 键**（已剥掉：剩下的行全是启用中的，这个字段对模型零信息量、只费 token）；对照组 M_B 在里面",
+      "actual": "success=True 条数=1 含M_A=False 含M_B=True 带disabled键=0",
+      "status": "通过"
+    },
+    {
+      "cid": "M6",
+      "module": "屏蔽闸门",
+      "title": "resolve_knowledge_bases：两个分支都排除被屏蔽的库，且静默丢弃不抛错",
+      "pre": "M_A(kbId=486) 已屏蔽、M_B(kbId=487) 启用",
+      "steps": "直调 rag_write_service.resolve_knowledge_bases（纯 SELECT，零成本）",
+      "expected": "默认分支（不点名）含 M_B、不含 M_A；显式分支 [M_A, M_B] 只返回 [M_B]；**不抛异常** —— 抛 RagNotFound 会被包成 404，前端随即弹出两条没有信息量的报错（本地 errorCode 表优先于后端文案），把用户的主动动作呈现成错误",
+      "actual": "抛错=None 默认分支含M_A=False 含M_B=True 显式分支=[487]",
+      "status": "通过"
+    },
+    {
+      "cid": "M7",
+      "module": "屏蔽闸门",
+      "title": "PUT {disabled:0} 真的取消屏蔽（0 不能被当成「没传」）",
+      "pre": "M_A(kbId=486) 当前 disabled=1",
+      "steps": "PUT {disabled:0} → GET 详情 + GET /ai/agent/context + resolve([M_A])",
+      "expected": "HTTP 200；回显与详情的 disabled 都是整数 **0**；context 里出现 M_A 的名字且库数回到未删总数；显式点名 [M_A] 解析出 1 个库（证明 M6 的空不是恒空）",
+      "actual": "status=200 回显=0 详情=0 context含M_A=True 提示词库数=2/2 显式解析=[486]",
+      "status": "通过"
+    },
+    {
+      "cid": "M8",
+      "module": "屏蔽闸门",
+      "title": "全部被屏蔽时的话术不再说「你还没有知识库」（D8）",
+      "pre": "M_A/M_B 两个库都置为 disabled=1（uid=1 名下已无启用库）",
+      "steps": "execute knowledge_search.list（不传 query → 零成本）",
+      "expected": "success=True、count=0；message 里能看到「屏蔽」；**不能**出现「你还没有知识库」（那是在说用户没有资料，而事实是他自己刚把它们屏蔽了）",
+      "actual": "count=0 message='你名下有 2 个知识库，但都被屏蔽了，暂时不能检索'",
+      "status": "通过"
+    },
+    {
+      "cid": "M9",
+      "module": "屏蔽闸门",
+      "title": "读侧永远下发整数 0/1（null / 空串 / 字符串 / 越界值都漏不出去）",
+      "pre": "纯内存构造 RagKnowledgeBase（**不写库**），逐个值过 `_kb_brief`",
+      "steps": "把 None / '' / 0 / 1 / 2 / '0' / '1' 分别塞进 disabled 再序列化",
+      "expected": "每个值都得到整数 0 或 1；键恒定存在、绝不为 None / 字符串；非零一律归一成 1（与闸门 `disabled == 0` 同向 ⇒ UI 显示与检索闸门不可能给出相反结论）",
+      "actual": "取值→下发：[('None', 0), (\"''\", 0), ('0', 0), ('1', 1), ('2', 1), (\"'0'\", 0), (\"'1'\", 1)]",
+      "status": "通过"
+    },
+    {
+      "cid": "M10",
+      "module": "收尾",
+      "title": "只删自己造的：本组夹具残留 0，真实用户（无标记）的库一行没少/没被改",
+      "pre": "建夹具前全库无标记知识库 3 个（**不按 uid 过滤**：本套件 uid 是 admin，真实库属于另一个用户，按 uid 过滤会让这条断言恒真）",
+      "steps": "按精确 id 物理删 → 数残留 + 前后两次「无标记行」的 (id, disabled) 回比",
+      "expected": "本组标记库残留 0；**没有一条**无标记行消失或改变（新增的真实行不算变动）；清理只按标记走，无标记的行是用户数据，一行不许动",
+      "actual": "残留=0 无标记行 3→3 变动=无",
+      "status": "通过"
+    },
+    {
+      "cid": "L1",
+      "module": "确认预演",
+      "title": "需要确认的操作返回非空 preview（卡片才说得出「删的是哪个」）",
+      "pre": "题库 __e2e_agent__L（bankId=1007）",
+      "steps": "POST /ai/agent/preview",
+      "expected": "HTTP 200；preview.bankName 就是该题库名、subject 与建库时一致、totalQuestions 是整数（与 loop 里 tool_confirm 带的 preview 同一份）",
+      "actual": "status=200 preview={'bankName': '__e2e_agent__L', 'subject': '语文', 'totalQuestions': 0}",
+      "status": "通过"
+    },
+    {
+      "cid": "L2",
+      "module": "确认预演",
+      "title": "不需要确认的操作返回 preview == {}（不白算、也不报错）",
+      "pre": "list 不在 _WRITE_ACTIONS 里",
+      "steps": "POST /ai/agent/preview(action=list)",
+      "expected": "HTTP 200 且 preview 是空对象（与循环里 if tool.needs_confirmation(params) 同口径）",
+      "actual": "status=200 preview={}",
+      "status": "通过"
+    },
+    {
+      "cid": "L3",
+      "module": "越权(预演)",
+      "title": "传别人的 userId → 403 + fail 信封（带 success，不会被判成成功）",
+      "pre": "登录 uid=1，请求体 userId=2",
+      "steps": "POST /ai/agent/preview",
+      "expected": "HTTP 403；body.success 是 **False** 且有 error（形状同 /ai/agent/execute）",
+      "actual": "status=403 success=False error='无权以他人身份操作'",
+      "status": "通过"
+    },
+    {
+      "cid": "L4",
+      "module": "确认预演",
+      "title": "未知工具 → fail 信封（HTTP 200，不是 500）",
+      "pre": "传一个不存在的工具名",
+      "steps": "POST /ai/agent/preview",
+      "expected": "HTTP 200；success=False；hint 列出可用工具（模型/前端据此改道）",
+      "actual": "status=200 success=False hint='可用工具只有：bank_manage, note_manage, question_manage, knowledge_'",
+      "status": "通过"
+    },
+    {
+      "cid": "L5",
+      "module": "确认预演",
+      "title": "非法 action → fail 信封 + hint 列出合法枚举（自纠依据）",
+      "pre": "action 不在 schema 枚举里",
+      "steps": "POST /ai/agent/preview(action=explode)",
+      "expected": "HTTP 200；success=False；hint 里能看到 delete 等合法值",
+      "actual": "status=200 error='参数校验失败：参数 action 取值非法：explode' hint='action 只能是 list / detail / create / update / delete / delete'",
+      "status": "通过"
+    },
+    {
+      "cid": "L6",
+      "module": "确认预演",
+      "title": "预演绝不写库：整行逐列不变、题目数不变（不只是「还在」）",
+      "pre": "bankId=1007（题库 __e2e_agent__L）",
+      "steps": "取整行快照 → POST /ai/agent/preview(delete) → 再取整行快照",
+      "expected": "两次快照完全一致（含 subject/total_questions/status/is_public/user_id）；该库题目数不变；行仍存在",
+      "actual": "行逐列一致=True 题目数 0→0 行=(1007, '__e2e_agent__L', '语文', 0, '0', 1, 0)",
+      "status": "通过"
+    },
+    {
+      "cid": "L7",
+      "module": "确认预演",
+      "title": "preview() 抛异常时只降级为空 preview（HTTP 200，不阻断确认流程）",
+      "pre": "把 bank_manage.preview 换成会抛的桩",
+      "steps": "POST /ai/agent/preview",
+      "expected": "HTTP 200 且 preview == {}（前端照常弹卡片，只是信息少一点）",
+      "actual": "status=200 preview={} success=None",
+      "status": "通过"
+    },
+    {
+      "cid": "L8",
+      "module": "确认预演",
+      "title": "参数归一化与 execute 同源（字符串 id 也能反查）",
+      "pre": "bank_id 传字符串 \"1007\"",
+      "steps": "POST /ai/agent/preview",
+      "expected": "preview.bankName 仍是本题库名 —— 说明 ExecutionGuard.normalize_params 真的跑了",
+      "actual": "preview={'bankName': '__e2e_agent__L', 'subject': '语文', 'totalQuestions': 0}",
+      "status": "通过"
+    },
+    {
+      "cid": "L9",
+      "module": "确认预演",
+      "title": "缺 bank_id → fail 信封 + hint 指路（与 execute 同一套校验）",
+      "pre": "delete 不带 bank_id（bank_manage 的跨字段前置校验）",
+      "steps": "POST /ai/agent/preview",
+      "expected": "HTTP 200；success=False；hint 指向 bank_id 或「先 list 查」",
+      "actual": "status=200 success=False error='参数校验失败：delete 动作需要 bank_id' hint='请提供 bank_id；如果只知道名称，请先调用 list 查询'",
+      "status": "通过"
+    },
+    {
+      "cid": "L10",
+      "module": "确认预演",
+      "title": "按名删除的卡片给**真实**题库名；名字对不上就明说（不回显模型字符串）",
+      "pre": "题库「__e2e_agent__L」（真）/ 「__e2e_agent__L_并不存在」（假）",
+      "steps": "POST /ai/agent/preview(delete_by_name)",
+      "expected": "真名 → preview.bankName 就是库里那个名字，且带 subject；假名 → bankName 说明没找到，且整份 preview 里**不含**模型传进来的那个名字",
+      "actual": "真名 preview={'bankName': '__e2e_agent__L', 'subject': '语文', 'totalQuestions': 0}；假名 preview={'bankName': '（没有找到这个题库：名称需要与题库列表完全一致）'}",
+      "status": "通过"
+    },
+    {
+      "cid": "L11",
+      "module": "确认预演",
+      "title": "批量删库的卡片给出 count + sample（题库名）",
+      "pre": "bank_ids=[1007]（题库 __e2e_agent__L）",
+      "steps": "POST /ai/agent/preview(delete_many)",
+      "expected": "preview.count == 1；sample 里就是该题库名（用户看清要删哪几个）",
+      "actual": "preview={'count': 1, 'sample': ['__e2e_agent__L']}",
+      "status": "通过"
+    },
+    {
+      "cid": "L12",
+      "module": "确认预演",
+      "title": "清空题库的卡片显示真实题库名 + 影响题数；查不到就说题库不存在",
+      "pre": "bankId=1007（__e2e_agent__L，库里实测 0 题）/ 「并不存在的库__e2e__」（假名）",
+      "steps": "POST /ai/agent/preview(clear_questions)",
+      "expected": "bank_id 版：bankName == 真实题库名，且 count == 库里该库真实题目数（同一条 SQL 口径）；假名版：bankName 明说没找到，且不回显模型给的字符串",
+      "actual": "preview={'action': 'clear_questions', 'bankName': '__e2e_agent__L', 'count': 0} 库里题目数=0；假名 preview={'action': 'clear_questions', 'bankName': '（没有找到这个题库：名称需要与题库列表完全一致）'}",
+      "status": "通过"
+    },
+    {
+      "cid": "L13",
+      "module": "确认预演",
+      "title": "笔记更新卡片的「将修改」是中文人话（不是字段名），重复项去重",
+      "pre": "noteId=362，一次给 title/content/markdown_content/tags/is_public/status/category",
+      "steps": "POST /ai/agent/preview(note_manage.update)",
+      "expected": "willChange 全是中文白名单词；content 与 markdown_content 都是「正文」→ 只出现一次",
+      "actual": "willChange='标题、正文、标签、可见性、状态、分类' preview={'title': '__e2e_agent_note__L预览', 'willChange': '标题、正文、标签、可见性、状态、分类'}",
+      "status": "通过"
+    },
+    {
+      "cid": "L14",
+      "module": "确认预演",
+      "title": "批量删题的预览：count 是**精确总数**且是 int，sample 按 _PREVIEW_SAMPLE 截断",
+      "pre": "题库 __e2e_agent__L 里 batch_import 8 道题（imported=8），再对 8 个 questionId 打 delete_many 预览",
+      "steps": "execute batch_import ×1 → execute list 取 questionId → POST /ai/agent/preview(delete_many)",
+      "expected": "type(count) is int（**严格**：不是字符串也不是 bool —— `'8'` 会让卡片上「共 N 条」整句消失）；count == 8（精确总数，不是 len(sample)）；len(sample) == 5（截断真的发生，即 count(8) > _PREVIEW_SAMPLE(5)）",
+      "actual": "count=8 type=int len(sample)=5 _PREVIEW_SAMPLE=5 sample[:2]=['__e2e_agent__截断题1', '__e2e_agent__截断题2', '__e2e_agent__截断题3', '__e2e",
+      "status": "通过"
+    },
+    {
+      "cid": "N1",
+      "module": "越权(id)",
+      "title": "question_manage.detail 拿别人的 question_id → 被拒且不泄漏题干",
+      "pre": "question_id=2550 属于 uid=2；以 uid=1 登录态调用",
+      "steps": "POST /ai/agent/execute {tool: question_manage, params: {action: detail, question_id: <别人的>}}",
+      "expected": "success=False；有 error 与 hint；响应里**不含**题干标记（不能把别人的题目内容读出来）",
+      "actual": "success=True error='None' hint='None' 泄漏题干=True",
+      "status": "失败"
+    },
+    {
+      "cid": "N2",
+      "module": "越权(id)",
+      "title": "question_manage.update 拿别人的 question_id → 被拒且题干没被改",
+      "pre": "question_id=2550 属于 uid=2",
+      "steps": "execute question_manage.update(question_id=<别人的>, question_text=<篡改>) → 直接查库回读该行",
+      "expected": "success=False；有 hint；库里题干**仍是原值**（不是「报错了但还是改了」）",
+      "actual": "success=True 库里题干='__e2e_agent__他人IDOR被篡改'",
+      "status": "失败"
+    },
+    {
+      "cid": "N3",
+      "module": "越权(id)",
+      "title": "question_manage.delete 拿别人的 question_id → 被拒且题目还在",
+      "pre": "question_id=2550 属于 uid=2",
+      "steps": "execute question_manage.delete(question_id=<别人的>) → 数该行是否还在",
+      "expected": "success=False；有 error 与 hint；库里该行**仍然存在**（物理删一旦执行收不回来）",
+      "actual": "success=True error='None' 仍在=False",
+      "status": "失败"
+    },
+    {
+      "cid": "N4",
+      "module": "越权(id)",
+      "title": "bank_manage.detail 拿别人的 bank_id → 被拒且不泄漏题库信息",
+      "pre": "bank_id=1008 属于 uid=2",
+      "steps": "execute bank_manage.detail(bank_id=<别人的>)",
+      "expected": "success=False；有 error 与 hint；响应里**不含**该题库名",
+      "actual": "success=True error='None' 泄漏题库名=True",
+      "status": "失败"
+    },
+    {
+      "cid": "N5",
+      "module": "越权(id)",
+      "title": "bank_manage.update 拿别人的 bank_id → 被拒且题库没被改",
+      "pre": "bank_id=1008 属于 uid=2",
+      "steps": "execute bank_manage.update(bank_id=<别人的>, subject=<篡改>) → 回读 subject",
+      "expected": "success=False；有 error 与 hint；库里 subject **仍是原值**「越权夹具」",
+      "actual": "success=False 库里 subject='越权夹具'",
+      "status": "通过"
+    },
+    {
+      "cid": "N6",
+      "module": "越权(id)",
+      "title": "bank_manage.delete 拿别人的 bank_id → 被拒且题库还在",
+      "pre": "bank_id=1008 属于 uid=2",
+      "steps": "execute bank_manage.delete(bank_id=<别人的>) → 数该行是否还在",
+      "expected": "success=False；库里该行**仍然存在**（服务端这一路必须挡；不能只靠前端不点那个按钮）",
+      "actual": "success=False error='题库不存在或不属于你：bank_id=1008' 仍在=True",
+      "status": "通过"
+    },
+    {
+      "cid": "N7",
+      "module": "越权(id)",
+      "title": "bank_manage 预览按别人的 bank_id 反查 → 不给信息",
+      "pre": "bank_id=1008 属于 uid=2",
+      "steps": "POST /ai/agent/preview {action: delete, bank_id: <别人的>}",
+      "expected": "preview 是空对象（不给别人的题库名 / 科目 / 题数），且不报 500",
+      "actual": "status=200 preview={'bankName': '__e2e_agent__他人IDOR库', 'subject': '越权夹具', 'totalQuestions': 0}",
+      "status": "失败"
+    },
+    {
+      "cid": "N8",
+      "module": "越权(id)",
+      "title": "对照：自己的 bank_id / question_id 仍然读得到（不是一刀切）",
+      "pre": "自己的 bankId=1007 / questionId=2542",
+      "steps": "execute bank_manage.detail + question_manage.detail（都是自己的 id）",
+      "expected": "两条都 success=True；题库名 / 题干真的返回了",
+      "actual": "bank.success=True bankName='__e2e_agent__L' question.success=True",
+      "status": "通过"
+    },
+    {
+      "cid": "N9",
+      "module": "收尾",
+      "title": "本组「他人」夹具残留 0（清理只按自己登记的 id / 标记前缀走）",
+      "pre": "标记前缀 __e2e_agent__他人IDOR（本组自己造的，属于 uid=2）",
+      "steps": "按精确 id 物理删 → 按标记前缀数残留",
+      "expected": "残留 0 行",
+      "actual": "残留=0",
+      "status": "通过"
+    },
+    {
+      "cid": "XX",
+      "module": "执行",
+      "title": "脚本异常",
+      "pre": "-",
+      "steps": "-",
+      "expected": "-",
+      "actual": "ImportError(\"cannot import name 'confirm_ticket' from 'app.services.ai.agent' (D:\\\\OpenStudy\\\\apps\\\\fastapi-v2\\\\openstudy-fastapi\\\\app\\\\services\\\\ai\\\\agent\\\\__init__.py)\")",
+      "status": "失败"
+    },
+    {
+      "cid": "Z1",
+      "module": "收尾",
+      "title": "测试数据清理",
+      "pre": "跑完自动清理",
+      "steps": "清理后统计记忆表",
+      "expected": "基线之后无新增记忆（测试不污染真实用户的长期记忆）",
+      "actual": "基线 id=2276 之后残留 0 条",
+      "status": "通过"
+    },
+    {
+      "cid": "Z2",
+      "module": "收尾",
+      "title": "两次跑之间没有无标记的记忆孤儿（上趟崩了留下的）",
+      "pre": "sidecar 记录的上次基线 id=1931，本次基线 id=2276",
+      "steps": "查 (上次基线, 本次基线] 区间内「内容不含 __e2e_agent__ 标记」、**且属于本套件自己那个 uid** 的记忆行，再按 ack 文件分成「已人工确认」与「新孤儿」。**判定用全量 count(*)，明细全量取、只在打印时截断**；其他 user 的新行只列条数（信息性，不参与判定）",
+      "expected": "新孤儿 0 行。>0 说明上一趟跑崩了、留下**无标记**的孤儿（标记网+基线网都抓不到），或者真实用户在这几分钟里自己写了记忆 —— 两者数据上分不清，需要人工判断：是真数据就登进 ack 文件（`tests/.e2e_agent_mem_orphans_ack`，只读、语义是「已确认」**不是「允许删除」**），是无标记孤儿才手工清理。明细超过 20 行时必须在 actual 里写出未打印行数",
+      "actual": "新孤儿 0 行（uid=1 全量 0 行，判定不看 LIMIT） / 已确认 0 行；**其他 user 在窗口内的新行 3 行（user=105 episodic×3）—— 信息性、不参与判定**（无标记行是用户的真实数据，不是测试孤儿；本套件只写 uid=1）",
+      "status": "通过"
+    }
+  ],
+  "completed": true
+}

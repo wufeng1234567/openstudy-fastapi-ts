@@ -1,0 +1,116 @@
+{
+  "total": 11,
+  "passed": 11,
+  "rows": [
+    {
+      "cid": "S1",
+      "module": "可见范围",
+      "title": "非管理员 scope=mine 只返回自己的模型",
+      "pre": "库里没有归属该用户的配置",
+      "steps": "GET list?scope=mine",
+      "expected": "rows == []",
+      "actual": "count=0 models=[]",
+      "status": "通过"
+    },
+    {
+      "cid": "S2",
+      "module": "可见范围",
+      "title": "非管理员不传 scope → 自动降级 available，且系统行 api_key 脱敏",
+      "pre": "库里有 3 条 user_id 为空的官方配置",
+      "steps": "GET list（不带 scope）",
+      "expected": "全部 source=system 且 apiKey 均为空",
+      "actual": "count=3 sources=['system'] apiKey全空=True",
+      "status": "通过"
+    },
+    {
+      "cid": "S3",
+      "module": "可见范围",
+      "title": "管理员不传 scope 拿到全部，且 api_key 未脱敏",
+      "pre": "管理员身份",
+      "steps": "GET list（不带 scope）",
+      "expected": "source 全为 system，apiKey 字段不被清空",
+      "actual": "count=3 apiKey可见=True",
+      "status": "通过"
+    },
+    {
+      "cid": "S4",
+      "module": "归属",
+      "title": "普通用户新增模型 → user_id = 自己、source = user",
+      "pre": "以普通用户身份 POST",
+      "steps": "POST /system/ai/config",
+      "expected": "success 且 data.userId == 当前用户、source == 'user'",
+      "actual": "code=200 userId=1 source=user",
+      "status": "通过"
+    },
+    {
+      "cid": "S5",
+      "module": "归属",
+      "title": "新增后 mine/available/系统行数三者联动正确",
+      "pre": "系统行 3 条 + 自己的 1 条",
+      "steps": "GET list?scope=mine / list / list(admin)",
+      "expected": "mine=1，available=系统+1，admin 总数=系统+1",
+      "actual": "mine=1 available=4 all=4",
+      "status": "通过"
+    },
+    {
+      "cid": "S6",
+      "module": "越权",
+      "title": "普通用户修改系统行被拒",
+      "pre": "系统配置 id=6",
+      "steps": "PUT /system/ai/config",
+      "expected": "code!=200 且提示无权",
+      "actual": "code=500 msg=无权修改该模型配置，只能修改自己在「我的模型」里添加的模型",
+      "status": "通过"
+    },
+    {
+      "cid": "S7",
+      "module": "越权",
+      "title": "普通用户把系统行设为默认被拒",
+      "pre": "系统配置 id=6",
+      "steps": "PUT /system/ai/config/default/{id}",
+      "expected": "code!=200 且提示无权",
+      "actual": "code=500 msg=无权操作该模型配置，只能操作自己在「我的模型」里添加的模型",
+      "status": "通过"
+    },
+    {
+      "cid": "S8",
+      "module": "越权",
+      "title": "普通用户测试系统行连接被拒",
+      "pre": "系统配置 id=6",
+      "steps": "POST /system/ai/config/test",
+      "expected": "code!=200 且提示无权",
+      "actual": "code=500 msg=无权测试该模型配置，只能测试自己在「我的模型」里添加的模型",
+      "status": "通过"
+    },
+    {
+      "cid": "S9",
+      "module": "脱敏",
+      "title": "普通用户看系统行详情 api_key 被脱敏",
+      "pre": "系统配置 id=6",
+      "steps": "GET /system/ai/config/{id}",
+      "expected": "apiKey 为空字符串",
+      "actual": "apiKey=''",
+      "status": "通过"
+    },
+    {
+      "cid": "S10",
+      "module": "越权",
+      "title": "普通用户删除系统行被拒",
+      "pre": "系统配置 id=6",
+      "steps": "DELETE /system/ai/config/{id}",
+      "expected": "code!=200 且提示无权",
+      "actual": "code=500 msg=无权删除模型配置「deepseek-flash」，只能删除自己在「我的模型」里添加的模型",
+      "status": "通过"
+    },
+    {
+      "cid": "S11",
+      "module": "归属",
+      "title": "普通用户可以删自己的行，删完 mine 归零",
+      "pre": "自己的配置 id=12",
+      "steps": "DELETE 自己 + GET list?scope=mine",
+      "expected": "code=200 且 mine 回到空",
+      "actual": "code=200 mine=0",
+      "status": "通过"
+    }
+  ]
+}

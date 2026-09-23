@@ -8,12 +8,6 @@
       </div>
       <h2 class="header-title">{{ noteTitle ? noteTitle + ' - ' : '' }}{{ editingNoteId ? '编辑笔记' : '写笔记' }}</h2>
       <div class="header-right">
-        <el-button class="copy-btn" :icon="DocumentCopy" size="small" @click="copyNote">
-          复制全文
-        </el-button>
-        <el-button class="header-export-btn" size="small" @click="exportNote">
-          导出 MD
-        </el-button>
         <el-button class="header-settings-btn" size="small" :icon="Setting" @click="settingsDrawerVisible = true">
           笔记设置
         </el-button>
@@ -27,9 +21,20 @@
       <div class="editor-main">
         <!-- 标题 + 高频元信息（始终可见，直接编辑） -->
         <div class="note-meta-card">
+          <div class="meta-title-row">
           <el-input ref="titleInputRef" v-model="noteTitle" class="note-title-input"
             :class="{ 'is-missing': missingField === 'title' }" placeholder="请输入笔记标题…" maxlength="100"
             @keydown.enter.prevent="focusEditor" />
+            <!-- 复制 / 导出：原来挤在顶栏右侧，移到标题这一行，顶栏只留「笔记设置 + 保存」 -->
+            <div class="title-actions">
+              <el-tooltip content="复制全文" placement="top" :show-after="300">
+                <el-button class="icon-action-btn" :icon="DocumentCopy" circle @click="copyNote" />
+              </el-tooltip>
+              <el-tooltip content="导出 Markdown" placement="top" :show-after="300">
+                <el-button class="icon-action-btn" :icon="Download" circle @click="exportNote" />
+              </el-tooltip>
+            </div>
+          </div>
 
           <div class="meta-row">
             <div class="meta-field meta-category" :class="{ 'is-missing': missingField === 'category' }">
@@ -87,7 +92,7 @@
 
           <div class="drawer-section">
             <label class="drawer-label">关联题目</label>
-            <NoteQuestionSelector :note-id="editingNoteId" :bank-list="bankList" />
+            <NoteQuestionSelector :note-id="editingNoteId" :bank-list="bankList" :show-label="false" />
           </div>
 
           <div class="drawer-tip">标题、分类、可见性与标签已移至编辑区顶部，写作过程中可直接修改。</div>
@@ -108,7 +113,7 @@ defineOptions({ name: 'FrontNotesEditor' })
 import { ref, onMounted, onActivated, onDeactivated, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, DocumentCopy, Setting } from '@element-plus/icons-vue'
+import { ArrowLeft, DocumentCopy, Download, Setting } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import TurndownService from 'turndown'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
@@ -121,6 +126,7 @@ import useUserStore from '@/store/modules/user'
 import { getAllNoteCategory, addNoteCategory } from '@/api/noteCategory/noteCategory'
 import { getPublicSections } from '@/api/notes/publicSection'
 import { listMyQuestionBank } from '@/api/questionBank/questionBank'
+import { listFavoriteBankAll } from '@/api/favoriteBank/favoriteBank'
 import { addNoteQuestionBank, getNoteQuestionBanksByNoteId } from '@/api/noteQuestionBank/noteQuestionBank'
 
 const cacheStore = useFrontPageCacheStore()
@@ -199,7 +205,7 @@ const saveNoteQuestionBanks = async (noteId) => {
     const existingRes = await getNoteQuestionBanksByNoteId(noteId)
     if (existingRes.code !== 200) return
 
-    const existingBankIds = (existingRes.data || []).map(item => item.questionBankId)
+    const existingBankIds = (existingRes.data || []).map(item => (item.bankId ?? item.questionBankId ?? item.id))
     const newBankIds = selectedBankIds.value.filter(id => !existingBankIds.includes(id))
 
     for (const bankId of newBankIds) {
@@ -218,7 +224,7 @@ const loadNoteQuestionBanks = async (noteId) => {
   try {
     const res = await getNoteQuestionBanksByNoteId(noteId)
     if (res.code === 200 && res.data) {
-      selectedBankIds.value = res.data.map(item => item.questionBankId) || []
+      selectedBankIds.value = res.data.map(item => (item.bankId ?? item.questionBankId ?? item.id)) || []
     }
   } catch (error) {
     console.error('加载笔记关联题库失败:', error)
@@ -349,10 +355,22 @@ const loadPublicSections = async () => {
 
 const loadQuestionBanks = async () => {
   try {
-    const res = await listMyQuestionBank()
-    if (res.code === 200) {
-      bankList.value = res.data || []
-    }
+    // 自己的题库 + 收藏的题库：两者都能被笔记关联。
+    // 只列 listMyQuestionBank（自己创建的）会让「收藏了别人的题库」根本选不到。
+    const [mine, favs] = await Promise.all([
+      listMyQuestionBank(),
+      listFavoriteBankAll({})
+    ])
+    const own = mine?.code === 200 ? (mine.data || []) : []
+    const fav = favs?.code === 200 ? (favs.data || []) : []
+    // 按 bankId 去重：自己创建的库也可能被自己收藏，会出现两次
+    const seen = new Set()
+    bankList.value = [...own, ...fav].filter((b: any) => {
+      const id = b.bankId ?? b.id
+      if (id == null || seen.has(id)) return false
+      seen.add(id)
+      return true
+    })
   } catch (error) {
     console.error('获取题库列表失败:', error)
   }
@@ -632,8 +650,6 @@ const handlePublish = async () => {
     gap: 8px;
     align-items: center;
 
-    .header-export-btn,
-    .copy-btn,
     .header-settings-btn {
       border-radius: 8px;
       font-weight: 500;
@@ -697,6 +713,46 @@ const handlePublish = async () => {
     border-radius: 8px;
     padding: 14px 20px 12px;
   }
+  /* 标题行：标题 + 右侧图标动作（复制全文 / 导出 MD） */
+  .meta-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    .note-title-input {
+      flex: 1;
+      min-width: 0;
+    }
+  }
+
+  .title-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  /* 图标按钮：圆形、无边框，弱化存在感但悬停可辨 ——
+     这两个是低频动作，不该和「笔记设置 / 保存」抢注意力 */
+  .icon-action-btn {
+    width: 30px;
+    height: 30px;
+    border: 1px solid #e5e7eb;
+    background: #fff;
+    color: #9ca3af;
+    transition: all 0.2s ease;
+
+    &:hover {
+      color: #4b5563;
+      border-color: #d1d5db;
+      background: #f9fafb;
+    }
+
+    &:active {
+      transform: scale(0.96);
+    }
+  }
+
 
   .note-title-input {
     .el-input__wrapper {
@@ -861,19 +917,6 @@ const handlePublish = async () => {
     background: #f9fafb;
     border-radius: 8px;
     padding: 10px 12px;
-  }
-}
-
-/* 窄屏逐级收起顶栏次要按钮，保证「笔记设置 / 发布」始终可见 */
-@media (max-width: 992px) {
-  .notes-editor-container .header-right .copy-btn {
-    display: none;
-  }
-}
-
-@media (max-width: 860px) {
-  .notes-editor-container .header-right .header-export-btn {
-    display: none;
   }
 }
 

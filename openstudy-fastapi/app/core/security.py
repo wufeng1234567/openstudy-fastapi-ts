@@ -4,7 +4,7 @@ JWT Token 生成/验证 + Redis 存储
 """
 
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Tuple
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, Request, status
@@ -112,6 +112,66 @@ async def remove_token(token: str) -> None:
         user_data = json.loads(data)
         await redis_client.client.delete(f"{LOGIN_TOKEN_PREFIX}{token}")
         await redis_client.client.delete(f"{USER_TOKEN_PREFIX}{user_data['user_id']}")
+
+
+def is_admin_user(current_user: Optional[dict]) -> bool:
+    """当前用户是否管理员（`roles` 里含 `admin`）
+
+    口径与 `api/v1/notes.py` / `api/v1/questions.py` 一致（**最严的那版**）——
+    这两处守的也是「个人数据」，且有测试覆盖。
+    ⚠️ `api/v1/ai_config.py` 另有一份更宽的实现（额外认 `perms` 含 `*:*:*`、
+    以及 administrator / superadmin 等变体）。**这里刻意没有跟着放宽** ——
+    放宽权限判定是安全敏感改动，该单独评估，不该顺手做。
+    """
+    roles = (current_user or {}).get("roles") or []
+    if isinstance(roles, str):
+        roles = [roles]
+    return "admin" in roles
+
+
+def resolve_user_scope(
+    current_user: Optional[dict], requested_user_id
+) -> Tuple[Optional[int], Optional[str]]:
+    """把「请求里带的 userId」收敛成**实际允许操作**的 user_id
+
+    Returns:
+        `(user_id, None)` 通过；`(None, err_msg)` 越权 / 非法
+
+    **为什么需要它**：这类接口原来写的是
+
+        user_id = userId or current_user.get("user_id") or 0
+
+    于是**任何登录用户只要在请求里传别人的 userId，就能以他人身份读写**
+    （水平越权 / IDOR）。本函数把「不同 id」这条路收掉：
+
+      · 不传 / 传空（`None` / `""` / `0` / `"0"`）→ 用当前登录用户。
+        **有意保留原来的 `or` 语义** —— 改的是「传了不同 id」这条路径，
+        不是「空值」；有些调用方（含前端自检面板）传 0 表示「没指定」。
+      · 传自己 → 通过。
+      · 传别人 → 只有管理员放行，否则拒绝。
+
+    ⚠️ **错误形状由调用方决定，不能一刀切**：
+      · 非流式会话接口 → `error(msg, code=403)`（本仓库 `error()` 的形状）
+      · SSE 流（`/assistant/stream`、`/agent/stream`）→ 前端判的是 `response.ok`，
+        所以要 `JSONResponse(403, error(...))`
+      · `/ai/agent/execute` → **必须**回 `fail(...)` 信封。前端 ds-free 循环判的是
+        `result.success !== false`，而 `error()` 没有 `success` 字段 →
+        会被 `undefined !== false` 判成**成功**，显示一张绿色成功卡片。
+    """
+    current_id = int((current_user or {}).get("user_id") or 0)
+
+    rid = 0
+    if requested_user_id not in (None, ""):
+        try:
+            rid = int(requested_user_id)
+        except (TypeError, ValueError):
+            return None, f"userId 不是合法整数：{requested_user_id!r}"
+
+    if rid == 0 or rid == current_id:
+        return current_id, None
+    if is_admin_user(current_user):
+        return rid, None
+    return None, "无权以他人身份操作"
 
 
 async def get_current_user(

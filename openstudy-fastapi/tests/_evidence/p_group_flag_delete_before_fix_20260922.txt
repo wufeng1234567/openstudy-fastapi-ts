@@ -1,0 +1,65 @@
+================================================================================
+红点证据（**修之前**）：收藏过的题，Agent 删不掉 —— ForeignKeyViolation
+================================================================================
+时间：2026-09-22 16:34:08（本地）
+被测版本：question_manage.py md5 = 7be09386da369d2bdd5e72810615171e  ← **未修**
+        （这个 md5 与 tests/_evidence/gate_sample_2.txt 第 15 行一致，
+          即「修之前」的树；修后 md5 见本目录同名前缀的 _after_fix 文件）
+产生方式：tests/_probe_q_flag_delete.py（临时探针，用完即删；步骤写在本文件末尾）
+夹具：全部自己造（`__e2e_agent__PROBE_Q*`），结束时按精确 id 物理删
+
+--- 原始响应（逐字复制自探针 stdout，未加工）---
+add→favorite success= True favoriteId= 226
+库里的收藏行 = 1
+delete→ {'success': False, 'error': '工具执行异常：IntegrityError: (sqlalchemy.dialects.postgresql.asyncpg.IntegrityError) <class \'asyncpg.exceptions.ForeignKeyViolationError\'>: update or delete on table "question_main" violates foreign key constraint "user_question_favorite_question_id_fkey" on table "user_ques
+题目还在吗 = 1
+
+--- 同一次运行的 SQLAlchemy/asyncpg 异常（stdout 上半段）---
+sqlalchemy.exc.IntegrityError: (sqlalchemy.dialects.postgresql.asyncpg.IntegrityError) <class 'asyncpg.exceptions.ForeignKeyViolationError'>: update or delete on table "question_main" violates foreign key constraint "user_question_favorite_question_id_fkey" on table "user_question_favorite"
+DETAIL:  Key (id)=(2625) is still referenced from table "user_question_favorite".
+[SQL: DELETE FROM question_main WHERE question_main.id IN ($1::BIGINT)]
+[parameters: (2625,)]
+
+--- 根因（同一次会话实测，information_schema.referential_constraints）---
+question_main.bank_id                   -> question_bank   delete_rule=NO ACTION
+user_question_error.bank_id             -> question_bank   delete_rule=NO ACTION
+user_question_favorite.bank_id          -> question_bank   delete_rule=NO ACTION
+user_question_marked.bank_id            -> question_bank   delete_rule=NO ACTION
+user_bank_favorite.bank_id              -> question_bank   delete_rule=NO ACTION
+note_question_bank.question_bank_id     -> question_bank   delete_rule=NO ACTION
+question_sub.main_id                    -> question_main   delete_rule=NO ACTION
+note_question.question_id               -> question_main   delete_rule=NO ACTION
+user_question_error.question_id         -> question_main   delete_rule=NO ACTION
+user_question_favorite.question_id      -> question_main   delete_rule=NO ACTION
+user_question_marked.question_id        -> question_main   delete_rule=NO ACTION
+→ **整张 question_* 关系网一条级联都没有**。而 `question_manage._purge_questions`
+  只显式删了 `question_sub` / `note_question`，漏了 `user_question_{error,favorite,marked}`。
+  这条路径在本轮之前**走不到**（没有任何工具能造出「已被标记的题」）；
+  `question_flag_manage`（本轮 #4）上线后，「先收藏/加入错题本，再让助手删掉这道题」
+  就是一步普通操作 —— 用户会拿到一句 `工具执行异常：IntegrityError…`，并且题删不掉。
+
+--- 探针步骤（可复现）---
+1. execute bank_manage.create        → 自建题库（名字带 __e2e_agent__PROBE_Q）
+2. execute question_manage.create    → 自建一道题
+3. execute question_flag_manage add(flag_type=favorite, question_id=…) → 入库 +1
+4. execute question_manage.delete(question_id=…)  → 期望 success=True
+5. 回读 question_main 该行是否还在
+（探针在 finally 里按登记的精确 id 物理删：favorite 行 → 题 → 库）
+
+================================================================================
+绿（**修之后**）：同一条探针、同一组步骤
+================================================================================
+时间：2026-09-22 16:35:16（本地）
+被测版本：question_manage.py md5 = 25125fa31c3702ed33133b306eed34af  ← 修后
+改的只有一处：`_purge_questions` 在删 `question_main` **之前**多删了三张标记表
+（user_question_error / favorite / marked），顺序与 `question_write_service.delete_banks` 一致。
+
+--- 原始输出（逐字复制）---
+add→favorite success= True favoriteId= 227
+库里的收藏行 = 1
+delete→ {'success': True, 'action': 'delete', 'questionId': 2626, 'bankTotal': 0, 'message': '已删除题目（ID=2626），题库现有 0 题'}
+题目还在吗 = 0
+
+→ 同一条操作：修前 `success=False` + FK violation + 题还在；修后 `success=True` + 题真的没了。
+  这条「先红后绿」由 e2e 用例 **P25** 固化（tests/e2e_agent_api.py）。
+================================================================================

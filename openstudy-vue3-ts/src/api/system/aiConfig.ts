@@ -1,9 +1,13 @@
 import request from '@/utils/request'
 
-export function listAiConfig() {
+export function listAiConfig(scope?: 'mine' | 'available' | 'all') {
   return request({
     url: '/system/ai/config/list',
-    method: 'get'
+    method: 'get',
+    // mine=仅我自己添加的（个人中心「我的模型」）
+    // available=我可用的（系统提供 + 我自己添加的，模型下拉框用）
+    // all=全部（仅管理员，后台 AI 模型配置页）
+    params: scope ? { scope } : undefined
   })
 }
 

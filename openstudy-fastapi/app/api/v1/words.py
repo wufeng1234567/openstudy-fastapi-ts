@@ -141,6 +141,36 @@ async def delete_word_books(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    """批量软删词书（`del_flag='2'`）
+
+    ⚠️ 这里 `current_user` **拿到了却没用**，是一个**已知的、有意暂时保留**的缺口：
+    `word_books` 没有归属列（实测列：book_id / book_name / book_description /
+    word_count / cover_image / status / del_flag / create_time，没有 user_id），
+    所以任何登录用户拿一串 id 就能软删任意词书。
+
+    2026-09-22 实测**不能**按「非管理员一律 403」来堵 —— 那会把**用户端功能改瘫**：
+      · `src/views/dictation/dictation/index.vue:25,41` 的「删除单词本」按钮是
+        `v-hasRole="['common']"`（**普通用户**），`:603` 调的就是本端点；
+      · 菜单实测：`sys_menu` 2006/2018（单词本 / 单词练习）都授给了角色 `common`，
+        且 2010「单词本删除」= `wordBooks:wordBooks:remove` 也在 `common` 名下；
+      · 真实用户（uid=105 `user1`）的角色就是 `common` —— 加 403 他立刻删不掉自己的单词本。
+    ⚠️ **不要**改成「非管理员一律 403」，**也不要**按权限点 `wordBooks:wordBooks:remove`
+    做后端闸门 —— 后者对本例是**假修**：`common` 本来就持有该权限点（见上），闸门等于
+    没闸，只挡得住没有该权限的账号。「词书是全局资源、只有管理员能删」这条也没有依据：
+    删词书本来就是普通用户功能（team-lead 2026-09-22 复核后同意不改）。
+      · 角色实测（`sys_user_role` + `sys_role`）：全库**只有 uid=1（admin）是 `admin`**，
+        uid=2/103/104/105/106 **全是 `common`**，而用户自己的真实数据在 uid=105（user1）
+        —— 所以「只有管理员能删」= 把除 admin 外的所有账号（含用户平时用的那个）锁在门外。
+      · 现状实测（**别把这个洞写成「用户数据正在被删」**）：v2 里英语模块是**空的** ——
+        `word_books` **0 行**、`words` **0 行**（对照 `courses` 10 行），
+        即目前没有任何真实词书可伤；`addWordBooks` 与它同属一个开放端点，建了才谈得上删。
+    保持原状，等定下后续两条路：
+      ① **给 `word_books` 加归属列**（`user_id`），用户只列/只删自己的 —— 真正的修法，
+         但属于**加功能**：已按 information_schema 实测该表只有 8 列且无归属列，
+         所以这是**真要改表**（+ 前端只列自己的），建议和题库那条线一起排；
+      ② **先只给词书加恢复入口** —— 它本来就已经是软删（`del_flag='2'`），加恢复最便宜，
+         而且与「用户端删除全部逻辑删除、一键恢复」的总方向一致。
+    """
     ids = [int(id) for id in book_ids.split(",")]
     stmt = update(WordBook).where(WordBook.book_id.in_(ids)).values(del_flag="2")
     await db.execute(stmt)

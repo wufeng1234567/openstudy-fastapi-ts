@@ -26,9 +26,15 @@
             <span v-if="getTypeLabel(notice)" class="notice-type-tag" :class="`is-${getNoticeType(notice)}`">
               {{ getTypeLabel(notice) }}
             </span>
-            <span class="notice-title-text">{{ notice.noticeTitle || notice.title }}</span>
+            <!-- 谁 + 做了什么：发起人昵称由后端在列表行上补（notice.fromNickName），
+                 拿不到时退回原来那句笼统标题，避免出现「undefined 评论了你的笔记」 -->
+            <span v-if="getActor(notice)" class="notice-title-text">
+              <span class="notice-actor">{{ getActor(notice) }}</span>
+              {{ getActionText(notice) }}
+            </span>
+            <span v-else class="notice-title-text">{{ notice.noticeTitle || notice.title }}</span>
           </div>
-          <div class="notice-summary">{{ notice.noticeContent || notice.content }}</div>
+          <div class="notice-summary">{{ plainMentions(notice.noticeContent || notice.content) }}</div>
           <div class="notice-time">{{ relativeTime(notice.createTime) }}</div>
         </div>
         <div class="notice-actions" @click.stop>
@@ -48,6 +54,7 @@ import { Delete } from '@element-plus/icons-vue'
 import useUserStore from '@/store/modules/user'
 import { listAllNotice, markRead, markReadAll, deleteFrontNotice, deleteFrontNoticeBatch } from '@/api/system/notice'
 import { isUserNoticeFor, getUserNoticeType, getUserNoticeTypeLabel, parseNoticeRemark } from '@/utils/notice'
+import { plainMentions } from '@/components/CommentSection/mention'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -61,6 +68,27 @@ const refreshBadge = inject('refreshBadge', () => { })
 // 通知类型标签：评论 / 回复 / @我
 const getNoticeType = (notice) => getUserNoticeType(notice)
 const getTypeLabel = (notice) => getUserNoticeTypeLabel(notice)
+
+/**
+ * 「谁在回复你 / 谁在 @ 你」。
+ * remark 里只存了数字 fromUserId，昵称是后端在列表行上补的 fromNickName（只读增强，见 notices.py）。
+ * 后端拿不到时**不加这个键**，这里就是空串 → 模板退回显示 notice_title（不显示空名字）。
+ */
+const getActor = (notice) => notice.fromNickName || ''
+
+/**
+ * 三类动作文案（用户点名定的口径，别乱改）：
+ * - comment 一级留言  → 「演示用户1 评论了你的笔记」
+ * - reply   子留言     → 「演示用户1 回复了你」
+ * - mention 被 @       → 「演示用户1 @了你」
+ */
+const ACTION_TEXT: Record<string, string> = {
+  comment: '评论了你的笔记',
+  reply: '回复了你',
+  mention: '@了你'
+}
+const getActionText = (notice) =>
+  ACTION_TEXT[getNoticeType(notice)] || notice.noticeTitle || notice.title || ''
 
 // 「回复与@」= 发给当前用户的全部用户通知（评论 + 回复 + @我）
 const fetchUserNotices = async () => {
@@ -303,6 +331,12 @@ onMounted(() => {
           white-space: nowrap;
         }
 
+        /* 发起人：整行里最该被一眼看到的东西 */
+        .notice-actor {
+          font-weight: 600;
+          color: #111827;
+        }
+
         .notice-type-tag {
           flex-shrink: 0;
           padding: 3px 8px;
@@ -312,22 +346,23 @@ onMounted(() => {
           border-radius: 4px;
           border: 1px solid transparent;
 
+          /* 三种类型用色相拉开距离：评论=蓝、回复=绿、@我=紫 */
           &.is-comment {
-            background: #f3f4f6;
-            border-color: #e5e7eb;
-            color: #6b7280;
+            background: #eff6ff;
+            border-color: #bfdbfe;
+            color: #2563eb;
           }
 
           &.is-reply {
-            background: #fefce8;
-            border-color: #e5e0c0;
-            color: #947a4a;
+            background: #f0fdf4;
+            border-color: #bbf7d0;
+            color: #16a34a;
           }
 
           &.is-mention {
-            background: #f1f5f9;
-            border-color: #e2e8f0;
-            color: #475569;
+            background: #f5f3ff;
+            border-color: #ddd6fe;
+            color: #7c3aed;
           }
         }
 

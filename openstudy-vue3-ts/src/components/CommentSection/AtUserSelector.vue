@@ -77,7 +77,7 @@ const filteredUsers = computed(() => {
 const fetchUsers = async () => {
   loading.value = true
   try {
-    const res = await listUserFront({ pageNum: 1, pageSize: 200 })
+    const res = await listUserFront({ pageNum: 1, pageSize: 100 })
     allUsers.value = res.rows || []
   } catch (e) {
     allUsers.value = []

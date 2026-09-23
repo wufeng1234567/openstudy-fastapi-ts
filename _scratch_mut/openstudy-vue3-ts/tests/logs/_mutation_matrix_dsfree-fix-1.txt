@@ -1,0 +1,10 @@
+baseline md5=3afa931fc94d19eed7d9bfc74b0bbad0 bytes=70900
+baseline run: total=49 passed=49 failed=0
+M0 \u6062\u590d\u65e7\u5b9e\u73b0\uff08\u5bf9\u7167\u7ec4\uff1a\u5e94\u91cd\u73b0\u4fee\u524d\u72b6\u6001\uff09: passed=46/49 failed=[DF-LOOP-45,DF-LOOP-46,DF-LOOP-47]
+M1 \u53bb\u6389\u7b2c 2 \u6761\uff08\u81ea\u5bb6\u6807\u8bb0\u7684\u6b8b\u7f3a\u5f62\u5f0f\uff09: passed=48/49 failed=[DF-LOOP-48]
+M2 \u53bb\u6389\u7b2c 4 \u6761\uff08\u56f4\u680f\u91cc\u7684 JSON\uff09: passed=48/49 failed=[DF-LOOP-49]
+M3 \u53bb\u6389\u7b2c 5 \u6761\uff08\u72ec\u5360\u4e00\u884c\u7684\u88f8 JSON\uff09: passed=48/49 failed=[DF-LOOP-08]
+M4 \u628a DSML \u5224\u636e\u653e\u5bbd\u56de /DSML/i: passed=48/49 failed=[DF-LOOP-47]
+M5 \u628a tool_call \u5224\u636e\u653e\u5bbd\u56de includes(\u8bcd): passed=48/49 failed=[DF-LOOP-46]
+M6 \u53bb\u6389\u7b2c 3 \u6761\u7684 invoke / parameter \u5206\u652f\uff08\u65e7\u4ee3\u7801\u5c31\u6709\u7684\u90a3\u6761\uff0c\u67e5\u5b83\u6709\u6ca1\u6709\u7528\u4f8b\u9489\u4f4f\uff09: passed=49/49 failed=[]
+restored md5=3afa931fc94d19eed7d9bfc74b0bbad0 same-as-before=true

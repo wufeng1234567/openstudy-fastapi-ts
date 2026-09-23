@@ -20,6 +20,12 @@ class SysAiConfig(Base):
     model: Mapped[str] = mapped_column(String(100))
     api_key: Mapped[Optional[str]] = mapped_column(String(500))
     base_url: Mapped[Optional[str]] = mapped_column(String(500))
+    # ---- DeepSeek 网页端反代（provider = deepseek-free）专用凭据 ----
+    # 用于以手机号 + 密码登录 chat.deepseek.com 换取 token。
+    # 注意：这是明文存储，仅适合自用环境；接口返回时会做脱敏处理。
+    web_phone: Mapped[Optional[str]] = mapped_column(String(50))
+    web_password: Mapped[Optional[str]] = mapped_column(String(200))
+    web_area_code: Mapped[Optional[str]] = mapped_column(String(10))
     is_default: Mapped[int] = mapped_column(SmallInteger, default=0)
     is_enabled: Mapped[int] = mapped_column(SmallInteger, default=1)
     status: Mapped[Optional[str]] = mapped_column(String(1), default="0")

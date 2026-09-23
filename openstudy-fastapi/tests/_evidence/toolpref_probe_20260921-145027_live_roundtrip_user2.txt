@@ -1,0 +1,50 @@
+跑前 ai_agent_tool_pref 行集合 = [(105, 'bank_manage', 0), (105, 'knowledge_search', 0), (105, 'memory_search', 0), (105, 'note_manage', 0), (105, 'question_manage', 0)]（account=user2 uid=106）
+  POST /quickLogin
+    HTTP 200
+    {"code":200,"msg":"操作成功","data":{"token":"f8a49f51-e552-4452-a00b-48c875a91f58","account":"user2","userName":"user2","nickName":"演示用户2"}}
+  GET /ai/agent/tools
+    HTTP 200
+    {"tools":[{"type":"function","function":{"name":"bank_manage","description":"Manage question banks. Use for creating, reading, updating and deleting banks. action values: list=list my banks (optional fuzzy `bank_name` keyword, optional `subject` filter), detail=show one bank's details, create=create a bank, update=update bank fields, delete=delete by `bank_id`, delete_by_name=delete by exact bank …
+  PUT /ai/agent/tools {'tool':'note_manage','disabled':1}
+    HTTP 200
+    {"tools":[{"type":"function","function":{"name":"bank_manage","description":"Manage question banks. Use for creating, reading, updating and deleting banks. action values: list=list my banks (optional fuzzy `bank_name` keyword, optional `subject` filter), detail=show one bank's details, create=create a bank, update=update bank fields, delete=delete by `bank_id`, delete_by_name=delete by exact bank …
+  GET（独立复读）
+    HTTP 200
+    {"tools":[{"type":"function","function":{"name":"bank_manage","description":"Manage question banks. Use for creating, reading, updating and deleting banks. action values: list=list my banks (optional fuzzy `bank_name` keyword, optional `subject` filter), detail=show one bank's details, create=create a bank, update=update bank fields, delete=delete by `bank_id`, delete_by_name=delete by exact bank …
+  PUT 未知工具名
+    HTTP 200
+    {"code":400,"msg":"工具不存在：no_such_tool__live","data":null}
+  PUT 字段名写错（enable）
+    HTTP 422
+    {"detail":[{"type":"missing","loc":["body","disabled"],"msg":"Field required","input":{"tool":"note_manage","enable":0}},{"type":"extra_forbidden","loc":["body","enable"],"msg":"Extra inputs are not permitted","input":0}]}
+  PUT {'tool':'note_manage','disabled':0}（打开回来）
+    HTTP 200
+    {"tools":[{"type":"function","function":{"name":"bank_manage","description":"Manage question banks. Use for creating, reading, updating and deleting banks. action values: list=list my banks (optional fuzzy `bank_name` keyword, optional `subject` filter), detail=show one bank's details, create=create a bank, update=update bank fields, delete=delete by `bank_id`, delete_by_name=delete by exact bank …
+
+跑后 ai_agent_tool_pref 行集合 = [(105, 'bank_manage', 0), (105, 'knowledge_search', 0), (105, 'memory_search', 0), (105, 'note_manage', 0), (105, 'question_manage', 0)]（本 uid 残留 0）
+
+---- 结果 ----
+  [通过] L1 白名单账号拿到真 token
+        实际: token=有
+  [通过] L2 成功体是未包装的 {tools, actions}（无 data 外层）
+        实际: keys=['actions', 'tools']
+  [通过] L3 每个条目都带 int 型 disabled（0/1，非 null）
+        实际: types=['int'] vals=[0]
+  [通过] L4 被屏蔽的工具仍以整行出现（可再打开）且 function 完好
+        实际: bank_manage=有
+  [通过] L5 PUT 回显与 GET 同形状，且 note_manage.disabled==1（DB 回读）
+        实际: note_manage=1 keys=['actions', 'tools']
+  [通过] L6 独立 GET 读到 1（落库了，不只是回显）
+        实际: note_manage=1
+  [通过] L7 直连 SQL 也是 1
+        实际: db.disabled=1
+  [通过] L8 未知工具名 → code 400 + 无 tools 键（前端能判「没保存」）
+        实际: code=400 msg='工具不存在：no_such_tool__live' keys=['code', 'data', 'msg']
+  [通过] L9 字段名写错 → HTTP 422
+        实际: status=422
+  [通过] L10 关得掉也开得回来（0 不等于「没传」）
+        实际: note_manage=0
+  [通过] L11 跑前跑后整表行集合一致，且本 uid 无残留
+        实际: before=[(105, 'bank_manage', 0), (105, 'knowledge_search', 0), (105, 'memory_search', 0), (105, 'note_manage', 0), (105, 'question_manage', 0)] after=[(105, 'bank_manage', 0), (105, 'knowledge_search', 0), (105, 'memory_search', 0), (105, 'note_manage', 0), (105, 'question_manage', 0)] left=0
+
+合计：11/11 通过；红的 = 无

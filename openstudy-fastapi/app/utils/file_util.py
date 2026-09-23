@@ -44,6 +44,30 @@ def validate_file(file: UploadFile, allowed_extensions: set = None) -> bool:
     return True
 
 
+def save_bytes(content: bytes, filename: str, sub_dir: str = "upload") -> dict:
+    """把**内存里的字节**存成上传文件（与 `save_upload_file` 同一条路径规则）
+
+    用途：Agent 工作流里附件是以 base64 随请求进来的，没有 `UploadFile` 对象；
+    但存盘目录 / 访问 URL 必须和 `/common/upload` 完全一致，否则题目里的图片
+    链接会 404。返回结构与 `save_upload_file()` 相同。
+    """
+    ext = Path(filename or "").suffix.lower() or ".png"
+    unique_name = f"{uuid.uuid4().hex}{ext}"
+    upload_path = get_upload_path(sub_dir)
+    file_path = os.path.join(upload_path, unique_name)
+
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    relative_path = os.path.relpath(file_path, settings.UPLOAD_DIR).replace("\\", "/")
+    return {
+        "fileName": filename,
+        "filePath": relative_path,
+        "fileUrl": get_file_url(relative_path),
+        "fileSize": len(content),
+    }
+
+
 async def save_upload_file(
     file: UploadFile,
     sub_dir: str = "upload",
@@ -64,23 +88,7 @@ async def save_upload_file(
             detail=f"文件大小超过限制: {max_size // (1024*1024)}MB",
         )
 
-    # 生成文件路径
-    filename = generate_filename(file.filename)
-    upload_path = get_upload_path(sub_dir)
-    file_path = os.path.join(upload_path, filename)
-
-    # 保存文件
-    with open(file_path, "wb") as f:
-        f.write(content)
-
-    # 返回相对路径（统一正斜杠）
-    relative_path = os.path.relpath(file_path, settings.UPLOAD_DIR).replace("\\", "/")
-    return {
-        "fileName": file.filename,
-        "filePath": relative_path,
-        "fileUrl": get_file_url(relative_path),
-        "fileSize": len(content),
-    }
+    return save_bytes(content, file.filename, sub_dir)
 
 
 def delete_file(file_path: str) -> bool:

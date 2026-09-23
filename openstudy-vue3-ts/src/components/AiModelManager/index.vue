@@ -1,7 +1,10 @@
 <template>
   <div class="ai-model-manager">
     <div class="model-header">
-      <h3>AI模型配置</h3>
+      <div class="header-text">
+        <h3>AI模型配置</h3>
+        <p class="header-tip">这里只显示你自己添加的模型；系统提供的官方模型由管理员统一维护。</p>
+      </div>
       <el-button class="btn-add" @click="handleAdd">
         <el-icon>
           <Plus />
@@ -53,16 +56,22 @@
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="服务商" prop="provider">
           <el-select v-model="form.provider" placeholder="请选择服务商" style="width: 100%">
-            <el-option label="智谱AI (GLM)" value="zhipuai" />
-            <el-option label="DeepSeek" value="deepseek" />
-            <el-option label="硅基流动" value="siliconflow" />
-            <el-option label="OpenAI" value="openai" />
+          <el-option-group label="官方 API">
+            <el-option label="DeepSeek（官方 API）" value="deepseek" />
+          </el-option-group>
+            <el-option-group label="其它 / 自定义">
+              <el-option label="智谱AI (GLM)" value="zhipuai" />
+              <el-option label="硅基流动" value="siliconflow" />
+              <el-option label="OpenAI" value="openai" />
+            </el-option-group>
           </el-select>
         </el-form-item>
 
         <el-form-item label="模型名称" prop="model">
-          <el-input v-model="form.model" placeholder="如：glm-4-plus、deepseek-chat" />
-          <div class="form-tip">填写模型的具体名称，如 glm-4-plus、deepseek-chat</div>
+          <el-input v-model="form.model" placeholder="如：deepseek-flash、deepseek-v4-pro" />
+          <div class="form-tip">
+            DeepSeek 官方当前提供 deepseek-flash / deepseek-v4-pro
+          </div>
         </el-form-item>
 
         <el-form-item label="API Key" prop="apiKey">
@@ -70,15 +79,16 @@
         </el-form-item>
 
         <el-form-item label="API地址" prop="baseUrl">
-          <el-input v-model="form.baseUrl" placeholder="留空使用系统默认地址" />
+          <el-input v-model="form.baseUrl" placeholder="留空使用默认地址" />
           <div class="form-tip" v-if="!form.baseUrl">
             默认地址：{{ defaultBaseUrl }}<br />
           </div>
           <div class="form-tip">
-            留空使用系统默认地址<br />
-            智谱默认：https://open.bigmodel.cn/api/paas<br />
+            留空使用下方默认地址<br />
+            智谱默认：https://open.bigmodel.cn/api/paas/v4<br />
             DeepSeek默认：https://api.deepseek.com<br />
-            硅基流动默认：https://api.siliconflow.cn
+            硅基流动默认：https://api.siliconflow.cn/v1<br />
+            OpenAI默认：https://api.openai.com/v1
           </div>
         </el-form-item>
 
@@ -196,13 +206,25 @@ const form = reactive({
   remark: '',
   thinkingMode: 'auto',
   reasoningEffort: 'high',
-  contextLength: '32k'
+  contextLength: '32k',
+  // ds-free（官网 Web 反代）专用
+  webPhone: '',
+  webPassword: '',
+  webAreaCode: '+86'
 })
 
 const rules = {
   provider: [{ required: true, message: '请选择服务商', trigger: 'change' }],
   model: [{ required: true, message: '请输入模型名称', trigger: 'blur' }],
-  apiKey: [{ required: true, message: '请输入API Key', trigger: 'blur' }]
+  apiKey: [
+    {
+      validator: (rule, value, callback) => {
+        if (!value) return callback(new Error('请输入API Key'))
+        callback()
+      },
+      trigger: 'blur'
+    }
+  ]
 }
 
 const providerNames = {
@@ -213,10 +235,10 @@ const providerNames = {
 }
 
 const defaultBaseUrls = {
-  zhipuai: 'https://open.bigmodel.cn/api/paas',
+  zhipuai: 'https://open.bigmodel.cn/api/paas/v4',
   deepseek: 'https://api.deepseek.com',
-  siliconflow: 'https://api.siliconflow.cn',
-  openai: 'https://api.openai.com'
+  siliconflow: 'https://api.siliconflow.cn/v1',
+  openai: 'https://api.openai.com/v1'
 }
 
 const defaultBaseUrl = computed(() => defaultBaseUrls[form.provider] || '')
@@ -243,7 +265,10 @@ function getDefaultBaseUrl(provider) {
 async function fetchConfigList() {
   loading.value = true
   try {
-    const res = await listAiConfig()
+    // scope='mine'：只列「我自己添加的模型」。
+    // 系统提供的官方模型（user_id 为空）由管理员在「系统管理 → AI 模型配置」维护，
+    // 不该出现在普通用户的个人中心里（否则人人可编辑/删除官方配置）。
+    const res = await listAiConfig('mine')
     if (res.code === 200 && res.rows) {
       configList.value = res.rows
     }
@@ -267,7 +292,10 @@ function resetForm() {
     remark: '',
     thinkingMode: 'auto',
     reasoningEffort: 'high',
-    contextLength: '32k'
+    contextLength: '32k',
+    webPhone: '',
+    webPassword: '',
+    webAreaCode: '+86'
   })
 }
 
@@ -410,7 +438,12 @@ defineExpose({
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   margin-bottom: 20px;
+}
+
+.model-header .header-text {
+  min-width: 0;
 }
 
 .model-header h3 {
@@ -418,6 +451,13 @@ defineExpose({
   font-size: 16px;
   font-weight: 600;
   color: #1f2937;
+}
+
+.model-header .header-tip {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #9ca3af;
 }
 
 .btn-add {

@@ -1,0 +1,37 @@
+[1m
+=== ds-free OS 助手自检 ===[0m
+[2m  用例 8 条 · 轮次 1 · 套件 LOOP[0m
+[2m  用例表：tests/df_cases.mjs[0m
+
+[1m
+── LOOP (8) ──────────────────────────────────────────────[0m
+  [[32mPASS[0m] [1mDF-LOOP-40[0m 预演响应里没有 preview 键 → 必须留一条 console.warn（「路由没对上」的唯一信号）
+  [[32mPASS[0m] [1mDF-LOOP-41[0m metrics 累计口径：每轮 LLM 后 + 该轮工具跑完后各发一次，rounds / steps / 首 token 样本与后端同口径
+  [[32mPASS[0m] [1mDF-LOOP-42[0m 没有任何可读内容时 firstTokenMs 必须是 null、样本数是 0（不是 0 毫秒）
+  [[32mPASS[0m] [1mDF-LOOP-43[0m 首 token 把思考正文算进去：整轮只有思考、没有正文时也要有样本
+  [[32mPASS[0m] [1mDF-LOOP-44[0m 短回复也要进首 token 样本：正文被「扣尾保护」挡住、从没走过 delta 分支
+  [[31mFAIL[0m] [1mDF-LOOP-45[0m ⚠️ 实测踩过：最终回复里**引用**了一段调用 JSON（写在一句话中间）→ 必须当回答交付
+         [31m✗[0m 没有触发纠正（这是讲解，不是调用）
+         [31m✗[0m 没有撤掉已流出的正文
+         [31m✗[0m 没有报错
+         [31m✗[0m 回答里保留了被引用的那段调用 JSON
+         [31m✗[0m 正文一个字不少地进了气泡
+  [[31mFAIL[0m] [1mDF-LOOP-46[0m 最终回复里**提到** `tool_call` 这个词（没有任何标记）→ 必须当回答交付
+         [31m✗[0m 没有触发纠正
+         [31m✗[0m 没有撤掉正文
+         [31m✗[0m 没有报错
+         [31m✗[0m 当成正常回复返回
+  [[31mFAIL[0m] [1mDF-LOOP-47[0m 最终回复里**提到** `DSML` 这个词（没有 `<|DSML|>` 标记）→ 必须当回答交付
+         [31m✗[0m 没有触发纠正
+         [31m✗[0m 没有撤掉正文
+         [31m✗[0m 当成正常回复返回
+[1m
+=== 结果 ===[0m
+  [32m5 通过[0m / [31m3 失败[0m  （共 8 条）
+[2m  总耗时 2.5s[0m
+[2m
+  结果 JSON：D:\OpenStudy\apps\fastapi-v2\openstudy-vue3-ts\tests\check_agent_dsfree_result.json[0m
+[2m  过程日志 ：D:\OpenStudy\apps\fastapi-v2\openstudy-vue3-ts\tests\logs\dsfree-check-2026-09-20T11-43-51.log[0m
+[2m  ⚠️ 日志文件只保留最近 20 份，更早的已自动清掉[0m
+
+结束时间：2026/9/20 19:43:54  退出码：1  （0=全通过）

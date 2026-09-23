@@ -1,9 +1,20 @@
 """
-文件解析服务 - 支持 TXT/MD/DOCX/PDF
-- DOCX: 使用 python-docx 提取段落+图片+表格,OMML 公式转 LaTeX
-- PDF: 使用 pypdf 提取文本
+文件解析服务 - 支持 TXT/MD/DOCX/PDF/DOC/RTF
+
+- DOCX: python-docx 提取段落 + 图片（含**表格单元格内**的插图）+ 表格文本，OMML 公式转 LaTeX
+- PDF : pypdf 提取文本 + **页内插图**（按「先文本、后该页图片」排块）
+- DOC : 按**文件魔数**分流 —— ZIP 头的（改名成 .doc 的 docx）走 DOCX；
+        真 OLE2 容器则按容器内的流名判断（`WordDocument`/`Workbook`/`PowerPoint Document`），
+        老版 .doc 交给 `doc_converter` 借本机 Word 转成 docx 再走 DOCX 解析
 - TXT/MD: 直接读取
-返回结构化块: {textContent, blocks, images, totalTextLength}
+
+返回结构化块: `{textContent, blocks, images, totalTextLength, fileName, error?}`
+
+⚠️ 本模块是**全平台唯一的文档解析入口**。聊天 / Agent / ds-free / AI 搭建题库
+四条链路最终都调 `parse_file()`，改进这里 = 四条链路同时生效（见 docs/openstudy-docs/v2的OS助手重构目标.md §6 Bug②）。
+
+⚠️ `blocks` 是**有序**的：图片块插在它原本所在的文字位置之间，
+`images` 则是同一批图片的平铺列表（顺序与 blocks 中出现的顺序一致）。
 """
 
 import base64
@@ -213,250 +224,543 @@ def _get_delimiter(elem: ET.Element, attr_local: str, default: str) -> str:
 
 
 # ============================================================
-# DOCX 段落文本提取(含 OMML 公式内联)
+# 图片归一化
 # ============================================================
-def _extract_paragraph_text(p_elem: ET.Element) -> str:
-    """遍历 <w:p> 的子元素,拼接文本 run 与 OMML 公式。
 
-    - <w:r><w:t> -> 纯文本
-    - <m:oMath> / <m:oMathPara> -> $latex$
+#: 小于这个边长的图多半是图标 / 分隔线 / 项目符号，没有信息量（口径对齐 sp3）
+_MIN_IMAGE_SIDE = 50
+#: 插图长边上限：超过就等比缩小（请求体要能过上游，data URL 会膨胀 4/3）
+_MAX_IMAGE_SIDE = 1600
+#: 原格式已可直接渲染时的体积上限；超过就重编码压缩
+_RAW_KEEP_BYTES = 2 * 1024 * 1024
+#: 浏览器认得的图片格式 —— 这些可以原样透传，不重编码（保清晰、省 CPU）
+_PASSTHROUGH_MIME = {
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/gif",
+    "image/webp",
+    "image/bmp",
+}
+
+
+def _mime_ext(mime: str) -> str:
+    """image/jpeg -> jpg（文件名用）"""
+    ext = (mime or "").split("/", 1)[-1].split(";")[0].strip().lower()
+    return "jpg" if ext == "jpeg" else (ext or "png")
+
+
+def _prepare_pil_image(image) -> Optional[tuple]:
+    """PIL.Image → (bytes, mime, ext)；不合适的（太小 / 编码失败）返回 None
+
+    统一重编码策略：有透明通道走 PNG（保住透明），其余走 JPEG（体积小得多）。
     """
-    parts = []
-    for child in p_elem:
-        ctag = child.tag
-        if "}" in ctag:
-            ctag = ctag.split("}", 1)[1]
+    from PIL import Image
 
-        if ctag == "r":
-            # word run:取所有 <w:t> 文本
-            for t in child.iter(_qn(W_NS, "t")):
-                if t.text:
-                    parts.append(t.text)
-        elif ctag == "oMath":
-            latex = _omml_to_latex(child)
-            if latex:
-                parts.append(f"${latex}$")
-        elif ctag == "oMathPara":
-            # 展示型公式,可能含多个 oMath
-            for omath in child.iter(_qn(M_NS, "oMath")):
-                latex = _omml_to_latex(omath)
-                if latex:
-                    parts.append(f"$${latex}$$")
-        elif ctag == "hyperlink":
-            # 超链接中的 run 文本
-            for t in child.iter(_qn(W_NS, "t")):
-                if t.text:
-                    parts.append(t.text)
-    return "".join(parts)
+    try:
+        # 先看尺寸再 load()：超大图光是解码就要几百 MB，能缩就尽早缩
+        if image.width < _MIN_IMAGE_SIDE or image.height < _MIN_IMAGE_SIDE:
+            return None
+        if max(image.size) > _MAX_IMAGE_SIDE:
+            image.thumbnail((_MAX_IMAGE_SIDE, _MAX_IMAGE_SIDE), Image.LANCZOS)
+        else:
+            image.load()
+        buf = io.BytesIO()
+        has_alpha = image.mode in ("RGBA", "LA") or (
+            image.mode == "P" and "transparency" in image.info
+        )
+        if has_alpha:
+            image.convert("RGBA").save(buf, format="PNG", optimize=True)
+            return buf.getvalue(), "image/png", "png"
+        image.convert("RGB").save(buf, format="JPEG", quality=88, optimize=True)
+        return buf.getvalue(), "image/jpeg", "jpg"
+    except Exception:
+        return None
+
+
+def _prepare_doc_image(blob: bytes, content_type: str = "") -> Optional[tuple]:
+    """文档内嵌图片字节 → (bytes, mime, ext)；不可渲染 / 太小 / 解不开都返回 None
+
+    三种情况：
+      · 格式浏览器认、尺寸体积都 OK → **原样透传**（不重编码，保清晰）
+      · 尺寸过大 / 体积过大 → 用 Pillow 等比缩小后重编码
+      · EMF / WMF / TIFF 等浏览器渲染不了的 → 用 Pillow 转成 PNG/JPEG；转不了就丢弃
+    """
+    if not blob:
+        return None
+    mime = (content_type or "").lower().split(";")[0].strip()
+    try:
+        from PIL import Image
+
+        with Image.open(io.BytesIO(blob)) as probe:
+            width, height = probe.size
+            if (
+                mime in _PASSTHROUGH_MIME
+                and max(width, height) <= _MAX_IMAGE_SIDE
+                and len(blob) <= _RAW_KEEP_BYTES
+                and width >= _MIN_IMAGE_SIDE
+                and height >= _MIN_IMAGE_SIDE
+            ):
+                return blob, mime, _mime_ext(mime)
+            return _prepare_pil_image(probe)
+    except Exception:
+        return None
+
+
+def _payload_to_data_url(blob: bytes, mime: str) -> str:
+    return f"data:{mime};base64,{base64.b64encode(blob).decode('ascii')}"
+
+
+# ============================================================
+# 块收集器（docx / pdf 共用）
+# ============================================================
+class _BlockBuilder:
+    """按出现顺序收集 text / image 块，并同步维护 `textContent` 与 `images`
+
+    「图片落在文字之间」这件事只在 blocks 里体现；textContent 仍是纯文本
+    （老调用方 / 没有 blocks 的降级路径要靠它）。
+    """
+
+    def __init__(self) -> None:
+        self.blocks: list = []
+        self.images: list = []
+        self._text_parts: list = []
+
+    def add_text(self, text: str) -> None:
+        text = (text or "").strip()
+        if not text:
+            return
+        self.blocks.append(
+            {"type": "text", "content": text, "orderIndex": len(self.blocks)}
+        )
+        self._text_parts.append(text)
+
+    def add_image(self, blob: bytes, content_type: str = "") -> bool:
+        """加入一张**未归一化**的图片（docx 的 rel blob 走这里）"""
+        prepared = _prepare_doc_image(blob, content_type)
+        if not prepared:
+            return False
+        return self.add_payload(*prepared)
+
+    def add_payload(self, payload: bytes, mime: str, ext: str = "") -> bool:
+        """加入一张**已归一化**的图片（PDF 链路里 pypdf 已解好码，别再压一遍）"""
+        if not payload:
+            return False
+        index = len(self.blocks)
+        data_url = _payload_to_data_url(payload, mime)
+        image_name = f"image{len(self.images) + 1}.{ext or _mime_ext(mime)}"
+        self.blocks.append(
+            {
+                "type": "image",
+                "content": "",
+                "orderIndex": index,
+                "imageUrl": data_url,
+                "imageName": image_name,
+            }
+        )
+        self.images.append(
+            {"orderIndex": index, "imageUrl": data_url, "imageName": image_name}
+        )
+        return True
+
+    @property
+    def text_length(self) -> int:
+        """与 `textContent` 的长度一致（含块之间的换行符），别改成各块长度之和"""
+        return len("\n".join(self._text_parts))
+
+    def result(self) -> dict:
+        return {
+            "textContent": "\n".join(self._text_parts),
+            "blocks": self.blocks,
+            "images": self.images,
+            "totalTextLength": self.text_length,
+        }
 
 
 # ============================================================
 # 主解析逻辑
 # ============================================================
+#: 各格式的文件头魔数（用于纠正「扩展名撒谎」的情况，最常见的是 docx 被改名成 .doc）
+_MAGIC_ZIP = b"PK\x03\x04"  # docx/xlsx/pptx 都是 zip 容器
+_MAGIC_OLE2 = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"  # 老版 .doc/.xls/.ppt 的 OLE2 复合文档
+_MAGIC_PDF = b"%PDF-"
+
+
+def _sniff_kind(content: bytes) -> str:
+    """按文件头判断真实格式：'zip' / 'ole2' / 'pdf' / ''（认不出来）"""
+    head = (content or b"")[:1024].lstrip()
+    if head.startswith(_MAGIC_ZIP):
+        return "zip"
+    if head.startswith(_MAGIC_OLE2):
+        return "ole2"
+    if head.startswith(_MAGIC_PDF):
+        return "pdf"
+    return ""
+
+
+_OLE2_DOC_ERROR = (
+    "这是老版 .doc（OLE2 二进制格式），当前环境没有可用的转换器（需要 Windows + 装 MS Word + 装 pywin32）。"
+    "请在 Word 里「另存为 .docx」后重新上传。"
+)
+
+
 def parse_file(filename: str, content: bytes) -> dict:
-    """主入口:根据文件扩展名分发解析。
+    """主入口：按**扩展名 + 文件头**分发解析。
+
+    ⚠️ 只看扩展名会踩坑：用户常把 .docx 直接改名成 .doc（甚至 .pdf），
+    只认扩展名会把明明能解析的文件判成「不支持」。所以这里先嗅探文件头，
+    **文件头说了算**，扩展名只作兜底。
 
     Args:
-        filename: 文件名(用于判断扩展名)
+        filename: 文件名（用于判断扩展名）
         content: 文件二进制内容
 
     Returns:
-        {textContent, blocks, images, totalTextLength, fileName}
+        {textContent, blocks, images, totalTextLength, fileName, error?}
     """
-    if not filename:
-        ext = ""
-    else:
-        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    ext = filename.rsplit(".", 1)[-1].lower() if filename and "." in filename else ""
+    kind = _sniff_kind(content)
 
-    if ext in ("txt", "md", "markdown"):
-        result = _parse_txt(content)
-    elif ext == "docx":
-        result = _parse_docx(content)
-    elif ext == "pdf":
-        result = _parse_pdf(content)
-    elif ext in ("doc",):
-        # 老 doc 二进制格式 python-docx 不支持,返回提示
-        result = {
-            "textContent": "",
-            "blocks": [],
-            "images": [],
-            "totalTextLength": 0,
-            "error": "不支持老版 .doc 格式,请转换为 .docx",
-        }
-    else:
-        # 未知类型:尝试按文本读取
-        result = _parse_txt(content)
+    try:
+        if kind == "zip":
+            if ext in ("doc", "docx", "docm", ""):
+                # 覆盖「用户把 docx 改名成 .doc」这个最常见的场景
+                result = _parse_docx(content)
+            else:
+                # xlsx / pptx 也是 zip 容器，但本解析器只做 Word / PDF / 文本
+                result = _empty_result(
+                    f"这个文件是压缩包容器（.docx/.xlsx/.pptx 都是），扩展名是 .{ext}，"
+                    "本解析器只支持 Word / PDF / 文本文件"
+                )
+        elif kind == "ole2":
+            result = _parse_ole2(content)
+        elif ext == "pdf" or kind == "pdf":
+            result = _parse_pdf(content)
+        elif ext == "docx":
+            result = _parse_docx(content)
+        elif ext in ("txt", "md", "markdown", "doc"):
+            # .doc 走到这里说明文件头既不是 ZIP 也不是 OLE2 —— 多半是纯文本改的名
+            result = _parse_txt(content)
+        else:
+            # 未知类型：尝试按文本读取
+            result = _parse_txt(content)
+    except Exception as e:  # noqa: BLE001 - 解析失败不该把整个请求打挂
+        result = _empty_result(f"{type(e).__name__}: {e}")
 
     result["fileName"] = filename
     return result
 
 
+def _empty_result(error: str = "") -> dict:
+    result = {"textContent": "", "blocks": [], "images": [], "totalTextLength": 0}
+    if error:
+        result["error"] = error
+    return result
+
+
+def _parse_ole2(content: bytes) -> dict:
+    """OLE2 复合文档：老版 .doc 借 Word COM 转成 docx 再解析；其余（.xls/.ppt）直接报错
+
+    `.doc` / `.xls` / `.ppt` 文件头完全一样，所以要看容器里的流名来判断真实格式
+    （见 `doc_converter.ole2_flavor`）。
+
+    ⚠️ 转换是**阻塞**的（1~3s，最坏 `CONVERT_TIMEOUT_SECONDS`）。见
+    `doc_converter.convert_to_docx` 的说明 —— 异步调用方要用 `asyncio.to_thread` 兜住。
+    """
+    from app.services.doc_converter import (
+        convert_to_docx,
+        is_available,
+        ole2_flavor,
+    )
+
+    flavor = ole2_flavor(content)
+    if flavor and flavor != "doc":
+        return _empty_result(
+            f"这是老版 .{flavor} 文件（OLE2 二进制格式），本解析器只支持 Word / PDF / 文本文件"
+        )
+
+    if not is_available():
+        return _empty_result(_OLE2_DOC_ERROR)
+
+    docx_bytes = convert_to_docx(content)
+    if not docx_bytes:
+        return _empty_result(
+            "老版 .doc 自动转换失败（Word 报错或超时），请在 Word 里「另存为 .docx」后重新上传"
+        )
+
+    converted = _parse_docx(docx_bytes)
+    if not converted["blocks"] and not converted["images"]:
+        return _empty_result(
+            "老版 .doc 转成 docx 后没有解析出可用的文字或图片，请确认文件内容是否正常"
+        )
+    return converted
+
+
+# ============================================================
+# 把解析结果渲染成「带图片标记的正文」
+# ============================================================
+#: 图片标记模板（必须与 `tools/question_manage._IMAGE_MARKER` 一致）
+#:
+#: ⚠️ 这是**数据标记**，不是提示词文案 —— 即使系统提示词全英文，它也保持中文：
+#: 模型把它原样写进题干 → 工具用 `【图(\d+)】` 正则替换成 `<img>` → 缺一不可。
+#: 别为了「全英文」把它改成 `[IMAGE_N]`，那会让整条图片链路失效。
+IMAGE_MARKER_TMPL = "【图{}】"
+
+
+def build_marked_document(parsed: dict, offset: int = 0):
+    """把解析结果渲染成**带图片标记**的正文
+
+    为什么要标记：文档里的「如下图 / 见下表」必须能定位到具体是哪张图。
+    标记编号与返回的图片列表下标一一对应（`offset` 用于给「用户另外上传的图片」让位）。
+    渲染结果与 `blocks` 的先后顺序完全一致 —— 图片就落在它原本所在的文字位置之间。
+
+    Args:
+        parsed: `parse_file()` 的返回值
+        offset: 图片编号起始值（用户另外上传了图片时，文档插图要顺延编号）
+
+    Returns:
+        `(正文, 图片 data URL 列表 —— 顺序即 【图N】 的 N)`
+    """
+    blocks = parsed.get("blocks") or []
+    image_urls: list = []
+    parts: list = []
+
+    if blocks:
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "image" and block.get("imageUrl"):
+                parts.append(IMAGE_MARKER_TMPL.format(offset + len(image_urls)))
+                image_urls.append(block["imageUrl"])
+            else:
+                content = (block.get("content") or "").strip()
+                if content:
+                    parts.append(content)
+    else:
+        # 没有块信息（老数据 / 解析器降级）：正文原样，图片统一附在末尾
+        text = (parsed.get("textContent") or "").strip()
+        if text:
+            parts.append(text)
+        for image in parsed.get("images") or []:
+            if isinstance(image, dict) and image.get("imageUrl"):
+                image_urls.append(image["imageUrl"])
+        if image_urls:
+            parts.append(
+                "".join(
+                    IMAGE_MARKER_TMPL.format(offset + i) for i in range(len(image_urls))
+                )
+            )
+
+    return "\n".join(parts), image_urls
+
+
 def _parse_txt(content: bytes) -> dict:
     """解析纯文本文件(TXT/MD)"""
     text = content.decode("utf-8", errors="ignore")
-    blocks = []
-    if text:
-        blocks.append({"type": "text", "content": text, "orderIndex": 0})
-    return {
-        "textContent": text,
-        "blocks": blocks,
-        "images": [],
-        "totalTextLength": len(text),
-    }
+    builder = _BlockBuilder()
+    builder.add_text(text)
+    return builder.result()
+
+
+def _local(tag: str) -> str:
+    """去掉 XML 命名空间前缀，只留标签本地名"""
+    return tag.split("}", 1)[1] if "}" in tag else tag
+
+
+def _iter_paragraph_parts(node):
+    """按**文档顺序**产出 `('text', 文本)` / `('image', rId)`
+
+    为什么不用 `_extract_paragraph_text`：那个把整段的文本拼在一起、图片再统一抽，
+    于是「文字在前、图在后」的段落会把图排到文字前面。这里走一遍原始 XML，
+    保证图片落在它真正所在的位置（对应需求里的「图片导入到对应位置」）。
+
+    覆盖的引用形式：
+      · DrawingML：`w:drawing` → … → `a:blip/@r:embed`
+      · VML 老式图片（Word 97 兼容模式）：`w:pict` → `v:imagedata/@r:id`
+    """
+    for child in node:
+        tag = _local(child.tag)
+        if tag == "oMath":
+            latex = _omml_to_latex(child)
+            if latex:
+                yield ("text", f"${latex}$")
+        elif tag == "oMathPara":
+            for omath in child.iter(_qn(M_NS, "oMath")):
+                latex = _omml_to_latex(omath)
+                if latex:
+                    yield ("text", f"$${latex}$$")
+        elif tag == "t":
+            if child.text:
+                yield ("text", child.text)
+        elif tag == "tab":
+            yield ("text", "\t")
+        elif tag in ("br", "cr"):
+            yield ("text", "\n")
+        elif tag == "blip":
+            rid = child.get(_qn(_NS["r"], "embed")) or child.get(_qn(_NS["r"], "link"))
+            if rid:
+                yield ("image", rid)
+        elif tag == "imagedata":
+            rid = child.get(_qn(_NS["r"], "id")) or child.get(_qn(_NS["r"], "embed"))
+            if rid:
+                yield ("image", rid)
+        else:
+            # 其余层级（w:r / w:ins / w:sdt / w:drawing / wp:inline / pic:pic …）
+            # 一律递归下去 —— Word 的嵌套方式太多，穷举容器标签不划算
+            yield from _iter_paragraph_parts(child)
+
+
+def _collect_image_rels(part) -> dict:
+    """收集 OPC part 里的图片关系：rId → (blob, content_type)"""
+    from docx.opc.constants import RELATIONSHIP_TYPE as RT
+
+    blobs: dict = {}
+    try:
+        for rel in part.rels.values():
+            if rel.reltype != RT.IMAGE:
+                continue
+            try:
+                target = rel.target_part
+                blobs[rel.rId] = (
+                    target.blob,
+                    getattr(target, "content_type", "") or "image/png",
+                )
+            except Exception:  # noqa: BLE001 - 坏的关系项跳过即可
+                continue
+    except Exception:  # noqa: BLE001
+        pass
+    return blobs
+
+
+def _emit_paragraph(builder: _BlockBuilder, p_elem, image_blobs: dict) -> None:
+    """输出一个段落：文本与插图**按出现顺序**交替落块"""
+    buffer: list = []
+
+    def flush():
+        if buffer:
+            builder.add_text("".join(buffer))
+            buffer.clear()
+
+    for kind, value in _iter_paragraph_parts(p_elem):
+        if kind == "text":
+            buffer.append(value)
+            continue
+        flush()
+        blobs = image_blobs.get(value)
+        if blobs:
+            builder.add_image(*blobs)
+    flush()
+
+
+def _emit_table(builder: _BlockBuilder, tbl_elem, image_blobs: dict) -> None:
+    """输出一个表格：每行「单元格文本用 | 连接」，随后紧跟**该行单元格里的插图**
+
+    以前只取 `cell.text`，表格里的图会被整体丢掉（实测踩到过）。
+    """
+    for row in tbl_elem.findall(_qn(W_NS, "tr")):
+        row_texts: list = []
+        row_images: list = []
+        for cell in row.findall(_qn(W_NS, "tc")):
+            cell_texts: list = []
+            for child in cell:
+                tag = _local(child.tag)
+                if tag == "p":
+                    for kind, value in _iter_paragraph_parts(child):
+                        if kind == "text":
+                            cell_texts.append(value)
+                        else:
+                            row_images.append(value)
+                elif tag == "tbl":
+                    # 嵌套表格：它的行列由外层 findall 管不到，直接抽其中的文本与图
+                    for kind, value in _iter_paragraph_parts(child):
+                        if kind == "text":
+                            cell_texts.append(value)
+                        else:
+                            row_images.append(value)
+            row_texts.append("".join(cell_texts).strip().replace("\n", " "))
+
+        joined = " | ".join(row_texts)
+        if joined.strip(" |"):
+            builder.add_text(joined)
+        for rid in row_images:
+            blobs = image_blobs.get(rid)
+            if blobs:
+                builder.add_image(*blobs)
+
+
+def _walk_docx_body(builder: _BlockBuilder, node, image_blobs: dict) -> None:
+    """按文档顺序遍历 body（含 `w:sdt` 内容控件、嵌套容器）"""
+    for child in node:
+        tag = _local(child.tag)
+        if tag == "p":
+            _emit_paragraph(builder, child, image_blobs)
+        elif tag == "tbl":
+            _emit_table(builder, child, image_blobs)
+        elif tag in ("sdt", "sdtContent", "body"):
+            _walk_docx_body(builder, child, image_blobs)
 
 
 def _parse_docx(content: bytes) -> dict:
-    """解析 DOCX 文件:段落(含 OMML 公式)+ 图片 + 表格"""
+    """解析 DOCX：段落（含 OMML 公式）+ 正文插图 + 表格（含单元格内插图）"""
     from docx import Document
-    from docx.opc.constants import RELATIONSHIP_TYPE as RT
 
     doc = Document(io.BytesIO(content))
+    image_blobs = _collect_image_rels(doc.part)
 
-    blocks = []
-    images = []
-    order_index = 0
-    text_parts = []
-
-    # --- 提取图片关系映射(rId -> blob) ---
-    image_blobs = {}  # rId -> (blob, content_type, ext)
-    try:
-        for rel in doc.part.rels.values():
-            if rel.reltype == RT.IMAGE:
-                try:
-                    image_part = rel.target_part
-                    blob = image_part.blob
-                    content_type = image_part.content_type or "image/png"
-                    ext = content_type.split("/", 1)[-1].split("+", 1)[0]
-                    image_blobs[rel.rId] = (blob, content_type, ext)
-                except Exception:
-                    pass
-    except Exception:
-        pass
-
-    # --- 遍历文档 body 的子元素,保持段落/表格/图片顺序 ---
-    # 使用底层 XML 以便同时处理 OMML 公式与表格
-    body = doc.element.body
-
-    def _add_text_block(text: str):
-        nonlocal order_index
-        text = (text or "").strip()
-        if text:
-            blocks.append({
-                "type": "text",
-                "content": text,
-                "orderIndex": order_index,
-            })
-            text_parts.append(text)
-            order_index += 1
-
-    def _add_image_block(blob: bytes, content_type: str, ext: str):
-        nonlocal order_index
-        if not blob:
-            return
-        b64 = base64.b64encode(blob).decode("ascii")
-        data_url = f"data:{content_type};base64,{b64}"
-        image_name = f"image{order_index + 1}.{ext}"
-        blocks.append({
-            "type": "image",
-            "content": "",
-            "orderIndex": order_index,
-            "imageUrl": data_url,
-            "imageName": image_name,
-        })
-        images.append({
-            "orderIndex": order_index,
-            "imageUrl": data_url,
-            "imageName": image_name,
-        })
-        order_index += 1
-
-    # 遍历 body 直接子元素
-    for child in body:
-        ctag = child.tag
-        if "}" in ctag:
-            ctag = ctag.split("}", 1)[1]
-
-        if ctag == "p":
-            # 段落:提取文本(含公式)+ 段落内图片
-            text = _extract_paragraph_text(child)
-            # 检测段落内的图片(通过 a:blip 引用)
-            for blip in child.iter(_qn(_NS["a"], "blip")):
-                embed = blip.get(_qn(_NS["r"], "embed"))
-                if embed and embed in image_blobs:
-                    blob, ctype, ext = image_blobs[embed]
-                    _add_image_block(blob, ctype, ext)
-            if text.strip():
-                _add_text_block(text)
-
-        elif ctag == "tbl":
-            # 表格:转为文本块(行列用 | 分隔)
-            try:
-                table_obj = _find_table_by_element(doc, child)
-                if table_obj is not None:
-                    table_text = _table_to_text(table_obj)
-                    _add_text_block(table_text)
-                else:
-                    # 兜底:提取表格内所有文本
-                    cells = []
-                    for t in child.iter(_qn(W_NS, "t")):
-                        if t.text:
-                            cells.append(t.text)
-                    _add_text_block(" | ".join(cells))
-            except Exception:
-                cells = []
-                for t in child.iter(_qn(W_NS, "t")):
-                    if t.text:
-                        cells.append(t.text)
-                _add_text_block(" | ".join(cells))
-
-    text_content = "\n".join(text_parts)
-    return {
-        "textContent": text_content,
-        "blocks": blocks,
-        "images": images,
-        "totalTextLength": len(text_content),
-    }
-
-
-def _find_table_by_element(doc, tbl_elem):
-    """通过底层 <w:tbl> 元素找到对应的 python-docx Table 对象"""
-    try:
-        from docx.table import Table
-        return Table(tbl_elem, doc.element.body)
-    except Exception:
-        return None
-
-
-def _table_to_text(table) -> str:
-    """将表格转为纯文本(每行单元格用 | 分隔,行间换行)"""
-    rows = []
-    for row in table.rows:
-        cells = [cell.text.strip().replace("\n", " ") for cell in row.cells]
-        rows.append(" | ".join(cells))
-    return "\n".join(rows)
+    builder = _BlockBuilder()
+    _walk_docx_body(builder, doc.element.body, image_blobs)
+    return builder.result()
 
 
 def _parse_pdf(content: bytes) -> dict:
-    """解析 PDF 文件:仅提取文本(不支持图片)"""
+    """解析 PDF：逐页「**先该页文本、后该页插图**」
+
+    插图用 pypdf 的 `page.images` 抽（内部借 Pillow 解码，不需要额外依赖）。
+
+    ⚠️ 位置只能精确到「页」：PDF 是排版指令流，没有段落结构，
+    要精确到「行间」得解析内容流的坐标 —— sp3 也是按页近似的，这里对齐。
+    """
     from pypdf import PdfReader
 
     reader = PdfReader(io.BytesIO(content))
-    text_parts = []
+    builder = _BlockBuilder()
+
     for page in reader.pages:
         try:
             page_text = page.extract_text() or ""
-        except Exception:
+        except Exception:  # noqa: BLE001 - 单页取文本失败不影响整份文件
             page_text = ""
-        if page_text:
-            text_parts.append(page_text)
+        builder.add_text(page_text)
+        _collect_pdf_page_images(builder, page)
 
-    text_content = "\n".join(text_parts)
-    blocks = []
-    if text_content:
-        blocks.append({"type": "text", "content": text_content, "orderIndex": 0})
-    return {
-        "textContent": text_content,
-        "blocks": blocks,
-        "images": [],
-        "totalTextLength": len(text_content),
-    }
+    return builder.result()
+
+
+def _collect_pdf_page_images(builder: _BlockBuilder, page) -> None:
+    """把一页里的插图逐张喂给 builder —— **单张失败只跳过那一张**"""
+    try:
+        total = len(page.images)
+    except Exception:  # noqa: BLE001 - 整页取不出就当作没有图
+        return
+
+    for index in range(total):
+        try:
+            image_file = page.images[index]
+        except Exception:  # noqa: BLE001
+            continue
+
+        prepared = None
+        try:
+            pil = image_file.image  # pypdf 已解码好的 Pillow 图（最稳，能顺手过滤小图标）
+        except Exception:  # noqa: BLE001
+            pil = None
+        if pil is not None:
+            prepared = _prepare_pil_image(pil)
+        if prepared is None:
+            try:
+                prepared = _prepare_doc_image(image_file.data, "")
+            except Exception:  # noqa: BLE001
+                prepared = None
+        if prepared:
+            builder.add_payload(*prepared)
+

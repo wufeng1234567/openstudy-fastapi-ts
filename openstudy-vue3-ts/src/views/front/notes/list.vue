@@ -137,6 +137,10 @@
                 <span class="time">{{ formatTime(note.createTime) }}</span>
                 <span class="separator">·</span>
                 <span class="clicks">👁 {{ note.viewCount || note.clickCount || 0 }}</span>
+                <span class="separator">·</span>
+                <!-- 评论数含子留言：后端 `note.comment_count` 在建评论时（不分是否回复）就 +1，
+                     删评论 / 删笔记时一起扣，所以这里直接用列表接口已经下发的值，不用再查一次 -->
+                <span class="comments">💬 {{ note.commentCount || 0 }}</span>
                 <template v-if="note.tags">
                   <span class="separator">·</span>
                   <span class="tags">

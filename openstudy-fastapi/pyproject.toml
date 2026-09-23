@@ -41,6 +41,8 @@ pypdf = "^5.0"
 python-docx = "^1.1"
 pytesseract = "^0.3"
 Pillow = "^11.0"
+# Windows + MS Word：老版 .doc(OLE2) → .docx 转换（见 app/services/doc_converter.py）
+pywin32 = { version = ">=306", markers = "sys_platform == 'win32'" }
 
 # Utilities
 loguru = "^0.7"

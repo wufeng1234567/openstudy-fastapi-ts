@@ -1096,56 +1096,58 @@ async def create_comment(
 
 
 async def _send_comment_notification(db: AsyncSession, comment, note, user_id: int):
-    """发送评论通知"""
+    """发送评论通知：回复 / 一级评论 + 正文里 @ 到的人
+
+    ⚠️ `mention` 此前只出现在 `notices.USER_NOTICE_TYPES` 白名单和前端标签里，
+        **后端从未产生过** —— 用户被 @ 了收不到任何提醒，「回复与@」页永远缺这一类。
+        这里补上：与主通知分开发，因为被 @ 的人通常不是被回复的那个人。
+
+    ⚠️ 去重是必须的：一条评论可能既回复了 A、又 @ 了 A，
+        不去重的话 A 会收到两条指向同一条评论的通知。
+    """
     from app.models.notice import SysNotice
     import json
+    import re
 
-    target_user_id = None
-    notice_title = ""
-    notice_type = "reply" if comment.parent_id else "comment"
-
-    if comment.parent_id:
-        # 回复通知：通知父评论的作者
-        parent_query = select(NoteComment).where(NoteComment.id == comment.parent_id)
-        parent_result = await db.execute(parent_query)
-        parent_comment = parent_result.scalar_one_or_none()
-        if parent_comment:
-            target_user_id = parent_comment.user_id
-            notice_title = "有人回复了你的评论"
-    else:
-        # 一级评论通知：通知笔记作者
-        if note:
-            target_user_id = note.user_id
-            notice_title = "有人评论了你的笔记"
-
-    # 如果目标用户是当前用户自己，不发送通知
-    if target_user_id is None or target_user_id == user_id:
-        return
-
-    # 构建通知内容
     content = comment.content or ""
     notice_content = content[:50] + "..." if len(content) > 50 else content
 
-    # 构建 remark（包含跳转信息）
-    remark_map = {
-        "type": notice_type,
-        "fromUserId": user_id,
-        "toUserId": target_user_id,
-        "noteId": comment.note_id,
-        "commentId": comment.id,
-    }
-    remark_json = json.dumps(remark_map, ensure_ascii=False)
+    # 本条评论已经通知过谁（起始含自己 —— 给自己发通知没有意义）
+    notified = {int(user_id or 0)}
 
-    # 创建通知（直接发送给目标用户）
-    notice = SysNotice(
-        notice_title=notice_title,
-        notice_content=notice_content,
-        notice_type="1",
-        status="0",
-        create_by="system",
-        remark=remark_json,
-    )
-    db.add(notice)
+    def _build(target_user_id, ntype: str, title: str) -> None:
+        target = int(target_user_id or 0)
+        if not target or target in notified:
+            return
+        notified.add(target)
+        db.add(SysNotice(
+            notice_title=title,
+            notice_content=notice_content,
+            notice_type="1",
+            status="0",
+            create_by="system",
+            remark=json.dumps({
+                "type": ntype,
+                "fromUserId": user_id,
+                "toUserId": target,
+                "noteId": comment.note_id,
+                "commentId": comment.id,
+            }, ensure_ascii=False),
+        ))
+
+    # ── 1) 主通知：回复 → 父评论作者；一级评论 → 笔记作者 ──
+    if comment.parent_id:
+        parent = (await db.execute(
+            select(NoteComment).where(NoteComment.id == comment.parent_id)
+        )).scalar_one_or_none()
+        if parent:
+            _build(parent.user_id, "reply", "有人回复了你")
+    elif note:
+        _build(note.user_id, "comment", "有人评论了你的笔记")
+
+    # ── 2) @ 通知：正文里的 @{userId}（格式见 CommentInput.handleAtSelect） ──
+    for uid in dict.fromkeys(re.findall(r"@\{(\d+)\}", content)):
+        _build(uid, "mention", "有人 @了你")
 
 
 @router.delete("/notes/comment/delete/{comment_id}")
@@ -1171,6 +1173,17 @@ async def delete_comment(
 
     stmt = delete(NoteComment).where(NoteComment.id == comment_id)
     await db.execute(stmt)
+
+    # 评论数必须跟着减，否则笔记列表上那个数字只会越删越大
+    # （此前这条路径完全不碰 comment_count，是本功能暴露出来的既有缺口）。
+    # ⚠️ 只减 1 —— 真删了几行就减几行。**刻意不级联删子留言**：
+    #    子留言是别人写的，删一级评论时顺手把它们删掉属于破坏性行为，
+    #    那个口径要不要改由人决定（现状是子留言留成看不见的孤儿，但仍占着计数）。
+    note = (await db.execute(
+        select(Note).where(Note.note_id == comment.note_id)
+    )).scalar_one_or_none()
+    if note:
+        note.comment_count = max(0, (note.comment_count or 0) - 1)
 
     return success()
 
@@ -1323,7 +1336,20 @@ async def list_favorite_notes(
     from app.models.note import UserNoteFavorite
 
     user_id = current_user.get("user_id")
-    query = select(UserNoteFavorite).where(UserNoteFavorite.user_id == user_id)
+    # ⚠️ 列表与下面的 `total` **必须由同一条 query 派生**（total 就是从它 count 出来的）。
+    #    此前只查 `user_note_favorite`、一条 `del_flag` 条件都没有：
+    #      · 已软删的笔记照样出现在收藏列表里（点进去 404）；
+    #      · `total` 把已删的也算进去 → 「分页总数 > 实际返回行数」，翻到最后一页是空的。
+    #    口径用 `note.del_flag`（'0' = 未删、'2' = 已删），与同文件其它列表一致
+    #    （写点见 `services/note_write_service.py:465`），不另发明第二套。
+    query = (
+        select(UserNoteFavorite)
+        .join(Note, Note.note_id == UserNoteFavorite.note_id)
+        .where(
+            UserNoteFavorite.user_id == user_id,
+            Note.del_flag == "0",
+        )
+    )
 
     count_query = select(func.count()).select_from(query.subquery())
     total = await db.scalar(count_query)
@@ -1336,7 +1362,11 @@ async def list_favorite_notes(
 
     rows = []
     for fav in favorites:
-        note_query = select(Note).where(Note.note_id == fav.note_id)
+        # 同一条口径再落一次：上面的 join 已经把已删的挡住了，这里是防「取到之后被删」
+        # （两个查询之间没有事务级快照保证），也保持「读笔记必带 del_flag」的既有写法。
+        note_query = select(Note).where(
+            Note.note_id == fav.note_id, Note.del_flag == "0"
+        )
         note_result = await db.execute(note_query)
         note = note_result.scalar_one_or_none()
         if note:

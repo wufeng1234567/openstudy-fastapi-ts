@@ -23,6 +23,7 @@ from app.database import get_db
 from app.core.security import get_current_user
 from app.core.response import success, paginate, error
 from app.models.notice import SysNotice, SysNoticeRead
+from app.models.user import SysUser
 from datetime import datetime
 
 # 路由前缀：/system/notice
@@ -128,6 +129,73 @@ def format_notice(notice, is_read=False):
     }
 
 
+def _coerce_user_id(value):
+    """
+    把 remark 里的 `fromUserId` 收敛成「真正的用户 id」，认不出来就返回 None。
+
+    为什么不用裸 `int(value)`（都是实测结果）：
+    - `105.9` 会被截成 105、`True` 会变成 1 —— **静默取到别人**，比不显示名字糟得多
+    - `Infinity` 让 `int()` 抛 `OverflowError`，而它不在 `(TypeError, ValueError)` 里 →
+      一条脏数据就能把整个 `/listAll` 打成 500
+    - `"abc"` / None / 列表 / 对象 → 不认
+
+    只认 JSON 整数（`105`）和纯数字字符串（`"105"`，兼容把 id 存成字符串的历史行）。
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    return None
+
+
+async def attach_from_nickname(db: AsyncSession, rows: list) -> list:
+    """
+    给**定向的**用户通知补上发起人昵称 `fromNickName`（**只读**增强）
+
+    为什么在读取侧补、而不是写入侧：`remark` 里只存了数字 `fromUserId`，
+    而「谁在回复你 / 谁在 @ 你」要显示昵称。写侧补就得回填历史数据（几十条），
+    读侧补一次批量查询就让新旧通知一起好 —— 不写库、不加列、不动 remark 结构。
+
+    规则：
+    - `nick_name` 为空时退回 `user_name`；查不到就**不加这个键**，
+      前端会退回显示 notice_title（绝不显示空名字或 undefined）
+    - 只处理 `remark.toUserId` 有值的**定向**行。`is_notice_visible` 把「toUserId 空」
+      当成「所有人可见」，给那种行补名字等于把某个人的昵称广播给全体用户 ——
+      今天库里没有这种行（实测「有 fromUserId 但 toUserId 空」= 0 行），防的是以后写出来的
+    """
+    def from_user_id_of(row):
+        remark = parse_remark_str(row.get("remark"))
+        if not remark.get("toUserId"):
+            return None
+        return _coerce_user_id(remark.get("fromUserId"))
+
+    ids = set()
+    for row in rows:
+        uid = from_user_id_of(row)
+        if uid:
+            ids.add(uid)
+    if not ids:
+        return rows
+
+    # 只取需要的三列：`select(SysUser)` 会把实体的 roles / dept 按 `lazy="selectin"`
+    # 一起拽出来（实测多 3 条 SQL，且与行数无关 —— 不是 N+1，但纯属浪费）。
+    result = await db.execute(
+        select(SysUser.user_id, SysUser.nick_name, SysUser.user_name).where(
+            SysUser.user_id.in_(ids)
+        )
+    )
+    name_map = {uid: (nick_name or user_name or "") for uid, nick_name, user_name in result.all()}
+
+    for row in rows:
+        uid = from_user_id_of(row)
+        name = name_map.get(uid) if uid else None
+        if name:
+            row["fromNickName"] = name
+    return rows
+
+
 @router.get("/list")
 async def list_notices(
     notice_title: Optional[str] = Query(None),
@@ -194,6 +262,9 @@ async def list_all_notices(
         for n in notices
         if is_notice_visible(n, user_id)
     ]
+
+    # 补发起人昵称（只读）：前端「回复与@」用它区分并显示「谁在回复你 / 谁在 @ 你」
+    rows = await attach_from_nickname(db, rows)
 
     # 日志：记录用户通知的跳转信息（便于排查）
     for row in rows:

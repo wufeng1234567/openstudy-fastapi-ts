@@ -84,3 +84,18 @@ class UserNoteFavorite(Base):
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("sys_user.user_id"), nullable=False)
     note_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("note.note_id"), nullable=False)
     create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class NotePublicSection(Base):
+    """笔记公开分区表
+
+    此前只被 `api/v1/notes.py` 的一处裸 SQL 读取，没有 ORM 模型 —— 在 MySQL 上
+    因为表早已存在所以没暴露问题，但迁移到全新的 PostgreSQL 库后该表不会被
+    `create_all` 建出来，接口会直接报 relation does not exist。这里补上模型。
+    """
+    __tablename__ = "note_public_section"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(50), nullable=False)
+    sort_order: Mapped[Optional[int]] = mapped_column(Integer, default=0)
+    create_time: Mapped[Optional[datetime]] = mapped_column(DateTime, server_default=func.now())

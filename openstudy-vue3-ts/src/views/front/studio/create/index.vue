@@ -65,8 +65,8 @@
       </el-tabs>
     </div>
 
-    <!-- 发布设置（AI模式下隐藏） -->
-    <div v-if="buildMode !== 'ai'" class="section">
+    <!-- 发布设置（AI 模式下隐藏：题库由模型自己创建，不走这套表单） -->
+    <div v-if="!isAiMode" class="section">
       <div class="section-title">⚙️ 发布设置</div>
       <el-form label-position="top" class="publish-form">
         <el-form-item label="题库可见性">
@@ -91,8 +91,8 @@
       </el-form>
     </div>
 
-    <!-- 底部操作栏（AI模式下隐藏） -->
-    <div v-if="buildMode !== 'ai'" class="step-footer">
+    <!-- 底部操作栏（AI 模式下隐藏） -->
+    <div v-if="!isAiMode" class="step-footer">
       <el-button type="primary" size="large" :loading="saving" @click="handleSave">
         {{ isEditMode ? '保存修改' : '发布题库' }}
       </el-button>
@@ -136,7 +136,16 @@ const builderRef = ref(null)
 const questionsLoading = ref(false)
 const myBanks = ref([])
 const selectedBankId = ref(null)
-const buildMode = ref('manual') // 'manual' 或 'ai'
+const buildMode = ref('manual') // 'manual' | 'ai'
+
+/**
+ * AI 模式：题库与题目都由模型创建，隐藏底部发布表单。
+ *
+ * ⚠️ 这里曾经有第三个 tab「Agent 搭建」（buildMode === 'agent'）。
+ * 它已迁到独立的智能体页面 `/front/agent/chat`（导航栏「智能体」），
+ * 那里工具调用过程内联在对话流里、还能连续追问，比一次性表单好用。
+ */
+const isAiMode = computed(() => buildMode.value === 'ai')
 
 const basicForm = reactive({
   bankName: '',

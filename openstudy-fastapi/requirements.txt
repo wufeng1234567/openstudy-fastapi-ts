@@ -15,6 +15,12 @@ passlib[bcrypt]==1.7.4
 sqlalchemy[asyncio]==2.0.36
 asyncpg==0.30.0
 aiomysql==0.2.0
+PyMySQL==1.1.1
+# pgvector：RAG 向量列的 SQLAlchemy 类型与距离算子（仅 PostgreSQL 用）
+pgvector==0.5.0
+
+# DeepSeek Web Reverse Proxy
+curl_cffi>=0.7.0
 alembic==1.14.1
 
 # Redis
@@ -30,10 +36,19 @@ zhipuai==2.1.5.20230904
 httpx==0.28.1
 
 # Document Processing
+# jieba：RAG 中文分词（app/services/rag/tokenizer.py）。
+# ⚠️ 它在**启动导入链**上（main.py:82 → api/v1/rag.py:31 → document_pipeline.py:34
+#    → rag_write_service.py:29 → tokenizer.py:24），缺了不是「RAG 用不了」，
+#    而是 ImportError 直接让后端起不来。2026-09-23 补上（此前漏声明）。
+jieba==0.42.1
 pypdf==5.1.0
 python-docx==1.1.2
 pytesseract==0.3.13
 Pillow==11.1.0
+
+# Windows + MS Word：老版 .doc(OLE2) → .docx 转换（见 app/services/doc_converter.py）
+# 非 Windows 装不上，用环境标记排除；缺失时解析器会退回「请另存为 .docx」的提示
+pywin32>=306; sys_platform == "win32"
 
 # Utilities
 loguru==0.7.3

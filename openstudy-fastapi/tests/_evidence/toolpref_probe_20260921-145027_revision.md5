@@ -1,0 +1,6 @@
+a41168beabb29891fc2b73cad609eaf3 *app/api/v1/ai.py
+a1665966643f1469457535a834e1d7e2 *app/services/ai/agent/loop.py
+766dfe37914af6e6180a97e92669f68b *app/services/ai/agent/tool_pref_service.py
+c1fec9862c9c27deda0fd3a311efa0f8 *app/models/agent_tool_pref.py
+8c426ed46fc534b085ef790d8fc98724 *tests/_toolpref_probe.py
+597001f062ac5fdd717b3f17e37584e8 *../../../scripts/clean_empty_ai_sessions.py

@@ -406,8 +406,8 @@
 
           <el-form-item label="AI 模型">
             <div class="ai-model-row">
-              <!-- 与悬浮助手 / AI 解析共用同一个模型选择器（localStorage: openstudy_ai_provider，''=系统默认） -->
-              <AiModelSelector v-model="aiForm.provider" width="200px" :disabled="aiGenerating" />
+              <!-- 模型选择器（历史记忆按 scene=question-builder 单独保存） -->
+              <AiModelSelector v-model="aiForm.model" scene="question-builder" width="200px" :disabled="aiGenerating" />
               <el-button @click="openAiModelManager" :disabled="aiGenerating" size="small">
                 <el-icon>
                   <Setting />
@@ -661,6 +661,7 @@ import { ElMessage, ElNotification, ElMessageBox } from 'element-plus'
 import { getBankContextInfo, clearBankConversation, generateQuestionsWithContext, generateQuestionsStreamFull, generateCompositeStreamFull } from '@/api/ai/ai'
 import AiThinkingToggle from '@/components/AiThinkingToggle/index.vue'
 import AiModelSelector from '@/components/AiModelSelector/index.vue'
+import { useDsDeepThinkSync } from '@/composables/useDsDeepThinkSync'
 import { listAiConfig } from '@/api/system/aiConfig'
 import aiModelManager from '@/components/AiModelManager/index.vue'
 import QuestionFullEditor from './QuestionFullEditor.vue'
@@ -894,7 +895,8 @@ const aiModelManagerRef = ref(null)
 
 const loadUserAiConfigs = async () => {
   try {
-    const res = await listAiConfig()
+    // available = 系统提供的官方模型 + 我自己添加的模型（用于校验用户选的模型是否可用）
+    const res = await listAiConfig('available')
     if (res.code === 200 && res.rows) {
       userAiConfigs.value = res.rows
     }
@@ -981,7 +983,7 @@ const savePromptToHistory = () => {
     count: isComposite ? 0 : (aiForm.value.count || 3),
     wordCount: isComposite ? (aiForm.value.wordCount || 200) : 0,
     subCount: isComposite ? (aiForm.value.subCount || 5) : 0,
-    provider: aiForm.value.provider || '',
+    model: aiForm.value.model || '',
     timestamp: Date.now()
   }
 
@@ -1046,12 +1048,11 @@ const applyHistoryPrompt = (item) => {
     aiForm.value.knowledgePoint = item.knowledgePoint || item.compositeRequirement || ''
     if (item.count) aiForm.value.count = item.count
   }
-  // 只在用户有该 provider 配置时才切换，避免删模型后历史记录导致报错
-  // provider='' 表示「系统默认」，需要保留
-  if (item.provider !== undefined && item.provider !== null) {
-    const hasProvider = userAiConfigs.value.some(config => config.provider === item.provider)
-    if (item.provider === '' || hasProvider) {
-      aiForm.value.provider = item.provider
+  // 只在用户有该模型配置时才切换，避免删模型后历史记录导致报错
+  if (item.model !== undefined && item.model !== null && item.model !== '') {
+    const hasModel = userAiConfigs.value.some(config => config.isEnabled === 1 && config.model === item.model)
+    if (hasModel) {
+      aiForm.value.model = item.model
     }
   }
   rawJsonContent.value = ''
@@ -1158,16 +1159,26 @@ const selectedSubType = ref('single')
 // AI 生成相关
 const aiDialogVisible = ref(false)
 const deepThink = ref(localStorage.getItem('openstudy_ai_thinking') === '1')  // 深度思考开关（跟随全局偏好）
+
 const aiFormRef = ref(null)
 const aiForm = ref({
   questionType: 'single',
   knowledgePoint: '',
   count: 3,
-  provider: '',
+  model: '',
   compositeRequirement: '',
   wordCount: 200,
   subCount: 5
 })
+
+// ⚠️ 两点都别改错：
+// 1) 必须写在 `aiForm` 声明**之后** —— useDsDeepThinkSync 内部建立 watch 时会
+//    同步求值一次这个 getter，写反了会撞 TDZ
+//    （`Cannot access 'aiForm' before initialization`）→ 组件直接白屏。
+// 2) 脚本里必须写 `aiForm.value.model`（模板里才有自动解包），
+//    写成 `aiForm.model` 永远拿到 undefined → ds-free 的深度思考同步会静默失效。
+// 这类顺序/取值问题 SFC 编译查不出来，动这块代码时务必人工确认。
+useDsDeepThinkSync(() => aiForm.value.model, deepThink, 'openstudy_ai_thinking')
 
 const aiRules = computed(() => {
   if (aiForm.value.questionType === 'composite') {
@@ -1556,7 +1567,7 @@ const openAiDialog = () => {
     questionType: 'single',
     knowledgePoint: '',
     count: 3,
-    provider: localStorage.getItem('openstudy_ai_provider') || '',
+    model: localStorage.getItem('openstudy_ai_model_question-builder') || '',
     compositeRequirement: '',
     wordCount: 200,
     subCount: 5
@@ -1906,7 +1917,7 @@ const generateQuestionsNormal = async (params, isComposite) => {
       requirement: params.requirement,
       questionCount: params.subCount || 5,
       wordCount: params.wordCount || 300,
-      provider: params.provider
+      model: params.model
     })
     // 注意：你的 request 可能直接返回 data，也可能返回完整响应
     // 根据实际情况调整
@@ -1917,7 +1928,7 @@ const generateQuestionsNormal = async (params, isComposite) => {
       knowledgePoint: params.knowledgePoint,
       questionType: params.questionType,
       count: params.count,
-      provider: params.provider,
+      model: params.model,
       userId: userId.value,
       thinking: deepThink.value
     })
@@ -1959,7 +1970,7 @@ const handleAiGenerate = async () => {
         requirement: aiForm.value.compositeRequirement,
         questionCount: aiForm.value.subCount,
         wordCount: aiForm.value.wordCount,
-        provider: aiForm.value.provider,
+        model: aiForm.value.model,
         userId: userId.value,
         thinking: deepThink.value,
         onChunk(fullContent) {
@@ -1982,7 +1993,7 @@ const handleAiGenerate = async () => {
         knowledgePoint: aiForm.value.knowledgePoint,
         questionType: aiForm.value.questionType,
         count: aiForm.value.count,
-        provider: aiForm.value.provider,
+        model: aiForm.value.model,
         userId: userId.value,
         thinking: deepThink.value,
         bankId: currentBankId.value,

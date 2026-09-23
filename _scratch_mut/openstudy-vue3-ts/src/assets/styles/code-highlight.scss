@@ -1,0 +1,70 @@
+.hljs-keyword { color: #c678dd; }
+.hljs-string { color: #98c379; }
+.hljs-number { color: #d19a66; }
+.hljs-comment { color: #7f848e; font-style: italic; }
+.hljs-function { color: #61afef; }
+.hljs-title { color: #61afef; }
+.hljs-params { color: #e5c07b; }
+.hljs-attr { color: #d19a66; }
+.hljs-built_in { color: #e6c07b; }
+.hljs-literal { color: #56b6c2; }
+.hljs-type { color: #e6c07b; }
+.hljs-variable { color: #e5c07b; }
+.hljs-selector-tag { color: #e06c75; }
+.hljs-selector-class { color: #e6c07b; }
+.hljs-selector-id { color: #61afef; }
+.hljs-tag { color: #e06c75; }
+.hljs-name { color: #e06c75; }
+.hljs-attribute { color: #d19a66; }
+.hljs-symbol { color: #61afef; }
+.hljs-meta { color: #7f848e; }
+.hljs-section { color: #61afef; font-weight: bold; }
+.hljs-bullet { color: #d19a66; }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: bold; }
+.hljs-deletion { color: #e06c75; background: rgba(224, 108, 117, 0.2); }
+.hljs-addition { color: #98c379; background: rgba(152, 195, 121, 0.2); }
+
+pre.hljs {
+  background: #fff;
+  color: #1a1a1a;
+  padding: 16px 18px;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  margin: 0.8em 0;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 300px;
+  font-size: 14px;
+  line-height: 1.8;
+  position: relative;
+  white-space: pre-wrap;
+  word-break: break-word;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: #f5f7fa;
+    border-radius: 3px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #dcdfe6;
+    border-radius: 3px;
+
+    &:hover {
+      background: #c0c4cc;
+    }
+  }
+
+  code {
+    color: inherit;
+    background: none;
+    padding: 0;
+    font-size: inherit;
+    white-space: pre-wrap;
+  }
+}

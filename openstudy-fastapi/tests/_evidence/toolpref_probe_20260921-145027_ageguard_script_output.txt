@@ -1,0 +1,29 @@
+本地 now() = 2026-09-21 14:59:27.064321（Python datetime.now()，UTC+8）
+年龄闸门：只删 update_time < 2026-09-21 14:44:27.064321（= now() - 15 分钟）
+目标库 = openstudy_v2_pgsql（DB_DRIVER=postgres）
+PG now() = 2026-09-21 06:59:27.145363+00:00  ← 与上面差 8 小时是对的，别混用
+PG now()::timestamp = 2026-09-21 06:59:27.145363
+执行前 ai_chat_session 共 21 行：uid=105: 18, uid=999999: 3
+
+--- 候选（四条件：三条判据 + 年龄 ≥ 15 分钟）共 1 行 ---
+  __ageguard_probe__old  uid=999999  message_count=0  title='__ageguard_probe__old'  年龄=20.0 分钟
+      create=2026-09-21 14:39:25.950286  update=2026-09-21 14:39:25.950286
+候选按用户统计：{999999: 1}
+
+--- **按年龄闸门保留**（三条判据成立、但太新）共 1 行 ---
+  __ageguard_probe__fresh  uid=999999  message_count=0  title='__ageguard_probe__fresh'  年龄=0.0 分钟
+      create=2026-09-21 14:59:25.950286  update=2026-09-21 14:59:25.950286
+  （这些不是「漏删」，是设计：用户可能正开着一个刚点开的空会话）
+
+--- 已删除 1 行 ---
+  - __ageguard_probe__old
+执行后 ai_chat_session 共 20 行：uid=105: 18, uid=999999: 2
+  删除数 == 候选数：True（1 / 1）
+  剩余集合 == 原集合 - 已删：True
+  被删的行确实都不在了：True
+  判据复查：剩余可删空壳 0 行 
+  年龄闸门保留：1 行 ['__ageguard_probe__fresh']（预期内，不算失败）
+
+结果：✅ 全部核对通过（本次删除已提交）
+
+---STDERR---

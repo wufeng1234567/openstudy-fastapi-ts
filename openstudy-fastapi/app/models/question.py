@@ -115,7 +115,10 @@ class UserQuestionFavorite(Base):
     """题目收藏表"""
     __tablename__ = "user_question_favorite"
     __table_args__ = (
-        UniqueConstraint('user_id', 'question_id', name='uk_user_question'),
+        # ⚠️ 约束名必须全库唯一：MySQL 的索引名是表内作用域（可跨表重名），
+        #    而 PostgreSQL 是 schema 全局唯一 —— 三张表若同名会报
+        #    `relation "uk_user_question" already exists`，建表直接失败。
+        UniqueConstraint('user_id', 'question_id', name='uk_uq_favorite'),
     )
 
     favorite_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -140,7 +143,7 @@ class UserQuestionError(Base):
     """错题本表"""
     __tablename__ = "user_question_error"
     __table_args__ = (
-        UniqueConstraint('user_id', 'question_id', name='uk_user_question'),
+        UniqueConstraint('user_id', 'question_id', name='uk_uq_error'),
     )
 
     error_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -166,7 +169,7 @@ class UserQuestionMarked(Base):
     """斩题表"""
     __tablename__ = "user_question_marked"
     __table_args__ = (
-        UniqueConstraint('user_id', 'question_id', name='uk_user_question'),
+        UniqueConstraint('user_id', 'question_id', name='uk_uq_marked'),
     )
 
     marked_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)

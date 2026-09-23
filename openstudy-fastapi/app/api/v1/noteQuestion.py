@@ -232,7 +232,11 @@ async def list_questions_by_note(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """按笔记查关联题目(返回题目详情列表)"""
+    """按笔记查关联题目(返回题目详情列表；仅笔记作者可见)"""
+    # 归属校验：关联题目属于作者的私人整理信息，不对他人暴露（水平越权防护）
+    denied = await _deny_not_note_owner(db, note_id, current_user.get("user_id"))
+    if denied:
+        return denied
     link_query = select(NoteQuestion.question_id).where(
         NoteQuestion.note_id == note_id,
     )
