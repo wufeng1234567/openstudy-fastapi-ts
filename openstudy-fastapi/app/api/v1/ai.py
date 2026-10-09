@@ -560,6 +560,12 @@ class AgentStreamRequest(BaseModel):
     autoConfirm: bool = True
     #: 最大「模型 → 工具」往返轮数（默认 12）
     maxLoops: Optional[int] = None
+    #: **官方智能体角色 key**（题库/笔记/知识库/记忆/统计/通用，见 `agent/roles.py`）。
+    #: 显式指定时用该角色的窄工具集与专属指令；为空则后端按消息**规则路由**（零 LLM 成本），
+    #: 路由不确定会退 `general`（全工具）。见 `agent/orchestrator.py`。
+    role: str = ""
+    #: **用户自定义智能体 id**（阶段 2 落地）。现仅透传占位，编排层暂不消费。
+    agentId: Optional[int] = None
 
 
 @router.post("/agent/stream")
@@ -603,6 +609,9 @@ async def agent_stream(
         user_id=user_id,
         # 回退账本的归组键：前端每轮生成，原样透传（见 AgentStreamRequest.turnId）
         turn_id=req.turnId or "",
+        # 多智能体协同：官方角色 key（空则由后端规则路由）+ 用户自定义智能体 id（阶段 2）
+        role=req.role or "",
+        agent_id=req.agentId,
     )
     return StreamingResponse(
         run_agent_stream(db, agent_req),
@@ -774,6 +783,172 @@ async def agent_tools(current_user: dict = Depends(get_current_user)):
     也就不需要（也不该有）`resolve_user_scope` 那一步 —— 开关是纯私有的。
     """
     return await _agent_tools_payload(int((current_user or {}).get("user_id") or 0))
+
+
+@router.get("/agent/roles")
+async def agent_roles():
+    """**官方智能体角色清单**（多智能体协同，阶段 1）
+
+    供前端渲染「智能体选择器」：官方角色（题库/笔记/知识库/记忆/统计/通用）的中文名、
+    说明与各自可用工具。**不含任何用户数据**，因此不需要登录态、也不需要用户作用域。
+
+    ⚠️ 返回的 `tools` 是**角色白名单**（`general` 为空数组 = 不限制）。
+    前端若要显示「某角色实际能用哪些工具」，需自行与 `GET /ai/agent/tools` 的用户开关求交。
+    """
+    from app.services.ai.agent.roles import all_role_metas
+
+    # ⚠️ 返回**裸 dict**（与 `GET /ai/agent/tools` 同形状：直接是业务对象，不套
+    #    `success()` 的 `{code,msg,data}`）—— 前端两个端点用同一套解析。
+    return {
+        "roles": [
+            {
+                "key": r.key,
+                "name": r.name,
+                "description": r.description,
+                "tools": list(r.tools),
+            }
+            for r in all_role_metas()
+        ]
+    }
+
+
+# ============================================================
+# 用户自定义智能体 CRUD（多智能体协同，阶段 2）
+# ============================================================
+# 用户创建 / 命名 / 保存自己的智能体（人设 + 工具白名单 + 可选模型），复用 AI 工作流。
+# ⚠️ 全部按**登录态**归属（`current_user["user_id"]`），不接受请求体里的 userId ——
+#    服务层把归属写进 SQL 的 WHERE，杜绝 IDOR（拿别人 id 读写）。
+
+
+class AgentConfigBody(BaseModel):
+    """新建 / 更新用户智能体的请求体
+
+    ⚠️ `extra="forbid"`：字段名写错（如 `persona`、`toolNames`）直接 422，而不是
+    被 pydantic 静默丢弃后「返回 200 但什么都没改」（先例见 `AgentToolPrefBody`）。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = ""
+    description: str = ""
+    greeting: str = ""
+    #: 人设提示词（英文，进 SystemMessage）
+    personaPrompt: str = ""
+    #: 工具白名单；空数组 / 不传 = 不限制（全部工具）。元素必须是合法工具名。
+    tools: Optional[List[str]] = None
+    #: 可选绑定模型名；空串 = 跟随用户默认模型。
+    model: str = ""
+    #: 是否启用（阶段 2 新增字段的更新接口才用得上）
+    isEnabled: Optional[int] = None
+
+
+def _validate_agent_tools(tools: Optional[List[str]]) -> Optional[List[str]]:
+    """校验工具白名单里的名字都在注册表里；返回归一后的列表（None = 不限制）。
+
+    与 `tool_pref_service.set_tool_disabled` 同一口径：**合法名单只有注册表知道**，
+    校验放路由层（服务层不依赖注册表，避免导入顺序踩循环依赖）。
+    """
+    if tools is None:
+        return None
+    from app.services.ai.agent.registry import ensure_tools_loaded, registry
+
+    ensure_tools_loaded()
+    valid = set(registry.names())
+    unknown = [t for t in tools if str(t) not in valid]
+    if unknown:
+        raise ValueError(f"未知工具名：{', '.join(map(str, unknown))}；合法工具见 GET /ai/agent/tools")
+    return [str(t) for t in tools]
+
+
+@router.get("/agent/configs")
+async def list_agent_configs(
+    includeDisabled: bool = Query(False, description="是否包含已暂停的智能体"),
+    current_user: dict = Depends(get_current_user),
+):
+    """**列出我的智能体**（只返回当前登录用户的）。"""
+    from app.services.ai.agent import agent_config_service
+
+    uid = int((current_user or {}).get("user_id") or 0)
+    return {"agents": await agent_config_service.list_agents(uid, include_disabled=includeDisabled)}
+
+
+@router.post("/agent/configs")
+async def create_agent_config(
+    body: AgentConfigBody,
+    current_user: dict = Depends(get_current_user),
+):
+    """**新建一个用户智能体**（归属自动取登录用户）。"""
+    from app.services.ai.agent import agent_config_service
+    from app.services.ai.agent.agent_config_service import AgentConfigError
+
+    uid = int((current_user or {}).get("user_id") or 0)
+    try:
+        tools = _validate_agent_tools(body.tools)
+    except ValueError as e:
+        return JSONResponse(status_code=400, content=error(str(e), code=400))
+    try:
+        info = await agent_config_service.create_agent(
+            uid,
+            name=body.name,
+            persona_prompt=body.personaPrompt,
+            description=body.description,
+            greeting=body.greeting,
+            tools=tools,
+            model=body.model,
+        )
+    except AgentConfigError as e:
+        return JSONResponse(status_code=400, content=error(str(e), code=400))
+    return success(info, "智能体已创建")
+
+
+@router.put("/agent/configs/{agent_id}")
+async def update_agent_config(
+    agent_id: int,
+    body: AgentConfigBody,
+    current_user: dict = Depends(get_current_user),
+):
+    """**更新我的某个智能体**（归属写进 SQL，他人 id 一律不可见）。"""
+    from app.services.ai.agent import agent_config_service
+    from app.services.ai.agent.agent_config_service import AgentConfigError
+
+    uid = int((current_user or {}).get("user_id") or 0)
+    try:
+        tools = _validate_agent_tools(body.tools)
+    except ValueError as e:
+        return JSONResponse(status_code=400, content=error(str(e), code=400))
+    try:
+        info = await agent_config_service.update_agent(
+            uid,
+            int(agent_id),
+            name=body.name or None,
+            persona_prompt=body.personaPrompt,
+            description=body.description,
+            greeting=body.greeting,
+            tools=tools,
+            model=body.model,
+            is_enabled=body.isEnabled,
+        )
+    except AgentConfigError as e:
+        # 服务层对「不存在」与「不属于你」返回同一句，这里统一 404（不区分，防探测）
+        return JSONResponse(status_code=404, content=error(str(e), code=404))
+    return success(info, "智能体已更新")
+
+
+@router.delete("/agent/configs/{agent_id}")
+async def delete_agent_config(
+    agent_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    """**删除我的某个智能体**（逻辑删除，可恢复；归属写进 SQL）。"""
+    from app.services.ai.agent import agent_config_service
+    from app.services.ai.agent.agent_config_service import AgentConfigError
+
+    uid = int((current_user or {}).get("user_id") or 0)
+    try:
+        info = await agent_config_service.delete_agent(uid, int(agent_id))
+    except AgentConfigError as e:
+        return JSONResponse(status_code=404, content=error(str(e), code=404))
+    return success(info, "智能体已删除")
 
 
 class AgentToolPrefBody(BaseModel):

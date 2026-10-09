@@ -70,6 +70,7 @@ from app.services.ai.agent.confirm_ticket import (
 )
 from app.services.ai.agent.guard import ExecutionGuard, GuardState, params_hash
 from app.services.ai.agent import memory_hook
+from app.services.ai.agent import orchestrator
 from app.services.ai.agent import rollback_service
 from app.services.ai.agent import runtime_context
 from app.services.ai.agent import tool_pref_service
@@ -193,6 +194,13 @@ class AgentRequest:
     #: 只用于「回退这一轮」的账本归组 —— 轮边界由前端定义，后端**不切分**。
     #: 缺省时由 `_resolve_turn_id` 给一个 `auto_<hex>`（见其说明）。
     turn_id: Optional[str] = None
+    #: **官方角色 key**（题库/笔记/知识库/记忆/统计/通用，见 `agent/roles.py`）。
+    #: 显式指定时用该角色的工具白名单与专属提示词；为空则按消息**规则路由**；
+    #: 路由不确定会退 `general`（全工具）。见 `agent/orchestrator.py`。
+    role: str = ""
+    #: **用户自定义智能体 id**（`ai_agent_config.id`，阶段 2 落地）。非空时优先于 `role`。
+    #: 现阶段仅透传占位，编排层暂不消费（避免阶段 1 引入未建的表依赖）。
+    agent_id: Optional[int] = None
 
     @property
     def persist(self) -> bool:
@@ -720,7 +728,40 @@ async def run_agent_stream(
     # （`_prepare_tool_call` 与下面内联分支里的 `_disabled_fail`）。
     # ⚠️ `definitions()` / `describe()` **本来就收 `exclude=`**，别另写一套过滤。
     disabled_tools = await tool_pref_service.disabled_tool_names(user_id)
-    tool_defs = registry.definitions(exclude=sorted(disabled_tools))
+
+    # ---- 多智能体编排层：解析本轮角色（用户 Agent 优先，其次官方角色）----
+    # 规则：最终可用 = 角色白名单 ∩ (全部工具 − 用户屏蔽集)（见 `orchestrator` 红线）。
+    # 即：用户开关只能**收窄**，不能突破角色边界。`excluded_tools` 是交给注册表的黑名单，
+    # 它已含「角色外工具」与「用户屏蔽工具」两部分。
+    # ⚠️ `disabled_tools`（纯用户屏蔽）保留原义，供 ds-free 路径的 `_prepare_tool_call` 用；
+    #    面向模型/前端/内联执行闸门的出口一律改用 `excluded_tools`。
+    #
+    # 用户自定义智能体（阶段 2）：`req.agent_id` 非空时优先于官方角色 —— 它的工具白名单
+    # 就是用户 Agent 的 `tools`，系统指令就是用户人设。读库失败**必须 fail-open**：
+    # 退回到按官方角色路由，绝不能因为「读不到用户 Agent」就让这一轮崩掉。
+    user_agent_model: Optional[str] = None
+    role_spec = None
+    if req.agent_id:
+        try:
+            from app.services.ai.agent import agent_config_service
+
+            agent_dict = await agent_config_service.get_agent_dict(user_id, int(req.agent_id))
+            if agent_dict:
+                role_spec = orchestrator.build_user_role(agent_dict)
+                # 用户 Agent 可绑模型；仅在请求**未显式指定** model 时生效（请求优先）。
+                user_agent_model = (agent_dict.get("model") or "").strip() or None
+        except Exception as e:  # noqa: BLE001 - 用户 Agent 解析失败 → 退回官方角色
+            logger.warning("[agent] 解析用户智能体失败（退回官方角色）agent_id={}: {}", req.agent_id, e)
+
+    if role_spec is None:
+        role_spec = orchestrator.resolve_role(role=req.role, message=req.message)
+
+    excluded_tools = orchestrator.compute_exclude(
+        role_spec,
+        all_tool_names=registry.names(),
+        user_disabled=disabled_tools,
+    )
+    tool_defs = registry.definitions(exclude=sorted(excluded_tools))
 
     if not registry.names():
         # 注册表本身为空 = 服务端配置问题（工具没被 `tools/__init__.py` 注册）
@@ -739,7 +780,8 @@ async def run_agent_stream(
         llm, config = await db_config.build_agent_llm(
             db,
             provider=req.provider,
-            model=req.model,
+            # 模型优先级：请求显式指定 > 用户 Agent 绑定 > 用户默认（build_agent_llm 内部兜底）。
+            model=req.model or user_agent_model,
             temperature=req.temperature,
             # 带上用户作用域：用户自己配的模型（个人中心 → 我的模型）也能被 Agent 选中
             user_id=user_id,
@@ -821,13 +863,20 @@ async def run_agent_stream(
     yield _event(
         {
             "type": "meta",
-            # 「可用工具」= **生效后的**清单（用户屏蔽掉的不该出现在这里）。
+            # 「可用工具」= **角色生效后的**清单（角色外工具与用户屏蔽掉的都不该出现）。
             # 前端用它渲染本轮工具条，报的是「模型这一轮真的能调什么」。
             "tools": [
                 {"name": t.name, "description": t.description}
                 for t in registry.all()
-                if t.name not in disabled_tools
+                if t.name not in excluded_tools
             ],
+            # 本轮智能体（多智能体协同）：前端据此显示「当前由 题库助手 回答」。
+            # kind：用户自定义智能体 key 形如 `user:<id>`，官方角色是纯 key。
+            "agent": {
+                "id": role_spec.key,
+                "name": role_spec.name,
+                "kind": "user" if role_spec.key.startswith("user:") else "official",
+            },
             "model": config.model,
             "provider": config.provider,
             "warnings": warnings,
@@ -848,18 +897,30 @@ async def run_agent_stream(
     #    流式请求漏一条连接（实测 1/2/3 递增，直到连接池耗尽），原因见
     #    `runtime_context` 的模块说明。
     if req.system_prompt:
+        # ⚠️ 调用方完全接管系统提示词时，**不注入角色人设** —— 那是「显式覆盖」的语义
+        #    （测试与 ds-free 会这么做）。角色只在走默认提示词时生效。
         system_prompt = req.system_prompt
     else:
         runtime_ctx = await runtime_context.build_runtime_context(user_id, lang="en")
+        # 本轮是否需要「建库重型规则」：带了附件、或消息命中建库/导题关键词时才注入
+        # （题型编码 / 建库字段推断 / 文档导题流程，约 2.6KB）。普通聊天不发，省 token
+        # 也把注意力留给真正相关的规则。见 prompts.needs_doc_workflow。
+        has_docs = bool(file_text) or bool(req.images) or bool(req.files)
+        doc_workflow = prompts.needs_doc_workflow(typed, has_attachments=has_docs)
+        # 角色专属指令（英文，系统侧）放在 extra **最前**：角色人设优先级高于 L1 背景。
+        # `general` 角色的 prompt_fragment 为空串，此处自然跳过。
         system_prompt = prompts.build_agent_system_prompt(
-            # ⚠️ 提示词里的工具清单必须与**本轮真的绑定给模型的**那一份一致
-            #    （同一个 `disabled_tools`）。不一致会出两种事故：
-            #      · 提示词里写了、没绑定 → 模型照着提示词调它，白烧一轮；
-            #      · 绑定了、提示词里没写 → 模型不知道它存在，等于没有。
-            #    全被屏蔽时这里是空串，`build_agent_system_prompt` 会渲染成
-            #    "(no tools available)"，与上面的 Tool Availability 说明对齐。
-            tools_text=registry.describe(exclude=sorted(disabled_tools)),
-            extra="\n\n".join([s for s in [*system_notes, runtime_ctx] if s]),
+            # ⚠️ 付费链路**不再**把工具清单写进系统提示词：`bind_tools(tool_defs)` 已经把
+            #    完整工具定义（含 JSON Schema）交给模型，那是官方 Function Calling 的权威来源。
+            #    在提示词里再写一遍是**重复**（实测 describe() 约 2.7K token/轮）。
+            #    `tools_text` 仍传（供 ds-free 走 `req.system_prompt` 之外的兼容路径，
+            #    以及万一有人在别处复用本函数）。
+            include_tools=False,
+            include_doc_workflow=doc_workflow,
+            tools_text=registry.describe(exclude=sorted(excluded_tools)),
+            extra="\n\n".join(
+                [s for s in [role_spec.prompt_fragment, *system_notes, runtime_ctx] if s]
+            ),
         )
     lc_messages: List[Any] = [SystemMessage(content=system_prompt)]
 
@@ -1065,13 +1126,21 @@ async def run_agent_stream(
                 )
                 continue
 
-            # 用户屏蔽闸门（内联路径的**执行侧**）。
-            # 与 `_prepare_tool_call` 同一口径、同一份文案（`_disabled_fail`）——
+            # 工具闸门（内联路径的**执行侧**）——拦两类：①用户屏蔽的工具；②**角色外**工具。
             # 「不广播」不等于「调用不了」：模型完全可能凭上下文里的旧工具名发起调用，
-            # 这里不拦的话它会真的执行、真的写库。回灌一个带 hint 的失败信封让循环
-            # 继续跑（不是 `break`），模型下一轮就会改用现有工具或直接回答。
-            if tool_name in disabled_tools:
-                result = _disabled_fail(tool_name)
+            # 这里不拦的话它会真的执行、真的写库（角色白名单也就形同虚设）。回灌一个带
+            # hint 的失败信封让循环继续跑（不是 `break`），模型下一轮会改用现有工具或直接回答。
+            # ⚠️ 用 `excluded_tools`（角色外 ∪ 用户屏蔽），不是 `disabled_tools`。
+            if tool_name in excluded_tools:
+                if tool_name in disabled_tools:
+                    result = _disabled_fail(tool_name)
+                else:
+                    # 角色外工具：不是被用户关掉，而是本轮角色用不到它。文案要区分，
+                    # 否则用户会以为「我没关这个工具，怎么用不了」。
+                    result = fail(
+                        f"工具 {tool_name} 不在当前智能体「{role_spec.name}」的可用范围内",
+                        f"当前角色可用工具：{', '.join(sorted(registry.names() - excluded_tools))}",
+                    )
                 lc_messages.append(
                     ToolMessage(content=_dumps(result), tool_call_id=call_id)
                 )

@@ -15,6 +15,7 @@ AI 提示词模板
 **新增场景 = 这里加一条 + 请求带上 scene，不要再新开一个流式接口。**
 """
 
+import re
 from typing import Any, Dict, List, Optional
 
 # OpenStudy 学习平台智能助手系统提示词
@@ -49,6 +50,12 @@ SCENE_COMPOSITE = "composite"
 """生成组合题（材料 + 设问）。"""
 SCENE_ANALYSIS = "analysis"
 """题目智能解析（5 段式结构输出）。"""
+
+SCENE_OCR = "ocr"
+"""拍照识词 / 图片文字识别：多模态模型直接读图，输出词条 JSON。
+
+⚠️ 这条链路**取代**了原来基于 Tesseract 的本地 OCR（app/api/v1/ocr.py 已废弃）。
+图片由 chat_engine 作为多模态 image_url 内容块附在 user 消息末尾，这里只给指令。"""
 SCENE_AGENT = "agent"
 """**Agent 模式**：走工具调用循环（`services/ai/agent/`），不是普通流式对话。
 
@@ -57,6 +64,36 @@ SCENE_AGENT = "agent"
 入口在 `agent/loop.py`。
 """
 
+
+#: 拍照识词（OCR）的系统提示词。
+#:
+#: 图片由 chat_engine 作为多模态内容块附在 user 消息末尾，这里只写指令。
+#: 要求模型只吐 JSON 数组，前端 api/english/ocr.ts 直接 JSON.parse。
+OCR_SYSTEM_PROMPT = """你是一个专业的英语词汇识别助手。
+
+用户会给你一张图片（课本、试卷、板书、词典页的拍照等）。
+请识别图片中出现的**所有英文单词和词组**，并给出中文释义。
+
+严格要求：
+1. 只输出一个 JSON 数组，不要任何解释文字，不要用 markdown 代码块包裹。
+2. 每个元素形如：
+   {"english": "单词或词组", "chinese": "中文释义", "phonetic": "音标（没有就留空）", "type": "word 或 phrase"}
+3. 按图片中从上到下、从左到右的顺序排列。
+4. 同一个单词只出现一次，不要重复。
+5. 看不清的单词直接跳过，不要猜测编造。
+6. 图片里没有任何英文时，输出空数组 []。
+"""
+
+
+def _build_ocr(prompt: str, **vars: Any) -> List[Dict[str, str]]:
+    """拍照识词：指令固定，真正的输入是随请求附上的图片块。"""
+    user = (prompt or "").strip() or (
+        "请识别这张图片里的所有英文单词和词组，按系统要求的 JSON 数组格式输出。"
+    )
+    return [
+        {"role": "system", "content": OCR_SYSTEM_PROMPT},
+        {"role": "user", "content": user},
+    ]
 
 #: 出题类场景共用的系统提示词
 TEACHER_SYSTEM_PROMPT = "你是一个专业的出题助手。"
@@ -182,6 +219,7 @@ _SCENE_BUILDERS = {
     SCENE_READING: _build_reading,
     SCENE_COMPOSITE: _build_composite,
     SCENE_ANALYSIS: _build_analysis,
+    SCENE_OCR: _build_ocr,
 }
 
 #: 正文可以**由模板变量提供**的场景。
@@ -428,12 +466,35 @@ AGENT_OUTPUT_RULES = """## Output Rules
 - Remember the most recently queried bank name. When the user says "this bank" / "the current
   bank", resolve it to that one."""
 
-#: Agent 系统提示词模板（`{{TOOLS}}` 会被替换成工具清单）
+#: Agent 系统提示词的**核心段**（每轮都发，与场景无关）
 #:
-#: 顺序有讲究：身份 → 语言策略 → 注入防护 → 工作流（含工具清单）→ 确认规则 →
-#: 题型编码 → 字段推断 → 文档建库流程 → 输出规范。
+#: 顺序有讲究：身份 → 语言策略 → 注入防护 → 工作流 → 确认规则 → 输出规范。
 #: 语言策略与注入防护必须排在**工具清单之前** —— 它们约束的是「怎么读输入」，
 #: 放在后面容易被长工具清单挤到注意力边缘。
+AGENT_CORE_SECTIONS = [
+    AGENT_IDENTITY,
+    AGENT_LANGUAGE_RULES,
+    AGENT_INJECTION_GUARD,
+    AGENT_WORKFLOW_RULES,
+    AGENT_CONFIRM_RULES,
+    AGENT_OUTPUT_RULES,
+]
+
+#: 「建库重型规则」段：只在**本轮确实要建库/导题**时才注入（见 `needs_doc_workflow`）。
+#:
+#: 为什么按需：题型编码（7 种）、建库字段推断、文档导题工作流（本项目最长的一段规则）
+#: 加起来约 2.6KB 字符；而绝大多数聊天轮次（"你好" / "帮我看看题库"）根本用不到 ——
+#: 每轮都发既费 token，又把真正相关的规则（如语言策略）挤到注意力边缘。
+AGENT_DOC_SECTIONS = [
+    AGENT_QUESTION_TYPES,
+    AGENT_BANK_FIELD_RULES,
+    AGENT_DOC_BUILD_WORKFLOW,
+]
+
+#: 兼容保留：旧的「全量模板」常量（含 `{{TOOLS}}` 占位）。
+#:
+#: ⚠️ 新代码请用 `build_agent_system_prompt(tools_text=..., ...)`；
+#:    这里保留是为了不让任何外部引用（测试/文档）突然断掉。
 AGENT_SYSTEM_PROMPT_TEMPLATE = "\n\n".join(
     [
         AGENT_IDENTITY,
@@ -450,7 +511,11 @@ AGENT_SYSTEM_PROMPT_TEMPLATE = "\n\n".join(
 
 
 def build_agent_system_prompt(
-    tools_text: str = "", extra: str = ""
+    tools_text: str = "",
+    extra: str = "",
+    *,
+    include_tools: bool = True,
+    include_doc_workflow: bool = False,
 ) -> str:
     """组装 Agent 的系统提示词
 
@@ -459,11 +524,58 @@ def build_agent_system_prompt(
                     必须与实际注册的工具保持一致 —— 清单里写了但没注册，
                     模型会一直调用一个不存在的工具然后卡住。
         extra: 额外追加的段落（例如「当前绑定知识库」这类运行时上下文）。
+        include_tools: 是否把工具清单写进系统提示词。
+                    ⚠️ **付费链路应传 False**：它已经通过 `bind_tools(tool_defs)`
+                    把工具定义（完整 JSON Schema）交给模型，再在提示词里写一遍
+                    是**重复**（实测那份清单约 2.7K token/轮，而 `tools` 参数已是权威来源）。
+                    只有 **ds-free**（网页端挂不了 `tools` 参数、靠正文协议）才需要 True。
+        include_doc_workflow: 是否注入「建库重型规则」（题型编码 / 字段推断 / 文档导题流程）。
+                    仅当本轮带附件、或用户明确要建库/导题时才 True（见 `needs_doc_workflow`）。
     """
-    prompt = AGENT_SYSTEM_PROMPT_TEMPLATE.replace("{{TOOLS}}", tools_text or "(no tools available)")
+    sections = list(AGENT_CORE_SECTIONS)
+    if include_doc_workflow:
+        # 插在 workflow 之后、output 之前 —— 与旧的段序保持一致（题型编码等紧跟工作流）
+        insert_at = sections.index(AGENT_OUTPUT_RULES)
+        sections[insert_at:insert_at] = list(AGENT_DOC_SECTIONS)
+
+    prompt = "\n\n".join(sections)
+    if include_tools:
+        prompt = prompt.replace("{{TOOLS}}", tools_text or "(no tools available)")
+    else:
+        # 不写工具清单时，把「## Available Tools」整段（含 `{{TOOLS}}` 占位）摘掉：
+        # 留着 "(no tools available)" 会让模型以为**没有工具可用**（事实相反，
+        # tools 参数里有）—— 那是严重误导。
+        prompt = re.sub(r"\n*## Available Tools\n\{\{TOOLS\}\}", "", prompt).rstrip()
+        prompt = prompt.replace("{{TOOLS}}", "")
     if extra:
         prompt = f"{prompt}\n\n{extra}"
     return prompt
+
+
+#: 触发「建库重型规则」的关键词（用户消息里出现即视为有建库/导题意图）。
+#:
+#: 只做**宽进**判断：命中任一即注入；宁可多注入一段规则，也不要漏 —— 漏了会让
+#: 模型在导题时缺少题型编码等约束，后果比多花几百 token 严重得多。
+_DOC_WORKFLOW_KEYWORDS = (
+    "建库", "建题库", "出题", "导题", "导入", "录题", "题库", "批量", "生成题",
+    "做一套", "帮我出", "题目", "试卷", "刷题",
+    "import", "build a bank", "question bank", "generate question", "batch",
+)
+
+
+def needs_doc_workflow(message: str = "", has_attachments: bool = False) -> bool:
+    """判断本轮是否需要注入「建库重型规则」
+
+    判据（命中其一即 True）：
+      · 带了文档/图片附件 —— 附件最常见用途就是导题/建库；
+      · 用户消息命中建库/导题关键词（见 `_DOC_WORKFLOW_KEYWORDS`，宽进）。
+    """
+    if has_attachments:
+        return True
+    text = (message or "").strip().lower()
+    if not text:
+        return False
+    return any(kw.lower() in text for kw in _DOC_WORKFLOW_KEYWORDS)
 
 
 __all__ = [
@@ -482,8 +594,11 @@ __all__ = [
     "AGENT_SYSTEM_PROMPT_TEMPLATE",
     "AGENT_LANGUAGE_RULES",
     "AGENT_INJECTION_GUARD",
+    "AGENT_CORE_SECTIONS",
+    "AGENT_DOC_SECTIONS",
     "build_scene_messages",
     "build_agent_system_prompt",
+    "needs_doc_workflow",
     "is_variable_driven",
     "has_scene_content",
 ]

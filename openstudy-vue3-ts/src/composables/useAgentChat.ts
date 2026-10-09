@@ -95,6 +95,10 @@ export interface AgentRunOptions {
   /** 写操作是否自动执行 */
   autoConfirm?: boolean
   maxLoops?: number
+  /** 官方智能体角色 key（多智能体协同）；空 = 后端规则路由 */
+  role?: string
+  /** 用户自定义智能体 id（优先于 role） */
+  agentId?: number
 }
 
 /** 单条消息里 `data` 的落库上限（超过就只留摘要），避免快照被题目数组撑爆 */
@@ -855,6 +859,9 @@ export function useAgentChat() {
         userId: opts.userId,
         autoConfirm: opts.autoConfirm !== false,
         maxLoops: opts.maxLoops,
+        // 多智能体协同：官方角色 / 用户自定义智能体（后者优先）。透传给两条链路。
+        role: opts.role,
+        agentId: opts.agentId,
         signal: controller.signal
       }
       // ds-free：前端工具调用循环（浏览器扩展代发，协议上挂不了原生 FC）

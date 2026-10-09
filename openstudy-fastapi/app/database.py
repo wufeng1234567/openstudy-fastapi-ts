@@ -64,6 +64,7 @@ def register_all_models() -> None:
     任何需要完整 metadata 的地方（建表、数据迁移、反射）都调这个函数。
     """
     from app.models import (  # noqa: F401
+        agent_config,
         agent_memory,
         agent_op_log,
         agent_tool_pref,

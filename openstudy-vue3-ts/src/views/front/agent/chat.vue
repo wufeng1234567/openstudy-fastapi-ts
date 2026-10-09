@@ -172,14 +172,43 @@
                  用户 2026-09-21 裁决删掉整块脚注后它们一起去掉了 —— 别再往这个组件上加回来，
                  L43 会断「只允许 `:model`」。
             -->
+            <!-- 智能体选择（多智能体协同）：官方角色 or 我的自定义智能体；空 = 自动路由 -->
+            <el-select
+              v-model="selectedAgentKey"
+              class="agent-selector"
+              size="small"
+              :disabled="isGenerating"
+              placeholder="智能体：自动"
+            >
+              <el-option label="智能体：自动（按需求选择）" value="" />
+              <el-option-group v-if="agentRoles.length" label="官方智能体">
+                <el-option
+                  v-for="r in agentRoles"
+                  :key="'r-' + r.key"
+                  :label="r.name"
+                  :value="'official:' + r.key"
+                />
+              </el-option-group>
+              <el-option-group v-if="myAgents.length" label="我的智能体">
+                <el-option
+                  v-for="a in myAgents"
+                  :key="'a-' + a.agentId"
+                  :label="a.name"
+                  :value="'user:' + a.agentId"
+                />
+              </el-option-group>
+            </el-select>
+
             <AgentToolPopover :model="model || activeModel" />
 
             <span class="footer-hint">支持 Word / PDF / TXT / MD 与题目截图</span>
           </template>
-
           <!-- 输入框下方工具行（右半）：模型选择器（窄版）+ 新对话 + 发送按钮 -->
           <template #input-toolbar-right>
             <AiModelSelector v-model="model" scene="agent" width="120px" :disabled="isGenerating" />
+            <el-button class="tb-new" :icon="Setting" text :disabled="isGenerating" @click="openAgentManager">
+              我的智能体
+            </el-button>
             <el-button class="tb-new" :icon="Plus" text :disabled="isGenerating" @click="newSession">
               新对话
             </el-button>
@@ -253,6 +282,77 @@
         </footer>
       </div>
     </div>
+
+    <!-- 「我的智能体」管理弹窗 -->
+    <el-dialog v-model="agentMgrVisible" title="我的智能体" width="600px" append-to-body>
+      <div class="agent-mgr-list">
+        <div v-if="!myAgents.length" class="agent-mgr-empty">
+          还没有自定义智能体。点击下方「新建智能体」创建你自己的 AI 助手（可设人设、限定工具、绑定模型）。
+        </div>
+        <div v-for="a in myAgents" :key="a.agentId" class="agent-mgr-item">
+          <div class="agent-mgr-main">
+            <div class="agent-mgr-name">{{ a.name }}</div>
+            <div class="agent-mgr-desc">{{ a.description || '（无简介）' }}</div>
+            <div class="agent-mgr-tools">
+              工具：{{ (a.tools && a.tools.length) ? a.tools.map(t => toolLabelMap[t] || t).join('、') : '全部' }}
+              <span v-if="a.model"> ｜ 模型：{{ a.model }}</span>
+            </div>
+          </div>
+          <div class="agent-mgr-ops">
+            <el-button text size="small" @click="openEditAgent(a)">编辑</el-button>
+            <el-button text size="small" type="danger" @click="removeAgent(a)">删除</el-button>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="openCreateAgent">新建智能体</el-button>
+        <el-button type="primary" @click="agentMgrVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 智能体 新建 / 编辑 表单 -->
+    <el-dialog
+      v-model="agentFormVisible"
+      :title="editingAgentId == null ? '新建智能体' : '编辑智能体'"
+      width="560px"
+      append-to-body
+    >
+      <el-form label-width="90px" label-position="right">
+        <el-form-item label="名称" required>
+          <el-input v-model="agentForm.name" maxlength="64" show-word-limit placeholder="如：数学老师" />
+        </el-form-item>
+        <el-form-item label="简介">
+          <el-input v-model="agentForm.description" maxlength="255" placeholder="一句话说明它的用途" />
+        </el-form-item>
+        <el-form-item label="人设提示词">
+          <el-input
+            v-model="agentForm.personaPrompt"
+            type="textarea"
+            :rows="4"
+            maxlength="4000"
+            show-word-limit
+            placeholder="用英文描述这个智能体的角色与行为（会作为系统指令）。留空则仅按工具集工作。"
+          />
+        </el-form-item>
+        <el-form-item label="可用工具">
+          <el-select v-model="agentForm.tools" multiple clearable placeholder="留空 = 不限（全部工具）" style="width: 100%">
+            <el-option
+              v-for="t in toolOptions"
+              :key="t.name"
+              :label="t.label || t.name"
+              :value="t.name"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="绑定模型">
+          <el-input v-model="agentForm.model" placeholder="留空 = 跟随默认模型；可填 deepseek-chat 等" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="agentFormVisible = false">取消</el-button>
+        <el-button type="primary" :loading="agentSaving" @click="saveAgent">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -262,7 +362,7 @@ defineOptions({ name: 'FrontAgentChat' })
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Clock, Delete, Plus,
+  Clock, Delete, Plus, Setting,
   FolderOpened, QuestionFilled, UploadFilled, Search
 } from '@element-plus/icons-vue'
 import AiChatStream from '@/components/AiChatStream/index.vue'
@@ -275,6 +375,16 @@ import ChatAttachmentList from '@/components/ChatAttachmentList/index.vue'
 import KnowledgeBaseDrawer from '@/components/KnowledgeBaseDrawer/index.vue'
 import { useAgentChat } from '@/composables/useAgentChat'
 import { listSessions, createSession, deleteSession, getConversationHistory, saveConversationMessages, getAgentTimeline, attachmentPlaceholder, fillAttachmentMetas } from '@/api/ai/ai'
+import {
+  listAgentRoles,
+  listAgentConfigs,
+  createAgentConfig,
+  updateAgentConfig,
+  deleteAgentConfig,
+  type AgentRoleMeta,
+  type AgentConfig,
+  type AgentConfigInput
+} from '@/api/ai/agent'
 import useUserStore from '@/store/modules/user'
 
 /**
@@ -363,6 +473,138 @@ const formatFirstToken = (ms: number | null) =>
 const model = ref('')
 /** 写操作是否自动执行 */
 const autoConfirm = ref(true)
+
+/* ===================== 多智能体协同 ===================== */
+// 智能体选择：官方角色 + 我的自定义智能体。
+// `selectedAgentKey` 编码规则：''（自动路由）/ 'official:<key>' / 'user:<agentId>'。
+// 自动路由（空）= 后端按消息关键词选官方角色（零成本，不确定退 general）。
+const selectedAgentKey = ref('')
+const agentRoles = ref<AgentRoleMeta[]>([])
+const myAgents = ref<AgentConfig[]>([])
+
+/** 交给 `send()` 的解析结果：官方角色 key 与用户智能体 id 二选一 */
+const selectedRole = computed(() => {
+  const k = selectedAgentKey.value
+  return k.startsWith('official:') ? k.slice('official:'.length) : ''
+})
+const selectedAgentId = computed(() => {
+  const k = selectedAgentKey.value
+  return k.startsWith('user:') ? Number(k.slice('user:'.length)) || undefined : undefined
+})
+
+/** 拉取官方角色 + 我的智能体（失败静默降级为空，选择器仍显示「自动」） */
+async function loadAgents() {
+  const [roles, agents] = await Promise.all([listAgentRoles(), listAgentConfigs()])
+  agentRoles.value = roles
+  myAgents.value = agents
+}
+
+/* ---- 「我的智能体」管理弹窗 ---- */
+const agentMgrVisible = ref(false)
+const agentFormVisible = ref(false)
+const agentSaving = ref(false)
+/** 编辑中的目标 id；null = 新建 */
+const editingAgentId = ref<number | null>(null)
+const agentForm = reactive<AgentConfigInput>({
+  name: '',
+  description: '',
+  greeting: '',
+  personaPrompt: '',
+  tools: [],
+  model: ''
+})
+/** 工具多选项（全量，含中文 label），来自 `/ai/agent/tools` */
+const toolOptions = ref<Array<{ name: string; label: string }>>([])
+
+/** 工具名 → 中文名（界面对照；无则回落到 name 本身） */
+const toolLabelMap = computed(() => {
+  const m: Record<string, string> = {}
+  for (const t of toolOptions.value) m[t.name] = t.label || t.name
+  return m
+})
+
+async function loadToolOptions() {
+  if (toolOptions.value.length) return
+  const { fetchAgentToolsForUi } = await import('@/api/ai/agentDsFree')
+  const payload = await fetchAgentToolsForUi()
+  toolOptions.value = (payload.tools || []).map((t: any) => ({
+    name: t?.function?.name || t?.name || '',
+    label: t?.label || t?.descriptionZh || t?.function?.name || t?.name || ''
+  })).filter((t: any) => t.name)
+}
+
+function openAgentManager() {
+  agentMgrVisible.value = true
+  loadToolOptions()
+}
+
+function openCreateAgent() {
+  editingAgentId.value = null
+  Object.assign(agentForm, { name: '', description: '', greeting: '', personaPrompt: '', tools: [], model: '' })
+  agentFormVisible.value = true
+}
+
+function openEditAgent(a: AgentConfig) {
+  editingAgentId.value = a.agentId
+  Object.assign(agentForm, {
+    name: a.name,
+    description: a.description || '',
+    greeting: a.greeting || '',
+    personaPrompt: a.personaPrompt || '',
+    tools: [...(a.tools || [])],
+    model: a.model || ''
+  })
+  agentFormVisible.value = true
+}
+
+async function saveAgent() {
+  if (!agentForm.name || !agentForm.name.trim()) {
+    ElMessage.warning('请填写智能体名称')
+    return
+  }
+  agentSaving.value = true
+  try {
+    const body: AgentConfigInput = {
+      name: agentForm.name.trim(),
+      description: agentForm.description || '',
+      greeting: agentForm.greeting || '',
+      personaPrompt: agentForm.personaPrompt || '',
+      // 空数组 = 不限制；显式传数组让后端按白名单处理
+      tools: agentForm.tools || [],
+      model: agentForm.model || ''
+    }
+    if (editingAgentId.value == null) {
+      await createAgentConfig(body)
+      ElMessage.success('智能体已创建')
+    } else {
+      await updateAgentConfig(editingAgentId.value, body)
+      ElMessage.success('智能体已更新')
+    }
+    agentFormVisible.value = false
+    await loadAgents()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '保存失败')
+  } finally {
+    agentSaving.value = false
+  }
+}
+
+async function removeAgent(a: AgentConfig) {
+  try {
+    await ElMessageBox.confirm(`确定删除智能体「${a.name}」吗？`, '删除确认', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await deleteAgentConfig(a.agentId)
+    ElMessage.success('已删除')
+    // 若删除的正是当前选中的，回落到「自动」
+    if (selectedAgentKey.value === `user:${a.agentId}`) selectedAgentKey.value = ''
+    await loadAgents()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '删除失败')
+  }
+}
 
 const chatRef = ref<any>(null)
 
@@ -613,7 +855,11 @@ const handleSend = async ({ content }: { content: string }) => {
     model: model.value || undefined,
     sessionId: sessionId.value,
     userId: userId.value,
-    autoConfirm: autoConfirm.value
+    autoConfirm: autoConfirm.value,
+    // 多智能体协同：选了「我的智能体」传 agentId（优先），选了官方角色传 role；
+    // 都没选（'' = 自动）传空 → 后端按消息规则路由。
+    role: selectedRole.value || undefined,
+    agentId: selectedAgentId.value,
   })
 
   /**
@@ -661,6 +907,8 @@ const handleSend = async ({ content }: { content: string }) => {
 onMounted(async () => {
   // 历史会话浮层的「点外面关闭」（回调自己判 historyOpen，关着的时候是空转）
   document.addEventListener('mousedown', onDocMousedown)
+  // 智能体清单（官方角色 + 我的智能体）：不阻塞会话加载，失败静默降级
+  loadAgents()
   await loadSessions()
   if (sessions.value.length) {
     sessionId.value = sessions.value[0].sessionId
@@ -1032,6 +1280,12 @@ onBeforeUnmount(() => {
   }
 }
 
+/* 智能体选择器（多智能体协同）：与工具栏其他控件同高、不抢视线 */
+.agent-selector {
+  width: 150px;
+  margin-right: 4px;
+}
+
 /* 窄屏：左侧工具行会挤（附件/知识库/历史/执行开关/工具弹层 + 这行提示）→ 提示先让位 */
 @media (max-width: 1100px) {
   .footer-hint {
@@ -1173,5 +1427,44 @@ onBeforeUnmount(() => {
 .agent-main :deep(.chat-input-area .input-bottom) {
   margin-top: 2px;
   min-height: 32px;
+}
+
+/* ---- 我的智能体管理弹窗 ---- */
+.agent-mgr-list {
+  max-height: 380px;
+  overflow-y: auto;
+}
+.agent-mgr-empty {
+  color: #909399;
+  font-size: 13px;
+  line-height: 1.7;
+  padding: 8px 0;
+}
+.agent-mgr-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #eef0f4;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.agent-mgr-name {
+  font-weight: 600;
+  color: #303133;
+}
+.agent-mgr-desc {
+  font-size: 12.5px;
+  color: #909399;
+  margin-top: 2px;
+}
+.agent-mgr-tools {
+  font-size: 12px;
+  color: #b0b6c0;
+  margin-top: 4px;
+}
+.agent-mgr-ops {
+  flex-shrink: 0;
 }
 </style>

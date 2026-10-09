@@ -182,6 +182,11 @@ export interface AgentEvent {
   firstTokenSamples?: number
   /** meta：**本轮生效**的可用工具清单（已剔掉被禁用的，见 `AgentToolMeta`） */
   tools?: AgentToolMeta[]
+  /**
+   * meta：**本轮由哪个智能体回答**（多智能体协同）。
+   * `kind` = official（官方角色）/ user（用户自定义智能体）；`id` 是角色 key 或 `user:<id>`。
+   */
+  agent?: { id: string; name: string; kind: 'official' | 'user' }
   model?: string
   provider?: string
   /** meta：附件解析告警 */
@@ -272,6 +277,17 @@ export interface AgentStreamOptions {
   /** 写操作是否自动执行（默认 true） */
   autoConfirm?: boolean
   maxLoops?: number
+  /**
+   * **官方智能体角色 key**（多智能体协同）：「题库/笔记/知识库/记忆/统计/通用」之一，
+   * 见 `GET /ai/agent/roles`。指定后用该角色的窄工具集与专属指令；留空则后端按消息
+   * **规则路由**（零 LLM 成本），不确定会退 `general`（全工具）。
+   */
+  role?: string
+  /**
+   * **用户自定义智能体 id**（多智能体协同）：非空时**优先于** `role` ——
+   * 用它的人设提示词 + 工具白名单（+ 可选绑定模型）。见 `/ai/agent/configs`。
+   */
+  agentId?: number
   signal?: AbortSignal
 }
 
@@ -516,7 +532,11 @@ export async function postAgentStream(
         turnId: opts.turnId || '',
         userId: normalizeUserId(opts.userId),
         autoConfirm: opts.autoConfirm !== false,
-        maxLoops: opts.maxLoops
+        maxLoops: opts.maxLoops,
+        // 多智能体协同：官方角色 key（空 = 后端规则路由）+ 用户自定义智能体 id（优先）。
+        // `agentId` 用 `|| undefined` 去掉 0/空，避免被后端当成「指定了 0 号」。
+        role: opts.role || '',
+        agentId: opts.agentId || undefined
       }),
       signal: opts.signal
     })
@@ -589,5 +609,117 @@ export async function postAgentStream(
     }
     onError?.(error?.message || '网络异常，Agent 未启动')
     return answer
+  }
+}
+
+
+/* ============================================================================
+ * 多智能体协同（阶段 1 官方角色 + 阶段 2 用户自定义智能体）
+ * ==========================================================================*/
+
+/** 官方智能体角色（`GET /ai/agent/roles`） */
+export interface AgentRoleMeta {
+  key: string
+  name: string
+  description: string
+  /** 角色白名单工具名；空数组 = 不限制（= general） */
+  tools: string[]
+}
+
+/** 拉取官方角色清单（无需登录态）。失败返回空数组（界面对空清单要能降级）。 */
+export async function listAgentRoles(): Promise<AgentRoleMeta[]> {
+  try {
+    const res = await fetch(`${import.meta.env.VITE_APP_BASE_API}/ai/agent/roles`, {
+      headers: { Authorization: 'Bearer ' + getToken() }
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    return Array.isArray(data?.roles) ? data.roles : []
+  } catch {
+    return []
+  }
+}
+
+/** 用户自定义智能体（`/ai/agent/configs`） */
+export interface AgentConfig {
+  agentId: number
+  name: string
+  description: string
+  greeting: string
+  personaPrompt: string
+  tools: string[]
+  model: string
+  isEnabled: number
+  createTime?: string | null
+  updateTime?: string | null
+}
+
+/** 新建 / 更新用请求体（字段名与后端 `AgentConfigBody` 一一对应，`extra=forbid` 会拒未知字段） */
+export interface AgentConfigInput {
+  name?: string
+  description?: string
+  greeting?: string
+  personaPrompt?: string
+  tools?: string[]
+  model?: string
+  isEnabled?: number
+}
+
+function _authHeaders(): Record<string, string> {
+  return { Authorization: 'Bearer ' + getToken(), 'Content-Type': 'application/json' }
+}
+
+/** 列出我的智能体（`includeDisabled=true` 含已暂停的） */
+export async function listAgentConfigs(includeDisabled = false): Promise<AgentConfig[]> {
+  try {
+    const url = `${import.meta.env.VITE_APP_BASE_API}/ai/agent/configs?includeDisabled=${
+      includeDisabled ? 'true' : 'false'
+    }`
+    const res = await fetch(url, { headers: _authHeaders() })
+    if (!res.ok) return []
+    const data = await res.json()
+    return Array.isArray(data?.agents) ? data.agents : []
+  } catch {
+    return []
+  }
+}
+
+/** 新建智能体；失败抛出后端 `msg`（供界面提示） */
+export async function createAgentConfig(body: AgentConfigInput): Promise<AgentConfig> {
+  const res = await fetch(`${import.meta.env.VITE_APP_BASE_API}/ai/agent/configs`, {
+    method: 'POST',
+    headers: _authHeaders(),
+    body: JSON.stringify(body)
+  })
+  const data = await res.json().catch(() => null)
+  if (!res.ok || data?.code === 400) {
+    throw new Error(data?.msg || data?.message || '创建失败')
+  }
+  return data?.data ?? data
+}
+
+/** 更新智能体 */
+export async function updateAgentConfig(agentId: number, body: AgentConfigInput): Promise<AgentConfig> {
+  const res = await fetch(`${import.meta.env.VITE_APP_BASE_API}/ai/agent/configs/${agentId}`, {
+    method: 'PUT',
+    headers: _authHeaders(),
+    body: JSON.stringify(body)
+  })
+  const data = await res.json().catch(() => null)
+  if (!res.ok || data?.code === 400 || data?.code === 404) {
+    throw new Error(data?.msg || data?.message || '更新失败')
+  }
+  return data?.data ?? data
+}
+
+/** 删除智能体（逻辑删除） */
+export async function deleteAgentConfig(agentId: number): Promise<void> {
+  const res = await fetch(`${import.meta.env.VITE_APP_BASE_API}/ai/agent/configs/${agentId}`, {
+    method: 'DELETE',
+    headers: _authHeaders()
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    throw new Error(data?.msg || data?.message || '删除失败')
   }
 }
