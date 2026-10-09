@@ -157,8 +157,9 @@ async def run_probe() -> int:
         ok_pass = False
     check("AC-20", "合法工具名通过", ok_pass, str(norm if ok_pass else None))
 
-    # ---- 6. 与编排层联动：用户 Agent 白名单收窄可绑工具 ----
+    # ---- 6. 与编排层联动：用户 Agent 白名单收窄可绑工具（全局工具自动叠加）----
     from app.services.ai.agent.registry import ensure_tools_loaded, registry
+    from app.services.ai.agent.roles import GLOBAL_TOOLS
 
     ensure_tools_loaded()
     all_names = set(registry.names())
@@ -167,7 +168,18 @@ async def run_probe() -> int:
     )
     ex = orchestrator.compute_exclude(user_role, all_tool_names=all_names, user_disabled=set())
     effective = all_names - ex
-    check("AC-21", "用户 Agent 生效工具 == 其白名单", effective == {"bank_manage"}, str(sorted(effective)))
+    check(
+        "AC-21",
+        "用户 Agent 生效工具 == 白名单 ∪ 全局工具",
+        effective == ({"bank_manage"} | set(GLOBAL_TOOLS)),
+        str(sorted(effective)),
+    )
+    check(
+        "AC-22",
+        "用户 Agent 也能用全局记忆工具",
+        set(GLOBAL_TOOLS).issubset(effective),
+        str(sorted(effective)),
+    )
 
     await _cleanup()
     print("\n---- 用户自定义智能体（阶段 2）探针结果 ----")

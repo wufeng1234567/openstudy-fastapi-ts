@@ -33,6 +33,7 @@ from typing import Any, Dict, Iterable, Optional, Set
 
 from app.services.ai.agent.roles import (
     GENERAL_ROLE,
+    GLOBAL_TOOLS,
     OFFICIAL_ROLES,
     RoleSpec,
     role_or_none,
@@ -97,10 +98,13 @@ def compute_exclude(
 ) -> Set[str]:
     """算出要交给 `registry.definitions/describe(exclude=...)` 的**排除集合**
 
-    排除集 = (全部工具 − 角色白名单) ∪ 用户屏蔽集
+    排除集 = (全部工具 − 有效白名单) ∪ 用户屏蔽集
              = 角色外工具 ∪ 用户屏蔽集
 
-    语义即「最终可用 = 角色白名单 ∩ (全部 − 用户屏蔽)」（见模块 docstring 红线）。
+    其中「有效白名单 = 角色白名单 ∪ `GLOBAL_TOOLS`（全局默认工具）」。
+
+    语义即「最终可用 = (角色白名单 ∪ 全局工具) ∩ (全部 − 用户屏蔽)」（见模块 docstring 红线）。
+    全局工具（记忆）对所有角色始终可见 —— 见 `roles.GLOBAL_TOOLS` 的说明。
 
     Args:
         role: 已解析出的角色。
@@ -117,10 +121,11 @@ def compute_exclude(
     disabled = {str(n) for n in user_disabled}
 
     if not role.tools:
-        # general / 不限工具：只有用户屏蔽生效
+        # general / 不限工具：只有用户屏蔽生效（全局工具本就在全部之内，无需叠加）
         return {n for n in disabled if n in all_names}
 
-    allow = {str(n) for n in role.tools}
+    # 有效白名单 = 角色白名单 ∪ 全局默认工具（记忆等）—— 全局工具对所有角色可见
+    allow = {str(n) for n in role.tools} | set(GLOBAL_TOOLS)
     outside_role = all_names - allow
     # 与用户屏蔽求并集后再收敛回「真实存在的工具名」——
     # 用户屏蔽集里可能有历史遗留的、已下线工具名，交给注册表 exclude 虽无害，

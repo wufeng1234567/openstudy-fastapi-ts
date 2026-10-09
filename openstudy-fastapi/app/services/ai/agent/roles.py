@@ -44,6 +44,21 @@ from typing import Dict, List, Tuple
 #: 路由兜底角色名（不确定时用它）。**必须**存在于 `OFFICIAL_ROLES`。
 GENERAL_ROLE = "general"
 
+#: **全局默认工具** —— 不绑定任何角色，而是自动叠加到**每一个**角色（含用户自定义智能体）之上。
+#:
+#: 为什么单独抽出来（2026-10-09 用户裁决）：记忆（`memory_search` / `memory_manage`）是
+#: **跨角色的通用能力** —— 无论当前是题库/笔记/知识库/统计哪个助手，用户都可能说"记住这个"
+#: 或"我之前说过什么"。把它作为一个可选角色（原"记忆助手"）既要求用户去选、又会让
+#: 「记住」这类请求被路由走、离开当前业务语境。因此改为**全局默认**：对用户隐藏、
+#: 对模型始终可见。
+#:
+#: 语义：`最终可用 = (角色白名单 ∪ 全局工具) ∩ (全部 − 用户屏蔽)`
+#: —— 见 `orchestrator.compute_exclude` 的落地。
+GLOBAL_TOOLS: Tuple[str, ...] = (
+    "memory_search",
+    "memory_manage",
+)
+
 
 @dataclass(frozen=True)
 class RoleSpec:
@@ -137,20 +152,11 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
             "knowledge", "document",
         ),
     ),
-    # ---- 记忆域 ----
-    "memory": RoleSpec(
-        key="memory",
-        name="记忆助手",
-        description="管理长期记忆：记住/回忆用户偏好与历史",
-        tools=("memory_search", "memory_manage"),
-        prompt_fragment=(
-            "## Role: Memory Assistant\n"
-            "You are specialised in the user's long-term memory. Use `memory_search` to "
-            "recall and `memory_manage` to store or update preferences and facts the "
-            "user wants remembered."
-        ),
-        keywords=("记住", "记忆", "之前说过", "我偏好", "回忆", "memory", "remember"),
-    ),
+    # ---- 记忆：不是角色，而是**全局默认工具**（见下面 GLOBAL_TOOLS）----
+    # 历史：这里曾有一个 "memory" 独立角色（记忆助手），工具 = memory_search/memory_manage。
+    # 2026-10-09 用户裁决：记忆能力应当**每个助手都有**、对用户**隐藏**、作为默认工具全局使用，
+    # 而不是让用户去选一个"记忆助手"。于是删除该角色，把这两个工具提到 GLOBAL_TOOLS，
+    # 由编排层自动叠加到**所有**角色（含用户自定义智能体）之上。
     # ---- 统计域 ----
     "stats": RoleSpec(
         key="stats",
@@ -194,6 +200,7 @@ def all_role_metas() -> List[RoleSpec]:
 
 __all__ = [
     "GENERAL_ROLE",
+    "GLOBAL_TOOLS",
     "RoleSpec",
     "OFFICIAL_ROLES",
     "role_or_none",

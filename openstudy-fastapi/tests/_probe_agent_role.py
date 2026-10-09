@@ -47,7 +47,14 @@ def run_probe() -> int:
         if unknown:
             ok_self = False
             bad_detail.append(f"{r.key}:{sorted(unknown)}")
-    check("AR-01", "每个角色引用的工具名都存在", ok_self, "; ".join(bad_detail) or "全部合法")
+    # 全局默认工具也必须是真实存在的工具名
+    unknown_global = set(roles_mod.GLOBAL_TOOLS) - all_names
+    check(
+        "AR-01",
+        "每个角色引用的工具名都存在（含全局工具）",
+        ok_self and not unknown_global,
+        "; ".join(bad_detail) or (f"GLOBAL未知名={sorted(unknown_global)}" if unknown_global else "全部合法"),
+    )
 
     check(
         "AR-02",
@@ -57,15 +64,16 @@ def run_probe() -> int:
         str(roles_mod.OFFICIAL_ROLES.get(roles_mod.GENERAL_ROLE)),
     )
 
-    # 每个工具至少被一个非 general 角色引用（否则只剩 general 可用，容易让用户以为坏了）
-    covered = set()
+    # 每个工具至少被「一个非 general 角色」或「全局默认工具」覆盖
+    # （否则只剩 general 可用，容易让用户以为坏了）
+    covered = set(roles_mod.GLOBAL_TOOLS)
     for r in roles_mod.OFFICIAL_ROLES.values():
         if r.key != roles_mod.GENERAL_ROLE:
             covered |= set(r.tools)
     uncovered = all_names - covered
     check(
         "AR-03",
-        "每个工具至少被一个非 general 角色覆盖",
+        "每个工具至少被一个角色或全局工具覆盖",
         not uncovered,
         f"未覆盖={sorted(uncovered)}" if uncovered else "全覆盖",
     )
@@ -77,8 +85,9 @@ def run_probe() -> int:
     r = orchestrator.resolve_role(role="", message="帮我建个题库，导入这几道题")
     check("AR-05", "关键词『题库/导入』→ bank", r.key == "bank", r.key)
 
+    # 记忆不再是独立角色：记忆类请求不应路由到一个"记忆助手"，而应落在业务/通用角色上
     r = orchestrator.resolve_role(role="", message="帮我记一下我偏好早上学习")
-    check("AR-06", "关键词『记』→ memory", r.key == "memory", r.key)
+    check("AR-06", "记忆类消息不再路由到独立 memory 角色", r.key != "memory", r.key)
 
     r = orchestrator.resolve_role(role="", message="我错了多少题，正确率多少")
     check("AR-07", "关键词『统计/正确率』→ stats", r.key == "stats", r.key)
@@ -99,19 +108,28 @@ def run_probe() -> int:
 
     # ---- 3. compute_exclude ----
     bank = roles_mod.OFFICIAL_ROLES["bank"]
+    # 有效白名单 = 角色白名单 ∪ 全局默认工具（记忆等）
+    bank_effective_allow = set(bank.tools) | set(roles_mod.GLOBAL_TOOLS)
     ex = orchestrator.compute_exclude(bank, all_tool_names=all_names, user_disabled=set())
     check(
         "AR-12",
-        "bank 角色 exclude = 全部 − bank 白名单",
-        ex == all_names - set(bank.tools),
+        "bank 角色 exclude = 全部 − (bank 白名单 ∪ 全局工具)",
+        ex == all_names - bank_effective_allow,
         f"exclude={sorted(ex)}",
     )
-    # 白名单 ∩ (全部 − exclude) == 白名单
+    # 有效白名单 ∩ (全部 − exclude) == 有效白名单
     effective = all_names - ex
     check(
         "AR-13",
-        "bank 生效工具 == 白名单",
-        effective == set(bank.tools),
+        "bank 生效工具 == 白名单 ∪ 全局工具",
+        effective == bank_effective_allow,
+        f"effective={sorted(effective)}",
+    )
+    # 全局工具（记忆）必须对 bank 角色可见 —— 这是本次改动的核心诉求
+    check(
+        "AR-13b",
+        "全局工具（记忆）对 bank 角色可见",
+        {"memory_search", "memory_manage"}.issubset(effective),
         f"effective={sorted(effective)}",
     )
 
@@ -123,7 +141,7 @@ def run_probe() -> int:
     check(
         "AR-14",
         "用户屏蔽 bank_manage → 生效工具再少一个（求交语义）",
-        "bank_manage" not in eff2 and eff2 == set(bank.tools) - {"bank_manage"},
+        "bank_manage" not in eff2 and eff2 == bank_effective_allow - {"bank_manage"},
         f"effective={sorted(eff2)}",
     )
 
@@ -167,14 +185,20 @@ def run_probe() -> int:
     )
 
     # ---- 5. 语义红线（用集合运算再证一遍）----
-    role_tools = set(bank.tools)
+    # 红线（含全局工具版）：可用 = (白名单 ∪ 全局工具) ∩ (全部 − 用户屏蔽)
+    role_tools = set(bank.tools) | set(roles_mod.GLOBAL_TOOLS)
     user_disabled = {"question_manage"}
     exr = orchestrator.compute_exclude(
         bank, all_tool_names=all_names, user_disabled=user_disabled
     )
     lhs = all_names - exr
     rhs = role_tools & (all_names - user_disabled)
-    check("AR-20", "红线：可用 = 白名单 ∩ (全部 − 用户屏蔽)", lhs == rhs, f"{sorted(lhs)} vs {sorted(rhs)}")
+    check(
+        "AR-20",
+        "红线：可用 = (白名单 ∪ 全局工具) ∩ (全部 − 用户屏蔽)",
+        lhs == rhs,
+        f"{sorted(lhs)} vs {sorted(rhs)}",
+    )
 
     print("\n---- 官方角色切分（阶段 1）探针结果 ----")
     for rec in ROWS:
