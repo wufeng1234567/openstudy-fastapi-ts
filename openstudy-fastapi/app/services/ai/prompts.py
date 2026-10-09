@@ -377,6 +377,30 @@ AGENT_CONFIRM_RULES = """## Operations Requiring Confirmation
   confirmation step to the user before they actually execute.
 - Read-only operations (list / detail / search) execute immediately without confirmation."""
 
+#: 指挥家模式：告诉主智能体"你是指挥家、背后有子代理、怎么委派"。
+#:
+#: ⚠️ `{{SUB_AGENTS}}` 会被 `roles.render_sub_agents_briefing()` 的结果替换（子代理通讯录）。
+#: 仅在**指挥家模式**（未显式指定子代理）下注入；用户显式选某子代理时，该子代理直接
+#: 面向用户，不走委派，此段不注入。
+AGENT_CONDUCTOR_SECTION = """## Your Team and Delegation (CONDUCTOR MODE)
+You are the CONDUCTOR: you talk to the user directly and you own the final reply. Behind you
+there are specialist sub-agents. The user NEVER sees them — they work internally, and you
+present a single, unified answer.
+
+Your available specialists (delegate with `delegate_task`):
+{{SUB_AGENTS}}
+
+How to work:
+- FIRST decide: can you handle this yourself with your own general tools, or does it clearly
+  belong to a specialist? Do NOT delegate trivial requests you can answer directly.
+- When it clearly belongs to a specialist, call `delegate_task` with `sub_agent` = its key and
+  `task` = a clear, self-contained instruction (include the context it needs — the specialist
+  CANNOT see the user's conversation).
+- After the specialist returns, integrate its result and reply in ONE voice, in the user's
+  language. NEVER say "a sub-agent told me" or expose the internal division of labour.
+- If the user asks what you can do, describe the assistance in plain, user-facing terms
+  (managing question banks, notes, knowledge bases, study stats) — not the internal agents."""
+
 AGENT_QUESTION_TYPES = """## Question Type Codes
 1=single choice  2=multiple choice  3=true/false  4=fill-in-the-blank  5=short answer
 6=reading comprehension (composite)  7=cloze (composite)
@@ -516,6 +540,7 @@ def build_agent_system_prompt(
     *,
     include_tools: bool = True,
     include_doc_workflow: bool = False,
+    sub_agents_text: str = "",
 ) -> str:
     """组装 Agent 的系统提示词
 
@@ -531,12 +556,21 @@ def build_agent_system_prompt(
                     只有 **ds-free**（网页端挂不了 `tools` 参数、靠正文协议）才需要 True。
         include_doc_workflow: 是否注入「建库重型规则」（题型编码 / 字段推断 / 文档导题流程）。
                     仅当本轮带附件、或用户明确要建库/导题时才 True（见 `needs_doc_workflow`）。
+        sub_agents_text: **子代理通讯录**（`roles.render_sub_agents_briefing()` 的产物）。
+                    非空 → 注入 `AGENT_CONDUCTOR_SECTION`（指挥家模式）：告诉模型"你是指挥家、
+                    背后有这些子代理、怎么委派"。空 → 不注入（如用户显式点了某子代理，
+                    它直接面向用户，无需委派能力）。
     """
     sections = list(AGENT_CORE_SECTIONS)
     if include_doc_workflow:
         # 插在 workflow 之后、output 之前 —— 与旧的段序保持一致（题型编码等紧跟工作流）
         insert_at = sections.index(AGENT_OUTPUT_RULES)
         sections[insert_at:insert_at] = list(AGENT_DOC_SECTIONS)
+    # 指挥家段：插在确认规则之后、输出规范之前（约束"怎么派活/怎么合并回复"）
+    if sub_agents_text:
+        conductor = AGENT_CONDUCTOR_SECTION.replace("{{SUB_AGENTS}}", sub_agents_text)
+        insert_at = sections.index(AGENT_OUTPUT_RULES)
+        sections.insert(insert_at, conductor)
 
     prompt = "\n\n".join(sections)
     if include_tools:
@@ -596,6 +630,7 @@ __all__ = [
     "AGENT_INJECTION_GUARD",
     "AGENT_CORE_SECTIONS",
     "AGENT_DOC_SECTIONS",
+    "AGENT_CONDUCTOR_SECTION",
     "build_scene_messages",
     "build_agent_system_prompt",
     "needs_doc_workflow",

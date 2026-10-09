@@ -32,6 +32,7 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, Optional, Set
 
 from app.services.ai.agent.roles import (
+    DELEGATE_TOOL_NAME,
     GENERAL_ROLE,
     GLOBAL_TOOLS,
     OFFICIAL_ROLES,
@@ -119,10 +120,14 @@ def compute_exclude(
     """
     all_names = {str(n) for n in all_tool_names}
     disabled = {str(n) for n in user_disabled}
+    # `delegate_task` 是**指挥家专属元工具**，任何角色/子代理都不该拿到它
+    # （防子代理递归委派）。永远纳入排除集；指挥家模式由 loop 单独挂上。
+    meta_exclude = {DELEGATE_TOOL_NAME} if DELEGATE_TOOL_NAME in all_names else set()
 
     if not role.tools:
-        # general / 不限工具：只有用户屏蔽生效（全局工具本就在全部之内，无需叠加）
-        return {n for n in disabled if n in all_names}
+        # general / 不限工具：只有用户屏蔽 + 元工具排除生效
+        # （全局工具本就在全部之内，无需叠加）
+        return {n for n in (disabled | meta_exclude) if n in all_names}
 
     # 有效白名单 = 角色白名单 ∪ 全局默认工具（记忆等）—— 全局工具对所有角色可见
     allow = {str(n) for n in role.tools} | set(GLOBAL_TOOLS)
@@ -130,7 +135,7 @@ def compute_exclude(
     # 与用户屏蔽求并集后再收敛回「真实存在的工具名」——
     # 用户屏蔽集里可能有历史遗留的、已下线工具名，交给注册表 exclude 虽无害，
     # 但收敛掉能让返回值更干净、也便于探针断言。
-    return {n for n in (outside_role | disabled) if n in all_names}
+    return {n for n in (outside_role | disabled | meta_exclude) if n in all_names}
 
 
 def build_user_role(agent: Dict[str, Any]) -> RoleSpec:

@@ -71,6 +71,7 @@ from app.services.ai.agent.confirm_ticket import (
 from app.services.ai.agent.guard import ExecutionGuard, GuardState, params_hash
 from app.services.ai.agent import memory_hook
 from app.services.ai.agent import orchestrator
+from app.services.ai.agent import roles as roles_mod
 from app.services.ai.agent import rollback_service
 from app.services.ai.agent import runtime_context
 from app.services.ai.agent import tool_pref_service
@@ -729,38 +730,54 @@ async def run_agent_stream(
     # ⚠️ `definitions()` / `describe()` **本来就收 `exclude=`**，别另写一套过滤。
     disabled_tools = await tool_pref_service.disabled_tool_names(user_id)
 
-    # ---- 多智能体编排层：解析本轮角色（用户 Agent 优先，其次官方角色）----
-    # 规则：最终可用 = 角色白名单 ∩ (全部工具 − 用户屏蔽集)（见 `orchestrator` 红线）。
-    # 即：用户开关只能**收窄**，不能突破角色边界。`excluded_tools` 是交给注册表的黑名单，
-    # 它已含「角色外工具」与「用户屏蔽工具」两部分。
-    # ⚠️ `disabled_tools`（纯用户屏蔽）保留原义，供 ds-free 路径的 `_prepare_tool_call` 用；
-    #    面向模型/前端/内联执行闸门的出口一律改用 `excluded_tools`。
+    # ---- 多智能体编排层（指挥家 + 子代理）----
+    # 两条入口（见 docs/fastapi_v2_指挥家模式方案.md）：
+    #   · **显式选择**（用户点名某子代理：`req.agent_id` 非空，或 `req.role` 是具名子代理）
+    #     → 该子代理**直接面向用户**（用户就要它答），不启用指挥家、不挂 delegate_task。
+    #   · **自动路由**（`req.role` 为空）→ **指挥家模式**：主体是 `general`（全工具）+
+    #     元工具 `delegate_task` + 子代理通讯录；指挥家自行决定自己答 or 委派。
     #
-    # 用户自定义智能体（阶段 2）：`req.agent_id` 非空时优先于官方角色 —— 它的工具白名单
-    # 就是用户 Agent 的 `tools`，系统指令就是用户人设。读库失败**必须 fail-open**：
-    # 退回到按官方角色路由，绝不能因为「读不到用户 Agent」就让这一轮崩掉。
+    # ⚠️ `excluded_tools` 仍是"交给注册表的黑名单"，但指挥家模式要**额外把 delegate_task
+    #    加回**（`compute_exclude` 永远排除它，见 orchestrator 说明）。
+    # ⚠️ `disabled_tools`（纯用户屏蔽）保留原义，供 ds-free 路径的 `_prepare_tool_call` 用。
     user_agent_model: Optional[str] = None
     role_spec = None
+    explicit_agent = None  # 用户显式点名的子代理（user RoleSpec 或官方具名 RoleSpec）
     if req.agent_id:
         try:
             from app.services.ai.agent import agent_config_service
 
             agent_dict = await agent_config_service.get_agent_dict(user_id, int(req.agent_id))
             if agent_dict:
-                role_spec = orchestrator.build_user_role(agent_dict)
+                explicit_agent = orchestrator.build_user_role(agent_dict)
                 # 用户 Agent 可绑模型；仅在请求**未显式指定** model 时生效（请求优先）。
                 user_agent_model = (agent_dict.get("model") or "").strip() or None
         except Exception as e:  # noqa: BLE001 - 用户 Agent 解析失败 → 退回官方角色
             logger.warning("[agent] 解析用户智能体失败（退回官方角色）agent_id={}: {}", req.agent_id, e)
 
-    if role_spec is None:
-        role_spec = orchestrator.resolve_role(role=req.role, message=req.message)
+    if explicit_agent is None:
+        # 未传 agent_id：看 req.role 是否是**具名官方子代理**（点名要它）
+        named = roles_mod.role_or_none(req.role)
+        if named is not None and named.key != roles_mod.GENERAL_ROLE:
+            explicit_agent = named
+
+    if explicit_agent is not None:
+        # 用户点名 → 子代理直接面向用户
+        role_spec = explicit_agent
+        conductor_mode = False
+    else:
+        # 自动路由 → 指挥家模式
+        role_spec = orchestrator.resolve_role(role="", message="")  # = general（全工具）
+        conductor_mode = True
 
     excluded_tools = orchestrator.compute_exclude(
         role_spec,
         all_tool_names=registry.names(),
         user_disabled=disabled_tools,
     )
+    if conductor_mode:
+        # 指挥家额外拿回元工具；同时它的"子代理通讯录"在此准备好（下面注入提示词）
+        excluded_tools = {t for t in excluded_tools if t != roles_mod.DELEGATE_TOOL_NAME}
     tool_defs = registry.definitions(exclude=sorted(excluded_tools))
 
     if not registry.names():
@@ -907,8 +924,33 @@ async def run_agent_stream(
         # 也把注意力留给真正相关的规则。见 prompts.needs_doc_workflow。
         has_docs = bool(file_text) or bool(req.images) or bool(req.files)
         doc_workflow = prompts.needs_doc_workflow(typed, has_attachments=has_docs)
-        # 角色专属指令（英文，系统侧）放在 extra **最前**：角色人设优先级高于 L1 背景。
-        # `general` 角色的 prompt_fragment 为空串，此处自然跳过。
+
+        # 子代理通讯录（仅指挥家模式）：让指挥家"知道每个子代理能干什么"，据此决定派给谁。
+        # 含官方子代理 + 用户自定义智能体（后者从 DB 读；读失败不影响本轮）。
+        sub_agents_text = ""
+        if conductor_mode:
+            extra_agents: List[Dict[str, str]] = []
+            try:
+                from app.services.ai.agent import agent_config_service
+
+                for a in await agent_config_service.list_agents(user_id):
+                    extra_agents.append(
+                        {
+                            "key": f"user:{a.get('agentId')}",
+                            "name": a.get("name") or "",
+                            "capability": a.get("description") or a.get("personaPrompt") or "",
+                        }
+                    )
+            except Exception as e:  # noqa: BLE001 - 通讯录读失败不该阻断本轮
+                logger.warning("[agent] 读取用户智能体做通讯录失败: {}", e)
+            sub_agents_text = roles_mod.render_sub_agents_briefing(extra_agents)
+
+        # 显式点名子代理时：用它的 `persona`（第一人称自我认知）作角色指令；
+        # 指挥家模式下 role_spec 是 general（无 persona），角色感由通讯录段承担。
+        role_prompt = ""
+        if not conductor_mode:
+            role_prompt = (role_spec.persona or role_spec.prompt_fragment or "").strip()
+
         system_prompt = prompts.build_agent_system_prompt(
             # ⚠️ 付费链路**不再**把工具清单写进系统提示词：`bind_tools(tool_defs)` 已经把
             #    完整工具定义（含 JSON Schema）交给模型，那是官方 Function Calling 的权威来源。
@@ -917,9 +959,10 @@ async def run_agent_stream(
             #    以及万一有人在别处复用本函数）。
             include_tools=False,
             include_doc_workflow=doc_workflow,
+            sub_agents_text=sub_agents_text,
             tools_text=registry.describe(exclude=sorted(excluded_tools)),
             extra="\n\n".join(
-                [s for s in [role_spec.prompt_fragment, *system_notes, runtime_ctx] if s]
+                [s for s in [role_prompt, *system_notes, runtime_ctx] if s]
             ),
         )
     lc_messages: List[Any] = [SystemMessage(content=system_prompt)]
@@ -968,6 +1011,38 @@ async def run_agent_stream(
     # 实测 `bind_tools([])` 生成的是 `{"tools": []}`，会原样进请求体，
     # OpenAI 兼容端点对空 tools 数组是直接 400 的（「用户自己关了全部工具」变成报错，最糟）。
     bound_llm = llm if tools_all_disabled else llm.bind_tools(tool_defs)
+    # 指挥家模式的「委派环境」：把 llm / 子代理定义 / 各自排除集 / 透传 extra 塞进 ctx.extra，
+    # 供 `delegate_task` 工具取用（见 delegate.py 的模块说明）。非指挥家模式则为空。
+    delegate_env: Dict[str, Any] = {}
+    if conductor_mode:
+        all_names_now = registry.names()
+        sub_roles: Dict[str, Any] = {}
+        sub_excludes: Dict[str, Any] = {}
+        for sub in roles_mod.renderable_sub_agents():
+            sub_roles[sub.key] = sub
+            sub_excludes[sub.key] = orchestrator.compute_exclude(
+                sub, all_tool_names=all_names_now, user_disabled=disabled_tools
+            )
+        # 用户自定义智能体也可被委派（转成 RoleSpec）
+        try:
+            from app.services.ai.agent import agent_config_service
+
+            for a in await agent_config_service.list_agents(user_id):
+                ur = orchestrator.build_user_role(a)
+                sub_roles[ur.key] = ur
+                sub_excludes[ur.key] = orchestrator.compute_exclude(
+                    ur, all_tool_names=all_names_now, user_disabled=disabled_tools
+                )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[agent] 读取用户智能体做委派清单失败: {}", e)
+        delegate_env = {
+            "delegate_llm": llm,
+            "delegate_roles": sub_roles,
+            "delegate_exclude": sub_excludes,
+            # 透传给子代理 ToolContext.extra 的键（附件等，子代理可能需要）
+            "delegate_extra": {"attachments": attachments},
+        }
+
     ctx = ToolContext(
         db=db,
         user_id=user_id,
@@ -981,6 +1056,7 @@ async def run_agent_stream(
             # 本轮附件正文（结构化），供 `knowledge_ingest.from_attachment` 取用：
             # [{"name": ..., "text": ...}]。没有附件时是空列表。
             "attachments": attachments,
+            **delegate_env,
         },
     )
 
@@ -1279,6 +1355,22 @@ async def run_agent_stream(
                     )
                     continue
 
+            # 指挥家委派：在普通 tool_start 之前额外发一条 delegate_start，让前端时间线
+            # 显示「调度到 <子代理>…」（子代理不直接发言，只在这里露个存在感）。
+            if tool_name == roles_mod.DELEGATE_TOOL_NAME:
+                sub_key = str(params.get("sub_agent") or "")
+                sub = (ctx.extra.get("delegate_roles") or {}).get(sub_key)
+                yield _event(
+                    {
+                        "type": "delegate_start",
+                        "agent": {
+                            "id": sub_key,
+                            "name": getattr(sub, "name", sub_key) if sub else sub_key,
+                        },
+                        "task": str(params.get("task") or "")[:200],
+                    }
+                )
+
             yield _event(
                 {
                     "type": "tool_start",
@@ -1336,6 +1428,16 @@ async def run_agent_stream(
                     "data": result,
                 }
             )
+            # 指挥家委派完成：标注子代理收工（成功/失败都发，前端据此收尾时间线条目）
+            if tool_name == roles_mod.DELEGATE_TOOL_NAME:
+                yield _event(
+                    {
+                        "type": "delegate_done",
+                        "agent": {"id": str(params.get("sub_agent") or "")},
+                        "success": bool(result.get("success")),
+                        "summary": str(result.get("message") or result.get("error") or "")[:200],
+                    }
+                )
             if message:
                 last_tool_message = message
 

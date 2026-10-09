@@ -38,6 +38,10 @@ def run_probe() -> int:
 
     ensure_tools_loaded()
     all_names = set(registry.names())
+    # `delegate_task` 是**指挥家专属元工具**，不参与角色白名单、永远被 exclude（防递归委派）。
+    # 因此"每个工具都被某角色覆盖"的断言要把它排除在外。
+    meta_tool = roles_mod.DELEGATE_TOOL_NAME
+    business_names = all_names - {meta_tool}
 
     # ---- 1. 角色表自洽 ----
     ok_self = True
@@ -64,16 +68,16 @@ def run_probe() -> int:
         str(roles_mod.OFFICIAL_ROLES.get(roles_mod.GENERAL_ROLE)),
     )
 
-    # 每个工具至少被「一个非 general 角色」或「全局默认工具」覆盖
-    # （否则只剩 general 可用，容易让用户以为坏了）
+    # 每个**业务工具**至少被「一个非 general 角色」或「全局默认工具」覆盖
+    # （否则只剩 general 可用，容易让用户以为坏了）。元工具 delegate_task 除外。
     covered = set(roles_mod.GLOBAL_TOOLS)
     for r in roles_mod.OFFICIAL_ROLES.values():
         if r.key != roles_mod.GENERAL_ROLE:
             covered |= set(r.tools)
-    uncovered = all_names - covered
+    uncovered = business_names - covered
     check(
         "AR-03",
-        "每个工具至少被一个角色或全局工具覆盖",
+        "每个业务工具至少被一个角色或全局工具覆盖",
         not uncovered,
         f"未覆盖={sorted(uncovered)}" if uncovered else "全覆盖",
     )
@@ -145,18 +149,24 @@ def run_probe() -> int:
         f"effective={sorted(eff2)}",
     )
 
-    # general 不限工具：只有用户屏蔽生效
+    # general 不限工具：只有用户屏蔽 + 元工具(delegate_task)排除生效
     general = roles_mod.OFFICIAL_ROLES[roles_mod.GENERAL_ROLE]
+    meta_ex = {meta_tool} if meta_tool in all_names else set()
     ex3 = orchestrator.compute_exclude(general, all_tool_names=all_names, user_disabled=set())
-    check("AR-15", "general 无用户屏蔽 → exclude 空", ex3 == set(), f"exclude={sorted(ex3)}")
+    check(
+        "AR-15",
+        "general 无用户屏蔽 → 只排除元工具 delegate_task",
+        ex3 == meta_ex,
+        f"exclude={sorted(ex3)}",
+    )
 
     ex4 = orchestrator.compute_exclude(
         general, all_tool_names=all_names, user_disabled={"note_manage"}
     )
     check(
         "AR-16",
-        "general + 用户屏蔽 note_manage → 仅排除它",
-        ex4 == {"note_manage"},
+        "general + 用户屏蔽 note_manage → 排除它 + 元工具",
+        ex4 == ({"note_manage"} | meta_ex),
         f"exclude={sorted(ex4)}",
     )
 
@@ -164,7 +174,12 @@ def run_probe() -> int:
     ex5 = orchestrator.compute_exclude(
         general, all_tool_names=all_names, user_disabled={"ghost_tool_xyz"}
     )
-    check("AR-17", "用户屏蔽里的幽灵工具名被收敛掉", ex5 == set(), f"exclude={sorted(ex5)}")
+    check(
+        "AR-17",
+        "用户屏蔽里的幽灵工具名被收敛掉（只剩元工具排除）",
+        ex5 == meta_ex,
+        f"exclude={sorted(ex5)}",
+    )
 
     # ---- 4. 集成：收窄确实生效（工具数下降）----
     full_defs = registry.definitions(exclude=[])
@@ -185,17 +200,17 @@ def run_probe() -> int:
     )
 
     # ---- 5. 语义红线（用集合运算再证一遍）----
-    # 红线（含全局工具版）：可用 = (白名单 ∪ 全局工具) ∩ (全部 − 用户屏蔽)
+    # 红线（含全局工具版）：可用 = (白名单 ∪ 全局工具) ∩ (全部 − 用户屏蔽 − 元工具)
     role_tools = set(bank.tools) | set(roles_mod.GLOBAL_TOOLS)
     user_disabled = {"question_manage"}
     exr = orchestrator.compute_exclude(
         bank, all_tool_names=all_names, user_disabled=user_disabled
     )
     lhs = all_names - exr
-    rhs = role_tools & (all_names - user_disabled)
+    rhs = role_tools & (all_names - user_disabled - meta_ex)
     check(
         "AR-20",
-        "红线：可用 = (白名单 ∪ 全局工具) ∩ (全部 − 用户屏蔽)",
+        "红线：可用 = (白名单 ∪ 全局工具) ∩ (全部 − 用户屏蔽 − 元工具)",
         lhs == rhs,
         f"{sorted(lhs)} vs {sorted(rhs)}",
     )

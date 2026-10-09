@@ -26,6 +26,13 @@ export type AgentEventType =
   | 'tool_confirm_resolved'
   | 'tool_start'
   | 'tool_result'
+  /**
+   * **指挥家委派子代理**（多智能体协同）：指挥家把任务派给某子代理 / 子代理收工。
+   * 子代理**不直接面向用户** —— 这两条事件只让执行时间线显示「调度到 <子代理>」「<子代理>完成」；
+   * 子代理的实际产出由指挥家整合后以普通 `text` 事件下发。
+   */
+  | 'delegate_start'
+  | 'delegate_done'
   | 'self_correct'
   | 'warning'
   | 'error'

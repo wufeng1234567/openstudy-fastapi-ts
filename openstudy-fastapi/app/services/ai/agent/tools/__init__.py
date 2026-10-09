@@ -15,6 +15,7 @@ Agent 内置工具集
 from app.services.ai.agent.registry import registry
 from app.services.ai.agent.tools.bank_manage import BankManageTool
 from app.services.ai.agent.tools.bank_share_manage import BankShareManageTool
+from app.services.ai.agent.tools.delegate import DelegateTaskTool
 from app.services.ai.agent.tools.knowledge_base_manage import KnowledgeBaseManageTool
 from app.services.ai.agent.tools.knowledge_ingest import KnowledgeIngestTool
 from app.services.ai.agent.tools.knowledge_search import KnowledgeSearchTool
@@ -43,10 +44,15 @@ registry.register(BankShareManageTool())
 # —— 2026-10-09 放行「从文本 / 附件写入知识库」能力（`knowledge_base_manage` 曾刻意封禁，
 #    原因涉付费 embedding；本次按方案 B（解析落库同步 + 向量化后台）放行，见该模块 docstring）
 registry.register(KnowledgeIngestTool())
+# —— 2026-10-09 指挥家模式：`delegate_task` 是**元工具**（指挥家把任务派给子代理）。
+#    ⚠️ 它**不参与任何角色的工具白名单**：`orchestrator.compute_exclude` 会把它永远排除，
+#    只有指挥家模式由 `loop` 单独挂上（防子代理递归委派）。见 delegate.py 模块说明。
+registry.register(DelegateTaskTool())
 
 __all__ = [
     "BankManageTool",
     "BankShareManageTool",
+    "DelegateTaskTool",
     "KnowledgeBaseManageTool",
     "KnowledgeIngestTool",
     "KnowledgeSearchTool",
