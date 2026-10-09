@@ -1,8 +1,0 @@
-{
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "noEmit": true,
-    "ignoreDeprecations": "5.0"
-  },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "tests/**/*.d.mts", "vite.config.ts"]
-}

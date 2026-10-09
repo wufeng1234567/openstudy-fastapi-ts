@@ -66,3 +66,18 @@ build/
 # package-lock.json
 # pnpm-lock.yaml
 # yarn.lock
+
+# 项目内上传目录（用户上传的图片/文件，属运行时数据，不入库）
+# 2026-09-26 从 D:/ruoyi/uploadPath 搬进项目内部；约 500MB，绝不能提交
+openstudy-fastapi/data/
+
+# 本地调试 / 变异测试产物（临时生成，不入库）
+# 2026-10-09 交付前从索引清理：_scratch_mut 曾有 502 个文件被误跟踪
+_scratch_mut/
+_probe_*.txt
+_probe_*.py
+_probe_*.json
+openstudy-fastapi/tests/_evidence/
+openstudy-fastapi/tests/_probe_*.py
+openstudy-fastapi/tests/_probe_*.txt
+openstudy-fastapi/tests/_ui_evidence/
