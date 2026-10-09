@@ -16,6 +16,7 @@ from app.services.ai.agent.registry import registry
 from app.services.ai.agent.tools.bank_manage import BankManageTool
 from app.services.ai.agent.tools.bank_share_manage import BankShareManageTool
 from app.services.ai.agent.tools.knowledge_base_manage import KnowledgeBaseManageTool
+from app.services.ai.agent.tools.knowledge_ingest import KnowledgeIngestTool
 from app.services.ai.agent.tools.knowledge_search import KnowledgeSearchTool
 from app.services.ai.agent.tools.learning_stats import LearningStatsTool
 from app.services.ai.agent.tools.memory_manage import MemoryManageTool
@@ -39,11 +40,15 @@ registry.register(LearningStatsTool())
 registry.register(QuestionFlagManageTool())
 registry.register(KnowledgeBaseManageTool())
 registry.register(BankShareManageTool())
+# —— 2026-10-09 放行「从文本 / 附件写入知识库」能力（`knowledge_base_manage` 曾刻意封禁，
+#    原因涉付费 embedding；本次按方案 B（解析落库同步 + 向量化后台）放行，见该模块 docstring）
+registry.register(KnowledgeIngestTool())
 
 __all__ = [
     "BankManageTool",
     "BankShareManageTool",
     "KnowledgeBaseManageTool",
+    "KnowledgeIngestTool",
     "KnowledgeSearchTool",
     "LearningStatsTool",
     "MemoryManageTool",

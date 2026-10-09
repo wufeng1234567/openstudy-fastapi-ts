@@ -214,7 +214,7 @@ def check_agent_chain(fixtures: dict) -> None:
         files=[as_data_url(*fixtures["docx"]), as_data_url(*fixtures["renamed_doc"])],
         user_id=1,
     )
-    text, images, warnings = _collect_attachments(req)
+    text, images, warnings, structured = _collect_attachments(req)
 
     check(len(images) == 6, "抽出 6 张插图（两份 docx 各 3，实际 {}）".format(len(images)))
     check(markers_of(text) == list(range(0, len(images))),

@@ -259,12 +259,19 @@ async def persist_agent_images(data_urls: List[str]) -> List[str]:
     return urls
 
 
-def _collect_attachments(req: AgentRequest) -> Tuple[str, List[str], List[str]]:
-    """遍历文档附件 → (拼接正文, 文档插图 data URL, 告警)
+def _collect_attachments(
+    req: AgentRequest,
+) -> Tuple[str, List[str], List[str], List[Dict[str, str]]]:
+    """遍历文档附件 → (拼接正文, 文档插图 data URL, 告警, 结构化附件列表)
 
     正文用 `<document name="...">` 包裹。这层标签同时干两件事：
       ① 告诉模型「这是文件内容，不是用户说的话」；
       ② 多个附件时天然分段，模型不会把两个文档的内容串在一起。
+
+    第 4 个返回值 `structured`（`[{"name": ..., "text": ...}]`）是给
+    `knowledge_ingest` 工具的 `from_attachment` 用的 —— 它需要**附件名 + 该附件的
+    纯文本**（未包 `<document>` 标签的原始正文）来把内容写进知识库。
+    这里**顺带**产出、不重复解析（解析是同步重活，老 .doc 还会借 Word COM）。
     """
     from app.services.ai.chat_engine import data_url_to_bytes
     from app.services.file_parser import parse_file
@@ -273,6 +280,7 @@ def _collect_attachments(req: AgentRequest) -> Tuple[str, List[str], List[str]]:
     sections: List[str] = []
     doc_images: List[str] = []
     warnings: List[str] = []
+    structured: List[Dict[str, str]] = []
 
     for item in req.files or []:
         name = (_attachment_field(item, "name") or "file").strip() or "file"
@@ -307,11 +315,33 @@ def _collect_attachments(req: AgentRequest) -> Tuple[str, List[str], List[str]]:
         if images:
             doc_images.extend(images)
 
+        # 供 knowledge_ingest.from_attachment 使用：附件名 + 去标记的纯文本。
+        # 只收「有正文」的附件（纯图片附件没有可入库的文本，跳过即可）。
+        plain = _attachment_plain_text(parsed)
+        if plain.strip():
+            structured.append({"name": name, "text": plain})
+
         # 含公式的文档：提醒模型保留 LaTeX 反斜杠（少走一轮转义修复）
         if "\\" in marked:
             warnings.append(f"附件 {name} 含公式，已提醒模型注意反斜杠转义")
 
-    return "\n\n".join(sections), doc_images, warnings
+    return "\n\n".join(sections), doc_images, warnings, structured
+
+
+def _attachment_plain_text(parsed: Any) -> str:
+    """从 `parse_file` 的结果里取「干净的纯文本」（供写入知识库用）
+
+    `parse_file` 的正文口径见其 docstring：字段名是 **`textContent`**
+    （不是 `text` / `content`），`marked` 版本才带【图N】标记与 `$latex$` 等标记。
+    这里要的是**原始纯文本**（不含标记），所以直接取 `textContent`。
+    取不到就回空串（调用方会跳过该附件）。
+    """
+    if not isinstance(parsed, dict):
+        return ""
+    value = parsed.get("textContent")
+    if isinstance(value, str) and value.strip():
+        return value
+    return ""
 
 
 # ============================================================
@@ -518,6 +548,11 @@ async def execute_agent_tool(
             "tool_registry": registry,
             # 回退账本的归组键（每个工具调用都从 ctx 里读，见 rollback_service.record_op）
             "turn_id": _resolve_turn_id(turn_id),
+            # ⚠️ 这条是 ds-free 的**单步执行**链路，只拿到一个工具名 + 参数，
+            #    **没有附件解析上下文**（附件在前端循环里、不在后端）。所以这里只给空列表：
+            #    `knowledge_ingest.from_attachment` 在此链路会返回明确的 fail 引导，
+            #    不会「以为有附件」而空写。附件入库走 api 主链路的 run_agent_stream。
+            "attachments": [],
         },
     )
     return await _execute_tool(tool, params, ctx)
@@ -572,7 +607,10 @@ async def preview_agent_tool(
         db=db,
         user_id=user_id,
         session_id=session_id or None,
-        extra={"image_urls": [], "tool_registry": registry},
+        # 同 execute_agent_tool：ds-free 单步链路没有附件解析上下文，给空列表，
+        # 让 `knowledge_ingest.from_attachment` 的 preview 落到「没有可用附件」分支
+        # （而不是 KeyError / 假装有附件）。
+        extra={"image_urls": [], "tool_registry": registry, "attachments": []},
     )
     try:
         preview: Dict[str, Any] = await tool.preview(params, ctx)
@@ -714,7 +752,9 @@ async def run_agent_stream(
     # ---- ② 附件 → 正文 + 图片 ----
     # ⚠️ 丢到线程池里执行：文档解析是同步的，老版 .doc 还会借 Word COM 转换
     #    （1~3s，最坏 CONVERT_TIMEOUT_SECONDS）。直接在事件循环里跑会把整个后端冻住。
-    file_text, doc_images, warnings = await asyncio.to_thread(_collect_attachments, req)
+    file_text, doc_images, warnings, attachments = await asyncio.to_thread(
+        _collect_attachments, req
+    )
     all_images = [u for u in (req.images or []) if u] + doc_images
     image_urls = await persist_agent_images(all_images) if all_images else []
     if doc_images and not any(image_urls):
@@ -877,6 +917,9 @@ async def run_agent_stream(
             # 回退账本的归组键。⚠️ 这个 ctx 在**循环外**创建一次，所以一整轮里所有
             # 工具调用共用同一个 turn_id（这正是「回退这一轮」要的粒度）。
             "turn_id": turn_id,
+            # 本轮附件正文（结构化），供 `knowledge_ingest.from_attachment` 取用：
+            # [{"name": ..., "text": ...}]。没有附件时是空列表。
+            "attachments": attachments,
         },
     )
 
