@@ -78,19 +78,27 @@
               @remove="removeAttachment" />
           </template>
 
-          <!-- 输入框下方工具行（左半）：附件 / 知识库 / 历史会话 / 执行开关 / 工具清单 -->
+          <!-- 输入框下方工具行（左半）：附件 / 知识库 / 历史会话 / 执行开关 -->
+          <!--
+            知识库 / 历史会话 / 设置三个入口**统一到同一个可拉伸抽屉**（内部 tab 切换）。
+            方向原则（用户 2026-10-10 定）：**入口在哪侧、抽屉就从哪侧滑出** ——
+            知识库/历史会话按钮在左 → 抽屉从左侧（ltr）；设置按钮在右 → 抽屉从右侧（rtl）。
+            该方向由 `panelDirection` 按当前 tab 动态给出（见 script）。
+          -->
           <template #input-footer>
             <ChatFileUploader v-model="attachments" :disabled="isGenerating" />
-            <!-- 知识库：嵌在本页（输入栏按钮 + 右侧抽屉），不做独立入口 ——
-                 资料是给「这次提问」用的，入口就该在发消息的地方。
-                 这里不需要在改动后做任何失效处理：运行时背景本来就不缓存
-                 （见 `agentDsFree.fetchAgentContext`），下一轮提问自然带上新的库清单。 -->
-            <KnowledgeBaseDrawer />
 
-            <!-- 历史会话开关：打开**左侧**可拉伸抽屉（统一用公共组件 ResizableDrawer，
-                 与知识库抽屉同款交互；原来是输入框上方的浮动小面板）。 -->
-            <button type="button" class="tb-btn" :class="{ 'is-on': historyOpen }" title="历史会话"
-              @click="historyOpen = true">
+            <!-- 知识库：资料是给「这次提问」用的，入口就该在发消息的地方 -->
+            <button type="button" class="tb-btn" :class="{ 'is-on': panelOpen && panelTab === 'kb' }"
+              title="知识库 —— 传资料、让智能体检索后回答" @click="openPanel('kb')">
+              <el-icon>
+                <FolderOpened />
+              </el-icon>
+            </button>
+
+            <!-- 历史会话：入口在左 → 抽屉从左侧滑出 -->
+            <button type="button" class="tb-btn" :class="{ 'is-on': panelOpen && panelTab === 'history' }"
+              title="历史会话" @click="openPanel('history')">
               <el-icon>
                 <Clock />
               </el-icon>
@@ -104,8 +112,9 @@
           </template>
           <!-- 输入框下方工具行（右半）：设置（智能体/模型/工具聚合）+ 新对话 + 发送按钮 -->
           <template #input-toolbar-right>
-            <button type="button" class="tb-btn" title="智能体设置（智能体 / 模型 / 可用工具）"
-              :disabled="isGenerating" @click="openSettings">
+            <!-- 设置入口在右 → 抽屉从右侧滑出（见上方方向原则） -->
+            <button type="button" class="tb-btn" :class="{ 'is-on': panelOpen && panelTab === 'settings' }"
+              title="智能体设置（智能体 / 模型 / 可用工具）" :disabled="isGenerating" @click="openPanel('settings')">
               <el-icon>
                 <Setting />
               </el-icon>
@@ -144,120 +153,126 @@
       </div>
     </div>
 
-    <!-- 历史会话抽屉（**左侧**，可拖拽调宽）：统一用公共组件 ResizableDrawer，
-         与右侧的知识库抽屉同款交互（原来是输入框上方的浮动小面板）。 -->
+    <!--
+      智能体侧栏抽屉（统一容器）：知识库 / 历史会话 / 设置三个功能共用**同一个可拉伸抽屉**，
+      内部用 tab 切换。方向按「入口在哪侧、抽屉就从哪侧滑出」动态给出：
+        设置（右侧入口）→ rtl（右）；知识库/历史会话（左侧入口）→ ltr（左）。
+      见 `panelDirection` 计算属性。
+    -->
     <ResizableDrawer
-      v-model="historyOpen"
-      direction="ltr"
-      storage-key="openstudy_agent_history_size"
-      :default-width="300"
-      :min="240"
-      :max="600"
+      v-model="panelOpen"
+      :direction="panelDirection"
+      storage-key="openstudy_agent_panel_size"
+      :default-width="380"
+      :min="300"
+      :max="720"
     >
-      <div class="session-drawer">
-        <div class="session-drawer-header">
-          <span>历史会话</span>
-          <span class="session-count">{{ sessionCountText }}</span>
+      <div class="agent-panel">
+        <!-- tab 头：与工具栏三个入口一一对应 -->
+        <div class="agent-panel-tabs">
+          <div :class="['aptab', { active: panelTab === 'settings' }]" @click="panelTab = 'settings'">
+            <el-icon><Setting /></el-icon>
+            <span>设置</span>
+          </div>
+          <div :class="['aptab', { active: panelTab === 'kb' }]" @click="panelTab = 'kb'">
+            <el-icon><FolderOpened /></el-icon>
+            <span>知识库</span>
+          </div>
+          <div :class="['aptab', { active: panelTab === 'history' }]" @click="panelTab = 'history'">
+            <el-icon><Clock /></el-icon>
+            <span>历史会话</span>
+          </div>
         </div>
 
-        <!-- 搜索：**只按标题**过滤，纯客户端过滤（按正文搜需后端检索接口，本轮不做）。 -->
-        <div class="session-search">
-          <el-input v-model="sessionKeyword" size="small" clearable placeholder="搜索会话标题"
-            @keydown.esc="historyOpen = false">
-            <template #prefix>
-              <el-icon><Search /></el-icon>
-            </template>
-          </el-input>
-        </div>
-
-        <div class="session-list" v-loading="sessionsLoading">
-          <div v-for="s in filteredSessions" :key="s.sessionId"
-            :class="['session-item', { active: s.sessionId === sessionId }]" @click="switchSession(s)">
-            <div class="session-title">{{ sessionTitle(s) }}</div>
-            <div class="session-meta">
-              <span>{{ formatTime(s.updatedAt) }}</span>
-              <span>{{ s.messageCount || 0 }} 条</span>
+        <!-- ① 设置 -->
+        <div v-show="panelTab === 'settings'" class="agent-panel-body settings-body">
+          <div class="settings-row">
+            <div class="settings-label">智能体</div>
+            <div class="settings-field">
+              <el-select v-model="selectedAgentKey" size="default" :disabled="isGenerating" style="width: 100%">
+                <el-option label="自动（按需求智能选择）" value="" />
+                <el-option-group v-if="agentRoles.length" label="官方智能体">
+                  <el-option v-for="r in agentRoles" :key="'r-' + r.key" :label="r.name" :value="'official:' + r.key" />
+                </el-option-group>
+                <el-option-group v-if="myAgents.length" label="我的智能体">
+                  <el-option v-for="a in myAgents" :key="'a-' + a.agentId" :label="a.name" :value="'user:' + a.agentId" />
+                </el-option-group>
+              </el-select>
+              <div class="settings-hint">「自动」= 由主智能体按需求智能分派；也可指定某个助手。</div>
             </div>
-            <span class="session-delete" title="删除会话" @click.stop="removeSession(s)">
-              <el-icon>
-                <Delete />
-              </el-icon>
-            </span>
           </div>
 
-          <!-- 两种「空」分成两句话：没有历史 / 搜索没命中（带关键词）—— 复用一句等于说假话。 -->
-          <div v-if="!sessionsLoading && !sessions.length" class="session-empty">暂无历史会话</div>
-          <div v-else-if="!sessionsLoading && !filteredSessions.length" class="session-empty">
-            没有标题包含「{{ sessionKeyword.trim() }}」的会话
+          <div class="settings-row">
+            <div class="settings-label">模型</div>
+            <div class="settings-field">
+              <AiModelSelector v-model="model" scene="agent" width="100%" :disabled="isGenerating" />
+            </div>
+          </div>
+
+          <div class="settings-row">
+            <div class="settings-label">可用工具</div>
+            <div class="settings-field">
+              <div v-if="!toolOptions.length" class="settings-hint">正在读取工具清单…</div>
+              <div v-else class="settings-tools">
+                <div v-for="t in toolOptions" :key="t.name" class="settings-tool">
+                  <span class="settings-tool-name">{{ t.label || t.name }}</span>
+                  <el-switch
+                    :model-value="t.disabled !== 1"
+                    size="small"
+                    :loading="toolTogglingName === t.name"
+                    :disabled="isGenerating"
+                    @update:model-value="toggleToolInSettings(t, $event)"
+                  />
+                </div>
+              </div>
+              <div class="settings-hint">关掉后，智能体提问时不会再下发该工具。</div>
+            </div>
+          </div>
+
+          <div class="settings-row">
+            <div class="settings-label">我的智能体</div>
+            <div class="settings-field">
+              <el-button text type="primary" @click="openAgentManager">管理我的智能体（新建 / 编辑 / 删除）</el-button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ② 知识库（与悬浮助手同一个面板组件） -->
+        <div v-show="panelTab === 'kb'" class="agent-panel-body">
+          <KnowledgeBasePanel ref="kbPanelRef" />
+        </div>
+
+        <!-- ③ 历史会话 -->
+        <div v-show="panelTab === 'history'" class="agent-panel-body session-drawer">
+          <div class="session-search">
+            <el-input v-model="sessionKeyword" size="small" clearable placeholder="搜索会话标题"
+              @keydown.esc="panelOpen = false">
+              <template #prefix>
+                <el-icon><Search /></el-icon>
+              </template>
+            </el-input>
+          </div>
+          <div class="session-count-line">{{ sessionCountText }}</div>
+          <div class="session-list" v-loading="sessionsLoading">
+            <div v-for="s in filteredSessions" :key="s.sessionId"
+              :class="['session-item', { active: s.sessionId === sessionId }]" @click="switchSession(s)">
+              <div class="session-title">{{ sessionTitle(s) }}</div>
+              <div class="session-meta">
+                <span>{{ formatTime(s.updatedAt) }}</span>
+                <span>{{ s.messageCount || 0 }} 条</span>
+              </div>
+              <span class="session-delete" title="删除会话" @click.stop="removeSession(s)">
+                <el-icon><Delete /></el-icon>
+              </span>
+            </div>
+            <div v-if="!sessionsLoading && !sessions.length" class="session-empty">暂无历史会话</div>
+            <div v-else-if="!sessionsLoading && !filteredSessions.length" class="session-empty">
+              没有标题包含「{{ sessionKeyword.trim() }}」的会话
+            </div>
           </div>
         </div>
       </div>
     </ResizableDrawer>
-
-    <!-- 「设置」弹层：把「配置类三件套」——智能体 / 模型 / 可用工具——聚合到一处，
-         让底部工具栏只保留高频动作（用户 2026-10-09 裁决，解决信息过密问题）。 -->
-    <el-dialog v-model="settingsVisible" title="智能体设置" width="520px" append-to-body>
-      <div class="settings-body">
-        <!-- ① 智能体：官方角色 or 我的自定义智能体；空 = 自动路由（指挥家） -->
-        <div class="settings-row">
-          <div class="settings-label">智能体</div>
-          <div class="settings-field">
-            <el-select v-model="selectedAgentKey" size="default" :disabled="isGenerating" style="width: 100%">
-              <el-option label="自动（按需求智能选择）" value="" />
-              <el-option-group v-if="agentRoles.length" label="官方智能体">
-                <el-option v-for="r in agentRoles" :key="'r-' + r.key" :label="r.name" :value="'official:' + r.key" />
-              </el-option-group>
-              <el-option-group v-if="myAgents.length" label="我的智能体">
-                <el-option v-for="a in myAgents" :key="'a-' + a.agentId" :label="a.name" :value="'user:' + a.agentId" />
-              </el-option-group>
-            </el-select>
-            <div class="settings-hint">
-              「自动」= 由主智能体按需求智能分派；也可指定某个助手。
-            </div>
-          </div>
-        </div>
-
-        <!-- ② 模型 -->
-        <div class="settings-row">
-          <div class="settings-label">模型</div>
-          <div class="settings-field">
-            <AiModelSelector v-model="model" scene="agent" width="100%" :disabled="isGenerating" />
-          </div>
-        </div>
-
-        <!-- ③ 可用工具 -->
-        <div class="settings-row">
-          <div class="settings-label">可用工具</div>
-          <div class="settings-field">
-            <div v-if="!toolOptions.length" class="settings-hint">正在读取工具清单…</div>
-            <div v-else class="settings-tools">
-              <div v-for="t in toolOptions" :key="t.name" class="settings-tool">
-                <span class="settings-tool-name">{{ t.label || t.name }}</span>
-                <el-switch
-                  :model-value="t.disabled !== 1"
-                  size="small"
-                  :loading="toolTogglingName === t.name"
-                  :disabled="isGenerating"
-                  @update:model-value="toggleToolInSettings(t, $event)"
-                />
-              </div>
-            </div>
-            <div class="settings-hint">关掉后，智能体提问时不会再下发该工具。</div>
-          </div>
-        </div>
-
-        <!-- ④ 我的智能体入口（低频管理，藏在这里） -->
-        <div class="settings-row">
-          <div class="settings-label">我的智能体</div>
-          <div class="settings-field">
-            <el-button text type="primary" @click="openAgentManager">管理我的智能体（新建 / 编辑 / 删除）</el-button>
-          </div>
-        </div>
-      </div>
-      <template #footer>
-        <el-button type="primary" @click="settingsVisible = false">完成</el-button>
-      </template>
-    </el-dialog>
 
     <!-- 「我的智能体」管理弹窗 -->
     <el-dialog v-model="agentMgrVisible" title="我的智能体" width="600px" append-to-body>
@@ -335,7 +350,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'FrontAgentChat' })
 
-import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Clock, Delete, Plus, Setting,
@@ -347,7 +362,7 @@ import AgentToolResult from '@/components/AgentToolResult/index.vue'
 import AgentConfirmCard from '@/components/AgentConfirmCard/index.vue'
 import ChatFileUploader from '@/components/ChatFileUploader/index.vue'
 import ChatAttachmentList from '@/components/ChatAttachmentList/index.vue'
-import KnowledgeBaseDrawer from '@/components/KnowledgeBaseDrawer/index.vue'
+import KnowledgeBasePanel from '@/components/KnowledgeBasePanel/index.vue'
 import ResizableDrawer from '@/components/ResizableDrawer/index.vue'
 import { useAgentChat } from '@/composables/useAgentChat'
 import { listSessions, createSession, deleteSession, getConversationHistory, saveConversationMessages, getAgentTimeline, attachmentPlaceholder, fillAttachmentMetas } from '@/api/ai/ai'
@@ -451,15 +466,24 @@ async function loadAgents() {
   myAgents.value = agents
 }
 
-/* ---- 「设置」弹层（合并：智能体 / 模型 / 可用工具）---- */
-// 用户 2026-10-09 裁决：底部工具栏原有 9 个控件（附件/知识库/历史/自动执行/智能体/工具/模型/
-// 我的智能体/新对话）过密、违反设计原则。把「配置类三件套」——智能体选择 + 模型 + 可用工具——
-// 收进一个「设置」弹层，底部只留高频动作，信息密度显著下降。
-const settingsVisible = ref(false)
+/* ---- 智能体侧栏抽屉（统一容器：设置 / 知识库 / 历史会话，内部 tab 切换）---- */
+// 用户 2026-10-10 裁决：三个功能的容器形态各异（设置=el-dialog、知识库/历史=各自抽屉），
+// 统一到一个可拉伸抽屉 + 内部 tab；点工具栏对应按钮 → 开抽屉 + 切到对应 tab。
+// 方向原则：**入口在哪侧、抽屉就从哪侧滑出**（设置按钮在右 → rtl；知识库/历史在左 → ltr）。
+const panelOpen = ref(false)
+const panelTab = ref<'settings' | 'kb' | 'history'>('settings')
+/** 当前 tab 对应的抽屉方向：设置 tab → 右侧（rtl），其余 → 左侧（ltr） */
+const panelDirection = computed<'rtl' | 'ltr'>(() =>
+  panelTab.value === 'settings' ? 'rtl' : 'ltr'
+)
+/** 知识库面板实例（切到知识库 tab 时调 activate 载入） */
+const kbPanelRef = ref<InstanceType<typeof KnowledgeBasePanel> | null>(null)
 
-function openSettings() {
-  settingsVisible.value = true
-  loadToolOptions()
+function openPanel(tab: 'settings' | 'kb' | 'history') {
+  panelTab.value = tab
+  panelOpen.value = true
+  if (tab === 'settings') loadToolOptions()
+  if (tab === 'kb') nextTick(() => kbPanelRef.value?.activate?.())
 }
 
 /* ---- 「我的智能体」管理弹窗 ---- */
@@ -614,7 +638,6 @@ const removeAttachment = (idx: number) => {
 }
 
 /* ===================== 会话历史 ===================== */
-const historyOpen = ref(false)
 const sessions = ref<any[]>([])
 const sessionsLoading = ref(false)
 const sessionId = ref('')
@@ -654,9 +677,9 @@ const sessionCountText = computed(() =>
     : `共 ${sessions.value.length} 条`
 )
 
-/** 打开历史抽屉时清掉上次的搜索词，否则下次点开看到的是个「被过滤过」的列表 */
-watch(historyOpen, (open) => {
-  if (open) sessionKeyword.value = ''
+/** 切到「历史会话」tab 时清掉上次的搜索词，否则下次点开看到的是个「被过滤过」的列表 */
+watch(panelTab, (tab) => {
+  if (tab === 'history') sessionKeyword.value = ''
 })
 
 const formatTime = (time: any) => {
@@ -692,7 +715,7 @@ const loadSessions = async () => {
 const newSession = async () => {
   if (isGenerating.value) stop()
   reset()
-  historyOpen.value = false
+  panelOpen.value = false
   try {
     const res: any = await createSession(userId.value)
     sessionId.value = res?.data?.sessionId || `asst_${Date.now()}`
@@ -739,7 +762,7 @@ const switchSession = async (s: any) => {
   if (isGenerating.value) return
   reset()
   sessionId.value = s.sessionId
-  historyOpen.value = false
+  panelOpen.value = false
   await loadHistory(s.sessionId)
 }
 
@@ -943,8 +966,8 @@ onBeforeUnmount(() => {
  * 不触发布局。旧形态（左侧栏）用 `transition: all` 动 `width`，等于每帧给整个消息列表
  * 重排一次 —— 那正是用户报的「点历史会话按钮会卡一下」。
  */
-/* 历史会话抽屉（左侧 ResizableDrawer 的内容区）：铺满抽屉、纵向三段（头/搜索/列表） */
-.session-drawer {
+/* 智能体侧栏抽屉（统一容器）：tab 条 + 内容区铺满抽屉 */
+.agent-panel {
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -952,21 +975,56 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-.session-drawer-header {
+/* tab 条：与工具栏三个入口一一对应 */
+.agent-panel-tabs {
   flex-shrink: 0;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px 10px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #1f2937;
+  gap: 4px;
+  padding: 8px 10px;
   border-bottom: 1px solid #eef2f7;
 }
+.aptab {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #6b7280;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
 
-.session-count {
+  &:hover {
+    background: #f3f5f9;
+  }
+  &.active {
+    background: #eef4ff;
+    color: #2563eb;
+    font-weight: 600;
+  }
+}
+
+/* 各 tab 内容：铺满剩余高度、内部自管滚动 */
+.agent-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 历史会话 tab：搜索 + 计数 + 列表 纵向排列 */
+.session-drawer {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.session-count-line {
+  flex-shrink: 0;
+  padding: 6px 12px 2px;
   font-size: 12px;
-  font-weight: 400;
   color: #9aa5b5;
 }
 

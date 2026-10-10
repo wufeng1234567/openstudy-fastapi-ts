@@ -89,18 +89,7 @@
             </el-icon>
             <span>我的知识库</span>
           </div>
-          <!-- 自检：仅开发环境。跑的是 ds-free 端到端用例，见 DfSelfCheckPanel -->
-          <!-- 注：不能把条件写成 `import.meta.env.DEV`（Vue 模板编译器不认），只能用 isDev。
-               代价是这个 tab 的 DOM 与图标引用会留在生产包里（永远不渲染，因为 isDev 恒 false），
-               约两百字节 —— 真正的大头（面板组件 + 用例表）是动态 import，已被完整摇掉。 -->
-          <div v-if="isDev" :class="['tab-item', { active: activeTab === 'self' }]"
-            @click="switchToSelf">
-            <el-icon>
-              <Tools />
-            </el-icon>
-            <span>自检</span>
-            <span v-if="selfCheckRunning" class="tab-dot" title="正在跑"></span>
-          </div>
+          <!-- 自检 tab 已移除（用户 2026-10-10：该功能不再需要，隐藏掉） -->
         </div>
 
         <!-- 内容区 -->
@@ -129,9 +118,6 @@
           <div v-else-if="activeTab === 'knowledge'" class="knowledge-panel">
             <KnowledgeBasePanel ref="kbPanelRef" />
           </div>
-
-          <!-- 自检（仅开发环境） -->
-          <DfSelfCheckPanel v-else-if="activeTab === 'self'" />
 
           <!-- 对话 -->
           <AiChatStream v-else ref="chatRef" :messages="agentMode ? agentMessages : messages"
@@ -220,11 +206,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ChatDotRound, Close, FolderOpened, ArrowRight,
-  InfoFilled, QuestionFilled, EditPen, Delete, Clock, Tools, Notebook, Collection
+  InfoFilled, QuestionFilled, EditPen, Delete, Clock, Notebook, Collection
 } from '@element-plus/icons-vue'
 import {
   assistantStream, getConversationHistory, saveConversationMessages,
@@ -251,28 +237,12 @@ import { running as selfCheckRunning } from '@/devtools/dfSelfCheck/store'
 
 defineOptions({ name: 'AiAssistant' })
 
-// ===================== 自检面板（仅开发环境） =====================
-/**
- * ds-free 自检：在**你当前这个已经登录好的浏览器里**跑端到端用例，
- * 不用另起 Chrome、不用手动给测试实例登录 —— 那正是它取代 Node 版 LIVE 的理由。
- *
- * ⚠️ 写法不能改：`import.meta.env.DEV` 必须**字面写在三元条件里**，
- *    这样 `vite build` 才能静态替换成 `false`、把整条动态 import 分支摇掉 ——
- *    面板与用例表（`tests/df_cases.mjs`）就都不会进生产包。
- *    谁要是改成 `const isDev = ...` 再在别处静态 import 面板，立刻进生产包；
- *    P7 的 `grep dist/` 就是这条的守门人。
- */
-const isDev = import.meta.env.DEV
-const DfSelfCheckPanel = import.meta.env.DEV
-  ? defineAsyncComponent(() => import('@/components/DfSelfCheckPanel/index.vue'))
-  : null
-
 const router = useRouter()
 const userStore = useUserStore()
 const userId = computed(() => userStore.id || userStore.userId)
 
 const visible = ref(false)
-const activeTab = ref<'chat' | 'banks' | 'knowledge' | 'self'>('chat')
+const activeTab = ref<'chat' | 'banks' | 'knowledge'>('chat')
 // 当前选中的模型名（如 deepseek-flash）；历史记忆按 scene=chat 单独保存
 const selectedModel = ref('')
 
@@ -720,11 +690,6 @@ const switchToBanks = () => {
   activeTab.value = 'banks'
   sessionListVisible.value = false
   if (myBanks.value.length === 0) loadMyBanks()
-}
-
-const switchToSelf = () => {
-  activeTab.value = 'self'
-  sessionListVisible.value = false
 }
 /**
  * 切到「我的知识库」
