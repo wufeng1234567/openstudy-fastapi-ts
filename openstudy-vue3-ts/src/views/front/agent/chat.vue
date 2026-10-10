@@ -157,58 +157,15 @@
               <el-switch v-model="autoConfirm" size="small" :disabled="isGenerating" />
               <span class="mode-text">{{ autoConfirm ? '自动执行' : '仅给方案' }}</span>
             </div>
-
-            <!-- 可用工具：原来是一整行常驻横条，现在收进这个弹层（点开才看清单） -->
-            <!--
-              ⚠️ 必须传的是 `model || activeModel`，不能只传 `activeModel`：
-                · `activeModel` 是**后端 `meta` 事件回报的「上次实际跑用的模型」** ——
-                  它只在**一次请求跑完之后**才会变；用户刚在下拉里换模型、还没发消息时，
-                  这里会一直显示上一次的模型（用户 2026-09-19 报的就是这个 bug：
-                  「前一秒用 ds-free，下一秒切 ds-flash，工具里的模型介绍不更新」）。
-                · `model` 是**选择器当前选中的值**，它就是下一次请求真正会用的模型 ——
-                  所以它更能代表「当前模型」。选择器为空（未显式选过）时才回落到 `activeModel`。
-
-              ⚠️ 这里**只**传这一个 prop。`:tools` 与 `:run-model` 曾为「本次运行…」那块脚注而传，
-                 用户 2026-09-21 裁决删掉整块脚注后它们一起去掉了 —— 别再往这个组件上加回来，
-                 L43 会断「只允许 `:model`」。
-            -->
-            <!-- 智能体选择（多智能体协同）：官方角色 or 我的自定义智能体；空 = 自动路由 -->
-            <el-select
-              v-model="selectedAgentKey"
-              class="agent-selector"
-              size="small"
-              :disabled="isGenerating"
-              placeholder="智能体：自动"
-            >
-              <el-option label="智能体：自动（按需求选择）" value="" />
-              <el-option-group v-if="agentRoles.length" label="官方智能体">
-                <el-option
-                  v-for="r in agentRoles"
-                  :key="'r-' + r.key"
-                  :label="r.name"
-                  :value="'official:' + r.key"
-                />
-              </el-option-group>
-              <el-option-group v-if="myAgents.length" label="我的智能体">
-                <el-option
-                  v-for="a in myAgents"
-                  :key="'a-' + a.agentId"
-                  :label="a.name"
-                  :value="'user:' + a.agentId"
-                />
-              </el-option-group>
-            </el-select>
-
-            <AgentToolPopover :model="model || activeModel" />
-
-            <span class="footer-hint">支持 Word / PDF / TXT / MD 与题目截图</span>
           </template>
-          <!-- 输入框下方工具行（右半）：模型选择器（窄版）+ 新对话 + 发送按钮 -->
+          <!-- 输入框下方工具行（右半）：设置（智能体/模型/工具聚合）+ 新对话 + 发送按钮 -->
           <template #input-toolbar-right>
-            <AiModelSelector v-model="model" scene="agent" width="120px" :disabled="isGenerating" />
-            <el-button class="tb-new" :icon="Setting" text :disabled="isGenerating" @click="openAgentManager">
-              我的智能体
-            </el-button>
+            <button type="button" class="tb-btn" title="智能体设置（智能体 / 模型 / 可用工具）"
+              :disabled="isGenerating" @click="openSettings">
+              <el-icon>
+                <Setting />
+              </el-icon>
+            </button>
             <el-button class="tb-new" :icon="Plus" text :disabled="isGenerating" @click="newSession">
               新对话
             </el-button>
@@ -282,6 +239,71 @@
         </footer>
       </div>
     </div>
+
+    <!-- 「设置」弹层：把「配置类三件套」——智能体 / 模型 / 可用工具——聚合到一处，
+         让底部工具栏只保留高频动作（用户 2026-10-09 裁决，解决信息过密问题）。 -->
+    <el-dialog v-model="settingsVisible" title="智能体设置" width="520px" append-to-body>
+      <div class="settings-body">
+        <!-- ① 智能体：官方角色 or 我的自定义智能体；空 = 自动路由（指挥家） -->
+        <div class="settings-row">
+          <div class="settings-label">智能体</div>
+          <div class="settings-field">
+            <el-select v-model="selectedAgentKey" size="default" :disabled="isGenerating" style="width: 100%">
+              <el-option label="自动（按需求智能选择）" value="" />
+              <el-option-group v-if="agentRoles.length" label="官方智能体">
+                <el-option v-for="r in agentRoles" :key="'r-' + r.key" :label="r.name" :value="'official:' + r.key" />
+              </el-option-group>
+              <el-option-group v-if="myAgents.length" label="我的智能体">
+                <el-option v-for="a in myAgents" :key="'a-' + a.agentId" :label="a.name" :value="'user:' + a.agentId" />
+              </el-option-group>
+            </el-select>
+            <div class="settings-hint">
+              「自动」= 由主智能体按需求智能分派；也可指定某个助手。
+            </div>
+          </div>
+        </div>
+
+        <!-- ② 模型 -->
+        <div class="settings-row">
+          <div class="settings-label">模型</div>
+          <div class="settings-field">
+            <AiModelSelector v-model="model" scene="agent" width="100%" :disabled="isGenerating" />
+          </div>
+        </div>
+
+        <!-- ③ 可用工具 -->
+        <div class="settings-row">
+          <div class="settings-label">可用工具</div>
+          <div class="settings-field">
+            <div v-if="!toolOptions.length" class="settings-hint">正在读取工具清单…</div>
+            <div v-else class="settings-tools">
+              <div v-for="t in toolOptions" :key="t.name" class="settings-tool">
+                <span class="settings-tool-name">{{ t.label || t.name }}</span>
+                <el-switch
+                  :model-value="t.disabled !== 1"
+                  size="small"
+                  :loading="toolTogglingName === t.name"
+                  :disabled="isGenerating"
+                  @update:model-value="toggleToolInSettings(t, $event)"
+                />
+              </div>
+            </div>
+            <div class="settings-hint">关掉后，智能体提问时不会再下发该工具。</div>
+          </div>
+        </div>
+
+        <!-- ④ 我的智能体入口（低频管理，藏在这里） -->
+        <div class="settings-row">
+          <div class="settings-label">我的智能体</div>
+          <div class="settings-field">
+            <el-button text type="primary" @click="openAgentManager">管理我的智能体（新建 / 编辑 / 删除）</el-button>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="settingsVisible = false">完成</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 「我的智能体」管理弹窗 -->
     <el-dialog v-model="agentMgrVisible" title="我的智能体" width="600px" append-to-body>
@@ -367,7 +389,6 @@ import {
 } from '@element-plus/icons-vue'
 import AiChatStream from '@/components/AiChatStream/index.vue'
 import AiModelSelector from '@/components/AiModelSelector/index.vue'
-import AgentToolPopover from '@/components/AgentToolPopover/index.vue'
 import AgentToolResult from '@/components/AgentToolResult/index.vue'
 import AgentConfirmCard from '@/components/AgentConfirmCard/index.vue'
 import ChatFileUploader from '@/components/ChatFileUploader/index.vue'
@@ -499,6 +520,17 @@ async function loadAgents() {
   myAgents.value = agents
 }
 
+/* ---- 「设置」弹层（合并：智能体 / 模型 / 可用工具）---- */
+// 用户 2026-10-09 裁决：底部工具栏原有 9 个控件（附件/知识库/历史/自动执行/智能体/工具/模型/
+// 我的智能体/新对话）过密、违反设计原则。把「配置类三件套」——智能体选择 + 模型 + 可用工具——
+// 收进一个「设置」弹层，底部只留高频动作，信息密度显著下降。
+const settingsVisible = ref(false)
+
+function openSettings() {
+  settingsVisible.value = true
+  loadToolOptions()
+}
+
 /* ---- 「我的智能体」管理弹窗 ---- */
 const agentMgrVisible = ref(false)
 const agentFormVisible = ref(false)
@@ -513,8 +545,10 @@ const agentForm = reactive<AgentConfigInput>({
   tools: [],
   model: ''
 })
-/** 工具多选项（全量，含中文 label），来自 `/ai/agent/tools` */
-const toolOptions = ref<Array<{ name: string; label: string }>>([])
+/** 工具项（全量，含中文 label 与启用状态），来自 `/ai/agent/tools` */
+const toolOptions = ref<Array<{ name: string; label: string; disabled: number }>>([])
+/** 正在写开关的工具名（写时锁住那一行） */
+const toolTogglingName = ref('')
 
 /** 工具名 → 中文名（界面对照；无则回落到 name 本身） */
 const toolLabelMap = computed(() => {
@@ -524,13 +558,34 @@ const toolLabelMap = computed(() => {
 })
 
 async function loadToolOptions() {
-  if (toolOptions.value.length) return
   const { fetchAgentToolsForUi } = await import('@/api/ai/agentDsFree')
   const payload = await fetchAgentToolsForUi()
-  toolOptions.value = (payload.tools || []).map((t: any) => ({
+  toolOptions.value = (payload?.tools || []).map((t: any) => ({
     name: t?.function?.name || t?.name || '',
-    label: t?.label || t?.descriptionZh || t?.function?.name || t?.name || ''
+    label: t?.label || t?.descriptionZh || t?.function?.name || t?.name || '',
+    disabled: t?.disabled === 1 ? 1 : 0
   })).filter((t: any) => t.name)
+}
+
+/** 拨动设置弹层里的工具开关（受控式：显示值来自服务端回值） */
+async function toggleToolInSettings(t: { name: string; disabled: number }, on: boolean) {
+  const want: 0 | 1 = on ? 0 : 1
+  if ((t.disabled !== 1 ? 0 : 1) === want) return
+  toolTogglingName.value = t.name
+  try {
+    const { saveAgentToolPref } = await import('@/api/ai/agentDsFree')
+    const res = await saveAgentToolPref(t.name, want)
+    if (res.ok) {
+      await loadToolOptions()
+      ElMessage.success(want === 1 ? `已屏蔽「${t.name}」` : `已恢复「${t.name}」`)
+    } else {
+      ElMessage.error(res.reason || `「${t.name}」没保存成功`)
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || `「${t.name}」没保存成功`)
+  } finally {
+    toolTogglingName.value = ''
+  }
 }
 
 function openAgentManager() {
@@ -1261,14 +1316,6 @@ onBeforeUnmount(() => {
   margin-top: 1px;
 }
 
-/* ── 输入区补充 ── */
-.footer-hint {
-  font-size: 11.5px;
-  color: #b6bdc9;
-  margin-left: 8px;
-  white-space: nowrap;
-}
-
 /* 「新对话」：底部工具栏右侧，观感压得比 el-button 默认更轻 */
 .tb-new {
   font-size: 13px;
@@ -1280,17 +1327,57 @@ onBeforeUnmount(() => {
   }
 }
 
-/* 智能体选择器（多智能体协同）：与工具栏其他控件同高、不抢视线 */
-.agent-selector {
-  width: 150px;
-  margin-right: 4px;
+/* ── 「设置」弹层（合并：智能体 / 模型 / 可用工具）──
+   用户 2026-10-09 裁决：底部工具栏过密（9 个控件），把配置类三件套收进本弹层。 */
+.settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
+.settings-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.settings-label {
+  flex: 0 0 68px;
+  padding-top: 6px;
+  font-size: 13px;
+  color: #606266;
+  font-weight: 500;
+}
+.settings-field {
+  flex: 1;
+  min-width: 0;
+}
+.settings-hint {
+  font-size: 12px;
+  color: #b0b6c0;
+  margin-top: 6px;
+  line-height: 1.6;
+}
+.settings-tools {
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid #eef0f4;
+  border-radius: 8px;
+  padding: 4px 12px;
+}
+.settings-tool {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid #f4f6f9;
 
-/* 窄屏：左侧工具行会挤（附件/知识库/历史/执行开关/工具弹层 + 这行提示）→ 提示先让位 */
-@media (max-width: 1100px) {
-  .footer-hint {
-    display: none;
+  &:last-child {
+    border-bottom: none;
   }
+}
+.settings-tool-name {
+  font-size: 13px;
+  color: #303133;
 }
 
 /* ── 底部状态条（执行统计）── */
