@@ -213,7 +213,12 @@
           <div class="settings-row">
             <div class="settings-label">可用工具</div>
             <div class="settings-field">
-              <div v-if="!toolOptions.length" class="settings-hint">正在读取工具清单…</div>
+              <!-- 三种状态分开说：读取中 / 取不到（可重试）/ 有数据 —— 别把「没取到」说成「没有工具」 -->
+              <div v-if="toolLoading" class="settings-hint">正在读取工具清单…</div>
+              <div v-else-if="toolLoadFailed" class="settings-tools-error">
+                <span>工具清单没取到</span>
+                <el-button text type="primary" size="small" @click="loadToolOptions">重试</el-button>
+              </div>
               <div v-else class="settings-tools">
                 <div v-for="t in toolOptions" :key="t.name" class="settings-tool">
                   <span class="settings-tool-name">{{ t.label || t.name }}</span>
@@ -513,6 +518,10 @@ const agentForm = reactive<AgentConfigInput>({
 })
 /** 工具项（全量，含中文 label 与启用状态），来自 `/ai/agent/tools` */
 const toolOptions = ref<Array<{ name: string; label: string; disabled: number }>>([])
+/** 正在读工具清单（含「重试」那一次） */
+const toolLoading = ref(false)
+/** 工具清单**没取到**（网络错 / 结构异常）—— 与「取到了但一条都没有」分开表达 */
+const toolLoadFailed = ref(false)
 /** 正在写开关的工具名（写时锁住那一行） */
 const toolTogglingName = ref('')
 
@@ -524,13 +533,32 @@ const toolLabelMap = computed(() => {
 })
 
 async function loadToolOptions() {
-  const { fetchAgentToolsForUi } = await import('@/api/ai/agentDsFree')
-  const payload = await fetchAgentToolsForUi()
-  toolOptions.value = (payload?.tools || []).map((t: any) => ({
-    name: t?.function?.name || t?.name || '',
-    label: t?.label || t?.descriptionZh || t?.function?.name || t?.name || '',
-    disabled: t?.disabled === 1 ? 1 : 0
-  })).filter((t: any) => t.name)
+  // ⚠️ 必须有加载态 + 失败态：原先无 try/catch，失败时 `toolOptions` 落成空数组，
+  //    界面永远停在「正在读取工具清单…」（用户 2026-10-10 报的 bug：从知识库/历史
+  //    切到设置后工具一直转圈）。参考 `AgentToolPopover` 的成熟口径——显式 loading +
+  //    「取不到」单独表达 + 可重试，且「取到了但一条都没有」与「没取到」不能说成同一句话。
+  toolLoading.value = true
+  toolLoadFailed.value = false
+  try {
+    const { fetchAgentToolsForUi } = await import('@/api/ai/agentDsFree')
+    const payload = await fetchAgentToolsForUi()
+    const list = Array.isArray(payload?.tools) ? payload.tools : []
+    toolOptions.value = list
+      .map((t: any) => ({
+        name: t?.function?.name || t?.name || '',
+        label: t?.label || t?.descriptionZh || t?.function?.name || t?.name || '',
+        disabled: t?.disabled === 1 ? 1 : 0
+      }))
+      .filter((t: any) => t.name)
+    // 后端注册表不可能为空 ⇒ 空数组即「没取到」，据此置失败态（供界面给「重试」）
+    toolLoadFailed.value = toolOptions.value.length === 0
+  } catch (e) {
+    console.warn('[agent] 读取工具清单失败', e)
+    toolOptions.value = []
+    toolLoadFailed.value = true
+  } finally {
+    toolLoading.value = false
+  }
 }
 
 /** 拨动设置弹层里的工具开关（受控式：显示值来自服务端回值） */
@@ -1302,27 +1330,29 @@ onBeforeUnmount(() => {
   }
 }
 
-/* ── 「设置」弹层（合并：智能体 / 模型 / 可用工具）──
-   用户 2026-10-09 裁决：底部工具栏过密（9 个控件），把配置类三件套收进本弹层。 */
+/* ── 「设置」面板（合并：智能体 / 模型 / 可用工具）──
+   用户 2026-10-09 裁决：底部工具栏过密（9 个控件），把配置类三件套收进本面板。
+   用户 2026-10-10 反馈「输入框贴边框、空白多」→ 加内边距、限制单列最大宽度、收紧行距。 */
 .settings-body {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 20px;
+  /* 与抽屉内壁留出呼吸感：原先内容直接贴边，输入框会顶到 tab 栏/滚动条 */
+  padding: 18px 20px 24px;
+  /* 面板较宽（可拉伸）时，表单不至于被拉得过散 */
+  max-width: 560px;
 }
 .settings-row {
   display: flex;
-  gap: 14px;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 8px;
 }
 .settings-label {
-  flex: 0 0 68px;
-  padding-top: 6px;
   font-size: 13px;
   color: #606266;
-  font-weight: 500;
+  font-weight: 600;
 }
 .settings-field {
-  flex: 1;
   min-width: 0;
 }
 .settings-hint {
@@ -1338,12 +1368,23 @@ onBeforeUnmount(() => {
   border-radius: 8px;
   padding: 4px 12px;
 }
+.settings-tools-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #b45309;
+  padding: 8px 10px;
+  background: #fffaf0;
+  border: 1px solid #f5e2c8;
+  border-radius: 8px;
+}
 .settings-tool {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 7px 0;
+  padding: 8px 0;
   border-bottom: 1px solid #f4f6f9;
 
   &:last-child {
