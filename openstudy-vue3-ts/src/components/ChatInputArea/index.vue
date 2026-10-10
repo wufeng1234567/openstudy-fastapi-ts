@@ -11,7 +11,7 @@
 
   与 sp3 的取舍：
     ✅ 搬过来：模式切换卡片（`@` 按钮展开）、textarea 两行起步 + 自动增高、输入/工具行之间的分隔线、放大输入对话框。
-       （放大对话入口在 v2 里从**底部工具栏**移到了**输入框右下角角标**，见 `.expand-corner`。）
+       （放大对话入口在 v2 里从**底部工具栏**移到了**输入框右上角角标**，见 `.expand-corner`。）
     ❌ 没搬：模式文字标签（`@` 旁边不挂字 —— 当前模式由抽屉左上角标题实时体现，见 `AiAssistant` 的 `headerTitle`）、
        自带的文件解析预览（v2 用插槽，能力更全）。
     ➕ 自建：「新建会话」按钮（`showNewSession`），放在附件上传右边，由上层决定是否显示。
@@ -303,13 +303,17 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
   position: relative;
 }
 
-/* 放大输入角标：贴在输入框**右下角**，浮于文本框之上、透明底，hover 才显色。
-   放右下（而非右上）是为了避开用户刚敲的首行文字；鼠标位置也更顺手。
-   平时不抢视线，是「需要时才找得到」的低频入口。 */
+/* 放大输入角标：**右上角**、浮于文本框之上、透明底、hover 才显色。
+   ⚠️ 位置经过两次修正（2026-10-10）：
+     ① 不能放右下角 —— 悬浮助手（`AiAssistant`）的浮动按钮默认就在页面右下角，
+        两者会重叠、角标被遮住点不到；
+     ② 不能贴 `right: 0` —— textarea 长文本时右侧出现滚动条，会正好压在角标上，
+        hover 的背景块与滚动条视觉打架。故 `right` 留出滚动条宽度（约 8px），
+        并给 textarea 右侧加 padding，让文字/滚动条都不侵入角标区。 */
 .expand-corner {
   position: absolute;
-  right: 0;
-  bottom: 2px;
+  right: 8px;
+  top: 2px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -333,7 +337,8 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
   width: 100%;
   min-height: 42px;
   max-height: 120px;
-  padding: 4px 0;
+  /* 右侧留白：避开右上角的放大角标与滚动条，文字不顶到它们 */
+  padding: 4px 30px 4px 0;
   border: none;
   outline: none;
   background: transparent;
