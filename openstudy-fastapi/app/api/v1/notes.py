@@ -515,6 +515,66 @@ async def note_ranking(
     ])
 
 
+# ========== 用户「笔记草稿」API（智能体与前端共用） ==========
+# ⚠️ 这是「写笔记」页的**临时草稿**（用户维度、无 noteId、不进笔记列表），
+#    与 note 表里 status='draft' 的正式笔记是两回事（用户 2026-10-11 报的语义混淆）。
+#
+# ⚠️⚠️ 必须注册在**任何 `/notes/note/{...}` 动态路由之前**（这里是 `/notes/note/public/{note_id}`
+#    之前；后面的 `/notes/note/{note_id}` 更在其后）。否则 `/notes/note/draft` 会被
+#    `/notes/note/{note_id}` 抢先匹配，把 "draft" 当 int id 解析 → **422 Unprocessable Entity**
+#    （用户 2026-10-11 实测报错）。DELETE 同理被 `/notes/note/{note_ids}` 抢占。**不要求静态段与
+#    动态段注册顺序的框架没有**——FastAPI/Starlette 按**注册顺序**匹配，静态路由必须先注册。
+#
+# 注：`PUT` 不受影响（`/notes/note` 与 `/notes/note/draft` 不同层级，不冲突），但为内聚一并放这里。
+
+@router.get("/notes/note/draft")
+async def get_note_draft(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """取当前用户的后端草稿（没有则 data=null）"""
+    from app.services import note_draft_service as nds
+    uid = current_user.get("user_id")
+    draft = await nds.get_draft(db, int(uid))
+    return success(nds.draft_to_dict(draft))
+
+
+@router.put("/notes/note/draft")
+async def save_note_draft(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """保存/更新当前用户的后端草稿（前端「写笔记」自动保存时同步）"""
+    from app.services import note_draft_service as nds
+    uid = int(current_user.get("user_id"))
+    body = await request.json()
+    draft = await nds.upsert_draft(
+        db,
+        uid,
+        title=body.get("title"),
+        content=body.get("content"),
+        markdown_content=body.get("markdownContent", body.get("markdown_content")),
+        category_id=body.get("categoryId", body.get("category_id")),
+        tags=body.get("tags"),
+        is_public=body.get("isPublic", body.get("is_public")),
+        public_section_id=body.get("publicSectionId", body.get("public_section_id")),
+    )
+    return success(nds.draft_to_dict(draft))
+
+
+@router.delete("/notes/note/draft")
+async def clear_note_draft(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """清除当前用户的后端草稿（发布成功 / 用户丢弃时）"""
+    from app.services import note_draft_service as nds
+    uid = int(current_user.get("user_id"))
+    n = await nds.clear_draft(db, uid)
+    return success({"deleted": n})
+
+
 @router.get("/notes/note/public/{note_id}")
 async def get_public_note(
     note_id: int,
@@ -1465,55 +1525,3 @@ async def list_public_sections(
             "sortOrder": row[2],
         })
     return success(sections)
-
-
-# ========== 用户「笔记草稿」API（智能体与前端共用） ==========
-# ⚠️ 这是「写笔记」页的**临时草稿**（用户维度、无 noteId、不进笔记列表），
-#    与 note 表里 status='draft' 的正式笔记是两回事（用户 2026-10-11 报的语义混淆）。
-
-@router.get("/notes/note/draft")
-async def get_note_draft(
-    db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-):
-    """取当前用户的后端草稿（没有则 data=null）"""
-    from app.services import note_draft_service as nds
-    uid = current_user.get("user_id")
-    draft = await nds.get_draft(db, int(uid))
-    return success(nds.draft_to_dict(draft))
-
-
-@router.put("/notes/note/draft")
-async def save_note_draft(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-):
-    """保存/更新当前用户的后端草稿（前端「写笔记」自动保存时同步）"""
-    from app.services import note_draft_service as nds
-    uid = int(current_user.get("user_id"))
-    body = await request.json()
-    draft = await nds.upsert_draft(
-        db,
-        uid,
-        title=body.get("title"),
-        content=body.get("content"),
-        markdown_content=body.get("markdownContent", body.get("markdown_content")),
-        category_id=body.get("categoryId", body.get("category_id")),
-        tags=body.get("tags"),
-        is_public=body.get("isPublic", body.get("is_public")),
-        public_section_id=body.get("publicSectionId", body.get("public_section_id")),
-    )
-    return success(nds.draft_to_dict(draft))
-
-
-@router.delete("/notes/note/draft")
-async def clear_note_draft(
-    db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-):
-    """清除当前用户的后端草稿（发布成功 / 用户丢弃时）"""
-    from app.services import note_draft_service as nds
-    uid = int(current_user.get("user_id"))
-    n = await nds.clear_draft(db, uid)
-    return success({"deleted": n})
