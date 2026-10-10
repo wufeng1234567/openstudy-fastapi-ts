@@ -379,6 +379,11 @@ AGENT_WORKFLOW_RULES = """## Workflow Rules (MUST FOLLOW STRICTLY)
    - If the immediately preceding assistant turn offered an explicit numbered / bulleted list of
      options, a "1" / "2" MAY be read as picking that option — but only when the mapping is
      unambiguous; otherwise still ask.
+9. **Note drafts: use `note_manage` action `save_draft`, never `create`.** When the user asks to
+   save a note draft / a note they have not finished / "save it for now", call `note_manage` with
+   action `save_draft`. `create` makes a FINISHED note that instantly appears in the user's note
+   list — do NOT use it for drafts. (This is the #1 recurring mistake: turning "save a draft" into
+   a real published note.)
 
 ## Available Tools
 {{TOOLS}}"""

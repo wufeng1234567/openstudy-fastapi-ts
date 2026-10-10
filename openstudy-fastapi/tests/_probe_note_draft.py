@@ -36,13 +36,27 @@ check("ND-08", "undo_plan 对 save_draft 特判", 'action == "save_draft"' in un
 # 描述里明确 save_draft 非正式笔记
 desc = nm.NoteManageTool.description
 check("ND-09", "描述含 save_draft 指引", "save_draft" in desc)
-check("ND-10", "描述提示勿用 status=draft 冒充草稿", "Do NOT use create with status=draft" in desc)
+check("ND-10", "描述含勿用 create 冒充草稿的强提示", "Do NOT create a normal note" in desc)
 # P11d：模型侧描述无中文
 cjk = [c for c in desc if "\u4e00" <= c <= "\u9fff"]
 check("ND-11", "description 无中文（P11d）", not cjk, "".join(cjk))
-# status 参数说明收窄
-status_desc = nm.NoteManageTool.parameters["properties"]["status"]["description"]
-check("ND-12", "status 说明指向 save_draft", "save_draft" in status_desc)
+# status 参数已**移除**（用户 2026-10-11：彻底断掉 create+status=draft 冒充草稿的路径）
+check(
+    "ND-12",
+    "parameters 已移除 status 参数",
+    "status" not in nm.NoteManageTool.parameters["properties"],
+    str(list(nm.NoteManageTool.parameters["properties"].keys())),
+)
+# save_draft 在 description 中排在 create= 之前（扭转模型默认选择）
+check(
+    "ND-16",
+    "description 里 save_draft 排在 create 之前",
+    desc.index("save_draft") < desc.index("create="),
+)
+# _create 硬编码 published
+create_src = inspect.getsource(nm.NoteManageTool._create)
+check("ND-17", "create 硬编码 published", 'status_norm = "published"' in create_src)
+check("ND-18", "create 不再读 status 参数", 'params.get("status")' not in create_src)
 
 # 草稿服务存在 + 字段互补
 from app.services import note_draft_service as nds

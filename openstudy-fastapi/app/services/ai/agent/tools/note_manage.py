@@ -88,22 +88,25 @@ class NoteManageTool(AgentTool):
     #:   ② `registry.definitions()` → Function Calling 的 `tools` 参数
     #: 系统提示词是全英文的，这里混中文会让模型面对两套语言约定。
     description = (
-        "Manage the user's study notes. Use for creating, reading, updating and "
-        "deleting notes. action values: "
+        "Manage the user's study notes. action values: "
+        # ⚠️ save_draft 故意排在**最前**（用户 2026-10-11 实测：ai 总爱选 create 建普通笔记、
+        #    把"存草稿"做成了真实笔记）——把"草稿"入口放在最前并加重语气，扭转模型的默认选择。
+        "save_draft=save the user's WORK-IN-PROGRESS draft. **STRONGLY PREFER THIS whenever the "
+        "user asks to save a draft / not finished / save for later / keep it for now** — it goes "
+        "to the user's editor draft (NO noteId, NEVER shown in their note list, reopened in the "
+        "note editor next time). Requires `title`. If the user already has a draft it is "
+        "OVERWRITTEN after confirmation. Do NOT create a normal note (action=create) when the "
+        "user asked for a draft. "
+        "create=create a PUBLISHED note (a real note that appears in the user's note list; "
+        "requires `title`). Use ONLY when the user wants a finished, saved note — NOT for drafts "
+        "or work-in-progress. "
         "list=list notes (optional fuzzy `keyword` matching title/content/tags, "
         "optional `category_id` filter), "
         "detail=read one note's full content, "
         "list_categories=list the user's note categories, "
-        "create=create a note (requires `title`), "
         "update=update fields of an existing note, "
         "delete=delete one note by `note_id`, "
         "delete_many=delete SEVERAL notes at once (pass `note_ids`). "
-        "save_draft=save the user's WORK-IN-PROGRESS note draft (NOT a real note): it goes to "
-        "the user's editor draft (no noteId, never shown in their note list) and shows up "
-        "next time they open the note editor. Use this when the user says save as draft / "
-        "not finished / save for later. Requires `title`. If the user already has a draft it "
-        "will be OVERWRITTEN after confirmation. Do NOT use create with status=draft to mean "
-        "'draft' — that makes a real note; `draft` status there is just an un-published note. "
         "NOTE: every note belongs to a category. If you omit both `category_id` and "
         "`category_name`, the note goes to the user's default category (created "
         "automatically when the user has none). "
@@ -193,16 +196,10 @@ class NoteManageTool(AgentTool):
                     "1=private. Do not copy the bank convention here."
                 ),
             },
-            "status": {
-                "type": "string",
-                "description": (
-                    "Publication status of a REAL note: 'draft' (un-published note, default) or "
-                    "'published'. NOTE: this is NOT the editor's scratch draft — for a "
-                    "work-in-progress draft the user expects to continue in the editor, use "
-                    "action=save_draft instead."
-                ),
-                "enum": ["draft", "published"],
-            },
+            # ⚠️ 刻意**没有** `status` 参数（用户 2026-10-11）：历史上模型爱用
+            #    `create status=draft` 冒充"存草稿"，结果在 note 表建了一条带 noteId 的真实笔记
+            #    （用户以为是系统草稿，实际进了笔记列表）。为彻底断掉这条误用路径，`create` 一律
+            #    建**正式（已发布）笔记**，不再暴露 status；"草稿"语义**唯一**归 `action=save_draft`。
         },
         "required": ["action"],
     }
@@ -519,13 +516,10 @@ class NoteManageTool(AgentTool):
                 "请提供 markdown_content（推荐）或 content，否则存下来是一篇空笔记",
             )
 
-        status = params.get("status")
-        status_norm = nws.normalize_status(status)
-        if status and status_norm is None:
-            return fail(
-                f"不支持的笔记状态：{status}",
-                f"status 只能是 {' / '.join(nws.NOTE_STATUSES)}",
-            )
+        # ⚠️ `create` 一律建**正式（已发布）笔记**：不再接受/推断 status（用户 2026-10-11）。
+        #    想存"草稿"必须用 `action=save_draft`（写 user_note_draft，不进笔记列表）。
+        #    见 parameters 里"刻意没有 status 参数"的说明。
+        status_norm = "published"
 
         cat, err = await nws.resolve_category(
             ctx.db,
@@ -558,13 +552,8 @@ class NoteManageTool(AgentTool):
         if note is None:
             return await self._note_not_found(params, ctx)
 
-        status = params.get("status")
-        status_norm = nws.normalize_status(status)
-        if status and status_norm is None:
-            return fail(
-                f"不支持的笔记状态：{status}",
-                f"status 只能是 {' / '.join(nws.NOTE_STATUSES)}",
-            )
+        # ⚠️ 不再处理 `status`（用户 2026-10-11）：parameters 里已移除该字段，"草稿/发布"语义
+        #    改由前端编辑器管理，智能体只需 create（=发布）/ save_draft（=草稿）。
 
         # 分类：只在显式传了分类参数时才解析 —— 否则会「顺手」把笔记挪到第一个分类
         category = None
@@ -594,13 +583,12 @@ class NoteManageTool(AgentTool):
             tags=params.get("tags"),
             category=category,
             is_public=params.get("is_public"),
-            status=status_norm,
         )
         if not changed:
             return fail(
                 "没有提供任何要修改的字段",
                 "请至少给出 title / content / markdown_content / tags / "
-                "category_id / category_name / is_public / status 之一",
+                "category_id / category_name / is_public 之一",
             )
         before = {name: before_all[name] for name in changed if name in before_all}
         payload: Dict[str, Any] = {
