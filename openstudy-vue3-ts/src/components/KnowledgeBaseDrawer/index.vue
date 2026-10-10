@@ -22,10 +22,12 @@
     <span v-if="kbCount" class="kb-entry-badge">{{ kbCount }}</span>
   </button>
 
-  <!-- 可拖拽调宽的通用抽屉容器（与悬浮助手同款交互，公共组件 ResizableDrawer） -->
+  <!-- 可拖拽调宽的通用抽屉容器（公共组件 ResizableDrawer）
+       ⚠️ 方向 = **左侧**（ltr）：入口按钮在底部工具栏左侧，按「入口在哪、面板就从哪滑出」的
+       一致性原则，与历史会话抽屉同侧（用户 2026-10-10 裁决）。 -->
   <ResizableDrawer
     v-model="visible"
-    direction="rtl"
+    direction="ltr"
     storage-key="openstudy_kb_drawer_size"
     :default-width="560"
     @open="onOpen"
