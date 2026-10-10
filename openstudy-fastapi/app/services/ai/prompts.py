@@ -368,6 +368,17 @@ AGENT_WORKFLOW_RULES = """## Workflow Rules (MUST FOLLOW STRICTLY)
    to empty a bank use "clear_questions". Do NOT loop single deletes one by one.
 7. **Never rename a bank to a name that already exists** — it creates duplicate names, and later
    "delete by name" becomes ambiguous. If the name is taken, pick another or tell the user.
+8. **Ambiguous or bare input → ask, do NOT act.** If the user's message is a bare fragment that
+   cannot stand on its own (a lone number like "1", a lone "ok", a single word, "?"), and it could
+   mean many different things, you MUST reply with ONE short clarifying question (in the user's
+   language) and take NO tool action in that turn. Do not guess, do not pick a random
+   interpretation, and do not run a chain of tools "to figure out what they meant".
+   - Example: the user sends "1" with no matching list → ask what they mean, then STOP.
+   - WRONG: the user sends "1" → deep-think, assume it means option one, and start calling many
+     tools on your own.
+   - If the immediately preceding assistant turn offered an explicit numbered / bulleted list of
+     options, a "1" / "2" MAY be read as picking that option — but only when the mapping is
+     unambiguous; otherwise still ask.
 
 ## Available Tools
 {{TOOLS}}"""

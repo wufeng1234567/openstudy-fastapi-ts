@@ -712,6 +712,14 @@ defineExpose({ scrollToBottom, messagesRef, setInputText })
   background-color: #f3f4f6;
   color: #1f2937;
   border: 1px solid #e5e7eb;
+  /*
+   * ⚠️ 用户消息内容极短时（如只发「1」）气泡会被内容撑到只有一两个字符宽，
+   *    而右下角的复制按钮是绝对定位、宽度固定（图标 + 「复制」两个字 ≈ 60px）——
+   *    气泡比按钮还窄时按钮就**溢出到气泡外**（用户 2026-10-11 报）。
+   *    给一个能容下复制按钮的最小宽度，短消息也不会把按钮挤出去。
+   *    （LLM 那侧由 `.rendered-md` 的 padding + 正文默认有内容，一般不会这么窄，故只修用户侧。）
+   */
+  min-width: 96px;
 }
 
 /* 工具卡片 / 过程提示属于「结构化内容」，比正文更需要横向空间（正文仍保持 75%） */
