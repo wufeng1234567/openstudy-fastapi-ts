@@ -231,6 +231,9 @@ const loadNoteQuestionBanks = async (noteId) => {
   }
 }
 
+/** 「写新笔记」态是否已处理过草稿（幂等守卫，防 onMounted+onActivated 双触发重复读/重复弹，见 syncEditorMode） */
+let newNoteDraftSettled = false
+
 const syncEditorMode = () => {
   const id = route.query.id
   const numId = id ? Number(id) : null
@@ -239,12 +242,19 @@ const syncEditorMode = () => {
     if (numId === lastLoadedId) return
     lastLoadedId = numId
     editingNoteId.value = numId
+    // 进入「编辑已有笔记」→ 复位草稿处理标记，以便之后切回「写新笔记」时能重新读草稿
+    newNoteDraftSettled = false
     loadNoteData(id)
   } else {
     // ⚠️ 无 id = 「写新笔记」。**不要**在这里写 `if (!editingNoteId.value) return`——
     //    首次进入 / 刷新后编辑页时 `editingNoteId` 初值就是 null，那个 return 会让
     //    `loadDraft()` **永不执行**（用户 2026-10-11 报「离开/刷新后草稿丢了」的根因）。
     //    正确做法：重置为新笔记态（仅当从编辑态切回时），然后**无条件**读草稿。
+    //
+    // ⚠️ 幂等守卫（用户 2026-10-11 报「弹窗两次」）：本组件在 keep-alive 内，首次挂载时
+    //    **onMounted 与 onActivated 都会触发** `syncEditorMode()` → 若不加守卫，else 分支
+    //    会跑两次 → 「已恢复草稿」提示弹两次、第二次还可能覆盖用户已输入内容。已处理过就返回。
+    if (newNoteDraftSettled) return
     if (lastLoadedId !== null || editingNoteId.value !== null) {
       lastLoadedId = null
       editingNoteId.value = null
@@ -256,6 +266,7 @@ const syncEditorMode = () => {
       selectedTags.value = []
       selectedPublicSectionId.value = null
     }
+    newNoteDraftSettled = true
     // 恢复到内容时给个轻提示：用户（2026-10-11）明确要"能知道上次写过、且被带出来了"。
     if (loadDraft()) {
       ElMessage({ message: '已恢复上次未发布的草稿', type: 'info', duration: 2500 })
