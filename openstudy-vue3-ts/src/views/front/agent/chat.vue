@@ -191,7 +191,7 @@
             <div class="settings-label">智能体</div>
             <div class="settings-field">
               <el-select v-model="selectedAgentKey" size="default" :disabled="isGenerating" style="width: 100%">
-                <el-option label="自动（按需求智能选择）" value="" />
+                <el-option label="自动（按需求智能选择）" :value="AUTO_AGENT_KEY" />
                 <el-option-group v-if="agentRoles.length" label="官方智能体">
                   <el-option v-for="r in agentRoles" :key="'r-' + r.key" :label="r.name" :value="'official:' + r.key" />
                 </el-option-group>
@@ -453,13 +453,19 @@ const autoConfirm = ref(true)
 
 /* ===================== 多智能体协同 ===================== */
 // 智能体选择：官方角色 + 我的自定义智能体。
-// `selectedAgentKey` 编码规则：''（自动路由）/ 'official:<key>' / 'user:<agentId>'。
-// 自动路由（空）= 后端按消息关键词选官方角色（零成本，不确定退 general）。
-const selectedAgentKey = ref('')
+// `selectedAgentKey` 编码规则：'auto'（自动路由）/ 'official:<key>' / 'user:<agentId>'。
+// 自动路由 = 后端按消息关键词选官方角色（零成本，不确定退 general）。
+//
+// ⚠️ 「自动」用**非空哨兵值 `'auto'`**，不用空串 `''`：Element Plus 的 `el-select` 把
+//    空串 value 当作「未选中」，会忽略该 option 的 label 转而显示 placeholder ——
+//    结果「自动」这一项永远显示不出来（用户 2026-10-10 报：智能体框显示「请选择」）。
+//    启用哨兵值后 `value="auto"` 能被正常选中并显示 label「自动（按需求智能选择）」。
+const AUTO_AGENT_KEY = 'auto'
+const selectedAgentKey = ref(AUTO_AGENT_KEY)
 const agentRoles = ref<AgentRoleMeta[]>([])
 const myAgents = ref<AgentConfig[]>([])
 
-/** 交给 `send()` 的解析结果：官方角色 key 与用户智能体 id 二选一 */
+/** 交给 `send()` 的解析结果：官方角色 key 与用户智能体 id 二选一（'auto' → 两者皆空） */
 const selectedRole = computed(() => {
   const k = selectedAgentKey.value
   return k.startsWith('official:') ? k.slice('official:'.length) : ''
@@ -668,7 +674,7 @@ async function removeAgent(a: AgentConfig) {
     await deleteAgentConfig(a.agentId)
     ElMessage.success('已删除')
     // 若删除的正是当前选中的，回落到「自动」
-    if (selectedAgentKey.value === `user:${a.agentId}`) selectedAgentKey.value = ''
+    if (selectedAgentKey.value === `user:${a.agentId}`) selectedAgentKey.value = AUTO_AGENT_KEY
     await loadAgents()
   } catch (e: any) {
     ElMessage.error(e?.message || '删除失败')
