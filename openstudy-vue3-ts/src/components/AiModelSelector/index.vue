@@ -1,6 +1,15 @@
 <template>
-  <el-select :model-value="modelValue" @update:model-value="handleChange" placeholder="选择模型" size="small"
+  <el-select :model-value="modelValue" @update:model-value="handleChange" placeholder="自动（跟随默认）" size="small"
     class="ai-model-selector" :style="{ width: width }" :disabled="disabled">
+    <!--
+      「自动」选项：value = 空串，语义 = **跟随系统默认模型**（后端 `build_agent_llm` 在
+      model 为空时用默认模型）。加它是为了：
+        ① 空值不再显示成占位符「请选择」——那会让用户以为「没配置好 / 坏了」；
+        ② 用户主动选过某个模型后，还能**切回自动**（没有这个选项就切不回去）。
+      这就是默认态：首次进入若 `restoreSelection` 未能拿到模型列表，也会落到「自动」而非「请选择」。
+    -->
+    <el-option label="自动（跟随默认）" value="" />
+
     <el-option-group v-if="systemConfigs.length" label="系统提供">
       <el-option v-for="config in systemConfigs" :key="'sys-' + config.configId"
         :label="config.model" :value="config.model">
