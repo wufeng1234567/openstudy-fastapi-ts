@@ -94,6 +94,50 @@ def _has_tool_action_keys(s: str) -> bool:
     )
 
 
+#: 「声称自己**没有工具 / 无法执行**」的文本特征 —— 子代理**一步工具都没跑**却回了这种话，
+#: 说明模型没走 Function Calling（可能把工具参数忽略、或纯幻觉），绝不能当"任务已完成"回给指挥家。
+#: 用户 2026-10-11 报「知识库/题库仍创建失败」：子代理回的是
+#:   "my knowledge_create_kb function is not available in this environment" /
+#:   "我只有代码执行(python)工具，没有暴露任何知识库管理接口" —— 全是这类"我没工具"的空话。
+_NO_TOOL_REFUSAL_PATTERNS = (
+    # 英文：没有这个功能/工具不可用/无法执行
+    re.compile(r"\b(?:function|tool|capability|facility)\b[^.\n]{0,30}\b(?:not\s+available|unavailable|isn'?t\s+available|does\s+not\s+exist|not\s+exposed)\b", re.IGNORECASE),
+    re.compile(r"\bno\s+(?:such\s+)?(?:tool|function|capability|api|interface|way)\b[^.\n]{0,30}\b(?:available|to\s+(?:do|create|perform|execute|complete))\b", re.IGNORECASE),
+    re.compile(r"\b(?:i\s+(?:do\s+not|don'?t)\s+have|i'?m\s+unable\s+to|i\s+cannot|i\s+can'?t|no\s+access\s+to)\b[^.\n]{0,40}\b(?:tool|function|capability|access|api|interface)\b", re.IGNORECASE),
+    re.compile(r"\bonly\s+(?:have\s+)?(?:a\s+)?(?:code\s+execution|python|code\s+interpreter)\b", re.IGNORECASE),
+    re.compile(r"\benvironment\s+does\s+not\s+support\b", re.IGNORECASE),
+    # 中文：我没有/只有…工具/无法执行/未暴露/不可用
+    re.compile(r"(?:我|本助手)?(?:只|仅)?(?:有|拥有|具备)[^。\n]{0,12}(?:代码执行|python|工具)[^。\n]{0,6}(?:工具)?"),
+    re.compile(r"(?:无法|不能|没法|不可)(?:执行|创建|完成|进行|处理|做到|实现)[^。\n]{0,12}(?:工具|操作|函数|任务|功能|知识库|题库)"),
+    re.compile(r"没有(?:暴露|提供|任何|相应|相关|可用|可用工具)[^。\n]{0,12}(?:工具|接口|功能|能力|函数|知识库)"),
+    re.compile(r"(?:工具|接口|功能|函数|能力)[^。\n]{0,8}(?:不存在|不可用|未挂载|未提供|未暴露|没有暴露)"),
+    re.compile(r"环境不(?:支持|允许|具备)"),
+)
+
+
+def _looks_like_no_tool_refusal(text: str) -> bool:
+    """子代理文本是否在**声称自己没有工具 / 无法执行**（而非给结论）
+
+    只在**一步工具都没跑过**时才拿来判 red —— 一跑过工具的总结里出现"无法"是正常的
+    （比如工具报错后的复述），不能误伤。见 `_run_sub_agent_inner` 的调用点。
+    """
+    if not text:
+        return False
+    for pat in _NO_TOOL_REFUSAL_PATTERNS:
+        if pat.search(text):
+            return True
+    return False
+
+
+#: 模型「声称没工具 / 无法执行」时的纠正提示（回灌，要求它用**真正的工具调用**）
+_SUB_AGENT_NO_TOOL_FIX = (
+    "You DO have tools available (bind them via the normal function-calling mechanism — "
+    "they are attached to this request). Do NOT claim you lack tools or that a function is "
+    "unavailable. If your task needs a tool, actually CALL it now through function calling. "
+    "Only reply with plain text if the task is genuinely complete."
+)
+
+
 #: 模型吐了协议文本时的纠正提示（回灌给子代理，要求它改用**真正的工具调用**）
 _SUB_AGENT_FORMAT_FIX = (
     "Your previous message contained tool-call syntax as PLAIN TEXT (e.g. DSML / <invoke> / "
@@ -202,6 +246,24 @@ async def _run_sub_agent_inner(
         )
     tool_defs = registry.definitions(exclude=sorted(excluded_tools))
 
+    # 子代理**一个工具都没有** = 配置/链路的硬错误（白名单被算空？注册表没加载？），
+    # 必须立刻显式失败 —— 否则 bound 退化为裸 llm，模型只能**凭空瞎编**
+    # （用户看到的"我只有代码执行(python)工具"就是这么来的）。绝不静默继续。
+    if not tool_defs:
+        logger.error(
+            "[sub_agent:{}] 工具集为空（excluded={}），无法执行任务",
+            role_spec.key, sorted(excluded_tools),
+        )
+        return {
+            "success": False,
+            "text": "",
+            "steps": [],
+            "error": (
+                f"子代理「{getattr(role_spec, 'name', role_spec.key)}」没有可用工具"
+                "（工具集为空），任务未执行"
+            ),
+        }
+
     # 2) 子代理系统提示词：persona 优先，回退 prompt_fragment，再回退一句通用说明
     persona = (role_spec.persona or role_spec.prompt_fragment or "").strip()
     system_text = (
@@ -224,8 +286,16 @@ async def _run_sub_agent_inner(
     steps: List[str] = []
     #: 「模型吐了协议文本、已纠正」的次数（超过 `SUB_AGENT_FORMAT_FIX_LIMIT` 就放弃）
     format_fix_streak = 0
+    #: 诊断：子代理这一趟到底把哪些工具交给了模型（0 = 一个都没有 → 模型必然只能"瞎编没工具"）
+    logger.info(
+        "[sub_agent:{}] 启动 task={!r} 工具数={} 工具={}",
+        role_spec.key,
+        (task or "")[:60],
+        len(tool_defs),
+        [d.get("function", {}).get("name") for d in tool_defs],
+    )
 
-    for _ in range(max(1, int(max_loops))):
+    for round_no in range(max(1, int(max_loops))):
         try:
             ai = await bound.ainvoke(messages)
         except Exception as e:  # noqa: BLE001 - 子代理失败要带回给指挥家，不抛
@@ -234,6 +304,13 @@ async def _run_sub_agent_inner(
 
         tool_calls = getattr(ai, "tool_calls", None) or []
         messages.append(ai)
+        logger.info(
+            "[sub_agent:{}] 第 {} 轮：tool_calls={} content[:80]={!r}",
+            role_spec.key,
+            round_no + 1,
+            len(tool_calls),
+            _content_to_text(getattr(ai, "content", ""))[:80],
+        )
 
         if not tool_calls:
             text = _content_to_text(getattr(ai, "content", ""))
@@ -257,6 +334,32 @@ async def _run_sub_agent_inner(
                     "text": "",
                     "steps": steps,
                     "error": "子代理模型未能按工具协议输出（多次把工具调用写成了纯文本），任务未执行",
+                }
+            # ⚠️ 第二类兜底（用户 2026-10-11 报「知识库/题库仍创建失败」）：
+            #    模型既没调工具、也没吐协议文本，而是**直接声称"我没有工具 / 无法执行"**。
+            #    这同样意味着**任务一步都没做**，绝不能当"子代理已完成"交给指挥家
+            #    （否则指挥家会把"我没有工具"这种空话整合进给用户的回复）。
+            #    仅在**一步工具都没跑过**（steps 为空）时触发 —— 跑过工具的收尾总结里出现
+            #    "无法"是正常的（复述工具报错），不能误伤。
+            if (
+                not steps
+                and tool_defs  # 确实有工具可给它（工具集不为空）才谈得上"它谎称没工具"
+                and _looks_like_no_tool_refusal(text)
+            ):
+                format_fix_streak += 1
+                if format_fix_streak <= SUB_AGENT_FORMAT_FIX_LIMIT:
+                    logger.warning(
+                        "[sub_agent:{}] 模型谎称没工具/无法执行，回灌纠正（第 {} 次）",
+                        role_spec.key, format_fix_streak,
+                    )
+                    messages.append(HumanMessage(content=_SUB_AGENT_NO_TOOL_FIX))
+                    continue
+                logger.warning("[sub_agent:{}] 连续 {} 次谎称没工具，放弃", role_spec.key, format_fix_streak)
+                return {
+                    "success": False,
+                    "text": "",
+                    "steps": steps,
+                    "error": "子代理模型未能调用工具（多次声称自己没有可用工具），任务未执行",
                 }
             # 正常文本 = 子代理的最终产出
             return {"success": True, "text": text, "steps": steps, "error": None}

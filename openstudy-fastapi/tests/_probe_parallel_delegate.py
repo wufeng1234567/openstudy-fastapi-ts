@@ -120,6 +120,59 @@ async def run_probe() -> int:
     check("PD-11", "识别裸 tool+action JSON", _looks_like_tool_protocol('{"tool": "bank_manage", "action": "list"}'))
     check("PD-12", "正常文本不误伤", not _looks_like_tool_protocol("已为你创建好知识库 cpp，共 3 篇文档。"))
 
+    # ---- 8. 子代理「谎称没工具」检测（防"我没工具"被当结论）----
+    from app.services.ai.agent.sub_agent import _looks_like_no_tool_refusal
+
+    check(
+        "PD-13",
+        "识别英文谎称没工具（function not available）",
+        _looks_like_no_tool_refusal(
+            "my knowledge_create_kb function is not available in this environment"
+        ),
+    )
+    check(
+        "PD-14",
+        "识别中文谎称没工具（只有代码执行工具）",
+        _looks_like_no_tool_refusal(
+            "我只有代码执行（python）工具，没有暴露任何知识库管理或 knowledge_search 相关接口"
+        ),
+    )
+    check(
+        "PD-15",
+        "识别无法执行类文本",
+        _looks_like_no_tool_refusal("我无法执行该操作，因为工具不存在"),
+    )
+    check(
+        "PD-16",
+        "正常完成总结不误伤",
+        not _looks_like_no_tool_refusal("已为你创建好知识库 cpp，共 3 篇文档。"),
+    )
+
+    # ---- 9. 子代理「一步没跑却谎称没工具」→ 明确失败（不把空话交回指挥家）----
+    kb = roles_mod.OFFICIAL_ROLES["kb"]
+    refuser = _FakeLLM([
+        _Msg(content="I'm unable to do this — my function is not available in this environment."),
+        _Msg(content="I only have a python code-execution tool, no knowledge-base function."),
+        _Msg(content="Sorry, I have no access to any tool here."),
+    ])
+    res_ref = await run_sub_agent(
+        object(),
+        user_id=2_000_900_401,
+        role_spec=kb,
+        task="create a kb named cpp",
+        llm=refuser,
+        excluded_tools=set(),
+    )
+    check(
+        "PD-17",
+        "谎称没工具 → success=False（不当结论回报）",
+        res_ref.get("success") is False,
+        str(res_ref)[:160],
+    )
+    check("PD-18", "谎称没工具的失败 steps 为空", res_ref.get("steps") == [], str(res_ref.get("steps")))
+
+
+
     print("\n---- 并行委派探针结果 ----")
     for r in ROWS:
         tail = "" if r["status"] == "通过" else f" | 实际: {r['actual']}"
