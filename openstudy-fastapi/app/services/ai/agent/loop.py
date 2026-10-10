@@ -1233,6 +1233,15 @@ async def run_agent_stream(
         # 所以它**不是**「工具执行次数」。
         metrics["steps"] += len(tool_calls)
 
+        # ⚡ 并发委派（用户 2026-10-10 要求「多专家并行干活」）：
+        #    同一轮里模型可能一次发起多个 `delegate_task`（"同时做 A/B/C"）。这些**委派**工具
+        #    被收集到这里，等本轮所有**非委派**工具串行跑完后，再一次性 `asyncio.gather` 并发执行。
+        #    为什么只有委派能并发：委派是 `write_operation=False` 且子代理各自**独立开会话**
+        #    （见 run_sub_agent 的 own_session），天然并行安全；而普通写工具会共用指挥家会话的
+        #    SAVEPOINT，并发会在同一条 asyncpg 连接上冲突 —— 故它们仍严格串行。
+        #    每项 = (call_id, tool, params, 占位 ToolMessage 在 lc_messages 里的下标)
+        delegate_jobs: List[Any] = []
+
         for call in tool_calls:
             tool_name = str(call.get("name") or "")
             call_id = str(call.get("id") or f"call_{loop_index}")
@@ -1411,21 +1420,27 @@ async def run_agent_stream(
                     )
                     continue
 
-            # 指挥家委派：在普通 tool_start 之前额外发一条 delegate_start，让前端时间线
-            # 显示「调度到 <子代理>…」（子代理不直接发言，只在这里露个存在感）。
+            # 指挥家委派：**不在这里执行**，而是收集起来，等本轮非委派工具跑完后**并发**执行
+            # （见上面 `delegate_jobs` 的说明）。这里先发一条 `delegate_start`，让前端时间线
+            # **立刻**显示「<子代理> 开始干活」（一行一个），并占一个 ToolMessage 位（保序）。
             if tool_name == roles_mod.DELEGATE_TOOL_NAME:
                 sub_key = str(params.get("sub_agent") or "")
                 sub = (ctx.extra.get("delegate_roles") or {}).get(sub_key)
+                sub_name = getattr(sub, "name", sub_key) if sub else sub_key
                 yield _event(
                     {
                         "type": "delegate_start",
-                        "agent": {
-                            "id": sub_key,
-                            "name": getattr(sub, "name", sub_key) if sub else sub_key,
-                        },
+                        "agent": {"id": sub_key, "name": sub_name},
                         "task": str(params.get("task") or "")[:200],
+                        "index": len(delegate_jobs),
                     }
                 )
+                # 占位 ToolMessage（内容稍后回填）——保证回灌模型的 tool 结果**顺序**与
+                # 模型发起的 tool_calls 一致（部分 OpenAI 兼容端点对此严格）。
+                placeholder = ToolMessage(content="", tool_call_id=call_id)
+                lc_messages.append(placeholder)
+                delegate_jobs.append((call_id, tool, params, len(lc_messages) - 1, sub_key, sub_name))
+                continue
 
             yield _event(
                 {
@@ -1484,22 +1499,70 @@ async def run_agent_stream(
                     "data": result,
                 }
             )
-            # 指挥家委派完成：标注子代理收工（成功/失败都发，前端据此收尾时间线条目）
-            if tool_name == roles_mod.DELEGATE_TOOL_NAME:
-                yield _event(
-                    {
-                        "type": "delegate_done",
-                        "agent": {"id": str(params.get("sub_agent") or "")},
-                        "success": bool(result.get("success")),
-                        "summary": str(result.get("message") or result.get("error") or "")[:200],
-                    }
-                )
+            # 委派（delegate_task）**不会走到这里**：它在上面的收集分支已 `continue`，
+            # 由本轮末尾的并发批次统一执行并回发 delegate_done（见 `delegate_jobs`）。
             if message:
                 last_tool_message = message
 
             lc_messages.append(
                 ToolMessage(content=_dumps(compressed), tool_call_id=call_id)
             )
+
+        # ⚡ 本轮收集到的委派任务：**并发执行**（多专家同时干活）
+        if delegate_jobs:
+            # 标记并发：让每个 `delegate_task` 的子代理**独立开会话**（避免共用指挥家会话冲突）
+            ctx.extra["delegate_parallel"] = True
+            yield _event({"type": "waiting", "message": "正在安排专家并行处理…"})
+
+            async def _run_delegate(job: Any) -> Dict[str, Any]:
+                _cid, _tool, _params, _idx, _key, _name = job
+                _res = await _execute_tool(_tool, _params, ctx)
+                return {
+                    "callId": _cid,
+                    "idx": _idx,
+                    "key": _key,
+                    "name": _name,
+                    "result": _res,
+                }
+
+            try:
+                results = await asyncio.gather(*[_run_delegate(j) for j in delegate_jobs])
+            except Exception as e:  # noqa: BLE001 - 单个委派异常不该整轮崩（_execute_tool 已吞；这里兜底）
+                logger.warning("[agent] 并发委派异常: {}", e)
+                results = []
+
+            # 按**完成顺序**逐条回报（gather 保序，这里直接遍历）
+            for item in results:
+                res = item["result"]
+                compressed = guard.compress_result(roles_mod.DELEGATE_TOOL_NAME, res)
+                message = str(res.get("message") or res.get("error") or "")
+                # 回填占位 ToolMessage（保序回灌给模型）
+                lc_messages[item["idx"]] = ToolMessage(
+                    content=_dumps(compressed), tool_call_id=item["callId"]
+                )
+                yield _event(
+                    {
+                        "type": "tool_result",
+                        "tool": roles_mod.DELEGATE_TOOL_NAME,
+                        "action": "delegate",
+                        "success": bool(res.get("success")),
+                        "message": message,
+                        "data": res,
+                    }
+                )
+                yield _event(
+                    {
+                        "type": "delegate_done",
+                        "agent": {"id": item["key"], "name": item["name"]},
+                        "success": bool(res.get("success")),
+                        "summary": message[:200],
+                        "index": item["idx"],
+                    }
+                )
+                if message:
+                    last_tool_message = message
+
+            ctx.extra.pop("delegate_parallel", None)
 
         # 这一轮的工具全跑完了 → 再推一次，「步数 / 工具耗时」跟着涨
         yield _event(_metrics_event())

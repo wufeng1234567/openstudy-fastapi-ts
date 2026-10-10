@@ -52,11 +52,12 @@ async def run_sub_agent(
     excluded_tools: Optional[set] = None,
     max_loops: int = SUB_AGENT_MAX_LOOPS,
     extra: Optional[Dict[str, Any]] = None,
+    own_session: bool = False,
 ) -> Dict[str, Any]:
     """跑一个子代理，返回 `{"success", "text", "steps"}`
 
     Args:
-        db: 数据库会话（与指挥家**同一个**，保证事务/回退账本同源）。
+        db: 数据库会话。传 `None` 时**本函数自己开一个独立会话**（见 `own_session`）。
         user_id: 归属用户（子代理的工具只碰这个用户的数据）。
         session_id: 会话 id（透传给工具 ctx）。
         role_spec: 子代理的 `RoleSpec`（用 `persona` 作系统提示词、`tools` 作白名单）。
@@ -66,10 +67,65 @@ async def run_sub_agent(
                         传 None 时由本函数按 `role_spec.tools ∪ GLOBAL_TOOLS` 现算。
         max_loops: 内层最大往返数。
         extra: 追加到子代理 ToolContext.extra 的键（如 attachments）。
+        own_session: **是否让本子代理用独立数据库会话**。
+            · `True`（并发委派时必须）：子代理自己开一个 `async_session_factory` 会话，
+              并在每次**写操作**后 `commit()` —— 因为 asyncpg 单连接**不能并发**，
+              多个子代理共用指挥家的同一个会话会撞（`begin_nested` SAVEPOINT 冲突 /
+              连接被并发复用）。独立会话 = 独立连接，天然支持并行。
+            · `False`（默认，串行委派）：沿用传入的 `db`，写操作由指挥家主循环统一 commit
+              （保证回退账本与数据同源）。此时 `db` 不能为 None。
+            ⚠️ 并发（`own_session=True`）时，子代理的写操作**自行提交**、其回退账本记在
+              自己的事务里 —— 与指挥家主事务不再同源。这是"真并行"的必然代价：
+              并行子任务无法共享一个 SAVEPOINT。需要"整轮可回退"的场景应走串行委派。
 
     Returns:
         {"success": bool, "text": str, "steps": [工具名...], "error": str|None}
     """
+    from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+
+    from app.services.ai.agent import orchestrator
+    from app.services.ai.agent import loop as loop_mod
+
+    # 0) 独立会话：并发委派时每个子代理各开一个连接（见 own_session 说明）
+    db_session = None
+    if own_session or db is None:
+        from app.database import async_session_factory
+
+        db_session = async_session_factory()
+        db = await db_session.__aenter__()
+
+    try:
+        return await _run_sub_agent_inner(
+            db,
+            user_id=user_id,
+            session_id=session_id,
+            role_spec=role_spec,
+            task=task,
+            llm=llm,
+            excluded_tools=excluded_tools,
+            max_loops=max_loops,
+            extra=extra,
+            commit_writes=own_session or db_session is not None,
+        )
+    finally:
+        if db_session is not None:
+            await db_session.__aexit__(None, None, None)
+
+
+async def _run_sub_agent_inner(
+    db: Any,
+    *,
+    user_id: int,
+    session_id: Optional[str],
+    role_spec: Any,
+    task: str,
+    llm: Any,
+    excluded_tools: Optional[set],
+    max_loops: int,
+    extra: Optional[Dict[str, Any]],
+    commit_writes: bool,
+) -> Dict[str, Any]:
+    """子代理内层循环的实体（`run_sub_agent` 负责会话生命周期，这里只管跑）"""
     from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 
     from app.services.ai.agent import orchestrator
@@ -135,6 +191,13 @@ async def run_sub_agent(
             else:
                 steps.append(name)
                 result = await loop_mod._execute_tool(tool, params, ctx)
+                # 独立会话：写操作必须自己提交（本会话没有外层主循环的统一 commit，
+                # 关会话时会回滚未提交的写）—— 见 run_sub_agent 的 own_session 说明
+                if commit_writes and tool.write_operation and result.get("success"):
+                    try:
+                        await db.commit()
+                    except Exception as e:  # noqa: BLE001 - 提交失败不影响子代理给出结论
+                        logger.warning("[sub_agent:{}] 写操作提交失败: {}", role_spec.key, e)
             messages.append(
                 ToolMessage(content=_dumps(result), tool_call_id=call_id)
             )

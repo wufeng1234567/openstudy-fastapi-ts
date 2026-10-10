@@ -38,13 +38,17 @@ class DelegateTaskTool(AgentTool):
         "(or should not) handle it with your own tools. Pass `sub_agent` = the specialist "
         "key from your team list, and `task` = a clear, self-contained instruction "
         "including all context the specialist needs (it does NOT see the user's chat). "
+        "For a request that spans several areas at once, call `delegate_task` MULTIPLE "
+        "times in the SAME reply so the specialists run in parallel (much faster); only "
+        "chain them across turns when a later one truly depends on an earlier result. "
         "After it returns, integrate the result into ONE unified reply to the user and "
         "never mention that a sub-agent was involved."
     )
     label = "派发任务"
     description_zh = (
         "把一个任务派给某个专业子代理（后台执行，用户不可见），拿回结果后由你统一回复用户。"
-        "仅在请求明确属于某专家时使用。"
+        "仅在请求明确属于某专家时使用；若一次要办几件事，可在同一轮多次调用本工具，"
+        "让多个专家并行开工。"
     )
     parameters = {
         "type": "object",
@@ -101,6 +105,10 @@ class DelegateTaskTool(AgentTool):
         # 懒 import：避免模块级循环依赖（sub_agent 会 import loop，loop 又会 import 本模块）
         from app.services.ai.agent.sub_agent import run_sub_agent
 
+        # 并发委派：本批次的多个 delegate_task 由 loop 并发执行，**每个子代理必须独立开会话**
+        # （asyncpg 单连接不能并发复用；共用指挥家会话会在 begin_nested 处冲突）。见 sub_agent 说明。
+        parallel = bool(extra.get("delegate_parallel"))
+
         result = await run_sub_agent(
             ctx.db,
             user_id=ctx.user_id,
@@ -110,6 +118,7 @@ class DelegateTaskTool(AgentTool):
             llm=llm,
             excluded_tools=excludes.get(key),
             extra=sub_extra,
+            own_session=parallel,
         )
 
         if not result.get("success"):
