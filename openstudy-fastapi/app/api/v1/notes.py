@@ -44,8 +44,11 @@ def format_note(note, linked_banks=None, author_name=None, author_avatar=None, i
         "isFavorited": is_favorited,
         "categoryId": note.category_id,
         "title": note.title,
-        "content": note.content,
-        "markdownContent": note.markdown_content,
+        # ⚠️ content 与 markdownContent **互相兜底**（读侧，覆盖历史数据）：前端所有笔记展示
+        #    （详情页/列表/编辑器）只读 `markdownContent`，而 Agent 建的笔记可能只写了 `content`
+        #    → 前端读到空 md 就一片空白（用户 2026-10-11 报）。故任一为空时用另一个补上。
+        "content": note.content or note.markdown_content,
+        "markdownContent": note.markdown_content or note.content,
         "tags": note.tags,
         "publicSectionId": note.public_section_id,
         "coverImage": note.cover_image,

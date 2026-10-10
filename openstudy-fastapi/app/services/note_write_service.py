@@ -153,8 +153,9 @@ def note_brief(note: Note, *, with_preview: bool = True) -> Dict[str, Any]:
 def note_detail(note: Note) -> Dict[str, Any]:
     """笔记详情（带完整正文，供 `detail` / `update` 回执用）"""
     data = note_brief(note, with_preview=False)
-    data["content"] = note.content
-    data["markdownContent"] = note.markdown_content
+    # content 与 markdownContent 互相兜底（口径同 `api/v1/notes.py:format_note`，见那处注释）
+    data["content"] = note.content or note.markdown_content
+    data["markdownContent"] = note.markdown_content or note.content
     data["coverImage"] = note.cover_image
     data["contentLength"] = len(note.content or note.markdown_content or "")
     return data
@@ -348,6 +349,18 @@ async def create_note(
     status: Optional[str] = None,
 ) -> Note:
     """建笔记（调用方需先用 `resolve_category` 拿到分类）"""
+    # ⚠️ content 与 markdown_content **互相兜底**（用户 2026-10-11 报的"Agent 建的笔记在
+    #    个人中心/详情页空白"真因）：前端所有笔记展示（详情页 `notes/detail.vue`、列表
+    #    `myNotes`/`notes/list`、编辑器 `notesEditor`/`editor`）**只读 `markdownContent`**，
+    #    而 Agent 工具（`note_manage._create`）允许只传 `content`。若只落 `content`，
+    #    前端读 `markdownContent` 就是空的 → 一片空白。故落库时把两者补齐成一致：
+    #    · 只给 content        → markdown_content 也填 content（纯文本，md 渲染器照样能显示）
+    #    · 只给 markdown_content → content 也填它
+    #    （纯文本塞进 md 字段安全：markdown 是纯文本的超集，`\n` 也正常。）
+    if content and not markdown_content:
+        markdown_content = content
+    elif markdown_content and not content:
+        content = markdown_content
     note = Note(
         user_id=user_id,
         category_id=category.id,
