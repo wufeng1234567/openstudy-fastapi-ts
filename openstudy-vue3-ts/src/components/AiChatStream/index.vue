@@ -80,6 +80,44 @@
             :answer-text="turnAnswerText(msg.turnId)" :disabled="isGenerating"
             @rollback="$emit('rollback-turn', msg.turnId)" @copy="copyText($event)" />
         </div>
+        <!--
+          专家工作组（多专家并行干活）：一行一个专家。
+          · 进行中=转圈、完成/失败=对勾/叉；**默认只显专家名 + 任务摘要（截断）**，保持干净；
+          · 点某行**展开看该专家的结论详情**（默认收起，符合"思维链默认不显示、想看可点开"）；
+          · 用户始终只看到这一张卡，专家不直接对用户发言（结果由主助手整合后另出正文）。
+        -->
+        <div v-else-if="msg.type === 'experts'" class="message-content">
+          <div class="message-role agent-role">智能助手</div>
+          <div class="expert-group">
+            <div class="expert-group-title">
+              <el-icon class="eg-icon"><Connection /></el-icon>
+              <span>专家协同中（{{ (msg.experts || []).length }} 位）</span>
+            </div>
+            <div v-for="(ex, ei) in (msg.experts || [])" :key="ei"
+              :class="['expert-row', 'ex-' + ex.status]">
+              <div class="expert-row-head" @click="toggleExpert(msg, ei)">
+                <span class="expert-state">
+                  <span v-if="ex.status === 'running'" class="expert-spin"></span>
+                  <el-icon v-else-if="ex.status === 'ok'" class="expert-ok"><Select /></el-icon>
+                  <el-icon v-else class="expert-fail"><CloseBold /></el-icon>
+                </span>
+                <span class="expert-name">{{ ex.name }}</span>
+                <span class="expert-task">{{ ex.status === 'running' ? (ex.task || '正在处理…') : (ex.summary || '已完成') }}</span>
+                <el-icon class="expert-caret" :class="{ open: isExpertOpen(msg, ei) }"><ArrowDown /></el-icon>
+              </div>
+              <div v-if="isExpertOpen(msg, ei)" class="expert-detail">
+                <div v-if="ex.task" class="expert-detail-block">
+                  <div class="ed-label">交给它的任务</div>
+                  <div class="ed-text">{{ ex.task }}</div>
+                </div>
+                <div class="expert-detail-block">
+                  <div class="ed-label">它的结论</div>
+                  <div class="ed-text">{{ ex.status === 'running' ? '正在处理…' : (ex.summary || '（无输出）') }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
         <!-- 普通 assistant 消息 -->
         <div class="message-content" v-else-if="msg.role === 'assistant'">
           <div class="message-role agent-role">Agent</div>
@@ -165,7 +203,7 @@ import {
   onDeactivated
 } from 'vue'
 import { ElMessage } from 'element-plus'
-import { CopyDocument } from '@element-plus/icons-vue'
+import { CopyDocument, Connection, Select, CloseBold, ArrowDown } from '@element-plus/icons-vue'
 import { renderAgentMarkdown } from '@/utils/markdown'
 import LoadingDots from '@/components/LoadingDots/index.vue'
 import AgentReasoning from '@/components/AgentReasoning/index.vue'
@@ -222,6 +260,26 @@ const props = defineProps({
 
 // 等待文案：深度思考时显示「深度思考中」（配合共用的三点抖动组件）
 const loadingText = computed(() => (props.thinking ? '深度思考中' : 'AI 思考中'))
+
+/**
+ * 专家工作组各行的**展开态**（默认收起 → 符合"专家思维链默认不显示、想看可点开"）。
+ *
+ * key = `${消息下标}:${行下标}`：消息只 append、下标稳定，用它做 key 足够；
+ * 刷新后消息整份重建 → 展开态重置（收起），符合"默认不看"的预期。
+ */
+const expertOpen = ref<Set<string>>(new Set())
+const expertKey = (msg: any, rowIdx: number) => {
+  const mi = (props.messages as any[]).indexOf(msg)
+  return `${mi}:${rowIdx}`
+}
+const isExpertOpen = (msg: any, rowIdx: number) => expertOpen.value.has(expertKey(msg, rowIdx))
+const toggleExpert = (msg: any, rowIdx: number) => {
+  const k = expertKey(msg, rowIdx)
+  const s = new Set(expertOpen.value)
+  if (s.has(k)) s.delete(k)
+  else s.add(k)
+  expertOpen.value = s
+}
 
 const emit = defineEmits([
   'update:messages',
@@ -346,11 +404,14 @@ const isLastAssistantEmpty = (idx) => {
   for (let i = props.messages.length - 1; i > idx; i--) {
     const t = props.messages[i].type
     // 工具卡片与过程提示都不是「正文」，不算数（agent_note 由智能体链路产出）
+    // ⚠️ `experts`（专家工作组卡片）同样是过程信息、content 恒空，须一并排除 ——
+    //    否则它会被当成"一条 assistant 正文"，干扰 loading 动画的判定。
     if (
       props.messages[i].role === 'assistant' &&
       t !== 'tool_confirm' &&
       t !== 'tool_result' &&
-      t !== 'agent_note'
+      t !== 'agent_note' &&
+      t !== 'experts'
     ) {
       return false
     }
@@ -1067,5 +1128,134 @@ defineExpose({ scrollToBottom, messagesRef, setInputText })
   a:hover {
     text-decoration: underline;
   }
+}
+
+/* ── 专家工作组卡片（多专家并行干活）─────────────────────────────────────
+   一行一个专家：状态图标 + 名字 + 一行摘要 + 展开箭头；点行展开看详情。
+   默认只显一行（干净），细节收起 —— 对应"专家思维链默认不显示、想看可点开"。 */
+.expert-group {
+  border: 1px solid #e6ebf3;
+  border-radius: 12px;
+  background: #fbfcfe;
+  overflow: hidden;
+}
+
+.expert-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px;
+  font-size: 12.5px;
+  color: #64748b;
+  background: #f4f7fc;
+  border-bottom: 1px solid #e6ebf3;
+}
+
+.eg-icon {
+  color: #4f6ef7;
+}
+
+.expert-row {
+  border-bottom: 1px solid #eef2f7;
+}
+
+.expert-row:last-child {
+  border-bottom: none;
+}
+
+.expert-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.expert-row-head:hover {
+  background: #f2f6fd;
+}
+
+.expert-state {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
+.expert-ok {
+  color: #16a34a;
+}
+
+.expert-fail {
+  color: #dc2626;
+}
+
+/* 进行中：旋转小圈（用纯 CSS，避免再引一个 loading 组件） */
+.expert-spin {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid #dbe3ef;
+  border-top-color: #4f6ef7;
+  border-radius: 50%;
+  animation: expert-rotate 0.8s linear infinite;
+}
+
+@keyframes expert-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.expert-name {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.expert-task {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.expert-caret {
+  flex-shrink: 0;
+  color: #b6bdc9;
+  transition: transform 0.15s ease;
+}
+
+.expert-caret.open {
+  transform: rotate(180deg);
+}
+
+.expert-detail {
+  padding: 2px 12px 12px 36px;
+}
+
+.expert-detail-block + .expert-detail-block {
+  margin-top: 8px;
+}
+
+.ed-label {
+  font-size: 11.5px;
+  color: #a0aab8;
+  margin-bottom: 3px;
+}
+
+.ed-text {
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>

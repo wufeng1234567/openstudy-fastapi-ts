@@ -31,6 +31,22 @@ export const isDsFreeModel = (model?: string) => model === 'deepseek-free'
  * 所以大屏智能体页与 sp3 一样是「对话即过程」的形态，不需要额外的执行面板。
  */
 
+/** 专家工作组里的**一行**（一个专家的一次派活） */
+export interface AgentExpertProgress {
+  /** 后端 `delegate_start`/`delegate_done` 的 `index`（本轮第 N 个委派）——用它定位行 */
+  index: number
+  /** 专家 key（bank/note/kb/stats 或 user:<id>） */
+  key: string
+  /** 专家显示名（后端已给中文名，如「题库专家」） */
+  name: string
+  /** 进行中 / 完成 / 失败 */
+  status: 'running' | 'ok' | 'fail'
+  /** 派给它的任务摘要（后端截断到 200 字） */
+  task?: string
+  /** 完成后的结论摘要 */
+  summary?: string
+}
+
 /** 消息流里的一条（AiChatStream 认识 role / type / content） */
 export interface AgentChatMessage {
   role: 'user' | 'assistant'
@@ -44,8 +60,11 @@ export interface AgentChatMessage {
    *
    * ⚠️ `turn_end` 是**结构**、不是内容：`content` 恒为空串，它唯一的载荷是 `turnId`
    * （见 `send()` 的 finally —— 那是两条链路**都必然经过**的轮末点）。
+   *
+   * ⚠️ **`experts` = 专家工作组卡片**（多专家并行干活的进度条）：一行一个专家，
+   *    `content` 恒空、载荷在 `experts` 数组。指挥家同一轮并发派多个专家时产出。
    */
-  type?: 'tool_result' | 'agent_note' | 'thinking' | 'reasoning' | 'tool_confirm' | 'turn_end'
+  type?: 'tool_result' | 'agent_note' | 'thinking' | 'reasoning' | 'tool_confirm' | 'turn_end' | 'experts'
   content: string
   /**
    * 这条消息属于**哪一轮**（一次用户提问）—— 目前只有 `turn_end` 标记用。
@@ -73,6 +92,11 @@ export interface AgentChatMessage {
   preview?: Record<string, any>
   /** 自我纠正序号 */
   attempt?: number
+  /**
+   * `experts` 专用：专家工作组的各行（一行一个专家）。
+   * 由 `delegate_start` 建行（status='running'）、`delegate_done` 回填（status='ok'|'fail'）。
+   */
+  experts?: AgentExpertProgress[]
   /**
    * `reasoning` 专用：这一段思考花了多少秒。
    * **`secs == null` 就表示它还在跑** —— 没有另设 `status` 字段，理由见 `closeReasoning()`。
@@ -146,6 +170,11 @@ function slimTimeline(msgs: AgentChatMessage[]): any[] {
     if (m.params) out.params = m.params
     if (m.attempt != null) out.attempt = m.attempt
     if (m.attachments?.length) out.attachments = m.attachments
+    // 专家工作组卡片：整条 `experts` 数组落库，刷新后仍能看到「这轮请了哪些专家、结果如何」。
+    // （行内容短、行数=专家数，无需像 data 那样截断。）
+    if (m.type === 'experts' && Array.isArray(m.experts)) {
+      out.experts = m.experts
+    }
     if (m.data) {
       try {
         const s = JSON.stringify(m.data)
@@ -702,6 +731,83 @@ export function useAgentChat() {
     })
   }
 
+  /**
+   * 找到「**本轮**的专家工作组卡片」（本轮没有则返回 undefined）
+   *
+   * ⚠️ 必须按**轮边界**（`turn_end` 标记）限定，否则会误取**上一轮**的卡片 ——
+   * 新专家的行会被追加到历史那轮的卡片里，用户看到的是「上一轮突然多了一行」。
+   * 做法：从末尾往前，先遇到 `experts` 就取它；先遇到 `turn_end`（本轮起点）则本轮还没有卡片。
+   */
+  const findExpertCard = () => {
+    for (let i = messages.value.length - 1; i >= 0; i--) {
+      const m = messages.value[i]
+      if (m.type === 'experts') return m
+      if (m.type === 'turn_end') return undefined
+    }
+    return undefined
+  }
+
+  /** `delegate_start` → 建/追加一行「专家开工中」 */
+  const pushExpertStart = (event: AgentEvent) => {
+    clearPlaceholder()
+    closeText()
+    closeReasoning()
+    const ag = event.agent || {}
+    const row: AgentExpertProgress = {
+      index: Number(event.index ?? 0) || 0,
+      key: String(ag.id || ''),
+      name: String(ag.name || ag.id || '专家'),
+      status: 'running',
+      task: String(event.task || '')
+    }
+    const card = findExpertCard()
+    if (card && Array.isArray(card.experts)) {
+      card.experts.push(row)
+    } else {
+      messages.value.push({
+        role: 'assistant',
+        type: 'experts',
+        content: '',
+        experts: [row]
+      })
+    }
+  }
+
+  /** `delegate_done` → 按 `index` 回填该行的状态与结论 */
+  const fillExpertDone = (event: AgentEvent) => {
+    const idx = Number(event.index ?? -1)
+    const ag = event.agent || {}
+    const card = findExpertCard()
+    if (card && Array.isArray(card.experts)) {
+      // 优先按 index 精确回填；index 缺失/越界时回退到「按 key 找最近一个 running 行」
+      let row = idx >= 0 ? card.experts.find((e) => e.index === idx) : undefined
+      if (!row) {
+        const key = String(ag.id || '')
+        row = [...card.experts].reverse().find((e) => e.key === key && e.status === 'running')
+      }
+      if (row) {
+        row.status = event.success ? 'ok' : 'fail'
+        row.summary = String(event.summary || '')
+        return
+      }
+    }
+    // 卡片丢了（异常）：补一张只含该行的卡片，别让专家凭空消失
+    messages.value.push({
+      role: 'assistant',
+      type: 'experts',
+      content: '',
+      experts: [
+        {
+          index: idx >= 0 ? idx : 0,
+          key: String(ag.id || ''),
+          name: String(ag.name || ag.id || '专家'),
+          status: event.success ? 'ok' : 'fail',
+          summary: String(event.summary || '')
+        }
+      ]
+    })
+  }
+
   /** 事件 → 消息流 */
   const handleEvent = (event: AgentEvent) => {
     switch (event.type) {
@@ -766,6 +872,16 @@ export function useAgentChat() {
 
       case 'tool_result':
         fillTool(event)
+        break
+
+      // 指挥家并发派活 → 专家工作组卡片（一行一个专家）。
+      // `delegate_start` 建行（转圈），`delegate_done` 按 `index` 回填状态与结论。
+      case 'delegate_start':
+        pushExpertStart(event)
+        break
+
+      case 'delegate_done':
+        fillExpertDone(event)
         break
 
       case 'self_correct':
