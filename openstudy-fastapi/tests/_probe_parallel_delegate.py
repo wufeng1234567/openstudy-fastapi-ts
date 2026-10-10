@@ -112,6 +112,14 @@ async def run_probe() -> int:
     cjk = [c for c in desc if "\u4e00" <= c <= "\u9fff"]
     check("PD-08", "delegate 描述无中文（P11D）", not cjk, "".join(cjk))
 
+    # ---- 7. 子代理「协议文本」检测（防"把工具调用写成文本当成结论"）----
+    from app.services.ai.agent.sub_agent import _looks_like_tool_protocol
+
+    check("PD-09", "识别 DSML 协议文本", _looks_like_tool_protocol('调用: <|DSML|> invoke name="create_knowledge_base"'))
+    check("PD-10", "识别 <invoke>/<parameter> 文本", _looks_like_tool_protocol('call it:\n<invoke name="x">'))
+    check("PD-11", "识别裸 tool+action JSON", _looks_like_tool_protocol('{"tool": "bank_manage", "action": "list"}'))
+    check("PD-12", "正常文本不误伤", not _looks_like_tool_protocol("已为你创建好知识库 cpp，共 3 篇文档。"))
+
     print("\n---- 并行委派探针结果 ----")
     for r in ROWS:
         tail = "" if r["status"] == "通过" else f" | 实际: {r['actual']}"

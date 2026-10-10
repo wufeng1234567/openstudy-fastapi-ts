@@ -187,19 +187,17 @@
 
         <!-- ① 设置 -->
         <div v-show="panelTab === 'settings'" class="agent-panel-body settings-body">
-          <div class="settings-row">
-            <div class="settings-label">智能体</div>
+          <!-- ① 我的智能体（用户自建角色）——官方"专家"已由下面的「专家」开关管理，
+               故这里**不再**列官方角色（避免与专家开关重复、造成"两个地方管同一批东西"）。
+               仅当用户确实建有自定义智能体时才显示这一行。 -->
+          <div class="settings-row" v-if="myAgents.length">
+            <div class="settings-label">我的智能体</div>
             <div class="settings-field">
               <el-select v-model="selectedAgentKey" size="default" :disabled="isGenerating" style="width: 100%">
-                <el-option label="自动（按需求智能选择）" :value="AUTO_AGENT_KEY" />
-                <el-option-group v-if="agentRoles.length" label="官方智能体">
-                  <el-option v-for="r in agentRoles" :key="'r-' + r.key" :label="r.name" :value="'official:' + r.key" />
-                </el-option-group>
-                <el-option-group v-if="myAgents.length" label="我的智能体">
-                  <el-option v-for="a in myAgents" :key="'a-' + a.agentId" :label="a.name" :value="'user:' + a.agentId" />
-                </el-option-group>
+                <el-option label="自动（由主助手按需安排）" :value="AUTO_AGENT_KEY" />
+                <el-option v-for="a in myAgents" :key="'a-' + a.agentId" :label="a.name" :value="'user:' + a.agentId" />
               </el-select>
-              <div class="settings-hint">「自动」= 由主智能体按需求智能分派；也可指定某个助手。</div>
+              <div class="settings-hint">「自动」= 由主助手按需安排；也可指定你创建的某个智能体来对话。</div>
             </div>
           </div>
 
@@ -382,14 +380,12 @@ import { fetchAgentToolsForUi } from '@/api/ai/agentDsFree'
 import { useAgentChat } from '@/composables/useAgentChat'
 import { listSessions, createSession, deleteSession, getConversationHistory, saveConversationMessages, getAgentTimeline, attachmentPlaceholder, fillAttachmentMetas } from '@/api/ai/ai'
 import {
-  listAgentRoles,
   listAgentConfigs,
   createAgentConfig,
   updateAgentConfig,
   deleteAgentConfig,
   listAgentExperts,
   setAgentExpertPref,
-  type AgentRoleMeta,
   type AgentConfig,
   type AgentConfigInput,
   type AgentExpert
@@ -467,10 +463,9 @@ const autoConfirm = ref(true)
 // ⚠️ 「自动」用**非空哨兵值 `'auto'`**，不用空串 `''`：Element Plus 的 `el-select` 把
 //    空串 value 当作「未选中」，会忽略该 option 的 label 转而显示 placeholder ——
 //    结果「自动」这一项永远显示不出来（用户 2026-10-10 报：智能体框显示「请选择」）。
-//    启用哨兵值后 `value="auto"` 能被正常选中并显示 label「自动（按需求智能选择）」。
+//    启用哨兵值后 `value="auto"` 能被正常选中并显示 label。
 const AUTO_AGENT_KEY = 'auto'
 const selectedAgentKey = ref(AUTO_AGENT_KEY)
-const agentRoles = ref<AgentRoleMeta[]>([])
 const myAgents = ref<AgentConfig[]>([])
 
 /** 交给 `send()` 的解析结果：官方角色 key 与用户智能体 id 二选一（'auto' → 两者皆空） */
@@ -483,11 +478,14 @@ const selectedAgentId = computed(() => {
   return k.startsWith('user:') ? Number(k.slice('user:'.length)) || undefined : undefined
 })
 
-/** 拉取官方角色 + 我的智能体（失败静默降级为空，选择器仍显示「自动」） */
+/**
+ * 拉取「我的智能体」（用户自建角色）
+ *
+ * ⚠️ 不再拉官方角色：官方"专家"已由设置面板的「专家」开关管理，下拉里再列一次
+ * 与开关重复（用户 2026-10-10 反馈"智能体下拉框明显多余"）。故只拉用户自定义的。
+ */
 async function loadAgents() {
-  const [roles, agents] = await Promise.all([listAgentRoles(), listAgentConfigs()])
-  agentRoles.value = roles
-  myAgents.value = agents
+  myAgents.value = await listAgentConfigs()
 }
 
 /* ---- 智能体侧栏抽屉（统一容器：设置 / 知识库 / 历史会话，内部 tab 切换）---- */

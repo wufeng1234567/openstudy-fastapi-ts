@@ -29,6 +29,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
@@ -39,6 +40,67 @@ from app.services.ai.agent.registry import registry
 
 #: 子代理内层循环的最大「模型→工具」往返数（比指挥家小：子代理任务更聚焦）
 SUB_AGENT_MAX_LOOPS = 6
+
+#: 「模型没走 Function Calling、而是把工具调用**写成了文本**」时最多纠正几次
+SUB_AGENT_FORMAT_FIX_LIMIT = 2
+
+#: 检测「文本形式的工具调用尝试」用的正则（与前端 `agentDsFree.ts` 的 `looksLikeToolCallAttempt` 对齐）。
+#:
+#: 为什么要检测：子代理用的是指挥家同一个模型（可能是不支持/弱支持 Function Calling 的
+#: ds-free 反代或某模型），当它**把调用写成文本**（`<|DSML|>` / `<invoke name="...">` /
+#: 围栏 JSON / 裸 JSON）时，LangChain 的 `ai.tool_calls` 为空 —— 若直接把 `ai.content`
+#: 当「子代理最终产出」返回，指挥家就会把这段**原始协议文本**当结果回报给用户
+#: （用户 2026-10-10 报的「知识库/题库创建失败」真因：子代理从没真正执行工具，只吐了协议文本）。
+#: ⚠️ 只认**标记形状**（带尖括号）——正文里光出现 `tool_call`/`DSML` 这些词不算。
+_SUB_AGENT_PROTOCOL_PATTERNS = (
+    re.compile(r"<[=/\s]*tool_calls?\b", re.IGNORECASE),
+    # DSML：这是 DeepSeek 网页端的工具语法标记，正常学习对话里几乎不会出现 `DSML` 这个词，
+    # 故只要出现（大小写不敏感）即判为协议文本尝试 —— 容忍半角/全角尖括号与竖线的各种变体
+    # （用户 2026-10-10 记录里是 `＜｜｜DSML｜｜ invoke ...＞` 这类全角形态）。
+    re.compile(r"DSML", re.IGNORECASE),
+    re.compile(r"<\s*invoke\b", re.IGNORECASE),
+    re.compile(r"<\s*parameter\b", re.IGNORECASE),
+)
+
+
+def _looks_like_tool_protocol(text: str) -> bool:
+    """子代理的文本产出是否**像一次工具调用尝试**（DSML / invoke / 围栏 JSON / 裸 JSON）
+
+    与前端 ds-free 的 `looksLikeToolCallAttempt` 同口径（子代理产出的文本不该被当成结论）。
+    命中即认为"模型没走 Function Calling、把调用写成了文本"——须纠正重试，绝不能当最终产出。
+    """
+    if not text:
+        return False
+    for pat in _SUB_AGENT_PROTOCOL_PATTERNS:
+        if pat.search(text):
+            return True
+    # 围栏代码块里的 tool+action JSON（成对或未闭合）
+    fence = re.search(r"(?:```|~~~)([\s\S]*?)(?:```|~~~)", text)
+    if fence and _has_tool_action_keys(fence.group(1)):
+        return True
+    at = max(text.rfind("```"), text.rfind("~~~"))
+    if at >= 0 and _has_tool_action_keys(text[at + 3:]):
+        return True
+    # 裸 tool+action JSON（正文里引用示例不算：要求整段文本里同时出现两个键即可，从严不够的
+    # 情况宁可多纠正一次 —— 子代理产出协议文本本就是异常）
+    return _has_tool_action_keys(text)
+
+
+def _has_tool_action_keys(s: str) -> bool:
+    """文本里是否同时出现 `"tool"` 与 `"action"`/`"name"` 之类的调用键"""
+    return bool(
+        re.search(r"[\"'](?:tool|name)[\"']\s*:", s)
+        and re.search(r"[\"'](?:action|args|parameters|arguments)[\"']\s*:", s)
+    )
+
+
+#: 模型吐了协议文本时的纠正提示（回灌给子代理，要求它改用**真正的工具调用**）
+_SUB_AGENT_FORMAT_FIX = (
+    "Your previous message contained tool-call syntax as PLAIN TEXT (e.g. DSML / <invoke> / "
+    "a raw JSON block). That did NOT execute anything. If you need a tool, call it through the "
+    "normal function-calling mechanism; do NOT print the call as text. If you already have the "
+    "answer, just reply with the plain-text result."
+)
 
 
 async def run_sub_agent(
@@ -160,6 +222,8 @@ async def _run_sub_agent_inner(
 
     bound = llm if not tool_defs else llm.bind_tools(tool_defs)
     steps: List[str] = []
+    #: 「模型吐了协议文本、已纠正」的次数（超过 `SUB_AGENT_FORMAT_FIX_LIMIT` 就放弃）
+    format_fix_streak = 0
 
     for _ in range(max(1, int(max_loops))):
         try:
@@ -172,8 +236,29 @@ async def _run_sub_agent_inner(
         messages.append(ai)
 
         if not tool_calls:
-            # 不再调工具 → 这就是子代理的最终产出
             text = _content_to_text(getattr(ai, "content", ""))
+            # ⚠️ 关键兜底：模型**没走 Function Calling**、把工具调用**写成了文本**
+            #    （DSML / <invoke> / 围栏 JSON）时，`tool_calls` 会是空 —— 若把这段文本
+            #    当「子代理的产出」返回，指挥家就会原样回报给用户（用户 2026-10-10 报的
+            #    「知识库/题库创建失败」就是这个：子代理从没真正执行工具）。故检测并纠正。
+            if _looks_like_tool_protocol(text):
+                format_fix_streak += 1
+                if format_fix_streak <= SUB_AGENT_FORMAT_FIX_LIMIT:
+                    logger.warning(
+                        "[sub_agent:{}] 模型吐了工具协议文本，回灌纠正（第 {} 次）",
+                        role_spec.key, format_fix_streak,
+                    )
+                    messages.append(HumanMessage(content=_SUB_AGENT_FORMAT_FIX))
+                    continue
+                # 纠正多次仍不改 → 明确失败（绝不把协议文本当结论交回指挥家）
+                logger.warning("[sub_agent:{}] 连续 {} 次吐协议文本，放弃", role_spec.key, format_fix_streak)
+                return {
+                    "success": False,
+                    "text": "",
+                    "steps": steps,
+                    "error": "子代理模型未能按工具协议输出（多次把工具调用写成了纯文本），任务未执行",
+                }
+            # 正常文本 = 子代理的最终产出
             return {"success": True, "text": text, "steps": steps, "error": None}
 
         for tc in tool_calls:
