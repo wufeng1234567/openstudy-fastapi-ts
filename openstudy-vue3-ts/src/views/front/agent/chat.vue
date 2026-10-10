@@ -370,6 +370,10 @@ import ChatFileUploader from '@/components/ChatFileUploader/index.vue'
 import ChatAttachmentList from '@/components/ChatAttachmentList/index.vue'
 import KnowledgeBasePanel from '@/components/KnowledgeBasePanel/index.vue'
 import ResizableDrawer from '@/components/ResizableDrawer/index.vue'
+// 工具开关清单（设置 tab）：**静态 import**，不再用 `await import()` 动态加载 ——
+// 动态 import 会把「模块何时就绪」变成变量，是「刷新后先点别的 tab 再进设置，工具列表
+// 不加载」这类顺序敏感 bug 的温床（用户 2026-10-10 报）。静态 import 保证函数随时可用。
+import { fetchAgentToolsForUi, saveAgentToolPref } from '@/api/ai/agentDsFree'
 import { useAgentChat } from '@/composables/useAgentChat'
 import { listSessions, createSession, deleteSession, getConversationHistory, saveConversationMessages, getAgentTimeline, attachmentPlaceholder, fillAttachmentMetas } from '@/api/ai/ai'
 import {
@@ -524,6 +528,8 @@ const toolLoading = ref(false)
 const toolLoadFailed = ref(false)
 /** 正在写开关的工具名（写时锁住那一行） */
 const toolTogglingName = ref('')
+/** 工具清单请求的飞行锁（同一时刻只发一次，见 loadToolOptions） */
+let _toolLoadInFlight: Promise<void> | null = null
 
 /** 工具名 → 中文名（界面对照；无则回落到 name 本身） */
 const toolLabelMap = computed(() => {
@@ -537,28 +543,43 @@ async function loadToolOptions() {
   //    界面永远停在「正在读取工具清单…」（用户 2026-10-10 报的 bug：从知识库/历史
   //    切到设置后工具一直转圈）。参考 `AgentToolPopover` 的成熟口径——显式 loading +
   //    「取不到」单独表达 + 可重试，且「取到了但一条都没有」与「没取到」不能说成同一句话。
+  //
+  // ⚠️ 飞行锁（`_toolLoadInFlight`）：多个入口（onMounted 预取 / 点设置 / 点重试）可能
+  //    同时触发。并发多次请求不仅浪费，返回顺序还可能让"后发先至"的空结果盖掉已有数据。
+  //    共享同一个飞行中的 Promise，保证同一时刻只有一次请求。
+  if (_toolLoadInFlight) return _toolLoadInFlight
   toolLoading.value = true
   toolLoadFailed.value = false
-  try {
-    const { fetchAgentToolsForUi } = await import('@/api/ai/agentDsFree')
-    const payload = await fetchAgentToolsForUi()
-    const list = Array.isArray(payload?.tools) ? payload.tools : []
-    toolOptions.value = list
-      .map((t: any) => ({
-        name: t?.function?.name || t?.name || '',
-        label: t?.label || t?.descriptionZh || t?.function?.name || t?.name || '',
-        disabled: t?.disabled === 1 ? 1 : 0
-      }))
-      .filter((t: any) => t.name)
-    // 后端注册表不可能为空 ⇒ 空数组即「没取到」，据此置失败态（供界面给「重试」）
-    toolLoadFailed.value = toolOptions.value.length === 0
-  } catch (e) {
-    console.warn('[agent] 读取工具清单失败', e)
-    toolOptions.value = []
-    toolLoadFailed.value = true
-  } finally {
-    toolLoading.value = false
-  }
+  _toolLoadInFlight = (async () => {
+    try {
+      // 静态 import（见顶部），不用动态 import —— 避免"模块就绪时机"变成顺序敏感变量
+      const payload: any = await fetchAgentToolsForUi()
+      const list = Array.isArray(payload?.tools) ? payload.tools : []
+      const mapped = list
+        .map((t: any) => ({
+          name: t?.function?.name || t?.name || '',
+          label: t?.label || t?.descriptionZh || t?.function?.name || t?.name || '',
+          disabled: t?.disabled === 1 ? 1 : 0
+        }))
+        .filter((t: any) => t.name)
+      if (mapped.length) {
+        // 拿到数据才覆盖；空结果不覆盖已有列表（网络抖动不该把已显示的工具清空）
+        toolOptions.value = mapped
+        toolLoadFailed.value = false
+      } else {
+        // 后端注册表不可能为空 ⇒ 空数组即「没取到」；保留旧数据、标失败供重试
+        toolLoadFailed.value = toolOptions.value.length === 0
+      }
+    } catch (e) {
+      console.warn('[agent] 读取工具清单失败', e)
+      // 失败**不清空**已有列表（保留上次成功结果），仅标失败供重试
+      toolLoadFailed.value = toolOptions.value.length === 0
+    } finally {
+      toolLoading.value = false
+      _toolLoadInFlight = null
+    }
+  })()
+  return _toolLoadInFlight
 }
 
 /** 拨动设置弹层里的工具开关（受控式：显示值来自服务端回值） */
@@ -567,7 +588,6 @@ async function toggleToolInSettings(t: { name: string; disabled: number }, on: b
   if ((t.disabled !== 1 ? 0 : 1) === want) return
   toolTogglingName.value = t.name
   try {
-    const { saveAgentToolPref } = await import('@/api/ai/agentDsFree')
     const res = await saveAgentToolPref(t.name, want)
     if (res.ok) {
       await loadToolOptions()
@@ -941,6 +961,10 @@ const handleSend = async ({ content }: { content: string }) => {
 onMounted(async () => {
   // 智能体清单（官方角色 + 我的智能体）：不阻塞会话加载，失败静默降级
   loadAgents()
+  // ⚡ 进页面即**预取**工具开关清单：不管用户先点哪个 tab（设置 / 知识库 / 历史），
+  //   进设置时清单都已在手，彻底消除"刷新后先点别的 tab 再进设置，工具列表不加载"
+  //   这类顺序敏感问题（用户 2026-10-10 报）。飞行锁保证与后续 openPanel 的调用不重复请求。
+  loadToolOptions()
   await loadSessions()
   if (sessions.value.length) {
     sessionId.value = sessions.value[0].sessionId
