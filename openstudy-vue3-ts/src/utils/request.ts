@@ -106,14 +106,25 @@ service.interceptors.request.use(
         const s_url = sessionObj.url // 请求地址
         const s_data = sessionObj.data // 请求数据
         const s_time = sessionObj.time // 请求时间
-        const interval = 1000 // 间隔时间(ms)，小于此时间视为重复提交
+        /*
+         * 高频重复提交 —— **静默拦下**（用户 2026-10-11：「不提示就行，改成静默拦截高频点击，
+         * 防抖节流那种」）。
+         *
+         * 判定：同 url + 同 data + 距上次 < `interval`（500ms）视为「同一瞬间的连点」，
+         * 直接拦下**不再放行**（"静默节流"：连点只发第一发，后续同请求在窗口内丢弃）。
+         *
+         * ⚠️ **不再弹任何提示**（旧版会弹「操作太快了，请稍候再试」/「数据正在处理，请勿重复提交」）。
+         *    那条提示误伤面太大（草稿自动保存 `PUT /notes/note/draft`、路由切换后的连续同名请求
+         *    都会命中），弹出来像"系统坏了"。现在改为：拦下 + 仅一条 `console.warn` 便于排查，
+         *    用户侧无感。调用方 `.catch()` 的静默处理能接住这个 `reject`（带 `__repeatSubmit` 标记）。
+         *    真正需要幂等的场景（答题上报失败重试）已由 clientToken 在前面豁免（见上）。
+         */
+        const interval = 500 // 间隔时间(ms)，小于此时间视为重复提交（节流窗口）
         if (s_data === requestObj.data && requestObj.time - s_time < interval && s_url === requestObj.url) {
-          const message = '数据正在处理，请勿重复提交'
-          console.warn(`[${s_url}]: ` + message)
-          return Promise.reject(new Error(message))
-        } else {
-          cache.session.setJSON('sessionObj', requestObj)
+          console.warn(`[${s_url}]: 高频重复提交，已静默拦截（距上次同请求 ${requestObj.time - s_time}ms）`)
+          return Promise.reject({ __repeatSubmit: true, message: '重复提交已拦截' })
         }
+        cache.session.setJSON('sessionObj', requestObj)
       }
     }
     return config
@@ -169,6 +180,10 @@ service.interceptors.response.use(
   (error) => {
     // 游客/未登录写操作被前置拦截：登录弹窗已处理，不再重复报错
     if (error && error.__needLogin) {
+      return Promise.reject(error)
+    }
+    // 本地「静默节流」拦下的高频重复提交：不弹任何提示（拦截处已 console.warn），直接静默 reject
+    if (error && error.__repeatSubmit) {
       return Promise.reject(error)
     }
     console.log('err' + error)
