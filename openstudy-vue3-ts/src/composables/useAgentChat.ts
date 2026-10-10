@@ -31,6 +31,16 @@ export const isDsFreeModel = (model?: string) => model === 'deepseek-free'
  * 所以大屏智能体页与 sp3 一样是「对话即过程」的形态，不需要额外的执行面板。
  */
 
+/**
+ * 指挥家「派发专家」的元工具名。
+ *
+ * ⚠️ 它的 `tool_start`/`tool_result` **不建工具卡片**——那是对用户隐藏的内部机制
+ * （用户 2026-10-11：单个专家应表现为"当前助手自己完成"，不该看到"派发专家"这类痕迹）。
+ * 专家进度统一由 `experts` 协作卡片表达（且仅多专家时展示）。与后端
+ * `roles.DELEGATE_TOOL_NAME` 逐字一致。
+ */
+const DELEGATE_TOOL_NAME = 'delegate_task'
+
 /** 专家工作组里的**一行**（一个专家的一次派活） */
 export interface AgentExpertProgress {
   /** 后端 `delegate_start`/`delegate_done` 的 `index`（本轮第 N 个委派）——用它定位行 */
@@ -45,6 +55,41 @@ export interface AgentExpertProgress {
   task?: string
   /** 完成后的结论摘要 */
   summary?: string
+}
+
+/**
+ * 去掉子代理产出里的 Markdown 标记（用户 2026-10-11：专家结论不该露 `*` `#` 之类符号）。
+ *
+ * 专家的结论走**纯文本插值**渲染（`AiChatStream` 的 `{{ ex.summary }}`），不是 md 渲染器
+ * ——若后端把 `**加粗**`、`- 列表`、`# 标题`、`` `代码` `` 原样带过来，用户看到的就是一堆
+ * 标记符号。这里做**保守剥离**（只去标记、不动正文），让结论读起来是干净的句子。
+ *
+ * 只处理常见行内/行首标记；不做完整 md 解析（专家结论多为短句，过度解析反而危险）。
+ */
+export function stripMarkdown(text: string): string {
+  if (!text) return ''
+  return (
+    text
+      // 行首：标题 #、引用 >、无序列表 -/*/+ 、有序列表 1.
+      .replace(/^[ \t]*(?:#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+)/gm, '')
+      // 围栏代码块标记 ``` / ~~~（保留里面的内容）
+      .replace(/^[ \t]*(?:```|~~~).*$/gm, '')
+      // 行内代码 `x` → x
+      .replace(/`([^`]*)`/g, '$1')
+      // 加粗 / 斜体：**x** __x__ *x* _x_ → x
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/__([^_]+)__/g, '$1')
+      .replace(/\*([^*\n]+)\*/g, '$1')
+      .replace(/_([^_\n]+)_/g, '$1')
+      // 删除线 ~~x~~ → x
+      .replace(/~~([^~]+)~~/g, '$1')
+      // 链接 [文字](url) → 文字 ；图片 ![alt](url) → alt
+      .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+      // 收尾：合并多余空行
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  )
 }
 
 /** 消息流里的一条（AiChatStream 认识 role / type / content） */
@@ -758,7 +803,7 @@ export function useAgentChat() {
       key: String(ag.id || ''),
       name: String(ag.name || ag.id || '专家'),
       status: 'running',
-      task: String(event.task || '')
+      task: stripMarkdown(String(event.task || ''))
     }
     const card = findExpertCard()
     if (card && Array.isArray(card.experts)) {
@@ -787,7 +832,7 @@ export function useAgentChat() {
       }
       if (row) {
         row.status = event.success ? 'ok' : 'fail'
-        row.summary = String(event.summary || '')
+        row.summary = stripMarkdown(String(event.summary || ''))
         return
       }
     }
@@ -802,10 +847,26 @@ export function useAgentChat() {
           key: String(ag.id || ''),
           name: String(ag.name || ag.id || '专家'),
           status: event.success ? 'ok' : 'fail',
-          summary: String(event.summary || '')
+          summary: stripMarkdown(String(event.summary || ''))
         }
       ]
     })
+  }
+
+  /**
+   * 轮末清理：**只有一位专家时，不显示「专家协同」卡片**。
+   *
+   * 产品口径（用户 2026-10-11）：单个专家被派活时，对用户就当是**主助手自己完成的**
+   * ——不暴露"我们内部有专家协同"这层；只有**真的多个专家并行**（一行一个）时才值得
+   * 展示那张协同卡片。故在轮末（`turn_end` 前）检查：本轮 experts 卡片若只有 1 行，
+   * 直接移除（专家名/结论对用户无意义，主助手正文已整合了结果）。
+   */
+  const dropSoloExpertCard = () => {
+    const card = findExpertCard()
+    if (card && Array.isArray(card.experts) && card.experts.length <= 1) {
+      const i = messages.value.indexOf(card)
+      if (i >= 0) messages.value.splice(i, 1)
+    }
   }
 
   /** 事件 → 消息流 */
@@ -867,11 +928,12 @@ export function useAgentChat() {
         break
 
       case 'tool_start':
-        pushTool(event)
+        // `delegate_task` 是内部机制，不建工具卡片（见 DELEGATE_TOOL_NAME 注释）
+        if ((event.tool || '') !== DELEGATE_TOOL_NAME) pushTool(event)
         break
 
       case 'tool_result':
-        fillTool(event)
+        if ((event.tool || '') !== DELEGATE_TOOL_NAME) fillTool(event)
         break
 
       // 指挥家并发派活 → 专家工作组卡片（一行一个专家）。
@@ -1063,6 +1125,9 @@ export function useAgentChat() {
       //    （工具跑一半失败是常态），那种情况恰恰最需要回退 —— 没标记就等于没有可点的按钮。
       // ⚠️ 顺序：必须在下面 `saveAgentTimeline` **之前** push，否则落库的快照里没有它，
       //    刷新之后最近一轮就回退不了。
+      // 单专家「专家协同」卡片在轮末丢弃（只有多专家并行才展示协同 UI，见函数注释）——
+      // 必须在 push `turn_end` **之前**做（`findExpertCard` 以 `turn_end` 为轮边界）。
+      dropSoloExpertCard()
       messages.value.push({ role: 'assistant', type: 'turn_end', turnId, content: '' })
       // 持久化「完整时间线」（含工具卡片）—— 刷新后才能复原卡片视图。
       // 放在 finally：成功 / 报错 / 主动停止都会存下当前这一版（含已跑过的过程卡片）。

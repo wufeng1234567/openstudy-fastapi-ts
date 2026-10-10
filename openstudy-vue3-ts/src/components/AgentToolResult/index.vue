@@ -110,7 +110,9 @@ const TOOL_LABELS: Record<string, string> = {
   bank_share_manage: '题库分享',
   // 只读检索类：它们没有 action 参数，卡片上只有工具名这一层
   knowledge_search: '知识库检索',
-  memory_search: '记忆检索'
+  memory_search: '记忆检索',
+  // 指挥家「派发专家」的元工具：对用户只该说「请专家帮忙」，不该露出 delegate_task
+  delegate_task: '请专家帮忙'
 }
 
 /**
@@ -153,7 +155,9 @@ const ACTION_LABELS: Record<string, string> = {
   share: '创建分享',
   revoke: '撤销分享',
   receive: '领取分享',
-  copy: '复制题库'
+  copy: '复制题库',
+  // delegate_task（指挥家派发专家）
+  delegate: '派发'
 }
 
 const STATUS_WORDS: Record<string, string> = {

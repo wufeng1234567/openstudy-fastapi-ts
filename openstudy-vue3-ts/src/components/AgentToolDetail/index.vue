@@ -362,7 +362,20 @@ const FIELD_LABELS: Record<string, string> = {
   sourceBankId: '源题库 ID',
   sourceBankName: '源题库名',
   shares: '分享',
-  coverImage: '封面'
+  coverImage: '封面',
+
+  // ============================================================
+  // 指挥家派发专家 delegate_task
+  //   （`delegate.py` 的 ok(subAgent, subAgentName, result, steps)）
+  //   ⚠️ 这些键名较长（subAgentName 等），不映射的话 68px 标签栏装不下，
+  //      会和右侧的值「碰在一起」——故必须补中文短标签。
+  // ============================================================
+  subAgent: '专家',
+  subAgentName: '专家',
+  sub_agent: '专家',
+  result: '结论',
+  steps: '执行步骤',
+  task: '任务'
 }
 
 const labelOf = (key: string) => FIELD_LABELS[key] || key

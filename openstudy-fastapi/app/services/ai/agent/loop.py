@@ -1541,7 +1541,12 @@ async def run_agent_stream(
             for item in results:
                 res = item["result"]
                 compressed = guard.compress_result(roles_mod.DELEGATE_TOOL_NAME, res)
+                # ⚠️ `DelegateTaskTool` 成功时返回的是 `ok(subAgent, subAgentName, result, steps)`——
+                #    **没有 `message` 字段**，子代理的结论在 `result` 里。若只取 message/error，
+                #    成功时这里恒为空串 → 前端专家卡片「它的结论」显示「（无输出）」。
+                #    故结论口径=result → message → error（用户 2026-10-11 报的"无输出"根因）。
                 message = str(res.get("message") or res.get("error") or "")
+                expert_summary = str(res.get("result") or res.get("message") or res.get("error") or "")
                 # 回填占位 ToolMessage（保序回灌给模型）
                 lc_messages[item["idx"]] = ToolMessage(
                     content=_dumps(compressed), tool_call_id=item["callId"]
@@ -1561,7 +1566,7 @@ async def run_agent_stream(
                         "type": "delegate_done",
                         "agent": {"id": item["key"], "name": item["name"]},
                         "success": bool(res.get("success")),
-                        "summary": message[:200],
+                        "summary": expert_summary[:500],
                         "index": item["idx"],
                     }
                 )
