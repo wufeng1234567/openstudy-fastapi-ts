@@ -1074,10 +1074,16 @@ async def run_agent_stream(
         all_names_now = registry.names()
         sub_roles: Dict[str, Any] = {}
         sub_excludes: Dict[str, Any] = {}
+        # ⚠️ 子代理的 exclude **不叠加 `user_disabled`（用户工具屏蔽）**：那是「指挥家自己能
+        #    调什么」的裁剪面板，现已被「专家」开关取代。子代理是**某个专家本人**，它用自己
+        #    白名单里的工具，能力是否可用应由**专家开关**（`disabled_role_keys`）控制，而不是
+        #    被"用户把工具开关全关"波及 —— 否则旧工具面板残留的"全量 disabled"会让**所有子
+        #    代理工具集为空 → 委派全线瘫痪**（用户 2026-10-11 实测：kb 子代理报"没有可用工具"，
+        #    真因=旧 `ai_agent_tool_pref` 把工具全关了）。见 roles.py「子代理就是那个专家本人」。
         for sub in roles_mod.renderable_sub_agents(disabled_keys=disabled_role_keys):
             sub_roles[sub.key] = sub
             sub_excludes[sub.key] = orchestrator.compute_exclude(
-                sub, all_tool_names=all_names_now, user_disabled=disabled_tools
+                sub, all_tool_names=all_names_now, user_disabled=set()
             )
         # 用户自定义智能体也可被委派（转成 RoleSpec）
         try:
@@ -1087,7 +1093,7 @@ async def run_agent_stream(
                 ur = orchestrator.build_user_role(a)
                 sub_roles[ur.key] = ur
                 sub_excludes[ur.key] = orchestrator.compute_exclude(
-                    ur, all_tool_names=all_names_now, user_disabled=disabled_tools
+                    ur, all_tool_names=all_names_now, user_disabled=set()
                 )
         except Exception as e:  # noqa: BLE001
             logger.warning("[agent] 读取用户智能体做委派清单失败: {}", e)
