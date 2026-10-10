@@ -34,7 +34,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 
 const props = withDefaults(
   defineProps<{
@@ -58,19 +58,53 @@ const userToggled = ref(false)
 
 const bodyRef = ref<HTMLElement | null>(null)
 
-/** 贴着底部跟随：推理是持续追加的，不跟随就只能看到开头 */
+/**
+ * 贴着底部跟随：推理是持续追加的，不跟随就只能看到开头。
+ *
+ * ⚠️ 判据只看 `expanded`（**不再要求 `running`**）：思考正文可能在块"收口"之后
+ * 才迟到（见下面第二个 watch 的说明），那时 `running` 已是 false 但内容还在涨 ——
+ * 若因 `!running` 就停止跟随，用户就看不到后续内容。
+ */
 const scrollToBottom = async () => {
-  if (!running.value || !expanded.value) return
+  if (!expanded.value) return
   await nextTick()
   const el = bodyRef.value
   if (el) el.scrollTop = el.scrollHeight
 }
 
-watch(() => props.content, scrollToBottom)
-// 跑完自动折起来（除非用户自己动过）
+/**
+ * 内容仍在**追加剧增**时，若还没折过也保持展开
+ *
+ * ⚠️ 为什么需要：上游 reasoning 与正文/工具事件的先后**没有保证** ——
+ * `closeReasoning()` 可能因为「正文/工具卡先到」而先把块收口（`secs` 有值 → `running=false`），
+ * 但**思考正文还在后续到达**（`appendReasoning` 的"迟到增量"分支会继续 `content += delta`）。
+ * 此时若 `running` 已为 false 就收起，用户看到的就是「思考块一闪而过 / 只能看到开头，
+ * 剩下的要等全部结束才看得到」（用户 2026-10-10 报的现象）。
+ * 故：只要**内容还在增长**、且用户没手动收起过，就保持展开并跟随底部。
+ */
+let collapseTimer: ReturnType<typeof setTimeout> | null = null
+watch(
+  () => props.content,
+  () => {
+    // 有新内容 → 取消"将要折叠"的挂起动作，保持展开并跟随
+    if (collapseTimer) {
+      clearTimeout(collapseTimer)
+      collapseTimer = null
+    }
+    if (!userToggled.value && !expanded.value) expanded.value = true
+    scrollToBottom()
+  }
+)
+
+// 跑完（收口）后**稍等片刻**再折叠：给"迟到的思考增量"一个窗口 ——
+// 若窗口内又有内容到达，上面的 watch 会取消这次折叠，块保持展开。
 watch(running, (nowRunning) => {
   if (nowRunning || userToggled.value) return
-  expanded.value = false
+  if (collapseTimer) clearTimeout(collapseTimer)
+  collapseTimer = setTimeout(() => {
+    collapseTimer = null
+    if (!userToggled.value) expanded.value = false
+  }, 1000)
 })
 
 const toggle = () => {
@@ -78,6 +112,13 @@ const toggle = () => {
   userToggled.value = true
   if (expanded.value) scrollToBottom()
 }
+
+onBeforeUnmount(() => {
+  if (collapseTimer) {
+    clearTimeout(collapseTimer)
+    collapseTimer = null
+  }
+})
 </script>
 
 <style scoped>
