@@ -91,6 +91,56 @@ async def run_probe() -> int:
     check("EX-12", "默认可委派专家含 bank/kb", {"bank", "kb"}.issubset(subs_all), str(sorted(subs_all)))
     check("EX-13", "关闭 bank/kb 后不可委派", "bank" not in subs_no and "kb" not in subs_no, str(sorted(subs_no)))
 
+    # ---- 5. 方案 A：关专家 = general（指挥家）的工具集真被收走 ----
+    from app.services.ai.agent.registry import ensure_tools_loaded, registry
+
+    ensure_tools_loaded()
+    all_names = set(registry.names())
+    general = roles_mod.OFFICIAL_ROLES[roles_mod.GENERAL_ROLE]
+    bank_tools = set(roles_mod.OFFICIAL_ROLES["bank"].tools)
+
+    # 关闭 bank → general 的 exclude 应含 bank 名下的全部业务工具
+    ex_bank = orchestrator.compute_exclude(
+        general, all_tool_names=all_names, user_disabled=set(), disabled_role_keys={"bank"}
+    )
+    check(
+        "EX-14",
+        "关 bank → general 的 exclude 含 bank 工具（方案A：关了就是没了）",
+        bank_tools.issubset(ex_bank),
+        f"exclude={sorted(ex_bank)}",
+    )
+    # 未关 bank → general 不排除 bank 工具
+    ex_open = orchestrator.compute_exclude(
+        general, all_tool_names=all_names, user_disabled=set(), disabled_role_keys=set()
+    )
+    check(
+        "EX-15",
+        "未关 bank → general 不排除 bank 工具",
+        not (bank_tools & ex_open),
+        f"exclude∩bank={sorted(bank_tools & ex_open)}",
+    )
+    # 关闭全部专家 → general 的 exclude 覆盖全部业务工具（只剩 delegate_task 之类元工具/全局工具）
+    all_closed = {s.key for s in roles_mod.renderable_sub_agents()}
+    closed_tools_all = set()
+    for s in roles_mod.renderable_sub_agents():
+        closed_tools_all |= set(s.tools)
+    ex_all = orchestrator.compute_exclude(
+        general, all_tool_names=all_names, user_disabled=set(), disabled_role_keys=all_closed
+    )
+    check(
+        "EX-16",
+        "关全部专家 → general 的 exclude 覆盖全部业务工具",
+        closed_tools_all.issubset(ex_all),
+        f"未覆盖={sorted(closed_tools_all - ex_all)}",
+    )
+    # 全局工具（记忆）不被关专家牵连
+    check(
+        "EX-17",
+        "关全部专家后记忆（全局工具）仍未被 exclude",
+        not (set(roles_mod.GLOBAL_TOOLS) & ex_all),
+        f"exclude∩GLOBAL={sorted(set(roles_mod.GLOBAL_TOOLS) & ex_all)}",
+    )
+
     await _cleanup()
     print("\n---- 专家开关探针结果 ----")
     for r in ROWS:

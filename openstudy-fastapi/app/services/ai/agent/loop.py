@@ -824,9 +824,19 @@ async def run_agent_stream(
         role_spec,
         all_tool_names=registry.names(),
         user_disabled=disabled_tools,
+        # ⚠️ **方案 A（2026-10-10）**：指挥家模式（role_spec=general，不限工具）时，
+        #    把「被用户关闭的专家」名下的工具**一并排除** —— 否则关了专家、指挥家自己
+        #    仍能直接调那些工具，等于"关了没关"（用户报的 bug）。
+        #    显式点名某子代理时（conductor_mode=False，role_spec=该子代理）它本就用白名单，
+        #    传不传都不影响结果（白名单之外自然被排），一并传保持一致。
+        disabled_role_keys=disabled_role_keys,
     )
-    if conductor_mode:
-        # 指挥家额外拿回元工具；同时它的"子代理通讯录"在此准备好（下面注入提示词）
+    # 本轮是否有**可委派的专家**（官方未关闭 + 用户自定义）。决定指挥家是否值得挂 delegate_task：
+    # 若一个专家都没有（用户关掉了全部、且没建自定义智能体），挂委派工具只会让模型
+    # 白白发起一次注定失败的委派 —— 不加回，退化为"纯聊天 + 通用工具"更干净。
+    has_any_sub_agent = bool(roles_mod.renderable_sub_agents(disabled_keys=disabled_role_keys))
+    if conductor_mode and has_any_sub_agent:
+        # 指挥家额外拿回元工具（仅在真有专家可派时）
         excluded_tools = {t for t in excluded_tools if t != roles_mod.DELEGATE_TOOL_NAME}
     tool_defs = registry.definitions(exclude=sorted(excluded_tools))
 
