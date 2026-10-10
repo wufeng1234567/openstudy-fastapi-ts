@@ -11,6 +11,7 @@
 
   与 sp3 的取舍：
     ✅ 搬过来：模式切换卡片（`@` 按钮展开）、textarea 两行起步 + 自动增高、输入/工具行之间的分隔线、放大输入对话框。
+       （放大对话入口在 v2 里从**底部工具栏**移到了**输入框右下角角标**，见 `.expand-corner`。）
     ❌ 没搬：模式文字标签（`@` 旁边不挂字 —— 当前模式由抽屉左上角标题实时体现，见 `AiAssistant` 的 `headerTitle`）、
        自带的文件解析预览（v2 用插槽，能力更全）。
     ➕ 自建：「新建会话」按钮（`showNewSession`），放在附件上传右边，由上层决定是否显示。
@@ -43,10 +44,23 @@
         <slot name="attachments"></slot>
       </div>
 
-      <!-- 输入层：两行起步，随内容长高（上限 120px 后滚动） -->
+      <!-- 输入层：两行起步，随内容长高（上限 120px 后滚动）
+           「放大输入」入口从底部工具栏**上移到本层右上角**（用户 2026-10-10 裁决）：
+           它属低频动作，不该与 @ / 附件 / 新建会话等高频按钮并列占位；
+           作为输入框内角标既不挤工具栏，又保留了长文本输入的便利。 -->
       <div class="input-text-layer">
         <textarea ref="textareaRef" v-model="text" class="chat-textarea" rows="2" :placeholder="placeholder"
           :disabled="disabled" @keydown="onKeydown"></textarea>
+        <button type="button" class="expand-corner" title="放大输入（写长文本更舒服）"
+          @click.stop="expandVisible = true">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 3 21 3 21 9" />
+            <polyline points="9 21 3 21 3 15" />
+            <line x1="21" y1="3" x2="14" y2="10" />
+            <line x1="3" y1="21" x2="10" y2="14" />
+          </svg>
+        </button>
       </div>
 
       <!-- 分隔线：把「写什么」和「怎么发」分开 -->
@@ -63,16 +77,6 @@
           <button v-if="showModeSwitch" class="toolbar-btn at-btn" :disabled="disabled"
             :title="disabled ? '生成中，暂不能切换模式' : `当前：${modeLabel}，点击切换`"
             @click.stop="toggleModeCard">@</button>
-
-          <button class="toolbar-btn expand-btn" title="放大输入" @click.stop="expandVisible = true">
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
-              stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="15 3 21 3 21 9" />
-              <polyline points="9 21 3 21 3 15" />
-              <line x1="21" y1="3" x2="14" y2="10" />
-              <line x1="3" y1="21" x2="10" y2="14" />
-            </svg>
-          </button>
 
           <slot name="toolbar-extra"></slot>
 
@@ -295,6 +299,34 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
 .input-text-layer {
   display: flex;
   min-width: 0;
+  /* 放大角标的定位基准 */
+  position: relative;
+}
+
+/* 放大输入角标：贴在输入框**右下角**，浮于文本框之上、透明底，hover 才显色。
+   放右下（而非右上）是为了避开用户刚敲的首行文字；鼠标位置也更顺手。
+   平时不抢视线，是「需要时才找得到」的低频入口。 */
+.expand-corner {
+  position: absolute;
+  right: 0;
+  bottom: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #b6bdc9;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.expand-corner:hover {
+  background: #f1f5f9;
+  color: #4f6ef7;
 }
 
 .chat-textarea {
