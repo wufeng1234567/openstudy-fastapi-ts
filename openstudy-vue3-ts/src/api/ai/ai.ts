@@ -833,17 +833,20 @@ export function saveConversationMessages(
 export function saveAgentTimeline(
   sessionId: string | number,
   messages: any[],
-  userId?: string | number
+  userId?: string | number,
+  metrics?: Record<string, number> | null
 ) {
   return request({
     url: `/ai/conversation/${sessionId}/agent-timeline`,
     method: 'put',
     params: { userId },
-    data: { messages }
+    // `metrics` = 会话累计执行统计（轮数/步数/耗时）—— 随快照一起存，
+    // 否则刷新后底部状态条归零（用户报的 bug）。后端对旧数组格式兼容。
+    data: { messages, metrics: metrics ?? null }
   })
 }
 
-/** 读取智能体「完整时间线快照」（空数组 = 没有快照，调用方退回普通消息行） */
+/** 读取智能体「完整时间线快照」（`messages` 空数组 = 没有快照，调用方退回普通消息行） */
 export function getAgentTimeline(sessionId: string | number, userId?: string | number) {
   return request({
     url: `/ai/conversation/${sessionId}/agent-timeline`,

@@ -1398,6 +1398,11 @@ class AgentTimelineBody(BaseModel):
     """智能体整条消息流（含工具调用卡片字段）—— 前端刷新后据此复原 UI"""
 
     messages: List[dict] = []
+    #: **会话累计的执行统计**（轮数/步数/耗时），随快照一起存。
+    #: 底部状态条（`N 轮 M 步 / LLM x ms`）靠它 —— 否则刷新后统计归零（用户报的 bug）。
+    #: 形状与前端 `SessionAgg` 一致：`{rounds, steps, llmMs, toolMs, ftSum, ftSamples}`。
+    #: 缺省 `None`（老前端 / 不带此字段）→ 服务层按「无统计」处理。
+    metrics: Optional[dict] = None
 
 
 @router.get("/conversation/{session_id}/agent-timeline")
@@ -1406,13 +1411,14 @@ async def get_agent_timeline_route(
     userId: Optional[int] = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
-    """读取智能体的完整时间线快照（没有则返回空数组，前端退回普通消息行）"""
+    """读取智能体的完整时间线快照（没有则返回空数组 + 无统计，前端退回普通消息行）"""
     # 越权防护：不允许传别人的 userId 冒充他人读写会话（见 security.resolve_user_scope）
     user_id, err = resolve_user_scope(current_user, userId)
     if err:
         return error(err, code=403)
-    messages = await conversation_service.get_agent_timeline(user_id, session_id)
-    return success({"messages": messages})
+    data = await conversation_service.get_agent_timeline(user_id, session_id)
+    # data = {"messages": [...], "metrics": {...} | None}（见 conversation_service）
+    return success({"messages": data["messages"], "metrics": data.get("metrics")})
 
 
 @router.put("/conversation/{session_id}/agent-timeline")
@@ -1433,7 +1439,9 @@ async def save_agent_timeline_route(
     if err:
         return error(err, code=403)
     try:
-        await conversation_service.save_agent_timeline(user_id, session_id, body.messages)
+        await conversation_service.save_agent_timeline(
+            user_id, session_id, body.messages, body.metrics
+        )
     except Exception as e:  # noqa: BLE001
         logger.exception(f"智能体时间线落库失败 session={session_id}: {e}")
         return error(f"智能体时间线落库失败: {e}")

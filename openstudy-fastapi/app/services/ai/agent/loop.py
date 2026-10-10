@@ -358,6 +358,43 @@ def _attachment_plain_text(parsed: Any) -> str:
 # ============================================================
 
 
+def _async_empty_list() -> Any:
+    """一个「立即完成、返回空列表」的 awaitable —— 供 `asyncio.gather` 占位用。
+
+    指挥家模式才需要读用户智能体通讯录；非指挥家模式下用它在 gather 里占位，
+    保持两个分支的代码结构一致（避免 if/else 各写一遍 gather）。
+    """
+
+    async def _inner() -> List[Any]:
+        return []
+
+    return _inner()
+
+
+async def _load_user_agent_briefing(user_id: int) -> List[Dict[str, str]]:
+    """读用户自定义智能体 → 通讯录项列表（`render_sub_agents_briefing` 的 `extra_agents`）
+
+    ⚠️ fail-open：读库失败返回空列表（本轮只是"通讯录里少几个用户 Agent"，不该阻断对话）。
+    与 `build_runtime_context` 一样**自己开会话**，故可与它 `asyncio.gather` 并行。
+    """
+    from app.services.ai.agent import agent_config_service
+
+    try:
+        out: List[Dict[str, str]] = []
+        for a in await agent_config_service.list_agents(user_id):
+            out.append(
+                {
+                    "key": f"user:{a.get('agentId')}",
+                    "name": a.get("name") or "",
+                    "capability": a.get("description") or a.get("personaPrompt") or "",
+                }
+            )
+        return out
+    except Exception as e:  # noqa: BLE001 - 通讯录读失败不该阻断本轮
+        logger.warning("[agent] 读取用户智能体做通讯录失败: {}", e)
+        return []
+
+
 def _event(payload: Dict[str, Any]) -> str:
     """一条事件 = 一行 JSON（换行分隔，前端按行解析）"""
     return json.dumps(payload, ensure_ascii=False) + "\n"
@@ -918,7 +955,15 @@ async def run_agent_stream(
         #    （测试与 ds-free 会这么做）。角色只在走默认提示词时生效。
         system_prompt = req.system_prompt
     else:
-        runtime_ctx = await runtime_context.build_runtime_context(user_id, lang="en")
+        # ⚡ 首字延迟优化：`build_runtime_context`（读记忆摘要 + 知识库清单）与
+        #   指挥家模式下读用户智能体通讯录（`list_agents`）是**两次互相独立的 DB 往返**，
+        #   原先串行 await = 两次往返时间在用户「发出→看到首个 token」之间叠加（实测这段
+        #   能有~1 秒的停顿）。二者**各自独立开会话**（build_runtime_context 自己开会话、
+        #   list_agents 也自己开会话），并行安全 —— 用 gather 并发发起。
+        runtime_ctx, extra_agents = await asyncio.gather(
+            runtime_context.build_runtime_context(user_id, lang="en"),
+            _load_user_agent_briefing(user_id) if conductor_mode else _async_empty_list(),
+        )
         # 本轮是否需要「建库重型规则」：带了附件、或消息命中建库/导题关键词时才注入
         # （题型编码 / 建库字段推断 / 文档导题流程，约 2.6KB）。普通聊天不发，省 token
         # 也把注意力留给真正相关的规则。见 prompts.needs_doc_workflow。
@@ -926,24 +971,10 @@ async def run_agent_stream(
         doc_workflow = prompts.needs_doc_workflow(typed, has_attachments=has_docs)
 
         # 子代理通讯录（仅指挥家模式）：让指挥家"知道每个子代理能干什么"，据此决定派给谁。
-        # 含官方子代理 + 用户自定义智能体（后者从 DB 读；读失败不影响本轮）。
-        sub_agents_text = ""
-        if conductor_mode:
-            extra_agents: List[Dict[str, str]] = []
-            try:
-                from app.services.ai.agent import agent_config_service
-
-                for a in await agent_config_service.list_agents(user_id):
-                    extra_agents.append(
-                        {
-                            "key": f"user:{a.get('agentId')}",
-                            "name": a.get("name") or "",
-                            "capability": a.get("description") or a.get("personaPrompt") or "",
-                        }
-                    )
-            except Exception as e:  # noqa: BLE001 - 通讯录读失败不该阻断本轮
-                logger.warning("[agent] 读取用户智能体做通讯录失败: {}", e)
-            sub_agents_text = roles_mod.render_sub_agents_briefing(extra_agents)
+        # 含官方子代理 + 用户自定义智能体（后者由上面的 gather 并行读出）。
+        sub_agents_text = (
+            roles_mod.render_sub_agents_briefing(extra_agents) if conductor_mode else ""
+        )
 
         # 显式点名子代理时：用它的 `persona`（第一人称自我认知）作角色指令；
         # 指挥家模式下 role_spec 是 general（无 persona），角色感由通讯录段承担。

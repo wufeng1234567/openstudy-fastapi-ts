@@ -141,46 +141,6 @@
           </template>
         </AiChatStream>
 
-        <!--
-          底部状态条：**水平居中**的执行统计（用户 2026-09-19 指定）
-            1 轮 · 25 步 | LLM 1分8秒 · 工具调用 1分26秒 | 首 token 平均 1.6秒
-          口径见 `useAgentChat.ts` 的 `AgentMetrics`（两条链路共用，改一处必须改另一处）。
-          ⚠️ 用户原稿里还有「tok/s」与「缓存命中」两项，**本次不做**：ds-free 走的是
-             DeepSeek 网页版 SSE，那两项在免费链路上拿不到；只在一侧显示会让两条链路
-             的观感与数字口径分叉（双链路同口径是红线）→ 用户拍板「两侧都不显示」。
-        -->
-        <footer v-if="hasRun" class="agent-foot">
-          <span class="foot-group">
-            <span class="foot-item">{{ metrics.rounds }} 轮</span>
-            <span class="foot-dot">·</span>
-            <span class="foot-item">{{ metrics.steps }} 步</span>
-          </span>
-
-          <span class="foot-bar">|</span>
-
-          <span class="foot-group">
-            <span class="foot-item">LLM {{ formatMs(metrics.llmMs) }}</span>
-            <span class="foot-dot">·</span>
-            <span class="foot-item">工具调用 {{ formatMs(metrics.toolMs) }}</span>
-          </span>
-
-          <span class="foot-bar">|</span>
-
-          <span class="foot-group">
-            <!-- 没有样本时后端给 null → 显示 `—`；不能显示 0，那会被读成「瞬间返回」 -->
-            <span class="foot-item">首 token 平均 {{ formatFirstToken(metrics.firstTokenMs) }}</span>
-          </span>
-
-          <!-- 异常项：只在真的出现时才占位（正常情况这条不渲染） -->
-          <template v-if="corrections || errors.length || imageCount">
-            <span class="foot-bar">|</span>
-            <span class="foot-group">
-              <span v-if="corrections" class="foot-item is-warn">自我纠正 {{ corrections }} 次</span>
-              <span v-if="errors.length" class="foot-item is-error">错误 {{ errors.length }} 条</span>
-              <span v-if="imageCount" class="foot-item">图片落盘 {{ imageCount }} 张</span>
-            </span>
-          </template>
-        </footer>
       </div>
     </div>
 
@@ -421,8 +381,9 @@ const userId = computed(() => userStore.id || userStore.userId)
 // 必须解构出来：对象里的 ref 在模板中**不会**自动解包，`agent.messages` 拿到的是 Ref
 const {
   messages, isGenerating, tools, activeModel, metaWarnings,
-  imageCount, corrections, errors, metrics, hasRun,
   send, stop, reset, resolveConfirm,
+  // 从落库快照复原「会话累计执行统计」（指标数据保留，底部状态条已按用户要求移除）
+  restoreMetrics,
   // 本轮的轮次 id（`send()` 开头生成、`turn_end` 标记里那个）：补写历史时要带上它
   currentTurnId,
   // 轮末回退（**按轮**）：状态是 `rollbackStates[turnId]`，页面只把它转交给消息流
@@ -459,31 +420,6 @@ const onRollbackTurn = async (turnId: string) => {
   if (r.ok) ElMessage.success(`已回退 ${r.reverted} 项操作`)
   if (r.ok && r.dropped && r.userText) chatRef.value?.setInputText?.(r.userText)
 }
-
-/**
- * 毫秒 → 人类可读时长（状态条用）
- *
- * 分档与用户给的样例一致（`1分8秒` / `1.6秒`）：
- *   ≥ 1 分钟 → `X分Y秒`；≥ 1 秒 → `X.X秒`；否则 `XXX毫秒`
- * ⚠️ 不要写成 `1.6s` / `190 tok/s` 那种混合单位 —— 这条状态条全中文，单位也统一。
- */
-const formatMs = (ms: number) => {
-  const n = Number(ms) || 0
-  if (n < 1000) return `${Math.round(n)}毫秒`
-  if (n < 60000) return `${(n / 1000).toFixed(1)}秒`
-  const m = Math.floor(n / 60000)
-  const s = Math.round((n % 60000) / 1000)
-  return `${m}分${s}秒`
-}
-
-/**
- * 首 token 平均值
- *
- * ⚠️ `null`（还没测到样本）必须显示 `—`，**不能**落进 `formatMs` 变成 `0毫秒` ——
- * 「0 毫秒」的意思是「瞬间返回」，与「没有样本」是两件相反的事。
- */
-const formatFirstToken = (ms: number | null) =>
-  ms == null ? '—' : formatMs(ms)
 
 /** 模型（scene='agent'，与聊天助手的选择互不干扰） */
 const model = ref('')
@@ -769,15 +705,17 @@ const newSession = async () => {
 /**
  * 读回某个会话的历史
  *
- * 注意只能复原「提问 + 最终回复」—— 工具调用过程没有落库（它是瞬时的执行过程，
- * 存下来既没用又占地方），所以刷新后看到的是一问一答，不是完整时间线。
+ * 优先用「完整时间线快照」（含工具卡片 + 会话执行统计）；没有快照的老会话退回
+ * `ai_chat_message`（只能复原「提问 + 最终回复」两行）。
  */
 const loadHistory = async (sid: string) => {
   if (!sid) return
   try {
-    // 优先用「完整时间线快照」复原（含工具卡片）—— 否则刷新后只剩纯文本问答
+    // 优先用「完整时间线快照」复原（含工具卡片 + 会话执行统计）—— 否则刷新后只剩纯文本问答
     const tl: any = await getAgentTimeline(sid, userId.value)
     const tlMsgs = tl?.data?.messages
+    // 会话累计执行统计从快照复原（老会话无统计 → 归零，与升级前一致）
+    restoreMetrics(tl?.data?.metrics ?? null)
     if (Array.isArray(tlMsgs) && tlMsgs.length) {
       messages.value = tlMsgs
       return
@@ -1346,58 +1284,6 @@ onBeforeUnmount(() => {
 .settings-tool-name {
   font-size: 13px;
   color: #303133;
-}
-
-/* ── 底部状态条（执行统计）── */
-.agent-foot {
-  display: flex;
-  align-items: center;
-  /* ⚠️ 水平居中（用户 2026-09-19 指定）：整条统计在面板里居中，不靠左 */
-  justify-content: center;
-  /* 组之间的 `|` 与组内 `·` 自己带间距，这里只留窄缝，避免居中后显得散 */
-  gap: 10px;
-  /*
-   * 上下 7 → 6：配合上面 `.chat-input-area` 的 `margin-bottom: 3px`，
-   * 让这行统计**紧贴**输入卡片底部（用户 2026-09-19 要求「两者贴合」）。
-   * 左右仍是 16px —— 统计文字不跟着卡片的 12px 内缩走，窄屏横向滚动时两端才不贴边。
-   */
-  padding: 6px 16px;
-  border-top: 1px solid #eef2f7;
-  background: #fcfdff;
-  font-size: 12px;
-  color: #9aa5b5;
-  /* 窄屏时统计比面板宽 → 允许横向滚，别把面板撑高或换行 */
-  overflow-x: auto;
-  white-space: nowrap;
-  scrollbar-width: none;
-
-  &::-webkit-scrollbar {
-    display: none;
-  }
-}
-
-.foot-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* 组内分隔符：比正文更淡，避免与数字抢注意力 */
-.foot-dot {
-  color: #ccd3de;
-}
-
-/* 组间分隔符：比组内稍重，用来切分「三类信息」 */
-.foot-bar {
-  color: #dde3ec;
-}
-
-.foot-item.is-warn {
-  color: #b45309;
-}
-
-.foot-item.is-error {
-  color: #b91c1c;
 }
 
 /* AiChatStream 自带边框，容器已有边框 → 去掉内层重复描边 */

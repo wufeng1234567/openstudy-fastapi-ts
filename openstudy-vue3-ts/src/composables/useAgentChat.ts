@@ -376,6 +376,48 @@ export function useAgentChat() {
     }
   }
 
+  /**
+   * 会话累计统计的**落库快照**（随 timeline 快照一起存）
+   *
+   * ⚠️ 存的是**原始累加器**（含 `ftSum`/`ftSamples`），不是展示投影 `metrics`：
+   *    `firstTokenMs` 是平均值，跨会话恢复必须靠「总和 + 样本数」才能正确接着累加，
+   *    直接存平均值会在下一次还原时算错（平均值不能相加）。
+   */
+  const metricsSnapshot = () => ({
+    rounds: sessionAgg.rounds,
+    steps: sessionAgg.steps,
+    llmMs: sessionAgg.llmMs,
+    toolMs: sessionAgg.toolMs,
+    ftSum: sessionAgg.ftSum,
+    ftSamples: sessionAgg.ftSamples
+  })
+
+  /**
+   * 从落库快照**还原会话累计统计**（刷新 / 切换会话后调）
+   *
+   * 入参是 `metricsSnapshot()` 的产物（原始累加器形状）。缺字段按 0 处理；
+   * 非法 / 缺失（老会话无统计）→ 全部归零（与升级前行为一致，不倒退）。
+   */
+  const restoreMetrics = (snap?: Record<string, number> | null) => {
+    const n = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0)
+    sessionAgg.rounds = n(snap?.rounds)
+    sessionAgg.steps = n(snap?.steps)
+    sessionAgg.llmMs = n(snap?.llmMs)
+    sessionAgg.toolMs = n(snap?.toolMs)
+    sessionAgg.ftSum = n(snap?.ftSum)
+    sessionAgg.ftSamples = n(snap?.ftSamples)
+    // 还原后本轮快照也归零 —— 下一轮 `send` 的增量从「已还原的会话量」起算，才不会被顶掉
+    runSnapshot = {
+      rounds: sessionAgg.rounds,
+      steps: sessionAgg.steps,
+      llmMs: sessionAgg.llmMs,
+      toolMs: sessionAgg.toolMs,
+      ftSum: sessionAgg.ftSum,
+      ftSamples: sessionAgg.ftSamples
+    }
+    syncMetrics()
+  }
+
   /** 当前「未闭合」的 assistant 正文气泡下标；-1 = 下一条 text 要新建气泡 */
   let openTextIndex = -1
   let controller: AbortController | null = null
@@ -910,7 +952,13 @@ export function useAgentChat() {
       // 放在 finally：成功 / 报错 / 主动停止都会存下当前这一版（含已跑过的过程卡片）。
       if (opts.sessionId) {
         try {
-          await saveAgentTimeline(opts.sessionId, slimTimeline(messages.value), opts.userId)
+          await saveAgentTimeline(
+            opts.sessionId,
+            slimTimeline(messages.value),
+            opts.userId,
+            // 会话累计统计随快照一起落库 —— 刷新后才能复原底部状态条（否则归零）
+            metricsSnapshot()
+          )
         } catch (e) {
           console.warn('[agent] 时间线落库失败', e)
         }
@@ -1098,7 +1146,7 @@ export function useAgentChat() {
       //    这个 reject **必须在这一步被接住并转成 `ok=false`**，不许吞进 console：
       //    吞了就成了「界面报成功、刷新后这一轮又回来」。
       try {
-        await saveAgentTimeline(sid, slimTimeline(afterTurn))
+        await saveAgentTimeline(sid, slimTimeline(afterTurn), undefined, metricsSnapshot())
       } catch (e: any) {
         outcome.ok = false
         outcome.reason =
@@ -1151,6 +1199,8 @@ export function useAgentChat() {
     corrections,
     errors,
     metrics,
+    /** 从落库快照还原会话累计统计（刷新 / 切换会话后由页面调用） */
+    restoreMetrics,
     toolCalls,
     hasRun,
     /** 本轮的轮次 id（一次提问一个）—— 回退组件用它标识「哪一轮」 */

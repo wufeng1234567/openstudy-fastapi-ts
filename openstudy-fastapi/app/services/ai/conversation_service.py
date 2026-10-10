@@ -668,9 +668,10 @@ async def build_context_prompt(
 
 
 async def save_agent_timeline(
-    user_id: Optional[int], session_id: str, messages: list
+    user_id: Optional[int], session_id: str, messages: list,
+    metrics: Optional[dict] = None,
 ) -> None:
-    """保存智能体的**完整时间线快照**（含工具调用卡片）
+    """保存智能体的**完整时间线快照**（含工具调用卡片 + 会话执行统计）
 
     与 save_turn 的分工：
       - `save_turn` / `ai_chat_message`：只存「提问 + 最终回复」两行 —— 供会话列表统计、
@@ -681,11 +682,19 @@ async def save_agent_timeline(
     为什么要单独存：只从 `ai_chat_message` 复原的话，刷新后工具卡片全丢、只剩纯文本，
     用户看到的就是「卡片没了 / 变成死数据」。
 
+    ⚠️ 2026-10-10 起 payload 由「纯数组」升级为对象 `{"messages": [...], "metrics": {...}}`：
+        多存一份**会话累计执行统计**（轮数/步数/耗时）—— 否则底部状态条刷新后归零
+        （用户报的 bug）。读取端 `get_agent_timeline` 对**旧数组格式**做兼容。
+
     Args:
         messages: 前端消息流 [{role,type,content,tool,action,status,params,data,...}]
+        metrics: 会话累计统计 {rounds, steps, llmMs, toolMs, ftSum, ftSamples}；None 则不存
     """
     uid = user_id or 0
-    payload = json.dumps(messages or [], ensure_ascii=False)
+    payload_obj: dict = {"messages": messages or []}
+    if metrics:
+        payload_obj["metrics"] = metrics
+    payload = json.dumps(payload_obj, ensure_ascii=False)
     async with async_session_factory() as db:
         row = await db.get(AiAgentTimeline, session_id)
         now = datetime.now()
@@ -703,29 +712,47 @@ async def save_agent_timeline(
             row.update_time = now
         await db.commit()
     logger.info(
-        "save_agent_timeline session={} user={} messages={} bytes={}",
-        session_id, uid, len(messages or []), len(payload),
+        "save_agent_timeline session={} user={} messages={} has_metrics={} bytes={}",
+        session_id, uid, len(messages or []), bool(metrics), len(payload),
     )
 
 
-async def get_agent_timeline(user_id: Optional[int], session_id: str) -> list:
-    """读取智能体的完整时间线快照（没有 / 不属于该用户 → 返回空列表）
+async def get_agent_timeline(
+    user_id: Optional[int], session_id: str
+) -> dict:
+    """读取智能体的完整时间线快照
 
-    返回空列表时前端会退回读 `ai_chat_message`（老会话没有快照，仍能看到纯文本问答）。
+    返回 `{"messages": [...], "metrics": {...} | None}`：
+      · 没有快照 / 不属于该用户 → `{"messages": [], "metrics": None}`
+        （前端据此退回读 `ai_chat_message`，老会话仍能看到纯文本问答）；
+      · **兼容旧格式**：升级前 payload 是**纯数组**，此时 `metrics` 为 None（旧会话无统计，
+        状态条显示 0，与升级前一致、不倒退）。
     """
     uid = user_id or 0
+    empty = {"messages": [], "metrics": None}
     async with async_session_factory() as db:
         row = await db.get(AiAgentTimeline, session_id)
         if row is None:
-            return []
+            return empty
         # user_id 为 0 视为「未知归属」，宽松放行；非 0 且不匹配则不返回（避免越权读）
         if row.user_id and row.user_id != uid:
-            return []
+            return empty
         try:
             data = json.loads(row.payload or "[]")
         except Exception:  # noqa: BLE001
-            return []
-        return data if isinstance(data, list) else []
+            return empty
+        # 新格式：{"messages": [...], "metrics": {...}}
+        if isinstance(data, dict):
+            msgs = data.get("messages")
+            mt = data.get("metrics")
+            return {
+                "messages": msgs if isinstance(msgs, list) else [],
+                "metrics": mt if isinstance(mt, dict) else None,
+            }
+        # 旧格式：纯数组（无统计）—— 兼容保留
+        if isinstance(data, list):
+            return {"messages": data, "metrics": None}
+        return empty
 
 
 async def delete_agent_timeline(user_id: Optional[int], session_id: str) -> None:
