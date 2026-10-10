@@ -83,7 +83,8 @@
             知识库 / 历史会话 / 设置三个入口**统一到同一个可拉伸抽屉**（内部 tab 切换）。
             方向原则（用户 2026-10-10 定）：**入口在哪侧、抽屉就从哪侧滑出** ——
             知识库/历史会话按钮在左 → 抽屉从左侧（ltr）；设置按钮在右 → 抽屉从右侧（rtl）。
-            该方向由 `panelDirection` 按当前 tab 动态给出（见 script）。
+            ⚠️ 方向**只在打开抽屉的那一下由入口侧决定一次、之后锁定**，同一抽屉内切 tab
+               不再改变方向（否则：左侧点开知识库再点设置 tab，抽屉会甩到右侧，不合理）。
           -->
           <template #input-footer>
             <ChatFileUploader v-model="attachments" :disabled="isGenerating" />
@@ -470,16 +471,26 @@ async function loadAgents() {
 // 用户 2026-10-10 裁决：三个功能的容器形态各异（设置=el-dialog、知识库/历史=各自抽屉），
 // 统一到一个可拉伸抽屉 + 内部 tab；点工具栏对应按钮 → 开抽屉 + 切到对应 tab。
 // 方向原则：**入口在哪侧、抽屉就从哪侧滑出**（设置按钮在右 → rtl；知识库/历史在左 → ltr）。
+//
+// ⚠️ 方向**只在「本次打开抽屉」时由入口侧决定一次，之后锁定**——不能随 tab 变：
+//    用户 2026-10-10 反馈「在左侧点开知识库，再点智能体设置 tab，抽屉会甩到右侧，不合理」。
+//    同一个抽屉在会话期内来回横跳，破坏「同一个容器」的心智。故 `panelDirection` 是 **ref
+//    而非 computed**：`openPanel` 仅在「原本处于关闭态」时按入口侧设一次；抽屉已开时，
+//    无论是点内部 tab 头还是点工具栏另一个按钮，都**保持当前方向不变**（只切 tab 内容）。
 const panelOpen = ref(false)
 const panelTab = ref<'settings' | 'kb' | 'history'>('settings')
-/** 当前 tab 对应的抽屉方向：设置 tab → 右侧（rtl），其余 → 左侧（ltr） */
-const panelDirection = computed<'rtl' | 'ltr'>(() =>
-  panelTab.value === 'settings' ? 'rtl' : 'ltr'
-)
+/** 抽屉滑出方向：由「打开它的那个入口」决定并锁定（打开期间不随 tab 变） */
+const panelDirection = ref<'rtl' | 'ltr'>('ltr')
 /** 知识库面板实例（切到知识库 tab 时调 activate 载入） */
 const kbPanelRef = ref<InstanceType<typeof KnowledgeBasePanel> | null>(null)
 
+/** 入口侧 → 抽屉方向：设置入口在右（rtl），知识库/历史入口在左（ltr） */
+const dirOfTab = (tab: 'settings' | 'kb' | 'history'): 'rtl' | 'ltr' =>
+  tab === 'settings' ? 'rtl' : 'ltr'
+
 function openPanel(tab: 'settings' | 'kb' | 'history') {
+  // 仅在「抽屉原本关闭」时按入口侧设定方向；已打开时保持当前方向（不横跳）
+  if (!panelOpen.value) panelDirection.value = dirOfTab(tab)
   panelTab.value = tab
   panelOpen.value = true
   if (tab === 'settings') loadToolOptions()
