@@ -19,11 +19,11 @@
   <div class="agent-page">
     <div class="agent-shell">
       <!--
-        ⚠️ 这里**没有左侧历史栏**（2026-09-20 用户要求改形态）：
+        ⚠️ 这里**没有常驻左侧历史栏**（2026-09-20 用户要求改形态）：
         原来它是 `.agent-shell` 里的 flex 兄弟（`.agent-sidebar`，固定 248px、常驻占位），
-        后来改成**输入卡片上方的浮动面板** `.session-popover`（见 `#input-footer` 里那一段）。
-        理由：历史会话是「偶尔看一眼就关」的东西，不该长期占掉一列对话宽度；
-        新形态与 os 助手（`AiAssistant`）的历史会话面板是同一套观感/交互。
+        改为**按需唤起的左侧抽屉**（2026-10-09：从「输入卡片上方的浮动面板」升级为
+        公共组件 `ResizableDrawer`，可拖拽调宽、与知识库抽屉同款交互）。
+        理由：历史会话是「偶尔看一眼就关」的东西，不该长期占掉一列对话宽度。
         旧形态的 `.agent-sidebar` / `.side-*` / `slide-left` 已**整块删除**，不留死代码。
       -->
       <!-- ── 主区 ── -->
@@ -87,70 +87,14 @@
                  （见 `agentDsFree.fetchAgentContext`），下一轮提问自然带上新的库清单。 -->
             <KnowledgeBaseDrawer />
 
-            <!-- 历史会话开关（原来在顶部标题栏里，标题栏删掉后挪到这里）：浮层从按钮**上方**弹出 -->
-            <!--
-              ⚠️ `@mousedown.stop` 不能删：浮层的「点外面关闭」挂在 document 的 mousedown 上，
-              不拦下这一下，点按钮会先被判成「点在外面」而关掉、紧接着 click 又把它打开 ——
-              表现是「点按钮关不掉」（`AiAssistant` 的历史会话按钮同样带这个修饰符）。
-            -->
+            <!-- 历史会话开关：打开**左侧**可拉伸抽屉（统一用公共组件 ResizableDrawer，
+                 与知识库抽屉同款交互；原来是输入框上方的浮动小面板）。 -->
             <button type="button" class="tb-btn" :class="{ 'is-on': historyOpen }" title="历史会话"
-              @mousedown.stop @click="toggleHistory">
+              @click="historyOpen = true">
               <el-icon>
                 <Clock />
               </el-icon>
             </button>
-
-            <!--
-              历史会话浮层（形态照 os 助手 `AiAssistant` 的 `.session-popover`）：
-              白卡片 + 圆角 + 描边 + 阴影，**覆盖**在消息区上、不占布局 —— 打开时不再挤窄对话区。
-              锚点写在 `.session-popover` 的样式里（`bottom: calc(100% + 8px)`，即以输入卡片为基准）。
-            -->
-            <transition name="pop-fade">
-              <div v-if="historyOpen" ref="sessionPopoverRef" class="session-popover">
-                <div class="session-popover-header">
-                  <span>历史会话</span>
-                  <span class="session-count">{{ sessionCountText }}</span>
-                </div>
-
-                <!-- 搜索：**只按标题**过滤，且是纯客户端过滤。
-                     按消息正文搜会话前端做不到（没有正文可搜，得后端加检索接口），本轮不做。 -->
-                <div class="session-search">
-                  <el-input v-model="sessionKeyword" size="small" clearable placeholder="搜索会话标题"
-                    @keydown.esc="historyOpen = false">
-                    <template #prefix>
-                      <el-icon><Search /></el-icon>
-                    </template>
-                  </el-input>
-                </div>
-
-                <div class="session-list" v-loading="sessionsLoading">
-                  <div v-for="s in filteredSessions" :key="s.sessionId"
-                    :class="['session-item', { active: s.sessionId === sessionId }]" @click="switchSession(s)">
-                    <div class="session-title">{{ sessionTitle(s) }}</div>
-                    <div class="session-meta">
-                      <span>{{ formatTime(s.updatedAt) }}</span>
-                      <span>{{ s.messageCount || 0 }} 条</span>
-                    </div>
-                    <span class="session-delete" title="删除会话" @click.stop="removeSession(s)">
-                      <el-icon>
-                        <Delete />
-                      </el-icon>
-                    </span>
-                  </div>
-
-                  <!--
-                    两种「空」必须分成两句话 ——
-                      · 一条会话都没有：确实没有历史；
-                      · 有会话但搜索没命中：要说清是**搜索**没命中，并带上关键词（用户才知道该改词）。
-                    复用第一句等于对用户说假话（知识库列表踩过同一个坑）。
-                  -->
-                  <div v-if="!sessionsLoading && !sessions.length" class="session-empty">暂无历史会话</div>
-                  <div v-else-if="!sessionsLoading && !filteredSessions.length" class="session-empty">
-                    没有标题包含「{{ sessionKeyword.trim() }}」的会话
-                  </div>
-                </div>
-              </div>
-            </transition>
 
             <!-- 写操作开关：关掉后 Agent 只给方案不落库 -->
             <div class="mode-switch" :title="autoConfirm ? '自动模式：创建/导入直接执行' : '手动模式：写操作只给方案'">
@@ -239,6 +183,56 @@
         </footer>
       </div>
     </div>
+
+    <!-- 历史会话抽屉（**左侧**，可拖拽调宽）：统一用公共组件 ResizableDrawer，
+         与右侧的知识库抽屉同款交互（原来是输入框上方的浮动小面板）。 -->
+    <ResizableDrawer
+      v-model="historyOpen"
+      direction="ltr"
+      storage-key="openstudy_agent_history_size"
+      :default-width="300"
+      :min="240"
+      :max="600"
+    >
+      <div class="session-drawer">
+        <div class="session-drawer-header">
+          <span>历史会话</span>
+          <span class="session-count">{{ sessionCountText }}</span>
+        </div>
+
+        <!-- 搜索：**只按标题**过滤，纯客户端过滤（按正文搜需后端检索接口，本轮不做）。 -->
+        <div class="session-search">
+          <el-input v-model="sessionKeyword" size="small" clearable placeholder="搜索会话标题"
+            @keydown.esc="historyOpen = false">
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+        </div>
+
+        <div class="session-list" v-loading="sessionsLoading">
+          <div v-for="s in filteredSessions" :key="s.sessionId"
+            :class="['session-item', { active: s.sessionId === sessionId }]" @click="switchSession(s)">
+            <div class="session-title">{{ sessionTitle(s) }}</div>
+            <div class="session-meta">
+              <span>{{ formatTime(s.updatedAt) }}</span>
+              <span>{{ s.messageCount || 0 }} 条</span>
+            </div>
+            <span class="session-delete" title="删除会话" @click.stop="removeSession(s)">
+              <el-icon>
+                <Delete />
+              </el-icon>
+            </span>
+          </div>
+
+          <!-- 两种「空」分成两句话：没有历史 / 搜索没命中（带关键词）—— 复用一句等于说假话。 -->
+          <div v-if="!sessionsLoading && !sessions.length" class="session-empty">暂无历史会话</div>
+          <div v-else-if="!sessionsLoading && !filteredSessions.length" class="session-empty">
+            没有标题包含「{{ sessionKeyword.trim() }}」的会话
+          </div>
+        </div>
+      </div>
+    </ResizableDrawer>
 
     <!-- 「设置」弹层：把「配置类三件套」——智能体 / 模型 / 可用工具——聚合到一处，
          让底部工具栏只保留高频动作（用户 2026-10-09 裁决，解决信息过密问题）。 -->
@@ -394,6 +388,7 @@ import AgentConfirmCard from '@/components/AgentConfirmCard/index.vue'
 import ChatFileUploader from '@/components/ChatFileUploader/index.vue'
 import ChatAttachmentList from '@/components/ChatAttachmentList/index.vue'
 import KnowledgeBaseDrawer from '@/components/KnowledgeBaseDrawer/index.vue'
+import ResizableDrawer from '@/components/ResizableDrawer/index.vue'
 import { useAgentChat } from '@/composables/useAgentChat'
 import { listSessions, createSession, deleteSession, getConversationHistory, saveConversationMessages, getAgentTimeline, attachmentPlaceholder, fillAttachmentMetas } from '@/api/ai/ai'
 import {
@@ -687,8 +682,6 @@ const historyOpen = ref(false)
 const sessions = ref<any[]>([])
 const sessionsLoading = ref(false)
 const sessionId = ref('')
-/** 浮层根节点：只用来判「点的是不是浮层里面」（点外面关闭） */
-const sessionPopoverRef = ref<HTMLElement | null>(null)
 
 /**
  * 会话搜索关键词
@@ -725,24 +718,10 @@ const sessionCountText = computed(() =>
     : `共 ${sessions.value.length} 条`
 )
 
-/** 开关浮层：打开时清掉上次的搜索词，否则下次点开看到的是个「被过滤过」的列表 */
-const toggleHistory = () => {
-  historyOpen.value = !historyOpen.value
-  if (historyOpen.value) sessionKeyword.value = ''
-}
-
-/**
- * 点浮层外面关闭
- *
- * 挂在 document 的 `mousedown` 上（与 `AiAssistant` 的历史会话面板一致）；
- * 触发按钮上那个 `@mousedown.stop` 是配套的 —— 少了它就是「mousedown 先关掉、
- * click 又打开」，按钮永远关不掉。
- */
-const onDocMousedown = (e: MouseEvent) => {
-  if (!historyOpen.value) return
-  const el = sessionPopoverRef.value
-  if (el && !el.contains(e.target as Node)) historyOpen.value = false
-}
+/** 打开历史抽屉时清掉上次的搜索词，否则下次点开看到的是个「被过滤过」的列表 */
+watch(historyOpen, (open) => {
+  if (open) sessionKeyword.value = ''
+})
 
 const formatTime = (time: any) => {
   if (!time) return ''
@@ -960,8 +939,6 @@ const handleSend = async ({ content }: { content: string }) => {
 
 /* ===================== 生命周期 ===================== */
 onMounted(async () => {
-  // 历史会话浮层的「点外面关闭」（回调自己判 historyOpen，关着的时候是空转）
-  document.addEventListener('mousedown', onDocMousedown)
   // 智能体清单（官方角色 + 我的智能体）：不阻塞会话加载，失败静默降级
   loadAgents()
   await loadSessions()
@@ -985,7 +962,6 @@ watch(isGenerating, (now, before) => {
 })
 
 onBeforeUnmount(() => {
-  document.removeEventListener('mousedown', onDocMousedown)
   if (isGenerating.value) stop()
 })
 </script>
@@ -1029,29 +1005,21 @@ onBeforeUnmount(() => {
  * 不触发布局。旧形态（左侧栏）用 `transition: all` 动 `width`，等于每帧给整个消息列表
  * 重排一次 —— 那正是用户报的「点历史会话按钮会卡一下」。
  */
-.session-popover {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 8px);
-  z-index: 30;
-  width: 268px;
-  max-width: 100%;
-  max-height: min(46vh, 420px);
+/* 历史会话抽屉（左侧 ResizableDrawer 的内容区）：铺满抽屉、纵向三段（头/搜索/列表） */
+.session-drawer {
+  height: 100%;
   display: flex;
   flex-direction: column;
   background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
   overflow: hidden;
 }
 
-.session-popover-header {
+.session-drawer-header {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: 14px 16px 10px;
   font-size: 13px;
   font-weight: 600;
   color: #1f2937;

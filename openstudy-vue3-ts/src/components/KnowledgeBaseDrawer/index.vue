@@ -22,15 +22,22 @@
     <span v-if="kbCount" class="kb-entry-badge">{{ kbCount }}</span>
   </button>
 
-  <el-drawer v-model="visible" direction="rtl" size="560px" :with-header="false" append-to-body
-    class="kb-drawer" @open="onOpen">
+  <!-- 可拖拽调宽的通用抽屉容器（与悬浮助手同款交互，公共组件 ResizableDrawer） -->
+  <ResizableDrawer
+    v-model="visible"
+    direction="rtl"
+    storage-key="openstudy_kb_drawer_size"
+    :default-width="560"
+    @open="onOpen"
+  >
     <KnowledgeBasePanel ref="panelRef" closable @close="visible = false" />
-  </el-drawer>
+  </ResizableDrawer>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue'
 import KnowledgeBasePanel from '@/components/KnowledgeBasePanel/index.vue'
+import ResizableDrawer from '@/components/ResizableDrawer/index.vue'
 import { listKnowledgeBases } from '@/api/ai/rag'
 
 const visible = ref(false)
@@ -113,12 +120,5 @@ defineExpose({ open })
   line-height: 14px;
   text-align: center;
   font-weight: 600;
-}
-</style>
-
-<style>
-.kb-drawer .el-drawer__body {
-  padding: 0;
-  overflow: hidden;
 }
 </style>
