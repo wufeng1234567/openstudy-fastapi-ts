@@ -241,49 +241,88 @@ const syncEditorMode = () => {
     editingNoteId.value = numId
     loadNoteData(id)
   } else {
-    if (!editingNoteId.value) return
-    lastLoadedId = null
-    editingNoteId.value = null
-    noteTitle.value = ''
-    markdownContent.value = ''
-    editorHtmlContent.value = ''
-    isPublic.value = 1
-    selectedCategoryId.value = null
-    selectedTags.value = []
-    selectedPublicSectionId.value = null
-    loadDraft()
+    // ⚠️ 无 id = 「写新笔记」。**不要**在这里写 `if (!editingNoteId.value) return`——
+    //    首次进入 / 刷新后编辑页时 `editingNoteId` 初值就是 null，那个 return 会让
+    //    `loadDraft()` **永不执行**（用户 2026-10-11 报「离开/刷新后草稿丢了」的根因）。
+    //    正确做法：重置为新笔记态（仅当从编辑态切回时），然后**无条件**读草稿。
+    if (lastLoadedId !== null || editingNoteId.value !== null) {
+      lastLoadedId = null
+      editingNoteId.value = null
+      noteTitle.value = ''
+      markdownContent.value = ''
+      editorHtmlContent.value = ''
+      isPublic.value = 1
+      selectedCategoryId.value = null
+      selectedTags.value = []
+      selectedPublicSectionId.value = null
+    }
+    // 恢复到内容时给个轻提示：用户（2026-10-11）明确要"能知道上次写过、且被带出来了"。
+    if (loadDraft()) {
+      ElMessage({ message: '已恢复上次未发布的草稿', type: 'info', duration: 2500 })
+    }
   }
 }
 
 const DRAFT_KEY = 'note_draft'
 
-const loadDraft = () => {
+/**
+ * 读回本地上次未发布的草稿（仅「写新笔记」用；草稿不属于任何笔记、没有 noteId）。
+ *
+ * @returns 是否真的恢复出了内容（有标题或正文）——供调用方决定要不要提示用户。
+ *
+ * ⚠️ 空草稿（既无标题也无正文）直接忽略、**不覆盖**当前表单，也不提示：
+ *   否则用户点过「写笔记」但没输入任何东西就离开时，会留下一条空草稿，
+ *   下次进来弹「已恢复草稿」却什么都没有，反而误导。
+ */
+const loadDraft = (): boolean => {
   try {
-    const draft = localStorage.getItem(DRAFT_KEY)
-    if (draft) {
-      const parsedDraft = JSON.parse(draft)
-      noteTitle.value = parsedDraft.title || ''
-      const md = parsedDraft.content || ''
-      markdownContent.value = md
-      editorHtmlContent.value = marked.parse(md)
-      isPublic.value = parsedDraft.isPublic || 1
-      selectedCategoryId.value = parsedDraft.categoryId || null
-      selectedTags.value = parsedDraft.tags || []
-      selectedPublicSectionId.value = parsedDraft.publicSectionId || null
-      nextTick(() => {
-        if (tiptapEditorRef.value) {
-          tiptapEditorRef.value.setContent(editorHtmlContent.value)
-        }
-      })
-    }
+    const raw = localStorage.getItem(DRAFT_KEY)
+    if (!raw) return false
+    const parsedDraft = JSON.parse(raw)
+    const md = parsedDraft.content || ''
+    const title = parsedDraft.title || ''
+    // 空草稿忽略（见函数注释）
+    if (!md.trim() && !title.trim()) return false
+
+    noteTitle.value = title
+    markdownContent.value = md
+    editorHtmlContent.value = marked.parse(md)
+    // ⚠️ 用 ?? 不用 ||：isPublic=0（私密）是合法值，`0 || 1` 会被错误改成 1（公开）。
+    isPublic.value = parsedDraft.isPublic ?? 1
+    selectedCategoryId.value = parsedDraft.categoryId ?? null
+    selectedTags.value = parsedDraft.tags || []
+    selectedPublicSectionId.value = parsedDraft.publicSectionId ?? null
+    nextTick(() => {
+      if (tiptapEditorRef.value) {
+        tiptapEditorRef.value.setContent(editorHtmlContent.value)
+      }
+    })
+    return true
   } catch (error) {
     console.error('加载草稿失败:', error)
+    return false
   }
 }
 
+/**
+ * 存草稿（仅「写新笔记」模式）。
+ *
+ * ⚠️ **编辑已有笔记时不写草稿**：否则用户编辑某篇笔记的过程中，watch 会把它的内容盖进
+ *    `note_draft`，等 ta 回「写笔记」时被错误带出别人的内容（用户 2026-10-11 要求排查的
+ *    「从其他地方点编辑笔记会不会覆盖草稿」正是这个坑）。
+ * ⚠️ 内容全空（标题与正文都空）时**不写**、并清掉旧草稿，避免留下一条脏草稿。
+ */
 const saveDraft = () => {
   try {
+    // 编辑已有笔记 → 不写草稿（草稿只属于「尚未发布的新笔记」）
+    if (editingNoteId.value) return
+
     const md = editorHtmlContent.value ? turndownService.turndown(editorHtmlContent.value) : ''
+    // 全空 → 清掉旧草稿，不留脏数据
+    if (!md.trim() && !noteTitle.value.trim()) {
+      localStorage.removeItem(DRAFT_KEY)
+      return
+    }
     const draft = {
       title: noteTitle.value,
       content: md,
@@ -416,6 +455,11 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleGlobalKeydown)
   if (missingTimer) clearTimeout(missingTimer)
+  // 离开编辑页时兜底存一次草稿：`watch` 是 500ms 防抖，用户若在防抖窗口内直接关标签页 /
+  // 切路由（不走 `goBack`），最后一次改动会丢。这里补一次同步保存（内部已保证编辑已有
+  // 笔记时不写、空内容不留）。
+  if (draftTimer) clearTimeout(draftTimer)
+  saveDraft()
 })
 
 onActivated(() => {
@@ -511,8 +555,9 @@ const handleSave = async () => {
     } else {
       ElMessage.warning('请先发布笔记')
     }
-
-    clearDraft()
+    // ⚠️ 这里**不再** clearDraft()：本函数是「编辑已有笔记」专用保存路径（else 只提示
+    //    "请先发布笔记"）。编辑已有笔记与「写笔记」的草稿是两回事，不该顺手清掉用户
+    //    在「写笔记」攒的草稿（用户 2026-10-11 要求排查的"编辑会不会覆盖/清掉草稿"）。
   } catch (error) {
     ElMessage.error('保存失败')
     console.error(error)
@@ -564,6 +609,7 @@ const handlePublish = async () => {
     }
 
     let savedNoteId = editingNoteId.value
+    const isNewNote = !editingNoteId.value
 
     if (editingNoteId.value) {
       await updateNote({ id: editingNoteId.value, ...noteData })
@@ -580,7 +626,9 @@ const handlePublish = async () => {
       await saveNoteQuestionBanks(savedNoteId)
     }
 
-    clearDraft()
+    // ⚠️ 只有「发布新笔记」成功才清草稿：草稿只属于「尚未发布的新笔记」。若用户是在
+    //    「编辑已有笔记」，ta 之前攒的「写笔记」草稿不该被这次编辑保存顺手清掉。
+    if (isNewNote) clearDraft()
     editingNoteId.value = null
     cacheStore.setLastVisited('notes', 'list')
     router.push('/front/notes/list')
