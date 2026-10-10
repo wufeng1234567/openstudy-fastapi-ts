@@ -1465,3 +1465,55 @@ async def list_public_sections(
             "sortOrder": row[2],
         })
     return success(sections)
+
+
+# ========== 用户「笔记草稿」API（智能体与前端共用） ==========
+# ⚠️ 这是「写笔记」页的**临时草稿**（用户维度、无 noteId、不进笔记列表），
+#    与 note 表里 status='draft' 的正式笔记是两回事（用户 2026-10-11 报的语义混淆）。
+
+@router.get("/notes/note/draft")
+async def get_note_draft(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """取当前用户的后端草稿（没有则 data=null）"""
+    from app.services import note_draft_service as nds
+    uid = current_user.get("user_id")
+    draft = await nds.get_draft(db, int(uid))
+    return success(nds.draft_to_dict(draft))
+
+
+@router.put("/notes/note/draft")
+async def save_note_draft(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """保存/更新当前用户的后端草稿（前端「写笔记」自动保存时同步）"""
+    from app.services import note_draft_service as nds
+    uid = int(current_user.get("user_id"))
+    body = await request.json()
+    draft = await nds.upsert_draft(
+        db,
+        uid,
+        title=body.get("title"),
+        content=body.get("content"),
+        markdown_content=body.get("markdownContent", body.get("markdown_content")),
+        category_id=body.get("categoryId", body.get("category_id")),
+        tags=body.get("tags"),
+        is_public=body.get("isPublic", body.get("is_public")),
+        public_section_id=body.get("publicSectionId", body.get("public_section_id")),
+    )
+    return success(nds.draft_to_dict(draft))
+
+
+@router.delete("/notes/note/draft")
+async def clear_note_draft(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """清除当前用户的后端草稿（发布成功 / 用户丢弃时）"""
+    from app.services import note_draft_service as nds
+    uid = int(current_user.get("user_id"))
+    n = await nds.clear_draft(db, uid)
+    return success({"deleted": n})

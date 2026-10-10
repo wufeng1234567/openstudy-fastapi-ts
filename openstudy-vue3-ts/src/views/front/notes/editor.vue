@@ -120,7 +120,7 @@ import TiptapEditor from '@/components/TiptapEditor/index.vue'
 import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
 import ScrollButton from '@/components/ScrollButton/ScrollButton.vue'
 import NoteQuestionSelector from '@/components/NoteQuestionSelector/NoteQuestionSelector.vue'
-import { addNote, updateNote, getNote } from '@/api/notes/note'
+import { addNote, updateNote, getNote, getNoteDraft, saveNoteDraft, clearNoteDraft } from '@/api/notes/note'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
 import useUserStore from '@/store/modules/user'
 import { getAllNoteCategory, addNoteCategory } from '@/api/noteCategory/noteCategory'
@@ -234,7 +234,7 @@ const loadNoteQuestionBanks = async (noteId) => {
 /** 「写新笔记」态是否已处理过草稿（幂等守卫，防 onMounted+onActivated 双触发重复读/重复弹，见 syncEditorMode） */
 let newNoteDraftSettled = false
 
-const syncEditorMode = () => {
+const syncEditorMode = async () => {
   const id = route.query.id
   const numId = id ? Number(id) : null
 
@@ -266,9 +266,10 @@ const syncEditorMode = () => {
       selectedTags.value = []
       selectedPublicSectionId.value = null
     }
+    // 幂等标记必须在 await 之前置位：否则 await 期间 onActivated 重入会再跑一遍。
     newNoteDraftSettled = true
     // 恢复到内容时给个轻提示：用户（2026-10-11）明确要"能知道上次写过、且被带出来了"。
-    if (loadDraft()) {
+    if (await loadDraft()) {
       ElMessage({ message: '已恢复上次未发布的草稿', type: 'info', duration: 2500 })
     }
   }
@@ -276,52 +277,77 @@ const syncEditorMode = () => {
 
 const DRAFT_KEY = 'note_draft'
 
-/**
- * 读回本地上次未发布的草稿（仅「写新笔记」用；草稿不属于任何笔记、没有 noteId）。
- *
- * @returns 是否真的恢复出了内容（有标题或正文）——供调用方决定要不要提示用户。
- *
- * ⚠️ 空草稿（既无标题也无正文）直接忽略、**不覆盖**当前表单，也不提示：
- *   否则用户点过「写笔记」但没输入任何东西就离开时，会留下一条空草稿，
- *   下次进来弹「已恢复草稿」却什么都没有，反而误导。
- */
-const loadDraft = (): boolean => {
-  try {
-    const raw = localStorage.getItem(DRAFT_KEY)
-    if (!raw) return false
-    const parsedDraft = JSON.parse(raw)
-    const md = parsedDraft.content || ''
-    const title = parsedDraft.title || ''
-    // 空草稿忽略（见函数注释）
-    if (!md.trim() && !title.trim()) return false
-
-    noteTitle.value = title
-    markdownContent.value = md
-    editorHtmlContent.value = marked.parse(md)
-    // ⚠️ 用 ?? 不用 ||：isPublic=0（私密）是合法值，`0 || 1` 会被错误改成 1（公开）。
-    isPublic.value = parsedDraft.isPublic ?? 1
-    selectedCategoryId.value = parsedDraft.categoryId ?? null
-    selectedTags.value = parsedDraft.tags || []
-    selectedPublicSectionId.value = parsedDraft.publicSectionId ?? null
-    nextTick(() => {
-      if (tiptapEditorRef.value) {
-        tiptapEditorRef.value.setContent(editorHtmlContent.value)
-      }
-    })
-    return true
-  } catch (error) {
-    console.error('加载草稿失败:', error)
-    return false
-  }
+/** 把一份草稿对象套用到表单（本地草稿与后端草稿共用同一套字段名） */
+const applyDraft = (d: any) => {
+  const md = d.content || d.markdownContent || ''
+  noteTitle.value = d.title || ''
+  markdownContent.value = md
+  editorHtmlContent.value = marked.parse(md)
+  // ⚠️ 用 ?? 不用 ||：isPublic=0（私密）是合法值，`0 || 1` 会被错误改成 1（公开）。
+  isPublic.value = d.isPublic ?? 1
+  selectedCategoryId.value = d.categoryId ?? null
+  selectedTags.value = d.tags || []
+  selectedPublicSectionId.value = d.publicSectionId ?? null
+  nextTick(() => {
+    if (tiptapEditorRef.value) {
+      tiptapEditorRef.value.setContent(editorHtmlContent.value)
+    }
+  })
 }
 
 /**
- * 存草稿（仅「写新笔记」模式）。
+ * 读回草稿（仅「写新笔记」用；草稿不属于任何笔记、没有 noteId）。
+ *
+ * 用户 2026-10-11：**两个来源合并** —— 浏览器 localStorage 草稿 + 后端「用户草稿」
+ * （智能体 `note_manage.save_draft` 写的也是后端那份）。**谁 updateTime 新用谁**，
+ * 这样"换设备后智能体帮存的草稿"也能带出来；本地那份作为离线兜底。
+ *
+ * @returns 是否真的恢复出了内容（有标题或正文）——供调用方决定要不要提示用户。
+ *
+ * ⚠️ 空草稿（标题与正文都空）忽略、**不覆盖**当前表单，也不提示。
+ */
+const loadDraft = async (): Promise<boolean> => {
+  // 本地草稿
+  let local: any = null
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY)
+    if (raw) local = JSON.parse(raw)
+  } catch (e) {
+    console.error('读取本地草稿失败:', e)
+  }
+  // 后端草稿（失败当作没有，不影响本地兜底）
+  let remote: any = null
+  try {
+    const res: any = await getNoteDraft()
+    if (res?.code === 200 && res.data) remote = res.data
+  } catch (e) {
+    console.error('读取后端草稿失败:', e)
+  }
+
+  const localHas = !!(local && ((local.content || '').trim() || (local.title || '').trim()))
+  const remoteHas = !!(remote && ((remote.content || remote.markdownContent || '').trim() || (remote.title || '').trim()))
+  if (!localHas && !remoteHas) return false
+
+  // 谁新用谁：无法比较时间时优先本地（用户本机最新编辑的确定性更高）
+  let picked = local
+  if (remoteHas && localHas) {
+    const lt = Date.parse(local.updatedAt || '') || 0
+    const rt = Date.parse(remote.updateTime || '') || 0
+    picked = rt > lt ? remote : local
+  } else if (remoteHas) {
+    picked = remote
+  }
+  applyDraft(picked)
+  return true
+}
+
+/**
+ * 存草稿（仅「写新笔记」模式）：**本地 + 后端双写**。
  *
  * ⚠️ **编辑已有笔记时不写草稿**：否则用户编辑某篇笔记的过程中，watch 会把它的内容盖进
  *    `note_draft`，等 ta 回「写笔记」时被错误带出别人的内容（用户 2026-10-11 要求排查的
  *    「从其他地方点编辑笔记会不会覆盖草稿」正是这个坑）。
- * ⚠️ 内容全空（标题与正文都空）时**不写**、并清掉旧草稿，避免留下一条脏草稿。
+ * ⚠️ 内容全空（标题与正文都空）时**不写**、并清掉两处草稿，避免留下一条脏草稿。
  */
 const saveDraft = () => {
   try {
@@ -329,21 +355,24 @@ const saveDraft = () => {
     if (editingNoteId.value) return
 
     const md = editorHtmlContent.value ? turndownService.turndown(editorHtmlContent.value) : ''
-    // 全空 → 清掉旧草稿，不留脏数据
+    // 全空 → 清掉两处草稿，不留脏数据
     if (!md.trim() && !noteTitle.value.trim()) {
       localStorage.removeItem(DRAFT_KEY)
+      clearNoteDraft().catch(() => {})
       return
     }
-    const draft = {
+    const payload = {
       title: noteTitle.value,
       content: md,
+      markdownContent: md,
       isPublic: isPublic.value,
       categoryId: selectedCategoryId.value,
       tags: selectedTags.value,
-      publicSectionId: selectedPublicSectionId.value,
-      updatedAt: new Date().toISOString()
+      publicSectionId: selectedPublicSectionId.value
     }
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...payload, updatedAt: new Date().toISOString() }))
+    // 同步后端草稿（失败不影响本地草稿，静默即可——本地已是兜底）
+    saveNoteDraft(payload).catch(() => {})
   } catch (error) {
     console.error('保存草稿失败:', error)
   }
@@ -355,6 +384,8 @@ const clearDraft = () => {
   } catch (error) {
     console.error('清除草稿失败:', error)
   }
+  // 后端草稿也一并清（发布成功时两处都要清）
+  clearNoteDraft().catch(() => {})
 }
 
 const goBack = () => {
@@ -458,7 +489,7 @@ onMounted(async () => {
     loadPublicSections(),
     loadQuestionBanks()
   ])
-  syncEditorMode()
+  await syncEditorMode()
 
   document.addEventListener('keydown', handleGlobalKeydown)
 })
@@ -475,7 +506,7 @@ onBeforeUnmount(() => {
 
 onActivated(() => {
   nextTick(() => {
-    syncEditorMode()
+    void syncEditorMode()
   })
 })
 
@@ -498,7 +529,7 @@ watch(selectedCategoryId, async (newVal) => {
 })
 
 watch(() => route.query.id, () => {
-  syncEditorMode()
+  void syncEditorMode()
 })
 
 let draftTimer = null

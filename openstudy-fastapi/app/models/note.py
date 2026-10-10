@@ -99,3 +99,32 @@ class NotePublicSection(Base):
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     sort_order: Mapped[Optional[int]] = mapped_column(Integer, default=0)
     create_time: Mapped[Optional[datetime]] = mapped_column(DateTime, server_default=func.now())
+
+
+class UserNoteDraft(Base):
+    """用户「写笔记」草稿（用户 2026-10-11：智能体要能真正写进系统草稿）
+
+    ⚠️ **这不是一篇笔记**：它没有 `note_id`、不在「我的笔记」列表里、随时可被覆盖/丢弃。
+    与 `note` 表里 `status='draft'` 的**正式笔记**是两回事（后者已落库、有 noteId、列表可见）。
+
+    设计：**一个用户至多一篇草稿**（`user_id` 既是主键也是归属）。前端「写笔记」页加载时
+    把本表草稿与浏览器 localStorage 草稿合并（谁新用谁）；智能体 `note_manage.save_draft`
+    写入本表（不建 note 行）；发布笔记成功后清空。
+    """
+    __tablename__ = "user_note_draft"
+
+    #: 用户维度：一个用户一行
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("sys_user.user_id"), primary_key=True
+    )
+    title: Mapped[Optional[str]] = mapped_column(String(255))
+    #: 正文：与 note 一致，content 与 markdown_content 互补（见 note_write_service.create_note）
+    content: Mapped[Optional[str]] = mapped_column(Text)
+    markdown_content: Mapped[Optional[str]] = mapped_column(Text)
+    category_id: Mapped[Optional[int]] = mapped_column(BigInteger)
+    tags: Mapped[Optional[str]] = mapped_column(String(500))
+    #: 1=公开 / 0=私密（与 note 同口径，**与题库相反**）
+    is_public: Mapped[int] = mapped_column(Integer, default=1)
+    public_section_id: Mapped[Optional[int]] = mapped_column(BigInteger)
+    create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    update_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

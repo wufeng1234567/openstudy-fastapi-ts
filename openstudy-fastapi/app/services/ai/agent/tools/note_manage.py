@@ -23,6 +23,7 @@ from typing import Any, Dict, List
 from sqlalchemy import select
 
 from app.models.note import Note
+from app.services import note_draft_service as nds
 from app.services import note_write_service as nws
 from app.services.ai.agent.base import (
     OP_RESTORE,
@@ -37,7 +38,7 @@ from app.services.ai.agent.base import (
 )
 
 #: 需要用户确认的动作（都会写数据）
-_WRITE_ACTIONS = {"create", "update", "delete", "delete_many"}
+_WRITE_ACTIONS = {"create", "update", "delete", "delete_many", "save_draft"}
 
 #: 删除类动作：即使 autoConfirm 开着也必须二次确认
 _DESTRUCTIVE_ACTIONS = {"delete", "delete_many"}
@@ -97,6 +98,12 @@ class NoteManageTool(AgentTool):
         "update=update fields of an existing note, "
         "delete=delete one note by `note_id`, "
         "delete_many=delete SEVERAL notes at once (pass `note_ids`). "
+        "save_draft=save the user's WORK-IN-PROGRESS note draft (NOT a real note): it goes to "
+        "the user's editor draft (no noteId, never shown in their note list) and shows up "
+        "next time they open the note editor. Use this when the user says save as draft / "
+        "not finished / save for later. Requires `title`. If the user already has a draft it "
+        "will be OVERWRITTEN after confirmation. Do NOT use create with status=draft to mean "
+        "'draft' — that makes a real note; `draft` status there is just an un-published note. "
         "NOTE: every note belongs to a category. If you omit both `category_id` and "
         "`category_name`, the note goes to the user's default category (created "
         "automatically when the user has none). "
@@ -125,6 +132,7 @@ class NoteManageTool(AgentTool):
                     "update",
                     "delete",
                     "delete_many",
+                    "save_draft",
                 ],
             },
             "note_id": {
@@ -187,7 +195,12 @@ class NoteManageTool(AgentTool):
             },
             "status": {
                 "type": "string",
-                "description": "Note status: draft (default) or published.",
+                "description": (
+                    "Publication status of a REAL note: 'draft' (un-published note, default) or "
+                    "'published'. NOTE: this is NOT the editor's scratch draft — for a "
+                    "work-in-progress draft the user expects to continue in the editor, use "
+                    "action=save_draft instead."
+                ),
                 "enum": ["draft", "published"],
             },
         },
@@ -217,6 +230,11 @@ class NoteManageTool(AgentTool):
         与「撤销本次的所有操作」这个用户口径直接冲突。要收回只需删掉这一行。
         """
         action = str(params.get("action") or "")
+        # `save_draft` 写的是**用户草稿**（无 noteId、非 note 表），不走 note 的软删/恢复那一套；
+        # 草稿本就是临时内容、可再存，无需提供回退。明确告诉用户「不可撤销」即可
+        # （否则会落到下面的「定位不到行」文案，含义不对）。
+        if action == "save_draft":
+            return {"undoable": False, "reason": "「存草稿」是临时的、可直接再存覆盖，无需撤销"}
         ids = _note_ids_of(result)
         if not ids:
             # 说得出怎么撤却定位不到行 → 明说，不许静默成「点了没反应」
@@ -260,6 +278,8 @@ class NoteManageTool(AgentTool):
                 return await self._preview_create(params, ctx)
             if action == "update":
                 return await self._preview_update(params, ctx)
+            if action == "save_draft":
+                return await self._preview_save_draft(params, ctx)
         except Exception:  # noqa: BLE001 - 预览失败不能影响主流程
             return {}
         return {}
@@ -291,6 +311,29 @@ class NoteManageTool(AgentTool):
             "count": len(titles),
             "sample": titles[:_PREVIEW_SAMPLE],
         }
+
+    async def _preview_save_draft(
+        self, params: Dict[str, Any], ctx: ToolContext
+    ) -> Dict[str, Any]:
+        """草稿确认卡的预览：说清「要存什么」+「是否覆盖已有草稿」
+
+        用户 2026-10-11 明确：**已有草稿时要先提示、让用户确认再覆盖**。这里把
+        `overwrite` 与已有草稿标题一并给出，前端/模型据此告诉用户「这会覆盖你已有的草稿」。
+        """
+        out: Dict[str, Any] = {}
+        title = (params.get("title") or "").strip()
+        if title:
+            out["title"] = title
+        body = params.get("markdown_content") or params.get("content") or ""
+        out["contentLength"] = len(str(body))
+        try:
+            existing = await nds.get_draft(ctx.db, ctx.user_id)
+        except Exception:  # noqa: BLE001
+            existing = None
+        out["overwrite"] = existing is not None
+        if existing is not None:
+            out["existingTitle"] = existing.title or "（无标题草稿）"
+        return out
 
     async def _preview_create(
         self, params: Dict[str, Any], ctx: ToolContext
@@ -363,13 +406,14 @@ class NoteManageTool(AgentTool):
             "update": self._update,
             "delete": self._delete,
             "delete_many": self._delete_many,
+            "save_draft": self._save_draft,
         }
         handler = handlers.get(action)
         if handler is None:
             return fail(
                 f"未知操作: {action}",
                 "action 只能是 list / detail / list_categories / create / update / "
-                "delete / delete_many",
+                "delete / delete_many / save_draft",
             )
         return await handler(params, ctx)
 
@@ -423,6 +467,44 @@ class NoteManageTool(AgentTool):
             # 给候选而不是干巴巴「不存在」：模型下一轮就能改对 id
             return await self._note_not_found(params, ctx)
         return ok(action="detail", note=nws.note_detail(note))
+
+    async def _save_draft(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+        """把内容存成**用户的编辑器草稿**（不是一篇笔记）
+
+        用户 2026-10-11 报：此前智能体用 `create status=draft` 会**在 note 表建一条带 noteId 的
+        真实笔记**，而用户理解的「草稿」是「写笔记」页里那份**未发布、无 noteId、不进笔记列表**的
+        临时内容。故新增本动作：写 `user_note_draft`（用户维度、一篇），前端「写笔记」页加载时合并。
+
+        覆盖语义：一个用户至多一篇草稿，已有则**覆盖**（确认卡会在 preview 里标明 overwrite）。
+        """
+        title = (params.get("title") or "").strip()
+        if not title:
+            return fail("存草稿需要标题", "请提供 title（可先随便起，用户后续可改）")
+        content = params.get("content")
+        markdown = params.get("markdown_content")
+        body = markdown or content
+        if not body or not str(body).strip():
+            return fail("草稿正文为空", "请提供 markdown_content 或 content，否则存下来是空草稿")
+
+        existed = await nds.has_draft(ctx.db, ctx.user_id)
+        draft = await nds.upsert_draft(
+            ctx.db,
+            ctx.user_id,
+            title=title,
+            content=content,
+            markdown_content=markdown,
+            category_id=_to_int(params.get("category_id")),
+            tags=params.get("tags"),
+            is_public=params.get("is_public"),
+            public_section_id=_to_int(params.get("public_section_id")),
+        )
+        verb = "已覆盖你之前的草稿" if existed else "已存为草稿"
+        return ok(
+            action="save_draft",
+            draft=nds.draft_to_dict(draft),
+            overwrote=existed,
+            message=f"{verb}「{title}」。下次打开「写笔记」时可直接继续编辑。",
+        )
 
     async def _create(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
         title = (params.get("title") or "").strip()
