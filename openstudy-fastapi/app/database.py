@@ -67,6 +67,7 @@ def register_all_models() -> None:
         agent_config,
         agent_memory,
         agent_op_log,
+        agent_role_pref,
         agent_tool_pref,
         ai_chat,
         ai_config,

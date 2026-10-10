@@ -75,6 +75,7 @@ from app.services.ai.agent import roles as roles_mod
 from app.services.ai.agent import rollback_service
 from app.services.ai.agent import runtime_context
 from app.services.ai.agent import tool_pref_service
+from app.services.ai.agent import agent_role_pref_service
 from app.services.ai.agent.registry import ensure_tools_loaded, registry
 from app.services.file_parser import IMAGE_MARKER_TMPL, build_marked_document
 
@@ -765,7 +766,12 @@ async def run_agent_stream(
     # 系统提示词的工具清单、`meta` 事件的可用工具列表，以及两处执行闸门
     # （`_prepare_tool_call` 与下面内联分支里的 `_disabled_fail`）。
     # ⚠️ `definitions()` / `describe()` **本来就收 `exclude=`**，别另写一套过滤。
-    disabled_tools = await tool_pref_service.disabled_tool_names(user_id)
+    #
+    # ⚡ 「工具屏蔽」与「专家开关」是两次独立 DB 读，用 gather 并行（避免串行叠加首字延迟）。
+    disabled_tools, disabled_role_keys = await asyncio.gather(
+        tool_pref_service.disabled_tool_names(user_id),
+        agent_role_pref_service.disabled_role_keys(user_id),
+    )
 
     # ---- 多智能体编排层（指挥家 + 子代理）----
     # 两条入口（见 docs/fastapi_v2_指挥家模式方案.md）：
@@ -794,8 +800,13 @@ async def run_agent_stream(
 
     if explicit_agent is None:
         # 未传 agent_id：看 req.role 是否是**具名官方子代理**（点名要它）
+        # ⚠️ 已被用户关闭的专家**不可点名**（关掉 = 叫不到）→ 忽略，退自动（指挥家）路由。
         named = roles_mod.role_or_none(req.role)
-        if named is not None and named.key != roles_mod.GENERAL_ROLE:
+        if (
+            named is not None
+            and named.key != roles_mod.GENERAL_ROLE
+            and named.key not in disabled_role_keys
+        ):
             explicit_agent = named
 
     if explicit_agent is not None:
@@ -804,7 +815,9 @@ async def run_agent_stream(
         conductor_mode = False
     else:
         # 自动路由 → 指挥家模式
-        role_spec = orchestrator.resolve_role(role="", message="")  # = general（全工具）
+        role_spec = orchestrator.resolve_role(
+            role="", message="", disabled_role_keys=disabled_role_keys
+        )  # = general（全工具）
         conductor_mode = True
 
     excluded_tools = orchestrator.compute_exclude(
@@ -973,7 +986,9 @@ async def run_agent_stream(
         # 子代理通讯录（仅指挥家模式）：让指挥家"知道每个子代理能干什么"，据此决定派给谁。
         # 含官方子代理 + 用户自定义智能体（后者由上面的 gather 并行读出）。
         sub_agents_text = (
-            roles_mod.render_sub_agents_briefing(extra_agents) if conductor_mode else ""
+            roles_mod.render_sub_agents_briefing(
+                extra_agents, disabled_keys=disabled_role_keys
+            ) if conductor_mode else ""
         )
 
         # 显式点名子代理时：用它的 `persona`（第一人称自我认知）作角色指令；
@@ -1049,7 +1064,7 @@ async def run_agent_stream(
         all_names_now = registry.names()
         sub_roles: Dict[str, Any] = {}
         sub_excludes: Dict[str, Any] = {}
-        for sub in roles_mod.renderable_sub_agents():
+        for sub in roles_mod.renderable_sub_agents(disabled_keys=disabled_role_keys):
             sub_roles[sub.key] = sub
             sub_excludes[sub.key] = orchestrator.compute_exclude(
                 sub, all_tool_names=all_names_now, user_disabled=disabled_tools

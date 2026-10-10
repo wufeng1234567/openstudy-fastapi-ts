@@ -813,6 +813,110 @@ async def agent_roles():
 
 
 # ============================================================
+# 专家（官方角色）开关 —— 用户 2026-10-10 裁决
+# ============================================================
+# 原先界面开关的是「可用工具」（工具粒度），对普通用户没意义（不懂 bank_manage 是啥）。
+# 改为**专家粒度**：用户开关「题库专家 / 笔记专家 / 知识库专家 / 学习统计专家」。
+# 关闭某专家 = 指挥家的子代理通讯录里不再出现它 → LLM 实时知道「这个专家叫不到」。
+
+
+class AgentExpertPrefBody(BaseModel):
+    """启用 / 关闭单个专家的请求体（`PUT /ai/agent/experts`）
+
+    与 `AgentToolPrefBody` 同款约束（`extra="forbid"` + `disabled` 必填），理由见其 docstring。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: 专家 key（官方角色 key，如 bank/note/kb/stats），必须存在于 `OFFICIAL_ROLES`。
+    #: 与 `all` 二选一。
+    expert: str = ""
+    #: `true` = 一次改**全部**专家开关（面板「全选」）。与 `expert` 二选一。
+    all: bool = False
+    #: 1 = 关闭，0 = 启用。必填。
+    disabled: int
+
+
+def _agent_experts_payload(user_id: int, disabled_keys: Any) -> Dict[str, Any]:
+    """专家清单的**唯一组装处**（`GET` 与 `PUT /ai/agent/experts` 共用）
+
+    只列**可委派的专家**（`renderable_sub_agents`，排除 general —— 那是指挥家自身）。
+    每项带：`key` / `name`（中文名）/ `description`（一句话，给用户看）/ `disabled`（0|1）。
+    """
+    from app.services.ai.agent.roles import renderable_sub_agents
+
+    closed = {str(k) for k in (disabled_keys or set())}
+    return {
+        "experts": [
+            {
+                "key": r.key,
+                "name": r.name,
+                "description": r.description,
+                "disabled": 1 if r.key in closed else 0,
+            }
+            for r in renderable_sub_agents()
+        ]
+    }
+
+
+@router.get("/agent/experts")
+async def agent_experts(current_user: dict = Depends(get_current_user)):
+    """**专家清单**（含当前用户的开关状态）—— 供设置面板渲染「专家」开关
+
+    与 `GET /ai/agent/roles` 的区别：本端点**含用户数据**（每个人的开关不同），故需登录态。
+    """
+    from app.services.ai.agent import agent_role_pref_service
+
+    uid = int((current_user or {}).get("user_id") or 0)
+    closed = await agent_role_pref_service.disabled_role_keys(uid)
+    return _agent_experts_payload(uid, closed)
+
+
+@router.put("/agent/experts")
+async def update_agent_expert(
+    body: AgentExpertPrefBody,
+    current_user: dict = Depends(get_current_user),
+):
+    """**启用 / 关闭一个专家**（按登录用户保存，只影响他自己）
+
+    - `expert` 与 `all` 必须**正好给一个**（缺了 / 两个都给 → 400）。
+    - 关闭某专家 = 指挥家通讯录里不再出现它、显式路由也叫不到（见 `loop.run_agent_stream`）。
+    """
+    from app.services.ai.agent import agent_role_pref_service
+    from app.services.ai.agent.roles import renderable_sub_agents
+
+    uid = int((current_user or {}).get("user_id") or 0)
+
+    has_one = bool(str(body.expert or "").strip())
+    if has_one == bool(body.all):
+        return error("请恰好指定 expert 或 all 之一", code=400)
+
+    # 合法名单 = 可委派专家（排除 general —— 它是指挥家自身，不该出现在开关里）
+    valid = {r.key for r in renderable_sub_agents()}
+
+    try:
+        if body.all:
+            await agent_role_pref_service.set_all_roles_disabled(
+                uid, sorted(valid), body.disabled
+            )
+        else:
+            name = str(body.expert or "").strip()
+            if name not in valid:
+                # 校验放路由层（合法名单只有 roles 知道），服务层保持纯净
+                return error(
+                    f"未知专家：{name}；合法专家见 GET /ai/agent/experts",
+                    code=400,
+                )
+            await agent_role_pref_service.set_role_disabled(uid, name, body.disabled)
+    except Exception as e:  # noqa: BLE001 - 写失败如实回错，别静默
+        logger.exception(f"保存专家开关失败 user={uid}: {e}")
+        return error(f"保存失败: {e}")
+
+    closed = await agent_role_pref_service.disabled_role_keys(uid)
+    return success(_agent_experts_payload(uid, closed), "已保存")
+
+
+# ============================================================
 # 用户自定义智能体 CRUD（多智能体协同，阶段 2）
 # ============================================================
 # 用户创建 / 命名 / 保存自己的智能体（人设 + 工具白名单 + 可选模型），复用 AI 工作流。

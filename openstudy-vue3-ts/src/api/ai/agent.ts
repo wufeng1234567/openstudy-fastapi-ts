@@ -676,6 +676,54 @@ function _authHeaders(): Record<string, string> {
   return { Authorization: 'Bearer ' + getToken(), 'Content-Type': 'application/json' }
 }
 
+/** 专家（官方角色）—— 用户可开关的「专家」清单项 */
+export interface AgentExpert {
+  key: string
+  name: string
+  description: string
+  disabled: number
+}
+
+/**
+ * 列出**专家清单**（含当前用户的开关状态）
+ *
+ * 与 `listAgentRoles()` 的区别：本接口**含用户数据**（每个人的开关不同），需登录态。
+ * 供设置面板渲染「专家」开关（用户 2026-10-10：把「可用工具」改成「专家」）。
+ * 失败返回空数组（界面需能降级）。
+ */
+export async function listAgentExperts(): Promise<AgentExpert[]> {
+  try {
+    const res = await fetch(`${import.meta.env.VITE_APP_BASE_API}/ai/agent/experts`, {
+      headers: _authHeaders()
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    return Array.isArray(data?.experts) ? data.experts : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 启用 / 关闭一个专家（`disabled`：1=关闭，0=启用）。返回最新专家清单（受控：显示值来自服务端）。
+ * 失败抛错，供界面提示。
+ */
+export async function setAgentExpertPref(
+  expert: string,
+  disabled: 0 | 1
+): Promise<AgentExpert[]> {
+  const res = await fetch(`${import.meta.env.VITE_APP_BASE_API}/ai/agent/experts`, {
+    method: 'PUT',
+    headers: _authHeaders(),
+    body: JSON.stringify({ expert, disabled })
+  })
+  const data = await res.json().catch(() => null)
+  if (!res.ok || data?.code === 400) {
+    throw new Error(data?.msg || data?.message || '保存失败')
+  }
+  return Array.isArray(data?.data?.experts) ? data.data.experts : []
+}
+
 /** 列出我的智能体（`includeDisabled=true` 含已暂停的） */
 export async function listAgentConfigs(includeDisabled = false): Promise<AgentConfig[]> {
   try {

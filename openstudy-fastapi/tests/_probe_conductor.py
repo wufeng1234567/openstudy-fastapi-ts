@@ -125,12 +125,12 @@ async def run_probe() -> int:
     sp = prompts.build_agent_system_prompt(
         include_tools=False, include_doc_workflow=False, sub_agents_text=brief
     )
-    check("CD-11", "指挥家提示词含 CONDUCTOR 段", "CONDUCTOR" in sp, sp[:80])
+    check("CD-11", "指挥家提示词含指挥家段标题", "Main Assistant" in sp, sp[:80])
     check("CD-12", "指挥家提示词含子代理通讯录", "Question Bank Specialist" in sp or "bank (" in sp, "")
     check("CD-13", "指挥家提示词含 delegate_task 指引", "delegate_task" in sp, "")
     # 不传通讯录则不注入指挥家段
     sp2 = prompts.build_agent_system_prompt(include_tools=False, include_doc_workflow=False)
-    check("CD-14", "非指挥家模式不注入 CONDUCTOR 段", "CONDUCTOR MODE" not in sp2, "")
+    check("CD-14", "非指挥家模式不注入指挥家段", "Main Assistant" not in sp2, "")
 
     # ---- 5. DelegateTaskTool 元数据 + 缺环境 fail ----
     tool = DelegateTaskTool()

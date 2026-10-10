@@ -211,27 +211,32 @@
           </div>
 
           <div class="settings-row">
-            <div class="settings-label">可用工具</div>
+            <div class="settings-label">专家</div>
             <div class="settings-field">
-              <!-- 三种状态分开说：读取中 / 取不到（可重试）/ 有数据 —— 别把「没取到」说成「没有工具」 -->
-              <div v-if="toolLoading" class="settings-hint">正在读取工具清单…</div>
-              <div v-else-if="toolLoadFailed" class="settings-tools-error">
-                <span>工具清单没取到</span>
-                <el-button text type="primary" size="small" @click="loadToolOptions">重试</el-button>
+              <!-- 三种状态分开说：读取中 / 取不到（可重试）/ 有数据 -->
+              <div v-if="expertLoading" class="settings-hint">正在读取专家…</div>
+              <div v-else-if="expertLoadFailed" class="settings-tools-error">
+                <span>专家列表没取到</span>
+                <el-button text type="primary" size="small" @click="loadExperts">重试</el-button>
               </div>
               <div v-else class="settings-tools">
-                <div v-for="t in toolOptions" :key="t.name" class="settings-tool">
-                  <span class="settings-tool-name">{{ t.label || t.name }}</span>
+                <div v-for="e in experts" :key="e.key" class="settings-tool settings-expert">
+                  <div class="settings-expert-main">
+                    <span class="settings-tool-name">{{ e.name }}</span>
+                    <span class="settings-expert-desc">{{ e.description }}</span>
+                  </div>
                   <el-switch
-                    :model-value="t.disabled !== 1"
+                    :model-value="e.disabled !== 1"
                     size="small"
-                    :loading="toolTogglingName === t.name"
+                    :loading="expertTogglingKey === e.key"
                     :disabled="isGenerating"
-                    @update:model-value="toggleToolInSettings(t, $event)"
+                    @update:model-value="toggleExpert(e, $event)"
                   />
                 </div>
               </div>
-              <div class="settings-hint">关掉后，智能体提问时不会再下发该工具。</div>
+              <div class="settings-hint">
+                开启的专家，主助手会在需要时自动请它来帮忙；关掉就完全不用它。
+              </div>
             </div>
           </div>
 
@@ -373,7 +378,7 @@ import ResizableDrawer from '@/components/ResizableDrawer/index.vue'
 // 工具开关清单（设置 tab）：**静态 import**，不再用 `await import()` 动态加载 ——
 // 动态 import 会把「模块何时就绪」变成变量，是「刷新后先点别的 tab 再进设置，工具列表
 // 不加载」这类顺序敏感 bug 的温床（用户 2026-10-10 报）。静态 import 保证函数随时可用。
-import { fetchAgentToolsForUi, saveAgentToolPref } from '@/api/ai/agentDsFree'
+import { fetchAgentToolsForUi } from '@/api/ai/agentDsFree'
 import { useAgentChat } from '@/composables/useAgentChat'
 import { listSessions, createSession, deleteSession, getConversationHistory, saveConversationMessages, getAgentTimeline, attachmentPlaceholder, fillAttachmentMetas } from '@/api/ai/ai'
 import {
@@ -382,9 +387,12 @@ import {
   createAgentConfig,
   updateAgentConfig,
   deleteAgentConfig,
+  listAgentExperts,
+  setAgentExpertPref,
   type AgentRoleMeta,
   type AgentConfig,
-  type AgentConfigInput
+  type AgentConfigInput,
+  type AgentExpert
 } from '@/api/ai/agent'
 import useUserStore from '@/store/modules/user'
 
@@ -508,7 +516,7 @@ function openPanel(tab: 'settings' | 'kb' | 'history') {
   if (!panelOpen.value) panelDirection.value = dirOfTab(tab)
   panelTab.value = tab
   panelOpen.value = true
-  if (tab === 'settings') loadToolOptions()
+  if (tab === 'settings') loadExperts()
   if (tab === 'kb') nextTick(() => kbPanelRef.value?.activate?.())
 }
 
@@ -526,16 +534,64 @@ const agentForm = reactive<AgentConfigInput>({
   tools: [],
   model: ''
 })
-/** 工具项（全量，含中文 label 与启用状态），来自 `/ai/agent/tools` */
+/** 工具项（全量，含中文 label 与启用状态），来自 `/ai/agent/tools` —— 「我的智能体」管理页的工具多选用 */
 const toolOptions = ref<Array<{ name: string; label: string; disabled: number }>>([])
 /** 正在读工具清单（含「重试」那一次） */
 const toolLoading = ref(false)
 /** 工具清单**没取到**（网络错 / 结构异常）—— 与「取到了但一条都没有」分开表达 */
 const toolLoadFailed = ref(false)
-/** 正在写开关的工具名（写时锁住那一行） */
-const toolTogglingName = ref('')
 /** 工具清单请求的飞行锁（同一时刻只发一次，见 loadToolOptions） */
 let _toolLoadInFlight: Promise<void> | null = null
+
+/* ---- 专家（设置面板可开关的「专家」）----
+   用户 2026-10-10 裁决：把「可用工具」（工具粒度、技术味）改成「专家」（角色粒度、用户能懂）。
+   关闭某专家 = 后端指挥家通讯录里不再出现它 → LLM 实时知道叫不到。 */
+const experts = ref<AgentExpert[]>([])
+const expertLoading = ref(false)
+const expertLoadFailed = ref(false)
+const expertTogglingKey = ref('')
+let _expertLoadInFlight: Promise<void> | null = null
+
+async function loadExperts() {
+  // 与 loadToolOptions 同款：飞行锁 + 加载态 + 失败态 + 空结果不覆盖旧数据
+  if (_expertLoadInFlight) return _expertLoadInFlight
+  expertLoading.value = true
+  expertLoadFailed.value = false
+  _expertLoadInFlight = (async () => {
+    try {
+      const list = await listAgentExperts()
+      if (list.length) {
+        experts.value = list
+        expertLoadFailed.value = false
+      } else {
+        expertLoadFailed.value = experts.value.length === 0
+      }
+    } catch (e) {
+      console.warn('[agent] 读取专家列表失败', e)
+      expertLoadFailed.value = experts.value.length === 0
+    } finally {
+      expertLoading.value = false
+      _expertLoadInFlight = null
+    }
+  })()
+  return _expertLoadInFlight
+}
+
+/** 拨动专家开关（受控式：显示值来自服务端回值） */
+async function toggleExpert(e: AgentExpert, on: boolean) {
+  const want: 0 | 1 = on ? 0 : 1
+  if ((e.disabled === 1 ? 1 : 0) === want) return
+  expertTogglingKey.value = e.key
+  try {
+    const list = await setAgentExpertPref(e.key, want)
+    if (list.length) experts.value = list
+    ElMessage.success(want === 1 ? `已关闭「${e.name}」` : `已开启「${e.name}」`)
+  } catch (err: any) {
+    ElMessage.error(err?.message || `「${e.name}」没保存成功`)
+  } finally {
+    expertTogglingKey.value = ''
+  }
+}
 
 /** 工具名 → 中文名（界面对照；无则回落到 name 本身） */
 const toolLabelMap = computed(() => {
@@ -586,26 +642,6 @@ async function loadToolOptions() {
     }
   })()
   return _toolLoadInFlight
-}
-
-/** 拨动设置弹层里的工具开关（受控式：显示值来自服务端回值） */
-async function toggleToolInSettings(t: { name: string; disabled: number }, on: boolean) {
-  const want: 0 | 1 = on ? 0 : 1
-  if ((t.disabled !== 1 ? 0 : 1) === want) return
-  toolTogglingName.value = t.name
-  try {
-    const res = await saveAgentToolPref(t.name, want)
-    if (res.ok) {
-      await loadToolOptions()
-      ElMessage.success(want === 1 ? `已屏蔽「${t.name}」` : `已恢复「${t.name}」`)
-    } else {
-      ElMessage.error(res.reason || `「${t.name}」没保存成功`)
-    }
-  } catch (e: any) {
-    ElMessage.error(e?.message || `「${t.name}」没保存成功`)
-  } finally {
-    toolTogglingName.value = ''
-  }
 }
 
 function openAgentManager() {
@@ -967,10 +1003,10 @@ const handleSend = async ({ content }: { content: string }) => {
 onMounted(async () => {
   // 智能体清单（官方角色 + 我的智能体）：不阻塞会话加载，失败静默降级
   loadAgents()
-  // ⚡ 进页面即**预取**工具开关清单：不管用户先点哪个 tab（设置 / 知识库 / 历史），
-  //   进设置时清单都已在手，彻底消除"刷新后先点别的 tab 再进设置，工具列表不加载"
-  //   这类顺序敏感问题（用户 2026-10-10 报）。飞行锁保证与后续 openPanel 的调用不重复请求。
-  loadToolOptions()
+  // ⚡ 进页面即**预取**专家清单：不管用户先点哪个 tab（设置 / 知识库 / 历史），
+  //   进设置时都已在手，彻底消除"刷新后先点别的 tab 再进设置，列表不加载"这类顺序敏感问题
+  //   （用户 2026-10-10 报）。飞行锁保证与后续 openPanel 的调用不重复请求。
+  loadExperts()
   await loadSessions()
   if (sessions.value.length) {
     sessionId.value = sessions.value[0].sessionId
@@ -1424,6 +1460,21 @@ onBeforeUnmount(() => {
 .settings-tool-name {
   font-size: 13px;
   color: #303133;
+}
+/* 专家项：名称 + 一句话说明两行，右侧开关顶对齐 */
+.settings-expert {
+  align-items: flex-start;
+}
+.settings-expert-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.settings-expert-desc {
+  font-size: 12px;
+  color: #9aa5b5;
+  line-height: 1.5;
 }
 
 /* AiChatStream 自带边框，容器已有边框 → 去掉内层重复描边 */

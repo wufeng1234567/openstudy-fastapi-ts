@@ -39,7 +39,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple
+from typing import Dict, Iterable, List, Tuple
 
 #: 路由兜底角色名（不确定时用它）。**必须**存在于 `OFFICIAL_ROLES`。
 GENERAL_ROLE = "general"
@@ -111,18 +111,18 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
     # ---- 题库/题目域 ----
     "bank": RoleSpec(
         key="bank",
-        name="题库助手",
-        description="管理题库与题目：建库、增删改查题目、批量导入、题目标记",
+        name="题库专家",
+        description="帮你建题库、导入题目、改题删题，也能整理错题本和收藏",
         tools=(
             "bank_manage",
             "question_manage",
             "question_flag_manage",
         ),
         capability=(
-            "Question banks and questions: create/list/rename/delete banks; add, edit, "
-            "delete or batch-import questions; manage the user's wrong-question book, "
-            "favorites and 'marked/ conquer' flags. Also builds a bank from an uploaded "
-            "document or image."
+            "Question banks and questions. Use it when the user wants to: create or "
+            "rename a bank, add / edit / delete questions, import a batch of questions "
+            "(from text or an uploaded file/image), or tidy up their wrong-question "
+            "book, favourites and 'to-conquer' marks."
         ),
         persona=(
             "You are the Question Bank Specialist of OpenStudy. You manage the user's "
@@ -148,12 +148,12 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
     # ---- 笔记域 ----
     "note": RoleSpec(
         key="note",
-        name="笔记助手",
-        description="管理学习笔记：新建、编辑、归类、关联题目",
+        name="笔记专家",
+        description="帮你写笔记、改笔记、给笔记归类，还能把笔记挂到题目上",
         tools=("note_manage",),
         capability=(
-            "Study notes: create, edit, organise and link notes to questions. Use it "
-            "when the user wants to write down, tidy up or look up notes."
+            "Study notes. Use it when the user wants to write something down, tidy up "
+            "or reorganise their notes, look them up, or link a note to a question."
         ),
         persona=(
             "You are the Note Specialist of OpenStudy. You help the user create, edit, "
@@ -171,18 +171,19 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
     # ---- 知识库域 ----
     "kb": RoleSpec(
         key="kb",
-        name="知识库助手",
-        description="管理知识库：建库、写入文档、检索资料",
+        name="知识库专家",
+        description="帮你建知识库、把资料（文字或文件）存进去，也能在里面查东西",
         tools=(
             "knowledge_search",
             "knowledge_ingest",
             "knowledge_base_manage",
         ),
         capability=(
-            "Knowledge bases (document collections): create/list/delete bases, save "
-            "text or an attachment into a base as a searchable document, and search "
-            "inside them. Vectorisation runs in the background, so a freshly saved "
-            "document is not searchable immediately."
+            "Knowledge bases (collections of the user's own material). Use it when the "
+            "user wants to create a knowledge base, save some text or a file into it so "
+            "it becomes searchable, or look something up inside it. Saving takes a "
+            "moment to process in the background, so a just-saved item is not searchable "
+            "immediately."
         ),
         persona=(
             "You are the Knowledge Base Specialist of OpenStudy. You manage the user's "
@@ -212,13 +213,13 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
     # ---- 统计域 ----
     "stats": RoleSpec(
         key="stats",
-        name="学习统计助手",
-        description="学习数据统计与题库分享情况",
+        name="学习统计专家",
+        description="帮你看学习数据：错题多少、正确率、掌握情况，以及题库分享记录",
         tools=("learning_stats", "bank_share_manage"),
         capability=(
-            "Learning statistics (wrong-question counts, mastery rate, breakdown by "
-            "difficulty) and question-bank sharing status. Use it for 'how am I doing', "
-            "'how many questions did I get wrong', 'my accuracy', share records."
+            "The user's own learning numbers and sharing records. Use it for questions "
+            "like 'how am I doing', 'how many did I get wrong', 'what's my accuracy', "
+            "or 'who shared a bank with me / what did I share'."
         ),
         persona=(
             "You are the Learning Analytics Specialist of OpenStudy. You report the "
@@ -242,8 +243,8 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
     #    只在明确属于某专家时才委派。`tools=()` = 不做白名单限制 = 全部工具。
     "general": RoleSpec(
         key="general",
-        name="通用助手",
-        description="通用助手，可使用全部工具（无法判断意图时的兜底）",
+        name="智能助手",
+        description="主助手（指挥家），什么都能聊，需要时会请对应的专家帮忙",
         tools=(),
         capability="",
         persona="",
@@ -263,15 +264,22 @@ def all_role_metas() -> List[RoleSpec]:
     return list(OFFICIAL_ROLES.values())
 
 
-def renderable_sub_agents() -> List[RoleSpec]:
+def renderable_sub_agents(disabled_keys: Iterable[str] = ()) -> List[RoleSpec]:
     """**可被指挥家委派的子代理**：有 `capability` 的角色（`general` 排除——指挥家自身）。
 
     顺序按 `OFFICIAL_ROLES` 声明顺序，稳定可测。
+
+    Args:
+        disabled_keys: 用户**已关闭**的专家 key 集合 —— 这些专家不列入（也不可被委派）。
     """
-    return [r for r in OFFICIAL_ROLES.values() if r.capability]
+    closed = {str(k) for k in disabled_keys}
+    return [r for r in OFFICIAL_ROLES.values() if r.capability and r.key not in closed]
 
 
-def render_sub_agents_briefing(extra_agents: List[Dict[str, str]] | None = None) -> str:
+def render_sub_agents_briefing(
+    extra_agents: List[Dict[str, str]] | None = None,
+    disabled_keys: Iterable[str] = (),
+) -> str:
     """渲染「子代理通讯录」文本，供指挥家的系统提示词使用
 
     每行形如：`- bank (题库助手): <capability>`
@@ -280,12 +288,14 @@ def render_sub_agents_briefing(extra_agents: List[Dict[str, str]] | None = None)
         extra_agents: 额外要列入的**用户自定义智能体**（运行时从 DB 读）。
                       每项 `{"key": "user:12", "name": "数学老师", "capability": "..."}`。
                       传 None / 空则只列官方子代理。
+        disabled_keys: 用户**已关闭**的专家 key 集合 —— 被关闭的**官方专家**不列入通讯录，
+                      于是 LLM 实时知道"这个专家叫不到"（用户 2026-10-10 要求）。
 
     Returns:
         多行文本（每行一个子代理）。指挥家靠它决定"派给谁"。
     """
     lines: List[str] = []
-    for r in renderable_sub_agents():
+    for r in renderable_sub_agents(disabled_keys=disabled_keys):
         lines.append(f"- {r.key} ({r.name}): {r.capability}")
     for a in extra_agents or []:
         key = str(a.get("key") or "").strip()

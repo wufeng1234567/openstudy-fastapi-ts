@@ -53,32 +53,38 @@ def resolve_role(
     *,
     role: str = "",
     message: str = "",
+    disabled_role_keys: Iterable[str] = (),
 ) -> RoleSpec:
     """解析本轮该用的官方角色（**永远返回有效角色**）
 
     优先级（从高到低）：
-      1. **显式指定** `role`（前端选了角色 / 传了角色 key）—— 合法就直接用；非法则忽略继续往下。
-      2. **关键词规则**：各角色（除 general）命中数最多者胜；命中数相同取
-         `OFFICIAL_ROLES` 的声明顺序（先声明优先，稳定可测）。
+      1. **显式指定** `role`（前端选了角色 / 传了角色 key）—— 合法且**未被用户关闭**就直接用；
+         非法、或已被用户关闭则忽略，继续往下。
+      2. **关键词规则**：各角色（除 general）命中数最多者胜；**跳过被用户关闭的专家**；
+         命中数相同取 `OFFICIAL_ROLES` 的声明顺序（先声明优先，稳定可测）。
       3. **兜底 `general`**（全工具）。
 
     Args:
         role: 前端显式指定的角色 key（可为空）。
         message: 用户本轮消息（用于关键词路由；可为空）。
+        disabled_role_keys: 用户**已关闭**的专家 key 集合（`agent_role_pref_service.disabled_role_keys`）。
+            被关闭的专家不参与路由，也不会因显式指定而被选中。
 
     Returns:
         `RoleSpec`（绝不返回 None）。
     """
-    # 1) 显式指定
+    closed = {str(k) for k in disabled_role_keys}
+
+    # 1) 显式指定（被用户关闭的专家视为不可选）
     explicit = role_or_none(role)
-    if explicit is not None:
+    if explicit is not None and explicit.key not in closed:
         return explicit
 
-    # 2) 关键词规则（跳过 general —— 它没有关键词，也不该抢命中）
+    # 2) 关键词规则（跳过 general —— 它没有关键词，也不该抢命中；跳过被关闭的专家）
     best: RoleSpec | None = None
     best_hits = 0
     for spec in OFFICIAL_ROLES.values():
-        if spec.key == GENERAL_ROLE:
+        if spec.key == GENERAL_ROLE or spec.key in closed:
             continue
         hits = _keyword_hits(message, spec)
         # 严格大于才替换 → 平局保留先声明者（`OFFICIAL_ROLES` 的 dict 顺序稳定）
