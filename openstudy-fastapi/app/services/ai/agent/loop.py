@@ -1159,6 +1159,13 @@ async def run_agent_stream(
         return ev
 
     # ---- ④ 主循环 ----
+    # ⚠️ `delegate_seq`：**整轮（一次用户提问）内跨 LLM 轮次累积的委派序号**，供前端
+    #    "一行一专家"卡片用 index 精确定位回填。**绝不能**用「每个 LLM 轮次内 `len(delegate_jobs)`」
+    #    当 index —— 因为一次提问里指挥家**可能分多个 LLM 轮次**派活（一轮派几个、看结果再派几个），
+    #    各轮若都从 0 重新计数就会**撞号**：后轮 index=0 的新行会被前端回填到**前轮已完成的
+    #    index=0 行**上，导致它自己永远停在「进行中」（用户 2026-10-11 报：题库已建好、正文也出了，
+    #    但「题库专家」那行还在转圈，其他专家正常）。故 index 必须是**整轮全局唯一**的序号。
+    delegate_seq = 0
     for loop_index in range(max(int(req.max_loops or MAX_AGENT_LOOPS), 1)):
         logger.debug("[agent] 第 {} 轮，消息数={}", loop_index + 1, len(lc_messages))
         # 每轮模型调用前先发 `waiting`：让前端在「工具跑完 → 等模型下一轮」这段也显示等待态
@@ -1433,19 +1440,25 @@ async def run_agent_stream(
                 sub_key = str(params.get("sub_agent") or "")
                 sub = (ctx.extra.get("delegate_roles") or {}).get(sub_key)
                 sub_name = getattr(sub, "name", sub_key) if sub else sub_key
+                # ⚠️ index 取**整轮全局**的 `delegate_seq`（不用 `len(delegate_jobs)`，后者每个
+                #    LLM 轮次从 0 重计、会跨轮撞号 → 前端回填错行、该行永远转圈）。见 `delegate_seq` 注释。
+                this_delegate_idx = delegate_seq
+                delegate_seq += 1
                 yield _event(
                     {
                         "type": "delegate_start",
                         "agent": {"id": sub_key, "name": sub_name},
                         "task": str(params.get("task") or "")[:200],
-                        "index": len(delegate_jobs),
+                        "index": this_delegate_idx,
                     }
                 )
                 # 占位 ToolMessage（内容稍后回填）——保证回灌模型的 tool 结果**顺序**与
                 # 模型发起的 tool_calls 一致（部分 OpenAI 兼容端点对此严格）。
                 placeholder = ToolMessage(content="", tool_call_id=call_id)
                 lc_messages.append(placeholder)
-                delegate_jobs.append((call_id, tool, params, len(lc_messages) - 1, sub_key, sub_name))
+                delegate_jobs.append(
+                    (call_id, tool, params, len(lc_messages) - 1, sub_key, sub_name, this_delegate_idx)
+                )
                 continue
 
             yield _event(
@@ -1521,13 +1534,14 @@ async def run_agent_stream(
             yield _event({"type": "waiting", "message": "正在安排专家并行处理…"})
 
             async def _run_delegate(job: Any) -> Dict[str, Any]:
-                _cid, _tool, _params, _idx, _key, _name = job
+                _cid, _tool, _params, _idx, _key, _name, _seq = job
                 _res = await _execute_tool(_tool, _params, ctx)
                 return {
                     "callId": _cid,
                     "idx": _idx,
                     "key": _key,
                     "name": _name,
+                    "seq": _seq,
                     "result": _res,
                 }
 
@@ -1567,7 +1581,9 @@ async def run_agent_stream(
                         "agent": {"id": item["key"], "name": item["name"]},
                         "success": bool(res.get("success")),
                         "summary": expert_summary[:500],
-                        "index": item["idx"],
+                        # ⚠️ 用整轮全局的 `seq`（与 `delegate_start` 的 index 同源），**不是** `idx`
+                        #    （`idx` 是占位 ToolMessage 在 lc_messages 里的下标，语义完全不同）。
+                        "index": item["seq"],
                     }
                 )
                 if message:

@@ -171,6 +171,32 @@ async def run_probe() -> int:
     )
     check("PD-18", "谎称没工具的失败 steps 为空", res_ref.get("steps") == [], str(res_ref.get("steps")))
 
+    # ---- 10. delegate 事件 index 必须「整轮全局唯一」（跨 LLM 轮次不撞号）----
+    #    用户 2026-10-11 报：多专家时某专家（题库专家）永远停在"进行中"——因 index 用
+    #    `len(delegate_jobs)`（每个 LLM 轮次从 0 重计）→ 跨轮撞号 → 前端回填错行。
+    #    修法=改用整轮全局的 `delegate_seq`。这里做**源码级契约**断言（asyncio 在本沙箱不可用，
+    #    无法跑端到端；该契约纯静态、可稳定校验）。
+    import inspect
+
+    from app.services.ai.agent import loop as loop_mod
+
+    loop_src = inspect.getsource(loop_mod.run_agent_stream)
+    # `delegate_seq` 必须在 LLM 轮次循环（`for loop_index in range`）**之前**声明
+    seq_def_pos = loop_src.find("delegate_seq = 0")
+    loop_pos = loop_src.find("for loop_index in range")
+    check(
+        "PD-19",
+        "delegate_seq 在 LLM 轮次循环之前声明（整轮全局）",
+        seq_def_pos != -1 and loop_pos != -1 and seq_def_pos < loop_pos,
+        f"seq_def={seq_def_pos} loop={loop_pos}",
+    )
+    check(
+        "PD-20",
+        "delegate 事件 index 不再用 len(delegate_jobs)",
+        '"index": len(delegate_jobs)' not in loop_src and "this_delegate_idx" in loop_src,
+        "",
+    )
+
 
 
     print("\n---- 并行委派探针结果 ----")

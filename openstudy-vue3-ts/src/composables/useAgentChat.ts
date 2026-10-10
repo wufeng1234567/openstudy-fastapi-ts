@@ -824,11 +824,17 @@ export function useAgentChat() {
     const ag = event.agent || {}
     const card = findExpertCard()
     if (card && Array.isArray(card.experts)) {
-      // 优先按 index 精确回填；index 缺失/越界时回退到「按 key 找最近一个 running 行」
-      let row = idx >= 0 ? card.experts.find((e) => e.index === idx) : undefined
+      // 优先按 index 精确回填——**且要求该行仍在 running**：后端已改 index 为「整轮全局唯一」，
+      // 正常不会撞号；这里再挡一道，避免异常情况下把已完成的行重复回填、让真正的那行留在转圈。
+      let row = idx >= 0 ? card.experts.find((e) => e.index === idx && e.status === 'running') : undefined
       if (!row) {
+        // index 缺失/越界/已回填过 → 回退到「按 key 找最近一个 running 行」
         const key = String(ag.id || '')
         row = [...card.experts].reverse().find((e) => e.key === key && e.status === 'running')
+      }
+      if (!row && idx >= 0) {
+        // 仍找不到：index 对应行已存在（已回填）时，直接按 index 取回来补（幂等，避免漏状态）
+        row = card.experts.find((e) => e.index === idx)
       }
       if (row) {
         row.status = event.success ? 'ok' : 'fail'
