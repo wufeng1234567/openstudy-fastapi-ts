@@ -28,17 +28,29 @@ def check(cid, title, cond, actual=""):
 
 src = inspect.getsource(loop_mod.run_agent_stream)
 
-# ---- 1. 多模态组块：用 image_urls（含文档图），不再只用 req.images ----
-check("MD-01", "多模态组块条件用 image_urls", "if image_urls:" in src)
+# ---- 1. 多模态组块：用 vision_images（含文档图、data URL），不再只用 req.images ----
+check("MD-01", "多模态组块条件用 vision_images", "if vision_images:" in src)
 check(
     "MD-02",
-    "遍历的是 image_urls 而非 req.images",
-    "for url in image_urls:" in src and "for url in req.images:" not in src,
+    "遍历的是 vision_images 而非 req.images",
+    "for url in vision_images:" in src and "for url in req.images:" not in src,
 )
 check(
-    "MD-03",
-    "image_urls 含文档图（req.images + doc_images）",
+    "MD-03a",
+    "vision_images 含文档图（req.images + doc_images）",
     "[u for u in (req.images or []) if u] + doc_images" in src,
+)
+check("MD-03b", "vision_images = 原始图列表（data URL）", "vision_images = list(all_images)" in src)
+# ⚠️ 本轮 400 修复：喂模型必须 data URL；落盘路径只用于回插
+check(
+    "MD-16",
+    "喂模型用 vision_images（data URL）而非 image_urls（落盘路径）",
+    "for url in vision_images:" in src and "for url in image_urls:" not in src,
+)
+check(
+    "MD-17",
+    "落盘 image_urls 仍供回插（ctx.extra）",
+    '"image_urls": image_urls,' in src,
 )
 check("MD-04", "文档图先落盘成 URL（persist_agent_images）", "persist_agent_images(all_images)" in src)
 # 无图仍走纯文本（不破坏纯文本场景）
@@ -54,7 +66,7 @@ check(
 check("MD-08", "兜底按需重建 llm（build_agent_llm 二次调用）", src.count("build_agent_llm(") >= 2)
 
 # ---- 3. system_notes 统一编号提示 ----
-check("MD-09", "编号提示按 image_urls 生成", "if image_urls:" in src and "Image Attachments (all viewable)" in src)
+check("MD-09", "编号提示按 vision_images 生成", "if vision_images:" in src and "Image Attachments (all viewable)" in src)
 check("MD-10", "提示里说明文档插图可被看到", "SEE all of them" in src or "SEE all" in src)
 check(
     "MD-11",

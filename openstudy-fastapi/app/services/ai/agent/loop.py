@@ -875,6 +875,14 @@ async def run_agent_stream(
         _collect_attachments, req
     )
     all_images = [u for u in (req.images or []) if u] + doc_images
+    # ⚠️ 用户 2026-10-11 修 400 `Unsupported image_url format`：
+    #    **喂给多模态模型的图片必须是「data URL 或 http(s) 绝对 URL」**，不能是落盘后的
+    #    相对路径 `/profile/upload/...`（OpenAI 兼容端点会直接 400 拒收）。
+    #    故这里把两条用途**分流**（同一批图、顺序一一对应，编号天然一致）：
+    #      · `vision_images` = 原始 data URL（req.images + 文档插图原样）→ **喂模型**
+    #      · `image_urls`    = 落盘后的 `/profile/...` 路径 → **供题目回插** `<img src>`
+    #    （题目正文是 TEXT 列，回插必须用短路径而非 base64；而喂模型必须 base64/绝对 URL。）
+    vision_images = list(all_images)
     image_urls = await persist_agent_images(all_images) if all_images else []
     if doc_images and not any(image_urls):
         warnings.append("文档插图未能保存到服务器，题目里的图片标记会被忽略")
@@ -886,7 +894,7 @@ async def run_agent_stream(
     # （`deepseek-flash`，多模态）。注意 `llm` 早在第 857 行就构造了（那时还不知道有没有图），
     # 所以这里按需**重建** llm。
     # ⚠️ 只认「正在用的模型」——`config` 是 `build_agent_llm` 返回的已解析配置。
-    if image_urls:
+    if vision_images:
         try:
             using_model = (getattr(config, "model", None) or req.model or user_agent_model or "")
             if not model_capabilities.supports_vision(using_model):
@@ -924,12 +932,12 @@ async def run_agent_stream(
 
     # 有图片时明确告诉模型编号规则，它才敢在题干里写【图N】。
     # ⚠️ 用户 2026-10-11：**文档内嵌图片现在也会作为多模态图片一起喂给模型**（见下方
-    #    `image_urls` 组块）。所以这里按 `image_urls`（=用户图 + 文档图，顺序与编号一致）
+    #    `vision_images` 组块）。所以这里按 `vision_images`（=用户图 + 文档图，顺序与编号一致）
     #    统一给一份编号说明，告诉模型「共几张、按 0..N-1 编号、既有用户上传图也有文档插图」，
     #    视图里所有图都能被模型「看到」。不再像以前那样把"用户图/文档图"拆成两段分别说
     #    （那会让模型以为文档图不可见、只敢保留标记而不敢据图作答）。
-    if image_urls:
-        last = len(image_urls) - 1
+    if vision_images:
+        last = len(vision_images) - 1
         if last == 0:
             marker_hint = f"reference it as {IMAGE_MARKER_TMPL.format(0)}"
         else:
@@ -942,10 +950,10 @@ async def run_agent_stream(
             parts.append(f"{len(req.images)} image(s) the user uploaded")
         if doc_images:
             parts.append(f"{len(doc_images)} inline illustration(s) extracted from the document(s)")
-        source_desc = " and ".join(parts) if parts else f"{len(image_urls)} image(s)"
+        source_desc = " and ".join(parts) if parts else f"{len(vision_images)} image(s)"
         system_notes.append(
             f"## Image Attachments (all viewable)\n"
-            f"This turn includes {len(image_urls)} image(s) total: {source_desc}. "
+            f"This turn includes {len(vision_images)} image(s) total: {source_desc}. "
             f"You can SEE all of them in this message. {marker_hint} in question text. "
             f"Document illustrations are already numbered in the text above — keep the "
             f"{IMAGE_MARKER_TMPL.format(0)}-style markers verbatim; the system will replace "
@@ -1087,18 +1095,22 @@ async def run_agent_stream(
         human_parts.append(_wrap_tag(TAG_ATTACHMENTS, file_text))
     human_text = "\n\n".join(human_parts)
 
-    # ⚠️ 用户 2026-10-11：多模态组块要用 **`image_urls`（= 用户直传图 + 文档内嵌插图，
-    #    均已落盘为可访问 URL）**，不能只遍历 `req.images`。
+    # ⚠️ 用户 2026-10-11：多模态组块要用 **`vision_images`（= 用户直传图 + 文档内嵌插图，
+    #    均为原始 data URL）**，不能只遍历 `req.images`。
     #    旧实现只喂 `req.images` → **文档里的图片模型根本看不到**（只看到正文的【图N】标记），
     #    于是"只能解析 Word 文字、解析不了 Word 图片"（用户实测痛点）。改后模型能**看到**
     #    文档插图内容（几何图/电路图/公式截图 …），再按【图N】回插到题目。
-    #    顺序与编号天然一致：`image_urls` = 用户图在前 + 文档图顺延，`build_marked_document`
+    #    顺序与编号天然一致：`vision_images` = 用户图在前 + 文档图顺延，`build_marked_document`
     #    的 offset 也是从"用户图数量"起编号。
-    #    条件从 `if req.images:` 放宽为 `if image_urls:` —— 否则"只传文档、不传图"的用户
+    #    条件从 `if req.images:` 放宽为 `if vision_images:` —— 否则"只传文档、不传图"的用户
     #    永远进不了多模态分支（那正是本次要修的场景）。
-    if image_urls:
+    #    ⚠️⚠️ **必须用 `vision_images`（data URL）而不是 `image_urls`（落盘相对路径）**：
+    #       OpenAI 兼容多模态端点只接受 `data:image/...;base64,` 或 `http(s)://` 绝对 URL；
+    #       相对路径 `/profile/upload/...` 会被直接 400（`Unsupported image_url format`，
+    #       用户 2026-10-11 实测）。落盘路径只用于**题目回插** `<img src>`（见 ctx.extra["image_urls"]）。
+    if vision_images:
         blocks: List[Any] = [{"type": "text", "text": human_text}]
-        for url in image_urls:
+        for url in vision_images:
             blocks.append({"type": "image_url", "image_url": {"url": url}})
         lc_messages.append(HumanMessage(content=blocks))
     else:
