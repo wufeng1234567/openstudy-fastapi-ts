@@ -168,13 +168,29 @@ export function renderMarkdownContent(text: string): string {
 }
 
 /**
- * 渲染文本中的 LaTeX 公式（$...$ 和 $$...$$ 标记）
+ * 行内公式正则（**严格要求**，用户 2026-10-11 定案）：
+ *   - `$...$` 必须**成对**、内容**非空**（至少 1 个字符）；
+ *   - **边界不含空白**：左 `$` 后不能紧跟空白、右 `$` 前不能是空白 —— 避免把
+ *     货币金额（`价格 $5 到 $10`）误判为公式；
+ *   - 内容不跨行、不含 `$`。
+ * 用 lookahead/lookbehind 表达边界（JS 支持固定长度 lookbehind）。
+ */
+const INLINE_MATH_RE = /\$(?!\s)([^\$\n]+?)(?<!\s)\$/g
+
+/** 块级公式 `$$...$$`（可跨行） */
+const BLOCK_MATH_RE = /\$\$(?!\s)([\s\S]+?)(?<!\s)\$\$/g
+
+/**
+ * 渲染文本中的 LaTeX 公式（`$...$` 行内 与 `$$...$$` 块级）
+ *
+ * ⚠️ 公式标记的边界约定：**成对、非空、不含空格边界**（见 `INLINE_MATH_RE`/`BLOCK_MATH_RE`）。
+ * 这样纯文本里的货币等零散 `$` 不会被误渲染。
  */
 export function renderLatex(text: string): string {
   if (!text) return ''
 
   // 先处理 $$...$$ 块级公式
-  let result = text.replace(/\$\$([\s\S]*?)\$\$/g, (_, formula) => {
+  let result = text.replace(BLOCK_MATH_RE, (_, formula) => {
     try {
       return katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false })
     } catch {
@@ -183,7 +199,7 @@ export function renderLatex(text: string): string {
   })
 
   // 再处理 $...$ 行内公式
-  result = result.replace(/\$([^\$\n]+?)\$/g, (_, formula) => {
+  result = result.replace(INLINE_MATH_RE, (_, formula) => {
     try {
       return katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false })
     } catch {
@@ -192,6 +208,75 @@ export function renderLatex(text: string): string {
   })
 
   return result
+}
+
+/**
+ * **统一渲染管线**：同时支持 `$...$` 公式 + Markdown（表格/列表等）（用户 2026-10-11 方案 A）
+ *
+ * 背景：项目原先三条路径各管一半——`renderQuestionContent`（裸 `\命令{}`，不认 `$`、不认表格）、
+ * `renderMarkdownContent`（认表格、不认 `$`）、`renderLatexSafe`（认 `$`、不认表格）。
+ * Word 导入的数学题同时有 `$...$` 公式**和** `| a | b |` 表格 → 需要一条**两者都认**的管线。
+ *
+ * 实现顺序（关键，不能反）：
+ *   ① 先把 `$...$`/`$$...$$` 渲染成 **占位符**（避免公式内部的 `|`、`*`、`_` 被 Markdown 解析器吃掉）；
+ *   ② 再 `marked.parse` 渲染 Markdown（表格/列表/加粗…）；
+ *   ③ 最后把占位符**回填**成 KaTeX 生成的 HTML。
+ * 若先做 Markdown 再做公式，公式里的下划线会被当成斜体、`|` 会被当成表格分隔。
+ */
+export function renderMarkdownWithLatex(text: string): string {
+  if (!text) return ''
+
+  const stash: string[] = []
+  const PH = (i: number) => `\u0000MATH${i}\u0000`
+
+  let src = text
+    // ①-a 块级公式 → 占位符
+    .replace(BLOCK_MATH_RE, (_, formula) => {
+      let html: string
+      try {
+        html = katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false })
+      } catch {
+        html = `<span class="latex-error">${formula}</span>`
+      }
+      stash.push(html)
+      return PH(stash.length - 1)
+    })
+    // ①-b 行内公式 → 占位符
+    .replace(INLINE_MATH_RE, (_, formula) => {
+      let html: string
+      try {
+        html = katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false })
+      } catch {
+        html = `<span class="latex-error">${formula}</span>`
+      }
+      stash.push(html)
+      return PH(stash.length - 1)
+    })
+
+  // ② Markdown（gfm 启表格；breaks 让单个 \n 也换行，贴合题目文本习惯）
+  src = marked.parse(src, { gfm: true, breaks: true }) as string
+
+  // ③ 回填公式 HTML（占位符可能被 marked 包进 <p>，用 indexOf 定位替换即可）
+  src = src.replace(/\u0000MATH(\d+)\u0000/g, (_, idx) => stash[Number(idx)] ?? '')
+
+  // ④ 安全过滤：允许 KaTeX 的 MathML/SVG + 表格标签
+  return DOMPurify.sanitize(src, {
+    ADD_TAGS: [
+      'svg', 'path', 'math', 'mi', 'mo', 'mn', 'msup', 'msub', 'mover', 'munder',
+      'mfrac', 'msqrt', 'mrow', 'mtext', 'annotation', 'semantics', 'mspace',
+      'mtable', 'mtr', 'mtd', 'munderover', 'semantics',
+      'strong', 'em', 'u', 'span', 'br', 'sub', 'sup', 'img',
+      'table', 'thead', 'tbody', 'tr', 'th', 'td', 'caption'
+    ],
+    ADD_ATTR: [
+      'xmlns', 'viewBox', 'd', 'fill', 'stroke', 'stroke-width',
+      'width', 'height', 'style', 'encoding', 'src', 'alt',
+      'class', 'aria-hidden', 'role', 'colspan', 'rowspan', 'align',
+      'mathvariant', 'stretchy', 'fence', 'separator', 'accent', 'accentunder',
+      'columnalign', 'rowalign', 'columnspan', 'linethickness'
+    ],
+    KEEP_CONTENT: true
+  })
 }
 
 /**

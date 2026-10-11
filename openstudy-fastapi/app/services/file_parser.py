@@ -652,11 +652,31 @@ def _emit_paragraph(builder: _BlockBuilder, p_elem, image_blobs: dict) -> None:
     flush()
 
 
-def _emit_table(builder: _BlockBuilder, tbl_elem, image_blobs: dict) -> None:
-    """输出一个表格：每行「单元格文本用 | 连接」，随后紧跟**该行单元格里的插图**
+def _md_cell(text: str) -> str:
+    """把单元格文本规范成安全的 Markdown 表格单元格
 
-    以前只取 `cell.text`，表格里的图会被整体丢掉（实测踩到过）。
+    - 折叠换行/多余空白为单个空格；
+    - 转义单元格里的 `|`（否则会被当成列分隔符，把表格切错）。
+      Markdown 规范里单元格内的竖线要用 `\\|` 表示。
     """
+    s = (text or "").replace("\r", " ").replace("\n", " ").strip()
+    s = " ".join(s.split())
+    return s.replace("|", "\\|")
+
+
+def _emit_table(builder: _BlockBuilder, tbl_elem, image_blobs: dict) -> None:
+    """输出一个表格为**标准 Markdown 表格**（用户 2026-10-11 方案 A），并紧跟各行的插图
+
+    为什么改：原先每行只输出 `a | b | c` 纯文本行 —— **没有表头分隔行**，不是合法 Markdown
+    表格，前端 `marked` 认不出 → 用户看到的就是一串竖线文本（Word 里明明是整齐的表格）。
+    现在输出：
+        | X\\Y | 0 | 1 | 2 |
+        | --- | --- | --- | --- |
+        | 0   | 0.1 | 0.3 | 0.2 |
+    前端 `renderMarkdownWithLatex` 会把它渲染成真表格。
+    （以前只取 `cell.text` 会丢掉表格里的图，故每行仍按顺序补发该行单元格内的插图。）
+    """
+    table_rows: list = []  # 每项 = {"cells": [str,...], "images": [rId,...]}
     for row in tbl_elem.findall(_qn(W_NS, "tr")):
         row_texts: list = []
         row_images: list = []
@@ -677,12 +697,28 @@ def _emit_table(builder: _BlockBuilder, tbl_elem, image_blobs: dict) -> None:
                             cell_texts.append(value)
                         else:
                             row_images.append(value)
-            row_texts.append("".join(cell_texts).strip().replace("\n", " "))
+            row_texts.append(_md_cell("".join(cell_texts)))
+        if any(c for c in row_texts) or row_images:
+            table_rows.append({"cells": row_texts, "images": row_images})
 
-        joined = " | ".join(row_texts)
-        if joined.strip(" |"):
-            builder.add_text(joined)
-        for rid in row_images:
+    if not table_rows:
+        return
+
+    # 列数取各行最大值（Markdown 表格要求表头与分隔行列数一致）
+    ncol = max(len(r["cells"]) for r in table_rows)
+    lines: list = []
+    for i, r in enumerate(table_rows):
+        cells = list(r["cells"]) + [""] * (ncol - len(r["cells"]))
+        lines.append("| " + " | ".join(cells) + " |")
+        if i == 0:
+            # 表头分隔行：让 Markdown 识别为表格（首行会被当成表头）
+            lines.append("| " + " | ".join(["---"] * ncol) + " |")
+
+    builder.add_text("\n".join(lines))
+
+    # 表格各行的插图仍按原顺序补发（放在表格块之后）
+    for r in table_rows:
+        for rid in r["images"]:
             blobs = image_blobs.get(rid)
             if blobs:
                 builder.add_image(*blobs)

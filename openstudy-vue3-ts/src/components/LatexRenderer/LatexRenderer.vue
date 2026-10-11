@@ -5,7 +5,13 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { renderLatexSafe, renderLatexPlainText, renderQuestionContent, renderMarkdownContent } from '@/utils/latex'
+import {
+  renderLatexSafe,
+  renderLatexPlainText,
+  renderQuestionContent,
+  renderMarkdownContent,
+  renderMarkdownWithLatex
+} from '@/utils/latex'
 
 const props = defineProps({
   content: { type: String, default: '' },
@@ -16,13 +22,23 @@ const props = defineProps({
   // 是否渲染 Markdown（表格、列表等）
   markdown: { type: Boolean, default: false },
   // 是否渲染原始 LaTeX 命令（如 \overline{}、\frac{} 等，无需 $ 包裹）
-  rawLatex: { type: Boolean, default: true }
+  rawLatex: { type: Boolean, default: true },
+  // ⭐ 统一富文本管线：同时渲染 `$...$` 公式 **与** Markdown 表格/列表（用户 2026-10-11 方案 A）
+  //   默认 **true** —— 题目正文（Word 导入的数学题同时有公式和表格）必须两者都认；
+  //   旧行为下 `rawLatex` 默认 true 会短路掉 `rawHtml`/`markdown`，导致 `$...$` 与表格都不渲染。
+  //   需要"纯文本/仅公式"的调用方显式传 `:rich="false"`。
+  rich: { type: Boolean, default: true }
 })
 
 const renderedContent = computed(() => {
   if (!props.content) return ''
 
-  // 如果有原始 LaTeX 命令（如 \overline{}），先渲染它们
+  // 默认走统一管线：`$...$` 公式 + Markdown 表格一并渲染
+  if (props.rich) {
+    return renderMarkdownWithLatex(props.content)
+  }
+
+  // ---- 以下为显式 :rich="false" 时的旧行为（保持兼容）----
   if (props.rawLatex) {
     if (props.markdown) {
       return renderMarkdownContent(props.content)
@@ -30,7 +46,6 @@ const renderedContent = computed(() => {
     return renderQuestionContent(props.content, { renderMarkdown: props.markdown })
   }
 
-  // 否则只渲染 $...$ 公式
   if (props.rawHtml) {
     return renderLatexSafe(props.content)
   }

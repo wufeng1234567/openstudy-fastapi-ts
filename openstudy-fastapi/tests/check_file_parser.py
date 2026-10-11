@@ -170,6 +170,14 @@ def check_parse_file(fixtures: dict) -> None:
     check(table_text_idx >= 0 and table_text_idx + 1 < len(parsed["blocks"])
           and parsed["blocks"][table_text_idx + 1]["type"] == "image",
           "docx：表格单元格内的插图紧跟在表格文本之后（位置正确）")
+    # 用户 2026-10-11：表格必须输出成**合法 Markdown 表格**（含表头分隔行），
+    # 否则前端 `marked` 认不出，会显示成一串 `a | b | c` 竖线文本。
+    if table_text_idx >= 0:
+        table_text = parsed["blocks"][table_text_idx]["content"] or ""
+        check("| --- |" in table_text or "|:--" in table_text or "|:--" in table_text,
+              "docx：表格输出为合法 Markdown 表格（含表头分隔行）")
+        check(table_text.strip().startswith("|") and table_text.strip().endswith("|"),
+              "docx：表格每行以 | 开头结尾（Markdown 表格形态）")
 
     # 真老版 .doc 之外的 OLE2 容器：认出是 .xls / .ppt 就直说，不要硬当 .doc 去转
     # （OLE2 目录项里的流名是 UTF-16LE 编码的，用 ASCII 拼是拼不出来的）
