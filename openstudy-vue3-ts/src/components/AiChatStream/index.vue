@@ -21,9 +21,10 @@
           </slot>
         </div>
         <!--
-          思考过程（深度思考的推理文本）
-          只有 ds-free 链路会产出 `type:'reasoning'` —— 后端 api 链路的 LangChain
-          没有把 reasoning 取出来，所以这类消息可能整场都不出现。
+          思考态（深度思考）—— **不暴露推理正文**，只渲染一个等待动画。
+          用户 2026-10-11：「深度思考的思维链不再暴露，改成更好的等待动画效果」。
+          api 付费链路（LangChain 补丁）与 ds-free 链路都可能产出 `type:'reasoning'`；
+          其 `content` 现在恒为空（`useAgentChat` 不再累积），只靠 `secs` 区分「跑/收口」。
         -->
         <div v-else-if="msg.type === 'reasoning'" class="message-content">
           <div class="message-role agent-role">Agent</div>

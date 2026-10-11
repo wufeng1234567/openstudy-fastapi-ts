@@ -636,14 +636,14 @@ export function useAgentChat() {
 
   const appendReasoning = (delta: string) => {
     if (!delta) return
-    // 有推理文字可看了就摘掉「等待中」占位 —— 转圈和文字同时出现是多余的
+    // ⚠️ 用户 2026-10-11：「深度思考的思维链不再暴露」——前端**不再累积推理正文**
+    //    （`content` 恒为空），只保留「正在思考」这个信号 + 起始时间，UI 侧渲染成等待动画。
+    //    这样既不显示思维链、也不把整段推理留在内存里。
+    // 有推理发生就摘掉「等待中」占位。
     clearPlaceholder()
     if (!openReasoning) {
-      // 本轮已经有思考块（已收口）→ 补回去，**不新开块**
+      // 本轮已有思考块（已收口）→ 只顺延耗时，不新开块、不追加内容
       if (turnReasoning) {
-        turnReasoning.content += delta
-        // 思考其实还在继续 → 顺延耗时，「已思考 X 秒」才诚实。
-        // 刻意**不重新展开**：用户可能已经手动收起过，突然弹开会很打扰。
         turnReasoning.secs = Math.max(1, Math.round((Date.now() - reasoningStartedAt) / 1000))
         return
       }
@@ -652,7 +652,6 @@ export function useAgentChat() {
       reasoningStartedAt = Date.now()
       messages.value.push(openReasoning)
     }
-    openReasoning.content += delta
   }
 
   /**
