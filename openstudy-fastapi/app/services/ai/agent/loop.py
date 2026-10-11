@@ -57,7 +57,7 @@ from langchain_core.messages import (
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.ai import conversation_service, db_config, prompts
+from app.services.ai import conversation_service, db_config, model_capabilities, prompts
 from app.services.ai.agent.base import (
     UNDO_BEFORE_KEY,
     AgentTool,
@@ -879,6 +879,34 @@ async def run_agent_stream(
     if doc_images and not any(image_urls):
         warnings.append("文档插图未能保存到服务器，题目里的图片标记会被忽略")
 
+    # ---- 视觉模型兜底（用户 2026-10-11）----
+    # 本轮有图片（含**文档内嵌插图**）要喂给模型，但当前选中的模型若「只支持文本」
+    # （如 deepseek-v4-pro），上游会直接 400 把整轮请求打回 —— 用户会看到莫名报错。
+    # 这里仿 `chat_engine._resolve_vision_safe_model` 的做法：**回退到默认视觉模型**
+    # （`deepseek-flash`，多模态）。注意 `llm` 早在第 857 行就构造了（那时还不知道有没有图），
+    # 所以这里按需**重建** llm。
+    # ⚠️ 只认「正在用的模型」——`config` 是 `build_agent_llm` 返回的已解析配置。
+    if image_urls:
+        try:
+            using_model = (getattr(config, "model", None) or req.model or user_agent_model or "")
+            if not model_capabilities.supports_vision(using_model):
+                llm, config = await db_config.build_agent_llm(
+                    db,
+                    provider=None,
+                    model=model_capabilities.DEFAULT_VISION_MODEL,
+                    temperature=req.temperature,
+                    user_id=user_id,
+                )
+                warnings.append(
+                    f"当前模型不支持图片，已自动改用 {model_capabilities.DEFAULT_VISION_MODEL} 识别图片"
+                )
+                logger.info(
+                    "[agent] 本轮含图片，模型 {} 不支持视觉 → 回退 {}",
+                    using_model, model_capabilities.DEFAULT_VISION_MODEL,
+                )
+        except Exception as e:  # noqa: BLE001 - 兜底失败不阻断，让上游报错更直观
+            logger.warning("[agent] 视觉模型兜底失败，按原模型发起：{}", e)
+
     typed = (req.message or "").strip()
     if not typed and not file_text:
         if all_images:
@@ -894,30 +922,35 @@ async def run_agent_stream(
     # 「本次带了 3 张图」当成用户请求的一部分。
     system_notes: List[str] = []
 
-    # 有图片时明确告诉模型编号规则，它才敢在题干里写【图N】
-    if req.images:
-        if len(req.images) == 1:
+    # 有图片时明确告诉模型编号规则，它才敢在题干里写【图N】。
+    # ⚠️ 用户 2026-10-11：**文档内嵌图片现在也会作为多模态图片一起喂给模型**（见下方
+    #    `image_urls` 组块）。所以这里按 `image_urls`（=用户图 + 文档图，顺序与编号一致）
+    #    统一给一份编号说明，告诉模型「共几张、按 0..N-1 编号、既有用户上传图也有文档插图」，
+    #    视图里所有图都能被模型「看到」。不再像以前那样把"用户图/文档图"拆成两段分别说
+    #    （那会让模型以为文档图不可见、只敢保留标记而不敢据图作答）。
+    if image_urls:
+        last = len(image_urls) - 1
+        if last == 0:
             marker_hint = f"reference it as {IMAGE_MARKER_TMPL.format(0)}"
         else:
             marker_hint = (
                 f"reference them in order as {IMAGE_MARKER_TMPL.format(0)} ... "
-                f"{IMAGE_MARKER_TMPL.format(len(req.images) - 1)}"
+                f"{IMAGE_MARKER_TMPL.format(last)}"
             )
+        parts = []
+        if req.images:
+            parts.append(f"{len(req.images)} image(s) the user uploaded")
+        if doc_images:
+            parts.append(f"{len(doc_images)} inline illustration(s) extracted from the document(s)")
+        source_desc = " and ".join(parts) if parts else f"{len(image_urls)} image(s)"
         system_notes.append(
-            f"## This Turn's Image Attachments\n"
-            f"The user uploaded {len(req.images)} image(s) along with this message. "
-            f"You can {marker_hint} in question text. "
-            f"Note: uploaded images come first, document illustrations continue "
-            f"the numbering after them."
-        )
-
-    if doc_images:
-        system_notes.append(
-            f"## Document Illustrations\n"
-            f"{len(doc_images)} inline image(s) were extracted from the uploaded "
-            f"document(s) and are already numbered in the text above. Keep the "
-            f"{IMAGE_MARKER_TMPL.format(0)}-style markers verbatim; the system will "
-            f"replace them with real URLs."
+            f"## Image Attachments (all viewable)\n"
+            f"This turn includes {len(image_urls)} image(s) total: {source_desc}. "
+            f"You can SEE all of them in this message. {marker_hint} in question text. "
+            f"Document illustrations are already numbered in the text above — keep the "
+            f"{IMAGE_MARKER_TMPL.format(0)}-style markers verbatim; the system will replace "
+            f"them with real URLs. Use the image CONTENT when writing questions/explanations "
+            f"(e.g. a geometry figure, a circuit, or a formula shown as an image)."
         )
 
     # 「工具全被这个用户关掉了」→ 明确告诉模型本轮没有工具。
@@ -1054,10 +1087,18 @@ async def run_agent_stream(
         human_parts.append(_wrap_tag(TAG_ATTACHMENTS, file_text))
     human_text = "\n\n".join(human_parts)
 
-    if req.images:
-        # 用户上传的图片要让模型**看到**（可能整张图就是题目）
+    # ⚠️ 用户 2026-10-11：多模态组块要用 **`image_urls`（= 用户直传图 + 文档内嵌插图，
+    #    均已落盘为可访问 URL）**，不能只遍历 `req.images`。
+    #    旧实现只喂 `req.images` → **文档里的图片模型根本看不到**（只看到正文的【图N】标记），
+    #    于是"只能解析 Word 文字、解析不了 Word 图片"（用户实测痛点）。改后模型能**看到**
+    #    文档插图内容（几何图/电路图/公式截图 …），再按【图N】回插到题目。
+    #    顺序与编号天然一致：`image_urls` = 用户图在前 + 文档图顺延，`build_marked_document`
+    #    的 offset 也是从"用户图数量"起编号。
+    #    条件从 `if req.images:` 放宽为 `if image_urls:` —— 否则"只传文档、不传图"的用户
+    #    永远进不了多模态分支（那正是本次要修的场景）。
+    if image_urls:
         blocks: List[Any] = [{"type": "text", "text": human_text}]
-        for url in req.images:
+        for url in image_urls:
             blocks.append({"type": "image_url", "image_url": {"url": url}})
         lc_messages.append(HumanMessage(content=blocks))
     else:
