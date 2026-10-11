@@ -1,60 +1,65 @@
 <!--
-  思考态 —— 深度思考时的**等待动画**（**不暴露推理正文**）
+  思考态 —— 深度思考的**推理正文**（可折叠、**运行中实时流式**）
 
-  用户 2026-10-11：「深度思考的思维链不再暴露，改成更好的等待动画效果，不输出流式思考数据了」
+  用户 2026-10-11（二次定案，回退"不暴露"）：**重新把思维链暴露给用户**——
+  "深度思考思维链暴露出来给用户看"。故本组件恢复**渲染推理正文**（`content`），
+  并保证**运行中实时逐字增长 + 自动跟随滚动**（这是此前"先出几个字符→卡住→最后才
+  一次性刷出"的观感修复点之一：前端必须接住每一个增量并即时上屏）。
 
-  ⚠️ 与旧版的根本区别：**这里不再渲染 `content`（推理文本）**。推理内容对用户是
-     "内部思维链"，暴露它既冗长又带格式噪声；C 端只需一个**体面、有信息量的等待动画**。
-    所以本组件把 `content` 这个 prop **只用来判断"有没有在思考"、不再显示**——
-      · 运行中：一条「深度思考」脉冲动画（呼吸光点 + 文案流光扫过）
-      · 收口后：收成一行轻量「已深度思考 X 秒」，把版面让给答案
+  数据来源（上游 `useAgentChat`）：`thinking` 事件逐 chunk 传入 → `appendReasoning` 累加进
+  `content`；收口时写 `secs`。故：
+    · 运行中（`secs == null`）：显示"深度思考中…" + **实时推理正文**（自动滚动到底）
+    · 收口后（`secs` 有值）：**默认折起**为一行「已深度思考 X 秒」，点击可展开看全文
 
-  数据从哪来（保持不变，上游零改动）：`useAgentChat` 仍按 `thinking` 事件累加成一条
-  `type:'reasoning'` 的消息并维护 `secs`（跑完写值）。本组件只消费 `secs` 的
-  「有值=收口 / null=还在跑」语义。
-
-  交互取舍：
-  · **不提供展开** —— 既然不显示内容，就没有"展开/收起"这回事（旧版的折叠交互一并去掉）。
-  · 收口后保留耗时 —— 让用户知道刚才那段等待花在哪了，且不泄露任何推理内容。
+  交互：
+  · 运行中默认展开并跟随底部（用户要看到它在"实时思考"）；
+  · 用户手动收起后，运行中不再强拉展开（尊重用户操作）；收口时**延迟片刻**再折，避免
+    "自动折"与"内容仍在增长"打架（否则会看着看着突然折起来，像卡住）。
 -->
 <template>
-  <!-- 运行中：等待动画 -->
-  <div v-if="running" class="rs-wait" role="status" aria-live="polite">
-    <span class="rs-orbits" aria-hidden="true">
-      <span class="rs-orbit rs-orbit-1"></span>
-      <span class="rs-orbit rs-orbit-2"></span>
-      <span class="rs-orbit rs-orbit-3"></span>
-    </span>
-    <span class="rs-shimmer">深度思考中…</span>
-  </div>
+  <div class="rs-box" :class="{ 'rs-running': running, 'rs-collapsed': !expanded }">
+    <!-- 头部：可点击折叠/展开 -->
+    <div class="rs-head" role="button" tabindex="0" @click="toggle" @keydown.enter.prevent="toggle"
+      @keydown.space.prevent="toggle">
+      <span class="rs-status">
+        <!-- 运行中：小旋转弧；收口：对勾 -->
+        <span v-if="running" class="rs-spinner" aria-hidden="true"></span>
+        <span v-else class="rs-check" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="12" height="12">
+            <path d="M3.5 8.5l3 3 6-6.5" fill="none" stroke="currentColor" stroke-width="1.8"
+              stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </span>
+        <span class="rs-title">
+          <template v-if="running">深度思考中…</template>
+          <template v-else>已深度思考 {{ secs }} 秒</template>
+        </span>
+        <span v-if="running && content.length" class="rs-live-hint">实时</span>
+      </span>
+      <span class="rs-caret" :class="{ 'rs-caret-open': expanded }" aria-hidden="true">
+        <svg viewBox="0 0 16 16" width="14" height="14">
+          <path d="M5 6l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.6"
+            stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </span>
+    </div>
 
-  <!-- 收口后：一行轻量耗时，无内容 -->
-  <div v-else class="rs-done">
-    <span class="rs-check" aria-hidden="true">
-      <svg viewBox="0 0 16 16" width="12" height="12">
-        <path
-          d="M3.5 8.5l3 3 6-6.5"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
-      </svg>
-    </span>
-    <span class="rs-done-text">已深度思考 {{ secs }} 秒</span>
+    <!-- 正文：推理文本（可折叠；运行中实时增长） -->
+    <div v-show="expanded" ref="bodyRef" class="rs-body">
+      <template v-if="content">{{ content }}</template>
+      <span v-else class="rs-empty">正在思考…</span>
+      <!-- 运行中的光标，暗示"还在往下写" -->
+      <span v-if="running" class="rs-cursor" aria-hidden="true"></span>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch, onBeforeUnmount } from 'vue'
 
 const props = withDefaults(
   defineProps<{
-    /**
-     * 推理正文 —— **已不再展示**（用户 2026-10-11：不暴露思维链）。
-     * 仍保留该 prop 以免动上游：仅用于兼容旧调用点，不参与渲染。
-     */
+    /** 推理正文（逐 chunk 累加；运行中实时增长） */
     content?: string
     /** 思考耗时（秒）。**null/undefined 表示还在跑**（`useAgentChat.closeReasoning` 写值） */
     secs?: number
@@ -62,123 +67,195 @@ const props = withDefaults(
   { content: '', secs: undefined }
 )
 
-/** `secs` 有值 = 已收口（与上游 `closeReasoning` 的口径一致） */
+/** `secs` 有值 = 已收口 */
 const running = computed(() => props.secs == null)
+
+// ---- 折叠状态 ----
+// 运行中默认展开（用户要看到实时思考）；用户手动切换后尊重其选择。
+const expanded = ref(true)
+/** 用户是否手动点过折叠/展开——点过之后就不再"运行中自动展开/收口自动折"地打扰他 */
+let userToggled = false
+const toggle = () => {
+  userToggled = true
+  expanded.value = !expanded.value
+  if (expanded.value) nextTick(scrollToBottom)
+}
+
+// ---- 自动跟随滚动（运行中内容增长时滚到底）----
+const bodyRef = ref<HTMLElement | null>(null)
+const scrollToBottom = () => {
+  const el = bodyRef.value
+  if (el) el.scrollTop = el.scrollHeight
+}
+
+// 内容增长：跟随时滚到底（不再要求 running —— 收口后若有迟到增量也应跟随）
+watch(
+  () => props.content,
+  () => {
+    // 内容一到就取消"收口延迟折叠"，说明还在长
+    if (collapseTimer) {
+      clearTimeout(collapseTimer)
+      collapseTimer = null
+    }
+    if (expanded.value) nextTick(scrollToBottom)
+  }
+)
+
+// 收口：延迟片刻再折叠（避免"自动折"与"内容仍在增长"打架；用户手动操作过则不自动折）
+let collapseTimer: ReturnType<typeof setTimeout> | null = null
+watch(running, (isRunning) => {
+  if (isRunning) {
+    // 又开始跑了：只有用户没手动收起过才自动展开
+    if (!userToggled) expanded.value = true
+    return
+  }
+  if (userToggled) return
+  collapseTimer = setTimeout(() => {
+    expanded.value = false
+    collapseTimer = null
+  }, 1000)
+})
+
+onBeforeUnmount(() => {
+  if (collapseTimer) clearTimeout(collapseTimer)
+})
 </script>
 
 <style scoped>
-/* ============ 运行中：脉冲等待动画 ============ */
-.rs-wait {
-  display: inline-flex;
+/* ============ 容器 ============ */
+.rs-box {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f9fafb;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.rs-box.rs-running {
+  border-color: #e0e7ff;
+  background: #f8f9ff;
+}
+
+/* ============ 头部 ============ */
+.rs-head {
+  display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 14px 7px 12px;
-  border-radius: 999px;
-  /* 温柔的蓝紫渐变底 + 外发光，比裸三点更有"在运转"的质感 */
-  background: linear-gradient(100deg, #eef2ff 0%, #f5f3ff 50%, #eef2ff 100%);
-  background-size: 200% 100%;
-  border: 1px solid #e0e7ff;
-  box-shadow: 0 1px 8px rgba(99, 102, 241, 0.12);
-  animation: rs-bg-drift 3s ease-in-out infinite;
-}
-
-/* 三条错峰呼吸的短弧（旋转 + 明暗），替代老三点的上下抖 */
-.rs-orbits {
-  position: relative;
-  display: inline-block;
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-}
-
-.rs-orbit {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  border-top-color: #6366f1;
-  animation: rs-spin 1.3s linear infinite;
-}
-
-.rs-orbit-2 {
-  inset: 3px;
-  border-top-color: #8b5cf6;
-  animation-duration: 1.7s;
-  animation-direction: reverse;
-}
-
-.rs-orbit-3 {
-  inset: 6px;
-  border-top-color: #a5b4fc;
-  animation-duration: 1.1s;
-}
-
-/* 文案：柔和流光扫过（shimmer），暗示"正在处理"而不喧哗 */
-.rs-shimmer {
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  user-select: none;
   font-size: 12.5px;
-  font-weight: 600;
-  letter-spacing: 0.2px;
-  background: linear-gradient(90deg, #818cf8 0%, #4f46e5 25%, #a78bfa 50%, #4f46e5 75%, #818cf8 100%);
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: rs-shimmer 2.2s linear infinite;
+  color: #6b7280;
 }
 
-/* ============ 收口后：一行轻量耗时 ============ */
-.rs-done {
+.rs-head:hover {
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.rs-status {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 2px;
-  font-size: 12px;
-  color: #94a3b8;
+  gap: 7px;
+  min-width: 0;
+}
+
+.rs-title {
+  white-space: nowrap;
+}
+
+.rs-running .rs-title {
+  color: #4f46e5;
+  font-weight: 600;
+}
+
+/* 运行中的小旋转弧 */
+.rs-spinner {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  border: 2px solid #c7d2fe;
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: rs-spin 0.8s linear infinite;
 }
 
 .rs-check {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
   border-radius: 50%;
-  color: #818cf8;
+  color: #16a34a;
+  background: #dcfce7;
+}
+
+.rs-live-hint {
+  font-size: 11px;
+  color: #6366f1;
   background: #eef2ff;
+  border-radius: 999px;
+  padding: 0 7px;
+  line-height: 16px;
+  animation: rs-blink 1.4s ease-in-out infinite;
 }
 
-.rs-done-text {
-  font-weight: 500;
+.rs-caret {
+  display: inline-flex;
+  color: #9ca3af;
+  transition: transform 0.2s ease;
+}
+.rs-caret-open {
+  transform: rotate(180deg);
 }
 
-/* ============ animations ============ */
+/* ============ 正文 ============ */
+.rs-body {
+  padding: 4px 12px 10px;
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: #4b5563;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 260px;
+  overflow-y: auto;
+  border-top: 1px dashed #e5e7eb;
+}
+
+.rs-empty {
+  color: #9ca3af;
+}
+
+/* 运行中的光标（在正文末尾闪，暗示还在写） */
+.rs-cursor {
+  display: inline-block;
+  width: 6px;
+  height: 13px;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: #6366f1;
+  border-radius: 1px;
+  animation: rs-blink 1s steps(2, start) infinite;
+}
+
 @keyframes rs-spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-@keyframes rs-bg-drift {
-  0%,
-  100% {
-    background-position: 0% 50%;
-  }
+@keyframes rs-blink {
   50% {
-    background-position: 100% 50%;
+    opacity: 0.25;
   }
 }
 
-@keyframes rs-shimmer {
-  to {
-    background-position: -200% center;
-  }
-}
-
-/* 尊重"减少动态"偏好：关掉持续动画，保留静态可见状态 */
 @media (prefers-reduced-motion: reduce) {
-  .rs-wait,
-  .rs-orbits .rs-orbit,
-  .rs-shimmer {
+  .rs-spinner,
+  .rs-live-hint,
+  .rs-cursor {
     animation: none;
   }
 }
