@@ -295,13 +295,24 @@ def _build_llm(
 
     extra_body: dict = {}
     resolved = None if thinking is _OMIT_THINKING else _resolve_thinking(config, thinking)
+    #: 是否**官方** DeepSeek 域（认 `{"thinking":{"type":"enabled"}}` 这套专有形状）。
+    #: ⚠️ 不能只看 provider 名——用户可把 provider 标成 deepseek、base_url 却指向自建网关/本地
+    #:    magpie；那类网关不认 thinking 形状，只认标准 `reasoning_effort`。
+    base_l = (config.base_url or "").lower()
+    is_deepseek = (config.provider or "").startswith("deepseek") and (
+        "deepseek.com" in base_l or not base_l
+    )
     if resolved is True:
-        extra_body["thinking"] = {"type": "enabled"}
+        if is_deepseek:
+            extra_body["thinking"] = {"type": "enabled"}
+        # 无论哪家，只要配了 reasoning_effort 就带上（OpenAI 标准参数，网关据此开深度思考）
         effort = (config.reasoning_effort or "").strip()
         if effort:
             extra_body["reasoning_effort"] = effort
     elif resolved is False:
-        extra_body["thinking"] = {"type": "disabled"}
+        # 显式关闭：`thinking` 形状只发给认识的官方 deepseek，别家不塞脏参数
+        if is_deepseek:
+            extra_body["thinking"] = {"type": "disabled"}
 
     # 缺 Key 时提前抛「人话」错误。
     # 否则 openai SDK 会抛英文的 "The api_key client option must be set either by
@@ -507,12 +518,33 @@ async def build_agent_llm(
     """
     config = await resolve_agent_config(db, provider, model, user_id)
 
-    # 「要思考」这件事只透传给认这套参数的 deepseek 系；其余一律不传，
-    # 由上游按自己的默认行为决定 —— 支持的会吐 reasoning_content，不支持的就没有。
-    # 不需要开启时用 `_OMIT_THINKING` 而不是 None/False，理由见该哨兵的注释。
-    wants_thinking = _resolve_thinking(config, None) is True
-    is_deepseek = (config.provider or "").startswith("deepseek")
-    thinking_arg: Any = True if (wants_thinking and is_deepseek) else _OMIT_THINKING
+    # 「要思考」这件事：
+    #   · 官方 DeepSeek（api.deepseek.com）：认 `{"thinking":{"type":"enabled"}}`，显式开启时透传。
+    #   · 其它 OpenAI 兼容网关（含**把 provider 标成 deepseek、但 base_url 指向自建网关/本地 magpie**
+    #     的情况——用户 2026-10-12 实测正是如此）：不认 DeepSeek 的 thinking 形状，但**认标准
+    #     `reasoning_effort`**；实测本地 magpie 传 `reasoning_effort:high` 才回 reasoning_content
+    #     （不传 → 0 字）。故这类网关在 `auto` 下也应带上 reasoning_effort，否则"深度思考"永不出现。
+    #   · 显式关闭（thinking_mode=disabled）：官方域发 disabled；别家不塞脏参数（见 _build_llm）。
+    resolved_intent = _resolve_thinking(config, None)
+    #: 是否**官方** DeepSeek 域（决定能否用 DeepSeek 专有的 `thinking` 形状）。
+    #: ⚠️ 只认 provider 名不够——用户可把 provider 标成 deepseek 而 base_url 指向自建网关。
+    base_l = (config.base_url or "").lower()
+    is_official_deepseek = "provider" in dir(config) and (
+        (config.provider or "").startswith("deepseek")
+        and ("deepseek.com" in base_l or not base_l)
+    )
+    #: 配了 reasoning_effort 的**非官方** OpenAI 兼容网关（magpie 等）——用它开思考
+    has_effort = bool((config.reasoning_effort or "").strip())
+    if resolved_intent is False:
+        # 显式关闭：官方域发 disabled；别家什么都不发
+        thinking_arg: Any = False if is_official_deepseek else _OMIT_THINKING
+    elif is_official_deepseek:
+        # 官方 DeepSeek：enabled → True；auto → 不传（跟随上游默认）
+        thinking_arg = True if resolved_intent is True else _OMIT_THINKING
+    else:
+        # 非官方 OpenAI 兼容网关（含自建 magpie）：配了 reasoning_effort 就传 True
+        # （`_build_llm` 只带 reasoning_effort、不带 thinking 形状），否则不传。
+        thinking_arg = True if has_effort else _OMIT_THINKING
 
     llm = _build_llm(
         config, temperature=temperature, max_tokens=max_tokens, thinking=thinking_arg
