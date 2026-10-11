@@ -871,9 +871,44 @@ async def run_agent_stream(
     # ---- ② 附件 → 正文 + 图片 ----
     # ⚠️ 丢到线程池里执行：文档解析是同步的，老版 .doc 还会借 Word COM 转换
     #    （1~3s，最坏 CONVERT_TIMEOUT_SECONDS）。直接在事件循环里跑会把整个后端冻住。
+    #
+    # ⚠️ 进度事件（用户 2026-10-11 方案 C）：`_collect_attachments` 是同步阻塞、**执行期间发不出
+    #    事件**（事件只能由 async 生成器 yield）。故把"文档处理"拆成「发事件 → 解析 → 发事件」三段：
+    #    解析**前**告知"开始解析（N 个文件）"，解析**后**汇报"提取了多少文本/图片"。前端据此把
+    #    "干等转圈"变成有信息量的步骤清单。**非思维链内容**，只是耗时环节的进度提示。
+    file_count = len(req.files or [])
+    if file_count:
+        yield _event(
+            {
+                "type": "progress",
+                "id": "doc_parse",
+                "icon": "📄",
+                "state": "running",
+                "message": f"正在解析文档（共 {file_count} 个文件）…",
+            }
+        )
     file_text, doc_images, warnings, attachments = await asyncio.to_thread(
         _collect_attachments, req
     )
+    if file_count:
+        # 解析完成：汇报真实产出（文本长度 + 图片张数），失败/无正文也如实说。
+        text_len = len(file_text or "")
+        img_n = len(doc_images or [])
+        parts = []
+        if text_len:
+            parts.append(f"文本约 {text_len} 字")
+        if img_n:
+            parts.append(f"图片 {img_n} 张")
+        detail = "、".join(parts) if parts else "未提取到可用内容"
+        yield _event(
+            {
+                "type": "progress",
+                "id": "doc_parse",
+                "icon": "📄",
+                "state": "done",
+                "message": f"文档解析完成（{detail}）",
+            }
+        )
     all_images = [u for u in (req.images or []) if u] + doc_images
     # ⚠️ 用户 2026-10-11 修 400 `Unsupported image_url format`：
     #    **喂给多模态模型的图片必须是「data URL 或 http(s) 绝对 URL」**，不能是落盘后的
@@ -883,7 +918,29 @@ async def run_agent_stream(
     #      · `image_urls`    = 落盘后的 `/profile/...` 路径 → **供题目回插** `<img src>`
     #    （题目正文是 TEXT 列，回插必须用短路径而非 base64；而喂模型必须 base64/绝对 URL。）
     vision_images = list(all_images)
+    if all_images:
+        # 图片落盘（base64 → /profile/... 路径）也要点时间，给个进度提示（用户 2026-10-11 方案 C）
+        yield _event(
+            {
+                "type": "progress",
+                "id": "save_images",
+                "icon": "🖼",
+                "state": "running",
+                "message": f"正在保存图片（共 {len(all_images)} 张）…",
+            }
+        )
     image_urls = await persist_agent_images(all_images) if all_images else []
+    if all_images:
+        saved_n = len([u for u in image_urls if u])
+        yield _event(
+            {
+                "type": "progress",
+                "id": "save_images",
+                "icon": "🖼",
+                "state": "done" if saved_n else "failed",
+                "message": f"图片已保存（{saved_n} 张）" if saved_n else "图片保存失败",
+            }
+        )
     if doc_images and not any(image_urls):
         warnings.append("文档插图未能保存到服务器，题目里的图片标记会被忽略")
 

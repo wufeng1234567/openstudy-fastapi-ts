@@ -44,6 +44,29 @@
           </div>
         </div>
         <!--
+          处理进度清单（`type:'progress'`）—— 用户 2026-10-11 方案 C。
+          把"上传文档后干等转圈"变成"看得见的处理流程"：一行一个步骤（进行中即转圈、
+          完成打勾、失败红叉）。**非思维链内容**，只是耗时环节的进度提示。
+        -->
+        <div v-else-if="msg.type === 'progress'" class="message-content">
+          <div class="message-role agent-role">Agent</div>
+          <ul class="progress-steps">
+            <li
+              v-for="step in (msg.steps || [])"
+              :key="step.id"
+              :class="['progress-step', 'step-' + step.state]"
+            >
+              <span class="step-icon">
+                <span v-if="step.state === 'running'" class="step-spinner" aria-hidden="true"></span>
+                <span v-else-if="step.state === 'done'" class="step-check">✓</span>
+                <span v-else class="step-fail">✕</span>
+              </span>
+              <span class="step-emoji" v-if="step.icon">{{ step.icon }}</span>
+              <span class="step-text">{{ step.message }}</span>
+            </li>
+          </ul>
+        </div>
+        <!--
           Agent 过程提示（自我纠正 / 警告 / 错误）
           只有智能体链路会产出 type='agent_note'，别的调用方不会走到这个分支。
         -->
@@ -807,6 +830,95 @@ defineExpose({ scrollToBottom, messagesRef, setInputText })
   align-items: center;
   gap: 6px;
   margin-top: 4px;
+}
+
+/* ------------------------------------------------------------------
+   处理进度清单（type='progress'）—— 用户 2026-10-11 方案 C
+   把"干等转圈"变成"看得见的处理流程"：一行一步，进行中转圈、完成打勾、失败红叉。
+   ------------------------------------------------------------------ */
+.progress-steps {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #eef2f7;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.progress-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #64748b;
+  word-break: break-word;
+}
+
+.progress-step.step-running {
+  color: #4f46e5;
+  font-weight: 600;
+}
+
+.progress-step.step-done {
+  color: #64748b;
+}
+
+.progress-step.step-failed {
+  color: #dc2626;
+}
+
+.step-icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 进行中：小转圈 */
+.step-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #c7d2fe;
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: progress-spin 0.8s linear infinite;
+}
+
+.step-check {
+  color: #16a34a;
+  font-weight: 700;
+}
+
+.step-fail {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.step-emoji {
+  flex-shrink: 0;
+}
+
+.step-text {
+  flex: 1;
+}
+
+@keyframes progress-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .step-spinner {
+    animation: none;
+  }
 }
 
 /* ------------------------------------------------------------------

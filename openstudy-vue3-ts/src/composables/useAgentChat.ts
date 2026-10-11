@@ -58,6 +58,24 @@ export interface AgentExpertProgress {
 }
 
 /**
+ * 一条**处理进度步骤**（用户 2026-10-11 方案 C：文档解析等的"干等转圈"→"步骤清单"）。
+ *
+ * ⚠️ 与 `thinking`（推理正文，已不再展示）**不是一回事**：这是**进度/阶段提示**，
+ *    面向用户展示"后台在处理什么"，不含任何思维链内容。
+ * 由后端 `progress` 事件驱动：同 `id` 重复发 = 更新该步（running → done/failed）。
+ */
+export interface AgentProgressStep {
+  /** 步骤唯一 id（后端给，如 `doc_parse` / `save_images`） */
+  id: string
+  /** 面向用户的文案（中文） */
+  message: string
+  /** 进行中 / 完成 / 失败 */
+  state: 'running' | 'done' | 'failed'
+  /** 可选 emoji 图标 */
+  icon?: string
+}
+
+/**
  * 去掉子代理产出里的 Markdown 标记（用户 2026-10-11：专家结论不该露 `*` `#` 之类符号）。
  *
  * 专家的结论走**纯文本插值**渲染（`AiChatStream` 的 `{{ ex.summary }}`），不是 md 渲染器
@@ -156,7 +174,7 @@ export interface AgentChatMessage {
    * ⚠️ **`experts` = 专家工作组卡片**（多专家并行干活的进度条）：一行一个专家，
    *    `content` 恒空、载荷在 `experts` 数组。指挥家同一轮并发派多个专家时产出。
    */
-  type?: 'tool_result' | 'agent_note' | 'thinking' | 'reasoning' | 'tool_confirm' | 'turn_end' | 'experts'
+  type?: 'tool_result' | 'agent_note' | 'thinking' | 'reasoning' | 'tool_confirm' | 'turn_end' | 'experts' | 'progress'
   content: string
   /**
    * 这条消息属于**哪一轮**（一次用户提问）—— 目前只有 `turn_end` 标记用。
@@ -189,6 +207,14 @@ export interface AgentChatMessage {
    * 由 `delegate_start` 建行（status='running'）、`delegate_done` 回填（status='ok'|'fail'）。
    */
   experts?: AgentExpertProgress[]
+  /**
+   * `progress` 专用：处理步骤清单（**文档解析等耗时环节的进度**，用户 2026-10-11 方案 C）。
+   *
+   * 一条 `progress` 消息承载**整份步骤列表**；每次收到 `progress` 事件按 `id` 更新
+   * 对应步骤（不存在则追加）。**非思维链**——只是"正在解析文档 / 已提取 X 字 Y 图"这类进度提示。
+   * 该消息在**本轮结束**（`turn_end`）时若还有 running 步骤，应收口（见 `closeProgress`）。
+   */
+  steps?: AgentProgressStep[]
   /**
    * `reasoning` 专用：这一段思考花了多少秒。
    * **`secs == null` 就表示它还在跑** —— 没有另设 `status` 字段，理由见 `closeReasoning()`。
@@ -699,6 +725,52 @@ export function useAgentChat() {
     messages.value.push(pendingPlaceholder)
   }
 
+  /**
+   * **处理进度步骤清单**（用户 2026-10-11 方案 C）——`progress` 事件驱动。
+   *
+   * 一条用户提问里所有 `progress` 事件都汇总到**同一条** `type:'progress'` 消息的 `steps` 数组：
+   * 按 `id` 更新对应步骤（不存在则追加），于是前端渲染成一个**逐步推进的清单**
+   * （进行中的转圈、完成的打勾、失败的红叉），把"干等转圈"变成"看得见的处理流程"。
+   *
+   * 与 `waiting` 占位（转圈气泡）的关系：进度清单**优先**呈现——收到 progress 时先摘掉转圈占位，
+   * 避免两个等待 UI 同时出现。
+   */
+  let pendingProgress: AgentChatMessage | null = null
+  const upsertProgressStep = (event: AgentEvent) => {
+    const id = String(event.id || '')
+    if (!id) return
+    // 有进度了 → 摘掉那个抽象转圈占位（进度清单本身就是更信息化的等待态）
+    clearPlaceholder()
+    if (!pendingProgress) {
+      pendingProgress = { role: 'assistant', type: 'progress', content: '', steps: [] }
+      messages.value.push(pendingProgress)
+    }
+    const steps = pendingProgress.steps as AgentProgressStep[]
+    const state: AgentProgressStep['state'] =
+      event.state === 'done' ? 'done' : event.state === 'failed' ? 'failed' : 'running'
+    const step: AgentProgressStep = {
+      id,
+      message: String(event.message || ''),
+      state,
+      icon: event.icon
+    }
+    const i = steps.findIndex((s) => s.id === id)
+    if (i >= 0) steps[i] = step
+    else steps.push(step)
+  }
+
+  /**
+   * 收口进度清单：把仍未完成的步骤标为已完成（本轮结束/生成正文时调）。
+   * 避免最后一步永远停在 `running` 转圈。
+   */
+  const closeProgress = () => {
+    if (!pendingProgress) return
+    for (const s of (pendingProgress.steps as AgentProgressStep[]) || []) {
+      if (s.state === 'running') s.state = 'done'
+    }
+    pendingProgress = null
+  }
+
   /** 待用户确认的写操作（ds-free 前端循环的等待者；后端链路由 confirmId 走 HTTP 唤醒） */
   const pendingConfirms = new Map<string, (approved: boolean) => void>()
 
@@ -756,6 +828,8 @@ export function useAgentChat() {
     if (!chunk) return
     // 正文开始了 ⇒ 这一轮的思考已经结束，把块收口（UI 会折起来，别让它继续长）
     closeReasoning()
+    // 正文开始 ⇒ 文档处理阶段结束 → 进度清单收口（未完成步骤标 done），别让最后一步一直转圈
+    closeProgress()
     clearPlaceholder()
     if (openTextIndex < 0 || openTextIndex >= messages.value.length) {
       messages.value.push({ role: 'assistant', content: chunk })
@@ -940,6 +1014,11 @@ export function useAgentChat() {
         // 真实内容（正文 / 工具卡 / 提示）一到就被 clearPlaceholder 摘掉。
         closeText()
         showPlaceholder(event.message || '')
+        break
+
+      case 'progress':
+        // 处理进度（文档解析等耗时环节）→ 汇总进"步骤清单"消息（用户 2026-10-11 方案 C）
+        upsertProgressStep(event)
         break
 
       case 'tool_confirm':
@@ -1180,6 +1259,8 @@ export function useAgentChat() {
       // 单专家「专家协同」卡片在轮末丢弃（只有多专家并行才展示协同 UI，见函数注释）——
       // 必须在 push `turn_end` **之前**做（`findExpertCard` 以 `turn_end` 为轮边界）。
       dropSoloExpertCard()
+      // 进度清单收口：轮末若还有 running 步骤（如解析中途报错），标记完成，别让它一直转圈
+      closeProgress()
       messages.value.push({ role: 'assistant', type: 'turn_end', turnId, content: '' })
       // 持久化「完整时间线」（含工具卡片）—— 刷新后才能复原卡片视图。
       // 放在 finally：成功 / 报错 / 主动停止都会存下当前这一版（含已跑过的过程卡片）。

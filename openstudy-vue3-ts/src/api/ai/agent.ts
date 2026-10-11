@@ -22,6 +22,14 @@ export type AgentEventType =
   | 'text'
   | 'thinking'
   | 'waiting'
+  /**
+   * **处理进度**（用户 2026-10-11）：文档解析等**耗时环节**的阶段进展，用于把"干等转圈"
+   * 变成"有信息量的步骤清单"。与 `thinking`（推理正文，已不再展示）**无关**——这是
+   * **进度/阶段提示**，非思维链。
+   * 字段：`id`（步骤唯一 id，同 id 重复发=更新该步）、`message`（面向用户的中文文案）、
+   * `state`（`running`|`done`|`failed`，缺省 `running`）、`icon`（可选 emoji）。
+   */
+  | 'progress'
   | 'tool_confirm'
   | 'tool_confirm_resolved'
   | 'tool_start'
@@ -165,6 +173,14 @@ export interface AgentEvent {
   errors?: string[]
   /** done：最终回复全文 */
   answer?: string
+
+  // ---- `progress` 事件：处理进度（用户 2026-10-11，文档解析等耗时环节的步骤清单）----
+  /** 步骤唯一 id：同 id 重复发 = 更新该步（如 running → done） */
+  id?: string
+  /** 步骤状态：`running` 进行中 / `done` 已完成 / `failed` 失败（缺省 running） */
+  state?: 'running' | 'done' | 'failed'
+  /** 步骤图标（可选 emoji，如 📄 🖼 🔍） */
+  icon?: string
 
   // ---- `metrics` 事件：执行统计（底部状态条）----
   // ⚠️ 口径由两条链路共同约定（后端 `loop.py` 的 `_metrics_event()` / 前端 `agentDsFree.ts`）：
