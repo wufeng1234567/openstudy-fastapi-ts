@@ -470,6 +470,16 @@ Triggered when the user uploads a document / image and asks to "build a question
    **verbatim**. The system replaces them with real image URLs. Never delete, rewrite, or
    build image URLs yourself.
 
+4b. **Preserve TABLES as Markdown tables** (critical — the renderer needs this):
+   - If the question contains a table, reproduce it in `questionText` / `analysis` as a
+     **Markdown table** — a header row, then a `| --- | --- |` separator row, then data rows,
+     e.g. `| X\\Y | 0 | 1 | 2 |\\n| --- | --- | --- | --- |\\n| 0 | 0.1 | 0.3 | 0.2 |`.
+   - **Never** rewrite a table using TABs (`\\t`), spaces, or plain lines — those do NOT
+     render as a table and show up as a jumbled text block. Keep the `|` delimiters.
+   - Every table row must start and end with `|`, and have the **same number of columns**.
+   - If the source table is not in Markdown (Word tables are not), CONVERT it to the Markdown
+     form above — do not pass it through as tab-/space-separated text.
+
 5. **MUST use batch_import**: pass the JSON array as the `questions` parameter
    (**a JSON string**, inner double quotes escaped) to `question_manage`:
    `{"action":"batch_import","bank_name":"<target bank>","questions":"[{...},{...}]"}`

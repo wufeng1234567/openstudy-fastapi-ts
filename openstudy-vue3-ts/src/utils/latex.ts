@@ -281,6 +281,61 @@ function normalizePipeTables(text: string): string {
 }
 
 /**
+ * **制表符表格容错**：把「TAB 分隔的表格文本」转成合法 Markdown 表格（用户 2026-10-11"三重保险"的第三重）。
+ *
+ * 背景：**模型在生成题目 JSON 时，可能自己把表格重写成 TAB 分隔文本**（如 `X\Y\t0\t1\t2`），
+ * 而不是保留我们喂给它的 Markdown 表格 —— 用户实测到了这个形态。这种文本既无 `|`
+ * （`normalizePipeTables` 认不出），也不是 md 表格（`marked` 不认）。
+ * 且**前端全链路已确认不存在 `|`→TAB 的转换**（制表符来源=模型输出）。
+ * 故：提示词要求模型输出 md 表格（第一重）+ 后端 `_emit_table` 产合法 md 表格（第二重）
+ * + **本函数把 TAB 表格就地转成 md 表格（第三重兜底）**，三重保险。
+ *
+ * 判据（**保守**，避免误伤正文里的单个 TAB）：
+ *   - 连续 **≥2 行**，每行含 **≥1 个 TAB**；
+ *   - 各行的**列数一致**（按 TAB 切分，列数 ≥2）；
+ *   - 满足则整组转成 md 表格（首行当表头 + `| --- |` 分隔行）。
+ */
+function normalizeTabTables(text: string): string {
+  if (!text || !text.includes('\t')) return text
+
+  const isTabRow = (s: string) => {
+    const t = s.replace(/\r$/, '')
+    return t.includes('\t') && t.trim().length > 0 && t.split('\t').length >= 2
+  }
+  const cellCount = (s: string) => s.replace(/\r$/, '').split('\t').length
+  // 单元格转义：内部 `|` 要转成 `\|`（否则会破坏生成的 md 表格）
+  const toCell = (c: string) => c.trim().split(/\s+/).join(' ').replace(/\|/g, '\\|')
+
+  const lines = text.split('\n')
+  const out: string[] = []
+  let i = 0
+  while (i < lines.length) {
+    if (isTabRow(lines[i])) {
+      let j = i
+      while (j < lines.length && isTabRow(lines[j])) j++
+      const group = lines.slice(i, j)
+      const cols = group.map(cellCount)
+      const consistent = cols.every((c) => c === cols[0]) && cols[0] >= 2
+      if (group.length >= 2 && consistent) {
+        const ncol = cols[0]
+        const toMdRow = (row: string) =>
+          '| ' + row.replace(/\r$/, '').split('\t').map(toCell).join(' | ') + ' |'
+        out.push(toMdRow(group[0]))
+        out.push('| ' + Array(ncol).fill('---').join(' | ') + ' |')
+        for (let k = 1; k < group.length; k++) out.push(toMdRow(group[k]))
+      } else {
+        for (const g of group) out.push(g)
+      }
+      i = j
+    } else {
+      out.push(lines[i])
+      i++
+    }
+  }
+  return out.join('\n')
+}
+
+/**
  * **统一渲染管线**：同时支持 `$...$` 公式 + Markdown（表格/列表等）（用户 2026-10-11 方案 A）
  *
  * 背景：项目原先三条路径各管一半——`renderQuestionContent`（裸 `\命令{}`，不认 `$`、不认表格）、
@@ -327,6 +382,8 @@ export function renderMarkdownWithLatex(text: string): string {
   //    ⚠️ 放在公式占位化**之后**：此时公式已被替换成占位符，行内的 `|` 只可能来自真表格，
   //       不会被 `$a|b$` 这类公式内容干扰。
   src = normalizePipeTables(src)
+  // ②-b 制表符表格容错：把"TAB 分隔的表格文本"（模型可能自己重写出的形态）转成 md 表格（第三重保险）
+  src = normalizeTabTables(src)
 
   // ③ Markdown（gfm 启表格；breaks 让单个 \n 也换行，贴合题目文本习惯）
   src = marked.parse(src, { gfm: true, breaks: true }) as string
