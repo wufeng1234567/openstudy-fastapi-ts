@@ -669,8 +669,15 @@ export function useAgentChat() {
     if (!openReasoning) {
       // 本轮已有思考块（已收口）→ 迟到增量：折回来继续追加内容 + 顺延耗时，不新开块
       if (turnReasoning) {
-        turnReasoning.content += delta
-        turnReasoning.secs = Math.max(1, Math.round((Date.now() - reasoningStartedAt) / 1000))
+        // ⚠️ **必须操作 `messages.value` 里的响应式代理**（见下方长注释），不能改闭包里的 raw 对象
+        const i = messages.value.indexOf(turnReasoning)
+        if (i >= 0) {
+          messages.value[i].content = (messages.value[i].content || '') + delta
+          messages.value[i].secs = Math.max(1, Math.round((Date.now() - reasoningStartedAt) / 1000))
+        } else {
+          turnReasoning.content += delta
+          turnReasoning.secs = Math.max(1, Math.round((Date.now() - reasoningStartedAt) / 1000))
+        }
         return
       }
       openReasoning = { role: 'assistant', type: 'reasoning', content: '' }
@@ -678,7 +685,22 @@ export function useAgentChat() {
       reasoningStartedAt = Date.now()
       messages.value.push(openReasoning)
     }
-    openReasoning.content += delta
+    /*
+     * ⚠️⚠️ 卡死真凶（用户 2026-10-11 报「卡在 The 后不动、最后才整段出现」）：
+     *   `messages` 是 `ref([])`，Vue 3 的数组元素**只有通过代理读出来**才带依赖追踪。
+     *   闭包变量 `openReasoning` 指向的是**push 进去的那个 raw 对象**，直接 `openReasoning.content += delta`
+     *   改的是 **raw 对象**（无代理 setter）→ **不触发 Vue 重渲染** → 界面停住；直到后续某次
+     *   （如正文/工具/轮末）触发了整数组的响应式刷新，才把累计的内容"一次性刷出"。
+     *   正文之所以没这问题：`appendText` 用的是 `messages.value[openTextIndex]`（**代理对象**）。
+     *   故此处必须同样**从 `messages.value` 取回该消息的代理**再改。
+     */
+    const idx = messages.value.indexOf(openReasoning)
+    if (idx >= 0) {
+      messages.value[idx].content = (messages.value[idx].content || '') + delta
+    } else {
+      // 兜底：找不到（理论上不会）→ 退回改 raw，至少不丢内容
+      openReasoning.content += delta
+    }
   }
 
   /**
@@ -692,7 +714,11 @@ export function useAgentChat() {
   const closeReasoning = () => {
     if (!openReasoning) return
     // 至少 1 秒：秒级取整会把「0.4 秒」显示成 0，看着像坏了
-    openReasoning.secs = Math.max(1, Math.round((Date.now() - reasoningStartedAt) / 1000))
+    const secs = Math.max(1, Math.round((Date.now() - reasoningStartedAt) / 1000))
+    // ⚠️ 改**数组里的代理消息**（`openReasoning` 是 raw 引用，直接改不触发更新）
+    const i = messages.value.indexOf(openReasoning)
+    if (i >= 0) messages.value[i].secs = secs
+    else openReasoning.secs = secs
     openReasoning = null
   }
 
@@ -719,7 +745,11 @@ export function useAgentChat() {
    */
   const showPlaceholder = (label: string = '') => {
     if (pendingPlaceholder) {
-      pendingPlaceholder.content = label
+      // ⚠️ 必须改**数组里的代理对象**（`pendingPlaceholder` 是 push 进去的 raw 引用，直接改不触发更新，
+      //    与 `appendReasoning` 卡死同因）
+      const i = messages.value.indexOf(pendingPlaceholder)
+      if (i >= 0) messages.value[i].content = label
+      else pendingPlaceholder.content = label
       return
     }
     pendingPlaceholder = { role: 'assistant', type: 'thinking', content: label }
@@ -746,7 +776,12 @@ export function useAgentChat() {
       pendingProgress = { role: 'assistant', type: 'progress', content: '', steps: [] }
       messages.value.push(pendingProgress)
     }
-    const steps = pendingProgress.steps as AgentProgressStep[]
+    // ⚠️ 必须改**数组里的代理消息**的 `steps`（`pendingProgress` 是 push 进去的 raw 引用，
+    //    直接改它的属性不触发 Vue 更新 —— 与 `appendReasoning` 同因）
+    const mi = messages.value.indexOf(pendingProgress)
+    const target = mi >= 0 ? messages.value[mi] : pendingProgress
+    if (!target.steps) target.steps = []
+    const steps = target.steps as AgentProgressStep[]
     const state: AgentProgressStep['state'] =
       event.state === 'done' ? 'done' : event.state === 'failed' ? 'failed' : 'running'
     const step: AgentProgressStep = {
@@ -766,7 +801,9 @@ export function useAgentChat() {
    */
   const closeProgress = () => {
     if (!pendingProgress) return
-    for (const s of (pendingProgress.steps as AgentProgressStep[]) || []) {
+    const mi = messages.value.indexOf(pendingProgress)
+    const target = mi >= 0 ? messages.value[mi] : pendingProgress
+    for (const s of (target.steps as AgentProgressStep[]) || []) {
       if (s.state === 'running') s.state = 'done'
     }
     pendingProgress = null
