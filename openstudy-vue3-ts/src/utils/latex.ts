@@ -252,6 +252,20 @@ function normalizePipeTables(text: string): string {
 
   const lines = text.split('\n')
   const out: string[] = []
+
+  /**
+   * 单元格转义：把单元格文本里的反斜杠 `\` 转成 `\\`。
+   *
+   * 为什么需要：用户 2026-10-11——表头 `X\Y` 被渲染成 `XY`（`marked` 把 `\Y` 当转义、吃掉了 `\`）。
+   * 表格单元格里的 `\` 是**普通文本**（此步之前公式已被占位符替换，不会误伤 KaTeX 的反斜杠命令），
+   * 故统一转义成 `\\`，`marked` 才会原样输出一个 `\`。
+   */
+  const escapeCells = (row: string): string => {
+    const t = row.trim().replace(/^\|/, '').replace(/\|$/, '')
+    const cells = t.split('|').map((c) => c.trim().replace(/\\/g, '\\\\'))
+    return '| ' + cells.join(' | ') + ' |'
+  }
+
   let i = 0
   while (i < lines.length) {
     if (isPipeRow(lines[i])) {
@@ -265,9 +279,10 @@ function normalizePipeTables(text: string): string {
       const consistent = cols.every((c) => c === cols[0]) && cols[0] >= 2
       if (!hasSep && group.length >= 2 && consistent) {
         const ncol = cols[0]
-        out.push(group[0])
+        // 表头 + 分隔行 + 数据行；每行都对单元格做 `\` 转义（否则 `X\Y` 会被 marked 吃掉反斜杠）
+        out.push(escapeCells(group[0]))
         out.push('| ' + Array(ncol).fill('---').join(' | ') + ' |')
-        for (let k = 1; k < group.length; k++) out.push(group[k])
+        for (let k = 1; k < group.length; k++) out.push(escapeCells(group[k]))
       } else {
         for (const g of group) out.push(g)
       }
