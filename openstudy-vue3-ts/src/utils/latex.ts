@@ -211,6 +211,76 @@ export function renderLatex(text: string): string {
 }
 
 /**
+ * **表格格式容错**：把「无表头分隔行的裸竖线表格」补成合法 Markdown 表格（用户 2026-10-11 要求"两种格式都要适配"）。
+ *
+ * 为什么要它：**Word 里的表格本来就不是 Markdown**（它是 OOXML 结构），解析/入库的中间形态有两种：
+ *   ① **新格式**（后端 `_emit_table` 已改）：已是合法 md 表格，含 `| --- |` 分隔行 → `marked` 直接能渲；
+ *   ② **旧格式/裸表格文本**（历史数据、或别处拼出来的）：形如
+ *        `X\Y | 0 | 1 | 2`
+ *        `0 | 0.1 | 0.3 | 0.2`
+ *      每行用 `|` 分隔但**没有分隔行** → `marked` 认不出、原样显示成一串竖线。
+ *   本函数把 ② 就地"补"成 ①，于是**两种格式都能渲染**（对话/新旧数据通吃）。
+ *
+ * 判据（**保守**，宁可不转也不误伤正文）：
+ *   - 连续 **≥2 行**，每行含 **≥2 个 `|`**（至少 2 列）；
+ *   - 这些行的**列数一致**；
+ *   - 该组行里的**任意一行都不是**分隔行（`| --- |`）——已是 md 表格就**不动**；
+ *   - 该组行**不紧跟在**一个已是"表格块"的上下文里（避免重复补）。
+ * 满足则在该组第 1 行后插入一行 `| --- | ... |`。
+ */
+function normalizePipeTables(text: string): string {
+  if (!text || !text.includes('|')) return text
+
+  const isSeparatorRow = (s: string) => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(s)
+  // 单元格数（用于列数一致性判定）：按未转义的 `|` 切；首尾竖线不计空段
+  const countCells = (s: string): number => {
+    const t = s.trim().replace(/^\|/, '').replace(/\|$/, '')
+    return t.split('|').length
+  }
+  const isPipeRow = (s: string) => {
+    const t = s.trim()
+    if (!t || !t.includes('|')) return false
+    if (isSeparatorRow(t)) return false
+    // 必须是"真表格形态"之一，避免误伤正文（用户 2026-10-11 折中判据）：
+    //   · 以 `|` 开头或结尾（`| a | b |`）；或
+    //   · `|` 两侧都带空格（`a | b`，常见的手写/解析表格分隔）。
+    // 纯 `a|b`（无空格、无首尾竖线）不算——那多半是正文里的竖线，不是表格。
+    const startsOrEndsWithPipe = t.startsWith('|') || t.endsWith('|')
+    const spacedPipe = / \| | \|$|^\| /.test(t)
+    return startsOrEndsWithPipe || spacedPipe
+  }
+
+  const lines = text.split('\n')
+  const out: string[] = []
+  let i = 0
+  while (i < lines.length) {
+    if (isPipeRow(lines[i])) {
+      // 收集连续 pipe 行
+      let j = i
+      while (j < lines.length && isPipeRow(lines[j])) j++
+      const group = lines.slice(i, j)
+      // 该组里若出现分隔行，说明已经是合法 md 表格 → 原样放行
+      const hasSep = group.some(isSeparatorRow)
+      const cols = group.map(countCells)
+      const consistent = cols.every((c) => c === cols[0]) && cols[0] >= 2
+      if (!hasSep && group.length >= 2 && consistent) {
+        const ncol = cols[0]
+        out.push(group[0])
+        out.push('| ' + Array(ncol).fill('---').join(' | ') + ' |')
+        for (let k = 1; k < group.length; k++) out.push(group[k])
+      } else {
+        for (const g of group) out.push(g)
+      }
+      i = j
+    } else {
+      out.push(lines[i])
+      i++
+    }
+  }
+  return out.join('\n')
+}
+
+/**
  * **统一渲染管线**：同时支持 `$...$` 公式 + Markdown（表格/列表等）（用户 2026-10-11 方案 A）
  *
  * 背景：项目原先三条路径各管一半——`renderQuestionContent`（裸 `\命令{}`，不认 `$`、不认表格）、
@@ -253,13 +323,18 @@ export function renderMarkdownWithLatex(text: string): string {
       return PH(stash.length - 1)
     })
 
-  // ② Markdown（gfm 启表格；breaks 让单个 \n 也换行，贴合题目文本习惯）
+  // ② 表格格式容错：把"无表头分隔行的裸竖线表格"补成合法 md 表格（用户 2026-10-11：新旧两种格式都要适配）
+  //    ⚠️ 放在公式占位化**之后**：此时公式已被替换成占位符，行内的 `|` 只可能来自真表格，
+  //       不会被 `$a|b$` 这类公式内容干扰。
+  src = normalizePipeTables(src)
+
+  // ③ Markdown（gfm 启表格；breaks 让单个 \n 也换行，贴合题目文本习惯）
   src = marked.parse(src, { gfm: true, breaks: true }) as string
 
-  // ③ 回填公式 HTML（占位符可能被 marked 包进 <p>，用 indexOf 定位替换即可）
+  // ④ 回填公式 HTML（占位符可能被 marked 包进 <p>，用 indexOf 定位替换即可）
   src = src.replace(/\u0000MATH(\d+)\u0000/g, (_, idx) => stash[Number(idx)] ?? '')
 
-  // ④ 安全过滤：允许 KaTeX 的 MathML/SVG + 表格标签
+  // ⑤ 安全过滤：允许 KaTeX 的 MathML/SVG + 表格标签
   return DOMPurify.sanitize(src, {
     ADD_TAGS: [
       'svg', 'path', 'math', 'mi', 'mo', 'mn', 'msup', 'msub', 'mover', 'munder',
