@@ -203,6 +203,8 @@ class AgentRequest:
     #: **用户自定义智能体 id**（`ai_agent_config.id`，阶段 2 落地）。非空时优先于 `role`。
     #: 现阶段仅透传占位，编排层暂不消费（避免阶段 1 引入未建的表依赖）。
     agent_id: Optional[int] = None
+    #: 「注入历史记忆」开关（仅 ds-free-nb 端有意义）：True = 注入历史且正文走附件投递。
+    inject_history: bool = False
 
     @property
     def persist(self) -> bool:
@@ -854,6 +856,17 @@ async def run_agent_stream(
     tools_all_disabled = not tool_defs
 
     try:
+        # 原始文件附件（供 ds-free-nb 桥原样上传到 DS 网页，由网页自己解析 Word/PDF 等）：
+        # 与 chat_engine.stream_turn 同一口径。普通/官方 provider 会忽略（_build_llm 按 provider 收口）。
+        from app.services.ai.chat_engine import _extract_raw_files
+        _raw_files = _extract_raw_files(req.files)
+        if _raw_files:
+            logger.info("[agent] 本轮文件附件 {} 个 → 传给模型构建: {}", len(_raw_files), [f["name"] for f in _raw_files])
+        # 先判目标是不是本机 DS 桥（决定：文档是否走附件、历史是否注入并走附件）。
+        _probe = await db_config.resolve_config(db, req.provider, req.model or user_agent_model, user_id=user_id)
+        _to_bridge = bool(_probe and (_probe.provider or "").strip().lower() == "ds-free-nb")
+        _inject_hist = bool(getattr(req, "inject_history", False))
+        _as_attachment = bool(_to_bridge and _inject_hist)
         llm, config = await db_config.build_agent_llm(
             db,
             provider=req.provider,
@@ -862,6 +875,8 @@ async def run_agent_stream(
             temperature=req.temperature,
             # 带上用户作用域：用户自己配的模型（个人中心 → 我的模型）也能被 Agent 选中
             user_id=user_id,
+            files=_raw_files,
+            as_attachment=_as_attachment,
         )
     except Exception as e:  # noqa: BLE001 - 配置类错误直接给用户看
         yield _event({"type": "error", "message": str(e)})
@@ -877,7 +892,9 @@ async def run_agent_stream(
     #    解析**前**告知"开始解析（N 个文件）"，解析**后**汇报"提取了多少文本/图片"。前端据此把
     #    "干等转圈"变成有信息量的步骤清单。**非思维链内容**，只是耗时环节的进度提示。
     file_count = len(req.files or [])
-    if file_count:
+    # 目标是不是本机 DS 网页桥？是的话文档**原样上传**（DS 网页自己解析），后端不拆文本/图片。
+    # （`_to_bridge` 已在上面 build_agent_llm 之前解析好；这里直接用，不再重复解析 config。）
+    if file_count and not _to_bridge:
         yield _event(
             {
                 "type": "progress",
@@ -887,10 +904,14 @@ async def run_agent_stream(
                 "message": f"正在解析文档（共 {file_count} 个文件）…",
             }
         )
-    file_text, doc_images, warnings, attachments = await asyncio.to_thread(
-        _collect_attachments, req
-    )
-    if file_count:
+    if _to_bridge and file_count:
+        # 走桥：不解析文档（避免拆成正文+内嵌图导致重复投递与超长处理）
+        file_text, doc_images, warnings, attachments = "", [], [], []
+    else:
+        file_text, doc_images, warnings, attachments = await asyncio.to_thread(
+            _collect_attachments, req
+        )
+    if file_count and not _to_bridge:
         # 解析完成：汇报真实产出（文本长度 + 图片张数），失败/无正文也如实说。
         text_len = len(file_text or "")
         img_n = len(doc_images or [])
@@ -973,7 +994,11 @@ async def run_agent_stream(
             logger.warning("[agent] 视觉模型兜底失败，按原模型发起：{}", e)
 
     typed = (req.message or "").strip()
-    if not typed and not file_text:
+    # ⚠️ 走桥（ds-free-nb）时文档**原样上传给 DS 网页**、不走后端解析，
+    #    所以 `file_text` 恒为空。此时若用户只传了附件、正文为空，
+    #    不能按"没有可发送内容"打回 —— 附件本身就是内容（DS 网页会自己解析）。
+    _has_bridge_files = bool(_to_bridge and _raw_files)
+    if not typed and not file_text and not _has_bridge_files:
         if all_images:
             typed = DEFAULT_AGENT_PROMPT
         else:
@@ -981,6 +1006,10 @@ async def run_agent_stream(
             yield _event({"type": "error", "message": f"没有可发送的内容：{detail}"})
             yield "[DONE]"
             return
+    # 只传了附件（正文空）时给一句最小指令，否则 DS 的发送按钮可能保持禁用、
+    # 或模型不知道要对附件做什么（与桥侧统一口径）。
+    if not typed and (all_images or _has_bridge_files):
+        typed = DEFAULT_AGENT_PROMPT
 
     # 系统侧补充说明（**进 SystemMessage，不进用户消息**）。
     # 这样「系统说的话」和「用户说的话」在消息层面就是分开的，模型不会把
@@ -1123,11 +1152,15 @@ async def run_agent_stream(
 
     context = ""
     if req.persist:
-        # lang="en" → 历史上下文用 <conversation_history> 英文标签包裹，
-        # 与下面的 <user_request> 明确区分（中文版的「【对话历史】」只给聊天助手用）
-        context = await conversation_service.build_context_prompt(
-            user_id, session_id, lang="en"
-        )
+        # ⚠️ ds-free-nb（本机无头桥）：默认**不**注入历史（DS 网页自维护会话，长历史灌框会卡死）。
+        #    仅当用户开了「注入历史记忆」开关（req.inject_history）才注入，且走附件投递。
+        #    其它 provider（API 端）保持原行为。
+        if (not _to_bridge) or bool(getattr(req, "inject_history", False)):
+            # lang="en" → 历史上下文用 <conversation_history> 英文标签包裹，
+            # 与下面的 <user_request> 明确区分（中文版的「【对话历史】」只给聊天助手用）
+            context = await conversation_service.build_context_prompt(
+                user_id, session_id, lang="en"
+            )
         history_text = typed or conversation_service.ATTACHMENT_PLACEHOLDER
         try:
             await conversation_service.save_message(

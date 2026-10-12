@@ -1,0 +1,19 @@
+{
+  "name": "openstudy-ds-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenStudy 免扩展 DS 网页桥：本机用 playwright-core 驱动无头 Edge 与 chat.deepseek.com 通信（原型）。",
+  "main": "lib/index.js",
+  "scripts": {
+    "start": "node server.js",
+    "login": "node probe.js --login",
+    "check": "node probe.js",
+    "chat": "node probe.js --chat",
+    "test:decoder": "node decoder.test.mjs",
+    "test:attach": "node test-attach.js"
+  },
+  "dependencies": {
+    "playwright-core": "^1.63.0"
+  }
+}

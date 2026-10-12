@@ -98,6 +98,8 @@ export interface AiStreamOptions {
   thinking?: boolean
   /** 采样温度。不传 = 后端默认 0.7；出题类沿用历史口径 0.8 */
   temperature?: number
+  /** 「注入历史记忆」开关（仅 ds-free-nb）：历史作为附件投递给 DS 网页 */
+  injectHistory?: boolean
   signal?: AbortSignal
 }
 
@@ -142,7 +144,9 @@ async function postAiStream(
         sessionId: opts.sessionId || '',
         userId: normalizeUserId(opts.userId),
         thinking: opts.thinking,
-        temperature: opts.temperature
+        temperature: opts.temperature,
+        // 「注入历史记忆」开关（仅 ds-free-nb 有意义；后端按 provider 收口）
+        injectHistory: opts.injectHistory === true
       }),
       signal: opts.signal
     })

@@ -105,11 +105,29 @@
               </el-icon>
             </button>
 
-            <!-- 写操作开关：关掉后 Agent 只给方案不落库 -->
-            <div class="mode-switch" :title="autoConfirm ? '自动模式：创建/导入直接执行' : '手动模式：写操作只给方案'">
-              <el-switch v-model="autoConfirm" size="small" :disabled="isGenerating" />
-              <span class="mode-text">{{ autoConfirm ? '自动执行' : '仅给方案' }}</span>
+            <!-- 模型下拉框：直接放输入框旁，省得每次进设置改（用户 2026-10-12 要求）。
+                 与「设置 → 模型」绑的是同一个 `model`，两处天然同步。 -->
+            <div class="tb-model">
+              <AiModelSelector v-model="model" scene="agent" width="180px" :disabled="isGenerating" />
             </div>
+
+            <!-- 「注入历史上下文」按钮：仅「DS 免费（无浏览器）」模型露出。
+                 一次性操作：点击即把当前会话历史作为 .md 附件发给 DS 网页（并在正文里说明这是历史），
+                 不是常驻开关。写操作默认自动执行、仅删除需确认，故不再有「自动模式」开关。 -->
+            <button v-if="showInjectHistory" type="button" class="tb-btn tb-inject"
+              :disabled="isGenerating || injectingHistory" @click="handleInjectHistory"
+              title="把当前会话的历史上下文作为附件发送给 DS 网页（用于长上下文续聊）">
+              <el-icon><UploadFilled /></el-icon>
+              <span>{{ injectingHistory ? '注入中…' : '注入历史' }}</span>
+            </button>
+            <!-- 「调试」按钮：仅 DS 桥模型露出。点击打开当前登录态的 DS 浏览器窗口（有头），
+                 便于直接看到卡在哪一步（附件上传 / 等回复）。 -->
+            <button v-if="showInjectHistory" type="button" class="tb-btn tb-inject"
+              :disabled="openingBridge" @click="handleOpenDsBridge"
+              title="打开当前登录态的 DS 浏览器窗口（调试用）">
+              <el-icon><View /></el-icon>
+              <span>{{ openingBridge ? '打开中…' : '调试' }}</span>
+            </button>
           </template>
           <!-- 输入框下方工具行（右半）：设置（智能体/模型/工具聚合）+ 新对话 + 发送按钮 -->
           <template #input-toolbar-right>
@@ -366,7 +384,7 @@ import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } 
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Clock, Delete, Plus, Setting,
-  FolderOpened, QuestionFilled, UploadFilled, Search
+  FolderOpened, QuestionFilled, UploadFilled, Search, View
 } from '@element-plus/icons-vue'
 import AiChatStream from '@/components/AiChatStream/index.vue'
 import AiModelSelector from '@/components/AiModelSelector/index.vue'
@@ -389,6 +407,7 @@ import {
   deleteAgentConfig,
   listAgentExperts,
   setAgentExpertPref,
+  showDsBridge,
   type AgentConfig,
   type AgentConfigInput,
   type AgentExpert
@@ -455,8 +474,25 @@ const onRollbackTurn = async (turnId: string) => {
 
 /** 模型（scene='agent'，与聊天助手的选择互不干扰） */
 const model = ref('')
-/** 写操作是否自动执行 */
+/** 写操作**默认自动执行**（仅删除需确认）——用户 2026-10-12 定案：取消「自动模式」开关。 */
 const autoConfirm = ref(true)
+/** 「注入历史上下文」按钮状态：仅「DS 免费（无浏览器）」= ds-free-nb 模型露出。 */
+const injectingHistory = ref(false)
+const showInjectHistory = computed(() => (model.value || '').trim() === 'ds-free-nb')
+
+/** 「调试」按钮状态：打开当前登录态的 DS 浏览器窗口（有头），便于排查卡在哪一步。 */
+const openingBridge = ref(false)
+const handleOpenDsBridge = async (): Promise<void> => {
+  if (openingBridge.value) return
+  openingBridge.value = true
+  try {
+    const r = await showDsBridge()
+    if (r.ok) ElMessage.success('已打开 DS 浏览器窗口（保持登录态）')
+    else ElMessage.error(r.message || '打开 DS 浏览器失败（桥未运行？）')
+  } finally {
+    openingBridge.value = false
+  }
+}
 
 /* ===================== 多智能体协同 ===================== */
 // 智能体选择：官方角色 + 我的自定义智能体。
@@ -718,6 +754,7 @@ async function removeAgent(a: AgentConfig) {
   }
 }
 
+
 const chatRef = ref<any>(null)
 
 /** ds-free 由扩展代发、挂不了 tools，Agent 用不了 */
@@ -916,7 +953,7 @@ const quickActions = [
   }
 ]
 
-const handleSend = async ({ content }: { content: string }) => {
+const handleSend = async ({ content, injectHistory = false }: { content: string; injectHistory?: boolean }) => {
   if (isGenerating.value) return
   const text = (content || '').trim()
   const imgs = [...attachments.value.images]
@@ -957,6 +994,8 @@ const handleSend = async ({ content }: { content: string }) => {
     // 都没选（'' = 自动）传空 → 后端按消息规则路由。
     role: selectedRole.value || undefined,
     agentId: selectedAgentId.value,
+    // 仅 ds-free-nb：把当前会话历史作为附件投递给 DS 网页
+    injectHistory,
   })
 
   /**
@@ -1001,6 +1040,37 @@ const handleSend = async ({ content }: { content: string }) => {
   // 这一轮里「智能体专家」可能刚用 agent_manage 创建/改了智能体 →
   // 刷新「我的智能体」列表，否则新建的智能体要等重进页面才出现（用户 2026-10-12 报）。
   loadAgents()
+}
+
+/**
+ * 「注入历史上下文」按钮（**一次性操作**，仅 ds-free-nb）：
+ * 点击 → 把说明文字**自动填进输入框**，随即**自动发送**（走与手打完全相同的发送路径）。
+ * 后端据 injectHistory=true 把当前会话历史拼进正文、并让桥把正文作为 .md 附件投递给 DS 网页。
+ */
+const INJECT_HISTORY_MSG =
+  '以下附件是本会话的历史对话上下文。请阅读该附件，理解我们已经聊过的内容，然后等待我的下一条指令。'
+const handleInjectHistory = async (): Promise<void> => {
+  if (injectingHistory.value || isGenerating.value) return
+  if (!sessionId.value || !messages.value.some((m) => m.role === 'user' || m.role === 'assistant')) {
+    ElMessage.info('当前会话还没有历史内容可注入（先聊几句再注入）')
+    return
+  }
+  injectingHistory.value = true
+  try {
+    // 1) 填进输入框（用户可见，与手打一致）
+    chatRef.value?.setInputText?.(INJECT_HISTORY_MSG)
+    await nextTick()
+    // 2) 自动发送（走正常发送路径；带 injectHistory 标记）
+    await handleSend({ content: INJECT_HISTORY_MSG, injectHistory: true })
+    // 3) 清空输入框（正常发送后 ChatInputArea 会自清；这里直呼 handleSend 绕过了它，手动清）
+    chatRef.value?.setInputText?.('')
+    ElMessage.success('已把历史上下文作为附件注入给 DS 网页')
+  } catch (e) {
+    console.error('[inject-history] 失败', e)
+    ElMessage.error('注入历史上下文失败')
+  } finally {
+    injectingHistory.value = false
+  }
 }
 
 /* ===================== 生命周期 ===================== */
@@ -1269,6 +1339,29 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 5px;
   padding: 0 2px;
+}
+
+/* 输入框旁的模型下拉框：与工具行的图标按钮垂直居中对齐 */
+.tb-model {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* 带**文字**的工具按钮（注入历史 / 调试）：不能沿用 `.tb-btn` 的固定 28px 方框
+   —— 那会把它压成竖排单字（用户 2026-10-12 截图反馈）。这里改成自适应宽度、横向排列。 */
+.tb-btn.tb-inject {
+  width: auto;
+  height: 28px;
+  padding: 0 10px;
+  gap: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+
+  /* 图标与文字都随 `currentColor`，hover 一起变色 */
+  :deep(.el-icon) {
+    font-size: 14px;
+  }
 }
 
 .mode-text {

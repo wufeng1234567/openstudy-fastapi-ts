@@ -461,6 +461,9 @@ class AssistantStreamRequest(BaseModel):
     thinking: Optional[bool] = None
     #: 采样温度。不传 = 0.7（聊天默认）；出题类历史口径是 0.8，由前端显式传。
     temperature: Optional[float] = None
+    #: 「注入历史记忆」开关（**仅 ds-free-nb 端有意义**，API 端忽略）：
+    #: True = 把当前会话历史拼进正文并**作为附件投递**给 DS 网页（避免长历史灌输入框卡死）。
+    injectHistory: bool = False
 
 
 @router.post("/assistant/stream")
@@ -509,6 +512,7 @@ async def assistant_stream_with_attachments(
         temperature=req.temperature if req.temperature is not None else 0.7,
         session_id=req.sessionId,
         user_id=user_id,
+        inject_history=bool(req.injectHistory),
     )
     return StreamingResponse(chat_engine.stream_turn(db, turn), media_type="text/plain")
 
@@ -566,6 +570,9 @@ class AgentStreamRequest(BaseModel):
     role: str = ""
     #: **用户自定义智能体 id**（阶段 2 落地）。现仅透传占位，编排层暂不消费。
     agentId: Optional[int] = None
+    #: 「注入历史记忆」开关（**仅 ds-free-nb 端有意义**，API 端忽略）：
+    #: True = 把当前会话历史拼进本轮并把正文作为附件投递给 DS 网页（避免长历史灌输入框卡死）。
+    injectHistory: bool = False
 
 
 @router.post("/agent/stream")
@@ -612,6 +619,7 @@ async def agent_stream(
         # 多智能体协同：官方角色 key（空则由后端规则路由）+ 用户自定义智能体 id（阶段 2）
         role=req.role or "",
         agent_id=req.agentId,
+        inject_history=bool(req.injectHistory),
     )
     return StreamingResponse(
         run_agent_stream(db, agent_req),
@@ -1343,7 +1351,42 @@ async def generate_with_images(
     return StreamingResponse(chat_engine.stream_turn(db, turn), media_type="text/plain")
 
 
-@router.get("/conversation/{session_id}")
+@router.post("/ds-bridge/show")
+async def ds_bridge_show(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """调试：打开/显示本机 ds-free-nb 桥的 DS 浏览器窗口（当前登录态）。
+
+    无头模式下会把无头浏览器切成**有头**（复用磁盘 profile，登录态不丢），
+    便于用户直接看到卡在哪一步（上传附件 / 等回复）。桥地址取 ds-free-nb
+    配置的 base_url（缺省 http://127.0.0.1:9200）。
+    """
+    import httpx
+
+    # 取 ds-free-nb 的 base_url 作为桥地址（去掉结尾的 /v1）
+    base = "http://127.0.0.1:9200"
+    try:
+        cfg = await db_config.resolve_config(db, None, "ds-free-nb", user_id=current_user.get("id"))
+        if cfg and cfg.base_url:
+            base = cfg.base_url.rstrip("/")
+            if base.endswith("/v1"):
+                base = base[:-3]
+    except Exception:  # noqa: BLE001 - 取不到就用默认本机地址
+        pass
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.post(f"{base}/bridge/show")
+            data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+            if not data.get("ok"):
+                return error(data.get("message") or "打开 DS 浏览器失败")
+            return success(data)
+    except Exception as e:  # noqa: BLE001 - 桥没起 / 连不上
+        logger.warning(f"[ds-bridge] show 失败: {e}")
+        return error("DS 桥未运行（请先启动 ds-free-nb 桥）")
+
+
 async def get_conversation(
     session_id: str,
     userId: Optional[int] = Query(None),

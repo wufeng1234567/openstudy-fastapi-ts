@@ -148,12 +148,19 @@
             <template #input-footer>
               <ChatFileUploader v-model="chatAttachments" :disabled="agentMode ? agentGenerating : isGenerating" />
             </template>
-            <!-- 工具栏右侧（发送键左边）：智能体模式下的写操作开关 -->
+            <!-- 工具栏右侧（发送键左边）：仅「DS 免费（无浏览器）」模型显示「注入历史上下文」**按钮**。
+                 一次性操作：点击即把当前会话历史作为 .md 附件发给 DS 网页（并在输入流里说明这是历史），
+                 不是常驻开关。写操作默认自动执行、仅删除需确认，故不再有「自动模式」开关。 -->
             <template #input-toolbar-right>
-              <div v-if="agentMode" class="agent-autoconfirm" title="自动模式：创建/导入直接执行；删除操作始终需要确认">
-                <el-switch v-model="agentAutoConfirm" size="small" :disabled="agentGenerating" />
-                <span class="ac-text">{{ agentAutoConfirm ? '自动执行' : '仅给方案' }}</span>
-              </div>
+              <el-button v-if="showInjectHistory" class="btn-inject-history" size="small" plain
+                :loading="injectingHistory" :disabled="isGenerating || agentGenerating" @click="handleInjectHistory">
+                注入历史上下文
+              </el-button>
+              <!-- 「调试」按钮：仅 DS 桥模型露出。打开当前登录态的 DS 浏览器窗口（有头）。 -->
+              <el-button v-if="showInjectHistory" class="btn-inject-history" size="small" plain
+                :loading="openingBridge" @click="handleOpenDsBridge">
+                调试
+              </el-button>
             </template>
             <template #empty>
               <div class="welcome-card">
@@ -220,6 +227,7 @@ import {
 import { listMyQuestionBank } from '@/api/questionBank/questionBank'
 import { useStreamGeneration } from '@/composables/useStreamGeneration'
 import { useAgentChat, isDsFreeModel } from '@/composables/useAgentChat'
+import { showDsBridge } from '@/api/ai/agent'
 import { ElMessage } from 'element-plus'
 import AiChatStream from '@/components/AiChatStream/index.vue'
 import AiModelSelector from '@/components/AiModelSelector/index.vue'
@@ -250,8 +258,26 @@ const selectedModel = ref('')
 // 与「大屏智能体页」共用同一套引擎（useAgentChat）：普通聊天里也能调工具建题库 / 导题。
 // ds-free（网页版）走前端工具调用循环，api 付费模型走后端循环，定位完全一致。
 const agentMode = ref(true)
-/** 写操作是否自动执行（默认开：智能体自动建题库 / 导题） */
+/** 写操作**默认自动执行**（仅删除需确认）——用户 2026-10-12 定案：取消「自动模式」开关（太占位）。 */
 const agentAutoConfirm = ref(true)
+/** 「注入历史上下文」按钮：仅「DS 免费（无浏览器）」= ds-free-nb 模型露出（API 端自动隐藏）。 */
+const injectingHistory = ref(false)
+/** 当前选中模型是否为 ds-free-nb → 决定是否露出「注入历史上下文」按钮。 */
+const showInjectHistory = computed(() => (selectedModel.value || '').trim() === 'ds-free-nb')
+
+/** 「调试」按钮状态：打开当前登录态的 DS 浏览器窗口（有头），便于排查卡在哪一步。 */
+const openingBridge = ref(false)
+const handleOpenDsBridge = async (): Promise<void> => {
+  if (openingBridge.value) return
+  openingBridge.value = true
+  try {
+    const r = await showDsBridge()
+    if (r.ok) ElMessage.success('已打开 DS 浏览器窗口（保持登录态）')
+    else ElMessage.error(r.message || '打开 DS 浏览器失败（桥未运行？）')
+  } finally {
+    openingBridge.value = false
+  }
+}
 const {
   messages: agentMessages,
   isGenerating: agentGenerating,
@@ -981,9 +1007,9 @@ const removeSession = async (s: any) => {
   }
 }
 
-const handleChatSend = ({ content }: { content: string }) => {
+const handleChatSend = ({ content, injectHistory = false }: { content: string; injectHistory?: boolean }) => {
   if (rejectIfSelfCheckRunning()) return
-  if (agentMode.value) return handleAgentSend(content)
+  if (agentMode.value) return handleAgentSend(content, injectHistory)
   if (stream.isGenerating.value) return
   const text = (content || '').trim()
   // 附件一次性快照：发送后立刻清空输入区的预览，避免重复发送
@@ -1040,7 +1066,7 @@ const handleChatSend = ({ content }: { content: string }) => {
 }
 
 /** 智能体模式发送：与「大屏智能体页」同引擎（ds-free 前端循环 / api 付费后端循环） */
-const handleAgentSend = async (content: string) => {
+const handleAgentSend = async (content: string, injectHistory = false) => {
   if (rejectIfSelfCheckRunning()) return
   if (agentGenerating.value) return
   const text = (content || '').trim()
@@ -1079,7 +1105,9 @@ const handleAgentSend = async (content: string) => {
     model: selectedModel.value || undefined,
     sessionId: currentSessionId.value,
     userId: userId.value,
-    autoConfirm: agentAutoConfirm.value
+    autoConfirm: agentAutoConfirm.value,
+    // 仅 ds-free-nb：把当前会话历史作为附件投递给 DS 网页
+    injectHistory
   })
 
   /**
@@ -1125,6 +1153,41 @@ const handleAgentSend = async (content: string) => {
 /** 对话模式变了（输入区 `@` → 模式卡片）→ 确保有个会话 id，模式切换后能立刻产生归属 */
 const onAgentModeChange = () => {
   if (!currentSessionId.value) currentSessionId.value = `asst_${Date.now()}`
+}
+
+/**
+ * 「注入历史上下文」按钮（**一次性操作**，仅 ds-free-nb）：
+ * 点击 → 把说明文字**自动填进输入框**，随即**自动发送**（走与手打完全相同的发送路径）。
+ * 后端据 injectHistory=true 把当前会话历史拼进正文、并让桥把正文作为 .md 附件投递给 DS 网页。
+ */
+const INJECT_HISTORY_MSG =
+  '以下附件是本会话的历史对话上下文。请阅读该附件，理解我们已经聊过的内容，然后等待我的下一条指令。'
+const handleInjectHistory = async (): Promise<void> => {
+  if (rejectIfSelfCheckRunning()) return
+  if (injectingHistory.value || agentGenerating.value || isGenerating.value) return
+  // 智能体模式看 agentMessages（ref），普通模式看 messages（reactive 数组）
+  const list = agentMode.value ? (agentMessages.value || []) : messages
+  const hasHistory = list.some((m: any) => m.role === 'user' || m.role === 'assistant')
+  if (!currentSessionId.value || !hasHistory) {
+    ElMessage.info('当前会话还没有历史内容可注入（先聊几句再注入）')
+    return
+  }
+  injectingHistory.value = true
+  try {
+    // 1) 填进输入框（用户可见，与手打一致）
+    chatRef.value?.setInputText?.(INJECT_HISTORY_MSG)
+    await nextTick()
+    // 2) 自动发送（走正常发送路径；带 injectHistory 标记）
+    handleChatSend({ content: INJECT_HISTORY_MSG, injectHistory: true })
+    // 3) 清空输入框（正常发送后 ChatInputArea 会自清；这里直呼 handleChatSend 绕过了它，手动清）
+    chatRef.value?.setInputText?.('')
+    ElMessage.success('已把历史上下文作为附件注入给 DS 网页')
+  } catch (e) {
+    console.error('[inject-history] 失败', e)
+    ElMessage.error('注入历史上下文失败')
+  } finally {
+    injectingHistory.value = false
+  }
 }
 
 const sendQuickMessage = (text: string) => {

@@ -5,7 +5,14 @@
       <!-- 空状态插槽 -->
       <slot name="empty" v-if="messages.length === 0 && !isGenerating"></slot>
 
-      <div v-for="(msg, idx) in messages" :key="idx" :class="['message', msg.role, msg.type ? 'msg-' + msg.type : '']">
+      <!-- 更早的历史（默认不渲染，点按钮逐段回溯，避免超长历史把 DOM 撑爆导致卡顿） -->
+      <div v-if="hasEarlier" class="load-earlier">
+        <button type="button" class="load-earlier-btn" @click="loadEarlier">
+          加载更早的消息（还有 {{ messages.length - visibleMessages.length }} 条）
+        </button>
+      </div>
+
+      <div v-for="(msg, idx) in visibleMessages" :key="windowOffset + idx" :class="['message', msg.role, msg.type ? 'msg-' + msg.type : '']">
         <!-- 工具确认卡片 -->
         <div v-if="msg.type === 'tool_confirm'" class="message-content">
           <div class="message-role agent-role">Agent</div>
@@ -547,6 +554,42 @@ const pinToLatest = async () => {
 const pinnedToLatest = ref(false)
 
 /**
+ * 只渲染最近 N 条消息（「加载更早」可加量）
+ *
+ * 症状：历史上下文一多，悬浮助手「打开 / 拖边框」就卡。
+ * 根因：模板 `v-for` 把**整段历史**的 DOM 全渲染出来，条目成千上万时，
+ *      任何一次重排（打开、resize）都要重排全部节点 → 掉帧。
+ * 处理：默认只渲染最近 `RENDER_CHUNK` 条，向上「加载更早」每次再加一段。
+ *      绝大多数场景用户只看最近几条，因此几乎无感。
+ */
+const RENDER_CHUNK = 40
+const renderLimit = ref(RENDER_CHUNK)
+/** 是否还有更早的消息没渲染出来 */
+const hasEarlier = computed(() => props.messages.length > renderLimit.value)
+/** 实际参与渲染的消息子集（最近 renderLimit 条） */
+const visibleMessages = computed(() => {
+  const all = props.messages
+  if (all.length <= renderLimit.value) return all
+  return all.slice(all.length - renderLimit.value)
+})
+/** 窗口起点在完整数组里的绝对下标（`:key` 用它保证条目身份稳定，避免复用错位） */
+const windowOffset = computed(() => Math.max(0, props.messages.length - renderLimit.value))
+/** 点「加载更早」：多渲染一段；保持滚动位置不跳（在一次 nextTick 内补偿高度差） */
+const loadEarlier = async () => {
+  const el = messagesRef.value as HTMLElement | null
+  const beforeH = el ? el.scrollHeight : 0
+  const beforeTop = el ? el.scrollTop : 0
+  renderLimit.value += RENDER_CHUNK
+  await nextTick()
+  const e2 = messagesRef.value as HTMLElement | null
+  if (e2) e2.scrollTop = e2.scrollHeight - beforeH + beforeTop
+}
+/** 清单变化（切会话 / 清空）：把窗口复位，避免一直带着上一条会话的渲染量 */
+watch(() => props.messages.length, (n) => {
+  if (n === 0 || n <= RENDER_CHUNK) renderLimit.value = RENDER_CHUNK
+})
+
+/**
  * 离开本页时留下的滚动现场（`null` = 还没离开过本页）
  *
  * ⚠️ 存的是**滚动事件里实时记下来的**值，不是 `onDeactivated` 当刻读的 DOM：
@@ -701,6 +744,29 @@ defineExpose({ scrollToBottom, messagesRef, setInputText })
 .message {
   margin-bottom: 16px;
   display: flex;
+}
+
+/* 「加载更早的消息」：贴顶居中，样式低调，不抢正文 */
+.load-earlier {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.load-earlier-btn {
+  border: 1px solid #dcdfe6;
+  background: #fff;
+  color: #606266;
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+
+  &:hover {
+    border-color: #409eff;
+    color: #409eff;
+  }
 }
 
 .message.user {

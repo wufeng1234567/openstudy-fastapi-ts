@@ -311,6 +311,8 @@ export interface AgentStreamOptions {
    * 用它的人设提示词 + 工具白名单（+ 可选绑定模型）。见 `/ai/agent/configs`。
    */
   agentId?: number
+  /** 「注入历史记忆」开关（仅 ds-free-nb 有意义）：历史作为附件投递给 DS 网页，避免长历史灌输入框卡死。 */
+  injectHistory?: boolean
   signal?: AbortSignal
 }
 
@@ -365,6 +367,32 @@ export async function confirmAgentTool(confirmId: string, approved: boolean): Pr
   } catch (e) {
     console.warn('[agent] 确认应答失败', e)
     return false
+  }
+}
+
+/**
+ * 调试：打开/显示本机 ds-free-nb 桥的 DS 浏览器窗口（当前登录态）。
+ * 返回 true=已打开；false=失败（桥未运行等）。
+ */
+export async function showDsBridge(): Promise<{ ok: boolean; message?: string }> {
+  try {
+    const response = await fetch(`${import.meta.env.VITE_APP_BASE_API}/ai/ds-bridge/show`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + getToken(),
+        'Content-Type': 'application/json'
+      }
+    })
+    const data = await response.json().catch(() => null)
+    // 后端统一信封：成功 code=200，失败走 error()（code!=200）
+    const code = data && (data.code ?? data.status)
+    if (code && code !== 200) {
+      return { ok: false, message: (data && data.msg) || (data && data.message) || '打开失败' }
+    }
+    return { ok: true }
+  } catch (e) {
+    console.warn('[ds-bridge] show 失败', e)
+    return { ok: false, message: 'DS 桥未运行' }
   }
 }
 
@@ -559,7 +587,9 @@ export async function postAgentStream(
         // 多智能体协同：官方角色 key（空 = 后端规则路由）+ 用户自定义智能体 id（优先）。
         // `agentId` 用 `|| undefined` 去掉 0/空，避免被后端当成「指定了 0 号」。
         role: opts.role || '',
-        agentId: opts.agentId || undefined
+        agentId: opts.agentId || undefined,
+        // 「注入历史记忆」开关（仅 ds-free-nb 有意义，后端按 provider 收口）
+        injectHistory: opts.injectHistory === true
       }),
       signal: opts.signal
     })

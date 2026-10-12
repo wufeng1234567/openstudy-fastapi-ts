@@ -2,27 +2,65 @@
 setlocal enabledelayedexpansion
 set SCRIPT_DIR=%~dp0
 set BACKEND_PORT=9101
+set FRONTEND_PORT=3167
+set BRIDGE_PORT=9200
 
 call :hdr
 echo.
 
-call :y "[Stage 1/2] Starting FastAPI backend..."
-start "OpenStudy FastAPI" cmd /k "%SCRIPT_DIR%start-fastapi.bat"
+rem ============================================================
+rem Idempotent guard: if a port is already LISTENING, treat the
+rem service as "already running" and SKIP it (do not restart).
+rem Otherwise start-fastapi/start-vue would taskkill the port
+rem owner and kill a service currently in use.
+rem Port check uses netstat (pure cmd, no quoting hell).
+rem ============================================================
 
-call :y "[Stage 2/2] Starting Vue3 frontend..."
-start "OpenStudy Vue3" cmd /k "%SCRIPT_DIR%start-vue.bat"
+call :portinuse %BACKEND_PORT%
+if "!INUSE!"=="1" (
+    echo [SKIP] FastAPI backend already running on port %BACKEND_PORT%
+) else (
+    echo [START] FastAPI backend...
+    start "OpenStudy FastAPI" cmd /k "%SCRIPT_DIR%start-fastapi.bat"
+)
+
+call :portinuse %FRONTEND_PORT%
+if "!INUSE!"=="1" (
+    echo [SKIP] Vue3 frontend already running on port %FRONTEND_PORT%
+) else (
+    echo [START] Vue3 frontend ^(DS bridge auto-starts with it^)...
+    start "OpenStudy Vue3" cmd /k "%SCRIPT_DIR%start-vue.bat"
+)
+
+call :portinuse %BRIDGE_PORT%
+if "!INUSE!"=="1" (
+    echo [SKIP] DS bridge already running on port %BRIDGE_PORT% ^(will be reused^)
+) else (
+    echo [INFO] DS bridge will auto-start with the frontend ^(port %BRIDGE_PORT%^).
+)
 
 echo.
 call :hdr2
 echo.
 powershell -Command "Write-Host '  Backend API:   http://localhost:%BACKEND_PORT%'"
 powershell -Command "Write-Host '  Backend Docs:  http://localhost:%BACKEND_PORT%/docs'"
-powershell -Command "Write-Host '  Frontend:      http://localhost:3167'"
+powershell -Command "Write-Host '  Frontend:      http://localhost:%FRONTEND_PORT%'"
+powershell -Command "Write-Host '  DS Bridge:     http://localhost:%BRIDGE_PORT%  (model ds-free-nb)'"
 echo.
-powershell -Command "Write-Host '  Each service runs in its own window'"
-powershell -Command "Write-Host '  Close window to stop service'"
+powershell -Command "Write-Host '  DS bridge auto-starts with the frontend (log prefix [ds-bridge]).'"
+powershell -Command "Write-Host '  Already-running services are skipped (idempotent launcher).'"
+echo.
+powershell -Command "Write-Host '  Each service runs in its own window; close it to stop that service.'"
 echo.
 pause
+goto :eof
+
+rem ============================================================
+rem :portinuse <port>  -> sets INUSE=1 (LISTENING) or 0 (free)
+rem ============================================================
+:portinuse
+set "INUSE=0"
+for /f "tokens=*" %%a in ('netstat -ano ^| findstr /R /C:":%1 .*LISTENING"') do set "INUSE=1"
 goto :eof
 
 :hdr
@@ -33,22 +71,6 @@ goto :eof
 
 :hdr2
 powershell -Command "Write-Host '==========================================' -ForegroundColor Cyan"
-powershell -Command "Write-Host '  All services started!' -ForegroundColor Green"
+powershell -Command "Write-Host '  Launcher done!' -ForegroundColor Green"
 powershell -Command "Write-Host '==========================================' -ForegroundColor Cyan"
-goto :eof
-
-:r
-powershell -Command "Write-Host '%~1' -ForegroundColor Red"
-goto :eof
-
-:g
-powershell -Command "Write-Host '%~1' -ForegroundColor Green"
-goto :eof
-
-:y
-powershell -Command "Write-Host '%~1' -ForegroundColor Yellow"
-goto :eof
-
-:cy
-powershell -Command "Write-Host '%~1' -ForegroundColor Cyan"
 goto :eof

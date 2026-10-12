@@ -304,6 +304,8 @@ def _build_llm(
     temperature: float = 0.7,
     max_tokens: int = 8000,
     thinking: Any = None,
+    files: Optional[list] = None,
+    as_attachment: bool = False,
 ) -> ChatOpenAI:
     """根据表配置动态构建 OpenAI 兼容客户端（支持深度思考开关）
 
@@ -335,6 +337,21 @@ def _build_llm(
         if is_deepseek:
             extra_body["thinking"] = {"type": "disabled"}
 
+    # 文件附件：**只发给本机 DS 网页桥**（provider=ds-free-nb）。
+    # 桥收到 top-level `files` 后会把文件原样上传到 chat.deepseek.com，由 DS 网页自己解析
+    #（比后端 file_parser 更准）。其它 provider（OpenAI/DeepSeek 官方等）不认识该字段，
+    # 若也塞进去可能被拒，故**按 provider 收口**。
+    # ⚠️ langchain 会把 extra_body 合并到请求 JSON 的**顶层**，桥的 extractFileAttachments 读的正是顶层 `files`。
+    _is_bridge = (config.provider or "").strip().lower() == "ds-free-nb"
+    if files and _is_bridge:
+        extra_body["files"] = files
+        logger.info(f"[db_config] 附加文件附件 {len(files)} 个 → ds-free-nb 桥")
+    # 是否把**正文**投递为附件（用户开了「注入历史记忆」开关时；见 ChatTurn.inject_history）。
+    # 桥据此把正文写成 .md 附件上传，输入框只留短指令，避免长历史灌框卡死。
+    if as_attachment and _is_bridge:
+        extra_body["asAttachment"] = True
+        logger.info("[db_config] 本轮正文投递为附件（asAttachment=true）")
+
     # 缺 Key 时提前抛「人话」错误。
     # 否则 openai SDK 会抛英文的 "The api_key client option must be set either by
     # passing api_key to the client or by setting the OPENAI_API_KEY environment
@@ -355,7 +372,12 @@ def _build_llm(
     )
     if extra_body:
         kwargs["extra_body"] = extra_body
-        logger.info(f"[db_config] thinking resolved={resolved}, extra_body={extra_body}")
+        # ⚠️ **绝不**打印 extra_body 的 value：`files` 里含整份文档的 base64，
+        #    原样 log 会刷爆日志（用户 2026-10-12 报）。只打 key 摘要。
+        logger.info(
+            f"[db_config] thinking resolved={resolved}, extra_body keys={list(extra_body.keys())}"
+            + (f" (+files×{len(extra_body['files'])})" if "files" in extra_body else "")
+        )
     return ChatOpenAI(**kwargs)
 
 
@@ -368,11 +390,16 @@ async def stream_with_config(
     thinking: Optional[bool] = None,
     model: Optional[str] = None,
     user_id: Optional[int] = None,
+    files: Optional[list] = None,
+    as_attachment: bool = False,
 ) -> AsyncIterator[str]:
     """流式输出：优先使用 sys_ai_config 表配置；表无配置时回退内置 dynamic_ai 路由
 
     model / provider 都为空时使用默认；model 优先于 provider。
     user_id 决定可见范围（系统模型 + 自己的自定义模型）。
+    files：**原始文件附件** `[{name, mimeType, base64}]`，仅对 ds-free-nb 桥生效
+           （桥把它们原样上传到 DS 网页，由网页解析）。
+    as_attachment：正文是否投递为附件（仅 ds-free-nb），见 ChatTurn.inject_history。
     注意：这里**只输出正式回答（content）**，深度思考的 reasoning_content 会被丢弃，
     前端用「思考中」动画来占位即可。
     """
@@ -390,7 +417,7 @@ async def stream_with_config(
             "[db_config] Using table config: config_id={} provider={} model={} has_key={}",
             config.config_id, config.provider, config.model, has_credentials(config),
         )
-        llm = _build_llm(config, temperature, max_tokens, thinking)
+        llm = _build_llm(config, temperature, max_tokens, thinking, files=files, as_attachment=as_attachment)
         async for chunk in llm.astream(_to_lc_messages(messages)):
             # 只转发正式回答；reasoning_content 不输出
             if chunk.content:
@@ -511,6 +538,8 @@ async def build_agent_llm(
     temperature: float = 0.7,
     max_tokens: int = 8000,
     user_id: Optional[int] = None,
+    files: Optional[list] = None,
+    as_attachment: bool = False,
 ):
     """构建 Agent 用的 ChatOpenAI（**不主动关闭深度思考**）
 
@@ -564,7 +593,7 @@ async def build_agent_llm(
         thinking_arg = True if has_effort else _OMIT_THINKING
 
     llm = _build_llm(
-        config, temperature=temperature, max_tokens=max_tokens, thinking=thinking_arg
+        config, temperature=temperature, max_tokens=max_tokens, thinking=thinking_arg, files=files, as_attachment=as_attachment
     )
     logger.info(
         "[db_config] Agent 客户端: config_id={} provider={} model={} thinking={}"

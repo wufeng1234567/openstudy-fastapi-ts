@@ -78,6 +78,11 @@ class ChatTurn:
     system_prompt: Optional[str] = None
     #: 场景模板变量（count / knowledge_point / requirement / question …）
     variables: Dict[str, Any] = field(default_factory=dict)
+    #: **是否把本轮正文投递为附件**（用户 2026-10-12 定案，仅 ds-free-nb 用）：
+    #: 前端「注入历史记忆」开关打开时为 True → 后端把当前会话历史拼进正文，
+    #: 并在请求里带 `asAttachment=true`，桥据此把正文写成 .md 附件上传（输入框只留短指令），
+    #: 避免长历史灌进 DS 输入框导致网页卡死。非 ds-free-nb 端忽略此字段。
+    inject_history: bool = False
 
     @property
     def persist(self) -> bool:
@@ -240,6 +245,40 @@ def _attachment_field(item: Any, key: str, default: str = "") -> str:
     return value if isinstance(value, str) else (default if value is None else str(value))
 
 
+async def _targets_ds_bridge(db: AsyncSession, turn: "ChatTurn") -> bool:
+    """本轮解析出的配置是不是「本机 DS 网页桥」（provider=ds-free-nb）。
+
+    用途：文档附件对桥要**原样上传**（DS 网页自己解析），不走路由后端的
+    `extract_attachments`（把文档拆成正文文本 + 内嵌图片）——否则重复投递、
+    且 DS 侧要处理超大文本 + 多图，容易长时间无响应。
+
+    解析不出配置（异常/无配置）时返回 False（保持旧行为，不影响其它 provider）。
+    """
+    try:
+        cfg = await db_config.resolve_config(db, turn.provider, turn.model, user_id=turn.user_id)
+        return bool(cfg and (cfg.provider or "").strip().lower() == "ds-free-nb")
+    except Exception:  # noqa: BLE001 - 判断失败按"不是桥"处理，绝不因此影响主流程
+        return False
+
+
+def _extract_raw_files(files: List[Any]) -> List[dict]:
+    """把本轮文档附件转成「原样上传」载荷 `[{name, mimeType, base64}]`。
+
+    与 `extract_attachments`（解析成文本）不同：这里是**文件本体**，供 ds-free-nb 桥
+    上传到 DS 网页，由网页自己解析（PDF/Word 等原生效果更好）。
+    只保留「有 name 且有 base64」的项；base64 支持裸串或 data URL（桥会再归一）。
+    """
+    out: List[dict] = []
+    for item in files or []:
+        name = (_attachment_field(item, "name") or "").strip()
+        b64 = _attachment_field(item, "base64")
+        mime = (_attachment_field(item, "type") or "").strip()
+        if not name or not b64:
+            continue
+        out.append({"name": name, "mimeType": mime or "application/octet-stream", "base64": b64})
+    return out
+
+
 def extract_attachments(files: List[Any], image_offset: int = 0) -> tuple:
     """文档附件 → (可喂给模型的文本, 文档内嵌图片 data URL, 告警)
 
@@ -362,6 +401,12 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
     user_id = turn.user_id or 0
     session_id = (turn.session_id or "").strip()
 
+    # 目标是不是「本机 DS 网页桥」（provider=ds-free-nb）？
+    # 是的话：**文档本体直接上传给 DS 网页**（由它原生解析 Word/PDF），后端**不再**
+    # 把文档拆成「正文文本 + 内嵌图片」——否则会重复投递、且 DS 要处理 25k 字+13 张图，
+    # 表现为长时间无响应（用户 2026-10-12 实测 180s 超时）。
+    send_files_to_bridge = await _targets_ds_bridge(db, turn)
+
     # ① 附件 → 正文文本 + 文档内嵌图片
     #    编号顺序必须是「用户上传的图片在前、文档插图在后」，
     #    所以 offset 用筛过的用户图片数量（不能直接用 len(turn.images)，里面可能有空串）
@@ -369,9 +414,13 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
     #    ⚠️ 丢到线程池里执行：文档解析是同步的，老版 .doc 还会借 Word COM 转换
     #       （1~3s，最坏 CONVERT_TIMEOUT_SECONDS）。直接在事件循环里跑会把整个后端冻住。
     user_images = [u for u in (turn.images or []) if u]
-    file_text, doc_images, warnings = await asyncio.to_thread(
-        extract_attachments, turn.files, len(user_images)
-    )
+    if send_files_to_bridge and turn.files:
+        # 走桥：文档本体原样上传，后端不解析（避免肢解成文本+图片）
+        file_text, doc_images, warnings = "", [], []
+    else:
+        file_text, doc_images, warnings = await asyncio.to_thread(
+            extract_attachments, turn.files, len(user_images)
+        )
     # ⚠️ 归一成 data URL：题目解析会把题干里 `<img src="/profile/upload/...">` 的相对
     #    路径直接作为 images 传来；OpenAI 兼容多模态端点不认相对路径（会 400）。
     #    data: / http(s) 的原样保留，相对路径读盘转 base64。
@@ -381,6 +430,11 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
     typed = (turn.prompt or "").strip()
     prompt_text = "\n\n".join(p for p in (typed, file_text) if p)
     if not prompt_text and image_urls:
+        prompt_text = DEFAULT_ATTACHMENT_PROMPT
+    # ⚠️ 走桥（ds-free-nb）时文档**原样上传给 DS 网页**、后端不解析 → `file_text` 恒空。
+    #    此时「只传了附件、正文为空」不能算"没有可发送内容"：附件本身就是内容。
+    _has_bridge_files = bool(send_files_to_bridge and turn.files)
+    if not prompt_text and _has_bridge_files:
         prompt_text = DEFAULT_ATTACHMENT_PROMPT
     # 「有没有内容」要连模板变量一起判断：出题类接口只传 variables
     # （knowledge_point / requirement / question），不传正文是正常用法。
@@ -396,9 +450,17 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
             return
 
     # ③ 历史：先取上下文、再写本轮提问（反过来会把当前问题重复算进上下文）
+    #
+    # ⚠️ ds-free-nb（本机无头桥）**特殊**：默认**不**注入历史——DS 网页自己维护会话上下文，
+    #    长历史灌进输入框会让网页卡死。只有在用户显式打开「注入历史记忆」开关
+    #    （`turn.inject_history=True`）时，才把历史拼进正文，**并标记走附件投递**。
+    #    其它 provider（API 端）保持原行为：有 session 就注入上下文。
+    to_bridge = send_files_to_bridge
+    inject_ctx = (not to_bridge) or bool(turn.inject_history)
     context = ""
     if turn.persist:
-        context = await conversation_service.build_context_prompt(user_id, session_id)
+        if inject_ctx:
+            context = await conversation_service.build_context_prompt(user_id, session_id)
         history_text = typed or conversation_service.ATTACHMENT_PLACEHOLDER
         await conversation_service.save_message(
             user_id,
@@ -407,6 +469,8 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
             history_text,
             attachments=[a for a in (turn.attachments or []) if a] or None,
         )
+    # 历史注入是否走附件：仅当目标是桥、且用户开了开关、且确有历史可注入
+    as_attachment = bool(to_bridge and turn.inject_history and context)
 
     # ④ 按场景组装 messages（新增场景只改 prompts.py，不动这里）
     raw_messages = prompts.build_scene_messages(
@@ -441,6 +505,16 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
     # ⑦ 流式下发；成功与失败两条路径都保证 assistant 行成对落库
     extra_note = "；".join(warnings)
     full_response = ""
+    # 原始文件附件（供 ds-free-nb 桥原样上传到 DS 网页，由网页自己解析）：
+    # 后端 file_parser 已把正文并进了 full_text（保底），这里**额外**把文件本体也带上，
+    # 让 DS 网页能做原生解析（PDF/Word 等效果更好）。
+    raw_files = _extract_raw_files(turn.files)
+    logger.info(
+        "[chat_engine] 本轮附件: turn.files={} 个 → raw_files={} 个 ({})",
+        len(turn.files or []),
+        len(raw_files),
+        ", ".join(f"{f['name']}({f['mimeType']},{len(f['base64'])})" for f in raw_files) or "-",
+    )
     try:
         async for chunk in db_config.stream_with_config(
             db,
@@ -452,6 +526,8 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
             # ⚠️ 必须带上，否则「个人中心 → 我的模型」里加的自定义模型永远选不中
             #   （无 user_id = 只可见系统行）
             user_id=turn.user_id,
+            files=raw_files,
+            as_attachment=as_attachment,
         ):
             full_response += chunk
             yield chunk
