@@ -73,6 +73,16 @@ def main():
     check("X9", "非图片扩展名→空串", stored_image_to_data_url("/profile/upload/x.txt") == "")
     check("X10", "路径穿越被拒→空串", stored_image_to_data_url("/profile/upload/../../etc/passwd") == "")
 
+    # X10b：⚠️ 用户实测 bug —— 开发环境存在 `/dev-api/profile/upload/...` 前缀
+    #       （VITE_APP_BASE_API=/dev-api），旧实现只剥 `/profile/` 前缀 → 读盘路径错 → 图片被丢。
+    #       同时覆盖 staging 的 `/stage-api` 与绝对域名前缀。
+    du_dev = stored_image_to_data_url("/dev-api/profile/upload/2026/01/01/" + png_name)
+    check("X10b", "/dev-api 前缀 → 读盘转 data URL", du_dev.startswith("data:image/png;base64,") and len(du_dev) > 30, du_dev[:40])
+    du_stage = stored_image_to_data_url("/stage-api/profile/upload/2026/01/01/" + png_name)
+    check("X10c", "/stage-api 前缀 → 读盘转 data URL", du_stage.startswith("data:image/png;base64,"), du_stage[:40])
+    du_abs = stored_image_to_data_url("http://localhost:9101/profile/upload/2026/01/01/" + png_name)
+    check("X10d", "绝对 http 原样放行（不读盘）", du_abs == "http://localhost:9101/profile/upload/2026/01/01/" + png_name, du_abs[:40])
+
     # 3) normalize：丢弃空项，保留有效项
     norm = normalize_image_urls([rel_url, "", "/profile/upload/nope.png", "https://x.com/a.png"])
     check("X11", "normalize 丢空留有效(2 项)", len(norm) == 2 and norm[0].startswith("data:image/png") and norm[1] == "https://x.com/a.png", str([n[:20] for n in norm]))

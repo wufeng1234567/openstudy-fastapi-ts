@@ -222,12 +222,17 @@ const startAnalysis = async () => {
     // ✅ 收集图片：主题干 + 材料 + 各小题题干里内嵌的 <img>（旧实现 getPlainText 会把图整段丢掉）
     const images = collectAnalysisImages()
 
+    // 文本里去掉 <img> 标签本身（图片已作为多模态块单独发送）。
+    // 否则模型会收到 `<img src="...">` 这种字面标签，容易误判成「我看到了图片但读不了」
+    // （用户 2026-10-12 实测的原话）。
+    const questionText = stripImgTags(props.question)
+
     // 调用流式 API
     if (deepThink.value) {
         reasoningContent.value = ''
     }
     analyzeQuestionStream(
-        props.question,
+        questionText,
         props.questionType,
         optionsStr,
         answerStr,
@@ -261,6 +266,16 @@ const startAnalysis = async () => {
         images,
         subQuestionsText
     )
+}
+
+/**
+ * 去掉文本里的 `<img ...>` 标签（图片已作为多模态块单独发送，正文里留着字面标签
+ * 会让模型误以为「只拿到了图片链接、看不到图」）。
+ * 其它标签（<p>/<strong> 等）保留原样，交由后端提示词处理。
+ */
+function stripImgTags(html: any): string {
+    if (!html || typeof html !== 'string') return typeof html === 'string' ? html : ''
+    return html.replace(/<img\b[^>]*>/gi, '').trim()
 }
 
 /**

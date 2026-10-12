@@ -146,11 +146,24 @@ def stored_image_to_data_url(url: str) -> str:
     if lower.startswith("data:") or lower.startswith("http://") or lower.startswith("https://"):
         return value
 
-    # 只处理本站 /profile/ 下的相对路径
+    # 归一成本站上传目录下的相对路径。
+    # ⚠️ 存库的 src 通常是 `/profile/upload/...`，但前端在开发/预发环境下会把
+    #    `VITE_APP_BASE_API` 前缀拼进去（dev=`/dev-api`、staging=`/stage-api`），
+    #    于是题干里可能出现 `/dev-api/profile/upload/...`（用户 2026-10-12 实测：
+    #    AI 说「图片无法识别」正是这个前缀导致读盘路径错、图片被丢弃）。
+    #    这里统一**截取到 `/profile/` 之后**，前缀无论是 `/dev-api` / `/stage-api`
+    #    / 绝对域名都兼容。
     rel = value
-    if rel.startswith("/profile/"):
-        rel = rel[len("/profile/"):]
-    rel = rel.lstrip("/").replace("\\", "/")
+    marker = "/profile/"
+    idx = rel.find(marker)
+    if idx >= 0:
+        rel = rel[idx + len(marker):]
+    else:
+        # 兼容没有 `/profile/` 前缀、直接写成 `profile/upload/...` 或 `upload/...` 的形态
+        rel = rel.lstrip("/")
+        if rel.startswith("profile/"):
+            rel = rel[len("profile/"):]
+    rel = rel.replace("\\", "/")
     if not rel or ".." in rel:
         return ""
 

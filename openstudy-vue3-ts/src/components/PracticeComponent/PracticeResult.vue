@@ -249,15 +249,19 @@ async function requestAiAnalysis(index: number) {
 
   aiLoadingMap[index] = true
   try {
-    const questionText = q.questionText || ''
+    const rawQuestionText = q.questionText || ''
+    // 文本里去掉 <img> 标签本身（图片已作为多模态块单独发送；留着字面标签会让模型
+    // 误以为「只拿到了图片链接、看不到图」，用户 2026-10-12 实测）。
+    const questionText = rawQuestionText.replace(/<img\b[^>]*>/gi, '').trim()
     const questionType = getTypeName(q.questionType)
     const options = q.options && q.options.length ? JSON.stringify(q.options) : ''
     const correctAnswer = q.correctAnswer !== undefined ? String(q.correctAnswer) : ''
 
     // 组合题小题：拼成文本；并汇总全部图片（主题干 + 小题题干/选项里的 <img>）
+    // ⚠️ 抽图必须用**原始** rawQuestionText（去掉 <img> 后就抽不到 src 了）。
     const subs: any[] = Array.isArray((q as any).subQuestions) ? (q as any).subQuestions : []
     const subQuestionsText = buildSubQuestionsText(subs)
-    const images = collectImages([questionText, ...subs.flatMap((sq: any) => [
+    const images = collectImages([rawQuestionText, ...subs.flatMap((sq: any) => [
       sq?.question || sq?.questionText || sq?.question_text,
       ...(Array.isArray(sq?.options) ? sq.options : [])
     ])])
