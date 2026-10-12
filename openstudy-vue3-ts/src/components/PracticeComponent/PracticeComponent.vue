@@ -128,6 +128,7 @@
       :question-id="analysisTargetQuestion?.id" :question-type="getQuestionTypeName(analysisTargetQuestion?.type)"
       :options="formatOptionsForAnalysis(analysisTargetQuestion)"
       :correct-answer="analysisTargetQuestion?.correctAnswer" :cached-content="currentAnalysisContent"
+      :sub-questions="analysisTargetQuestion?.subQuestions || []"
       :is-generating="isAnalysisGenerating" @close="handleAnalysisClose"
       @update-cache="(content) => updateAnalysisCache(analysisTargetQuestion?.id, content)"
       @generating="setAnalysisGenerating" />

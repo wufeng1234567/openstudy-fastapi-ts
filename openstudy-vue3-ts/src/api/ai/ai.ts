@@ -1266,7 +1266,9 @@ export async function analyzeQuestionStream(
   model?: string,
   userId?: string | number,
   deepThink?: boolean,
-  onReasoningChunk?: (reasoning: string) => void
+  onReasoningChunk?: (reasoning: string) => void,
+  images?: string[],
+  subQuestions?: string
 ): Promise<void> {
   // ---- deepseek-free：走浏览器扩展（DeepSeek 官网 Web 版），完全不经过后端 ----
   if (model === 'deepseek-free') {
@@ -1279,6 +1281,15 @@ export async function analyzeQuestionStream(
     if (questionType) parts.push('', `题型：${questionType}`)
     if (options) parts.push('', '## 选项', options)
     if (correctAnswer) parts.push('', '## 正确答案', correctAnswer)
+    if (subQuestions) parts.push('', '## 小题', subQuestions)
+    if (images && images.length) {
+      // DS 网页端扩展链路无法传多模态图片，提示用户改为官方/中转站模型
+      parts.push(
+        '',
+        `> 注：本题含 ${images.length} 张图片，当前「DS 网页版」通道无法识别图片；` +
+        '如需解析图片请切换到支持视觉的官方 / 中转站模型。'
+      )
+    }
     parts.push(
       '',
       '## 输出要求',
@@ -1310,6 +1321,8 @@ export async function analyzeQuestionStream(
   // 统一走后端 chat_engine（scene=analysis）：5 段式输出结构由后端
   // `prompts.py` 的 ANALYSIS_OUTPUT_SPEC 提供，这里只负责搬运参数。
   // deepThink → thinking：思考过程不下发，前端用「思考中」动画占位。
+  // images：题干 / 材料 / 小题里内嵌的图片（多为 `/profile/upload/...` 相对路径，
+  //         由后端 `chat_engine.normalize_image_urls` 读盘转成 data URL 再喂多模态模型）。
   await postAiStream(
     {
       scene: 'analysis',
@@ -1318,8 +1331,10 @@ export async function analyzeQuestionStream(
         question,
         question_type: questionType,
         options,
-        correct_answer: correctAnswer
+        correct_answer: correctAnswer,
+        sub_questions: subQuestions
       },
+      images,
       model,
       userId,
       thinking: deepThink

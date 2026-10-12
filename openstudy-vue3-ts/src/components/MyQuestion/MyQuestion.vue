@@ -5,6 +5,7 @@
     <AiAnalysisDialog v-if="showAiAnalysis" :question="currentAiQuestion.text" :question-id="currentAiQuestion.id"
       :question-type="currentAiQuestion.type" :options="currentAiQuestion.options"
       :correct-answer="currentAiQuestion.answer" :cached-content="currentAiQuestion.cachedContent"
+      :sub-questions="currentAiQuestion.subQuestions"
       @close="showAiAnalysis = false" @update-cache="updateAiCache" />
 
     <!-- 题目详情弹框 -->
@@ -322,7 +323,8 @@ const currentAiQuestion = ref({
   type: '',
   options: '',
   answer: '',
-  cachedContent: ''
+  cachedContent: '',
+  subQuestions: [] as any[]
 })
 
 const emit = defineEmits([
@@ -1051,10 +1053,28 @@ const openAiAnalysis = (questionDetail) => {
     type: questionType,
     options: typeof options === 'string' ? options : JSON.stringify(options),
     answer: answer as string,
-    cachedContent: cachedContent
+    cachedContent: cachedContent,
+    // 组合题小题（阅读理解/完形填空）：供 AI 解析时连同小题图一并发送
+    subQuestions: normalizeAiSubQuestions(source)
   }
 
   showAiAnalysis.value = true
+}
+
+/**
+ * 归一组合题小题为 AI 解析所需形状 `[{question, options, correctAnswer, type}]`。
+ * 兼容两种来源：后端详情(subQuestions 里是 questionText/answer)
+ * 与 transformQuestionForDisplay 产物(question/correctAnswer)。
+ */
+function normalizeAiSubQuestions(source: any): any[] {
+  const subs = source?.subQuestions || source?.questionSubList || []
+  if (!Array.isArray(subs)) return []
+  return subs.map((sq: any) => ({
+    question: sq.question || sq.questionText || sq.question_text || '',
+    options: sq.options ?? [],
+    correctAnswer: sq.correctAnswer ?? sq.answer,
+    type: sq.type || sq.questionType || sq.question_type
+  }))
 }
 
 // 获取题型名称（同时接受数字题型与转换器产出的字符串题型）

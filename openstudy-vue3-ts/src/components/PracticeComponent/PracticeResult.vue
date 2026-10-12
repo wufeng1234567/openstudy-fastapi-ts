@@ -138,6 +138,7 @@ import type { PropType } from 'vue'
 import { InfoFilled, MagicStick, ArrowLeft } from '@element-plus/icons-vue'
 import { analyzeQuestionStream } from '@/api/ai/ai'
 import { splitAiSegments, renderAiMarkdown } from '@/utils/aiMarkdown'
+import { getPlainText, extractImageUrls } from '@/utils/questionUtils'
 
 interface ResultQuestion {
   id?: number | string
@@ -253,6 +254,14 @@ async function requestAiAnalysis(index: number) {
     const options = q.options && q.options.length ? JSON.stringify(q.options) : ''
     const correctAnswer = q.correctAnswer !== undefined ? String(q.correctAnswer) : ''
 
+    // 组合题小题：拼成文本；并汇总全部图片（主题干 + 小题题干/选项里的 <img>）
+    const subs: any[] = Array.isArray((q as any).subQuestions) ? (q as any).subQuestions : []
+    const subQuestionsText = buildSubQuestionsText(subs)
+    const images = collectImages([questionText, ...subs.flatMap((sq: any) => [
+      sq?.question || sq?.questionText || sq?.question_text,
+      ...(Array.isArray(sq?.options) ? sq.options : [])
+    ])])
+
     await analyzeQuestionStream(
       questionText,
       questionType,
@@ -270,13 +279,56 @@ async function requestAiAnalysis(index: number) {
         console.error('AI 解析失败:', err)
         aiResults[index] = 'AI 解析失败，请稍后重试'
         aiLoadingMap[index] = false
-      }
+      },
+      undefined,
+      undefined,
+      false,
+      undefined,
+      images,
+      subQuestionsText
     )
   } catch (e) {
     console.error('AI 解析异常:', e)
     aiResults[index] = 'AI 解析失败，请稍后重试'
     aiLoadingMap[index] = false
   }
+}
+
+/** 组合题小题 → 给 AI 的文本（题干/选项/答案） */
+function buildSubQuestionsText(subs: any[]): string {
+  if (!Array.isArray(subs) || subs.length === 0) return ''
+  return subs
+    .map((sq: any, idx: number) => {
+      const stem = getPlainText(sq?.question || sq?.questionText || sq?.question_text || '')
+      let block = `第${idx + 1}小题：${stem}`
+      const opts = sq?.options
+      if (Array.isArray(opts) && opts.length) {
+        block += '\n' + opts.map((o: any, i: number) => `${String.fromCharCode(65 + i)}. ${getPlainText(o)}`).join('\n')
+      }
+      const ans = sq?.correctAnswer ?? sq?.answer
+      if (ans !== undefined && ans !== null && ans !== '') {
+        const ansText = Array.isArray(ans)
+          ? ans.map((a: any) => (typeof a === 'number' ? String.fromCharCode(65 + a) : a)).join(', ')
+          : (typeof ans === 'number' ? String.fromCharCode(65 + ans) : String(ans))
+        block += `\n答案：${ansText}`
+      }
+      return block
+    })
+    .join('\n\n')
+}
+
+/** 从一组 HTML 片段里按序去重抽取所有 `<img>` 图片 URL */
+function collectImages(parts: any[]): string[] {
+  const all: string[] = []
+  const seen = new Set<string>()
+  for (const part of parts) {
+    for (const u of extractImageUrls(part)) {
+      if (!u || seen.has(u)) continue
+      seen.add(u)
+      all.push(u)
+    }
+  }
+  return all
 }
 </script>
 

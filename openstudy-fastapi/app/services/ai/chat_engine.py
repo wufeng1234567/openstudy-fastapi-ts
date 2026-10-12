@@ -113,6 +113,108 @@ def data_url_to_bytes(raw: str) -> tuple:
     return base64.b64decode(padded), mime
 
 
+#: 图片文件扩展名 → MIME（读盘转 data URL 时用）
+_IMAGE_MIME_BY_EXT = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+}
+
+
+def stored_image_to_data_url(url: str) -> str:
+    """把本站存储的图片 URL（`/profile/upload/...` 相对路径）读盘转成 data URL。
+
+    为什么需要：题目里的图片以 `<img src="/profile/upload/...">` 形式**相对路径**存储
+    （TEXT 列不可能塞 base64）。而 OpenAI 兼容多模态端点**只认 data URL 或 http(s)
+    绝对 URL**，直接喂相对路径会 `400 Unsupported image_url format`（见 `loop.py` 的
+    血泪注释）。故解析题目图片时，必须先把这些相对路径转成 data URL。
+
+    - 已是 `data:` / `http(s)://` 的原样返回（前端本地上传时可能已是 data URL）；
+    - 空串、读盘失败、非图片扩展名 → 返回 ""（由调用方跳过，单张失败不影响整体）。
+    """
+    import base64
+    import os
+    from app.config import settings
+
+    value = (url or "").strip()
+    if not value:
+        return ""
+    lower = value.lower()
+    if lower.startswith("data:") or lower.startswith("http://") or lower.startswith("https://"):
+        return value
+
+    # 只处理本站 /profile/ 下的相对路径
+    rel = value
+    if rel.startswith("/profile/"):
+        rel = rel[len("/profile/"):]
+    rel = rel.lstrip("/").replace("\\", "/")
+    if not rel or ".." in rel:
+        return ""
+
+    ext = os.path.splitext(rel)[1].lower()
+    mime = _IMAGE_MIME_BY_EXT.get(ext)
+    if not mime:
+        return ""
+
+    try:
+        full_path = os.path.join(settings.UPLOAD_DIR, rel)
+        with open(full_path, "rb") as f:
+            raw = f.read()
+        if not raw:
+            return ""
+        b64 = base64.b64encode(raw).decode("ascii")
+        return f"data:{mime};base64,{b64}"
+    except Exception as e:  # noqa: BLE001 - 单张图失败不影响整体
+        logger.warning("[chat_engine] 题目图片读盘失败 {}: {}", url, e)
+        return ""
+
+
+_IMG_SRC_RE = None
+
+
+def extract_image_urls_from_html(html: str) -> List[str]:
+    """从 HTML 文本里按出现顺序抽取所有 `<img src="...">` 的 src。
+
+    用于 AI 解析题目时，把题干/材料/小题正文里内嵌的图片都收集起来喂给多模态模型。
+    只抽 src，不处理其它属性；去重保序。
+    """
+    global _IMG_SRC_RE
+    if not html or "<img" not in html.lower():
+        return []
+    if _IMG_SRC_RE is None:
+        import re
+        _IMG_SRC_RE = re.compile(r"<img\b[^>]*?\bsrc\s*=\s*[\"']([^\"']+)[\"']", re.IGNORECASE)
+
+    seen = set()
+    urls: List[str] = []
+    for m in _IMG_SRC_RE.finditer(html):
+        raw = (m.group(1) or "").strip()
+        if not raw or raw in seen:
+            continue
+        seen.add(raw)
+        urls.append(raw)
+    return urls
+
+
+def normalize_image_urls(urls: List[str]) -> List[str]:
+    """把一组图片 URL 归一成可喂多模态模型的 data URL（相对路径读盘转换）。
+
+    保留输入顺序；转换失败/非图片的项被丢弃（而不是塞空串，避免污染多模态块——
+    空串会让上游 400「image_url 为空」）。
+    """
+    normalized: List[str] = []
+    for u in urls or []:
+        if not u:
+            continue
+        converted = stored_image_to_data_url(u)
+        if converted:
+            normalized.append(converted)
+    return normalized
+
+
 def _attachment_field(item: Any, key: str, default: str = "") -> str:
     """读附件字段：兼容 pydantic 模型（线上走 `AssistantAttachment`）与普通 dict
 
@@ -257,7 +359,10 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
     file_text, doc_images, warnings = await asyncio.to_thread(
         extract_attachments, turn.files, len(user_images)
     )
-    image_urls = user_images + doc_images
+    # ⚠️ 归一成 data URL：题目解析会把题干里 `<img src="/profile/upload/...">` 的相对
+    #    路径直接作为 images 传来；OpenAI 兼容多模态端点不认相对路径（会 400）。
+    #    data: / http(s) 的原样保留，相对路径读盘转 base64。
+    image_urls = normalize_image_urls(user_images + doc_images)
 
     # ② 组装这一轮给模型看的正文
     typed = (turn.prompt or "").strip()
@@ -370,5 +475,8 @@ __all__ = [
     "MAX_DOC_IMAGES",
     "data_url_to_bytes",
     "extract_attachments",
+    "extract_image_urls_from_html",
+    "normalize_image_urls",
+    "stored_image_to_data_url",
     "stream_turn",
 ]

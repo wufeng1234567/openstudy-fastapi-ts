@@ -85,7 +85,7 @@ import { useDsDeepThinkSync } from '@/composables/useDsDeepThinkSync'
 import { useSmoothAutoScroll } from '@/composables/useSmoothAutoScroll'
 import LoadingDots from '@/components/LoadingDots/index.vue'
 import useUserStore from '@/store/modules/user'
-import { getPlainText } from '@/utils/questionUtils'
+import { getPlainText, extractImageUrls } from '@/utils/questionUtils'
 import { splitAiSegments, renderAiMarkdown } from '@/utils/aiMarkdown'
 
 const userStore = useUserStore()
@@ -97,7 +97,9 @@ const props = defineProps({
     options: { type: String, default: '' },
     correctAnswer: { type: [String, Array], default: '' },
     cachedContent: { type: String, default: '' },  // 新增：缓存内容
-    isGenerating: { type: Boolean, default: false }  // 新增：外部生成状态
+    isGenerating: { type: Boolean, default: false },  // 新增：外部生成状态
+    // 组合题（阅读理解 / 完形填空）的小题：`[{ question, options, correctAnswer }]`
+    subQuestions: { type: Array, default: () => [] }
 })
 
 const emit = defineEmits(['close', 'update-cache', 'generating'])
@@ -213,6 +215,13 @@ const startAnalysis = async () => {
         answerStr = String(props.correctAnswer || '')
     }
 
+    // ✅ 组合题：把小题题干 / 选项 / 答案拼成文本，连同其图片一起交给 AI
+    //    旧实现只发主材料，小题（含小题里的图）全部丢失。
+    const subQuestionsText = buildSubQuestionsText(props.subQuestions)
+
+    // ✅ 收集图片：主题干 + 材料 + 各小题题干里内嵌的 <img>（旧实现 getPlainText 会把图整段丢掉）
+    const images = collectAnalysisImages()
+
     // 调用流式 API
     if (deepThink.value) {
         reasoningContent.value = ''
@@ -248,8 +257,67 @@ const startAnalysis = async () => {
             reasoningContent.value = reasoning
             // 思考过程滚思考区，不要去滚正文区（否则思考阶段会把正文一直拽到底）
             keepReasoningAtBottom()
-        }
+        },
+        images,
+        subQuestionsText
     )
+}
+
+/**
+ * 把组合题小题拼成给 AI 的文本：
+ * `第1小题（单选）\n题干\nA. …\nB. …\n答案：A`
+ * 无小题时返回空串。文本里的 `<img>` 由 collectAnalysisImages 单独抽走喂模型，
+ * 这里保留纯文本（getPlainText 去标签）。
+ */
+function buildSubQuestionsText(subs: any[]): string {
+    if (!Array.isArray(subs) || subs.length === 0) return ''
+    return subs
+        .map((sq: any, idx: number) => {
+            const stem = getPlainText(sq?.question || sq?.questionText || sq?.question_text || '')
+            let block = `第${idx + 1}小题：${stem}`
+            const opts = sq?.options
+            if (Array.isArray(opts) && opts.length) {
+                block += '\n' + opts.map((o: any, i: number) => `${String.fromCharCode(65 + i)}. ${getPlainText(o)}`).join('\n')
+            }
+            const ans = sq?.correctAnswer ?? sq?.answer
+            if (ans !== undefined && ans !== null && ans !== '') {
+                const ansText = Array.isArray(ans)
+                    ? ans.map((a: any) => (typeof a === 'number' ? String.fromCharCode(65 + a) : a)).join(', ')
+                    : (typeof ans === 'number' && (sq?.type === 'single' || sq?.type === 'multiple')
+                        ? String.fromCharCode(65 + ans)
+                        : String(ans))
+                block += `\n答案：${ansText}`
+            }
+            return block
+        })
+        .join('\n\n')
+}
+
+/**
+ * 收集本题所有图片 URL（按出现顺序、去重）：
+ * 主题干 question 里的 <img> + 每个小题题干/选项里的 <img>。
+ * 后端会把 `/profile/upload/...` 相对路径读盘转成 data URL 再喂多模态模型。
+ */
+function collectAnalysisImages(): string[] {
+    const all: string[] = []
+    const seen = new Set<string>()
+    const push = (urls: string[]) => {
+        for (const u of urls) {
+            if (!u || seen.has(u)) continue
+            seen.add(u)
+            all.push(u)
+        }
+    }
+    push(extractImageUrls(props.question))
+    if (Array.isArray(props.subQuestions)) {
+        for (const sq of props.subQuestions) {
+            push(extractImageUrls(sq?.question || sq?.questionText || sq?.question_text))
+            if (Array.isArray(sq?.options)) {
+                for (const o of sq.options) push(extractImageUrls(o))
+            }
+        }
+    }
+    return all
 }
 
 const handleClose = () => {

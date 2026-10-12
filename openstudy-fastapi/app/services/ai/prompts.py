@@ -190,7 +190,12 @@ def _build_composite(prompt: str, **vars: Any) -> List[Dict[str, str]]:
 
 
 def _build_analysis(prompt: str, **vars: Any) -> List[Dict[str, str]]:
-    """题目智能解析（5 段式）"""
+    """题目智能解析（5 段式）
+
+    ⚠️ 组合题（阅读理解 / 完形填空）除了主材料，还有多个**小题**。旧实现只发
+    `question`（= 主材料），小题的题干/选项/答案全部丢失，AI 只能对着一段材料空谈。
+    这里支持 `sub_questions`（调用方把小题拼成文本传入），把它作为「小题」一节拼进提示词。
+    """
     question = vars.get("question") or prompt or ""
     user = f"""请作为专业教师，对以下题目进行详细解析。
 
@@ -204,6 +209,10 @@ def _build_analysis(prompt: str, **vars: Any) -> List[Dict[str, str]]:
     correct_answer = vars.get("correct_answer")
     if correct_answer:
         user += f"- 正确答案：{correct_answer}\n"
+    sub_questions = vars.get("sub_questions")
+    if sub_questions:
+        user += f"""\n## 小题\n{sub_questions}\n
+（以上为组合题的各小题；请结合材料与`图片`内容，逐一分析各小题。）\n"""
     user += ANALYSIS_OUTPUT_SPEC
     return [
         {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},

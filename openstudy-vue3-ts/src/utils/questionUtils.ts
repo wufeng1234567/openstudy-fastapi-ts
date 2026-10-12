@@ -23,6 +23,29 @@ export function getPlainText(html: any): string {
   return html.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').trim()
 }
 
+/**
+ * 从 HTML 文本里按出现顺序抽取所有 `<img src="...">` 的 src。
+ *
+ * 用途：AI 题目解析时把题干 / 材料 / 小题正文里内嵌的图片一并喂给多模态模型。
+ * 旧实现用 getPlainText 提取正文，会把 `<img>` 整个丢掉 → 模型根本看不到图。
+ * 去重保序；无图返回空数组。
+ */
+export function extractImageUrls(html: any): string[] {
+  if (!html || typeof html !== 'string') return []
+  if (!/<img/i.test(html)) return []
+  const re = /<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']/gi
+  const seen = new Set<string>()
+  const urls: string[] = []
+  let m: RegExpExecArray | null
+  while ((m = re.exec(html)) !== null) {
+    const src = (m[1] || '').trim()
+    if (!src || seen.has(src)) continue
+    seen.add(src)
+    urls.push(src)
+  }
+  return urls
+}
+
 // 通用选项解析函数，安全处理各种格式
 export function parseOptions(rawOptions: any, type: string = '1'): string[] {
   // 判断题固定选项
