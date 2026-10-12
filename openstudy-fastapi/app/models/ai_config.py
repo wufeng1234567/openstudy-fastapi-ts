@@ -17,6 +17,11 @@ class SysAiConfig(Base):
     user_id: Mapped[Optional[int]] = mapped_column(BigInteger)
     provider: Mapped[str] = mapped_column(String(50))
     provider_name: Mapped[Optional[str]] = mapped_column(String(100))
+    # 「模型类型」：official=我方预置的官方 API；relay=用户自建/中转站。
+    # 与 provider 解耦，作为「是否发 DeepSeek 专有 thinking 形状」的唯一判据
+    # （旧逻辑靠猜 base_url 是否含 deepseek.com，会被"provider=deepseek + 自建网关"骗到）。
+    # 可空 = 老数据；为空时 db_config 回退旧的 base_url 判据。
+    model_kind: Mapped[Optional[str]] = mapped_column(String(20))
     model: Mapped[str] = mapped_column(String(100))
     api_key: Mapped[Optional[str]] = mapped_column(String(500))
     base_url: Mapped[Optional[str]] = mapped_column(String(500))

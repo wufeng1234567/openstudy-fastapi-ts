@@ -255,6 +255,30 @@ def _to_lc_messages(messages: List[ChatMessage]) -> list:
 _OMIT_THINKING = object()
 
 
+def _is_official_deepseek(config: SysAiConfig) -> bool:
+    """这条配置是否是**官方 DeepSeek 域**（认得 `{"thinking":{"type":"enabled"}}` 专有形状）
+
+    判据优先级：
+    1. `model_kind == "official"` → 只看 provider 是否 deepseek 系（Tab 显式决定的确定值）；
+    2. `model_kind == "relay"`    → 恒 False（中转站永不发 DeepSeek 专有 thinking 形状，
+       即使 provider 名字以 deepseek 开头、或 base_url 恰好含 deepseek.com）；
+    3. `model_kind` 为空（老数据）→ 回退 8e09bdf 的判据：provider 为 deepseek 系 **且**
+       base_url 含 `deepseek.com`（或为空，沿用原逻辑）。
+
+    ⚠️ 抽成单一函数：历史上 `_build_llm` 与 `build_agent_llm` 各写了一段等价但
+       写法不一致的判据（其中一段还带无意义的 `"provider" in dir(config)`），
+       两处来回改极易漏；现在统一走这里。
+    """
+    kind = (getattr(config, "model_kind", None) or "").strip().lower()
+    is_ds_provider = (config.provider or "").startswith("deepseek")
+    if kind == "official":
+        return is_ds_provider
+    if kind == "relay":
+        return False
+    base_l = (config.base_url or "").lower()
+    return is_ds_provider and ("deepseek.com" in base_l or not base_l)
+
+
 def _resolve_thinking(config: SysAiConfig, thinking: Optional[bool]) -> Optional[bool]:
     """决定本次请求是否开启「深度思考」。
 
@@ -296,12 +320,9 @@ def _build_llm(
     extra_body: dict = {}
     resolved = None if thinking is _OMIT_THINKING else _resolve_thinking(config, thinking)
     #: 是否**官方** DeepSeek 域（认 `{"thinking":{"type":"enabled"}}` 这套专有形状）。
-    #: ⚠️ 不能只看 provider 名——用户可把 provider 标成 deepseek、base_url 却指向自建网关/本地
-    #:    magpie；那类网关不认 thinking 形状，只认标准 `reasoning_effort`。
-    base_l = (config.base_url or "").lower()
-    is_deepseek = (config.provider or "").startswith("deepseek") and (
-        "deepseek.com" in base_l or not base_l
-    )
+    #: 判据统一走 `_is_official_deepseek`：优先读 model_kind（official/relay），
+    #: 老数据为空时回退 base_url 判据。
+    is_deepseek = _is_official_deepseek(config)
     if resolved is True:
         if is_deepseek:
             extra_body["thinking"] = {"type": "enabled"}
@@ -527,12 +548,8 @@ async def build_agent_llm(
     #   · 显式关闭（thinking_mode=disabled）：官方域发 disabled；别家不塞脏参数（见 _build_llm）。
     resolved_intent = _resolve_thinking(config, None)
     #: 是否**官方** DeepSeek 域（决定能否用 DeepSeek 专有的 `thinking` 形状）。
-    #: ⚠️ 只认 provider 名不够——用户可把 provider 标成 deepseek 而 base_url 指向自建网关。
-    base_l = (config.base_url or "").lower()
-    is_official_deepseek = "provider" in dir(config) and (
-        (config.provider or "").startswith("deepseek")
-        and ("deepseek.com" in base_l or not base_l)
-    )
+    #: 判据统一走 `_is_official_deepseek`（优先 model_kind，老数据回退 base_url）。
+    is_official_deepseek = _is_official_deepseek(config)
     #: 配了 reasoning_effort 的**非官方** OpenAI 兼容网关（magpie 等）——用它开思考
     has_effort = bool((config.reasoning_effort or "").strip())
     if resolved_intent is False:

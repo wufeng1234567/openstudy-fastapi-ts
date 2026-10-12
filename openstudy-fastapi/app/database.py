@@ -160,6 +160,11 @@ async def init_db():
                     "ALTER TABLE sys_ai_config ADD COLUMN web_area_code VARCHAR(10) NULL"
                 ))
                 added.append("web_area_code")
+            if "model_kind" not in columns:
+                sync_conn.execute(text(
+                    "ALTER TABLE sys_ai_config ADD COLUMN model_kind VARCHAR(20) NULL"
+                ))
+                added.append("model_kind")
             if added:
                 logger.info(f"sys_ai_config 列已补齐: {', '.join(added)}")
 

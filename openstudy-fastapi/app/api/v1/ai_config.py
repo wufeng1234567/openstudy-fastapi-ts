@@ -76,6 +76,7 @@ def format_config(cfg: SysAiConfig, mask_key: bool = False) -> dict:
         "source": "user" if cfg.user_id else "system",
         "provider": cfg.provider,
         "providerName": cfg.provider_name,
+        "modelKind": cfg.model_kind,
         "model": cfg.model,
         "modelName": cfg.model,
         "apiKey": "" if mask_key else cfg.api_key,
@@ -104,6 +105,8 @@ class AiConfigBody(BaseModel):
     configId: Optional[int] = None
     provider: Optional[str] = None
     providerName: Optional[str] = None
+    # 官方 / 中转站（Tab 决定）；落库字段为 sys_ai_config.model_kind
+    modelKind: Optional[str] = None
     modelName: Optional[str] = None
     model: Optional[str] = None
     apiUrl: Optional[str] = None
@@ -271,6 +274,7 @@ async def add_ai_config(
         user_id=owner_id,
         provider=body.provider,
         provider_name=body.providerName or body.provider,
+        model_kind=body.modelKind,
         model=model,
         api_key=body.apiKey,
         base_url=body.baseUrl or body.apiUrl,
@@ -312,6 +316,8 @@ async def update_ai_config(
         cfg.provider = body.provider
     if body.providerName is not None:
         cfg.provider_name = body.providerName
+    if body.modelKind is not None:
+        cfg.model_kind = body.modelKind
     model = body.model or body.modelName
     if model:
         cfg.model = model

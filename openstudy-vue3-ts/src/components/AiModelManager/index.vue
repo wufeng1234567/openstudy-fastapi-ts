@@ -18,6 +18,13 @@
     <div v-else class="model-list">
       <el-table :data="configList" v-loading="loading" style="width: 100%">
         <el-table-column prop="providerName" label="服务商" width="120" />
+        <el-table-column label="类型" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.modelKind === 'official' ? 'warning' : 'info'" size="small">
+              {{ row.modelKind === 'official' ? '官方' : '中转站' }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="model" label="模型" min-width="150">
           <template #default="{ row }">
             <span>{{ row.model }}</span>
@@ -53,24 +60,56 @@
     </div>
 
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="600px" :close-on-click-modal="false">
+      <el-tabs v-model="form.modelKind" class="kind-tabs" @tab-change="handleKindChange">
+        <el-tab-pane label="官方模型" name="official" />
+        <el-tab-pane label="自定义 / 中转站" name="relay" />
+      </el-tabs>
+
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
-        <el-form-item label="服务商" prop="provider">
-          <el-select v-model="form.provider" placeholder="请选择服务商" style="width: 100%">
-          <el-option-group label="官方 API">
-            <el-option label="DeepSeek（官方 API）" value="deepseek" />
-          </el-option-group>
-            <el-option-group label="其它 / 自定义">
-              <el-option label="智谱AI (GLM)" value="zhipuai" />
-              <el-option label="硅基流动" value="siliconflow" />
-              <el-option label="OpenAI" value="openai" />
-            </el-option-group>
-          </el-select>
-        </el-form-item>
+        <!-- ============ 官方 Tab ============ -->
+        <template v-if="form.modelKind === 'official'">
+          <el-form-item label="服务商" prop="provider">
+            <el-select v-model="form.provider" placeholder="请选择官方服务商" style="width: 100%">
+              <el-option label="DeepSeek（官方 API）" value="deepseek" />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="API地址">
+            <el-input :model-value="officialBaseUrl" readonly />
+            <div class="form-tip">官方地址由系统预置、不可修改。</div>
+          </el-form-item>
+        </template>
+
+        <!-- ============ 中转站 Tab ============ -->
+        <template v-else>
+          <el-form-item label="名称" prop="providerName">
+            <el-input v-model="form.providerName" placeholder="给这个中转站起个名字，如：我的网关" />
+          </el-form-item>
+          <el-form-item label="API地址" prop="baseUrl">
+            <el-input v-model="form.baseUrl" placeholder="如：http://127.0.0.1:3425/v1" />
+            <div class="form-tip">
+              你自建 / 中转站的 OpenAI 兼容地址（必填）。API Key 会发往此地址，请只填可信中转站。
+            </div>
+          </el-form-item>
+        </template>
 
         <el-form-item label="模型名称" prop="model">
-          <el-input v-model="form.model" placeholder="如：deepseek-flash、deepseek-v4-pro" />
+          <div class="model-input-row">
+            <el-input v-model="form.model" :placeholder="modelPlaceholder" />
+            <el-button
+              class="btn-fetch-models"
+              :loading="fetchingModels"
+              :disabled="!canFetchModels"
+              @click="handleFetchModels"
+            >
+              获取可用模型
+            </el-button>
+          </div>
           <div class="form-tip">
-            DeepSeek 官方当前提供 deepseek-flash / deepseek-v4-pro
+            填好「API Key」与「API 地址」后可点右侧一键拉取该服务商的全部模型。
+            <template v-if="form.modelKind === 'official'">
+              DeepSeek 官方当前提供 deepseek-flash / deepseek-v4-pro
+            </template>
           </div>
         </el-form-item>
 
@@ -78,21 +117,7 @@
           <el-input v-model="form.apiKey" type="password" placeholder="请输入API Key" show-password />
         </el-form-item>
 
-        <el-form-item label="API地址" prop="baseUrl">
-          <el-input v-model="form.baseUrl" placeholder="留空使用默认地址" />
-          <div class="form-tip" v-if="!form.baseUrl">
-            默认地址：{{ defaultBaseUrl }}<br />
-          </div>
-          <div class="form-tip">
-            留空使用下方默认地址<br />
-            智谱默认：https://open.bigmodel.cn/api/paas/v4<br />
-            DeepSeek默认：https://api.deepseek.com<br />
-            硅基流动默认：https://api.siliconflow.cn/v1<br />
-            OpenAI默认：https://api.openai.com/v1
-          </div>
-        </el-form-item>
-
-        <template v-if="form.provider === 'deepseek'">
+        <template v-if="form.modelKind === 'official'">
           <el-divider content-position="left">DeepSeek 高级配置</el-divider>
 
           <el-form-item label="思考模式">
@@ -124,15 +149,27 @@
           </el-form-item>
         </template>
 
-        <template v-if="form.provider === 'siliconflow'">
-          <el-divider content-position="left">硅基流动 高级配置</el-divider>
+        <template v-else>
+          <el-divider content-position="left">思考参数</el-divider>
 
           <el-form-item label="思考模式">
             <el-select v-model="form.thinkingMode" placeholder="选择思考模式" style="width: 100%">
+              <el-option label="自动（默认）" value="auto" />
               <el-option label="启用思考" value="enabled" />
               <el-option label="禁用思考" value="disabled" />
             </el-select>
-            <div class="form-tip">禁用思考模式可提升响应速度</div>
+            <div class="form-tip">
+              中转站按标准 <code>reasoning_effort</code> 开启深度思考，不发 DeepSeek 专有参数。
+            </div>
+          </el-form-item>
+
+          <el-form-item label="推理强度" v-if="form.thinkingMode !== 'disabled'">
+            <el-select v-model="form.reasoningEffort" placeholder="选择推理强度" style="width: 100%">
+              <el-option label="低（low）" value="low" />
+              <el-option label="中（medium）" value="medium" />
+              <el-option label="高（high）" value="high" />
+              <el-option label="最大（max）" value="max" />
+            </el-select>
           </el-form-item>
         </template>
 
@@ -151,6 +188,41 @@
           <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="可选备注信息" />
         </el-form-item>
       </el-form>
+
+      <!-- 服务商可用模型选择（点「获取可用模型」后弹出） -->
+      <el-dialog
+        v-model="modelsDialogVisible"
+        title="选择模型"
+        width="560px"
+        append-to-body
+        :close-on-click-modal="true"
+      >
+        <div class="models-dialog-tip">
+          来自 <code>{{ modelsBaseUrl }}</code> 共 {{ fetchedModels.length }} 个模型，点击即可填入。
+        </div>
+        <el-input
+          v-model="modelFilter"
+          placeholder="按名称筛选…"
+          clearable
+          style="margin-bottom: 10px"
+        />
+        <div class="models-list">
+          <div
+            v-for="m in filteredModels"
+            :key="m.id"
+            class="models-list-item"
+            :class="{ active: m.id === form.model }"
+            @click="pickModel(m.id)"
+          >
+            <span class="models-list-id">{{ m.id }}</span>
+            <span v-if="m.ownedBy" class="models-list-owner">{{ m.ownedBy }}</span>
+          </div>
+          <el-empty v-if="filteredModels.length === 0" description="没有匹配的模型" :image-size="60" />
+        </div>
+        <template #footer>
+          <el-button class="btn-cancel" @click="modelsDialogVisible = false">关闭</el-button>
+        </template>
+      </el-dialog>
 
       <template #footer>
         <el-button class="btn-cancel" @click="dialogVisible = false">取消</el-button>
@@ -175,7 +247,8 @@ import {
   updateAiConfig,
   deleteAiConfig,
   setDefaultConfig,
-  testAiConnection
+  testAiConnection,
+  fetchProviderModels
 } from '@/api/system/aiConfig'
 
 const props = defineProps({
@@ -196,7 +269,8 @@ const isEdit = ref(false)
 
 const form = reactive({
   configId: null,
-  provider: 'zhipuai',
+  modelKind: 'official',
+  provider: 'deepseek',
   providerName: '',
   model: '',
   apiKey: '',
@@ -243,14 +317,52 @@ const defaultBaseUrls = {
 
 const defaultBaseUrl = computed(() => defaultBaseUrls[form.provider] || '')
 
+// 官方 Tab 固定使用的官方地址（只读展示，提交时也用它，杜绝"标官方却指向别处"）
+const OFFICIAL_BASE_URLS = {
+  deepseek: 'https://api.deepseek.com'
+}
+const officialBaseUrl = computed(() => OFFICIAL_BASE_URLS[form.provider] || '')
+
+const modelPlaceholder = computed(() =>
+  form.modelKind === 'official'
+    ? '如：deepseek-flash、deepseek-v4-pro'
+    : '如：group/auto-deepseek-v4-1-flash'
+)
+
+// 切换 Tab：重置 provider / baseUrl，避免把官方地址留在中转站、或把网关地址带到官方
+function handleKindChange(kind) {
+  if (kind === 'official') {
+    form.provider = 'deepseek'
+    form.providerName = ''
+    form.baseUrl = ''
+  } else {
+    form.baseUrl = ''
+    if (form.provider === 'deepseek') form.provider = ''
+    form.providerName = form.providerName || ''
+  }
+}
+
 watch(() => form.provider, (newProvider) => {
-  form.providerName = providerNames[newProvider] || newProvider
-  if (!isEdit.value) {
-    form.thinkingMode = 'auto'
-    form.reasoningEffort = 'high'
-    form.contextLength = '32k'
+  // 官方 Tab：provider 恒为 deepseek，不覆盖 ProviderName 语义
+  if (form.modelKind === 'official') {
+    if (!isEdit.value) {
+      form.thinkingMode = 'auto'
+      form.reasoningEffort = 'high'
+      form.contextLength = '32k'
+    }
+    return
+  }
+  if (newProvider && !form.providerName) {
+    form.providerName = providerNames[newProvider] || newProvider
   }
 }, { immediate: true })
+
+// 中转站模式下确保有 provider 值（后端 provider 非空校验；用名称兜底）
+watch(() => form.providerName, (name) => {
+  if (form.modelKind === 'relay' && !form.provider) {
+    form.provider = name || 'relay'
+  }
+})
 
 function maskApiKey(key) {
   if (!key) return ''
@@ -260,6 +372,66 @@ function maskApiKey(key) {
 
 function getDefaultBaseUrl(provider) {
   return defaultBaseUrls[provider] || ''
+}
+
+// ---- 「获取可用模型」（用户 2026-10-11）----
+// 服务端请求 {baseUrl}/models（OpenAI 标准端点）→ 列表 → 点选即填入 form.model。
+const fetchingModels = ref(false)
+const modelsDialogVisible = ref(false)
+const fetchedModels = ref<Array<{ id: string; ownedBy?: string }>>([])
+const modelsBaseUrl = ref('')
+const modelFilter = ref('')
+
+// 能拉取的前提：选了 provider、填了 API Key；非 ds-free（它不支持 /models）。
+const canFetchModels = computed(() => {
+  return !!form.provider && form.provider !== 'deepseek-free' && !!form.apiKey
+})
+
+// 提交/请求时实际使用的地址：官方 Tab 用预置官方地址；中转站用用户填的
+const effectiveBaseUrl = computed(() =>
+  form.modelKind === 'official' ? officialBaseUrl.value : (form.baseUrl || '')
+)
+
+const filteredModels = computed(() => {
+  const kw = modelFilter.value.trim().toLowerCase()
+  if (!kw) return fetchedModels.value
+  return fetchedModels.value.filter((m) => m.id.toLowerCase().includes(kw))
+})
+
+async function handleFetchModels() {
+  if (!form.apiKey) {
+    ElMessage.warning('请先填写 API Key')
+    return
+  }
+  fetchingModels.value = true
+  try {
+    const res = await fetchProviderModels({
+      provider: form.provider,
+      baseUrl: effectiveBaseUrl.value,
+      apiKey: form.apiKey,
+      // 编辑场景：key 可能未改，让服务端能复用库里那把（这里照传当前值即可）
+      configId: form.configId || undefined
+    })
+    if (res.code === 200 && res.data?.models?.length) {
+      fetchedModels.value = res.data.models
+      modelsBaseUrl.value = res.data.baseUrl || effectiveBaseUrl.value || getDefaultBaseUrl(form.provider)
+      modelFilter.value = ''
+      modelsDialogVisible.value = true
+    } else {
+      ElMessage.error(res.msg || '未获取到模型列表')
+    }
+  } catch (error) {
+    console.error('获取可用模型失败:', error)
+    ElMessage.error('获取可用模型失败，请检查 API Key 与地址')
+  } finally {
+    fetchingModels.value = false
+  }
+}
+
+function pickModel(id: string) {
+  form.model = id
+  modelsDialogVisible.value = false
+  ElMessage.success(`已选择：${id}`)
 }
 
 async function fetchConfigList() {
@@ -282,7 +454,8 @@ async function fetchConfigList() {
 function resetForm() {
   Object.assign(form, {
     configId: null,
-    provider: 'zhipuai',
+    modelKind: 'official',
+    provider: 'deepseek',
     providerName: '',
     model: '',
     apiKey: '',
@@ -307,8 +480,10 @@ function handleAdd() {
 }
 
 function handleEdit(row) {
+  const kind = row.modelKind === 'official' ? 'official' : 'relay'
   Object.assign(form, {
     configId: row.configId,
+    modelKind: kind,
     provider: row.provider,
     providerName: row.providerName || providerNames[row.provider] || '',
     model: row.model,
@@ -330,10 +505,22 @@ async function handleSave() {
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
 
+  // 中转站：provider 存用户填的名称（后端非空校验），baseUrl 必填
+  if (form.modelKind === 'relay') {
+    if (!form.baseUrl) {
+      ElMessage.warning('请填写中转站的 API 地址')
+      return
+    }
+    form.provider = form.provider || form.providerName || 'relay'
+  } else {
+    form.provider = form.provider || 'deepseek'
+    form.baseUrl = officialBaseUrl.value
+  }
+
   saving.value = true
   try {
     if (isEdit.value) {
-      const res = await updateAiConfig(form)
+      const res = await updateAiConfig({ ...form, baseUrl: effectiveBaseUrl.value })
       if (res.code === 200) {
         ElMessage.success('保存成功')
         dialogVisible.value = false
@@ -342,7 +529,7 @@ async function handleSave() {
         ElMessage.error(res.msg || '保存失败')
       }
     } else {
-      const res = await addAiConfig(form)
+      const res = await addAiConfig({ ...form, baseUrl: effectiveBaseUrl.value })
       if (res.code === 200) {
         ElMessage.success('添加成功')
         dialogVisible.value = false
@@ -365,7 +552,7 @@ async function handleTestConnection() {
 
   testing.value = true
   try {
-    const res = await testAiConnection(form)
+    const res = await testAiConnection({ ...form, baseUrl: effectiveBaseUrl.value })
     if (res.code === 200) {
       ElMessage.success(res.msg || '连接成功')
     } else {
@@ -558,5 +745,82 @@ defineExpose({
   font-size: 12px;
   color: #9ca3af;
   line-height: 1.5;
+}
+
+.kind-tabs {
+  margin-bottom: 4px;
+}
+
+/* ---- 「模型名称 + 获取可用模型」一行 ---- */
+.model-input-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.model-input-row .el-input {
+  flex: 1;
+}
+
+.btn-fetch-models {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* ---- 可用模型选择弹窗 ---- */
+.models-dialog-tip {
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.models-dialog-tip code {
+  color: #4f46e5;
+  background: #eef2ff;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.models-list {
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.models-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  border-bottom: 1px solid #f1f5f9;
+  transition: background 0.15s;
+}
+
+.models-list-item:last-child {
+  border-bottom: none;
+}
+
+.models-list-item:hover {
+  background: #f5f3ff;
+}
+
+.models-list-item.active {
+  background: #eef2ff;
+}
+
+.models-list-id {
+  color: #1f2937;
+  word-break: break-all;
+}
+
+.models-list-owner {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #9ca3af;
 }
 </style>
