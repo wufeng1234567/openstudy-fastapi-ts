@@ -456,22 +456,49 @@ async def mark_read_all(
     return success()
 
 
+async def _purge_user_notices(db: AsyncSession, user_id, notice_ids: list) -> int:
+    """真正**删除**当前用户可见的「用户通知」行，并清掉它们的已读记录。
+
+    为什么不是「标记已读」（这是此前的 bug）：
+    前台「回复与@」页的「清空全部 / 删除」此前走的是 mark_notices_read，只往
+    `sys_notice_read` 插已读记录、**从不删 `sys_notice` 行** → 界面瞬时清空，
+    一刷新 `/listAll` 又把同样的行拉回来（用户报的正是这个）。
+
+    安全边界（只删用户通知，不删系统公告）：
+    - 只删 remark.type ∈ {comment, reply, mention} 的**用户通知**；
+      系统公告是全局共享行，某个用户「清空」不该把它从所有人的列表里抹掉。
+    - 只删**发给当前用户**的行（`is_notice_visible`），普通用户删不到别人的通知。
+    """
+    if not notice_ids:
+        return 0
+
+    query = select(SysNotice).where(SysNotice.notice_id.in_(notice_ids))
+    result = await db.execute(query)
+    notices = list(result.scalars().all())
+
+    targets = [
+        n.notice_id
+        for n in notices
+        if not is_system_notice(n) and is_notice_visible(n, user_id)
+    ]
+    if not targets:
+        return 0
+
+    # 先删已读记录，再删通知本体（避免外键悬挂）
+    await db.execute(delete(SysNoticeRead).where(SysNoticeRead.notice_id.in_(targets)))
+    await db.execute(delete(SysNotice).where(SysNotice.notice_id.in_(targets)))
+    return len(targets)
+
+
 @router.delete("/front/{notice_id}")
 async def delete_front_notice(
     notice_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """前台删除通知（标记为该用户已读；仅允许操作可见通知）"""
+    """前台删除单条「用户通知」（真正删行；仅限发给当前用户的评论/回复/@）"""
     user_id = current_user.get("user_id")
-
-    query = select(SysNotice).where(SysNotice.notice_id == notice_id)
-    result = await db.execute(query)
-    notice = result.scalar_one_or_none()
-    if not notice or not is_notice_visible(notice, user_id):
-        return success()
-
-    await mark_notices_read(db, user_id, [notice_id])
+    await _purge_user_notices(db, user_id, [notice_id])
     return success()
 
 
@@ -481,10 +508,8 @@ async def delete_front_notice_batch(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """前台批量删除通知（只处理当前用户可见的通知）"""
+    """前台批量删除「用户通知」（真正删行；仅限发给当前用户的评论/回复/@）"""
     user_id = current_user.get("user_id")
-    raw_ids = [int(i) for i in notice_ids.split(",") if i]
-    visible_ids = await get_visible_notice_ids(db, user_id, raw_ids)
-
-    await mark_notices_read(db, user_id, visible_ids)
+    raw_ids = [int(i) for i in notice_ids.split(",") if i.strip().isdigit()]
+    await _purge_user_notices(db, user_id, raw_ids)
     return success()
