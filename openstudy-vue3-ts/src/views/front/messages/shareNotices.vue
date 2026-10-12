@@ -3,10 +3,17 @@
 <template>
   <div class="share-notice-page">
     <div class="page-header">
-      <span class="page-title">分享通知</span>
+      <div class="page-title-wrap">
+        <h3 class="page-title">分享通知</h3>
+        <span class="page-desc">有人领取了你的分享，或你收藏的分享已失效</span>
+      </div>
       <div class="header-actions">
-        <el-button v-if="noticeList.length > 0" size="small" @click="handleMarkAllRead">全部已读</el-button>
-        <el-button v-if="noticeList.length > 0" size="small" @click="handleClearAll">清空</el-button>
+        <el-button v-if="noticeList.length > 0" class="delete-all-btn" size="small" @click="handleClearAll">
+          清空
+        </el-button>
+        <el-button v-if="unreadCount > 0" class="read-all-btn" size="small" @click="handleMarkAllRead">
+          全部已读
+        </el-button>
       </div>
     </div>
 
@@ -48,6 +55,12 @@ const refreshBadge = inject<(type: string, count: number) => void>('refreshBadge
 
 const loading = ref(false)
 const noticeList = ref<any[]>([])
+const unreadCount = ref(0)
+
+const syncUnread = () => {
+  unreadCount.value = noticeList.value.filter(n => !n.read).length
+  refreshBadge('share', unreadCount.value)
+}
 
 const relativeTime = (timeStr?: string) => {
   if (!timeStr) return ''
@@ -72,7 +85,7 @@ const fetchNotices = async () => {
     const res: any = await listMyNotifications({ pageNum: 1, pageSize: 50 })
     if (res.code === 200) {
       noticeList.value = res.data?.rows || []
-      refreshBadge('share', noticeList.value.filter(n => !n.read).length)
+      syncUnread()
     }
   } catch (e) {
     // 静默失败，避免打断页面
@@ -86,7 +99,7 @@ const handleClick = async (notice: any) => {
     try {
       await markNotificationRead(notice.notificationId)
       notice.read = true
-      refreshBadge('share', noticeList.value.filter(n => !n.read).length)
+      syncUnread()
     } catch (e) { }
   }
   if (notice.link) {
@@ -98,7 +111,7 @@ const handleDelete = async (notice: any) => {
   try {
     await deleteNotification(notice.notificationId)
     noticeList.value = noticeList.value.filter(n => n.notificationId !== notice.notificationId)
-    refreshBadge('share', noticeList.value.filter(n => !n.read).length)
+    syncUnread()
   } catch (e) {
     ElMessage.error('删除失败')
   }
@@ -108,7 +121,7 @@ const handleMarkAllRead = async () => {
   try {
     await markAllNotificationsRead()
     noticeList.value.forEach(n => { n.read = true })
-    refreshBadge('share', 0)
+    syncUnread()
   } catch (e) {
     ElMessage.error('操作失败')
   }
@@ -118,7 +131,7 @@ const handleClearAll = async () => {
   try {
     await clearNotifications()
     noticeList.value = []
-    refreshBadge('share', 0)
+    syncUnread()
   } catch (e) {
     ElMessage.error('操作失败')
   }
@@ -134,20 +147,66 @@ onMounted(fetchNotices)
 
 .page-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 12px;
   margin-bottom: 16px;
 }
 
+.page-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
 .page-title {
+  margin: 0;
   font-size: 16px;
   font-weight: 600;
   color: #1f2937;
 }
 
+.page-desc {
+  font-size: 12px;
+  color: #9ca3af;
+  line-height: 1.5;
+}
+
 .header-actions {
   display: flex;
   gap: 8px;
+  flex-shrink: 0;
+}
+
+.delete-all-btn {
+  border-radius: 8px;
+  font-weight: 500;
+  padding: 5px 14px;
+  color: #b45353;
+  background: #fef2f2;
+  border: 1px solid #e5d0d0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.delete-all-btn:hover {
+  border-color: #f56c6c;
+  color: #f56c6c;
+}
+
+.read-all-btn {
+  border-radius: 8px;
+  font-weight: 500;
+  padding: 5px 14px;
+  color: #6b7280;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.read-all-btn:hover {
+  border-color: #409eff;
+  color: #409eff;
 }
 
 .notice-card {
