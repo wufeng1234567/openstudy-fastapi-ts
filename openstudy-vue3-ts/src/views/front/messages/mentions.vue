@@ -150,11 +150,9 @@ const handleDelete = async (notice) => {
       type: 'warning'
     })
     await deleteFrontNotice(id)
-    noticeList.value = noticeList.value.filter(n => (n.noticeId || n.id) !== id)
-    if (!notice.read) {
-      unreadCount.value = Math.max(0, unreadCount.value - 1)
-      refreshBadge('user', unreadCount.value)
-    }
+    // 以服务端为准重新拉取，避免本地状态与服务端不一致（刷新后回弹）
+    await fetchUserNotices()
+    refreshBadge('user', unreadCount.value)
     ElMessage.success('删除成功')
   } catch (e) {
     if (e !== 'cancel') {
@@ -175,9 +173,9 @@ const handleDeleteAll = async () => {
       .map(n => n.noticeId || n.id)
       .filter(Boolean)
     await deleteFrontNoticeBatch(ids)
-    noticeList.value = []
-    unreadCount.value = 0
-    refreshBadge('user', 0)
+    // 以服务端为准重新拉取，避免本地状态与服务端不一致（刷新后回弹）
+    await fetchUserNotices()
+    refreshBadge('user', unreadCount.value)
     ElMessage.success('清空成功')
   } catch (e) {
     if (e !== 'cancel') {

@@ -22,7 +22,7 @@ from loguru import logger
 from app.database import get_db
 from app.core.security import get_current_user
 from app.core.response import success, paginate, error
-from app.models.notice import SysNotice, SysNoticeRead
+from app.models.notice import SysNotice, SysNoticeRead, SysNoticeDelete
 from app.models.user import SysUser
 from datetime import datetime
 
@@ -73,6 +73,17 @@ async def get_read_notice_ids(db: AsyncSession, user_id) -> set:
     read_query = select(SysNoticeRead.notice_id).where(SysNoticeRead.user_id == user_id)
     read_result = await db.execute(read_query)
     return set(row[0] for row in read_result.all())
+
+
+async def get_deleted_notice_ids(db: AsyncSession, user_id) -> set:
+    """当前用户已「删除」（按用户隐藏）的通知 id 集合
+
+    用于列表/未读数过滤掉「我删过」的公告行。系统公告是全局共享行，
+    删除只记在本用户的 `sys_notice_delete`，其它用户完全不受影响。
+    """
+    query = select(SysNoticeDelete.notice_id).where(SysNoticeDelete.user_id == user_id)
+    result = await db.execute(query)
+    return set(row[0] for row in result.all())
 
 
 async def mark_notices_read(db: AsyncSession, user_id, notice_ids: list) -> None:
@@ -256,11 +267,12 @@ async def list_all_notices(
     notices = list(result.scalars().all())
 
     read_ids = await get_read_notice_ids(db, user_id)
+    deleted_ids = await get_deleted_notice_ids(db, user_id)
 
     rows = [
         format_notice(n, n.notice_id in read_ids)
         for n in notices
-        if is_notice_visible(n, user_id)
+        if is_notice_visible(n, user_id) and n.notice_id not in deleted_ids
     ]
 
     # 补发起人昵称（只读）：前端「回复与@」用它区分并显示「谁在回复你 / 谁在 @ 你」
@@ -292,9 +304,14 @@ async def list_top_notices(
     notices = list(result.scalars().all())
 
     read_ids = await get_read_notice_ids(db, user_id)
+    deleted_ids = await get_deleted_notice_ids(db, user_id)
 
-    # 只取系统公告；先过滤再截断，避免用户通知占用名额
-    system_notices = [n for n in notices if is_system_notice(n)][:5]
+    # 只取系统公告；先过滤再截断，避免用户通知占用名额。
+    # 排除「当前用户已删除」的公告（按用户隐藏，不影响他人）。
+    system_notices = [
+        n for n in notices
+        if is_system_notice(n) and n.notice_id not in deleted_ids
+    ][:5]
     rows = [format_notice(n, n.notice_id in read_ids) for n in system_notices]
 
     return success(rows)
@@ -313,9 +330,12 @@ async def get_unread_count(
     notices = list(result.scalars().all())
 
     read_ids = await get_read_notice_ids(db, user_id)
+    deleted_ids = await get_deleted_notice_ids(db, user_id)
     unread = sum(
         1 for n in notices
-        if is_notice_visible(n, user_id) and n.notice_id not in read_ids
+        if is_notice_visible(n, user_id)
+        and n.notice_id not in read_ids
+        and n.notice_id not in deleted_ids
     )
 
     return success({"count": unread})
@@ -456,38 +476,60 @@ async def mark_read_all(
     return success()
 
 
-async def _purge_user_notices(db: AsyncSession, user_id, notice_ids: list) -> int:
-    """真正**删除**当前用户可见的「用户通知」行，并清掉它们的已读记录。
+async def _delete_notices_for_user(db: AsyncSession, user_id, notice_ids: list) -> dict:
+    """处理前台「删除 / 清空全部」——**两类通知两种处理**，返回计数。
 
-    为什么不是「标记已读」（这是此前的 bug）：
-    前台「回复与@」页的「清空全部 / 删除」此前走的是 mark_notices_read，只往
-    `sys_notice_read` 插已读记录、**从不删 `sys_notice` 行** → 界面瞬时清空，
-    一刷新 `/listAll` 又把同样的行拉回来（用户报的正是这个）。
+    这是本页的核心安全逻辑，务必分清两类行（用户报过「清空后刷新又回来」，也担心「乱删」）：
 
-    安全边界（只删用户通知，不删系统公告）：
-    - 只删 remark.type ∈ {comment, reply, mention} 的**用户通知**；
-      系统公告是全局共享行，某个用户「清空」不该把它从所有人的列表里抹掉。
-    - 只删**发给当前用户**的行（`is_notice_visible`），普通用户删不到别人的通知。
+    1. **用户通知**（remark.type ∈ {comment, reply, mention}，`is_system_notice` 为假）
+       —— 每人一行、`remark.toUserId` 指向唯一接收者。
+       处理：**真正 DELETE `sys_notice` 行**（连同 `sys_notice_read`），只影响接收者本人。
+       边界：仅删**发给当前用户**的行（`is_notice_visible`）。
+
+    2. **系统公告**（无 remark / 非用户类型，`is_system_notice` 为真）
+       —— 全体共用**一行**，`toUserId` 为空 = 人人可见。
+       处理：**绝不删 `sys_notice` 行**（否则这则公告从所有人列表、乃至管理员后台一并消失，
+       是跨用户越权破坏）。改为在 `sys_notice_delete` 记一条 (user_id, notice_id)，
+       **只对当前用户隐藏**；`listAll` / `unreadCount` / `listTop` 查询时排除。
+
+    返回 {"purged": 真删的用户通知数, "hidden": 隐藏的系统公告数}。
     """
+    result = {"purged": 0, "hidden": 0}
+    # 去重，避免同一请求重复插 sys_notice_delete 触发唯一约束
+    notice_ids = list(dict.fromkeys(int(i) for i in notice_ids if i))
     if not notice_ids:
-        return 0
+        return result
 
     query = select(SysNotice).where(SysNotice.notice_id.in_(notice_ids))
-    result = await db.execute(query)
-    notices = list(result.scalars().all())
+    rows = list((await db.execute(query)).scalars().all())
+    # 只处理「当前用户可见」的行（系统公告人人可见；用户通知仅接收者可见）
+    visible = [n for n in rows if is_notice_visible(n, user_id)]
 
-    targets = [
-        n.notice_id
-        for n in notices
-        if not is_system_notice(n) and is_notice_visible(n, user_id)
-    ]
-    if not targets:
-        return 0
+    user_notice_ids = [n.notice_id for n in visible if not is_system_notice(n)]
+    system_notice_ids = [n.notice_id for n in visible if is_system_notice(n)]
 
-    # 先删已读记录，再删通知本体（避免外键悬挂）
-    await db.execute(delete(SysNoticeRead).where(SysNoticeRead.notice_id.in_(targets)))
-    await db.execute(delete(SysNotice).where(SysNotice.notice_id.in_(targets)))
-    return len(targets)
+    # —— 1) 用户通知：真删行（含其已读记录）——
+    if user_notice_ids:
+        await db.execute(
+            delete(SysNoticeRead).where(SysNoticeRead.notice_id.in_(user_notice_ids))
+        )
+        await db.execute(delete(SysNotice).where(SysNotice.notice_id.in_(user_notice_ids)))
+        result["purged"] = len(user_notice_ids)
+
+    # —— 2) 系统公告：按用户隐藏（不碰 sys_notice 行）——
+    if system_notice_ids:
+        existing = set((await db.execute(
+            select(SysNoticeDelete.notice_id).where(
+                SysNoticeDelete.user_id == user_id,
+                SysNoticeDelete.notice_id.in_(system_notice_ids),
+            )
+        )).scalars().all())
+        for nid in system_notice_ids:
+            if nid not in existing:
+                db.add(SysNoticeDelete(user_id=user_id, notice_id=nid))
+        result["hidden"] = len(system_notice_ids)
+
+    return result
 
 
 @router.delete("/front/{notice_id}")
@@ -496,9 +538,13 @@ async def delete_front_notice(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """前台删除单条「用户通知」（真正删行；仅限发给当前用户的评论/回复/@）"""
+    """前台删除单条通知
+
+    - 用户通知（评论/回复/@）：真正删行；
+    - 系统公告：仅对当前用户隐藏（不删全局行）。
+    """
     user_id = current_user.get("user_id")
-    await _purge_user_notices(db, user_id, [notice_id])
+    await _delete_notices_for_user(db, user_id, [notice_id])
     return success()
 
 
@@ -508,8 +554,12 @@ async def delete_front_notice_batch(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """前台批量删除「用户通知」（真正删行；仅限发给当前用户的评论/回复/@）"""
+    """前台批量删除通知（「清空全部」）
+
+    - 用户通知（评论/回复/@）：真正删行；
+    - 系统公告：仅对当前用户隐藏（不删全局行）。
+    """
     user_id = current_user.get("user_id")
     raw_ids = [int(i) for i in notice_ids.split(",") if i.strip().isdigit()]
-    await _purge_user_notices(db, user_id, raw_ids)
+    await _delete_notices_for_user(db, user_id, raw_ids)
     return success()

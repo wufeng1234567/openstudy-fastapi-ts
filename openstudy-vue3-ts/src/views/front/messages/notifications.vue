@@ -127,17 +127,14 @@ const handleReadAll = () => {
 const handleDelete = async (notice) => {
   const id = notice.noticeId || notice.id
   try {
-    await ElMessageBox.confirm('确定要删除这条通知吗？', '提示', {
+    await ElMessageBox.confirm('确定要删除这条通知吗？（仅从你的列表移除，不影响其他用户）', '提示', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'warning'
     })
     await deleteFrontNotice(id)
-    noticeList.value = noticeList.value.filter(n => (n.noticeId || n.id) !== id)
-    if (!notice.read) {
-      unreadCount.value = Math.max(0, unreadCount.value - 1)
-      refreshBadge('sys', unreadCount.value)
-    }
+    // 以服务端为准重新拉取，避免本地状态与服务端不一致（刷新后回弹）
+    await fetchNotices()
     ElMessage.success('删除成功')
   } catch (e) {
     if (e !== 'cancel') {
@@ -149,7 +146,7 @@ const handleDelete = async (notice) => {
 const handleDeleteAll = async () => {
   if (noticeList.value.length === 0) return
   try {
-    await ElMessageBox.confirm('确定要清空全部通知吗？', '提示', {
+    await ElMessageBox.confirm('确定要清空全部通知吗？（仅从你的列表移除，不影响其他用户）', '提示', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'warning'
@@ -158,9 +155,9 @@ const handleDeleteAll = async () => {
       .map(n => n.noticeId || n.id)
       .filter(Boolean)
     await deleteFrontNoticeBatch(ids)
-    noticeList.value = []
-    unreadCount.value = 0
-    refreshBadge('sys', 0)
+    // 以服务端为准重新拉取，避免本地状态与服务端不一致（刷新后回弹）
+    await fetchNotices()
+    refreshBadge('sys', unreadCount.value)
     ElMessage.success('清空成功')
   } catch (e) {
     if (e !== 'cancel') {
