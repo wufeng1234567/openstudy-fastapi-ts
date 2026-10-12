@@ -81,7 +81,15 @@ git clone https://gitcode.com/qi142410131/openstudy-fastapi-ts.git
 cd openstudy-fastapi-ts
 ```
 
-### 2. 后端启动
+### 2. 数据库（PostgreSQL 16，需 pgvector + pg_trgm）
+```bash
+# 建库并导入「结构 + 种子 + 演示数据」（已清洗所有真实 Key）
+createdb openstudy_v2_pgsql
+psql -U root -d openstudy_v2_pgsql -f startup-scripts/db/openstudy_v2_pgsql_deploy.sql
+```
+详见 `startup-scripts/db/README.md`。演示账号：`admin / admin123`（首次登录后请改密）。
+
+### 3. 后端启动
 ```bash
 cd openstudy-fastapi
 
@@ -104,18 +112,27 @@ uvicorn app.main:app --host 0.0.0.0 --port 9101 --reload
 
 后端接口文档（Swagger）：`http://localhost:9101/docs`
 
-### 3. 前端启动
+### 4. 前端启动
 ```bash
 cd openstudy-vue3-ts
 npm install
 npm run dev
 ```
 
-前端默认地址：`http://localhost:80`（见 `.env.development`）
+前端默认地址：`http://localhost:80`（见 `.env.development`）。
+`npm run dev` 会自动随前端拉起 **DS 网页桥**（`startup-scripts/ds-bridge`，端口 `9200`，模型 `ds-free-nb`，无头运行）。
 
-### 4. 一键启动（Windows）
+### 5. DS 网页桥（可选，提供 `ds-free-nb` 模型）
 ```bash
-startup-scripts/start-all.bat   # 同时启动前后端
+startup-scripts/start-ds-bridge.bat   # 单独启动/查看桥（默认无头，无窗口）
+# 首次登录：在 startup-scripts/ds-bridge 下执行  node probe.js --login
+```
+- 桥用本机 Edge 的**持久化 profile** 保存 DeepSeek 登录态，免插件。
+- 在 OpenStudy 里选模型「DS 免费（无浏览器）」；输入框旁的「调试」按钮可临时打开可见窗口。
+
+### 6. 一键启动（Windows）
+```bash
+startup-scripts/start-all.bat   # 启动后端(9101) + 前端(3167)；已运行的服务会跳过；桥随前端自动起
 ```
 
 ---
