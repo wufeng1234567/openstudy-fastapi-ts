@@ -13,6 +13,7 @@ Agent 内置工具集
 """
 
 from app.services.ai.agent.registry import registry
+from app.services.ai.agent.tools.agent_manage import AgentManageTool
 from app.services.ai.agent.tools.bank_manage import BankManageTool
 from app.services.ai.agent.tools.bank_share_manage import BankShareManageTool
 from app.services.ai.agent.tools.delegate import DelegateTaskTool
@@ -27,6 +28,7 @@ from app.services.ai.agent.tools.question_manage import QuestionManageTool
 from app.services.ai.agent.tools.question_mark_manage import QuestionFlagManageTool
 
 # 幂等注册：重复 import 不会重复覆盖（registry.register 按 name 覆盖，行为一致）
+registry.register(AgentManageTool())
 registry.register(BankManageTool())
 registry.register(NoteManageTool())
 registry.register(QuestionManageTool())
@@ -50,6 +52,7 @@ registry.register(KnowledgeIngestTool())
 registry.register(DelegateTaskTool())
 
 __all__ = [
+    "AgentManageTool",
     "BankManageTool",
     "BankShareManageTool",
     "DelegateTaskTool",

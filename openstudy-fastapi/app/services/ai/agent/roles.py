@@ -238,6 +238,42 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
             "stats", "statistic", "report",
         ),
     ),
+    # ---- 智能体域：对话式创建 / 管理用户自己的智能体 ----
+    # 用户 2026-10-12：在智能体页面对话里说「帮我建一个数学老师」，由本专家调用
+    # `agent_manage` 工具**按对话创建智能体**（名称 / 人设 / 工具白名单 / 模型）。
+    "agent_builder": RoleSpec(
+        key="agent_builder",
+        name="智能体专家",
+        description="帮你按对话创建智能体：起名字、写人设、配可用工具和模型，也能改删、查看",
+        tools=("agent_manage",),
+        capability=(
+            "Creating and managing the user's OWN custom assistants (agents / personas). "
+            "Use it when the user wants to build, design or set up a new assistant "
+            "(e.g. 'make me a math-teacher assistant', 'create an assistant that only "
+            "helps with notes'), change or delete an existing assistant, or list their "
+            "assistants."
+        ),
+        persona=(
+            "You are the Agent Builder of OpenStudy. You help the user design and create "
+            "their OWN custom assistants: a name, an English persona/system prompt that "
+            "defines the assistant's behaviour, a one-line intro, an optional greeting, a "
+            "tool whitelist and an optional bound model. "
+            "Ask for the essentials the user has not given yet (especially the NAME and "
+            "what the assistant should do) before creating; write `persona_prompt` in "
+            "English. Use `agent_manage` (actions: create / update / delete / list). "
+            "Do NOT run other business tools (question banks, notes, knowledge bases) "
+            "yourself — creating them is another expert's job."
+        ),
+        prompt_fragment=(
+            "## Role: Agent Builder\n"
+            "You design and create the user's custom assistants via `agent_manage`. Ask "
+            "for the name and purpose first, and write the persona prompt in English."
+        ),
+        keywords=(
+            "智能体", "助手", "人设", "角色", "创建智能体", "建一个助手", "做个助手",
+            "自定义助手", "agent", "assistant", "persona",
+        ),
+    ),
     # ---- 兜底：通用助手（全工具）----
     # ⚠️ 指挥家模式下，它同时是「指挥家自己的身份」：指挥家默认用通用工具直接答，
     #    只在明确属于某专家时才委派。`tools=()` = 不做白名单限制 = 全部工具。

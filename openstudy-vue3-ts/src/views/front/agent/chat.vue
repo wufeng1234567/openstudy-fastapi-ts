@@ -317,6 +317,9 @@
       width="560px"
       append-to-body
     >
+      <div v-if="editingAgentId == null" class="agent-form-tip">
+        💡 也可以直接在下面输入框里说「帮我建一个数学老师智能体」，由「智能体专家」按对话帮你创建。
+      </div>
       <el-form label-width="90px" label-position="right">
         <el-form-item label="名称" required>
           <el-input v-model="agentForm.name" maxlength="64" show-word-limit placeholder="如：数学老师" />
@@ -1441,6 +1444,16 @@ onBeforeUnmount(() => {
   padding: 8px 10px;
   background: #fffaf0;
   border: 1px solid #f5e2c8;
+  border-radius: 8px;
+}
+.agent-form-tip {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #4f46e5;
+  background: #eef2ff;
+  border: 1px solid #e0e7ff;
   border-radius: 8px;
 }
 .settings-tool {
