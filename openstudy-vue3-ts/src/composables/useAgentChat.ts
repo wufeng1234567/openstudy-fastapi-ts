@@ -897,6 +897,11 @@ export function useAgentChat() {
     clearPlaceholder()
     closeText()
     closeReasoning()
+    // ⚠️ 工具调用标志「本轮模型的这段思考已结束」，下一轮模型（工具执行完之后）
+    //    会重新思考 —— 必须清空 turnReasoning，否则下一轮的思考会被**追加进第一块**
+    //    （表现为：多轮深度思考全挤在同一张卡片里，用户只看到一个越滚越长的思考块）。
+    //    ds-free 那条「迟到增量」路径（纯文本、无工具）不受影响：它不会经过 pushTool。
+    turnReasoning = null
     messages.value.push({
       role: 'assistant',
       type: 'tool_result',
@@ -957,6 +962,8 @@ export function useAgentChat() {
     clearPlaceholder()
     closeText()
     closeReasoning()
+    // 同 pushTool：专家开工标志着「本轮思考结束」，下一轮思考需新建块（勿并入第一块）
+    turnReasoning = null
     const ag = event.agent || {}
     const row: AgentExpertProgress = {
       index: Number(event.index ?? 0) || 0,

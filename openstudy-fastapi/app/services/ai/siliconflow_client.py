@@ -111,6 +111,15 @@ class SiliconFlowClient(BaseAiClient):
     ) -> List[List[float]]:
         from langchain_openai import OpenAIEmbeddings
 
+        # 缺 Key 时给**明确**的中文提示，而不是让 SDK 抛含糊的
+        # 「api_key client option must be set」——用户看到不知道是哪把 key。
+        if not (self._api_key or "").strip():
+            raise RuntimeError(
+                f"RAG 向量化需要硅基流动 API Key（模型 {model or 'BAAI/bge-m3'}），"
+                "但未配置。请在服务端 .env 里设置 SILICONFLOW_API_KEY（见 .env.example），"
+                "或在「系统管理 → AI 模型配置」里为嵌入模型填写 Key，然后重启后端。"
+            )
+
         embeddings_model = OpenAIEmbeddings(
             model=model or "BAAI/bge-m3",
             openai_api_key=self._api_key,
@@ -121,5 +130,9 @@ class SiliconFlowClient(BaseAiClient):
 
 # 注册到 DynamicAI
 from app.services.ai.dynamic_ai import dynamic_ai
-if settings.SILICONFLOW_API_KEY:
-    dynamic_ai.register_client(SiliconFlowClient())
+
+# ⚠️ 无论 key 是否配置都注册：否则 key 为空时 `get_client_for_model("BAAI/bge-m3")`
+#    找不到 SiliconFlow 客户端，会 fallback 到默认 provider，抛出含糊的
+#    「api_key client option must be set」——用户根本不知道是「硅基流动 Key 没配」。
+#    注册进来后，`embeddings()` 会抛**明确**的中文提示（见下）。
+dynamic_ai.register_client(SiliconFlowClient())
