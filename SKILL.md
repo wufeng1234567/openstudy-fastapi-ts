@@ -157,10 +157,14 @@ sudo firewall-cmd --add-port=3167/tcp --permanent && sudo firewall-cmd --reload 
    - openEuler 的 pgvector 走 §2.1 R2（下 PG 源码 + 手建 PGXS + 编译）
 3. 启动 PostgreSQL 与 Redis（无 systemd 时用 pg_ctl / redis-server --daemonize）
 4. 【关键】确认 vector 与 pg_trgm 扩展可创建
-5. 建库，依次导入两份 SQL：
+5. 建库，依次导入 4 份 SQL（**顺序不能乱**）：
    - deploy/db-init/01_openstudy_v2_pgsql_deploy.sql（结构+基础种子）
-   - deploy/db-init/97_demo_seed.sql（演示账号+演示数据）
+   - deploy/db-init/05_change_password.sql（把演示账号密码改为强密码，防他人乱登）
+   - deploy/db-init/97_demo_seed.sql（演示账号 user1/user2 + 题库/笔记等演示数据）
+   - deploy/db-init/98_social_seed.sql（评论/分享/通知，让页面不空）
 6. 后端：venv → pip install -r requirements.txt（确保 bcrypt==4.0.1）→ 写 .env → uvicorn 启动(9101)
+   - RAG 向量化默认用**本地模型**（EMBEDDING_BACKEND=auto），首次导入知识库会下载 bge-m3（约 2.2GB）
+   - 若服务器内存 < 4GB，设 EMBEDDING_BACKEND=siliconflow 并配 SILICONFLOW_API_KEY 走云端
 7. 前端：npm install → npm run dev(3167)
 8. 校验：curl 后端 /health 与前端登录接口，均 code==200
 9. LOAD_SKILL huawei-cloud-jobenv-devbridge-tunnel，为 3167（必做）/9101（可选）建隧道
@@ -340,7 +344,7 @@ redis-cli ping     # 期望 PONG
 
 ## 4. 初始化数据库（建库 + 导入 SQL）
 
-**只需导入两份 SQL**（先结构、后演示），即可获得完整可演示环境：
+**依次导入 4 份 SQL**（顺序不能乱），即可获得完整可演示环境：
 
 ```bash
 cd <仓库根目录>
@@ -348,13 +352,19 @@ cd <仓库根目录>
 # 1) 建库（默认 openstudy_v2_pgsql；如自定义，务必与 .env 的 PG_NAME 一致）
 createdb -U root openstudy_v2_pgsql        # 或 sudo -u postgres createdb -O root openstudy_v2_pgsql
 
-# 2) 导入「结构 + 基础种子」（建表、菜单、admin/demo 账号等）
+# 2) 结构 + 基础种子（建表、菜单、admin/demo 账号等）
 psql -U root -d openstudy_v2_pgsql -f deploy/db-init/01_openstudy_v2_pgsql_deploy.sql
 
-# 3) 导入「演示数据」（user1/user2/guest + 演示题库 + 学习统计/错题/收藏/笔记）
+# 3) 演示账号改强密码（防他人乱登）
+psql -U root -d openstudy_v2_pgsql -f deploy/db-init/05_change_password.sql
+
+# 4) 演示数据：user1/user2 + 演示题库 + 学习统计/错题/收藏/笔记
 psql -U root -d openstudy_v2_pgsql -f deploy/db-init/97_demo_seed.sql
 
-# 4) 校验扩展已就位（关键！）
+# 5) 社交数据：评论 / 分享 / 站内通知（让页面不空）
+psql -U root -d openstudy_v2_pgsql -f deploy/db-init/98_social_seed.sql
+
+# 6) 校验扩展已就位（关键！）
 psql -U root -d openstudy_v2_pgsql -c "SELECT extname FROM pg_extension WHERE extname IN ('vector','pg_trgm');"
 # 期望输出两行：vector / pg_trgm。若 vector 缺失 → 回 §2.1 把 pgvector 装好再重来。
 ```
@@ -362,20 +372,33 @@ psql -U root -d openstudy_v2_pgsql -c "SELECT extname FROM pg_extension WHERE ex
 > SQL 第一段会执行 `CREATE EXTENSION IF NOT EXISTS vector;` 与 `pg_trgm`。
 > **若报 `could not open extension control file .../vector.control`** → pgvector 没装成功，必须先解决 §2.1。
 >
-> SQL 已清洗：**不含真实 API Key / 密码 / 隐私数据**；`sys_ai_config.api_key` 为占位符，用户自行在后台填自己的 Key。
+> 所有 SQL 已清洗：**不含真实 API Key / 隐私数据**；`sys_ai_config.api_key` 为占位符，用户自行在后台填自己的 Key。
 
-### 4.1 演示账号（导入上面两份 SQL 后即全部就位）
+### 4.1 演示账号（导入上面 4 份 SQL 后即全部就位）
 
 | 账号 | 密码 | 说明 |
 |---|---|---|
-| `admin` | `admin123` | 管理员（可进后台） |
-| `demo` | `admin123` | 普通用户 |
-| `user1` | `123456` | 普通用户，带 **2 个演示题库**（10 题 + 8 题）+ 完整学习统计/错题/收藏/笔记 |
-| `user2` | `123456` | 普通用户（分享接收方） |
+| `admin` | `***REMOVED***` | 管理员（可进后台） |
+| `user1` | `***REMOVED***` | 普通用户，带 **2 个演示题库**（10 题 + 8 题）+ 学习统计/错题/收藏/笔记 |
+| `user2` | `***REMOVED***` | 普通用户（分享接收方） |
 | `guest` | 免密（一键登录） | 只读游客 |
 
-> 登录页的**「一键登录」**按钮对应 `user1 / user2 / guest / admin`，导入 `97_demo_seed.sql` 后**全部可用**。
-> 无需再运行任何 Python 种子脚本。
+> ⚠️ **密码由 `05_change_password.sql` 统一改为强密码**（默认 `***REMOVED***`）。
+> 想换密码：跑 `python -c "from app.core.security import hash_password; print(hash_password('新密码'))"`
+> 生成 bcrypt 哈希，替换该 SQL 里的值（或直接在数据库里 UPDATE）。
+>
+> 登录页的**「一键登录」**按钮对应 `user1 / user2 / guest / admin`，导入后**全部可用**。
+
+### 4.2 演示模式 vs 体验版（`sys.demo.mode`）
+
+数据库配置项 `sys.demo.mode` 控制登录页行为：
+
+| 值 | 登录页表现 | 适用 |
+|---|---|---|
+| `true`（默认） | 显示「演示账号 · 一键登录」入口 | 自己答辩/自用 |
+| `false` | **直接显示账号密码登录 / 注册**，不暴露演示账号 | 上线给别人体验 |
+
+切换：管理员登录后台 →「系统管理 → 参数设置」→ 搜索「演示模式」→ 改值（即时生效，无需重启）。
 
 ---
 
@@ -408,7 +431,22 @@ REDIS_PORT=6379
 JWT_SECRET=换成随机长字符串
 # 上传目录：改成服务器上真实存在的可写目录（默认 D:/ruoyi/uploadPath 是 Windows 路径，Linux 下必改）
 UPLOAD_DIR=/opt/openstudy/uploadPath
+
+# ---------- AI ----------
+# 对话模型（DeepSeek 官方）
+DEEPSEEK_API_KEY=你的deepseek key
+# RAG 知识库向量化后端：
+#   auto（默认）—— 优先本地模型，不可用再回退硅基流动
+#   local       —— 纯本地（需 sentence-transformers + 足够内存，无需任何 Key）
+#   siliconflow —— 走云端（需下面的 SILICONFLOW_API_KEY；内存 <4GB 的机器建议用这个）
+EMBEDDING_BACKEND=auto
+SILICONFLOW_API_KEY=          # 仅 siliconflow / auto 回退时需要
 ```
+
+> **本地向量化说明**：`EMBEDDING_BACKEND=local/auto` 时，后端用本地 `bge-m3` 模型做向量化，
+> **不需要任何外部 Key**。首次导入知识库文档时会自动下载模型（约 2.2GB）到缓存目录，
+> 之后离线可用。内存建议 ≥4GB。
+> 内存较小的机器（如 2GB）请设 `EMBEDDING_BACKEND=siliconflow` 并配 `SILICONFLOW_API_KEY`。
 
 ```bash
 # 3) 启动后端（后台 + 日志）
