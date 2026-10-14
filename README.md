@@ -75,9 +75,19 @@ fastapi-v2/
 |---|---|
 | 前端主页 | http://localhost:3167 |
 | 后端文档（Swagger） | http://localhost:9101/swagger-ui.html |
-| 演示账号 | `admin` / `admin123` |
 
-> 完整的**逐步安装说明**（含各系统依赖安装命令、数据库初始化、依赖清单）、AI Key 配置、
+**演示账号**：
+
+| 账号 | 密码 | 获取方式 |
+|---|---|---|
+| `admin` | `admin123` | 导入数据库 SQL 后即有（管理员） |
+| `demo` | `admin123` | 导入数据库 SQL 后即有（普通用户） |
+| `user1` / `user2` / `guest` | `user1`/`user2` 密码 `123456` | 需额外运行 `cd openstudy-fastapi && python seed_demo_users.py` |
+
+> 登录页的**「一键登录」**按钮（user1 / user2 / guest / admin）依赖 `seed_demo_users.py` 创建的演示账号；
+> 未运行该脚本时，请用 **`admin` / `admin123` 手动登录**。
+
+> 完整的**逐步安装说明**（含各系统依赖安装命令、数据库初始化、演示账号、依赖清单）、AI Key 配置、
 > 以及**云端沙箱 / 公网访问**的操作，全部写在 **[`SKILL.md`](./SKILL.md)** 中。
 > 若是把你的机器人 / AI 终端接入本项目，**让 AI 终端直接读取 `SKILL.md` 并按其指引执行即可**。
 
