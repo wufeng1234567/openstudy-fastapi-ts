@@ -3,7 +3,26 @@
         <!-- 页头 -->
         <div class="page-header">
             <h2 class="page-title">数据概览</h2>
-            <span class="page-sub">全站用户 / 题库 / 题目 / 笔记的累计统计</span>
+            <span class="page-sub">全站用户 / 题库 / 题目 / 笔记等累计统计</span>
+        </div>
+
+        <!-- ============ 演示模式开关 ============ -->
+        <div class="panel demo-mode-panel">
+            <div class="demo-mode-info">
+                <div class="demo-mode-title">
+                    <el-icon :size="18"><Setting /></el-icon>
+                    <span>演示模式</span>
+                    <el-tag :type="demoMode ? 'success' : 'info'" size="small" effect="light" round>
+                        {{ demoMode ? '已开启' : '已关闭' }}
+                    </el-tag>
+                </div>
+                <div class="demo-mode-desc">
+                    开启：登录页显示「演示账号 · 一键登录」入口（自己答辩/演示用）。<br />
+                    关闭：登录页直接走账号密码登录 / 注册，隐藏演示账号（上线给别人体验用）。
+                </div>
+            </div>
+            <el-switch v-model="demoMode" :loading="demoModeSaving" size="large" inline-prompt
+                active-text="演示" inactive-text="体验" @change="onDemoModeChange" />
         </div>
 
         <!-- ============ 统计卡片 ============ -->
@@ -116,9 +135,58 @@
 <script setup lang="ts">
 defineOptions({ name: 'AdminDashboard' })
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import { User, Collection, EditPen, Notebook, Document } from '@element-plus/icons-vue'
+import { User, Collection, EditPen, Notebook, Document, Setting } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import { getDashboardStats, getDashboardRecent } from '@/api/dashboard'
+import { getConfigKey, updateConfig, listConfig } from '@/api/system/config'
+
+// ---------------- 演示模式开关 ----------------
+const demoMode = ref(true)
+const demoModeSaving = ref(false)
+let demoConfigId = null
+
+async function loadDemoMode() {
+  try {
+    const res = await listConfig({ configKey: 'sys.demo.mode' })
+    const row = res.rows?.[0]
+    if (row) {
+      demoConfigId = row.configId
+      demoMode.value = String(row.configValue).toLowerCase() === 'true'
+    }
+  } catch (e) {
+    console.error('读取演示模式失败:', e)
+  }
+}
+
+async function onDemoModeChange(val) {
+  if (!demoConfigId) {
+    // 没有该配置项：用 updateConfig 建不了（缺字段），退化为读一次再提示
+    ElMessage.warning('未找到「演示模式」配置项，请在参数设置里手动添加 sys.demo.mode')
+    demoMode.value = !val
+    return
+  }
+  demoModeSaving.value = true
+  try {
+    const res = await getConfigKey('sys.demo.mode')
+    const cfg = res.data || {}
+    await updateConfig({
+      configId: demoConfigId,
+      configName: cfg.configName || '系统-演示模式',
+      configKey: 'sys.demo.mode',
+      configValue: val ? 'true' : 'false',
+      configType: 'Y',
+      remark: cfg.remark || ''
+    })
+    ElMessage.success(val ? '已开启演示模式（登录页显示演示账号入口）' : '已关闭演示模式（登录页走注册/登录）')
+  } catch (e) {
+    console.error('保存演示模式失败:', e)
+    ElMessage.error('保存失败')
+    demoMode.value = !val
+  } finally {
+    demoModeSaving.value = false
+  }
+}
 
 // ---------------- 统计卡片 ----------------
 const rawStats = ref({
@@ -366,6 +434,7 @@ onMounted(async () => {
     window.addEventListener('resize', handleResize)
     fetchStats()
     fetchRecent()
+    loadDemoMode()
 })
 
 onUnmounted(() => {
@@ -402,6 +471,36 @@ onUnmounted(() => {
     .page-sub {
         font-size: 13px;
         color: #9ca3af;
+    }
+
+    /* ===== 演示模式开关面板 ===== */
+    .demo-mode-panel {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 16px;
+        padding: 14px 18px;
+    }
+
+    .demo-mode-info {
+        min-width: 0;
+    }
+
+    .demo-mode-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 15px;
+        font-weight: 600;
+        color: #1f2937;
+    }
+
+    .demo-mode-desc {
+        margin-top: 6px;
+        font-size: 12.5px;
+        line-height: 1.7;
+        color: #6b7280;
     }
 
     /* ===== 通用面板：与「学习统计」页 panel 同款 ===== */
