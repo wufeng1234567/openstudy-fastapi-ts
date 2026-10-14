@@ -4,7 +4,7 @@
 -- 内容：user1 / user2 / guest 演示账号 + 演示题库(18题) +
 --       答题流水 143 条 + 错题/斩题/收藏 + 笔记
 -- 前置：先导入 01_openstudy_v2_pgsql_deploy.sql（建表+基础种子）
--- 用法：psql -U root -d openstudy_v2_pgsql -f 99_demo_seed.sql
+-- 用法：psql -U root -d openstudy_v2_pgsql -f 97_demo_seed.sql
 -- 账号：user1/user2 = 123456 ; admin/demo = admin123 ; guest 免密
 -- ============================================================
 

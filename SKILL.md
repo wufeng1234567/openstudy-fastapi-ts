@@ -143,7 +143,7 @@ sudo firewall-cmd --add-port=3167/tcp --permanent && sudo firewall-cmd --reload 
 | Redis | 6379 |
 
 **演示账号**：`admin` / `admin123`（SQL 自带，可管理员登录）。
-> 「一键登录」的 user1/user2/guest 也已由 `99_demo_seed.sql` 一并导入，见 **§4.1**。
+> 「一键登录」的 user1/user2/guest 也已由 `97_demo_seed.sql` 一并导入，见 **§4.1**。
 
 **数据库名**：`openstudy_v2_pgsql`（可在 `.env` 改，但 SQL 导入时必须一致）。
 
@@ -159,7 +159,7 @@ sudo firewall-cmd --add-port=3167/tcp --permanent && sudo firewall-cmd --reload 
 4. 【关键】确认 vector 与 pg_trgm 扩展可创建
 5. 建库，依次导入两份 SQL：
    - deploy/db-init/01_openstudy_v2_pgsql_deploy.sql（结构+基础种子）
-   - deploy/db-init/99_demo_seed.sql（演示账号+演示数据）
+   - deploy/db-init/97_demo_seed.sql（演示账号+演示数据）
 6. 后端：venv → pip install -r requirements.txt（确保 bcrypt==4.0.1）→ 写 .env → uvicorn 启动(9101)
 7. 前端：npm install → npm run dev(3167)
 8. 校验：curl 后端 /health 与前端登录接口，均 code==200
@@ -352,7 +352,7 @@ createdb -U root openstudy_v2_pgsql        # 或 sudo -u postgres createdb -O ro
 psql -U root -d openstudy_v2_pgsql -f deploy/db-init/01_openstudy_v2_pgsql_deploy.sql
 
 # 3) 导入「演示数据」（user1/user2/guest + 演示题库 + 学习统计/错题/收藏/笔记）
-psql -U root -d openstudy_v2_pgsql -f deploy/db-init/99_demo_seed.sql
+psql -U root -d openstudy_v2_pgsql -f deploy/db-init/97_demo_seed.sql
 
 # 4) 校验扩展已就位（关键！）
 psql -U root -d openstudy_v2_pgsql -c "SELECT extname FROM pg_extension WHERE extname IN ('vector','pg_trgm');"
@@ -374,7 +374,7 @@ psql -U root -d openstudy_v2_pgsql -c "SELECT extname FROM pg_extension WHERE ex
 | `user2` | `123456` | 普通用户（分享接收方） |
 | `guest` | 免密（一键登录） | 只读游客 |
 
-> 登录页的**「一键登录」**按钮对应 `user1 / user2 / guest / admin`，导入 `99_demo_seed.sql` 后**全部可用**。
+> 登录页的**「一键登录」**按钮对应 `user1 / user2 / guest / admin`，导入 `97_demo_seed.sql` 后**全部可用**。
 > 无需再运行任何 Python 种子脚本。
 
 ---
@@ -536,7 +536,7 @@ pgvector 若确实无法安装（源里没有、编译失败），有两种降�
 | Python | 3.11（≥3.10） | `python3 --version` | 3.11.x |
 | Node.js | 20（≥18） | `node -v` | v20.x |
 | 数据库 | openstudy_v2_pgsql | `psql -lqt` | 库存在 |
-| 演示账号 | user1/user2/guest | `psql -c "SELECT user_name FROM sys_user"` | 含 user1/user2/guest（导入 99_demo_seed.sql 后即有） |
+| 演示账号 | user1/user2/guest | `psql -c "SELECT user_name FROM sys_user"` | 含 user1/user2/guest（导入 97_demo_seed.sql 后即有） |
 | 端口 | 9101 / 3167 | `ss -lntp` | 两个都在监听 |
 
 ---
@@ -563,7 +563,7 @@ sudo -u postgres createdb -O root openstudy_v2_pgsql 2>/dev/null || true
 # ========== 4. 导入 SQL（两份）==========
 cd <仓库根>
 psql -U root -d openstudy_v2_pgsql -f deploy/db-init/01_openstudy_v2_pgsql_deploy.sql
-psql -U root -d openstudy_v2_pgsql -f deploy/db-init/99_demo_seed.sql
+psql -U root -d openstudy_v2_pgsql -f deploy/db-init/97_demo_seed.sql
 psql -U root -d openstudy_v2_pgsql -c "SELECT extname FROM pg_extension WHERE extname IN ('vector','pg_trgm');"
 
 # ========== 5. 后端依赖与配置 ==========

@@ -37,8 +37,8 @@
             <div class="forms-track" :class="{ 'track-register': !isLogin }">
               <!-- Login Form -->
               <div class="form-panel">
-                <!-- 视图一：演示账号一键登录（默认） -->
-                <div v-show="!showAccountForm" class="quick-login-view">
+                <!-- 视图一：演示账号一键登录（仅 demoMode 时显示） -->
+                <div v-if="demoMode" v-show="!showAccountForm" class="quick-login-view">
                   <div class="quick-header">
                     <h3>演示账号 · 一键登录</h3>
                     <p>点击下方任一账号即可直接进入系统</p>
@@ -260,6 +260,9 @@ const loginRules = {
 const codeUrl = ref("");
 const loading = ref(false);
 const captchaEnabled = ref(true);
+// 演示模式：true=显示「演示账号一键登录」入口（自用/答辩）；false=上线体验版，
+// 默认走账号密码登录/注册，不暴露演示账号。由后端 /captchaImage 的 demoMode 下发。
+const demoMode = ref(true);
 
 function handleLogin() {
   if (quickLoading.value) return
@@ -409,6 +412,13 @@ function handleRegister() {
 function getCode() {
   getCodeImg().then(res => {
     captchaEnabled.value = res.data.captchaEnabled === undefined ? true : res.data.captchaEnabled;
+    // 体验版（demoMode=false）默认直接进「账号密码登录」，隐藏演示账号一键登录
+    if (res.data.demoMode !== undefined) {
+      demoMode.value = res.data.demoMode === true;
+      if (!demoMode.value) {
+        showAccountForm.value = true;
+      }
+    }
     if (captchaEnabled.value) {
       codeUrl.value = "data:image/gif;base64," + res.data.img;
       loginForm.value.uuid = res.data.uuid;

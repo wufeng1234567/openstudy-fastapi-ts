@@ -116,9 +116,15 @@ class Settings(BaseSettings):
     # ⚠️ 旧名 `deepseek-v4-flash` 仍可调用，但对应模型**已下线**（请求由 V4.1-Flash 提供服务），
     #    新配置一律用 `deepseek-flash`。别名收敛见 `services/ai/deepseek_client.py` 的 MODEL_ALIASES。
     AI_DEFAULT_MODEL: str = "deepseek-flash"
-    # RAG 向量化的模型。实测：DeepSeek 官方**没有** embeddings 接口，智谱 key 余额不足，
-    # 所以走硅基流动。1024 维，必须与 `models/rag.py: EMBEDDING_DIM` 保持一致。
+    # RAG 向量化模型。默认 BAAI/bge-m3（1024 维，必须与 models/rag.py: EMBEDDING_DIM 一致）。
     AI_DEFAULT_EMBEDDING_MODEL: str = "BAAI/bge-m3"
+    # RAG 向量化的**后端**，三选一：
+    #   local       —— 本机 sentence-transformers 加载模型（无需外部 Key，需足够内存/磁盘）
+    #   siliconflow —— 调硅基流动云端 embeddings（需 SILICONFLOW_API_KEY）
+    #   auto        —— 优先 local，本地不可用再回退 siliconflow
+    EMBEDDING_BACKEND: str = "auto"
+    # 本地 embedding 模型缓存目录（首次运行会下载模型到此）。留空 = 默认缓存目录。
+    EMBEDDING_MODEL_DIR: str = ""
 
     class Config:
         env_file = ".env"

@@ -40,6 +40,14 @@ openai==1.58.1
 zhipuai==2.1.5.20230904
 httpx==0.28.1
 
+# 本地 RAG 向量化（EMBEDDING_BACKEND=local/auto 时使用，无需任何外部 API Key）
+# torch 用 CPU 版索引源，避免拉入几个 GB 的 CUDA 包（服务器多为无 GPU 场景）
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.4.1
+sentence-transformers==3.3.1
+# 说明：sentence-transformers 首次运行会自动下载模型 BAAI/bge-m3（约 2.2GB）到缓存目录。
+#      不想用本地模型时，可在 .env 设 EMBEDDING_BACKEND=siliconflow 走云端（需 SILICONFLOW_API_KEY）。
+
 # Document Processing
 # jieba：RAG 中文分词（app/services/rag/tokenizer.py）。
 # ⚠️ 它在**启动导入链**上（main.py:82 → api/v1/rag.py:31 → document_pipeline.py:34

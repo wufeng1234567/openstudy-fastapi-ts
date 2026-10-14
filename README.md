@@ -34,7 +34,7 @@ fastapi-v2/
 ├── deploy/
 │   └── db-init/              # 数据库 SQL
 │       ├── 01_openstudy_v2_pgsql_deploy.sql   # 结构 + 基础种子
-│       └── 99_demo_seed.sql                   # 演示账号 + 演示数据
+│       └── 97_demo_seed.sql                   # 演示账号 + 演示数据
 ├── startup-scripts/          # 启动脚本与数据库脚本
 ├── SKILL.md                  # ⭐ 部署安装说明书（给 AI 终端 / 部署人员，含公网访问方案）
 └── README.md                 # 本文件（面向使用者的项目介绍）

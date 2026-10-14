@@ -39,6 +39,13 @@ async def captcha_image(db: AsyncSession = Depends(get_db)):
     captcha_config = config_result.scalar_one_or_none()
     captcha_enabled = captcha_config.config_value.lower() == "true" if captcha_config else True
 
+    # 演示模式开关：true=保留「演示账号一键登录」入口（自用/答辩）；
+    # false=上线体验版，登录页默认走账号密码登录/注册，不暴露演示账号。
+    demo_cfg = (await db.execute(
+        select(SysConfig).where(SysConfig.config_key == "sys.demo.mode")
+    )).scalar_one_or_none()
+    demo_mode = (demo_cfg.config_value.lower() == "true") if demo_cfg else True
+
     captcha_id = str(uuid.uuid4())
 
     if not captcha_enabled:
@@ -46,6 +53,7 @@ async def captcha_image(db: AsyncSession = Depends(get_db)):
             "uuid": captcha_id,
             "img": "",
             "captchaEnabled": False,
+            "demoMode": demo_mode,
         })
 
     # 生成4位随机字符验证码
@@ -94,6 +102,7 @@ async def captcha_image(db: AsyncSession = Depends(get_db)):
         "uuid": captcha_id,
         "img": img_base64,
         "captchaEnabled": True,
+        "demoMode": demo_mode,
     })
 
 
