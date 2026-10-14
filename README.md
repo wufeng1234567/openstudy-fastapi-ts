@@ -2,6 +2,8 @@
 
 > 一个面向在线学习场景的全栈应用：题库刷题、错题本、笔记、学习分享、消息通知，并内置 **AI 助手（Agent + RAG 知识库 + 长期记忆）**。
 
+> 🛠️ **本项目基于华为云码道 CodeArts 开发**，覆盖 AI 编码全流程（需求拆解 → 代码生成 → 调试联调 → 部署交付）。
+
 - **后端**：Python 3.11 · FastAPI · SQLAlchemy 2.0（异步）· PostgreSQL + pgvector
 - **前端**：Vue 3 · TypeScript · Vite · Element Plus · Pinia
 - **AI**：LangChain · DeepSeek / 智谱 / 硅基流动 多模型动态路由
