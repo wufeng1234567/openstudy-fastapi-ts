@@ -5,7 +5,7 @@
 - **后端**：Python 3.11 · FastAPI · SQLAlchemy 2.0（异步）· PostgreSQL + pgvector
 - **前端**：Vue 3 · TypeScript · Vite · Element Plus · Pinia
 - **AI**：LangChain · DeepSeek / 智谱 / 硅基流动 多模型动态路由
-- **交付**：Docker 一键启动，用户无需手动安装数据库 / 向量库 / Redis
+- **部署**：提供完整的逐步安装说明，支持 Linux 服务器 / 云沙箱 / 本机运行
 
 ---
 
@@ -25,23 +25,18 @@ fastapi-v2/
 │   │       │   └── agent/    # Agent 运行时（loop / 工具注册表 / 回退 / 确认）
 │   │       └── rag/          # 知识库：分块 / 向量化 / 混合检索 / 写入流水线
 │   ├── requirements.txt      # Python 依赖
-│   ├── Dockerfile            # 后端镜像
 │   └── .env.example          # 环境变量样例（真实 .env 不入库）
 ├── openstudy-vue3-ts/        # 前端（Vue3 + TS）
 │   ├── src/                  # 源码（api / views / components / layout / utils）
-│   ├── Dockerfile            # 前端镜像（多阶段构建 + Nginx）
-│   └── nginx.conf            # 前端容器内的 Nginx 配置（含 API 反代）
+│   └── package.json
 ├── deploy/
-│   └── db-init/              # 数据库首次初始化 SQL（结构 + 种子数据）
-├── docker-compose.yml        # 一键编排：db + redis + backend + frontend
-├── .env.example              # 一键部署配置样例（复制为 .env 使用）
-├── start.bat / start.sh      # 一键启动（Windows / Linux）
-├── stop.bat  / stop.sh       # 一键停止
+│   └── db-init/              # 数据库初始化 SQL（结构 + 种子 + 演示数据）
+├── startup-scripts/          # 启动脚本与数据库脚本
 ├── SKILL.md                  # ⭐ 部署安装说明书（给 AI 终端 / 部署人员，含公网访问方案）
 └── README.md                 # 本文件（面向使用者的项目介绍）
 ```
 
-> 📌 **要开始部署 / 在云端或本机跑起来？请阅读 [`SKILL.md`](./SKILL.md)。**
+> 📌 **要开始部署 / 在服务器或云端跑起来？请阅读 [`SKILL.md`](./SKILL.md)。**
 > 本 README 只做项目介绍；具体的安装、启动、公网访问步骤都在 `SKILL.md` 里。
 
 ---
@@ -72,7 +67,9 @@ fastapi-v2/
 
 ## 快速开始（一句话版）
 
-本系统已容器化，**只需安装 Docker**，然后双击 `start.bat`（Windows）或执行 `./start.sh`（Linux/macOS）即可拉起全套服务：
+本系统可运行于 **Linux 服务器 / 云沙箱 / 本机**，需要 PostgreSQL（含 pgvector、pg_trgm 扩展）、Redis、Python 3.11、Node 18+。
+
+完成部署后访问：
 
 | 服务 | 地址（本机） |
 |---|---|
@@ -80,24 +77,27 @@ fastapi-v2/
 | 后端文档（Swagger） | http://localhost:9101/swagger-ui.html |
 | 演示账号 | `admin` / `admin123` |
 
-> 完整部署步骤、AI Key 配置、以及在**云端沙箱 / 公网访问**场景下的操作，
-> 全部写在 **[`SKILL.md`](./SKILL.md)** 中。若是把你的机器人 / AI 终端接入本项目，
-> **让 AI 终端直接读取 `SKILL.md` 并按其指引执行即可**。
+> 完整的**逐步安装说明**（含各系统依赖安装命令、数据库初始化、依赖清单）、AI Key 配置、
+> 以及**云端沙箱 / 公网访问**的操作，全部写在 **[`SKILL.md`](./SKILL.md)** 中。
+> 若是把你的机器人 / AI 终端接入本项目，**让 AI 终端直接读取 `SKILL.md` 并按其指引执行即可**。
 
 ---
 
 ## 环境变量（AI Key 等）
 
-一键部署读取**根目录**的 `.env`（从 `.env.example` 复制）。关键配置：
+后端读取 **`openstudy-fastapi/.env`**（从 `openstudy-fastapi/.env.example` 复制）。关键配置：
 
 ```dotenv
-# 数据库（容器内部使用，无需改动即可跑）
+# 数据库
 PG_NAME=openstudy_v2_pgsql
 PG_USER=root
 PG_PASSWORD=123456
 
 # 安全：公开访问务必改成长随机串
 JWT_SECRET=openstudy-change-me-in-production
+
+# 上传目录（Linux 下必改为本机真实存在的目录）
+UPLOAD_DIR=/opt/openstudy/uploadPath
 
 # AI 模型 Key（不填则 AI 对话 / 知识库不可用，其余功能正常）
 DEEPSEEK_API_KEY=
@@ -119,7 +119,6 @@ ZHIPU_API_KEY=
 | 中文全文检索 | jieba 分词写入 `content_tokens` → PG 生成列 `search_vec` |
 | Agent 工具契约 | 统一结果信封 `{success, error, hint}`，描述分「模型侧（英文）/ 界面侧（中文）」两套 |
 | 状态机 | 文档处理：`1待解析 → 2解析中 → 3已解析 → 5已向量化 / 4失败` |
-| 容器化 | 单条 `docker compose up -d --build` 拉起 pgvector + Redis + 前后端 |
 
 ---
 
