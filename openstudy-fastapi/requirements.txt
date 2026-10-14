@@ -45,8 +45,10 @@ httpx==0.28.1
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.4.1
 sentence-transformers==3.3.1
-# 说明：sentence-transformers 首次运行会自动下载模型 BAAI/bge-m3（约 2.2GB）到缓存目录。
-#      不想用本地模型时，可在 .env 设 EMBEDDING_BACKEND=siliconflow 走云端（需 SILICONFLOW_API_KEY）。
+# modelscope（魔搭）：国内直连下载模型，绕过 huggingface.co 被墙的问题
+modelscope==1.20.0
+# 说明：sentence-transformers 首次运行会下载模型 BAAI/bge-m3（约 2.2GB）。
+#      国内服务器优先从魔搭(ModelScope)下载；不想用本地模型时设 EMBEDDING_BACKEND=siliconflow 走云端。
 
 # Document Processing
 # jieba：RAG 中文分词（app/services/rag/tokenizer.py）。

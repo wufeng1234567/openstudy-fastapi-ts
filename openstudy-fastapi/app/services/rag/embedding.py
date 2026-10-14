@@ -37,6 +37,37 @@ _local_lock = threading.Lock()
 _local_load_failed = False   # 加载失败过就不再重试（避免每次请求都卡半天）
 
 
+def _resolve_local_model_path(model_name: str, cache_dir: str | None) -> str:
+    """把模型名解析为**本地目录路径**。
+
+    ⚠️ 国内服务器访问不了 huggingface.co（被墙），直接 `SentenceTransformer("BAAI/bge-m3")`
+    会因下载失败而报错。这里**优先从魔搭（ModelScope）下载**到本地目录 —— 国内直连、快。
+    只有魔搭不可用时才回退让 sentence-transformers 自己去 HF 下（可能失败）。
+
+    返回可直接传给 SentenceTransformer 的路径（本地目录或原始模型名）。
+    """
+    import os
+
+    # 1) 已经指定了本地模型目录，且目录里有内容 → 直接用
+    if cache_dir and os.path.isdir(cache_dir) and os.listdir(cache_dir):
+        # 优先找带 config.json 的子目录（魔搭 snapshot 的典型结构）
+        for root, _dirs, files in os.walk(cache_dir):
+            if "config.json" in files:
+                logger.info(f"[embedding] 复用已下载的本地模型目录：{root}")
+                return root
+    # 2) 尝试从魔搭下载
+    try:
+        from modelscope import snapshot_download  # 延迟导入
+        target = cache_dir or os.path.join(os.path.expanduser("~"), ".cache", "modelscope", "openstudy")
+        logger.info(f"[embedding] 从魔搭(ModelScope)下载模型 {model_name} 到 {target}（首次较慢）…")
+        local_dir = snapshot_download(model_name, cache_dir=target)
+        logger.info(f"[embedding] 魔搭下载完成：{local_dir}")
+        return local_dir
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[embedding] 魔搭下载失败（{e}），回退直连 HuggingFace（国内可能不通）")
+        return model_name
+
+
 def _load_local_model():
     """懒加载本地模型（线程安全）。失败时抛 EmbeddingError。"""
     global _local_model, _local_load_failed
@@ -59,14 +90,15 @@ def _load_local_model():
         model_name = settings.AI_DEFAULT_EMBEDDING_MODEL
         cache_dir = (settings.EMBEDDING_MODEL_DIR or "").strip() or None
         try:
-            logger.info(f"[embedding] 加载本地模型 {model_name}（首次会下载，请稍候）…")
-            _local_model = SentenceTransformer(model_name, cache_folder=cache_dir)
+            path_or_name = _resolve_local_model_path(model_name, cache_dir)
+            logger.info(f"[embedding] 加载本地模型 {path_or_name} …")
+            _local_model = SentenceTransformer(path_or_name)
             logger.info("[embedding] 本地模型加载完成")
         except Exception as e:  # noqa: BLE001
             _local_load_failed = True
             raise EmbeddingError(
                 f"本地 embedding 模型 {model_name} 加载失败：{e}。"
-                "请检查网络能否下载模型，或设 EMBEDDING_BACKEND=siliconflow 走云端。"
+                "请检查网络能否从魔搭下载模型，或设 EMBEDDING_BACKEND=siliconflow 走云端。"
             ) from e
         return _local_model
 
