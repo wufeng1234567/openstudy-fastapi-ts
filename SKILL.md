@@ -53,7 +53,7 @@ description: "OpenStudy 在线学习平台的部署安装说明书（给 AI 终�
 | Redis | 6379 |
 
 **演示账号**：`admin` / `admin123`（SQL 自带，可管理员登录）。
-> 「一键登录」还需 user1/user2/guest，见 **§4.1**（需额外跑 `seed_demo_users.py`）。
+> 「一键登录」的 user1/user2/guest 也已由 `00_demo_seed.sql` 一并导入，见 **§4.1**。
 
 **数据库名**：`openstudy_v2_pgsql`（可在 `.env` 改，但 SQL 导入时必须一致）。
 
@@ -67,8 +67,9 @@ description: "OpenStudy 在线学习平台的部署安装说明书（给 AI 终�
    - openEuler 的 pgvector 走 §2.1 R2（下 PG 源码 + 手建 PGXS + 编译）
 3. 启动 PostgreSQL 与 Redis（无 systemd 时用 pg_ctl / redis-server --daemonize）
 4. 【关键】确认 vector 与 pg_trgm 扩展可创建
-5. 建库并导入 deploy/db-init/01_openstudy_v2_pgsql_deploy.sql（结构+种子+演示数据）
-5b. 跑 python seed_demo_users.py 补齐「一键登录」用的 user1/user2/guest（见 §4.1）
+5. 建库，依次导入两份 SQL：
+   - deploy/db-init/01_openstudy_v2_pgsql_deploy.sql（结构+基础种子）
+   - deploy/db-init/00_demo_seed.sql（演示账号+演示数据）
 6. 后端：venv → pip install -r requirements.txt（确保 bcrypt==4.0.1）→ 写 .env → uvicorn 启动(9101)
 7. 前端：npm install → npm run dev(3167)
 8. 校验：curl 后端 /health 与前端登录接口，均 code==200
@@ -249,54 +250,42 @@ redis-cli ping     # 期望 PONG
 
 ## 4. 初始化数据库（建库 + 导入 SQL）
 
+**只需导入两份 SQL**（先结构、后演示），即可获得完整可演示环境：
+
 ```bash
 cd <仓库根目录>
 
 # 1) 建库（默认 openstudy_v2_pgsql；如自定义，务必与 .env 的 PG_NAME 一致）
-sudo -u postgres createdb -O root openstudy_v2_pgsql   # 或 createdb -U root ...
+createdb -U root openstudy_v2_pgsql        # 或 sudo -u postgres createdb -O root openstudy_v2_pgsql
 
-# 2) 导入「结构 + 种子 + 演示数据」
+# 2) 导入「结构 + 基础种子」（建表、菜单、admin/demo 账号等）
 psql -U root -d openstudy_v2_pgsql -f deploy/db-init/01_openstudy_v2_pgsql_deploy.sql
 
-# 3) 校验扩展已就位（关键！）
+# 3) 导入「演示数据」（user1/user2/guest + 演示题库 + 学习统计/错题/收藏/笔记）
+psql -U root -d openstudy_v2_pgsql -f deploy/db-init/00_demo_seed.sql
+
+# 4) 校验扩展已就位（关键！）
 psql -U root -d openstudy_v2_pgsql -c "SELECT extname FROM pg_extension WHERE extname IN ('vector','pg_trgm');"
 # 期望输出两行：vector / pg_trgm。若 vector 缺失 → 回 §2.1 把 pgvector 装好再重来。
 ```
 
 > SQL 第一段会执行 `CREATE EXTENSION IF NOT EXISTS vector;` 与 `pg_trgm`。
-> **若这一步报 `could not open extension control file .../vector.control`** → pgvector 没装成功，必须先解决 §2.1。
-
+> **若报 `could not open extension control file .../vector.control`** → pgvector 没装成功，必须先解决 §2.1。
+>
 > SQL 已清洗：**不含真实 API Key / 密码 / 隐私数据**；`sys_ai_config.api_key` 为占位符，用户自行在后台填自己的 Key。
 
-### 4.1 演示账号说明（重要）
-
-导入 SQL 后，库里**只有两个账号**：
+### 4.1 演示账号（导入上面两份 SQL 后即全部就位）
 
 | 账号 | 密码 | 说明 |
 |---|---|---|
-| `admin` | `admin123` | 管理员（登录后可进后台） |
+| `admin` | `admin123` | 管理员（可进后台） |
 | `demo` | `admin123` | 普通用户 |
+| `user1` | `123456` | 普通用户，带 **2 个演示题库**（10 题 + 8 题）+ 完整学习统计/错题/收藏/笔记 |
+| `user2` | `123456` | 普通用户（分享接收方） |
+| `guest` | 免密（一键登录） | 只读游客 |
 
-**但登录页的「一键登录」按钮**（user1 / user2 / guest / admin）需要的是 **`user1` / `user2` / `guest`** 三个演示账号，
-它们**不在 SQL 里**，需要额外跑种子脚本才会创建：
-
-```bash
-cd openstudy-fastapi
-source .venv/bin/activate
-python seed_demo_users.py     # 幂等，可重复执行
-```
-
-该脚本会创建：
-- `user1 / 123456` —— 普通用户，带 **2 个演示题库**（10 题 + 8 题）+ 完整学习统计/错题/收藏/笔记
-- `user2 / 123456` —— 普通用户（分享接收方）
-- `guest` —— 只读游客
-- `admin` —— 已存在则不动
-
-> ⚠️ **不跑此脚本时**：点「一键登录」里的 user1/user2/guest 会报
-> `演示账号不存在，请先执行 openstudy-fastapi/seed_demo_users.py 初始化演示数据`。
-> **用 admin / admin123 手动登录则不受影响。**
->
-> **答辩/演示前建议跑一次** `seed_demo_users.py`，这样「一键登录」和全部演示数据都齐全。
+> 登录页的**「一键登录」**按钮对应 `user1 / user2 / guest / admin`，导入 `00_demo_seed.sql` 后**全部可用**。
+> 无需再运行任何 Python 种子脚本。
 
 ---
 
@@ -361,8 +350,6 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:3167/   # 期望 200
 
 > 前端 dev server 默认端口 **3167**（见 `vite.config.ts`），代理目标 `http://localhost:9101`。
 > 若后端不在本机 9101，改 `vite.config.ts` 里各 `target` 即可。
->
-> **可选**：前端 dev 会自动尝试拉起 DS 网页桥（`startup-scripts/ds-bridge`，端口 9200）。桥依赖宿主机的 Edge/Chrome，**沙箱里通常没有浏览器 → 桥自动跳过，不影响前端运行**。
 
 ### 6.1 一键启动脚本（可选）
 
@@ -443,8 +430,8 @@ pgvector 若确实无法安装（源里没有、编译失败），有两种降�
 **Q8：`npm install` 很慢/失败**
 → 换国内镜像：`npm config set registry https://registry.npmmirror.com`；pip 同理：`pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple`。
 
-**Q9：DS 网页桥（模型 `ds-free-nb`）用不了**
-→ 该桥依赖宿主机 Edge/Chrome 做 DOM 自动化，沙箱里没有浏览器，故不可用（设计如此）。改用其它 provider（DeepSeek 官方 / 硅基流动）并在后台配置 Key。
+**Q9：AI 对话用哪个模型？**
+→ 登录后台「系统管理 → AI 模型配置」，选 DeepSeek 官方（`deepseek-flash` / `deepseek-v4-pro`）并填入自己的 API Key；RAG 知识库向量化用硅基流动 Key。不填 Key 时 AI 功能不可用，其余学习功能正常。
 
 ---
 
@@ -459,7 +446,7 @@ pgvector 若确实无法安装（源里没有、编译失败），有两种降�
 | Python | 3.11（≥3.10） | `python3 --version` | 3.11.x |
 | Node.js | 20（≥18） | `node -v` | v20.x |
 | 数据库 | openstudy_v2_pgsql | `psql -lqt` | 库存在 |
-| 演示账号 | user1/user2/guest | `psql -c "SELECT user_name FROM sys_user"` | 含 user1/user2/guest（跑过 seed_demo_users.py） |
+| 演示账号 | user1/user2/guest | `psql -c "SELECT user_name FROM sys_user"` | 含 user1/user2/guest（导入 00_demo_seed.sql 后即有） |
 | 端口 | 9101 / 3167 | `ss -lntp` | 两个都在监听 |
 
 ---
@@ -483,20 +470,18 @@ redis-cli ping   # 期望 PONG
 sudo -u postgres psql -c "CREATE ROLE root LOGIN SUPERUSER PASSWORD '123456';" 2>/dev/null || true
 sudo -u postgres createdb -O root openstudy_v2_pgsql 2>/dev/null || true
 
-# ========== 4. 导入 SQL ==========
+# ========== 4. 导入 SQL（两份）==========
 cd <仓库根>
 psql -U root -d openstudy_v2_pgsql -f deploy/db-init/01_openstudy_v2_pgsql_deploy.sql
+psql -U root -d openstudy_v2_pgsql -f deploy/db-init/00_demo_seed.sql
 psql -U root -d openstudy_v2_pgsql -c "SELECT extname FROM pg_extension WHERE extname IN ('vector','pg_trgm');"
 
-# ========== 5. 后端 ==========
+# ========== 5. 后端依赖与配置 ==========
 cd openstudy-fastapi
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env      # 改 UPLOAD_DIR=/opt/openstudy/uploadPath，按需填 AI Key
 mkdir -p /opt/openstudy/uploadPath
-
-# ========== 5b. 演示账号（「一键登录」必需，幂等）==========
-python seed_demo_users.py     # 创建 user1/user2/guest + 演示题库 + 学习数据
 
 # ========== 6. 启动后端 ==========
 nohup .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 9101 > /tmp/backend.log 2>&1 &

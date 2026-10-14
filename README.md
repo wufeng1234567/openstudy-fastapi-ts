@@ -32,7 +32,9 @@ fastapi-v2/
 │   ├── src/                  # 源码（api / views / components / layout / utils）
 │   └── package.json
 ├── deploy/
-│   └── db-init/              # 数据库初始化 SQL（结构 + 种子 + 演示数据）
+│   └── db-init/              # 数据库 SQL
+│       ├── 01_openstudy_v2_pgsql_deploy.sql   # 结构 + 基础种子
+│       └── 00_demo_seed.sql                   # 演示账号 + 演示数据
 ├── startup-scripts/          # 启动脚本与数据库脚本
 ├── SKILL.md                  # ⭐ 部署安装说明书（给 AI 终端 / 部署人员，含公网访问方案）
 └── README.md                 # 本文件（面向使用者的项目介绍）
@@ -78,16 +80,17 @@ fastapi-v2/
 | 前端主页 | http://localhost:3167 |
 | 后端文档（Swagger） | http://localhost:9101/swagger-ui.html |
 
-**演示账号**：
+**演示账号**（导入 `deploy/db-init/` 下的两份 SQL 后全部就位）：
 
-| 账号 | 密码 | 获取方式 |
+| 账号 | 密码 | 说明 |
 |---|---|---|
-| `admin` | `admin123` | 导入数据库 SQL 后即有（管理员） |
-| `demo` | `admin123` | 导入数据库 SQL 后即有（普通用户） |
-| `user1` / `user2` / `guest` | `user1`/`user2` 密码 `123456` | 需额外运行 `cd openstudy-fastapi && python seed_demo_users.py` |
+| `admin` | `admin123` | 管理员（可进后台） |
+| `demo` | `admin123` | 普通用户 |
+| `user1` | `123456` | 普通用户，带 2 个演示题库 + 完整学习统计数据 |
+| `user2` | `123456` | 普通用户（分享接收方） |
+| `guest` | 免密（一键登录） | 只读游客 |
 
-> 登录页的**「一键登录」**按钮（user1 / user2 / guest / admin）依赖 `seed_demo_users.py` 创建的演示账号；
-> 未运行该脚本时，请用 **`admin` / `admin123` 手动登录**。
+> 登录页的**「一键登录」**按钮对应 `user1 / user2 / guest / admin`，导入演示 SQL 后即可直接使用。
 
 > 完整的**逐步安装说明**（含各系统依赖安装命令、数据库初始化、演示账号、依赖清单）、AI Key 配置、
 > 以及**云端沙箱 / 公网访问**的操作，全部写在 **[`SKILL.md`](./SKILL.md)** 中。

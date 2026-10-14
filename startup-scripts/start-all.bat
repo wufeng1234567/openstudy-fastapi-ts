@@ -3,7 +3,6 @@ setlocal enabledelayedexpansion
 set SCRIPT_DIR=%~dp0
 set BACKEND_PORT=9101
 set FRONTEND_PORT=3167
-set BRIDGE_PORT=9200
 
 call :hdr
 echo.
@@ -28,15 +27,8 @@ call :portinuse %FRONTEND_PORT%
 if "!INUSE!"=="1" (
     echo [SKIP] Vue3 frontend already running on port %FRONTEND_PORT%
 ) else (
-    echo [START] Vue3 frontend ^(DS bridge auto-starts with it^)...
+    echo [START] Vue3 frontend...
     start "OpenStudy Vue3" cmd /k "%SCRIPT_DIR%start-vue.bat"
-)
-
-call :portinuse %BRIDGE_PORT%
-if "!INUSE!"=="1" (
-    echo [SKIP] DS bridge already running on port %BRIDGE_PORT% ^(will be reused^)
-) else (
-    echo [INFO] DS bridge will auto-start with the frontend ^(port %BRIDGE_PORT%^).
 )
 
 echo.
@@ -45,9 +37,7 @@ echo.
 powershell -Command "Write-Host '  Backend API:   http://localhost:%BACKEND_PORT%'"
 powershell -Command "Write-Host '  Backend Docs:  http://localhost:%BACKEND_PORT%/docs'"
 powershell -Command "Write-Host '  Frontend:      http://localhost:%FRONTEND_PORT%'"
-powershell -Command "Write-Host '  DS Bridge:     http://localhost:%BRIDGE_PORT%  (model ds-free-nb)'"
 echo.
-powershell -Command "Write-Host '  DS bridge auto-starts with the frontend (log prefix [ds-bridge]).'"
 powershell -Command "Write-Host '  Already-running services are skipped (idempotent launcher).'"
 echo.
 powershell -Command "Write-Host '  Each service runs in its own window; close it to stop that service.'"

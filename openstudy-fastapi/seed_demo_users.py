@@ -30,7 +30,7 @@ import asyncio
 import random
 from datetime import datetime, timedelta
 
-from sqlalchemy import select, delete, func, update
+from sqlalchemy import select, delete, func, update, text
 
 from app.database import async_session_factory, init_db
 from app.core.security import hash_password
@@ -697,7 +697,7 @@ async def _seed_study_data(db, user1: SysUser) -> None:
         db.add(Note(
             user_id=uid, category_id=cat.id,
             title=title, content=content, markdown_content=content,
-            tags="演示", is_public="0", status="published", del_flag="0",
+            tags="演示", is_public=0, status="published", del_flag="0",
             create_time=_time_on(rng.choice(active_days), rng),
         ))
     print(f"    + 笔记 {len(DEMO_NOTES)} 条（分类：{NOTE_CATEGORY_NAME}）")
@@ -708,6 +708,46 @@ async def _seed_study_data(db, user1: SysUser) -> None:
     print(f"    => 共作答 {total_practice} 次，答对 {total_correct} 次，正确率 {rate}%")
 
 
+async def _sync_all_sequences(db) -> None:
+    """把所有表的自增序列同步到「当前最大 ID」。
+
+    ⚠️ 为什么必须做：部署 SQL（pg_dump 导出）用**显式 ID** INSERT 了种子数据
+    （如 sys_user 插了 id=1/2），但**没有同步序列**（setval）。于是序列仍停在初始值，
+    后续脚本/接口用 nextval 取 ID 时会从头开始 → 撞已有主键
+    （典型报错：`duplicate key value violates unique constraint "sys_user_pkey"`）。
+
+    这里遍历所有含序列的表，用 pg_get_serial_sequence 找到其序列，
+    统一 setval 到 max(id)。仅 PostgreSQL 需要；MySQL 直接跳过。
+    幂等：重复执行结果一致，不会破坏数据。
+    """
+    from app.config import settings
+
+    if not settings.IS_POSTGRES:
+        return
+
+    rows = (await db.execute(text(
+        "SELECT table_name, column_name FROM information_schema.columns "
+        "WHERE table_schema='public' AND column_default LIKE 'nextval(%'"
+    ))).all()
+
+    fixed = 0
+    for table_name, column_name in rows:
+        try:
+            # pg_get_serial_sequence 需要带 schema 的标识符字符串
+            await db.execute(text(
+                f"SELECT setval("
+                f"  pg_get_serial_sequence('public.{table_name}', '{column_name}'),"
+                f"  COALESCE((SELECT MAX({column_name}) FROM public.{table_name}), 0) + 1,"
+                f"  false)"
+            ))
+            fixed += 1
+        except Exception as e:  # pragma: no cover - 个别表异常不应中断整体
+            await db.rollback()
+            print(f"    ! 跳过 {table_name}.{column_name}（{e}）")
+    await db.commit()
+    print(f"  + 已同步 {fixed} 个自增序列到各表当前最大 ID")
+
+
 async def seed_demo():
     # 先确保所有表存在（含分享/通知等新表），create_all 幂等、不会删数据
     await init_db()
@@ -716,6 +756,9 @@ async def seed_demo():
         print("=" * 60)
         print("开始初始化演示数据 ...")
         print("=" * 60)
+
+        print("[0/5] 同步自增序列（修复 SQL 导入后序列未对齐导致的主键冲突）")
+        await _sync_all_sequences(db)
 
         print("[1/5] 演示角色（common / visitor）")
         role = await _get_or_create_common_role(db)

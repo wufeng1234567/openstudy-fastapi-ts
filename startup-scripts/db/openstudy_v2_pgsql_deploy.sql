@@ -3402,8 +3402,7 @@ INSERT INTO public.sys_user_role (user_id, role_id) VALUES
 -- ---------- AI 模型配置（⚠️ 全部为占位 Key，部署后请自行填写） ----------
 INSERT INTO public.sys_ai_config (config_id, user_id, provider, provider_name, model, api_key, base_url, web_phone, web_password, web_area_code, is_default, is_enabled, status, remark, thinking_mode, reasoning_effort, context_length, create_time, update_time, create_by, update_by, model_kind) VALUES
 (1, NULL, 'deepseek', 'DeepSeek', 'deepseek-flash', 'YOUR_API_KEY_HERE', 'https://api.deepseek.com', NULL, NULL, NULL, 1, 1, '0', '默认对话模型（请填写 API Key）', 'auto', NULL, NULL, now(), NULL, 'admin', '', 'official'),
-(2, NULL, 'deepseek', 'DeepSeek', 'deepseek-v4-pro', 'YOUR_API_KEY_HERE', 'https://api.deepseek.com', NULL, NULL, NULL, 0, 1, '0', '高级模型（请填写 API Key）', 'auto', NULL, NULL, now(), NULL, 'admin', '', 'official'),
-(3, NULL, 'ds-free-nb', 'DS 免费（无浏览器）', 'ds-free-nb', 'bridge', 'http://127.0.0.1:9200/v1', NULL, NULL, NULL, 0, 1, '0', '本机 DS 网页无头桥（ds-free-nb），需先启动 startup-scripts/ds-bridge', NULL, NULL, NULL, now(), NULL, 'admin', '', 'relay');
+(2, NULL, 'deepseek', 'DeepSeek', 'deepseek-v4-pro', 'YOUR_API_KEY_HERE', 'https://api.deepseek.com', NULL, NULL, NULL, 0, 1, '0', '高级模型（请填写 API Key）', 'auto', NULL, NULL, now(), NULL, 'admin', '', 'official');
 
 -- ---------- 系统通知（演示） ----------
 INSERT INTO public.sys_notice (notice_id, notice_title, notice_type, notice_content, status, create_by, create_time, update_by, update_time, remark) VALUES

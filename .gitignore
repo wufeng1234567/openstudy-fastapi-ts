@@ -65,6 +65,11 @@ _commit_metrics.txt
 openstudy-vue3-ts/_v.cjs
 .题库域后端接口功能测试用例表.ref/
 
+# DS 网页桥（已移除，不再需要；防止再次生成/提交）
+startup-scripts/ds-bridge/
+openstudy-vue3-ts/vite/plugins/ds-bridge.ts
+startup-scripts/start-ds-bridge.bat
+
 # 设计与交付文档（仅供本地/内部，不入库）
 # 这些文档可能包含部署对象、内部约定等信息，统一忽略避免误提交。
 docs/
