@@ -65,6 +65,13 @@ _commit_metrics.txt
 openstudy-vue3-ts/_v.cjs
 .题库域后端接口功能测试用例表.ref/
 
+# 设计与交付文档（仅供本地/内部，不入库）
+# 这些文档可能包含部署对象、内部约定等信息，统一忽略避免误提交。
+docs/
+AI助手移植-交接文档.md
+*交接*.md
+*交付*.md
+
 # Lock files (keep one)
 # package-lock.json
 # pnpm-lock.yaml
@@ -75,7 +82,7 @@ openstudy-vue3-ts/_v.cjs
 openstudy-fastapi/data/
 
 # 本地调试 / 变异测试产物（临时生成，不入库）
-# 2026-10-09 交付前从索引清理：_scratch_mut 曾有 502 个文件被误跟踪
+# 2026-10-09 从索引清理：_scratch_mut 曾有 502 个文件被误跟踪
 _scratch_mut/
 _probe_*.txt
 _probe_*.json
