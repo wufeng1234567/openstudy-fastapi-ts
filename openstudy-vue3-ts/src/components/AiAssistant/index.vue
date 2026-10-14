@@ -27,7 +27,7 @@
             <span class="header-title">{{ headerTitle }}</span>
           </div>
           <div class="header-right">
-            <AiModelSelector v-if="activeTab === 'chat'" v-model="selectedModel" scene="chat" width="140px" />
+            <AiModelSelector v-if="activeTab === 'chat'" v-model="selectedModel" scene="chat" width="140px" @select="onModelSelect" />
             <!-- 「新建会话」已移到输入区工具栏（附件上传右边）；这里只留历史会话 / 关闭 -->
 
             <span v-if="activeTab === 'chat'" class="action-icon" :class="{ active: sessionListVisible }" title="历史会话"
@@ -253,6 +253,9 @@ const visible = ref(false)
 const activeTab = ref<'chat' | 'banks' | 'knowledge'>('chat')
 // 当前选中的模型名（如 deepseek-flash）；历史记忆按 scene=chat 单独保存
 const selectedModel = ref('')
+// 选中的 AI 配置 id（区分同名的系统/用户模型）；由 AiModelSelector 的 @select 提供
+const selectedConfigId = ref(null)
+const onModelSelect = (cfg) => { selectedConfigId.value = cfg?.configId ?? null }
 
 // ===================== 智能体模式 =====================
 // 与「大屏智能体页」共用同一套引擎（useAgentChat）：普通聊天里也能调工具建题库 / 导题。
@@ -1060,7 +1063,7 @@ const handleChatSend = ({ content, injectHistory = false }: { content: string; i
       currentSessionId.value,
       thinkingEnabled.value,
       // 附件：ds-free 交给浏览器扩展转 DS 网页端；其它模型走后端多模态接口
-      { images: sent.images, files: sent.files }
+      { images: sent.images, files: sent.files, configId: selectedConfigId.value || undefined }
     )
   })
 }

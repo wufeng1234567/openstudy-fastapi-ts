@@ -91,6 +91,8 @@ export interface AiStreamOptions {
   attachments?: any[]
   model?: string
   provider?: string
+  /** 精确指定选中的 AI 配置 id（区分同名的系统/用户模型） */
+  configId?: number
   /** 会话 id。**只有聊天助手传**（形如 `asst_xxx`）；留空 = 不写聊天历史 */
   sessionId?: string
   userId?: string | number
@@ -140,6 +142,8 @@ async function postAiStream(
         attachments: opts.attachments || [],
         provider: opts.provider,
         model: opts.model,
+        // configId：精确指定选中哪条配置（区分同名的系统/用户模型）
+        configId: opts.configId || undefined,
         // 空串 = 后端不写聊天历史（出题类一次性生成都不该进历史表）
         sessionId: opts.sessionId || '',
         userId: normalizeUserId(opts.userId),
@@ -579,6 +583,7 @@ export async function assistantStream(
     scene?: string
     variables?: Record<string, any>
     provider?: string
+    configId?: number
     turnId?: string
   }
 ): Promise<void> {
@@ -731,6 +736,7 @@ export async function assistantStream(
       attachments,
       model,
       provider: extras?.provider,
+      configId: extras?.configId,
       sessionId: scene === 'assistant' ? sessionId : '',
       userId,
       thinking,

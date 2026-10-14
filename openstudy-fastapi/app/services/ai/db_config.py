@@ -271,16 +271,37 @@ async def get_enabled_configs(
     return list(result.scalars().all())
 
 
+async def get_config_by_id(
+    db: AsyncSession, config_id: int, user_id: Optional[int] = None
+) -> Optional[SysAiConfig]:
+    """按 configId 精确取配置（可见范围校验：系统行或自己的行）"""
+    result = await db.execute(
+        select(SysAiConfig).where(
+            SysAiConfig.config_id == config_id,
+            SysAiConfig.is_enabled == 1,
+            _visible_scope(user_id),
+        )
+    )
+    return result.scalars().first()
+
+
 async def resolve_config(
     db: AsyncSession,
     provider: Optional[str],
     model: Optional[str] = None,
     user_id: Optional[int] = None,
+    config_id: Optional[int] = None,
 ) -> Optional[SysAiConfig]:
-    """解析模型配置：model 优先（前端下拉框按模型选择）→ provider → 默认
+    """解析模型配置：configId 优先 → model → provider → 默认
 
+    `config_id` 让前端能精确指定「选中了哪一条配置」——解决系统官方与用户自定义
+    同名（都叫 deepseek-flash）时无法区分的问题。
     `user_id` 决定可见范围（系统行 + 自己的行）；不传则只用系统行。
     """
+    if config_id:
+        cfg = await get_config_by_id(db, config_id, user_id)
+        if cfg:
+            return cfg
     if model:
         cfg = await get_config_by_model(db, model, user_id)
         if cfg:
@@ -451,6 +472,8 @@ async def stream_with_config(
     thinking: Optional[bool] = None,
     model: Optional[str] = None,
     user_id: Optional[int] = None,
+    # configId：精确指定选中哪条配置（区分同名模型）
+    config_id: Optional[int] = None,
     files: Optional[list] = None,
     as_attachment: bool = False,
 ) -> AsyncIterator[str]:
@@ -464,7 +487,7 @@ async def stream_with_config(
     注意：这里**只输出正式回答（content）**，深度思考的 reasoning_content 会被丢弃，
     前端用「思考中」动画来占位即可。
     """
-    config = await resolve_config(db, provider, model, user_id)
+    config = await resolve_config(db, provider, model, user_id, config_id)
     if config:
         # ds-free 走网页端反代，不是 OpenAI 兼容接口，单独分支
         if config.provider == DS_FREE_PROVIDER:
@@ -524,9 +547,11 @@ async def chat_with_config(
     thinking: Optional[bool] = None,
     model: Optional[str] = None,
     user_id: Optional[int] = None,
+    # configId：精确指定选中哪条配置（区分同名模型）
+    config_id: Optional[int] = None,
 ) -> ChatResponse:
     """非流式输出：优先使用 sys_ai_config 表配置（model 优先于 provider）"""
-    config = await resolve_config(db, provider, model, user_id)
+    config = await resolve_config(db, provider, model, user_id, config_id)
     if config:
         if config.provider == "deepseek-free":
             logger.info("[db_config] Using ds-free web client (non-stream)")
@@ -566,13 +591,14 @@ async def resolve_agent_config(
     provider: Optional[str] = None,
     model: Optional[str] = None,
     user_id: Optional[int] = None,
+    config_id: Optional[int] = None,
 ) -> SysAiConfig:
     """解析 Agent 要用的模型配置；不可用时抛出**中文可行动**错误
 
     错误文案直接面向用户，因为它会通过 SSE 的 `Error: ` 契约显示在聊天区 ——
     「The api_key client option must be set」这种英文堆栈对用户毫无帮助。
     """
-    config = await resolve_config(db, provider, model, user_id)
+    config = await resolve_config(db, provider, model, user_id, config_id)
     if config is None:
         raise RuntimeError(
             "没有可用的 AI 模型配置，无法启动 Agent。\n"
@@ -597,6 +623,8 @@ async def build_agent_llm(
     temperature: float = 0.7,
     max_tokens: int = 8000,
     user_id: Optional[int] = None,
+    # configId：精确指定选中哪条配置（区分同名模型）
+    config_id: Optional[int] = None,
     files: Optional[list] = None,
     as_attachment: bool = False,
 ):
@@ -625,7 +653,7 @@ async def build_agent_llm(
     Returns:
         (llm, config)
     """
-    config = await resolve_agent_config(db, provider, model, user_id)
+    config = await resolve_agent_config(db, provider, model, user_id, config_id)
 
     # 「要思考」这件事：
     #   · 官方 DeepSeek（api.deepseek.com）：认 `{"thinking":{"type":"enabled"}}`，显式开启时透传。

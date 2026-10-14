@@ -279,6 +279,8 @@ export interface AgentStreamOptions {
   attachments?: any[]
   model?: string
   provider?: string
+  /** 精确指定选中的 AI 配置 id（区分同名的系统/用户模型） */
+  configId?: number
   temperature?: number
   /** 会话 id；留空 = 不写聊天历史 */
   sessionId?: string
@@ -576,6 +578,8 @@ export async function postAgentStream(
         attachments: opts.attachments || [],
         provider: opts.provider,
         model: opts.model,
+        // configId：精确指定「选中了哪条 AI 配置」，用于区分同名的系统/用户模型
+        configId: opts.configId || undefined,
         temperature: opts.temperature,
         sessionId: opts.sessionId || '',
         // 本轮 id：后端据此把这一轮的**写操作账本**串起来（`rollbackAgentTurn` 靠它回退）。

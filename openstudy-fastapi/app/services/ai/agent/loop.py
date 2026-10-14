@@ -183,6 +183,8 @@ class AgentRequest:
     attachments: List[dict] = field(default_factory=list)
     provider: Optional[str] = None
     model: Optional[str] = None
+    # configId：精确指定选中哪条配置（区分同名模型）
+    config_id: Optional[int] = None
     temperature: float = DEFAULT_AGENT_TEMPERATURE
     max_loops: int = MAX_AGENT_LOOPS
     #: 写操作是否自动执行（Agent 自动建题库需要 True；False 时只提示不执行）
@@ -863,7 +865,7 @@ async def run_agent_stream(
         if _raw_files:
             logger.info("[agent] 本轮文件附件 {} 个 → 传给模型构建: {}", len(_raw_files), [f["name"] for f in _raw_files])
         # 先判目标是不是本机 DS 桥（决定：文档是否走附件、历史是否注入并走附件）。
-        _probe = await db_config.resolve_config(db, req.provider, req.model or user_agent_model, user_id=user_id)
+        _probe = await db_config.resolve_config(db, req.provider, req.model or user_agent_model, user_id=user_id, config_id=req.config_id)
         _to_bridge = bool(_probe and (_probe.provider or "").strip().lower() == "ds-free-nb")
         _inject_hist = bool(getattr(req, "inject_history", False))
         _as_attachment = bool(_to_bridge and _inject_hist)
@@ -875,6 +877,8 @@ async def run_agent_stream(
             temperature=req.temperature,
             # 带上用户作用域：用户自己配的模型（个人中心 → 我的模型）也能被 Agent 选中
             user_id=user_id,
+            # configId：精确指定选中哪条配置（区分同名模型）
+            config_id=req.config_id,
             files=_raw_files,
             as_attachment=_as_attachment,
         )

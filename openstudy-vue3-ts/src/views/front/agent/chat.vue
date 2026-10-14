@@ -108,7 +108,7 @@
             <!-- 模型下拉框：直接放输入框旁，省得每次进设置改（用户 2026-10-12 要求）。
                  与「设置 → 模型」绑的是同一个 `model`，两处天然同步。 -->
             <div class="tb-model">
-              <AiModelSelector v-model="model" scene="agent" width="180px" :disabled="isGenerating" />
+              <AiModelSelector v-model="model" scene="agent" width="180px" :disabled="isGenerating" @select="onModelSelect" />
             </div>
 
             <!-- 「注入历史上下文」按钮：仅「DS 免费（无浏览器）」模型露出。
@@ -222,7 +222,7 @@
           <div class="settings-row">
             <div class="settings-label">模型</div>
             <div class="settings-field">
-              <AiModelSelector v-model="model" scene="agent" width="100%" :disabled="isGenerating" />
+              <AiModelSelector v-model="model" scene="agent" width="100%" :disabled="isGenerating" @select="onModelSelect" />
             </div>
           </div>
 
@@ -474,6 +474,9 @@ const onRollbackTurn = async (turnId: string) => {
 
 /** 模型（scene='agent'，与聊天助手的选择互不干扰） */
 const model = ref('')
+// 选中的 AI 配置 id（区分同名的系统/用户模型）；由 AiModelSelector 的 @select 提供
+const selectedConfigId = ref(null)
+const onModelSelect = (cfg) => { selectedConfigId.value = cfg?.configId ?? null }
 /** 写操作**默认自动执行**（仅删除需确认）——用户 2026-10-12 定案：取消「自动模式」开关。 */
 const autoConfirm = ref(true)
 /** 「注入历史上下文」按钮状态：仅「DS 免费（无浏览器）」= ds-free-nb 模型露出。 */
@@ -987,6 +990,8 @@ const handleSend = async ({ content, injectHistory = false }: { content: string;
     // 只用于历史落库的元信息：原图/原件都不入库
     attachments: metas,
     model: model.value || undefined,
+    // configId：精确指定选中哪条配置（区分同名的系统/用户模型）
+    configId: selectedConfigId.value || undefined,
     sessionId: sessionId.value,
     userId: userId.value,
     autoConfirm: autoConfirm.value,

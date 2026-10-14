@@ -69,6 +69,8 @@ class ChatTurn:
     attachments: List[dict] = field(default_factory=list)
     provider: Optional[str] = None
     model: Optional[str] = None
+    # configId：精确指定选中哪条配置（区分同名模型）
+    config_id: Optional[int] = None
     thinking: Optional[bool] = None
     temperature: float = 0.7
     #: 对话会话 id；非空才写历史（且会带上历史上下文）
@@ -357,7 +359,7 @@ async def _resolve_vision_safe_model(
 
     try:
         resolved = await db_config.resolve_config(
-            db, turn.provider, turn.model, user_id=turn.user_id
+            db, turn.provider, turn.model, user_id=turn.user_id, config_id=turn.config_id
         )
         if resolved is not None and not model_capabilities.supports_vision(resolved.model):
             logger.info(
@@ -494,6 +496,9 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
     effective_model, effective_provider = await _resolve_vision_safe_model(
         db, turn, bool(image_urls), session_id
     )
+    # 视觉兜底会**换成另一个模型**；此时若还带着原 config_id 指定，会把它覆盖回去，
+    # 兜底就白做了 —— 故仅在未换模型时透传 config_id（区分同名模型）。
+    effective_config_id = turn.config_id if effective_model == turn.model else None
     if image_urls and isinstance(full_text, str):
         blocks: List[Any] = []
         if full_text:
@@ -520,6 +525,8 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
             db,
             messages,
             provider=effective_provider,
+            # configId：精确指定选中哪条配置（区分同名模型）
+            config_id=effective_config_id,
             temperature=turn.temperature,
             thinking=turn.thinking,
             model=effective_model,

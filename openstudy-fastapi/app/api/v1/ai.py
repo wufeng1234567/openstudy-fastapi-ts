@@ -54,6 +54,8 @@ class ChatRequest(BaseModel):
     messages: List[dict]
     model: str = "deepseek-chat"
     provider: Optional[str] = None
+    # configId：精确指定选中哪条配置（区分同名模型）
+    configId: Optional[int] = None
     temperature: float = 0.7
     max_tokens: int = 2000
     # 深度思考：true/false 覆盖 DB 配置；不传则跟随配置
@@ -71,6 +73,8 @@ class GenerateRequest(BaseModel):
     bankId: Optional[int] = None
     model: Optional[str] = None
     provider: Optional[str] = None
+    # configId：精确指定选中哪条配置（区分同名模型）
+    configId: Optional[int] = None
     userId: Optional[int] = None
     # 深度思考：true/false 覆盖 DB 配置；不传则跟随配置
     thinking: Optional[bool] = None
@@ -130,6 +134,8 @@ async def chat(
             db,
             messages=messages,
             provider=data.provider,
+            # configId：精确指定选中哪条配置（区分同名模型）
+            config_id=data.configId,
             temperature=data.temperature,
             max_tokens=data.max_tokens,
             thinking=data.thinking,
@@ -162,6 +168,8 @@ async def generate_questions(
             difficulty=data.difficulty,
             model=data.model,
             provider=data.provider,
+            # configId：精确指定选中哪条配置（区分同名模型）
+            config_id=data.configId,
             db=db,
             thinking=data.thinking,
             user_id=current_user.get("user_id"),
@@ -259,6 +267,8 @@ async def generate_questions_sync(
             difficulty=data.difficulty,
             model=data.model,
             provider=data.provider,
+            # configId：精确指定选中哪条配置（区分同名模型）
+            config_id=data.configId,
             db=db,
             thinking=data.thinking,
             user_id=current_user.get("user_id"),
@@ -343,6 +353,8 @@ async def generate_composite_sync(
             db,
             messages,
             provider=data.provider,
+            # configId：精确指定选中哪条配置（区分同名模型）
+            config_id=data.configId,
             temperature=0.8,
             thinking=data.thinking,
             model=data.model,
@@ -455,6 +467,8 @@ class AssistantStreamRequest(BaseModel):
     variables: Optional[dict] = None
     provider: Optional[str] = None
     model: Optional[str] = None
+    # configId：精确指定选中哪条配置（区分同名模型）
+    configId: Optional[int] = None
     #: 会话 id。**只有聊天助手会传**（且形如 `asst_xxx`）；留空 = 不写聊天历史。
     sessionId: str = ""
     userId: Optional[int] = None
@@ -507,6 +521,8 @@ async def assistant_stream_with_attachments(
         variables=req.variables or {},
         provider=req.provider,
         model=req.model,
+        # configId：精确指定选中哪条配置（区分同名模型）
+        config_id=req.configId,
         thinking=req.thinking,
         # 不传则用 ChatTurn 的默认 0.7（聊天口径）；出题类由前端传 0.8
         temperature=req.temperature if req.temperature is not None else 0.7,
@@ -548,6 +564,8 @@ class AgentStreamRequest(BaseModel):
     attachments: List[dict] = []
     provider: Optional[str] = None
     model: Optional[str] = None
+    # configId：精确指定选中哪条配置（区分同名模型）
+    configId: Optional[int] = None
     temperature: Optional[float] = None
     #: 会话 id；非空才写聊天历史
     sessionId: str = ""
@@ -609,6 +627,8 @@ async def agent_stream(
         attachments=[a for a in (req.attachments or []) if a],
         provider=req.provider,
         model=req.model,
+        # configId：精确指定选中哪条配置（区分同名模型）
+        config_id=req.configId,
         temperature=req.temperature if req.temperature is not None else 0.3,
         max_loops=req.maxLoops or 12,
         auto_confirm=bool(req.autoConfirm),

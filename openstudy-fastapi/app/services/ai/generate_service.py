@@ -26,6 +26,8 @@ class AiGenerateService:
         db=None,
         thinking: Optional[bool] = None,
         user_id: Optional[int] = None,
+        # configId：精确指定选中哪条配置（区分同名模型）
+        config_id: Optional[int] = None,
     ) -> List[dict]:
         """生成题目（传入 db 时优先使用 sys_ai_config 表配置）
 
@@ -43,7 +45,7 @@ class AiGenerateService:
             from app.services.ai import db_config
             response = await db_config.chat_with_config(
                 db, messages, provider=provider, temperature=0.8, thinking=thinking, model=model,
-                user_id=user_id,
+                user_id=user_id, config_id=config_id,
             )
         else:
             response = await dynamic_ai.chat(
