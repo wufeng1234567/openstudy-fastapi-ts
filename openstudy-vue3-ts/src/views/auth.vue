@@ -106,7 +106,8 @@
 
                 <!-- 视图二：账号密码登录（演示新注册用户登录） -->
                 <div v-show="showAccountForm" class="account-login-view">
-                  <div class="account-back" @click="showAccountForm = false">
+                  <!-- 返回一键登录：仅演示模式（demoMode）显示；体验版不暴露 -->
+                  <div v-if="demoMode" class="account-back" @click="showAccountForm = false">
                     <span class="chev chev-left"></span>
                     <span>返回一键登录</span>
                   </div>
