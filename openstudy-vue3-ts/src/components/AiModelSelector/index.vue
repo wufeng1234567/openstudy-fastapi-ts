@@ -54,12 +54,16 @@ const storageKey = `openstudy_ai_model_${props.scene}`
 const configList = ref([])
 
 // 两级来源：系统提供（user_id 为空）/ 用户自定义（user_id 有值）
-const systemConfigs = computed(() => {
-  const userModels = new Set(userConfigs.value.map(c => c.model))
-  // 用户自定义里已有的模型，系统级不再重复出现（避免 el-option value 重复）
-  return configList.value.filter(c => c.source !== 'user' && !userModels.has(c.model))
+// ⚠️ el-option 的 value 用 model 名，同名会重复。原逻辑「用户同名则隐藏系统行」的副作用是
+//    「系统官方模型被用户自定义顶掉、从下拉里消失」——这不是我们要的。
+//    改为：**系统提供组始终完整展示**（官方模型永远可见），用户自定义组只补充
+//    「系统里没有的 model」；同名时以系统（官方）行展示。
+const systemConfigs = computed(() => configList.value.filter(c => c.source !== 'user'))
+const userConfigs = computed(() => {
+  const systemModels = new Set(systemConfigs.value.map(c => c.model))
+  // 用户自定义里与系统同名的，不再重复展示（选了同名 model 会优先解析到系统/凭据行）
+  return configList.value.filter(c => c.source === 'user' && !systemModels.has(c.model))
 })
-const userConfigs = computed(() => configList.value.filter(c => c.source === 'user'))
 
 const optionLabel = (config) => {
   return `${config.providerName || config.provider} · ${config.model}`

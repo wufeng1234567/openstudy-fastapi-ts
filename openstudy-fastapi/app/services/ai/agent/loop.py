@@ -1898,13 +1898,20 @@ def _friendly_llm_error(error: Exception) -> str:
     """把上游异常翻译成用户能看懂、且**可行动**的一句话"""
     text = str(error)
     lowered = text.lower()
+    # 若异常本身已经是后端抛出的**中文友好提示**（含配置指引），原样透传，不要覆盖。
+    if "管理员" in text or "我的模型" in text or "系统管理" in text:
+        return text
     if "tools" in lowered and ("not support" in lowered or "unsupported" in lowered):
         return (
             "当前模型不支持工具调用（Function Calling），Agent 无法工作。"
             "请在模型下拉框里切换到 deepseek-flash / deepseek-v4-pro 等官方模型。"
         )
-    if "api_key" in lowered or "401" in lowered or "unauthorized" in lowered:
-        return "模型凭据无效或未配置，请检查「系统管理 → AI 模型配置」里的 API Key。"
+    if "api_key" in lowered or "401" in lowered or "unauthorized" in lowered or "authentication" in lowered:
+        return (
+            "模型凭据无效或未配置。\n"
+            "• 用的是系统官方模型：请联系【管理员】进入后台「系统管理 → AI 模型配置」填写该模型的 API Key；\n"
+            "• 用的是你自己添加的模型：请到「个人中心 → 我的模型」补全有效的 API Key。"
+        )
     if "rate limit" in lowered or "429" in lowered:
         return "模型请求过于频繁（限流），请稍后再试。"
     if "timeout" in lowered or "timed out" in lowered:

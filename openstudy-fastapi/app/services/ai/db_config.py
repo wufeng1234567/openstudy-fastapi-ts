@@ -57,22 +57,67 @@ def _visible_scope(user_id: Optional[int]):
     return SysAiConfig.user_id.is_(None)
 
 
+def _is_placeholder_key(key: str) -> bool:
+    """判断 api_key 是不是「占位符」而非真 Key
+
+    部署 SQL 里系统行默认写 `YOUR_API_KEY_HERE`，它**非空**但**不是真 Key**。
+    旧实现只判空，占位符会通过 has_credentials 检查 → 后端拿它去调 API → 401。
+    """
+    k = (key or "").strip()
+    if not k:
+        return True
+    lowered = k.lower()
+    return (
+        "your_api_key" in lowered
+        or lowered in ("bridge", "changeme", "change-me", "placeholder", "todo")
+        or lowered.startswith("your_")
+    )
+
+
 def has_credentials(config: SysAiConfig) -> bool:
     """这条配置有没有「能真正调用模型」的凭据
 
     - ds-free 走网页端反代，本来就不需要 API Key，永远算有凭据；
-    - 其它 provider 必须有表里的 api_key，或 .env 里的 DEEPSEEK_API_KEY。
+    - 其它 provider 必须有**真实的** api_key（排除占位符），或 .env 里的 DEEPSEEK_API_KEY。
     """
     if config.provider == DS_FREE_PROVIDER:
         return True
-    return bool(
-        (config.api_key or "").strip() or (settings.DEEPSEEK_API_KEY or "").strip()
-    )
+    api_key = (config.api_key or "").strip()
+    if api_key and not _is_placeholder_key(api_key):
+        return True
+    env_key = (settings.DEEPSEEK_API_KEY or "").strip()
+    return bool(env_key and not _is_placeholder_key(env_key))
 
 
 def is_servable_by_backend(config: SysAiConfig) -> bool:
     """后端是否能直接服务这条配置（ds-free 由前端扩展处理 → 不能）"""
     return config.provider != DS_FREE_PROVIDER
+
+
+def _no_credential_message(config: SysAiConfig) -> str:
+    """「没有可用 API Key」时面向用户的**分场景**提示。
+
+    区分系统行（官方模型）与用户自定义行，给不同的人不同的操作指引：
+      - 系统行（user_id 为空）：这是**管理员**要处理的事，普通用户改不了 →
+        提示联系管理员去后台配置；
+      - 用户自定义行：是用户自己加的模型缺 Key → 提示去「我的模型」补全。
+    """
+    name = f"{config.provider_name or config.provider} · {config.model}"
+    if config.user_id is None:
+        return (
+            f"系统官方模型「{name}」尚未配置 API Key，暂时无法使用。\n"
+            "请联系【管理员】按以下步骤为官方模型配置密钥：\n"
+            "  1. 用管理员账号登录，进入后台；\n"
+            "  2. 打开「系统管理 → AI 模型配置」；\n"
+            "  3. 找到该官方模型，填入有效的 API Key 并保存；\n"
+            "  4. 回到对话页重试。\n"
+            "（如果你是普通用户，也可以先到「个人中心 → 我的模型」添加自己的模型来使用。）"
+        )
+    return (
+        f"你添加的模型「{name}」未填写有效的 API Key，无法调用。\n"
+        "请到「个人中心 → 我的模型」里编辑该模型，填入有效的 API Key 后重试；"
+        "或改用系统提供的官方模型。"
+    )
 
 
 async def get_default_config(
@@ -101,24 +146,36 @@ async def get_default_config(
         .order_by(SysAiConfig.user_id.desc(), SysAiConfig.config_id.asc())
     )
     rows = list(result.scalars().all())
-    if not rows:
-        return None
 
+    # 先看「默认行」里有没有凭据齐全的；有就直接用
     for cfg in rows:
         if is_servable_by_backend(cfg) and has_credentials(cfg):
-            if cfg is not rows[0]:
+            if rows and cfg is not rows[0]:
                 logger.warning(
-                    "[db_config] 默认配置 config_id={} 不可用（backend_servable={} credentials={}），"
-                    "改用 config_id={} provider={} model={}",
-                    rows[0].config_id,
-                    is_servable_by_backend(rows[0]),
-                    has_credentials(rows[0]),
-                    cfg.config_id,
-                    cfg.provider,
-                    cfg.model,
+                    "[db_config] 默认配置 config_id={} 不可用，改用 config_id={} provider={} model={}",
+                    rows[0].config_id, cfg.config_id, cfg.provider, cfg.model,
                 )
             return cfg
-    return rows[0]
+
+    # 默认行都不合格（比如系统默认行只是占位符 Key）→ 放宽到「任意启用且凭据齐全的行」，
+    # 这样用户自己配了有效 Key 的模型（即使没设为默认）也能用起来。
+    fallback = await db.execute(
+        select(SysAiConfig)
+        .where(SysAiConfig.is_enabled == 1, _visible_scope(user_id))
+        .order_by(SysAiConfig.is_default.desc(), SysAiConfig.user_id.asc().nullsfirst(), SysAiConfig.config_id.asc())
+    )
+    for cfg in fallback.scalars().all():
+        if is_servable_by_backend(cfg) and has_credentials(cfg):
+            logger.warning(
+                "[db_config] 无可用默认行，回退到有凭据的 config_id={} provider={} model={}",
+                cfg.config_id, cfg.provider, cfg.model,
+            )
+            return cfg
+
+    # 实在没有：返回默认行第一条（保持原行为，让上层拿到明确报错）
+    if rows:
+        return rows[0]
+    return None
 
 
 async def get_config_by_provider(
@@ -130,7 +187,7 @@ async def get_config_by_provider(
     只有其中一条填了 api_key）。原来只按 is_default desc 取第一条，会稳定选中
     那条空 Key 的默认行 —— 用户在模型下拉框里选了个「有 Key 的」也照样失败。
     这里改成：先按优先级排序，再取第一条凭据齐全的；全都没有则回退第一条。
-    用户自定义行优先于系统行（同 provider 时用自己的配置）。
+    排序：系统默认行优先（官方），其次用户行；凭据是否有效由 for 循环判定。
     """
     result = await db.execute(
         select(SysAiConfig)
@@ -140,8 +197,8 @@ async def get_config_by_provider(
             _visible_scope(user_id),
         )
         .order_by(
-            SysAiConfig.user_id.desc(),
             SysAiConfig.is_default.desc(),
+            SysAiConfig.user_id.asc().nullsfirst(),
             SysAiConfig.config_id.asc(),
         )
     )
@@ -169,9 +226,10 @@ async def get_config_by_model(
 ) -> Optional[SysAiConfig]:
     """按模型名获取启用的模型配置（前端模型下拉框现在按 model 选择）
 
-    同一个 model 名可能同时存在「系统提供」和「用户自定义」两行：
-    优先取**用户自己的**（user_id 非空排前面），其次系统行；
-    再在候选里优先挑凭据齐全、后端可直接服务的。
+    同一个 model 名可能同时存在「系统提供」和「用户自定义」两行。
+    选取优先级：**凭据齐全** > **系统行（官方）** > 用户行 > 其余。
+    ⚠️ 不能简单让用户行排前面：用户给同名模型填了自己的 Key，会把系统官方行
+    顶掉；而系统行若只是占位符 Key，选了也没法用（见 has_credentials）。
     别人的自定义行在这里被 `_visible_scope` 直接过滤掉。
     """
     result = await db.execute(
@@ -181,7 +239,11 @@ async def get_config_by_model(
             SysAiConfig.is_enabled == 1,
             _visible_scope(user_id),
         )
-        .order_by(SysAiConfig.user_id.desc(), SysAiConfig.is_default.desc(), SysAiConfig.config_id.asc())
+        .order_by(
+            SysAiConfig.is_default.desc(),
+            SysAiConfig.user_id.asc().nullsfirst(),
+            SysAiConfig.config_id.asc(),
+        )
     )
     rows = list(result.scalars().all())
     if not rows:
@@ -356,12 +418,11 @@ def _build_llm(
     # 否则 openai SDK 会抛英文的 "The api_key client option must be set either by
     # passing api_key to the client or by setting the OPENAI_API_KEY environment
     # variable"，既看不出是哪条配置的问题，也不知道该怎么修。
-    api_key = (config.api_key or "").strip() or (settings.DEEPSEEK_API_KEY or "").strip()
-    if not api_key:
-        raise RuntimeError(
-            f"模型「{config.provider_name or config.provider} · {config.model}」未配置 API Key，"
-            "无法调用官方接口。请在「系统管理 → AI 模型配置」里补全该模型的 API Key。"
-        )
+    api_key = (config.api_key or "").strip()
+    if _is_placeholder_key(api_key):
+        api_key = (settings.DEEPSEEK_API_KEY or "").strip()
+    if _is_placeholder_key(api_key):
+        raise RuntimeError(_no_credential_message(config))
 
     kwargs = dict(
         model=config.model,
@@ -514,8 +575,9 @@ async def resolve_agent_config(
     config = await resolve_config(db, provider, model, user_id)
     if config is None:
         raise RuntimeError(
-            "没有可用的 AI 模型配置，无法启动 Agent。"
-            "请在「系统管理 → AI 模型配置」里启用一个官方 API 模型。"
+            "没有可用的 AI 模型配置，无法启动 Agent。\n"
+            "请联系【管理员】进入后台「系统管理 → AI 模型配置」启用并配置一个官方模型；"
+            "或到「个人中心 → 我的模型」添加你自己的模型。"
         )
     if not supports_tools(config):
         raise RuntimeError(
@@ -524,10 +586,7 @@ async def resolve_agent_config(
             "请在模型下拉框里切换到 deepseek-flash / deepseek-v4-pro 等官方模型。"
         )
     if not has_credentials(config):
-        raise RuntimeError(
-            f"模型「{config.provider_name or config.provider} · {config.model}」未配置 API Key，"
-            "无法调用官方接口。请在「系统管理 → AI 模型配置」里补全该模型的 API Key。"
-        )
+        raise RuntimeError(_no_credential_message(config))
     return config
 
 

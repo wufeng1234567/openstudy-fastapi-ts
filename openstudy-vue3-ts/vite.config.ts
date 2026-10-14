@@ -44,6 +44,12 @@ export default defineConfig(({ mode, command }) => {
           changeOrigin: true,
           rewrite: (path) => path
         },
+        // 代理 /carousel-static 开头的静态资源请求（预置轮播图）
+        '/carousel-static': {
+          target: 'http://localhost:9101',
+          changeOrigin: true,
+          rewrite: (path) => path
+        },
         // 代理 /rag 开头的请求
         '/rag': {
           target: 'http://localhost:9101',

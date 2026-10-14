@@ -249,6 +249,17 @@ COPY public.note (note_id, user_id, category_id, title, filename, content, markd
 4	3	2	常见排序算法对比		冒泡 / 插入：O(n²)，稳定；\n快速排序：平均 O(n log n)，不稳定，最坏退化 O(n²)；\n归并排序：O(n log n)，稳定，但需要额外空间。	冒泡 / 插入：O(n²)，稳定；\n快速排序：平均 O(n log n)，不稳定，最坏退化 O(n²)；\n归并排序：O(n log n)，稳定，但需要额外空间。	演示	\N	\N	0	0	0	0	published	0	2026-10-02 15:35:00	\N
 \.
 
+-- ---------- carousel (5) ----------
+-- 首页轮播图：图片文件随镜像打包在 openstudy-fastapi/app/static/carousel/，
+-- 由后端 /carousel-static 路由提供（见 app/main.py）。
+COPY public.carousel (id, title, image_url, link_url, sort_order, status, create_time) FROM stdin;
+1	自习室地图	/carousel-static/carousel-1.jpg	\N	0	0	2026-01-01 00:00:00
+2	AI 学习周报	/carousel-static/carousel-2.jpg	\N	1	0	2026-01-01 00:00:00
+3	学习资料库	/carousel-static/carousel-3.jpg	\N	2	0	2026-01-01 00:00:00
+4	AI 智能答疑	/carousel-static/carousel-4.jpg	\N	3	0	2026-01-01 00:00:00
+5	学习计划管理	/carousel-static/carousel-5.jpg	\N	4	0	2026-01-01 00:00:00
+\.
+
 -- 同步所有自增序列到当前最大 ID（避免后续插入撞主键）
 DO $$
 DECLARE r RECORD;

@@ -75,6 +75,13 @@ app.add_exception_handler(Exception, general_exception_handler)
 from app.core.static_files import StaticFilesWithPlaceholder
 app.mount("/profile", StaticFilesWithPlaceholder(directory=settings.UPLOAD_DIR), name="uploads")
 
+# 预置轮播图静态资源（随镜像打包，见 app/static/carousel/）
+# 首页轮播图的图片地址取自 sys 库 carousel.image_url，种子数据指向 /carousel-static/xxx.jpg
+import os as _os
+_carousel_dir = _os.path.join(_os.path.dirname(__file__), "static", "carousel")
+_os.makedirs(_carousel_dir, exist_ok=True)
+app.mount("/carousel-static", StaticFiles(directory=_carousel_dir), name="carousel-static")
+
 # Include routers
 # ⚠️ 注意：notices 和 notice_front 都有 /system/notice/listAll 端点
 # 由于 notices 先注册，它的 /listAll 会优先匹配并处理请求
