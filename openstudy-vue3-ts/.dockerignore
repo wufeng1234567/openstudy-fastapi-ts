@@ -1,0 +1,14 @@
+# 前端构建上下文排除项
+node_modules/
+dist/
+.git/
+.gitignore
+*.log
+.env.development
+.env.production
+.env.staging
+tests/logs/
+tests/_probe_browser_rows.json
+_scratch_mut/
+ts_errors.txt
+type-errors.txt

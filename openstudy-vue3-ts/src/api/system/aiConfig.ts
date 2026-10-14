@@ -69,3 +69,19 @@ export function testAiConnection(data: any) {
     data
   })
 }
+
+// 拉取某 provider 的可用模型列表（OpenAI 兼容 GET /models）
+// 供「AI 模型配置」页的「获取模型」按钮使用，返回 { code, data: { models, baseUrl } }
+export function fetchProviderModels(data: {
+  provider?: string
+  baseUrl?: string
+  apiUrl?: string
+  apiKey?: string
+  configId?: number | string
+}) {
+  return request({
+    url: '/system/ai/config/provider-models',
+    method: 'post',
+    data
+  })
+}

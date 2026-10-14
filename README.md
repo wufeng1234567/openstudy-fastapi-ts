@@ -2,9 +2,10 @@
 
 > 一个面向在线学习场景的全栈应用：题库刷题、错题本、笔记、学习分享、消息通知，并内置 **AI 助手（Agent + RAG 知识库 + 长期记忆）**。
 
-- **后端**：Python 3 · FastAPI · SQLAlchemy 2.0（异步）· PostgreSQL + pgvector
+- **后端**：Python 3.11 · FastAPI · SQLAlchemy 2.0（异步）· PostgreSQL + pgvector
 - **前端**：Vue 3 · TypeScript · Vite · Element Plus · Pinia
 - **AI**：LangChain · DeepSeek / 智谱 / 硅基流动 多模型动态路由
+- **交付**：Docker 一键启动，用户无需手动安装数据库 / 向量库 / Redis
 
 ---
 
@@ -23,21 +24,25 @@ fastapi-v2/
 │   │       ├── ai/           # AI 能力：多模型客户端、Agent 循环、工具、记忆
 │   │       │   └── agent/    # Agent 运行时（loop / 工具注册表 / 回退 / 确认）
 │   │       └── rag/          # 知识库：分块 / 向量化 / 混合检索 / 写入流水线
-│   ├── tests/                # 测试与联调脚本
 │   ├── requirements.txt      # Python 依赖
+│   ├── Dockerfile            # 后端镜像
 │   └── .env.example          # 环境变量样例（真实 .env 不入库）
 ├── openstudy-vue3-ts/        # 前端（Vue3 + TS）
-│   ├── src/
-│   │   ├── api/              # 接口封装
-│   │   ├── views/            # 页面（admin 后台 / front 前台 / ai / …）
-│   │   ├── components/       # 通用组件
-│   │   ├── layout/           # 布局
-│   │   └── utils/            # 工具
-│   └── package.json
-├── docs/                     # 设计与交付文档
-├── startup-scripts/          # 一键启动脚本（Windows）
-└── README.md
+│   ├── src/                  # 源码（api / views / components / layout / utils）
+│   ├── Dockerfile            # 前端镜像（多阶段构建 + Nginx）
+│   └── nginx.conf            # 前端容器内的 Nginx 配置（含 API 反代）
+├── deploy/
+│   └── db-init/              # 数据库首次初始化 SQL（结构 + 种子数据）
+├── docker-compose.yml        # 一键编排：db + redis + backend + frontend
+├── .env.example              # 一键部署配置样例（复制为 .env 使用）
+├── start.bat / start.sh      # 一键启动（Windows / Linux）
+├── stop.bat  / stop.sh       # 一键停止
+├── SKILL.md                  # ⭐ 部署安装说明书（给 AI 终端 / 部署人员，含公网访问方案）
+└── README.md                 # 本文件（面向使用者的项目介绍）
 ```
+
+> 📌 **要开始部署 / 在云端或本机跑起来？请阅读 [`SKILL.md`](./SKILL.md)。**
+> 本 README 只做项目介绍；具体的安装、启动、公网访问步骤都在 `SKILL.md` 里。
 
 ---
 
@@ -65,115 +70,43 @@ fastapi-v2/
 
 ---
 
-## 快速开始
+## 快速开始（一句话版）
 
-### 环境要求
-| 组件 | 版本 |
+本系统已容器化，**只需安装 Docker**，然后双击 `start.bat`（Windows）或执行 `./start.sh`（Linux/macOS）即可拉起全套服务：
+
+| 服务 | 地址（本机） |
 |---|---|
-| Python | 3.10+ |
-| Node.js | 18+（推荐 20/22） |
-| PostgreSQL | 14+（需 `pgvector` 扩展） |
-| Redis | 6+（可选，用于缓存/会话） |
+| 前端主页 | http://localhost:3167 |
+| 后端文档（Swagger） | http://localhost:9101/swagger-ui.html |
+| 演示账号 | `admin` / `admin123` |
 
-### 1. 克隆仓库
-```bash
-git clone https://gitcode.com/qi142410131/openstudy-fastapi-ts.git
-cd openstudy-fastapi-ts
-```
-
-### 2. 数据库（PostgreSQL 16，需 pgvector + pg_trgm）
-```bash
-# 建库并导入「结构 + 种子 + 演示数据」（已清洗所有真实 Key）
-createdb openstudy_v2_pgsql
-psql -U root -d openstudy_v2_pgsql -f startup-scripts/db/openstudy_v2_pgsql_deploy.sql
-```
-详见 `startup-scripts/db/README.md`。演示账号：`admin / admin123`（首次登录后请改密）。
-
-### 3. 后端启动
-```bash
-cd openstudy-fastapi
-
-# 创建虚拟环境
-python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# Linux / macOS
-# source .venv/bin/activate
-
-pip install -r requirements.txt
-
-# 配置环境变量：复制样例并填写（切勿提交真实 .env）
-# 需要配置：数据库连接、JWT 密钥、AI 服务密钥等
-# cp .env.example .env
-
-# 启动
-uvicorn app.main:app --host 0.0.0.0 --port 9101 --reload
-```
-
-后端接口文档（Swagger）：`http://localhost:9101/docs`
-
-### 4. 前端启动
-```bash
-cd openstudy-vue3-ts
-npm install
-npm run dev
-```
-
-前端默认地址：`http://localhost:80`（见 `.env.development`）。
-`npm run dev` 会自动随前端拉起 **DS 网页桥**（`startup-scripts/ds-bridge`，端口 `9200`，模型 `ds-free-nb`，无头运行）。
-
-### 5. DS 网页桥（可选，提供 `ds-free-nb` 模型）
-```bash
-startup-scripts/start-ds-bridge.bat   # 单独启动/查看桥（默认无头，无窗口）
-# 首次登录：在 startup-scripts/ds-bridge 下执行  node probe.js --login
-```
-- 桥用本机 Edge 的**持久化 profile** 保存 DeepSeek 登录态，免插件。
-- 在 OpenStudy 里选模型「DS 免费（无浏览器）」；输入框旁的「调试」按钮可临时打开可见窗口。
-
-### 6. 一键启动（Windows）
-```bash
-startup-scripts/start-all.bat   # 启动后端(9101) + 前端(3167)；已运行的服务会跳过；桥随前端自动起
-```
+> 完整部署步骤、AI Key 配置、以及在**云端沙箱 / 公网访问**场景下的操作，
+> 全部写在 **[`SKILL.md`](./SKILL.md)** 中。若是把你的机器人 / AI 终端接入本项目，
+> **让 AI 终端直接读取 `SKILL.md` 并按其指引执行即可**。
 
 ---
 
-## 环境变量
+## 环境变量（AI Key 等）
 
-后端读取 `openstudy-fastapi/.env`，**该文件已被 `.gitignore` 忽略，禁止提交**。关键配置项：
+一键部署读取**根目录**的 `.env`（从 `.env.example` 复制）。关键配置：
 
 ```dotenv
-# 数据库（PostgreSQL 主线）
-DB_DRIVER=postgres
-PG_HOST=localhost
-PG_PORT=5432
-PG_NAME=openstudy
-PG_USER=<your-db-user>
-PG_PASSWORD=<your-db-password>
+# 数据库（容器内部使用，无需改动即可跑）
+PG_NAME=openstudy_v2_pgsql
+PG_USER=root
+PG_PASSWORD=123456
 
-# JWT
-JWT_SECRET=<your-secret>
+# 安全：公开访问务必改成长随机串
+JWT_SECRET=openstudy-change-me-in-production
 
-# AI 模型（按需配置）
-DEEPSEEK_API_KEY=<your-deepseek-key>
-SILICONFLOW_API_KEY=<your-siliconflow-key>   # RAG 向量化
-
-# 上传目录
-UPLOAD_DIR=<absolute-writable-path>
+# AI 模型 Key（不填则 AI 对话 / 知识库不可用，其余功能正常）
+DEEPSEEK_API_KEY=
+SILICONFLOW_API_KEY=      # RAG 向量化（BAAI/bge-m3）
+ZHIPU_API_KEY=
 ```
 
-> ⚠️ **安全提示**：请勿将任何真实密钥、数据库口令、账号信息提交到仓库。所有敏感配置一律通过 `.env` 或系统环境变量注入。
-
----
-
-## 测试
-
-```bash
-cd openstudy-fastapi
-# 单元测试 / 联调脚本见 tests 目录
-pytest
-```
-
-后端测试指引详见 `openstudy-fastapi/TEST_GUIDE.md`。
+> ⚠️ **安全提示**：请勿将任何真实密钥、数据库口令、账号信息提交到仓库。
+> 所有敏感配置一律通过 `.env` 或系统环境变量注入；`.env` 已被 `.gitignore` 忽略。
 
 ---
 
@@ -186,13 +119,7 @@ pytest
 | 中文全文检索 | jieba 分词写入 `content_tokens` → PG 生成列 `search_vec` |
 | Agent 工具契约 | 统一结果信封 `{success, error, hint}`，描述分「模型侧（英文）/ 界面侧（中文）」两套 |
 | 状态机 | 文档处理：`1待解析 → 2解析中 → 3已解析 → 5已向量化 / 4失败` |
-
----
-
-## 文档
-
-- `docs/fastapi_v2_交付部署环境要求.md` — 部署环境要求
-- `docs/fastapi_v2_agent_knowledge_ingest_方案.md` — Agent 知识库写入能力方案
+| 容器化 | 单条 `docker compose up -d --build` 拉起 pgvector + Redis + 前后端 |
 
 ---
 

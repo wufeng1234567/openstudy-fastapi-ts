@@ -60,6 +60,9 @@ build/
 *.bak-*
 .workbuddy/
 .trae/
+.codeartsdoer/
+_commit_metrics.txt
+openstudy-vue3-ts/_v.cjs
 .题库域后端接口功能测试用例表.ref/
 
 # Lock files (keep one)

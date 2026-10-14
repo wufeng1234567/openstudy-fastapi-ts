@@ -1,0 +1,134 @@
+# ============================================================
+# OpenStudy 一键部署编排（Docker Compose）
+# ------------------------------------------------------------
+# 一条命令拉起全套环境，用户无需手动安装 PostgreSQL / pgvector / Redis：
+#
+#   docker compose up -d --build
+#
+# 服务：
+#   db        PostgreSQL 16 + pgvector + pg_trgm（官方带扩展镜像）
+#   redis     Redis 7（登录态 / 缓存）
+#   backend   FastAPI（容器内 9101）
+#   frontend  Nginx 托管 Vue 产物 + 反代后端（对外 3167）
+#
+# 访问：
+#   前端主页   http://localhost:3167
+#   后端文档   http://localhost:9101/swagger-ui.html
+#   演示账号   admin / admin123
+#
+# 说明：
+#   · 数据库 / Redis 不映射到宿主机端口，只在内网互通，避免端口冲突。
+#   · 首次启动会自动导入种子数据（deploy/db-init/*.sql），随后后端
+#     启动时 create_all 幂等补全表结构。
+#   · DS 网页桥（ds-free-nb）不纳入容器（依赖宿主机浏览器的 Edge/Chrome）。
+# ============================================================
+
+name: openstudy
+
+services:
+  # ---------------- 数据库：PostgreSQL 16 + pgvector + pg_trgm ----------------
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: openstudy-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_USER:-root}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-123456}
+      POSTGRES_DB: ${PG_NAME:-openstudy_v2_pgsql}
+      TZ: Asia/Shanghai
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # 首次初始化时按文件名顺序执行；库名已由 POSTGRES_DB 创建好
+      - ./deploy/db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-root} -d ${PG_NAME:-openstudy_v2_pgsql}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - openstudy
+
+  # ---------------- Redis（登录态 / 验证码 / 缓存）----------------
+  redis:
+    image: redis:7-alpine
+    container_name: openstudy-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - openstudy
+
+  # ---------------- 后端：FastAPI ----------------
+  backend:
+    build:
+      context: ./openstudy-fastapi
+      dockerfile: Dockerfile
+    image: openstudy-backend:latest
+    container_name: openstudy-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # 容器内通过服务名互访，不再用 localhost
+      DB_DRIVER: postgres
+      PG_HOST: db
+      PG_PORT: "5432"
+      PG_NAME: ${PG_NAME:-openstudy_v2_pgsql}
+      PG_USER: ${PG_USER:-root}
+      PG_PASSWORD: ${PG_PASSWORD:-123456}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_DB: "0"
+      REDIS_PASSWORD: ""
+      HOST: 0.0.0.0
+      PORT: "9101"
+      DEBUG: "False"
+      JWT_SECRET: ${JWT_SECRET:-openstudy-change-me-in-production}
+      # 上传目录：容器内固定路径，由下方 volume 持久化
+      UPLOAD_DIR: /app/data/uploadPath
+      # CORS：前端经 Nginx 同源访问；这里放行本机 + 隧道常见来源
+      CORS_ORIGINS: '["http://localhost:3167","http://127.0.0.1:3167","http://localhost","http://localhost:9101"]'
+      # ---- AI 模型 Key（用户在 .env 或此处填写，留空则 AI 功能不可用）----
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
+    volumes:
+      - uploads:/app/data/uploadPath
+    ports:
+      # 暴露后端，便于访问 Swagger 文档；不需要可删除本段
+      - "9101:9101"
+    networks:
+      - openstudy
+
+  # ---------------- 前端：Nginx + Vue 产物 + API 反代 ----------------
+  frontend:
+    build:
+      context: ./openstudy-vue3-ts
+      dockerfile: Dockerfile
+    image: openstudy-frontend:latest
+    container_name: openstudy-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3167:80"
+    networks:
+      - openstudy
+
+volumes:
+  pgdata:
+  redisdata:
+  uploads:
+
+networks:
+  openstudy:
+    driver: bridge

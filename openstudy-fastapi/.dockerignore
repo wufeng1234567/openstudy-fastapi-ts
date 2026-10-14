@@ -1,0 +1,17 @@
+# 构建上下文排除项：不要把开发机的重型/敏感目录塞进镜像
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.git/
+.gitignore
+.env
+.env.*
+*.bak
+*.bak-*
+data/uploadPath/
+tests/_ui_evidence/
+*.log

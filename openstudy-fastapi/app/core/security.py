@@ -33,8 +33,13 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """验证密码"""
-    return pwd_context.verify(plain_password, hashed_password)
+    """验证密码
+
+    ⚠️ 必须与 hash_password 用同样的 72 字节截断：bcrypt 只认前 72 字节，
+    新版 bcrypt(>=4.1/5.x) 对超长输入会直接抛 ValueError 而不是静默截断。
+    """
+    plain_bytes = plain_password.encode("utf-8")[:72]
+    return pwd_context.verify(plain_bytes.decode("utf-8", errors="ignore"), hashed_password)
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:

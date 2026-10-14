@@ -10,6 +10,11 @@ python-multipart==0.0.19
 # Security
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+# ⚠️ 必须锁 bcrypt<4.1：passlib 1.7.4 不兼容 bcrypt>=4.1
+#    （bcrypt 移除了 __about__，且 5.0 强化 72 字节检查 → 登录 verify 直接抛
+#     ValueError: password cannot be longer than 72 bytes）。容器全新 pip 安装
+#     会拉到最新 bcrypt 触发此问题，故在此显式钉死。
+bcrypt==4.0.1
 
 # Database
 sqlalchemy[asyncio]==2.0.36

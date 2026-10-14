@@ -506,3 +506,64 @@ async def test_ai_connection(
         return error(f"HTTP {resp.status_code}: {resp.text[:200]}")
     except Exception as e:
         return error(f"连接失败: {str(e)}")
+
+
+@router.post("/system/ai/config/provider-models")
+async def fetch_provider_models(
+    body: AiConfigBody,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """拉取某 provider 的可用模型列表（OpenAI 兼容 GET /models）
+
+    前端「AI 模型配置」页的「获取模型」按钮调用：
+      - 传 apiKey + baseUrl（编辑场景可只传 configId，服务端复用库里的 Key）
+      - 返回 { code, data: { models: [{id, ownedBy}], baseUrl } }
+    用于让用户从下拉框里挑模型名，而不是手敲。
+    """
+    from app.services.ai.db_config import PROVIDER_BASE_URLS
+
+    cfg = None
+    if body.modelId or body.configId:
+        cfg = await db.get(SysAiConfig, body.modelId or body.configId)
+        if not cfg:
+            return error("配置不存在")
+
+    provider = body.provider or (cfg.provider if cfg else None)
+
+    # ds-free 走网页端反代，没有标准 /models 列表，返回内置模型名
+    if provider == "deepseek-free":
+        return success({"models": [{"id": "ds-free-nb", "ownedBy": "deepseek-web"}], "baseUrl": ""})
+
+    if cfg:
+        base_url = (body.apiUrl or body.baseUrl or cfg.base_url or "").strip()
+        api_key = body.apiKey or cfg.api_key
+    else:
+        base_url = (body.apiUrl or body.baseUrl or "").strip()
+        api_key = body.apiKey
+
+    if not base_url:
+        base_url = PROVIDER_BASE_URLS.get(provider, "https://api.deepseek.com/v1")
+
+    if not api_key:
+        return error("请先填写 API Key")
+
+    url = base_url.rstrip("/") + "/models"
+    try:
+        timeout = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(
+                url,
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+        if resp.status_code != 200:
+            return error(f"HTTP {resp.status_code}: {resp.text[:200]}")
+        payload = resp.json()
+        models = [
+            {"id": m.get("id"), "ownedBy": m.get("owned_by")}
+            for m in (payload.get("data") or [])
+            if m.get("id")
+        ]
+        return success({"models": models, "baseUrl": base_url})
+    except Exception as e:
+        return error(f"获取模型列表失败: {str(e)}")
