@@ -11,7 +11,7 @@
 -- ============================================================
 
 UPDATE public.sys_user
-SET password = '$2b$12$LtcArOvPRhwuuaHqwe6P4OQfZ5dvetnS/28LY4pIpGumMu.RhxUs2'
+SET password = '$2b$12$XCWtkQ37WqBbWgMklX2of.qe6Lps5fXh5ehMUr3zJ6fMe62QQahlW'
 WHERE user_name IN ('admin', 'user1', 'user2', 'demo', 'guest');
 
 -- 校验：确认几个账号都存在且密码已更新

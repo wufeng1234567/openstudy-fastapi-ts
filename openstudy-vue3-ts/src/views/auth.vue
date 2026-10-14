@@ -244,8 +244,8 @@ function switchToRegister() {
 // ===================== Login Logic =====================
 
 const loginForm = ref({
-  username: "admin",
-  password: "admin123",
+  username: "",
+  password: "",
   rememberMe: false,
   code: "",
   uuid: ""
@@ -262,7 +262,8 @@ const loading = ref(false);
 const captchaEnabled = ref(true);
 // 演示模式：true=显示「演示账号一键登录」入口（自用/答辩）；false=上线体验版，
 // 默认走账号密码登录/注册，不暴露演示账号。由后端 /captchaImage 的 demoMode 下发。
-const demoMode = ref(true);
+// ⚠️ 初始值取 false（安全优先）：接口返回前先按「体验版」渲染，避免闪出一键登录入口。
+const demoMode = ref(false);
 
 function handleLogin() {
   if (quickLoading.value) return
@@ -424,10 +425,17 @@ function getCode() {
       loginForm.value.uuid = res.data.uuid;
       registerForm.value.uuid = res.data.uuid;
     }
+    // demoMode 已确定后再决定是否预填账号密码（体验版不预填）
+    getCookie();
   });
 }
 
 function getCookie() {
+  // 体验版（demoMode=false）：不预填任何账号密码，避免把管理员凭据暴露给访问者
+  if (!demoMode.value) {
+    loginForm.value = { username: "", password: "", rememberMe: false, code: "", uuid: "" };
+    return;
+  }
   const username = Cookies.get("username");
   const password = Cookies.get("password");
   const rememberMe = Cookies.get("rememberMe");
@@ -438,8 +446,8 @@ function getCookie() {
   };
 }
 
+// 先取验证码配置（拿到 demoMode），再按 demoMode 决定是否读 cookie 预填
 getCode();
-getCookie();
 </script>
 
 <style lang='scss' scoped>

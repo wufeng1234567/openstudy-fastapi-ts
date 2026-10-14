@@ -3392,8 +3392,8 @@ SELECT pg_catalog.setval('public.sys_menu_menu_id_seq', 2114, true);
 
 -- ---------- 演示用户（密码统一 = admin123） ----------
 INSERT INTO public.sys_user (user_id, user_name, nick_name, email, phonenumber, sex, avatar, password, status, del_flag, login_ip, login_date, dept_id, create_by, create_time, update_by, update_time, remark) VALUES
-(1, 'admin', '管理员',   'admin@example.com', '15888888888', '1', '', '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2', '0', '0', '127.0.0.1', now(), 103, 'admin', now(), '', NULL, '演示超级管理员'),
-(2, 'demo',  '演示用户', 'demo@example.com',  '15666666666', '0', '', '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2', '0', '0', '127.0.0.1', now(), 105, 'admin', now(), '', NULL, '演示普通用户');
+(1, 'admin', '管理员',   'admin@example.com', '15888888888', '1', '', '$2b$12$XCWtkQ37WqBbWgMklX2of.qe6Lps5fXh5ehMUr3zJ6fMe62QQahlW', '0', '0', '127.0.0.1', now(), 103, 'admin', now(), '', NULL, '演示超级管理员'),
+(2, 'demo',  '演示用户', 'demo@example.com',  '15666666666', '0', '', '$2b$12$XCWtkQ37WqBbWgMklX2of.qe6Lps5fXh5ehMUr3zJ6fMe62QQahlW', '0', '0', '127.0.0.1', now(), 105, 'admin', now(), '', NULL, '演示普通用户');
 
 -- ---------- 用户角色（1=超级管理员 admin，2=普通角色 common） ----------
 INSERT INTO public.sys_user_role (user_id, role_id) VALUES
