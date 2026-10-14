@@ -115,18 +115,43 @@ async def embed_texts(texts: list[str]) -> list[list[float]]:
     backend = _resolve_backend()
     logger.info(f"[embedding] backend={backend} model={model} 条数={len(texts)}")
 
+    # auto 模式下：本地失败（模型下载不了 / 依赖缺失 / 维度不符）时，自动回退硅基流动
+    auto_fallback = (settings.EMBEDDING_BACKEND or "auto").strip().lower() not in ("local", "siliconflow")
+
+    async def _do(bk: str, batch: list[str]) -> list[list[float]]:
+        if bk == "local":
+            return await _embed_via_local(batch)
+        return await _embed_via_siliconflow(batch)
+
     vectors: list[list[float]] = []
     for start in range(0, len(texts), BATCH_SIZE):
         batch = texts[start : start + BATCH_SIZE]
         try:
-            if backend == "local":
-                got = await _embed_via_local(batch)
+            got = await _do(backend, batch)
+        except EmbeddingError as e:
+            if backend == "local" and auto_fallback:
+                logger.warning(f"[embedding] 本地向量化失败，自动回退硅基流动：{e}")
+                backend = "siliconflow"
+                try:
+                    got = await _do(backend, batch)
+                except Exception as e2:  # noqa: BLE001
+                    raise EmbeddingError(
+                        f"本地与云端向量化均失败。本地：{e}；云端：{e2}"
+                    ) from e2
             else:
-                got = await _embed_via_siliconflow(batch)
-        except EmbeddingError:
-            raise
+                raise
         except Exception as e:  # 上游/网络/额度问题统一收口
-            raise EmbeddingError(f"向量化调用失败（backend={backend}, model={model}）: {e}") from e
+            if backend == "local" and auto_fallback:
+                logger.warning(f"[embedding] 本地向量化异常，自动回退硅基流动：{e}")
+                backend = "siliconflow"
+                try:
+                    got = await _do(backend, batch)
+                except Exception as e2:  # noqa: BLE001
+                    raise EmbeddingError(
+                        f"本地与云端向量化均失败。本地：{e}；云端：{e2}"
+                    ) from e2
+            else:
+                raise EmbeddingError(f"向量化调用失败（backend={backend}, model={model}）: {e}") from e
 
         if len(got) != len(batch):
             raise EmbeddingError(

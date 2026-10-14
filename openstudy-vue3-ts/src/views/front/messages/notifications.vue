@@ -105,7 +105,7 @@ const toggleExpand = (notice) => {
 }
 
 const displayContent = (notice) => {
-  const content = notice.noticeContent || notice.content || ''
+  const content = stripHtml(notice.noticeContent || notice.content || '')
   if (needsExpand(content) && expandedId.value !== (notice.noticeId || notice.id)) {
     return content.substring(0, 50) + '...'
   }
