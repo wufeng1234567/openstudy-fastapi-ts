@@ -1,6 +1,6 @@
 ---
 name: openstudy-deploy
-description: "OpenStudy 在线学习平台的部署安装说明书（给 AI 终端 / 部署人员）。覆盖：Linux（含华为云开发者空间 AI Shell / openEuler 沙箱）免 Docker 手动部署全流程 —— 装 PostgreSQL(+pgvector+pg_trgm)、Redis、Python 依赖、前端依赖，初始化数据库，启动前后端，并用 DevBridge 隧道暴露公网地址。触发条件：(1) 部署/启动 OpenStudy；(2) 用户说『帮我跑起来这个项目』『部署』；(3) 关键词：openstudy、部署、安装、pgvector、DevBridge、公网访问、start-all。"
+description: "OpenStudy 在线学习平台的部署安装说明书（给 AI 终端 / 部署人员）。首选方案：Linux 服务器上用 Docker Compose 一条命令起全套（pgvector+Redis+前后端）。备选：无 Docker 环境的手动安装（华为云 AI Shell / openEuler 沙箱）。含数据库一键导入、演示账号、公网访问说明。触发条件：(1) 部署/启动 OpenStudy；(2) 用户说『帮我跑起来这个项目』『部署到服务器』；(3) 关键词：openstudy、部署、安装、docker、pgvector、公网访问。"
 ---
 
 # OpenStudy 部署安装说明书（SKILL）
@@ -10,13 +10,103 @@ description: "OpenStudy 在线学习平台的部署安装说明书（给 AI 终�
 
 ## 先选路线
 
-| 你的环境 | 走哪条路线 |
-|---|---|
-| **Linux 服务器 / 云沙箱（华为云 AI Shell、openEuler 等）** | ⭐ **本文件正文（§1~§11）**：免 Docker，手动装各组件 |
-| **用户自己的 Windows 电脑，且装了 Docker Desktop** | 见 §12「Windows Docker 一键启动」（备选，未在本项目实测） |
+| 你的环境 | 走哪条路线 | 难度 |
+|---|---|---|
+| ⭐ **Linux 服务器（云主机 / 自有服务器，有 root）** | **§A「服务器 Docker 一键部署」** —— 一条命令起全套 | 极简（推荐） |
+| **华为云 AI Shell / openEuler 沙箱（Docker 装不了）** | §1~§11「免 Docker 手动安装」 | 繁琐 |
+| **Windows 电脑 + Docker Desktop** | §12「Windows Docker 一键启动」 | 简单 |
+| **需要公网地址给评委/用户访问** | 见 §B「公网访问与常驻」 | — |
 
-> ⚠️ 沙箱/云主机常常**装不了 Docker**（网络命名空间权限受限、无 systemd、openEuler 无官方支持），
-> 此时一律走本文件正文的**免 Docker 手动安装**流程。
+> 🔑 **一句话**：**只要服务器能用 Docker（能装 Docker），就用 §A，一条命令搞定，别去手动装。**
+> 手动安装（§1~§11）只留给「Docker 确实装不了」的沙箱环境。
+
+---
+
+## §A. 服务器 Docker 一键部署（首选）
+
+**前提**：一台 Linux 服务器（Ubuntu / CentOS / Debian / openEuler 均可），有 root 或 sudo。
+
+### A.1 安装 Docker（服务器上一次即可）
+
+```bash
+# 官方一键脚本（支持主流发行版）
+curl -fsSL https://get.docker.com | sh
+# 启动 Docker
+sudo systemctl enable --now docker
+# 校验
+docker --version && docker compose version
+```
+
+> 若 `docker compose` 提示找不到：装 compose 插件
+> `sudo apt install -y docker-compose-plugin`（Debian/Ubuntu）或 `sudo dnf install -y docker-compose-plugin`（RHEL）。
+
+### A.2 拉取代码并一键启动
+
+```bash
+git clone https://gitcode.com/qi142410131/openstudy-fastapi-ts.git
+cd openstudy-fastapi-ts
+
+# 可选：配置 AI Key（不填则 AI 功能不可用，其余功能正常）
+cp .env.example .env
+# 编辑 .env 填 DEEPSEEK_API_KEY / SILICONFLOW_API_KEY
+
+# 一键构建并启动（首次约 5~10 分钟）
+docker compose up -d --build
+```
+
+### A.3 完成，访问
+
+| 服务 | 地址 |
+|---|---|
+| 前端主页 | `http://<服务器IP>:3167` |
+| 后端接口文档 | `http://<服务器IP>:9101/swagger-ui.html` |
+
+**演示账号**（数据库已自动初始化，无需任何额外操作）：
+
+| 账号 | 密码 |
+|---|---|
+| `admin` | `admin123` |
+| `user1` / `user2` | `123456` |
+| `guest` | 一键登录 |
+
+> 数据库首次启动会**自动导入**两份 SQL（结构 + 演示数据），无需手动执行。
+> 容器四件套：`db`（pgvector/pg16）+ `redis` + `backend` + `frontend`（Nginx）。
+> 数据持久化在 Docker 卷（`openstudy_pgdata` 等），重启不丢。
+
+### A.4 常用运维命令
+
+```bash
+docker compose ps                  # 查看状态
+docker compose logs -f backend     # 看后端日志
+docker compose restart backend     # 重启后端（改 .env 后执行）
+docker compose down                # 停止（保留数据）
+docker compose down -v             # 停止并清空数据（慎用）
+```
+
+### A.5 防火墙放行端口
+
+```bash
+# 云服务器还需在「安全组」里放行 3167
+sudo firewall-cmd --add-port=3167/tcp --permanent && sudo firewall-cmd --reload   # firewalld
+# 或 sudo ufw allow 3167/tcp    # ufw
+```
+
+---
+
+## §B. 公网访问与常驻（给评委/用户访问）
+
+### B.1 直接暴露端口
+服务器有公网 IP 时，放行 3167 端口后，`http://<公网IP>:3167` 即可访问。
+建议在 `.env` 里把 `JWT_SECRET` 改成长随机串。
+
+### B.2 绑定域名 + HTTPS（可选，更专业）
+用 Nginx/Caddy 反代到 `127.0.0.1:3167`，配好域名和证书即可。
+
+### B.3 常驻保障
+`docker-compose.yml` 已给所有服务配 `restart: unless-stopped`，服务器重启后容器自动拉回。
+如需开机自启：`sudo systemctl enable docker`。
+
+> ⚠️ **不用** DevBridge 隧道（`hwtunnel.com`）给评委——隧道 24~72h 就失效，只适合临时调试。
 
 ---
 
@@ -24,7 +114,7 @@ description: "OpenStudy 在线学习平台的部署安装说明书（给 AI 终�
 
 > 🔴 **华为云 AI Shell / openEuler 沙箱：不要尝试 Docker**。
 > 实测装不了（官方脚本不支持 openEuler，dnf 装的 18.09 太旧，手动起 dockerd 因**网络命名空间权限不足**失败）。
-> **直接按本文件正文走无 Docker 手动安装。**
+> **沙箱环境按本文件 §1~§11 走无 Docker 手动安装；服务器环境用 §A 的 Docker 一键部署。**
 
 **要装的东西（共 5 样）**：
 
@@ -53,7 +143,7 @@ description: "OpenStudy 在线学习平台的部署安装说明书（给 AI 终�
 | Redis | 6379 |
 
 **演示账号**：`admin` / `admin123`（SQL 自带，可管理员登录）。
-> 「一键登录」的 user1/user2/guest 也已由 `00_demo_seed.sql` 一并导入，见 **§4.1**。
+> 「一键登录」的 user1/user2/guest 也已由 `99_demo_seed.sql` 一并导入，见 **§4.1**。
 
 **数据库名**：`openstudy_v2_pgsql`（可在 `.env` 改，但 SQL 导入时必须一致）。
 
@@ -69,7 +159,7 @@ description: "OpenStudy 在线学习平台的部署安装说明书（给 AI 终�
 4. 【关键】确认 vector 与 pg_trgm 扩展可创建
 5. 建库，依次导入两份 SQL：
    - deploy/db-init/01_openstudy_v2_pgsql_deploy.sql（结构+基础种子）
-   - deploy/db-init/00_demo_seed.sql（演示账号+演示数据）
+   - deploy/db-init/99_demo_seed.sql（演示账号+演示数据）
 6. 后端：venv → pip install -r requirements.txt（确保 bcrypt==4.0.1）→ 写 .env → uvicorn 启动(9101)
 7. 前端：npm install → npm run dev(3167)
 8. 校验：curl 后端 /health 与前端登录接口，均 code==200
@@ -262,7 +352,7 @@ createdb -U root openstudy_v2_pgsql        # 或 sudo -u postgres createdb -O ro
 psql -U root -d openstudy_v2_pgsql -f deploy/db-init/01_openstudy_v2_pgsql_deploy.sql
 
 # 3) 导入「演示数据」（user1/user2/guest + 演示题库 + 学习统计/错题/收藏/笔记）
-psql -U root -d openstudy_v2_pgsql -f deploy/db-init/00_demo_seed.sql
+psql -U root -d openstudy_v2_pgsql -f deploy/db-init/99_demo_seed.sql
 
 # 4) 校验扩展已就位（关键！）
 psql -U root -d openstudy_v2_pgsql -c "SELECT extname FROM pg_extension WHERE extname IN ('vector','pg_trgm');"
@@ -284,7 +374,7 @@ psql -U root -d openstudy_v2_pgsql -c "SELECT extname FROM pg_extension WHERE ex
 | `user2` | `123456` | 普通用户（分享接收方） |
 | `guest` | 免密（一键登录） | 只读游客 |
 
-> 登录页的**「一键登录」**按钮对应 `user1 / user2 / guest / admin`，导入 `00_demo_seed.sql` 后**全部可用**。
+> 登录页的**「一键登录」**按钮对应 `user1 / user2 / guest / admin`，导入 `99_demo_seed.sql` 后**全部可用**。
 > 无需再运行任何 Python 种子脚本。
 
 ---
@@ -446,7 +536,7 @@ pgvector 若确实无法安装（源里没有、编译失败），有两种降�
 | Python | 3.11（≥3.10） | `python3 --version` | 3.11.x |
 | Node.js | 20（≥18） | `node -v` | v20.x |
 | 数据库 | openstudy_v2_pgsql | `psql -lqt` | 库存在 |
-| 演示账号 | user1/user2/guest | `psql -c "SELECT user_name FROM sys_user"` | 含 user1/user2/guest（导入 00_demo_seed.sql 后即有） |
+| 演示账号 | user1/user2/guest | `psql -c "SELECT user_name FROM sys_user"` | 含 user1/user2/guest（导入 99_demo_seed.sql 后即有） |
 | 端口 | 9101 / 3167 | `ss -lntp` | 两个都在监听 |
 
 ---
@@ -473,7 +563,7 @@ sudo -u postgres createdb -O root openstudy_v2_pgsql 2>/dev/null || true
 # ========== 4. 导入 SQL（两份）==========
 cd <仓库根>
 psql -U root -d openstudy_v2_pgsql -f deploy/db-init/01_openstudy_v2_pgsql_deploy.sql
-psql -U root -d openstudy_v2_pgsql -f deploy/db-init/00_demo_seed.sql
+psql -U root -d openstudy_v2_pgsql -f deploy/db-init/99_demo_seed.sql
 psql -U root -d openstudy_v2_pgsql -c "SELECT extname FROM pg_extension WHERE extname IN ('vector','pg_trgm');"
 
 # ========== 5. 后端依赖与配置 ==========

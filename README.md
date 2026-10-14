@@ -34,7 +34,7 @@ fastapi-v2/
 ├── deploy/
 │   └── db-init/              # 数据库 SQL
 │       ├── 01_openstudy_v2_pgsql_deploy.sql   # 结构 + 基础种子
-│       └── 00_demo_seed.sql                   # 演示账号 + 演示数据
+│       └── 99_demo_seed.sql                   # 演示账号 + 演示数据
 ├── startup-scripts/          # 启动脚本与数据库脚本
 ├── SKILL.md                  # ⭐ 部署安装说明书（给 AI 终端 / 部署人员，含公网访问方案）
 └── README.md                 # 本文件（面向使用者的项目介绍）
@@ -71,14 +71,24 @@ fastapi-v2/
 
 ## 快速开始（一句话版）
 
-本系统可运行于 **Linux 服务器 / 云沙箱 / 本机**，需要 PostgreSQL（含 pgvector、pg_trgm 扩展）、Redis、Python 3.11、Node 18+。
+本系统支持 **一条命令部署到 Linux 服务器**（推荐），也可运行于云沙箱 / 本机。
 
-完成部署后访问：
+**服务器部署（Docker，最省事）**：
 
-| 服务 | 地址（本机） |
+```bash
+git clone https://gitcode.com/qi142410131/openstudy-fastapi-ts.git
+cd openstudy-fastapi-ts
+docker compose up -d --build      # 自动拉起 pgvector + Redis + 前后端
+```
+
+完成后访问：
+
+| 服务 | 地址 |
 |---|---|
-| 前端主页 | http://localhost:3167 |
-| 后端文档（Swagger） | http://localhost:9101/swagger-ui.html |
+| 前端主页 | http://<服务器IP>:3167 |
+| 后端文档（Swagger） | http://<服务器IP>:9101/swagger-ui.html |
+
+数据库**首次启动自动初始化**（含结构与演示数据），无需手动操作。
 
 **演示账号**（导入 `deploy/db-init/` 下的两份 SQL 后全部就位）：
 
