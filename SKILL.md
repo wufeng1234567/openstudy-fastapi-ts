@@ -22,15 +22,26 @@ description: "OpenStudy 在线学习平台的部署安装说明书（给 AI 终�
 
 ## 0. 一分钟速览
 
+> 🔴 **华为云 AI Shell / openEuler 沙箱：不要尝试 Docker**。
+> 实测装不了（官方脚本不支持 openEuler，dnf 装的 18.09 太旧，手动起 dockerd 因**网络命名空间权限不足**失败）。
+> **直接按本文件正文走无 Docker 手动安装。**
+
 **要装的东西（共 5 样）**：
 
 | # | 组件 | 版本要求 | 作用 |
 |---|---|---|---|
-| 1 | **PostgreSQL** | 16（14/15 亦可） | 主数据库 |
-| 2 | **pgvector 扩展** | 0.5+（推荐 0.8.x） | RAG 知识库向量检索（**必须**） |
+| 1 | **PostgreSQL** | 16 优先；openEuler 自带 13 也可用 | 主数据库 |
+| 2 | **pgvector 扩展** | 0.5+（实测沙箱编译 0.5.1 成功） | RAG 知识库向量检索（**必须**） |
 | 3 | **pg_trgm 扩展** | 附带 contrib 包 | 中文模糊检索 |
 | 4 | **Redis** | 6+（推荐 7.x） | 登录态 / 验证码 / 缓存（**后端强依赖，必须先起**） |
 | 5 | **Python / Node** | Python 3.11 / Node 18+ | 后端 / 前端运行时 |
+
+**两个高频坑（务必先看）**：
+
+- **pgvector 编译**：openEuler 的 `postgresql-devel` **不含** PGXS 头文件，常规 `make` 必失败 →
+  按 §2.1 的 **R2** 用「下 PG 源码 + configure + 手建 PGXS」的方式编译。
+- **bcrypt 版本**：全新 pip 会装 bcrypt 5.x，与 passlib 1.7.4 不兼容 → 登录报
+  `password cannot be longer than 72 bytes`。必须 `pip install bcrypt==4.0.1`（requirements.txt 已锁，但手动装依赖时注意）。
 
 **统一端口**：
 
@@ -50,16 +61,18 @@ description: "OpenStudy 在线学习平台的部署安装说明书（给 AI 终�
 ## 1. 整体流程（AI 终端执行清单）
 
 ```
-1. 装系统依赖：PostgreSQL(+contrib) + pgvector + Redis + Python3.11 + Node20
-2. 启动 PostgreSQL 与 Redis 服务，确认端口 5432 / 6379 可连
-3. 【关键】在 PostgreSQL 里确认 vector 与 pg_trgm 扩展可创建
-4. 建库并导入 deploy/db-init/01_openstudy_v2_pgsql_deploy.sql（结构+种子+演示数据）
-5. 后端：建 venv → pip install -r requirements.txt → 写 .env → uvicorn 启动(9101)
-6. 前端：npm install → npm run dev(3167)
-7. 校验：curl 后端 /health 与前端登录接口，均 code==200
-8. LOAD_SKILL huawei-cloud-jobenv-devbridge-tunnel，为 3167（必做）/9101（可选）建隧道
-9. 从隧道日志取公网 URL，校验可达，把「前端 URL」交给用户
-10. 告知用户：隧道有效期约 24h，过期后重新跑 start-all + 重建隧道
+1. 【先别装 Docker】沙箱/云主机直接走无 Docker 流程
+2. 装系统依赖：PostgreSQL(+contrib) + pgvector + Redis + Python3.11 + Node20
+   - openEuler 的 pgvector 走 §2.1 R2（下 PG 源码 + 手建 PGXS + 编译）
+3. 启动 PostgreSQL 与 Redis（无 systemd 时用 pg_ctl / redis-server --daemonize）
+4. 【关键】确认 vector 与 pg_trgm 扩展可创建
+5. 建库并导入 deploy/db-init/01_openstudy_v2_pgsql_deploy.sql（结构+种子+演示数据）
+6. 后端：venv → pip install -r requirements.txt（确保 bcrypt==4.0.1）→ 写 .env → uvicorn 启动(9101)
+7. 前端：npm install → npm run dev(3167)
+8. 校验：curl 后端 /health 与前端登录接口，均 code==200
+9. LOAD_SKILL huawei-cloud-jobenv-devbridge-tunnel，为 3167（必做）/9101（可选）建隧道
+10. 从隧道日志取公网 URL，校验可达，把「前端 URL」交给用户
+11. 告知用户：隧道有效期约 24~72h，过期后重建隧道（服务不用重启）
 ```
 
 ---
@@ -88,38 +101,81 @@ sudo apt install -y postgresql-16 postgresql-16-pgvector postgresql-contrib
 
 #### RHEL / CentOS / openEuler
 
-openEuler 自带源的 PG 版本较旧且**不带 PGXS 头文件**，导致 pgvector 编译失败。两条路任选：
+openEuler 自带源的 PG 版本较旧（实测 **13.12**），且**不提供 PGXS 头文件**（`pgxs.mk` / `postgres.h`），
+导致 pgvector 常规编译失败。按下面顺序尝试，**R2 是华为云沙箱实测走通的路径**。
 
-**路线 R1（推荐）：装 PGDG 官方 RPM 源拿到 PG16 + pgvector**
+**路线 R1：装 PGDG 官方 RPM 源拿到 PG16 + pgvector**（沙箱网络受限时常拿不到，拿不到就走 R2）
 
 ```bash
-# 安装 PGDG 仓库（RHEL 系通用）
 sudo dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-$(rpm -E %{rhel})-x86_64/pgdg-redhat-repo-latest.noarch.rpm
 sudo dnf install -y postgresql16-server postgresql16-contrib
-# pgvector：PGDG 仓库通常含 pgvector_16（包名以仓库实际为准）
-sudo dnf install -y pgvector_16 2>/dev/null || echo "仓库无 pgvector 包，走源码编译见 R2"
-# 头文件（编译 pgvector 或其它扩展时需要）
+sudo dnf install -y pgvector_16 2>/dev/null || echo "仓库无 pgvector 包，走 R2"
 sudo dnf install -y postgresql16-devel
 ```
 
-**路线 R2：用系统自带 PG + 源码编译 pgvector**
+**路线 R2（开放欧拉沙箱实测成功）：用系统自带 PG + 从源码补齐 PGXS 头文件 + 编译 pgvector**
+
+> 关键点：openEuler 的 `postgresql-devel` 里**没有** `pgxs.mk` 和 `postgres.h`，
+> 所以必须**下载与系统 PG 同版本的源码**，`./configure` 出头文件，手动搭出 PGXS 目录，再编译 pgvector。
 
 ```bash
-# 1) 装 PG 与其开发头文件（关键：必须有 -devel / pgxs）
-sudo dnf install -y postgresql-server postgresql-contrib postgresql-devel
-# 2) 编译安装 pgvector（GitHub 官方源码）
-sudo dnf install -y git gcc make
-git clone --branch v0.8.0 https://github.com/pgvector/pgvector.git /tmp/pgvector
-cd /tmp/pgvector
-make            # 找不到 pg_config 时：make PG_CONFIG=$(which pg_config)
+# ---- 1) 装系统 PG + 编译工具 ----
+sudo dnf install -y postgresql-server postgresql-contrib redis git gcc make bison flex readline-devel zlib-devel
+
+# 查系统 PG 版本（决定下哪份源码）
+rpm -q postgresql-server            # 例如 postgresql-server-13.12-...
+pg_config --version
+
+# ---- 2) 启动 PG 并 initdb（无 systemd，手动来）----
+sudo -u postgres /usr/bin/initdb -D /var/lib/pgsql/data 2>/dev/null || true
+sudo -u postgres /usr/bin/pg_ctl -D /var/lib/pgsql/data -l /tmp/pg.log start
+# 或：sudo systemctl start postgresql（有 systemd 时）
+
+# ---- 3) 下载「同版本」PG 源码（用华为云镜像，快且稳）----
+cd /tmp
+# 版本号换成上面 rpm -q 查到的实际版本，例如 13.12
+PGVER=13.12
+curl -fL -o postgresql-$PGVER.tar.gz \
+  https://mirrors.huaweicloud.com/postgresql/source/v$PGVER/postgresql-$PGVER.tar.gz \
+  || wget https://mirrors.huaweicloud.com/postgresql/source/v$PGVER/postgresql-$PGVER.tar.gz
+tar xzf postgresql-$PGVER.tar.gz
+cd postgresql-$PGVER
+
+# ---- 4) configure 生成 config 头文件（不真正安装，只为拿头文件/PGXS）----
+./configure --without-readline --without-zlib
+
+# ---- 5) 手动搭出 PGXS 目录结构，指向系统 PG 的扩展目录 ----
+PG_SHAREDIR=$(pg_config --sharedir)          # 如 /usr/share/pgsql
+PG_LIBDIR=$(pg_config --pkglibdir)           # 如 /usr/lib64/pgsql
+sudo mkdir -p "$PG_SHAREDIR/extension" "$PG_SHAREDIR/pgxs" "$PG_LIBDIR/extension"
+# 把源码里的 PGXS 模板复制到系统 sharedir（pgvector 的 Makefile 会去这里找 pgxs.mk）
+sudo cp -r src/makefiles/* "$PG_SHAREDIR/pgxs/" 2>/dev/null || true
+sudo cp src/Makefile.global "$PG_SHAREDIR/pgxs/src/Makefile.global" 2>/dev/null || true
+# 生成 Makefile.global / Makefile.port（configure 已产出 src/Makefile.global）
+# 若报 Makefile.port 缺失，手动补：
+sudo tee "$PG_SHAREDIR/pgxs/src/Makefile.port" >/dev/null <<'EOF'
+# Minimal Makefile.port stub
+EOF
+
+# ---- 6) 编译安装 pgvector（版本可自选，沙箱实测 0.5.1 成功）----
+cd /tmp
+git clone --branch v0.8.0 https://github.com/pgvector/pgvector.git
+# GitHub 慢/不通时用镜像：git clone https://gitee.com/mirrors/pgvector.git
+cd pgvector
+make PG_CONFIG=$(which pg_config)
 sudo make install
+
+# ---- 7) 校验扩展文件就位 ----
+ls "$(pg_config --sharedir)/extension/" | grep vector   # 应看到 vector.control 等
 ```
 
-> ⚠️ **若编译报 `postgres.h: No such file or directory` 或找不到 `pgxs.mk`**：
-> 说明缺 `postgresql-devel`，或版本不匹配（`pg_config` 路径不对）。
-> 解决办法：装对应版本的 `-devel`（如 `postgresql16-devel`），再用 `make PG_CONFIG=/usr/pgsql-16/bin/pg_config` 指定正确的 pg_config。
+> ⚠️ **R2 常见报错与对策**：
+> - `postgres.h: No such file or directory` → 第 4 步 `./configure` 没执行或没成功。
+> - `pgxs.mk: No such file` / 找不到 PGXS → 第 5 步目录没搭对，检查 `pg_config --sharedir` 路径。
+> - `Makefile.port could not be read` → 第 5 步末尾的 stub 没建。
+> - 下载 PG 源码**不完整**（tar 报错）→ 换华为云镜像（已用），或重试 `curl -fL`。
 >
-> ⚠️ **若 dnf 源里确实拿不到 pgvector 且编译也无法进行**：见本文件 §7「无 pgvector 的应急方案」。
+> ⚠️ 若 R1/R2 都最终失败：见 §7「无 pgvector 的应急方案」。
 
 ### 2.2 Redis
 
@@ -315,16 +371,17 @@ pgvector 若确实无法安装（源里没有、编译失败），有两种降�
 **操作（AI 终端执行）**：
 
 1. **加载隧道 skill**：`LOAD_SKILL huawei-cloud-jobenv-devbridge-tunnel`
-2. **为端口建隧道**：
+2. **按该 skill 的「Quick Create Flow」创建隧道**，为端口建隧道：
    - `3167` —— 前端主页（**给用户的主入口**）
    - `9101` —— 后端 API / Swagger（可选，调试用）
-3. **从隧道进程日志 / skill 输出取公网 URL**，形如：
-   - 前端：`https://<子域>-3167.devbridge-s2.hwtunnel.com`
-   - 后端：`https://<子域>-9101.devbridge-s2.hwtunnel.com/swagger-ui.html`
-4. **校验可达**：对公网 URL 发一次请求确认 200。
+3. **取公网 URL**（从隧道输出 / 进程日志）。实测格式为：
+   `https://<隧道ID>-<端口>.devbridge-s2.hwtunnel.com`
+   - 例（实测成功）：`https://gb3wa6li-3167.devbridge-s2.hwtunnel.com`
+4. **校验可达**：用权威方式对公网 URL 发一次请求，确认返回 200。
 5. **把前端公网 URL 交给用户**。
 
-> ⚠️ 隧道有效期约 **24 小时**。过期后重新 `start-all.sh` 并重建隧道。
+> ⚠️ 隧道有效期约 **24~72 小时**（以 skill 输出为准）。
+> 过期后**只需重建隧道**，后端/前端服务不用重启（它们还在沙箱里跑着）。
 
 ---
 
