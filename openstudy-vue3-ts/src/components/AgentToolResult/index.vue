@@ -34,9 +34,11 @@
     </div>
 
     <!-- ② 工具 · 动作（原始标识符只在 title 里，不占视线） -->
-    <div v-if="toolLabel || errorCount" class="at-meta">
+    <div v-if="toolLabel || errorCount || (status === 'running' && elapsed >= 1)" class="at-meta">
       <span v-if="toolLabel" class="at-tool" :title="toolPath">{{ toolLabel }}</span>
       <span v-if="errorCount" class="at-badge">{{ errorCount }} 项错误</span>
+      <!-- 运行中显示已用时，让用户看到"它在动"而不是傻等 -->
+      <span v-if="status === 'running' && elapsed >= 1" class="at-elapsed">已用时 {{ elapsed }}s</span>
     </div>
 
     <!-- ③ 错误原因 -->
@@ -66,7 +68,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import AgentToolDetail from '@/components/AgentToolDetail/index.vue'
 
 const props = defineProps({
@@ -83,6 +85,42 @@ const props = defineProps({
 })
 
 const expanded = ref(false)
+
+/* ============================================================
+ * 运行中「已用时」计时器
+ *
+ * 工具执行（尤其批量导入几十道题）可能耗时数秒。卡片只有转圈时，用户分不清
+ * 「在跑」还是「卡死了」。这里每秒刷新已用时，给出「确实在动」的可见反馈。
+ * 仅在 status==='running' 时计时；转为 ok/fail 即停止并清零。
+ * ============================================================ */
+const elapsed = ref(0)
+let timer: ReturnType<typeof setInterval> | null = null
+
+const stopTimer = () => {
+  if (timer) {
+    clearInterval(timer)
+    timer = null
+  }
+}
+const startTimer = () => {
+  stopTimer()
+  elapsed.value = 0
+  const startedAt = Date.now()
+  timer = setInterval(() => {
+    elapsed.value = Math.floor((Date.now() - startedAt) / 1000)
+  }, 1000)
+}
+
+watch(
+  () => props.status,
+  (s) => {
+    if (s === 'running') startTimer()
+    else stopTimer()
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(stopTimer)
 
 /* ============================================================
  * 第一层：结果摘要
@@ -416,6 +454,19 @@ const hasData = computed(() => nonEmpty(props.data))
   color: #b91c1c;
   background: #fef2f2;
   border: 1px solid #fecaca;
+}
+
+/* 运行中「已用时」标签：低饱和蓝，暗示"进行中" */
+.at-elapsed {
+  font-size: 11px;
+  line-height: 1.65;
+  padding: 0 8px;
+  border-radius: 9px;
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ===================== 第三层：错误 / 详情 ===================== */

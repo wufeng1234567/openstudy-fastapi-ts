@@ -335,10 +335,6 @@ def _collect_attachments(
         if plain.strip():
             structured.append({"name": name, "text": plain})
 
-        # 含公式的文档：提醒模型保留 LaTeX 反斜杠（少走一轮转义修复）
-        if "\\" in marked:
-            warnings.append(f"附件 {name} 含公式，已提醒模型注意反斜杠转义")
-
     return "\n\n".join(sections), doc_images, warnings, structured
 
 
@@ -1886,14 +1882,23 @@ def _tool_start_message(tool_name: str, params: Dict[str, Any]) -> str:
             "delete_by_name": f"正在删除题库「{params.get('bank_name') or ''}」…",
         }.get(action, "正在处理题库…")
     if tool_name == "question_manage":
+        # batch_import 的入参里有 questions 数组 + 目标题库，据实说清"导入几道到哪"
+        # —— 泛泛一句「正在批量导入题目…」在分批导入（第1~15题、16~30题）时看不出进展。
+        if action == "batch_import":
+            qs = params.get("questions")
+            n = len(qs) if isinstance(qs, list) else None
+            cnt = f"{n} 道" if n else ""
+            target = f"到「{bank}」" if bank else ""
+            return f"正在批量导入{cnt}题目{target}…"
         return {
             "list": f"正在查询「{bank}」的题目…",
             "detail": "正在查看题目详情…",
             "search": "正在搜索题目…",
             "create": "正在创建题目…",
-            "batch_import": "正在批量导入题目…",
             "update": "正在修改题目…",
             "delete": "正在删除题目…",
+            "delete_many": "正在批量删除题目…",
+            "clear_questions": f"正在清空「{bank}」的题目…",
         }.get(action, "正在处理题目…")
     return f"正在执行 {tool_name}…"
 
