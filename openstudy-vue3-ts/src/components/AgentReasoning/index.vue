@@ -56,6 +56,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch, onBeforeUnmount } from 'vue'
+import { useSmoothAutoScroll } from '@/composables/useSmoothAutoScroll'
 
 const props = withDefaults(
   defineProps<{
@@ -82,13 +83,14 @@ const toggle = () => {
 }
 
 // ---- 自动跟随滚动（运行中内容增长时滚到底）----
+// ⚠️ 用 useSmoothAutoScroll 而非无条件 `scrollTop = scrollHeight`：
+//    后者会在用户上滑回看时把视口强行拽回底部（用户无法自由滚动）。
+//    该 composable 只在「用户位于底部附近」时才跟随，用户一旦上滑立即停止，
+//    与「题目 AI 解析」页的滚动行为完全一致。
 const bodyRef = ref<HTMLElement | null>(null)
-const scrollToBottom = () => {
-  const el = bodyRef.value
-  if (el) el.scrollTop = el.scrollHeight
-}
+const { keepAtBottom, scrollToBottom } = useSmoothAutoScroll(bodyRef)
 
-// 内容增长：跟随时滚到底（不再要求 running —— 收口后若有迟到增量也应跟随）
+// 内容增长：仅在跟随时滚到底（用户上滑后不再打扰）；收口后若有迟到增量也跟随
 watch(
   () => props.content,
   () => {
@@ -97,9 +99,14 @@ watch(
       clearTimeout(collapseTimer)
       collapseTimer = null
     }
-    if (expanded.value) nextTick(scrollToBottom)
+    if (expanded.value) nextTick(keepAtBottom)
   }
 )
+
+// 展开时落到底（用户主动展开默认想看到最新内容）——用即时定位，直接到底
+watch(expanded, (open) => {
+  if (open) nextTick(scrollToBottom)
+})
 
 // 收口：延迟片刻再折叠（避免"自动折"与"内容仍在增长"打架；用户手动操作过则不自动折）
 let collapseTimer: ReturnType<typeof setTimeout> | null = null
