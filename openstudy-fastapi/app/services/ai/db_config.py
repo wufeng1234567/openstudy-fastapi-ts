@@ -227,9 +227,9 @@ async def get_config_by_model(
     """按模型名获取启用的模型配置（前端模型下拉框现在按 model 选择）
 
     同一个 model 名可能同时存在「系统提供」和「用户自定义」两行。
-    选取优先级：**凭据齐全** > **系统行（官方）** > 用户行 > 其余。
-    ⚠️ 不能简单让用户行排前面：用户给同名模型填了自己的 Key，会把系统官方行
-    顶掉；而系统行若只是占位符 Key，选了也没法用（见 has_credentials）。
+    选取优先级：**凭据齐全** > **用户自己的行** > 系统行。
+    即：用户自己配了同名模型（有自己的 Key）时用它自己的，否则用系统的。
+    这与前端下拉框「同名时用户组优先展示」的口径一致。
     别人的自定义行在这里被 `_visible_scope` 直接过滤掉。
     """
     result = await db.execute(
@@ -240,8 +240,8 @@ async def get_config_by_model(
             _visible_scope(user_id),
         )
         .order_by(
+            SysAiConfig.user_id.desc(),
             SysAiConfig.is_default.desc(),
-            SysAiConfig.user_id.asc().nullsfirst(),
             SysAiConfig.config_id.asc(),
         )
     )

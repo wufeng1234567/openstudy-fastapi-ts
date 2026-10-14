@@ -6,11 +6,11 @@
       model 为空时用默认模型）。加它是为了：
         ① 空值不再显示成占位符「请选择」——那会让用户以为「没配置好 / 坏了」；
         ② 用户主动选过某个模型后，还能**切回自动**（没有这个选项就切不回去）。
-      这就是默认态：首次进入若 `restoreSelection` 未能拿到模型列表，也会落到「自动」而非「请选择」。
+      v-model 绑定的是 **model 名**。
     -->
     <el-option label="自动（跟随默认）" value="" />
 
-    <el-option-group v-if="systemConfigs.length" label="系统提供">
+    <el-option-group v-if="systemConfigs.length" label="系统提供（官方）">
       <el-option v-for="config in systemConfigs" :key="'sys-' + config.configId"
         :label="config.model" :value="config.model">
         <span class="opt-main">{{ config.model }}</span>
@@ -20,10 +20,10 @@
       </el-option>
     </el-option-group>
 
-    <el-option-group v-if="userConfigs.length" label="用户自定义">
+    <el-option-group v-if="userConfigs.length" label="我的模型（自定义）">
       <el-option v-for="config in userConfigs" :key="'usr-' + config.configId"
-        :label="optionLabel(config)" :value="config.model">
-        <span class="opt-main">{{ optionLabel(config) }}</span>
+        :label="userOptionLabel(config)" :value="config.model">
+        <span class="opt-main">{{ userOptionLabel(config) }}</span>
         <span v-if="capabilityLabel(config.model)" class="opt-tag">{{ capabilityLabel(config.model) }}</span>
       </el-option>
     </el-option-group>
@@ -54,19 +54,20 @@ const storageKey = `openstudy_ai_model_${props.scene}`
 const configList = ref([])
 
 // 两级来源：系统提供（user_id 为空）/ 用户自定义（user_id 有值）
-// ⚠️ el-option 的 value 用 model 名，同名会重复。原逻辑「用户同名则隐藏系统行」的副作用是
-//    「系统官方模型被用户自定义顶掉、从下拉里消失」——这不是我们要的。
-//    改为：**系统提供组始终完整展示**（官方模型永远可见），用户自定义组只补充
-//    「系统里没有的 model」；同名时以系统（官方）行展示。
-const systemConfigs = computed(() => configList.value.filter(c => c.source !== 'user'))
-const userConfigs = computed(() => {
-  const systemModels = new Set(systemConfigs.value.map(c => c.model))
-  // 用户自定义里与系统同名的，不再重复展示（选了同名 model 会优先解析到系统/凭据行）
-  return configList.value.filter(c => c.source === 'user' && !systemModels.has(c.model))
+// ⚠️ 同名（如用户也配了 deepseek-flash）时的展示规则：**用户优先**。
+//    - 用户自定义组：**完整展示**自己添加的所有模型（含与系统同名的）；
+//    - 系统提供组：不再罗列「用户已有同名」的那些（避免 el-option value 重复，
+//      且同名时用用户自己的模型更符合直觉）。
+//    后端 get_config_by_model 对同名会优先返回用户自己的配置，两端口径一致。
+const userConfigs = computed(() => configList.value.filter(c => c.source === 'user'))
+const systemConfigs = computed(() => {
+  const userModels = new Set(userConfigs.value.map(c => c.model))
+  return configList.value.filter(c => c.source !== 'user' && !userModels.has(c.model))
 })
 
-const optionLabel = (config) => {
-  return `${config.providerName || config.provider} · ${config.model}`
+// 用户自定义模型 label 加「我的 ·」前缀，和系统官方一眼区分
+const userOptionLabel = (config) => {
+  return `我的 · ${config.model}`
 }
 
 const handleChange = (val) => {
