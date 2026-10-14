@@ -40,15 +40,11 @@ openai==1.58.1
 zhipuai==2.1.5.20230904
 httpx==0.28.1
 
-# 本地 RAG 向量化（EMBEDDING_BACKEND=local/auto 时使用，无需任何外部 API Key）
-# torch 用 CPU 版索引源，避免拉入几个 GB 的 CUDA 包（服务器多为无 GPU 场景）
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.4.1
-sentence-transformers==3.3.1
-# modelscope（魔搭）：国内直连下载模型，绕过 huggingface.co 被墙的问题
-modelscope==1.20.0
-# 说明：sentence-transformers 首次运行会下载模型 BAAI/bge-m3（约 2.2GB）。
-#      国内服务器优先从魔搭(ModelScope)下载；不想用本地模型时设 EMBEDDING_BACKEND=siliconflow 走云端。
+# ⚠️ 本地 RAG 向量化依赖（torch / sentence-transformers / modelscope）已拆分到
+#    requirements-local-embedding.txt —— 它们体积巨大（torch 数百 MB~GB），
+#    不适合放进默认镜像。需要「本地向量化（不依赖外部 Key）」时再单独安装：
+#        pip install -r requirements-local-embedding.txt
+#    不装也没关系：EMBEDDING_BACKEND=siliconflow / auto（回退云端）照样能做知识库。
 
 # Document Processing
 # jieba：RAG 中文分词（app/services/rag/tokenizer.py）。

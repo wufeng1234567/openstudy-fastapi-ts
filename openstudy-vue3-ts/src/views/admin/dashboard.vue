@@ -139,8 +139,7 @@ import { User, Collection, EditPen, Notebook, Document, Setting } from '@element
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import { getDashboardStats, getDashboardRecent } from '@/api/dashboard'
-import { getConfigKey, updateConfig, listConfig } from '@/api/system/config'
-
+import { updateConfig, listConfig, addConfig } from '@/api/system/config'
 // ---------------- 演示模式开关 ----------------
 const demoMode = ref(true)
 const demoModeSaving = ref(false)
@@ -153,30 +152,46 @@ async function loadDemoMode() {
     if (row) {
       demoConfigId = row.configId
       demoMode.value = String(row.configValue).toLowerCase() === 'true'
+      return
+    }
+    // 配置项不存在（老库）：自动创建一条，默认开启演示模式
+    await addConfig({
+      configName: '系统-演示模式',
+      configKey: 'sys.demo.mode',
+      configValue: 'true',
+      configType: 'Y',
+      remark: '演示模式：true=登录页显示演示账号一键登录；false=上线体验版走注册/登录'
+    })
+    const again = await listConfig({ configKey: 'sys.demo.mode' })
+    const created = again.rows?.[0]
+    if (created) {
+      demoConfigId = created.configId
+      demoMode.value = String(created.configValue).toLowerCase() === 'true'
     }
   } catch (e) {
-    console.error('读取演示模式失败:', e)
+    console.error('读取/创建演示模式配置失败:', e)
   }
 }
 
 async function onDemoModeChange(val) {
-  if (!demoConfigId) {
-    // 没有该配置项：用 updateConfig 建不了（缺字段），退化为读一次再提示
-    ElMessage.warning('未找到「演示模式」配置项，请在参数设置里手动添加 sys.demo.mode')
-    demoMode.value = !val
-    return
-  }
   demoModeSaving.value = true
   try {
-    const res = await getConfigKey('sys.demo.mode')
-    const cfg = res.data || {}
+    if (!demoConfigId) {
+      // 配置项还没建出来（比如首次加载失败）→ 先建
+      await loadDemoMode()
+    }
+    if (!demoConfigId) {
+      ElMessage.error('无法创建「演示模式」配置项，请检查参数设置权限')
+      demoMode.value = !val
+      return
+    }
     await updateConfig({
       configId: demoConfigId,
-      configName: cfg.configName || '系统-演示模式',
+      configName: '系统-演示模式',
       configKey: 'sys.demo.mode',
       configValue: val ? 'true' : 'false',
       configType: 'Y',
-      remark: cfg.remark || ''
+      remark: '演示模式：true=登录页显示演示账号一键登录；false=上线体验版走注册/登录'
     })
     ElMessage.success(val ? '已开启演示模式（登录页显示演示账号入口）' : '已关闭演示模式（登录页走注册/登录）')
   } catch (e) {

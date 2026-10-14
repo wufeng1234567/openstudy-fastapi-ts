@@ -1,0 +1,22 @@
+# ============================================================
+# 本地 RAG 向量化依赖（可选，体积大，按需安装）
+# ------------------------------------------------------------
+# 用途：让 RAG 知识库用**本地模型**做向量化，不依赖任何外部 API Key。
+# 安装：pip install -r requirements-local-embedding.txt
+# 不装：设 EMBEDDING_BACKEND=siliconflow（需 SILICONFLOW_API_KEY）走云端，
+#       或 auto（本地不可用时自动回退云端）—— 功能不受影响。
+#
+# 体积提示：torch（CPU 版）约 200~800MB，sentence-transformers + modelscope 另加若干 MB。
+# 内存提示：运行 bge-m3 约需 2~3GB 内存；小内存机器建议走云端。
+# ============================================================
+
+# torch 用 CPU 版索引源，避免拉入几个 GB 的 CUDA 包（服务器多为无 GPU 场景）
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.4.1
+sentence-transformers==3.3.1
+
+# modelscope（魔搭）：国内直连下载模型，绕过 huggingface.co 被墙的问题
+modelscope==1.20.0
+
+# 说明：sentence-transformers 首次运行会自动下载模型 BAAI/bge-m3（约 2.2GB）。
+#      国内服务器优先从魔搭(ModelScope)下载。

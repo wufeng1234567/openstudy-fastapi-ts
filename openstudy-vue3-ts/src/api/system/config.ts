@@ -25,6 +25,15 @@ export function getConfigKey(configKey: string) {
   })
 }
 
+// 新增参数配置
+export function addConfig(data: any) {
+  return request({
+    url: '/system/config',
+    method: 'post',
+    data: data
+  })
+}
+
 // 修改参数配置
 export function updateConfig(data: any) {
   return request({

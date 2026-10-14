@@ -100,6 +100,8 @@ const useUserStore = defineStore(
 
       async logOut() {
         const savedToken = this.token
+        // 标记「正在登出」：期间组件发出的请求若返回 401，不再弹「登录状态已过期」框
+        try { (await import('@/utils/request')).logoutState.active = true } catch (e) { /* ignore */ }
         this.clearState()
         try {
           sessionStorage.clear()

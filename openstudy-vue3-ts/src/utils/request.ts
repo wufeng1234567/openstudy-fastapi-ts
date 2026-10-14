@@ -15,6 +15,8 @@ import useUserStore from '@/store/modules/user'
 let downloadLoadingInstance: ReturnType<typeof ElLoading.service>;
 // 是否显示重新登录
 export const isRelogin = { show: false };
+// 是否正处于「主动退出登录」过程（退出期间产生的 401 不弹「登录过期」框）
+export const logoutState = { active: false };
 
 axios.defaults.headers['Content-Type'] = 'application/json;charset=utf-8'
 
@@ -148,6 +150,12 @@ service.interceptors.response.use(
       return res.data
     }
     if (code === 401) {
+      // 主动退出登录后：本地 token 已被清空，此时任何 401 都是「登出链路的正常结果」，
+      // 不该再弹「登录状态已过期」框（用户刚点了退出，弹这个很突兀）。
+      // 判据：本地已无 token 或正处于登出中 → 静默拒绝，不弹框。
+      if (!getToken() || logoutState.active) {
+        return Promise.reject('未登录')
+      }
       if (!isRelogin.show) {
         isRelogin.show = true
         ElMessageBox.confirm('登录状态已过期，您可以继续留在该页面，或者重新登录', '系统提示', {

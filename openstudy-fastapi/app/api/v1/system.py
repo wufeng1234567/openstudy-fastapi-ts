@@ -26,6 +26,14 @@ class ConfigUpdateRequest(BaseModel):
     configValue: Optional[str] = None
     remark: Optional[str] = None
 
+
+class ConfigCreateRequest(BaseModel):
+    configName: str
+    configKey: str
+    configValue: str
+    configType: str = "Y"
+    remark: Optional[str] = None
+
 def format_config(cfg):
     return {
         "configId": cfg.config_id,
@@ -101,6 +109,34 @@ async def get_config_by_key(
     if not cfg:
         return error("参数配置不存在")
 
+    return success(format_config(cfg))
+
+
+@router.post("/system/config")
+async def create_config(
+    data: ConfigCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """新增参数配置（幂等：若 configKey 已存在则直接返回已有项）"""
+    existing = (await db.execute(
+        select(SysConfig).where(SysConfig.config_key == data.configKey)
+    )).scalar_one_or_none()
+    if existing:
+        return success(format_config(existing))
+
+    cfg = SysConfig(
+        config_name=data.configName,
+        config_key=data.configKey,
+        config_value=data.configValue,
+        config_type=data.configType or "Y",
+        create_by=current_user.get("user_name", "admin"),
+        create_time=datetime.now(),
+        remark=data.remark,
+    )
+    db.add(cfg)
+    await db.commit()
+    await db.refresh(cfg)
     return success(format_config(cfg))
 
 

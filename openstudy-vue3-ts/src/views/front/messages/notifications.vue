@@ -104,6 +104,23 @@ const toggleExpand = (notice) => {
   }
 }
 
+/** 去掉 HTML 标签 + 解码常见实体，转成纯文本（通知内容是富文本 HTML） */
+const stripHtml = (html) => {
+  if (!html) return ''
+  const s = String(html)
+  // 无尖括号的纯文本直接返回（避免误删）
+  if (!s.includes('<')) return s
+  let text = s.replace(/<[^>]*>/g, ' ')
+  text = text
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+  return text.replace(/\s+/g, ' ').trim()
+}
+
 const displayContent = (notice) => {
   const content = stripHtml(notice.noticeContent || notice.content || '')
   if (needsExpand(content) && expandedId.value !== (notice.noticeId || notice.id)) {
