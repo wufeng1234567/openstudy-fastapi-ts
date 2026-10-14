@@ -10,6 +10,37 @@
 
 SET client_encoding TO 'UTF8';
 
+-- ============================================================
+-- 幂等清理：先删掉本脚本将插入的演示数据（user_id 3/4/5 相关），
+-- 支持重复执行不报主键冲突。不动 admin/demo(user_id 1/2) 与别人的数据。
+-- ============================================================
+DO $$
+DECLARE demo_uids bigint[] := ARRAY[3,4,5];
+BEGIN
+  -- 先删依赖/关联表，再删主表
+  DELETE FROM public.user_question_error   WHERE user_id = ANY(demo_uids);
+  DELETE FROM public.user_question_favorite WHERE user_id = ANY(demo_uids);
+  DELETE FROM public.user_question_marked  WHERE user_id = ANY(demo_uids);
+  DELETE FROM public.user_bank_favorite    WHERE user_id = ANY(demo_uids);
+  DELETE FROM public.user_practice_log     WHERE user_id = ANY(demo_uids);
+  -- 笔记及其关联
+  DELETE FROM public.note_question        WHERE note_id IN (SELECT note_id FROM public.note WHERE user_id = ANY(demo_uids));
+  DELETE FROM public.note_question_bank   WHERE note_id IN (SELECT note_id FROM public.note WHERE user_id = ANY(demo_uids));
+  DELETE FROM public.user_note_favorite   WHERE note_id IN (SELECT note_id FROM public.note WHERE user_id = ANY(demo_uids));
+  DELETE FROM public.note_comment         WHERE note_id IN (SELECT note_id FROM public.note WHERE user_id = ANY(demo_uids));
+  DELETE FROM public.note                 WHERE user_id = ANY(demo_uids);
+  DELETE FROM public.note_category        WHERE user_id = ANY(demo_uids);
+  -- 题库及其题目
+  DELETE FROM public.question_sub         WHERE main_id IN (SELECT id FROM public.question_main WHERE bank_id IN (SELECT id FROM public.question_bank WHERE user_id = ANY(demo_uids)));
+  DELETE FROM public.question_main        WHERE bank_id IN (SELECT id FROM public.question_bank WHERE user_id = ANY(demo_uids));
+  DELETE FROM public.question_bank        WHERE user_id = ANY(demo_uids);
+  -- 用户角色绑定 + 用户本身
+  DELETE FROM public.sys_user_role        WHERE user_id = ANY(demo_uids);
+  DELETE FROM public.sys_user             WHERE user_id = ANY(demo_uids);
+  -- 轮播图（本脚本也会插）
+  DELETE FROM public.carousel             WHERE id BETWEEN 1 AND 5;
+END $$;
+
 -- ---------- sys_user (3) ----------
 COPY public.sys_user (user_id, user_name, nick_name, email, phonenumber, sex, avatar, password, status, del_flag, login_ip, login_date, dept_id, create_by, create_time, update_by, update_time, remark) FROM stdin;
 3	user1	演示用户1			0		$2b$12$BNd.DuG5vciBGhuy3/EF.Owdbe3a1ZtgEu3WrhYsP8mk47q/lYS9e	0	0		\N	\N		2026-08-30 10:35:24.67264		\N	\N

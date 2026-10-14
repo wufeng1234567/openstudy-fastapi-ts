@@ -1,11 +1,18 @@
 -- ============================================================
 -- OpenStudy 社交演示数据（评论 / 分享 / 通知）
 -- ------------------------------------------------------------
--- 前置：先导入 01（结构）与 99（基础演示数据：user1/user2、题库、笔记）
+-- 前置：先导入 01（结构）、97（基础演示数据：user1/user2、题库、笔记）
 -- 用法：psql -U root -d openstudy_v2_pgsql -f 98_social_seed.sql
+-- 幂等：开头会清掉本脚本插入的几条（id 范围），可重复执行。
 -- ============================================================
 
 SET client_encoding TO 'UTF8';
+
+-- 幂等清理（只删本脚本插入的 id）
+DELETE FROM public.note_comment         WHERE id BETWEEN 1 AND 4;
+DELETE FROM public.bank_share_receive   WHERE id BETWEEN 1 AND 1;
+DELETE FROM public.bank_share           WHERE id BETWEEN 1 AND 1;
+DELETE FROM public.user_notification    WHERE notification_id BETWEEN 1 AND 4;
 
 -- ---------- note_comment (评论：user2 评论 user1 的笔记) ----------
 COPY public.note_comment (id, note_id, user_id, content, parent_id, reply_to_user_id, status, create_time) FROM stdin;
