@@ -189,7 +189,7 @@
         <span>生成模式</span>
         <div class="model-selector-wrap">
           <!-- 模型选择器（历史记忆按 scene=ai-builder 单独保存） -->
-          <AiModelSelector v-model="selectedModel" scene="ai-builder" width="180px" />
+          <AiModelSelector v-model="selectedModel" scene="ai-builder" width="180px" @select="onModelSelect" />
           <!-- 深度思考开关（原子轨道图标，颜色表示状态） -->
           <AiThinkingToggle v-model="deepThink" size="small" />
         </div>
@@ -674,6 +674,9 @@ const generateMode = ref('all')
 
 // AI 模型选择：当前选中的模型名（历史记忆按 scene=ai-builder 单独保存）
 const selectedModel = ref('')
+// 选中的 AI 配置 id（区分同名系统/用户模型）
+const selectedConfigId = ref(null)
+const onModelSelect = (cfg) => { selectedConfigId.value = cfg?.configId ?? null }
 const deepThink = ref(localStorage.getItem('openstudy_ai_thinking') === '1')  // 深度思考开关，跟随全局偏好
 
 useDsDeepThinkSync(selectedModel, deepThink, 'openstudy_ai_thinking')
@@ -1105,7 +1108,8 @@ const sendViaBackendStream = (content) => {
       {
         scene: 'question-bank',
         // visionImages 是 base64 data URL 字符串数组，assistantStream 两种写法都支持
-        images: visionImages.value
+        images: visionImages.value,
+        configId: selectedConfigId.value || undefined
       }
     )
   })

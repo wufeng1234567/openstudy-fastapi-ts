@@ -407,7 +407,7 @@
           <el-form-item label="AI 模型">
             <div class="ai-model-row">
               <!-- 模型选择器（历史记忆按 scene=question-builder 单独保存） -->
-              <AiModelSelector v-model="aiForm.model" scene="question-builder" width="200px" :disabled="aiGenerating" />
+              <AiModelSelector v-model="aiForm.model" scene="question-builder" width="200px" @select="onModelSelect" :disabled="aiGenerating" />
               <el-button @click="openAiModelManager" :disabled="aiGenerating" size="small">
                 <el-icon>
                   <Setting />
@@ -1171,6 +1171,10 @@ const aiForm = ref({
   subCount: 5
 })
 
+// 选中的 AI 配置 id（区分同名系统/用户模型）；由 AiModelSelector 的 @select 提供
+const selectedConfigId = ref(null)
+const onModelSelect = (cfg) => { selectedConfigId.value = cfg?.configId ?? null }
+
 // ⚠️ 两点都别改错：
 // 1) 必须写在 `aiForm` 声明**之后** —— useDsDeepThinkSync 内部建立 watch 时会
 //    同步求值一次这个 getter，写反了会撞 TDZ
@@ -1917,7 +1921,8 @@ const generateQuestionsNormal = async (params, isComposite) => {
       requirement: params.requirement,
       questionCount: params.subCount || 5,
       wordCount: params.wordCount || 300,
-      model: params.model
+      model: params.model,
+      configId: selectedConfigId.value || undefined
     })
     // 注意：你的 request 可能直接返回 data，也可能返回完整响应
     // 根据实际情况调整
@@ -1929,6 +1934,7 @@ const generateQuestionsNormal = async (params, isComposite) => {
       questionType: params.questionType,
       count: params.count,
       model: params.model,
+      configId: selectedConfigId.value || undefined,
       userId: userId.value,
       thinking: deepThink.value
     })
@@ -1971,6 +1977,7 @@ const handleAiGenerate = async () => {
         questionCount: aiForm.value.subCount,
         wordCount: aiForm.value.wordCount,
         model: aiForm.value.model,
+        configId: selectedConfigId.value || undefined,
         userId: userId.value,
         thinking: deepThink.value,
         onChunk(fullContent) {
@@ -1994,6 +2001,7 @@ const handleAiGenerate = async () => {
         questionType: aiForm.value.questionType,
         count: aiForm.value.count,
         model: aiForm.value.model,
+        configId: selectedConfigId.value || undefined,
         userId: userId.value,
         thinking: deepThink.value,
         bankId: currentBankId.value,

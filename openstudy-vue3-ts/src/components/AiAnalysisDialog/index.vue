@@ -2,7 +2,7 @@
     <el-dialog v-model="visible" title="🤖 AI 题目解析" width="600px" :close-on-click-modal="false" @close="handleClose">
         <div class="model-select-bar">
             <span class="model-label">模型：</span>
-            <AiModelSelector v-model="selectedModel" scene="analysis" width="180px" :disabled="deepThink" />
+            <AiModelSelector v-model="selectedModel" scene="analysis" width="180px" :disabled="deepThink" @select="onModelSelect" />
             <AiThinkingToggle v-model="deepThink" size="small" @change="handleDeepThinkChange" />
         </div>
         <div class="analysis-container">
@@ -108,6 +108,9 @@ const visible = ref(true)
 const streamContent = ref(props.cachedContent || '')
 // 当前选中的模型名；历史记忆按 scene=analysis 单独保存
 const selectedModel = ref('')
+// 选中的 AI 配置 id（区分同名系统/用户模型）
+const selectedConfigId = ref(null)
+const onModelSelect = (cfg) => { selectedConfigId.value = cfg?.configId ?? null }
 const deepThink = ref(false)
 
 useDsDeepThinkSync(selectedModel, deepThink)
@@ -264,7 +267,8 @@ const startAnalysis = async () => {
             keepReasoningAtBottom()
         },
         images,
-        subQuestionsText
+        subQuestionsText,
+        selectedConfigId.value || undefined
     )
 }
 

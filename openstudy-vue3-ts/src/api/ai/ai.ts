@@ -179,11 +179,13 @@ async function postAiStream(
   }
 }
 
-export async function generateQuestionsStreamFull({ knowledgePoint, questionType, count, model, userId, bankId, thinking, onChunk, onComplete, onError }: {
+export async function generateQuestionsStreamFull({ knowledgePoint, questionType, count, model, configId, userId, bankId, thinking, onChunk, onComplete, onError }: {
   knowledgePoint: string
   questionType: string
   count: string | number
   model: string
+  /** 精确指定选中的 AI 配置 id（区分同名的系统/用户模型） */
+  configId?: number
   userId?: string | number
   bankId?: string | number
   /** 深度思考：true/false 覆盖 DB 配置；不传则跟随配置 */
@@ -206,6 +208,7 @@ export async function generateQuestionsStreamFull({ knowledgePoint, questionType
         count: Number(count) || 5
       },
       model,
+      configId,
       userId,
       thinking,
       // 出题沿用历史口径：温度 0.8
@@ -217,11 +220,13 @@ export async function generateQuestionsStreamFull({ knowledgePoint, questionType
   )
 }
 
-export async function generateCompositeStreamFull({ requirement, questionCount, wordCount, model, userId, thinking, onChunk, onComplete, onError }: {
+export async function generateCompositeStreamFull({ requirement, questionCount, wordCount, model, configId, userId, thinking, onChunk, onComplete, onError }: {
   requirement: string
   questionCount: string | number
   wordCount?: string | number
   model: string
+  /** 精确指定选中的 AI 配置 id（区分同名的系统/用户模型） */
+  configId?: number
   userId?: string | number
   /** 深度思考：true/false 覆盖 DB 配置；不传则跟随配置 */
   thinking?: boolean
@@ -240,6 +245,7 @@ export async function generateCompositeStreamFull({ requirement, questionCount, 
         word_count: Number(wordCount) || 300
       },
       model,
+      configId,
       userId,
       thinking,
       // 出题沿用历史口径：温度 0.8
@@ -1278,7 +1284,9 @@ export async function analyzeQuestionStream(
   deepThink?: boolean,
   onReasoningChunk?: (reasoning: string) => void,
   images?: string[],
-  subQuestions?: string
+  subQuestions?: string,
+  /** 精确指定选中的 AI 配置 id（区分同名的系统/用户模型） */
+  configId?: number
 ): Promise<void> {
   // ---- deepseek-free：走浏览器扩展（DeepSeek 官网 Web 版），完全不经过后端 ----
   if (model === 'deepseek-free') {
@@ -1346,6 +1354,7 @@ export async function analyzeQuestionStream(
       },
       images,
       model,
+      configId,
       userId,
       thinking: deepThink
     },
