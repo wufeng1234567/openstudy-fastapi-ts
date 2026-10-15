@@ -260,19 +260,34 @@ defineExpose({
 </script>
 
 <style scoped>
-/* 拖拽手柄：贴在被拉伸的那条边，窄条 + 悬停变色 */
+/* 拖拽手柄：贴在被拉伸的那条边，窄条 + 悬停变色
+   与 AiAssistant 的 .drawer-resize-handle 同款：小竖条 + hover 变灰，
+   不是整条边变色（那样视觉太重） */
 .rd-resize-handle {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 6px;
+  width: 10px;
   z-index: 10;
   cursor: col-resize;
   background: transparent;
-  transition: background 0.15s ease;
-}
-.rd-resize-handle:hover {
-  background: rgba(79, 110, 247, 0.25);
+
+  &::after {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 32px;
+    border-radius: 2px;
+    background: transparent;
+    transition: background 0.15s;
+  }
+
+  &:hover::after {
+    background: #c0c4cc;
+  }
 }
 /* rtl（右侧抽屉）：手柄在抽屉**左**边 */
 .rd-resize-rtl {
