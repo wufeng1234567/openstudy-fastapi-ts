@@ -31,6 +31,10 @@ from app.models.ai_config import SysAiConfig
 
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 
+#: 官方模型默认的上下文预算档（见 app/services/ai/context_budget.py）。
+#: 官方两个模型窗口都是 1M，默认用「基础档 200K」，长文档场景可在前台切到 1M。
+DEFAULT_CONTEXT_LENGTH = "200k"
+
 
 async def _upsert(db, *, provider, model, provider_name, remark, **fields):
     """按 (provider, model) 幂等写入"""
@@ -97,6 +101,9 @@ async def seed() -> None:
             remark="官方 API · 日常对话/出题主力模型",
             api_key=api_key or None,
             base_url=DEEPSEEK_BASE_URL,
+            thinking_mode="auto",
+            reasoning_effort="high",
+            context_length=DEFAULT_CONTEXT_LENGTH,
             is_enabled=1,
             is_default=0,
         )
@@ -108,6 +115,9 @@ async def seed() -> None:
             remark="官方 API · 强推理，按需切换",
             api_key=api_key or None,
             base_url=DEEPSEEK_BASE_URL,
+            thinking_mode="auto",
+            reasoning_effort="high",
+            context_length=DEFAULT_CONTEXT_LENGTH,
             is_enabled=1,
             is_default=0,
         )

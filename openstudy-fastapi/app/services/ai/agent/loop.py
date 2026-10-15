@@ -1158,8 +1158,14 @@ async def run_agent_stream(
         if (not _to_bridge) or bool(getattr(req, "inject_history", False)):
             # lang="en" → 历史上下文用 <conversation_history> 英文标签包裹，
             # 与下面的 <user_request> 明确区分（中文版的「【对话历史】」只给聊天助手用）
+            # 历史预算按「该模型配置的上下文档位」定（200K/1M）—— 见 context_budget。
+            # ⚠️ `config` 由上面的 build_agent_llm 返回，直接用，不再重复解析（省一次 DB 往返）。
+            from app.services.ai import context_budget
+            _ctx_key = getattr(config, "context_length", None)
             context = await conversation_service.build_context_prompt(
-                user_id, session_id, lang="en"
+                user_id, session_id, lang="en",
+                max_chars=context_budget.history_char_budget(_ctx_key),
+                single_max_chars=context_budget.single_message_char_budget(_ctx_key),
             )
         history_text = typed or conversation_service.ATTACHMENT_PLACEHOLDER
         try:

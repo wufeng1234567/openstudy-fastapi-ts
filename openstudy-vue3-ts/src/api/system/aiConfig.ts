@@ -85,3 +85,11 @@ export function fetchProviderModels(data: {
     data
   })
 }
+
+// 上下文长度档位清单（与后端 app/services/ai/context_budget.py 同源）
+export function fetchContextPresets() {
+  return request({
+    url: '/system/ai/config/context-presets',
+    method: 'get'
+  })
+}

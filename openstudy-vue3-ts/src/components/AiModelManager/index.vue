@@ -132,20 +132,26 @@
           <el-form-item label="推理强度" v-if="form.thinkingMode !== 'disabled'">
             <el-select v-model="form.reasoningEffort" placeholder="选择推理强度" style="width: 100%">
               <el-option label="低（low）" value="low" />
-              <el-option label="中（medium）" value="medium" />
               <el-option label="高（high）" value="high" />
               <el-option label="最大（max）" value="max" />
             </el-select>
-            <div class="form-tip">控制思考预算，复杂问题建议使用 high 或 max</div>
+            <div class="form-tip">
+              DeepSeek 官方支持 low / high / max 三档（默认 high）；复杂问题建议 high 或 max。
+            </div>
           </el-form-item>
 
           <el-form-item label="上下文长度">
             <el-select v-model="form.contextLength" placeholder="选择上下文长度" style="width: 100%">
-              <el-option label="32K tokens" value="32k" />
-              <el-option label="128K tokens" value="128k" />
-              <el-option label="1M tokens（仅 Pro）" value="1m" />
+              <el-option
+                v-for="opt in contextOptions"
+                :key="opt.key"
+                :label="opt.label"
+                :value="opt.key"
+              />
             </el-select>
-            <div class="form-tip">根据模型支持的上下文窗口选择</div>
+            <div class="form-tip">
+              控制「喂给模型的历史对话预算」。官方两个模型窗口均为 1M：日常用 200K，长文档/长对话再切 1M。
+            </div>
           </el-form-item>
         </template>
 
@@ -170,6 +176,9 @@
               <el-option label="高（high）" value="high" />
               <el-option label="最大（max）" value="max" />
             </el-select>
+            <div class="form-tip">
+              按标准 <code>reasoning_effort</code> 透传，具体支持哪些档位由你的网关决定。
+            </div>
           </el-form-item>
         </template>
 
@@ -248,7 +257,8 @@ import {
   deleteAiConfig,
   setDefaultConfig,
   testAiConnection,
-  fetchProviderModels
+  fetchProviderModels,
+  fetchContextPresets
 } from '@/api/system/aiConfig'
 
 const props = defineProps({
@@ -267,6 +277,19 @@ const saving = ref(false)
 const formRef = ref(null)
 const isEdit = ref(false)
 
+// 上下文长度档位（与后端 app/services/ai/context_budget.py 保持同一口径）。
+// 官方两个模型（deepseek-flash / deepseek-v4-pro）窗口都是 1M，这里选的是
+// 「应用层喂多少历史进去」的预算：日常 200K，长文档/长对话再切 1M。
+const DEFAULT_CONTEXT_LENGTH = '200k'
+const contextOptions = [
+  { key: '200k', label: '200K tokens（基础）' },
+  { key: '1m', label: '1M tokens（完整）' }
+]
+function normalizeContextLength(v) {
+  const key = String(v || '').trim().toLowerCase()
+  return contextOptions.some((o) => o.key === key) ? key : DEFAULT_CONTEXT_LENGTH
+}
+
 const form = reactive({
   configId: null,
   modelKind: 'official',
@@ -280,7 +303,7 @@ const form = reactive({
   remark: '',
   thinkingMode: 'auto',
   reasoningEffort: 'high',
-  contextLength: '32k',
+  contextLength: DEFAULT_CONTEXT_LENGTH,
   // ds-free（官网 Web 反代）专用
   webPhone: '',
   webPassword: '',
@@ -348,7 +371,7 @@ watch(() => form.provider, (newProvider) => {
     if (!isEdit.value) {
       form.thinkingMode = 'auto'
       form.reasoningEffort = 'high'
-      form.contextLength = '32k'
+      form.contextLength = DEFAULT_CONTEXT_LENGTH
     }
     return
   }
@@ -465,7 +488,7 @@ function resetForm() {
     remark: '',
     thinkingMode: 'auto',
     reasoningEffort: 'high',
-    contextLength: '32k',
+    contextLength: DEFAULT_CONTEXT_LENGTH,
     webPhone: '',
     webPassword: '',
     webAreaCode: '+86'
@@ -494,7 +517,7 @@ function handleEdit(row) {
     remark: row.remark || '',
     thinkingMode: row.thinkingMode || 'auto',
     reasoningEffort: row.reasoningEffort || 'high',
-    contextLength: row.contextLength || '32k'
+    contextLength: normalizeContextLength(row.contextLength)
   })
   dialogTitle.value = '编辑模型配置'
   isEdit.value = true
@@ -609,6 +632,13 @@ async function handleDelete(row) {
 
 onMounted(() => {
   fetchConfigList()
+  // 档位清单以后端为准（本文件里的 contextOptions 只是离线兜底，保证后端不可用也能渲染）
+  fetchContextPresets().then((res) => {
+    const opts = res?.data?.options
+    if (Array.isArray(opts) && opts.length) {
+      contextOptions.splice(0, contextOptions.length, ...opts)
+    }
+  }).catch(() => {})
 })
 
 defineExpose({

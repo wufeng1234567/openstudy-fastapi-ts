@@ -16,6 +16,7 @@ from app.core.security import get_current_user
 from app.core.response import success, error
 from app.models.ai_config import SysAiConfig
 from app.services.ai import db_config
+from app.services.ai import context_budget
 
 router = APIRouter()
 
@@ -126,6 +127,22 @@ class AiConfigBody(BaseModel):
 
 
 # ========== 查询类（注册在 /{config_id} 之前避免路径冲突） ==========
+
+
+@router.get("/system/ai/config/context-presets")
+async def list_context_presets(
+    current_user: dict = Depends(get_current_user),
+):
+    """上下文长度档位清单（供前端下拉渲染，与后端预算口径同源）
+
+    口径见 `app/services/ai/context_budget.py`：`context_length` 存的是
+    「应用层喂多少历史进去」的预算，**不是**发给上游的参数（DeepSeek 官方
+    没有上下文档位参数，两个模型窗口都是 1M）。
+    """
+    return success({
+        "default": context_budget.DEFAULT_CONTEXT_LENGTH,
+        "options": context_budget.preset_options(),
+    })
 
 
 @router.get("/system/ai/config/list")
@@ -287,7 +304,8 @@ async def add_ai_config(
         remark=body.remark,
         thinking_mode=body.thinkingMode,
         reasoning_effort=body.reasoningEffort,
-        context_length=body.contextLength,
+        # 上下文档位落库前归一（非法值 / 旧值 32k|128k → 默认 200k）—— 见 context_budget
+        context_length=context_budget.normalize_context_length(body.contextLength),
         create_time=datetime.now(),
         create_by=current_user.get("user_name", "admin"),
     )
@@ -356,7 +374,7 @@ async def update_ai_config(
     if body.reasoningEffort is not None:
         cfg.reasoning_effort = body.reasoningEffort
     if body.contextLength is not None:
-        cfg.context_length = body.contextLength
+        cfg.context_length = context_budget.normalize_context_length(body.contextLength)
     # ds-free 凭据：密码留空或传掩码表示「不修改」
     if body.webPhone is not None:
         cfg.web_phone = body.webPhone

@@ -311,6 +311,31 @@ async def resolve_config(
     return await get_default_config(db, user_id)
 
 
+async def resolve_context_limits(
+    db: AsyncSession,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    user_id: Optional[int] = None,
+    config_id: Optional[int] = None,
+) -> tuple:
+    """解析该模型配置对应的「历史上下文预算」(max_chars, single_max_chars)
+
+    口径见 `app/services/ai/context_budget.py`：`sys_ai_config.context_length`
+    存的是**应用层喂多少历史进去的预算**（不是发给上游的参数 —— DeepSeek 官方
+    没有上下文档位参数，两个模型都是 1M）。
+
+    找不到配置 / 字段为空 / 旧值（32k/128k）时，一律回退默认档（200K）。
+    """
+    from app.services.ai import context_budget
+
+    config = await resolve_config(db, provider, model, user_id, config_id)
+    key = getattr(config, "context_length", None) if config is not None else None
+    return (
+        context_budget.history_char_budget(key),
+        context_budget.single_message_char_budget(key),
+    )
+
+
 def _to_lc_messages(messages: List[ChatMessage]) -> list:
     """ChatMessage → LangChain 消息
 

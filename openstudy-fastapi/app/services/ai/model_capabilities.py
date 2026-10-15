@@ -12,7 +12,6 @@
 | model            | 识图 | 说明                                              |
 |------------------|------|---------------------------------------------------|
 | deepseek-flash   | ✅   | 多模态，本系统默认模型，可传图片                  |
-| deepseek-free    | ✅   | DS 官网 Web 版（扩展直连），网页端本身支持传图    |
 | deepseek-v4-pro  | ❌   | 仅文本；传图片会报错，需回退到 deepseek-flash     |
 
 **未登记的模型一律视为「可识图」**（宽松放行）：用户自定义的新模型（例如
@@ -26,7 +25,7 @@ from typing import List, Optional
 DEFAULT_VISION_MODEL = "deepseek-flash"
 
 #: 明确支持图片输入的模型
-VISION_MODELS = frozenset({"deepseek-flash", "deepseek-free"})
+VISION_MODELS = frozenset({"deepseek-flash"})
 
 #: 明确只支持文本的模型
 TEXT_ONLY_MODELS = frozenset({"deepseek-v4-pro"})

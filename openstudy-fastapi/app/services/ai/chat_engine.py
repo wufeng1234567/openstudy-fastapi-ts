@@ -462,7 +462,17 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
     context = ""
     if turn.persist:
         if inject_ctx:
-            context = await conversation_service.build_context_prompt(user_id, session_id)
+            # 历史预算按「该模型配置的上下文档位」定（200K/1M）—— 见 context_budget
+            ctx_max, ctx_single = await db_config.resolve_context_limits(
+                db,
+                provider=turn.provider,
+                model=turn.model,
+                user_id=turn.user_id,
+                config_id=turn.config_id,
+            )
+            context = await conversation_service.build_context_prompt(
+                user_id, session_id, max_chars=ctx_max, single_max_chars=ctx_single
+            )
         history_text = typed or conversation_service.ATTACHMENT_PLACEHOLDER
         await conversation_service.save_message(
             user_id,

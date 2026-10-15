@@ -69,7 +69,13 @@ class DeepSeekClient(BaseAiClient):
         return self.MODEL_ALIASES.get(model, model)
 
     def _get_llm(self, model: str, temperature: float, max_tokens: int) -> ChatOpenAI:
-        """获取 LangChain LLM 实例"""
+        """获取 LangChain LLM 实例
+
+        ⚠️ 这里是**内置静态客户端**（不读表配置），因此**不带** thinking /
+        `reasoning_effort` 等高级参数。真正生效的构建入口是
+        `db_config._build_llm`（按 `sys_ai_config` 的 thinking_mode /
+        reasoning_effort / context_length 装配）—— 走 `dynamic_ai` 兜底时才用这里。
+        """
         return ChatOpenAI(
             model=self._resolve_model(model),
             temperature=temperature,

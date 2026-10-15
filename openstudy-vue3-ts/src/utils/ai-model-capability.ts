@@ -8,16 +8,14 @@
  *
  * 口径：
  *   deepseek-flash  ✅ 多模态，可识图（系统默认模型）
- *   deepseek-free   ✅ DS 官网 Web 版，网页端本身支持传图
  *   deepseek-v4-pro ❌ 仅文本；带图发送前要自动切到 flash 并提示用户
  *   其它（未知 / 用户自定义）→ 宽松放行，不在本地拦
  */
 
 /** 需要视觉能力时自动切换到的模型 */
 export const DEFAULT_VISION_MODEL = 'deepseek-flash'
-
 /** 明确支持图片输入的模型 */
-const VISION_MODELS = new Set(['deepseek-flash', 'deepseek-free'])
+const VISION_MODELS = new Set(['deepseek-flash'])
 
 /** 明确只支持文本的模型 */
 const TEXT_ONLY_MODELS = new Set(['deepseek-v4-pro'])

@@ -629,6 +629,7 @@ async def build_context_prompt(
     limit: Optional[int] = None,
     lang: str = "cn",
     max_chars: int = CONTEXT_BUDGET_CHARS,
+    single_max_chars: int = CONTEXT_SINGLE_MAX_CHARS,
 ) -> str:
     """把最近的历史对话拼接成上下文提示词（对齐 springboot3 的 buildContextPrompt）
 
@@ -643,6 +644,9 @@ async def build_context_prompt(
                 Agent 的系统提示词是全英文的，历史上下文也必须是英文标签，否则模型要
                 在两种语言的分隔约定之间来回切换，容易把历史里的中文当成用户新指令。
         max_chars: 历史正文的字符预算（见 `CONTEXT_BUDGET_CHARS` 的估算口径）。
+                   由调用方按「模型配置的上下文档位」传入 —— 见
+                   `app/services/ai/context_budget.py`。
+        single_max_chars: 单条历史消息的字符上限（超出只保留首尾）。
     """
     fetch = CONTEXT_FETCH_LIMIT if limit is None else limit
     history = await get_recent_messages(user_id, session_id, fetch)
@@ -655,14 +659,14 @@ async def build_context_prompt(
         lines = ["<conversation_history>"]
         for msg in history:
             role_name = "Assistant" if msg.get("role") == "assistant" else "User"
-            lines.append(f"{role_name}: {_clip_single(_render_text(msg))}")
+            lines.append(f"{role_name}: {_clip_single(_render_text(msg), single_max_chars)}")
         lines.append("</conversation_history>")
         return "\n".join(lines)
 
     lines = ["【对话历史】"]
     for msg in history:
         role_name = "AI" if msg.get("role") == "assistant" else "用户"
-        lines.append(f"{role_name}：{_clip_single(_render_text(msg))}")
+        lines.append(f"{role_name}：{_clip_single(_render_text(msg), single_max_chars)}")
     lines.append("---")
     return "\n".join(lines)
 
