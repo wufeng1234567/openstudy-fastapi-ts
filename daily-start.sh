@@ -174,7 +174,13 @@ if [ -z "$USER_COUNT" ] || [ "$USER_COUNT" -eq 0 ]; then
     " >/dev/null 2>&1
     echo -e "  ✅ 种子数据导入完成"
 else
-    echo -e "  ✅ 数据已有 ${USER_COUNT} 个用户，跳过导入"
+    echo -e "  ✅ 数据已有 ${USER_COUNT} 个用户，跳过基础导入"
+    # 99_note_public_seed.sql 是幂等的，每次都跑，确保笔记分享页有数据
+    SQL_DIR="/root/workspace/openstudy-fastapi-ts/deploy/db-init"
+    if [ -f "$SQL_DIR/99_note_public_seed.sql" ]; then
+        psql -U postgres -d openstudy_v2_pgsql -f "$SQL_DIR/99_note_public_seed.sql" >/dev/null 2>&1
+        echo -e "  ✅ 笔记分享数据已确保"
+    fi
 fi
 
 # SQL 自动备份（每次启动时导出一份到持久目录）
