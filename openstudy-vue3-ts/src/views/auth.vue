@@ -340,7 +340,7 @@ function handleQuickLogin(account) {
     redirectAfterLogin()
   }).catch((error) => {
     console.error('一键登录失败:', error)
-    ElMessage.error(error?.msg || error?.message || '一键登录失败，请先执行 seed_demo_users.py 初始化演示账号')
+    ElMessage.error(error?.msg || error?.message || '一键登录失败，请先导入 deploy/db-init/97_demo_seed.sql 初始化演示账号')
   }).finally(() => {
     quickLoading.value = ""
   })

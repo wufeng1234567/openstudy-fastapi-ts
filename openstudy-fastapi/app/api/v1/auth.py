@@ -195,7 +195,7 @@ async def quick_login(data: QuickLoginRequest, db: AsyncSession = Depends(get_db
     user_repo = UserRepository(db)
     user = await user_repo.get_by_username(username)
     if not user:
-        return error("演示账号不存在，请先执行 openstudy-fastapi/seed_demo_users.py 初始化演示数据")
+        return error("演示账号不存在，请先导入 deploy/db-init/97_demo_seed.sql 初始化演示数据")
 
     if user.status != "0":
         return error("账号已被停用")
