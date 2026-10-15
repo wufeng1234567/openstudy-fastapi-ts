@@ -7,12 +7,13 @@ AI 接口限流中间件（纯 ASGI，不破坏流式响应）
   3. 每 IP 每分钟请求上限 100 次（AI_IP_PER_MINUTE，防脚本刷，NAT 不误伤）
   4. 超限返回 429 + 友好提示，不报错
 
+⚠️ 只限流「真正调 LLM」的接口，不拦查库/配置/会话管理接口。
+   白名单匹配 AI_LLM_PATHS，不在白名单里的 /ai/ 请求直接放行。
+
 ⚠️ 评测期间如需调整：
   export AI_USER_PER_MINUTE=30   # 放宽每用户每分钟
   export AI_DAILY_LIMIT=200      # 放宽每日额度
   export AI_IP_PER_MINUTE=1000   # 基本关掉 IP 限流
-
-只对 /ai/ 路径生效，其他接口不限流。
 
 ⚠️ 为什么不解析 JWT 拿 user_id：
   本系统的 token 是 UUID（不是 JWT），存在 Redis 里：
@@ -20,20 +21,47 @@ AI 接口限流中间件（纯 ASGI，不破坏流式响应）
   所以要从 Redis 查 token → user_id。
 """
 
+import os
 import time
 import json
+import fnmatch
 import redis.asyncio as redis
 from loguru import logger
 from app.redis import redis_client
 
 
 # ── 限流参数（可通过环境变量覆盖，评测期间可动态调整）──
-import os
 AI_DAILY_LIMIT = int(os.environ.get("AI_DAILY_LIMIT", 50))       # 每用户每天
 AI_USER_PER_MINUTE = int(os.environ.get("AI_USER_PER_MINUTE", 10))  # 每用户每分钟
-AI_IP_PER_MINUTE = int(os.environ.get("AI_IP_PER_MINUTE", 100))    # 每 IP 每分钟（调大，避免 NAT 误伤）
-AI_PATH_PREFIX = "/ai/"    # 只限 AI 接口
+AI_IP_PER_MINUTE = int(os.environ.get("AI_IP_PER_MINUTE", 100))    # 每 IP 每分钟
 LOGIN_TOKEN_PREFIX = "openstudy-py:login_tokens:"
+
+# ── 需要限流的路径白名单（只列真正调 LLM 的接口）──
+# 用 fnmatch 做 glob 匹配，支持通配符
+AI_LLM_PATHS = [
+    "/ai/chat",                        # POST 对话
+    "/ai/assistant/stream",            # GET/POST 流式对话
+    "/ai/assistant/generate-with-images",  # POST 图片生成
+    "/ai/generate/questions",          # POST 出题
+    "/ai/generate/questions/stream",   # GET 流式出题
+    "/ai/generate/questions/sync",     # POST 同步出题
+    "/ai/generate/reading/stream",     # GET 流式阅读
+    "/ai/generate/composite/stream",   # GET 流式组合
+    "/ai/generate/composite/sync",     # POST 同步组合
+    "/ai/agent/stream",                # POST 智能体流式
+    "/ai/agent/execute",               # POST 智能体执行
+    "/ai/agent/preview",               # POST 智能体预览（调 LLM）
+    "/ai/agent/confirm",               # POST 智能体确认（调 LLM）
+    "/ai/analyze/question/stream",     # GET 题目分析
+]
+
+
+def _is_llm_path(path: str) -> bool:
+    """判断路径是否在 LLM 白名单中"""
+    for pattern in AI_LLM_PATHS:
+        if fnmatch.fnmatch(path, pattern):
+            return True
+    return False
 
 
 def _get_client_ip(scope) -> str:
@@ -55,11 +83,7 @@ def _extract_token(scope) -> str | None:
 
 
 async def _get_user_id_from_token(token: str) -> str | None:
-    """从 Redis 查 token → user_id
-
-    Redis key: openstudy-py:login_tokens:{token}
-    Value: {"user_id": 2, "user_name": "demo", ...}
-    """
+    """从 Redis 查 token → user_id"""
     pool: redis.Redis = redis_client._pool
     if pool is None or not token:
         return None
@@ -93,7 +117,7 @@ async def _check_rate_limit(ip: str, user_id: str | None) -> tuple[bool, str]:
         return False, f"请求过于频繁，请稍后再试（每分钟限 {AI_IP_PER_MINUTE} 次）"
 
     if user_id:
-        # ── 每用户每分钟（不依赖 IP，隧道多 IP 也能挡）──
+        # ── 每用户每分钟 ──
         user_min_key = f"rl:ai:umin:{user_id}:{minute_bucket}"
         user_min_count = await pool.incr(user_min_key)
         if user_min_count == 1:
@@ -118,8 +142,8 @@ async def _check_rate_limit(ip: str, user_id: str | None) -> tuple[bool, str]:
 class AiRateLimitMiddleware:
     """AI 接口限流中间件（纯 ASGI）
 
-    只拦截 /ai/ 前缀的请求；其他请求直接放行。
-    超限时返回 429 JSON，不调用下游 app。
+    只拦截白名单中「真正调 LLM」的接口；
+    /ai/sessions、/ai/models、/ai/agent/tools 等查库接口不受限流。
     """
 
     def __init__(self, app):
@@ -133,7 +157,8 @@ class AiRateLimitMiddleware:
         path = scope.get("path", "")
         method = scope.get("method", "")
 
-        if not path.startswith(AI_PATH_PREFIX):
+        # 只限白名单中的 LLM 接口
+        if not _is_llm_path(path):
             await self.app(scope, receive, send)
             return
 
