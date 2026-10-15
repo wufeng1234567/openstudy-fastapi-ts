@@ -1,11 +1,16 @@
 """
 AI 接口限流中间件（纯 ASGI，不破坏流式响应）
 
-策略：
-  1. 每用户每日 AI 请求上限 50 次（按 user_id 计数，需登录）
-  2. 每用户每分钟请求上限 5 次（防止快速刷，不依赖 IP）
-  3. 每 IP 每分钟请求上限 10 次（防匿名刷）
+策略（均可通过环境变量覆盖）：
+  1. 每用户每日 AI 请求上限 50 次（AI_DAILY_LIMIT）
+  2. 每用户每分钟请求上限 10 次（AI_USER_PER_MINUTE，不依赖 IP）
+  3. 每 IP 每分钟请求上限 100 次（AI_IP_PER_MINUTE，防脚本刷，NAT 不误伤）
   4. 超限返回 429 + 友好提示，不报错
+
+⚠️ 评测期间如需调整：
+  export AI_USER_PER_MINUTE=30   # 放宽每用户每分钟
+  export AI_DAILY_LIMIT=200      # 放宽每日额度
+  export AI_IP_PER_MINUTE=1000   # 基本关掉 IP 限流
 
 只对 /ai/ 路径生效，其他接口不限流。
 
@@ -22,10 +27,11 @@ from loguru import logger
 from app.redis import redis_client
 
 
-# ── 限流参数 ──
-AI_DAILY_LIMIT = 50        # 每用户每天
-AI_USER_PER_MINUTE = 5     # 每用户每分钟（不依赖 IP，隧道多 IP 也能挡）
-AI_IP_PER_MINUTE = 10      # 每 IP 每分钟（防匿名刷）
+# ── 限流参数（可通过环境变量覆盖，评测期间可动态调整）──
+import os
+AI_DAILY_LIMIT = int(os.environ.get("AI_DAILY_LIMIT", 50))       # 每用户每天
+AI_USER_PER_MINUTE = int(os.environ.get("AI_USER_PER_MINUTE", 10))  # 每用户每分钟
+AI_IP_PER_MINUTE = int(os.environ.get("AI_IP_PER_MINUTE", 100))    # 每 IP 每分钟（调大，避免 NAT 误伤）
 AI_PATH_PREFIX = "/ai/"    # 只限 AI 接口
 LOGIN_TOKEN_PREFIX = "openstudy-py:login_tokens:"
 
