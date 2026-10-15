@@ -16,6 +16,7 @@ from app.core.exceptions import (
     general_exception_handler,
 )
 from app.core.middleware import RequestIdMiddleware, LogMiddleware
+from app.core.rate_limit import AiRateLimitMiddleware
 from fastapi.exceptions import HTTPException
 import os
 
@@ -65,6 +66,7 @@ app.add_middleware(
 # Custom middleware
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(LogMiddleware)
+app.add_middleware(AiRateLimitMiddleware)
 
 # Exception handlers
 app.add_exception_handler(ServiceException, service_exception_handler)
