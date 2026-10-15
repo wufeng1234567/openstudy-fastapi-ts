@@ -1,0 +1,4 @@
+onlyBuiltDependencies:
+  - "@logicflow/core"
+  - esbuild
+  - vue-demi

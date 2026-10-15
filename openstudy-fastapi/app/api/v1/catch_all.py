@@ -1,10 +1,10 @@
 """
 Catch-all 路由 - 只处理未匹配的 API 请求
-浏览器导航请求（Accept: text/html）不走兜底，交给前端路由
+浏览器导航请求（Accept: text/html）返回 404，让 Nginx 拦截后 serve index.html
 """
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import JSONResponse
 from app.core.response import success, paginate
 
 router = APIRouter()
@@ -13,11 +13,11 @@ router = APIRouter()
 @router.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def catch_all(request: Request, path: str):
     """处理所有未匹配的 API 路由"""
-    # 浏览器导航请求（Accept 包含 text/html）不走兜底，返回 HTML 让前端路由处理
+    # 浏览器导航请求（Accept 包含 text/html）返回 404
+    # Nginx 拦截 404 后直接 serve index.html（静态文件，WAF 不拦截）
     accept = request.headers.get("accept", "")
     if "text/html" in accept:
-        # 返回空 HTML，让前端路由接管
-        return HTMLResponse(content="<!DOCTYPE html><html><head></head><body></body></html>")
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
 
     # API 请求返回合理的默认数据
     if "list" in path:

@@ -1,4 +1,4 @@
-import { createWebHistory, createRouter } from 'vue-router'
+import { createWebHashHistory, createRouter } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 
 /** 扩展的路由记录类型（RuoYi 框架在路由上挂载的自定义字段） */
@@ -593,7 +593,7 @@ export const dynamicRoutes: AppRouteRecordRaw[] = [
 ]
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHashHistory(),
   routes: constantRoutes,
   scrollBehavior(to, from, savedPosition) {
     if (savedPosition) {
