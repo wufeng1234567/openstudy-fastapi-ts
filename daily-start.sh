@@ -130,6 +130,9 @@ echo -e "  ✅ 环境就绪"
 
 # ---------- 1. PostgreSQL ----------
 echo -e "${YELLOW}[1/6] PostgreSQL...${NC}"
+# 重启后 pgsql-data 目录权限可能变回 root，postgres 用户读不了 → PG 起不来
+chown -R postgres:postgres "$PG_DATA" 2>/dev/null
+chmod 700 "$PG_DATA" 2>/dev/null
 if su - postgres -c "pg_ctl -D $PG_DATA status" 2>/dev/null | grep -q "running"; then
     echo -e "  ✅ 已在运行"
 else
