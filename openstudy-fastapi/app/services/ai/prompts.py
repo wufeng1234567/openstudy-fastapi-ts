@@ -126,23 +126,54 @@ ANALYSIS_OUTPUT_SPEC = """
 """
 
 
-def _build_plain(prompt: str, **_vars: Any) -> List[Dict[str, str]]:
-    """默认场景：只用调用方给的正文（聊天助手 / AI 搭建题库）"""
+def _build_plain(prompt: str, **vars: Any) -> List[Dict[str, str]]:
+    """默认场景：只用调用方给的正文（聊天助手 / AI 搭建题库）
+
+    `source_context`（可选）：来自知识库的原文片段（见 `_build_question_generate`）。
+    AI 搭建题库选了「取材来源 = 我的知识库」时，把它作为材料附加在正文后。
+    """
+    source_context = (vars.get("source_context") or "").strip()
+    user = prompt
+    if source_context:
+        user = f"""{prompt}
+
+【必须依据的原文材料】
+{source_context}
+
+【重要】上面的题目/内容必须**严格依据这些原文材料**生成或转换，不要引入材料之外的内容；
+每道题的解析末尾注明出处，格式：`（来源：<文档名> 第N段）`。"""
     return [
         {"role": "system", "content": ASSISTANT_SYSTEM_PROMPT},
-        {"role": "user", "content": prompt},
+        {"role": "user", "content": user},
     ]
 
 
 def _build_question_generate(prompt: str, **vars: Any) -> List[Dict[str, str]]:
-    """按知识点批量出题"""
+    """按知识点批量出题
+
+    `source_context`（可选）：来自知识库的**原文片段**（由 `chat_engine` 在
+    调用前检索并拼好）。传了就要求模型**只依据这些材料出题**并注明出处 ——
+    这是「基于我的资料出题」的落点；不传则是纯 AI 生成（原行为）。
+    """
     count = vars.get("count") or 5
     knowledge_point = vars.get("knowledge_point") or prompt or ""
     question_type = vars.get("question_type") or "single"
+    source_context = (vars.get("source_context") or "").strip()
     user = f"""请生成 {count} 道关于 "{knowledge_point}" 的题目。
 
 题型：{question_type}
+"""
+    if source_context:
+        user += f"""
+【必须依据的原文材料】
+{source_context}
 
+【出题要求】
+1. 题目必须**严格依据上面的原文材料**，不要引入材料之外的知识；
+2. 每道题的 `analysis` 末尾注明出处，格式：`（来源：<文档名> 第N段）`；
+3. 材料覆盖不到的角度就不要出题，宁可少出，不可编造。
+"""
+    user += """
 请以 JSON 数组格式返回，每道题包含：
 - questionText: 题目内容
 - answer: 正确答案
@@ -157,14 +188,26 @@ def _build_question_generate(prompt: str, **vars: Any) -> List[Dict[str, str]]:
 
 
 def _build_reading(prompt: str, **vars: Any) -> List[Dict[str, str]]:
-    """生成阅读理解题"""
+    """生成阅读理解题
+
+    `source_context`（可选）：知识库原文片段，见 `_build_question_generate`。
+    """
     question_count = vars.get("question_count") or 5
     requirement = vars.get("requirement") or prompt or ""
+    source_context = (vars.get("source_context") or "").strip()
     user = f"""请根据以下要求生成 {question_count} 道阅读理解题：
 
 {requirement}
+"""
+    if source_context:
+        user += f"""
+【必须依据的原文材料】
+{source_context}
 
-请以 JSON 数组格式返回。"""
+【要求】基于上面的材料出题，不要引入材料之外的内容；解析末尾注明出处
+（格式：`（来源：<文档名> 第N段）`）。
+"""
+    user += "\n请以 JSON 数组格式返回。"
     return [
         {"role": "system", "content": TEACHER_SYSTEM_PROMPT},
         {"role": "user", "content": user},
@@ -172,17 +215,29 @@ def _build_reading(prompt: str, **vars: Any) -> List[Dict[str, str]]:
 
 
 def _build_composite(prompt: str, **vars: Any) -> List[Dict[str, str]]:
-    """生成组合题（材料 + 设问）"""
+    """生成组合题（材料 + 设问）
+
+    `source_context`（可选）：知识库原文片段，见 `_build_question_generate`。
+    """
     question_count = vars.get("question_count") or 5
     word_count = vars.get("word_count") or 300
     requirement = vars.get("requirement") or prompt or ""
+    source_context = (vars.get("source_context") or "").strip()
     user = f"""请根据以下要求生成 {question_count} 道组合题：
 
 {requirement}
 
 文章字数约 {word_count} 字。
+"""
+    if source_context:
+        user += f"""
+【必须依据的原文材料】
+{source_context}
 
-请以 JSON 格式返回。"""
+【要求】基于上面的材料出题，不要引入材料之外的内容；解析末尾注明出处
+（格式：`（来源：<文档名> 第N段）`）。
+"""
+    user += "\n请以 JSON 格式返回。"
     return [
         {"role": "system", "content": TEACHER_SYSTEM_PROMPT},
         {"role": "user", "content": user},

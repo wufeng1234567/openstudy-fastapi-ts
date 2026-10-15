@@ -109,35 +109,57 @@ class RoleSpec:
 
 OFFICIAL_ROLES: Dict[str, RoleSpec] = {
     # ---- 题库/题目域 ----
+    # ⚠️ `knowledge_search` 是**只读**检索工具，这里挂给题库专家，是为了打通
+    #    「基于我的资料出题」：用户说「根据我上传的《计算机网络》出题」时，专家
+    #    要能先去知识库取原文，再据此出题（而不是凭模型记忆编）。
+    #    它不会让题库专家变成「知识库管理」角色 —— 建库/传资料仍是 kb 专家的职责，
+    #    这里只借「检索」这一只读能力。
     "bank": RoleSpec(
         key="bank",
         name="题库专家",
-        description="帮你建题库、导入题目、改题删题，也能整理错题本和收藏",
+        description="帮你建题库、导入题目、改题删题，也能整理错题本和收藏，还能根据你的资料出题",
         tools=(
             "bank_manage",
             "question_manage",
             "question_flag_manage",
+            "knowledge_search",
         ),
         capability=(
             "Question banks and questions. Use it when the user wants to: create or "
             "rename a bank, add / edit / delete questions, import a batch of questions "
             "(from text or an uploaded file/image), or tidy up their wrong-question "
-            "book, favourites and 'to-conquer' marks."
+            "book, favourites and 'to-conquer' marks. ALSO use it when the user wants "
+            "questions generated FROM THEIR OWN MATERIALS — e.g. 'make questions based "
+            "on my textbook', 'use the document I uploaded', '出题 based on my knowledge "
+            "base'. In that case first call `knowledge_search` to pull the source "
+            "passages, then build the questions from that text (never from memory)."
         ),
         persona=(
             "You are the Question Bank Specialist of OpenStudy. You manage the user's "
             "question banks and questions: create/list/rename/delete banks, add/edit/"
             "delete/batch-import questions, and manage their wrong-question book, "
-            "favorites and marked questions. You do NOT handle notes, knowledge bases, "
-            "study statistics or memory — those belong to other specialists. Before "
-            "creating or importing, make sure the target bank is known (ask or list "
-            "first). Prefer one bulk call over many single calls."
+            "favorites and marked questions. "
+            "When the user wants questions based on THEIR OWN MATERIALS (a textbook, an "
+            "uploaded document, their knowledge base), you MUST first use "
+            "`knowledge_search` to retrieve the relevant passages and then generate the "
+            "questions from that retrieved text — you must NOT invent questions from "
+            "memory. Quote the source (document name + section) so the user can verify. "
+            "If `knowledge_search` returns nothing relevant, say so plainly instead of "
+            "fabricating. "
+            "You do NOT handle notes, study statistics or memory — those belong to other "
+            "specialists. Note: creating/ingesting new knowledge bases is NOT your job "
+            "(that is the knowledge-base specialist); you only READ from existing ones. "
+            "Before creating or importing, make sure the target bank is known (ask or "
+            "list first). Prefer one bulk call over many single calls."
         ),
         prompt_fragment=(
             "## Role: Question Bank Assistant\n"
             "You are specialised in managing the user's question banks and questions. "
-            "Before creating or importing, make sure you know the target bank (ask or "
-            "list first). Prefer bulk actions over many single calls."
+            "When the user asks for questions based on their own materials (textbook / "
+            "uploaded file / knowledge base), FIRST call `knowledge_search` to get the "
+            "source passages, then generate questions from that text and cite the source; "
+            "never fabricate. Before creating or importing, make sure you know the target "
+            "bank (ask or list first). Prefer bulk actions over many single calls."
         ),
         keywords=(
             "题库", "建库", "题目", "出题", "导题", "导入", "录题", "试卷", "刷题",

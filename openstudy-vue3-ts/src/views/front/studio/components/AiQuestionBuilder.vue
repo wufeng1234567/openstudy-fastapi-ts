@@ -182,6 +182,62 @@
       </div>
     </div>
 
+    <!-- 取材来源：纯 AI 生成 / 从我的知识库出题 -->
+    <div class="source-section">
+      <div class="section-title">
+        <el-icon><Collection /></el-icon>
+        <span>取材来源</span>
+      </div>
+      <el-radio-group v-model="sourceMode" class="source-radio-group" @change="onSourceModeChange">
+        <el-radio-button value="ai">
+          <el-icon><MagicStick /></el-icon>
+          <span>纯 AI 生成</span>
+        </el-radio-button>
+        <el-radio-button value="kb">
+          <el-icon><Collection /></el-icon>
+          <span>从我的知识库出题</span>
+        </el-radio-button>
+      </el-radio-group>
+
+      <div v-if="sourceMode === 'kb'" class="kb-picker">
+        <el-select
+          v-model="selectedKbId"
+          placeholder="选择知识库"
+          filterable
+          clearable
+          :loading="kbLoading"
+          style="width: 100%"
+        >
+          <el-option
+            v-for="kb in kbOptions"
+            :key="kb.kbId"
+            :label="kb.name"
+            :value="kb.kbId"
+            :disabled="kb.disabled === 1"
+          >
+            <span>{{ kb.name }}</span>
+            <span class="kb-opt-doc">
+              {{ kb.disabled === 1 ? '（已屏蔽）' : `${kb.docCount || 0} 篇资料` }}
+            </span>
+          </el-option>
+        </el-select>
+        <div class="source-hint">
+          <el-icon><InfoFilled /></el-icon>
+          <span>
+            选中后，AI 会先在你上传的资料里检索原文，再据此出题，并在解析里注明出处。
+            若知识库为空，请先到「知识库」页面上传资料。
+          </span>
+        </div>
+        <div v-if="!kbLoading && kbOptions.length === 0" class="source-empty">
+          你还没有知识库，先去上传一份资料吧。
+        </div>
+      </div>
+      <div v-else class="source-hint">
+        <el-icon><InfoFilled /></el-icon>
+        <span>直接根据下面的文件内容 / 你的要求生成，不引用知识库。</span>
+      </div>
+    </div>
+
     <!-- 生成模式选择 -->
     <div class="mode-section">
       <div class="section-title">
@@ -520,10 +576,11 @@ import { ref, reactive, watch, nextTick, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Upload, Document, Setting, ChatDotRound, MagicStick,
-  VideoPause, View, Edit, Delete, CircleCheck, Plus, InfoFilled, FullScreen, DocumentCopy, ArrowDown, Loading, Picture
+  VideoPause, View, Edit, Delete, CircleCheck, Plus, InfoFilled, FullScreen, DocumentCopy, ArrowDown, Loading, Picture, Collection
 } from '@element-plus/icons-vue'
 import { addQuestionMain } from '@/api/questionMain/questionMain'
 import { parseFileBlocks, assistantStream } from '@/api/ai/ai'
+import { listKnowledgeBases } from '@/api/ai/rag'
 import AiThinkingToggle from '@/components/AiThinkingToggle/index.vue'
 import AiModelSelector from '@/components/AiModelSelector/index.vue'
 import { useDsDeepThinkSync } from '@/composables/useDsDeepThinkSync'
@@ -671,6 +728,30 @@ const userRequirement = ref('')
 const generating = ref(false)
 // 生成模式：all=全部转换，custom=自定义要求
 const generateMode = ref('all')
+
+// 取材来源：ai=纯 AI 生成，kb=从我的知识库出题
+const sourceMode = ref('ai')
+const selectedKbId = ref(null)
+const kbOptions = ref([])
+const kbLoading = ref(false)
+
+// 切换取材来源：选「知识库」时按需拉取知识库列表（只拉一次）
+const onSourceModeChange = (val) => {
+  if (val === 'kb') loadKnowledgeBases()
+}
+async function loadKnowledgeBases() {
+  kbLoading.value = true
+  try {
+    const res = await listKnowledgeBases()
+    if (res.code === 200) {
+      kbOptions.value = Array.isArray(res.data) ? res.data : (res.rows || [])
+    }
+  } catch (e) {
+    console.error('获取知识库列表失败:', e)
+  } finally {
+    kbLoading.value = false
+  }
+}
 
 // AI 模型选择：当前选中的模型名（历史记忆按 scene=ai-builder 单独保存）
 const selectedModel = ref('')
@@ -983,6 +1064,12 @@ const startGenerate = async () => {
     return
   }
 
+  // 选了「从知识库出题」但没选具体库 → 提示（否则会静默变成纯 AI 生成）
+  if (sourceMode.value === 'kb' && !selectedKbId.value) {
+    ElMessage.warning('请选择要作为取材来源的知识库')
+    return
+  }
+
   generating.value = true
   rawOutput.value = ''
   generatedQuestions.value = []
@@ -1032,6 +1119,9 @@ const sendViaBackendStream = (content) => {
     let settled = false
 
     console.log('[AI Builder] Starting sendViaBackendStream, content length:', content.length)
+
+    // 取材来源：选「知识库」时把库 id 传给后端，由后端检索原文后注入提示词
+    const kbIds = sourceMode.value === 'kb' && selectedKbId.value ? [selectedKbId.value] : []
 
     // 创建 AbortController 用于停止生成
     abortController.value = new AbortController()
@@ -1109,7 +1199,9 @@ const sendViaBackendStream = (content) => {
         scene: 'question-bank',
         // visionImages 是 base64 data URL 字符串数组，assistantStream 两种写法都支持
         images: visionImages.value,
-        configId: selectedConfigId.value || undefined
+        configId: selectedConfigId.value || undefined,
+        // 知识库取材（选了「从我的知识库出题」时非空）
+        kbIds
       }
     )
   })
@@ -1984,6 +2076,56 @@ onBeforeUnmount(() => {
   background: #f8f9fa;
   border-radius: 8px;
   border: 1px solid #e4e7ed;
+}
+
+/* ---- 取材来源（纯 AI 生成 / 从知识库出题）---- */
+.source-section {
+  margin-bottom: 24px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e4e7ed;
+}
+
+.source-radio-group {
+  margin-bottom: 12px;
+
+  .el-radio-button__inner {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+}
+
+.kb-picker {
+  margin-top: 4px;
+}
+
+.kb-opt-doc {
+  margin-left: 8px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.source-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: #909399;
+  line-height: 1.5;
+
+  .el-icon {
+    margin-top: 2px;
+    flex-shrink: 0;
+  }
+}
+
+.source-empty {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #e6a23c;
 }
 
 .mode-radio-group {

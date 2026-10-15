@@ -102,6 +102,11 @@ export interface AiStreamOptions {
   temperature?: number
   /** 「注入历史记忆」开关（仅 ds-free-nb）：历史作为附件投递给 DS 网页 */
   injectHistory?: boolean
+  /**
+   * 知识库取材（可选）：出题类场景选中「取材来源 = 我的知识库」时传入选中库 id。
+   * 后端先检索这些库、把原文片段注入提示词，并要求模型据此出题并注明出处。
+   */
+  kbIds?: number[]
   signal?: AbortSignal
 }
 
@@ -150,7 +155,9 @@ async function postAiStream(
         thinking: opts.thinking,
         temperature: opts.temperature,
         // 「注入历史记忆」开关（仅 ds-free-nb 有意义；后端按 provider 收口）
-        injectHistory: opts.injectHistory === true
+        injectHistory: opts.injectHistory === true,
+        // 知识库取材（出题类场景）：选中库 id 列表，后端检索原文后注入提示词
+        kbIds: opts.kbIds || []
       }),
       signal: opts.signal
     })
@@ -179,7 +186,7 @@ async function postAiStream(
   }
 }
 
-export async function generateQuestionsStreamFull({ knowledgePoint, questionType, count, model, configId, userId, bankId, thinking, onChunk, onComplete, onError }: {
+export async function generateQuestionsStreamFull({ knowledgePoint, questionType, count, model, configId, userId, bankId, thinking, kbIds, onChunk, onComplete, onError }: {
   knowledgePoint: string
   questionType: string
   count: string | number
@@ -190,6 +197,8 @@ export async function generateQuestionsStreamFull({ knowledgePoint, questionType
   bankId?: string | number
   /** 深度思考：true/false 覆盖 DB 配置；不传则跟随配置 */
   thinking?: boolean
+  /** 知识库取材：选中的知识库 id（不传 = 纯 AI 生成） */
+  kbIds?: number[]
   onChunk?: (content: string) => void
   onComplete?: (content: string) => void
   onError?: (error: any) => void
@@ -211,6 +220,7 @@ export async function generateQuestionsStreamFull({ knowledgePoint, questionType
       configId,
       userId,
       thinking,
+      kbIds,
       // 出题沿用历史口径：温度 0.8
       temperature: 0.8
     },
@@ -591,6 +601,8 @@ export async function assistantStream(
     provider?: string
     configId?: number
     turnId?: string
+    /** 知识库取材（出题类场景）：选中的知识库 id 列表 */
+    kbIds?: number[]
   }
 ): Promise<void> {
   // ---- deepseek-free：走浏览器扩展（DeepSeek 官网 Web 版），完全不经过后端 ----
@@ -746,7 +758,9 @@ export async function assistantStream(
       sessionId: scene === 'assistant' ? sessionId : '',
       userId,
       thinking,
-      signal
+      signal,
+      // 知识库取材（出题类场景）：后端检索原文后注入提示词
+      kbIds: extras?.kbIds
     },
     onChunk,
     onComplete,

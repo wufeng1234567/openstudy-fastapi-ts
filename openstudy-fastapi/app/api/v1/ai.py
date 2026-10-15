@@ -478,6 +478,10 @@ class AssistantStreamRequest(BaseModel):
     #: 「注入历史记忆」开关（**仅 ds-free-nb 端有意义**，API 端忽略）：
     #: True = 把当前会话历史拼进正文并**作为附件投递**给 DS 网页（避免长历史灌输入框卡死）。
     injectHistory: bool = False
+    #: **知识库取材**（可选）：出题类场景（question-generate / reading / composite /
+    #: question-bank）选中「取材来源 = 我的知识库」时，传入选中的知识库 id 列表。
+    #: 后端会先检索这些库、把命中的原文片段注入提示词，并要求模型据此出题并注明出处。
+    kbIds: List[int] = []
 
 
 @router.post("/assistant/stream")
@@ -529,6 +533,9 @@ async def assistant_stream_with_attachments(
         session_id=req.sessionId,
         user_id=user_id,
         inject_history=bool(req.injectHistory),
+        # 知识库取材：出题类场景选了「取材来源 = 我的知识库」时传给 chat_engine，
+        # 由它检索原文并作为 source_context 注入模板（见 ChatTurn.kb_ids）。
+        kb_ids=list(req.kbIds or []),
     )
     return StreamingResponse(chat_engine.stream_turn(db, turn), media_type="text/plain")
 

@@ -80,6 +80,11 @@ class ChatTurn:
     system_prompt: Optional[str] = None
     #: 场景模板变量（count / knowledge_point / requirement / question …）
     variables: Dict[str, Any] = field(default_factory=dict)
+    #: **知识库取材**（可选）：传了就在组装 messages 之前先检索这些知识库，
+    #: 把命中的**原文片段**注入 prompt（出题类还会要求模型注明出处）。
+    #: 这是「基于我的资料出题」的入口 —— 见 `_retrieve_kb_context`。
+    #: 空 / None = 不检索（跟随原有行为）。
+    kb_ids: Optional[List[int]] = None
     #: **是否把本轮正文投递为附件**（用户 2026-10-12 定案，仅 ds-free-nb 用）：
     #: 前端「注入历史记忆」开关打开时为 True → 后端把当前会话历史拼进正文，
     #: 并在请求里带 `asAttachment=true`，桥据此把正文写成 .md 附件上传（输入框只留短指令），
@@ -341,6 +346,74 @@ def extract_attachments(files: List[Any], image_offset: int = 0) -> tuple:
 # ============================================================
 
 
+#: 知识库取材时，单段最大字符数（与 rag_query_service.MAX_CHUNK_CHARS 同口径）
+KB_CONTEXT_CHUNK_CHARS = 1200
+#: 知识库取材的总字符预算（与 rag_query_service.MAX_CONTEXT_CHARS 同口径）
+KB_CONTEXT_MAX_CHARS = 6000
+#: 知识库取材默认取回几条
+KB_CONTEXT_TOP_K = 5
+
+
+async def _retrieve_kb_context(
+    db: AsyncSession,
+    turn: ChatTurn,
+    query: str,
+    top_k: int = KB_CONTEXT_TOP_K,
+) -> str:
+    """按 `turn.kb_ids` 检索知识库，把命中片段拼成**可注入正文的材料块**。
+
+    用途：出题类场景（`question-generate` / `reading` / `composite`）用户选了
+    「取材来源 = 我的知识库」时，由这里取原文 → 交给 prompts 模板 → 模型据此出题。
+
+    设计要点：
+      · **失败绝不抛**：检索挂了（embedding 不可用 / 库被删）不该让整轮出题失败，
+        只是「这次没有材料」，退化成纯 AI 生成并留下可见的提示。
+      · **带出处**：每段标 `【文档名 第N段】`，模型据此在解析里注明来源。
+      · **预算封顶**：避免把上下文撑爆（与 rag_query_service 同口径）。
+    """
+    from app.services.rag import rag_query_service as rqs
+
+    kb_ids = []
+    for value in (turn.kb_ids or []):
+        try:
+            kb_ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    if not kb_ids or not (query or "").strip():
+        return ""
+
+    try:
+        found = await rqs.search(db, turn.user_id or 0, query, kb_ids, top_k=top_k)
+    except Exception as e:  # noqa: BLE001 - 取材是增强项，失败只记日志
+        logger.warning("[chat_engine] 知识库取材失败（已跳过）: {}", e)
+        return ""
+
+    hits = found.get("hits") or []
+    parts: List[str] = []
+    used = 0
+    for i, hit in enumerate(hits, start=1):
+        content = (hit.get("content") or "").strip()
+        if not content:
+            continue
+        if len(content) > KB_CONTEXT_CHUNK_CHARS:
+            content = content[: KB_CONTEXT_CHUNK_CHARS - 1] + "…"
+        source = hit.get("source") or hit.get("docName") or f"文档#{hit.get('docId')}"
+        piece = f"【材料{i}｜来源：{source}】\n{content}"
+        if used + len(piece) > KB_CONTEXT_MAX_CHARS:
+            break
+        parts.append(piece)
+        used += len(piece)
+
+    if not parts:
+        logger.info("[chat_engine] 知识库取材：kb_ids={} 未检索到相关内容", kb_ids)
+        return ""
+    logger.info(
+        "[chat_engine] 知识库取材：kb_ids={} → {} 段 / {} 字符",
+        kb_ids, len(parts), used,
+    )
+    return "\n\n".join(parts)
+
+
 async def _resolve_vision_safe_model(
     db: AsyncSession,
     turn: ChatTurn,
@@ -483,6 +556,27 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
         )
     # 历史注入是否走附件：仅当目标是桥、且用户开了开关、且确有历史可注入
     as_attachment = bool(to_bridge and turn.inject_history and context)
+
+    # ③b 知识库取材：用户在出题类场景选了「取材来源 = 我的知识库」时，
+    #     先检索出原文片段，作为 `source_context` 变量交给模板（模型据此出题）。
+    #     ⚠️ 只对**出题类场景**注入 —— 聊天助手场景不该被强行塞材料（它自己有
+    #        `knowledge_search` 工具按需检索，见 roles.py）。
+    source_context = ""
+    if turn.kb_ids and turn.scene in (
+        prompts.SCENE_QUESTION_GENERATE,
+        prompts.SCENE_READING,
+        prompts.SCENE_COMPOSITE,
+        prompts.SCENE_QUESTION_BANK,
+    ):
+        # 检索用的 query：优先用户的具体要求，其次知识点，最后正文兜底
+        kb_query = (
+            str(turn.variables.get("requirement") or "").strip()
+            or str(turn.variables.get("knowledge_point") or "").strip()
+            or prompt_text
+        )
+        source_context = await _retrieve_kb_context(db, turn, kb_query)
+        if source_context:
+            turn.variables["source_context"] = source_context
 
     # ④ 按场景组装 messages（新增场景只改 prompts.py，不动这里）
     raw_messages = prompts.build_scene_messages(

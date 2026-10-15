@@ -8,11 +8,20 @@
 #
 # 体积提示：torch（CPU 版）约 200~800MB，sentence-transformers + modelscope 另加若干 MB。
 # 内存提示：运行 bge-m3 约需 2~3GB 内存；小内存机器建议走云端。
+#
+# ⚠️ Windows 安装注意（本文件是 UTF-8 且含中文注释）：
+#   Win 的 pip 会按系统 GBK 解码本文件 → 报 UnicodeDecodeError。用下面任一方式规避：
+#     PowerShell:  $env:PYTHONUTF8=1; pip install -r requirements-local-embedding.txt
+#     CMD:         set PYTHONUTF8=1 && pip install -r requirements-local-embedding.txt
+#   或直接按包名安装（见文末「等价命令」）。
 # ============================================================
 
 # torch 用 CPU 版索引源，避免拉入几个 GB 的 CUDA 包（服务器多为无 GPU 场景）
+# ⚠️ 必须 >= 2.6：新版 transformers 会对 torch.load 做 CVE-2025-32434 检查，
+#    低于 2.6 会直接拒绝加载本地模型（实测 torch 2.4.1 报
+#    "require users to upgrade torch to at least v2.6"）。
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.4.1
+torch>=2.6,<2.9
 sentence-transformers==3.3.1
 
 # modelscope（魔搭）：国内直连下载模型，绕过 huggingface.co 被墙的问题
@@ -20,3 +29,7 @@ modelscope==1.20.0
 
 # 说明：sentence-transformers 首次运行会自动下载模型 BAAI/bge-m3（约 2.2GB）。
 #      国内服务器优先从魔搭(ModelScope)下载。
+#
+# 等价命令（绕开文件编码问题）：
+#   pip install --extra-index-url https://download.pytorch.org/whl/cpu "torch>=2.6,<2.9"
+#   pip install sentence-transformers==3.3.1 modelscope==1.20.0
