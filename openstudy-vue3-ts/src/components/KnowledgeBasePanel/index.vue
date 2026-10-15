@@ -245,11 +245,11 @@
                   <span v-if="isDocumentSearchable(doc.status)" class="kb-doc-chunks">
                     {{ doc.chunkCount || 0 }} 个分块
                   </span>
-                  <span v-else-if="isDocumentProcessing(doc.status)" class="kb-doc-chunks">
-                    处理中，稍等片刻…
+                  <span v-else-if="isDocumentProcessing(doc.status) || (doc.status === DOC_PARSED && pollingDocIds.includes(doc.docId))" class="kb-doc-chunks">
+                    {{ doc.status === DOC_PARSED ? '已分块，向量化中…' : '处理中，稍等片刻…' }}
                   </span>
                   <span v-else-if="doc.status === DOC_PARSED" class="kb-doc-chunks is-warn">
-                    已提取正文，尚未向量化 —— 现在检索不到它
+                    已提取正文，尚未向量化 —— 可点 ↻ 重新处理
                   </span>
                   <span v-else-if="doc.status === DOC_FAILED" class="kb-doc-chunks is-error">
                     {{ doc.errorMsg || '处理失败' }}
@@ -437,6 +437,8 @@ let pollTimers: number[] = []
  * 每个都在打 `/document/status`。文档越多、操作越多，请求量成倍涨。
  */
 const pollingDocs = new Set<number>()
+/** 正在轮询的 docId（响应式，供模板判断 status=3 是「向量化中」还是「卡住了」） */
+const pollingDocIds = ref<number[]>([])
 
 const kbCount = computed(() => kbs.value.length)
 const activeKb = computed(() => kbs.value.find((k) => k.kbId === activeKbId.value) || null)
@@ -538,6 +540,7 @@ const pollDocument = (docId: number, round = 0) => {
   if (round === 0) {
     if (pollingDocs.has(docId)) return
     pollingDocs.add(docId)
+    pollingDocIds.value = [...pollingDocIds.value, docId]
   }
 
   const timer = window.setTimeout(async () => {
@@ -557,6 +560,7 @@ const pollDocument = (docId: number, round = 0) => {
         return
       }
       pollingDocs.delete(docId)
+      pollingDocIds.value = pollingDocIds.value.filter(id => id !== docId)
       if (info.ok) {
         uploadTip.value = ''
         // 分块数变了 → 库上的计数也要刷新
@@ -569,6 +573,7 @@ const pollDocument = (docId: number, round = 0) => {
     } catch {
       // 轮询失败不打扰用户：放开去重标记，下次 loadDocs 会重新盯上它
       pollingDocs.delete(docId)
+      pollingDocIds.value = pollingDocIds.value.filter(id => id !== docId)
     }
   }, POLL_INTERVAL)
   pollTimers.push(timer)
