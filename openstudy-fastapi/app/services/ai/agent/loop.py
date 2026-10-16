@@ -42,6 +42,7 @@ Agent 循环（`LLM → 工具调用 → 执行 → 回灌 → 再 LLM`）
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import time
 import uuid
@@ -759,6 +760,10 @@ def needs_user_confirmation(
         return False
     if tool.is_destructive(params):
         return True
+    # 大小/规模闸门：工具可声明自己的确认策略（base 里的可选钩子；不存在时 getattr 兜底）。
+    policy = getattr(tool, "confirm_policy", None)
+    if callable(policy) and policy(params):
+        return True
     return not auto_confirm
 
 
@@ -899,6 +904,20 @@ async def _rollback_empty_created_bank(
         logger.info("[agent] 用户取消导入：删除本轮新建的空题库 bank_id={}", bank_id)
     except Exception as e:  # noqa: BLE001 - 清理是增强项，失败不影响「已取消」
         logger.warning("[agent] 取消导入后清理空题库失败 bank_id={}: {}", bank_id, e)
+
+
+def _detect_user_language(text: str) -> str:
+    """粗略判断用户消息语言（只为把「结论语言」透传给子代理）
+
+    判据：CJK 汉字占比 >= 15% 即认为中文，否则英文。**不求精确**——它只用于给子代理
+    末尾追加一句「用 X 语言总结」，判错的代价极小（子代理仍会读到原始任务文本）。
+    默认中文（本平台用户以中文为主）。
+    """
+    s = text or ""
+    if not s:
+        return "中文"
+    han = sum(1 for ch in s if "\u4e00" <= ch <= "\u9fff")
+    return "中文" if (han / max(1, len(s))) >= 0.15 else "English"
 
 
 async def run_agent_stream(
@@ -1444,7 +1463,12 @@ async def run_agent_stream(
             # 每专家的模型覆盖（仅含有覆盖的 key；没覆盖的由 delegate.py 回退 delegate_llm）
             "delegate_llms": delegate_llms,
             # 透传给子代理 ToolContext.extra 的键（附件等，子代理可能需要）
-            "delegate_extra": {"attachments": attachments},
+            # `user_language`：子代理的总结会原样显示在专家卡片上，必须与用户语言一致
+            # （否则全英文系统提示词会让它回英文 —— 用户 2026-10-16 报）。
+            "delegate_extra": {
+                "attachments": attachments,
+                "user_language": _detect_user_language(typed),
+            },
         }
 
     ctx = ToolContext(
@@ -1909,26 +1933,68 @@ async def run_agent_stream(
             ctx.extra["delegate_parallel"] = True
             yield _event({"type": "waiting", "message": "正在安排专家并行处理…"})
 
-            async def _run_delegate(job: Any) -> Dict[str, Any]:
+            # 每个 job 的**观测回传队列**：子代理的中间过程（`subagent_event`）与完成通知都从这里
+            # 依次取出。⚠️ 为什么不再用 `asyncio.gather`：gather 会**阻塞生成器**直到整批跑完，
+            #    期间一根事件都 yield 不出去（用户看不到子代理在干什么）。改成「起任务 + 边跑边取」，
+            #    子代理一发事件就即时 yield 给前端。
+            q: asyncio.Queue = asyncio.Queue()
+
+            def _emit_for(job: Any):
+                # ⚠️ 每个 job 一个**独立的**回调：把事件 + 本 job 的全局 seq/agent 一起塞进队列
+                #    （seq 与 delegate_start/delegate_done 的 index 同源，前端据此定位卡片）。
                 _cid, _tool, _params, _idx, _key, _name, _seq = job
-                _res = await _execute_tool(_tool, _params, ctx)
-                return {
-                    "callId": _cid,
-                    "idx": _idx,
-                    "key": _key,
-                    "name": _name,
-                    "seq": _seq,
-                    "result": _res,
+
+                async def _emit(ev: Dict[str, Any]) -> None:
+                    await q.put(("sub", _seq, _key, _name, ev))
+
+                return _emit
+
+            async def _run_delegate(job: Any) -> None:
+                _cid, _tool, _params, _idx, _key, _name, _seq = job
+                _res: Dict[str, Any] = {
+                    "success": False,
+                    "error": "委派子代理未返回结果",
                 }
+                try:
+                    # ⚠️ `ctx.extra` 是**多个 job 共享**的：必须给每个 job 一份**浅拷贝**、各自注入
+                    #    自己的 `delegate_emit`（绝不动共享的那份，否则并发时互相覆盖）。
+                    job_ctx = dataclasses.replace(
+                        ctx,
+                        extra={**ctx.extra, "delegate_emit": _emit_for(job)},
+                    )
+                    _res = await _execute_tool(_tool, _params, job_ctx)
+                except Exception as e:  # noqa: BLE001 - 单个委派异常不该整轮崩（_execute_tool 已吞；这里兜底）
+                    logger.warning("[agent] 委派异常: {}", e)
+                    _res = {"success": False, "error": str(e)}
+                finally:
+                    # 完成通知：无论成功失败都推一条，主循环据此回填 + 发 delegate_done
+                    await q.put(("done", _seq, _key, _name, {
+                        "callId": _cid,
+                        "idx": _idx,
+                        "key": _key,
+                        "name": _name,
+                        "seq": _seq,
+                        "result": _res,
+                    }))
 
-            try:
-                results = await asyncio.gather(*[_run_delegate(j) for j in delegate_jobs])
-            except Exception as e:  # noqa: BLE001 - 单个委派异常不该整轮崩（_execute_tool 已吞；这里兜底）
-                logger.warning("[agent] 并发委派异常: {}", e)
-                results = []
-
-            # 按**完成顺序**逐条回报（gather 保序，这里直接遍历）
-            for item in results:
+            tasks = [asyncio.create_task(_run_delegate(j)) for j in delegate_jobs]
+            completed = 0
+            # 边跑边取：子代理事件即时下发；完成通知到了才回填 / 发 delegate_done。
+            # 顺序可能是**完成顺序**（而非 job 顺序）—— 前端按 index 定位，不受影响。
+            while completed < len(tasks):
+                kind, *payload = await q.get()
+                if kind == "sub":
+                    _seq, _key, _name, _ev = payload
+                    yield _event(
+                        {
+                            "type": "subagent_event",
+                            "index": _seq,
+                            "agent": {"id": _key, "name": _name},
+                            **(_ev or {}),
+                        }
+                    )
+                    continue
+                _seq, _key, _name, item = payload
                 res = item["result"]
                 compressed = guard.compress_result(roles_mod.DELEGATE_TOOL_NAME, res)
                 # ⚠️ `DelegateTaskTool` 成功时返回的是 `ok(subAgent, subAgentName, result, steps)`——
@@ -1964,6 +2030,7 @@ async def run_agent_stream(
                 )
                 if message:
                     last_tool_message = message
+                completed += 1
 
             ctx.extra.pop("delegate_parallel", None)
 

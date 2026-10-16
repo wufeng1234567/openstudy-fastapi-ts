@@ -211,6 +211,20 @@ class NoteManageTool(AgentTool):
     def is_destructive(self, params: Dict[str, Any]) -> bool:
         return str(params.get("action") or "") in _DESTRUCTIVE_ACTIONS
 
+    def confirm_policy(self, params: Dict[str, Any]) -> bool:
+        """长正文（≥3000 字）的笔记 / 草稿写入强制确认；短内容直接执行
+
+        规模只看正文长度（`markdown_content` 优先，与 `_create` / `_save_draft`
+        取正文的口径一致）。⚠️ 热路径：解析失败一律不弹卡。
+        """
+        try:
+            if str(params.get("action") or "") not in ("create", "save_draft"):
+                return False
+            body = params.get("markdown_content") or params.get("content") or ""
+            return len(str(body)) >= 3000
+        except Exception:  # noqa: BLE001
+            return False
+
     def undo_plan(self, params: Dict[str, Any], result: Dict[str, Any]) -> Dict[str, Any] | None:
         """声明「这一笔笔记操作怎么撤」（契约见 `base.AgentTool.undo_plan`）
 

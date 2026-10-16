@@ -41,6 +41,15 @@ export type AgentEventType =
    */
   | 'delegate_start'
   | 'delegate_done'
+  /**
+   * **子代理中间过程**（多智能体协同的观测旁路）：子代理每进入一个阶段（开始 / 思考 /
+   * 调工具 / 拿到工具结果 / 收尾 / 出错）就发一条，`index` 与 `delegate_start` /
+   * `delegate_done` 同源 —— 前端据此把它挂到专家卡片对应那一行的进度上。
+   *
+   * 观测**绝不参与调度**：发不发都不影响子代理干活，前端只拿它把「专家开工中」那一行
+   * 撑得更具体。
+   */
+  | 'subagent_event'
   | 'self_correct'
   | 'warning'
   | 'error'
@@ -219,6 +228,17 @@ export interface AgentEvent {
    * `kind` = official（官方角色）/ user（用户自定义智能体）；`id` 是角色 key 或 `user:<id>`。
    */
   agent?: { id: string; name: string; kind: 'official' | 'user' }
+
+  // ---- `subagent_event`：子代理中间过程（多智能体协同的观测旁路）----
+  /** 与 `delegate_start` / `delegate_done` 同源的全局序号（定位专家卡片的那一行） */
+  index?: number
+  /**
+   * 子代理当前阶段：`start` 开工 / `round` 新一轮思考 / `tool_call` 调工具 /
+   * `tool_result` 工具返回 / `wrapup` 收尾 / `error` 出错
+   */
+  phase?: string
+  /** 第几轮思考（`round` / `tool_call` / `tool_result` 有意义；`start` 等为 0） */
+  round?: number
   model?: string
   provider?: string
   /** meta：附件解析告警 */

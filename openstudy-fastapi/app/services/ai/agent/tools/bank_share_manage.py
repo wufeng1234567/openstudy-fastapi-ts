@@ -174,6 +174,10 @@ class BankShareManageTool(AgentTool):
     def is_destructive(self, params: Dict[str, Any]) -> bool:
         return str(params.get("action") or "") in self._DESTRUCTIVE_ACTIONS
 
+    def confirm_policy(self, params: Dict[str, Any]) -> bool:
+        """`share` / `copy` 都是轻量的一步操作（不影响他人、可撤销），不额外强制确认"""
+        return False
+
     # ------------------------------------------------------------------ 预览
 
     async def preview(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:

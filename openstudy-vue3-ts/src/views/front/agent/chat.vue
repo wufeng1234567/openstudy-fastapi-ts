@@ -411,7 +411,7 @@ import ResizableDrawer from '@/components/ResizableDrawer/index.vue'
 // 动态 import 会把「模块何时就绪」变成变量，是「刷新后先点别的 tab 再进设置，工具列表
 // 不加载」这类顺序敏感 bug 的温床（用户 2026-10-10 报）。静态 import 保证函数随时可用。
 import { fetchAgentToolsForUi } from '@/api/ai/agentDsFree'
-import { useAgentChat } from '@/composables/useAgentChat'
+import { useAgentChat, normalizeRestoredMessages } from '@/composables/useAgentChat'
 import { listSessions, createSession, deleteSession, getConversationHistory, saveConversationMessages, getAgentTimeline, attachmentPlaceholder, fillAttachmentMetas } from '@/api/ai/ai'
 import {
   listAgentConfigs,
@@ -948,7 +948,9 @@ const loadHistory = async (sid: string) => {
     // 会话累计执行统计从快照复原（老会话无统计 → 归零，与升级前一致）
     restoreMetrics(tl?.data?.metrics ?? null)
     if (Array.isArray(tlMsgs) && tlMsgs.length) {
-      messages.value = tlMsgs
+      // 快照里可能有「一轮没跑完」留下的悬空卡片（未收口的确认 / 转圈的工具卡）——
+      // 复原前统一收口，否则刷新后会冒出一张能点却没人应答的确认卡。
+      messages.value = normalizeRestoredMessages(tlMsgs)
       return
     }
     const res: any = await getConversationHistory(sid, userId.value)

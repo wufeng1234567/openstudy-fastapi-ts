@@ -234,6 +234,21 @@ class AgentTool(ABC):
         """
         return False
 
+    def confirm_policy(self, params: Dict[str, Any]) -> bool:
+        """按**数据规模 / 重要性**决定是否强制弹确认卡（旁路 `autoConfirm`）
+
+        返回 True → 无论用户是否开启「自动执行」都要确认；默认 False（维持现状）。
+        与另两个钩子的分工：
+          · `needs_confirmation`：这是不是一个需要确认的**写操作**；
+          · `is_destructive`：破坏性操作（删除类），一律强制确认；
+          · `confirm_policy`：**规模足够大**的普通写操作（如一次导入几十道题、
+            写入一大篇文档）也强制确认 —— 代价来自「量」，未必「不可逆」。
+
+        ⚠️ 跑在**流式热路径**里：必须防御式解析参数，解析失败一律返回 False（不弹卡），
+        绝不允许抛出。
+        """
+        return False
+
     async def preview(
         self, params: Dict[str, Any], ctx: ToolContext
     ) -> Dict[str, Any]:

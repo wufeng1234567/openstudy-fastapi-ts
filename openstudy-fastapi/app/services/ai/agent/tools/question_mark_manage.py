@@ -323,6 +323,10 @@ class QuestionFlagManageTool(AgentTool):
     def is_destructive(self, params: Dict[str, Any]) -> bool:
         return str(params.get("action") or "") in self._DESTRUCTIVE_ACTIONS
 
+    def confirm_policy(self, params: Dict[str, Any]) -> bool:
+        """`add` 一次只标记一道题（规模固定），不额外强制确认"""
+        return False
+
     def undo_plan(self, params: Dict[str, Any], result: Dict[str, Any]) -> Dict[str, Any] | None:
         """声明「这一笔标记操作用什么撤」（契约见 `base.AgentTool.undo_plan`）
 

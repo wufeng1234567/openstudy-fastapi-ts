@@ -253,6 +253,20 @@ class QuestionManageTool(AgentTool):
     def is_destructive(self, params: Dict[str, Any]) -> bool:
         return str(params.get("action") or "") in self._DESTRUCTIVE_ACTIONS
 
+    def confirm_policy(self, params: Dict[str, Any]) -> bool:
+        """`batch_import` 的**规模**够大（≥5 题）时强制确认；单题 create 不强制
+
+        复用预览/导入共用的 `_parse_questions`（同一套 JSON 修复），所以卡片上的
+        题数与真正会导入的题数不会漂移。⚠️ 热路径：解析失败一律不弹卡。
+        """
+        try:
+            if str(params.get("action") or "") != "batch_import":
+                return False
+            items, _warnings, _strategy = self._parse_questions(params)
+            return len(items) >= 5
+        except Exception:  # noqa: BLE001
+            return False
+
     async def preview(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
         """确认前把「影响范围」讲清楚：哪个题库、多少题、前几题长什么样
 
@@ -283,6 +297,15 @@ class QuestionManageTool(AgentTool):
                 question = await self._resolve_question(params, ctx)
                 if question is not None and not isinstance(question, dict):
                     preview["questionText"] = (question.question_text or "")[:80]
+            elif action == "create":
+                # 单题 create 一般不弹卡，但万一弹出（如用户关了自动执行）也要讲清楚建什么
+                preview["questionType"] = self._question_type(params)
+                text = str(params.get("question_text") or "").strip()
+                if text:
+                    preview["questionText"] = text[:80]
+                bank, _why = await self._preview_bank(params, ctx)
+                if bank is not None:
+                    preview["bankName"] = bank.bank_name
             elif action in ("delete_many", "clear_questions"):
                 preview.update(await self._preview_delete_scope(action, params, ctx))
 

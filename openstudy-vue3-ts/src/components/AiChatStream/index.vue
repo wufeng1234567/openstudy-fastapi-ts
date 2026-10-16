@@ -133,8 +133,18 @@
                   <el-icon v-else class="expert-fail"><CloseBold /></el-icon>
                 </span>
                 <span class="expert-name">{{ ex.name }}</span>
-                <span class="expert-task">{{ ex.status === 'running' ? (ex.task || '正在处理…') : (ex.summary || '已完成') }}</span>
+                <span class="expert-task">{{ ex.status === 'running' ? (ex.progress || ex.task || '正在处理…') : (ex.summary || '已完成') }}</span>
                 <el-icon class="expert-caret" :class="{ open: isExpertOpen(msg, ei) }"><ArrowDown /></el-icon>
+              </div>
+              <!--
+                进行中：展开「最近几条」执行步骤（弱化的小字），让用户看到子代理**正在做什么**。
+                完成后收起（结论由上面的摘要行 / 展开详情承担），避免长任务把卡片撑爆。
+              -->
+              <div v-if="ex.status === 'running' && ex.steps && ex.steps.length" class="expert-steps">
+                <div v-for="(st, si) in recentSteps(ex)" :key="si" class="expert-step">
+                  <span :class="['expert-step-dot', 'sd-' + stepState(st)]"></span>
+                  <span class="expert-step-text">{{ st.message }}</span>
+                </div>
               </div>
               <div v-if="isExpertOpen(msg, ei)" class="expert-detail">
                 <div v-if="ex.task" class="expert-detail-block">
@@ -310,6 +320,16 @@ const toggleExpert = (msg: any, rowIdx: number) => {
   if (s.has(k)) s.delete(k)
   else s.add(k)
   expertOpen.value = s
+}
+
+/** 专家行里展示的**最近几条**执行步骤（`useAgentChat` 已把总长截到 ~20 条） */
+const recentSteps = (ex: any) => (Array.isArray(ex?.steps) ? ex.steps.slice(-4) : [])
+
+/** 步骤状态 → 圆点配色：`error` 或 `success:false` 记失败，`success:true` 记完成，其余进行中 */
+const stepState = (st: any) => {
+  if (st?.phase === 'error' || st?.success === false) return 'fail'
+  if (st?.success === true) return 'ok'
+  return 'running'
 }
 
 const emit = defineEmits([
@@ -1409,6 +1429,51 @@ defineExpose({ scrollToBottom, messagesRef, setInputText })
   min-width: 0;
   font-size: 12.5px;
   color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 进行中展开的最近步骤（弱化小字）—— 只表达「它现在做到哪一步」 */
+.expert-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0 12px 8px 36px;
+}
+
+.expert-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #94a3b8;
+}
+
+.expert-step-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #cbd5e1;
+}
+
+.expert-step-dot.sd-running {
+  background: #93b4f5;
+}
+
+.expert-step-dot.sd-ok {
+  background: #22c55e;
+}
+
+.expert-step-dot.sd-fail {
+  background: #ef4444;
+}
+
+.expert-step-text {
+  flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

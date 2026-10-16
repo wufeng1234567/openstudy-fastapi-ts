@@ -17,7 +17,9 @@
   · `delegate_llm`        —— 已构造好的 LLM 客户端（与指挥家同一个模型）；
   · `delegate_roles`      —— `{role_key: RoleSpec}`（官方 + 用户自定义，供按名查找）；
   · `delegate_exclude`    —— `{role_key: set(排除工具名)}`（预计算的子代理工具排除集）；
-  · `delegate_extra`      —— 透传给子代理 `ToolContext.extra` 的附加键（如 attachments）。
+  · `delegate_llms`      —— `{role_key: LLM}`（用户给某专家挑的模型覆盖；没覆盖的复用指挥家 llm）；
+  · `delegate_extra`     —— 透传给子代理 `ToolContext.extra` 的附加键（如 attachments）；
+  · `delegate_emit`      —— 本 job 的**观测回调**（并发批次里 loop 按 job 注入；缺省=None）。
 本工具从这些键取用；缺任何一个都返回明确的 `fail()`（而不是崩）。
 """
 
@@ -110,6 +112,10 @@ class DelegateTaskTool(AgentTool):
         # 并发委派：本批次的多个 delegate_task 由 loop 并发执行，**每个子代理必须独立开会话**
         # （asyncpg 单连接不能并发复用；共用指挥家会话会在 begin_nested 处冲突）。见 sub_agent 说明。
         parallel = bool(extra.get("delegate_parallel"))
+        # 内部执行的**观测回调**：指挥家并发批次里每个 job 自带一个（loop 按 job 注入到本 ctx 的
+        # `delegate_emit`）—— 子代理的中间过程借此流回指挥家的 SSE（`subagent_event`）。
+        # 非指挥家链路（ds-free / 单步）没有这个键 → None（观测是旁路，绝不参与调度）。
+        on_event = extra.get("delegate_emit")
 
         result = await run_sub_agent(
             ctx.db,
@@ -121,6 +127,7 @@ class DelegateTaskTool(AgentTool):
             excluded_tools=excludes.get(key),
             extra=sub_extra,
             own_session=parallel,
+            on_event=on_event if callable(on_event) else None,
         )
 
         if not result.get("success"):

@@ -226,7 +226,7 @@ import {
 } from '@/api/ai/ai'
 import { listMyQuestionBank } from '@/api/questionBank/questionBank'
 import { useStreamGeneration } from '@/composables/useStreamGeneration'
-import { useAgentChat, isDsFreeModel } from '@/composables/useAgentChat'
+import { useAgentChat, isDsFreeModel, normalizeRestoredMessages } from '@/composables/useAgentChat'
 import { showDsBridge } from '@/api/ai/agent'
 import { ElMessage } from 'element-plus'
 import AiChatStream from '@/components/AiChatStream/index.vue'
@@ -967,7 +967,8 @@ const loadMessages = async () => {
 
     if (agentMode.value && Array.isArray(tlMsgs) && tlMsgs.length) {
       // 智能体：优先用「完整时间线快照」复原（含工具卡片）；老会话没有快照就走下面的普通问答。
-      agentMessages.value.push(...tlMsgs)
+      // 快照里可能有「一轮没跑完」留下的悬空卡片 → 复原前统一收口（见 normalizeRestoredMessages）。
+      agentMessages.value.push(...normalizeRestoredMessages(tlMsgs))
       // 快照只覆盖到上次 Agent 运行结束；期间如果切到聊天模式聊过，那几轮只会落在
       // `ai_chat_message` 里 → 把快照缺的尾部补回来，否则「切过模式再刷新」会感觉
       // 对话凭空少了一截（用纯问答投影的长度当断点，和 `syncMessagesForMode` 同一套算法）。

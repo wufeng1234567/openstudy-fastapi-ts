@@ -30,7 +30,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from loguru import logger
 
@@ -159,6 +159,7 @@ async def run_sub_agent(
     max_loops: int = SUB_AGENT_MAX_LOOPS,
     extra: Optional[Dict[str, Any]] = None,
     own_session: bool = False,
+    on_event: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
 ) -> Dict[str, Any]:
     """跑一个子代理，返回 `{"success", "text", "steps"}`
 
@@ -183,6 +184,8 @@ async def run_sub_agent(
             ⚠️ 并发（`own_session=True`）时，子代理的写操作**自行提交**、其回退账本记在
               自己的事务里 —— 与指挥家主事务不再同源。这是"真并行"的必然代价：
               并行子任务无法共享一个 SAVEPOINT。需要"整轮可回退"的场景应走串行委派。
+        on_event: 可选的**观测回调**（结构化事件）。传 None 时为纯 no-op —— 观测绝不能
+            影响执行：回调抛出的任何异常都会被吞掉。指挥家委派时由 loop 注入（见 delegate.py）。
 
     Returns:
         {"success": bool, "text": str, "steps": [工具名...], "error": str|None}
@@ -212,6 +215,7 @@ async def run_sub_agent(
             max_loops=max_loops,
             extra=extra,
             commit_writes=own_session or db_session is not None,
+            on_event=on_event,
         )
     finally:
         if db_session is not None:
@@ -230,12 +234,31 @@ async def _run_sub_agent_inner(
     max_loops: int,
     extra: Optional[Dict[str, Any]],
     commit_writes: bool,
+    on_event: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
 ) -> Dict[str, Any]:
     """子代理内层循环的实体（`run_sub_agent` 负责会话生命周期，这里只管跑）"""
     from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 
     from app.services.ai.agent import orchestrator
     from app.services.ai.agent import loop as loop_mod
+
+    async def _emit(ev: Dict[str, Any]) -> None:
+        """把一条观测事件交给回调；**吞掉一切异常**（观测绝不能打断执行）"""
+        if on_event is None:
+            return
+        try:
+            await on_event(ev)
+        except Exception as e:  # noqa: BLE001 - 观测失败不影响执行
+            logger.debug("[sub_agent:{}] on_event 回调异常: {}", role_spec.key, e)
+
+    def _digest(result: Any) -> str:
+        """工具结果的短摘要（给界面看的一句话，~80 字）"""
+        if not isinstance(result, dict):
+            return str(result or "")[:80]
+        msg = result.get("message") or result.get("error")
+        if not msg:
+            return "完成" if result.get("success") else "执行失败"
+        return str(msg)[:80]
 
     # 1) 子代理工具集：白名单 ∪ 全局工具，再扣用户屏蔽
     if excluded_tools is None:
@@ -254,6 +277,14 @@ async def _run_sub_agent_inner(
             "[sub_agent:{}] 工具集为空（excluded={}），无法执行任务",
             role_spec.key, sorted(excluded_tools),
         )
+        await _emit({
+            "phase": "error",
+            "round": 0,
+            "tool": "",
+            "action": "",
+            "message": "没有可用工具，任务未执行",
+            "success": False,
+        })
         return {
             "success": False,
             "text": "",
@@ -265,10 +296,15 @@ async def _run_sub_agent_inner(
         }
 
     # 2) 子代理系统提示词：persona 优先，回退 prompt_fragment，再回退一句通用说明
+    #    ⚠️ 末尾追加**结论语言**约束：子代理产出会原样显示在专家卡片上，必须与用户语言一致，
+    #       否则全英文基础规则会让它回英文（用户 2026-10-16 报）。语言由指挥家经
+    #       `extra["user_language"]` 透传（见 loop.py `delegate_extra`）。
     persona = (role_spec.persona or role_spec.prompt_fragment or "").strip()
     system_text = (
         (persona + "\n\n") if persona else ""
-    ) + _SUB_AGENT_BASE_RULES
+    ) + _SUB_AGENT_BASE_RULES + _sub_agent_language_rule(
+        str((extra or {}).get("user_language") or "中文")
+    )
 
     ctx = ToolContext(
         db=db,
@@ -294,12 +330,37 @@ async def _run_sub_agent_inner(
         len(tool_defs),
         [d.get("function", {}).get("name") for d in tool_defs],
     )
+    await _emit({
+        "phase": "start",
+        "round": 0,
+        "tool": "",
+        "action": "",
+        "message": f"开始处理任务（可用工具 {len(tool_defs)} 个）",
+        "success": None,
+    })
 
     for round_no in range(max(1, int(max_loops))):
+        cur_round = round_no + 1
+        await _emit({
+            "phase": "round",
+            "round": cur_round,
+            "tool": "",
+            "action": "",
+            "message": f"第 {cur_round} 轮思考",
+            "success": None,
+        })
         try:
             ai = await bound.ainvoke(messages)
         except Exception as e:  # noqa: BLE001 - 子代理失败要带回给指挥家，不抛
             logger.warning("[sub_agent:{}] LLM 调用失败: {}", role_spec.key, e)
+            await _emit({
+                "phase": "error",
+                "round": cur_round,
+                "tool": "",
+                "action": "",
+                "message": f"模型调用失败：{str(e)[:60]}",
+                "success": False,
+            })
             return {"success": False, "text": "", "steps": steps, "error": str(e)}
 
         tool_calls = getattr(ai, "tool_calls", None) or []
@@ -329,6 +390,14 @@ async def _run_sub_agent_inner(
                     continue
                 # 纠正多次仍不改 → 明确失败（绝不把协议文本当结论交回指挥家）
                 logger.warning("[sub_agent:{}] 连续 {} 次吐协议文本，放弃", role_spec.key, format_fix_streak)
+                await _emit({
+                    "phase": "error",
+                    "round": cur_round,
+                    "tool": "",
+                    "action": "",
+                    "message": "模型多次把工具调用写成了文本，任务未执行",
+                    "success": False,
+                })
                 return {
                     "success": False,
                     "text": "",
@@ -355,6 +424,14 @@ async def _run_sub_agent_inner(
                     messages.append(HumanMessage(content=_SUB_AGENT_NO_TOOL_FIX))
                     continue
                 logger.warning("[sub_agent:{}] 连续 {} 次谎称没工具，放弃", role_spec.key, format_fix_streak)
+                await _emit({
+                    "phase": "error",
+                    "round": cur_round,
+                    "tool": "",
+                    "action": "",
+                    "message": "模型多次声称没有可用工具，任务未执行",
+                    "success": False,
+                })
                 return {
                     "success": False,
                     "text": "",
@@ -369,6 +446,14 @@ async def _run_sub_agent_inner(
             params = dict((tc or {}).get("args") or {})
             call_id = (tc or {}).get("id") or ""
             tool = registry.get(name)
+            await _emit({
+                "phase": "tool_call",
+                "round": cur_round,
+                "tool": name,
+                "action": str(params.get("action") or ""),
+                "message": f"正在调用 {getattr(tool, 'label', None) or name}…",
+                "success": None,
+            })
             if tool is None or name in excluded_tools:
                 # 子代理不该调这个工具（不在白名单 / 不存在）→ 回灌失败让它改用别的
                 result = {
@@ -386,11 +471,27 @@ async def _run_sub_agent_inner(
                         await db.commit()
                     except Exception as e:  # noqa: BLE001 - 提交失败不影响子代理给出结论
                         logger.warning("[sub_agent:{}] 写操作提交失败: {}", role_spec.key, e)
+            await _emit({
+                "phase": "tool_result",
+                "round": cur_round,
+                "tool": name,
+                "action": str(result.get("action") or params.get("action") or ""),
+                "message": _digest(result),
+                "success": bool(result.get("success")),
+            })
             messages.append(
                 ToolMessage(content=_dumps(result), tool_call_id=call_id)
             )
 
     # 往返用尽：让它做个收尾（不带工具），拿一段总结
+    await _emit({
+        "phase": "wrapup",
+        "round": max(1, int(max_loops)),
+        "tool": "",
+        "action": "",
+        "message": "达到步数上限，正在收尾总结",
+        "success": None,
+    })
     try:
         tail = await llm.ainvoke(
             messages + [HumanMessage(content=_SUB_AGENT_WRAPUP)]
@@ -403,6 +504,11 @@ async def _run_sub_agent_inner(
 
 
 #: 子代理的通用基础规则（英文，追加在 persona 之后）
+#:
+#: ⚠️ **结论/总结必须用「用户的语言」**（默认中文）：子代理的产出会经 `delegate_done`
+#:    原样显示在专家卡片上，若这里不约束，模型会顺着全英文系统提示词回一段英文
+#:    （用户 2026-10-16 报「专家卡片仍在说英文」）。具体语言由 `run_sub_agent` 通过
+#:    `extra["user_language"]` 注入的 `_SUB_AGENT_LANGUAGE_RULE` 追加在末尾（见下）。
 _SUB_AGENT_BASE_RULES = (
     "## Working Rules\n"
     "- You are a background specialist. Your output goes back to the main assistant, "
@@ -413,6 +519,23 @@ _SUB_AGENT_BASE_RULES = (
     "- When done, reply with a concise, factual summary of what you did/found "
     "(plain text, no meta-commentary)."
 )
+
+
+def _sub_agent_language_rule(language: str) -> str:
+    """给子代理追加**结论语言**约束（`language` 是人类可读语言名，如「中文」「English」）
+
+    子代理的总结会被专家卡片原样展示，必须与用户语言一致 —— 这段覆盖全英文的基础规则，
+    否则模型会跟着系统提示词回英文（用户报的线上问题）。
+    """
+    lang = (language or "").strip() or "中文"
+    return (
+        "\n\n## Output Language (IMPORTANT)\n"
+        f"- Write your final summary in **{lang}** — this is the language the user reads.\n"
+        "- The rest of this prompt being English does NOT mean you should answer in English.\n"
+        "- Keep proper nouns / tool names / field values (e.g. `questionType`, `bank_name`) "
+        "as-is; everything else must be in the language above."
+    )
+
 
 #: 往返用尽时的收尾指令
 _SUB_AGENT_WRAPUP = (

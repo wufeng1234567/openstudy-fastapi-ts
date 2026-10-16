@@ -176,8 +176,32 @@ class KnowledgeIngestTool(AgentTool):
     write_operation = True
 
     def needs_confirmation(self, params: Dict[str, Any]) -> bool:
-        # 所有 action 都会写库 + 花钱调 embedding，一律要确认
-        return True
+        # 写操作判定改为「按规模」：小内容不再强制弹卡（详见 confirm_policy）。
+        # ⚠️ 工具清单的探测调用只传 `action`、没有正文 → confirm_policy 保守回 True，
+        #    所以本工具仍会出现在 `GET /ai/agent/tools` 的 write 清单里。
+        return self.confirm_policy(params)
+
+    def confirm_policy(self, params: Dict[str, Any]) -> bool:
+        """按**数据规模**决定是否强制确认：长文（≥3000 字 或 ≥8 块）才弹卡
+
+        `from_text` 的正文就在参数里，能量出规模；`from_attachment` 的正文在
+        `ctx.extra`（本钩子拿不到 ctx），量不到 → 保守保留确认。
+        探测调用（只传 `action`、`text is None`）同样保守返回 True。
+        ⚠️ 跑在流式热路径：防御式解析，解析失败一律 False。
+        """
+        try:
+            action = str(params.get("action") or "")
+            if action == "from_text":
+                raw = params.get("text")
+                if raw is None:
+                    return True
+                text = str(raw)
+                return len(text) >= 3000 or _estimate_chunks(text) >= 8
+            if action == "from_attachment":
+                return True
+            return False
+        except Exception:  # noqa: BLE001
+            return False
 
     def is_destructive(self, params: Dict[str, Any]) -> bool:
         # 新建文档不破坏用户现有数据

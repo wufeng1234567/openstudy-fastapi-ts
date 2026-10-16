@@ -55,6 +55,27 @@ export interface AgentExpertProgress {
   task?: string
   /** 完成后的结论摘要 */
   summary?: string
+  /**
+   * 进行中的**最近一行**进展文案（`subagent_event` 的 `message`）—— 进行中时优先于 `task`
+   * 显示，让用户看到它「现在」在干嘛，而不是只看到派给它的原始任务。
+   */
+  progress?: string
+  /**
+   * 子代理的阶段步骤（`subagent_event` 累积）。**只留最近若干条**（见
+   * `SUBAGENT_STEPS_LIMIT`）：一轮子代理可能有几十次工具往返，全留会让快照与界面都膨胀。
+   */
+  steps?: Array<{
+    /** 阶段：`start` / `round` / `tool_call` / `tool_result` / `wrapup` / `error` */
+    phase: string
+    /** 面向用户的一句话 */
+    message: string
+    /** 该步涉及的工具（`tool_call` / `tool_result` 有） */
+    tool?: string
+    /** 结果：`null` = 进行中 / `true` 成功 / `false` 失败 */
+    success?: boolean | null
+    /** 第几轮思考 */
+    round?: number
+  }>
 }
 
 /**
@@ -257,6 +278,14 @@ const TIMELINE_DATA_LIMIT = 20000
 const TIMELINE_REASONING_LIMIT = 4000
 
 /**
+ * 每个专家行最多保留的**子代理步骤**条数（`subagent_event` 累积）。
+ *
+ * 一个子代理一轮可能跑几十次工具往返，事件量远超用户在卡片上想看的量。留最近若干条
+ * 就够表达「它现在做到哪、刚做完什么」，也让落库快照不至于被步骤撑大。
+ */
+const SUBAGENT_STEPS_LIMIT = 20
+
+/**
  * 落库前给消息流瘦身
  *
  * 只保留渲染需要的字段；`data`（工具原始返回，可能含整批题目）超过上限时
@@ -288,6 +317,13 @@ function slimTimeline(msgs: AgentChatMessage[]): any[] {
     if (m.detail) out.detail = m.detail
     if (m.errors?.length) out.errors = m.errors
     if (m.params) out.params = m.params
+    // 二次确认卡片的三件套：漏了哪个刷新后卡片都会走样 ——
+    //   · `confirmId` 是身份（本地 resolve / 后端唤醒都靠它）；
+    //   · `destructive` 决定标题与配色（漏了「批量删除」会显示成普通确认）；
+    //   · `preview` 是「将影响什么」的清单（漏了用户不知道自己在确认什么）。
+    if (m.confirmId) out.confirmId = m.confirmId
+    if (m.destructive != null) out.destructive = m.destructive
+    if (m.preview) out.preview = m.preview
     if (m.attempt != null) out.attempt = m.attempt
     if (m.attachments?.length) out.attachments = m.attachments
     // 专家工作组卡片：整条 `experts` 数组落库，刷新后仍能看到「这轮请了哪些专家、结果如何」。
@@ -307,6 +343,32 @@ function slimTimeline(msgs: AgentChatMessage[]): any[] {
       }
     }
     return out
+  })
+}
+
+/**
+ * 复原落库快照时**修正「没有收口」的卡片**（刷新后不该看到永远转圈 / 永远待确认的卡片）。
+ *
+ * 快照可能是在**一轮没跑完**时写下的（用户点了「停止」、或取消了确认后又立刻刷新）：
+ *   · `tool_confirm` 仍是 `running` → 刷新后冒出一张**还能点**的确认卡，点下去却没人应答
+ *     （后端那一轮早就不在了）；
+ *   · `tool_result` 仍是 `running` → 永远转圈的工具卡片。
+ * 这两类在快照里都**不可信**，复原时统一收口成 `fail`（与 `stop()` 的口径一致，文案中性）。
+ *
+ * ⚠️ 只修正「running」这一个状态：已 `ok` / `fail` / `cancelled` 的都是用户或后端**明确
+ * 给出过**的结论，不许覆盖。
+ */
+export function normalizeRestoredMessages(msgs: any[]): any[] {
+  if (!Array.isArray(msgs)) return []
+  return msgs.map((m) => {
+    if (!m || typeof m !== 'object' || m.status !== 'running') return m
+    if (m.type === 'tool_confirm') {
+      return { ...m, status: 'fail', content: '已取消 / 已中断' }
+    }
+    if (m.type === 'tool_result') {
+      return { ...m, status: 'fail' }
+    }
+    return m
   })
 }
 
@@ -845,6 +907,31 @@ export function useAgentChat() {
   }
 
   /**
+   * 把当前时间线**尽快**补写落库（best-effort）—— 确认卡片状态一变就调。
+   *
+   * 为什么需要：快照原先**只在轮末**（`send()` 的 finally）与回退时写。用户取消（或确认）
+   * 一张确认卡后、本轮收尾之前若刷新页面，磁盘上仍是「待确认」的那一版 → 刷新后卡片又
+   * 变回可点的样子（用户报的 bug）。所以在确认状态一变就补写一次。
+   *
+   * 用 0ms 去抖合并同一拍里的多次调用（`resolveConfirm` 与紧随的 `tool_confirm_resolved`
+   * 是同一件事的两半）；`fire-and-forget`，失败只记 console —— 落库失败不能挡住本地状态。
+   */
+  let timelineSaveTimer: ReturnType<typeof setTimeout> | null = null
+  const persistTimelineSoon = () => {
+    const sid = lastSessionId.value
+    if (!sid) return
+    if (timelineSaveTimer) clearTimeout(timelineSaveTimer)
+    timelineSaveTimer = setTimeout(() => {
+      timelineSaveTimer = null
+      saveAgentTimeline(sid, slimTimeline(messages.value), undefined, metricsSnapshot()).catch(
+        (e) => {
+          console.warn('[agent] 确认状态落库失败', e)
+        }
+      )
+    }, 0)
+  }
+
+  /**
    * 用户点了「确认」/「取消」（页面调用）
    *
    * - ds-free：前端循环在等 → 本地 resolve
@@ -865,7 +952,11 @@ export function useAgentChat() {
     const msg = messages.value.find(
       (m) => m.type === 'tool_confirm' && m.confirmId === confirmId
     )
-    if (msg) msg.status = approved ? 'ok' : 'fail'
+    if (msg) {
+      msg.status = approved ? 'ok' : 'fail'
+      // 状态一变就补写快照 —— 否则用户取消后、轮末之前刷新，磁盘上还是「待确认」那一版
+      persistTimelineSoon()
+    }
     const local = pendingConfirms.get(confirmId)
     if (local) {
       pendingConfirms.delete(confirmId)
@@ -1060,6 +1151,42 @@ export function useAgentChat() {
   }
 
   /**
+   * `subagent_event` → 把子代理的阶段进展挂到专家卡片对应那一行（进行中时展示）。
+   *
+   * 观测是**旁路**：行找不到就**什么都不做** —— 绝不像 `delegate_start` 那样补建卡片。
+   * 补建出来的行没有任务摘要、还可能把「单个专家」变成「多专家协同」，凭空改变产品形态。
+   * 正常序列是 `delegate_start`（建行）先到、`subagent_event` 随后，行一定在。
+   */
+  const pushSubagentEvent = (event: AgentEvent) => {
+    const idx = Number(event.index ?? -1)
+    const ag = event.agent || {}
+    const card = findExpertCard()
+    if (!card || !Array.isArray(card.experts)) return
+    // 优先按 index 定位（后端保证与 delegate_start 同源）；index 缺失时退回「按 key 找最近一行」。
+    let row = idx >= 0 ? card.experts.find((e) => e.index === idx) : undefined
+    if (!row) {
+      const key = String(ag.id || '')
+      row = [...card.experts].reverse().find((e) => e.key === key)
+    }
+    if (!row) return
+    // 已完成的行不再接受进展（迟到的事件）：别让「对勾」后面又冒出「第 2 轮思考」。
+    if (row.status !== 'running') return
+    if (!Array.isArray(row.steps)) row.steps = []
+    row.steps.push({
+      phase: String(event.phase || ''),
+      message: String(event.message || ''),
+      tool: event.tool ? String(event.tool) : undefined,
+      success: typeof event.success === 'boolean' ? event.success : null,
+      round: Number(event.round) || 0
+    })
+    // 只留最近 N 条：长任务会有几十步，全留既费内存又没人看
+    if (row.steps.length > SUBAGENT_STEPS_LIMIT) {
+      row.steps.splice(0, row.steps.length - SUBAGENT_STEPS_LIMIT)
+    }
+    if (event.message) row.progress = String(event.message)
+  }
+
+  /**
    * 轮末清理：**只有一位专家时，不显示「专家协同」卡片**。
    *
    * 产品口径（用户 2026-10-11）：单个专家被派活时，对用户就当是**主助手自己完成的**
@@ -1124,7 +1251,10 @@ export function useAgentChat() {
         const m = messages.value.find(
           (x) => x.type === 'tool_confirm' && x.confirmId === event.confirmId
         )
-        if (m) m.status = event.approved ? 'ok' : 'fail'
+        if (m) {
+          m.status = event.approved ? 'ok' : 'fail'
+          persistTimelineSoon()
+        }
         break
       }
 
@@ -1155,6 +1285,11 @@ export function useAgentChat() {
 
       case 'delegate_done':
         fillExpertDone(event)
+        break
+
+      // 子代理中间过程（观测旁路）→ 挂到专家卡片那一行的进度上。
+      case 'subagent_event':
+        pushSubagentEvent(event)
         break
 
       case 'self_correct':
@@ -1576,6 +1711,11 @@ export function useAgentChat() {
     controller?.abort()
     controller = null
     isGenerating.value = false
+    // 中止时把还「待确认」的卡片收口成「已取消」：否则本轮 finally 的快照会把 running 的
+    // 确认卡存下去，刷新后又冒出一张能点、却没人应答的卡片（用户报的 bug）。
+    for (const m of messages.value) {
+      if (m.type === 'tool_confirm' && m.status === 'running') m.status = 'fail'
+    }
     pendingConfirms.forEach((resolve) => resolve(false))
     pendingConfirms.clear()
     clearPlaceholder()
