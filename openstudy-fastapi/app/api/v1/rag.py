@@ -339,6 +339,9 @@ async def get_document_content(
                 "fileName": doc.file_name,
                 "content": doc.raw_content or "",
                 "contentLength": len(doc.raw_content or ""),
+                # 图片清单：{"0": "/profile/upload/...", ...}，键即正文里 `【图N】` 的 N。
+                # 前端据此把正文中的标记渲染成真实图片（否则只会看到「【图0】」文字）。
+                "imageMap": doc.image_map or {},
             }
         )
     except Exception as e:

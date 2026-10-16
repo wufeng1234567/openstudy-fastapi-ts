@@ -288,9 +288,29 @@
         <div class="kb-chunk-head">
           <span class="kb-chunk-idx">第 {{ c.chunkIndex + 1 }} 段</span>
           <span class="kb-chunk-len">{{ c.contentLength || c.content.length }} 字</span>
+          <el-tag v-if="c.images && c.images.length" type="warning" size="small" effect="light">
+            {{ c.images.length }} 张图
+          </el-tag>
           <el-tag v-if="c.vectorized === false" type="warning" size="small" effect="light">无向量</el-tag>
         </div>
-        <div class="kb-chunk-text">{{ c.content }}</div>
+        <!-- 图文混排：正文里的【图N】渲染成真实图片，其余按纯文本显示（不 v-html 用户内容，防注入） -->
+        <div class="kb-chunk-text">
+          <template v-for="(seg, si) in splitChunkSegments(c)" :key="si">
+            <el-image
+              v-if="seg.type === 'image'"
+              :src="kbImageUrl(seg.url)"
+              fit="contain"
+              class="kb-chunk-img"
+              :preview-src-list="[kbImageUrl(seg.url)]"
+              preview-teleported
+            >
+              <template #error>
+                <div class="kb-chunk-img-err">图片加载失败</div>
+              </template>
+            </el-image>
+            <span v-else class="kb-chunk-txt">{{ seg.text }}</span>
+          </template>
+        </div>
       </div>
       <div v-if="!chunksLoading && !chunks.length" class="kb-doc-empty">没有分块</div>
     </div>
@@ -1066,6 +1086,51 @@ const reprocess = async (doc: RagDocument) => {
   } catch (e: any) {
     ElMessage.error(e?.message || '重试失败')
   }
+}
+
+/**
+ * 图片 URL 归一：data URL / http(s) 原样；相对路径（`/profile/...`）拼上 API 前缀。
+ *
+ * ⚠️ 与出题面板 `AiQuestionBuilder.getFullImageUrl` 同口径。`VITE_APP_BASE_API`
+ * 为空串时拼出来就是单斜杠相对路径（正确）；非空时为 `/dev-api` 等前缀。
+ */
+const kbImageUrl = (url: string): string => {
+  const v = String(url || '').trim()
+  if (!v) return ''
+  if (v.startsWith('data:') || v.startsWith('http://') || v.startsWith('https://')) return v
+  const base = (import.meta.env.VITE_APP_BASE_API || '').replace(/\/$/, '')
+  return base + (v.startsWith('/') ? v : '/' + v)
+}
+
+/**
+ * 把一个分块拆成「文本段 / 图片段」交错数组，供模板图文混排渲染。
+ *
+ * 正文里的 `【图N】` 是**位置标记**（后端 `build_marked_document` 生成），N 对应
+ * 该分块 `images[N]`（后端已按标记归属）。这里把标记替换成图片段；
+ * 标记指向的图不存在时，退化为原样文本（不丢信息）。
+ *
+ * 返回：`[{type:'text',text} | {type:'image',url}]`
+ */
+const splitChunkSegments = (c: any): any[] => {
+  const text = String(c?.content || '')
+  const imgs: string[] = Array.isArray(c?.images) ? c.images : []
+  if (!text || !/【图\d+】/.test(text)) {
+    return text ? [{ type: 'text', text }] : []
+  }
+  const segs: any[] = []
+  const re = /【图(\d+)】/g
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) segs.push({ type: 'text', text: text.slice(last, m.index) })
+    const n = parseInt(m[1], 10)
+    const url = n >= 0 && n < imgs.length ? imgs[n] : ''
+    if (url) segs.push({ type: 'image', url })
+    else segs.push({ type: 'text', text: m[0] }) // 图缺失 → 保留标记原文
+    last = m.index + m[0].length
+  }
+  if (last < text.length) segs.push({ type: 'text', text: text.slice(last) })
+  return segs
 }
 
 const showChunks = async (doc: RagDocument) => {
@@ -1878,6 +1943,24 @@ defineExpose({ activate, refreshList, getKbCount })
   color: #33415c;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* 分块里的图片段（`【图N】` 渲染而来） */
+.kb-chunk-img {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  margin: 8px 0;
+  border-radius: 6px;
+  border: 1px solid #eef2f7;
+  background: #fafbfc;
+}
+
+.kb-chunk-img-err {
+  padding: 12px;
+  font-size: 12px;
+  color: #c0c4cc;
+  text-align: center;
 }
 
 /* ========== 粘贴文本 ========== */

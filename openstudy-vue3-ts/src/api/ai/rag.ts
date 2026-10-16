@@ -50,6 +50,11 @@ export interface RagChunk {
   contentLength?: number
   /** 是否已经带上向量（没向量的分块检索不到） */
   vectorized?: boolean
+  /**
+   * 该分块夹带的图片 URL（`/profile/upload/...` 相对路径）。
+   * 正文里的 `【图N】` 标记据此渲染成缩略图；空 = 这一块没有图。
+   */
+  images?: string[]
 }
 
 export interface RagSearchHit {

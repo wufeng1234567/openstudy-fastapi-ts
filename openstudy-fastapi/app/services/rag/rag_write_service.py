@@ -557,9 +557,25 @@ async def list_chunks(db: AsyncSession, user_id: int, doc_id: int, limit: int = 
             "content": c.content,
             "contentLength": c.content_length,
             "vectorized": c.embedding is not None,
+            # 该分块夹带的图片（`/profile/...` 相对路径）。前端据此把正文里的
+            # `【图N】` 标记渲染成缩略图（原来只回 content，图信息被丢掉，
+            # 于是预览里只剩一个光秃秃的「【图0】」）。
+            "images": _chunk_images(c),
         }
         for c in rows
     ]
+
+
+def _chunk_images(chunk: RagDocumentChunk) -> list:
+    """从分块 `meta_data` 取图片 URL 列表（容错：任何异常 = 无图）。"""
+    try:
+        meta = chunk.meta_data
+        if not isinstance(meta, dict):
+            return []
+        imgs = meta.get("images")
+        return [str(u) for u in imgs if u] if isinstance(imgs, list) else []
+    except Exception:  # noqa: BLE001
+        return []
 
 
 # ---------------------------------------------------------------- 序列化
