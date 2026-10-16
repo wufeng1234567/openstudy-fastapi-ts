@@ -30,11 +30,12 @@
 from __future__ import annotations
 
 import re
+import uuid
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from loguru import logger
 
-from app.services.ai.agent.base import ToolContext
+from app.services.ai.agent.base import ToolContext, fail
 from app.services.ai.agent.registry import registry
 
 
@@ -313,6 +314,11 @@ async def _run_sub_agent_inner(
         extra={**(extra or {}), "sub_agent": role_spec.key},
     )
 
+    # 子代理与指挥家**同一套确认规则**：需要确认的写操作（破坏性 / 规模闸门 /
+    # 用户关掉了自动执行）在执行前弹同一张 `tool_confirm` 卡片。`auto_confirm` 由指挥家经
+    # `delegate_extra` 透传（见 delegate.py / loop.py），缺省 True = 维持原有自动执行。
+    auto_confirm = bool((extra or {}).get("auto_confirm", True))
+
     messages: List[Any] = [
         SystemMessage(content=system_text),
         HumanMessage(content=task or ""),
@@ -454,6 +460,7 @@ async def _run_sub_agent_inner(
                 "message": f"正在调用 {getattr(tool, 'label', None) or name}…",
                 "success": None,
             })
+            cancelled = False
             if tool is None or name in excluded_tools:
                 # 子代理不该调这个工具（不在白名单 / 不存在）→ 回灌失败让它改用别的
                 result = {
@@ -462,21 +469,66 @@ async def _run_sub_agent_inner(
                     "hint": "请改用你可用的工具，或直接给出结论",
                 }
             else:
-                steps.append(name)
-                result = await loop_mod._execute_tool(tool, params, ctx)
-                # 独立会话：写操作必须自己提交（本会话没有外层主循环的统一 commit，
-                # 关会话时会回滚未提交的写）—— 见 run_sub_agent 的 own_session 说明
-                if commit_writes and tool.write_operation and result.get("success"):
-                    try:
-                        await db.commit()
-                    except Exception as e:  # noqa: BLE001 - 提交失败不影响子代理给出结论
-                        logger.warning("[sub_agent:{}] 写操作提交失败: {}", role_spec.key, e)
+                # 需要确认的写操作 → **执行前**发同一张 `tool_confirm` 卡片并挂起等用户决定。
+                # 事件经 `_emit`（= 指挥家按 job 注入的 `delegate_emit`）流回 loop，由 loop
+                # 识别为**真正的** `tool_confirm` 下发前端（不裹成 subagent_event）。
+                run_tool = True
+                try:
+                    if loop_mod.needs_user_confirmation(tool, params, auto_confirm):
+                        confirm_id = f"cfm_{uuid.uuid4().hex[:12]}"
+                        preview: Dict[str, Any] = {}
+                        try:
+                            preview = await tool.preview(params, ctx)
+                        except Exception as e:  # noqa: BLE001 - 预览是增强项，失败不阻断
+                            logger.warning(
+                                "[sub_agent:{}] preview 失败 {}: {}", role_spec.key, name, e
+                            )
+                        await _emit({
+                            "type": "tool_confirm",
+                            "confirmId": confirm_id,
+                            "tool": name,
+                            "action": str(params.get("action") or ""),
+                            "message": f"即将执行 {getattr(tool, 'label', None) or name}",
+                            "params": loop_mod._safe_params(params),
+                            "preview": preview,
+                            "destructive": bool(tool.is_destructive(params)),
+                        })
+                        approved, edited = await loop_mod._await_user_confirmation(confirm_id)
+                        if not approved:
+                            # 给模型的是**失败信封**（别重复同一操作）；界面侧的中性 tool_result
+                            # 由下方 `cancelled` 分支统一用「已取消」。
+                            cancelled = True
+                            run_tool = False
+                            result = fail(
+                                "用户取消了这次操作",
+                                "不要重复尝试同一个操作；若仍需完成目标，请换一种方式或先询问用户",
+                            )
+                        elif edited:
+                            params = await loop_mod._apply_edited_params(
+                                tool, params, edited, ctx
+                            )
+                except Exception as e:  # noqa: BLE001 - 确认流程异常绝不拖垮子代理：退回原样执行
+                    logger.warning(
+                        "[sub_agent:{}] 确认流程异常（按原样执行）: {}", role_spec.key, e
+                    )
+                    cancelled = False
+                    run_tool = True
+                if run_tool:
+                    steps.append(name)
+                    result = await loop_mod._execute_tool(tool, params, ctx)
+                    # 独立会话：写操作必须自己提交（本会话没有外层主循环的统一 commit，
+                    # 关会话时会回滚未提交的写）—— 见 run_sub_agent 的 own_session 说明
+                    if commit_writes and tool.write_operation and result.get("success"):
+                        try:
+                            await db.commit()
+                        except Exception as e:  # noqa: BLE001 - 提交失败不影响子代理给出结论
+                            logger.warning("[sub_agent:{}] 写操作提交失败: {}", role_spec.key, e)
             await _emit({
                 "phase": "tool_result",
                 "round": cur_round,
                 "tool": name,
                 "action": str(result.get("action") or params.get("action") or ""),
-                "message": _digest(result),
+                "message": "已取消" if cancelled else _digest(result),
                 "success": bool(result.get("success")),
             })
             messages.append(

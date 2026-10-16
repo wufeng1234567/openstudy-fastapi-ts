@@ -468,7 +468,13 @@ AGENT_CONFIRM_RULES = """## Operations Requiring Confirmation
   Small creates (one question, one note, one bank, one knowledge base) usually run directly,
   while large ones (importing many questions at once, ingesting a long document) will show a
   confirmation card first. You do NOT need to ask for confirmation yourself and you should NOT
-  change how you call the tool — just proceed normally; the platform handles the card."""
+  change how you call the tool — just proceed normally; the platform handles the card.
+- **If the user explicitly asks to review / approve / edit before it runs** (e.g. "先给我看",
+  "让我确认后再建", "我要改一下", "别直接建", "confirm with me first"), proceed with the SAME
+  tool call — the platform will surface the review card for gated writes. Do NOT refuse or
+  split the work into a chat question; just call the tool and let the card do its job. If the
+  call is too small to be gated (a single bank/note), the platform may run it directly; in that
+  case, tell the user it's done and offer to adjust it afterwards."""
 
 #: 指挥家模式：告诉主智能体"你是指挥家、背后有子代理、怎么委派"。
 #:

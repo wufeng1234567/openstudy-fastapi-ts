@@ -1468,6 +1468,9 @@ async def run_agent_stream(
             "delegate_extra": {
                 "attachments": attachments,
                 "user_language": _detect_user_language(typed),
+                # 确认策略透传给子代理：子代理跑需要确认的写操作时，与指挥家**同规则**弹卡
+                #（见 sub_agent 的确认闸门）。
+                "auto_confirm": bool(req.auto_confirm),
             },
         }
 
@@ -1988,6 +1991,12 @@ async def run_agent_stream(
                 kind, *payload = await q.get()
                 if kind == "sub":
                     _seq, _key, _name, _ev = payload
+                    # 子代理跑需要确认的写操作时，会把 `tool_confirm` 经队列推上来 —— 它要的是
+                    # **真正的**确认卡片（前端据此弹卡、POST /ai/agent/confirm 唤醒），不能裹成
+                    # subagent_event（那样前端认不出、卡片永远不弹）。原样透传即可。
+                    if (_ev or {}).get("type") == "tool_confirm":
+                        yield _event(_ev)
+                        continue
                     yield _event(
                         {
                             "type": "subagent_event",

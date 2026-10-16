@@ -38,7 +38,14 @@ from app.services.ai.agent.base import (
 )
 
 #: 需要用户确认的动作（都会写数据）
-_WRITE_ACTIONS = {"create", "update", "delete", "delete_many", "save_draft"}
+_WRITE_ACTIONS = {
+    "create",
+    "create_category",
+    "update",
+    "delete",
+    "delete_many",
+    "save_draft",
+}
 
 #: 删除类动作：即使 autoConfirm 开着也必须二次确认
 _DESTRUCTIVE_ACTIONS = {"delete", "delete_many"}
@@ -104,12 +111,18 @@ class NoteManageTool(AgentTool):
         "optional `category_id` filter), "
         "detail=read one note's full content, "
         "list_categories=list the user's note categories, "
+        "create_category=create a note category by `name` (idempotent: returns the "
+        "existing category if one with that exact name already exists), "
         "update=update fields of an existing note, "
         "delete=delete one note by `note_id`, "
         "delete_many=delete SEVERAL notes at once (pass `note_ids`). "
         "NOTE: every note belongs to a category. If you omit both `category_id` and "
         "`category_name`, the note goes to the user's default category (created "
         "automatically when the user has none). "
+        "NOTE: a non-empty `category_name` must MATCH an existing category or the "
+        "create FAILS. To put a note in a category that may not exist yet, either pass "
+        "`create_category_if_missing=true` on action=create (the category is created "
+        "for you), or call action=create_category first and then action=create. "
         "NOTE: there is deliberately NO delete-by-title action - note titles are NOT "
         "unique. To delete a note you must first call action=list (with `keyword`) to "
         "get its `noteId`, then call action=delete."
@@ -118,8 +131,9 @@ class NoteManageTool(AgentTool):
     label = "笔记管理"
     description_zh = (
         "笔记的增删改查与分类：list=列笔记（按标题 / 正文 / 标签模糊找）、"
-        "detail=读全文、list_categories=列分类、create=新建、update=修改、"
-        "delete=删除、delete_many=批量删。"
+        "detail=读全文、list_categories=列分类、create_category=新建分类、"
+        "create=新建（分类不存在时可传 create_category_if_missing=true 自动建）、"
+        "update=修改、delete=删除、delete_many=批量删。"
     )
     parameters = {
         "type": "object",
@@ -131,6 +145,7 @@ class NoteManageTool(AgentTool):
                     "list",
                     "detail",
                     "list_categories",
+                    "create_category",
                     "create",
                     "update",
                     "delete",
@@ -187,6 +202,26 @@ class NoteManageTool(AgentTool):
             "category_name": {
                 "type": "string",
                 "description": "Target category by EXACT name. Ignored when `category_id` is given.",
+            },
+            "name": {
+                "type": "string",
+                "description": (
+                    "Category name to create (used by action=create_category). "
+                    "Idempotent: if a category with this exact name already exists, "
+                    "its existing categoryId is returned."
+                ),
+            },
+            "order_num": {
+                "type": "integer",
+                "description": "Sort order for the new category (optional, used by create_category). Defaults to 0.",
+            },
+            "create_category_if_missing": {
+                "type": "boolean",
+                "description": (
+                    "For action=create only: when true and `category_name` does not exist, "
+                    "the category is created automatically instead of failing. "
+                    "Default false (unknown category names fail)."
+                ),
             },
             "is_public": {
                 "type": "integer",
@@ -287,6 +322,8 @@ class NoteManageTool(AgentTool):
                 return await self._preview_delete(params, ctx)
             if action == "create":
                 return await self._preview_create(params, ctx)
+            if action == "create_category":
+                return await self._preview_create_category(params, ctx)
             if action == "update":
                 return await self._preview_update(params, ctx)
             if action == "save_draft":
@@ -363,12 +400,26 @@ class NoteManageTool(AgentTool):
         )
         if cat is not None:
             out["categoryName"] = cat.name
+        elif _to_bool(params.get("create_category_if_missing")):
+            # 分类不存在、但用户/模型要求自动建：确认卡片要先说清「会顺手新建这个分类」
+            missing = (params.get("category_name") or "").strip()
+            if missing and params.get("category_id") is None:
+                out["willCreateCategory"] = missing
         tags = nws.normalize_tags(params.get("tags"))
         if tags:
             out["tags"] = tags
         # 笔记 1=公开 / 0=私密（与题库相反，见 note_write_service 的坑 4）
         out["visibility"] = "公开" if _to_int(params.get("is_public")) == 1 else "私密"
         return out
+
+    async def _preview_create_category(
+        self, params: Dict[str, Any], ctx: ToolContext
+    ) -> Dict[str, Any]:
+        """新建分类的确认卡：只需告诉用户要建的分类名（同名时不会重复建）"""
+        name = (params.get("name") or "").strip()
+        if not name:
+            return {}
+        return {"name": name}
 
     async def _preview_update(
         self, params: Dict[str, Any], ctx: ToolContext
@@ -413,6 +464,7 @@ class NoteManageTool(AgentTool):
             "list": self._list,
             "detail": self._detail,
             "list_categories": self._list_categories,
+            "create_category": self._create_category,
             "create": self._create,
             "update": self._update,
             "delete": self._delete,
@@ -423,8 +475,8 @@ class NoteManageTool(AgentTool):
         if handler is None:
             return fail(
                 f"未知操作: {action}",
-                "action 只能是 list / detail / list_categories / create / update / "
-                "delete / delete_many / save_draft",
+                "action 只能是 list / detail / list_categories / create_category / "
+                "create / update / delete / delete_many / save_draft",
             )
         return await handler(params, ctx)
 
@@ -470,6 +522,30 @@ class NoteManageTool(AgentTool):
                 {"categoryId": c.id, "name": c.name, "orderNum": c.order_num}
                 for c in cats
             ],
+        )
+
+    async def _create_category(
+        self, params: Dict[str, Any], ctx: ToolContext
+    ) -> Dict[str, Any]:
+        """新建笔记分类（**幂等**：同名分类直接返回已有的那一个）
+
+        支持「把笔记放进某个分类，没有就新建」的两步走：先本动作拿 `categoryId`，
+        再 `create`；或者直接 `create` 传 `create_category_if_missing=true`。
+        """
+        name = (params.get("name") or "").strip()
+        if not name:
+            return fail("创建分类需要分类名", "请提供 name（分类名称）")
+        cat = await nws.create_category(
+            ctx.db, ctx.user_id, name, order_num=params.get("order_num")
+        )
+        return ok(
+            action="create_category",
+            category={
+                "categoryId": cat.id,
+                "name": cat.name,
+                "orderNum": cat.order_num,
+            },
+            message=f"已创建分类「{cat.name}」",
         )
 
     async def _detail(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
@@ -535,6 +611,7 @@ class NoteManageTool(AgentTool):
         #    见 parameters 里"刻意没有 status 参数"的说明。
         status_norm = "published"
 
+        category_name = (params.get("category_name") or "").strip()
         cat, err = await nws.resolve_category(
             ctx.db,
             ctx.user_id,
@@ -542,7 +619,16 @@ class NoteManageTool(AgentTool):
             category_name=params.get("category_name"),
         )
         if err:
-            return err
+            # 分类不存在、但调用方明确要求自动建：先建分类再继续。
+            # 只对 `category_name` 生效 —— `category_id` 给错属于调用错误，不该顺手新建。
+            if (
+                _to_bool(params.get("create_category_if_missing"))
+                and params.get("category_id") is None
+                and category_name
+            ):
+                cat = await nws.create_category(ctx.db, ctx.user_id, category_name)
+            else:
+                return err
 
         note = await nws.create_note(
             ctx.db,
@@ -702,6 +788,15 @@ def _to_int(value: Any) -> Any:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _to_bool(value: Any) -> bool:
+    """入参容错：真布尔 / 数字 / "true"/"1"/"yes" 都算真（其余为假）"""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    return str(value or "").strip().lower() in ("1", "true", "yes", "y", "on")
 
 
 def _int_list(value: Any) -> List[int]:

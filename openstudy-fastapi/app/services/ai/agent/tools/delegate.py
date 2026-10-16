@@ -88,6 +88,9 @@ class DelegateTaskTool(AgentTool):
         roles: Dict[str, Any] = dict(extra.get("delegate_roles") or {})
         excludes: Dict[str, Any] = dict(extra.get("delegate_exclude") or {})
         sub_extra = dict(extra.get("delegate_extra") or {})
+        # 确认策略透传：子代理跑需要确认的写操作时要与指挥家同规则弹卡。指挥家会经
+        # `delegate_extra` 显式带上（见 loop.py）；这里做防御性兜底，缺省维持自动执行。
+        sub_extra.setdefault("auto_confirm", bool(extra.get("auto_confirm", True)))
         # 用户给这个专家挑的模型覆盖（loop 构建好的 LLM 表；没有覆盖的 key 回退指挥家 llm）
         llms: Dict[str, Any] = dict(extra.get("delegate_llms") or {})
 

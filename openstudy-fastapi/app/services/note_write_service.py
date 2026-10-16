@@ -256,6 +256,53 @@ async def list_user_categories(
     return list(result.scalars().all())
 
 
+async def find_category_by_name(
+    db: AsyncSession, user_id: int, name: str
+) -> Optional[NoteCategory]:
+    """按名**精确**查用户自己的分类；查不到或名为空返回 None
+
+    库里 `note_category.name` **没有唯一约束**（见 `api/v1/notes.py:943`），
+    所以「有没有重名」只能靠这里先查一遍 —— `create_category` 的幂等都建立在它之上。
+    """
+    text = (name or "").strip()
+    if not text:
+        return None
+    result = await db.execute(
+        select(NoteCategory).where(
+            NoteCategory.user_id == user_id, NoteCategory.name == text
+        )
+    )
+    return result.scalars().first()
+
+
+async def create_category(
+    db: AsyncSession,
+    user_id: int,
+    name: str,
+    order_num: Any = 0,
+) -> NoteCategory:
+    """创建笔记分类（**幂等**：同名分类已存在则直接返回它，不建重复）
+
+    名称在库里没有唯一约束，所以先 `find_category_by_name` 再决定建不建。
+    与 `api/v1/notes.py:943` 的同名接口同口径：insert + flush + refresh
+    （坑 3：不 refresh 就同步读 create_time 会 MissingGreenlet）。
+
+    ⚠️ 调用方需先校验名称非空 —— 这里只在空名时抛 `ValueError`。
+    """
+    text = (name or "").strip()
+    if not text:
+        raise ValueError("分类名不能为空")
+    existing = await find_category_by_name(db, user_id, text)
+    if existing is not None:
+        return existing
+    cat = NoteCategory(user_id=user_id, name=text, order_num=_to_int(order_num) or 0)
+    db.add(cat)
+    await db.flush()
+    # 坑 3：create_time 是库端默认值，不 refresh 就同步读会 MissingGreenlet
+    await db.refresh(cat)
+    return cat
+
+
 # ----------------------------------------------------------------------
 # 分类兜底（坑 1）
 # ----------------------------------------------------------------------
@@ -301,13 +348,7 @@ async def resolve_category(
 
     name = (category_name or "").strip()
     if name:
-        cat = (
-            await db.execute(
-                select(NoteCategory).where(
-                    NoteCategory.user_id == user_id, NoteCategory.name == name
-                )
-            )
-        ).scalars().first()
+        cat = await find_category_by_name(db, user_id, name)
         if cat is not None:
             return cat, None
         existing = await list_user_categories(db, user_id)
@@ -493,6 +534,8 @@ __all__ = [
     "get_user_note",
     "find_notes_by_title",
     "list_user_categories",
+    "find_category_by_name",
+    "create_category",
     "resolve_category",
     "create_note",
     "update_note",

@@ -175,6 +175,7 @@ const ACTION_LABELS: Record<string, string> = {
   delete_by_name: '按名删除',
   delete_many: '批量删除',
   list_categories: '查询分类',
+  create_category: '新建分类',
   clear_questions: '清空题目',
   batch_import: '批量导入',
   // note_manage（写草稿；正式笔记的创建走 create/update）
