@@ -207,6 +207,50 @@ async def create_bank(
     return bank
 
 
+async def update_bank(
+    db: AsyncSession,
+    bank: QuestionBank,
+    *,
+    bank_name: Optional[str] = None,
+    subject: Optional[str] = None,
+    description: Optional[str] = None,
+    is_public: Optional[int] = None,
+) -> tuple:
+    """更新题库字段（**只应用给出且非空的字段**），返回 `(changed, conflict)`
+
+    · `changed`：被修改的字段名列表（空 = 什么都没给）。
+    · `conflict`：想改成的名字已被**同用户的另一个题库**占用时，是那个题库
+      （此时**一个字都不改**，调用方据此回报失败）；否则为 None。
+
+    ⚠️ 与后台 `PUT /questionBank/questionBank` 的字段口径一致；改名重名校验沿用
+       `bank_manage._update` 的规则（改重名会让「按名字定位 / 按名字删」变得不确定）。
+    """
+    new_name = (bank_name or "").strip()
+    if new_name and new_name != bank.bank_name:
+        dup = await find_bank_by_name(db, bank.user_id, new_name)
+        if dup is not None and dup.id != bank.id:
+            return [], dup
+
+    changed: List[str] = []
+    if new_name:
+        bank.bank_name = new_name
+        changed.append("bank_name")
+    subject_text = (subject or "").strip()
+    if subject_text:
+        bank.subject = subject_text
+        changed.append("subject")
+    description_text = (description or "").strip()
+    if description_text:
+        bank.description = description_text
+        changed.append("description")
+    if is_public is not None:
+        bank.is_public = int(is_public)
+        changed.append("is_public")
+    if changed:
+        await db.flush()
+    return changed, None
+
+
 async def create_question(
     db: AsyncSession,
     *,
@@ -433,6 +477,7 @@ __all__ = [
     "recalc_bank_total",
     "insert_sub_questions",
     "create_bank",
+    "update_bank",
     "create_question",
     "find_bank_by_name",
     "list_user_banks",

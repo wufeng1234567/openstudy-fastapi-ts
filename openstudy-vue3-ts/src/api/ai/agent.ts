@@ -148,6 +148,15 @@ export interface AgentEvent {
   /** 人类可读的一句话 */
   message?: string
   success?: boolean
+  /**
+   * 该工具调用被**用户取消**（确认卡片上点了「取消」）。
+   *
+   * ⚠️ 与 `success:false` 区分开：取消是用户的主动选择，不是执行失败。
+   * 后端在「确认被拒」时会发这条（`success:false` + `cancelled:true` + 中性 message +
+   * `data:null`），前端据此**不**渲染红色的失败卡片（用户 2026-10-16 报「点取消却显示
+   * 批量删除失败」）。模型侧仍收到 fail 信封，所以它不会重复同一个操作。
+   */
+  cancelled?: boolean
   /** 工具返回的完整结构化结果 */
   data?: any
   /** 工具入参（长字段已被后端截断） */
@@ -353,8 +362,16 @@ function normalizeUserId(userId?: string | number): number | undefined {
  * 后端 `run_agent_stream` 遇到需要确认的写操作时会**挂起**并下发 `tool_confirm`
  * 事件；前端弹卡片，用户点击后调本接口唤醒它继续执行（或按取消跳过）。
  * ds-free 链路不需要它 —— 循环跑在前端，直接本地 resolve。
+ *
+ * `edited`（可选，需求二：可编辑草稿）：用户在确认卡片里改过的内容，仅建库导入草稿
+ * （`question_manage.batch_import`）会用 —— 形状 `{ questions: [...], bank: {...} }`，
+ * 服务端校验后覆盖工具参数再执行；结构不对时服务端退回原参数。不传 = 原样执行。
  */
-export async function confirmAgentTool(confirmId: string, approved: boolean): Promise<boolean> {
+export async function confirmAgentTool(
+  confirmId: string,
+  approved: boolean,
+  edited?: Record<string, any> | null
+): Promise<boolean> {
   try {
     const response = await fetch(`${import.meta.env.VITE_APP_BASE_API}/ai/agent/confirm`, {
       method: 'POST',
@@ -362,7 +379,7 @@ export async function confirmAgentTool(confirmId: string, approved: boolean): Pr
         Authorization: 'Bearer ' + getToken(),
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ confirmId, approved })
+      body: JSON.stringify(edited ? { confirmId, approved, edited } : { confirmId, approved })
     })
     const data = await response.json().catch(() => null)
     return Boolean((data && (data.data ? data.data.resolved : data.resolved)) ?? false)

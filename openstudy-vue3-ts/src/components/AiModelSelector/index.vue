@@ -1,40 +1,56 @@
 <template>
-  <el-select :model-value="innerValue" @update:model-value="handleChange" placeholder="自动（跟随默认）" size="small"
-    class="ai-model-selector" :style="{ width: width }" :disabled="disabled">
-    <!--
-      取值约定（重要）：
-        · 对外 v-model 仍是 **model 名**（'' = 自动跟随默认），下游逻辑无需改；
-        · 但 el-option 的 value 用 **configId**（全局唯一）——因为系统官方与用户自定义
-          可能同名（都叫 deepseek-flash），用 model 名作 value 会冲突、无法同时展示两条。
-        · 选中后本组件把 configId 映射回 model 名 emit 出去；同时额外 emit `select`
-          （完整 config 对象），供需要区分「官方那条 / 我的那条」的调用方使用。
-    -->
-    <el-option label="自动（跟随默认）" value="" />
+  <!-- ⚠️ 必须有**单一根节点**：本组件现在还要内嵌一个 `AiModelManager`（添加模型对话框），
+       多根节点会让父级传下来的 `class`/`style`（如 chat.vue 的 `class="settings-expert-model"`）
+       **无法透传**（Vue 对多根组件不自动继承属性）。用外层 div 承接，宽度仍由 `width` prop 决定。 -->
+  <div class="ai-model-selector-root" :style="{ width: width }">
+    <el-select :model-value="innerValue" @update:model-value="handleChange" placeholder="自动（跟随默认）" size="small"
+      class="ai-model-selector" popper-class="ai-model-selector-popper" style="width: 100%" :disabled="disabled">
+      <!--
+        取值约定（重要）：
+          · 对外 v-model 仍是 **model 名**（'' = 自动跟随默认），下游逻辑无需改；
+          · 但 el-option 的 value 用 **configId**（全局唯一）——因为系统官方与用户自定义
+            可能同名（都叫 deepseek-flash），用 model 名作 value 会冲突、无法同时展示两条。
+          · 选中后本组件把 configId 映射回 model 名 emit 出去；同时额外 emit `select`
+            （完整 config 对象），供需要区分「官方那条 / 我的那条」的调用方使用。
+      -->
+      <el-option label="自动（跟随默认）" value="" />
 
-    <el-option-group v-if="systemConfigs.length" label="系统提供（官方）">
-      <el-option v-for="config in systemConfigs" :key="'sys-' + config.configId"
-        :label="config.model" :value="String(config.configId)">
-        <span class="opt-main">{{ config.model }}</span>
-        <!-- 「仅文本」= 不能传图片（如 deepseek-v4-pro），提前告知，避免用户上传后才发现 -->
-        <span v-if="capabilityLabel(config.model)" class="opt-tag">{{ capabilityLabel(config.model) }}</span>
-        <span v-if="config.isDefault === 1" class="opt-tag">默认</span>
-      </el-option>
-    </el-option-group>
+      <el-option-group v-if="systemConfigs.length" label="系统提供（官方）">
+        <el-option v-for="config in systemConfigs" :key="'sys-' + config.configId"
+          :label="config.model" :value="String(config.configId)">
+          <span class="opt-main">{{ config.model }}</span>
+          <!-- 「仅文本」= 不能传图片（如 deepseek-v4-pro），提前告知，避免用户上传后才发现 -->
+          <span v-if="capabilityLabel(config.model)" class="opt-tag">{{ capabilityLabel(config.model) }}</span>
+          <span v-if="config.isDefault === 1" class="opt-tag">默认</span>
+        </el-option>
+      </el-option-group>
 
-    <el-option-group v-if="userConfigs.length" label="我的模型（自定义）">
-      <el-option v-for="config in userConfigs" :key="'usr-' + config.configId"
-        :label="userOptionLabel(config)" :value="String(config.configId)">
-        <span class="opt-main">{{ userOptionLabel(config) }}</span>
-        <span v-if="capabilityLabel(config.model)" class="opt-tag">{{ capabilityLabel(config.model) }}</span>
-      </el-option>
-    </el-option-group>
-  </el-select>
+      <el-option-group v-if="userConfigs.length" label="我的模型（自定义）">
+        <el-option v-for="config in userConfigs" :key="'usr-' + config.configId"
+          :label="userOptionLabel(config)" :value="String(config.configId)">
+          <span class="opt-main">{{ userOptionLabel(config) }}</span>
+          <span v-if="capabilityLabel(config.model)" class="opt-tag">{{ capabilityLabel(config.model) }}</span>
+        </el-option>
+      </el-option-group>
+
+      <!-- 下拉框底部入口：任何登录用户都能添加自己的模型（后端不限管理员，guest 除外） -->
+      <template #footer>
+        <div v-if="!disabled" class="add-model-row" @mousedown.stop
+          @click.stop="openAddDialog">
+          ＋ 添加自定义模型
+        </div>
+      </template>
+    </el-select>
+
+    <AiModelManager ref="mgrRef" dialog-only @saved="onManagerSaved" />
+  </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { listAiConfig } from '@/api/system/aiConfig'
 import { capabilityLabel } from '@/utils/ai-model-capability'
+import AiModelManager from '@/components/AiModelManager/index.vue'
 
 /** 首次进入（无历史记忆）时的默认模型：DS 官方新命名，不再强调 v4flash */
 const DEFAULT_MODEL = 'deepseek-flash'
@@ -158,9 +174,31 @@ watch(() => props.modelValue, (v) => {
 })
 
 defineExpose({ refresh: fetchConfigs })
+
+const mgrRef = ref(null)
+
+const openAddDialog = () => {
+  mgrRef.value?.openAdd()
+}
+
+const onManagerSaved = () => {
+  fetchConfigs()
+}
 </script>
 
 <style scoped>
+.ai-model-selector-root {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.ai-model-selector {
+  flex: 1;
+  min-width: 0;
+}
+
 .ai-model-selector :deep(.el-input__wrapper) {
   border-radius: 8px;
   box-shadow: 0 0 0 1px #e5e7eb;
@@ -180,5 +218,30 @@ defineExpose({ refresh: fetchConfigs })
   color: #9ca3af;
   font-size: 12px;
   margin-left: 12px;
+}
+
+.add-model-row {
+  height: 34px;
+  line-height: 34px;
+  padding: 0 20px;
+  font-size: var(--el-font-size-base);
+  color: var(--el-text-color-regular);
+  cursor: pointer;
+  border-top: 1px solid var(--el-border-color-light);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.add-model-row:hover {
+  background: var(--el-fill-color-light);
+}
+</style>
+
+<!-- 下拉浮层被 teleport 到 body，scoped 样式够不到，需用 popper-class 全局覆盖 footer 内边距 -->
+<style>
+.ai-model-selector-popper .el-select-dropdown__footer {
+  padding: 0;
+  border-top: none;
 }
 </style>

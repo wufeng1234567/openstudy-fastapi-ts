@@ -268,14 +268,17 @@ class QuestionManageTool(AgentTool):
             preview: Dict[str, Any] = {"action": action}
 
             if action in ("batch_import",):
-                items, _, _ = json_repair.parse_json_array(
-                    str(params.get("questions") or "")
-                )
+                items, _, _ = self._parse_questions(params)
                 preview["count"] = len(items)
                 preview["sample"] = [
                     str(q.get("questionText") or q.get("question_text") or "")[:60]
                     for q in items[:5]
                 ]
+                # 需求二：给前端一份**完整可编辑草稿**（题库信息 + 全部题目）。
+                # 旧的 count / sample 键保留（向后兼容）；draft 是新增键，
+                # 老前端不认识也不会因此变哑。
+                bank, _why = await self._preview_bank(params, ctx)
+                preview["draft"] = self._build_import_draft(bank, params, items)
             elif action in ("update", "delete"):
                 question = await self._resolve_question(params, ctx)
                 if question is not None and not isinstance(question, dict):
@@ -566,6 +569,65 @@ class QuestionManageTool(AgentTool):
             droppedMarkers=dropped,
         )
 
+    @staticmethod
+    def _parse_questions(params: Dict[str, Any]) -> tuple:
+        """把 `questions` 参数解析成题目列表（**预览与导入共用**，避免两条路漂移）
+
+        返回 `(items, warnings, strategy)`：
+          · `items` 已按 `MAX_BATCH_SIZE` 截断（与真正导入的上限**同一个**，
+            所以预览草稿不会比实际导入的更大）；
+          · `warnings` / `strategy` 是 `json_repair.parse_json_array` 的产物。
+        ⚠️ 解析失败时返回空列表（不抛）—— 调用方各自决定把失败讲成什么话。
+        """
+        raw = params.get("questions")
+        if isinstance(raw, list):  # 模型偶尔直接给数组
+            raw = _dumps(raw)
+        items, warnings, strategy = json_repair.parse_json_array(str(raw or ""))
+        if len(items) > MAX_BATCH_SIZE:
+            items = items[:MAX_BATCH_SIZE]
+            warnings.append(f"单批最多 {MAX_BATCH_SIZE} 题，超出部分已忽略")
+        return items, warnings, strategy
+
+    @staticmethod
+    def _build_import_draft(
+        bank: Any, params: Dict[str, Any], items: List[Any]
+    ) -> Dict[str, Any]:
+        """组装建库导入的**可编辑草稿**（需求二）
+
+        形状（字段用 camelCase，前端直接渲染）::
+
+            {
+              "kind": "question_bank_import",
+              "bank": {"bankId": 12, "bankName": "…", "subject": "…",
+                       "description": "…", "isPublic": 0},
+              "questions": [ {...}, ... ]   # 与真正导入完全同一份（同一解析器 + 同一上限）
+            }
+
+        题库还没解析到时（例如模型打算先 create）用参数里的 bank_id / bank_name 兜底，
+        其余字段留空 —— 前端仍能渲染「待建题库」的编辑框。
+        """
+        if bank is not None:
+            bank_info = {
+                "bankId": bank.id,
+                "bankName": bank.bank_name,
+                "subject": bank.subject,
+                "description": bank.description,
+                "isPublic": bank.is_public,
+            }
+        else:
+            bank_info = {
+                "bankId": params.get("bank_id"),
+                "bankName": (params.get("bank_name") or "").strip() or None,
+                "subject": None,
+                "description": None,
+                "isPublic": 0,
+            }
+        return {
+            "kind": "question_bank_import",
+            "bank": bank_info,
+            "questions": list(items),
+        }
+
     async def _batch_import(
         self, params: Dict[str, Any], ctx: ToolContext
     ) -> Dict[str, Any]:
@@ -586,7 +648,7 @@ class QuestionManageTool(AgentTool):
                 '"questionText":"...","answer":"0"}]',
             )
 
-        items, warnings, strategy = json_repair.parse_json_array(str(raw))
+        items, warnings, strategy = self._parse_questions(params)
         if not items:
             detail = "；".join(warnings[-2:]) if warnings else "内容不是合法的 JSON 数组"
             return fail(
@@ -594,10 +656,6 @@ class QuestionManageTool(AgentTool):
                 "请重新输出 questions，确保是合法的 JSON 数组字符串，"
                 "且内部双引号使用 \\\" 转义",
             )
-
-        if len(items) > MAX_BATCH_SIZE:
-            items = items[:MAX_BATCH_SIZE]
-            warnings.append(f"单批最多 {MAX_BATCH_SIZE} 题，超出部分已忽略")
 
         image_urls = list((ctx.extra or {}).get("image_urls") or [])
         start_order = await self._next_sort_order(ctx, bank.id)

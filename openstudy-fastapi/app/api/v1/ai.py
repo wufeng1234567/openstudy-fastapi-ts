@@ -1393,6 +1393,11 @@ class AgentConfirmBody(BaseModel):
 
     confirmId: str
     approved: bool = False
+    #: 可编辑草稿（需求二）：用户在确认卡片里改过的内容。
+    #: 形状由草稿类型决定，目前只有 `question_bank_import`：
+    #: `{"questions": [...], "bank": {"bankId":..,"bankName":..,"subject":..,"description":..,"isPublic":..}}`。
+    #: 缺省 = 按原样执行（P4 的「意见→重新生成」由前端另行处理）。
+    edited: Optional[dict] = None
 
 
 @router.post("/agent/confirm")
@@ -1407,7 +1412,9 @@ async def agent_confirm(
     """
     from app.services.ai.agent.loop import resolve_confirmation
 
-    resolved = resolve_confirmation(body.confirmId, bool(body.approved))
+    resolved = resolve_confirmation(
+        body.confirmId, bool(body.approved), edited=body.edited
+    )
     return success({"resolved": resolved})
 
 

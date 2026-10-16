@@ -1,6 +1,6 @@
 <template>
-  <div class="ai-model-manager">
-    <div class="model-header">
+  <div class="ai-model-manager" :class="{ 'dialog-only': dialogOnly }">
+    <div class="model-header" v-if="!dialogOnly">
       <div class="header-text">
         <h3>AI模型配置</h3>
         <p class="header-tip">这里只显示你自己添加的模型；系统提供的官方模型由管理员统一维护。</p>
@@ -13,9 +13,9 @@
       </el-button>
     </div>
 
-    <el-empty v-if="!loading && configList.length === 0" description="暂无自定义模型配置" />
+    <el-empty v-if="!dialogOnly && !loading && configList.length === 0" description="暂无自定义模型配置" />
 
-    <div v-else class="model-list">
+    <div v-else-if="!dialogOnly" class="model-list">
       <el-table :data="configList" v-loading="loading" style="width: 100%">
         <el-table-column prop="providerName" label="服务商" width="120" />
         <el-table-column label="类型" width="100">
@@ -200,12 +200,12 @@
 
       <!-- 服务商可用模型选择（点「获取可用模型」后弹出） -->
       <el-dialog
-        v-model="modelsDialogVisible"
-        title="选择模型"
-        width="560px"
-        append-to-body
-        :close-on-click-modal="true"
-      >
+    v-model="modelsDialogVisible"
+    title="选择模型"
+    width="560px"
+    append-to-body
+    :close-on-click-modal="true"
+  >
         <div class="models-dialog-tip">
           来自 <code>{{ modelsBaseUrl }}</code> 共 {{ fetchedModels.length }} 个模型，点击即可填入。
         </div>
@@ -265,8 +265,14 @@ const props = defineProps({
   userId: {
     type: Number,
     default: null
+  },
+  dialogOnly: {
+    type: Boolean,
+    default: false
   }
 })
+
+const emit = defineEmits(['saved'])
 
 const loading = ref(false)
 const configList = ref([])
@@ -557,6 +563,7 @@ async function handleSave() {
         ElMessage.success('添加成功')
         dialogVisible.value = false
         fetchConfigList()
+        emit('saved')
       } else {
         ElMessage.error(res.msg || '添加失败')
       }
@@ -642,7 +649,8 @@ onMounted(() => {
 })
 
 defineExpose({
-  refresh: fetchConfigList
+  refresh: fetchConfigList,
+  openAdd: handleAdd
 })
 </script>
 

@@ -28,6 +28,7 @@
       <span class="at-icon" aria-hidden="true">
         <span v-if="status === 'running'" class="at-spinner"></span>
         <span v-else-if="status === 'ok'">✓</span>
+        <span v-else-if="status === 'cancelled'">—</span>
         <span v-else>!</span>
       </span>
       <span class="at-summary">{{ summary }}</span>
@@ -211,7 +212,8 @@ const ACTION_LABELS: Record<string, string> = {
 const STATUS_WORDS: Record<string, string> = {
   running: '进行中',
   ok: '完成',
-  fail: '失败'
+  fail: '失败',
+  cancelled: '已取消'
 }
 
 const labelOf = (map: Record<string, string>, key: string) => map[key] || key
@@ -370,6 +372,11 @@ const hasData = computed(() => nonEmpty(props.data))
   background: #fffafa;
 }
 
+/* 用户取消：中性灰，不是红（取消不是错误） */
+.agent-tool.is-cancelled {
+  border-left-color: #cbd5e1;
+}
+
 /* ===================== 第一层：状态 + 结果 ===================== */
 .at-head {
   display: flex;
@@ -405,6 +412,10 @@ const hasData = computed(() => nonEmpty(props.data))
 
 .is-fail .at-icon {
   background: #f87171;
+}
+
+.is-cancelled .at-icon {
+  background: #cbd5e1;
 }
 
 .at-spinner {

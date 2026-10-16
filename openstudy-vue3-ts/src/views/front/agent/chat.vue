@@ -69,7 +69,7 @@
           <template #tool-confirm="{ message }">
             <AgentConfirmCard :tool="message.tool" :action="message.action" :content="message.content"
               :status="message.status" :destructive="message.destructive" :preview="message.preview"
-              @resolve="(ok) => resolveConfirm(message.confirmId, ok)" />
+              @resolve="(payload) => onConfirmResolve(message, payload)" />
           </template>
 
           <!-- 输入框上方：待发送附件预览 -->
@@ -446,7 +446,7 @@ const userId = computed(() => userStore.id || userStore.userId)
 // 必须解构出来：对象里的 ref 在模板中**不会**自动解包，`agent.messages` 拿到的是 Ref
 const {
   messages, isGenerating, tools, activeModel, metaWarnings,
-  send, stop, reset, resolveConfirm,
+  send, stop, reset, resolveConfirm, whenIdle,
   // 从落库快照复原「会话累计执行统计」（指标数据保留，底部状态条已按用户要求移除）
   restoreMetrics,
   // 本轮的轮次 id（`send()` 开头生成、`turn_end` 标记里那个）：补写历史时要带上它
@@ -484,6 +484,26 @@ const onRollbackTurn = async (turnId: string) => {
   if (!r) return
   if (r.ok) ElMessage.success(`已回退 ${r.reverted} 项操作`)
   if (r.ok && r.dropped && r.userText) chatRef.value?.setInputText?.(r.userText)
+}
+
+/**
+ * 确认卡片回调（确认 / 取消 / 让 AI 重新生成）
+ *
+ * `payload` 兼容老写法：布尔 = 确认 / 取消；对象 = 可编辑草稿卡片回的
+ * `{ approved, edited }` 或 `{ approved:false, regenerate, opinion }`。
+ *
+ * 「重新生成」：先取消当前确认（服务端据此不导入），**等本轮收尾**再发一条带修改意见的
+ * 追问 —— 不能立刻发，`send()` 开头有 `isGenerating` 闸门，本轮还在跑会被直接打回。
+ */
+const onConfirmResolve = async (message: any, payload: any) => {
+  if (payload && payload.regenerate) {
+    await resolveConfirm(message.confirmId, false)
+    await whenIdle()
+    const opinion = String(payload.opinion || '').trim()
+    if (opinion) await handleSend({ content: `请根据以下修改意见重新生成题库草稿：\n${opinion}` })
+    return
+  }
+  await resolveConfirm(message.confirmId, payload)
 }
 
 /** 模型（scene='agent'，与聊天助手的选择互不干扰） */

@@ -508,7 +508,9 @@ AGENT_BANK_FIELD_RULES = """## Field Inference When Creating a Bank
 - `description`: generate a one-sentence description (roughly 10-50 characters) from the name.
 - `is_public`: default 0 (public); pass 1 only when the user explicitly asks for a private bank.
 - If the user did not provide a bank name, invent a sensible one from the document content and
-  mention it in your reply."""
+  mention it in your reply.
+- These fields (name / subject / description / visibility) appear in the **editable draft** the
+  user reviews before import, so set sensible values rather than placeholders."""
 
 AGENT_DOC_BUILD_WORKFLOW = """## Building a Question Bank from a Document (CORE WORKFLOW)
 Triggered when the user uploads a document / image and asks to "build a question bank",
@@ -551,6 +553,13 @@ Triggered when the user uploads a document / image and asks to "build a question
      import would become dozens of turns).
    - Even if batch_import fails, **fix the JSON and retry batch_import** — never fall back to
      single-question `create`.
+   - **The generated bank + questions are shown to the user as an EDITABLE DRAFT before the
+     import runs.** The user reviews it and may confirm as-is or give a revision opinion
+     instead. Therefore emit the **complete** list with well-formed structure in ONE
+     batch_import call — do not summarise, truncate, or hold questions back for a later call
+     within the same document only because the card is editable. Include `subQuestions` for
+     composite types 6/7. Anything you omit is simply missing from what the user reviews and
+     imports.
 
 6. **Batch size**: due to output length limits, import **at most 15 questions per
    batch_import call**. Continue with the next batch after each success

@@ -137,7 +137,7 @@
             <template v-if="agentMode" #tool-confirm="{ message }">
               <AgentConfirmCard :tool="message.tool" :action="message.action" :content="message.content"
                 :status="message.status" :destructive="message.destructive" :preview="message.preview"
-                @resolve="(ok) => agentResolveConfirm(message.confirmId, ok)" />
+                @resolve="(payload) => onAgentConfirmResolve(message, payload)" />
             </template>
             <!-- 输入框上方：待发送附件预览（对齐 DS 网页端，可点击放大、可单独删除） -->
             <template #input-header>
@@ -296,6 +296,8 @@ const {
   stop: agentStop,
   reset: agentReset,
   resolveConfirm: agentResolveConfirm,
+  // 「让 AI 重新生成」用：等本轮收尾（isGenerating 归 false）才能安全发起下一轮
+  whenIdle,
   // 本轮的轮次 id（`send()` 开头生成、`turn_end` 标记里那个）：补写历史时要带上它。
   // 名字按本文件的既有约定加 `agent` 前缀（与 `agentSend` / `agentMessages` 一致）。
   currentTurnId: agentCurrentTurnId,
@@ -332,6 +334,25 @@ const onRollbackTurn = async (turnId: string) => {
   if (!r) return
   if (r.ok) ElMessage.success(`已回退 ${r.reverted} 项操作`)
   if (r.ok && r.dropped && r.userText) chatRef.value?.setInputText?.(r.userText)
+}
+
+/**
+ * 确认卡片回调（确认 / 取消 / 让 AI 重新生成）—— 与大屏智能体页 `onConfirmResolve` 同一口径。
+ *
+ * `payload`：布尔 = 确认 / 取消；对象 = 可编辑草稿卡片的 `{ approved, edited }`
+ * 或 `{ approved:false, regenerate, opinion }`。
+ * 「重新生成」先取消当前确认、等本轮收尾，再发一条带修改意见的追问
+ * （本轮没结束时 `send()` 会被 `isGenerating` 闸门打回）。
+ */
+const onAgentConfirmResolve = async (message: any, payload: any) => {
+  if (payload && payload.regenerate) {
+    await agentResolveConfirm(message.confirmId, false)
+    await whenIdle()
+    const opinion = String(payload.opinion || '').trim()
+    if (opinion) await handleAgentSend(`请根据以下修改意见重新生成题库草稿：\n${opinion}`)
+    return
+  }
+  await agentResolveConfirm(message.confirmId, payload)
 }
 
 // ===================== 深度思考（不再单独开关，随对话模式走） =====================

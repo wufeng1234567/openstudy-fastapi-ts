@@ -63,6 +63,9 @@ const DEFAULT_TARGETS = [
   'src/components/AgentToolPopover/index.vue',
   // L17 的被测对象：它由「离线执行 script setup」检查，但也该进语法 / import 路径清单
   'src/components/AgentConfirmCard/index.vue',
+  // 建库导入的可编辑草稿卡片（需求二）：由 AgentConfirmCard 托管，import `@/utils` 与
+  // vue 的组合式 API —— 一个 import 路径写错同样只有真正展开那张草稿卡片才炸。
+  'src/components/AgentDraftCard/index.vue',
   // 工具调用卡片的第二 / 第三层：`TOOL_LABELS` / `ACTION_LABELS`（前者）与
   // `FIELD_LABELS` / `ENUM_LABELS` / `REDUNDANT_KEYS`（后者）。L46–L53 拿它们当判据，
   // 但它们此前**根本不在本清单里** —— 一个 import 路径写错只有真正展开详情才炸。
@@ -97,7 +100,10 @@ const DEFAULT_TARGETS = [
   // 对接后端 `app/api/v1/rate_limit_admin.py`（prefix `/monitor/ratelimit`），
   // 一个 import 路径写错同样只有走到那一块 tab 才炸 —— 所以两个新文件都进清单。
   'src/api/monitor/ratelimit.ts',
-  'src/views/monitor/ratelimit/index.vue'
+  'src/views/monitor/ratelimit/index.vue',
+  // 模型选择下拉 + 可嵌入的管理弹窗（下拉 #footer 的「＋ 添加自定义模型」入口直连它）。
+  'src/components/AiModelSelector/index.vue',
+  'src/components/AiModelManager/index.vue'
 ]
 
 const ARGV = process.argv.slice(2)
@@ -1616,6 +1622,9 @@ function chatRuntime() {
     metaWarnings: refStub([]), imageCount: refStub(0), corrections: refStub(0), errors: refStub([]),
     metrics: refStub({}), hasRun: refStub(false), send: async () => 'harness-answer', stop: noop, reset: noop,
     resolveConfirm: noop,
+    // 「让 AI 重新生成」：等本轮收尾（`isGenerating` 归 false）再发起下一轮。
+    // ⚠️ 产品源码解构了它，桩里必须有 —— 缺了 L85 会红（且明说是判据侧名单过期）。
+    whenIdle: async () => {},
     // 从落库快照复原「会话累计执行统计」（状态条 UI 已删，但指标数据仍复原，供复用）。
     // ⚠️ 产品源码解构了它，桩里必须有 —— 缺了 L85 会红（且明说是判据侧名单过期）。
     restoreMetrics: noop,

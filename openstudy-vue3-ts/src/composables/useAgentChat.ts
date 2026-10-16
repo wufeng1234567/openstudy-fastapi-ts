@@ -1,5 +1,5 @@
 // composables/useAgentChat.ts
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import {
   postAgentStream,
   confirmAgentTool,
@@ -849,8 +849,19 @@ export function useAgentChat() {
    *
    * - ds-free：前端循环在等 → 本地 resolve
    * - api 付费：后端循环在挂起 → POST `/ai/agent/confirm` 唤醒
+   *
+   * `decision` 兼容两种形状：
+   *   · `boolean` —— 老调用方「确认 / 取消」，行为一个字不变；
+   *   · `{ approved, edited }` —— 可编辑草稿卡片回传的改动（`edited` 只对
+   *     `question_manage.batch_import` 有意义，见 `confirmAgentTool`）。ds-free 本地循环
+   *     只吃 `approved`（前端不落库、暂不支持改动），`edited` 仅随 api 链路送服务端。
    */
-  const resolveConfirm = async (confirmId: string, approved: boolean) => {
+  const resolveConfirm = async (
+    confirmId: string,
+    decision: boolean | { approved?: boolean; edited?: Record<string, any> | null }
+  ) => {
+    const approved = typeof decision === 'boolean' ? decision : decision?.approved === true
+    const edited = typeof decision === 'object' && decision ? decision.edited : undefined
     const msg = messages.value.find(
       (m) => m.type === 'tool_confirm' && m.confirmId === confirmId
     )
@@ -861,7 +872,25 @@ export function useAgentChat() {
       local(approved)
       return
     }
-    await confirmAgentTool(confirmId, approved)
+    await confirmAgentTool(confirmId, approved, edited)
+  }
+
+  /**
+   * 等本轮生成收尾（`isGenerating` 归 false）—— 供「让 AI 重新生成」用。
+   *
+   * 「重新生成」= 先取消当前确认卡片，**必须等本轮完全收尾**才能发起下一轮：
+   * `send()` 开头有 `if (isGenerating.value) return` 的闸门，本轮没结束时再调会直接被打回。
+   */
+  const whenIdle = (): Promise<void> => {
+    if (!isGenerating.value) return Promise.resolve()
+    return new Promise<void>((resolve) => {
+      const stopWatch = watch(isGenerating, (v) => {
+        if (!v) {
+          stopWatch()
+          resolve()
+        }
+      })
+    })
   }
 
   const appendText = (chunk: string) => {
@@ -920,7 +949,7 @@ export function useAgentChat() {
     for (let i = messages.value.length - 1; i >= 0; i--) {
       const m = messages.value[i]
       if (m.type === 'tool_result' && m.status === 'running' && m.tool === event.tool) {
-        m.status = event.success ? 'ok' : 'fail'
+        m.status = event.success ? 'ok' : (event.cancelled ? 'cancelled' : 'fail')
         m.detail = detail
         m.errors = errs
         m.data = event.data
@@ -928,6 +957,10 @@ export function useAgentChat() {
         return
       }
     }
+    // ⚠️ 用户取消（`cancelled`）**不补卡片**：取消不是失败，不该在界面上多出一张红色的
+    //    「批量删除失败」。确认卡片本身在 `tool_confirm_resolved` 时已经显示「已取消」，
+    //    再补一条失败卡就是重复且错误的信息（用户 2026-10-16 报的就是这个）。
+    if (event.cancelled) return
     // 没找到对应卡片（事件丢了 / 顺序异常）：补一条，别让过程凭空消失
     messages.value.push({
       role: 'assistant',
@@ -1580,6 +1613,8 @@ export function useAgentChat() {
     reset,
     /** 用户点击确认卡片时调用（确认 / 取消） */
     resolveConfirm,
+    /** 等本轮生成收尾（`isGenerating` 归 false）—— 「让 AI 重新生成」用 */
+    whenIdle,
     /** 用户点击「回退本轮」时调用 → 撤写操作 + 删掉这一轮的对话 + 交回提问正文（见其注释） */
     rollbackTurn
   }

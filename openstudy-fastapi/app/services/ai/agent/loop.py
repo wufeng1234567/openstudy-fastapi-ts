@@ -683,15 +683,22 @@ CONFIRM_TIMEOUT_SECONDS = 180
 
 #: confirmId → asyncio.Event（等前端 POST /ai/agent/confirm 唤醒）
 _pending_confirms: Dict[str, asyncio.Event] = {}
-#: confirmId → 用户决定（True=确认执行）
-_pending_decisions: Dict[str, bool] = {}
+#: confirmId → 用户决定 `{"approved": bool, "edited": dict|None}`
+#: `edited` 是草稿编辑器回传的用户改动（需求二的可编辑草稿）；为 None = 按原样执行。
+_pending_decisions: Dict[str, Dict[str, Any]] = {}
 
 
-async def _await_user_confirmation(confirm_id: str) -> bool:
-    """挂起当前 Agent 循环，直到前端确认 / 取消（或超时）"""
+async def _await_user_confirmation(
+    confirm_id: str,
+) -> Tuple[bool, Optional[Dict[str, Any]]]:
+    """挂起当前 Agent 循环，直到前端确认 / 取消（或超时）
+
+    返回 `(approved, edited)`：`approved=False` = 用户取消；`edited` = 用户在草稿里
+    改过的内容（没有则为 None）。
+    """
     # 极端竞态：前端可能比后端先到（决定已经在 `_pending_decisions` 里）→ 直接采用
     if confirm_id in _pending_decisions:
-        return bool(_pending_decisions.pop(confirm_id))
+        return _read_decision(_pending_decisions.pop(confirm_id))
 
     event = asyncio.Event()
     _pending_confirms[confirm_id] = event
@@ -699,18 +706,30 @@ async def _await_user_confirmation(confirm_id: str) -> bool:
         await asyncio.wait_for(event.wait(), timeout=CONFIRM_TIMEOUT_SECONDS)
     except asyncio.TimeoutError:
         logger.warning("[agent] 等待用户确认超时: {}", confirm_id)
-        return False
+        return False, None
     finally:
         _pending_confirms.pop(confirm_id, None)
-    return bool(_pending_decisions.pop(confirm_id, False))
+    return _read_decision(_pending_decisions.pop(confirm_id, {}))
 
 
-def resolve_confirmation(confirm_id: str, approved: bool) -> bool:
+def _read_decision(decision: Any) -> Tuple[bool, Optional[Dict[str, Any]]]:
+    """把 `_pending_decisions` 里存的决定读成 `(approved, edited)`（容忍旧格式）"""
+    if isinstance(decision, dict):
+        return bool(decision.get("approved")), decision.get("edited")
+    return bool(decision), None
+
+
+def resolve_confirmation(
+    confirm_id: str,
+    approved: bool,
+    edited: Optional[Dict[str, Any]] = None,
+) -> bool:
     """前端点了确认 / 取消 → 唤醒挂起的循环
 
     **先记决定再唤醒**：这样「先到 / 后到」都能正确处理（无竞态）。
+    `edited`：草稿编辑器回传的用户改动（可选；仅 `approved=True` 时有意义）。
     """
-    _pending_decisions[confirm_id] = bool(approved)
+    _pending_decisions[confirm_id] = {"approved": bool(approved), "edited": edited}
     # 防御性清理：只保留最近一批，避免异常调用把 dict 撑大
     if len(_pending_decisions) > 200:
         for key in list(_pending_decisions.keys())[:-100]:
@@ -741,6 +760,145 @@ def needs_user_confirmation(
     if tool.is_destructive(params):
         return True
     return not auto_confirm
+
+
+# ============================================================
+# 可编辑草稿（需求二）：用户在确认卡片里改过内容 → 覆盖工具参数后再执行
+# ============================================================
+
+
+async def _apply_edited_params(
+    tool: AgentTool,
+    params: Dict[str, Any],
+    edited: Any,
+    ctx: ToolContext,
+) -> Dict[str, Any]:
+    """把草稿编辑器回传的用户改动**覆盖到工具参数**上（目前只支持建库导入草稿）
+
+    目前唯一支持的草稿是 `question_manage.batch_import`（需求二：可编辑草稿）：
+      · `edited["questions"]`（数组）→ 覆盖 `params["questions"]`（工具接受 JSON 字符串）；
+      · `edited["bank"]`（含 `bankId` + 改动字段）→ 在导入前把题库字段改掉。
+
+    ⚠️ **防御性**：`edited` 结构不对、或某一项坏掉 → **退回原参数**（宁可导入原始内容，
+       也绝不因为一次编辑把整批导入弄丢）。
+    """
+    if not isinstance(edited, dict):
+        return params
+    if tool.name != "question_manage" or str(params.get("action") or "") != "batch_import":
+        return params
+
+    new_params = dict(params)
+    questions = edited.get("questions")
+    if isinstance(questions, list) and questions:
+        try:
+            # 工具侧 `_batch_import` 对 JSON 字符串有三级修复（json_repair），
+            # 这里只负责把编辑器给的数组序列化回去，校验仍交给工具。
+            new_params["questions"] = json.dumps(questions, ensure_ascii=False)
+        except Exception as e:  # noqa: BLE001 - 序列化失败就保留原参数
+            logger.warning("[agent] 草稿 questions 序列化失败，改用原参数: {}", e)
+
+    bank_edit = edited.get("bank")
+    if isinstance(bank_edit, dict) and bank_edit:
+        try:
+            await _apply_edited_bank(ctx, new_params, bank_edit)
+        except Exception as e:  # noqa: BLE001 - 改库失败不该阻断导入
+            logger.warning("[agent] 按草稿更新题库失败（继续导入）: {}", e)
+    return new_params
+
+
+async def _apply_edited_bank(
+    ctx: ToolContext, params: Dict[str, Any], bank_edit: Dict[str, Any]
+) -> None:
+    """按草稿里改过的题库字段更新题库（**只在有 bankId 且题库属于本用户时**）
+
+    走 `question_write_service.update_bank`（与 `bank_manage._update` 同一路径），
+    只应用草稿里**确实给出**的字段；改名重名时保留原名、其余字段照常。
+    """
+    from app.models.question import QuestionBank
+    from app.services import question_write_service as qws
+
+    bank_id = bank_edit.get("bankId")
+    if bank_id is None:
+        bank_id = params.get("bank_id")
+    try:
+        bank_id = int(bank_id)
+    except (TypeError, ValueError):
+        return
+    bank = await ctx.db.get(QuestionBank, bank_id)
+    if bank is None or int(bank.user_id or 0) != int(ctx.user_id):
+        return
+    changed, conflict = await qws.update_bank(
+        ctx.db,
+        bank,
+        bank_name=bank_edit.get("bankName"),
+        subject=bank_edit.get("subject"),
+        description=bank_edit.get("description"),
+        is_public=bank_edit.get("isPublic"),
+    )
+    if conflict is not None:
+        logger.warning("[agent] 草稿改名冲突，保留原题库名: {}", bank.bank_name)
+    if changed:
+        logger.info("[agent] 按草稿更新题库 {}：{}", bank_id, changed)
+
+
+async def _rollback_empty_created_bank(
+    ctx: ToolContext,
+    tool_name: str,
+    params: Dict[str, Any],
+    created_banks: set,
+) -> None:
+    """用户取消 `batch_import` 时，若目标题库是**本轮刚建的**且仍是**空库** → 删掉它
+
+    背景：模型常先 `bank_manage create` 建库、再 `batch_import` 导题；用户在导入卡片上
+    点「取消」时，若不处理，就会留下一个空题库。
+
+    ⚠️ 只删「本轮 create 出来」（`created_banks` 记录）且「当前 0 题」的库 —— 已有库、
+       已导过题的库一律不碰。删除走 `question_write_service.delete_banks`（与后台删库 /
+       `bank_manage` 同一路径，内部已做归属过滤），随后**显式提交**（取消发生在流式响应
+       中，不能依赖 teardown 的 commit，否则会出现「说删了、刷新还在」）。
+    ⚠️ 这是**最小实现**，只覆盖「本轮新建 + 空库」这一种情况，不复用 `rollback_service`
+       的账本（账本按 turn 回退整轮，语义是「用户主动点回退」，与「取消单次导入」不同）。
+    """
+    if tool_name != "question_manage" or str(params.get("action") or "") != "batch_import":
+        return
+    if not created_banks:
+        return
+
+    from sqlalchemy import func, select
+
+    from app.models.question import QuestionMain
+    from app.services import question_write_service as qws
+
+    try:
+        bank_id = int(params.get("bank_id"))
+    except (TypeError, ValueError):
+        bank_id = None
+    if bank_id is None:
+        name = (params.get("bank_name") or "").strip()
+        if not name:
+            return
+        bank = await qws.find_bank_by_name(ctx.db, ctx.user_id, name)
+        if bank is None:
+            return
+        bank_id = int(bank.id)
+    if bank_id not in created_banks:
+        return
+
+    try:
+        count = int(
+            await ctx.db.scalar(
+                select(func.count()).where(QuestionMain.bank_id == bank_id)
+            )
+            or 0
+        )
+        if count:
+            return
+        await qws.delete_banks(ctx.db, ctx.user_id, [bank_id])
+        await ctx.db.commit()
+        created_banks.discard(bank_id)
+        logger.info("[agent] 用户取消导入：删除本轮新建的空题库 bank_id={}", bank_id)
+    except Exception as e:  # noqa: BLE001 - 清理是增强项，失败不影响「已取消」
+        logger.warning("[agent] 取消导入后清理空题库失败 bank_id={}: {}", bank_id, e)
 
 
 async def run_agent_stream(
@@ -1311,6 +1469,10 @@ async def run_agent_stream(
     exhausted = False
     aborted = False
     dead_loop_strikes = 0
+    #: 本轮由 `bank_manage create` 建出来的题库 id。**只**用于「用户取消 batch_import」时
+    #: 清掉空库（见 `_rollback_empty_created_bank`）—— 不是通用回退机制（通用回退是
+    #: `rollback_service` 的账本）。放本地变量是因为「本轮」= 这一次 `run_agent_stream`。
+    created_banks: set = set()
 
     # ---- 执行统计（`metrics` 事件，底部状态条用）----
     # ⚠️⚠️ **口径必须与 ds-free 链路逐字一致**（`openstudy-vue3-ts/src/api/ai/agentDsFree.ts`），
@@ -1589,7 +1751,7 @@ async def run_agent_stream(
                         "destructive": tool.is_destructive(params),
                     }
                 )
-                approved = await _await_user_confirmation(confirm_id)
+                approved, edited = await _await_user_confirmation(confirm_id)
                 yield _event(
                     {
                         "type": "tool_confirm_resolved",
@@ -1598,6 +1760,11 @@ async def run_agent_stream(
                     }
                 )
                 if not approved:
+                    # 给模型的是**失败信封**（让它别重复同一个操作），但给**界面**的必须是
+                    # 「取消」而不是「失败」：cancel 不是错误，渲染成红色失败卡片是 bug
+                    # （用户 2026-10-16 报「取消批量删除却显示批量删除失败 / 执行结果为空」）。
+                    # 故 UI 事件带 `cancelled:true`、中性文案、`data:None`（没有 fail 信封 →
+                    # 前端不会去渲染那份空的「执行结果」）。
                     result = fail(
                         "用户取消了这次操作",
                         "不要重复尝试同一个操作；若仍需完成目标，请换一种方式或先询问用户",
@@ -1605,17 +1772,28 @@ async def run_agent_stream(
                     lc_messages.append(
                         ToolMessage(content=_dumps(result), tool_call_id=call_id)
                     )
+                    # 取消导入时清掉「本轮刚建、且仍为空」的题库（避免留垃圾库）
+                    await _rollback_empty_created_bank(
+                        ctx, tool_name, params, created_banks
+                    )
                     yield _event(
                         {
                             "type": "tool_result",
                             "tool": tool_name,
                             "action": params.get("action"),
                             "success": False,
-                            "message": "用户已取消该操作",
-                            "data": result,
+                            "cancelled": True,
+                            "message": "已取消",
+                            "data": None,
                         }
                     )
                     continue
+
+                # 用户确认了这次操作：若草稿编辑器回传了改动，**先用改动覆盖工具参数**
+                # 再执行（见 `_apply_edited_params`）。改不动 / 改坏了都退回原参数，
+                # 绝不因为一次编辑让整批导入失败。
+                if edited:
+                    params = await _apply_edited_params(tool, params, edited, ctx)
 
             # 指挥家委派：**不在这里执行**，而是收集起来，等本轮非委派工具跑完后**并发**执行
             # （见上面 `delegate_jobs` 的说明）。这里先发一条 `delegate_start`，让前端时间线
@@ -1674,6 +1852,20 @@ async def run_agent_stream(
                     await ctx.db.commit()
                 except Exception as e:  # noqa: BLE001 - 提交失败不影响本轮任务
                     logger.warning("[agent] 工具写入提交失败: {}", e)
+
+            # 记下「本轮新建的题库」，供「取消导入」时清理空库（见 _rollback_empty_created_bank）
+            if (
+                tool_name == "bank_manage"
+                and str(params.get("action") or "") == "create"
+                and result.get("success")
+            ):
+                bank_info = result.get("bank")
+                created_id = bank_info.get("bankId") if isinstance(bank_info, dict) else None
+                try:
+                    if created_id is not None:
+                        created_banks.add(int(created_id))
+                except (TypeError, ValueError):
+                    pass
 
             # 报错自纠计数 + 让前端看得见「它在自己修」
             if not result.get("success"):

@@ -1726,13 +1726,18 @@ export async function runDsFreeAgentStream(
               })
             : true
           if (!approved) {
+            // ⚠️ 与后端链路同口径：`cancelled:true` + 中性文案 + `data:null`。
+            //    「取消」不是「失败」—— 前端 `fillTool` 据此不渲染红色失败卡
+            //    （用户 2026-10-16 报「点取消却显示批量删除失败」）。模型侧仍拿到
+            //    下面那句 DECLINED 提示，所以它不会重复调用。
             onEvent?.({
               type: 'tool_result',
               tool: call.tool,
               action: call.params?.action,
               success: false,
-              message: '用户已取消该操作',
-              data: { success: false, error: '用户已取消该操作', cancelled: true }
+              cancelled: true,
+              message: '已取消',
+              data: null
             })
             lastToolResultText =
               '<tool_result>\nUser DECLINED this operation. Do NOT retry the same call; ' +

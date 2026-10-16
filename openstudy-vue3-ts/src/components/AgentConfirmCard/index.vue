@@ -16,6 +16,17 @@
 -->
 <template>
   <div class="agent-confirm" :class="[`is-${status}`, { 'is-destructive': destructive }]">
+    <!--
+      建库导入草稿（需求二）：交给 AgentDraftCard —— 用户在导入前可改题库信息与每道题，
+      确认时把改动随 `edited` 回传。非草稿卡片走下面原来的只读预览。
+    -->
+    <AgentDraftCard
+      v-if="isDraft"
+      :draft="preview && preview.draft"
+      :status="status"
+      @resolve="onDraftResolve"
+    />
+    <template v-else>
     <div class="ac-head">
       <span class="ac-icon">
         <span v-if="status === 'running'">{{ destructive ? '⚠' : '?' }}</span>
@@ -58,11 +69,13 @@
       </button>
     </div>
     <div v-else class="ac-result">{{ status === 'ok' ? '已确认' : '已取消' }}</div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import AgentDraftCard from '@/components/AgentDraftCard/index.vue'
 
 const props = defineProps({
   tool: { type: String, default: '' },
@@ -77,9 +90,21 @@ const props = defineProps({
   preview: { type: Object as () => Record<string, any> | null, default: null }
 })
 
-defineEmits(['resolve'])
+const emit = defineEmits(['resolve'])
 
 const title = computed(() => (props.destructive ? '需要确认：删除操作' : '需要确认：写操作'))
+
+/**
+ * 是不是「建库导入」的可编辑草稿 —— 是就换 `AgentDraftCard`，不是就还是只读预览。
+ *
+ * 判据落在 `preview.draft.kind` 上（后端 `_build_import_draft` 给的形状），
+ * 不落在 `action === 'batch_import'` 上：老的 `batch_import` 预览（只有 count/sample）
+ * 也该走只读那条路，只有带 `draft` 的才可编辑。
+ */
+const isDraft = computed(() => (props.preview as any)?.draft?.kind === 'question_bank_import')
+
+/** 草稿卡片回传的载荷（`{approved, edited?}` / `{approved:false, regenerate, opinion}`）原样上抛 */
+const onDraftResolve = (payload: any) => emit('resolve', payload)
 
 /* ============================================================
  * 头部：工具 · 动作（人话）
@@ -270,8 +295,10 @@ const PREVIEW_LABELS: Record<string, string> = {
 /**
  * 单独处理的键：`action` 已在卡片头部写成人话（题库管理 · 批量删除），
  * `success` / `error` / `hint` 属于结果与错误区，都不该在这里重复一遍。
+ * `draft` 是建库导入的可编辑草稿（交给 `AgentDraftCard`），在这里当对象行渲染成
+ * `draft: [object Object]` 只会是噪音 —— 也一并跳过。
  */
-const PREVIEW_SKIP = new Set(['action', 'success', 'error', 'hint'])
+const PREVIEW_SKIP = new Set(['action', 'success', 'error', 'hint', 'draft'])
 
 /* ============================================================
  * 值的展示：把「机器码」换成人话（**只有这三条规则，不做通用框架**）

@@ -360,38 +360,27 @@ class BankManageTool(AgentTool):
         if bank.user_id != ctx.user_id:
             return fail("只能修改自己的题库", "请确认 bank_id 是否属于你")
 
-        changed = []
-        new_name = (params.get("bank_name") or "").strip()
-        if new_name:
-            # ⚠️ 重名校验：改名到「已存在的题库名」会产生**同名题库**，而 delete_by_name /
-            # 按名定位都走 `.first()` → 之后「按名字删/查」行为不确定（实测会删错）。
-            # 这里直接拦下，并给出可执行的下一步。
-            if new_name != bank.bank_name:
-                dup = await qws.find_bank_by_name(ctx.db, ctx.user_id, new_name)
-                if dup is not None and dup.id != bank.id:
-                    return fail(
-                        f"已存在同名题库「{new_name}」（ID={dup.id}）",
-                        "请换一个名字；若要合并，请先把那个题库改名或删除",
-                        bankId=dup.id,
-                    )
-            bank.bank_name = new_name
-            changed.append("bank_name")
-        if (params.get("subject") or "").strip():
-            bank.subject = params["subject"].strip()
-            changed.append("subject")
-        if (params.get("description") or "").strip():
-            bank.description = params["description"].strip()
-            changed.append("description")
-        if params.get("is_public") is not None:
-            bank.is_public = int(params["is_public"])
-            changed.append("is_public")
-
+        # 字段应用口径收在 `question_write_service.update_bank`（与「可编辑草稿确认」
+        # 路径共用，避免两处各写一份、早晚漂移）。返回值 `(changed, conflict)`。
+        changed, conflict = await qws.update_bank(
+            ctx.db,
+            bank,
+            bank_name=(params.get("bank_name") or "").strip(),
+            subject=params.get("subject"),
+            description=params.get("description"),
+            is_public=params.get("is_public"),
+        )
+        if conflict is not None:
+            return fail(
+                f"已存在同名题库「{conflict.bank_name}」（ID={conflict.id}）",
+                "请换一个名字；若要合并，请先把那个题库改名或删除",
+                bankId=conflict.id,
+            )
         if not changed:
             return fail(
                 "没有提供任何要修改的字段",
                 "请至少给出 bank_name / subject / description / is_public 之一",
             )
-        await ctx.db.flush()
         return ok(
             action="update",
             bank=qws.bank_brief(bank),
