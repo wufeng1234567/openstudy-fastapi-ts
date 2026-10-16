@@ -20,7 +20,13 @@ export function parseTime(time: TimeInput, pattern?: string): string | null {
     if ((typeof time === 'string') && (/^[0-9]+$/.test(time))) {
       t = parseInt(time)
     } else if (typeof time === 'string') {
-      t = (time as string).replace(new RegExp(/-/gm), '/').replace('T', ' ').replace(new RegExp(/\.[\d]{3}/gm), '')
+      // ⚠️ 剥小数秒必须用 `/\.\d+/`（**任意位**），不能写 `/\.[\d]{3}/`（只认 3 位）：
+      //    后端 Python `datetime.isoformat()` 默认给 **6 位微秒**（`2026-10-11T17:02:07.397806`），
+      //    只剥 3 位会剩 `.397` 之后的 `806` 粘在小数点后 → `new Date('2026/10/11 17:02:07806')`
+      //    = Invalid Date → 前端显示成 `0-0-0`（用户 2026-10-16 报「专家创建的题库没时间」）。
+      //    `strftime('%Y-%m-%d %H:%M:%S')`（无小数）与 3 位毫秒串在两种写法下都正常，故只有微秒串受害，
+      //    「有的题库正常、有的显示 0-0-0」就是这个原因。
+      t = (time as string).replace(new RegExp(/-/gm), '/').replace('T', ' ').replace(/\.\d+/gm, '')
     }
     if ((typeof t === 'number') && (t.toString().length === 10)) {
       t = t * 1000
@@ -37,13 +43,14 @@ export function parseTime(time: TimeInput, pattern?: string): string | null {
     a: date.getDay()
   }
   const time_str = format.replace(/{(y|m|d|h|i|s|a)+}/g, (result: string, key: string) => {
-    let value = formatObj[key]
+    const value = formatObj[key]
     // Note: getDay() returns 0 on Sunday
     if (key === 'a') { return ['日', '一', '二', '三', '四', '五', '六'][value] }
-    if (result.length > 0 && value < 10) {
-      value = Number('0' + value)
-    }
-    return String(value || 0)
+    // ⚠️ 必须用 `padStart` 补零，**不能**写成 `Number('0' + value)`：
+    //    后者把 `'02'` 又转回数字 `2`，于是 `17:02:07` 会渲染成 `17:2:7`、`2026-09-16` 变成
+    //    `2026-9-16`（上游 RuoYi 原版就是 `value.toString().padStart(2, '0')`，TS 迁移时写错了）。
+    //    年份是 4 位，`padStart(2)` 不会动它。
+    return String(value).padStart(2, '0')
   })
   return time_str
 }

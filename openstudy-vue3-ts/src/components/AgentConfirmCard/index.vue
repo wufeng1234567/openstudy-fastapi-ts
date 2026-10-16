@@ -209,6 +209,9 @@ const PREVIEW_LABELS: Record<string, string> = {
   contentLength: '正文字数',
   content_length: '正文字数',
   tags: '标签',
+  // `save_draft` 预览：是否会覆盖已有草稿 + 那份草稿的标题
+  overwrite: '是否覆盖',
+  existingTitle: '已有草稿',
   // 笔记可见性走人话字段，不用 `isPublic` —— 库里的 is_public 语义按表相反（题库 0=公开，
   // 笔记 1=公开），共用一张枚举必然显示反，详见 AgentToolDetail 的 FIELD_LABELS 注释
   visibility: '可见性',
@@ -240,6 +243,11 @@ const PREVIEW_LABELS: Record<string, string> = {
   chunks: '分块数',
   docId: '文档 ID',
   fileName: '文件名',
+  // ---- 写入知识库 knowledge_ingest（preview：反查的库名 + 切块/向量化估算）
+  kbName: '知识库名称',
+  embedCalls: '向量化次数',
+  charCount: '字符数',
+  source: '来源',
   // ---- 题库分享 bank_share_manage
   shareId: '分享 ID',
   expireText: '有效期',
@@ -251,7 +259,12 @@ const PREVIEW_LABELS: Record<string, string> = {
   received: '是否已领取',
   newBankName: '新题库名',
   allowFork: '允许复制',
-  shareMessage: '留言'
+  shareMessage: '留言',
+  // ---- 智能体管理 agent_manage（create 预览摊开人设/工具/模型，delete/update 给 id）
+  agentId: '智能体 ID',
+  personaPrompt: '人设提示词',
+  tools: '可用工具',
+  model: '模型'
 }
 
 /**
@@ -294,8 +307,10 @@ function hasTextTwin(p: Record<string, any>, key: string): boolean {
  * `created`=Python bool（`question_mark_manage.py:475`）、
  * `isStarred`/`effective`=int 0/1 / bool（`question_record_service.py:340`、`bank_share_service.py:107`）。
  * 其中只有 `received` / `allowFork` 目前会出现在 preview 里，其余是同一套语义的同类列。
+ * `overwrite` 是 `note_manage._preview_save_draft` 回的 Python bool（line 330）——
+ * 不放进来的话确认卡片会打出裸 `true` / `false`。
  */
-const YES_NO_KEYS = new Set(['received', 'allowFork', 'revoked', 'created', 'isStarred', 'effective'])
+const YES_NO_KEYS = new Set(['received', 'allowFork', 'revoked', 'created', 'isStarred', 'effective', 'overwrite'])
 
 /**
  * ③ 枚举值 → 人话。**只放取值域能从后端源码核实的键**。

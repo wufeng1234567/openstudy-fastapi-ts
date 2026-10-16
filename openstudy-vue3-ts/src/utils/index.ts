@@ -20,12 +20,18 @@ export function formatDate(cellValue: any): string {
  * @param option
  */
 export function formatTime(time: any, option?: string): string {
+  if (!time) return ''
+  // ⚠️ 不能对 ISO 字符串用一元 `+time`（`+'2026-10-11 17:02:07'` = NaN → Invalid Date）。
+  //    统一交给 `parseTime` 归一（它能处理 6 位微秒 / 空格分隔等后端口径），再落回 Date。
+  let ts: number
   if (('' + time).length === 10) {
-    time = parseInt(time) * 1000
+    ts = parseInt(time) * 1000
   } else {
-    time = +time
+    const normalized = parseTime(time)
+    ts = normalized ? new Date(normalized.replace(/-/g, '/')).getTime() : new Date(time).getTime()
   }
-  const d = new Date(time)
+  const d = new Date(ts)
+  if (Number.isNaN(d.getTime())) return ''
   const now = Date.now()
 
   const diff = (now - d.getTime()) / 1000

@@ -251,6 +251,8 @@ const FIELD_LABELS: Record<string, string> = {
   favoriteId: '收藏 ID',
   markedId: '斩题 ID',
   errors: '错题',
+  // ⚠️ 上一条只是**错题本**语境（`question_flag_manage`）；`question_manage.batch_import`
+  //    的 `errors` 是导入失败的字符串明细，靠 `labelOf` 按值形状改成「导入错误」。
   favorites: '收藏',
   markedQuestions: '斩题',
   created: '本次新建',
@@ -375,10 +377,62 @@ const FIELD_LABELS: Record<string, string> = {
   sub_agent: '专家',
   result: '结论',
   steps: '执行步骤',
-  task: '任务'
+  task: '任务',
+
+  // ============================================================
+  // 题库管理 bank_manage / 题目管理 question_manage / 笔记管理 note_manage
+  //   `changed` 是一次更新真正动过的列名（bank/question/note/knowledge_base 共用）
+  // ============================================================
+  changed: '修改字段',
+  // `bank_manage.delete/delete_many` 的 `deleted[]` 元素是 `{id, bankName}`（题库）
+  id: '题库 ID',
+  failed: '失败数',
+  parseStrategy: '解析方式',
+  warnings: '提示',
+  droppedMarkers: '忽略标记',
+  droppedImageMarkers: '忽略标记',
+  outOfRange: '越界题号',
+  orderNum: '排序',
+
+  // ============================================================
+  // 写入知识库 knowledge_ingest
+  //   （回执 / 确认预览都会出现的 `kbName`；`kbId` 已在上面那节）
+  // ============================================================
+  kbName: '知识库名称',
+  estimatedChunks: '预计分块数',
+  embedCalls: '向量化次数',
+  charCount: '字符数',
+  source: '来源',
+
+  // ============================================================
+  // 智能体管理 agent_manage
+  //   （`agent_config_service.to_dict`：agentId/name/greeting/personaPrompt/tools/
+  //    model/isEnabled；list 回 `agents`、create/update 回 `agent`）
+  // ============================================================
+  agent: '智能体',
+  agents: '智能体',
+  agentId: '智能体 ID',
+  greeting: '问候语',
+  personaPrompt: '人设提示词',
+  tools: '可用工具',
+  model: '模型',
+  isEnabled: '启用状态'
 }
 
-const labelOf = (key: string) => FIELD_LABELS[key] || key
+/**
+ * 字段名 → 标签。多数键查 `FIELD_LABELS` 即可，但 **同一个键在两个工具里语义相反** 时
+ * 只能看值的形状：`errors` ——
+ *   · `question_manage.batch_import`：**导入失败的字符串明细**（数组元素是字符串）；
+ *   · `question_flag_manage.list`：**错题本记录**（数组元素是对象，`_ITEMS_KEY`）。
+ * 前者套「错题」是错的，所以这里按「是不是对象数组」分开取名。
+ */
+const labelOf = (key: string, value?: any): string => {
+  if (key === 'errors') {
+    const arr = Array.isArray(value) ? value.map(expand) : []
+    return arr.length > 0 && arr.every(isPlainObject) ? '错题' : '导入错误'
+  }
+  return FIELD_LABELS[key] || key
+}
 
 /** 题型 id → 文案（与后端 `app/services/question_write_service.py` 的 QUESTION_TYPE_TEXT 一致） */
 const QUESTION_TYPE_TEXT: Record<string, string> = {
@@ -414,7 +468,9 @@ const ENUM_LABELS: Record<string, Record<string, string>> = {
   // 斩题类型：与 `question_record_service.MARKED_TYPE_TEXT` 逐个相同（questions.py 的同一张表）
   markedType: { '1': '错题', '2': '难题', '3': '重点', '4': '易错', '5': '技巧' },
   // 知识库屏蔽位：与 `knowledge_base_manage._disabled_text` 同口径（0=参与检索，1=不参与）
-  disabled: { '0': '启用', '1': '已屏蔽' }
+  disabled: { '0': '启用', '1': '已屏蔽' },
+  // 智能体启用位：`agent_config_service.to_dict` 回的 `isEnabled` 是 int（1=启用 / 0=已停用）
+  isEnabled: { '0': '已停用', '1': '启用' }
 }
 
 /**
@@ -657,13 +713,13 @@ const rows = computed(() => {
   const out: { key: string; label: string; kind: string; text?: string; chips?: string[]; value?: any }[] = []
   for (const [key, value] of visibleEntries(props.data)) {
     if (isScalar(value)) {
-      out.push({ key, label: labelOf(key), kind: 'scalar', text: renderValue(key, value) })
+      out.push({ key, label: labelOf(key, value), kind: 'scalar', text: renderValue(key, value) })
     } else if (Array.isArray(value) && value.every(isScalar)) {
-      out.push({ key, label: labelOf(key), kind: 'chips', chips: value.map((v) => renderValue(key, v)) })
+      out.push({ key, label: labelOf(key, value), kind: 'chips', chips: value.map((v) => renderValue(key, v)) })
     } else if (props.depth + 1 > MAX_DEPTH) {
-      out.push({ key, label: labelOf(key), kind: 'scalar', text: '（内容较深，已省略）' })
+      out.push({ key, label: labelOf(key, value), kind: 'scalar', text: '（内容较深，已省略）' })
     } else {
-      out.push({ key, label: labelOf(key), kind: 'nested', value })
+      out.push({ key, label: labelOf(key, value), kind: 'nested', value })
     }
   }
   return out

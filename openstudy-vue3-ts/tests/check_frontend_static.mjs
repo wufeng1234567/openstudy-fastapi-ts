@@ -2010,7 +2010,10 @@ function redundantPair(rel, key, textField) {
  * 出处：`question_mark_manage.py:293-335`（`_preview_record` / `_preview_question`）、
  *       `memory_manage.py:131-169`（`_preview_forget` / `_preview_clear`）、
  *       `knowledge_base_manage.py:183-249`（`_preview_create/update/delete/delete_document` + `_load_doc`）、
- *       `bank_share_manage.py:193-275`（`_preview_share/revoke/receive/copy`）。
+ *       `bank_share_manage.py:193-275`（`_preview_share/revoke/receive/copy`）、
+ *       `note_manage.py:312-333`（`_preview_save_draft`：`overwrite` / `existingTitle`）、
+ *       `knowledge_ingest.py:208-245`（`kbName` / `embedCalls` / `charCount` / `source`）、
+ *       `agent_manage.py:120-151`（create/delete/update 预览：`agentId` / `personaPrompt` / `tools` / `model`）。
  */
 const PREVIEW_KEYS_REQUIRED = [
   'flagType',
@@ -2040,7 +2043,18 @@ const PREVIEW_KEYS_REQUIRED = [
   'received',
   'newBankName',
   'allowFork',
-  'shareMessage'
+  'shareMessage',
+  // 实测补充：note_manage / knowledge_ingest / agent_manage 的预览里也有
+  'overwrite',
+  'existingTitle',
+  'kbName',
+  'embedCalls',
+  'charCount',
+  'source',
+  'agentId',
+  'personaPrompt',
+  'tools',
+  'model'
 ]
 
 /**
@@ -2083,6 +2097,17 @@ const FIELD_KEYS_REQUIRED = {
     'sourceBankName', 'shares',
     // 实测补充：`format_share` / `share_info` / `receive_share` 里还有这些
     'shareToken', 'ownerId', 'ownerNickName', 'isOwner', 'alreadyReceived', 'coverImage'
+  ],
+  // 以下 5 个工具的**回执**里原本没有标签的字段（英文标识符会直接打在用户脸上）
+  bank_manage: ['changed', 'id'],
+  question_manage: [
+    'failed', 'parseStrategy', 'warnings', 'droppedImageMarkers', 'droppedMarkers',
+    'outOfRange', 'changed', 'errors'
+  ],
+  note_manage: ['changed', 'orderNum'],
+  knowledge_ingest: ['kbName', 'estimatedChunks', 'embedCalls', 'charCount', 'source'],
+  agent_manage: [
+    'agents', 'agent', 'agentId', 'personaPrompt', 'greeting', 'tools', 'model', 'isEnabled'
   ]
 }
 
