@@ -92,7 +92,12 @@ const DEFAULT_TARGETS = [
   'src/components/CommentSection/mention.ts',
   'src/components/CommentSection/CommentInput.vue',
   'src/components/CommentSection/CommentItem.vue',
-  'src/views/front/messages/mentions.vue'
+  'src/views/front/messages/mentions.vue',
+  // AI 限流后台页（2026-10-16 新增）：配置 / 违规记录 / 计数器 / 封禁/解封。
+  // 对接后端 `app/api/v1/rate_limit_admin.py`（prefix `/monitor/ratelimit`），
+  // 一个 import 路径写错同样只有走到那一块 tab 才炸 —— 所以两个新文件都进清单。
+  'src/api/monitor/ratelimit.ts',
+  'src/views/monitor/ratelimit/index.vue'
 ]
 
 const ARGV = process.argv.slice(2)

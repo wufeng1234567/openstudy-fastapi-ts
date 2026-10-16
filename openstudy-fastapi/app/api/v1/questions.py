@@ -136,6 +136,9 @@ def format_question(q, sub_question_objs=None):
         "questionId": q.id,
         "bankId": q.bank_id,
         "questionType": q.question_type,
+        # 题型中文名：与 `question_write_service.QUESTION_TYPE_TEXT` 同源（`_get_question_type_text`
+        # 现在只是它的薄封装）。列表接口此前只回数字，任何直接读 `questionTypeText` 的界面都会空白。
+        "questionTypeText": _get_question_type_text(q.question_type),
         "questionText": q.question_text,
         # 向后兼容字段
         "questionContent": q.question_text,
@@ -370,9 +373,14 @@ async def _fetch_questions_map(db: AsyncSession, question_ids: list) -> dict:
 
 
 def _get_question_type_text(qtype: int) -> str:
-    """题型编码转中文"""
-    type_map = {1: "单选题", 2: "多选题", 3: "判断题", 4: "填空题", 5: "简答题", 6: "组合题"}
-    return type_map.get(qtype, "未知")
+    """题型编码转中文
+
+    ⚠️ 单一事实来源 = `question_write_service.QUESTION_TYPE_TEXT`（含 6/7 组合题）。
+    原先这里自己维护了一张**残缺副本**（只有 1-6，缺 7「完形填空」，且 6 的文案也不同），
+    与 Agent 侧 `question_brief` 的口径不一致 —— 导出/列表会与 Agent 回执说法不同。
+    改为直接引用正规表，消除漂移。
+    """
+    return question_write_service.QUESTION_TYPE_TEXT.get(qtype, "未知")
 
 
 def _get_marked_type_text(value) -> str:

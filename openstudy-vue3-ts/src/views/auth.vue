@@ -83,19 +83,6 @@
                         <span v-else class="chev chev-right"></span>
                       </span>
                     </button>
-
-                    <button class="quick-card quick-card-admin" :class="{ 'is-loading': quickLoading === 'admin' }"
-                      :disabled="!!quickLoading || loading" @click.prevent="handleQuickLogin('admin')">
-                      <span class="quick-avatar qa-admin">管</span>
-                      <span class="quick-info">
-                        <span class="quick-name">管理员</span>
-                        <span class="quick-desc">进入后台管理系统</span>
-                      </span>
-                      <span class="quick-arrow">
-                        <span v-if="quickLoading === 'admin'" class="quick-spinner"></span>
-                        <span v-else class="chev chev-right"></span>
-                      </span>
-                    </button>
                   </div>
 
                   <el-button class="switch-account-btn" :disabled="!!quickLoading || loading"
@@ -879,10 +866,6 @@ getCode();
 
 .quick-card-guest:hover {
   border-color: #6b7280;
-}
-
-.qa-admin {
-  background: linear-gradient(135deg, #d09b3f, #b45309);
 }
 
 .quick-info {

@@ -67,17 +67,8 @@
                 @click="handleCardClick(item)">
                 <!-- 题库封面 -->
                 <div class="card-cover">
-                  <el-image :src="getImageUrl(item.coverImage)" fit="cover" class="cover-image"
-                    @error="handleImageError">
-                    <template #error>
-                      <div class="image-error">
-                        <el-icon>
-                          <Picture />
-                        </el-icon>
-                        <span>题库封面</span>
-                      </div>
-                    </template>
-                  </el-image>
+                  <BankCover :cover-image="item.coverImage" :bank-name="item.bankName" :subject="item.subject"
+                    class="cover-image" />
 
                   <!-- 收藏状态 -->
                   <div v-if="showFavoriteStatus && (item.isCollected || item.favoriteId)" class="favorite-status">
@@ -203,10 +194,11 @@ import { ref, reactive, computed, watch, toRefs, getCurrentInstance, nextTick, o
 import type { PropType } from 'vue'
 import { parseTime } from '@/utils/ruoyi'
 import {
-  Refresh, StarFilled, Picture, Document,
+  Refresh, StarFilled, Document,
   User, Comment, Clock, View, Delete, Collection,
   Reading
 } from '@element-plus/icons-vue'
+import BankCover from '@/components/BankCover/index.vue'
 import FavoriteButton from '@/components/FavoriteButton/FavoriteButton.vue'
 import SearchFilterInput from '@/components/SearchFilterInput/index.vue'
 import CommonFilterSidebar from '@/components/CommonFilterSidebar/index.vue'
@@ -753,15 +745,6 @@ const getFavoriteId = (item) => {
 }
 
 // 工具方法
-const getImageUrl = (imagePath) => {
-  if (!imagePath) return ''
-  const baseApi = import.meta.env.VITE_APP_BASE_API || ''
-  return imagePath.startsWith('http') ? imagePath : `${baseApi}${imagePath}`
-}
-
-const handleImageError = (e) => {
-  console.log('图片加载失败:', e)
-}
 const getEmptyDescription = () => {
   if (localSearchKeyword.value) {
     return `没有找到包含"${localSearchKeyword.value}"的题库`
@@ -900,22 +883,6 @@ const truncateText = (text, length = 50) => {
 
           &:hover .cover-image {
             transform: scale(1.05);
-          }
-
-          .image-error {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            color: #909399;
-
-            .el-icon {
-              font-size: 48px;
-              margin-bottom: 8px;
-            }
           }
 
           .favorite-status {

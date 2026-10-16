@@ -5,17 +5,23 @@
 --       答题流水 143 条 + 错题/斩题/收藏 + 笔记
 -- 前置：先导入 01_openstudy_v2_pgsql_deploy.sql（建表+基础种子）
 -- 用法：psql -U root -d openstudy_v2_pgsql -f 97_demo_seed.sql
--- 账号：user1/user2 = 123456 ; admin/demo = admin123 ; guest 免密
+-- 账号：user1/user2/guest（密码由 05_change_password.sql 统一成 ***REMOVED***；guest 亦可一键登录）
 -- ============================================================
 
 SET client_encoding TO 'UTF8';
 
 -- ============================================================
--- 幂等清理：先删掉本脚本将插入的演示数据（user_id 3/4/5 相关），
--- 支持重复执行不报主键冲突。不动 admin/demo(user_id 1/2) 与别人的数据。
+-- 幂等清理：先删掉本脚本将插入的演示数据（按**用户名**定位 user1/user2/guest），
+-- 支持重复执行不报主键冲突。
+-- ⚠️ 原来写死 `ARRAY[3,4,5]` —— 那只在「先 01 后 97」的全新库成立；线上库经过多次
+--    导入/迁移后这三个账号未必是 3/4/5（实测是 105/106/111），写死 id 会**删错行/漏删**，
+--    重跑时还会撞 user_name 唯一约束。改按用户名查，任何库上都对。
+--    不动 admin 与别的用户的数据。
 -- ============================================================
 DO $$
-DECLARE demo_uids bigint[] := ARRAY[3,4,5];
+DECLARE demo_uids bigint[] := ARRAY(
+  SELECT user_id FROM public.sys_user WHERE user_name IN ('user1', 'user2', 'guest')
+);
 BEGIN
   -- 先删依赖/关联表，再删主表
   DELETE FROM public.user_question_error   WHERE user_id = ANY(demo_uids);

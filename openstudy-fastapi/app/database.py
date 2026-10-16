@@ -71,6 +71,7 @@ def register_all_models() -> None:
         agent_tool_pref,
         ai_chat,
         ai_config,
+        ai_rate_limit_log,
         bank_share,
         config,
         courses,

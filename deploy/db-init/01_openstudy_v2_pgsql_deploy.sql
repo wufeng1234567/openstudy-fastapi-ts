@@ -4,7 +4,7 @@
 -- ------------------------------------------------------------
 -- 内容：① 建表结构  ② 部门/角色/菜单/参数种子  ③ 演示数据
 -- ⚠️ 已清洗：真实 API Key / 密码 / 隐私业务数据均已移除或替换为占位。
---    演示账号密码统一为 admin123，首次登录后请立即修改。
+--    演示账号密码统一为 ***REMOVED***，首次登录后请立即修改。
 -- 用法：
 --   createdb openstudy_v2_pgsql
 --   psql -U root -d openstudy_v2_pgsql -f openstudy_v2_pgsql_deploy.sql
@@ -3385,20 +3385,18 @@ SELECT pg_catalog.setval('public.sys_menu_menu_id_seq', 2114, true);
 -- ------------------------------------------------------------
 -- ⚠️ 本文件**不含任何真实 API Key / 账号密码 / 隐私数据**：
 --    · sys_ai_config 的 api_key 一律为占位符 'YOUR_API_KEY_HERE'，请部署后自行填写；
---    · sys_user 仅保留演示账号，密码均为 bcrypt('admin123')（首次登录后请立刻改密）；
+--    · sys_user 基础账号只有 admin（密码由 05_change_password.sql 设为强密码）；演示账号 user1/user2/guest 由 97_demo_seed.sql 建；
 --    · 业务内容（题库/题目/笔记）为少量演示数据。
 -- 执行顺序：01_schema.sql → 02_seed.sql（本文件）。
 -- ============================================================
 
--- ---------- 演示用户（密码统一 = admin123） ----------
+-- ---------- 演示用户（密码统一 = ***REMOVED***，见 05_change_password.sql） ----------
 INSERT INTO public.sys_user (user_id, user_name, nick_name, email, phonenumber, sex, avatar, password, status, del_flag, login_ip, login_date, dept_id, create_by, create_time, update_by, update_time, remark) VALUES
-(1, 'admin', '管理员',   'admin@example.com', '15888888888', '1', '', '$2b$12$XCWtkQ37WqBbWgMklX2of.qe6Lps5fXh5ehMUr3zJ6fMe62QQahlW', '0', '0', '127.0.0.1', now(), 103, 'admin', now(), '', NULL, '演示超级管理员'),
-(2, 'demo',  '演示用户', 'demo@example.com',  '15666666666', '0', '', '$2b$12$XCWtkQ37WqBbWgMklX2of.qe6Lps5fXh5ehMUr3zJ6fMe62QQahlW', '0', '0', '127.0.0.1', now(), 105, 'admin', now(), '', NULL, '演示普通用户');
+(1, 'admin', '管理员',   'admin@example.com', '15888888888', '1', '', '$2b$12$XCWtkQ37WqBbWgMklX2of.qe6Lps5fXh5ehMUr3zJ6fMe62QQahlW', '0', '0', '127.0.0.1', now(), 103, 'admin', now(), '', NULL, '演示超级管理员');
 
 -- ---------- 用户角色（1=超级管理员 admin，2=普通角色 common） ----------
 INSERT INTO public.sys_user_role (user_id, role_id) VALUES
-(1, 1),
-(2, 2);
+(1, 1);
 
 -- ---------- AI 模型配置（⚠️ 全部为占位 Key，部署后请自行填写） ----------
 INSERT INTO public.sys_ai_config (config_id, user_id, provider, provider_name, model, api_key, base_url, web_phone, web_password, web_area_code, is_default, is_enabled, status, remark, thinking_mode, reasoning_effort, context_length, create_time, update_time, create_by, update_by, model_kind) VALUES

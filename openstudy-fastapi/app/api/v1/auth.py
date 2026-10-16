@@ -26,6 +26,20 @@ import string
 router = APIRouter()
 
 
+async def _demo_mode_enabled(db: AsyncSession) -> bool:
+    """演示模式是否开启（`sys_config` 的 `sys.demo.mode`；缺配置时按**开启**兜底）
+
+    ⚠️ 这是演示账号一键登录的**唯一开关**，`/captchaImage`（给前端决定显不显示按钮）与
+    `/quickLogin`（决定放不放行）**必须读同一处**。原先 `/quickLogin` 完全不看这个开关 ——
+    线上把演示模式关掉、登录页不显示按钮了，但接口仍可被直接 POST 免密登入任意演示账号
+    （含 admin），是个越权口子。现在关掉 = 接口层也拒绝。
+    """
+    cfg = (await db.execute(
+        select(SysConfig).where(SysConfig.config_key == "sys.demo.mode")
+    )).scalar_one_or_none()
+    return (cfg.config_value.lower() == "true") if cfg else True
+
+
 @router.get("/captchaImage")
 async def captcha_image(db: AsyncSession = Depends(get_db)):
     """生成验证码图片"""
@@ -41,10 +55,8 @@ async def captcha_image(db: AsyncSession = Depends(get_db)):
 
     # 演示模式开关：true=保留「演示账号一键登录」入口（自用/答辩）；
     # false=上线体验版，登录页默认走账号密码登录/注册，不暴露演示账号。
-    demo_cfg = (await db.execute(
-        select(SysConfig).where(SysConfig.config_key == "sys.demo.mode")
-    )).scalar_one_or_none()
-    demo_mode = (demo_cfg.config_value.lower() == "true") if demo_cfg else True
+    # ⚠️ 与 `/quickLogin` 共用 `_demo_mode_enabled`，避免「前端藏了按钮、接口却仍放行」。
+    demo_mode = await _demo_mode_enabled(db)
 
     captcha_id = str(uuid.uuid4())
 
@@ -172,7 +184,6 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
 DEMO_ACCOUNTS = {
     "user1": "user1",
     "user2": "user2",
-    "admin": "admin",
     "guest": "guest",
 }
 
@@ -185,8 +196,15 @@ class QuickLoginRequest(BaseModel):
 async def quick_login(data: QuickLoginRequest, db: AsyncSession = Depends(get_db)):
     """演示用一键登录（白名单账号，免密码免验证码）
 
-    :param account: user1 / user2 / admin / guest
+    :param account: user1 / user2 / guest
+
+    ⚠️ **演示模式关闭时直接拒绝**（见 `_demo_mode_enabled`）：否则线上关掉演示模式后，
+    接口仍可被直接调用绕过登录。前端按钮的显隐由 `/captchaImage` 的 `demoMode` 决定，
+    但那只是 UI；真正的门在这里。
     """
+    if not await _demo_mode_enabled(db):
+        return error("演示模式未开启")
+
     key = (data.account or "").strip().lower()
     username = DEMO_ACCOUNTS.get(key)
     if not username:

@@ -49,13 +49,8 @@
         <el-col v-for="item in filteredList" :key="item.favoriteId" :xs="24" :sm="12" :md="8" :lg="6" :xl="4">
           <div class="bank-card" @click="handleCardClick(item)">
             <div class="card-cover">
-              <el-image :src="getImageUrl(item.bank?.coverImage)" fit="cover" class="cover-image" @error="handleImageError">
-                <template #error>
-                  <div class="image-error">
-                    <el-icon><Picture /></el-icon>
-                  </div>
-                </template>
-              </el-image>
+              <BankCover :cover-image="item.bank?.coverImage" :bank-name="item.bank?.bankName"
+                :subject="item.bank?.subject" class="cover-image" />
               <!-- 公开 / 私有 标识 -->
               <div v-if="item.bank?.isPublic === 0 || item.bank?.isPublic === 1" class="visibility-badge"
                 :class="isPrivateBank(item.bank) ? 'is-private' : 'is-public'">
@@ -116,8 +111,9 @@ import { ref, computed, onMounted, onUnmounted, onActivated, nextTick } from 'vu
 import { useRouter } from 'vue-router'
 import { getCurrentInstance } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Star, Refresh, Picture, Document, View, Ticket, CopyDocument, Lock, Unlock } from '@element-plus/icons-vue'
+import { Star, Refresh, Document, View, Ticket, CopyDocument, Lock, Unlock } from '@element-plus/icons-vue'
 import useUserStore from '@/store/modules/user'
+import BankCover from '@/components/BankCover/index.vue'
 import SearchFilterInput from '@/components/SearchFilterInput/index.vue'
 import CommonFilterSidebar from '@/components/CommonFilterSidebar/index.vue'
 import ReceiveShareDialog from '@/views/front/myQuestion/components/ReceiveShareDialog.vue'
@@ -281,15 +277,6 @@ const updateSearchAreaHeight = () => {
     }
   })
 }
-
-// 图片处理
-const getImageUrl = (imagePath?: string) => {
-  if (!imagePath) return ''
-  const baseApi = import.meta.env.VITE_APP_BASE_API || ''
-  return imagePath.startsWith('http') ? imagePath : `${baseApi}${imagePath}`
-}
-
-const handleImageError = () => {}
 
 // 0=公开 / 1=私有
 const isPrivateBank = (bank: any) => Number(bank?.isPublic) === 1
@@ -496,16 +483,6 @@ onUnmounted(() => {
   .cover-image {
     width: 100%;
     height: 100%;
-  }
-
-  .image-error {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #d1d5db;
-    font-size: 32px;
   }
 
   /* 公开 / 私有 标识 */

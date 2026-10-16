@@ -15,10 +15,7 @@
       <template v-else-if="info">
         <div class="share-header">
           <div class="cover">
-            <el-image v-if="info.coverImage" :src="getImageUrl(info.coverImage)" fit="cover" class="cover-img" />
-            <div v-else class="cover-placeholder">
-              <el-icon size="40"><Folder /></el-icon>
-            </div>
+            <BankCover :cover-image="info.coverImage" :bank-name="info.bankName" :subject="info.subject" />
           </div>
           <div class="meta">
             <h2 class="bank-name">{{ info.bankName }}</h2>
@@ -67,7 +64,8 @@ defineOptions({ name: 'FrontBankShare' })
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Folder, Document, Download, Select } from '@element-plus/icons-vue'
+import { Document, Download, Select } from '@element-plus/icons-vue'
+import BankCover from '@/components/BankCover/index.vue'
 import { getShareInfoByToken, receiveBankShare } from '@/api/bankShare/bankShare'
 import { getToken } from '@/utils/auth'
 import { ensureLogin } from '@/utils/loginGuard'
@@ -79,12 +77,6 @@ const loading = ref(false)
 const receiving = ref(false)
 const info = ref<any>(null)
 const errorMsg = ref('')
-
-const getImageUrl = (imagePath?: string) => {
-  if (!imagePath) return ''
-  const baseApi = import.meta.env.VITE_APP_BASE_API || ''
-  return imagePath.startsWith('http') ? imagePath : `${baseApi}${imagePath}`
-}
 
 const formatTime = (timeStr: string) => {
   if (!timeStr) return ''
@@ -189,20 +181,6 @@ onMounted(fetchInfo)
   border-radius: 12px;
   overflow: hidden;
   background: #f3f4f6;
-}
-
-.cover-img {
-  width: 100%;
-  height: 100%;
-}
-
-.cover-placeholder {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #d1d5db;
 }
 
 .meta {

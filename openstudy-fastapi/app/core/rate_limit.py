@@ -28,9 +28,10 @@ import fnmatch
 import redis.asyncio as redis
 from loguru import logger
 from app.redis import redis_client
+from app.core.rate_limit_config import get_config
 
 
-# ── 限流参数（可通过环境变量覆盖，评测期间可动态调整）──
+# ── 限流参数默认值（兼容旧的 import 时读 env；运行时以 Redis 配置为准）──
 AI_DAILY_LIMIT = int(os.environ.get("AI_DAILY_LIMIT", 50))       # 每用户每天
 AI_USER_PER_MINUTE = int(os.environ.get("AI_USER_PER_MINUTE", 10))  # 每用户每分钟
 AI_IP_PER_MINUTE = int(os.environ.get("AI_IP_PER_MINUTE", 100))    # 每 IP 每分钟
@@ -98,10 +99,64 @@ async def _get_user_id_from_token(token: str) -> str | None:
     return None
 
 
-async def _check_rate_limit(ip: str, user_id: str | None) -> tuple[bool, str]:
-    """检查是否超限，返回 (allowed, reason)"""
+async def _log_violation(
+    limit_type: str,
+    current_count: int,
+    limit_value: int,
+    ip: str,
+    user_id: str | None,
+    path: str,
+) -> None:
+    """违规落库（尽力而为，绝不影响 429 响应本身）
+
+    ⚠️ 中间件热路径上的旁路写：任何异常都吞掉只打 debug 日志。
+    用独立短会话（不复用请求级 db 依赖），因为 ASGI 中间件拿不到 get_db。
+    """
+    try:
+        from sqlalchemy import delete
+        from app.database import async_session_factory
+        from app.models.ai_rate_limit_log import SysAiRateLimitLog
+
+        user_name = None
+        if user_id:
+            # user_id 是 token 里带出来的，登录时 user_name 也存了；查一遍补全（失败不影响主流程）
+            try:
+                from app.models.user import SysUser
+                async with async_session_factory() as db:
+                    row = await db.get(SysUser, int(user_id))
+                    user_name = row.user_name if row else None
+            except Exception:
+                user_name = None
+
+        async with async_session_factory() as db:
+            db.add(
+                SysAiRateLimitLog(
+                    user_id=int(user_id) if user_id else None,
+                    user_name=user_name,
+                    ip=ip,
+                    path=path,
+                    limit_type=limit_type,
+                    current_count=current_count,
+                    limit_value=limit_value,
+                )
+            )
+            await db.commit()
+    except Exception as e:
+        logger.debug(f"rate_limit: violation log write failed: {e}")
+
+
+async def _check_rate_limit(ip: str, user_id: str | None, path: str = "") -> tuple[bool, str]:
+    """检查是否超限，返回 (allowed, reason)
+
+    ⚠️ 配置每个请求实时读 Redis（rate_limit_config.get_config），
+    后台改完即时生效，不用重启。Redis 不通时回落环境变量默认值。
+    """
     pool: redis.Redis = redis_client._pool
     if pool is None:
+        return True, ""
+
+    cfg = await get_config()
+    if not cfg["enabled"]:
         return True, ""
 
     now = int(time.time())
@@ -112,9 +167,10 @@ async def _check_rate_limit(ip: str, user_id: str | None) -> tuple[bool, str]:
     ip_count = await pool.incr(ip_key)
     if ip_count == 1:
         await pool.expire(ip_key, 70)
-    if ip_count > AI_IP_PER_MINUTE:
-        logger.warning(f"AI rate limit (IP): {ip} {ip_count}/{AI_IP_PER_MINUTE} per min")
-        return False, f"请求过于频繁，请稍后再试（每分钟限 {AI_IP_PER_MINUTE} 次）"
+    if ip_count > cfg["ipPerMinute"]:
+        logger.warning(f"AI rate limit (IP): {ip} {ip_count}/{cfg['ipPerMinute']} per min")
+        await _log_violation("ip", ip_count, cfg["ipPerMinute"], ip, user_id, path)
+        return False, f"请求过于频繁，请稍后再试（每分钟限 {cfg['ipPerMinute']} 次）"
 
     if user_id:
         # ── 每用户每分钟 ──
@@ -122,9 +178,10 @@ async def _check_rate_limit(ip: str, user_id: str | None) -> tuple[bool, str]:
         user_min_count = await pool.incr(user_min_key)
         if user_min_count == 1:
             await pool.expire(user_min_key, 70)
-        if user_min_count > AI_USER_PER_MINUTE:
-            logger.warning(f"AI rate limit (User/min): {user_id} {user_min_count}/{AI_USER_PER_MINUTE} per min")
-            return False, f"请求过于频繁，请稍后再试（每分钟限 {AI_USER_PER_MINUTE} 次）"
+        if user_min_count > cfg["userPerMinute"]:
+            logger.warning(f"AI rate limit (User/min): {user_id} {user_min_count}/{cfg['userPerMinute']} per min")
+            await _log_violation("user_min", user_min_count, cfg["userPerMinute"], ip, user_id, path)
+            return False, f"请求过于频繁，请稍后再试（每分钟限 {cfg['userPerMinute']} 次）"
 
         # ── 每用户每日 ──
         day = time.strftime("%Y%m%d")
@@ -132,9 +189,10 @@ async def _check_rate_limit(ip: str, user_id: str | None) -> tuple[bool, str]:
         user_day_count = await pool.incr(user_day_key)
         if user_day_count == 1:
             await pool.expire(user_day_key, 90000)
-        if user_day_count > AI_DAILY_LIMIT:
-            logger.warning(f"AI rate limit (User/day): {user_id} {user_day_count}/{AI_DAILY_LIMIT} today")
-            return False, f"今日 AI 体验额度已用完（{AI_DAILY_LIMIT}/{AI_DAILY_LIMIT}），明天重置"
+        if user_day_count > cfg["dailyLimit"]:
+            logger.warning(f"AI rate limit (User/day): {user_id} {user_day_count}/{cfg['dailyLimit']} today")
+            await _log_violation("user_day", user_day_count, cfg["dailyLimit"], ip, user_id, path)
+            return False, f"今日 AI 体验额度已用完（{cfg['dailyLimit']}/{cfg['dailyLimit']}），明天重置"
 
     return True, ""
 
@@ -170,7 +228,7 @@ class AiRateLimitMiddleware:
         token = _extract_token(scope)
         user_id = await _get_user_id_from_token(token) if token else None
 
-        allowed, reason = await _check_rate_limit(ip, user_id)
+        allowed, reason = await _check_rate_limit(ip, user_id, path)
         if not allowed:
             body = json.dumps(
                 {"code": 429, "msg": reason, "data": None},
