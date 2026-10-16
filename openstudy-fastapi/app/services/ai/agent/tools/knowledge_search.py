@@ -209,7 +209,9 @@ class KnowledgeSearchTool(AgentTool):
         used = 0
         for hit in raw_hits:
             content = _clip(hit.get("content") or "")
-            if not content:
+            images = list(hit.get("images") or [])
+            # 纯文本块（无图）且正文为空 → 跳过；纯图块（有图无文）要留下
+            if not content and not images:
                 continue
             if used + len(content) > MAX_TOTAL_CHARS:
                 break
@@ -229,6 +231,10 @@ class KnowledgeSearchTool(AgentTool):
                     # 留着才可核对（也方便排查「为什么被标低相关」）
                     "keywordScore": hit.get("keywordScore"),
                     "vectorScore": hit.get("vectorScore"),
+                    # 该片段夹带的图（`/profile/...` 相对路径）。工具层**只如实带出**，
+                    # 真正的多模态注入由上层（Agent loop / chat_engine）做 —— 回灌给模型的
+                    # JSON 里放 URL 不占多少 token，模型据它知道「这一段有配图」。
+                    "images": images,
                 }
             )
 

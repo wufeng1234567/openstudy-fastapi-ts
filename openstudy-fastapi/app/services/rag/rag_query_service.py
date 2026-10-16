@@ -14,13 +14,13 @@ RAG 查询服务（检索 + 问答）
 
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Union
 
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.rag import RagQaRecord
-from app.services.ai.base_client import ChatMessage
+from app.services.ai.base_client import ChatMessage, ImageBlock, TextBlock
 from app.services.ai.db_config import chat_with_config
 from app.services.rag.embedding import embed_query
 from app.services.rag.hybrid_search import (
@@ -160,7 +160,28 @@ async def answer(
         except Exception as e:  # 历史拿不到不该让问答挂掉
             logger.warning(f"[rag] 读取会话历史失败，忽略: {e}")
 
-    messages.append(ChatMessage(role="user", content=query))
+    # 命中片段夹带的图：读盘转 data URL，作为多模态内容块随提问一起交给模型。
+    # 这样「基于知识库回答」时，模型也能看到原文里的公式图/表格图，而不是只读文字。
+    hit_image_urls: list[str] = []
+    for h in hits:
+        for u in (getattr(h, "images", None) or []):
+            if u and u not in hit_image_urls:
+                hit_image_urls.append(u)
+    user_content: Union[str, list] = query
+    if hit_image_urls:
+        from app.services.ai.chat_engine import stored_image_to_data_url
+
+        blocks: list = [TextBlock(type="text", text=query)] if query else []
+        added = 0
+        for url in hit_image_urls:
+            data_url = stored_image_to_data_url(url)
+            if data_url:
+                blocks.append(ImageBlock(type="image_url", image_url={"url": data_url}))
+                added += 1
+        if added:
+            user_content = blocks
+            logger.info(f"[rag] 命中片段夹带 {added} 张图，已作为多模态内容块提交")
+    messages.append(ChatMessage(role="user", content=user_content))
 
     response = await chat_with_config(
         db, messages, temperature=0.3, user_id=user_id
@@ -180,6 +201,8 @@ async def answer(
             "vectorScore": None if h.vector_score is None else round(h.vector_score, 4),
             "keywordScore": None if h.keyword_score is None else round(h.keyword_score, 4),
             "preview": _truncate(h.content, 200),
+            # 该片段夹带的图（前端可据 preview/图 URL 渲染；空列表 = 无图）
+            "images": list(getattr(h, "images", None) or []),
         }
         for i, h in enumerate(hits, start=1)
     ]

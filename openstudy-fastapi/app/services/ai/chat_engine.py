@@ -359,11 +359,14 @@ async def _retrieve_kb_context(
     turn: ChatTurn,
     query: str,
     top_k: int = KB_CONTEXT_TOP_K,
-) -> str:
-    """按 `turn.kb_ids` 检索知识库，把命中片段拼成**可注入正文的材料块**。
+) -> tuple:
+    """按 `turn.kb_ids` 检索知识库，返回 `(材料文本, 命中图片 URL 列表)`。
 
     用途：出题类场景（`question-generate` / `reading` / `composite`）用户选了
     「取材来源 = 我的知识库」时，由这里取原文 → 交给 prompts 模板 → 模型据此出题。
+    命中片段若**夹带图片**（分块时按 `【图N】` 归属到 `chunk.meta_data`），
+    图片 URL 一并返回，由调用方转成多模态图块喂模型 —— 否则模型只看到文字、
+    看不到图里的公式/表格（这正是「知识库与图片」此前断裂之处）。
 
     设计要点：
       · **失败绝不抛**：检索挂了（embedding 不可用 / 库被删）不该让整轮出题失败，
@@ -380,19 +383,25 @@ async def _retrieve_kb_context(
         except (TypeError, ValueError):
             continue
     if not kb_ids or not (query or "").strip():
-        return ""
+        return "", []
 
     try:
         found = await rqs.search(db, turn.user_id or 0, query, kb_ids, top_k=top_k)
     except Exception as e:  # noqa: BLE001 - 取材是增强项，失败只记日志
         logger.warning("[chat_engine] 知识库取材失败（已跳过）: {}", e)
-        return ""
+        return "", []
 
     hits = found.get("hits") or []
     parts: List[str] = []
+    image_urls: List[str] = []
     used = 0
     for i, hit in enumerate(hits, start=1):
         content = (hit.get("content") or "").strip()
+        # 该片段夹带的图：即使正文为空（纯图块）也要把图收上来，故先收图再判 content
+        for url in (hit.get("images") or []):
+            value = str(url or "").strip()
+            if value and value not in image_urls:
+                image_urls.append(value)
         if not content:
             continue
         if len(content) > KB_CONTEXT_CHUNK_CHARS:
@@ -404,14 +413,14 @@ async def _retrieve_kb_context(
         parts.append(piece)
         used += len(piece)
 
-    if not parts:
+    if not parts and not image_urls:
         logger.info("[chat_engine] 知识库取材：kb_ids={} 未检索到相关内容", kb_ids)
-        return ""
+        return "", []
     logger.info(
-        "[chat_engine] 知识库取材：kb_ids={} → {} 段 / {} 字符",
-        kb_ids, len(parts), used,
+        "[chat_engine] 知识库取材：kb_ids={} → {} 段 / {} 字符 / {} 张图",
+        kb_ids, len(parts), used, len(image_urls),
     )
-    return "\n\n".join(parts)
+    return "\n\n".join(parts), image_urls
 
 
 async def _resolve_vision_safe_model(
@@ -562,6 +571,7 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
     #     ⚠️ 只对**出题类场景**注入 —— 聊天助手场景不该被强行塞材料（它自己有
     #        `knowledge_search` 工具按需检索，见 roles.py）。
     source_context = ""
+    kb_image_urls: List[str] = []
     if turn.kb_ids and turn.scene in (
         prompts.SCENE_QUESTION_GENERATE,
         prompts.SCENE_READING,
@@ -574,7 +584,7 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
             or str(turn.variables.get("knowledge_point") or "").strip()
             or prompt_text
         )
-        source_context = await _retrieve_kb_context(db, turn, kb_query)
+        source_context, kb_image_urls = await _retrieve_kb_context(db, turn, kb_query)
         if source_context:
             turn.variables["source_context"] = source_context
 
@@ -595,6 +605,13 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
             role="user", content=f"{context}\n【当前问题】\n{base_text}"
         )
     full_text = messages[-1].content if messages else prompt_text
+
+    # ⑤b 知识库素材里夹带的图（`/profile/...`）读盘转成 data URL，与用户上传的图合并。
+    #     多模态端点只认 data URL / http(s)，相对路径会被拒（见 `stored_image_to_data_url` 注释）。
+    for url in kb_image_urls:
+        data_url = stored_image_to_data_url(url)
+        if data_url and data_url not in image_urls:
+            image_urls.append(data_url)
 
     # ⑥ 有图片时改用多模态内容块（纯文本仍用字符串，尽量少改上游行为）
     effective_model, effective_provider = await _resolve_vision_safe_model(

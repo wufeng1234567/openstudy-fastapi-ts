@@ -246,15 +246,27 @@ async def upload_document(
             f"没能从「{filename}」中提取出文本：{parsed.get('error') or '内容为空'}", code=400
         )
 
+    # 图片：解析器已抽出（`blocks` 里带 data URL），此前**被整条链路丢弃**。
+    # 现在落盘成 `/profile/upload/...` 建 `image_map`，并让正文带上 `【图N】` 位置标记 ——
+    # 这样分块时能把图归属到具体 chunk，检索命中时把图一起回给模型/前端。
+    # ⚠️ 无图文档：`build_marked_document` 返回的正文与 `textContent` 等价，行为不变。
+    from app.services.file_parser import build_marked_document
+
+    marked_text, image_data_urls = build_marked_document(parsed)
+    # 解析器给不出图文块（老数据/降级）时退回纯 textContent，避免正文变短
+    body_text = (marked_text or "").strip() or text
+    image_map = rag_write_service.persist_document_images(image_data_urls)
+
     try:
         doc = await rag_write_service.create_document(
             db,
             _uid(current_user),
             kb_id,
             file_name=filename,
-            raw_content=text,
+            raw_content=body_text,
             file_type=(filename.rsplit(".", 1)[-1].lower() if "." in filename else None),
             file_size=len(raw),
+            image_map=image_map,
         )
     except Exception as e:
         return _fail(e)
@@ -264,7 +276,8 @@ async def upload_document(
         {
             "docId": doc.id,
             "fileName": doc.file_name,
-            "contentLength": len(text),
+            "contentLength": len(body_text),
+            "imageCount": len(image_map),
             "status": doc.status,
             "statusText": "待解析",
         },

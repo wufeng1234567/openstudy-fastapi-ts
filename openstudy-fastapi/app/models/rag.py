@@ -137,7 +137,18 @@ class RagDocument(Base):
     file_path: Mapped[Optional[str]] = mapped_column(String(500))
 
     # 解析出来的全文。留着它才能「不重新上传就重新分块 / 重新向量化」
+    # ⚠️ 含 `【图N】` 图片位置标记（见 `file_parser.build_marked_document`）—— 标记本身
+    #    很短且携带「这里有一张图」的真实信息，参与向量化不会明显污染语义。
     raw_content: Mapped[Optional[str]] = mapped_column(Text)
+
+    #: 文档的图片清单：`{"0": "/profile/upload/...", "1": "...", ...}`（键即 `【图N】` 的 N）。
+    #:
+    #: 为什么单独一列、而不是把 base64 塞进 raw_content：
+    #:   · data URL 动辄上百 KB，塞 JSON 列会白白撑大库；
+    #:   · 落盘成 `/profile/upload/...` 后：① 前端（方案 B）能直接 `<img>` 显示、
+    #:     ② 回给模型前用 `chat_engine.stored_image_to_data_url` 转回 data URL 即可。
+    #: 空 / NULL = 该文档没有图。
+    image_map: Mapped[Optional[dict]] = mapped_column(JSON)
 
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[int] = mapped_column(Integer, nullable=False, default=DOC_PENDING)

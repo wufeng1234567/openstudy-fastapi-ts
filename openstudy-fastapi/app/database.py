@@ -192,6 +192,22 @@ async def init_db():
 
         await conn.run_sync(_ensure_rag_kb_columns)
 
+        # 兼容历史库：rag_document 新增「图片清单」列（键=【图N】的 N，值=/profile/... 相对路径）。
+        # 图片从「解析后被丢弃」变成可检索/可回传给模型（见 app/models/rag.py 的 image_map 注释）。
+        def _ensure_rag_document_columns(sync_conn):
+            from sqlalchemy import inspect, text
+            inspector = inspect(sync_conn)
+            if "rag_document" not in inspector.get_table_names():
+                return
+            columns = {c["name"] for c in inspector.get_columns("rag_document")}
+            if "image_map" not in columns:
+                sync_conn.execute(text(
+                    "ALTER TABLE rag_document ADD COLUMN image_map JSON NULL"
+                ))
+                logger.info("rag_document.image_map 列已补齐（文档图片清单）")
+
+        await conn.run_sync(_ensure_rag_document_columns)
+
         # 兼容历史库：ai_agent_memory 新增「逻辑删除」列（未删 / 已删可恢复）。
         # ⚠️ 与上一条同理：`create_all` **只建缺失的表，不给已存在的表加列** ——
         #    这张表是 SpringBoot 时代建的（实测 7 列：id/user_id/memory_type/content/

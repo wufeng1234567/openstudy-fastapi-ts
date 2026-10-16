@@ -72,6 +72,11 @@ class ChunkHit:
     keyword_score: Optional[float] = None
     vec_rank: Optional[int] = None
     kw_rank: Optional[int] = None
+    #: 该分块关联的图片 URL 列表（`/profile/upload/...` 或 http(s) 外链）。
+    #: 来自 `rag_document_chunk.meta_data["images"]`（分块时按正文 `【图N】` 归属）。
+    #: 空 = 这一块没有图。检索命中时把它作为多模态图片一起回给模型（见
+    #: `rag_query_service` / `chat_engine._retrieve_kb_context`）。
+    images: list[str] = field(default_factory=list)
 
     @property
     def source(self) -> str:
@@ -94,6 +99,8 @@ class ChunkHit:
             "vectorScore": None if self.vector_score is None else round(self.vector_score, 4),
             "keywordScore": None if self.keyword_score is None else round(self.keyword_score, 4),
             "source": self.source,
+            # 图片：模型/前端据此把命中片段里的插图一起用上
+            "images": list(self.images),
         }
 
 
@@ -102,6 +109,24 @@ def _kb_filter(stmt: Select, kb_ids: Sequence[int]) -> Select:
         return stmt.where(RagDocumentChunk.kb_id.in_(list(kb_ids)))
     # 没有可用知识库时，用一个恒假条件短路，避免退化成「检索全库」
     return stmt.where(RagDocumentChunk.kb_id < 0)
+
+
+def _chunk_images(chunk: RagDocumentChunk) -> list[str]:
+    """从分块 `meta_data` 里取图片 URL 列表（分块时按 `【图N】` 归属写入）。
+
+    容错：`meta_data` 可能是 None / 非 dict / images 非 list（历史数据或手改），
+    任何异常都当作「没有图」，绝不让它影响检索主流程。
+    """
+    try:
+        meta = chunk.meta_data
+        if not isinstance(meta, dict):
+            return []
+        imgs = meta.get("images")
+        if not isinstance(imgs, list):
+            return []
+        return [str(u) for u in imgs if u]
+    except Exception:  # noqa: BLE001
+        return []
 
 
 async def vector_search(
@@ -138,6 +163,7 @@ async def vector_search(
                 content=chunk.content,
                 doc_name=row[1],
                 vector_score=similarity,
+                images=_chunk_images(chunk),
             )
         )
     return hits
@@ -178,6 +204,7 @@ async def keyword_search(
             content=row[0].content,
             doc_name=row[1],
             keyword_score=float(row[2]),
+            images=_chunk_images(row[0]),
         )
         for row in rows
     ]
@@ -204,8 +231,12 @@ def reciprocal_rank_fusion(
                     chunk_index=hit.chunk_index,
                     content=hit.content,
                     doc_name=hit.doc_name,
+                    images=list(hit.images),
                 )
                 fused[hit.chunk_id] = entry
+            elif hit.images and not entry.images:
+                # 两路都命中同一块时，images 取非空的一路（两路都来自同一行，值一致）
+                entry.images = list(hit.images)
             entry.score += 1.0 / (k + rank)
             # 同一块可能两路都命中，两路原始分都留一份
             if hit.vector_score is not None:

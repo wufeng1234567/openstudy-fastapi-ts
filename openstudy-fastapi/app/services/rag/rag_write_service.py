@@ -35,6 +35,10 @@ MAX_DOCS_PER_KB = 200
 
 _NUL_RE = re.compile("\x00")
 
+#: 正文里的图片位置标记（与 `file_parser.IMAGE_MARKER_TMPL` 同形）。
+#: RAG 端**只读**它（把图归属到分块），不生成 —— 生成在解析侧 `build_marked_document`。
+IMAGE_MARKER_RE = re.compile(r"【图(\d+)】")
+
 
 def sanitize_text(text: Optional[str]) -> str:
     """清掉 PostgreSQL 不接受、而 MySQL 会静默接受的字符。
@@ -345,22 +349,105 @@ async def _refresh_kb_counts(db: AsyncSession, kb_id: int) -> None:
     )
 
 
+# ---------------------------------------------------------------- 图片落盘
+
+def persist_document_images(image_data_urls: Sequence[str]) -> dict:
+    """把文档解析出的图片（data URL 列表）落盘，返回 `{"0": "/profile/upload/...", ...}`。
+
+    为什么落盘而不是把 base64 存库：见 `models/rag.py` 的 `image_map` 注释
+    （data URL 上百 KB，落盘后才能被前端 `<img>` 直接显示，也便于回给模型前转回）。
+
+    `image_data_urls` 的顺序必须与正文里的 `【图N】` 一一对应（N 从 0 起）。
+    单张落盘失败不影响其它图 —— 记录日志后跳过，不阻断整篇文档入库。
+
+    ⚠️ 只接受 `data:` 前缀的 data URL（解析器 `_payload_to_data_url` 的产物）；
+      http(s) 外链不下载（避免 SSRF / 断网卡死），直接原样保留 URL 而不落盘。
+    """
+    from app.utils.file_util import save_bytes
+
+    mapping: dict[str, str] = {}
+    for idx, data_url in enumerate(image_data_urls or []):
+        value = (data_url or "").strip()
+        if not value:
+            continue
+        try:
+            if value.startswith("http://") or value.startswith("https://"):
+                # 外链图：不下载，原样记为可用 URL（前端/模型都能直接取）
+                mapping[str(idx)] = value
+                continue
+            blob, mime = _data_url_to_bytes(value)  # 见下方辅助函数
+            ext = _mime_to_ext(mime)
+            saved = save_bytes(blob, f"rag_image_{idx}.{ext}", sub_dir="upload")
+            mapping[str(idx)] = saved["fileUrl"]
+        except Exception as e:  # noqa: BLE001 - 单张失败不该拖垮整篇
+            logger.warning(f"[rag] 第 {idx} 张图落盘失败，已跳过：{e}")
+    return mapping
+
+
+def _data_url_to_bytes(data_url: str) -> tuple[bytes, str]:
+    """`data:image/png;base64,xxxx` → (bytes, mime)。非法输入抛 ValueError。"""
+    import base64
+
+    head, _, payload = data_url.partition(",")
+    if not payload:
+        raise ValueError("不是合法的 data URL")
+    mime = "image/png"
+    if head.startswith("data:"):
+        meta = head[len("data:"):]
+        mime = meta.split(";", 1)[0] or "image/png"
+    padded = payload + "=" * (-len(payload) % 4)
+    return base64.b64decode(padded), mime
+
+
+def _mime_to_ext(mime: str) -> str:
+    m = (mime or "").lower()
+    if "jpeg" in m or "jpg" in m:
+        return "jpg"
+    if "gif" in m:
+        return "gif"
+    if "webp" in m:
+        return "webp"
+    if "bmp" in m:
+        return "bmp"
+    return "png"
+
+
 # ---------------------------------------------------------------- 分块
+
+def _image_indexes_in_text(text: str) -> list[int]:
+    """扫出正文里的 `【图N】` 标记，返回出现过的 N（顺序即出现顺序，可重复）。"""
+    return [int(m) for m in IMAGE_MARKER_RE.findall(text or "")]
+
 
 def build_chunk_rows(
     kb_id: int,
     doc_id: int,
     contents: Sequence[str],
     vectors: Optional[Sequence[list[float]]] = None,
+    image_map: Optional[dict] = None,
 ) -> list[RagDocumentChunk]:
     """把分块文本（+ 可选向量）组装成 ORM 对象。
 
     `content_tokens` 必须在这里用 jieba 生成 —— PG 的 `search_vec` 是它的生成列，
     漏了这一步中文就检索不到（`search_vec` 会是空 tsvector）。
+
+    `image_map`（`{"0": "/profile/...", ...}`）非空时：扫本块正文里的 `【图N】`，
+    把命中的图片 URL 记进 `meta_data["images"]` —— 检索命中这一块时就能把图一起回给模型
+    （见 `hybrid_search.ChunkHit`）。块内没有标记就不写，保持 `meta_data` 为空（与历史一致）。
     """
     rows: list[RagDocumentChunk] = []
+    img_map = image_map or {}
     for i, content in enumerate(contents):
         content = sanitize_text(content)
+        meta = None
+        if img_map:
+            hit_urls: list[str] = []
+            for n in _image_indexes_in_text(content):
+                url = img_map.get(str(n))
+                if url and url not in hit_urls:
+                    hit_urls.append(url)
+            if hit_urls:
+                meta = {"images": hit_urls}
         rows.append(
             RagDocumentChunk(
                 kb_id=kb_id,
@@ -371,6 +458,7 @@ def build_chunk_rows(
                 token_count=len(content),
                 content_tokens=tokenize(content),
                 embedding=list(vectors[i]) if vectors else None,
+                meta_data=meta,
             )
         )
     return rows
@@ -386,6 +474,7 @@ async def create_document(
     file_type: Optional[str] = None,
     file_size: Optional[int] = None,
     file_path: Optional[str] = None,
+    image_map: Optional[dict] = None,
     status: int = DOC_PENDING,
 ) -> RagDocument:
     kb = await get_knowledge_base(db, user_id, kb_id)
@@ -412,6 +501,7 @@ async def create_document(
         file_size=file_size if file_size is not None else len(raw_content or ""),
         file_path=file_path,
         raw_content=raw_content,
+        image_map=image_map or None,
         chunk_count=0,
         status=status,
     )
@@ -429,7 +519,9 @@ async def replace_chunks(
 ) -> int:
     """替换某文档的全部分块（先删后插，天然幂等，重向量化也走这里）。"""
     await db.execute(delete(RagDocumentChunk).where(RagDocumentChunk.doc_id == doc.id))
-    rows = build_chunk_rows(doc.kb_id, doc.id, contents, vectors)
+    rows = build_chunk_rows(
+        doc.kb_id, doc.id, contents, vectors, image_map=doc.image_map
+    )
     db.add_all(rows)
 
     doc.chunk_count = len(rows)

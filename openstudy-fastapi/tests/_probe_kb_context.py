@@ -65,17 +65,17 @@ async def main():
         # 1. 命中 → 拼材料
         rqs.search = fake_search
         turn = chat_engine.ChatTurn(scene="question-generate", kb_ids=[1], user_id=1)
-        ctx = await chat_engine._retrieve_kb_context(db, turn, "红黑树性质")
+        ctx, imgs = await chat_engine._retrieve_kb_context(db, turn, "红黑树性质")
         ck("KBC-01", "命中时拼出材料块（含『来源：』）", "来源：数据结构.pdf 第 3 段" in ctx, ctx[:120])
         ck("KBC-02", "命中时带上原文正文", "红黑树的五条性质" in ctx, "")
         ck("KBC-03", "多段命中都在（材料1/材料2）", "【材料1" in ctx and "【材料2" in ctx, ctx[:80])
 
         # 2. 空 kb_ids / 空 query → 不检索
         t2 = chat_engine.ChatTurn(scene="question-generate", kb_ids=[], user_id=1)
-        ck("KBC-04", "kb_ids 为空 → 返回空（不检索）", await chat_engine._retrieve_kb_context(db, t2, "x") == "", "")
+        ck("KBC-04", "kb_ids 为空 → 返回空（不检索）", await chat_engine._retrieve_kb_context(db, t2, "x") == ("", []), "")
 
         t3 = chat_engine.ChatTurn(scene="question-generate", kb_ids=[1], user_id=1)
-        ck("KBC-05", "query 为空 → 返回空", await chat_engine._retrieve_kb_context(db, t3, "  ") == "", "")
+        ck("KBC-05", "query 为空 → 返回空", await chat_engine._retrieve_kb_context(db, t3, "  ") == ("", []), "")
 
         # 3. 检索抛异常 → 返回空（不抛）
         async def boom(*a, **k):
@@ -83,13 +83,13 @@ async def main():
 
         rqs.search = boom
         raised = False
-        out = ""
+        out = ("", [])
         try:
             out = await chat_engine._retrieve_kb_context(db, t3, "红黑树")
         except Exception:
             raised = True
         ck("KBC-06", "检索失败时不抛异常", not raised, "")
-        ck("KBC-07", "检索失败时返回空（降级为纯生成）", out == "", out[:60])
+        ck("KBC-07", "检索失败时返回空（降级为纯生成）", out == ("", []), str(out)[:60])
 
         # 4. 单段超长 → 截断
         async def long_search(db, user_id, query, kb_ids=None, top_k=5):
@@ -99,7 +99,7 @@ async def main():
             }], "knowledgeBases": []}
 
         rqs.search = long_search
-        ctx = await chat_engine._retrieve_kb_context(db, t3, "q")
+        ctx, _ = await chat_engine._retrieve_kb_context(db, t3, "q")
         ck("KBC-08", "单段超长被截断（< 单段上限+余量）",
            len(ctx) < chat_engine.KB_CONTEXT_CHUNK_CHARS + 80, f"len={len(ctx)}")
 
@@ -111,10 +111,27 @@ async def main():
             } for i in range(20)], "knowledgeBases": []}
 
         rqs.search = many_search
-        ctx = await chat_engine._retrieve_kb_context(db, t3, "q")
+        ctx, _ = await chat_engine._retrieve_kb_context(db, t3, "q")
         ck("KBC-09", "总量超预算时提前截断（<= 总预算+单段余量）",
            len(ctx) <= chat_engine.KB_CONTEXT_MAX_CHARS + chat_engine.KB_CONTEXT_CHUNK_CHARS,
            f"len={len(ctx)}")
+
+        # 6. 命中片段夹带图 → 图片 URL 被带出（去重、保序）
+        async def img_search(db, user_id, query, kb_ids=None, top_k=5):
+            return {"hits": [
+                {"chunkId": 1, "docId": 1, "kbId": 1, "docName": "b.pdf", "chunkIndex": 0,
+                 "content": "这是正文", "source": "b.pdf 第 1 段",
+                 "images": ["/profile/upload/a.png", "/profile/upload/b.png"]},
+                {"chunkId": 2, "docId": 1, "kbId": 1, "docName": "b.pdf", "chunkIndex": 1,
+                 "content": "", "source": "b.pdf 第 2 段",
+                 "images": ["/profile/upload/a.png"]},  # 重复图应被去掉
+            ], "knowledgeBases": []}
+
+        rqs.search = img_search
+        _, imgs = await chat_engine._retrieve_kb_context(db, t3, "q")
+        ck("KBC-10", "命中片段的图被带出", imgs == ["/profile/upload/a.png", "/profile/upload/b.png"],
+           str(imgs))
+        ck("KBC-11", "纯图块（无正文）的图也收上来", "/profile/upload/a.png" in imgs, str(imgs))
 
     rqs.search = original
 
