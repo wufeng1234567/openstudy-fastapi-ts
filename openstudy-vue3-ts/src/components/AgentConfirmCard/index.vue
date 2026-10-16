@@ -15,7 +15,7 @@
       （旧实现会把 `batch_import` 的 `count` / `sample` 整段丢掉，见下方注释）。
 -->
 <template>
-  <div class="agent-confirm" :class="[`is-${status}`, { 'is-destructive': destructive }]">
+  <div class="agent-confirm" :class="[`is-${status}`, { 'is-destructive': destructive, 'is-draft': isDraft }]">
     <!--
       建库导入草稿（需求二）：交给 AgentDraftCard —— 用户在导入前可改题库信息与每道题，
       确认时把改动随 `edited` 回传。非草稿卡片走下面原来的只读预览。
@@ -469,6 +469,14 @@ const previewLists = computed(() => {
   border-color: #e5e7eb;
   border-left-color: #9ca3af;
   background: #f9fafb;
+}
+
+/* 草稿卡片自带唯一一层外框，外层在这里收干净 —— 否则就是「琥珀套琥珀」的双层边框 */
+.agent-confirm.is-draft {
+  border: none;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
 }
 
 .ac-head {
