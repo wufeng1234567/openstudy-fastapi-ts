@@ -14,24 +14,40 @@
             <el-tag class="source-tag" size="small" :type="sourceType(configSources.userPerMinute)">
               {{ sourceLabel(configSources.userPerMinute) }}
             </el-tag>
+            <el-tooltip content="单个用户每分钟最多调用 AI 接口多少次，超出返回 429" placement="right">
+              <el-icon class="help-icon"><QuestionFilled /></el-icon>
+            </el-tooltip>
           </el-form-item>
           <el-form-item label="用户每日上限">
             <el-input-number v-model="configForm.dailyLimit" :min="1" :max="1000000" controls-position="right" />
             <el-tag class="source-tag" size="small" :type="sourceType(configSources.dailyLimit)">
               {{ sourceLabel(configSources.dailyLimit) }}
             </el-tag>
+            <el-tooltip content="单个用户每天 AI 接口调用总上限，次日 0 点重置" placement="right">
+              <el-icon class="help-icon"><QuestionFilled /></el-icon>
+            </el-tooltip>
           </el-form-item>
           <el-form-item label="IP 每分钟上限">
             <el-input-number v-model="configForm.ipPerMinute" :min="1" :max="1000000" controls-position="right" />
             <el-tag class="source-tag" size="small" :type="sourceType(configSources.ipPerMinute)">
               {{ sourceLabel(configSources.ipPerMinute) }}
             </el-tag>
+            <el-tooltip content="同一 IP 所有用户合计每分钟上限，防止脚本刷接口" placement="right">
+              <el-icon class="help-icon"><QuestionFilled /></el-icon>
+            </el-tooltip>
           </el-form-item>
           <el-form-item>
             <el-button type="primary" @click="handleSaveConfig" v-hasPermi="['monitor:ratelimit:edit']">保存</el-button>
             <el-button icon="Refresh" @click="getConfig">刷新</el-button>
           </el-form-item>
         </el-form>
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          title="修改后立即生效，无需重启服务"
+          style="max-width: 640px; margin-top: 10px"
+        />
       </el-tab-pane>
 
       <el-tab-pane label="违规记录" name="violations">
@@ -86,7 +102,7 @@
           </el-col>
         </el-row>
 
-        <el-table v-loading="violationLoading" :data="violationList">
+        <el-table v-loading="violationLoading" :data="violationList" :empty-text="'暂无违规记录'">
           <el-table-column label="序号" width="60" type="index" align="center">
             <template #default="scope">
               <span>{{ (queryParams.pageNum - 1) * queryParams.pageSize + scope.$index + 1 }}</span>
@@ -145,14 +161,19 @@
           </el-form-item>
         </el-form>
 
-        <el-table v-loading="counterLoading" :data="counterList">
+        <el-table v-loading="counterLoading" :data="counterList" :empty-text="'当前无限流计数器'">
           <el-table-column label="序号" width="60" type="index" align="center" />
           <el-table-column label="类型" align="center" prop="type" width="120">
             <template #default="scope">
               <el-tag size="small">{{ counterTypeLabel(scope.row.type) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="目标" align="center" prop="target" :show-overflow-tooltip="true" />
+          <el-table-column label="目标" align="center" :show-overflow-tooltip="true">
+            <template #default="scope">
+              <span v-if="scope.row.userName">{{ scope.row.userName }} (ID: {{ scope.row.target }})</span>
+              <span v-else>{{ scope.row.target }}</span>
+            </template>
+          </el-table-column>
           <el-table-column label="计数" align="center" prop="count" width="90" />
           <el-table-column label="是否当前桶" align="center" prop="current" width="110">
             <template #default="scope">
@@ -161,8 +182,11 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="剩余秒" align="center" prop="expiresIn" width="100" />
-          <el-table-column label="计数器键" align="center" prop="key" :show-overflow-tooltip="true" />
+          <el-table-column label="剩余时间" align="center" width="120">
+            <template #default="scope">
+              <span>{{ formatExpiresIn(scope.row.expiresIn) }}</span>
+            </template>
+          </el-table-column>
         </el-table>
       </el-tab-pane>
 
@@ -170,6 +194,7 @@
         <el-form label-width="90px" style="max-width: 640px">
           <el-form-item label="用户ID">
             <el-input v-model="banForm.userId" placeholder="请输入用户ID" style="width: 240px" />
+            <el-tag v-if="banJustBanned" type="danger" size="small" style="margin-left: 10px">已封禁</el-tag>
           </el-form-item>
           <el-form-item label="封禁原因">
             <el-input v-model="banForm.reason" placeholder="选填" style="width: 360px" />
@@ -185,6 +210,25 @@
           show-icon
           title="封禁会将该用户所有会话踢下线（需重新登录）；不能封禁自己和管理员账号。"
         />
+
+        <div style="margin-top: 20px">
+          <el-text type="primary" tag="b">已封禁用户</el-text>
+          <el-table v-loading="bannedLoading" :data="bannedList" style="margin-top: 10px" :empty-text="'当前无封禁用户'">
+            <el-table-column label="用户ID" align="center" prop="userId" width="90" />
+            <el-table-column label="用户名" align="center" prop="userName" />
+            <el-table-column label="昵称" align="center" prop="nickName" />
+            <el-table-column label="封禁时间" align="center" prop="updateTime" width="180">
+              <template #default="scope">
+                <span>{{ parseTime(scope.row.updateTime) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" align="center" width="100">
+              <template #default="scope">
+                <el-button type="success" size="small" @click="handleUnbanRow(scope.row)" v-hasPermi="['monitor:ratelimit:edit']">解封</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
       </el-tab-pane>
     </el-tabs>
   </div>
@@ -198,7 +242,8 @@ import {
   listCounters,
   clearCounters,
   banUser,
-  unbanUser
+  unbanUser,
+  listBannedUsers
 } from "@/api/monitor/ratelimit";
 
 const { proxy } = getCurrentInstance() as any;
@@ -219,6 +264,9 @@ const counterList = ref<any[]>([]);
 const counterIp = ref("");
 
 const banForm = ref<any>({ userId: undefined, reason: "" });
+const banJustBanned = ref(false);
+const bannedLoading = ref(false);
+const bannedList = ref<any[]>([]);
 
 const queryParams = ref<any>({
   pageNum: 1,
@@ -249,11 +297,20 @@ function counterTypeLabel(value: string) {
 }
 
 function sourceLabel(source: string) {
-  return source === "redis" ? "来自Redis" : "默认值";
+  return source === "redis" ? "已自定义" : "系统默认";
 }
 
 function sourceType(source: string) {
   return source === "redis" ? "success" : "info";
+}
+
+function formatExpiresIn(seconds: number) {
+  if (!seconds || seconds <= 0) return "已过期";
+  if (seconds < 60) return `${seconds}秒`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}分${seconds % 60}秒`;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  return `${h}时${m}分`;
 }
 
 function applyConfig(data: any) {
@@ -339,6 +396,16 @@ function handleClearAll() {
   }).catch(() => {});
 }
 
+function getBannedUsers() {
+  bannedLoading.value = true;
+  listBannedUsers().then((res: any) => {
+    bannedList.value = res.data || [];
+    bannedLoading.value = false;
+  }).catch(() => {
+    bannedLoading.value = false;
+  });
+}
+
 function handleBan() {
   if (!banForm.value.userId) {
     proxy.$modal.msgWarning("请输入用户ID");
@@ -346,14 +413,11 @@ function handleBan() {
   }
   proxy.$modal.confirm('是否确认封禁用户ID为"' + banForm.value.userId + '"的用户？').then(() => {
     return banUser({ userId: Number(banForm.value.userId), reason: banForm.value.reason });
-  }).then((res: any) => {
-    if (res.code === 500) {
-      proxy.$modal.msgError(res.msg);
-      return;
-    }
+  }).then(() => {
     proxy.$modal.msgSuccess("封禁成功");
     banForm.value.reason = "";
-    getCounters();
+    banJustBanned.value = true;
+    getBannedUsers();
   }).catch(() => {});
 }
 
@@ -364,13 +428,19 @@ function handleUnban() {
   }
   proxy.$modal.confirm('是否确认解封用户ID为"' + banForm.value.userId + '"的用户？').then(() => {
     return unbanUser({ userId: Number(banForm.value.userId) });
-  }).then((res: any) => {
-    if (res.code === 500) {
-      proxy.$modal.msgError(res.msg);
-      return;
-    }
+  }).then(() => {
     proxy.$modal.msgSuccess("解封成功");
-    banForm.value.reason = "";
+    banJustBanned.value = false;
+    getBannedUsers();
+  }).catch(() => {});
+}
+
+function handleUnbanRow(row: any) {
+  proxy.$modal.confirm('是否确认解封用户"' + row.userName + '"？').then(() => {
+    return unbanUser({ userId: row.userId });
+  }).then(() => {
+    proxy.$modal.msgSuccess("解封成功");
+    getBannedUsers();
   }).catch(() => {});
 }
 
@@ -378,6 +448,7 @@ function init() {
   getConfig();
   getViolations();
   getCounters();
+  getBannedUsers();
 }
 
 init();
@@ -386,5 +457,11 @@ init();
 <style scoped>
 .source-tag {
   margin-left: 10px;
+}
+.help-icon {
+  margin-left: 6px;
+  color: #909399;
+  cursor: pointer;
+  font-size: 16px;
 }
 </style>

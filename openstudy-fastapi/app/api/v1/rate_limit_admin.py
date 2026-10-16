@@ -19,7 +19,7 @@ from typing import Optional, List
 from datetime import datetime
 import time
 
-from app.database import get_db
+from app.database import get_db, async_session_factory
 from app.core.security import get_current_user
 from app.core.response import success, error, paginate
 from app.redis import redis_client
@@ -236,6 +236,31 @@ async def list_counters(
                     "current": (bucket == day) if kind == "uday" else (bucket == str(minute_bucket)),
                 }
             )
+    # 补查用户名：对 userMin/userDay 类型的计数器，把 target(user_id) 映射成用户名
+    user_ids = set()
+    for c in counters:
+        if c["type"] in ("userMin", "userDay"):
+            try:
+                user_ids.add(int(c["target"]))
+            except (ValueError, TypeError):
+                pass
+    user_names = {}
+    if user_ids:
+        try:
+            from sqlalchemy import text
+            async with async_session_factory() as db:
+                uid_list = ",".join(str(u) for u in user_ids)
+                result = await db.execute(
+                    text(f"SELECT user_id, user_name FROM sys_user WHERE user_id IN ({uid_list})")
+                )
+                for row in result:
+                    user_names[str(row[0])] = row[1]
+        except Exception:
+            pass
+    for c in counters:
+        if c["type"] in ("userMin", "userDay"):
+            c["userName"] = user_names.get(c["target"], "")
+
     counters.sort(key=lambda c: (-c["count"], c["key"]))
     return success({"total": len(counters), "counters": counters})
 
@@ -268,13 +293,45 @@ async def clear_counters(
         to_delete.extend(await _scan_rl_keys(f"rl:ai:umin:{body.userId}:*"))
         to_delete.extend(await _scan_rl_keys(f"rl:ai:uday:{body.userId}:*"))
     if not body.keys and body.ip is None and body.userId is None:
-        to_delete.extend(await _scan_rl_keys("rl:ai:*"))
+        # ⚠️ 不能用 rl:ai:* —— 会误删 rl:ai:config（限流配置 hash）
+        to_delete.extend(await _scan_rl_keys("rl:ai:ip:*"))
+        to_delete.extend(await _scan_rl_keys("rl:ai:umin:*"))
+        to_delete.extend(await _scan_rl_keys("rl:ai:uday:*"))
 
     to_delete = list(dict.fromkeys(to_delete))
     deleted = 0
     if to_delete:
         deleted = await pool.delete(*to_delete)
     return success({"deleted": deleted, "keys": to_delete})
+
+
+
+
+# ---------- 3.5 已封禁用户列表 ----------
+
+
+@router.get("/banned")
+async def list_banned_users(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(_require_admin),
+):
+    """列出当前被封禁的用户（sys_user.status = '1'）"""
+    from sqlalchemy import text
+
+    result = await db.execute(
+        text("SELECT user_id, user_name, nick_name, status, update_time FROM sys_user WHERE status = '1' ORDER BY user_id")
+    )
+    rows = result.all()
+    return success([
+        {
+            "userId": r[0],
+            "userName": r[1],
+            "nickName": r[2],
+            "status": r[3],
+            "updateTime": r[4].isoformat() if r[4] else None,
+        }
+        for r in rows
+    ])
 
 
 # ---------- 4. 封禁 / 解封 ----------

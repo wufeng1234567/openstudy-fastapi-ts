@@ -54,3 +54,10 @@ export function unbanUser(data: any) {
     data: data
   })
 }
+
+export function listBannedUsers() {
+  return request({
+    url: '/monitor/ratelimit/banned',
+    method: 'get'
+  })
+}
