@@ -732,6 +732,7 @@ export interface AgentExpert {
   name: string
   description: string
   disabled: number
+  model: string
 }
 
 /**
@@ -766,6 +767,26 @@ export async function setAgentExpertPref(
     method: 'PUT',
     headers: _authHeaders(),
     body: JSON.stringify({ expert, disabled })
+  })
+  const data = await res.json().catch(() => null)
+  if (!res.ok || data?.code === 400) {
+    throw new Error(data?.msg || data?.message || '保存失败')
+  }
+  return Array.isArray(data?.data?.experts) ? data.data.experts : []
+}
+
+/**
+ * 给某个专家绑定模型（`model` = 模型名，'' = 跟随默认）。返回最新专家清单（受控：显示值来自服务端）。
+ * 失败抛错，供界面提示。
+ */
+export async function setAgentExpertModel(
+  expert: string,
+  model: string
+): Promise<AgentExpert[]> {
+  const res = await fetch(`${import.meta.env.VITE_APP_BASE_API}/ai/agent/experts/model`, {
+    method: 'PUT',
+    headers: _authHeaders(),
+    body: JSON.stringify({ expert, model })
   })
   const data = await res.json().catch(() => null)
   if (!res.ok || data?.code === 400) {

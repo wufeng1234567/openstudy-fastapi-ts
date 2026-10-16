@@ -1246,10 +1246,45 @@ async def run_agent_stream(
                 )
         except Exception as e:  # noqa: BLE001
             logger.warning("[agent] 读取用户智能体做委派清单失败: {}", e)
+        # 用户给某专家挑了模型覆盖（专家设置面板）→ 为这些专家单独构建 LLM。
+        # 没覆盖的专家复用指挥家的 llm（delegate_llms 里没有 key 时 delegate.py 走默认）。
+        # ⚠️ build_agent_llm 是异步的，必须在这里（已是 async 上下文）构建，工具里只查表。
+        delegate_llms: Dict[str, Any] = {}
+        try:
+            role_models = await agent_role_pref_service.role_model_map(user_id)
+            overridden = {
+                key: m
+                for key, m in role_models.items()
+                if key in sub_roles and str(m or "").strip()
+            }
+            if overridden:
+                logger.info(
+                    "[agent] 专家模型覆盖 {} 个: {}", len(overridden), sorted(overridden)
+                )
+            for key, override_model in overridden.items():
+                try:
+                    sub_llm, _ = await db_config.build_agent_llm(
+                        db,
+                        provider=req.provider,
+                        model=override_model,
+                        temperature=req.temperature,
+                        user_id=user_id,
+                        config_id=req.config_id,
+                    )
+                    delegate_llms[key] = sub_llm
+                except Exception as e:  # noqa: BLE001 - 单个专家模型坏 → 回退默认，别拖垮整轮
+                    logger.warning(
+                        "[agent] 构建专家「{}」的覆盖模型 {} 失败（回退默认）: {}",
+                        key, override_model, e,
+                    )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[agent] 读取专家模型覆盖失败（全部走默认）: {}", e)
         delegate_env = {
             "delegate_llm": llm,
             "delegate_roles": sub_roles,
             "delegate_exclude": sub_excludes,
+            # 每专家的模型覆盖（仅含有覆盖的 key；没覆盖的由 delegate.py 回退 delegate_llm）
+            "delegate_llms": delegate_llms,
             # 透传给子代理 ToolContext.extra 的键（附件等，子代理可能需要）
             "delegate_extra": {"attachments": attachments},
         }

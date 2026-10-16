@@ -6,6 +6,9 @@ Agent 专家（官方角色）开关模型（用户 × 专家）
 - **没有行 = 启用**（产品口径：默认全部专家开启，用户自由选择关闭）；
 - 有行且 `disabled` 非零 = 该用户关闭了这个专家。
 
+`model` 列是**用户 × 专家 的模型覆盖**（可空）：空 = 跟随默认模型；非空 = 该专家被
+委派时用这个模型。一个行可以只有 `model`（disabled=0 且 model 有值），两种偏好互不影响。
+
 与 `ai_agent_tool_pref` 的关系
 ------------------------------
 `ai_agent_tool_pref` 是**工具粒度**的开关（用户直接开关「某个工具」）—— 但它对普通用户
@@ -50,6 +53,8 @@ class AiAgentRolePref(Base):
     disabled: Mapped[int] = mapped_column(
         SmallInteger, nullable=False, default=0, server_default=text("0")
     )
+    #: 用户给这个专家挑的模型覆盖（空 = 跟随默认；非空 = 委派该专家时用此模型）
+    model: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     # ⚠️ 时间列显式从 Python 传值，**不用 `server_default`**（见 tool_pref 同款说明）。
     create_time: Mapped[Optional[datetime]] = mapped_column(DateTime)
     update_time: Mapped[Optional[datetime]] = mapped_column(DateTime)

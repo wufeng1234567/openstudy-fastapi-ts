@@ -189,15 +189,15 @@
       <div class="agent-panel">
         <!-- tab 头：与工具栏三个入口一一对应 -->
         <div class="agent-panel-tabs">
-          <div :class="['aptab', { active: panelTab === 'settings' }]" @click="panelTab = 'settings'">
+          <div :class="['aptab', { active: panelTab === 'settings' }]" @click="switchTab('settings')">
             <el-icon><Setting /></el-icon>
             <span>设置</span>
           </div>
-          <div :class="['aptab', { active: panelTab === 'kb' }]" @click="panelTab = 'kb'">
+          <div :class="['aptab', { active: panelTab === 'kb' }]" @click="switchTab('kb')">
             <el-icon><FolderOpened /></el-icon>
             <span>知识库</span>
           </div>
-          <div :class="['aptab', { active: panelTab === 'history' }]" @click="panelTab = 'history'">
+          <div :class="['aptab', { active: panelTab === 'history' }]" @click="switchTab('history')">
             <el-icon><Clock /></el-icon>
             <span>历史会话</span>
           </div>
@@ -205,17 +205,29 @@
 
         <!-- ① 设置 -->
         <div v-show="panelTab === 'settings'" class="agent-panel-body settings-body">
-          <!-- ① 我的智能体（用户自建角色）——官方"专家"已由下面的「专家」开关管理，
+          <!-- 我的智能体（用户自建角色）——官方"专家"已由下面的「专家」开关管理，
                故这里**不再**列官方角色（避免与专家开关重复、造成"两个地方管同一批东西"）。
-               仅当用户确实建有自定义智能体时才显示这一行。 -->
-          <div class="settings-row" v-if="myAgents.length">
-            <div class="settings-label">我的智能体</div>
+               「选哪个对话」与「管理（增删改）」是同一件事的两个面，合并在同一区块，
+               不再一个在顶、一个在底，避免割裂感。 -->
+          <div class="settings-row">
+            <div class="settings-label-row">
+              <span class="settings-label">我的智能体</span>
+              <el-button text type="primary" size="small" @click="openAgentManager">
+                管理（新建 / 编辑 / 删除）
+              </el-button>
+            </div>
             <div class="settings-field">
-              <el-select v-model="selectedAgentKey" size="default" :disabled="isGenerating" style="width: 100%">
+              <el-select v-if="myAgents.length" v-model="selectedAgentKey" size="default"
+                :disabled="isGenerating" style="width: 100%">
                 <el-option label="自动（由主助手按需安排）" :value="AUTO_AGENT_KEY" />
                 <el-option v-for="a in myAgents" :key="'a-' + a.agentId" :label="a.name" :value="'user:' + a.agentId" />
               </el-select>
-              <div class="settings-hint">「自动」= 由主助手按需安排；也可指定你创建的某个智能体来对话。</div>
+              <div class="settings-hint" v-if="myAgents.length">
+                「自动」= 由主助手按需安排；也可指定你创建的某个智能体来对话。
+              </div>
+              <div class="settings-hint" v-else>
+                还没有自定义智能体。点上方「管理」新建一个（可设人设、限定工具、绑定模型）。
+              </div>
             </div>
           </div>
 
@@ -240,6 +252,14 @@
                   <div class="settings-expert-main">
                     <span class="settings-tool-name">{{ e.name }}</span>
                     <span class="settings-expert-desc">{{ e.description }}</span>
+                    <AiModelSelector
+                      :model-value="e.model || ''"
+                      scene="agent-expert"
+                      width="100%"
+                      :auto-default="false"
+                      class="settings-expert-model"
+                      @update:model-value="(v) => onExpertModelChange(e, v)"
+                    />
                   </div>
                   <el-switch
                     :model-value="e.disabled !== 1"
@@ -253,13 +273,6 @@
               <div class="settings-hint">
                 开启的专家，主助手会在需要时自动请它来帮忙；关掉就完全不用它。
               </div>
-            </div>
-          </div>
-
-          <div class="settings-row">
-            <div class="settings-label">我的智能体</div>
-            <div class="settings-field">
-              <el-button text type="primary" @click="openAgentManager">管理我的智能体（新建 / 编辑 / 删除）</el-button>
             </div>
           </div>
         </div>
@@ -366,7 +379,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="绑定模型">
-          <el-input v-model="agentForm.model" placeholder="留空 = 跟随默认模型；可填 deepseek-chat 等" />
+          <AiModelSelector v-model="agentForm.model" scene="agent-form" width="100%" :auto-default="false" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -407,6 +420,7 @@ import {
   deleteAgentConfig,
   listAgentExperts,
   setAgentExpertPref,
+  setAgentExpertModel,
   showDsBridge,
   type AgentConfig,
   type AgentConfigInput,
@@ -551,13 +565,36 @@ const kbPanelRef = ref<InstanceType<typeof KnowledgeBasePanel> | null>(null)
 const dirOfTab = (tab: 'settings' | 'kb' | 'history'): 'rtl' | 'ltr' =>
   tab === 'settings' ? 'rtl' : 'ltr'
 
+/**
+ * 进入某个 tab 时要触发的加载。
+ *
+ * ⚠️ 必须集中在这里，且「工具栏入口」与「抽屉内 tab 头」**都**要走它。
+ * 原来的坑：加载只写在 `openPanel()`（工具栏入口）里，而抽屉 tab 头是直接
+ * `panelTab = 'kb'` 赋值的 —— 于是「刷新后先点设置/历史，再点知识库」时
+ * `activate()` 从没被调用，知识库永远加载不出来（用户 2026-10-16 报）。
+ * 同一原理，专家列表若先点别的 tab 再进设置也会空 —— 故一并收口。
+ */
+function enterTab(tab: 'settings' | 'kb' | 'history') {
+  if (tab === 'settings') loadExperts()
+  // 知识库面板是 v-show 常驻挂载，只有显式 activate 才会拉库列表；
+  // 从抽屉 tab 头直接切进来也必须触发。
+  if (tab === 'kb') nextTick(() => kbPanelRef.value?.activate?.())
+  // 历史会话：清掉上次的搜索词（原 watch 里的逻辑，统一到这里）
+  if (tab === 'history') sessionKeyword.value = ''
+}
+
+/** 抽屉内 tab 头点击：只切 tab + 触发该 tab 的加载（方向不重算，保持打开时锁定） */
+function switchTab(tab: 'settings' | 'kb' | 'history') {
+  panelTab.value = tab
+  enterTab(tab)
+}
+
 function openPanel(tab: 'settings' | 'kb' | 'history') {
   // 仅在「抽屉原本关闭」时按入口侧设定方向；已打开时保持当前方向（不横跳）
   if (!panelOpen.value) panelDirection.value = dirOfTab(tab)
   panelTab.value = tab
   panelOpen.value = true
-  if (tab === 'settings') loadExperts()
-  if (tab === 'kb') nextTick(() => kbPanelRef.value?.activate?.())
+  enterTab(tab)
 }
 
 /* ---- 「我的智能体」管理弹窗 ---- */
@@ -630,6 +667,20 @@ async function toggleExpert(e: AgentExpert, on: boolean) {
     ElMessage.error(err?.message || `「${e.name}」没保存成功`)
   } finally {
     expertTogglingKey.value = ''
+  }
+}
+
+/** 给专家绑定模型（乐观更新：失败回滚；成功用服务端回值受控刷新） */
+async function onExpertModelChange(e: AgentExpert, model: string) {
+  const prev = e.model || ''
+  e.model = model
+  try {
+    const list = await setAgentExpertModel(e.key, model)
+    if (list.length) experts.value = list
+    ElMessage.success(model ? `「${e.name}」已绑定 ${model}` : `「${e.name}」已恢复跟随默认模型`)
+  } catch (err: any) {
+    e.model = prev
+    ElMessage.error(err?.message || `「${e.name}」模型没保存成功`)
   }
 }
 
@@ -818,11 +869,6 @@ const sessionCountText = computed(() =>
     ? `命中 ${filteredSessions.value.length} / 共 ${sessions.value.length}`
     : `共 ${sessions.value.length} 条`
 )
-
-/** 切到「历史会话」tab 时清掉上次的搜索词，否则下次点开看到的是个「被过滤过」的列表 */
-watch(panelTab, (tab) => {
-  if (tab === 'history') sessionKeyword.value = ''
-})
 
 const formatTime = (time: any) => {
   if (!time) return ''
@@ -1179,7 +1225,7 @@ onBeforeUnmount(() => {
   color: #6b7280;
   cursor: pointer;
   user-select: none;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease;
 
   &:hover {
     background: #f3f5f9;
@@ -1520,6 +1566,18 @@ onBeforeUnmount(() => {
   color: #606266;
   font-weight: 600;
 }
+/* 标签 + 右侧操作入口同一行：把「查看/选择」与「管理」收在一个区块里 */
+.settings-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.settings-label-row .el-button {
+  padding: 0;
+  height: auto;
+  font-weight: 400;
+}
 .settings-field {
   min-width: 0;
 }
@@ -1587,6 +1645,9 @@ onBeforeUnmount(() => {
   font-size: 12px;
   color: #9aa5b5;
   line-height: 1.5;
+}
+.settings-expert-model {
+  margin-top: 6px;
 }
 
 /* AiChatStream 自带边框，容器已有边框 → 去掉内层重复描边 */

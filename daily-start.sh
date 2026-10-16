@@ -154,7 +154,7 @@ USER_COUNT=$(psql -U postgres -d openstudy_v2_pgsql -t -c "SELECT count(*) FROM 
 if [ -z "$USER_COUNT" ] || [ "$USER_COUNT" -eq 0 ]; then
     echo -e "  ${YELLOW}导入 SQL 种子数据...${NC}"
     SQL_DIR="/root/workspace/openstudy-fastapi-ts/deploy/db-init"
-    for sqlf in 01_openstudy_v2_pgsql_deploy.sql 05_change_password.sql 06_ensure_config.sql 97_demo_seed.sql 98_social_seed.sql 99_note_public_seed.sql 07_fix_carousel.sql; do
+    for sqlf in 01_openstudy_v2_pgsql_deploy.sql 05_change_password.sql 06_ensure_config.sql 97_demo_seed.sql 98_social_seed.sql 99_note_public_seed.sql 07_fix_carousel.sql 08_fix_ai_model_options.sql 09_add_role_pref_model.sql; do
         if [ -f "$SQL_DIR/$sqlf" ]; then
             psql -U postgres -d openstudy_v2_pgsql -f "$SQL_DIR/$sqlf" >/dev/null 2>&1
             echo "    ✅ $sqlf"

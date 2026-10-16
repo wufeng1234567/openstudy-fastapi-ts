@@ -29,6 +29,7 @@ from app.services.ai.prompts import ASSISTANT_SYSTEM_PROMPT
 from app.services.ai.base_client import ChatMessage
 from app.services.ai.generate_service import ai_generate_service
 from loguru import logger
+import asyncio
 import json
 
 router = APIRouter(prefix="/ai")
@@ -872,15 +873,19 @@ class AgentExpertPrefBody(BaseModel):
     disabled: int
 
 
-def _agent_experts_payload(user_id: int, disabled_keys: Any) -> Dict[str, Any]:
+def _agent_experts_payload(
+    user_id: int, disabled_keys: Any, model_map: Any = None
+) -> Dict[str, Any]:
     """专家清单的**唯一组装处**（`GET` 与 `PUT /ai/agent/experts` 共用）
 
     只列**可委派的专家**（`renderable_sub_agents`，排除 general —— 那是指挥家自身）。
-    每项带：`key` / `name`（中文名）/ `description`（一句话，给用户看）/ `disabled`（0|1）。
+    每项带：`key` / `name`（中文名）/ `description`（一句话，给用户看）/ `disabled`（0|1）
+    / `model`（用户给该专家挑的模型覆盖，空串 = 跟随默认）。
     """
     from app.services.ai.agent.roles import renderable_sub_agents
 
     closed = {str(k) for k in (disabled_keys or set())}
+    models = {str(k): str(v) for k, v in dict(model_map or {}).items()}
     return {
         "experts": [
             {
@@ -888,6 +893,7 @@ def _agent_experts_payload(user_id: int, disabled_keys: Any) -> Dict[str, Any]:
                 "name": r.name,
                 "description": r.description,
                 "disabled": 1 if r.key in closed else 0,
+                "model": models.get(r.key, ""),
             }
             for r in renderable_sub_agents()
         ]
@@ -903,8 +909,11 @@ async def agent_experts(current_user: dict = Depends(get_current_user)):
     from app.services.ai.agent import agent_role_pref_service
 
     uid = int((current_user or {}).get("user_id") or 0)
-    closed = await agent_role_pref_service.disabled_role_keys(uid)
-    return _agent_experts_payload(uid, closed)
+    closed, models = await asyncio.gather(
+        agent_role_pref_service.disabled_role_keys(uid),
+        agent_role_pref_service.role_model_map(uid),
+    )
+    return _agent_experts_payload(uid, closed, models)
 
 
 @router.put("/agent/experts")
@@ -948,7 +957,57 @@ async def update_agent_expert(
         return error(f"保存失败: {e}")
 
     closed = await agent_role_pref_service.disabled_role_keys(uid)
-    return success(_agent_experts_payload(uid, closed), "已保存")
+    models = await agent_role_pref_service.role_model_map(uid)
+    return success(_agent_experts_payload(uid, closed, models), "已保存")
+
+
+class AgentExpertModelBody(BaseModel):
+    """设置某个专家的模型覆盖（`PUT /ai/agent/experts/model`）
+
+    与 `AgentExpertPrefBody` 同款约束（`extra="forbid"`），理由见其 docstring。
+    `model=""`（或空白）= 清空覆盖、跟随默认。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: 专家 key（官方角色 key，如 bank/note/kb/stats），必须存在于可委派专家。
+    expert: str
+    #: 模型覆盖。空串 = 跟随默认。
+    model: str = ""
+
+
+@router.put("/agent/experts/model")
+async def update_agent_expert_model(
+    body: AgentExpertModelBody,
+    current_user: dict = Depends(get_current_user),
+):
+    """**给一个专家挑模型**（按登录用户保存，只影响他自己）
+
+    - `expert` 必须是可委派专家（同 `PUT /ai/agent/experts` 的校验口径，校验放路由层）。
+    - `model=""` = 清空覆盖，该专家回到「跟随默认模型」。
+    """
+    from app.services.ai.agent import agent_role_pref_service
+    from app.services.ai.agent.roles import renderable_sub_agents
+
+    uid = int((current_user or {}).get("user_id") or 0)
+    name = str(body.expert or "").strip()
+
+    valid = {r.key for r in renderable_sub_agents()}
+    if name not in valid:
+        return error(
+            f"未知专家：{name}；合法专家见 GET /ai/agent/experts",
+            code=400,
+        )
+
+    try:
+        await agent_role_pref_service.set_role_model(uid, name, body.model)
+    except Exception as e:  # noqa: BLE001 - 写失败如实回错，别静默
+        logger.exception(f"保存专家模型覆盖失败 user={uid}: {e}")
+        return error(f"保存失败: {e}")
+
+    closed = await agent_role_pref_service.disabled_role_keys(uid)
+    models = await agent_role_pref_service.role_model_map(uid)
+    return success(_agent_experts_payload(uid, closed, models), "已保存")
 
 
 # ============================================================

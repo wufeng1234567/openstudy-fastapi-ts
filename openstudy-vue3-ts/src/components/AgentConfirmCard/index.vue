@@ -86,7 +86,7 @@ const title = computed(() => (props.destructive ? '需要确认：删除操作' 
  * ============================================================ */
 
 /**
- * ⚠️ 与 `AgentToolResult` 的 `TOOL_LABELS` 必须**同一份清单**（10 个工具名，见那边的注释）：
+ * ⚠️ 与 `AgentToolResult` 的 `TOOL_LABELS` 必须**同一份清单**（13 个工具名，见那边的注释）：
  *    这张卡片也要写「需要确认：写操作 / 题库管理 · 批量删除」的头，漏一个就是英文标识符。
  */
 const TOOL_LABELS: Record<string, string> = {
@@ -97,9 +97,12 @@ const TOOL_LABELS: Record<string, string> = {
   memory_manage: '记忆管理',
   learning_stats: '学习统计',
   knowledge_base_manage: '知识库管理',
+  knowledge_ingest: '写入知识库',
   bank_share_manage: '题库分享',
   knowledge_search: '知识库检索',
-  memory_search: '记忆检索'
+  memory_search: '记忆检索',
+  agent_manage: '智能体管理',
+  delegate_task: '请专家帮忙'
 }
 
 /** 与 `AgentToolResult` 的 `ACTION_LABELS` 同一口径（覆盖每个工具 schema 的 action enum） */
@@ -115,6 +118,8 @@ const ACTION_LABELS: Record<string, string> = {
   list_categories: '查询分类',
   clear_questions: '清空题目',
   batch_import: '批量导入',
+  // note_manage（写草稿；正式笔记的创建走 create/update）
+  save_draft: '保存草稿',
   // question_flag_manage
   add: '添加',
   master: '标记已掌握',
@@ -132,12 +137,17 @@ const ACTION_LABELS: Record<string, string> = {
   // knowledge_base_manage
   list_documents: '文档列表',
   delete_document: '删除文档',
+  // knowledge_ingest
+  from_text: '文本入库',
+  from_attachment: '附件入库',
   // bank_share_manage
   list_shares: '分享列表',
   share: '创建分享',
   revoke: '撤销分享',
   receive: '领取分享',
-  copy: '复制题库'
+  copy: '复制题库',
+  // delegate_task（指挥家派发专家）
+  delegate: '派发'
 }
 
 /** 原始标识符（bank_manage.delete）—— 只进 title，方便排查问题时看 */

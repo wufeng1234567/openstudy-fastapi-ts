@@ -208,6 +208,24 @@ async def init_db():
 
         await conn.run_sync(_ensure_rag_document_columns)
 
+        # 兼容历史库：ai_agent_role_pref 新增「专家模型覆盖」列（用户给某专家挑的模型）。
+        # ⚠️ 同理：`create_all` 只建缺失的表、不给已存在的表加列 —— 这张表上线已久，
+        #    必须在这里手动补 model 列，否则 ORM 查询带上它时直接 UndefinedColumn。
+        # ⚠️ 判据是**表是否存在**（不是 IS_POSTGRES），与 rag 那条同理（幂等：列已存在则跳过）。
+        def _ensure_agent_role_pref_columns(sync_conn):
+            from sqlalchemy import inspect, text
+            inspector = inspect(sync_conn)
+            if "ai_agent_role_pref" not in inspector.get_table_names():
+                return
+            columns = {c["name"] for c in inspector.get_columns("ai_agent_role_pref")}
+            if "model" not in columns:
+                sync_conn.execute(text(
+                    "ALTER TABLE ai_agent_role_pref ADD COLUMN model VARCHAR(128) NULL"
+                ))
+                logger.info("ai_agent_role_pref.model 列已补齐（用户 × 专家的模型覆盖）")
+
+        await conn.run_sync(_ensure_agent_role_pref_columns)
+
         # 兼容历史库：ai_agent_memory 新增「逻辑删除」列（未删 / 已删可恢复）。
         # ⚠️ 与上一条同理：`create_all` **只建缺失的表，不给已存在的表加列** ——
         #    这张表是 SpringBoot 时代建的（实测 7 列：id/user_id/memory_type/content/

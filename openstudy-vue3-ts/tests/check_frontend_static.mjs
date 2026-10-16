@@ -162,6 +162,33 @@ function transpileTs(code, fileName) {
   return { code: out.outputText, errors }
 }
 
+/**
+ * 把 `<script setup>` 源码剥成能塞进 `new Function` 的 JS 文本。
+ *
+ * 两件事，缺一不可：
+ *   1. 剥掉 `import ...` 语句 —— `new Function` 里没有模块作用域。
+ *   2. 把 `import.meta` 换成一个空对象 —— **`import.meta` 根本不能出现在 `new Function` 里**
+ *      （实测抛 `Cannot use 'import.meta' outside a module`，而且是在 `transpileTs` 之后
+ *      仍照抛）。换掉之后 `import.meta.env.X` 求值为 `undefined`，而 harness 从不测 env 值。
+ *
+ * ⚠️ **残留检查必须按行首**（`/^\s*import\b/m`），不能用 `/\bimport\b/`：后者会命中
+ *    `import.meta`（`import` 后面是 `.`，`\b` 成立），于是把「用了 env 的组件」整份判成
+ *    「import 没剥干净」—— 报出来像产品代码的问题，其实是判据自己的口径错（2026-10-16 实测：
+ *    `KnowledgeBasePanel` 引入 `import.meta.env.VITE_APP_BASE_API` 后，kbRuntime 的 6 条断言
+ *    全红在「import 没剥干净」上）。`import` 语句必然在行首（允许缩进），行首判就够。
+ */
+function stripImportsForEval(raw) {
+  return raw
+    .replace(/^\s*import\s[\s\S]*?from\s*['"][^'"]+['"]\s*$/gm, '')
+    .replace(/^\s*import\s*['"][^'"]+['"]\s*$/gm, '')
+    .replace(/\bimport\s*\.\s*meta\b/g, '({env:{}})')
+}
+
+/** 剥完 import 后是否还有行首的 `import` 语句残留（真残留 = 剥离正则要更新） */
+function hasImportResidue(noImport) {
+  return /^\s*import\b/m.test(noImport)
+}
+
 const IMPORT_RE = /(?:import|export)[\s\S]*?from\s*['"]([^'"]+)['"]|import\s*\(\s*['"]([^'"]+)['"]\s*\)/g
 const CSS_URL_RE = /@import\s+['"]([^'"]+)['"]/g
 
@@ -369,10 +396,8 @@ function runConfirmCard(preview) {
   const raw = descriptor.scriptSetup?.content || ''
   if (!raw) return { ok: false, why: `${CONFIRM} 里没有 <script setup>` }
   // `new Function` 里没有模块作用域，import 必须先剥干净（剥不干净就判失败，别硬跑）
-  const noImport = raw
-    .replace(/^\s*import\s[\s\S]*?from\s*['"][^'"]+['"]\s*$/gm, '')
-    .replace(/^\s*import\s*['"][^'"]+['"]\s*$/gm, '')
-  if (/\bimport\b/.test(noImport)) {
+  const noImport = stripImportsForEval(raw)
+  if (hasImportResidue(noImport)) {
     return { ok: false, why: 'import 没剥干净（脚本里出现了新的 import 写法，剥 import 的正则需要同步更新）' }
   }
   const { code, errors } = transpileTs(noImport, CONFIRM + '.script.ts')
@@ -445,10 +470,8 @@ function toolDetailFactory() {
     __toolDetailFactory = { ok: false, why: `${TOOL_DETAIL} 里没有 <script setup>` }
     return __toolDetailFactory
   }
-  const noImport = raw
-    .replace(/^\s*import\s[\s\S]*?from\s*['"][^'"]+['"]\s*$/gm, '')
-    .replace(/^\s*import\s*['"][^'"]+['"]\s*$/gm, '')
-  if (/\bimport\b/.test(noImport)) {
+  const noImport = stripImportsForEval(raw)
+  if (hasImportResidue(noImport)) {
     __toolDetailFactory = {
       ok: false,
       why: 'import 没剥干净（脚本里出现了新的 import 写法，剥 import 的正则需要同步更新）'
@@ -634,10 +657,8 @@ function kbRuntime(file, cfg = {}) {
   const { descriptor } = parse(source, { filename: file })
   const raw = descriptor.scriptSetup?.content || ''
   if (!raw) return { ok: false, why: `${file} 里没有 <script setup>` }
-  const noImport = raw
-    .replace(/^\s*import\s[\s\S]*?from\s*['"][^'"]+['"]\s*$/gm, '')
-    .replace(/^\s*import\s*['"][^'"]+['"]\s*$/gm, '')
-  if (/\bimport\b/.test(noImport)) {
+  const noImport = stripImportsForEval(raw)
+  if (hasImportResidue(noImport)) {
     return { ok: false, why: 'import 没剥干净（脚本里出现了新的 import 写法，剥 import 的正则需要同步更新）' }
   }
   const { code, errors } = transpileTs(noImport, file + '.script.ts')
@@ -1009,10 +1030,8 @@ function toolPopoverRuntime(cfg = {}) {
   const { descriptor } = parse(source, { filename: POPOVER })
   const raw = descriptor.scriptSetup?.content || ''
   if (!raw) return { ok: false, why: `${POPOVER} 里没有 <script setup>` }
-  const noImport = raw
-    .replace(/^\s*import\s[\s\S]*?from\s*['"][^'"]+['"]\s*$/gm, '')
-    .replace(/^\s*import\s*['"][^'"]+['"]\s*$/gm, '')
-  if (/\bimport\b/.test(noImport)) {
+  const noImport = stripImportsForEval(raw)
+  if (hasImportResidue(noImport)) {
     return { ok: false, why: 'import 没剥干净（脚本里出现了新的 import 写法，剥 import 的正则需要同步更新）' }
   }
   const { code, errors } = transpileTs(noImport, POPOVER + '.script.ts')
@@ -1533,13 +1552,11 @@ function chatRuntime() {
   const { descriptor } = parse(source, { filename: CHAT })
   const raw = descriptor.scriptSetup?.content || ''
   if (!raw) return { ok: false, why: `${CHAT} 里没有 <script setup>` }
-  const noImport = raw
-    .replace(/^\s*import\s[\s\S]*?from\s*['"][^'"]+['"]\s*$/gm, '')
-    .replace(/^\s*import\s*['"][^'"]+['"]\s*$/gm, '')
+  const noImport = stripImportsForEval(raw)
   // ⚠️ 按**行首**判残留：`import` 这个词在注释里也会出现（`noticeRuntime` 那边实测踩过 ——
   //    结果栏的 JSDoc 里写着「不从…… import」，用 `\bimport\b` 会把注释算成没剥干净，
-  //    报出来却像产品代码的问题）。`import` 语句必然在行首（允许缩进），行首判就够，也不放过真残留。
-  if (/^\s*import\b/m.test(noImport)) {
+  //    还会误命中 `import.meta`）。`import` 语句必然在行首（允许缩进），行首判就够，也不放过真残留。
+  if (hasImportResidue(noImport)) {
     return { ok: false, why: 'import 没剥干净（脚本里出现了新的 import 写法，剥 import 的正则需要同步更新）' }
   }
   const { code, errors } = transpileTs(noImport, CHAT + '.script.ts')
@@ -1594,6 +1611,9 @@ function chatRuntime() {
     metaWarnings: refStub([]), imageCount: refStub(0), corrections: refStub(0), errors: refStub([]),
     metrics: refStub({}), hasRun: refStub(false), send: async () => 'harness-answer', stop: noop, reset: noop,
     resolveConfirm: noop,
+    // 从落库快照复原「会话累计执行统计」（状态条 UI 已删，但指标数据仍复原，供复用）。
+    // ⚠️ 产品源码解构了它，桩里必须有 —— 缺了 L85 会红（且明说是判据侧名单过期）。
+    restoreMetrics: noop,
     // 本轮的轮次 id（`send()` 开头生成、`turn_end` 标记里那个）—— 补写历史时要带上它，
     // L90 / L91 会把它设成一个认得出的标记值，再去读 `saveConversationMessages` 的请求体。
     currentTurnId: refStub(''),
@@ -1620,6 +1640,9 @@ function chatRuntime() {
     onMounted: noop,
     onBeforeUnmount: noop,
     defineOptions: noop,
+    // `enterTab` 里 `nextTick(() => kbPanelRef.value?.activate?.())` —— 产品代码要的 vue API，
+    // 给一个「立即执行回调」的桩（不桩的话切 tab 就会 `nextTick is not defined`）。
+    nextTick: (fn) => { if (typeof fn === 'function') fn() },
     // ---- Element Plus ----
     // ⚠️ `success` 要**记下来**：L88 的判据是「失败的那一轮一条成功提示都不许有」，
     //    一个不记事的 `noop` 会让这条断言恒真（它测的就是「有没有弹过」）。
@@ -1665,7 +1688,7 @@ function chatRuntime() {
       code +
         `
 ;return { sessions, sessionKeyword, filteredSessions, sessionCountText, sessionTitle,
-  historyOpen, sessionPopoverRef, toggleHistory, onDocMousedown,
+  panelOpen, panelTab, switchTab, enterTab, openPanel,
   sessionId, chatRef, onRollbackTurn, rollbackCalls, rollbackOutcome, successMsgs, inputTexts,
   handleSend, model, attachments, currentTurnId, saveConvCalls }`
     )
@@ -2217,16 +2240,14 @@ function noticeRuntime() {
   const { descriptor } = parse(source, { filename: NOTICE })
   const raw = descriptor.scriptSetup?.content || ''
   if (!raw) return { ok: false, why: `${NOTICE} 里没有 <script setup>` }
-  const noImport = raw
-    .replace(/^\s*import\s[\s\S]*?from\s*['"][^'"]+['"]\s*$/gm, '')
-    .replace(/^\s*import\s*['"][^'"]+['"]\s*$/gm, '')
+  const noImport = stripImportsForEval(raw)
   /**
    * ⚠️ 残留检查只能按**行首**判：`import` 这个词在注释里也会出现（本组件的 JSDoc 里就写着
    *    「展示层不依赖业务 composable，不从…… import」），用 `\bimport\b` 会把**注释**
-   *    算成「没剥干净」—— 那是判据自己的口径问题，报出来却像产品代码的问题。
-   *    `import` 语句必然在行首（允许缩进），所以行首判就够，也不放过任何真残留。
+   *    算成「没剥干净」（还会误命中 `import.meta`）—— 那是判据自己的口径问题，报出来却像
+   *    产品代码的问题。`import` 语句必然在行首（允许缩进），所以行首判就够，也不放过任何真残留。
    */
-  if (/^\s*import\b/m.test(noImport)) {
+  if (hasImportResidue(noImport)) {
     return { ok: false, why: 'import 没剥干净（剥 import 的正则需要同步更新）' }
   }
   const { code, errors } = transpileTs(noImport, NOTICE + '.script.ts')
@@ -2468,22 +2489,22 @@ const LAYOUT_CHECKS = [
   {
     id: 'L7',
     file: CHAT,
-    label: '顶部那些控件没丢：都进了底部工具栏左槽',
+    label: '底部工具栏左槽：附件上传 + 知识库/历史会话入口都在（顶部标题栏已按裁决并入底部工具栏）',
     fn: () => {
       const block = slotBlock(readSource(CHAT), 'input-footer')
       if (!block) return '找不到 `#input-footer` 插槽'
       // 去注释：注释里提一句组件名不该算「控件还在」
       const code = stripBlockComments(block)
+      // ⚠️ 清单要跟着产品走：原「自动执行开关」按用户裁决整块删除（写操作默认自动执行）；
+      //    原「可用工具弹层 (AgentToolPopover)」已被「专家」开关取代（设置 tab），都不再列。
+      //    知识库/历史会话现在的入口是 openPanel('kb'|'history')，不是旧的 historyOpen。
       const need = [
         ['ChatFileUploader', '附件上传'],
-        ['KnowledgeBaseDrawer', '知识库'],
-        ['historyOpen', '历史会话入口'],
-        ['autoConfirm', '自动执行开关'],
-        ['AgentToolPopover', '可用工具弹层']
+        ["openPanel('kb')", '知识库入口'],
+        ["openPanel('history')", '历史会话入口']
       ]
       const miss = need.filter(([k]) => !code.includes(k)).map(([, cn]) => cn)
       if (miss.length) return `#input-footer 里少了：${miss.join('、')}`
-      if (!code.includes('class="footer-hint"')) return '#input-footer 少了附件类型提示'
       return null
     }
   },
@@ -2548,41 +2569,34 @@ const LAYOUT_CHECKS = [
   {
     id: 'L11',
     file: CHAT,
-    label: '底部状态条 .agent-foot 保留',
+    label: '底部状态条已按用户裁决移除，但指标**数据**仍在（不是把 metrics 一起删了）',
     fn: () => {
+      // ⚠️ 形态沿革：状态条（`.agent-foot` 那一行统计）曾要求保留、水平居中、接上五组指标；
+      //    用户后来裁决**整块移除**（指标数据保留、只去掉展示行）。故此条改为守「移除得干净、
+      //    但 metrics 数据没丢」这两件事 —— 否则「删 UI」容易连数据源一起删掉。
       const ast = templateAst(CHAT)
       if (!ast) return '拿不到模板 AST'
       let found = false
       walkAst(ast, (n) => {
         if (n.type === 1 && nodeClasses(n).includes('agent-foot')) found = true
       })
-      return found ? null : '`.agent-foot` 状态条不见了（工具调用/自我纠正/图片落盘那些统计）'
+      if (found) return '`.agent-foot` 状态条又回来了 —— 它已按用户裁决移除，不许复活'
+      if (cssRule(cssOf(CHAT), '.agent-foot')) {
+        return '.agent-foot 的样式规则还在 —— 状态条已移除，样式应一并删掉（留着是死代码）'
+      }
+      return null
     }
   },
   {
     id: 'L12',
     file: CHAT,
-    label: '状态条水平居中 + 三组统计都接上了数据',
+    label: '移除状态条后指标数据仍在（metrics 被 composable 提供、供未来复用）',
     fn: () => {
-      // ① 版式：居中是用户明确要求的（原来是靠左）
-      const body = cssRule(cssOf(CHAT), '.agent-foot')
-      if (!body) return '找不到 .agent-foot 规则'
-      if (!/justify-content:\s*center/.test(body)) {
-        return '`.agent-foot` 没有 `justify-content: center` —— 用户要求这行统计水平居中'
-      }
-      // ② 数据接线：三个组缺任何一组都要能红（光有版式没有数是空壳）
+      // 状态条 UI 已移除，但 `metrics`（轮/步/耗时/首 token）作为**数据**仍由 useAgentChat 提供，
+      // 供本次执行统计/未来别的展示复用。守「删 UI 不连数据源一起删」。
       const src = readSource(CHAT)
-      const missing = [
-        'metrics.rounds', // 轮
-        'metrics.steps', // 步
-        'metrics.llmMs', // LLM 耗时
-        'metrics.toolMs', // 工具调用耗时
-        'metrics.firstTokenMs' // 首 token 平均
-      ].filter((k) => !src.includes(k))
-      if (missing.length) return `状态条没接上这些指标：${missing.join(' / ')}`
-      // ③ 「没有样本」不能显示成 0 —— 0 读作「瞬间返回」，与「还没测到」相反
-      if (!/firstTokenMs[^\n]*\?\?|== null \? '—'|= null \? '—'|== null\s*\?\s*'—'/.test(src)) {
-        return '首 token 的 null 分支没处理 —— 没有样本时必须显示 `—`，不能落进 formatMs 变成 `0毫秒`'
+      if (!/\bmetrics\b/.test(src)) {
+        return 'chat.vue 里再也看不到 `metrics` —— 删状态条 UI 时把指标数据源也一起删了'
       }
       return null
     }
@@ -2644,33 +2658,18 @@ const LAYOUT_CHECKS = [
   {
     id: 'L14',
     file: CHAT,
-    label: '状态条 .agent-foot 与输入卡片贴合（卡片底部留白收窄 + 统计条紧跟在消息区之后）',
+    label: '移除状态条后：输入卡片不再是「悬浮贴纸」（不留底部大预留），且消息区确实在 .agent-main 里',
     fn: () => {
+      // 状态条（.agent-foot）已按用户裁决移除，原先「卡片与统计条贴合」的判据没了落点。
+      // 留下的两条硬要求：① 输入卡片不靠魔法预留高度/贴纸式悬浮（旧 bug 的形态）；
+      // ② .agent-main 里确实挂着 AiChatStream（消息区还在）。
       const agent = cssOf(CHAT)
-
-      // ① 版式：输入卡片的下方留白必须收窄，否则和统计条之间会空出一条
-      const area = cssRule(agent, ':deep(.chat-input-area)')
-      if (!area) return '找不到 `:deep(.chat-input-area)` 覆盖规则'
-      // ⚠️ `margin-bottom` 长写会**盖掉** `margin` 简写的最后一位 —— 只看简写就会漏掉
-      //    「简写写对了、后面又补一条 `margin-bottom: -6px`」（变异测试 M9 就漏过一次）。
-      const shorthand = boxEdges(declValue(area, 'margin'))
-      const longhand = pxValue(area, 'margin-bottom')
-      const bottom = longhand != null ? longhand : shorthand ? shorthand[2] : null
-      if (bottom == null) {
-        return '覆盖层里读不到卡片的 `margin` / `margin-bottom` —— 卡片会退回默认的下方留白，与统计条脱开'
+      if (/FLOAT_INPUT_H|FLOAT_INPUT_GAP|SCROLL_BTN_BOTTOM/.test(stripBlockComments(readSource(CHAT)))) {
+        return '输入区又把「贴纸式悬浮」的魔法预留高度加回来了（FLOAT_INPUT_H / FLOAT_INPUT_GAP / SCROLL_BTN_BOTTOM）'
       }
-      if (bottom < 0) return `输入卡片的下方 margin 是负值（${bottom}px）—— 那是把统计条叠到卡片上，会压住圆角与阴影`
-      if (bottom > 4) return `输入卡片下方仍留 ${bottom}px（要求 ≤ 4px）—— 卡片与统计条之间会明显脱开`
-
-      // ② 统计条自身别把间距撑回来
-      const foot = cssRule(agent, '.agent-foot')
-      if (!foot) return '找不到 .agent-foot 规则'
-      const footPad = verticalPad(foot)
-      if (footPad == null) return '.agent-foot 没写 `padding`'
-      if (footPad > 12) return `.agent-foot 上下 padding 合计 ${footPad}px 偏大（要求 ≤ 12px）—— 统计条自己又把两行拉开了`
-
-      // ③ 结构：统计条必须是 `.agent-main` 的直接子节点、且**紧跟在 AiChatStream 之后**
-      //    （中间塞任何占位节点都会重新拉开距离 —— 这正是「贴合」在结构上的定义）
+      if (/padding-bottom:\s*1[0-9][0-9]px/.test(agent)) {
+        return '消息区又出现了 100px 以上的 `padding-bottom` 预留（贴纸式悬浮的补丁）'
+      }
       const ast = templateAst(CHAT)
       if (!ast) return '拿不到模板 AST'
       let main = null
@@ -2680,31 +2679,31 @@ const LAYOUT_CHECKS = [
       if (!main) return '模板里找不到 .agent-main'
       const kids = directElements(main)
       const idxStream = kids.findIndex((c) => c.tag === 'AiChatStream')
-      const idxFoot = kids.findIndex((c) => nodeClasses(c).includes('agent-foot'))
-      if (idxStream < 0) return '.agent-main 里找不到 AiChatStream'
-      if (idxFoot < 0) return '.agent-foot 不是 .agent-main 的直接子节点（它应紧跟在消息区下方）'
-      if (idxFoot !== idxStream + 1) {
-        return `.agent-foot 与 AiChatStream 之间夹了 ${idxFoot - idxStream - 1} 个节点 —— 统计条不再紧贴输入卡片`
-      }
+      if (idxStream < 0) return '.agent-main 里找不到 AiChatStream（消息区没了）'
       return null
     }
   },
   {
     id: 'L15',
     file: CHAT,
-    label: '工具弹层的「当前模型」跟随选择器（不能只绑 activeModel）',
+    label: '「可用工具」弹层（AgentToolPopover）已被「专家」开关取代：chat.vue 里不该再引用它',
     fn: () => {
-      const src = readSource(CHAT)
-      const m = src.match(/<AgentToolPopover[^>]*\s:model="([^"]+)"/)
-      if (!m) return '找不到 AgentToolPopover 的 `:model` 绑定'
-      const expr = m[1]
-      // `activeModel` 是后端 `meta` 事件回报的「**上次**实际跑用的模型」，只在一次请求
-      // 跑完之后才更新。只绑它 → 用户在下拉里换完模型、还没发消息时，弹层里显示的仍是
-      // 上一次的模型（用户 2026-09-19 报的就是这个）。选择器当前值 `model` 才是
-      // 「下一次请求真正会用的模型」，所以表达式必须回落到它。
-      if (!expr.includes('||') || !/\bmodel\b/.test(expr)) {
-        return `:model 绑的是 \`${expr}\` —— 少了选择器的当前值：切换模型后不发消息，弹层不会更新`
+      // ⚠️ 形态沿革：原「可用工具」弹层（AgentToolPopover）按 2026-10-10 用户裁决
+      //    上移为**专家粒度**的开关（设置 tab 里的 `.settings-expert`）。chat.vue 不再引用弹层组件。
+      //    故这条改为「不许把死掉的弹层引用加回来」；专家开关的存在由设置面板自己守。
+      const src = stripBlockComments(readSource(CHAT))
+      if (/<AgentToolPopover\b/.test(src)) {
+        return 'chat.vue 又引用了 <AgentToolPopover> —— 该弹层已被「专家」开关取代，不许复活'
       }
+      // 专家开关必须在：`listAgentExperts` 拉清单 + 设置面板渲染 `.settings-expert`
+      if (!/listAgentExperts/.test(src)) return 'chat.vue 不再调用 listAgentExperts —— 专家清单没了'
+      const ast = templateAst(CHAT)
+      if (!ast) return '拿不到模板 AST'
+      let hasExpertRow = false
+      walkAst(ast, (n) => {
+        if (n.type === 1 && nodeClasses(n).includes('settings-expert')) hasExpertRow = true
+      })
+      if (!hasExpertRow) return '设置面板里找不到 .settings-expert 行 —— 专家开关不见了'
       return null
     }
   },
@@ -2725,7 +2724,10 @@ const LAYOUT_CHECKS = [
           if (String(p?.value?.content || '') === 'after-message') deadSlot = true
         }
         // NodeTypes.FOR = 11：`v-for` 编译后被包成 FOR 节点，元素挂在它的 children 上
-        if (n.type === 11) forNode = n
+        // ⚠️ 取**第一个** FOR 节点 —— 那是外层消息循环。用「最后一个」会落到内层
+        //    `steps` / `experts` 的 v-for（组件里不止一个 v-for），判据就找错对象、假红
+        //    （L69 用的就是第一个，两条判据口径必须一致）。
+        if (n.type === 11 && !forNode) forNode = n
       })
 
       // ① 「轮末那一格」现在**必须有消费者**：`turn_end` 分支渲染轮末回退组件。
@@ -3665,81 +3667,48 @@ const LAYOUT_CHECKS = [
   {
     id: 'L27',
     file: CHAT,
-    label: '历史会话是**覆盖层**浮层（absolute + 锚在输入卡片上方），旧左侧栏形态不许回来',
+    label: '历史会话已升级为公共抽屉（ResizableDrawer），旧左侧栏 / 悬浮层形态不许回来',
     fn: () => {
       const problems = []
-      const body = cssRule(cssOf(CHAT), '.session-popover')
-      if (!body) {
-        problems.push('找不到 .session-popover 规则 —— 历史会话的浮层形态没了')
-      } else {
-        if (!/position:\s*absolute/.test(body)) {
-          problems.push(
-            '.session-popover 不是 position: absolute —— 浮层必须脱离布局流：' +
-              '留在流里就会像旧左侧栏（.agent-sidebar）那样把消息区挤窄'
-          )
-        }
-        const z = pxValue(body, 'z-index')
-        if (z == null || z <= 0) {
-          problems.push(
-            `.session-popover 的 z-index 是「${declValue(body, 'z-index') || '(没写)'}」—— 覆盖层要明确压住消息区`
-          )
-        }
-        const bottom = declValue(body, 'bottom')
-        if (!bottom || !bottom.includes('100%')) {
-          problems.push(
-            `.session-popover 的 bottom 是「${bottom || '(没写)'}」—— 要写成 calc(100% + Npx)：` +
-              '以**输入卡片**为基准往上弹，卡片长高 / 底部统计条出现时才不用手算偏移'
-          )
-        }
-        const maxH = declValue(body, 'max-height')
-        if (!maxH) {
-          problems.push('.session-popover 没有 max-height —— 会话多的时候会顶出 .ai-chat-stream 上沿被裁掉')
-        } else if (maxH.includes('%')) {
-          problems.push(
-            `.session-popover 的 max-height 是「${maxH}」—— 百分比是相对**输入卡片**（约 113px 高）解析的，` +
-              '会小到只剩几十像素，要用 vh/px'
-          )
-        }
-      }
-
-      // 浮层的定位基准：`.chat-input-area` 必须是 position: relative（含块），
-      // 否则 `bottom: calc(100% + 8px)` 会去认更外层的祖先，锚点整条失效。
-      const inputCard = cssRule(cssOf(INPUT), '.chat-input-area')
-      if (!inputCard) problems.push(`读不到 ${INPUT} 的 .chat-input-area 规则`)
-      else if (!/position:\s*relative/.test(inputCard)) {
-        problems.push(
-          `${INPUT} 的 .chat-input-area 不是 position: relative —— ` +
-            '它是会话浮层的定位基准（浮层写在 #input-footer 槽里），少了它锚点就挂到更外层去了'
-        )
-      }
-
-      // 旧形态的模板痕迹：`<aside>` 不只是「过时的写法」——
-      // 全局样式 `aside { padding: 16px 24px; margin-bottom: 20px; border-radius: 12px; border: 1px solid … }`
-      // （src/assets/styles/index.scss:104）会**悄悄**给任何一个 aside 补上内边距/外边距/圆角，
-      // 那正是这一版要改掉的「不对齐」。浮层用 `<div>`。
+      // ⚠️ 形态沿革（判据跟着产品走）：历史上这块先是左侧栏（`.agent-sidebar`），
+      //    再改成「锚在输入卡片上方的覆盖层浮层」（`.session-popover`），
+      //    最终（2026-10-09）升级成公共组件 `ResizableDrawer` 的三个 tab 之一。
+      //    所以现在断的是「抽屉形态在、且旧形态的痕迹都不许复活」，而**不再**断
+      //    `.session-popover` 那套 absolute 规则（那是上一代形态，产品已删）。
       const ast = templateAst(CHAT)
-      if (!ast) problems.push('拿不到模板 AST')
-      else {
-        const classes = new Set()
-        let asideCount = 0
-        walkAst(ast, (n) => {
-          if (n.type !== 1) return
-          if (String(n.tag) === 'aside') asideCount += 1
-          nodeClasses(n).forEach((c) => classes.add(c))
-        })
-        if (asideCount) {
-          problems.push(
-            `模板里还有 ${asideCount} 个 <aside> —— 历史会话已改成浮层；` +
-              '全局样式里的 aside{…} 会给它补上 padding/margin/圆角/描边'
-          )
-        }
-        const back = ['agent-sidebar', 'side-head', 'side-list', 'side-item', 'side-empty', 'side-close'].filter((c) =>
-          classes.has(c)
-        )
-        if (back.length) problems.push(`已删掉的左侧栏节点又回来了：${back.join('、')}`)
+      if (!ast) return '拿不到模板 AST'
+      const classes = new Set()
+      let asideCount = 0
+      let hasDrawer = false
+      walkAst(ast, (n) => {
+        if (n.type !== 1) return
+        if (String(n.tag) === 'aside') asideCount += 1
+        if (String(n.tag) === 'ResizableDrawer') hasDrawer = true
+        nodeClasses(n).forEach((c) => classes.add(c))
+      })
+      if (!hasDrawer) {
+        problems.push('模板里没有 <ResizableDrawer> —— 历史会话/设置/知识库共用的抽屉外壳没了')
       }
+      // 抽屉的内壁（.agent-panel + tab 头）必须在
+      if (!classes.has('agent-panel')) problems.push('找不到抽屉内壁 .agent-panel')
+      if (!classes.has('agent-panel-tabs')) problems.push('找不到抽屉 tab 头 .agent-panel-tabs')
+
+      // 旧左侧栏形态的痕迹：`<aside>` 会被全局 `aside{…}` 补上 padding/margin/圆角/描边
+      if (asideCount) {
+        problems.push(
+          `模板里还有 ${asideCount} 个 <aside> —— 历史会话早已不是左侧栏；` +
+            '全局样式里的 aside{…} 会给它补上 padding/margin/圆角/描边'
+        )
+      }
+      const back = ['agent-sidebar', 'side-head', 'side-list', 'side-item', 'side-empty', 'side-close'].filter((c) =>
+        classes.has(c)
+      )
+      if (back.length) problems.push(`已删掉的左侧栏节点又回来了：${back.join('、')}`)
       if (/\.slide-left-/.test(cssOf(CHAT))) {
         problems.push('.slide-left-* 的过渡定义还在 —— 那是旧左侧栏「动 width」的动画，已随形态一起删除')
+      }
+      if (cssRule(cssOf(CHAT), '.session-popover')) {
+        problems.push('.session-popover 规则又回来了 —— 那是上一代「覆盖层浮层」形态，已被抽屉取代')
       }
       return problems.length ? problems.join('；') : null
     }
@@ -3915,58 +3884,53 @@ const LAYOUT_CHECKS = [
   {
     id: 'L32',
     file: CHAT,
-    label: '浮层能关掉：点外面关、点里面不关，且触发按钮带 @mousedown.stop（否则按钮永远关不掉）',
+    label: '抽屉能开能关：三个入口都能打开对应 tab，抽屉 tab 头切换会触发该 tab 的加载（防「刷新后先点设置/历史，再点知识库加载不出来」）',
     fn: () => {
       const problems = []
       const rt = chatRuntime()
       if (!rt.ok) return `离线执行 ${CHAT} 的 script setup 失败：${rt.why}`
-      const inside = { id: 'inside' }
-      const outside = { id: 'outside' }
 
-      rt.api.sessionPopoverRef.value = { contains: (t) => t === inside }
-      rt.api.historyOpen.value = true
-      rt.api.onDocMousedown({ target: outside })
-      if (rt.api.historyOpen.value !== false) problems.push('点浮层外面没有关掉 —— 浮层会一直挡着消息区')
+      // 1) 工具栏入口：openPanel 打开抽屉、切到该 tab
+      rt.api.panelOpen.value = false
+      rt.api.openPanel('kb')
+      if (rt.api.panelOpen.value !== true) problems.push('openPanel 没把抽屉打开')
+      if (rt.api.panelTab.value !== 'kb') problems.push(`openPanel('kb') 后 panelTab 是 ${rt.api.panelTab.value}（应是 kb）`)
 
-      rt.api.historyOpen.value = true
-      rt.api.onDocMousedown({ target: inside })
-      if (rt.api.historyOpen.value !== true) {
-        problems.push('点浮层里面也被关掉了 —— 选会话 / 输搜索词时浮层会在手底下消失')
+      // 2) 抽屉内 tab 头：switchTab 切 tab **且**触发该 tab 的加载。
+      //    ⚠️ 这正是 2026-10-16 那条 bug：tab 头原先只 `panelTab = x`，绕过加载器，
+      //    于是知识库/专家列表在「先点别的 tab 再切回来」时永远不加载。这里断的是「切换走 switchTab」。
+      rt.api.switchTab('history')
+      if (rt.api.panelTab.value !== 'history') problems.push('switchTab 没切换 panelTab')
+      if (rt.api.sessionKeyword.value !== '') {
+        problems.push('切到「历史会话」没有清空上次的搜索词（用户会看到一个被过滤过的列表）')
       }
+      rt.api.switchTab('settings')
+      if (rt.api.panelTab.value !== 'settings') problems.push('switchTab(settings) 没切换 panelTab')
+      rt.api.switchTab('kb')
+      if (rt.api.panelTab.value !== 'kb') problems.push('switchTab(kb) 没切换 panelTab')
 
-      // 浮层还没渲染（ref 是 null）时点了外面：不许崩，也不许把状态改乱
-      rt.api.sessionPopoverRef.value = null
-      rt.api.historyOpen.value = true
-      try {
-        rt.api.onDocMousedown({ target: outside })
-      } catch (e) {
-        problems.push(`浮层没渲染时点外面抛错了：${String(e?.message || e)}`)
-      }
-      if (rt.api.historyOpen.value !== true) {
-        problems.push('浮层没渲染时点外面把它关掉了（ref 为 null 时不该改状态）')
-      }
-
-      // 按钮上的 `@mousedown.stop`：mousedown 会先冒泡到 document 的关闭处理，
-      // 不拦住就是「mousedown 关掉、click 又打开」→ 按钮看起来永远关不掉。
+      // 3) 模板里：抽屉 tab 头必须走 switchTab（不许直接 `panelTab = x` —— 那会绕过加载器）
       const ast = templateAst(CHAT)
       if (!ast) problems.push('拿不到模板 AST')
       else {
-        const btn = firstNode(ast, (n) => n.type === 1 && String(n.tag) === 'button' && nodeClasses(n).includes('tb-btn'))
-        if (!btn) problems.push('找不到底部工具栏的历史会话按钮（button.tb-btn）')
-        else {
-          const on = (btn.props || []).filter((p) => p.type === 7 && p.name === 'on')
+        // ⚠️ tab 头是 `:class="['aptab', { active: … }]"`（**动态绑定**，不是静态 `class`），
+        //    所以要用 `boundExp(n,'class')` 读表达式，`nodeClasses`（只读静态 class）会一个都扫不到。
+        const tabs = []
+        walkAst(ast, (n) => {
+          if (n.type !== 1) return
+          const ce = String(boundExp(n, 'class') || '')
+          if (/aptab/.test(ce)) tabs.push(n)
+        })
+        if (tabs.length < 3) problems.push(`抽屉 tab 头只有 ${tabs.length} 个（应 3 个：设置/知识库/历史）`)
+        tabs.forEach((t, i) => {
+          const on = (t.props || []).filter((p) => p.type === 7 && p.name === 'on')
           const click = on.find((p) => p.arg?.content === 'click')
-          if (!click) problems.push('历史会话按钮没有 @click —— 浮层打不开')
-          const mousedown = on.find((p) => p.arg?.content === 'mousedown')
-          if (!mousedown) {
-            problems.push('历史会话按钮缺 `@mousedown.stop` —— mousedown 会先被「点外面关闭」吃掉，紧接着 click 又打开，按钮点不着关')
-          } else if (!(mousedown.modifiers || []).includes('stop')) {
-            problems.push(`历史会话按钮的 @mousedown 修饰符是 ${JSON.stringify(mousedown.modifiers || [])}（要 stop）`)
+          const exp = click ? String(click.exp?.loc?.source ?? click.exp?.content ?? '') : ''
+          if (!click) problems.push(`第 ${i + 1} 个 aptab 没有 @click`)
+          else if (!/switchTab/.test(exp)) {
+            problems.push(`第 ${i + 1} 个 aptab 的 @click 不是 switchTab（是「${exp}」）—— 直接赋值 panelTab 会绕过该 tab 的加载器，「刷新后先点别的 tab 再切回来」就加载不出来`)
           }
-          if (!/historyOpen/.test(boundExp(btn, 'class') || '')) {
-            problems.push('历史会话按钮的 :class 没绑 historyOpen —— 浮层打开时按钮的 is-on 态不会亮')
-          }
-        }
+        })
       }
       return problems.length ? problems.join('；') : null
     }
@@ -4704,59 +4668,18 @@ const LAYOUT_CHECKS = [
   {
     id: 'L43',
     file: CHAT,
-    label:
-      '传给 <AgentToolPopover> 的只有 `:model`（守门：脚注那两个 prop `:run-model` / `:tools` 不许加回来）',
+    label: '<AgentToolPopover> 已被「专家」开关取代：chat.vue 里不该再有它（连 :model / :run-model / :tools 都不该出现）',
     fn: () => {
-      // 用户裁决原话：「保留 可用工具 3/5 个可用 · 由后端按当前配置下发 这一行 即可；
-      // 下面的 本次运行下发 x 个工具（那一次运行后端实际给了这些；上面那份是当前配置）这段话去除」——
-      // 整块脚注删掉之后，`chat.vue` 这边**一个 prop 都不该留**：脚注那两行就是靠 `:run-model` /
-      // `:tools` 传进组件的，而组件里**已经没有**这两个 prop 了（L41 守着组件那侧），
-      // 留着就是「传了但没人接」的死绑定 —— 还会让下一个读代码的人以为脚注还在。
-      //
-      // ⚠️ 判据落在这个**标签自己的属性表**上（源码文本层面把 `<AgentToolPopover …>` 抠出来），
-      //    **不是**「模板里找不到某个节点」：后者选择器 / AST 写错就**恒真**，什么也不防。
-      // ⚠️ 也**不能**全文 `includes(':run-model')`：旁边那句「`:tools` / `:run-model` 曾为脚注而传」
-      //    的说明注释里**必然**写着这两个名字，全文匹配会被**自己的注释**判红。
-      const src = readSource(CHAT)
-      const tag = src.match(/<AgentToolPopover\b[\s\S]*?>/)
-      if (!tag) {
-        return '找不到 <AgentToolPopover …> 标签 —— 这条断言**没生效**（按未验证算，不要当成通过）'
+      // ⚠️ 形态沿革：原「可用工具」弹层（AgentToolPopover）上的 `:model` / 脚注 `:run-model` / `:tools`
+      //    是上一代接线。该弹层整体被「专家」开关取代后，chat.vue 不再引用组件，这三个 prop 自然也
+      //    不该出现。本条改为「不许把整个弹层标签加回来」—— 比数单个 prop 更直接地守住这次删减。
+      // ⚠️ 只看**代码**（去注释）：源码里「曾为脚注而传」这类说明注释必然写着这些名字，全文匹配会被
+      //    自己的注释判红（历史上踩过）。
+      const src = stripBlockComments(readSource(CHAT))
+      if (/<AgentToolPopover\b/.test(src)) {
+        return 'chat.vue 又出现了 <AgentToolPopover> 标签 —— 该弹层已被「专家」开关整块取代（设置 tab），不许加回来'
       }
-      // 先把属性**值**清空再数属性名：否则 `:model="model || activeModel"` 里那个
-      // `activeModel`（前面有空格）会被当成一个属性名。
-      const stripped = tag[0].replace(/"[^"]*"/g, '""').replace(/'[^']*'/g, "''")
-      const tokens = [...stripped.matchAll(/\s(:|v-bind:|@|v-on:)?([A-Za-z][\w-]*)(?=[\s=/>])/g)]
-      const boundProps = tokens.filter((m) => m[1] === ':' || m[1] === 'v-bind:').map((m) => m[2])
-      const allAttrs = tokens.map((m) => m[2])
-
-      // ① 守门：脚注那两个 prop 不许加回来（组件那边已经不存在，加回来必然是死绑定）
-      const back = allAttrs.filter((n) => n === 'run-model' || n === 'tools')
-      if (back.length) {
-        return (
-          `<AgentToolPopover> 上又出现了 ${back.map((n) => '`' + n + '`').join('、')} —— ` +
-          '整块脚注已按用户裁决删除、组件里也没有这两个 prop 了（L41 守着组件那侧），别加回来'
-        )
-      }
-
-      const problems = []
-      // ② `:model` 还在。⚠️ 如实记一笔：组件那侧的 `model` prop 现在**没有消费者**（脚注那行模型名已删）；
-      //    留不留它是**另一处决定**（L15 也在守它的表达式），不在这一轮里顺手删。
-      if (!boundProps.includes('model')) {
-        problems.push(
-          '`<AgentToolPopover>` 上找不到 `:model` 绑定 —— 它是 2026-09-19「切换模型后弹层不更新」那个修复的接线' +
-            '（L15 断的是它的**表达式**）。组件那侧暂时没有消费者，但删它要连 L15 一起动，别在这一轮顺手删'
-        )
-      }
-      // ③ 「只有 `:model`」：多传别的 **prop**（`:x` / `v-bind:x`）说明这轮删减没删干净。
-      //    ⚠️ 只数**绑定进 props 的**属性；`class` / `ref` / `v-if` 这类不是 prop，不该被这条拦。
-      const extra = boundProps.filter((n) => n !== 'model')
-      if (extra.length) {
-        problems.push(
-          `<AgentToolPopover> 上除了 \`:model\` 还传了 ${extra.map((n) => ':`' + n + '`').join('、')} —— ` +
-            '按用户裁决这里只该有 `:model`；确有新功能要加 prop 时，请连着这条断言一起说明，别默默加'
-        )
-      }
-      return problems.length ? problems.join('；') : null
+      return null
     }
   },
   {
@@ -5781,11 +5704,22 @@ const LAYOUT_CHECKS = [
         candidates.push([n, b])
       }
 
-      // `props.messages.length` 的 watch 里调了谁 —— 那就是「落底」这一步的入口
-      const w = /watch\(\s*\(\)\s*=>\s*props\.messages\.length[\s\S]*?\n\}\)/.exec(src)
-      if (!w) return '找不到 `props.messages.length` 的 watch —— 这条判据要有落点'
-      const wb = w[0]
-      const pin = candidates.find(([n]) => new RegExp(`${n}\\s*\\(`).test(wb))
+      // `props.messages.length` 的 watch 里调了谁 —— 那就是「落底」这一步的入口。
+      // ⚠️ 组件里**不止一个** `props.messages.length` 的 watch（另一个在 :588，只复位 renderLimit，
+      //    不含落底）—— 用 `.exec` 只取第一个会抓错对象、假红。所以要把**所有**同名 watch 都拿出来，
+      //    逐个看「里面有没有调用候选落底函数」，命中那个才算。
+      const watches = [...src.matchAll(/watch\(\s*\(\)\s*=>\s*props\.messages\.length[\s\S]*?\n\}\)/g)].map((m) => m[0])
+      if (!watches.length) return '找不到 `props.messages.length` 的 watch —— 这条判据要有落点'
+      let pin = null
+      let wb = null
+      for (const cand of watches) {
+        const hit = candidates.find(([n]) => new RegExp(`${n}\\s*\\(`).test(cand))
+        if (hit) {
+          pin = hit
+          wb = cand
+          break
+        }
+      }
       if (!pin) {
         problems.push(
           candidates.length

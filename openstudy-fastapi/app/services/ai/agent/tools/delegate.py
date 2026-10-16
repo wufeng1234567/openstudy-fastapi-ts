@@ -86,6 +86,8 @@ class DelegateTaskTool(AgentTool):
         roles: Dict[str, Any] = dict(extra.get("delegate_roles") or {})
         excludes: Dict[str, Any] = dict(extra.get("delegate_exclude") or {})
         sub_extra = dict(extra.get("delegate_extra") or {})
+        # 用户给这个专家挑的模型覆盖（loop 构建好的 LLM 表；没有覆盖的 key 回退指挥家 llm）
+        llms: Dict[str, Any] = dict(extra.get("delegate_llms") or {})
 
         if llm is None or not roles:
             # 没运行在指挥家模式（例如 ds-free 单步链路）——明确引导，别假装成功
@@ -115,7 +117,7 @@ class DelegateTaskTool(AgentTool):
             session_id=ctx.session_id,
             role_spec=role_spec,
             task=task,
-            llm=llm,
+            llm=llms.get(key) or llm,
             excluded_tools=excludes.get(key),
             extra=sub_extra,
             own_session=parallel,

@@ -33,10 +33,10 @@ Agent 专家开关的读写服务（`ai_agent_role_pref`）
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Set
+from typing import Dict, List, Set
 
 from loguru import logger
-from sqlalchemy import delete, select
+from sqlalchemy import select
 
 from app.database import async_session_factory
 from app.models.agent_role_pref import AiAgentRolePref
@@ -67,8 +67,10 @@ async def set_role_disabled(user_id: int, role_key: str, disabled: int) -> None:
     """upsert 一条 `(user_id, role_key)` 专家开关记录。
 
     - `disabled` 归一成 **0/1**（非零 → 1），避免「界面显示已启用、模型却用不到」的分叉。
-    - **关闭（disabled=1）**：upsert 成 1；**启用（disabled=0）**：**删除**该行（还原稀疏，
-      而不是写一堆 0 留着）。
+    - **关闭（disabled=1）**：upsert 成 1。
+    - **启用（disabled=0）**：**回退稀疏** —— 但**只在行上没有模型覆盖时才删行**。
+      ⚠️ 行现在还可能承载 `model` 覆盖（两份偏好共用一行）：无条件删行会把用户挑的模型
+      一起抹掉（「关一下再开，模型选择没了」）。有 `model` 的行只置 `disabled=0` 保留。
     - 专家 key 合法性**不在本函数里校验**：合法名单只有 `roles.OFFICIAL_ROLES` 知道，
       校验放路由层，服务层不依赖 roles 模块、避免导入顺序踩循环依赖。
     - 归属由调用方保证（路由层只用 `current_user["user_id"]`，见 IDOR 红线）。
@@ -80,23 +82,25 @@ async def set_role_disabled(user_id: int, role_key: str, disabled: int) -> None:
     flag = 1 if int(disabled or 0) else 0
 
     async with async_session_factory() as db:
-        if flag == 0:
+        row = (
             await db.execute(
-                delete(AiAgentRolePref).where(
+                select(AiAgentRolePref).where(
                     AiAgentRolePref.user_id == uid,
                     AiAgentRolePref.role_key == key,
                 )
             )
+        ).scalars().first()
+        now = datetime.now()
+        if flag == 0:
+            # 稀疏还原：只删「没有模型覆盖」的行；有 model 的只清 disabled（别抹掉用户挑的模型）
+            if row is None:
+                pass
+            elif (row.model or "").strip():
+                row.disabled = 0
+                row.update_time = now
+            else:
+                await db.delete(row)
         else:
-            row = (
-                await db.execute(
-                    select(AiAgentRolePref).where(
-                        AiAgentRolePref.user_id == uid,
-                        AiAgentRolePref.role_key == key,
-                    )
-                )
-            ).scalars().first()
-            now = datetime.now()
             if row is None:
                 db.add(
                     AiAgentRolePref(
@@ -113,6 +117,75 @@ async def set_role_disabled(user_id: int, role_key: str, disabled: int) -> None:
         await db.commit()
 
     logger.info("[role_pref] 已保存专家开关 user={} role={} disabled={}", uid, key, flag)
+
+
+async def role_model_map(user_id: int) -> Dict[str, str]:
+    """该用户给各专家挑的模型覆盖（`{role_key: model}`，只含 model 非空的行）
+
+    ⚠️ **永不抛**（读失败只记 warning 并返回空 dict）—— 与 `disabled_role_keys` 同款
+    fail-open：它读的是偏好，读不到的最坏后果是「专家跟随默认模型」。
+    """
+    try:
+        async with async_session_factory() as db:
+            rows = (
+                await db.execute(
+                    select(AiAgentRolePref.role_key, AiAgentRolePref.model).where(
+                        AiAgentRolePref.user_id == int(user_id or 0)
+                    )
+                )
+            ).all()
+        return {
+            str(key): str(model).strip()
+            for key, model in rows
+            if model and str(model).strip()
+        }
+    except Exception as e:  # noqa: BLE001 - 见 docstring：读偏好失败必须 fail-open
+        logger.warning("[role_pref] 读取专家模型覆盖失败（按「跟随默认」继续）user={}: {}", user_id, e)
+        return {}
+
+
+async def set_role_model(user_id: int, role_key: str, model: str) -> None:
+    """upsert 一条 `(user_id, role_key)` 的专家模型覆盖。
+
+    - `model` 非空 = 覆盖（委派该专家时用此模型）；空 = 清空覆盖（跟随默认）。
+    - 清空时**只置 NULL**，不动行本身：行可能还承载着 `disabled=1`（关闭状态），
+      删行会把「关了专家」一并抹掉（两份偏好转在同一个行上，必须分开处理）。
+    - 专家 key 合法性不在本函数校验（同 `set_role_disabled`：校验放路由层）。
+    - 写失败必须抛出去（fail-loud，同 `set_role_disabled`）。
+    """
+    uid = int(user_id or 0)
+    key = str(role_key or "").strip()
+    if not key:
+        raise ValueError("role_key 不能为空")
+    value = str(model or "").strip() or None
+
+    async with async_session_factory() as db:
+        row = (
+            await db.execute(
+                select(AiAgentRolePref).where(
+                    AiAgentRolePref.user_id == uid,
+                    AiAgentRolePref.role_key == key,
+                )
+            )
+        ).scalars().first()
+        now = datetime.now()
+        if row is None:
+            db.add(
+                AiAgentRolePref(
+                    user_id=uid,
+                    role_key=key,
+                    disabled=0,
+                    model=value,
+                    create_time=now,
+                    update_time=now,
+                )
+            )
+        else:
+            row.model = value
+            row.update_time = now
+        await db.commit()
+
+    logger.info("[role_pref] 已保存专家模型覆盖 user={} role={} model={}", uid, key, value or "")
 
 
 async def set_all_roles_disabled(user_id: int, role_keys: List[str], disabled: int) -> None:
@@ -132,24 +205,29 @@ async def set_all_roles_disabled(user_id: int, role_keys: List[str], disabled: i
     flag = 1 if int(disabled or 0) else 0
 
     async with async_session_factory() as db:
-        if flag == 0:
+        rows = (
             await db.execute(
-                delete(AiAgentRolePref).where(
+                select(AiAgentRolePref).where(
                     AiAgentRolePref.user_id == uid,
                     AiAgentRolePref.role_key.in_(keys),
                 )
             )
+        ).scalars().all()
+        existing = {r.role_key: r for r in rows}
+        now = datetime.now()
+        if flag == 0:
+            # 稀疏还原：删「没有模型覆盖」的行；有 model 的行只清 disabled
+            # （⚠️ 批量「全选开启」同样不能连用户挑的模型一起抹掉 —— 同 set_role_disabled）
+            for key in keys:
+                row = existing.get(key)
+                if row is None:
+                    continue
+                if (row.model or "").strip():
+                    row.disabled = 0
+                    row.update_time = now
+                else:
+                    await db.delete(row)
         else:
-            rows = (
-                await db.execute(
-                    select(AiAgentRolePref).where(
-                        AiAgentRolePref.user_id == uid,
-                        AiAgentRolePref.role_key.in_(keys),
-                    )
-                )
-            ).scalars().all()
-            existing = {r.role_key: r for r in rows}
-            now = datetime.now()
             for key in keys:
                 row = existing.get(key)
                 if row is None:
@@ -175,4 +253,10 @@ async def set_all_roles_disabled(user_id: int, role_keys: List[str], disabled: i
     )
 
 
-__all__ = ["disabled_role_keys", "set_role_disabled", "set_all_roles_disabled"]
+__all__ = [
+    "disabled_role_keys",
+    "role_model_map",
+    "set_role_disabled",
+    "set_role_model",
+    "set_all_roles_disabled",
+]

@@ -131,9 +131,10 @@ onBeforeUnmount(stopTimer)
  * —— 但也因此会**把英文标识符直接打在用户脸上**（`question_flag_manage · master`）。
  *
  * ⚠️ 工具名必须与后端 `app/services/ai/agent/tools/*.py` 里那个 `name = "…"` 一一对应：
- *    清单是 10 个（bank_manage / question_manage / note_manage / question_flag_manage /
- *    memory_manage / learning_stats / knowledge_base_manage / bank_share_manage /
- *    knowledge_search / memory_search）。漏一个，用户看到的就是那个英文标识符。
+ *    清单是 13 个（bank_manage / question_manage / note_manage / question_flag_manage /
+ *    memory_manage / learning_stats / knowledge_base_manage / knowledge_ingest /
+ *    bank_share_manage / knowledge_search / memory_search / agent_manage / delegate_task）。
+ *    漏一个，用户看到的就是那个英文标识符。
  *    这条由 `tests/check_frontend_static.mjs` 的 L46 / L47 **读后端注册表自动比对**，别只靠眼睛。
  */
 const TOOL_LABELS: Record<string, string> = {
@@ -145,10 +146,14 @@ const TOOL_LABELS: Record<string, string> = {
   memory_manage: '记忆管理',
   learning_stats: '学习统计',
   knowledge_base_manage: '知识库管理',
+  // 内容入库（knowledge_ingest.py）：与管理知识库的 knowledge_base_manage 分工
+  knowledge_ingest: '写入知识库',
   bank_share_manage: '题库分享',
   // 只读检索类：它们没有 action 参数，卡片上只有工具名这一层
   knowledge_search: '知识库检索',
   memory_search: '记忆检索',
+  // 用户自定义智能体的管理工具（agent_manage.py）
+  agent_manage: '智能体管理',
   // 指挥家「派发专家」的元工具：对用户只该说「请专家帮忙」，不该露出 delegate_task
   delegate_task: '请专家帮忙'
 }
@@ -171,6 +176,8 @@ const ACTION_LABELS: Record<string, string> = {
   list_categories: '查询分类',
   clear_questions: '清空题目',
   batch_import: '批量导入',
+  // note_manage（写草稿；正式笔记的创建走 create/update）
+  save_draft: '保存草稿',
   // question_flag_manage
   add: '添加',
   master: '标记已掌握',
@@ -188,6 +195,9 @@ const ACTION_LABELS: Record<string, string> = {
   // knowledge_base_manage
   list_documents: '文档列表',
   delete_document: '删除文档',
+  // knowledge_ingest
+  from_text: '文本入库',
+  from_attachment: '附件入库',
   // bank_share_manage
   list_shares: '分享列表',
   share: '创建分享',

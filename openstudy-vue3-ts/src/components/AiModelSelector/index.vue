@@ -45,7 +45,13 @@ const props = defineProps({
   width: { type: String, default: '220px' },
   disabled: { type: Boolean, default: false },
   /** 场景标识：每个使用点单独记忆（聊天助手 / AI 解析 / 出题等互不影响） */
-  scene: { type: String, required: true }
+  scene: { type: String, required: true },
+  /**
+   * 受控模式开关。false = 用于「加载既有值」的表单：
+   *   挂载时**不**自动挑默认、**不** emit，只把传入的 model 名映射成 configId 显示；
+   *   找不到就留空。外部改 modelValue 时同步映射。默认 true，保持既有调用方行为不变。
+   */
+  autoDefault: { type: Boolean, default: true }
 })
 
 const emit = defineEmits(['update:modelValue', 'change', 'select'])
@@ -82,8 +88,15 @@ const emitFor = (id) => {
 
 const handleChange = (val) => {
   selectedId.value = val || ''
-  localStorage.setItem(storageKey, selectedId.value)
+  if (props.autoDefault) localStorage.setItem(storageKey, selectedId.value)
   emitFor(selectedId.value)
+}
+
+// 受控模式：把外部传入的 model 名映射成本地 configId（仅用于显示，**不** emit/落记忆）
+const mapValueToId = (name) => {
+  if (!name) return ''
+  const cfg = configList.value.find(c => c.model === name)
+  return cfg ? String(cfg.configId) : ''
 }
 
 const applyId = (id) => {
@@ -109,6 +122,11 @@ const fetchConfigs = async () => {
 
 /** 初始化：优先恢复本场景历史记忆（configId）；否则选系统官方 deepseek-flash，退回第一条 */
 const restoreSelection = () => {
+  // 受控模式：只映射外部值，绝不自动挑默认、绝不 emit
+  if (!props.autoDefault) {
+    selectedId.value = mapValueToId(props.modelValue)
+    return
+  }
   const saved = localStorage.getItem(storageKey)
   if (saved && configList.value.some(c => String(c.configId) === String(saved))) {
     applyId(saved)
@@ -131,6 +149,11 @@ watch(() => props.modelValue, (v) => {
   if (v === '') {
     selectedId.value = ''
     localStorage.removeItem(storageKey)
+    return
+  }
+  // 受控模式：外部换值（如编辑表单换了一条记录）时同步映射，不 emit
+  if (!props.autoDefault) {
+    selectedId.value = mapValueToId(v)
   }
 })
 
