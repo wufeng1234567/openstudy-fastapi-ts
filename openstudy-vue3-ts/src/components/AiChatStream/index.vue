@@ -122,7 +122,7 @@
           <div class="expert-group">
             <div class="expert-group-title">
               <el-icon class="eg-icon"><Connection /></el-icon>
-              <span>专家协同中（{{ (msg.experts || []).length }} 位）</span>
+              <span>{{ expertGroupTitle(msg.experts) }}</span>
             </div>
             <div v-for="(ex, ei) in (msg.experts || [])" :key="ei"
               :class="['expert-row', 'ex-' + ex.status]">
@@ -133,15 +133,17 @@
                   <el-icon v-else class="expert-fail"><CloseBold /></el-icon>
                 </span>
                 <span class="expert-name">{{ ex.name }}</span>
-                <span class="expert-task">{{ ex.status === 'running' ? (ex.progress || ex.task || '正在处理…') : (ex.summary || '已完成') }}</span>
+                <span class="expert-task">{{ ex.status === 'running' ? (ex.progress || '正在处理…') : (ex.summary || '已完成') }}</span>
                 <el-icon class="expert-caret" :class="{ open: isExpertOpen(msg, ei) }"><ArrowDown /></el-icon>
               </div>
               <!--
-                进行中：展开「最近几条」执行步骤（弱化的小字），让用户看到子代理**正在做什么**。
-                完成后收起（结论由上面的摘要行 / 展开详情承担），避免长任务把卡片撑爆。
+                ⚠️ 进行中**默认收起**（用户 2026-10-16 报「自动展开占地太大、视觉差」）：
+                默认只显示「正在调用 XX…」这一句最关键的信息（`ex.progress` 已在上面任务行），
+                步骤明细要点一下 caret 才展开。展开后也只保留**工具类**步骤，把「第 N 轮思考」
+                这类内部噪声滤掉 —— 用户看不懂、也不需要看。
               -->
-              <div v-if="ex.status === 'running' && ex.steps && ex.steps.length" class="expert-steps">
-                <div v-for="(st, si) in recentSteps(ex)" :key="si" class="expert-step">
+              <div v-if="isExpertOpen(msg, ei) && ex.status === 'running' && visibleSteps(ex).length" class="expert-steps">
+                <div v-for="(st, si) in visibleSteps(ex)" :key="si" class="expert-step">
                   <span :class="['expert-step-dot', 'sd-' + stepState(st)]"></span>
                   <span class="expert-step-text">{{ st.message }}</span>
                 </div>
@@ -322,14 +324,34 @@ const toggleExpert = (msg: any, rowIdx: number) => {
   expertOpen.value = s
 }
 
-/** 专家行里展示的**最近几条**执行步骤（`useAgentChat` 已把总长截到 ~20 条） */
-const recentSteps = (ex: any) => (Array.isArray(ex?.steps) ? ex.steps.slice(-4) : [])
+/**
+ * 展开时展示的步骤：只留**工具类**（`tool_call` / `tool_result` / `error`），滤掉
+ * `round`（「第 N 轮思考」）与 `start`（「开始处理任务」）这类内部噪声 ——
+ * 用户只关心「它在调什么工具、成没成」，不关心子代理内部思考了几轮。
+ */
+const visibleSteps = (ex: any) => {
+  const all = Array.isArray(ex?.steps) ? ex.steps : []
+  const kept = all.filter((st: any) => ['tool_call', 'tool_result', 'error'].includes(String(st?.phase || '')))
+  const src = kept.length ? kept : all
+  return src.slice(-4)
+}
 
 /** 步骤状态 → 圆点配色：`error` 或 `success:false` 记失败，`success:true` 记完成，其余进行中 */
 const stepState = (st: any) => {
   if (st?.phase === 'error' || st?.success === false) return 'fail'
   if (st?.success === true) return 'ok'
   return 'running'
+}
+
+/**
+ * 工作组标题：还在跑 → 「专家协同中（N 位）」；全部结束 → 「专家协同完成（N 位）」。
+ * 避免专家已全做完、标题却还挂着「协同中」自相矛盾。
+ */
+const expertGroupTitle = (experts: any) => {
+  const list = Array.isArray(experts) ? experts : []
+  const n = list.length
+  const running = list.some((e: any) => e?.status === 'running')
+  return running ? `专家协同中（${n} 位）` : `专家协同完成（${n} 位）`
 }
 
 const emit = defineEmits([

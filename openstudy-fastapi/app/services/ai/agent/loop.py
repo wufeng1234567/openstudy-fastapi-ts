@@ -1931,7 +1931,10 @@ async def run_agent_stream(
         if delegate_jobs:
             # 标记并发：让每个 `delegate_task` 的子代理**独立开会话**（避免共用指挥家会话冲突）
             ctx.extra["delegate_parallel"] = True
-            yield _event({"type": "waiting", "message": "正在安排专家并行处理…"})
+            # ⚠️ 这里**不再**发 `waiting "正在安排专家并行处理…"`：本行之前每个委派都已经发过
+            #    `delegate_start`（前端据它建好了「专家协同」卡片、每行都在转圈）。此时再插一句
+            #    waiting 占位，只会在专家卡**下面**多冒一个转圈气泡，而专家明明已经在跑了
+            #    —— 用户 2026-10-16 报「庄家已经在干活了，下方还显示正在安排专家」。
 
             # 每个 job 的**观测回传队列**：子代理的中间过程（`subagent_event`）与完成通知都从这里
             # 依次取出。⚠️ 为什么不再用 `asyncio.gather`：gather 会**阻塞生成器**直到整批跑完，

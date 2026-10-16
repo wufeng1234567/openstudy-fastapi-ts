@@ -1183,7 +1183,13 @@ export function useAgentChat() {
     if (row.steps.length > SUBAGENT_STEPS_LIMIT) {
       row.steps.splice(0, row.steps.length - SUBAGENT_STEPS_LIMIT)
     }
-    if (event.message) row.progress = String(event.message)
+    // ⚠️ 任务行显示的进展文案**只认工具类**事件（`正在调用 XX…` / 工具结果）——
+    //    `round`（「第 N 轮思考」）与 `start`（「开始处理任务」）是内部噪声，不该占据那一行
+    //    （用户 2026-10-16 报「信息太多、看不懂」）。没有工具文案时保留上一条。
+    const phase = String(event.phase || '')
+    if (event.message && ['tool_call', 'tool_result', 'error'].includes(phase)) {
+      row.progress = String(event.message)
+    }
   }
 
   /**
