@@ -55,27 +55,23 @@
       <header class="os-block__head">
         <div class="os-block__title">
           <h2>题目搭建</h2>
-          <p>手动逐题录入，或让 AI 按你的资料批量生成</p>
+          <p>手动逐题录入；要 AI 批量出题，直接在左侧「智能对话」里说就行</p>
         </div>
       </header>
-      <el-tabs v-model="buildMode" class="build-tabs">
-        <el-tab-pane label="手动搭建" name="manual">
-          <QuestionBuilder ref="builderRef" :bank-id="selectedBankId || bankId"
-            :loading="questionsLoading" @reset="resetQuestions" />
-        </el-tab-pane>
-        <el-tab-pane label="AI 搭建" name="ai">
-          <AiQuestionBuilder
-            :bank-id="selectedBankId || bankId"
-            :bank-name="basicForm.bankName"
-            :bank-subject="basicForm.subject"
-            @import-complete="handleAiImportComplete"
-          />
-        </el-tab-pane>
-      </el-tabs>
+      <!--
+        「AI 搭建」tab 已下线（用户 2026-10-18：「直接把题库搭建页面的 AI 搭建隐藏掉，不需要了」）。
+        原因：它与「智能对话」里的出题能力重复，且两套 UI 风格不一致。
+        现在只保留「手动搭建」，因此**整个 el-tabs 也一并去掉**（只剩一个 tab 的
+        标签栏是纯噪音）。
+        ⚠️ 没有删除组件文件与路由参数，若要恢复：
+            解开下面的 `<el-tabs>` 块、并让 `buildMode` 能取到 'ai' 即可。
+      -->
+      <QuestionBuilder ref="builderRef" :bank-id="selectedBankId || bankId"
+        :loading="questionsLoading" @reset="resetQuestions" />
     </section>
 
-    <!-- 发布设置（AI 模式下隐藏：题库由模型自己创建，不走这套表单） -->
-    <section v-if="!isAiMode" class="os-block">
+    <!-- 发布设置 -->
+    <section class="os-block">
       <header class="os-block__head">
         <div class="os-block__title">
           <h2>发布设置</h2>
@@ -101,8 +97,8 @@
       </el-form>
     </section>
 
-    <!-- 底部操作栏（AI 模式下隐藏） -->
-    <div v-if="!isAiMode" class="step-footer">
+    <!-- 底部操作栏 -->
+    <div class="step-footer">
       <el-button type="primary" size="large" :loading="saving" @click="handleSave">
         {{ isEditMode ? '保存修改' : '发布题库' }}
       </el-button>
@@ -120,7 +116,6 @@ import { ref, reactive, computed, onMounted, watch, onBeforeUnmount, nextTick } 
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import QuestionBuilder from '../components/QuestionBuilder.vue'
-import AiQuestionBuilder from '../components/AiQuestionBuilder.vue'
 import ScrollButton from '@/components/ScrollButton/ScrollButton.vue'
 import {
   getQuestionBank,
@@ -146,16 +141,17 @@ const builderRef = ref(null)
 const questionsLoading = ref(false)
 const myBanks = ref([])
 const selectedBankId = ref(null)
-const buildMode = ref('manual') // 'manual' | 'ai'
 
-/**
- * AI 模式：题库与题目都由模型创建，隐藏底部发布表单。
+/*
+ * 「AI 搭建」tab 已下线（用户 2026-10-18）。
  *
- * ⚠️ 这里曾经有第三个 tab「Agent 搭建」（buildMode === 'agent'）。
- * 它已迁到独立的智能体页面 `/front/agent/chat`（导航栏「智能体」），
- * 那里工具调用过程内联在对话流里、还能连续追问，比一次性表单好用。
+ * 连带影响（都在这里说明白，避免以后有人把 isAiMode 加回来时踩坑）：
+ *   · 原来 `buildMode` 有 'manual' / 'ai' 两态，'ai' 时会**隐藏**「发布设置」与
+ *     底部发布按钮（因为那时题库由模型创建，不走这套表单）；
+ *   · 现在只剩手动搭建，`isAiMode` 恒为 false —— 所以直接删掉它，
+ *     模板里那两个 `v-if="!isAiMode"` 也一并去掉（否则读者会以为是活逻辑）。
+ *   · 历史上的第三个 tab「Agent 搭建」早已迁到 `/front/agent/chat`。
  */
-const isAiMode = computed(() => buildMode.value === 'ai')
 
 const basicForm = reactive({
   bankName: '',
@@ -176,31 +172,6 @@ const publishForm = reactive({
   visibility: 'public',
   allowFork: true
 })
-
-// AI 导入完成回调
-const handleAiImportComplete = async (data) => {
-  // 兼容新旧格式
-  const bankId = typeof data === 'object' ? data.bankId : data
-  const isNew = typeof data === 'object' ? data.isNew : false
-
-  if (bankId) {
-    selectedBankId.value = bankId
-    // 加载题库信息并更新顶部表单
-    try {
-      const res = await getQuestionBank(bankId)
-      if (res.code === 200 && res.data) {
-        basicForm.bankName = res.data.bankName || ''
-        basicForm.subject = res.data.subject || ''
-        basicForm.description = res.data.description || ''
-        basicForm.coverImage = res.data.coverImage || ''
-      }
-    } catch (e) {
-      console.error('加载题库信息失败:', e)
-    }
-  }
-  // 刷新题库列表
-  await loadMyBanks()
-}
 
 // ========== 加载用户题库列表 ==========
 const loadMyBanks = async () => {
@@ -246,7 +217,11 @@ onMounted(async () => {
     publishForm.visibility = 'public'
   }
 
-  // 自动打开 AI 出题弹窗
+  // 自动打开「AI 生成」弹窗（题库搭建页里那个按题型生成单题/组合题的弹窗）。
+  // ⚠️ 与已下线的「AI 搭建」tab 是两回事：tab 是"批量导入资料出题"，这个弹窗是
+  //    "按题型生成一道题"，用户 2026-10-18 明确要求保留。
+  //    目前没有页面会带 autoOpenAi=true 跳进来，保留作为深链入口（例如将来从
+  //    智能体页一键"去生成一道题"）。
   if (autoOpenAi.value) {
     nextTick(() => {
       setTimeout(() => {
@@ -819,20 +794,8 @@ const handleSave = async () => {
     font-weight: 500;
   }
 }
-
-/* ==================== tabs ==================== */
-.build-tabs {
-  :deep(.el-tabs__header) {
-    margin-bottom: 16px;
-  }
-
-  :deep(.el-tabs__item) {
-    font-size: 13.5px;
-    font-weight: 500;
-  }
-
-  :deep(.el-tabs__content) {
-    padding: 0;
-  }
-}
+/*
+ * 「AI 搭建」tab 下线后，`.build-tabs` 那套 tabs 样式已无宿主，一并删除。
+ * 若将来恢复 tab，记得把 tabs 的 header/间距样式补回来。
+ */
 </style>
