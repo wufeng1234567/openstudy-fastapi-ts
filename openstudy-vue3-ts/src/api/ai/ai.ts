@@ -786,12 +786,27 @@ export function clearConversation(sessionId: string | number, userId?: string | 
   })
 }
 
+/**
+ * 会话三件套的 userId 参数
+ * ------------------------
+ * ⚠️ 后端把 `userId` 声明为**必填 int**，少传或传空都会 422
+ *    （前端表现为右上角一条「系统接口422异常」红条）。
+ *    而 `userId` 在页面刚挂载时往往是空的（getInfo 还没回来），
+ *    悬浮助手 / 对话页都会在这时发请求 —— 所以这里统一兜底：
+ *    **没有 userId 就不传这个字段**，让请求失败得更自然（401/空列表），
+ *    而不是拼出 `?userId=` 触发 422。
+ */
+function sessionParams(userId?: string | number) {
+  const id = userId === undefined || userId === null ? '' : String(userId).trim()
+  return id && id !== 'undefined' && id !== 'null' ? { userId: id } : {}
+}
+
 // 会话列表
 export function listSessions(userId?: string | number) {
   return request({
     url: '/ai/sessions',
     method: 'get',
-    params: { userId }
+    params: sessionParams(userId)
   })
 }
 
@@ -800,7 +815,7 @@ export function createSession(userId?: string | number) {
   return request({
     url: '/ai/sessions',
     method: 'post',
-    params: { userId }
+    params: sessionParams(userId)
   })
 }
 
@@ -809,7 +824,7 @@ export function deleteSession(sessionId: string | number, userId?: string | numb
   return request({
     url: `/ai/sessions/${sessionId}`,
     method: 'delete',
-    params: { userId }
+    params: sessionParams(userId)
   })
 }
 

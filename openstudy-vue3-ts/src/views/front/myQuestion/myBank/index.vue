@@ -46,7 +46,7 @@
       </el-empty>
 
       <el-row v-else :gutter="20">
-        <el-col v-for="item in filteredBankList" :key="item.bankId" :xs="24" :sm="12" :md="8" :lg="6" :xl="4">
+        <el-col v-for="item in filteredBankList" :key="item.bankId" :xs="24" :sm="12" :md="12" :lg="8" :xl="6">
           <div class="bank-card" @click="handleCardClick(item)">
             <div class="card-cover">
               <BankCover :cover-image="item.coverImage" :bank-name="item.bankName" :subject="item.subject"
@@ -78,15 +78,13 @@
             </div>
             <div class="card-actions">
               <el-button size="small" @click.stop="handleViewDetail(item)">
-                <el-icon><View /></el-icon>
                 查看详情
               </el-button>
-              <el-button size="small" type="primary" plain @click.stop="handleShare(item)">
+              <el-button size="small" text @click.stop="handleShare(item)">
                 <el-icon><Share /></el-icon>
                 分享
               </el-button>
-              <el-button size="small" type="danger" @click.stop="handleDelete(item)" :loading="deleteLoading[item.bankId]">
-                <el-icon><Delete /></el-icon>
+              <el-button size="small" text type="danger" @click.stop="handleDelete(item)" :loading="deleteLoading[item.bankId]">
                 删除
               </el-button>
             </div>
@@ -357,7 +355,8 @@ onUnmounted(() => {
 .my-bank-page {
   position: relative;
   min-height: 100%;
-  padding: 0 16px;
+  /* 外层聚合页已经给了统一留白，这里不再重复加左右 padding */
+  padding: 0;
 }
 
 .search-area-wrapper {
@@ -372,15 +371,16 @@ onUnmounted(() => {
 }
 
 .page-title {
-  font-size: 20px;
-  font-weight: 700;
-  color: #1f2937;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--os-text);
   margin: 0;
 }
 
 .total-count {
-  font-size: 14px;
-  color: #6b7280;
+  font-size: 13px;
+  color: var(--os-text-3);
 }
 
 .search-section {
@@ -404,16 +404,20 @@ onUnmounted(() => {
 
 .bank-card {
   background: #fff;
-  border-radius: 12px;
-  border: 1px solid #e5e7eb;
+  border-radius: var(--os-radius);
+  border: 1px solid var(--os-border-soft);
   overflow: hidden;
   margin-bottom: 20px;
-  transition: all 0.3s ease;
+  /* 只动颜色与阴影，不做大位移 —— 列表滚动时卡片不该"跳" */
+  transition: border-color var(--ds-duration-base) var(--ds-ease-in-out),
+    box-shadow var(--ds-duration-base) var(--ds-ease-in-out),
+    transform var(--ds-duration-base) var(--ds-ease-in-out);
   cursor: pointer;
 
   &:hover {
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-    transform: translateY(-2px);
+    border-color: var(--os-border-strong);
+    box-shadow: var(--os-shadow-2);
+    transform: translateY(-1px);
   }
 }
 
@@ -511,15 +515,22 @@ onUnmounted(() => {
   display: flex;
   /* 放不下就换行，避免按钮被卡片 overflow:hidden 裁掉 */
   flex-wrap: wrap;
-  gap: 8px;
-  padding: 12px;
-  border-top: 1px solid #f3f4f6;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--os-border-soft);
 
   .el-button {
-    flex: 1 1 auto;
+    flex: 0 0 auto;
     min-width: max-content;
     margin-left: 0;
-    border-radius: 6px;
+    border-radius: var(--os-radius-sm);
+    font-size: 13px;
+  }
+
+  /* 主操作（查看详情）靠左，次要操作贴右 */
+  .el-button:first-child {
+    margin-right: auto;
   }
 }
 </style>

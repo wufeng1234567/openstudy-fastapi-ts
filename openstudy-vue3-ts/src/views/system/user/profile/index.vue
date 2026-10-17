@@ -356,7 +356,11 @@ watch(() => route.params.userId, () => {
 
 <style lang="scss">
 .profile-page {
-  padding: 0;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 22px 28px 48px;
+  box-sizing: border-box;
 }
 
 .profile-layout {

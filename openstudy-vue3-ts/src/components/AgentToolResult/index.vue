@@ -340,12 +340,19 @@ const hasData = computed(() => nonEmpty(props.data))
 </script>
 
 <style scoped>
+/*
+ * 工具调用 = **对话流里的一行**，不是一张卡（用户 2026-10-17：
+ * "Agent 的输出不需要那些白色边框容器包裹，想要 DSH 那种简洁效果"）。
+ *
+ * 去掉：白底、1px 描边、左侧彩色竖条、圆角、内边距。
+ * 保留：状态图标（✓ / 转圈 / !）+ 一句结果摘要 + 可展开的详情。
+ * 状态不再靠"彩色边框"表达，而是靠图标自身的颜色与形状。
+ */
 .agent-tool {
-  border: 1px solid #e5e7eb;
-  border-left: 3px solid #cbd5e1;
-  border-radius: 10px;
-  padding: 10px 14px;
-  background: #fff;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
   max-width: 100%;
   box-sizing: border-box;
   /*
@@ -359,23 +366,22 @@ const hasData = computed(() => nonEmpty(props.data))
    */
 }
 
-.agent-tool.is-running {
-  border-left-color: #60a5fa;
-  background: #f8fbff;
+/* 状态差异只体现在图标颜色上（不再用整块底色 / 左侧竖条） */
+.agent-tool.is-running .at-icon {
+  color: var(--os-accent);
 }
 
-.agent-tool.is-ok {
-  border-left-color: #34d399;
+.agent-tool.is-ok .at-icon {
+  color: var(--dsw-static-green-500);
 }
 
-.agent-tool.is-fail {
-  border-left-color: #f87171;
-  background: #fffafa;
+.agent-tool.is-fail .at-icon {
+  color: var(--os-danger);
 }
 
 /* 用户取消：中性灰，不是红（取消不是错误） */
-.agent-tool.is-cancelled {
-  border-left-color: #cbd5e1;
+.agent-tool.is-cancelled .at-icon {
+  color: var(--os-text-4);
 }
 
 /* ===================== 第一层：状态 + 结果 ===================== */

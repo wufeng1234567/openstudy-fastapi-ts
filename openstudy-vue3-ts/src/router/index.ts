@@ -58,10 +58,10 @@ export const constantRoutes: AppRouteRecordRaw[] = [
     ]
   },
 
-  // 根路径重定向
+  // 根路径重定向：直接进智能对话（取代原来的"首页轮播"落地页）
   {
     path: '/',
-    redirect: '/index/home'
+    redirect: '/front/agent/chat'
   },
 
   // 后台评论管理
@@ -213,14 +213,15 @@ export const constantRoutes: AppRouteRecordRaw[] = [
     path: '/front',
     component: () => import('@/layout/front.vue'),
     hidden: true,
-    redirect: '/front/index',
+    redirect: '/front/agent/chat',
     meta: { layout: 'front' },
     children: [
+      // 旧首页地址保留为重定向（老书签 / 分享出去的链接不会 404）
       {
         path: 'index',
-        name: 'FrontIndex',
-        component: () => import('@/views/front/index.vue'),
-        meta: { title: '前台首页', layout: 'front' },
+        name: 'FrontIndexLegacy',
+        redirect: '/front/agent/chat',
+        meta: { title: '智能对话', layout: 'front' },
         hidden: true
       },
       {

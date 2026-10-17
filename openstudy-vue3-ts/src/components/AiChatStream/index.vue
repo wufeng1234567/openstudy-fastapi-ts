@@ -12,17 +12,25 @@
         </button>
       </div>
 
-      <div v-for="(msg, idx) in visibleMessages" :key="windowOffset + idx" :class="['message', msg.role, msg.type ? 'msg-' + msg.type : '']">
+      <!--
+        `data-msg-idx` 是「提问目录」（AgentOutline）的锚点：
+        右侧导航按序号定位到某条消息，滚动时也靠它反查当前在第几条。
+        用绝对序号（windowOffset + idx），与可见窗口无关，回溯加载后依然对得上。
+      -->
+      <div
+        v-for="(msg, idx) in visibleMessages"
+        :key="windowOffset + idx"
+        :data-msg-idx="windowOffset + idx"
+        :class="['message', msg.role, msg.type ? 'msg-' + msg.type : '']"
+      >
         <!-- 工具确认卡片 -->
         <div v-if="msg.type === 'tool_confirm'" class="message-content">
-          <div class="message-role agent-role">Agent</div>
           <slot name="tool-confirm" :message="msg" :index="idx">
             <div class="message-text">{{ msg.content }}</div>
           </slot>
         </div>
         <!-- 工具执行结果 -->
         <div v-else-if="msg.type === 'tool_result'" class="message-content">
-          <div class="message-role agent-role">Agent</div>
           <slot name="tool-result" :message="msg" :index="idx">
             <div class="message-text">{{ msg.content }}</div>
           </slot>
@@ -32,9 +40,9 @@
           用户 2026-10-11：「深度思考的思维链不再暴露，改成更好的等待动画效果」。
           api 付费链路（LangChain 补丁）与 ds-free 链路都可能产出 `type:'reasoning'`；
           其 `content` 现在恒为空（`useAgentChat` 不再累积），只靠 `secs` 区分「跑/收口」。
+          ⚠️ 2026-10-17：不再挂 `AGENT` 角色标签 —— 整条消息流只保留内容本身（DSH 的简洁形态）。
         -->
         <div v-else-if="msg.type === 'reasoning'" class="message-content">
-          <div class="message-role agent-role">Agent</div>
           <AgentReasoning :content="msg.content" :secs="msg.secs" />
         </div>
         <!--
@@ -44,22 +52,21 @@
              · reasoning = 深度思考的**推理正文**，可折叠
              两者都由 `useAgentChat` 维护，别合并。
         -->
-        <div v-else-if="msg.type === 'thinking'" class="message-content">
-          <div class="message-role agent-role">Agent</div>
-          <div class="ai-loading-inline">
-            <LoadingDots size="small" :label="msg.content || loadingText" />
-          </div>
-        </div>
         <!--
-          处理进度清单（`type:'progress'`）—— 用户 2026-10-11 方案 C。
-          把"上传文档后干等转圈"变成"看得见的处理流程"：一行一个步骤（进行中即转圈、
-          完成打勾、失败红叉）。**非思维链内容**，只是耗时环节的进度提示。
+          处理进度清单（`type:'progress'`）——**全站唯一的等待态**。
+          用户 2026-10-17：原来「思考中」和「正在处理工具结果」两个提示同时出现、语义重复，
+          现在只保留这一条：一行灰点 + 当前步骤文案；多步骤时显示为清单。
+          （`type:'thinking'` 不再由 useAgentChat 生成，见那边注释；这里仍保留兜底渲染，
+           万一老快照里存着 thinking 消息也不会白屏。）
         -->
-        <div v-else-if="msg.type === 'progress'" class="message-content">
-          <div class="message-role agent-role">Agent</div>
-          <ul class="progress-steps">
+        <div v-else-if="msg.type === 'progress' || msg.type === 'thinking'" class="message-content is-plain wait-row">
+          <div class="agent-thinking">
+            <span class="agent-thinking__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="agent-thinking__text">{{ progressHeadline(msg) }}</span>
+          </div>
+          <ul v-if="msg.steps && msg.steps.length > 1" class="progress-steps">
             <li
-              v-for="step in (msg.steps || [])"
+              v-for="step in msg.steps"
               :key="step.id"
               :class="['progress-step', 'step-' + step.state]"
             >
@@ -68,7 +75,6 @@
                 <span v-else-if="step.state === 'done'" class="step-check">✓</span>
                 <span v-else class="step-fail">✕</span>
               </span>
-              <span class="step-emoji" v-if="step.icon">{{ step.icon }}</span>
               <span class="step-text">{{ step.message }}</span>
             </li>
           </ul>
@@ -78,7 +84,6 @@
           只有智能体链路会产出 type='agent_note'，别的调用方不会走到这个分支。
         -->
         <div v-else-if="msg.type === 'agent_note'" class="message-content">
-          <div class="message-role agent-role">Agent</div>
           <slot name="agent-note" :message="msg" :index="idx">
             <div :class="['agent-note', 'note-' + (msg.noteKind || 'warning')]">
               <span class="note-icon">{{ noteIcon(msg.noteKind) }}</span>
@@ -118,7 +123,6 @@
           · 用户始终只看到这一张卡，专家不直接对用户发言（结果由主助手整合后另出正文）。
         -->
         <div v-else-if="msg.type === 'experts'" class="message-content">
-          <div class="message-role agent-role">智能助手</div>
           <div class="expert-group">
             <div class="expert-group-title">
               <el-icon class="eg-icon"><Connection /></el-icon>
@@ -162,8 +166,7 @@
           </div>
         </div>
         <!-- 普通 assistant 消息 -->
-        <div class="message-content" v-else-if="msg.role === 'assistant'">
-          <div class="message-role agent-role">Agent</div>
+        <div class="message-content is-plain" v-else-if="msg.role === 'assistant'">
           <!--
             ⚠️ 正文**不要**绑点击复制：回答里点一下（想看链接、想选中一段、误触）
             就会把整段复制走 + 弹「复制成功」，很打扰。复制只走下面这个按钮。
@@ -171,21 +174,10 @@
           <div class="message-text rendered-md" v-html="renderAgentMarkdown(msg.content)">
           </div>
           <!--
-            「还在输出」提示 —— 用户 2026-10-17 要求：
-            **只要 LLM 还没截止（isGenerating），正文末尾就常驻一个淡淡的闪烁「思考中…」**。
-            为什么必须有它：正文一开始流式输出，等待占位（LoadingDots）就被摘掉了，
-            此后模型即使还在生成（尤其两次分片之间网络停顿），界面也没有任何"还在跑"的信号，
-            用户会以为卡死。这里用极淡的呼吸式闪烁表达「没停，还在写」，
-            比转圈轻、不抢正文注意力。
-            ⚠️ 只挂在**正在流式输出的那条正文**上（最后一条、且无 type 的 assistant 消息）：
-               工具卡片 / 专家卡片 / 思考块后面不该再挂一次，它们各自已有运行态。
+            ⚠️ 2026-10-17：正文末尾那个「思考中…」呼吸提示已删除。
+            它和进度行的"正在处理…"是**同一件事的两个 UI**，叠在一起就是用户看到的
+            "两个等待提示"。现在全站只有一条等待态（见上面 type:'progress' 分支）。
           -->
-          <div v-if="isStreamingText(msg)" class="stream-hint" aria-live="polite">
-            <span class="stream-hint-text">思考中</span>
-            <span class="stream-hint-dots" aria-hidden="true">
-              <i></i><i></i><i></i>
-            </span>
-          </div>
           <el-button class="msg-copy-btn" size="small" text @click="copyText(msg.content)"
             v-if="msg.content && msg.content.trim()">
             <el-icon>
@@ -199,7 +191,6 @@
         </div>
         <!-- user 消息 -->
         <div class="message-content" v-else>
-          <div class="message-role">我</div>
           <!-- 已发送的附件（图片可点击放大，文档显示扩展名） -->
           <ChatAttachmentList v-if="msg.attachments && msg.attachments.length" :items="msg.attachments" compact />
           <div v-if="msg.content" class="message-text">{{ msg.content }}</div>
@@ -319,6 +310,23 @@ const props = defineProps({
 
 // 等待文案：深度思考时显示「深度思考中」（配合共用的三点抖动组件）
 const loadingText = computed(() => (props.thinking ? '深度思考中' : 'AI 思考中'))
+
+/**
+ * 等待行的主文案（全站唯一的等待态）
+ * ---------------------------------
+ * 优先级：进行中的步骤 > 最后一条步骤 > 通用文案。
+ * 目标：用户一眼看到"它现在在做什么"，而不是一句抽象的"思考中"。
+ */
+function progressHeadline(msg: any): string {
+  const steps: any[] = Array.isArray(msg?.steps) ? msg.steps : []
+  if (steps.length) {
+    const running = steps.find((s) => s.state === 'running')
+    if (running?.message) return String(running.message)
+    const last = steps[steps.length - 1]
+    if (last?.message) return String(last.message)
+  }
+  return msg?.content || '正在处理…'
+}
 
 /**
  * 专家工作组各行的**展开态**（默认收起 → 符合"专家思维链默认不显示、想看可点开"）。
@@ -506,28 +514,6 @@ const isLastAssistantEmpty = (idx) => {
     }
   }
   return true
-}
-
-/**
- * 这条消息是否是**正在流式输出的正文**（用来挂末尾的「思考中…」呼吸提示）
- *
- * 条件（全满足）：
- *   1. 本轮还在生成（isGenerating，即 LLM 尚未截止）；
- *   2. 是普通 assistant 正文 —— type 字段为空（工具卡 / 专家卡 / 思考块 / 进度清单都有自己的运行态，
- *      再挂一条会重复）；
- *   3. 是**最后一条** assistant 正文（前面已经回答完的旧消息不该显示）；
- *   4. 已开始输出正文（content 非空）—— 还没吐字的阶段由占位 LoadingDots 负责。
- */
-const isStreamingText = (msg) => {
-  if (!props.isGenerating) return false
-  if (!msg || msg.role !== 'assistant' || msg.type) return false
-  if (!msg.content || !String(msg.content).trim()) return false
-  for (let i = props.messages.length - 1; i >= 0; i--) {
-    const m = props.messages[i]
-    if (m.role !== 'assistant' || m.type) continue
-    return m === msg
-  }
-  return false
 }
 
 /** agent_note 的图标（自我纠正 / 警告 / 错误） */
@@ -800,9 +786,10 @@ defineExpose({ scrollToBottom, messagesRef, setInputText })
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  border-radius: 12px;
-  border: 1px solid #e5e7eb;
+  border-radius: 0;
+  border: none;
   position: relative;
+  background: #fff;
 }
 
 .chat-messages {
@@ -815,14 +802,25 @@ defineExpose({ scrollToBottom, messagesRef, setInputText })
    */
   min-height: 0;
   overflow-y: auto;
-  padding: 20px;
-  background-color: #f8f9fa;
+  padding: 24px 20px 8px;
+  background-color: #fff;
   position: relative;
   overflow-x: hidden;
+  /* 用 flex 列承载消息：空状态（hero）可以靠 `margin: auto` 在可视区垂直居中 */
+  display: flex;
+  flex-direction: column;
 }
 
+/* 消息不参与压缩：内容超出时只让这一层滚动，而不是把每条消息压扁 */
+.chat-messages > * {
+  flex: 0 0 auto;
+}
+
+/* 消息列：与 DSH 一致，正文收在 820px 的阅读宽度里，居中 */
 .message {
-  margin-bottom: 16px;
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto 18px;
   display: flex;
 }
 
@@ -869,33 +867,68 @@ defineExpose({ scrollToBottom, messagesRef, setInputText })
 }
 
 .message-content {
-  max-width: 75%;
-  padding: 12px 16px;
-  border-radius: 16px;
-  background-color: white;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
-  border: 1px solid #e5e7eb;
+  max-width: 100%;
+  padding: 0;
+  border-radius: 0;
+  background-color: transparent;
+  box-shadow: none;
+  border: none;
   position: relative;
+  min-width: 0;
+}
+
+/*
+ * 普通回答：不套卡片、不描边 —— 只有正文（DSH 的对话就是"文字流"，
+ * 每条回答一个白卡片会让页面变成一堆盒子，反而显得粗糙）。
+ */
+.message-content.is-plain {
+  width: 100%;
+}
+
+/*
+ * 工具卡 / 过程提示 / 专家卡：**也不套白框**（用户 2026-10-17：
+ * "Agent 的输出不需要那些白色边框容器包裹，想要 DSH 那种简洁效果"）。
+ *
+ * 现在整条消息流只有两种视觉元素：
+ *   · 用户气泡（淡蓝底）
+ *   · 其余内容（正文 / 工具结果 / 进度 / 通知）—— 直接在流里，靠图标与缩进分层
+ * 工具自己的状态与「查看详情」仍由 AgentToolResult 表达，不再需要外层容器强调。
+ */
+.message.msg-tool_result .message-content,
+.message.msg-tool_confirm .message-content,
+.message.msg-agent_note .message-content,
+.message.msg-progress .message-content,
+.message.msg-experts .message-content,
+.message.msg-reasoning .message-content {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .message.user .message-content {
-  background-color: #f3f4f6;
-  color: #1f2937;
-  border: 1px solid #e5e7eb;
+  /* 用户气泡：DSH 用极淡的蓝底（--dsw-specific-bubble），不用灰底或深色块 */
+  background-color: var(--dsw-specific-bubble);
+  color: var(--os-text);
+  border: none;
+  box-shadow: none;
+  border-radius: 14px;
+  padding: 10px 14px;
   /*
    * ⚠️ 用户消息内容极短时（如只发「1」）气泡会被内容撑到只有一两个字符宽，
    *    而右下角的复制按钮是绝对定位、宽度固定（图标 + 「复制」两个字 ≈ 60px）——
    *    气泡比按钮还窄时按钮就**溢出到气泡外**（用户 2026-10-11 报）。
    *    给一个能容下复制按钮的最小宽度，短消息也不会把按钮挤出去。
-   *    （LLM 那侧由 `.rendered-md` 的 padding + 正文默认有内容，一般不会这么窄，故只修用户侧。）
    */
   min-width: 96px;
+  max-width: 78%;
 }
 
-/* 工具卡片 / 过程提示属于「结构化内容」，比正文更需要横向空间（正文仍保持 75%） */
+/* 工具卡片 / 过程提示属于「结构化内容」，比正文更需要横向空间 */
 .message.msg-tool_result .message-content,
 .message.msg-agent_note .message-content {
-  max-width: 92%;
+  max-width: 100%;
 }
 
 /*
@@ -913,48 +946,56 @@ defineExpose({ scrollToBottom, messagesRef, setInputText })
  */
 .message.msg-tool_result .message-content {
   min-width: min(240px, 100%);
-  max-width: min(92%, 720px);
+  max-width: 100%;
 }
 
 .message-role {
-  font-size: 12px;
-  margin-bottom: 6px;
-  opacity: 0.7;
+  font-size: 11px;
+  margin-bottom: 7px;
+  opacity: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .agent-role {
-  color: #059669;
-  font-weight: 600;
-  font-size: 13px;
-  opacity: 1;
+  color: var(--os-text-4);
+  font-weight: 500;
+  font-size: 11px;
 }
 
 .message-text {
-  line-height: 1.6;
+  line-height: 1.75;
+  font-size: 14.5px;
   word-wrap: break-word;
   overflow-wrap: break-word;
 }
 
 .msg-copy-btn {
   position: absolute;
-  bottom: 8px;
-  right: 12px;
-  border-radius: 8px;
-  padding: 4px 8px;
+  bottom: 2px;
+  right: 0;
+  border-radius: 6px;
+  padding: 3px 7px;
   font-size: 12px;
   z-index: 10;
-  color: #6b7280;
-  background: #f3f4f6;
-  border: 1px solid #e5e7eb;
+  color: var(--os-text-4);
+  background: transparent;
+  border: none;
   /* 只列 hover 里真正会变的两个颜色属性（本仓禁 `transition: all`：它会把以后新增的任何属性
      —— 含 padding/width 这类布局属性 —— 一起卷进逐帧重排） */
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  opacity: 0;
+}
+
+/* 复制按钮平时隐身，指针进入这条消息或键盘聚焦时才出现（不干扰阅读） */
+.message:hover .msg-copy-btn,
+.message:focus-within .msg-copy-btn {
+  opacity: 1;
 }
 
 .msg-copy-btn:hover {
-  background: #fff;
-  border-color: #d1d5db;
-  color: #2563eb;
+  background: var(--os-bg-hover);
+  color: var(--os-text-2);
 }
 
 /* 图标与「复制」两个字的间距（el-button 只给插槽套一层 span，不会自己加 gap） */
@@ -978,90 +1019,74 @@ defineExpose({ scrollToBottom, messagesRef, setInputText })
   margin-top: 4px;
 }
 
-/* ------------------------------------------------------------------
-   「还在输出」呼吸提示（正文末尾，用户 2026-10-17）
+/* ==================== 统一等待行（DSH 式） ====================
+   一行：三个呼吸灰点 + 当前状态文案。没有卡片、没有边框、没有"AGENT"标签。
+   多步骤时才展开下面的清单（作为补充信息，不再是主视觉）。 */
+.agent-thinking {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--os-text-3);
+  user-select: none;
+}
 
-   设计取舍：
-   · 用**极淡的呼吸式闪烁**（opacity 0.35 ↔ 1.0 的慢速脉冲），不用转圈 —— 正文正在流式
-     增长时，转圈会跟文字抢注意力，而这里只是要表达「没停」；
-   · 颜色取中性灰蓝（#94a3b8），比正文浅一档，视觉上退到背景层；
-   · 三个小点在文字点延迟依次出现，表达「还在继续」而不是「加载中」；
-   · 只做 opacity / translate，不做布局属性动画（本仓禁 `transition: all` 的同一考虑）。
-   ------------------------------------------------------------------ */
-.stream-hint {
+.agent-thinking__dots {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  margin-top: 6px;
-  font-size: 12px;
-  line-height: 1;
-  color: #94a3b8;
-  animation: stream-hint-breathe 2.2s ease-in-out infinite;
-}
-
-.stream-hint-dots {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
 
   i {
-    width: 3px;
-    height: 3px;
+    width: 4px;
+    height: 4px;
     border-radius: 50%;
-    background-color: currentColor;
-    animation: stream-hint-dot 1.4s ease-in-out infinite;
-
-    &:nth-child(1) {
-      animation-delay: 0s;
-    }
+    background: currentColor;
+    opacity: 0.35;
+    animation: agent-think 1.25s ease-in-out infinite;
 
     &:nth-child(2) {
-      animation-delay: 0.18s;
+      animation-delay: 0.16s;
     }
 
     &:nth-child(3) {
-      animation-delay: 0.36s;
+      animation-delay: 0.32s;
     }
   }
 }
 
-@keyframes stream-hint-breathe {
+@keyframes agent-think {
   0%,
-  100% {
-    opacity: 0.35;
-  }
-
-  50% {
-    opacity: 1;
-  }
-}
-
-@keyframes stream-hint-dot {
-  0%,
-  60%,
+  70%,
   100% {
     opacity: 0.25;
+    transform: translateY(0);
   }
 
-  30% {
+  35% {
     opacity: 1;
+    transform: translateY(-1px);
   }
 }
 
-/* ------------------------------------------------------------------
-   处理进度清单（type='progress'）—— 用户 2026-10-11 方案 C
-   把"干等转圈"变成"看得见的处理流程"：一行一步，进行中转圈、完成打勾、失败红叉。
-   ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  .agent-thinking__dots i {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
+/* 多步骤清单：去卡片，改成缩进的一列细字 */
 .progress-steps {
   list-style: none;
-  margin: 4px 0 0;
-  padding: 8px 12px;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px solid #eef2f7;
+  margin: 8px 0 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
   max-width: 100%;
 }
 
@@ -1071,21 +1096,20 @@ defineExpose({ scrollToBottom, messagesRef, setInputText })
   gap: 8px;
   font-size: 12.5px;
   line-height: 1.5;
-  color: #64748b;
+  color: var(--os-text-3);
   word-break: break-word;
 }
 
 .progress-step.step-running {
-  color: #4f46e5;
-  font-weight: 600;
+  color: var(--os-text-2);
 }
 
 .progress-step.step-done {
-  color: #64748b;
+  color: var(--os-text-3);
 }
 
 .progress-step.step-failed {
-  color: #dc2626;
+  color: var(--os-danger);
 }
 
 .step-icon {
@@ -1315,9 +1339,9 @@ defineExpose({ scrollToBottom, messagesRef, setInputText })
 }
 
 .rendered-md {
-  line-height: 1.7;
-  font-size: 15px;
-  color: #1f2937;
+  line-height: 1.75;
+  font-size: 14.5px;
+  color: var(--os-text);
   /* 给右下角「复制」按钮留位，免得正文最后一行被它压住 */
   padding-bottom: 20px;
   /*
@@ -1335,9 +1359,9 @@ defineExpose({ scrollToBottom, messagesRef, setInputText })
   h5,
   h6 {
     margin: 1em 0 0.5em;
-    color: #1f2937;
-    font-weight: 700;
-    line-height: 1.3;
+    color: var(--os-text);
+    font-weight: 600;
+    line-height: 1.35;
     word-break: break-word;
   }
 
@@ -1369,28 +1393,29 @@ defineExpose({ scrollToBottom, messagesRef, setInputText })
 
   blockquote {
     margin: 0.6em 0;
-    padding: 6px 14px;
-    border-left: 4px solid #d1d5db;
-    color: #6b7280;
-    background: #f9fafb;
+    padding: 8px 14px;
+    border-left: 2px solid var(--os-border-strong);
+    color: var(--os-text-2);
+    background: var(--dsw-static-neutral-bluish-50);
     border-radius: 0 8px 8px 0;
   }
 
   pre {
-    background: #fff;
-    color: #1a1a1a;
-    padding: 16px 18px;
-    border: 1px solid #e4e7ed;
-    border-radius: 8px;
+    background: var(--dsw-alias-markdown-code-block);
+    color: var(--os-text);
+    padding: 14px 16px;
+    border: 1px solid var(--os-border-soft);
+    border-radius: var(--os-radius-sm);
     margin: 0.6em 0;
     overflow-x: auto;
     overflow-y: auto;
     max-height: 300px;
-    font-size: 14px;
-    line-height: 1.8;
+    font-size: 13px;
+    line-height: 1.7;
     max-width: 100%;
     white-space: pre-wrap;
     word-break: break-word;
+    font-family: var(--os-font-code);
 
     &::-webkit-scrollbar {
       width: 6px;
@@ -1413,11 +1438,13 @@ defineExpose({ scrollToBottom, messagesRef, setInputText })
   }
 
   code {
-    background: #f3f4f6;
-    color: #b45353;
-    padding: 2px 6px;
-    border-radius: 4px;
+    background: var(--dsw-alias-markdown-inline-code);
+    color: var(--os-text);
+    border: 1px solid var(--os-border-soft);
+    padding: 1px 5px;
+    border-radius: 5px;
     font-size: 0.9em;
+    font-family: var(--os-font-code);
     word-break: break-word;
   }
 
@@ -1440,7 +1467,7 @@ defineExpose({ scrollToBottom, messagesRef, setInputText })
 
   th,
   td {
-    border: 1px solid #e5e7eb;
+    border: 1px solid var(--os-border-soft);
     padding: 8px 12px;
     text-align: left;
     white-space: nowrap;
@@ -1448,17 +1475,17 @@ defineExpose({ scrollToBottom, messagesRef, setInputText })
   }
 
   th {
-    background: #f9fafb;
+    background: var(--dsw-static-neutral-bluish-50);
     font-weight: 600;
   }
 
   tr:nth-child(even) {
-    background: #fafbfc;
+    background: #fcfcfd;
   }
 
   hr {
     border: none;
-    border-top: 1px solid #e5e7eb;
+    border-top: 1px solid var(--os-border-soft);
     margin: 1em 0;
   }
 
@@ -1468,7 +1495,7 @@ defineExpose({ scrollToBottom, messagesRef, setInputText })
   }
 
   a {
-    color: #409eff;
+    color: var(--os-accent);
     text-decoration: none;
     word-break: break-word;
   }

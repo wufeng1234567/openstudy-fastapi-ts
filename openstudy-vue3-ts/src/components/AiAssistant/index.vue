@@ -1325,32 +1325,33 @@ onUnmounted(() => {
     padding: 0;
   }
 
-  /* ========== 悬浮按钮 ========== */
+  /* ========== 悬浮按钮 ==========
+     与 DSH 的浮层语言一致：**近黑实心圆 + 白色图标**、无毛玻璃、无描边，
+     只在 hover 时抬一点阴影。旧版是"白底毛玻璃 + 灰图标"，在浅色页面里像块补丁。 */
   .float-btn {
     position: fixed;
     left: auto;
     right: 24px;
-    bottom: 80px;
-    width: 52px;
-    height: 52px;
+    bottom: 32px;
+    width: 44px;
+    height: 44px;
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.92);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    color: #4b5563;
+    background: var(--os-primary);
+    border: none;
+    color: #fff;
     cursor: grab;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-    transition: box-shadow 0.2s ease, color 0.2s ease;
+    box-shadow: 0 4px 14px rgba(15, 17, 21, 0.18);
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
     z-index: 1000;
     user-select: none;
 
     &:hover {
-      background: #fff;
-      color: #1f2937;
-      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+      background: var(--os-primary-hover);
+      color: #fff;
+      box-shadow: 0 8px 22px rgba(15, 17, 21, 0.24);
     }
 
     &:active {

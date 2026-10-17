@@ -787,11 +787,18 @@ export function useAgentChat() {
   }
 
   /**
-   * 「等待中」占位气泡
+   * 「等待中」提示 —— **与进度清单共用同一条消息**（2026-10-17 重构）
    *
-   * ds-free 首轮要先「拉工具清单 → 扩展加载 → 模型思考」好几秒，这段时间一条消息都没有，
-   * 左侧空白观感很差。所以发送时先压一条 `type:'thinking'`（AiChatStream 渲染成三点抖动），
-   * 任何真实内容（正文 / 工具卡 / 提示）到来时再摘掉。
+   * 历史问题：原来等待态有两套 UI，会同时出现：
+   *   ① `type:'thinking'` 转圈气泡（发送后 / 每轮模型思考前）
+   *   ② `type:'progress'` 步骤清单（进度事件）
+   * 用户看到的就是「思考中…」和「正在处理工具结果…」上下叠着，语义重复。
+   *
+   * 现在的模型（更简单，也更接近 DSH）：
+   *   · **只有一条**等待消息，`type:'progress'`，渲染成"灰点 + 当前状态文案"；
+   *   · `showPlaceholder(label)` 只是把这条消息的 headline 换掉；
+   *   · 真实进度事件到来时往同一条消息里追加步骤；
+   *   · 正文 / 工具结果 / 本轮结束时统一摘掉它。
    */
   let pendingPlaceholder: AgentChatMessage | null = null
   const clearPlaceholder = () => {
@@ -801,45 +808,47 @@ export function useAgentChat() {
     pendingPlaceholder = null
   }
 
+  /** 确保存在一条等待消息（没有就建，有就复用） */
+  const ensurePending = (): AgentChatMessage => {
+    if (pendingPlaceholder && messages.value.includes(pendingPlaceholder)) {
+      return pendingPlaceholder
+    }
+    pendingPlaceholder = { role: 'assistant', type: 'progress', content: '', steps: [] }
+    messages.value.push(pendingPlaceholder)
+    return pendingPlaceholder
+  }
+
   /**
-   * 显示「等待中」占位（已有就只更新文案，不重复插入）
+   * 显示 / 更新「等待中」文案
    *
-   * 由 `waiting` 事件在**每一轮模型思考开始前**触发。只在发送时放一次是不够的 ——
-   * 工具执行完之后、等模型下一轮回复的那段时间会一片空白（用户反馈的「中间没有等待效果」）。
+   * 由 `waiting` 事件在**每一轮模型思考开始前**触发：工具执行完之后、等模型下一轮回复的那段时间
+   * 会一片空白，需要一句状态让用户知道还在跑。
    */
   const showPlaceholder = (label: string = '') => {
-    if (pendingPlaceholder) {
-      // ⚠️ 必须改**数组里的代理对象**（`pendingPlaceholder` 是 push 进去的 raw 引用，直接改不触发更新，
-      //    与 `appendReasoning` 卡死同因）
-      const i = messages.value.indexOf(pendingPlaceholder)
-      if (i >= 0) messages.value[i].content = label
-      else pendingPlaceholder.content = label
-      return
-    }
-    pendingPlaceholder = { role: 'assistant', type: 'thinking', content: label }
-    messages.value.push(pendingPlaceholder)
+    const msg = ensurePending()
+    // ⚠️ 必须改**数组里的代理对象**（`pendingPlaceholder` 是 push 进去的 raw 引用，
+    //    直接改不触发更新，与 `appendReasoning` 卡死同因）
+    const i = messages.value.indexOf(msg)
+    const target = i >= 0 ? messages.value[i] : msg
+    target.content = label
   }
 
   /**
    * **处理进度步骤清单**（用户 2026-10-11 方案 C）——`progress` 事件驱动。
    *
    * 一条用户提问里所有 `progress` 事件都汇总到**同一条** `type:'progress'` 消息的 `steps` 数组：
-   * 按 `id` 更新对应步骤（不存在则追加），于是前端渲染成一个**逐步推进的清单**
-   * （进行中的转圈、完成的打勾、失败的红叉），把"干等转圈"变成"看得见的处理流程"。
+   * 按 `id` 更新对应步骤（不存在则追加），于是前端渲染成一个逐步推进的清单。
    *
-   * 与 `waiting` 占位（转圈气泡）的关系：进度清单**优先**呈现——收到 progress 时先摘掉转圈占位，
-   * 避免两个等待 UI 同时出现。
+   * ⚠️ 2026-10-17 起：等待提示与进度清单**是同一条消息**（见 `ensurePending`），
+   *    所以这里既不能 `clearPlaceholder()`（会把等待行删掉），也不能另建一条 ——
+   *    只把步骤往这条消息里塞。
    */
   let pendingProgress: AgentChatMessage | null = null
   const upsertProgressStep = (event: AgentEvent) => {
     const id = String(event.id || '')
     if (!id) return
-    // 有进度了 → 摘掉那个抽象转圈占位（进度清单本身就是更信息化的等待态）
-    clearPlaceholder()
-    if (!pendingProgress) {
-      pendingProgress = { role: 'assistant', type: 'progress', content: '', steps: [] }
-      messages.value.push(pendingProgress)
-    }
+    // 复用同一条等待消息；没有就建一条
+    if (!pendingProgress) pendingProgress = ensurePending()
     // ⚠️ 必须改**数组里的代理消息**的 `steps`（`pendingProgress` 是 push 进去的 raw 引用，
     //    直接改它的属性不触发 Vue 更新 —— 与 `appendReasoning` 同因）
     const mi = messages.value.indexOf(pendingProgress)
@@ -870,6 +879,9 @@ export function useAgentChat() {
     for (const s of (target.steps as AgentProgressStep[]) || []) {
       if (s.state === 'running') s.state = 'done'
     }
+    // 同一条消息既充当占位也充当进度：收口后把两个引用都断开，
+    // 后续 clearPlaceholder() 才能把它从消息流里摘干净。
+    if (pendingPlaceholder === pendingProgress) pendingPlaceholder = null
     pendingProgress = null
   }
 

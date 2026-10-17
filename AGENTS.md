@@ -105,6 +105,75 @@ bash /root/workspace/openstudy-fastapi-ts/restore-sql.sh /path/to.sql # 指定�
 2. 脚本自动检测：若 sys_user 表为空 → 自动导入种子数据
 3. 若需恢复到某个时间点的数据：`bash restore-sql.sh /root/workspace/sql-backup/openstudy_XXXXXXXX.sql`
 
+## 前台 UI 架构（2026-10 重构，DSH 同源设计系统）
+
+> 入口变了：**进站即智能体对话页**，不再有"轮播图首页"。`/` 与 `/front/index` 都重定向到
+> `/front/agent/chat`；登录成功后也直接落到这里（管理员同理，后台走右上角账号下拉里的「后台管理」）。
+
+### 三层结构
+
+| 层 | 文件 | 职责 |
+| --- | --- | --- |
+| 设计令牌 | `src/assets/styles/dsh-tokens.scss` | 与 DSH Web 同一套色板/圆角/阴影/字号（`--dsw-*` + `--os-*` 别名） |
+| 主题覆写 | `src/assets/styles/dsh-app.scss` | Element Plus 变量映射到令牌 + `.os-*` 通用版式类 + 深色 tooltip |
+| 应用外壳 | `src/layout/front.vue` | 竖向侧栏 + 顶栏（模块名 + 铃铛 + 账号）+ 内容区；`is-flush` 满高页面 |
+| 侧边栏 | `src/components/FrontSidebar/index.vue` | 品牌 / 新建对话 / 功能导航 / **会话列表（含搜索）** / 底部设置；**可拖拽调宽**（220–420，持久化） |
+| 提问目录 | `src/components/AgentOutline/index.vue` | 对话右侧垂直居中的提问跳转导航（hover 出摘要、点击平滑滚动） |
+| 图标 | `src/components/OsIcon/index.vue` | 线性图标集（24 栅格 / 1.75 描边），替代 EP 实心图标 |
+| 会话状态 | `src/store/modules/agentSession.ts` | 会话列表 / 当前会话 / 增删查（侧栏与对话页共享） |
+| 界面信号 | `src/store/modules/agentUi.ts` | 侧栏 → 对话页的「新建对话 / 打开设置」信号（自增 token） |
+
+### 侧栏的四段结构（对齐 DSH）
+
+```
+① 品牌行        logo + OpenStudy + 收起按钮（收起态只剩展开按钮）
+② 新建对话 + 功能导航   题库练习 / 我的学习（可展开 8 项）/ 学习分享 / 题库搭建
+③ 智能对话      标题 + 搜索按钮 + 会话列表
+④ 底部          ⚙ 设置（固定最底）
+（账号区在**右上角顶栏**，不在侧栏）
+```
+
+**中段只有一个滚动容器**（`.sb-scroll` 包住 ②+③）：品牌行与底部设置固定，中间可滚。
+这样「我的学习」展开 8 项时不会把会话区挤成 0 高（用户报过的 bug）。
+
+### 必须遵守的几条（改动前先读）
+
+1. **页面根节点不要做成"悬浮圆角卡片"**：外壳负责分栏与留白，根节点保持方正贴边。
+   否则卡片四角会把侧栏底色露出来，在侧栏与内容之间形成弧形空隙（用户明确反馈过）。
+2. **不要新增顶部横向导航、不要加回页脚**：所有入口进侧栏；二级导航用侧栏的展开组。
+   顶栏只放：模块名（左）+ 消息铃铛 / 账号（右）——**不放「新对话」**（那属于侧栏）。
+3. **收起侧栏后的展开按钮只在最左侧图标列**（`FrontSidebar` 的 `.sb-rail-toggle`），
+   内容区/顶栏**不放**第二个入口；快捷键 `Ctrl + Alt + B`（`layout/front.vue`）。
+4. **一个模块只允许一处导航**：例如「我的学习」的子页只在侧栏展开组里出现，
+   **不要**在页面里再造一个左侧菜单（`myQuestion/components/LeftMenu.vue` 已删除）。
+5. **业务色一律用令牌**（`var(--os-text)` / `var(--os-border)` / `var(--os-accent)`…），
+   不要再写 `#409eff` / `#1f2937` / `box-shadow: 0 2px 12px` 这类散落硬编码。
+6. 智能体页的输入区形态在 `ChatInputArea`（共用组件）：白底 + 20px 圆角 + 发丝描边，
+   **无分隔线、无外阴影**；模型选择器在右侧工具行、`borderless`、与发送按钮同排（间距 8px）。
+7. 「英语学习」「实用工具」两个模块**本系统暂时不需要**，已从侧栏隐藏（导航项在
+   `FrontSidebar` 里以注释形式保留，路由与页面都还在，解开注释即可恢复）。
+8. **信号型交互用 store token，不要塞 query 参数**：侧栏要驱动对话页（新建对话 / 打开设置）时，
+   走 `agentUi` 的 `requestNewChat()` / `requestSettings()`（**自增**计数，别用 `Date.now()`，
+   同毫秒连点会被判成"没变化"）。
+
+### 智能体对话页的几条约定
+
+1. **全站只有一个等待态**：`type:'progress'` 那一条（灰点 + 当前步骤文案）。
+   不要再加"思考中"气泡、正文末尾呼吸提示之类的第二套等待 UI（用户报过"两个等待提示重复"）。
+2. **Agent 输出不套白框卡片**：工具结果 / 进度 / 专家卡都直接在流里，靠状态图标分层。
+   只有**用户气泡**有底色（`var(--dsw-specific-bubble)`）。
+3. **设置抽屉从左侧滑出**（入口在侧栏），且**要给侧栏让位**：
+   `ResizableDrawer` 的 `offset-left` 让遮罩与抽屉一起内缩到侧栏右缘，
+   否则抽屉会把导航整个盖住。偏移**只加在 `.el-overlay` 上**，不要再给 `.el-drawer` 加一遍
+   （叠加会导致抽屉飘到侧栏右侧 280px 处，看起来像"叠了好几个抽屉"）。
+4. **设置按钮是开关**：再点一次收起抽屉（不要做成"只开不关"）。
+
+### 视觉验收（不依赖真实后端）
+
+`_scratch_mut/ui-mock/` 下有 CDP 截图脚本与可选 Mock API，用法见该目录 `README.md`。
+
+---
+
 ## 历史踩坑记录（防止重复踩坑）
 
 ### 1. Nginx 代理配置导致白屏 + 登录页 captchaEnabled undefined

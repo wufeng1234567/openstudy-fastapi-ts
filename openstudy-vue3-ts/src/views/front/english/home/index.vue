@@ -1,221 +1,194 @@
 <template>
-    <div class="home-page">
-        <div class="page-header">
-            <h1 class="page-title">📚 英语学习</h1>
-            <p class="page-subtitle">轻量级英语学习工具箱</p>
-        </div>
+  <div class="english-home os-page">
+    <p class="page-desc">轻量级英语学习工具箱：识词、词库、听写与阅读，边学边攒。</p>
 
-        <div class="tool-grid">
-            <!-- 拍照识词 -->
-            <div class="tool-card" @click="goToOcr">
-                <div class="tool-icon" style="background: #e8f4ff;">
-                    <el-icon :size="32">
-                        <Camera />
-                    </el-icon>
-                </div>
-                <div class="tool-content">
-                    <h3 class="tool-title">拍照识词</h3>
-                    <p class="tool-desc">拍照或上传图片，快速识别单词</p>
-                </div>
-                <div class="tool-arrow">
-                    <el-icon>
-                        <ArrowRight />
-                    </el-icon>
-                </div>
-            </div>
+    <div class="tool-grid">
+      <!-- 拍照识词 -->
+      <button type="button" class="tool-card" @click="goToOcr">
+        <span class="tool-icon">
+          <el-icon :size="20"><Camera /></el-icon>
+        </span>
+        <span class="tool-content">
+          <span class="tool-title">拍照识词</span>
+          <span class="tool-desc">拍照或上传图片，快速识别单词</span>
+        </span>
+        <span class="tool-arrow">
+          <el-icon><ArrowRight /></el-icon>
+        </span>
+      </button>
 
-            <!-- 我的词库 -->
-            <div class="tool-card" @click="goToVocabulary">
-                <div class="tool-icon" style="background: #f0f9eb;">
-                    <el-icon :size="32">
-                        <Notebook />
-                    </el-icon>
-                </div>
-                <div class="tool-content">
-                    <h3 class="tool-title">我的词库</h3>
-                    <p class="tool-desc">管理你的单词本和词组库</p>
-                </div>
-                <div class="tool-arrow">
-                    <el-icon>
-                        <ArrowRight />
-                    </el-icon>
-                </div>
-            </div>
+      <!-- 我的词库 -->
+      <button type="button" class="tool-card" @click="goToVocabulary">
+        <span class="tool-icon">
+          <el-icon :size="20"><Notebook /></el-icon>
+        </span>
+        <span class="tool-content">
+          <span class="tool-title">我的词库</span>
+          <span class="tool-desc">管理你的单词本和词组库</span>
+        </span>
+        <span class="tool-arrow">
+          <el-icon><ArrowRight /></el-icon>
+        </span>
+      </button>
 
-            <!-- 听力练习（开发中） -->
-            <div class="tool-card" @click="goToListListening">
-                <div class="tool-icon" style="background: #fdf6ec;">
-                    <el-icon :size="32">
-                        <Headset />
-                    </el-icon>
-                </div>
-                <div class="tool-content">
-                    <h3 class="tool-title">听力练习</h3>
-                    <p class="tool-desc">单词听写，提升听力水平</p>
-                    <el-tag size="small" type="info">开发中</el-tag>
-                </div>
-            </div>
+      <!-- 听力练习 -->
+      <button type="button" class="tool-card" @click="goToListListening">
+        <span class="tool-icon">
+          <el-icon :size="20"><Headset /></el-icon>
+        </span>
+        <span class="tool-content">
+          <span class="tool-title">
+            听力练习
+            <el-tag size="small" type="info">开发中</el-tag>
+          </span>
+          <span class="tool-desc">单词听写，提升听力水平</span>
+        </span>
+        <span class="tool-arrow">
+          <el-icon><ArrowRight /></el-icon>
+        </span>
+      </button>
 
-            <!-- 阅读练习（开发中） -->
-            <div class="tool-card disabled">
-                <div class="tool-icon" style="background: #fef0f0;">
-                    <el-icon :size="32">
-                        <Reading />
-                    </el-icon>
-                </div>
-                <div class="tool-content">
-                    <h3 class="tool-title">阅读练习</h3>
-                    <p class="tool-desc">短文阅读，积累生词</p>
-                    <el-tag size="small" type="info">开发中</el-tag>
-                </div>
-            </div>
-        </div>
+      <!-- 阅读练习（暂未开放） -->
+      <div class="tool-card is-disabled">
+        <span class="tool-icon">
+          <el-icon :size="20"><Reading /></el-icon>
+        </span>
+        <span class="tool-content">
+          <span class="tool-title">
+            阅读练习
+            <el-tag size="small" type="info">开发中</el-tag>
+          </span>
+          <span class="tool-desc">短文阅读，积累生词</span>
+        </span>
+      </div>
     </div>
+  </div>
 </template>
 
 <script setup lang="ts">
 defineOptions({ name: 'FrontEnglishHome' })
 import { useRouter } from 'vue-router'
 import { Camera, Notebook, Headset, Reading, ArrowRight } from '@element-plus/icons-vue'
-import { onMounted, onActivated, onDeactivated } from 'vue'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
+
 const router = useRouter()
 const cacheStore = useFrontPageCacheStore()
+
 const goToOcr = () => {
-    cacheStore.setLastVisited('english', 'ocr')
-    router.push('/front/english/ocr')
+  cacheStore.setLastVisited('english', 'ocr')
+  router.push('/front/english/ocr')
 }
 
-
 const goToVocabulary = () => {
-    cacheStore.setLastVisited('english', 'vocabulary')
-    router.push('/front/english/vocabulary')
+  cacheStore.setLastVisited('english', 'vocabulary')
+  router.push('/front/english/vocabulary')
 }
 
 const goToListListening = () => {
-    cacheStore.setLastVisited('english', 'listening')
-    router.push('/front/english/listening')
+  cacheStore.setLastVisited('english', 'listening')
+  router.push('/front/english/listening')
 }
-
-onMounted(() => {
-    console.log('🆕 首页工具箱 - mounted（首次创建）')
-})
-
-onActivated(() => {
-    console.log('✅ 首页工具箱 - activated（从缓存恢复）')
-})
-
-onDeactivated(() => {
-    console.log('💾 首页工具箱 - deactivated（被缓存）')
-})
 </script>
 
 <style scoped lang="scss">
-.home-page {
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 24px 20px;
-
-    .page-header {
-        text-align: center;
-        margin-bottom: 40px;
-
-        .page-title {
-            font-size: 20px;
-            font-weight: 700;
-            color: #1f2937;
-            margin: 0 0 8px 0;
-        }
-
-        .page-subtitle {
-            font-size: 15px;
-            color: #6b7280;
-            margin: 0;
-        }
-    }
-
-    .tool-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 20px;
-    }
-
-    .tool-card {
-        display: flex;
-        align-items: center;
-        padding: 24px;
-        background: #fff;
-        border-radius: 16px;
-        border: 1px solid #e5e7eb;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-        cursor: pointer;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-
-        &:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-            border-color: #d1d5db;
-        }
-
-        &.disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-
-            &:hover {
-                transform: none;
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-                border-color: #e5e7eb;
-            }
-        }
-
-        .tool-icon {
-            width: 64px;
-            height: 64px;
-            border-radius: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #6b7280;
-            margin-right: 20px;
-            flex-shrink: 0;
-        }
-
-        .tool-content {
-            flex: 1;
-
-            .tool-title {
-                font-size: 18px;
-                font-weight: 600;
-                color: #1f2937;
-                margin: 0 0 6px 0;
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            }
-
-            .tool-desc {
-                font-size: 13px;
-                color: #9ca3af;
-                margin: 0;
-            }
-        }
-
-        .tool-arrow {
-            color: #9ca3af;
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            flex-shrink: 0;
-        }
-
-        &:hover .tool-arrow {
-            transform: translateX(4px);
-            color: #6b7280;
-        }
-    }
+.english-home {
+  max-width: 1000px;
 }
 
-@media (max-width: 640px) {
-    .tool-grid {
-        grid-template-columns: 1fr;
-    }
+.page-desc {
+  margin: 0 0 18px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--os-text-3);
+}
+
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tool-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 16px 18px;
+  border: 1px solid var(--os-border-soft);
+  border-radius: var(--os-radius);
+  background: #fff;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out),
+    border-color var(--ds-duration-fast) var(--ds-ease-in-out);
+
+  &:hover {
+    background: var(--dsw-static-neutral-bluish-50);
+    border-color: var(--os-border-strong);
+  }
+
+  &:hover .tool-arrow {
+    opacity: 1;
+  }
+}
+
+.tool-card.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+
+  &:hover {
+    background: #fff;
+    border-color: var(--os-border-soft);
+  }
+}
+
+.tool-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--dsw-static-neutral-bluish-75);
+  color: var(--os-text-2);
+}
+
+.tool-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.tool-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--os-text);
+}
+
+.tool-desc {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--os-text-3);
+}
+
+.tool-arrow {
+  flex: none;
+  color: var(--os-text-4);
+  opacity: 0;
+  transition: opacity var(--ds-duration-fast) var(--ds-ease-in-out);
+}
+
+@media (max-width: 720px) {
+  .tool-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>

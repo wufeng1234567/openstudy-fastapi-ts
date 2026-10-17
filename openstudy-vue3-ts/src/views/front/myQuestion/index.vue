@@ -1,15 +1,20 @@
 <!-- front/myQuestion/index.vue -->
+<!--
+  「我的学习」聚合页
+  =================
+  ⚠️ 2026-10 重构：**删掉了页面内的左侧菜单**。
+  导航早已统一收进全局竖向侧栏（侧栏「我的学习」可展开 8 个子项），
+  这里再放一份左手菜单＝同一个功能出现三次（侧栏 → 二级列表 → 页内菜单），
+  既占宽度又显得旧。现在这一层只做「记住上次子页」和路由出口。
+-->
 <template>
-    <div class="my-question-container">
-        <LeftMenu />
-        <div class="content-area">
-            <router-view v-slot="{ Component }">
-                <keep-alive>
-                    <component :is="Component" />
-                </keep-alive>
-            </router-view>
-        </div>
-    </div>
+  <div class="my-question-page">
+    <router-view v-slot="{ Component }">
+      <keep-alive>
+        <component :is="Component" />
+      </keep-alive>
+    </router-view>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -17,7 +22,6 @@ defineOptions({ name: 'FrontMyQuestion' })
 import { onMounted, onActivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
-import LeftMenu from './components/LeftMenu.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -27,76 +31,46 @@ const cacheStore = useFrontPageCacheStore()
 let isRedirecting = false
 
 const redirectToLastVisited = () => {
-    // 只有路径正好是 /front/myQuestion 时才需要重定向
-    if (route.path !== '/front/myQuestion') return false
-    if (isRedirecting) return false
+  // 只有路径正好是 /front/myQuestion 时才需要重定向
+  if (route.path !== '/front/myQuestion') return false
+  if (isRedirecting) return false
 
-    isRedirecting = true
-    const lastVisited = cacheStore.getLastVisited('myQuestion', 'myBank')
+  isRedirecting = true
+  const lastVisited = cacheStore.getLastVisited('myQuestion', 'myBank')
 
-    router.push(`/front/myQuestion/${lastVisited}`).then(() => {
-        isRedirecting = false
-    }).catch(() => {
-        isRedirecting = false
+  router
+    .push(`/front/myQuestion/${lastVisited}`)
+    .then(() => {
+      isRedirecting = false
+    })
+    .catch(() => {
+      isRedirecting = false
     })
 
-    return true
+  return true
 }
 
 onMounted(() => {
-    redirectToLastVisited()
+  redirectToLastVisited()
 })
 
 onActivated(() => {
-    redirectToLastVisited()
+  redirectToLastVisited()
 })
 </script>
 
 <style scoped lang="scss">
-:root {
-    --primary-50: #eef2ff;
-    --primary-100: #e0e7ff;
-    --primary-500: #6366f1;
-    --primary-600: #4f46e5;
-    --primary-700: #4338ca;
-    --gray-50: #f9fafb;
-    --gray-100: #f3f4f6;
-    --gray-200: #e5e7eb;
-    --gray-400: #9ca3af;
-    --gray-500: #6b7280;
-    --gray-600: #4b5563;
-    --gray-700: #374151;
-    --gray-900: #111827;
+.my-question-page {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 22px 28px 56px;
+  box-sizing: border-box;
 }
 
-.my-question-container {
-    display: flex;
-    gap: 24px;
-    min-height: calc(100vh - 200px);
-    position: relative;
-
-    .content-area {
-        flex: 1;
-        background: white;
-        border-radius: 16px;
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-        border: 2px solid var(--gray-200);
-        border-left: 3px solid var(--primary-100);
-        padding: 28px;
-        position: relative;
-        overflow-x: hidden;
-    }
-}
-
-@media (max-width: 768px) {
-    .my-question-container {
-        flex-direction: column;
-        gap: 16px;
-
-        .content-area {
-            padding: 16px;
-            border-radius: 12px;
-        }
-    }
+@media (max-width: 1024px) {
+  .my-question-page {
+    padding: 16px 18px 40px;
+  }
 }
 </style>

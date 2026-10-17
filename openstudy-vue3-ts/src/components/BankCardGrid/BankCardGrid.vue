@@ -772,27 +772,29 @@ const truncateText = (text, length = 50) => {
   position: relative;
 
   .header-section {
-    margin-bottom: 20px;
+    margin-bottom: 16px;
 
     .title-section {
       display: flex;
-      align-items: center;
-      margin-bottom: 20px;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 14px;
 
       .page-title {
-        font-size: 20px;
-        font-weight: 700;
-        color: #1f2937;
+        font-size: 16px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: var(--os-text);
         margin: 0;
       }
 
       .total-count {
-        margin-left: 15px;
-        font-size: 14px;
-        color: #6b7280;
-        background: #f3f4f6;
-        padding: 4px 12px;
-        border-radius: 4px;
+        margin-left: 0;
+        font-size: 13px;
+        color: var(--os-text-3);
+        background: transparent;
+        padding: 0;
+        border-radius: 0;
       }
     }
 
@@ -807,7 +809,7 @@ const truncateText = (text, length = 50) => {
       }
 
       .refresh-btn {
-        border-radius: 8px;
+        border-radius: var(--os-radius-sm);
       }
     }
   }
@@ -832,21 +834,23 @@ const truncateText = (text, length = 50) => {
 
       .bank-card {
         background: #fff;
-        border: 1px solid #e5e7eb;
-        border-radius: 16px;
+        border: 1px solid var(--os-border-soft);
+        border-radius: var(--os-radius);
         overflow: hidden;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        transition: border-color var(--ds-duration-base) var(--ds-ease-in-out),
+          box-shadow var(--ds-duration-base) var(--ds-ease-in-out),
+          transform var(--ds-duration-base) var(--ds-ease-in-out);
         height: 100%;
         display: flex;
         flex-direction: column;
 
         &:hover {
-          transform: translateY(-4px);
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-          border-color: #d1d5db;
+          transform: translateY(-1px);
+          box-shadow: var(--os-shadow-2);
+          border-color: var(--os-border-strong);
 
           .clickable-area {
-            background-color: #f8fafc;
+            background-color: #fcfcfd;
           }
         }
 
@@ -856,7 +860,7 @@ const truncateText = (text, length = 50) => {
           transition: background-color 0.2s ease;
 
           &:hover {
-            background-color: #f8fafc;
+            background-color: #fcfcfd;
           }
 
           &.is-disabled {
@@ -881,7 +885,8 @@ const truncateText = (text, length = 50) => {
           }
 
           &:hover .cover-image {
-            transform: scale(1.05);
+            /* 轻微放大即可，不再做 1.05 那种"廉价"的缩放 */
+            transform: scale(1.02);
           }
 
           .favorite-status {

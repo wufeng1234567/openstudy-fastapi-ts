@@ -1,0 +1,639 @@
+/* =============================================================================
+ * OpenStudy 应用层样式（App Theme）
+ * -----------------------------------------------------------------------------
+ * 这一层只做三件事：
+ *   1. 把 Element Plus 的默认主题**映射到 DSH 令牌**（主色近黑、描边极淡、
+ *      圆角 8/12/16、阴影几乎不可见）—— 一次覆写，全站组件统一；
+ *   2. 提供少量 `.os-*` 通用版式类（页面容器 / 卡片 / 标题 / 图标按钮），
+ *      新页面直接复用，不再各自造一套灰边框圆角阴影；
+ *   3. 统一滚动条、焦点环、选区色等"细节质感"。
+ *
+ * 注意：这里**不写任何结构性布局**（不改 flex / 宽高 / 定位），
+ * 避免影响后台（RuoYi 后台沿用 `layout/index.vue`，共用这份全局样式）。
+ * ========================================================================== */
+
+/* ======================= 1. Element Plus 变量映射 ======================= */
+:root {
+  --el-color-primary: #0f1115;
+  --el-color-primary-light-3: #353638;
+  --el-color-primary-light-5: #61666b;
+  --el-color-primary-light-7: #adb2b8;
+  --el-color-primary-light-8: #e1e5ee;
+  --el-color-primary-light-9: #f5f6f7;
+  --el-color-primary-dark-2: #000000;
+
+  --el-color-success: #22c55e;
+  --el-color-success-light-9: #e6faed;
+  --el-color-warning: #f59e0b;
+  --el-color-warning-light-9: #fef5e7;
+  --el-color-danger: #ec1313;
+  --el-color-danger-light-9: #fef2f2;
+  --el-color-error: #ec1313;
+  --el-color-info: #81858c;
+  --el-color-info-light-9: #f5f6f7;
+
+  --el-text-color-primary: #0f1115;
+  --el-text-color-regular: #353638;
+  --el-text-color-secondary: #61666b;
+  --el-text-color-placeholder: #adb2b8;
+  --el-text-color-disabled: #adb2b8;
+
+  --el-border-color: rgba(0, 0, 0, 0.1);
+  --el-border-color-light: rgba(0, 0, 0, 0.08);
+  --el-border-color-lighter: rgba(0, 0, 0, 0.06);
+  --el-border-color-extra-light: rgba(0, 0, 0, 0.04);
+  --el-border-color-dark: rgba(0, 0, 0, 0.14);
+  --el-border-color-darker: rgba(0, 0, 0, 0.18);
+
+  --el-fill-color: #f5f6f7;
+  --el-fill-color-light: #f5f6f7;
+  --el-fill-color-lighter: #f9fafb;
+  --el-fill-color-extra-light: #f9fafb;
+  --el-fill-color-dark: #ebeef2;
+  --el-fill-color-darker: #e1e5ee;
+  --el-fill-color-blank: #ffffff;
+
+  --el-bg-color: #ffffff;
+  --el-bg-color-page: #f9fafb;
+  --el-bg-color-overlay: #ffffff;
+
+  --el-border-radius-base: 8px;
+  --el-border-radius-small: 6px;
+  --el-border-radius-round: 999px;
+
+  --el-box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.08), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  --el-box-shadow-light: 0 2px 8px rgba(0, 0, 0, 0.05);
+  --el-box-shadow-lighter: 0 1px 4px rgba(0, 0, 0, 0.04);
+  --el-box-shadow-dark: 0 12px 32px rgba(0, 0, 0, 0.12);
+
+  --el-font-family: var(--os-font);
+  --el-font-size-base: 14px;
+  --el-disabled-bg-color: #f5f6f7;
+  --el-disabled-text-color: #adb2b8;
+  --el-disabled-border-color: rgba(0, 0, 0, 0.08);
+}
+
+/* ======================= 2. 基础排版 ======================= */
+body {
+  font-family: var(--os-font);
+  font-size: var(--dsw-font-size-base);
+  color: var(--os-text);
+  background-color: var(--os-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: rgba(65, 118, 230, 0.22);
+}
+
+/* 键盘焦点环：只有键盘操作时才出现，鼠标点击不打扰 */
+a:focus-visible,
+button:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--os-focus-ring);
+  outline-offset: 2px;
+}
+
+/*
+ * 输入类控件：**去掉浏览器默认焦点环**（那条方方正正的蓝框）。
+ *
+ * 为什么会冒出来：`el-input` 内部是真的 `<input>`，Chrome 对 `type=text/password`
+ * 等可编辑控件会画自己的 `outline: auto`（高对比蓝框），它跟我们的圆角容器完全不搭 ——
+ * 用户截图里那个"套在圆角输入框里的小一号蓝色方框"就是它。
+ *
+ * 处理：输入框自身永远不画轮廓，聚焦反馈**只由容器**承担（Element Plus 的 `.is-focus`
+ * 描边、登录页的自定义描边都已实现）。不要再给容器加 `:has(:focus-visible)` 之类的
+ * 额外蓝环 —— 那会在圆角框外面再套一圈，反而更怪。
+ */
+input,
+textarea,
+select,
+.el-input__inner,
+.el-textarea__inner,
+.el-select__input {
+  outline: none;
+
+  &:focus,
+  &:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
+}
+
+/* 滚动条：细、低对比、悬停才明显（对齐 DSH 的 5px 指针滚条思路） */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.16) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.14);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.26);
+}
+
+/* ======================= 3. Element Plus 组件精修 ======================= */
+
+/* ---- 按钮 ---- */
+.el-button {
+  border-radius: var(--os-radius-sm);
+  font-weight: 500;
+  transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out),
+    border-color var(--ds-duration-fast) var(--ds-ease-in-out),
+    color var(--ds-duration-fast) var(--ds-ease-in-out);
+}
+
+.el-button--primary {
+  --el-button-bg-color: #0f1115;
+  --el-button-border-color: #0f1115;
+  --el-button-hover-bg-color: #2c2c2e;
+  --el-button-hover-border-color: #2c2c2e;
+  --el-button-active-bg-color: #000;
+  --el-button-active-border-color: #000;
+  --el-button-text-color: #fff;
+  --el-button-hover-text-color: #fff;
+}
+
+.el-button--primary.is-disabled,
+.el-button--primary.is-disabled:hover {
+  background-color: #e1e5ee;
+  border-color: #e1e5ee;
+  color: #adb2b8;
+}
+
+.el-button--primary.is-plain {
+  --el-button-bg-color: #f5f6f7;
+  --el-button-border-color: rgba(0, 0, 0, 0.1);
+  --el-button-text-color: #0f1115;
+  --el-button-hover-bg-color: #ebeef2;
+  --el-button-hover-border-color: rgba(0, 0, 0, 0.14);
+  --el-button-hover-text-color: #0f1115;
+}
+
+.el-button.is-text,
+.el-button.is-link {
+  font-weight: 500;
+}
+
+.el-button.is-text:not(.is-disabled):hover {
+  background-color: var(--os-bg-hover);
+}
+
+/* ---- 输入类 ---- */
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper {
+  border-radius: var(--os-radius-sm);
+  background-color: #fff;
+  box-shadow: 0 0 0 1px var(--os-border) inset;
+  transition: box-shadow var(--ds-duration-fast) var(--ds-ease-in-out);
+}
+
+.el-input__wrapper:hover,
+.el-textarea__inner:hover,
+.el-select__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--os-border-strong) inset;
+}
+
+/*
+ * 聚焦态：**只压深 1px 描边，不加外扩光晕**。
+ *
+ * 之前这里写的是「1px 蓝 + 3px 蓝色柔光」，在圆角输入框外面又套一圈蓝边，
+ * 用户看到的"输入框里有个奇怪蓝框"就是它（登录页尤其明显）。
+ * DSH 的做法是：输入态只做描边明度变化，不用彩色光晕。
+ */
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused,
+.el-textarea__inner:focus {
+  box-shadow: 0 0 0 1px var(--dsw-static-neutral-bluish-900) inset;
+  border-color: transparent;
+}
+
+.el-input__inner::placeholder,
+.el-textarea__inner::placeholder {
+  color: var(--os-text-4);
+}
+
+/* ---- 卡片 / 弹层 ---- */
+.el-card {
+  border-radius: var(--os-radius);
+  border: 1px solid var(--os-border-soft);
+  box-shadow: none;
+}
+
+.el-dialog {
+  border-radius: var(--os-radius-lg);
+  border: 1px solid var(--os-border-soft);
+  box-shadow: var(--el-box-shadow);
+  padding: 0;
+  overflow: hidden;
+
+  .el-dialog__header {
+    padding: 18px 24px 14px;
+    margin: 0;
+    border-bottom: 1px solid var(--os-border-soft);
+
+    .el-dialog__title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--os-text);
+    }
+  }
+
+  .el-dialog__body {
+    padding: 20px 24px;
+  }
+
+  .el-dialog__footer {
+    padding: 14px 24px 18px;
+    border-top: 1px solid var(--os-border-soft);
+  }
+}
+
+.el-drawer {
+  box-shadow: var(--el-box-shadow-dark);
+}
+
+.el-message-box {
+  border-radius: var(--os-radius-lg);
+  border: 1px solid var(--os-border-soft);
+  padding: 8px;
+
+  .el-message-box__title {
+    font-size: 15px;
+    font-weight: 600;
+  }
+}
+
+.el-popper.is-light {
+  border-radius: var(--os-radius);
+  border: 1px solid var(--os-border-soft);
+  box-shadow: var(--el-box-shadow);
+}
+
+.el-dropdown-menu {
+  padding: 6px;
+}
+
+.el-dropdown-menu__item {
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 13px;
+  line-height: 20px;
+
+  &:hover,
+  &:focus {
+    background-color: var(--os-bg-hover);
+    color: var(--os-text);
+  }
+}
+
+.el-dropdown-menu__item--divided {
+  border-top-color: var(--os-border-soft);
+  margin-top: 4px;
+}
+
+/* ---- 菜单（消息中心 / 侧栏内嵌菜单） ---- */
+.el-menu {
+  background-color: transparent;
+  border-right: none;
+}
+
+.el-menu-item {
+  border-radius: var(--os-radius-sm);
+  font-size: 13.5px;
+
+  &:hover {
+    background-color: var(--os-bg-hover);
+  }
+
+  &.is-active {
+    background-color: var(--os-bg-active);
+    color: var(--os-text);
+    font-weight: 500;
+  }
+}
+
+/* ---- 表格 ---- */
+.el-table {
+  --el-table-border-color: var(--os-border-soft);
+  --el-table-header-bg-color: #f9fafb;
+  --el-table-header-text-color: var(--os-text-2);
+  --el-table-row-hover-bg-color: #f9fafb;
+  font-size: 13px;
+  border-radius: var(--os-radius);
+
+  th.el-table__cell {
+    font-weight: 500;
+    background-color: #f9fafb;
+  }
+
+  .el-table__cell {
+    padding: 10px 0;
+  }
+}
+
+/* ---- 标签 / 徽标 / 分页 ---- */
+.el-tag {
+  border-radius: 6px;
+  font-weight: 500;
+  border-color: transparent;
+}
+
+.el-tag--primary {
+  background-color: #f1f3f5;
+  color: var(--os-text-2);
+}
+
+.el-badge__content {
+  border: none;
+  font-weight: 500;
+}
+
+.el-pagination {
+  --el-pagination-button-bg-color: transparent;
+  font-weight: 400;
+
+  .el-pager li {
+    border-radius: 6px;
+    font-weight: 400;
+    transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out);
+
+    &:hover {
+      background-color: var(--os-bg-hover);
+      color: var(--os-text);
+    }
+
+    &.is-active {
+      background-color: var(--os-primary);
+      color: #fff;
+    }
+  }
+
+  .btn-prev,
+  .btn-next {
+    border-radius: 6px;
+  }
+}
+
+/* ---- 其他 ---- */
+.el-link.el-link--primary {
+  color: var(--os-accent);
+
+  &:hover {
+    color: var(--dsw-static-deepseek-400);
+  }
+}
+
+.el-loading-mask {
+  background-color: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(1.5px);
+}
+
+.el-loading-spinner .path {
+  stroke: var(--os-primary);
+}
+
+.el-empty__description {
+  color: var(--os-text-4);
+}
+
+.el-switch.is-checked .el-switch__core {
+  background-color: var(--os-primary);
+  border-color: var(--os-primary);
+}
+
+.el-checkbox__input.is-checked .el-checkbox__inner,
+.el-radio__input.is-checked .el-radio__inner {
+  background-color: var(--os-primary);
+  border-color: var(--os-primary);
+}
+
+.el-slider__bar {
+  background-color: var(--os-primary);
+}
+
+.el-slider__button {
+  border-color: var(--os-primary);
+}
+
+.el-breadcrumb__inner,
+.el-breadcrumb__inner a {
+  color: var(--os-text-3);
+  font-weight: 400;
+}
+
+/* ======================= 4. 通用版式工具类 ======================= */
+
+/*
+ * 深色快捷键气泡（DSH 的 tooltip 语言）：
+ *   --dsw-alias-tooltip-bg 深灰底 + 白字 + 右侧键帽。
+ * 侧栏折叠按钮、顶栏图标按钮都用它，保证"悬停给出的提示"是同一套观感。
+ */
+.os-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.os-tip__label {
+  color: #fff;
+}
+
+.os-tip__kbd {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.92);
+  font-family: var(--os-font);
+  font-size: 11.5px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.el-popper.os-tip-pop {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: none;
+  background: var(--dsw-static-neutral-bluish-850);
+  box-shadow: 0 6px 18px rgba(15, 17, 21, 0.18);
+
+  .el-popper__arrow::before {
+    background: var(--dsw-static-neutral-bluish-850);
+    border: none;
+  }
+}
+
+/* 标准页面容器：内容居中、四周留白、底部留出呼吸空间 */
+.os-page {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 26px 32px 56px;
+  box-sizing: border-box;
+}
+
+.os-page--wide {
+  max-width: 1440px;
+}
+
+.os-page--narrow {
+  max-width: 880px;
+}
+
+/* 页面头部：标题 + 说明 + 右侧动作 */
+.os-page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.os-page-head__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--os-text);
+}
+
+.os-page-head__desc {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--os-text-3);
+}
+
+.os-page-head__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* 卡片：默认只有一层发丝描边，不堆阴影 */
+.os-card {
+  background: #fff;
+  border: 1px solid var(--os-border-soft);
+  border-radius: var(--os-radius);
+  box-sizing: border-box;
+}
+
+.os-card--pad {
+  padding: 20px 24px;
+}
+
+.os-card--hover {
+  transition: border-color var(--ds-duration-base) var(--ds-ease-in-out),
+    box-shadow var(--ds-duration-base) var(--ds-ease-in-out),
+    transform var(--ds-duration-base) var(--ds-ease-in-out);
+
+  &:hover {
+    border-color: var(--os-border-strong);
+    box-shadow: var(--os-shadow-2);
+    transform: translateY(-1px);
+  }
+}
+
+.os-section-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--os-text);
+}
+
+.os-meta {
+  font-size: 12px;
+  color: var(--os-text-3);
+}
+
+.os-divider {
+  height: 1px;
+  background: var(--os-border-soft);
+  border: none;
+  margin: 0;
+}
+
+/* 轻量图标按钮（28×28，透明底，hover 才显形） */
+.os-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: var(--os-radius-sm);
+  background: transparent;
+  color: var(--os-text-3);
+  cursor: pointer;
+  transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out),
+    color var(--ds-duration-fast) var(--ds-ease-in-out);
+
+  &:hover {
+    background: var(--os-bg-hover);
+    color: var(--os-text);
+  }
+}
+
+/* 胶囊标签 */
+.os-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--os-bg-subtle);
+  color: var(--os-text-2);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.os-chip--accent {
+  background: var(--os-accent-soft);
+  color: var(--dsw-static-blue-800);
+}
+
+/* 响应式：窄屏收敛留白 */
+@media (max-width: 1280px) {
+  .os-page {
+    padding: 24px 24px 48px;
+  }
+}
+
+@media (max-width: 768px) {
+  .os-page {
+    padding: 16px 16px 40px;
+  }
+
+  .os-page-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+}

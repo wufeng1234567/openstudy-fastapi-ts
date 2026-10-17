@@ -239,12 +239,13 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
 </script>
 
 <style scoped>
-/* ========== 容器（沿用改造前的观感） ========== */
+/* ========== 容器 ==========
+   外层只负责吸底与留白，真正的"卡片"是里面的 `.input-box`（DSH 的 composer 形态） */
 .chat-input-area {
   position: relative;
-  background-color: #fff;
-  padding: 12px 16px;
-  border-top: 1px solid #e5e7eb;
+  background-color: transparent;
+  padding: 6px 20px 18px;
+  border-top: none;
   /*
    * ⚠️ `flex-shrink: 0` 不能删：本组件是消息列表（`.chat-messages`）的**兄弟节点**、
    * 同处一个 flex 列（`.ai-chat-stream`）。默认 `flex-shrink: 1` 时，消息一多它就会被压缩，
@@ -260,29 +261,33 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
   flex-direction: column;
   align-items: stretch;
   gap: 0;
-  background: #f8f9fa;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 10px 10px 10px 14px;
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto;
+  box-sizing: border-box;
+  background: #fff;
+  border: 1px solid var(--os-border);
+  border-radius: 20px;
+  padding: 12px 14px 8px;
+  box-shadow: none;
   /*
-   * 只列**状态里真会变**的属性：`:hover` 的 border-color、`:focus-within` 的 border-color + background。
-   *
-   * ⚠️ 不要写回 `transition: all`：`all` 会把将来任何人在状态里加的**布局属性**（padding / width…）
-   *    也一起动画化 —— 那是逐帧重排，正是「点一下卡一下」的来源（见 `views/front/agent/chat.vue`
-   *    的 `.pop-fade-*` 注释与 `tests/check_frontend_static.mjs` 的 L28 守卫）。
-   * ⚠️ 这里写 `background-color` 而不是 `background`：`background` 是简写、本身不可过渡，
-   *    写成简写等于把这条动画悄悄取消掉。
+   * 只列**状态里真会变**的属性：`:hover` / `:focus-within` 的 border-color。
+   * ⚠️ 不要写回 `transition: all`：`all` 会把将来任何人在状态里加的**布局属性**也一起动画化，
+   *    那是逐帧重排，正是「点一下卡一下」的来源。
    */
-  transition: border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  min-height: 66px;
+  transition: border-color 0.2s var(--ds-ease-in-out);
+  min-height: 0;
 
   &:hover {
-    border-color: #d1d5db;
+    border-color: var(--os-border-strong);
   }
 
+  /*
+   * 聚焦：DSH 的 composer 只把描边压深一点，不画蓝色光圈 ——
+   * 输入区本来就大，再来一圈高亮会抢走对话正文的注意力。
+   */
   &:focus-within {
-    border-color: #b3b3b3;
-    background: #fff;
+    border-color: var(--dsw-static-neutral-bluish-400);
   }
 }
 
@@ -323,36 +328,36 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: #b6bdc9;
+  color: var(--os-text-4);
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .expand-corner:hover {
-  background: #f1f5f9;
-  color: #4f6ef7;
+  background: var(--os-bg-hover);
+  color: var(--os-text-2);
 }
 
 .chat-textarea {
   width: 100%;
-  min-height: 42px;
+  min-height: 44px;
   max-height: 120px;
   /* 右侧留白：避开右上角的放大角标与滚动条，文字不顶到它们 */
-  padding: 4px 30px 4px 0;
+  padding: 4px 30px 4px 2px;
   border: none;
   outline: none;
   background: transparent;
-  color: #1f2d3d;
-  font-size: 14px;
-  line-height: 1.5;
+  color: var(--os-text);
+  font-size: 14.5px;
+  line-height: 1.6;
   font-family: inherit;
   resize: none;
   overflow-y: auto;
   box-sizing: border-box;
 
   &::placeholder {
-    color: #9ca3af;
-    font-size: 13px;
+    color: var(--os-text-4);
+    font-size: 14px;
   }
 
   &:disabled {
@@ -360,21 +365,20 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
   }
 }
 
-/* 分隔线 */
+/* 分隔线：新 composer 不再用它（工具栏与正文直接留白分层，更接近 DSH） */
 .input-divider {
-  height: 1px;
-  background: #e5e7eb;
-  margin: 4px 0 2px;
+  display: none;
 }
 
-/* ========== 工具行 ========== */
+/* ========== 工具行 ==========
+   DSH 的 composer 底栏是「左：附件等轻量入口 / 右：模型名 + 发送」，一条水平线，无分隔线。 */
 .input-bottom {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-top: 4px;
-  min-height: 36px;
+  margin-top: 2px;
+  min-height: 34px;
 }
 
 .input-bottom-left {
@@ -384,6 +388,10 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
   min-width: 0;
 }
 
+/* 右侧工具组：模型名 + 发送键。
+   gap 8px —— 与左侧工具组保持一致；之前显得"间距太大"的真正原因是
+   模型选择器根节点里那个只承载弹窗的 40px 空壳子（已在 AiModelSelector 里移除占位），
+   不是这里的 gap。 */
 .input-bottom-right {
   display: flex;
   align-items: center;
@@ -395,26 +403,25 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: var(--os-radius-sm);
   background: transparent;
-  color: #6b7280;
+  color: var(--os-text-3);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   /*
-   * 只列**状态里真会变**的属性：`:hover` 的 background / border-color / color、`:disabled` 的 opacity。
+   * 只列**状态里真会变**的属性：`:hover` 的 background / color、`:disabled` 的 opacity。
    * ⚠️ 不要写回 `transition: all`（同一个坑：将来往 hover 里加一个 padding/width，就变成静默的逐帧重排）。
    */
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
   flex-shrink: 0;
 
   &:hover {
-    background: #fff;
-    border-color: #e5e7eb;
-    color: #1f2937;
+    background: var(--os-bg-hover);
+    color: var(--os-text);
   }
 
   /* 生成中会禁用 `@`（切模式要换消息列表，跑一半切会串台）→ 给个明确的不可点观感 */
@@ -424,8 +431,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
 
     &:hover {
       background: transparent;
-      border-color: transparent;
-      color: #6b7280;
+      color: var(--os-text-3);
     }
   }
 }
@@ -441,34 +447,36 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
   bottom: calc(100% + 6px);
   z-index: 20;
   width: 268px;
-  padding: 10px;
+  padding: 8px;
   background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--os-border-soft);
+  border-radius: var(--os-radius);
+  box-shadow: var(--os-shadow-2), 0 0 0 0.5px var(--os-border-soft);
 }
 
 .mode-card-title {
-  font-size: 12px;
-  color: #9ca3af;
-  padding: 2px 6px 6px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--os-text-4);
+  padding: 4px 8px 6px;
 }
 
 .mode-option {
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--os-radius-sm);
   cursor: pointer;
   transition: background 0.15s ease;
 
   &:hover {
-    background: #f8f9fa;
+    background: var(--os-bg-hover);
   }
 
   &.active {
-    background: #eef2ff;
+    background: var(--os-accent-soft);
 
     .mode-option-name {
-      color: #4f46e5;
+      color: var(--os-accent-strong);
     }
   }
 }
@@ -500,12 +508,12 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
 /* ========== 发送 / 停止 ========== */
 .send-btn {
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
   border: none;
-  background: #e5e7eb;
-  color: #9ca3af;
+  background: var(--os-primary);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -519,25 +527,31 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
   padding: 0;
 
   &:hover:not(:disabled) {
-    background: #1f2937;
-    color: #fff;
+    background: var(--os-primary-hover);
   }
 
   &:active:not(:disabled) {
     transform: scale(0.95);
   }
 
+  /*
+   * 禁用态（还没输入内容）：**极淡的底 + 淡图标**。
+   * 之前用 100 号灰（#ebeef2）铺满一个 32px 方块，在轻量工具行里显得很重，
+   * 像"一个可点的灰按钮"。DSH 的做法是让它几乎融进背景，只在可用时才黑起来。
+   */
   &:disabled {
+    background: var(--dsw-static-neutral-bluish-75);
+    color: var(--dsw-static-neutral-bluish-300);
     cursor: not-allowed;
   }
 }
 
 .stop-btn {
-  background: #fee2e2;
-  color: #ef4444;
+  background: var(--dsw-static-red-50);
+  color: var(--os-danger);
 
   &:hover {
-    background: #ef4444;
+    background: var(--os-danger);
     color: #fff;
   }
 }

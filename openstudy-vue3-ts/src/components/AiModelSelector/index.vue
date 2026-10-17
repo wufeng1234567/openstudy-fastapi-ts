@@ -2,7 +2,8 @@
   <!-- ⚠️ 必须有**单一根节点**：本组件现在还要内嵌一个 `AiModelManager`（添加模型对话框），
        多根节点会让父级传下来的 `class`/`style`（如 chat.vue 的 `class="settings-expert-model"`）
        **无法透传**（Vue 对多根组件不自动继承属性）。用外层 div 承接，宽度仍由 `width` prop 决定。 -->
-  <div class="ai-model-selector-root" :style="{ width: width }">
+  <div class="ai-model-selector-root" :class="{ 'is-borderless': borderless, 'is-auto': width === 'auto' }"
+    :style="width === 'auto' ? undefined : { width: width }">
     <el-select :model-value="innerValue" @update:model-value="handleChange" placeholder="自动（跟随默认）" size="small"
       class="ai-model-selector" popper-class="ai-model-selector-popper" style="width: 100%" :disabled="disabled">
       <!--
@@ -60,6 +61,12 @@ const props = defineProps({
   modelValue: { type: String, default: '' },
   width: { type: String, default: '220px' },
   disabled: { type: Boolean, default: false },
+  /**
+   * 无边框形态（DSH 的底部输入区就是这个观感）：
+   * 去掉 select 的描边/白底，只留文字 + 箭头，hover 才浮出浅底。
+   * 用于「模型选择器直接坐在工具行里、与发送按钮同一条线」的场景。
+   */
+  borderless: { type: Boolean, default: false },
   /** 场景标识：每个使用点单独记忆（聊天助手 / AI 解析 / 出题等互不影响） */
   scene: { type: String, required: true },
   /**
@@ -192,6 +199,35 @@ const onManagerSaved = () => {
   align-items: center;
   max-width: 100%;
   vertical-align: middle;
+
+  /*
+   * ⚠️ `AiModelManager`（dialog-only）在模板里是一个只承载弹窗的空壳 div。
+   *    它的 `el-dialog` 是 teleport 到 body 的，但**根 div 本身仍占 40px 宽**，
+   *    于是"模型名 → 发送按钮"之间凭空多出这 40px（用户反馈间距太大）。
+   *    这里让它彻底脱离盒模型（不占位、不参与对齐）。
+   */
+  > .ai-model-manager {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+}
+
+/* width="auto"：不写死像素，但**必须给一个能容下模型名的宽度**。
+   ⚠️ 这里试过 `width: auto / flex: none`：Element Plus 的 select 内部用绝对定位的
+      选中项 + 绝对定位箭头渲染，父级 `width:auto` 会塌缩成一条（只剩箭头，文字没了）。
+      所以给一个按内容估算的舒适宽度区间，由 `max-width` 兜住超长模型名。 */
+.ai-model-selector-root.is-auto {
+  width: fit-content;
+
+  .ai-model-selector {
+    /* 132px ≈ "deepseek-flash"（12.5px 字号）+ 右侧箭头与内边距，正好不截断也不留空档 */
+    width: 132px !important;
+    min-width: 0;
+    max-width: 220px;
+  }
 }
 
 .ai-model-selector {
@@ -207,6 +243,49 @@ const onManagerSaved = () => {
 
 .ai-model-selector :deep(.el-input__wrapper.is-focus) {
   box-shadow: 0 0 0 1px #b3b3b3;
+}
+
+/* ---- 无边框形态：只留文字 + 箭头（DSH 底部输入区的模型选择器） ---- */
+.ai-model-selector-root.is-borderless {
+  /* 容器宽度必须由内容决定，否则根节点会按 max-width 撑开，
+     在"模型名"和右侧发送按钮之间留出一大段空白（用户 2026-10-17 截图反馈）。 */
+  width: fit-content;
+  max-width: 100%;
+
+  /* EP 2.13 的 select 有两种内层实现（el-input__wrapper / el-select__wrapper），都覆盖 */
+  .ai-model-selector :deep(.el-input__wrapper),
+  .ai-model-selector :deep(.el-select__wrapper) {
+    background: transparent;
+    box-shadow: none;
+    /* 右侧只留箭头所需的 12px，不再留 18px 的大空档 */
+    padding: 0 12px 0 8px;
+    border: none;
+  }
+
+  .ai-model-selector :deep(.el-input__wrapper:hover),
+  .ai-model-selector :deep(.el-select__wrapper:hover) {
+    background: var(--os-bg-hover);
+    box-shadow: none;
+    border-radius: var(--os-radius-sm);
+  }
+
+  .ai-model-selector :deep(.el-input__wrapper.is-focus),
+  .ai-model-selector :deep(.el-select__wrapper.is-focused) {
+    box-shadow: none;
+    background: var(--os-bg-hover);
+    border-radius: var(--os-radius-sm);
+  }
+
+  .ai-model-selector :deep(.el-input__inner),
+  .ai-model-selector :deep(.el-select__selected-item) {
+    color: var(--os-text-3);
+    font-size: 12.5px;
+  }
+
+  .ai-model-selector :deep(.el-select__caret),
+  .ai-model-selector :deep(.el-select__icon) {
+    color: var(--os-text-4);
+  }
 }
 
 .opt-main {

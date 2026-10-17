@@ -1,80 +1,62 @@
 <template>
-    <div class="home-page">
-        <div class="page-header">
-            <h1 class="page-title">🔧 实用工具箱</h1>
-            <p class="page-subtitle">一站式文件处理与转换工具</p>
-        </div>
+  <div class="tools-home os-page">
+    <!-- 顶栏已经显示"实用工具箱"，这里只留一句说明，避免重复标题 -->
+    <p class="page-desc">一站式文件处理与转换工具，全部在浏览器本地完成。</p>
 
-        <div class="tool-grid">
-            <div class="tool-card" @click="goTo('watermark')">
-                <div class="tool-icon" style="background: #e8f4ff;">
-                    <el-icon :size="32">
-                        <Picture />
-                    </el-icon>
-                </div>
-                <div class="tool-content">
-                    <h3 class="tool-title">图片水印工具</h3>
-                    <p class="tool-desc">为图片添加文字水印，支持旋转、透明度调整</p>
-                </div>
-                <div class="tool-arrow">
-                    <el-icon>
-                        <ArrowRight />
-                    </el-icon>
-                </div>
-            </div>
+    <div class="tool-grid">
+      <button type="button" class="tool-card" @click="goTo('watermark')">
+        <span class="tool-icon">
+          <el-icon :size="20"><Picture /></el-icon>
+        </span>
+        <span class="tool-content">
+          <span class="tool-title">图片水印工具</span>
+          <span class="tool-desc">为图片添加文字水印，支持旋转、透明度调整</span>
+        </span>
+        <span class="tool-arrow">
+          <el-icon><ArrowRight /></el-icon>
+        </span>
+      </button>
 
-            <div class="tool-card" @click="goTo('convert')">
-                <div class="tool-icon" style="background: #f0f9eb;">
-                    <el-icon :size="32">
-                        <Document />
-                    </el-icon>
-                </div>
-                <div class="tool-content">
-                    <h3 class="tool-title">文档转换工具</h3>
-                    <p class="tool-desc">PDF ↔ Word ↔ MD ↔ TXT ↔ 图片，支持双向互转</p>
-                </div>
-                <div class="tool-arrow">
-                    <el-icon>
-                        <ArrowRight />
-                    </el-icon>
-                </div>
-            </div>
+      <button type="button" class="tool-card" @click="goTo('convert')">
+        <span class="tool-icon">
+          <el-icon :size="20"><Document /></el-icon>
+        </span>
+        <span class="tool-content">
+          <span class="tool-title">文档转换工具</span>
+          <span class="tool-desc">PDF ↔ Word ↔ MD ↔ TXT ↔ 图片，支持双向互转</span>
+        </span>
+        <span class="tool-arrow">
+          <el-icon><ArrowRight /></el-icon>
+        </span>
+      </button>
 
-            <div class="tool-card" @click="goTo('image')">
-                <div class="tool-icon" style="background: #fdf6ec;">
-                    <el-icon :size="32">
-                        <MagicStick />
-                    </el-icon>
-                </div>
-                <div class="tool-content">
-                    <h3 class="tool-title">图片处理工具</h3>
-                    <p class="tool-desc">图片裁剪、旋转、缩放、翻转</p>
-                </div>
-                <div class="tool-arrow">
-                    <el-icon>
-                        <ArrowRight />
-                    </el-icon>
-                </div>
-            </div>
+      <button type="button" class="tool-card" @click="goTo('image')">
+        <span class="tool-icon">
+          <el-icon :size="20"><MagicStick /></el-icon>
+        </span>
+        <span class="tool-content">
+          <span class="tool-title">图片处理工具</span>
+          <span class="tool-desc">图片裁剪、旋转、缩放、翻转</span>
+        </span>
+        <span class="tool-arrow">
+          <el-icon><ArrowRight /></el-icon>
+        </span>
+      </button>
 
-            <div class="tool-card" @click="goTo('classDiagram')">
-                <div class="tool-icon" style="background: #f3e8ff;">
-                    <el-icon :size="32">
-                        <DataLine />
-                    </el-icon>
-                </div>
-                <div class="tool-content">
-                    <h3 class="tool-title">类图生成</h3>
-                    <p class="tool-desc">粘贴 Java 代码，自动生成 UML 类图，支持导出</p>
-                </div>
-                <div class="tool-arrow">
-                    <el-icon>
-                        <ArrowRight />
-                    </el-icon>
-                </div>
-            </div>
-        </div>
+      <button type="button" class="tool-card" @click="goTo('classDiagram')">
+        <span class="tool-icon">
+          <el-icon :size="20"><DataLine /></el-icon>
+        </span>
+        <span class="tool-content">
+          <span class="tool-title">类图生成</span>
+          <span class="tool-desc">粘贴 Java 代码，自动生成 UML 类图，支持导出</span>
+        </span>
+        <span class="tool-arrow">
+          <el-icon><ArrowRight /></el-icon>
+        </span>
+      </button>
     </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -87,106 +69,98 @@ const router = useRouter()
 const cacheStore = useFrontPageCacheStore()
 
 const goTo = (path) => {
-    cacheStore.setLastVisited('tools', path)
-    router.push(`/front/tools/${path}`)
+  cacheStore.setLastVisited('tools', path)
+  router.push(`/front/tools/${path}`)
 }
 </script>
 
 <style scoped lang="scss">
-.home-page {
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 24px 20px;
-
-    .page-header {
-        text-align: center;
-        margin-bottom: 40px;
-
-        .page-title {
-            font-size: 20px;
-            font-weight: 700;
-            color: #1f2937;
-            margin: 0 0 8px 0;
-        }
-
-        .page-subtitle {
-            font-size: 15px;
-            color: #6b7280;
-            margin: 0;
-        }
-    }
-
-    .tool-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 20px;
-    }
-
-    .tool-card {
-        display: flex;
-        align-items: center;
-        padding: 24px;
-        background: #fff;
-        border-radius: 16px;
-        border: 1px solid #e5e7eb;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-        cursor: pointer;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-
-        &:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-            border-color: #d1d5db;
-        }
-
-        .tool-icon {
-            width: 64px;
-            height: 64px;
-            border-radius: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #6b7280;
-            margin-right: 20px;
-            flex-shrink: 0;
-        }
-
-        .tool-content {
-            flex: 1;
-
-            .tool-title {
-                font-size: 18px;
-                font-weight: 600;
-                color: #1f2937;
-                margin: 0 0 6px 0;
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            }
-
-            .tool-desc {
-                font-size: 13px;
-                color: #9ca3af;
-                margin: 0;
-            }
-        }
-
-        .tool-arrow {
-            color: #9ca3af;
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            flex-shrink: 0;
-        }
-
-        &:hover .tool-arrow {
-            transform: translateX(4px);
-            color: #6b7280;
-        }
-    }
+.tools-home {
+  max-width: 1000px;
 }
 
-@media (max-width: 640px) {
-    .tool-grid {
-        grid-template-columns: 1fr;
-    }
+.page-desc {
+  margin: 0 0 18px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--os-text-3);
+}
+
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tool-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 16px 18px;
+  border: 1px solid var(--os-border-soft);
+  border-radius: var(--os-radius);
+  background: #fff;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  /* 只动颜色，不做位移/缩放：列表静止时不该有"飘"的感觉 */
+  transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out),
+    border-color var(--ds-duration-fast) var(--ds-ease-in-out);
+
+  &:hover {
+    background: var(--dsw-static-neutral-bluish-50);
+    border-color: var(--os-border-strong);
+  }
+
+  &:hover .tool-arrow {
+    opacity: 1;
+  }
+}
+
+.tool-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--dsw-static-neutral-bluish-75);
+  color: var(--os-text-2);
+}
+
+.tool-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.tool-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--os-text);
+}
+
+.tool-desc {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--os-text-3);
+}
+
+.tool-arrow {
+  flex: none;
+  color: var(--os-text-4);
+  opacity: 0;
+  transition: opacity var(--ds-duration-fast) var(--ds-ease-in-out);
+}
+
+@media (max-width: 720px) {
+  .tool-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>

@@ -8,10 +8,7 @@
   <div class="messages-layout">
     <!-- ==================== 左侧菜单栏 ==================== -->
     <div class="messages-sidebar">
-      <div class="sidebar-header">
-        <el-button text :icon="ArrowLeft" @click="$router.go(-1)" class="back-btn" />
-        <span class="sidebar-title">消息中心</span>
-      </div>
+      <div class="sidebar-label">消息</div>
       <!-- 菜单项，每个菜单项显示未读数红点 -->
       <el-menu :default-active="activeMenu" class="sidebar-menu" @select="handleSelect">
         <!-- 系统通知：仅管理员发布的系统公告 -->
@@ -160,39 +157,28 @@ watch(() => route.path, () => {
 <style scoped lang="scss">
 .messages-layout {
   display: flex;
-  gap: 12px;
+  height: 100%;
+  min-height: 0;
+  gap: 0;
 
   .messages-sidebar {
-    width: 160px;
+    width: 200px;
     flex-shrink: 0;
-    border: 1px solid var(--el-border-color-lighter);
-    border-radius: 8px;
-    padding: 12px;
-    background: #ffffff;
+    padding: 16px 12px;
+    box-sizing: border-box;
+    border-right: 1px solid var(--os-border-soft);
+    background: #fff;
     overflow-y: auto;
   }
 
-  .sidebar-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 16px;
-
-    .back-btn {
-      font-size: 18px;
-      color: #6b7280;
-      padding: 4px;
-
-      &:hover {
-        color: #4b5563;
-      }
-    }
-
-    .sidebar-title {
-      font-size: 16px;
-      font-weight: 600;
-      color: #1f2937;
-    }
+  /* 二级导航的小标题（一级标题在顶栏，不在这里重复） */
+  .sidebar-label {
+    padding: 2px 9px 10px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    color: var(--os-text-4);
+    user-select: none;
   }
 
   .sidebar-menu {
@@ -201,45 +187,46 @@ watch(() => route.path, () => {
 
     .el-menu-item {
       position: relative;
-      height: 44px;
-      line-height: 44px;
-      border-radius: 8px;
-      margin-bottom: 4px;
-      color: #6b7280;
-      font-weight: 500;
-      transition: all 0.2s ease;
+      height: 36px;
+      line-height: 36px;
+      border-radius: var(--os-radius-sm);
+      margin-bottom: 2px;
+      padding: 0 9px;
+      color: var(--os-text-2);
+      font-weight: 400;
+      transition: background-color 0.15s ease, color 0.15s ease;
 
       &:hover {
-        background: #f5f7fa;
-        color: #6b7280;
+        background: var(--os-bg-hover);
+        color: var(--os-text);
       }
 
       &.is-active {
-        background: #f9fafb;
-        color: #4b5563;
-        border-left: 2px solid #6b7280;
-        font-weight: 600;
+        background: var(--dsw-specific-sidebar-nav-item-active);
+        color: var(--os-text);
+        font-weight: 500;
+        border-left: none;
       }
 
       .el-icon {
-        font-size: 18px;
+        font-size: 16px;
         margin-right: 8px;
       }
 
       span {
-        font-size: 14px;
+        font-size: 13.5px;
       }
     }
 
     .menu-badge {
       margin-left: auto;
-      transform: translate(6px, -8px);
 
       :deep(.el-badge__content) {
         font-size: 11px;
         height: 18px;
         line-height: 18px;
         padding: 0 5px;
+        border: none;
       }
     }
   }
@@ -248,5 +235,23 @@ watch(() => route.path, () => {
 .messages-content {
   flex: 1;
   min-width: 0;
+  max-width: 1040px;
+  height: 100%;
+  overflow-y: auto;
+  padding: 22px 28px 48px;
+  box-sizing: border-box;
+}
+
+@media (max-width: 900px) {
+  .messages-layout {
+    .messages-sidebar {
+      width: 150px;
+      padding: 12px 8px;
+    }
+  }
+
+  .messages-content {
+    padding: 16px 16px 40px;
+  }
 }
 </style>

@@ -1,993 +1,645 @@
 <!--
-  front.vue — 前台全局布局组件
-  ============================
-  这是所有前台页面的"骨架"，负责：
-  1. 顶部导航栏（Logo、导航菜单、消息铃铛、用户下拉菜单）
-  2. 中间内容区（通过 router-view + keep-alive 实现页面缓存）
-  3. 底部页脚
-  4. 全局悬浮 AI 助手
+  front.vue — 前台应用外壳（App Shell）
+  ============================================================================
+  形态对齐 DSH Web：**左侧竖向导航 + 右侧内容区**，不再有顶部横向菜单、
+  不再有"首页轮播"这种与智能体无关的落地页。
+
+  三层结构：
+    ① Sidebar   —— 品牌 / 新建对话 / 模块导航 / 底部账号区（可折叠、移动端抽屉）
+    ② Topbar    —— 当前页标题 + 消息入口（52px，一条发丝分割线，不抢内容）
+    ③ Content   —— 路由出口；普通页面自行滚动，智能体 / 笔记编辑器走"满高"模式
+
+  与旧版的差异（都是刻意的）：
+    · 删掉顶部 header / nav / footer —— 导航全部进竖栏，页脚不再占高度；
+    · 删掉 `agent-mode` 那套「100vh - 68px」魔法高度 —— 顶栏高度现在由
+      `--os-topbar-h` 统一声明，内容区用 flex 自然分配，不再手算；
+    · 智能体页不再套一层圆角边框卡片（它就是主内容，不该像弹窗）。
 -->
 <template>
-    <!--
-      最外层容器通过 CSS class 控制特殊场景：
-      - hide-footer：消息中心、笔记编辑器页面隐藏底部页脚
-      - notes-editor-mode：笔记编辑器全屏模式，去掉内边距
-    -->
-    <div class="front-layout" :class="{ 'hide-footer': hideFooter, 'notes-editor-mode': isNotesEditorPage, 'agent-mode': isAgentPage }">
-
-        <!-- ==================== 顶部导航栏 ==================== -->
-        <header class="front-header">
-            <div class="header-container">
-
-                <!-- Logo：点击回到首页 -->
-                <div class="logo" @click="$router.push('/front/index')">
-                    <h1>📚 OpenStudy</h1>
-                </div>
-
-                <!-- 导航菜单 -->
-                <nav class="nav-menu">
-                    <!-- 简单页面用 router-link 直接跳转 -->
-                    <router-link to="/front/index">首页</router-link>
-                    <router-link to="/front/questionPractice">题库练习</router-link>
-
-                    <!--
-                      复杂模块用 <a> + goToModule() 跳转：
-                      实现"记住上次访问的子页面"功能，
-                      比如用户上次在"我的学习 > 错题本"，下次点击直接回到错题本
-                    -->
-                    <a @click.prevent="goToModule('myQuestion', 'myBank')"
-                        :class="{ 'router-link-active': isModuleActive('myQuestion') }">
-                        我的学习
-                    </a>
-                    <a @click.prevent="goToStudio"
-                        :class="{ 'router-link-active': isModuleActive('studio') }">
-                        题库搭建
-                    </a>
-                    <a @click.prevent="goToModule('notes', 'list')"
-                        :class="{ 'router-link-active': isModuleActive('notes') }">
-                        学习分享
-                    </a>
-                    <!--
-                      智能体：大屏版 OS 助手 + 工具调用。
-                      直连子页（只有一个子页），所以用 router.push 而不是 goToModule ——
-                      后者依赖 frontPageCache 的「上次子页」记忆，单子页场景没必要。
-                    -->
-                    <a @click.prevent="goToAgent"
-                        :class="{ 'router-link-active': isModuleActive('agent') }">
-                        智能体
-                    </a>
-                </nav>
-
-                <!-- 右侧用户区域 -->
-                <div class="user-area">
-                    <!--
-                      消息铃铛：登录后显示，带未读数红点
-                      - el-badge 的 :hidden 属性在 unreadCount === 0 时自动隐藏红点
-                      - 点击跳转到消息中心页面
-                    -->
-                    <el-badge v-if="isLogin && !isGuest" :value="unreadCount" :hidden="unreadCount === 0" class="bell-badge">
-                        <el-button class="bell-btn" :icon="Bell" circle @click="goMessages" />
-                    </el-badge>
-
-                    <!-- 未登录：显示登录/注册按钮 -->
-                    <template v-if="!isLogin">
-                        <el-button text @click="$router.push('/login')">登录</el-button>
-                        <el-button type="primary" @click="$router.push('/register')">注册</el-button>
-                    </template>
-
-                    <!-- 游客：只读身份，操作时提示登录 -->
-                    <el-dropdown v-else-if="isGuest">
-                        <span class="user-name">
-                            <UserAvatar :src="userStore.avatar" :name="userStore.nickName || userStore.name" :size="32" />
-                            游客 <el-icon>
-                                <ArrowDown />
-                            </el-icon>
-                        </span>
-                        <template #dropdown>
-                            <el-dropdown-item @click="goLogin">
-                                <el-icon>
-                                    <User />
-                                </el-icon>登录
-                            </el-dropdown-item>
-                            <el-dropdown-item @click="goRegister">
-                                <el-icon>
-                                    <Plus />
-                                </el-icon>注册
-                            </el-dropdown-item>
-                        </template>
-                    </el-dropdown>
-
-                    <!-- 普通用户/管理员：显示用户下拉菜单 -->
-                    <el-dropdown v-else>
-                        <span class="user-name">
-                            <UserAvatar :src="userStore.avatar" :name="userStore.nickName || userStore.name" :size="32" />
-                            {{ userStore.nickName || userStore.name || '用户' }} <el-icon>
-                                <ArrowDown />
-                            </el-icon>
-                        </span>
-                        <template #dropdown>
-                            <el-dropdown-item @click="$router.push('/front/profile')">
-                                <el-icon>
-                                    <User />
-                                </el-icon>个人中心
-                            </el-dropdown-item>
-                            <!-- 仅管理员可见：切换到后台管理 -->
-                            <el-dropdown-item v-if="isAdmin" @click="goAdmin">
-                                <el-icon>
-                                    <Switch />
-                                </el-icon>切换到后台
-                            </el-dropdown-item>
-                            <el-dropdown-item divided @click="logout">
-                                <el-icon>
-                                    <Back />
-                                </el-icon>退出登录
-                            </el-dropdown-item>
-                        </template>
-                    </el-dropdown>
-                </div>
-            </div>
-        </header>
-
-        <!-- ==================== 主内容区 ==================== -->
-        <!--
-          keep-alive 实现页面缓存：
-          - :include="cachedViews" 只缓存指定的页面组件（需要组件 name 匹配）
-          - 切换路由时，已缓存的组件不会销毁，保持滚动位置等状态
-          - tagsViewStore 统一管理哪些页面需要缓存
-        -->
-        <main class="front-main">
-            <router-view v-slot="{ Component }">
-                <keep-alive :include="cachedViews">
-                    <component :is="Component" />
-                </keep-alive>
-            </router-view>
-        </main>
-
-        <!-- ==================== 底部页脚 ==================== -->
-        <footer class="front-footer">
-            <p>© 2026 OpenStudy 开源学习平台. All rights reserved.</p>
-        </footer>
-
-        <!-- 全局悬浮 AI 助手（纯 LLM 聊天，无 Agent）；游客只读，不展示 -->
-        <AiAssistant v-if="isLogin && !isGuest" />
+  <div class="os-app" :class="{ 'is-mobile-open': mobileOpen }">
+    <!-- ==================== ① 侧边栏 ==================== -->
+    <div class="os-sidebar-host">
+      <FrontSidebar
+        :collapsed="collapsed"
+        :unread-count="unreadCount"
+        @toggle="toggleSidebar"
+        @navigate="mobileOpen = false"
+      />
     </div>
+
+    <!-- 移动端抽屉遮罩 -->
+    <div v-if="mobileOpen" class="os-backdrop" @click="mobileOpen = false" />
+
+    <!-- ==================== ② 主区 ==================== -->
+    <div class="os-main">
+      <header class="os-topbar">
+        <div class="os-topbar__left">
+          <!--
+            只在移动端出现：桌面端收起侧栏后，展开入口在**最左侧图标栏**里（见 FrontSidebar），
+            内容区不再放第二个展开按钮（用户明确要求：收起后按钮不要出现在路由显示区域）。
+          -->
+          <button
+            v-if="isMobile"
+            type="button"
+            class="os-icon-btn"
+            title="打开导航"
+            @click="onTopbarMenu"
+          >
+            <OsIcon name="panel-left" :size="17" />
+          </button>
+          <h1 class="os-topbar__title">{{ pageTitle }}</h1>
+        </div>
+
+        <div class="os-topbar__right">
+          <button
+            type="button"
+            class="os-icon-btn os-bell"
+            title="消息中心"
+            @click="goMessages"
+          >
+            <OsIcon name="bell" :size="17" />
+            <i v-if="unreadCount > 0" class="os-bell__dot" />
+          </button>
+
+          <!--
+            「新对话」按钮已删除（2026-10-17）：会话列表与「新建对话」都在侧栏，
+            顶栏在其它 tab 页再放一个 +新对话 属于重复入口，没有必要。
+
+            账号区从侧栏底部搬到这里（右上角）：
+              · 头像 + 昵称 + 角色，点开是下拉；
+              · 下拉里**不再有「消息中心」** —— 消息入口只保留顶栏这个铃铛（外层唯一的那个），
+                避免同一个人在一个屏幕里看到两个消息入口；
+              · 其余（个人中心 / 后台管理 / 退出登录）保持不变。
+          -->
+          <el-dropdown
+            v-if="isLogin"
+            trigger="click"
+            placement="bottom-end"
+            popper-class="os-user-pop"
+          >
+            <button type="button" class="os-user" :title="displayName">
+              <UserAvatar :src="userStore.avatar" :name="displayName" :size="26" />
+              <span class="os-user__meta">
+                <span class="os-user__name">{{ displayName }}</span>
+                <span class="os-user__role">{{ roleLabel }}</span>
+              </span>
+              <OsIcon name="chevron-down" :size="13" class="os-user__caret" />
+              <i v-if="unreadCount > 0" class="os-user__dot" />
+            </button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item @click="goProfile">
+                  <OsIcon name="user" :size="15" class="dd-ico" />个人中心
+                </el-dropdown-item>
+                <el-dropdown-item v-if="isAdmin" @click="goAdmin">
+                  <OsIcon name="settings" :size="15" class="dd-ico" />后台管理
+                </el-dropdown-item>
+                <el-dropdown-item divided @click="doLogout">
+                  <OsIcon name="log-out" :size="15" class="dd-ico" />退出登录
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+
+          <!-- 未登录 / 游客：登录、注册入口也在右上角（身份相关操作集中一处） -->
+          <template v-else>
+            <button type="button" class="os-topbar__link" @click="goLogin">登录</button>
+            <button type="button" class="os-topbar__signup" @click="goRegister">注册</button>
+          </template>
+        </div>
+      </header>
+
+      <!--
+        内容区：两种模式
+          · flush —— 页面自己管滚动与高度（智能体对话 / 笔记编辑器）
+          · 默认  —— 由这里滚动，页面各自负责内边距
+        keep-alive 仍由 tagsViewStore 的 cachedViews 控制（与旧版一致）。
+      -->
+      <main class="os-content" :class="{ 'is-flush': isFlushPage }">
+        <router-view v-slot="{ Component }">
+          <keep-alive :include="cachedViews">
+            <component :is="Component" />
+          </keep-alive>
+        </router-view>
+      </main>
+    </div>
+
+    <!-- 全局悬浮 AI 助手：智能体页本身就是对话页，不再叠一个悬浮球 -->
+    <AiAssistant v-if="isLogin && !isGuest && !isAgentPage" />
+  </div>
 </template>
 
 <script setup lang="ts">
 /**
- * 前台布局核心逻辑
- * =================
- * 主要职责：
- * 1. 未读消息轮询 — 路由切换时自动刷新铃铛红点
- * 2. 页面缓存管理 — 通过 tagsViewStore 控制 keep-alive 缓存哪些页面
- * 3. 模块跳转记忆 — goToModule() 记住用户上次访问的子页面
- * 4. 用户状态管理 — 登录态判断、角色判断、退出登录
+ * 前台外壳逻辑
+ * =============
+ * 只保留四件事：
+ *   1. 侧栏折叠状态（持久化到 localStorage）+ 移动端抽屉开关；
+ *   2. 未读消息数（路由变化时刷新，供侧栏红点 / 顶栏圆点使用）；
+ *   3. keep-alive 页面缓存的注册（沿用 tagsView 机制，不动业务页）；
+ *   4. 登录态 / 游客态判断与页面级布局模式（flush）。
+ * 具体的导航项、跳转、账号菜单都在 FrontSidebar 里，避免外壳越堆越厚。
  */
-import { computed, ref, onMounted, watch } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
-import { ArrowDown, Switch, User, Back, Bell, Plus } from '@element-plus/icons-vue'
-import { provide } from 'vue'
+import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import useUserStore from '@/store/modules/user'
 import useTagsViewStore from '@/store/modules/tagsView'
-import { checkRole } from "@/utils/permission"
 import { ensureLogin } from '@/utils/loginGuard'
-import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
+import { checkRole } from '@/utils/permission'
+import { ElMessageBox } from 'element-plus'
 import { listAllNotice } from '@/api/system/notice'
 import { getNotificationUnreadCount } from '@/api/notification/notification'
 import { isSystemNotice, isUserNoticeFor } from '@/utils/notice'
 import { getToken } from '@/utils/auth'
+import FrontSidebar from '@/components/FrontSidebar/index.vue'
+import OsIcon from '@/components/OsIcon/index.vue'
 import UserAvatar from '@/components/UserAvatar/index.vue'
 import AiAssistant from '@/components/AiAssistant/index.vue'
 
-const cacheStore = useFrontPageCacheStore()
-const router = useRouter()
 const route = useRoute()
+const router = useRouter()
 const userStore = useUserStore()
 const tagsViewStore = useTagsViewStore()
 
-// keep-alive 缓存列表（computed 响应式）
-const cachedViews = computed(() => tagsViewStore.cachedViews)
+// ==================== 布局状态 ====================
+const COLLAPSE_KEY = 'os_sidebar_collapsed'
 
-// ==================== 未读消息红点 ====================
-const unreadCount = ref(0)
+const collapsed = ref(localStorage.getItem(COLLAPSE_KEY) === '1')
+const mobileOpen = ref(false)
+const isMobile = ref(false)
 
-// 提供 refreshBadge 函数给子组件
-provide('refreshBadge', (type: string, count: number) => {
-    if (type === 'sys') {
-        unreadCount.value = count
-    }
+let media: MediaQueryList | null = null
+const syncMobile = (e: MediaQueryListEvent | MediaQueryList) => {
+  isMobile.value = e.matches
+  // 从移动端切回桌面：抽屉状态复位，避免遮罩残留
+  if (!e.matches) mobileOpen.value = false
+}
+
+onMounted(() => {
+  media = window.matchMedia('(max-width: 900px)')
+  syncMobile(media)
+  media.addEventListener('change', syncMobile)
+  window.addEventListener('keydown', onGlobalKeydown)
+
+  // 刷新页面后 Pinia 里可能还没有用户信息（游客判断依赖它）
+  if (getToken() && !userStore.name) {
+    userStore.getInfo().catch(() => {})
+  }
+  fetchUnread()
+})
+
+onBeforeUnmount(() => {
+  media?.removeEventListener('change', syncMobile)
+  window.removeEventListener('keydown', onGlobalKeydown)
 })
 
 /**
- * 获取未读消息数
- * 调用后端 listAllNotice 接口获取所有通知，
- * 过滤出 isRead === false 的通知数量作为红点数字
+ * 侧栏收起/展开快捷键：Ctrl + Alt + B（与 DSH 的侧边栏开关同一组合）
+ * 在输入框里打字时不拦截，避免和浏览器/输入法的组合键打架。
  */
-const fetchUnread = async () => {
-    // 未登录 / 游客：不展示消息铃铛，也不轮询未读
-    if (!getToken() || userStore.isGuest) {
-        unreadCount.value = 0
-        return
-    }
-    try {
-        const res = await listAllNotice()
-        const all = res.data || []
-        const myId = userStore.id
-        // 后端返回的是 read 字段（true=已读，false=未读）
-        // 只统计系统公告 + 发给当前用户的用户通知（评论 / 回复 / @我），
-        // 避免把发给别人的用户通知也算进红点
-        const unreadCountValue = all.filter(n => !n.read && (isSystemNotice(n) || isUserNoticeFor(n, myId))).length
-        unreadCount.value = unreadCountValue
-    } catch (e) {
-        // 获取失败静默处理，不影响页面使用
-    }
-
-    // 叠加「分享通知」等定向通知的未读数
-    try {
-        const notifyRes = await getNotificationUnreadCount()
-        unreadCount.value = (unreadCount.value || 0) + (notifyRes.data || 0)
-    } catch (e) {
-        // 未登录 / 失败时忽略
-    }
+function onGlobalKeydown(e: KeyboardEvent) {
+  if (!e.ctrlKey || !e.altKey || e.key.toLowerCase() !== 'b') return
+  const el = e.target as HTMLElement | null
+  const tag = el?.tagName?.toLowerCase()
+  if (tag === 'input' || tag === 'textarea' || el?.isContentEditable) return
+  e.preventDefault()
+  toggleSidebar()
 }
 
-// ==================== 生命周期 ====================
-onMounted(async () => {
-    // 如果有 token 但没有用户信息（如刷新页面），先恢复用户信息，游客判断才可靠
-    if (getToken() && !userStore.name) {
-        await userStore.getInfo().catch(() => { })
-    }
-    // 页面加载时拉取未读消息数（游客跳过）
-    fetchUnread()
-})
-
-// 路由切换时刷新未读消息数（实现"准实时"红点更新，无需 WebSocket）
-watch(() => route.path, () => {
-    fetchUnread()
-})
-
-// ==================== 导航菜单相关 ====================
-
-/**
- * 判断当前路由是否属于某个模块（用于菜单高亮）
- * 例如：当前路径是 /front/myQuestion/myBank → 'myQuestion' 模块高亮
- */
-const isModuleActive = (moduleKey) => {
-    return route.path.startsWith(`/front/${moduleKey}`)
+function toggleSidebar() {
+  collapsed.value = !collapsed.value
+  localStorage.setItem(COLLAPSE_KEY, collapsed.value ? '1' : '0')
 }
 
-/**
- * 跳转到模块的子页面（带记忆功能）
- * @param moduleKey  模块标识，如 'myQuestion'
- * @param defaultPath 默认子页面，如 'myBank'
- *
- * 工作原理：
- * 1. 如果用户已在该模块内 → 不做任何跳转（避免重复渲染）
- * 2. 从 Pinia 缓存中读取上次访问的子页面路径
- * 3. 如果没有缓存记录，使用 defaultPath 作为默认值
- *
- * 示例：用户上次访问了 /front/myQuestion/wrongBook
- *       下次点击"我的学习"直接回到错题本，而不是默认的 myBank
- */
-const goToModule = async (moduleKey, defaultPath) => {
-    if (isModuleActive(moduleKey)) return
-    // 「我的学习」是个人数据，游客先提示登录；「学习分享」是公开浏览，可直接进入
-    if (moduleKey === 'myQuestion' && !(await ensureLogin('查看我的学习'))) return
-    const lastVisited = cacheStore.getLastVisited(moduleKey, defaultPath)
-    router.push(`/front/${moduleKey}/${lastVisited}`)
+function onTopbarMenu() {
+  if (isMobile.value) mobileOpen.value = true
+  else toggleSidebar()
 }
 
-/**
- * 跳转到题库搭建模块（直接进入创建题库页面）
- */
-const goToStudio = async () => {
-    if (isModuleActive('studio')) return
-    if (!(await ensureLogin('创建题库'))) return
-    router.push('/front/studio/create?type=public')
-}
-
-/**
- * 跳转到智能体（大屏对话）
- *
- * 与「学习分享」不同：智能体会写用户的题库数据，所以必须先登录。
- */
-const goToAgent = async () => {
-    if (isModuleActive('agent')) return
-    if (!(await ensureLogin('使用智能体'))) return
-    router.push('/front/agent/chat')
-}
-
-// ==================== 页面缓存管理 ====================
-/**
- * 监听路由变化，自动将页面注册到 keep-alive 缓存列表
- * 这样用户在模块间切换时，已访问的页面不会重新加载
- *
- * 注意：每个缓存的 name 必须和对应组件的 defineOptions({ name: 'xxx' }) 一致
- */
-watch(() => route.path, () => {
-    const { name, meta, path, fullPath, query } = route
-
-    // 通用：将非隐藏页面加入 tagsView（顶部标签栏）
-    if (name && !meta.hidden && name !== 'login' && name !== 'register') {
-        tagsViewStore.addView({ name, path, fullPath, meta, query })
-    }
-
-    // 以下为各模块的聚合页缓存注册
-    // 聚合页 = 包含子路由的父页面（如"我的学习"包含题库列表、错题本等子页面）
-
-    // 我的学习聚合页缓存
-    if (path.startsWith('/front/myQuestion') && !tagsViewStore.cachedViews.includes('FrontMyQuestion')) {
-        tagsViewStore.addView({
-            name: 'FrontMyQuestion',
-            path: '/front/myQuestion',
-            fullPath: '/front/myQuestion',
-            meta: { title: '我的学习' }
-        })
-    }
-
-    // 题库搭建聚合页缓存
-    if (path.startsWith('/front/studio') && !tagsViewStore.cachedViews.includes('FrontStudio')) {
-        tagsViewStore.addView({
-            name: 'FrontStudio',
-            path: '/front/studio',
-            fullPath: '/front/studio',
-            meta: { title: '题库搭建' }
-        })
-    }
-
-    // 学习分享聚合页缓存
-    if (path.startsWith('/front/notes') && !tagsViewStore.cachedViews.includes('FrontNotes')) {
-        tagsViewStore.addView({
-            name: 'FrontNotes',
-            path: '/front/notes',
-            fullPath: '/front/notes',
-            meta: { title: '学习分享' }
-        })
-    }
-
-    // 智能体聚合页缓存
-    if (path.startsWith('/front/agent') && !tagsViewStore.cachedViews.includes('FrontAgent')) {
-        tagsViewStore.addView({
-            name: 'FrontAgent',
-            path: '/front/agent',
-            fullPath: '/front/agent',
-            meta: { title: '智能体' }
-        })
-    }
-
-    // 笔记编辑器缓存（编辑器需要保持输入状态，不能被销毁重建）
-    if (path.startsWith('/front/notes/editor') && !tagsViewStore.cachedViews.includes('FrontNotesEditor')) {
-        tagsViewStore.addView({
-            name: 'FrontNotesEditor',
-            path: path,
-            fullPath: path,
-            meta: { title: '笔记编辑' }
-        })
-    }
-
-    // 消息中心缓存
-    if (path.startsWith('/front/messages') && !tagsViewStore.cachedViews.includes('FrontMessages')) {
-        tagsViewStore.addView({
-            name: 'FrontMessages',
-            path: '/front/messages',
-            fullPath: '/front/messages',
-            meta: { title: '消息中心' }
-        })
-    }
-
-    // 题库练习聚合页缓存
-    if (path.startsWith('/front/questionPractice') && !tagsViewStore.cachedViews.includes('FrontQuestionPractice')) {
-        tagsViewStore.addView({
-            name: 'FrontQuestionPractice',
-            path: '/front/questionPractice',
-            fullPath: '/front/questionPractice',
-            meta: { title: '题库练习' }
-        })
-    }
-}, { immediate: true })
-
-// ==================== 计算属性 ====================
-
-/** 是否已登录（通过 token 判断） */
-const isLogin = computed(() => !!userStore.token)
-
-/** 是否为游客只读账号 */
-const isGuest = computed(() => userStore.isGuest)
-
-/** 是否为管理员（用于显示"切换到后台"菜单项） */
-const isAdmin = computed(() => checkRole(['admin']))
-
-/** 是否为消息中心页面（隐藏底部页脚，给消息列表更多空间） */
-const isMessagesPage = computed(() => route.path.startsWith('/front/messages'))
-
-/** 是否为笔记编辑器页面（全屏模式，隐藏页脚） */
-const isNotesEditorPage = computed(() => route.path === '/front/notes/editor')
-
-/**
- * 是否为智能体页面
- *
- * 智能体是「大屏对话」形态：消息区必须自己占满剩余高度并内部滚动，
- * 不能靠整页滚动（否则输入框会被挤到视口外）。所以给它一个专属的全屏模式，
- * 同时隐藏页脚（页脚会把对话区顶短）。
- */
-const isAgentPage = computed(() => route.path.startsWith('/front/agent'))
-
-/** 是否隐藏底部页脚 */
-const hideFooter = computed(
-    () => isMessagesPage.value || isNotesEditorPage.value || isAgentPage.value
+/** 移动端点导航后自动收起抽屉 */
+watch(
+  () => route.path,
+  () => {
+    mobileOpen.value = false
+  }
 )
 
-// ==================== 用户操作 ====================
+// ==================== 未读消息 ====================
+const unreadCount = ref(0)
 
-/** 消息中心需要登录；游客点击时先提示 */
+provide('refreshBadge', (type: string, count: number) => {
+  if (type === 'sys') unreadCount.value = count
+})
+
+async function fetchUnread() {
+  if (!getToken() || userStore.isGuest) {
+    unreadCount.value = 0
+    return
+  }
+  try {
+    const res = await listAllNotice()
+    const all = res.data || []
+    const myId = userStore.id
+    unreadCount.value = all.filter(
+      (n) => !n.read && (isSystemNotice(n) || isUserNoticeFor(n, myId))
+    ).length
+  } catch (e) {
+    /* 静默：红点失败不影响页面 */
+  }
+  try {
+    const notifyRes = await getNotificationUnreadCount()
+    unreadCount.value = (unreadCount.value || 0) + (notifyRes.data || 0)
+  } catch (e) {
+    /* 未登录 / 失败忽略 */
+  }
+}
+
+watch(() => route.path, fetchUnread)
+
+// ==================== 用户态 / 页面模式 ====================
+const isLogin = computed(() => !!userStore.token)
+const isGuest = computed(() => userStore.isGuest)
+
+const isAgentPage = computed(() => route.path.startsWith('/front/agent'))
+const isNotesEditorPage = computed(() => route.path === '/front/notes/editor')
+const isMessagesPage = computed(() => route.path.startsWith('/front/messages'))
+
+/** 满高页面：自己管滚动，外壳不套 padding */
+const isFlushPage = computed(
+  () => isAgentPage.value || isNotesEditorPage.value || isMessagesPage.value
+)
+
+/**
+ * 顶栏标题 = **模块名**，不是叶子页面名。
+ * 理由：业务页自己都有二级标题（"我的题库 共 9 个" / "系统通知"…），
+ * 顶栏再显示一遍叶子标题就是重复；这里统一显示模块名，形成"模块 → 页面"的层级。
+ */
+const SECTION_TITLES: Array<[string, string]> = [
+  ['/front/agent', '智能对话'],
+  ['/front/questionPractice', '题库练习'],
+  ['/front/myQuestion', '我的学习'],
+  ['/front/notes', '学习分享'],
+  ['/front/english', '英语学习'],
+  ['/front/studio', '题库搭建'],
+  ['/front/tools', '实用工具箱'],
+  ['/front/messages', '消息中心'],
+  ['/front/profile', '个人中心']
+]
+
+const pageTitle = computed(() => {
+  const hit = SECTION_TITLES.find(([prefix]) => route.path.startsWith(prefix))
+  if (hit) return hit[1]
+  return (route.meta?.title as string) || 'OpenStudy'
+})
+
+// ==================== 动作 ====================
 async function goMessages() {
-    if (!(await ensureLogin('查看消息中心'))) return
-    router.push('/front/messages')
+  if (!(await ensureLogin('查看消息中心'))) return
+  router.push('/front/messages')
 }
 
-/** 游客切换为正式登录：保留游客态直接去登录页，登录成功后 token 会被新账号覆盖 */
-function goLogin() {
-    const redirect = route.fullPath || '/front/index'
-    router.push({ path: '/login', query: { redirect } })
+/* ---- 账号区（右上角）---- */
+const isAdmin = computed(() => checkRole(['admin']))
+const displayName = computed(() => userStore.nickName || userStore.name || '用户')
+const roleLabel = computed(() => {
+  if (userStore.isGuest) return '游客模式'
+  if (isAdmin.value) return '管理员'
+  return '学习者'
+})
+
+function goProfile() {
+  router.push('/front/profile')
 }
 
-/** 游客切换到注册页：保留游客态，注册成功后由注册流程接管 */
-function goRegister() {
-    const redirect = route.fullPath || '/front/index'
-    router.push({ path: '/register', query: { redirect } })
-}
-
-/** 管理员切换到后台管理页面 */
 function goAdmin() {
-    router.push('/index/home')
+  router.push('/index/home')
 }
 
-/** 退出登录：弹出确认框 → 调用 store 登出 → 跳转首页 */
-function logout() {
-    const tip = isGuest.value ? '确定退出游客模式吗？' : '确定注销并退出系统吗？'
-    ElMessageBox.confirm(tip, '提示', {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-    }).then(async () => {
-        await userStore.logOut()
-        router.push('/front/index')
-    }).catch(() => { })
+function goLogin() {
+  router.push({ path: '/login', query: { redirect: route.fullPath } })
 }
+
+function goRegister() {
+  router.push({ path: '/register', query: { redirect: route.fullPath } })
+}
+
+async function doLogout() {
+  try {
+    await ElMessageBox.confirm(
+      userStore.isGuest ? '确定退出游客模式吗？' : '确定退出登录吗？',
+      '提示',
+      { confirmButtonText: '退出', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return
+  }
+  await userStore.logOut()
+  router.push('/front/agent/chat')
+}
+
+// ==================== keep-alive 缓存注册 ====================
+/**
+ * 与旧版一致：把聚合页 / 编辑器等"父级容器"手动注册进缓存表。
+ * 缓存名必须与对应组件的 defineOptions({ name }) 完全一致。
+ */
+watch(
+  () => route.path,
+  () => {
+    const { name, meta, path, fullPath, query } = route
+
+    if (name && !meta.hidden && name !== 'login' && name !== 'register') {
+      tagsViewStore.addView({ name, path, fullPath, meta, query })
+    }
+
+    const register = (cacheName: string, cachePath: string, title: string) => {
+      if (!tagsViewStore.cachedViews.includes(cacheName)) {
+        tagsViewStore.addView({ name: cacheName, path: cachePath, fullPath: cachePath, meta: { title } })
+      }
+    }
+
+    if (path.startsWith('/front/myQuestion')) register('FrontMyQuestion', '/front/myQuestion', '我的学习')
+    if (path.startsWith('/front/studio')) register('FrontStudio', '/front/studio', '题库搭建')
+    if (path.startsWith('/front/notes/editor')) register('FrontNotesEditor', path, '笔记编辑')
+    else if (path.startsWith('/front/notes')) register('FrontNotes', '/front/notes', '学习分享')
+    if (path.startsWith('/front/agent')) register('FrontAgent', '/front/agent', '智能体')
+    if (path.startsWith('/front/messages')) register('FrontMessages', '/front/messages', '消息中心')
+    if (path.startsWith('/front/questionPractice')) {
+      register('FrontQuestionPractice', '/front/questionPractice', '题库练习')
+    }
+    if (path.startsWith('/front/english')) register('FrontEnglish', '/front/english', '英语学习')
+    if (path.startsWith('/front/tools')) register('FrontTools', '/front/tools', '实用工具')
+  },
+  { immediate: true }
+)
+
+const cachedViews = computed(() => tagsViewStore.cachedViews)
 </script>
 
-<!-- ==================== 样式部分 ==================== -->
 <style scoped lang="scss">
-/*
- * 设计系统颜色变量
- * 项目统一使用灰色系配色，避免花哨的颜色
- */
-:root {
-    --gray-50: #f9fafb;
-    --gray-100: #f3f4f6;
-    --gray-200: #e5e7eb;
-    --gray-400: #9ca3af;
-    --gray-500: #6b7280;
-    --gray-600: #4b5563;
-    --gray-700: #374151;
-    --gray-900: #111827;
+/* ==================== 应用外壳 ==================== */
+.os-app {
+  display: flex;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  border-radius: 0;
+  background: var(--os-bg);
+  color: var(--os-text);
 }
 
-.front-layout {
-    min-height: 100vh;
+/* 侧栏与主区必须"严丝合缝"：不留外边距、不留圆角，交接处只用一条 1px 发丝线 */
+.os-sidebar-host {
+  flex: none;
+  height: 100%;
+  z-index: 30;
+  margin: 0;
+  border-radius: 0;
+  border-right: 1px solid var(--os-border-soft);
+  box-sizing: border-box;
+}
+
+.os-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  margin: 0;
+  border-radius: 0;
+  background: var(--os-bg);
+}
+
+/* ==================== 顶栏 ==================== */
+.os-topbar {
+  flex: none;
+  height: var(--os-topbar-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 0 16px 0 20px;
+  border-radius: 0;
+  border-bottom: 1px solid var(--os-border-soft);
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.os-topbar__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.os-topbar__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--os-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.os-topbar__right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.os-bell {
+  position: relative;
+}
+
+.os-bell__dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--os-accent);
+  box-shadow: 0 0 0 2px #fff;
+}
+
+/* ==================== 右上角账号区 ====================
+   从侧栏底部搬过来的（用户 2026-10-17）。顶栏只有 52px 高，
+   所以这里做成「小头像 + 两行文字（名字 / 角色）」的紧凑形态，
+   hover 给一层浅底，点开是下拉。 */
+.os-user {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 8px 0 5px;
+  border: none;
+  border-radius: var(--os-radius-sm);
+  background: transparent;
+  color: var(--os-text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out);
+
+  &:hover {
+    background: var(--os-bg-hover);
+  }
+}
+
+.os-user__meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: 130px;
+  line-height: 1.2;
+}
+
+.os-user__name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--os-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.os-user__role {
+  font-size: 11px;
+  color: var(--os-text-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.os-user__caret {
+  flex: none;
+  color: var(--os-text-4);
+}
+
+.os-user__dot {
+  position: absolute;
+  top: 6px;
+  left: 24px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--os-accent);
+  box-shadow: 0 0 0 2px #fff;
+}
+
+/* 未登录：登录 / 注册 */
+.os-topbar__link,
+.os-topbar__signup {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--os-radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.os-topbar__link {
+  border: 1px solid var(--os-border);
+  background: #fff;
+  color: var(--os-text);
+
+  &:hover {
+    background: var(--dsw-static-neutral-bluish-75);
+  }
+}
+
+.os-topbar__signup {
+  border: 1px solid var(--os-primary);
+  background: var(--os-primary);
+  color: #fff;
+
+  &:hover {
+    background: var(--os-primary-hover);
+  }
+}
+
+/* 顶栏账号下拉：popper 在 body 上，样式不能 scoped */
+
+/* ==================== 内容区 ==================== */
+.os-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--os-bg);
+  border-radius: 0;
+
+  &.is-flush {
+    overflow: hidden;
     display: flex;
     flex-direction: column;
-
-    /* ========== 顶部导航栏 ========== */
-    .front-header {
-        background: rgba(255, 255, 255, 0.95);
-        /* 半透明白色背景 */
-        backdrop-filter: blur(12px);
-        /* 毛玻璃效果 */
-        -webkit-backdrop-filter: blur(12px);
-        border-bottom: 1px solid #e5e7eb;
-        padding: 0 32px;
-        height: 68px;
-        display: flex;
-        align-items: center;
-        position: sticky;
-        /* 滚动时固定在顶部 */
-        top: 0;
-        z-index: 100;
-
-        .header-container {
-            max-width: 1280px;
-            width: 100%;
-            margin: 0 auto;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            /* Logo | 导航 | 用户 三栏分布 */
-
-            /* Logo 样式 */
-            .logo {
-                cursor: pointer;
-                padding: 8px 12px;
-                border-radius: 10px;
-                transition: all 0.2s ease-in-out;
-
-                &:hover {
-                    background: #f5f7fa;
-                }
-
-                h1 {
-                    margin: 0;
-                    font-size: 22px;
-                    font-weight: 600;
-                    color: #1f2937;
-                    letter-spacing: -0.5px;
-                }
-            }
-
-            /* 导航菜单样式 */
-            .nav-menu {
-                display: flex;
-                gap: 8px;
-
-                a {
-                    color: #6b7280;
-                    text-decoration: none;
-                    font-size: 15px;
-                    font-weight: 500;
-                    padding: 8px 16px;
-                    border-radius: 8px;
-                    transition: all 0.2s ease-in-out;
-                    position: relative;
-                    cursor: pointer;
-
-                    &:hover {
-                        color: #374151;
-                        background: #f5f7fa;
-                    }
-
-                    /* 当前激活的菜单项高亮 */
-                    &.router-link-active {
-                        color: #1f2937;
-                        background: #f3f4f6;
-                        font-weight: 600;
-                    }
-                }
-            }
-
-            /* 右侧用户区域 */
-            .user-area {
-                display: flex;
-                align-items: center;
-                gap: 12px;
-
-                /* 消息铃铛红点样式 */
-                .bell-badge {
-                    :deep(.el-badge__content) {
-                        font-size: 11px;
-                        height: 16px;
-                        line-height: 16px;
-                        padding: 0 4px;
-                        border: none;
-                    }
-
-                    .bell-btn {
-                        width: 34px;
-                        height: 34px;
-                        font-size: 18px;
-                        color: #6b7280;
-                        background: transparent;
-                        border: none;
-                        transition: all 0.2s ease-in-out;
-
-                        &:hover {
-                            color: #374151;
-                            background: #f5f7fa;
-                        }
-                    }
-                }
-
-                /* 用户名下拉触发区域 */
-                .user-name {
-                    cursor: pointer;
-                    color: #6b7280;
-                    font-weight: 500;
-                    display: flex;
-                    align-items: center;
-                    gap: 6px;
-                    padding: 8px 14px;
-                    border-radius: 8px;
-                    transition: all 0.2s ease-in-out;
-                    outline: none;
-
-                    &:hover {
-                        background: #f5f7fa;
-                        color: #374151;
-                    }
-
-                    &:focus {
-                        outline: none;
-                    }
-
-                    &:focus-visible {
-                        outline: none;
-                    }
-                }
-            }
-        }
-    }
-
-    /* ========== 主内容区 ========== */
-    .front-main {
-        flex: 1;
-        /* 撑满剩余空间，将页脚推到底部 */
-        width: 100%;
-        margin: 12px 0;
-        padding: 0 16px;
-    }
-
-    /* ========== 底部页脚 ========== */
-    .front-footer {
-        background: white;
-        padding: 16px;
-        text-align: center;
-        color: #6b7280;
-        margin-top: auto;
-        /* 始终贴底 */
-        border-top: 1px solid #e5e7eb;
-        font-size: 13px;
-
-        /* hide-footer 模式下隐藏页脚 */
-        .hide-footer & {
-            display: none;
-        }
-    }
-}
-
-/* 消息中心/笔记编辑器页面：隐藏页脚 */
-.front-layout.hide-footer {
-    .front-footer {
-        display: none;
-    }
-}
-
-/* 笔记编辑器全屏模式：去掉内边距，让编辑器占满屏幕 */
-.front-layout.notes-editor-mode {
-    .front-main {
-        margin: 0;
-        padding: 0;
-        max-width: 100%;
-        height: calc(100vh - 68px);
-        overflow: hidden;
-    }
+  }
 }
 
 /*
-  智能体全屏模式：对话区吃满「视口 - 顶栏」的剩余高度，内部自己滚动。
-  与 notes-editor-mode 的区别只在留白 —— 智能体保留一点内边距，
-  让卡片式外壳（圆角 + 描边）看起来像一块独立的对话面板。
-
-  ⚠️ 这里必须给**容器**一个确定高度（`height: 100vh` + `overflow: hidden`），
-  不能只写 `min-height`。原因（CDP 实测，别改回去）：
-    · `.front-main` 是 `flex: 1`，即 `flex-basis: 0%` —— 它的主轴尺寸**完全**由
-      「容器高度 - 兄弟项高度」分配而来，写在它自己身上的 `height` 是死代码；
-    · 只给 `min-height: 100vh` 时，容器的 height 仍是 auto（由内容决定），
-      于是 `.front-main` 的尺寸变成**内容驱动、且对子元素而言是「不确定」的**：
-      下面 `.agent-page { height: 100% }` 因此退化成 auto，整条链跟着内容长高 ——
-      `.chat-messages` 的 clientHeight 会等于 scrollHeight（永远不滚），
-      滚动条跑到整份文档上，输入框被顶到几千像素之外（「要滚到底才看得见」）。
-    · 实测（1400×950 窗口里塞 3000px 内容）：
-        只加 `height:100vh` 前 —— 文档 scrollHeight 3631 / 视口 665、输入框 bottom 3617（不可见）
-        只加 `height:100vh` 后 —— 文档 scrollHeight 665（不再滚）、
-                              `.chat-messages` 524/3491 自己滚、输入框 bottom 650（钉在底部）
-    · `.front-main` 自己的 `height: calc(100vh - 68px)` 保留只是为了让「内容不足时」
-      的观感不变（它的 flex-basis 仍是 0%，不参与高度计算）。
-*/
-.front-layout.agent-mode {
-    /* 撑满且不产生文档级滚动 —— 滚动只允许发生在消息区内部 */
-    height: 100vh;
-    overflow: hidden;
-
-    .front-main {
-        margin: 0;
-        padding: 0 16px;
-        max-width: 100%;
-        height: calc(100vh - 68px);
-        /* 兜底：即使将来有人把 flex 改回 auto，也不让内容把这一层顶高 */
-        min-height: 0;
-        overflow: hidden;
-        box-sizing: border-box;
-    }
+ * 页面根节点不允许再自带圆角/外边距：
+ * 曾经出现过"内容区是一张悬浮圆角卡片"的写法，卡片四角会把侧栏底色露出来，
+ * 在侧栏与内容之间形成一道弧形空隙。外壳已经负责分栏与留白，页面根节点保持方正、贴边。
+ */
+.os-content > * {
+  border-radius: 0;
+  margin-top: 0;
+  margin-bottom: 0;
 }
 
-/* ========== 响应式适配 ========== */
-/* 中等屏幕（平板横屏） */
-@media (max-width: 1200px) {
-    .front-layout {
-        .front-header {
-            padding: 0 24px;
-
-            .header-container {
-                .nav-menu {
-                    gap: 6px;
-
-                    a {
-                        padding: 6px 12px;
-                        font-size: 14px;
-                    }
-                }
-
-                .logo h1 {
-                    font-size: 20px;
-                }
-            }
-        }
-
-        .front-main {
-            padding: 0 24px;
-        }
-    }
+/* ==================== 移动端 ==================== */
+.os-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(15, 17, 21, 0.32);
+  backdrop-filter: blur(2px);
 }
 
-/* 较小屏幕（平板竖屏） */
-@media (max-width: 1024px) {
-    .front-layout {
-        .front-header {
-            padding: 0 16px;
-            height: 60px;
+@media (max-width: 900px) {
+  .os-sidebar-host {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100%;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform var(--ds-duration-base) var(--ds-ease-in-out);
+    box-shadow: 12px 0 32px rgba(0, 0, 0, 0.12);
+  }
 
-            .header-container {
-                .nav-menu {
-                    gap: 4px;
+  /* 抽屉态宽度固定：拖拽出来的内联宽度（桌面端记忆值）在移动端不适用 */
+  .os-sidebar-host :deep(.os-sidebar) {
+    width: min(86vw, 320px) !important;
+  }
 
-                    a {
-                        padding: 6px 10px;
-                        font-size: 14px;
-                    }
-                }
+  .os-sidebar-host :deep(.sb-resize-handle) {
+    display: none;
+  }
 
-                .logo h1 {
-                    font-size: 18px;
-                }
-            }
-        }
+  .is-mobile-open .os-sidebar-host {
+    transform: translateX(0);
+  }
 
-        .front-main {
-            padding: 0 16px;
-            margin: 12px auto;
-        }
-
-        .front-footer {
-            padding: 24px 16px;
-        }
-    }
-}
-
-/* 移动端 */
-@media (max-width: 768px) {
-    .front-layout {
-        .front-header {
-            padding: 0 12px;
-            height: 56px;
-
-            .header-container {
-                .nav-menu {
-                    gap: 2px;
-
-                    a {
-                        padding: 6px 8px;
-                        font-size: 13px;
-                    }
-                }
-
-                .logo {
-                    padding: 6px 8px;
-
-                    h1 {
-                        font-size: 16px;
-                    }
-                }
-            }
-        }
-
-        .front-main {
-            padding: 0 12px;
-            margin: 16px auto;
-        }
-
-        .front-footer {
-            padding: 20px 12px;
-            font-size: 12px;
-        }
-    }
-}
-
-/* 下拉菜单图标间距 */
-.el-dropdown-menu .el-icon {
-    margin-right: 8px;
+  .os-topbar {
+    padding: 0 12px;
+  }
 }
 </style>
 
-<!-- ==================== 全局样式（非 scoped） ==================== -->
-<!--
-  以下样式不加 scoped，用于覆盖 Element Plus 组件的默认样式
-  确保下拉菜单、对话框等弹出层也能使用项目统一的设计风格
--->
 <style lang="scss">
-/* 用户区域按钮统一白底灰边风格 */
-.front-layout .user-area .el-button {
-    border-radius: 8px;
-    font-weight: 500;
-    padding: 6px 14px;
-    transition: all 0.2s ease-in-out;
-    background: #fff;
-    border: 1px solid #e5e7eb;
-    color: #374151;
+/* 顶栏账号下拉：popper 挂在 body 上，必须放在非 scoped 样式里 */
+.os-user-pop {
+  min-width: 160px;
 
-    &:hover {
-        border-color: #d1d5db;
-        color: #111827;
-        background: #fff;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
-    }
-
-    &:active {
-        box-shadow: none;
-    }
-}
-
-/* 注册按钮（主要按钮）样式 */
-.front-layout .user-area .el-button--primary {
-    background: #fff;
-    border-color: #d1d5db;
-    color: #111827;
-
-    &:hover {
-        background: #fff;
-        border-color: #9ca3af;
-        color: #111827;
-    }
-}
-
-/* 下拉菜单项样式 */
-.el-dropdown-menu__item {
-    border-radius: 6px;
-    margin: 2px 6px;
-    padding: 8px 12px;
-    transition: all 0.2s ease-in-out;
-
-    &:hover {
-        background: #f3f4f6;
-        color: #111827;
-    }
-}
-
-/* 全局 Tag 标签样式覆盖 */
-.el-tag--info {
-    background: #f3f4f6;
-    border-color: #e5e7eb;
-    color: #6b7280;
-}
-
-.el-tag--warning {
-    background: #fefce8;
-    border-color: #e5e0c0;
-    color: #947a4a;
-}
-
-.el-tag--danger {
-    background: #fef2f2;
-    border-color: #e5d0d0;
-    color: #b45353;
-}
-
-.el-tag--success {
-    background: #f0f9eb;
-    border-color: #e1f3d8;
-    color: #67c23a;
-}
-
-/* 全局分页样式覆盖 */
-.el-pagination {
-    .el-pager li {
-        border-radius: 6px;
-        transition: all 0.2s ease-in-out;
-
-        &:hover {
-            background: #f3f4f6;
-            color: #374151;
-        }
-
-        &.is-active {
-            background: #f3f4f6;
-            color: #111827;
-        }
-    }
-}
-
-/* 全局空状态文字颜色 */
-.el-empty__description {
-    color: #9ca3af;
-}
-
-/* 全局下拉菜单圆角 */
-.el-dropdown-menu {
-    border-radius: 8px;
-}
-
-.el-select-dropdown__item {
-    border-radius: 8px;
-    transition: all 0.2s ease-in-out;
-
-    &:hover {
-        background: #f3f4f6;
-    }
-}
-
-/* 全局输入框圆角 + 边框统一风格 */
-.el-input__wrapper {
-    border-radius: 8px;
-    box-shadow: 0 0 0 1px #e5e7eb;
-    transition: all 0.2s ease-in-out;
-
-    &:hover {
-        box-shadow: 0 0 0 1px #d1d5db;
-    }
-
-    &.is-focus {
-        box-shadow: 0 0 0 1px #b3b3b3;
-    }
-}
-
-.el-textarea__inner {
-    border-radius: 8px;
-    border-color: #e5e7eb;
-    transition: all 0.2s ease-in-out;
-
-    &:hover {
-        border-color: #d1d5db;
-    }
-
-    &:focus {
-        border-color: #b3b3b3;
-    }
-}
-
-/* 全局对话框圆角 + 分割线 */
-.el-dialog {
-    border-radius: 16px;
-    overflow: hidden;
-
-    .el-dialog__header {
-        padding: 20px 24px 16px;
-        border-bottom: 1px solid #f3f4f6;
-
-        .el-dialog__title {
-            font-size: 17px;
-            font-weight: 600;
-            color: #1f2937;
-        }
-    }
-
-    .el-dialog__body {
-        padding: 24px;
-    }
-
-    .el-dialog__footer {
-        padding: 16px 24px 20px;
-        border-top: 1px solid #f3f4f6;
-    }
-}
-
-/*
- * 修复：顶部导航 .front-header 的 backdrop-filter 毛玻璃会创建合成层，
- * 与 Element Plus 弹层（el-drawer / el-dialog 等 fixed overlay，打开时 body
- * 会带上 el-popup-parent--hidden）产生合成冲突，使弹层在导航栏以下区域被
- * “挖空”无法绘制。弹层打开时页面已被遮罩覆盖、毛玻璃本就无作用，此时临时
- * 关闭它即可，弹层关闭、class 移除后毛玻璃自动恢复。
- */
-body.el-popup-parent--hidden .front-layout .front-header {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+  .dd-ico {
+    margin-right: 8px;
+    color: var(--os-text-3);
+  }
 }
 </style>

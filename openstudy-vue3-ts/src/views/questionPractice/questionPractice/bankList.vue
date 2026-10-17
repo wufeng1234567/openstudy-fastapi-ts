@@ -1,4 +1,4 @@
-﻿<!-- src/views/questionPractice/bankList.vue -->
+<!-- src/views/questionPractice/bankList.vue -->
 <template>
   <div class="app-container">
     <BankCardGrid :banks="questionBankList" :loading="loading" title="公开题库" :show-total-count="true" :show-search="true"
@@ -163,7 +163,17 @@ onActivated(() => {
 
 <style scoped lang="scss">
 .app-container {
-  padding: 24px;
+  width: 100%;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 22px 28px 48px;
+  box-sizing: border-box;
   min-height: calc(100vh - 100px);
+}
+
+@media (max-width: 1024px) {
+  .app-container {
+    padding: 16px 18px 40px;
+  }
 }
 </style>

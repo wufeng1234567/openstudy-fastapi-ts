@@ -4,38 +4,43 @@ import 'nprogress/nprogress.css'
 import { getToken } from '@/utils/auth'
 import { isHttp } from '@/utils/validate'
 import { isRelogin } from '@/utils/request'
-import { ElMessageBox } from 'element-plus'
 import useUserStore from '@/store/modules/user'
 import useSettingsStore from '@/store/modules/settings'
 import usePermissionStore from '@/store/modules/permission'
+import { promptLogin, isLoginPromptSuppressed } from '@/utils/loginGuard'
 import type { RouteRecordRaw } from 'vue-router'
 
 NProgress.configure({ showSpinner: false });
 
-const whiteList: string[] = ['/', '/login', '/register', '/front/index', '/front/courses', '/front/resources'];
+const whiteList: string[] = ['/', '/login', '/register', '/front/agent/chat', '/front/courses', '/front/resources'];
 
 /** 当前路由是否标记为必须登录（子路由会继承父级 matched meta） */
 function needsLogin(to: any): boolean {
   return (to.matched || []).some((record: any) => record.meta && record.meta.requiresLogin)
 }
 
-/** 游客访问登录后功能时，提示去登录；返回 true 表示已拦截 */
+/**
+ * 游客访问登录后功能时，提示去登录；返回 true 表示已拦截。
+ *
+ * ⚠️ 提示统一走 `promptLogin()`（全局单例）：
+ *    这里以前自己也弹一个 ElMessageBox，于是「按钮 ensureLogin 弹一个 → 跳转守卫再弹一个」
+ *    变成了连环弹窗（用户 2026-10-17 报的 bug）。现在只复用同一个框；
+ *    正在跳登录 / 刚被拒绝的冷却期内直接静默拦截，不再打扰。
+ */
 function blockGuestToLogin(to: any, next: any): boolean {
   const userStore = useUserStore()
   if (!needsLogin(to) || !userStore.isGuest) return false
-
-  ElMessageBox.confirm('游客仅可浏览，登录后即可使用该功能。', '温馨提示', {
-    confirmButtonText: '去登录',
-    cancelButtonText: '再看看',
-    type: 'warning',
-    closeOnClickModal: false
-  }).then(() => {
-    // 不退出游客态；/login 已允许游客进入，登录成功后 token 会被新账号覆盖
-    next(`/login?redirect=${encodeURIComponent(to.fullPath)}`)
-  }).catch(() => {
+  if (isLoginPromptSuppressed()) {
     next(false)
+    NProgress.done()
+    return true
+  }
+
+  promptLogin('使用该功能').finally(() => {
+    // promptLogin 里已经负责跳转；这里只需结束这次导航（不要 next() 放行）
+    next(false)
+    NProgress.done()
   })
-  NProgress.done()
   return true
 }
 
@@ -71,26 +76,9 @@ router.beforeEach((to, from, next) => {
         NProgress.done()
       }
     } else if (to.path === '/') {
-      if (userStore.roles.length === 0) {
-        userStore.getInfo().then(() => {
-          if (userStore.roles.includes('admin')) {
-            next({ path: '/index/home' })
-          } else {
-            next({ path: '/front/index' })
-          }
-          NProgress.done()
-        }).catch(() => {
-          next({ path: '/front/index' })
-          NProgress.done()
-        })
-      } else {
-        if (userStore.roles.includes('admin')) {
-          next({ path: '/index/home' })
-        } else {
-          next({ path: '/front/index' })
-        }
-        NProgress.done()
-      }
+      // 进站即智能体：不再区分 admin / 普通用户，前台统一落在对话页
+      next({ path: '/front/agent/chat' })
+      NProgress.done()
     } else if (whiteList.indexOf(to.path) !== -1) {
       next()
     } else {
@@ -105,7 +93,7 @@ router.beforeEach((to, from, next) => {
 
           // 获取用户信息后，检查是否有权限访问后台页面
           if (to.path.startsWith('/index/') && !userStore.roles.includes('admin')) {
-            next({ path: '/front/index' })
+            next({ path: '/front/agent/chat' })
             NProgress.done()
             return
           }
@@ -119,7 +107,7 @@ router.beforeEach((to, from, next) => {
             next({ ...to, replace: true })
           }).catch(() => {
             isRelogin.show = false
-            next('/front/index')
+            next('/front/agent/chat')
             NProgress.done()
           })
         }).catch(() => {
@@ -134,7 +122,7 @@ router.beforeEach((to, from, next) => {
 
         // 已有用户信息，检查是否有权限访问后台页面
         if (to.path.startsWith('/index/') && !userStore.roles.includes('admin')) {
-          next({ path: '/front/index' })
+          next({ path: '/front/agent/chat' })
           NProgress.done()
           return
         }

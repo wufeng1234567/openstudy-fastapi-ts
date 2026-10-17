@@ -293,23 +293,19 @@ function redirectAfterLogin() {
   }, {})
 
   let targetPath = redirect.value
-  const roles = toRaw(userStore.roles)
-  const isAdmin = roles.includes('admin')
   const isGuest = userStore.isGuest
 
-  if (isAdmin) {
-    targetPath = '/index/home'
-  } else {
-    if (!targetPath || targetPath === '/' || targetPath === '/index/home') {
-      targetPath = '/front/index'
-    }
+  // 进站即智能体：登录成功后统一落在对话页（管理员也从这里进，后台走侧栏「后台管理」）
+  const HOME_PATH = '/front/agent/chat'
+  if (!targetPath || targetPath === '/' || targetPath === '/index/home' || targetPath === '/front/index') {
+    targetPath = HOME_PATH
+  }
 
-    // 游客只读：如果原 redirect 是个人中心/编辑器等需要登录的页面，统一回前台首页
-    if (isGuest && targetPath) {
-      const publicPrefixes = ['/front/index', '/front/questionPractice', '/front/notes', '/front/share']
-      if (!publicPrefixes.some(prefix => targetPath.startsWith(prefix))) {
-        targetPath = '/front/index'
-      }
+  // 游客只读：redirect 指向需要登录的页面时，退回对话页
+  if (isGuest && targetPath) {
+    const publicPrefixes = ['/front/agent', '/front/questionPractice', '/front/notes', '/front/share']
+    if (!publicPrefixes.some(prefix => targetPath.startsWith(prefix))) {
+      targetPath = HOME_PATH
     }
   }
 

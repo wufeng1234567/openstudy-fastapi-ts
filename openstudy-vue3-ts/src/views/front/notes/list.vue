@@ -4,13 +4,15 @@
 <template>
   <div class="notes-list-container">
     <!-- ==================== 页面头部 ==================== -->
-    <!-- 包含标题、刷新按钮和写笔记按钮 -->
+    <!-- 顶栏已显示「学习分享」，这里用「公开笔记」做二级标题，避免重复 -->
     <div class="header">
-      <div class="header-left"></div>
-      <h2 class="header-title">📝 学习分享</h2>
+      <div class="header-left">
+        <h2 class="header-title">公开笔记</h2>
+        <span class="header-sub">来自所有人的学习笔记与经验沉淀</span>
+      </div>
       <div class="header-right">
         <el-button class="refresh-btn" :icon="Refresh" @click="fetchNotes">刷新</el-button>
-        <el-button class="create-btn" @click="goEditor()">+ 写笔记</el-button>
+        <el-button class="create-btn" type="primary" @click="goEditor()">写笔记</el-button>
       </div>
     </div>
 
@@ -651,77 +653,83 @@ onBeforeUnmount(() => {
 
 <style lang="scss">
 .notes-list-container {
-  padding: 24px;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 22px 28px 48px;
+  box-sizing: border-box;
 
   .header {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    align-items: center;
-    margin-bottom: 28px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
   }
 
   .header-left {
-    justify-self: start;
+    min-width: 0;
   }
 
   .header-title {
     margin: 0;
-    font-size: 20px;
-    font-weight: 700;
-    color: #1f2937;
-    text-align: center;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--os-text);
+  }
+
+  .header-sub {
+    display: block;
+    margin-top: 4px;
+    font-size: 13px;
+    color: var(--os-text-3);
   }
 
   .header-right {
-    justify-self: end;
     display: flex;
     justify-content: flex-end;
     gap: 8px;
+    flex: none;
 
     .refresh-btn {
-      border-radius: 8px;
+      border-radius: var(--os-radius-sm);
       font-weight: 500;
-      padding: 8px 16px;
+      padding: 8px 14px;
       height: auto;
-      min-height: 38px;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      min-height: 34px;
+      transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
       background: #fff;
-      border: 1px solid #e5e7eb;
-      color: #6b7280;
+      border: 1px solid var(--os-border);
+      color: var(--os-text-2);
 
       &:hover {
-        background: #fff;
-        border-color: #409eff;
-        color: #409eff;
-        transform: translateY(-2px);
+        background: var(--dsw-static-neutral-bluish-50);
+        border-color: var(--os-border-strong);
+        color: var(--os-text);
+        transform: none;
       }
 
       &:active {
-        transform: translateY(0);
+        transform: none;
       }
     }
 
     .create-btn {
-      border-radius: 8px;
+      border-radius: var(--os-radius-sm);
       font-weight: 500;
-      padding: 8px 20px;
+      padding: 8px 16px;
       height: auto;
-      min-height: 38px;
+      min-height: 34px;
       letter-spacing: 0.01em;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      color: #6b7280;
+      transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 
       &:hover {
-        background: #fff;
-        border-color: #409eff;
-        color: #409eff;
-        transform: translateY(-2px);
+        transform: none;
       }
 
       &:active {
-        transform: translateY(0);
+        transform: none;
       }
     }
   }

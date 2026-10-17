@@ -11,6 +11,7 @@ import { tansParams, blobValidate } from '@/utils/ruoyi'
 import cache from '@/plugins/cache'
 import { saveAs } from 'file-saver'
 import useUserStore from '@/store/modules/user'
+import { promptLogin } from '@/utils/loginGuard'
 
 let downloadLoadingInstance: ReturnType<typeof ElLoading.service>;
 // 是否显示重新登录
@@ -33,12 +34,6 @@ function isAuthApi(url: string): boolean {
   return AUTH_APIS.some(api => url === api || url.startsWith(api + '?') || url.includes(api + '/'))
 }
 
-function redirectToLoginPage() {
-  // 不退出游客态；/login 已允许游客进入，登录成功后 token 会被新账号覆盖
-  const redirect = encodeURIComponent(window.location.pathname + window.location.search)
-  window.location.href = `/login?redirect=${redirect}`
-}
-
 // request 拦截器
 service.interceptors.request.use(
   (config: AxiosRequestConfig) => {
@@ -57,16 +52,13 @@ service.interceptors.request.use(
     if (isWrite && !isAuthApi(url)) {
       const userStore = useUserStore()
       if (!userStore.token || userStore.isGuest) {
-        ElMessageBox.confirm(
-          userStore.token ? '游客仅可浏览，登录后才能进行该操作。' : '请先登录后再进行该操作。',
-          '温馨提示',
-          {
-            confirmButtonText: '去登录',
-            cancelButtonText: '再看看',
-            type: 'warning',
-            closeOnClickModal: false
-          }
-        ).then(() => redirectToLoginPage()).catch(() => {})
+        /*
+         * ⚠️ 走全局单例 `promptLogin()`，**不要**在这里再写 ElMessageBox：
+         *    同一批请求（页面一进来并发好几个写请求 / 用户连点按钮）会各弹一个框，
+         *    叠在一起且点了「去登录」后还在排队弹 —— 就是"一直重复弹窗"那个 bug。
+         *    promptLogin 内部已做：单例复用 + 跳转期静默 + 取消后冷却。
+         */
+        promptLogin('进行该操作')
         return Promise.reject({ __needLogin: true, message: '需要登录' })
       }
     }
@@ -164,8 +156,10 @@ service.interceptors.response.use(
           type: 'warning'
         }).then(() => {
           isRelogin.show = false
-          useUserStore().logOut().then(() => {
-            location.href = '/index'
+          const redirect = encodeURIComponent(window.location.hash.replace(/^#/, '') || '/front/agent/chat')
+          useUserStore().logOut().finally(() => {
+            // 进站即智能体：过期后回登录页（带 redirect），不再跳旧后台首页
+            window.location.href = `/login?redirect=${redirect}`
           })
         }).catch(() => {
           isRelogin.show = false

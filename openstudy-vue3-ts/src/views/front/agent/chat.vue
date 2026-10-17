@@ -41,6 +41,12 @@
         见上面 `.agent-shell` 那条注释）。
       -->
       <div class="agent-main">
+        <!--
+          右侧「提问目录」：贴在内容区右侧、垂直居中，一条提问一根短横线，
+          hover 浮出摘要、点击平滑跳转（形态参考 DSH Web 的对话导航）。
+          只在多轮对话时出现（见组件内部判断）。
+        -->
+        <AgentOutline :messages="messages" scroll-selector=".chat-messages" />
 
         <!-- 附件告警（文档解析失败 / 插图丢失等） -->
         <div v-for="(warn, i) in metaWarnings" :key="'w' + i" class="meta-warn">
@@ -97,23 +103,11 @@
               </el-icon>
             </button>
 
-            <!-- 历史会话：入口在左 → 抽屉从左侧滑出 -->
-            <button type="button" class="tb-btn" :class="{ 'is-on': panelOpen && panelTab === 'history' }"
-              title="历史会话" @click="openPanel('history')">
-              <el-icon>
-                <Clock />
-              </el-icon>
-            </button>
+            <!-- 历史会话按钮已移除（2026-10-17）：会话列表现在常驻在左侧导航栏，
+                 那里还有搜索框 —— 输入框里再放一个「历史会话」纯属重复入口。 -->
 
-            <!-- 模型下拉框：直接放输入框旁，省得每次进设置改（用户 2026-10-12 要求）。
-                 与「设置 → 模型」绑的是同一个 `model`，两处天然同步。 -->
-            <div class="tb-model">
-              <AiModelSelector v-model="model" scene="agent" width="180px" :disabled="isGenerating" @select="onModelSelect" />
-            </div>
-
-            <!-- 「注入历史上下文」按钮：仅「DS 免费（无浏览器）」模型露出。
-                 一次性操作：点击即把当前会话历史作为 .md 附件发给 DS 网页（并在正文里说明这是历史），
-                 不是常驻开关。写操作默认自动执行、仅删除需确认，故不再有「自动模式」开关。 -->
+            <!-- 模型下拉框：按 DSH 的底部输入区排布，**放在右侧工具行**、
+                 与发送按钮垂直居中对齐，且去掉自带描边（borderless）。 -->
             <button v-if="showInjectHistory" type="button" class="tb-btn tb-inject"
               :disabled="isGenerating || injectingHistory" @click="handleInjectHistory"
               title="把当前会话的历史上下文作为附件发送给 DS 网页（用于长上下文续聊）">
@@ -129,41 +123,50 @@
               <span>{{ openingBridge ? '打开中…' : '调试' }}</span>
             </button>
           </template>
-          <!-- 输入框下方工具行（右半）：设置（智能体/模型/工具聚合）+ 新对话 + 发送按钮 -->
+          <!--
+            输入框下方工具行（右半）：只留模型选择器。
+            · 模型选择器移到右侧、与发送按钮同一条水平线（用户 2026-10-17 要求）；
+              去掉它自带的边框（borderless），只留文字 + 箭头。
+            · 「新对话」已删除（多余 —— 侧栏顶部已有「新建对话」）。
+            · 「设置」已移到侧栏底部（用户："设置按钮位置需要变化，改到左侧的导航栏去"）。
+          -->
           <template #input-toolbar-right>
-            <!-- 设置入口在右 → 抽屉从右侧滑出（见上方方向原则） -->
-            <button type="button" class="tb-btn" :class="{ 'is-on': panelOpen && panelTab === 'settings' }"
-              title="智能体设置（智能体 / 模型 / 可用工具）" :disabled="isGenerating" @click="openPanel('settings')">
-              <el-icon>
-                <Setting />
-              </el-icon>
-            </button>
-            <el-button class="tb-new" :icon="Plus" text :disabled="isGenerating" @click="newSession">
-              新对话
-            </el-button>
+            <div class="tb-model">
+              <AiModelSelector v-model="model" scene="agent" width="auto" borderless :disabled="isGenerating"
+                @select="onModelSelect" />
+            </div>
           </template>
 
-          <!-- 空状态：引导语 + 快捷指令 -->
+          <!-- 空状态：DSH 式的"欢迎 + 快捷指令"，让用户第一眼就知道它能干活 -->
           <template #empty>
             <div class="hero">
-              <div class="hero-badge">Agent</div>
-              <h2 class="hero-title">嗨，我是 OpenStudy 智能体</h2>
+              <div class="hero-mark">
+                <OsIcon name="sparkles" :size="18" />
+              </div>
+              <h2 class="hero-title">今天想让我帮你做什么？</h2>
               <p class="hero-desc">
-                上传题库文档或题目截图，我会<strong>自己创建题库</strong>并<strong>分批导入题目</strong>。
-                调了什么工具、导了多少题、哪里出错又怎么改回来，你都能实时看到。
+                我能读写你的题库、笔记与学习数据：上传文档自动建库导题、按知识点出题批改、
+                把错题整理成复习清单。每一步工具调用都会在对话里实时展开。
               </p>
               <div class="hero-actions">
-                <div v-for="(q, i) in quickActions" :key="i" class="hero-card" @click="handleSend({ content: q.text })">
+                <button
+                  v-for="(q, i) in quickActions"
+                  :key="i"
+                  type="button"
+                  class="hero-card"
+                  @click="handleSend({ content: q.text })"
+                >
                   <span class="hero-card-icon">
-                    <el-icon>
-                      <component :is="q.icon" />
-                    </el-icon>
+                    <el-icon><component :is="q.icon" /></el-icon>
                   </span>
                   <span class="hero-card-text">
                     <span class="hero-card-title">{{ q.label }}</span>
                     <span class="hero-card-desc">{{ q.desc }}</span>
                   </span>
-                </div>
+                  <span class="hero-card-arrow">
+                    <OsIcon name="arrow-right" :size="15" />
+                  </span>
+                </button>
               </div>
             </div>
           </template>
@@ -181,13 +184,14 @@
     <ResizableDrawer
       v-model="panelOpen"
       :direction="panelDirection"
+      :offset-left="sidebarOffset"
       storage-key="openstudy_agent_panel_size"
       :default-width="380"
       :min="300"
       :max="720"
     >
       <div class="agent-panel">
-        <!-- tab 头：与工具栏三个入口一一对应 -->
+        <!-- tab 头：设置 / 知识库（历史会话已移到左侧导航栏，不再占一个 tab） -->
         <div class="agent-panel-tabs">
           <div :class="['aptab', { active: panelTab === 'settings' }]" @click="switchTab('settings')">
             <el-icon><Setting /></el-icon>
@@ -196,10 +200,6 @@
           <div :class="['aptab', { active: panelTab === 'kb' }]" @click="switchTab('kb')">
             <el-icon><FolderOpened /></el-icon>
             <span>知识库</span>
-          </div>
-          <div :class="['aptab', { active: panelTab === 'history' }]" @click="switchTab('history')">
-            <el-icon><Clock /></el-icon>
-            <span>历史会话</span>
           </div>
         </div>
 
@@ -280,36 +280,6 @@
         <!-- ② 知识库（与悬浮助手同一个面板组件） -->
         <div v-show="panelTab === 'kb'" class="agent-panel-body">
           <KnowledgeBasePanel ref="kbPanelRef" />
-        </div>
-
-        <!-- ③ 历史会话 -->
-        <div v-show="panelTab === 'history'" class="agent-panel-body session-drawer">
-          <div class="session-search">
-            <el-input v-model="sessionKeyword" size="small" clearable placeholder="搜索会话标题"
-              @keydown.esc="panelOpen = false">
-              <template #prefix>
-                <el-icon><Search /></el-icon>
-              </template>
-            </el-input>
-          </div>
-          <div class="session-count-line">{{ sessionCountText }}</div>
-          <div class="session-list" v-loading="sessionsLoading">
-            <div v-for="s in filteredSessions" :key="s.sessionId"
-              :class="['session-item', { active: s.sessionId === sessionId }]" @click="switchSession(s)">
-              <div class="session-title">{{ sessionTitle(s) }}</div>
-              <div class="session-meta">
-                <span>{{ formatTime(s.updatedAt) }}</span>
-                <span>{{ s.messageCount || 0 }} 条</span>
-              </div>
-              <span class="session-delete" title="删除会话" @click.stop="removeSession(s)">
-                <el-icon><Delete /></el-icon>
-              </span>
-            </div>
-            <div v-if="!sessionsLoading && !sessions.length" class="session-empty">暂无历史会话</div>
-            <div v-else-if="!sessionsLoading && !filteredSessions.length" class="session-empty">
-              没有标题包含「{{ sessionKeyword.trim() }}」的会话
-            </div>
-          </div>
         </div>
       </div>
     </ResizableDrawer>
@@ -394,12 +364,14 @@
 defineOptions({ name: 'FrontAgentChat' })
 
 import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Clock, Delete, Plus, Setting,
+  Delete, Setting,
   FolderOpened, QuestionFilled, UploadFilled, Search, View
 } from '@element-plus/icons-vue'
 import AiChatStream from '@/components/AiChatStream/index.vue'
+import AgentOutline from '@/components/AgentOutline/index.vue'
 import AiModelSelector from '@/components/AiModelSelector/index.vue'
 import AgentToolResult from '@/components/AgentToolResult/index.vue'
 import AgentConfirmCard from '@/components/AgentConfirmCard/index.vue'
@@ -407,6 +379,7 @@ import ChatFileUploader from '@/components/ChatFileUploader/index.vue'
 import ChatAttachmentList from '@/components/ChatAttachmentList/index.vue'
 import KnowledgeBasePanel from '@/components/KnowledgeBasePanel/index.vue'
 import ResizableDrawer from '@/components/ResizableDrawer/index.vue'
+import OsIcon from '@/components/OsIcon/index.vue'
 // 工具开关清单（设置 tab）：**静态 import**，不再用 `await import()` 动态加载 ——
 // 动态 import 会把「模块何时就绪」变成变量，是「刷新后先点别的 tab 再进设置，工具列表
 // 不加载」这类顺序敏感 bug 的温床（用户 2026-10-10 报）。静态 import 保证函数随时可用。
@@ -427,6 +400,8 @@ import {
   type AgentExpert
 } from '@/api/ai/agent'
 import useUserStore from '@/store/modules/user'
+import useAgentUiStore from '@/store/modules/agentUi'
+import useAgentSessionStore from '@/store/modules/agentSession'
 
 /**
  * 「回到底部」悬浮按钮距消息区底边的高度。
@@ -440,6 +415,8 @@ import useUserStore from '@/store/modules/user'
  */
 
 const userStore = useUserStore()
+const agentUiStore = useAgentUiStore()
+const route = useRoute()
 const userId = computed(() => userStore.id || userStore.userId)
 
 /* ===================== Agent 状态 ===================== */
@@ -564,58 +541,109 @@ async function loadAgents() {
   myAgents.value = await listAgentConfigs()
 }
 
-/* ---- 智能体侧栏抽屉（统一容器：设置 / 知识库 / 历史会话，内部 tab 切换）---- */
-// 用户 2026-10-10 裁决：三个功能的容器形态各异（设置=el-dialog、知识库/历史=各自抽屉），
-// 统一到一个可拉伸抽屉 + 内部 tab；点工具栏对应按钮 → 开抽屉 + 切到对应 tab。
-// 方向原则：**入口在哪侧、抽屉就从哪侧滑出**（设置按钮在右 → rtl；知识库/历史在左 → ltr）。
+/* ---- 智能体侧栏抽屉（统一容器：设置 / 知识库，内部 tab 切换）---- */
+// 用户 2026-10-10 裁决：把设置与知识库统一到一个可拉伸抽屉 + 内部 tab。
+// 方向原则：**入口在哪侧、抽屉就从哪侧滑出**。
+//
+// ⚠️ 2026-10-17：**设置入口已移到左侧导航栏底部**，所以设置也改走左侧（ltr）。
+//    现在两个 tab 的入口都在左边（设置=侧栏、知识库=输入框左侧工具行），
+//    方向统一为 ltr；保留 `dirOfTab` 这个函数而不是写死，是为了将来若再加右侧入口
+//    还能按 tab 区分（那时只改这一行即可）。
 //
 // ⚠️ 方向**只在「本次打开抽屉」时由入口侧决定一次，之后锁定**——不能随 tab 变：
 //    用户 2026-10-10 反馈「在左侧点开知识库，再点智能体设置 tab，抽屉会甩到右侧，不合理」。
-//    同一个抽屉在会话期内来回横跳，破坏「同一个容器」的心智。故 `panelDirection` 是 **ref
-//    而非 computed**：`openPanel` 仅在「原本处于关闭态」时按入口侧设一次；抽屉已开时，
-//    无论是点内部 tab 头还是点工具栏另一个按钮，都**保持当前方向不变**（只切 tab 内容）。
+//    故 `panelDirection` 是 **ref 而非 computed**：`openPanel` 仅在「原本处于关闭态」时设一次。
 const panelOpen = ref(false)
-const panelTab = ref<'settings' | 'kb' | 'history'>('settings')
+/** 抽屉现在只有两个 tab（历史会话已移到左侧导航栏） */
+type PanelTab = 'settings' | 'kb'
+const panelTab = ref<PanelTab>('settings')
 /** 抽屉滑出方向：由「打开它的那个入口」决定并锁定（打开期间不随 tab 变） */
 const panelDirection = ref<'rtl' | 'ltr'>('ltr')
 /** 知识库面板实例（切到知识库 tab 时调 activate 载入） */
 const kbPanelRef = ref<InstanceType<typeof KnowledgeBasePanel> | null>(null)
 
-/** 入口侧 → 抽屉方向：设置入口在右（rtl），知识库/历史入口在左（ltr） */
-const dirOfTab = (tab: 'settings' | 'kb' | 'history'): 'rtl' | 'ltr' =>
-  tab === 'settings' ? 'rtl' : 'ltr'
+/**
+ * 入口侧 → 抽屉方向
+ * 两个入口现在都在左侧（设置=侧栏底部，知识库=输入框左侧工具行），故一律 ltr。
+ */
+const dirOfTab = (_tab: PanelTab): 'rtl' | 'ltr' => 'ltr'
+
+/**
+ * 抽屉要给左侧导航让出的宽度
+ * --------------------------
+ * 设置入口在侧栏里，抽屉从左侧展开时不能把导航盖住（否则用户点完设置就"回不去"了）。
+ * 这里实时量侧栏 DOM 的宽度：展开态是用户拖过的宽度（220–420），收起态是 64。
+ * 量不到（例如移动端侧栏抽屉化）就返回 0，退化成全屏抽屉。
+ */
+const sidebarOffset = ref(0)
+function measureSidebar() {
+  const el = document.querySelector('.os-sidebar') as HTMLElement | null
+  sidebarOffset.value = el ? Math.round(el.getBoundingClientRect().width) : 0
+}
+watch(panelOpen, (open) => {
+  if (open) nextTick(measureSidebar)
+})
+onMounted(() => {
+  measureSidebar()
+  window.addEventListener('resize', measureSidebar)
+})
+onBeforeUnmount(() => window.removeEventListener('resize', measureSidebar))
 
 /**
  * 进入某个 tab 时要触发的加载。
  *
  * ⚠️ 必须集中在这里，且「工具栏入口」与「抽屉内 tab 头」**都**要走它。
  * 原来的坑：加载只写在 `openPanel()`（工具栏入口）里，而抽屉 tab 头是直接
- * `panelTab = 'kb'` 赋值的 —— 于是「刷新后先点设置/历史，再点知识库」时
+ * `panelTab = 'kb'` 赋值的 —— 于是「刷新后先点设置，再点知识库」时
  * `activate()` 从没被调用，知识库永远加载不出来（用户 2026-10-16 报）。
- * 同一原理，专家列表若先点别的 tab 再进设置也会空 —— 故一并收口。
  */
-function enterTab(tab: 'settings' | 'kb' | 'history') {
+function enterTab(tab: PanelTab) {
   if (tab === 'settings') loadExperts()
   // 知识库面板是 v-show 常驻挂载，只有显式 activate 才会拉库列表；
   // 从抽屉 tab 头直接切进来也必须触发。
   if (tab === 'kb') nextTick(() => kbPanelRef.value?.activate?.())
-  // 历史会话：清掉上次的搜索词（原 watch 里的逻辑，统一到这里）
-  if (tab === 'history') sessionKeyword.value = ''
 }
 
 /** 抽屉内 tab 头点击：只切 tab + 触发该 tab 的加载（方向不重算，保持打开时锁定） */
-function switchTab(tab: 'settings' | 'kb' | 'history') {
+function switchTab(tab: PanelTab) {
   panelTab.value = tab
   enterTab(tab)
 }
 
-function openPanel(tab: 'settings' | 'kb' | 'history') {
+function openPanel(tab: PanelTab) {
   // 仅在「抽屉原本关闭」时按入口侧设定方向；已打开时保持当前方向（不横跳）
   if (!panelOpen.value) panelDirection.value = dirOfTab(tab)
   panelTab.value = tab
   panelOpen.value = true
   enterTab(tab)
 }
+
+/**
+ * 侧栏「设置」入口的信号接收
+ * --------------------------
+ * 设置入口已从输入框工具行挪到**左侧导航栏底部**（用户 2026-10-17：
+ * "设置按钮位置需要变化，改到左侧的导航栏去"）。
+ * 侧栏与对话页是两个组件，用 store token 传信号；本页 keep-alive，
+ * 所以必须 watch 而不是只在 onMounted 判断。
+ *
+ * 开关语义（用户 2026-10-17 追加）：
+ *   抽屉没开 → 打开并停在「设置」；
+ *   已经开在设置上 → **再点一次收回**（同一个按钮管开与关，符合"开关"直觉）。
+ *   已经从侧栏切到「设置」tab，正文（非设置）时再点 → 切回设置，不关闭。
+ */
+let lastSettingsToken = agentUiStore.settingsToken
+watch(
+  () => agentUiStore.settingsToken,
+  (token) => {
+    if (!token || token === lastSettingsToken) return
+    lastSettingsToken = token
+    if (panelOpen.value && panelTab.value === 'settings') {
+      panelOpen.value = false
+      return
+    }
+    openPanel('settings')
+  }
+)
 
 /* ---- 「我的智能体」管理弹窗 ---- */
 const agentMgrVisible = ref(false)
@@ -850,72 +878,23 @@ const removeAttachment = (idx: number) => {
   attachments.value = { images, files }
 }
 
-/* ===================== 会话历史 ===================== */
-const sessions = ref<any[]>([])
-const sessionsLoading = ref(false)
+/* ===================== 会话历史 =====================
+ * ⚠️ 2026-10-17：会话列表已提到 `store/modules/agentSession.ts`，
+ *    因为现在它显示在**左侧导航栏**（对齐 DSH），而消息流仍在本页。
+ *    本页保留 `sessions` 的只读镜像，避免一次性重写所有引用点；
+ *    真正的数据源是 store，侧栏与本页共享同一份。
+ */
+const sessionStore = useAgentSessionStore()
+
+const sessions = computed(() => sessionStore.sessions)
+const sessionsLoading = computed(() => sessionStore.loading)
 const sessionId = ref('')
 
-/**
- * 会话搜索关键词
- *
- * ⚠️ **只按标题**过滤，而且是纯客户端过滤（`sessions` 本来就是整份取回来的）。
- *    按消息正文搜会话做不到 —— 那需要后端提供「按内容搜会话」的检索接口，
- *    前端手里只有标题/时间/条数这几个字段。
- */
-const sessionKeyword = ref('')
-
-/**
- * 列表里显示的标题
- *
- * 没有标题的会话显示「新会话」，**搜索也用这同一句** —— 保证「搜到的就是看到的」：
- * 界面上写着「新会话」却搜不到它，用户只会以为搜索坏了。
- */
-const sessionTitle = (s: any) => s?.title || '新会话'
-
-const filteredSessions = computed(() => {
-  const kw = sessionKeyword.value.trim().toLowerCase()
-  if (!kw) return sessions.value
-  return sessions.value.filter((s: any) => sessionTitle(s).toLowerCase().includes(kw))
-})
-
-/**
- * 数量文案
- *
- * 搜索时给「命中 / 共」两个数，不给单个数：只显示命中数会被读成
- * 「我的会话只剩这么几条了」—— 那是假话（总数并没有变）。
- */
-const sessionCountText = computed(() =>
-  sessionKeyword.value.trim()
-    ? `命中 ${filteredSessions.value.length} / 共 ${sessions.value.length}`
-    : `共 ${sessions.value.length} 条`
-)
-
-const formatTime = (time: any) => {
-  if (!time) return ''
-  const d = new Date(time)
-  if (Number.isNaN(d.getTime())) return ''
-  const diff = Date.now() - d.getTime()
-  const min = Math.floor(diff / 60000)
-  if (min < 1) return '刚刚'
-  if (min < 60) return `${min} 分钟前`
-  const hours = Math.floor(min / 60)
-  if (hours < 24) return `${hours} 小时前`
-  const days = Math.floor(hours / 24)
-  if (days < 7) return `${days} 天前`
-  return `${d.getMonth() + 1}-${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
 const loadSessions = async () => {
-  if (!userId.value) return
-  sessionsLoading.value = true
-  try {
-    const res: any = await listSessions(userId.value)
-    if (res?.code === 200 && Array.isArray(res.data)) sessions.value = res.data
-    else if (Array.isArray(res?.rows)) sessions.value = res.rows
-  } catch (e) {
-    console.warn('[agent] 加载会话列表失败', e)
-  } finally {
-    sessionsLoading.value = false
+  await sessionStore.loadSessions()
+  // 让 store 的当前会话与本页保持一致（store 是唯一数据源）
+  if (sessionStore.currentSessionId && sessionStore.currentSessionId !== sessionId.value) {
+    sessionId.value = sessionStore.currentSessionId
   }
 }
 
@@ -924,14 +903,25 @@ const newSession = async () => {
   if (isGenerating.value) stop()
   reset()
   panelOpen.value = false
-  try {
-    const res: any = await createSession(userId.value)
-    sessionId.value = res?.data?.sessionId || `asst_${Date.now()}`
-  } catch {
-    sessionId.value = `asst_${Date.now()}`
-  }
-  await loadSessions()
+  sessionId.value = await sessionStore.startNewSession()
 }
+
+/**
+ * 侧边栏「新建对话」的信号接收
+ * ----------------------------
+ * 本页是 keep-alive 的：从题库页切回对话页不会重新 onMounted，
+ * 所以必须监听 store 里的 token，而不是只在挂载时判断。
+ * 挂载时把当前 token 记为「已消费」，避免首次进入就多建一个空会话。
+ */
+let lastNewChatToken = agentUiStore.newChatToken
+watch(
+  () => agentUiStore.newChatToken,
+  async (token) => {
+    if (!token || token === lastNewChatToken) return
+    lastNewChatToken = token
+    await newSession()
+  }
+)
 
 /**
  * 读回某个会话的历史
@@ -973,7 +963,39 @@ const switchSession = async (s: any) => {
   reset()
   sessionId.value = s.sessionId
   panelOpen.value = false
+  sessionStore.currentSessionId = s.sessionId
   await loadHistory(s.sessionId)
+}
+
+/**
+ * 侧栏点了另一个会话 / 删掉了当前会话
+ * ----------------------------------
+ * 侧栏与对话页是两个组件，用 `sessionStore.switchToken` 传信号。
+ * 本页 keep-alive，所以必须 watch（不能只在 onMounted 判断）。
+ */
+watch(
+  () => sessionStore.switchToken,
+  async () => {
+    if (!isAgentPageActive()) return
+    if (isGenerating.value) stop()
+    const target = sessionStore.currentSessionId
+    if (!target) {
+      // 当前会话被删掉：回到空白新会话（不额外建远端会话，等用户发第一条消息）
+      reset()
+      sessionId.value = ''
+      return
+    }
+    if (target === sessionId.value) return
+    reset()
+    sessionId.value = target
+    panelOpen.value = false
+    await loadHistory(target)
+  }
+)
+
+/** 本页是否处于激活状态（keep-alive 下用路由判断即可） */
+function isAgentPageActive() {
+  return route.path.startsWith('/front/agent')
 }
 
 const removeSession = async (s: any) => {
@@ -988,7 +1010,8 @@ const removeSession = async (s: any) => {
   }
   try {
     await deleteSession(s.sessionId, userId.value)
-    sessions.value = sessions.value.filter((x: any) => x.sessionId !== s.sessionId)
+    // store 内部会同步 sessions / currentSessionId / switchToken
+    await sessionStore.loadSessions()
     if (s.sessionId === sessionId.value) await newSession()
   } catch (e) {
     ElMessage.error('删除失败')
@@ -1180,11 +1203,17 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped lang="scss">
+/*
+  智能体页 = 主内容本身（不是一张浮在页面上的卡片）：
+  铺满顶栏以下的全部空间，白底、无边框、无外阴影。
+*/
 .agent-page {
   height: 100%;
+  min-height: 0;
   display: flex;
-  padding: 12px 0 0;
+  padding: 0;
   box-sizing: border-box;
+  background: #fff;
 }
 
 .agent-shell {
@@ -1192,11 +1221,11 @@ onBeforeUnmount(() => {
   flex: 1;
   min-width: 0;
   display: flex;
-  border-radius: 14px;
-  border: 1px solid #e5e7eb;
+  border-radius: 0;
+  border: none;
   background: #fff;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  box-shadow: none;
 }
 
 /* ── 历史会话浮层 ── */
@@ -1233,7 +1262,7 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 4px;
   padding: 8px 10px;
-  border-bottom: 1px solid #eef2f7;
+  border-bottom: 1px solid var(--os-border-soft);
 }
 .aptab {
   flex: 1;
@@ -1242,19 +1271,19 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: 5px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: var(--os-radius-sm);
   font-size: 13px;
-  color: #6b7280;
+  color: var(--os-text-3);
   cursor: pointer;
   user-select: none;
   transition: background-color 0.15s ease, color 0.15s ease;
 
   &:hover {
-    background: #f3f5f9;
+    background: var(--os-bg-hover);
   }
   &.active {
-    background: #eef4ff;
-    color: #2563eb;
+    background: var(--os-bg-active);
+    color: var(--os-text);
     font-weight: 600;
   }
 }
@@ -1264,91 +1293,6 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-}
-
-/* 历史会话 tab：搜索 + 计数 + 列表 纵向排列 */
-.session-drawer {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.session-count-line {
-  flex-shrink: 0;
-  padding: 6px 12px 2px;
-  font-size: 12px;
-  color: #9aa5b5;
-}
-
-.session-search {
-  flex-shrink: 0;
-  padding: 8px 8px 0;
-}
-
-.session-list {
-  flex: 1;
-  /* 列表空着时高度为 0 → `v-loading` 的转圈没地方显示，给个下限 */
-  min-height: 56px;
-  overflow-y: auto;
-  padding: 6px 8px 8px;
-}
-
-.session-item {
-  position: relative;
-  padding: 8px 10px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.2s ease;
-
-  &:hover {
-    background: #f3f4f6;
-  }
-
-  &.active {
-    background: #eef4ff;
-  }
-}
-
-.session-title {
-  padding-right: 20px;
-  font-size: 13px;
-  color: #1f2937;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.session-meta {
-  display: flex;
-  gap: 10px;
-  margin-top: 3px;
-  font-size: 11px;
-  color: #9aa5b5;
-}
-
-.session-delete {
-  position: absolute;
-  top: 8px;
-  right: 6px;
-  display: none;
-  color: #9aa5b5;
-
-  &:hover {
-    color: #ef4444;
-  }
-}
-
-.session-item:hover .session-delete {
-  display: inline-flex;
-}
-
-.session-empty {
-  padding: 18px 6px;
-  text-align: center;
-  font-size: 12.5px;
-  line-height: 1.6;
-  color: #9aa5b5;
-  word-break: break-all;
 }
 
 /*
@@ -1375,6 +1319,8 @@ onBeforeUnmount(() => {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  /* 「提问目录」是 position:absolute，需要这个定位基准 */
+  position: relative;
 }
 
 /*
@@ -1386,24 +1332,23 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   padding: 0;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  border: none;
+  border-radius: var(--os-radius-sm);
   background: transparent;
-  color: #6b7280;
+  color: var(--os-text-3);
   font-size: 15px;
   cursor: pointer;
-  /* 只列真要变的三个属性：`all` 会把以后新增的任何属性（含布局属性）也一起动画化 */
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  /* 只列真要变的几个属性：`all` 会把以后新增的任何属性（含布局属性）也一起动画化 */
+  transition: background 0.15s ease, color 0.15s ease;
   flex-shrink: 0;
 
   &:hover,
   &.is-on {
-    background: #fff;
-    border-color: #e5e7eb;
-    color: #2563eb;
+    background: var(--os-bg-hover);
+    color: var(--os-text);
   }
 }
 
@@ -1414,11 +1359,22 @@ onBeforeUnmount(() => {
   padding: 0 2px;
 }
 
-/* 输入框旁的模型下拉框：与工具行的图标按钮垂直居中对齐 */
+/* 输入框旁的模型下拉框：与工具行图标按钮、发送按钮垂直居中对齐（DSH 的底部输入区排布）
+   ⚠️ 容器宽度必须贴合子项：`display:inline-flex` 默认会被内部 select 的百分比宽度影响，
+      之前这里宽 172px 而 select 只有 132px，多出的 40px 就是"模型名和发送键之间空一大截"的元凶。
+   ⚠️ 不要加左右 margin：与发送按钮的间距只由工具行的 gap 控制。 */
 .tb-model {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
+  height: 30px;
+  width: fit-content;
+
+  /* 无边框形态：文字用次级色，和"发送"这些轻量控件同一层 */
+  :deep(.el-input__inner) {
+    font-size: 12.5px;
+    color: var(--os-text-3);
+  }
 }
 
 /* 带**文字**的工具按钮（注入历史 / 调试）：不能沿用 `.tb-btn` 的固定 28px 方框
@@ -1453,120 +1409,141 @@ onBeforeUnmount(() => {
   border-radius: 6px;
 }
 
-/* ── 空状态 hero ── */
+/* ── 空状态 hero ──
+   形态对齐 DSH 的欢迎页：一枚中性色标记 + 一句主标题 + 一段说明 + 2×2 快捷卡片。
+   刻意不做渐变、不做投影、不在 hover 时位移 —— 靠留白与字重撑住"高级感"。 */
 .hero {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 28px 20px 10px;
+  width: 100%;
+  max-width: 760px;
+  /* margin:auto → 消息区还有空余高度时，欢迎块整体垂直居中（DSH 的空状态就是这么放的） */
+  margin: auto;
+  padding: 24px 20px;
   text-align: center;
 }
 
-.hero-badge {
-  display: inline-block;
-  padding: 3px 12px;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #eef4ff, #f3ecff);
-  border: 1px solid #e2e8f7;
-  color: #4f6ef7;
-  font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: 0.6px;
+.hero-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--dsw-static-neutral-bluish-50);
+  border: 1px solid var(--os-border-soft);
+  color: var(--os-text);
 }
 
 .hero-title {
-  margin: 14px 0 8px;
-  font-size: 22px;
-  font-weight: 700;
-  color: #1f2d3d;
-  letter-spacing: -0.2px;
+  margin: 18px 0 10px;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  color: var(--os-text);
 }
 
 .hero-desc {
   margin: 0 auto;
   max-width: 560px;
-  font-size: 13.5px;
-  line-height: 1.85;
-  color: #5c6b81;
-
-  strong {
-    color: #2563eb;
-    font-weight: 600;
-  }
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--os-text-3);
 }
 
 .hero-actions {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(232px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  margin-top: 22px;
+  margin-top: 30px;
   text-align: left;
 }
 
 .hero-card {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px 14px;
-  border: 1px solid #e8edf5;
-  border-radius: 11px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--os-border-soft);
+  border-radius: var(--os-radius);
   background: #fff;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
   cursor: pointer;
-  /* 列出 hover 里真正会变的四个属性（`all` 会把布局属性也卷进来，见 `.pop-fade-*` 的说明） */
-  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+  /* 只动颜色：不做位移动画，列表不会"抖" */
+  transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out),
+    border-color var(--ds-duration-fast) var(--ds-ease-in-out);
 
   &:hover {
-    border-color: #93b4f5;
-    background: #f7faff;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.08);
+    background: var(--dsw-static-neutral-bluish-50);
+    border-color: var(--os-border-strong);
   }
 }
 
 .hero-card-icon {
   flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #eef4ff, #f3ecff);
-  color: #4f6ef7;
-  font-size: 15px;
+  background: var(--dsw-static-neutral-bluish-75);
+  color: var(--os-text-2);
+  font-size: 16px;
 }
 
 .hero-card-text {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  flex: 1;
 }
 
 .hero-card-title {
   font-size: 13.5px;
-  font-weight: 600;
-  color: #1f2d3d;
-  line-height: 1.4;
+  font-weight: 500;
+  color: var(--os-text);
+  line-height: 1.45;
 }
 
 .hero-card-desc {
-  font-size: 12px;
-  color: #9aa5b5;
+  font-size: 12.5px;
+  color: var(--os-text-3);
   line-height: 1.5;
-  margin-top: 1px;
+  margin-top: 2px;
 }
 
-/* 「新对话」：底部工具栏右侧，观感压得比 el-button 默认更轻 */
-.tb-new {
-  font-size: 13px;
-  color: #6b7280;
+.hero-card-arrow {
+  flex: none;
+  color: var(--os-text-4);
+  opacity: 0;
+  transition: opacity var(--ds-duration-fast) var(--ds-ease-in-out);
+}
 
-  &:hover {
-    color: #2563eb;
-    background: #f3f5f9;
+.hero-card:hover .hero-card-arrow {
+  opacity: 1;
+}
+
+@media (max-width: 720px) {
+  .hero {
+    padding: 24px 4px 0;
+  }
+
+  .hero-title {
+    font-size: 21px;
+  }
+
+  .hero-actions {
+    grid-template-columns: minmax(0, 1fr);
+    margin-top: 22px;
   }
 }
 
+/* 「新对话」：底部工具栏右侧，观感压得比 el-button 默认更轻 */
 /* ── 「设置」面板（合并：智能体 / 模型 / 可用工具）──
+   入口在侧栏底部（2026-10-17 从输入区工具行挪过去的）。
    用户 2026-10-09 裁决：底部工具栏过密（9 个控件），把配置类三件套收进本面板。
    用户 2026-10-10 反馈「输入框贴边框、空白多」→ 加内边距、限制单列最大宽度、收紧行距。 */
 .settings-body {
@@ -1691,69 +1668,16 @@ onBeforeUnmount(() => {
  *   附件预览）那个数字就不够用，最后一条消息会被盖住，而且滚动容器的判定也跟着变形。
  * 「悬浮」只做在**视觉**上：白卡片 + 圆角 + 阴影 + 四周留边 —— 行为上仍是普通流式布局。
  */
-.agent-main :deep(.chat-input-area) {
-  /*
-   * 底部 12px → 3px：卡片下方不再留一大块空白，让它紧贴下面的 `.agent-foot`
-   * 统计条（用户 2026-09-19：「让输入框高度下降，和底部那条统计贴合」）。
-   * ⚠️ 只缩小正间距，**不要**用负 margin 把统计条叠到卡片上（那会盖住卡片圆角/阴影）。
-   */
-  margin: 0 12px 3px;
-  /* 卡片自身垂直留白 8/10 → 6/6 */
-  padding: 6px 10px;
-  border: 1px solid #e7ebf0;
-  border-top: 1px solid #e7ebf0; /* 盖掉组件默认的 `border-top` 分隔线（卡片不需要） */
-  border-radius: 16px;
-  background: #fff;
-  box-shadow: 0 6px 22px rgba(15, 23, 42, 0.1);
-}
-
 /*
- * ── 把输入卡片压矮 ──
- *
- * 为什么全写在 `:deep()` 覆盖层里、不改 `ChatInputArea` 的默认样式：
- *   该组件是**聊天助手抽屉（`AiAssistant`）与智能体页共用**的，改默认值会连带改掉
- *   抽屉里的输入框观感。「压矮」只是智能体页这一层的局部覆盖。
- *
- * 高度账（静态估算，未在浏览器实测）：
- *   组件默认 ≈ 138px ＝ textarea 两行 50 ＋ 分隔线 7 ＋ 工具行 (4+36)
- *                     ＋ input-box 上下 padding 20 ＋ 卡片上下 padding 18 ＋ 描边 3
- *   压到 ≈ 113px      ＝ textarea 两行 47（行高 1.5 → 1.4）
- *                     ＋ 分隔线 5（上下 margin 4/2 → 2/2）
- *                     ＋ 工具行 (2+36)（margin-top 4 → 2）
- *                     ＋ input-box 上下 padding 8（10/10 → 4/4）
- *                     ＋ 卡片上下 padding 12（8/10 → 6/6）＋ 描边 3
- *
- * ⚠️ 工具行那 36px 是**附件上传按钮**（`ChatFileUploader` 的 `.upload-btn`，36×36）钉住的 ——
- *    `align-items: center` 取这一行里最高的那个，所以只把行内其它按钮改小**并不会**让整行变矮，
- *    只会得到一个 26/28/36 混排、高度却一点没变的工具栏。所以这里**不动按钮尺寸**。
- *    要再压这一行，得先统一附件按钮的尺寸（那是共用组件，改它会连带影响助手抽屉）。
- *
- * ⚠️ 压的都是**垂直方向**的（上下 padding / 行高 / 上下 margin），
- *    没动字号，也没把 textarea 压到低于两行 —— 「两行起步 + 自动增高」是从 sp3 搬来的
- *    明确行为（见 `ChatInputArea` 的 `rows="2"` 与 `TEXTAREA_MAX_HEIGHT`）。
+ * 输入区：卡片形态已经统一在 `ChatInputArea` 里（白底 + 16px 圆角 + 发丝描边），
+ * 这里**只收掉外层多余的留白**，不再叠第二层卡片（旧版在这里又加了一层 border/shadow，
+ * 导致"卡片里套卡片"，正是本轮要清掉的观感问题）。
  */
-
-/* 卡片内再套一层灰底 + 描边会显脏 → 内层输入框融进卡片（顺带收掉它的上下 padding） */
-.agent-main :deep(.chat-input-area .input-box) {
-  border-color: transparent;
+.agent-main :deep(.chat-input-area) {
+  padding: 6px 20px 16px;
+  border: none;
   background: transparent;
-  padding: 4px 8px 4px 10px;
-  min-height: 0; /* 组件默认的 66px 下限与「压矮」相冲，去掉以免它兜底撑高 */
-}
-
-.agent-main :deep(.chat-input-area .chat-textarea) {
-  min-height: 32px;
-  /* autoGrow 读的是 scrollHeight → 行高降下来，两行起步的高度也跟着降 */
-  line-height: 1.4;
-}
-
-.agent-main :deep(.chat-input-area .input-divider) {
-  margin: 2px 0;
-}
-
-.agent-main :deep(.chat-input-area .input-bottom) {
-  margin-top: 2px;
-  min-height: 32px;
+  box-shadow: none;
 }
 
 /* ---- 我的智能体管理弹窗 ---- */
@@ -1762,7 +1686,7 @@ onBeforeUnmount(() => {
   overflow-y: auto;
 }
 .agent-mgr-empty {
-  color: #909399;
+  color: var(--os-text-3);
   font-size: 13px;
   line-height: 1.7;
   padding: 8px 0;
@@ -1773,22 +1697,22 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  border: 1px solid #eef0f4;
-  border-radius: 8px;
+  border: 1px solid var(--os-border-soft);
+  border-radius: var(--os-radius-sm);
   margin-bottom: 8px;
 }
 .agent-mgr-name {
   font-weight: 600;
-  color: #303133;
+  color: var(--os-text);
 }
 .agent-mgr-desc {
   font-size: 12.5px;
-  color: #909399;
+  color: var(--os-text-3);
   margin-top: 2px;
 }
 .agent-mgr-tools {
   font-size: 12px;
-  color: #b0b6c0;
+  color: var(--os-text-4);
   margin-top: 4px;
 }
 .agent-mgr-ops {

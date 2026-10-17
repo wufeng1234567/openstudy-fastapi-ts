@@ -1,0 +1,226 @@
+/* =============================================================================
+ * OpenStudy 设计令牌（Design Tokens）
+ * -----------------------------------------------------------------------------
+ * 取值与命名**直接对齐 DSH Web（deepseek-harness）的设计系统**，
+ * 目的是让前台整体色调、层级、圆角、描边、阴影与 DSH 保持同一套语言：
+ *
+ *   · 中性色不是纯灰，而是带一点蓝的 neutral-bluish 色阶（#f9fafb → #0f1115）
+ *   · 品牌主色是**近黑 #0f1115**（主按钮、强调文字），蓝色 #4176e6 只作强调/链接
+ *   · 描边极淡（4% ~ 16% 黑），靠"层"与"留白"分块，而不是靠重阴影
+ *   · 圆角 8 / 12 / 16 三档；阴影几乎不可见（0.5px 发丝描边 + 极淡柔光）
+ *
+ * 用法约定：
+ *   · 业务样式里**优先用 `--os-*` 语义别名**，不要直接写十六进制色值；
+ *   · `--dsw-*` 保留 DSH 原生命名，便于和 DSH 源码/文档对照；
+ *   · 深浅色主题的切换点预留在 `[data-theme='dark']`（当前只启用浅色）。
+ * ========================================================================== */
+
+:root {
+  /* ======================= 1. 静态色阶（DSH static） ======================= */
+
+  --dsw-static-neutral-bluish-00: #fff;
+  --dsw-static-neutral-bluish-50: #f9fafb;
+  --dsw-static-neutral-bluish-60: #f5f6f7;
+  --dsw-static-neutral-bluish-75: #f1f3f5;
+  --dsw-static-neutral-bluish-100: #ebeef2;
+  --dsw-static-neutral-bluish-150: #e9ecf2;
+  --dsw-static-neutral-bluish-200: #e1e5ee;
+  --dsw-static-neutral-bluish-300: #cfd3d6;
+  --dsw-static-neutral-bluish-400: #adb2b8;
+  --dsw-static-neutral-bluish-500: #979da6;
+  --dsw-static-neutral-bluish-600: #81858c;
+  --dsw-static-neutral-bluish-700: #61666b;
+  --dsw-static-neutral-bluish-750: #43454a;
+  --dsw-static-neutral-bluish-800: #353638;
+  --dsw-static-neutral-bluish-850: #2c2c2e;
+  --dsw-static-neutral-bluish-875: #232324;
+  --dsw-static-neutral-bluish-900: #1b1b1c;
+  --dsw-static-neutral-bluish-950: #151517;
+  --dsw-static-neutral-bluish-1000: #0f1115;
+
+  --dsw-static-deepseek-50: #edf3fe;
+  --dsw-static-deepseek-100: #e4edfd;
+  --dsw-static-deepseek-200: #d3e2ff;
+  --dsw-static-deepseek-300: #b7c8fe;
+  --dsw-static-deepseek-400: #7aaaff;
+  --dsw-static-deepseek-450: #5686fe;
+  --dsw-static-deepseek-500: #4176e6;
+  --dsw-static-deepseek-600: #4868b2;
+  --dsw-static-deepseek-800: #34415b;
+  --dsw-static-deepseek-900: #283142;
+
+  --dsw-static-blue-50: #eff6ff;
+  --dsw-static-blue-50p: #eaf3ff;
+  --dsw-static-blue-75: #e5f0ff;
+  --dsw-static-blue-100: #dbeafe;
+  --dsw-static-blue-300: #93c5fd;
+  --dsw-static-blue-400: #60a5fa;
+  --dsw-static-blue-500: #3b82f6;
+  --dsw-static-blue-600: #2563eb;
+  --dsw-static-blue-800: #1e40af;
+  --dsw-static-blue-900: #0e3074;
+
+  --dsw-static-green-100: #e6faed;
+  --dsw-static-green-400: #4ed17e;
+  --dsw-static-green-500: #22c55e;
+  --dsw-static-green-900: #233c2c;
+
+  --dsw-static-amber-100: #fef5e7;
+  --dsw-static-amber-400: #f7ad31;
+  --dsw-static-amber-500: #f59e0b;
+  --dsw-static-amber-600: #dd8629;
+
+  --dsw-static-red-50: #fef2f2;
+  --dsw-static-red-100: #fee2e2;
+  --dsw-static-red-400: #f25a5a;
+  --dsw-static-red-500: #ef4444;
+  --dsw-static-red-600: #ec1313;
+
+  --dsw-static-neutral-50: #fafafa;
+  --dsw-static-neutral-100: #f5f5f5;
+  --dsw-static-neutral-200: #e5e5e5;
+  --dsw-static-neutral-300: #d4d4d4;
+  --dsw-static-neutral-400: #a2a4a6;
+
+  /* ======================= 2. 语义别名（DSH alias） ======================= */
+
+  /* 画布与层级：DSH 的 l1/l2/l3 都是纯白，靠描边分层 */
+  --dsw-alias-bg-base: var(--dsw-static-neutral-bluish-00);
+  --dsw-alias-bg-layer-1: var(--dsw-static-neutral-bluish-00);
+  --dsw-alias-bg-layer-2: var(--dsw-static-neutral-bluish-00);
+  --dsw-alias-bg-layer-3: var(--dsw-static-neutral-bluish-00);
+  --dsw-alias-bg-module-platform: var(--dsw-static-neutral-bluish-60);
+  --dsw-alias-bg-overlay: var(--dsw-static-neutral-bluish-150);
+  --dsw-alias-bg-skeleton: #0000000a;
+
+  /* 文字 */
+  --dsw-alias-label-primary: var(--dsw-static-neutral-bluish-1000);
+  --dsw-alias-label-primary-dimmed: var(--dsw-static-neutral-bluish-950);
+  --dsw-alias-label-secondary: var(--dsw-static-neutral-bluish-700);
+  --dsw-alias-label-tertiary: var(--dsw-static-neutral-bluish-600);
+  --dsw-alias-label-caption: var(--dsw-static-neutral-bluish-400);
+  --dsw-alias-label-dimmed: var(--dsw-static-neutral-bluish-200);
+  --dsw-alias-label-primary-foreground: var(--dsw-static-neutral-bluish-00);
+
+  /* 描边：l1 分割线 < l2 卡片 < l3 控件 < l4 强调 */
+  --dsw-alias-border-l1: #0000000a;
+  --dsw-alias-border-l2: #0000001a;
+  --dsw-alias-border-l3: #0000001f;
+  --dsw-alias-border-l4: #00000029;
+
+  /* 交互底色 */
+  --dsw-alias-interactive-bg-hover: #2631480f;
+  --dsw-alias-interactive-bg-active: #2631481a;
+  --dsw-alias-interactive-bg-hover-accent: #26314824;
+  --dsw-alias-interactive-bg-hover-solid: var(--dsw-static-neutral-bluish-75);
+
+  /* 品牌 / 强调 */
+  --dsw-alias-brand-primary: var(--dsw-static-neutral-bluish-1000);
+  --dsw-alias-brand-primary-hover: var(--dsw-static-neutral-bluish-750);
+  --dsw-alias-link: var(--dsw-static-deepseek-500);
+  --dsw-alias-focus-ring: var(--dsw-static-deepseek-500);
+
+  /* 按钮 */
+  --dsw-alias-button-primary-fill: var(--dsw-alias-brand-primary);
+  --dsw-alias-button-elevated-fill: var(--dsw-static-neutral-bluish-00);
+  --dsw-alias-button-floating-fill: var(--dsw-static-neutral-bluish-00);
+  --dsw-alias-button-floating-hover: var(--dsw-static-neutral-bluish-75);
+  --dsw-alias-button-ghost-active-fill: var(--dsw-static-neutral-bluish-100);
+
+  /* 状态 */
+  --dsw-alias-state-success-primary: var(--dsw-static-green-500);
+  --dsw-alias-state-success-tertiary: var(--dsw-static-green-100);
+  --dsw-alias-state-warn-primary: var(--dsw-static-amber-500);
+  --dsw-alias-state-warn-label: var(--dsw-static-amber-600);
+  --dsw-alias-state-warn-tertiary: var(--dsw-static-amber-100);
+  --dsw-alias-state-error-primary: var(--dsw-static-red-600);
+  --dsw-alias-state-error-tertiary: var(--dsw-static-red-50);
+  --dsw-alias-state-business-primary: var(--dsw-static-deepseek-500);
+  --dsw-alias-state-business-tertiary: var(--dsw-static-deepseek-100);
+
+  /* 侧边栏 / 对话气泡 / 输入区（DSH specific） */
+  --dsw-specific-sidebar-fill: var(--dsw-static-neutral-bluish-50);
+  --dsw-specific-sidebar-nav-item-hover: var(--dsw-static-neutral-bluish-75);
+  --dsw-specific-sidebar-nav-item-active: var(--dsw-static-neutral-bluish-100);
+  --dsw-specific-sidebar-nav-item-active-accent: var(--dsw-static-deepseek-100);
+  --dsw-specific-bubble: var(--dsw-static-deepseek-50);
+  --dsw-specific-input-major: var(--dsw-static-neutral-bluish-00);
+  --dsw-specific-tip: var(--dsw-static-neutral-bluish-60);
+  --dsw-specific-selector: var(--dsw-static-neutral-bluish-60);
+
+  /* Markdown / 代码 */
+  --dsw-alias-markdown-code-block: var(--dsw-static-neutral-bluish-50);
+  --dsw-alias-markdown-code-block-banner: var(--dsw-static-neutral-bluish-50);
+  --dsw-alias-markdown-inline-code: var(--dsw-static-neutral-50);
+  --dsw-alias-markdown-tag: var(--dsw-static-neutral-bluish-75);
+  --dsw-alias-markdown-citation: var(--dsw-static-neutral-bluish-100);
+
+  /* ======================= 3. 几何 / 字体 / 动效 ======================= */
+  --dsw-radius-sm: 8px;
+  --dsw-radius-md: 12px;
+  --dsw-radius-lg: 16px;
+  --dsw-radius-xl: 20px;
+
+  --dsw-shadow-lv1: 0 2px 4px 0 #0000000d;
+  --dsw-shadow-lv2: 0 4px 12px 0 #00000005, 0 2px 8px 0 #0000000a;
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l2);
+  --dsw-elevation-stroke: 0 0 0 0.5px var(--dsw-elevation-stroke-color);
+  --dsw-elevation-panel: var(--dsw-elevation-stroke), 0 3px 8px 0 #00000008, 0 0 16px 0 #00000005;
+  --dsw-elevation-soft: 0 0 0 0.5px #0000000f, 0 8px 24px -6px #00000014;
+
+  --dsw-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --dsw-font-family-code: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo,
+    'Courier New', monospace;
+
+  --dsw-font-size-base: 14px;
+  --dsw-font-size-sm: 13px;
+  --dsw-font-size-xs: 12px;
+
+  --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ds-duration-fast: 0.15s;
+  --ds-duration-base: 0.2s;
+
+  /* ======================= 4. OpenStudy 语义别名 ======================= */
+  /* 业务代码只用这一组，命名短、语义稳定；值全部指向 DSH token */
+  --os-bg: var(--dsw-alias-bg-base);
+  --os-bg-sidebar: var(--dsw-specific-sidebar-fill);
+  --os-bg-subtle: var(--dsw-specific-tip);
+  --os-bg-hover: var(--dsw-alias-interactive-bg-hover);
+  --os-bg-active: var(--dsw-alias-interactive-bg-active);
+  --os-bg-bubble: var(--dsw-specific-bubble);
+
+  --os-text: var(--dsw-alias-label-primary);
+  --os-text-2: var(--dsw-alias-label-secondary);
+  --os-text-3: var(--dsw-alias-label-tertiary);
+  --os-text-4: var(--dsw-alias-label-caption);
+
+  --os-border: var(--dsw-alias-border-l2);
+  --os-border-soft: var(--dsw-alias-border-l1);
+  --os-border-strong: var(--dsw-alias-border-l3);
+
+  --os-primary: var(--dsw-alias-brand-primary);
+  --os-primary-hover: var(--dsw-alias-brand-primary-hover);
+  --os-accent: var(--dsw-alias-link);
+  --os-accent-soft: var(--dsw-static-deepseek-50);
+  --os-accent-strong: var(--dsw-static-blue-800);
+  --os-focus-ring: var(--dsw-alias-focus-ring);
+
+  --os-success: var(--dsw-alias-state-success-primary);
+  --os-warn: var(--dsw-alias-state-warn-label);
+  --os-danger: var(--dsw-alias-state-error-primary);
+
+  --os-radius-sm: var(--dsw-radius-sm);
+  --os-radius: var(--dsw-radius-md);
+  --os-radius-lg: var(--dsw-radius-lg);
+
+  --os-shadow-1: var(--dsw-shadow-lv1);
+  --os-shadow-2: var(--dsw-shadow-lv2);
+  --os-elevation: var(--dsw-elevation-panel);
+
+  --os-sidebar-w: 280px;
+  --os-sidebar-w-collapsed: 64px;
+  --os-topbar-h: 52px;
+  --os-font: var(--dsw-font-family);
+  --os-font-code: var(--dsw-font-family-code);
+}

@@ -67,6 +67,14 @@ const props = withDefaults(
      * 选择器应能命中**本抽屉内**的滚动容器。
      */
     anchorSelector?: string
+    /**
+     * 可选：抽屉与视口边缘的偏移量（px）。
+     *
+     * 场景：设置入口在左侧常驻导航栏里。抽屉从左侧展开时若从 x=0 开始，
+     * 会把导航整个盖住；传了这个值后抽屉从导航右缘展开，导航仍可见（遮罩也一起内缩）。
+     * 不传 = 传统贴边抽屉（默认 0）。
+     */
+    offsetLeft?: number
   }>(),
   {
     direction: 'rtl',
@@ -75,7 +83,8 @@ const props = withDefaults(
     max: 900,
     defaultWidth: 520,
     storageKey: '',
-    anchorSelector: ''
+    anchorSelector: '',
+    offsetLeft: 0
   }
 )
 
@@ -96,7 +105,6 @@ watch(
     if (v) nextTick(() => emit('open'))
   }
 )
-
 /* ---------- 宽度状态 ---------- */
 //: 持久化：只在传了 storageKey 时读写
 const readStored = (): number => {
@@ -116,6 +124,11 @@ watch(
 
 const clamp = (n: number) => Math.max(props.min, Math.min(props.max, n))
 
+/* ---------- 边缘偏移（给常驻导航让位） ---------- */
+//: 抽屉贴在 ltr 的左边 / rtl 的右边，所以「偏移」要作用在它靠外的那条边上。
+const offsetPx = computed(() => Math.max(0, Number(props.offsetLeft) || 0))
+const offsetCss = computed(() => `${offsetPx.value}px`)
+
 /* ---------- 定位本抽屉的 DOM ---------- */
 //: 唯一 class：多个抽屉同时存在（可能同方向）时，靠它精确定位到"我自己"那一个
 //: （append-to-body 会把抽屉挪出组件树，不能靠 $el / 组件引用）。
@@ -123,6 +136,43 @@ const drawerClass = `rd-drawer-${Math.random().toString(36).slice(2, 8)}`
 
 const getDrawerEl = () =>
   document.querySelector<HTMLElement>(`.rd-drawer.${drawerClass}`)
+
+/**
+ * 遮罩跟随抽屉一起让位
+ * --------------------
+ * Element Plus 的遮罩是 `.el-overlay`，抽屉是它的子元素 —— 直接给 overlay 设 `left`
+ * 就能让遮罩与抽屉一起内缩，左侧导航保持明亮且仍可点击。
+ * ⚠️ overlay 是 append-to-body 的，拿不到组件引用，只能按「本抽屉的唯一 class」反查父级。
+ */
+function syncOverlayOffset() {
+  const drawer = getDrawerEl()
+  const overlay = drawer?.closest('.el-overlay') as HTMLElement | null
+  if (!overlay) return
+  if (offsetPx.value > 0 && props.direction === 'ltr') {
+    overlay.style.left = offsetCss.value
+  } else {
+    overlay.style.left = ''
+  }
+}
+
+// 打开 / 偏移 / 方向变化时同步（nextTick 等 el-drawer 挂载完成；再补一次兜住首次挂载慢）
+watch(
+  [() => props.modelValue, offsetPx, () => props.direction],
+  () => {
+    nextTick(() => {
+      syncOverlayOffset()
+      window.setTimeout(syncOverlayOffset, 60)
+    })
+  },
+  { immediate: true }
+)
+
+// 抽屉关闭时把 overlay 恢复原样，避免下次别的抽屉（无偏移）被带歪
+onBeforeUnmount(() => {
+  const drawer = getDrawerEl()
+  const overlay = drawer?.closest('.el-overlay') as HTMLElement | null
+  if (overlay) overlay.style.left = ''
+})
 
 /** 拖拽期关闭过渡（与 el-drawer 官方 is-dragging 类一致），结束后恢复 */
 const setTransition = (enabled: boolean) => {
@@ -310,5 +360,17 @@ defineExpose({
   padding: 0;
   overflow: hidden;
   position: relative;
+}
+
+/*
+ * 带偏移的抽屉：遮罩也要跟着让位
+ * ------------------------------
+ * 场景：设置入口在左侧常驻导航栏里，抽屉从左侧展开时如果遮罩从 x=0 铺满，
+ * 会把导航一并盖住（看起来整块界面都灰掉了，用户以为导航不可用）。
+ * 这里让遮罩从抽屉偏移处开始 —— 导航保持明亮、仍然可点。
+ * 偏移值由组件内联写在 `.rd-modal-offset` 的 `--rd-offset` 上（见下方 tab 内实现）。
+ */
+.rd-modal-offset {
+  left: var(--rd-offset, 0) !important;
 }
 </style>
