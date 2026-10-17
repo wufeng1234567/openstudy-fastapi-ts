@@ -863,27 +863,52 @@ def coalesce_delete_tool_calls(
 
 
 def needs_user_confirmation(
-    tool: AgentTool, params: Dict[str, Any], auto_confirm: bool
+    tool: AgentTool,
+    params: Dict[str, Any],
+    auto_confirm: bool,
+    confirmed_writes: Optional[Any] = None,
 ) -> bool:
     """是否需要弹确认卡片
 
-    两种情形：
+    三种情形：
       1. 用户关掉了「自动执行」（`auto_confirm=False`）→ 所有写操作都确认；
-      2. **破坏性操作（删除类）→ 无论自动执行是否开启都必须确认**。
+      2. **破坏性操作（删除类）→ 无论自动执行是否开启都必须确认**；
+      3. 规模闸门（工具自带的 `confirm_policy`）→ 首次确认，**本轮内同类动作不再重复问**。
 
     ⚠️ 原来这里写的是「删错无法撤销」——2026-09-23 起**不再准确**：记忆 / 笔记 /
     知识库（库行）/ 题目标记这几类已经**可回退**（用户点轮末的「回退」撤这一轮，
     见 `rollback_service`）。但题库 / 题目 / 知识库文档分块 / 撤销分享**仍是不可逆的**
     （物理删或影响他人），所以第 2 条**一个字都不用放宽**：确认是给「代价高」留的，
     不是给「不可逆」留的 —— 别因为「反正能回退」就把破坏性操作移出确认流程。
+
+    ⚠️ 第 3 条为什么可以「本轮只问一次」（2026-10-17 用户报的 bug）：
+        `question_manage.batch_import` 在 **≥5 题** 时强制确认，
+        `knowledge_ingest.from_text` 在 **≥3000 字 / ≥8 块** 时强制确认。
+        模型把 40 道题拆成 15+14+11 的三批导入、把知识点分几块写库时，
+        **每一批都命中闸门** → 一次任务连弹 6 张确认卡，用户原话是
+        「反复让我确认执行导入题目和知识库之类的确认卡片 很奇怪」。
+
+        闸门的本意是「这么大的写入，先让你看一眼再落库」，而不是「每批都问一遍」。
+        用户在**同一轮**里对同一工具的同一动作点过一次「确认」，就视为已授权，
+        后续批次直接执行。判据只按 `tool:action`（`GuardState.confirmed_writes`），
+        不按参数 —— 第二批的题目内容不同，但「我要导入题目」这个意愿是同一个。
+
+        ⚠️ 破坏性操作（第 2 条）**不受**这个"已批准"影响：删 N 次就要确认 N 次，
+           因为每一次删的东西都不一样、后果不可逆。
     """
     if not tool.needs_confirmation(params):
         return False
     if tool.is_destructive(params):
         return True
-    # 大小/规模闸门：工具可声明自己的确认策略（base 里的可选钩子；不存在时 getattr 兜底）。
+
+    action = str(params.get("action") or "")
+    # 规模闸门：工具可声明自己的确认策略（base 里的可选钩子；不存在时 getattr 兜底）。
     policy = getattr(tool, "confirm_policy", None)
     if callable(policy) and policy(params):
+        # 本轮已批准过同一工具的同一动作 → 不再重复弹卡
+        if confirmed_writes is not None and hasattr(confirmed_writes, "is_confirmed"):
+            if confirmed_writes.is_confirmed(tool.name, action):
+                return False
         return True
     return not auto_confirm
 
@@ -1986,7 +2011,10 @@ async def run_agent_stream(
 
             # 确认策略：需要确认 → **挂起本轮循环**，前端弹确认卡片，用户点了再继续
             # （破坏性操作即使 autoConfirm 开着也走这里）
-            if needs_user_confirmation(tool, params, req.auto_confirm):
+            #
+            # ⚠️ 传 `state` 进去（2026-10-17）：让"规模闸门"这一类确认**本轮只问一次**。
+            #    否则模型把 40 题拆成 3 批导入、知识点分几块写库时，会连着弹 6 张确认卡。
+            if needs_user_confirmation(tool, params, req.auto_confirm, state):
                 confirm_id = f"cfm_{uuid.uuid4().hex[:12]}"
                 yield _event(
                     {
@@ -2008,6 +2036,10 @@ async def run_agent_stream(
                         "approved": approved,
                     }
                 )
+                # 用户批准 → 记住「本轮已授权这个工具的这类写操作」，后续批次不再追问。
+                # ⚠️ 只记**非破坏性**动作：删除要一次一问（每次删的东西都不一样、不可逆）。
+                if approved and not tool.is_destructive(params):
+                    state.mark_confirmed(tool_name, str(params.get("action") or ""))
                 if not approved:
                     # 给模型的是**失败信封**（让它别重复同一个操作），但给**界面**的必须是
                     # 「取消」而不是「失败」：cancel 不是错误，渲染成红色失败卡片是 bug

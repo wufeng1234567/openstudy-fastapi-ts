@@ -31,7 +31,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from app.services.ai.agent.base import AgentTool
 
@@ -110,6 +110,30 @@ class GuardState:
     corrections: int = 0
     #: 累计错误（用于最后收尾时如实汇报）
     errors: List[str] = field(default_factory=list)
+    #: 本轮已经批准过的写操作「工具:动作」集合（见 `mark_confirmed` / `is_confirmed`）。
+    #:
+    #: ⚠️ 为什么需要它（2026-10-17 用户报的 bug）：
+    #:    `question_manage.batch_import` 有「≥5 题强制确认」、`knowledge_ingest.from_text`
+    #:    有「≥3000 字/≥8 块强制确认」的**规模闸门**。模型把 40 道题拆成 3 批（15/14/11）
+    #:    导入时，每批都命中闸门 ⇒ 用户要连点 3 次「确认执行」；再加上写入同一个知识库的
+    #:    多个文本块，一次任务里能弹 6 张确认卡 —— 用户的原话是「反复让我确认…很奇怪」。
+    #:    闸门本意是「这么大的写入，先让你看一眼」，而不是「每批都问一遍」：
+    #:    用户在**同一轮**里对同一工具的同类写操作点过一次「确认」，就应当视为已授权。
+    #:
+    #: 只按 `tool:action` 记，**不按参数**：同一轮里第二次导入的题不一样，但用户的意愿一样。
+    #: 破坏性操作（删除类）不受它影响，永远走确认（见 `needs_user_confirmation`）。
+    confirmed_writes: Set[str] = field(default_factory=set)
+
+    def write_key(self, tool_name: str, action: str) -> str:
+        return f"{tool_name}:{(action or '').strip().lower()}"
+
+    def mark_confirmed(self, tool_name: str, action: str) -> None:
+        """记录一次「用户已批准」的写操作"""
+        self.confirmed_writes.add(self.write_key(tool_name, action))
+
+    def is_confirmed(self, tool_name: str, action: str) -> bool:
+        """本轮是否已批准过同一工具的同一动作"""
+        return self.write_key(tool_name, action) in self.confirmed_writes
 
 
 class ExecutionGuard:

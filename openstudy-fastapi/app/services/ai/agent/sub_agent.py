@@ -345,6 +345,14 @@ async def _run_sub_agent_inner(
         "success": None,
     })
 
+    # 本子代理任务内「已批准的写操作」（`tool:action`）——
+    # 与 loop.py 的 `GuardState.confirmed_writes` 同一个目的：规模闸门类确认
+    # 只问一次，别让一个专家把 40 题拆成 3 批就弹 3 次卡（2026-10-17 用户报的 bug）。
+    # 子代理之间**各自独立**：题库专家批过的东西，不代表知识库专家也能不问就写。
+    from app.services.ai.agent.guard import GuardState as _GuardState
+
+    _confirmed = _GuardState()
+
     for round_no in range(max(1, int(max_loops))):
         cur_round = round_no + 1
         await _emit({
@@ -474,7 +482,7 @@ async def _run_sub_agent_inner(
                 # 识别为**真正的** `tool_confirm` 下发前端（不裹成 subagent_event）。
                 run_tool = True
                 try:
-                    if loop_mod.needs_user_confirmation(tool, params, auto_confirm):
+                    if loop_mod.needs_user_confirmation(tool, params, auto_confirm, _confirmed):
                         confirm_id = f"cfm_{uuid.uuid4().hex[:12]}"
                         preview: Dict[str, Any] = {}
                         try:
@@ -507,6 +515,11 @@ async def _run_sub_agent_inner(
                             params = await loop_mod._apply_edited_params(
                                 tool, params, edited, ctx
                             )
+
+                        # 批准后记住「本专家任务内已授权」：同工具同类写操作后续批次不再追问。
+                        # 只记非破坏性动作 —— 删除必须一次一问。
+                        if approved and not tool.is_destructive(params):
+                            _confirmed.mark_confirmed(name, str(params.get("action") or ""))
                 except Exception as e:  # noqa: BLE001 - 确认流程异常绝不拖垮子代理：退回原样执行
                     logger.warning(
                         "[sub_agent:{}] 确认流程异常（按原样执行）: {}", role_spec.key, e
