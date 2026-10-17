@@ -121,6 +121,7 @@
               type="button"
               class="sb-child"
               :class="{ 'is-active': isChildActive(child) }"
+              @click="onChildClick(item, child)"
             >
               {{ child.label }}
             </button>
