@@ -2177,7 +2177,8 @@ defineExpose({ questions, openAiDialog })
 
 .question-builder {
   display: flex;
-  align-items: flex-start;
+  /* 两列等高（右栏跟着左栏的高度），避免右栏凭空多出空白 */
+  align-items: stretch;
   gap: 12px;
   /*
    * 原来写死 `min-height: 600px`：题目为 0 条时，双栏仍撑满 600px 空白，
@@ -2608,12 +2609,16 @@ defineExpose({ questions, openAiDialog })
     display: flex;
     flex-direction: column;
     /*
-     * 原来是固定 `min-height: 700px`：列表为空时右侧编辑区也是一片 700px 高的空白，
-     * 而左栏那条 `border-right` 会跟着一起拉长 —— 于是页尾出现一条**贯穿到
-     * 「发布设置」旁边**的竖线（用户 2026-10-18 截图反馈）。
-     * 改成按内容自适应，只在真的需要时（可选 320px 最矮）撑开。
+     * 高度交给 flex 的 `stretch`（父级 `.question-builder` 已 `align-items: stretch`），
+     * 两列**同高**：左边多长、右边就多长。
+     *
+     * 历史：这里先后写过 `min-height: 700px` → `320px`，
+     * 两次都是"右侧凭空多出一块空白"（空列表时尤其明显，用户 2026-10-18 反馈
+     * 「发布设置那边太多空白」）。真正的原因就是**给容器设了最小高度**。
+     * 所以现在不设 min-height，让内容决定；右侧"点击左侧题目进行编辑"那句
+     * 自带一点上下留白，不至于塌成一条线。
      */
-    min-height: 320px;
+    min-height: 0;
     height: auto;
 
     .panel-title {

@@ -78,33 +78,43 @@
           <p>决定它是自己练，还是放进学习分享</p>
         </div>
       </header>
+      <!--
+        发布设置改成**两列并排**（2026-10-18）：
+        原来可见性、其他设置上下堆叠，右侧整片空着（实测块高 315px、右半页全空），
+        在宽屏上非常突兀。现在可见性占左（内容宽）、其他设置占右（窄），
+        两列同为 200px 上下，视觉上齐平。
+      -->
       <el-form label-position="top" class="publish-form">
-        <el-form-item label="题库可见性">
-          <el-radio-group v-model="publishForm.visibility" class="visibility-group">
-            <el-radio value="public" class="visibility-item">
-              <span class="vi-title">公开</span>
-              <span class="vi-desc">所有用户可见，可收藏练习</span>
-            </el-radio>
-            <el-radio value="private" class="visibility-item">
-              <span class="vi-title">私有</span>
-              <span class="vi-desc">仅自己可见和管理</span>
-            </el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="其他设置">
-          <el-checkbox v-model="publishForm.allowFork">允许其他人复制（Fork）</el-checkbox>
-        </el-form-item>
+        <div class="publish-grid">
+          <el-form-item label="题库可见性" class="pg-main">
+            <el-radio-group v-model="publishForm.visibility" class="visibility-group">
+              <el-radio value="public" class="visibility-item">
+                <span class="vi-title">公开</span>
+                <span class="vi-desc">所有用户可见，可收藏练习</span>
+              </el-radio>
+              <el-radio value="private" class="visibility-item">
+                <span class="vi-title">私有</span>
+                <span class="vi-desc">仅自己可见和管理</span>
+              </el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="其他设置" class="pg-side">
+            <el-checkbox v-model="publishForm.allowFork">允许其他人复制（Fork）</el-checkbox>
+          </el-form-item>
+        </div>
       </el-form>
     </section>
 
-    <!-- 底部操作栏（贴底，始终可见） -->
+    <!-- 底部操作栏（贴底，按钮居中） -->
     <div class="step-footer">
-      <span class="sf-hint">
-        {{ isEditMode ? '修改会立即对已收藏该题库的用户生效' : '发布后可在「题库练习」里看到，也可放进学习分享' }}
-      </span>
-      <el-button type="primary" size="large" :loading="saving" @click="handleSave">
-        {{ isEditMode ? '保存修改' : '发布题库' }}
-      </el-button>
+      <div class="sf-inner">
+        <el-button type="primary" size="large" :loading="saving" @click="handleSave">
+          {{ isEditMode ? '保存修改' : '发布题库' }}
+        </el-button>
+        <span class="sf-hint">
+          {{ isEditMode ? '修改会立即对已收藏该题库的用户生效' : '发布后可在「题库练习」里看到，也可放进学习分享' }}
+        </span>
+      </div>
     </div>
 
     <!-- 滚动按钮 -->
@@ -785,42 +795,62 @@ const handleSave = async () => {
   }
 }
 
+/* ==================== 发布设置两列 ==================== */
+.publish-grid {
+  display: flex;
+  align-items: flex-start;
+  gap: 40px;
+  flex-wrap: wrap;
+
+  /* 左侧「可见性」吃掉剩余宽度，右侧「其他设置」按内容宽度（窄） */
+  .pg-main {
+    margin-bottom: 0;
+    flex: 1 1 420px;
+    min-width: 0;
+  }
+
+  .pg-side {
+    margin-bottom: 0;
+    flex: 0 0 auto;
+  }
+}
+
 /*
  * ==================== 底部操作栏 ====================
  *
- * 原来是「一行右对齐的裸按钮 + 上边框」，问题有三个（用户 2026-10-18 截图反馈）：
- *   1. 按钮是 Element 默认 `type="primary"`，但本系统把主色映射到了 `--os-primary`
- *      （近黑），结果按钮渲染成**白底黑字**，看起来像一个"白框块"贴在页尾，
- *      和旁边黑色实心的「发布题库」气质完全不搭；
- *   2. 页面很长时按钮被推到文档最末尾，用户要一直滚到底才看得见；
- *   3. 上边框 + 长页面的滚动条，让页尾像被"切了一刀"。
+ * 用户 2026-10-18 两轮反馈：
+ *   ①「底部的按钮很不协调」→ 实心按钮修好了（见下面 el-button--primary）；
+ *   ②「要移动到中间来」→ 按钮与说明**整体居中**，不再左右分置。
  *
- * 现在改成**贴底操作栏**（sticky）：
- *   · 贴住内容区底部，始终可见，不必滚到底；
- *   · 白底 + 顶部发丝线，与内容区分层但不抢眼；
- *   · 主按钮实心黑底白字（对齐 DSH 的 primary），次信息在左、动作在右。
+ * 结构：`.step-footer`（贴底白条） > `.sf-inner`（居中的一组：按钮 + 下方说明）。
+ * 说明文字放在按钮**下面**而不是左右，是因为左右分置会再次产生"一头重一头轻"的观感；
+ * 竖排一组更像一页表单的收尾。
  */
 .step-footer {
   position: sticky;
   bottom: 0;
   z-index: 5;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
   margin: 8px -16px 0;
-  padding: 12px 16px;
+  padding: 14px 16px 12px;
   background: #fff;
   border-top: 1px solid var(--os-border-soft);
+}
+
+.sf-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
 
   .sf-hint {
     font-size: 12.5px;
     line-height: 1.5;
     color: var(--os-text-4);
+    text-align: center;
   }
 
   :deep(.el-button) {
-    padding: 10px 28px;
+    padding: 10px 36px;
     font-weight: 500;
     border-radius: var(--os-radius-sm);
   }
@@ -855,13 +885,11 @@ const handleSave = async () => {
     }
   }
 
-  /* 窄屏：提示文案让位，只留按钮 */
+  /* 窄屏：说明文字换行会更挤，直接隐藏，只留居中的按钮 */
   @media (max-width: 720px) {
     .sf-hint {
       display: none;
     }
-
-    justify-content: flex-end;
   }
 }
 /*
