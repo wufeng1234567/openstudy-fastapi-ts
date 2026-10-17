@@ -2177,8 +2177,15 @@ defineExpose({ questions, openAiDialog })
 
 .question-builder {
   display: flex;
+  align-items: flex-start;
   gap: 12px;
-  min-height: 600px;
+  /*
+   * 原来写死 `min-height: 600px`：题目为 0 条时，双栏仍撑满 600px 空白，
+   * 左栏那条 `border-right` 跟着拉到底 —— 题量大时没问题，空的时候很突兀
+   * （用户 2026-10-18 截图反馈「页尾一条竖线」）。
+   * 现在按内容自适应：有题目时自然长，空列表时就一小块。
+   */
+  min-height: 0;
   width: 100%;
 
   :deep(.el-button) {
@@ -2600,7 +2607,13 @@ defineExpose({ questions, openAiDialog })
     padding: 0 0 0 18px;
     display: flex;
     flex-direction: column;
-    min-height: 700px;
+    /*
+     * 原来是固定 `min-height: 700px`：列表为空时右侧编辑区也是一片 700px 高的空白，
+     * 而左栏那条 `border-right` 会跟着一起拉长 —— 于是页尾出现一条**贯穿到
+     * 「发布设置」旁边**的竖线（用户 2026-10-18 截图反馈）。
+     * 改成按内容自适应，只在真的需要时（可选 320px 最矮）撑开。
+     */
+    min-height: 320px;
     height: auto;
 
     .panel-title {

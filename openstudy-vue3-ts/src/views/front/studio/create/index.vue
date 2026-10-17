@@ -97,8 +97,11 @@
       </el-form>
     </section>
 
-    <!-- 底部操作栏 -->
+    <!-- 底部操作栏（贴底，始终可见） -->
     <div class="step-footer">
+      <span class="sf-hint">
+        {{ isEditMode ? '修改会立即对已收藏该题库的用户生效' : '发布后可在「题库练习」里看到，也可放进学习分享' }}
+      </span>
       <el-button type="primary" size="large" :loading="saving" @click="handleSave">
         {{ isEditMode ? '保存修改' : '发布题库' }}
       </el-button>
@@ -782,16 +785,83 @@ const handleSave = async () => {
   }
 }
 
-/* ==================== 底部操作 ==================== */
+/*
+ * ==================== 底部操作栏 ====================
+ *
+ * 原来是「一行右对齐的裸按钮 + 上边框」，问题有三个（用户 2026-10-18 截图反馈）：
+ *   1. 按钮是 Element 默认 `type="primary"`，但本系统把主色映射到了 `--os-primary`
+ *      （近黑），结果按钮渲染成**白底黑字**，看起来像一个"白框块"贴在页尾，
+ *      和旁边黑色实心的「发布题库」气质完全不搭；
+ *   2. 页面很长时按钮被推到文档最末尾，用户要一直滚到底才看得见；
+ *   3. 上边框 + 长页面的滚动条，让页尾像被"切了一刀"。
+ *
+ * 现在改成**贴底操作栏**（sticky）：
+ *   · 贴住内容区底部，始终可见，不必滚到底；
+ *   · 白底 + 顶部发丝线，与内容区分层但不抢眼；
+ *   · 主按钮实心黑底白字（对齐 DSH 的 primary），次信息在左、动作在右。
+ */
 .step-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
   display: flex;
-  justify-content: flex-end;
-  padding: 18px 0 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 8px -16px 0;
+  padding: 12px 16px;
+  background: #fff;
   border-top: 1px solid var(--os-border-soft);
 
+  .sf-hint {
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--os-text-4);
+  }
+
   :deep(.el-button) {
-    padding: 11px 32px;
+    padding: 10px 28px;
     font-weight: 500;
+    border-radius: var(--os-radius-sm);
+  }
+
+  /* 主按钮：实心近黑底 + 白字
+     ⚠️ 不能只依赖 `--el-button-*` CSS 变量（试过：变量能读到值但背景仍是白色，
+        因为 Element 的 `.el-button--primary` 规则里直接用 `background-color:
+        var(--el-button-bg-color)`，而本页 scoped 的变量声明没落到按钮自身上）。
+        这里直接写 `background-color` / `color`，最稳。 */
+  :deep(.el-button--primary) {
+    background-color: var(--os-primary);
+    border-color: var(--os-primary);
+    color: #fff;
+
+    &:hover,
+    &:focus {
+      background-color: var(--os-primary-hover);
+      border-color: var(--os-primary-hover);
+      color: #fff;
+    }
+
+    &:active {
+      background-color: var(--os-primary);
+      border-color: var(--os-primary);
+    }
+
+    &.is-disabled,
+    &.is-disabled:hover {
+      background-color: var(--os-border);
+      border-color: var(--os-border);
+      color: var(--os-text-4);
+    }
+  }
+
+  /* 窄屏：提示文案让位，只留按钮 */
+  @media (max-width: 720px) {
+    .sf-hint {
+      display: none;
+    }
+
+    justify-content: flex-end;
   }
 }
 /*
