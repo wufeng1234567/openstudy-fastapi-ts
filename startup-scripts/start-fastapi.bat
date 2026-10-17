@@ -57,6 +57,11 @@ echo ------------------------------------------
 echo.
 
 cd /d "%FASTAPI_DIR%"
+REM ---- 本地开发版：关闭 AI 限流 ----
+REM 与线上体验版区分：线上（daily-start.sh）保持默认 true 做防刷控成本，
+REM 本地自测/演示不被自己卡住（否则一个多工具回合就能烧完 50 次日额度）。
+REM 覆盖优先级最高：压过 Redis 里的 rl:ai:config.enabled。
+set AI_RATE_LIMIT_ENABLED=false
 "%VENV_PYTHON%" -m uvicorn app.main:app --host 0.0.0.0 --port %PORT% --log-level info --reload
 set EXIT_CODE=%errorlevel%
 

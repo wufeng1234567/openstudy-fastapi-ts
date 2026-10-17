@@ -216,6 +216,9 @@ else
     cat > /tmp/start-backend.sh << 'BKEOF'
 #!/bin/bash
 cd /root/workspace/openstudy-fastapi-ts/openstudy-fastapi
+# 线上体验版：**保留** AI 限流（防刷、控成本）。本地开发版在
+# startup-scripts/start-fastapi.bat 里显式设成 false，两边口径在此分开。
+export AI_RATE_LIMIT_ENABLED=true
 exec .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 9101
 BKEOF
     chmod +x /tmp/start-backend.sh

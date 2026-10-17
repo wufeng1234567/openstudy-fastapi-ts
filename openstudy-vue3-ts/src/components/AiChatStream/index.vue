@@ -170,6 +170,22 @@
           -->
           <div class="message-text rendered-md" v-html="renderAgentMarkdown(msg.content)">
           </div>
+          <!--
+            「还在输出」提示 —— 用户 2026-10-17 要求：
+            **只要 LLM 还没截止（isGenerating），正文末尾就常驻一个淡淡的闪烁「思考中…」**。
+            为什么必须有它：正文一开始流式输出，等待占位（LoadingDots）就被摘掉了，
+            此后模型即使还在生成（尤其两次分片之间网络停顿），界面也没有任何"还在跑"的信号，
+            用户会以为卡死。这里用极淡的呼吸式闪烁表达「没停，还在写」，
+            比转圈轻、不抢正文注意力。
+            ⚠️ 只挂在**正在流式输出的那条正文**上（最后一条、且无 type 的 assistant 消息）：
+               工具卡片 / 专家卡片 / 思考块后面不该再挂一次，它们各自已有运行态。
+          -->
+          <div v-if="isStreamingText(msg)" class="stream-hint" aria-live="polite">
+            <span class="stream-hint-text">思考中</span>
+            <span class="stream-hint-dots" aria-hidden="true">
+              <i></i><i></i><i></i>
+            </span>
+          </div>
           <el-button class="msg-copy-btn" size="small" text @click="copyText(msg.content)"
             v-if="msg.content && msg.content.trim()">
             <el-icon>
@@ -490,6 +506,28 @@ const isLastAssistantEmpty = (idx) => {
     }
   }
   return true
+}
+
+/**
+ * 这条消息是否是**正在流式输出的正文**（用来挂末尾的「思考中…」呼吸提示）
+ *
+ * 条件（全满足）：
+ *   1. 本轮还在生成（isGenerating，即 LLM 尚未截止）；
+ *   2. 是普通 assistant 正文 —— type 字段为空（工具卡 / 专家卡 / 思考块 / 进度清单都有自己的运行态，
+ *      再挂一条会重复）；
+ *   3. 是**最后一条** assistant 正文（前面已经回答完的旧消息不该显示）；
+ *   4. 已开始输出正文（content 非空）—— 还没吐字的阶段由占位 LoadingDots 负责。
+ */
+const isStreamingText = (msg) => {
+  if (!props.isGenerating) return false
+  if (!msg || msg.role !== 'assistant' || msg.type) return false
+  if (!msg.content || !String(msg.content).trim()) return false
+  for (let i = props.messages.length - 1; i >= 0; i--) {
+    const m = props.messages[i]
+    if (m.role !== 'assistant' || m.type) continue
+    return m === msg
+  }
+  return false
 }
 
 /** agent_note 的图标（自我纠正 / 警告 / 错误） */
@@ -941,6 +979,76 @@ defineExpose({ scrollToBottom, messagesRef, setInputText })
 }
 
 /* ------------------------------------------------------------------
+   「还在输出」呼吸提示（正文末尾，用户 2026-10-17）
+
+   设计取舍：
+   · 用**极淡的呼吸式闪烁**（opacity 0.35 ↔ 1.0 的慢速脉冲），不用转圈 —— 正文正在流式
+     增长时，转圈会跟文字抢注意力，而这里只是要表达「没停」；
+   · 颜色取中性灰蓝（#94a3b8），比正文浅一档，视觉上退到背景层；
+   · 三个小点在文字点延迟依次出现，表达「还在继续」而不是「加载中」；
+   · 只做 opacity / translate，不做布局属性动画（本仓禁 `transition: all` 的同一考虑）。
+   ------------------------------------------------------------------ */
+.stream-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1;
+  color: #94a3b8;
+  animation: stream-hint-breathe 2.2s ease-in-out infinite;
+}
+
+.stream-hint-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+
+  i {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background-color: currentColor;
+    animation: stream-hint-dot 1.4s ease-in-out infinite;
+
+    &:nth-child(1) {
+      animation-delay: 0s;
+    }
+
+    &:nth-child(2) {
+      animation-delay: 0.18s;
+    }
+
+    &:nth-child(3) {
+      animation-delay: 0.36s;
+    }
+  }
+}
+
+@keyframes stream-hint-breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes stream-hint-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+  }
+
+  30% {
+    opacity: 1;
+  }
+}
+
+/* ------------------------------------------------------------------
    处理进度清单（type='progress'）—— 用户 2026-10-11 方案 C
    把"干等转圈"变成"看得见的处理流程"：一行一步，进行中转圈、完成打勾、失败红叉。
    ------------------------------------------------------------------ */
@@ -1026,6 +1134,17 @@ defineExpose({ scrollToBottom, messagesRef, setInputText })
 @media (prefers-reduced-motion: reduce) {
   .step-spinner {
     animation: none;
+  }
+
+  /* 「还在输出」提示：关掉呼吸闪烁但**保留可见**（不能直接隐藏，否则就失去"没停"的信号） */
+  .stream-hint {
+    animation: none;
+    opacity: 0.7;
+  }
+
+  .stream-hint-dots i {
+    animation: none;
+    opacity: 0.6;
   }
 }
 

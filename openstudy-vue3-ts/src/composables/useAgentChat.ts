@@ -963,7 +963,20 @@ export function useAgentChat() {
       local(approved)
       return
     }
-    await confirmAgentTool(confirmId, approved, edited)
+    // ⚠️ api 链路：**必须确认服务端真的收到了**决定，不能先乐观改卡片。
+    //    用户 2026-10-17 报「点取消，卡片显示已取消，但 LLM 那边毫无反应」——
+    //    根因就是这个 POST 被 AI 限流 429 拦掉（当时 /ai/agent/confirm 错误地在
+    //    限流白名单里），而卡片状态在上面已经改成「已取消」了，界面凭空骗人。
+    //    现在：POST 失败 → 把卡片改回「待确认」并明确提示，用户可重按（决定不会丢）。
+    const ok = await confirmAgentTool(confirmId, approved, edited)
+    if (!ok && msg) {
+      msg.status = 'running'
+      persistTimelineSoon()
+      pushNote(
+        'error',
+        '确认请求没有送达服务器（可能被限流或网络中断），请稍后重试'
+      )
+    }
   }
 
   /**

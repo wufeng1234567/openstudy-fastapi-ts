@@ -693,9 +693,22 @@ async def build_agent_llm(
     is_official_deepseek = _is_official_deepseek(config)
     #: 配了 reasoning_effort 的**非官方** OpenAI 兼容网关（magpie 等）——用它开思考
     has_effort = bool((config.reasoning_effort or "").strip())
+    # ⚠️ 这里**绝不能**因为 config.thinking_mode='disabled' 就发 `{"thinking":{"type":"disabled"}}`：
+    #    官方域收到 disabled 会在**上游**把 reasoning_content 掐干净（实测：disabled → 0 字 /
+    #    不传 → 923 字），于是「深度思考」卡片永远不出现 —— 用户 2026-10-17 报的
+    #    「官方默认 deepseek-flash 从不触发深度思考、自己配的中转站却能」正是这条：
+    #    官方默认行（config_id=6，历史遗留）的 thinking_mode 就是 'disabled'。
+    #    Agent 模式的产品口径是「能思考就展示」（见本函数 docstring 的表格：
+    #    显式关闭 / auto → 任意 → 不传，跟随上游默认），故 disabled 一律降级为「不传」。
+    #    普通对话链路（`stream_with_config`）仍然照常尊重 thinking_mode。
     if resolved_intent is False:
-        # 显式关闭：官方域发 disabled；别家什么都不发
-        thinking_arg: Any = False if is_official_deepseek else _OMIT_THINKING
+        if is_official_deepseek:
+            logger.warning(
+                "[db_config] Agent 忽略 thinking_mode=disabled（config_id={} model={}）："
+                "发 disabled 会让上游掐掉 reasoning_content，深度思考将永不展示；改为不传、跟随上游默认",
+                config.config_id, config.model,
+            )
+        thinking_arg: Any = _OMIT_THINKING
     elif is_official_deepseek:
         # 官方 DeepSeek：enabled → True；auto → 不传（跟随上游默认）
         thinking_arg = True if resolved_intent is True else _OMIT_THINKING

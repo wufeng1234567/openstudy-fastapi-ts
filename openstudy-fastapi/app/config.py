@@ -116,6 +116,15 @@ class Settings(BaseSettings):
     # ⚠️ 旧名 `deepseek-v4-flash` 仍可调用，但对应模型**已下线**（请求由 V4.1-Flash 提供服务），
     #    新配置一律用 `deepseek-flash`。别名收敛见 `services/ai/deepseek_client.py` 的 MODEL_ALIASES。
     AI_DEFAULT_MODEL: str = "deepseek-flash"
+
+    # ---- AI 限流总开关（区分「本地开发版」与「线上体验版」）----
+    # 这是**最高优先级**的硬开关，压过 Redis 里的 `rl:ai:config.enabled`：
+    #   False → 中间件直接放行，连计数器都不写（本地开发/自测/演示电脑上不被自己卡住）
+    #   True  → 按 Redis 配置执行（线上体验版默认值，防刷、控制成本）
+    # 本地：`startup-scripts/start-fastapi.bat` 已显式设成 false
+    # 线上：`daily-start.sh` 不设，保持默认 True
+    AI_RATE_LIMIT_ENABLED: bool = True
+
     # RAG 向量化模型。默认 BAAI/bge-m3（1024 维，必须与 models/rag.py: EMBEDDING_DIM 一致）。
     AI_DEFAULT_EMBEDDING_MODEL: str = "BAAI/bge-m3"
     # RAG 向量化的**后端**，三选一：

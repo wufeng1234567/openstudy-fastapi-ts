@@ -63,9 +63,16 @@ async def _require_admin(current_user: dict = Depends(get_current_user)) -> dict
 
 @router.get("/config")
 async def get_rate_limit_config(current_user: dict = Depends(_require_admin)):
-    """当前生效的限流配置（并标注每项来自 redis 还是 env 默认值）"""
+    """当前生效的限流配置（并标注每项来自 redis 还是 env 默认值）
+
+    ⚠️ `globallyEnabled` 是**压过 Redis 的硬开关**（`AI_RATE_LIMIT_ENABLED`）：
+       本地开发版为 false —— 此时下面的 enabled / 各项额度全部不生效，
+       前端应据此显示「本机已关闭限流」，避免管理员误以为配置没保存上。
+    """
+    from app.core.rate_limit import _globally_enabled
+
     cfg = await rate_limit_config.get_config()
-    return success(cfg)
+    return success({**cfg, "globallyEnabled": _globally_enabled()})
 
 
 class RateLimitConfigBody(BaseModel):
@@ -91,7 +98,9 @@ async def update_rate_limit_config(
         daily_limit=body.dailyLimit if body.dailyLimit is not None else current["dailyLimit"],
         ip_per_minute=body.ipPerMinute if body.ipPerMinute is not None else current["ipPerMinute"],
     )
-    return success(new)
+    from app.core.rate_limit import _globally_enabled
+
+    return success({**new, "globallyEnabled": _globally_enabled()})
 
 
 # ---------- 2. 违规记录 ----------

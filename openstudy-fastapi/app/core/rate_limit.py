@@ -10,6 +10,13 @@ AI 接口限流中间件（纯 ASGI，不破坏流式响应）
 ⚠️ 只限流「真正调 LLM」的接口，不拦查库/配置/会话管理接口。
    白名单匹配 AI_LLM_PATHS，不在白名单里的 /ai/ 请求直接放行。
 
+⚠️ **本地开发版不限流**：
+   环境变量 `AI_RATE_LIMIT_ENABLED=false`（`app/config.py` 的
+   `Settings.AI_RATE_LIMIT_ENABLED`）是最高优先级的硬开关，压过 Redis 配置 ——
+   置 false 时本中间件直接放行（连计数器都不写）。
+   本地 `startup-scripts/start-fastapi.bat` 已显式设为 false；
+   线上 `daily-start.sh` 保持 true（体验版防刷）。
+
 ⚠️ 评测期间如需调整：
   export AI_USER_PER_MINUTE=30   # 放宽每用户每分钟
   export AI_DAILY_LIMIT=200      # 放宽每日额度
@@ -27,6 +34,7 @@ import json
 import fnmatch
 import redis.asyncio as redis
 from loguru import logger
+from app.config import settings
 from app.redis import redis_client
 from app.core.rate_limit_config import get_config
 
@@ -37,8 +45,20 @@ AI_USER_PER_MINUTE = int(os.environ.get("AI_USER_PER_MINUTE", 10))  # 每用户�
 AI_IP_PER_MINUTE = int(os.environ.get("AI_IP_PER_MINUTE", 100))    # 每 IP 每分钟
 LOGIN_TOKEN_PREFIX = "openstudy-py:login_tokens:"
 
-# ── 需要限流的路径白名单（只列真正调 LLM 的接口）──
+# ── 需要限流的路径白名单（**只列真正调 LLM 的接口**）──
 # 用 fnmatch 做 glob 匹配，支持通配符
+#
+# ⚠️ 这里曾经混进了 3 个**根本不调 LLM** 的路径，造成两个真实的线上故障
+#    （用户 2026-10-17 报「点取消，LLM 那边没有反应」，并很快烧完 50 次额度）：
+#
+#    · `/ai/agent/confirm` —— 只做 `resolve_confirmation()` 唤醒挂起的循环，
+#      **一次 LLM 都不调**。被限流后前端 POST 收到 429 → 后端永远收不到「取消」决定 →
+#      循环挂到 180s 超时；用户看到卡片显示「已取消」，但模型那边毫无反应。
+#    · `/ai/agent/preview` / `/ai/agent/execute` —— ds-free 链路里每调一个工具都要
+#      走一遍（预览 + 执行），**后端一次 LLM 都不调**（LLM 在浏览器扩展侧）。
+#      计入额度后，一个多工具回合就能干掉好几次「日额度」。
+#
+#    结论：额度只该按「真正的模型轮次」计。上面三个一律移出白名单。
 AI_LLM_PATHS = [
     "/ai/chat",                        # POST 对话
     "/ai/assistant/stream",            # GET/POST 流式对话
@@ -49,12 +69,14 @@ AI_LLM_PATHS = [
     "/ai/generate/reading/stream",     # GET 流式阅读
     "/ai/generate/composite/stream",   # GET 流式组合
     "/ai/generate/composite/sync",     # POST 同步组合
-    "/ai/agent/stream",                # POST 智能体流式
-    "/ai/agent/execute",               # POST 智能体执行
-    "/ai/agent/preview",               # POST 智能体预览（调 LLM）
-    "/ai/agent/confirm",               # POST 智能体确认（调 LLM）
+    "/ai/agent/stream",                # POST 智能体流式（后端 LLM 循环）
     "/ai/analyze/question/stream",     # GET 题目分析
 ]
+
+#: 硬开关：False = 整个限流关闭（本地开发版）。
+#: 每次请求实时读 `settings`，改环境变量后重启即生效（不缓存，避免与热重载打架）。
+def _globally_enabled() -> bool:
+    return bool(getattr(settings, "AI_RATE_LIMIT_ENABLED", True))
 
 
 def _is_llm_path(path: str) -> bool:
@@ -153,6 +175,10 @@ async def _check_rate_limit(ip: str, user_id: str | None, path: str = "") -> tup
     """
     pool: redis.Redis = redis_client._pool
     if pool is None:
+        return True, ""
+
+    # 本地开发版：硬开关优先于 Redis 配置（连计数器都不写，别在本地把自己卡住）
+    if not _globally_enabled():
         return True, ""
 
     cfg = await get_config()

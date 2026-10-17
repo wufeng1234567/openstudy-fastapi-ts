@@ -7543,6 +7543,60 @@ const LAYOUT_CHECKS = [
       const problems = turnIdPersistProblems(ASSISTANT)
       return problems.length ? problems.join('；') : null
     }
+  },
+  {
+    id: 'L92',
+    file: 'src/composables/useAgentChat.ts',
+    label:
+      '确认/取消**不能先乐观改卡片**：POST 失败就要把状态改回「待确认」并提示，否则界面显示已取消而模型那边毫无反应',
+    fn: () => {
+      /**
+       * ⚠️ 用户 2026-10-17 报「点取消，卡片显示已取消，但 LLM 那边没有反应」。
+       *    根因是 
+esolveConfirm 先把卡片改成 fail、再去 POST /ai/agent/confirm；
+       *    那个 POST 当时被 AI 限流 429 拦掉（后端根本没收到「取消」决定，循环挂到超时），
+       *    而界面已经凭前端本地状态显示「已取消」—— 看起来像取消成功了，实际毫无作用。
+       *
+       *    判据：api 链路上必须**先拿返回值**，失败时把 status 改回 running 并 pushNote 提示。
+       *    只扫代码（剥注释），不看注释里怎么说。
+       */
+      const rel = 'src/composables/useAgentChat.ts'
+      const code = codeText(rel)
+      if (!code) return 'read-source-failed: ' + rel + ' -- fail-closed'
+      const problems = []
+
+      /* (1) 必须接住 confirmAgentTool 的返回值 */
+      if (!/const\s+\w+\s*=\s*await\s+confirmAgentTool\s*\(/.test(code)) {
+        problems.push(
+          'resolveConfirm 没有接住 confirmAgentTool 的返回值 —— ' +
+            'POST 失败（限流 429 / 网络断）与成功就完全无法区分，' +
+            '卡片会一直显示『已取消』，而服务端根本没收到决定'
+        )
+      }
+
+      /* (2) 失败分支必须把卡片状态改回 running */
+      const hasRevert =
+        /if\s*\(\s*!\s*\w+\s*&&\s*msg\s*\)\s*\{[\s\S]{0,400}?msg\.status\s*=\s*'running'/.test(
+          code
+        )
+      if (!hasRevert) {
+        problems.push(
+          'POST 失败时没有把卡片状态改回 running —— ' +
+            '必须回到『待确认』让用户能重试，不能停在骗人的『已取消』'
+        )
+      }
+
+      /* (3) 失败分支必须给用户一句明确提示 */
+      const hasNotice = /pushNote\(\s*'error'\s*,/.test(code)
+      if (!hasNotice) {
+        problems.push(
+          'POST 失败时没有 pushNote(error, ...) 提示 —— ' +
+            '用户会以为取消生效了，实际后端还在挂起等决定'
+        )
+      }
+
+      return problems.length ? problems.join('；') : null
+    }
   }
 ]
 
