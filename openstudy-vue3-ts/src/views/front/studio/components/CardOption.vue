@@ -40,13 +40,13 @@ const emit = defineEmits(['select'])
   --primary-500: #6366f1;
   --primary-600: #4f46e5;
   --primary-700: #4338ca;
-  --gray-50: #f9fafb;
-  --gray-100: #f3f4f6;
-  --gray-200: #e5e7eb;
+  --gray-50: var(--dsw-static-neutral-bluish-50);
+  --gray-100: var(--os-bg-hover);
+  --gray-200: var(--os-border);
   --gray-400: #9ca3af;
   --gray-500: #6b7280;
   --gray-600: #4b5563;
-  --gray-700: #374151;
+  --gray-700: var(--os-text-2);
   --gray-900: #111827;
 }
 
@@ -55,16 +55,16 @@ const emit = defineEmits(['select'])
   align-items: center;
   padding: 28px;
   background: white;
-  border-radius: 16px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  border-radius: var(--os-radius);
+  box-shadow: none;
   border: 1px solid var(--gray-200);
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out), color var(--ds-duration-fast) var(--ds-ease-in-out);
 
   &:hover {
     transform: translateY(-4px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-    border-color: #d1d5db;
+    box-shadow: none;
+    border-color: var(--os-border-strong);
 
     .card-icon {
       transform: scale(1.05);
@@ -79,7 +79,7 @@ const emit = defineEmits(['select'])
   .card-icon {
     width: 64px;
     height: 64px;
-    border-radius: 16px;
+    border-radius: var(--os-radius);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -94,7 +94,7 @@ const emit = defineEmits(['select'])
     .card-title {
       font-size: 18px;
       font-weight: 600;
-      color: #1f2937;
+      color: var(--os-text);
       margin: 0 0 8px 0;
     }
 

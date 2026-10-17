@@ -87,7 +87,13 @@
         </template>
       </draggable>
       <div v-if="filteredQuestions.length === 0" class="empty-tip">
-        {{ activeTypeFilter === 'all' ? '暂无题目，从左侧拖拽题型或使用 AI 生成' : '该类型暂无题目' }}
+        <!--
+          ⚠️ 这里原来写的是 `activeTypeFilter`（单数），而脚本里只有 `activeTypeFilters`（复数）
+          —— Vue 每次渲染都会警告 "was accessed during render but is not defined"，
+          且三元永远走 else 分支（永远显示"该类型暂无题目"）。
+          判据改用现成的 `isTypeSelected('all')`。
+        -->
+        {{ isTypeSelected('all') ? '暂无题目，从左侧拖拽题型或使用 AI 生成' : '该类型暂无题目' }}
       </div>
       <!-- 分页 -->
       <div class="question-pagination">
@@ -381,9 +387,9 @@
           <template v-else>
             <el-alert type="info" :closable="false" style="margin-bottom: 16px">
               <template #title>
-                <span style="font-weight: 500">📋 组合题说明</span>
+                <span style="font-weight: 500">组合题说明</span>
               </template>
-              <p style="margin: 8px 0; line-height: 1.6; color: #606266;">
+              <p style="margin: 8px 0; line-height: 1.6; color: var(--os-text-2);">
                 组合题适用于：阅读理解、完形填空、案例分析、实验大题、材料分析题等。<br />
                 请详细描述您需要的大题材料和子题要求。
               </p>
@@ -470,7 +476,7 @@
                 <div v-if="isCompositePreview" class="composite-preview">
                   <div class="composite-passage">
                     <div class="passage-title">
-                      <span>📄 材料内容</span>
+                      <span>材料内容</span>
                       <el-button text size="small" @click="editPassage">
                         <el-icon>
                           <EditPen />
@@ -487,7 +493,7 @@
 
                   <div class="sub-questions-list">
                     <div class="sub-title">
-                      <span>📝 子题列表（共 {{ editablePreviewData?.questions?.length ||
+                      <span>子题列表（共 {{ editablePreviewData?.questions?.length ||
                         parsedQuestionsForPreview.questions?.length || 0 }} 题）</span>
                     </div>
                     <div
@@ -2192,19 +2198,19 @@ defineExpose({ questions, openAiDialog })
     .btn-type-lib {
       position: relative;
       background: #fff;
-      border: 1px solid #dcdfe6;
-      color: #606266;
-      transition: all 0.2s ease;
+      border: 1px solid var(--os-border);
+      color: var(--os-text-2);
+      transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out), color var(--ds-duration-fast) var(--ds-ease-in-out);
 
       &:hover {
-        color: #409eff;
+        color: var(--os-accent);
         border-color: #c6e2ff;
         background: #ecf5ff;
       }
 
       &.is-filtering {
-        color: #409eff;
-        border-color: #409eff;
+        color: var(--os-accent);
+        border-color: var(--os-accent);
         background: #ecf5ff;
       }
 
@@ -2228,9 +2234,9 @@ defineExpose({ questions, openAiDialog })
   .btn-restore {
     flex-shrink: 0;
     background: #fff;
-    border: 1px solid #dcdfe6;
-    color: #606266;
-    transition: all 0.2s ease;
+    border: 1px solid var(--os-border);
+    color: var(--os-text-2);
+    transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out), color var(--ds-duration-fast) var(--ds-ease-in-out);
 
     &:hover {
       color: #e6a23c;
@@ -2246,8 +2252,8 @@ defineExpose({ questions, openAiDialog })
     left: 16px;
     width: 240px;
     background: #fff;
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
+    border: 1px solid var(--os-border);
+    border-radius: var(--os-radius);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
     padding: 12px;
     z-index: 2000;
@@ -2260,10 +2266,10 @@ defineExpose({ questions, openAiDialog })
       gap: 8px;
       font-size: 14px;
       font-weight: 600;
-      color: #1f2937;
+      color: var(--os-text);
       margin-bottom: 10px;
       padding-bottom: 8px;
-      border-bottom: 1px solid #e5e7eb;
+      border-bottom: 1px solid var(--os-border);
       flex-shrink: 0;
 
       .popover-title { flex-shrink: 0; }
@@ -2273,11 +2279,11 @@ defineExpose({ questions, openAiDialog })
         cursor: pointer;
         color: #9ca3af;
         font-size: 16px;
-        transition: all 0.2s ease;
+        transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out), color var(--ds-duration-fast) var(--ds-ease-in-out);
         padding: 2px;
 
         &:hover {
-          color: #409eff;
+          color: var(--os-accent);
           transform: rotate(90deg);
         }
       }
@@ -2296,22 +2302,22 @@ defineExpose({ questions, openAiDialog })
         background: #f8f9fa;
         border-radius: 6px;
         cursor: grab;
-        transition: all 0.2s ease;
-        border: 1px solid #e5e7eb;
+        transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out), color var(--ds-duration-fast) var(--ds-ease-in-out);
+        border: 1px solid var(--os-border);
         color: #6b7280;
         user-select: none;
 
         &:hover {
-          background: #f3f4f6;
-          border-color: #d1d5db;
+          background: var(--os-bg-hover);
+          border-color: var(--os-border-strong);
           color: #4b5563;
         }
 
         &.type-filtered {
-          background: #409eff;
+          background: var(--os-accent);
           color: white;
-          border-color: #409eff;
-          box-shadow: 0 1px 3px rgba(64, 158, 255, 0.3);
+          border-color: var(--os-accent);
+          box-shadow: none;
 
           .el-icon { color: white; }
           .type-count { background: rgba(255,255,255,0.3); color: white; }
@@ -2329,7 +2335,7 @@ defineExpose({ questions, openAiDialog })
 
         .type-count {
           margin-left: auto;
-          background: #e5e7eb;
+          background: var(--os-border);
           color: #6b7280;
           padding: 0 5px;
           border-radius: 8px;
@@ -2347,7 +2353,7 @@ defineExpose({ questions, openAiDialog })
       color: #9ca3af;
       text-align: center;
       padding: 4px;
-      background: #f9fafb;
+      background: var(--dsw-static-neutral-bluish-50);
       border-radius: 4px;
     }
   }
@@ -2355,7 +2361,7 @@ defineExpose({ questions, openAiDialog })
   /* 悬浮层过渡动画 */
   .type-popover-enter-active,
   .type-popover-leave-active {
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out), color var(--ds-duration-fast) var(--ds-ease-in-out);
     transform-origin: top left;
   }
   .type-popover-enter-from,
@@ -2368,11 +2374,12 @@ defineExpose({ questions, openAiDialog })
   .question-panel {
     flex: 1;
     min-width: 260px;
-    background: #fff;
-    border-radius: 16px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-    border: 1px solid #e5e7eb;
-    padding: 14px 16px;
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--os-border-soft);
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0 18px 0 0;
     display: flex;
     flex-direction: column;
     height: auto;
@@ -2387,7 +2394,7 @@ defineExpose({ questions, openAiDialog })
       gap: 8px;
       margin-bottom: 12px;
       padding-bottom: 10px;
-      border-bottom: 1px solid #e5e7eb;
+      border-bottom: 1px solid var(--os-border);
       position: relative;
 
       .panel-title {
@@ -2401,7 +2408,7 @@ defineExpose({ questions, openAiDialog })
         text-align: center;
         font-size: 16px;
         font-weight: 600;
-        color: #1f2937;
+        color: var(--os-text);
         pointer-events: none;
       }
 
@@ -2431,21 +2438,21 @@ defineExpose({ questions, openAiDialog })
 
       .question-item {
         padding: 10px 14px;
-        background: #fafafa;
-        border-radius: 10px;
+        background: var(--dsw-static-neutral-bluish-50);
+        border-radius: var(--os-radius-sm);
         margin-bottom: 8px;
         cursor: pointer;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        border: 2px solid transparent;
+        transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out);
+        border: 1px solid transparent;
 
         &:hover {
-          background: #f3f4f6;
+          background: var(--os-bg-hover);
         }
 
         &.active {
-          border-color: #409eff;
+          border-color: var(--os-accent);
           background: #f0f7ff;
-          box-shadow: 0 2px 8px rgba(64, 158, 255, 0.1);
+          box-shadow: none;
         }
 
         .question-header {
@@ -2456,7 +2463,7 @@ defineExpose({ questions, openAiDialog })
           .question-index {
             width: 22px;
             height: 22px;
-            background: #e5e7eb;
+            background: var(--os-border);
             border-radius: 4px;
             display: flex;
             align-items: center;
@@ -2491,7 +2498,7 @@ defineExpose({ questions, openAiDialog })
 
         .question-preview {
           font-size: 13px;
-          color: #1f2937;
+          color: var(--os-text);
           display: -webkit-box;
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
@@ -2517,7 +2524,7 @@ defineExpose({ questions, openAiDialog })
     .question-pagination {
       flex-shrink: 0;
       padding-top: 10px;
-      border-top: 1px solid #e5e7eb;
+      border-top: 1px solid var(--os-border);
       margin-top: auto;
       display: flex;
       justify-content: center;
@@ -2586,11 +2593,11 @@ defineExpose({ questions, openAiDialog })
     flex: 0 0 440px;
     width: 440px;
     min-width: 440px;
-    background: #fff;
-    border-radius: 16px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-    border: 1px solid #e5e7eb;
-    padding: 14px 16px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0 0 0 18px;
     display: flex;
     flex-direction: column;
     min-height: 700px;
@@ -2600,9 +2607,9 @@ defineExpose({ questions, openAiDialog })
       flex-shrink: 0;
       font-size: 16px;
       font-weight: 600;
-      color: #1f2937;
+      color: var(--os-text);
       padding-bottom: 10px;
-      border-bottom: 1px solid #e5e7eb;
+      border-bottom: 1px solid var(--os-border);
       margin-bottom: 12px;
       display: flex;
       justify-content: space-between;
@@ -2637,7 +2644,7 @@ defineExpose({ questions, openAiDialog })
           .option-letter {
             width: 24px;
             font-weight: bold;
-            color: #409eff;
+            color: var(--os-accent);
           }
 
           :deep(.el-input__wrapper) {
@@ -2647,10 +2654,10 @@ defineExpose({ questions, openAiDialog })
       }
 
       .sub-questions-container {
-        border: 1px solid #e5e7eb;
+        border: 1px solid var(--os-border);
         border-radius: 8px;
         padding: 10px;
-        background: #fafafa;
+        background: var(--dsw-static-neutral-bluish-50);
 
         .sub-toolbar {
           display: flex;
@@ -2675,7 +2682,7 @@ defineExpose({ questions, openAiDialog })
             background: white;
             border-radius: 8px;
             padding: 10px;
-            border: 1px solid #e5e7eb;
+            border: 1px solid var(--os-border);
 
             .sub-header {
               display: flex;
@@ -2723,12 +2730,12 @@ defineExpose({ questions, openAiDialog })
                 .score-label {
                   font-size: 13px;
                   font-weight: 500;
-                  color: #606266;
+                  color: var(--os-text-2);
                 }
 
                 .score-unit {
                   font-size: 12px;
-                  color: #909399;
+                  color: var(--os-text-3);
                 }
               }
             }
@@ -2776,7 +2783,7 @@ defineExpose({ questions, openAiDialog })
       :deep(.tiptap-editor) {
         min-height: 80px;
         border-radius: 8px;
-        border-color: #e5e7eb;
+        border-color: var(--os-border);
       }
 
       :deep(.editor-toolbar) {
@@ -2850,14 +2857,14 @@ defineExpose({ questions, openAiDialog })
     .option-letter {
       width: 24px;
       font-weight: bold;
-      color: #409eff;
+      color: var(--os-accent);
     }
   }
 }
 
 .ai-generate-dialog {
   :deep(.el-dialog) {
-    border-radius: 16px;
+    border-radius: var(--os-radius);
   }
 
   :deep(.el-dialog__body) {
@@ -2867,14 +2874,14 @@ defineExpose({ questions, openAiDialog })
 
 .form-hint {
   font-size: 12px;
-  color: #909399;
+  color: var(--os-text-3);
   margin-top: 4px;
 }
 
 .prompt-history {
   margin-bottom: 16px;
   padding: 12px;
-  background: #f5f7fa;
+  background: var(--dsw-static-neutral-bluish-50);
   border-radius: 8px;
 
   .history-header {
@@ -2889,7 +2896,7 @@ defineExpose({ questions, openAiDialog })
     align-items: center;
     gap: 4px;
     font-size: 13px;
-    color: #606266;
+    color: var(--os-text-2);
     font-weight: 500;
   }
 
@@ -2914,13 +2921,13 @@ defineExpose({ questions, openAiDialog })
         text-overflow: ellipsis;
         white-space: nowrap;
         padding-right: 24px;
-        transition: all 0.2s ease;
+        transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out), color var(--ds-duration-fast) var(--ds-ease-in-out);
         border: 1px solid transparent;
 
         &:hover {
           background: #ecf5ff !important;
-          border-color: #409eff !important;
-          color: #409eff !important;
+          border-color: var(--os-accent) !important;
+          color: var(--os-accent) !important;
         }
       }
 
@@ -2932,14 +2939,14 @@ defineExpose({ questions, openAiDialog })
         width: 18px;
         height: 18px;
         background: transparent;
-        color: #909399;
+        color: var(--os-text-3);
         border-radius: 4px;
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
         opacity: 0;
-        transition: all 0.15s ease;
+        transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out), color var(--ds-duration-fast) var(--ds-ease-in-out);
 
         .el-icon {
           font-size: 12px;
@@ -2995,12 +3002,12 @@ defineExpose({ questions, openAiDialog })
     }
 
     &::-webkit-scrollbar-track {
-      background: #f5f7fa;
+      background: var(--dsw-static-neutral-bluish-50);
       border-radius: 3px;
     }
 
     &::-webkit-scrollbar-thumb {
-      background: #dcdfe6;
+      background: var(--os-border);
       border-radius: 3px;
 
       &:hover {
@@ -3022,7 +3029,7 @@ defineExpose({ questions, openAiDialog })
     align-items: center;
     justify-content: space-between;
     padding: 10px 16px;
-    background: #f5f7fa;
+    background: var(--dsw-static-neutral-bluish-50);
     border-bottom: 1px solid #e4e7ed;
 
     .stream-status-left {
@@ -3054,7 +3061,7 @@ defineExpose({ questions, openAiDialog })
 
     .status-text {
       font-size: 13px;
-      color: #606266;
+      color: var(--os-text-2);
       font-weight: 500;
     }
   }
@@ -3071,12 +3078,12 @@ defineExpose({ questions, openAiDialog })
     }
 
     &::-webkit-scrollbar-track {
-      background: #f5f7fa;
+      background: var(--dsw-static-neutral-bluish-50);
       border-radius: 3px;
     }
 
     &::-webkit-scrollbar-thumb {
-      background: #dcdfe6;
+      background: var(--os-border);
       border-radius: 3px;
 
       &:hover {
@@ -3095,7 +3102,7 @@ defineExpose({ questions, openAiDialog })
     word-break: break-word;
 
     &.streaming {
-      border-left: 3px solid #409eff;
+      border-left: 3px solid var(--os-accent);
       padding-left: 12px;
       animation: stream-pulse 1.5s ease-in-out infinite;
     }
@@ -3105,7 +3112,7 @@ defineExpose({ questions, openAiDialog })
 
     0%,
     100% {
-      border-left-color: #409eff;
+      border-left-color: var(--os-accent);
     }
 
     50% {
@@ -3130,15 +3137,15 @@ defineExpose({ questions, openAiDialog })
 
     .preview-question-card {
       background: #fff;
-      border-radius: 16px;
+      border-radius: var(--os-radius);
       padding: 16px;
       margin-bottom: 16px;
       border: 1px solid #e4e7ed;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+      box-shadow: none;
       transition: box-shadow 0.2s;
 
       &:hover {
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+        box-shadow: none;
       }
 
       .preview-header {
@@ -3153,17 +3160,17 @@ defineExpose({ questions, openAiDialog })
           justify-content: center;
           width: 26px;
           height: 26px;
-          background: linear-gradient(135deg, #409eff, #66b1ff);
+          background: linear-gradient(135deg, var(--os-accent), #66b1ff);
           color: white;
           border-radius: 8px;
           font-weight: bold;
           font-size: 13px;
-          box-shadow: 0 2px 4px rgba(64, 158, 255, 0.2);
+          box-shadow: none;
         }
 
         .preview-score {
           margin-left: auto;
-          color: #909399;
+          color: var(--os-text-3);
           font-size: 13px;
           font-weight: 500;
         }
@@ -3189,7 +3196,7 @@ defineExpose({ questions, openAiDialog })
             background: #f8fafc;
             border-radius: 8px;
             border: 1px solid #ebeef5;
-            transition: all 0.2s;
+            transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out), color var(--ds-duration-fast) var(--ds-ease-in-out);
 
             &.is-correct {
               background: #f0f9eb;
@@ -3200,7 +3207,7 @@ defineExpose({ questions, openAiDialog })
             .option-letter {
               font-weight: 700;
               margin-right: 14px;
-              color: #606266;
+              color: var(--os-text-2);
               min-width: 20px;
             }
 
@@ -3230,13 +3237,13 @@ defineExpose({ questions, openAiDialog })
           }
 
           .answer-value {
-            color: #409eff;
+            color: var(--os-accent);
             font-weight: 500;
           }
         }
 
         .preview-analysis {
-          color: #909399;
+          color: var(--os-text-3);
           font-size: 13px;
           padding-top: 14px;
           margin-top: 4px;
@@ -3244,7 +3251,7 @@ defineExpose({ questions, openAiDialog })
 
           .analysis-label {
             font-weight: 600;
-            color: #606266;
+            color: var(--os-text-2);
             margin-right: 8px;
           }
 
@@ -3259,7 +3266,7 @@ defineExpose({ questions, openAiDialog })
       .composite-passage {
         background: #f9fafc;
         padding: 18px;
-        border-radius: 16px;
+        border-radius: var(--os-radius);
         margin-bottom: 24px;
         border: 1px solid #e4e7ed;
 
@@ -3292,11 +3299,11 @@ defineExpose({ questions, openAiDialog })
 
         .sub-question-card {
           background: #fff;
-          border-radius: 16px;
+          border-radius: var(--os-radius);
           padding: 16px;
           margin-bottom: 16px;
           border: 1px solid #e4e7ed;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+          box-shadow: none;
 
           .sub-header {
             display: flex;
@@ -3319,7 +3326,7 @@ defineExpose({ questions, openAiDialog })
 
             .sub-score {
               margin-left: auto;
-              color: #909399;
+              color: var(--os-text-3);
               font-size: 13px;
               font-weight: 500;
             }
@@ -3354,7 +3361,7 @@ defineExpose({ questions, openAiDialog })
               .option-letter {
                 font-weight: 700;
                 margin-right: 14px;
-                color: #606266;
+                color: var(--os-text-2);
                 min-width: 20px;
               }
 
@@ -3382,20 +3389,20 @@ defineExpose({ questions, openAiDialog })
             }
 
             .answer-value {
-              color: #409eff;
+              color: var(--os-accent);
               font-weight: 500;
             }
           }
 
           .sub-analysis {
-            color: #909399;
+            color: var(--os-text-3);
             font-size: 13px;
             padding-top: 14px;
             border-top: 1px dashed #e4e7ed;
 
             .analysis-label {
               font-weight: 600;
-              color: #606266;
+              color: var(--os-text-2);
               margin-right: 8px;
             }
 
@@ -3414,7 +3421,7 @@ defineExpose({ questions, openAiDialog })
     justify-content: space-between;
     padding: 12px 16px;
     margin-bottom: 16px;
-    background: #f5f7fa;
+    background: var(--dsw-static-neutral-bluish-50);
     border-radius: 8px;
 
     .context-info {
@@ -3438,11 +3445,11 @@ defineExpose({ questions, openAiDialog })
     align-items: center;
     gap: 6px;
     font-size: 12px;
-    color: #909399;
+    color: var(--os-text-3);
     margin-top: 6px;
     margin-bottom: 16px;
     padding: 8px 12px;
-    background: #fafafa;
+    background: var(--dsw-static-neutral-bluish-50);
     border-radius: 8px;
   }
 }

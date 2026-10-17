@@ -225,7 +225,7 @@ const handleCreateAndImport = async () => {
 
 .section-label {
   font-size: 14px;
-  color: #606266;
+  color: var(--os-text-2);
   margin-bottom: 12px;
 }
 
@@ -238,7 +238,7 @@ const handleCreateAndImport = async () => {
   border: 1px solid #e1f3d8;
   border-radius: 8px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out), color var(--ds-duration-fast) var(--ds-ease-in-out);
 }
 
 .existing-bank-card:hover {
@@ -271,14 +271,14 @@ const handleCreateAndImport = async () => {
 
 .bank-subject {
   font-size: 12px;
-  color: #909399;
+  color: var(--os-text-3);
 }
 
 .divider {
   display: flex;
   align-items: center;
   margin: 20px 0;
-  color: #909399;
+  color: var(--os-text-3);
   font-size: 13px;
 }
 

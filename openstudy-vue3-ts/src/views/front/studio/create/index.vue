@@ -1,14 +1,18 @@
 <template>
   <div class="create-studio">
     <!-- 题库信息 -->
-    <div class="section">
-      <div class="section-header">
-        <div class="section-title">📋 题库信息</div>
-        <el-select v-model="selectedBankId" placeholder="选择已有题库" clearable filterable size="default"
-          style="width: 200px" @change="onBankChange" class="bank-selector">
+    <section class="os-block">
+      <header class="os-block__head">
+        <div class="os-block__title">
+          <h2>题库信息</h2>
+          <p>名称、科目与封面，决定它出现在别人面前的第一眼</p>
+        </div>
+        <el-select v-model="selectedBankId" placeholder="载入已有题库" clearable filterable size="default"
+          class="bank-selector" @change="onBankChange">
           <el-option v-for="bank in myBanks" :key="bank.bankId" :label="bank.bankName" :value="bank.bankId" />
         </el-select>
-      </div>
+      </header>
+
       <el-form ref="basicFormRef" :model="basicForm" :rules="basicRules" label-position="top" class="basic-form">
         <el-row :gutter="20">
           <el-col :span="12">
@@ -44,11 +48,16 @@
           </el-col>
         </el-row>
       </el-form>
-    </div>
+    </section>
 
     <!-- 题目搭建 -->
-    <div class="section">
-      <div class="section-title">📝 题目搭建</div>
+    <section class="os-block">
+      <header class="os-block__head">
+        <div class="os-block__title">
+          <h2>题目搭建</h2>
+          <p>手动逐题录入，或让 AI 按你的资料批量生成</p>
+        </div>
+      </header>
       <el-tabs v-model="buildMode" class="build-tabs">
         <el-tab-pane label="手动搭建" name="manual">
           <QuestionBuilder ref="builderRef" :bank-id="selectedBankId || bankId"
@@ -63,25 +72,26 @@
           />
         </el-tab-pane>
       </el-tabs>
-    </div>
+    </section>
 
     <!-- 发布设置（AI 模式下隐藏：题库由模型自己创建，不走这套表单） -->
-    <div v-if="!isAiMode" class="section">
-      <div class="section-title">⚙️ 发布设置</div>
+    <section v-if="!isAiMode" class="os-block">
+      <header class="os-block__head">
+        <div class="os-block__title">
+          <h2>发布设置</h2>
+          <p>决定它是自己练，还是放进学习分享</p>
+        </div>
+      </header>
       <el-form label-position="top" class="publish-form">
         <el-form-item label="题库可见性">
-          <el-radio-group v-model="publishForm.visibility">
-            <el-radio label="public">
-              <div class="radio-label">
-                <span class="label-title">公开</span>
-                <span class="label-desc">所有用户可见，可收藏练习</span>
-              </div>
+          <el-radio-group v-model="publishForm.visibility" class="visibility-group">
+            <el-radio value="public" class="visibility-item">
+              <span class="vi-title">公开</span>
+              <span class="vi-desc">所有用户可见，可收藏练习</span>
             </el-radio>
-            <el-radio label="private">
-              <div class="radio-label">
-                <span class="label-title">私有</span>
-                <span class="label-desc">仅自己可见和管理</span>
-              </div>
+            <el-radio value="private" class="visibility-item">
+              <span class="vi-title">私有</span>
+              <span class="vi-desc">仅自己可见和管理</span>
             </el-radio>
           </el-radio-group>
         </el-form-item>
@@ -89,7 +99,7 @@
           <el-checkbox v-model="publishForm.allowFork">允许其他人复制（Fork）</el-checkbox>
         </el-form-item>
       </el-form>
-    </div>
+    </section>
 
     <!-- 底部操作栏（AI 模式下隐藏） -->
     <div v-if="!isAiMode" class="step-footer">
@@ -662,147 +672,167 @@ const handleSave = async () => {
 }
 </script>
 
+
 <style scoped lang="scss">
+/*
+ * 题库搭建 · 创建页
+ * =================
+ * 与 DSH 前台的版式对齐（2026-10-17 重构）：
+ *   · **不再用"白底大圆角卡片 + 阴影"**分块 —— 那是旧版儒瑞式风格，
+ *     整页看起来像一堆浮起来的盒子，和对话页、我的学习都不连成一片；
+ *   · 改成**通栏分块**：每块只有一条极淡的分隔线 + 一块标题区，
+ *     与 `AGENTS.md` 里"页面根节点不要做成悬浮圆角卡片"的规则一致；
+ *   · 颜色全部换设计令牌（`var(--os-*)`），不再写 #1f2937 / #409eff 这类硬编码；
+ *   · 标题前的 emoji 全部去掉（📋 / 📝 / ⚙️），改用纯文字 + 副标题说明，
+ *     与本系统线性图标的调性统一。
+ */
 .create-studio {
-  max-width: 100%;
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 12px 16px;
+  padding: 4px 4px 40px;
 
   :deep(.el-button) {
-    border-radius: 8px;
+    border-radius: var(--os-radius-sm);
+  }
+}
+
+/* ==================== 分块（通栏，不套卡片） ==================== */
+.os-block {
+  padding: 4px 0 26px;
+
+  & + .os-block {
+    border-top: 1px solid var(--os-border-soft);
+    padding-top: 26px;
+  }
+}
+
+.os-block__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.os-block__title {
+  min-width: 0;
+
+  h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: -0.01em;
+    color: var(--os-text);
   }
 
-  :deep(.el-tag) {
-    border-radius: 4px;
+  p {
+    margin: 3px 0 0;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--os-text-4);
+  }
+}
+
+.bank-selector {
+  width: 220px;
+  flex: none;
+
+  :deep(.el-select__wrapper) {
+    border-radius: var(--os-radius-sm);
+  }
+}
+
+/* ==================== 表单 ==================== */
+.basic-form,
+.publish-form {
+  :deep(.el-form-item__label) {
+    font-weight: 500;
+    color: var(--os-text-2);
   }
 
-  :deep(.el-radio__input.is-checked .el-radio__inner) {
-    border-radius: 50%;
+  :deep(.el-input__wrapper),
+  :deep(.el-select__wrapper) {
+    border-radius: var(--os-radius-sm);
   }
 
-  :deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
-    border-radius: 4px;
+  :deep(.el-textarea__inner) {
+    border-radius: var(--os-radius-sm);
+  }
+}
+
+/* 可见性：两张并排的可选卡（比原生 radio + 两行长文字更好认） */
+.visibility-group {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.visibility-item {
+  height: auto;
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--os-border);
+  border-radius: var(--os-radius);
+  background: #fff;
+  transition: border-color var(--ds-duration-fast) var(--ds-ease-in-out),
+    background-color var(--ds-duration-fast) var(--ds-ease-in-out);
+
+  &:hover {
+    border-color: var(--os-border-strong);
   }
 
-  .section {
-    background: #fff;
-    border-radius: 16px;
-    padding: 16px 20px;
-    margin-bottom: 16px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-    border: 1px solid #e5e7eb;
-
-    .section-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
-      padding-bottom: 10px;
-      border-bottom: 1px solid #e5e7eb;
-
-      .section-title {
-        margin-bottom: 0;
-        padding-bottom: 0;
-        border-bottom: none;
-      }
-
-      .bank-selector {
-        :deep(.el-select__wrapper) {
-          border-radius: 8px;
-        }
-      }
-    }
-
-    .section-title {
-      font-size: 18px;
-      font-weight: 600;
-      color: #1f2937;
-      margin-bottom: 16px;
-      padding-bottom: 10px;
-      border-bottom: 1px solid #e5e7eb;
-    }
+  &:has(.is-checked) {
+    border-color: var(--os-text);
+    background: var(--dsw-static-neutral-bluish-50);
   }
 
-  .basic-form,
-  .publish-form {
-    :deep(.el-form-item__label) {
-      font-weight: 500;
-      color: #374151;
-    }
-
-    :deep(.el-input__wrapper) {
-      border-radius: 8px;
-      box-shadow: 0 0 0 1px #e5e7eb;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-
-      &:hover {
-        box-shadow: 0 0 0 1px #d1d5db;
-      }
-
-      &.is-focus {
-        box-shadow: 0 0 0 1px #409eff;
-      }
-    }
-
-    :deep(.el-textarea__inner) {
-      border-radius: 8px;
-      border-color: #e5e7eb;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-
-      &:hover {
-        border-color: #d1d5db;
-      }
-
-      &:focus {
-        border-color: #409eff;
-      }
-    }
-
-    :deep(.el-select .el-input__wrapper) {
-      border-radius: 8px;
-    }
-
-    .radio-label {
-      display: flex;
-      flex-direction: column;
-
-      .label-title {
-        font-weight: 500;
-        color: #1f2937;
-      }
-
-      .label-desc {
-        font-size: 13px;
-        color: #6b7280;
-      }
-    }
-  }
-
-  .step-footer {
+  :deep(.el-radio__label) {
     display: flex;
-    justify-content: center;
-    padding-top: 12px;
-
-    :deep(.el-button) {
-      border-radius: 8px;
-      padding: 12px 48px;
-      font-weight: 500;
-    }
+    flex-direction: column;
+    gap: 2px;
+    padding-left: 8px;
   }
 
-  .build-tabs {
-    :deep(.el-tabs__header) {
-      margin-bottom: 20px;
-    }
+  .vi-title {
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--os-text);
+  }
 
-    :deep(.el-tabs__item) {
-      font-size: 15px;
-      font-weight: 500;
-    }
+  .vi-desc {
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--os-text-4);
+  }
+}
 
-    :deep(.el-tabs__content) {
-      padding: 0;
-    }
+/* ==================== 底部操作 ==================== */
+.step-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 18px 0 8px;
+  border-top: 1px solid var(--os-border-soft);
+
+  :deep(.el-button) {
+    padding: 11px 32px;
+    font-weight: 500;
+  }
+}
+
+/* ==================== tabs ==================== */
+.build-tabs {
+  :deep(.el-tabs__header) {
+    margin-bottom: 16px;
+  }
+
+  :deep(.el-tabs__item) {
+    font-size: 13.5px;
+    font-weight: 500;
+  }
+
+  :deep(.el-tabs__content) {
+    padding: 0;
   }
 }
 </style>

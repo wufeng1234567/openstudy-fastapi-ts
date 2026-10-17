@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" title="✏️ 完整题目编辑" width="65%" top="5vh" :close-on-click-modal="false"
+  <el-dialog v-model="visible" title="完整题目编辑" width="65%" top="5vh" :close-on-click-modal="false"
     class="full-editor-dialog" :show-close="true" @close="handleClose">
     <div class="full-editor-content">
       <el-form label-position="top" size="default">
@@ -327,7 +327,7 @@ const onTypeChange = () => {
     top: 5vh;
     left: 50%;
     transform: translateX(-50%);
-    border-radius: 16px;
+    border-radius: var(--os-radius);
     display: flex;
     flex-direction: column;
     height: 70vh;
@@ -371,16 +371,16 @@ const onTypeChange = () => {
         .option-letter {
           width: 24px;
           font-weight: bold;
-          color: #409eff;
+          color: var(--os-accent);
         }
       }
     }
 
     .sub-questions-container {
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
+      border: 1px solid var(--os-border);
+      border-radius: var(--os-radius);
       padding: 12px;
-      background: #fafafa;
+      background: var(--dsw-static-neutral-bluish-50);
 
       .sub-toolbar {
         display: flex;
@@ -403,15 +403,15 @@ const onTypeChange = () => {
 
         .sub-question-card {
           background: #fff;
-          border-radius: 12px;
-          border: 1px solid #e5e7eb;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          border-radius: var(--os-radius);
+          border: 1px solid var(--os-border);
+          box-shadow: none;
+          transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out), color var(--ds-duration-fast) var(--ds-ease-in-out);
           overflow: hidden;
 
           &:hover {
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-            border-color: #d1d5db;
+            box-shadow: none;
+            border-color: var(--os-border-strong);
           }
 
           .card-header {
@@ -420,7 +420,7 @@ const onTypeChange = () => {
             align-items: center;
             padding: 10px 14px;
             background: linear-gradient(to right, #f8f9fa, #fff);
-            border-bottom: 1px solid #f3f4f6;
+            border-bottom: 1px solid var(--os-bg-hover);
 
             .header-left {
               display: flex;
@@ -429,7 +429,7 @@ const onTypeChange = () => {
 
               .sub-index {
                 font-weight: 600;
-                color: #1f2937;
+                color: var(--os-text);
                 font-size: 14px;
               }
             }
@@ -454,7 +454,7 @@ const onTypeChange = () => {
               .field-label {
                 display: block;
                 font-size: 12px;
-                color: #909399;
+                color: var(--os-text-3);
                 font-weight: 500;
                 margin-bottom: 4px;
               }
@@ -474,7 +474,7 @@ const onTypeChange = () => {
                 .option-letter {
                   width: 20px;
                   font-weight: 600;
-                  color: #409eff;
+                  color: var(--os-accent);
                   font-size: 13px;
                 }
               }
@@ -514,7 +514,7 @@ const onTypeChange = () => {
     :deep(.tiptap-editor) {
       min-height: 80px;
       border-radius: 8px;
-      border-color: #e5e7eb;
+      border-color: var(--os-border);
     }
     :deep(.editor-toolbar) {
       padding: 4px 6px;
