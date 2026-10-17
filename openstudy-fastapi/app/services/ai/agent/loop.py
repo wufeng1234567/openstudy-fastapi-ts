@@ -1770,6 +1770,19 @@ async def run_agent_stream(
     #    index=0 行**上，导致它自己永远停在「进行中」（用户 2026-10-11 报：题库已建好、正文也出了，
     #    但「题库专家」那行还在转圈，其他专家正常）。故 index 必须是**整轮全局唯一**的序号。
     delegate_seq = 0
+    #: 确认卡的「一次一张」闸门（用户 2026-10-17 报的 bug）。
+    #:
+    #: 问题：并行派两个专家时，两个子代理都会走到"需要确认"这一步，各自发一张卡片并挂起。
+    #:      前端一下子收到两张，用户滚到底部只看得见**最后那张**；他点了确认，第一张却还挂着
+    #:      → 后端整整等满 180 秒才超时，用户感知就是「点完确认页面傻愣着」。
+    #:
+    #: 方案：整轮运行共用一把 asyncio.Lock。谁拿到锁谁才能**发卡片并等待**，
+    #:      另一个专家在锁外排队 —— 它那一行仍显示"正在处理…"，但不会抢着弹第二张卡。
+    #:      用户确认完第一张，第二张才出现，永远不会出现"看不见的挂起卡片"。
+    #:
+    #: ⚠️ 必须是**每轮运行一个实例**（不是模块级全局）：
+    #:    全局锁会让 A 用户的确认卡把 B 用户堵住。
+    confirm_lock = asyncio.Lock()
     for loop_index in range(max(int(req.max_loops or MAX_AGENT_LOOPS), 1)):
         logger.debug("[agent] 第 {} 轮，消息数={}", loop_index + 1, len(lc_messages))
         # 每轮模型调用前先发 `waiting`：让前端在「工具跑完 → 等模型下一轮」这段也显示等待态
@@ -1786,6 +1799,8 @@ async def run_agent_stream(
             #: 导致合并后 `tool_calls` 丢失（症状是「模型明明调了工具却什么也没发生」）。
             #: 这里额外记住「最后一个非空 tool_calls」，合并结果为空时用它。
             last_tool_calls: List[Any] = []
+            #: 本轮的等待提示是否已经为「工具/专家」发过（避免每个分片都发一条）
+            announced_wait: Optional[str] = None
             # 指标：这一轮 LLM 的耗时与首 token 就在这里量。
             # 「首 token」= 第一个**非空可读内容**分片 —— 思考正文与正文都算（深度思考开着时，
             # 用户实际看到的第一样东西是思考卡片，只算正文会把首 token 报得偏晚）。
@@ -1807,6 +1822,40 @@ async def run_agent_stream(
                 chunk_calls = getattr(chunk, "tool_calls", None)
                 if chunk_calls:
                     last_tool_calls = list(chunk_calls)
+                    # ------------------------------------------------------------
+                    # 「正文说完 → 卡片出现」之间那段空白，必须有等待提示。
+                    #
+                    # 用户 2026-10-17 报：模型说完「我同时派两位专家并行处理…」后界面卡住，
+                    # 过一会儿才直接冒出「专家协同中（2 位）」。
+                    # 原因：`waiting` 只在每轮开头发一次，正文一到就被前端摘掉；而模型接下来
+                    # 还在流式生成 **tool_call 的参数 JSON**（两个专家的任务描述可能很长），
+                    # 这段没有任何事件 → 界面看起来像卡死。
+                    #
+                    # 这里在**第一个 tool_call 出现时**补一条等待提示，并区分两种文案：
+                    #   · delegate_task → 「正在调用专家…」（用户明确要求与工具调用区分）
+                    #   · 其它工具      → 「正在调用工具…」
+                    # 前端拿到后显示统一的等待行；随后 delegate_start / tool_start 一到就替换掉。
+                    # ------------------------------------------------------------
+                    if announced_wait is None:
+                        names = set()
+                        for _tc in chunk_calls:
+                            _fn = getattr(_tc, "function", None)
+                            _nm = getattr(_fn, "name", None) if _fn is not None else None
+                            if _nm:
+                                names.add(str(_nm))
+                        if names:
+                            is_delegate = roles_mod.DELEGATE_TOOL_NAME in names
+                            announced_wait = "delegate" if is_delegate else "tool"
+                            yield _event(
+                                {
+                                    "type": "waiting",
+                                    "message": (
+                                        "正在调用专家…"
+                                        if is_delegate
+                                        else "正在调用工具…"
+                                    ),
+                                }
+                            )
 
             # 这一轮 LLM 成功跑完才计入（抛异常的轮不算「往返」也不进首 token 分母）
             metrics["rounds"] += 1
@@ -2016,26 +2065,28 @@ async def run_agent_stream(
             #    否则模型把 40 题拆成 3 批导入、知识点分几块写库时，会连着弹 6 张确认卡。
             if needs_user_confirmation(tool, params, req.auto_confirm, state):
                 confirm_id = f"cfm_{uuid.uuid4().hex[:12]}"
-                yield _event(
-                    {
-                        "type": "tool_confirm",
-                        "confirmId": confirm_id,
-                        "tool": tool_name,
-                        "action": params.get("action"),
-                        "message": _tool_start_message(tool_name, params),
-                        "params": _safe_params(params),
-                        "preview": preview,
-                        "destructive": tool.is_destructive(params),
-                    }
-                )
-                approved, edited = await _await_user_confirmation(confirm_id)
-                yield _event(
-                    {
-                        "type": "tool_confirm_resolved",
-                        "confirmId": confirm_id,
-                        "approved": approved,
-                    }
-                )
+                # 一次只发一张卡：拿到锁之后再发 + 等（见 `confirm_lock` 的说明）
+                async with confirm_lock:
+                    yield _event(
+                        {
+                            "type": "tool_confirm",
+                            "confirmId": confirm_id,
+                            "tool": tool_name,
+                            "action": params.get("action"),
+                            "message": _tool_start_message(tool_name, params),
+                            "params": _safe_params(params),
+                            "preview": preview,
+                            "destructive": tool.is_destructive(params),
+                        }
+                    )
+                    approved, edited = await _await_user_confirmation(confirm_id)
+                    yield _event(
+                        {
+                            "type": "tool_confirm_resolved",
+                            "confirmId": confirm_id,
+                            "approved": approved,
+                        }
+                    )
                 # 用户批准 → 记住「本轮已授权这个工具的这类写操作」，后续批次不再追问。
                 # ⚠️ 只记**非破坏性**动作：删除要一次一问（每次删的东西都不一样、不可逆）。
                 if approved and not tool.is_destructive(params):
@@ -2245,7 +2296,13 @@ async def run_agent_stream(
                     #    自己的 `delegate_emit`（绝不动共享的那份，否则并发时互相覆盖）。
                     job_ctx = dataclasses.replace(
                         ctx,
-                        extra={**ctx.extra, "delegate_emit": _emit_for(job)},
+                        extra={
+                            **ctx.extra,
+                            "delegate_emit": _emit_for(job),
+                            # 并行的多个专家共用同一把确认锁 → 确认卡「一次一张」，
+                            # 不会出现"用户只看见最后一张、前面的挂着不动"的死锁。
+                            "confirm_lock": confirm_lock,
+                        },
                     )
                     _res = await _execute_tool(_tool, _params, job_ctx)
                 except Exception as e:  # noqa: BLE001 - 单个委派异常不该整轮崩（_execute_tool 已吞；这里兜底）

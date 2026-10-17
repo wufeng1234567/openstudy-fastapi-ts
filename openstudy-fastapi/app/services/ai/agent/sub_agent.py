@@ -491,17 +491,41 @@ async def _run_sub_agent_inner(
                             logger.warning(
                                 "[sub_agent:{}] preview 失败 {}: {}", role_spec.key, name, e
                             )
-                        await _emit({
-                            "type": "tool_confirm",
-                            "confirmId": confirm_id,
-                            "tool": name,
-                            "action": str(params.get("action") or ""),
-                            "message": f"即将执行 {getattr(tool, 'label', None) or name}",
-                            "params": loop_mod._safe_params(params),
-                            "preview": preview,
-                            "destructive": bool(tool.is_destructive(params)),
-                        })
-                        approved, edited = await loop_mod._await_user_confirmation(confirm_id)
+                        # ------------------------------------------------------------
+                        # 确认卡「一次一张」：多个专家并行派活时，各自都可能要确认。
+                        # 如果同时发卡，前端会堆两张，用户滚到底只看见**最后那张**，
+                        # 点了确认后第一张还挂着 → 后端等到 180 秒超时（用户 2026-10-17 报）。
+                        # 这里统一用 loop 注入的 `confirm_lock`：抢到锁才发卡 + 等待，
+                        # 其余专家在锁外排队（它们那一行仍显示"正在处理…"）。
+                        # ------------------------------------------------------------
+                        _lock = (ctx.extra or {}).get("confirm_lock")
+                        if _lock is not None and _lock.locked():
+                            # 另一个专家正在等用户确认 → 告诉用户"我在排队"，别让它看起来卡死
+                            await _emit({
+                                "phase": "status",
+                                "round": cur_round,
+                                "tool": name,
+                                "action": str(params.get("action") or ""),
+                                "message": "等待上一个确认完成后执行…",
+                                "success": None,
+                            })
+                        if _lock is not None:
+                            await _lock.acquire()
+                        try:
+                            await _emit({
+                                "type": "tool_confirm",
+                                "confirmId": confirm_id,
+                                "tool": name,
+                                "action": str(params.get("action") or ""),
+                                "message": f"即将执行 {getattr(tool, 'label', None) or name}",
+                                "params": loop_mod._safe_params(params),
+                                "preview": preview,
+                                "destructive": bool(tool.is_destructive(params)),
+                            })
+                            approved, edited = await loop_mod._await_user_confirmation(confirm_id)
+                        finally:
+                            if _lock is not None:
+                                _lock.release()
                         if not approved:
                             # 给模型的是**失败信封**（别重复同一操作）；界面侧的中性 tool_result
                             # 由下方 `cancelled` 分支统一用「已取消」。

@@ -805,6 +805,26 @@ watch(() => props.messages.length, (n) => {
   autoScrollIfNearBottom()
 })
 
+/**
+ * 新出现「待确认」卡片时 → **强制滚到它**
+ *
+ * 为什么可以打破"用户上滑就别打扰"的规则（2026-10-17 用户报的 bug）：
+ *   确认卡是**阻塞式**的 —— 用户不点，后端的 Agent 循环就停在那里，整轮任务不动。
+ *   而它只是时间线里的一条消息，用户若是上滑在看历史、或卡片被后来的内容顶出视口，
+ *   就完全不知道有东西在等他确认，界面看起来就是"傻愣着"。
+ *   所以这里必须无条件滚过去。只在**数量增加**时触发，不会在用户点完确认（状态变
+ *   resolved）后再把视口拽走。
+ */
+watch(
+  () => props.messages.filter((m: any) => m?.type === 'tool_confirm').length,
+  (n, prev) => {
+    if (n > (prev || 0)) {
+      pinnedToLatest.value = true
+      nextTick(() => pinToLatest())
+    }
+  }
+)
+
 // 流式内容更新时：如果在底部附近则滚动
 watch(() => {
   if (props.messages.length > 0) {
