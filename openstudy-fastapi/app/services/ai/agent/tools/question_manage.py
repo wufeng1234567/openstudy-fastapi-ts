@@ -396,6 +396,33 @@ class QuestionManageTool(AgentTool):
 
         out["count"] = len(texts)
         out["sample"] = texts[:_PREVIEW_SAMPLE] or ["（没有找到要删除的题目）"]
+        # 勾选卡（用户 2026-10-17 需求）：一张卡列出全部待删题目，用户可逐条反悔
+        if final_ids:
+            detail_rows = (
+                await ctx.db.execute(
+                    select(QuestionMain.id, QuestionMain.question_text).where(
+                        QuestionMain.id.in_(final_ids),
+                        QuestionMain.bank_id == bank.id,
+                    )
+                )
+            ).all()
+            order = {int(i): n for n, i in enumerate(final_ids)}
+            items = [
+                {
+                    "key": f"question:{r[0]}",
+                    "id": int(r[0]),
+                    "title": str(r[1] or "")[:100],
+                    "subtitle": bank.bank_name,
+                }
+                for r in detail_rows
+            ]
+            items.sort(key=lambda it: order.get(it["id"], 9999))
+            out["draft"] = {
+                "kind": "batch_delete",
+                "entity": "question",
+                "entityLabel": "题目",
+                "items": items,
+            }
         return out
 
     # ------------------------------------------------------------------

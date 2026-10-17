@@ -37,7 +37,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import func, select
 
-from app.models.rag import RagDocument, RagDocumentChunk
+from app.models.rag import RagDocument, RagDocumentChunk, RagKnowledgeBase
 from app.services.ai.agent.base import (
     OP_RESTORE,
     OP_SOFT_DELETE,
@@ -65,6 +65,15 @@ _WILL_CHANGE = (
 )
 
 
+def _as_list(value: Any) -> list:
+    """把「可能是 None / 单值 / 列表」的参数统一成 list（批量动作用）"""
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return list(value)
+    return [value]
+
+
 def _to_int(value: Any) -> Optional[int]:
     try:
         return int(value)
@@ -87,8 +96,11 @@ class KnowledgeBaseManageTool(AgentTool):
         "create=create an empty knowledge base (requires `name`), "
         "update=rename / re-describe / **enable or block** a knowledge base (pass `kb_id` "
         "plus at least one of `name` / `description` / `disabled`), "
-        "delete=delete a knowledge base AND all of its documents and text chunks (pass "
+        "delete=delete ONE knowledge base AND all of its documents and text chunks (pass "
         "`kb_id`; irreversible), "
+        "delete_many=delete SEVERAL knowledge bases at once (pass `kb_ids`). "
+        "ALWAYS use this instead of calling delete repeatedly: the user gets ONE "
+        "confirmation card where they can untick items they want to keep, "
         "list_documents=list the documents inside one knowledge base (pass `kb_id`, paged "
         "via `limit`/`offset`), "
         "delete_document=delete one document and its chunks (pass `doc_id`; irreversible). "
@@ -117,6 +129,7 @@ class KnowledgeBaseManageTool(AgentTool):
                     "create",
                     "update",
                     "delete",
+                    "delete_many",
                     "list_documents",
                     "delete_document",
                 ],
@@ -126,6 +139,14 @@ class KnowledgeBaseManageTool(AgentTool):
                 "description": (
                     "Knowledge base ID (used by update/delete/list_documents). Take it from "
                     "action=list."
+                ),
+            },
+            "kb_ids": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "description": (
+                    "Knowledge base IDs to delete in bulk (used by delete_many). Take them "
+                    "from action=list. Prefer this over calling delete in a loop."
                 ),
             },
             "name": {
@@ -167,8 +188,8 @@ class KnowledgeBaseManageTool(AgentTool):
     }
     write_operation = True
 
-    _WRITE_ACTIONS = {"create", "update", "delete", "delete_document"}
-    _DESTRUCTIVE_ACTIONS = {"delete", "delete_document"}
+    _WRITE_ACTIONS = {"create", "update", "delete", "delete_many", "delete_document"}
+    _DESTRUCTIVE_ACTIONS = {"delete", "delete_many", "delete_document"}
 
     def needs_confirmation(self, params: Dict[str, Any]) -> bool:
         return str(params.get("action") or "") in self._WRITE_ACTIONS
@@ -229,6 +250,8 @@ class KnowledgeBaseManageTool(AgentTool):
                 return await self._preview_update(params, ctx)
             if action == "delete":
                 return await self._preview_delete(params, ctx)
+            if action == "delete_many":
+                return await self._preview_delete_many(params, ctx)
             if action == "delete_document":
                 return await self._preview_delete_document(params, ctx)
         except Exception:  # noqa: BLE001 - 预览失败不能影响主流程
@@ -303,6 +326,126 @@ class KnowledgeBaseManageTool(AgentTool):
             "chunks": chunks,
         }
 
+    async def _preview_delete_many(
+        self, params: Dict[str, Any], ctx: ToolContext
+    ) -> Dict[str, Any]:
+        """批量删库的确认卡：**一份可勾选的清单**（用户 2026-10-17 需求）
+
+        为什么要 `draft`：以前模型为了删 12 个库，会**循环调用 12 次 `delete`**，
+        于是弹出 12 张确认卡片 —— 用户得点 12 次，且中途点错一张就只删了一半。
+        改成一次 `delete_many` + 一张卡片，卡里逐条列出每个库（带文档数/分块数），
+        用户勾选要删的、取消不要的，点一次「确认删除」由系统批量执行。
+
+        `draft.kind = "batch_delete"` 是前端 `AgentDraftCard` 的渲染契约；
+        `items[].key` 是勾选项的稳定标识（`kb:<id>`），回传时原样带回。
+        """
+        ids: List[int] = []
+        for value in _as_list(params.get("kb_ids")):
+            try:
+                ids.append(int(value))
+            except (TypeError, ValueError):
+                continue
+        ids = list(dict.fromkeys(ids))
+        if not ids:
+            return {}
+
+        rows = (
+            await ctx.db.execute(
+                select(
+                    RagKnowledgeBase.id,
+                    RagKnowledgeBase.name,
+                    RagKnowledgeBase.doc_count,
+                    RagKnowledgeBase.chunk_count,
+                ).where(
+                    RagKnowledgeBase.id.in_(ids),
+                    RagKnowledgeBase.user_id == ctx.user_id,
+                    RagKnowledgeBase.del_flag == "0",
+                )
+            )
+        ).all()
+
+        items: List[Dict[str, Any]] = []
+        for r in rows:
+            docs = int(r[2] or 0)
+            chunks = int(r[3] or 0)
+            items.append(
+                {
+                    "key": f"kb:{r[0]}",
+                    "id": int(r[0]),
+                    "title": str(r[1] or ""),
+                    "subtitle": f"{docs} 篇文档 · {chunks} 个分块",
+                }
+            )
+        # 保持用户/模型给的顺序，方便对照
+        order = {int(i): n for n, i in enumerate(ids)}
+        items.sort(key=lambda it: order.get(it["id"], 9999))
+
+        missing = [i for i in ids if all(it["id"] != i for it in items)]
+        out: Dict[str, Any] = {
+            "count": len(items),
+            "draft": {
+                "kind": "batch_delete",
+                "entity": "knowledge_base",
+                "entityLabel": "知识库",
+                "items": items,
+            },
+        }
+        if missing:
+            out["missingIds"] = missing
+        return out
+
+    async def _delete_many(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+        """一次删除多个知识库（**用户勾选后的最终名单**已由 loop 覆盖进 `kb_ids`）
+
+        逐个删（每个库要级联清文档 + 分块），任一失败不影响其余 —— 最后如实汇总
+        「删了哪些 / 哪些没删成」，并把这份结果回灌给模型（它要知道有没有删干净）。
+        """
+        ids: List[int] = []
+        for value in _as_list(params.get("kb_ids")):
+            try:
+                ids.append(int(value))
+            except (TypeError, ValueError):
+                continue
+        ids = list(dict.fromkeys(ids))
+        if not ids:
+            return fail(
+                "delete_many 缺少 kb_ids",
+                "请传要删除的知识库 ID 列表（kb_ids），或用 action=list 先查 ID",
+            )
+
+        from app.database import async_session_factory
+
+        deleted: List[Dict[str, Any]] = []
+        failed: List[Dict[str, Any]] = []
+        for kid in ids:
+            try:
+                async with async_session_factory() as db:
+                    info = await rws.delete_knowledge_base(db, ctx.user_id, kid)
+                deleted.append(
+                    {
+                        "id": kid,
+                        "name": info.get("name"),
+                        "documents": info.get("documents", 0),
+                        "chunks": info.get("chunks", 0),
+                    }
+                )
+            except Exception as e:  # noqa: BLE001 - 单个失败不牵连整批
+                failed.append({"id": kid, "error": str(e)})
+
+        parts = [f"已删除 {len(deleted)} 个知识库"]
+        if deleted:
+            parts.append("、".join(f"「{d['name']}」" for d in deleted))
+        if failed:
+            parts.append(f"{len(failed)} 个失败：" + "、".join(str(f["id"]) for f in failed))
+
+        return ok(
+            action="delete_many",
+            deleted=deleted,
+            failed=failed,
+            missingIds=[f["id"] for f in failed],
+            message="；".join(parts),
+        )
+
     # ------------------------------------------------------------------ 只读辅助
 
     async def _load_kb(self, ctx: ToolContext, kb_id: Any):
@@ -359,6 +502,7 @@ class KnowledgeBaseManageTool(AgentTool):
             "create": self._create,
             "update": self._update,
             "delete": self._delete,
+            "delete_many": self._delete_many,
             "list_documents": self._list_documents,
             "delete_document": self._delete_document,
         }.get(action)

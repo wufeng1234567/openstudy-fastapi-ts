@@ -101,7 +101,18 @@ const title = computed(() => (props.destructive ? '需要确认：删除操作' 
  * 不落在 `action === 'batch_import'` 上：老的 `batch_import` 预览（只有 count/sample）
  * 也该走只读那条路，只有带 `draft` 的才可编辑。
  */
-const isDraft = computed(() => (props.preview as any)?.draft?.kind === 'question_bank_import')
+const DRAFT_KINDS = ['question_bank_import', 'batch_delete']
+
+/**
+ * 是否交给 `AgentDraftCard` 渲染（而不是下面的只读预览）。
+ *
+ * 两种草稿：
+ *   · `question_bank_import` —— 建库导入，可改题库信息与每道题；
+ *   · `batch_delete`         —— 批量删除，可逐条勾选 / 全选 / 反悔（用户 2026-10-17 需求）。
+ * 判据落在 `preview.draft.kind` 上：老的 `batch_import` 预览（只有 count/sample）
+ * 没有 `draft`，仍走只读那条路。
+ */
+const isDraft = computed(() => DRAFT_KINDS.includes(String((props.preview as any)?.draft?.kind || '')))
 
 /** 草稿卡片回传的载荷（`{approved, edited?}` / `{approved:false, regenerate, opinion}`）原样上抛 */
 const onDraftResolve = (payload: any) => emit('resolve', payload)

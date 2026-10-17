@@ -236,22 +236,46 @@ class BankManageTool(AgentTool):
         if not ids and not missing_names:
             return {}
 
-        names: List[str] = []
+        rows = []
         if ids:
             rows = (
                 await ctx.db.execute(
-                    select(QuestionBank.bank_name).where(
+                    select(
+                        QuestionBank.id,
+                        QuestionBank.bank_name,
+                        QuestionBank.total_questions,
+                    ).where(
                         QuestionBank.id.in_(ids),
                         QuestionBank.user_id == ctx.user_id,
                     )
                 )
             ).all()
-            names = [str(r[0]) for r in rows]
+        names = [str(r[1]) for r in rows]
 
         out: Dict[str, Any] = {
             "count": len(names),
             "sample": names[:_PREVIEW_SAMPLE] or ["（没有找到属于你的题库）"],
         }
+        # 勾选卡（用户 2026-10-17 需求）：一张卡列出全部待删题库，用户可逐条反悔。
+        # 没有这份 draft 时模型会为了删 N 个库循环调 N 次 delete → N 张卡。
+        if rows:
+            order = {int(i): n for n, i in enumerate(ids)}
+            items = [
+                {
+                    "key": f"bank:{r[0]}",
+                    "id": int(r[0]),
+                    "title": str(r[1] or ""),
+                    "subtitle": f"{int(r[2] or 0)} 道题",
+                }
+                for r in rows
+            ]
+            items.sort(key=lambda it: order.get(it["id"], 9999))
+            out["draft"] = {
+                "kind": "batch_delete",
+                "entity": "bank",
+                "entityLabel": "题库",
+                "items": items,
+            }
         if missing_names:
             # 键名用 `missingNames`：前端已有中文标签「未找到的名称」，别用自造键
             # （认不出来的键会**原样打印英文键名**，那就是给用户看 JSON）

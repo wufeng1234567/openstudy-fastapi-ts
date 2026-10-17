@@ -18,6 +18,82 @@
 -->
 <template>
   <div class="agent-draft" :class="`is-${status}`">
+    <!--
+      批量删除卡（用户 2026-10-17 需求）
+
+      背景：模型为了删 N 个对象会**循环调 N 次 delete**，于是弹 N 张确认卡 ——
+      用户点 N 次、中途点错一张就只删了一半。现在后端提供 `delete_many`，
+      一次调用生成**一张卡**，把每个对象逐条列出来，用户可以：
+        · 逐条勾选（取消勾选 = 这一条不删，方便反悔）
+        · 全选 / 全不选
+        · 点「确认删除」→ 只删勾选的；一个都不勾 = 取消
+      勾选结果随 `edited.selectedKeys` 回传，服务端据此收窄 `*_ids` 再执行
+      （前端不自己调删除接口 —— 权限/级联/事务仍走工具层那一条路径）。
+    -->
+    <template v-if="isBatchDelete">
+      <div class="ad-head">
+        <span class="ad-icon">
+          <span v-if="status === 'running'">⚠</span>
+          <span v-else-if="status === 'ok'">✓</span>
+          <span v-else>×</span>
+        </span>
+        <span class="ad-title">批量删除{{ entityLabel }}</span>
+        <span class="ad-count">已选 {{ selected.length }} / {{ items.length }}</span>
+      </div>
+
+      <div class="bd-toolbar">
+        <label class="bd-selectall">
+          <el-checkbox
+            :model-value="allSelected"
+            :indeterminate="someSelected && !allSelected"
+            :disabled="readonly"
+            @change="toggleAll"
+          />
+          <span>全选</span>
+        </label>
+        <span class="bd-hint">取消勾选的不会被删除</span>
+      </div>
+
+      <div class="bd-list">
+        <label
+          v-for="item in items"
+          :key="item.key"
+          class="bd-item"
+          :class="{ 'is-unchecked': !isChecked(item.key), 'is-disabled': readonly }"
+        >
+          <el-checkbox
+            :model-value="isChecked(item.key)"
+            :disabled="readonly"
+            @change="(v) => toggleOne(item.key, v)"
+          />
+          <span class="bd-item-main">
+            <span class="bd-item-title">{{ item.title }}</span>
+            <span v-if="item.subtitle" class="bd-item-sub">{{ item.subtitle }}</span>
+          </span>
+        </label>
+      </div>
+
+      <div class="bd-warn">
+        此操作不可撤销。将删除 {{ selected.length }} 个{{ entityLabel }}，未勾选的保留。
+      </div>
+
+      <div v-if="status === 'running'" class="ad-actions">
+        <button type="button" class="ad-btn ad-cancel" @click="onBatchCancel">全部不删</button>
+        <button
+          type="button"
+          class="ad-btn ad-ok"
+          :disabled="!selected.length"
+          @click="onBatchConfirm"
+        >
+          确认删除（{{ selected.length }}）
+        </button>
+      </div>
+      <div v-else class="ad-result">
+        {{ status === 'ok' ? `已删除 ${selected.length} 个${entityLabel}` : '已取消，未删除任何内容' }}
+      </div>
+    </template>
+
+    <template v-else>
     <div class="ad-head">
       <span class="ad-icon">
         <span v-if="status === 'running'">✎</span>
@@ -165,11 +241,12 @@
       <button type="button" class="ad-btn ad-ok" @click="onConfirm">确认导入</button>
     </div>
     <div v-else class="ad-result">{{ status === 'ok' ? '已确认导入' : '已取消' }}</div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, computed } from 'vue'
+import { reactive, ref, computed, watch } from 'vue'
 
 const props = defineProps({
   /** 后端草稿：`{ kind:'question_bank_import', bank, questions }` */
@@ -268,6 +345,89 @@ function reset() {
 reset()
 
 const readonly = computed(() => props.status !== 'running' || props.disabled)
+
+/* ============================================================
+ * 批量删除模式（`draft.kind === 'batch_delete'`）
+ * ============================================================ */
+
+/** 是否走「批量删除勾选」那一套 UI（与建库导入草稿互斥） */
+const isBatchDelete = computed(() => String((props.draft as any)?.kind || '') === 'batch_delete')
+
+/** 被删对象的中文名（知识库 / 题库 / 题目 / 笔记） */
+const entityLabel = computed(() => String((props.draft as any)?.entityLabel || '对象'))
+
+interface BatchDeleteItem {
+  key: string
+  id: number
+  title: string
+  subtitle?: string
+}
+
+const items = computed<BatchDeleteItem[]>(() => {
+  const raw = (props.draft as any)?.items
+  if (!Array.isArray(raw)) return []
+  return raw.map((it: any) => ({
+    key: String(it?.key ?? `${it?.id ?? ''}`),
+    id: Number(it?.id ?? 0),
+    title: String(it?.title ?? ''),
+    subtitle: it?.subtitle ? String(it.subtitle) : ''
+  }))
+})
+
+/**
+ * 勾选状态（默认**全选**）
+ *
+ * 默认全选的理由：模型调 `delete_many` 时给的就是「用户说要删的那批」，
+ * 卡片的作用是让用户**反悔掉个别项**，不是让他从头再选一遍。
+ */
+const checked = ref<Set<string>>(new Set())
+
+/** 草稿变化（确认卡重渲染 / 新一批删除）→ 重置成全选 */
+function resetBatchSelection() {
+  checked.value = new Set(items.value.map((it) => it.key))
+}
+resetBatchSelection()
+
+// 草稿换了（新一批删除请求）→ 重新全选。
+// 注意比对的是 items 的 key 串：确认卡按 confirmId 渲染多条时互不干扰。
+watch(
+  () => items.value.map((it) => it.key).join(','),
+  () => resetBatchSelection()
+)
+
+const isChecked = (key: string) => checked.value.has(key)
+const selected = computed(() => items.value.filter((it) => checked.value.has(it.key)))
+const allSelected = computed(() => items.value.length > 0 && selected.value.length === items.value.length)
+const someSelected = computed(() => selected.value.length > 0 && !allSelected.value)
+
+function toggleOne(key: string, on: boolean) {
+  const next = new Set(checked.value)
+  if (on) next.add(key)
+  else next.delete(key)
+  checked.value = next
+}
+
+function toggleAll(on: boolean) {
+  checked.value = on ? new Set(items.value.map((it) => it.key)) : new Set()
+}
+
+/** 确认删除：只提交勾选的那些（一个都没勾时按钮是禁用的，兜底再判一次） */
+function onBatchConfirm() {
+  if (readonly.value) return
+  const keys = selected.value.map((it) => it.key)
+  if (!keys.length) return
+  emit('resolve', { approved: true, edited: { selectedKeys: keys } })
+}
+
+/** 全部不删 = 取消（服务端会按 cancelled 处理，给模型一个「用户取消」的失败信封） */
+function onBatchCancel() {
+  if (readonly.value) return
+  emit('resolve', { approved: false })
+}
+
+/* ============================================================
+ * 建库导入草稿模式
+ * ============================================================ */
 
 function isComposite(q: { questionType: number }): boolean {
   return q.questionType === 6 || q.questionType === 7
@@ -768,5 +928,103 @@ function onRegenerate() {
   font-size: 12px;
   color: #6b7280;
   text-align: right;
+}
+
+/* ============================================================
+   批量删除卡（勾选清单）
+   ============================================================ */
+
+.bd-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 0 2px;
+}
+
+.bd-selectall {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #374151;
+  cursor: pointer;
+  user-select: none;
+}
+
+.bd-hint {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: #9ca3af;
+}
+
+.bd-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.bd-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+  background: #f8fafc;
+  cursor: pointer;
+  min-width: 0;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.bd-item:hover {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+}
+
+/* 取消勾选的行：整行变淡 + 标题加删除线，一眼看出「这条不删」 */
+.bd-item.is-unchecked {
+  opacity: 0.55;
+  background: #fff;
+}
+
+.bd-item.is-unchecked .bd-item-title {
+  text-decoration: line-through;
+  color: #9ca3af;
+}
+
+.bd-item.is-disabled {
+  cursor: not-allowed;
+}
+
+.bd-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.bd-item-title {
+  font-size: 13px;
+  color: #1f2937;
+  word-break: break-word;
+}
+
+.bd-item-sub {
+  font-size: 11.5px;
+  color: #6b7280;
+}
+
+.bd-warn {
+  font-size: 11.5px;
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 7px;
+  padding: 6px 10px;
 }
 </style>

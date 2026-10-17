@@ -741,6 +741,127 @@ def resolve_confirmation(
     return True
 
 
+#: 「单对象删除」→（批量动作名, 批量参数名, 单值参数名）
+#: 只收录**真正等价**的组合：delete 能删的，delete_many 都能批量删。
+_DELETE_MERGE_MAP: Dict[str, Dict[str, str]] = {
+    "knowledge_base_manage": {
+        "action": "delete",
+        "many_action": "delete_many",
+        "many_field": "kb_ids",
+        "one_field": "kb_id",
+    },
+    "bank_manage": {
+        "action": "delete",
+        "many_action": "delete_many",
+        "many_field": "bank_ids",
+        "one_field": "bank_id",
+    },
+    "note_manage": {
+        "action": "delete",
+        "many_action": "delete_many",
+        "many_field": "note_ids",
+        "one_field": "note_id",
+    },
+    "question_manage": {
+        "action": "delete",
+        "many_action": "delete_many",
+        "many_field": "question_ids",
+        "one_field": "question_id",
+    },
+}
+
+
+def coalesce_delete_tool_calls(
+    tool_calls: List[Any],
+) -> Tuple[List[Any], Optional[Dict[str, Any]]]:
+    """把同一轮里「同一个工具、多次单对象 delete」合并成一次 `delete_many`
+
+    背景（用户 2026-10-17）：「删 12 个知识库」时模型会循环发起 12 个 `delete` 调用。
+    本循环**串行执行**每个调用，第一个 `delete` 就弹确认卡并**挂起等用户**，
+    于是用户只看到第一张卡（kbId=584），根本走不到第 2~12 个。提示词约束不可靠 ——
+    必须在执行前把调用列表归一。
+
+    Returns:
+        (新的 tool_calls, 合并信息 or None)
+        合并信息形如 `{"tool": "knowledge_base_manage", "ids": [..], "count": 12}`，
+        供前端提示「已把 N 次删除合并成一次批量删除」。
+    """
+    if not tool_calls:
+        return tool_calls, None
+
+    # 按工具分组：哪些是「可合并的单对象删除」
+    groups: Dict[str, List[int]] = {}
+    for idx, call in enumerate(tool_calls):
+        name = str((call or {}).get("name") or "")
+        spec = _DELETE_MERGE_MAP.get(name)
+        if not spec:
+            continue
+        args = (call or {}).get("args") or {}
+        if str(args.get("action") or "") != spec["action"]:
+            continue
+        if args.get(spec["one_field"]) is None:
+            continue
+        groups.setdefault(name, []).append(idx)
+
+    # 只有 2 个以上才值得合并（单个 delete 保持原样，用户体验不变）
+    mergeable = {k: v for k, v in groups.items() if len(v) >= 2}
+    if not mergeable:
+        return tool_calls, None
+
+    # 一次只合并**一个工具**的多个删除（同一轮里通常也只会有一种）。
+    # 多个工具都在批量删的情况：按工具逐个合并，但确认卡会用第一条的语义；
+    # 这种极端场景交给模型下一轮自己处理（不在这里堆复杂度）。
+    tool_name = max(mergeable, key=lambda k: len(mergeable[k]))
+    idxs = mergeable[tool_name]
+    spec = _DELETE_MERGE_MAP[tool_name]
+
+    ids: List[int] = []
+    for idx in idxs:
+        args = tool_calls[idx].get("args") or {}
+        try:
+            value = int(args.get(spec["one_field"]))
+        except (TypeError, ValueError):
+            continue
+        if value not in ids:
+            ids.append(value)
+    if len(ids) < 2:
+        return tool_calls, None
+
+    # 保留第一个 delete 的 call_id 与其余参数（题库/题目可能有额外的定位字段）
+    first = tool_calls[idxs[0]]
+    merged_args: Dict[str, Any] = dict(first.get("args") or {})
+    merged_args["action"] = spec["many_action"]
+    merged_args[spec["many_field"]] = ids
+    merged_args.pop(spec["one_field"], None)
+    # 题库按名字删的另一路在批量里没有意义（勾选卡给的是 ID）
+    merged_args.pop("bank_names", None)
+
+    merged_call = {
+        "name": tool_name,
+        "args": merged_args,
+        "id": first.get("id") or "call_merged",
+    }
+
+    # 重建调用列表：被合并的那些位置上只留第一个，其余删掉
+    drop = set(idxs[1:])
+    new_calls: List[Any] = []
+    for idx, call in enumerate(tool_calls):
+        if idx in drop:
+            continue
+        new_calls.append(merged_call if idx == idxs[0] else call)
+
+    logger.info(
+        "[agent] 合并 {} 次 {} → 1 次 {}（ids={}）",
+        len(ids), spec["action"], spec["many_action"], ids,
+    )
+    return new_calls, {
+        "tool": tool_name,
+        "action": spec["many_action"],
+        "ids": ids,
+        "count": len(ids),
+    }
+
+
 def needs_user_confirmation(
     tool: AgentTool, params: Dict[str, Any], auto_confirm: bool
 ) -> bool:
@@ -772,6 +893,77 @@ def needs_user_confirmation(
 # ============================================================
 
 
+def _is_batch_delete_draft(tool: AgentTool, params: Dict[str, Any]) -> bool:
+    """这个工具调用是否走「批量删除勾选卡」（见各工具的 `delete_many` 动作）"""
+    action = str(params.get("action") or "")
+    if action != "delete_many":
+        return False
+    return tool.name in (
+        "knowledge_base_manage",
+        "bank_manage",
+        "question_manage",
+        "note_manage",
+    )
+
+
+def _batch_delete_ids(tool: AgentTool, params: Dict[str, Any]) -> List[int]:
+    """读回批量删除参数里的 ID 列表（用于判断「用户一个都没勾」）"""
+    field = {
+        "knowledge_base_manage": "kb_ids",
+        "bank_manage": "bank_ids",
+        "question_manage": "question_ids",
+        "note_manage": "note_ids",
+    }.get(tool.name)
+    if not field:
+        return []
+    return [int(v) for v in (params.get(field) or []) if v is not None]
+
+
+def _apply_selected_keys(
+    tool: AgentTool, params: Dict[str, Any], edited: Dict[str, Any]
+) -> Optional[Dict[str, Any]]:
+    """把用户勾选结果写回工具的批量参数（`kb_ids` / `bank_ids` / ...）
+
+    Returns:
+        新参数 dict；`None` = 这次 edited 不适用（调用方退回原参数）。
+        用户全不选时返回的名单为空 —— 调用方据此按「用户取消」处理。
+    """
+    raw = edited.get("selectedKeys")
+    if not isinstance(raw, list):
+        return None
+
+    # `key` 形如 `kb:584` / `bank:12` / `question:33` / `note:7`
+    ids: List[int] = []
+    for key in raw:
+        text = str(key or "")
+        _prefix, _sep, num = text.partition(":")
+        try:
+            ids.append(int(num))
+        except (TypeError, ValueError):
+            continue
+    ids = list(dict.fromkeys(ids))
+
+    # 各工具批量参数名不同（与工具 schema 保持一致）
+    field = {
+        "knowledge_base_manage": "kb_ids",
+        "bank_manage": "bank_ids",
+        "question_manage": "question_ids",
+        "note_manage": "note_ids",
+    }.get(tool.name)
+    if not field:
+        return None
+
+    new_params = dict(params)
+    new_params[field] = ids
+    # 按名字删的那一路在勾选模式下没有意义（勾的是 ID），清掉避免重复/歧义
+    for extra in ("bank_names", "question_indexes"):
+        new_params.pop(extra, None)
+    logger.info(
+        "[agent] 按勾选结果收窄批量删除：{} {} → {} 项", tool.name, field, len(ids)
+    )
+    return new_params
+
+
 async def _apply_edited_params(
     tool: AgentTool,
     params: Dict[str, Any],
@@ -789,6 +981,20 @@ async def _apply_edited_params(
     """
     if not isinstance(edited, dict):
         return params
+
+    # ---- 批量删除：按用户在卡片上**勾选的名单**收窄要删的对象 ----
+    # 契约（前端 `AgentDraftCard` 的 batch_delete 模式回传）::
+    #     {"selectedKeys": ["kb:584", "kb:587"], "cancelled": false}
+    # 语义：
+    #   · `cancelled=true`（用户点「全部不删」）→ 返回空名单，由调用方按「取消」处理；
+    #   · `selectedKeys` 是**最终要删的**（未勾选 = 用户反悔、留着）；
+    #   · 未知 / 空名单一律退回原参数（宁可多删一次让用户看见，也不静默少删）。
+    if _is_batch_delete_draft(tool, params):
+        narrowed = _apply_selected_keys(tool, params, edited)
+        if narrowed is not None:
+            return narrowed
+        return params
+
     if tool.name != "question_manage" or str(params.get("action") or "") != "batch_import":
         return params
 
@@ -1596,6 +1802,22 @@ async def run_agent_stream(
             # 没有工具调用 = 模型认为任务完成，这一轮的正文就是最终回复
             break
 
+        # ⚠️ 服务端强制合并：模型常为「删 N 个对象」循环发起 N 个 delete 调用，而本循环
+        #    **串行执行** —— 第一个 delete 就弹确认卡并挂起等用户，后面 N-1 个永远走不到，
+        #    用户只看到一张「只删一个」的卡（用户 2026-10-17 报的正是这个）。
+        #    必须在**写 AIMessage / 执行**之前把调用列表归一，否则 tool_call_id 会对不上。
+        tool_calls, merged_note = coalesce_delete_tool_calls(tool_calls)
+        if merged_note:
+            yield _event(
+                {
+                    "type": "warning",
+                    "message": (
+                        f"已将 {merged_note['count']} 次单独删除合并为一次批量删除，"
+                        "请在卡片里勾选要删的条目"
+                    ),
+                }
+            )
+
         # 把「模型的这一轮」原样记进对话（含 tool_calls，否则下一轮上下文不完整）
         lc_messages.append(
             AIMessage(
@@ -1821,6 +2043,31 @@ async def run_agent_stream(
                 # 绝不因为一次编辑让整批导入失败。
                 if edited:
                     params = await _apply_edited_params(tool, params, edited, ctx)
+                    # 用户在批量删除卡上**一个都不勾**（或点了「全部不删」）→ 等同取消：
+                    # 不能带着空名单去执行（那会返回一条「已删除 0 个」的假成功），
+                    # 也不能默默跳过 —— 要和普通取消一样给模型一个失败信封 + 中性卡片。
+                    if _is_batch_delete_draft(tool, params) and not _batch_delete_ids(
+                        tool, params
+                    ):
+                        result = fail(
+                            "用户取消了这次操作（没有勾选任何要删除的对象）",
+                            "不要重复尝试同一个操作；若仍需完成目标，请先询问用户",
+                        )
+                        lc_messages.append(
+                            ToolMessage(content=_dumps(result), tool_call_id=call_id)
+                        )
+                        yield _event(
+                            {
+                                "type": "tool_result",
+                                "tool": tool_name,
+                                "action": params.get("action"),
+                                "success": False,
+                                "cancelled": True,
+                                "message": "已取消（未勾选任何对象）",
+                                "data": None,
+                            }
+                        )
+                        continue
 
             # 指挥家委派：**不在这里执行**，而是收集起来，等本轮非委派工具跑完后**并发**执行
             # （见上面 `delegate_jobs` 的说明）。这里先发一条 `delegate_start`，让前端时间线

@@ -355,10 +355,24 @@ class NoteManageTool(AgentTool):
         if not titles:
             # 一条都不匹配：让确认卡片直接说清「没找到」，而不是显示 count: 0
             return {"count": 0, "sample": ["（没有找到属于你的、未删除的笔记）"]}
-        return {
+        out = {
             "count": len(titles),
             "sample": titles[:_PREVIEW_SAMPLE],
         }
+        # 勾选卡（用户 2026-10-17 需求）：一张卡列出全部待删笔记，用户可逐条反悔
+        order = {int(i): n for n, i in enumerate(ids)}
+        items = [
+            {"key": f"note:{r[0]}", "id": int(r[0]), "title": str(r[1] or "")}
+            for r in rows
+        ]
+        items.sort(key=lambda it: order.get(it["id"], 9999))
+        out["draft"] = {
+            "kind": "batch_delete",
+            "entity": "note",
+            "entityLabel": "笔记",
+            "items": items,
+        }
+        return out
 
     async def _preview_save_draft(
         self, params: Dict[str, Any], ctx: ToolContext

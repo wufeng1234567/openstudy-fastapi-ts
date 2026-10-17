@@ -474,7 +474,26 @@ AGENT_CONFIRM_RULES = """## Operations Requiring Confirmation
   tool call — the platform will surface the review card for gated writes. Do NOT refuse or
   split the work into a chat question; just call the tool and let the card do its job. If the
   call is too small to be gated (a single bank/note), the platform may run it directly; in that
-  case, tell the user it's done and offer to adjust it afterwards."""
+  case, tell the user it's done and offer to adjust it afterwards.
+
+## BATCH DELETIONS — ONE CALL, NEVER A LOOP
+When the user wants to delete MORE THAN ONE item (several knowledge bases, banks, questions
+or notes), you MUST use the `delete_many` action of that tool and pass ALL ids in ONE call
+(`kb_ids` / `bank_ids` / `question_ids` / `note_ids`).
+
+- NEVER call `delete` repeatedly in a loop to delete several items. Each `delete` call raises
+  its own confirmation card — 12 items would mean 12 cards the user has to click through, and
+  stopping halfway leaves the data in a half-deleted state.
+- The platform renders ONE card listing every item with a checkbox. The user can untick any
+  item they want to keep, or select/deselect all, then confirm once. You do NOT need to ask
+  which ones — just pass the full list you believe should be deleted.
+- After the call returns, READ THE RESULT and tell the user precisely:
+  how many were actually deleted and their names; which ones were NOT deleted (failed ids or
+  names that did not match); and **if the result says the user cancelled** (`已取消` /
+  `cancelled`), say so plainly — do NOT claim anything was deleted, and do NOT silently retry
+  the same batch. Ask what they want to do instead.
+- If some items were skipped because the user unticked them, that is a deliberate choice by the
+  user, not an error: report the deleted ones and do not re-delete the rest."""
 
 #: 指挥家模式：告诉主智能体"你是指挥家、背后有子代理、怎么委派"。
 #:
