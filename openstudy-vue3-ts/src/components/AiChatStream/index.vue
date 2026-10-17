@@ -137,7 +137,15 @@
                   <el-icon v-else class="expert-fail"><CloseBold /></el-icon>
                 </span>
                 <span class="expert-name">{{ ex.name }}</span>
-                <span class="expert-task">{{ ex.status === 'running' ? (ex.progress || '正在处理…') : (ex.summary || '已完成') }}</span>
+                <!--
+                  收起态也要"看得见内容"：原来没有 summary 时这里显示「已完成」，
+                  用户完全看不出专家答了什么（2026-10-17 报「专家的输出看不见」）。
+                  现在：优先显示结论摘要，真的没结论才说「已完成（无结论）」，把异常显性化。
+                -->
+                <span class="expert-task">
+                  <template v-if="ex.status === 'running'">{{ ex.progress || '正在处理…' }}</template>
+                  <template v-else>{{ expertHeadline(ex) }}</template>
+                </span>
                 <el-icon class="expert-caret" :class="{ open: isExpertOpen(msg, ei) }"><ArrowDown /></el-icon>
               </div>
               <!--
@@ -339,13 +347,54 @@ const expertKey = (msg: any, rowIdx: number) => {
   const mi = (props.messages as any[]).indexOf(msg)
   return `${mi}:${rowIdx}`
 }
-const isExpertOpen = (msg: any, rowIdx: number) => expertOpen.value.has(expertKey(msg, rowIdx))
+
+/**
+ * 专家行是否展开
+ * --------------
+ * 默认策略（2026-10-17 调整）：
+ *   · **进行中** → 收起。只显示「正在调用 XX…」，避免多个专家同时展开占满屏幕
+ *     （用户 2026-10-16 明确反馈过"自动展开占地太大"）；
+ *   · **已完成且有结论** → **自动展开**。用户看专家卡的目的就是看结论；
+ *     以前一律收起，结论只藏在折叠区里，用户会以为"专家的输出不见了"。
+ *   · 用户手动点过的，以用户的操作为准（下面 `expertUserToggled` 记录）。
+ */
+const expertUserToggled = ref<Set<string>>(new Set())
+
+/**
+ * 专家行收起时那行摘要
+ * --------------------
+ * 以前是 `ex.summary || '已完成'`：没结论时显示「已完成」，等于什么都没说，
+ * 用户会以为"专家没输出"。现在把三种情况分开：
+ *   · 有结论   → 结论首段（单行省略，hover 可看全文）
+ *   · 失败     → 「执行失败」+ 原因首句
+ *   · 成功但空 → 「已完成（没有返回结论）」—— 让异常一眼可见，而不是伪装成正常
+ */
+const expertHeadline = (ex: any) => {
+  const s = String(ex?.summary || '').replace(/\s+/g, ' ').trim()
+  if (ex?.status === 'fail') return s ? `执行失败：${s}` : '执行失败'
+  if (s) return s
+  return ex?.status === 'ok' ? '已完成（没有返回结论）' : '已完成'
+}
+
+const isExpertOpen = (msg: any, rowIdx: number) => {
+  const k = expertKey(msg, rowIdx)
+  if (expertUserToggled.value.has(k)) return expertOpen.value.has(k)
+  const ex = (msg?.experts || [])[rowIdx]
+  const done = ex && ex.status && ex.status !== 'running'
+  return !!(done && String(ex.summary || '').trim())
+}
+
 const toggleExpert = (msg: any, rowIdx: number) => {
   const k = expertKey(msg, rowIdx)
   const s = new Set(expertOpen.value)
-  if (s.has(k)) s.delete(k)
+  // 首次点击：从"当前实际可见状态"取反，避免默认展开时点一下变成"又展开"
+  const nowOpen = isExpertOpen(msg, rowIdx)
+  if (nowOpen) s.delete(k)
   else s.add(k)
   expertOpen.value = s
+  const t = new Set(expertUserToggled.value)
+  t.add(k)
+  expertUserToggled.value = t
 }
 
 /**

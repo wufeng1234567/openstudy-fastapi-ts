@@ -22,12 +22,20 @@
     <div class="rs-head" role="button" tabindex="0" @click="toggle" @keydown.enter.prevent="toggle"
       @keydown.space.prevent="toggle">
       <span class="rs-status">
-        <!-- 运行中：小旋转弧；收口：对勾 -->
-        <span v-if="running" class="rs-spinner" aria-hidden="true"></span>
-        <span v-else class="rs-check" aria-hidden="true">
-          <svg viewBox="0 0 16 16" width="12" height="12">
-            <path d="M3.5 8.5l3 3 6-6.5" fill="none" stroke="currentColor" stroke-width="1.8"
-              stroke-linecap="round" stroke-linejoin="round" />
+        <!--
+          状态图标（用户 2026-10-17：不要绿色对勾徽章，要更贴合"思考"的图形 + 低调）：
+            · 运行中 → 一枚缓慢旋转的四角星（表达"在想"，不是"在加载"）；
+            · 已收口 → 同一枚四角星，静止、更淡，不再用"✓ 成功"的语义。
+          两态共用同一个形状，切换时只是动画与透明度变化，观感更连贯。
+        -->
+        <span class="rs-spark" :class="{ 'rs-spark-running': running }" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="13" height="13">
+            <path
+              d="M8 1.6c.5 2.6 1.3 3.4 3.9 3.9-2.6.5-3.4 1.3-3.9 3.9-.5-2.6-1.3-3.4-3.9-3.9C6.7 5 7.5 4.2 8 1.6Z"
+              fill="currentColor" />
+            <path
+              d="M12.4 9.6c.28 1.45.72 1.9 2.17 2.17-1.45.28-1.9.72-2.17 2.17-.28-1.45-.72-1.9-2.17-2.17 1.45-.27 1.9-.72 2.17-2.17Z"
+              fill="currentColor" opacity=".55" />
           </svg>
         </span>
         <span class="rs-title">
@@ -129,41 +137,43 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-/* ============ 容器 ============ */
+/* ============ 容器 ============
+   用户 2026-10-17：「不要边框，要低调，有边框感觉突兀」。
+   做法与工具结果一致 —— 不套卡片，让"已深度思考 1 秒"直接躺在对话流里，
+   只有 hover 时给一层极淡的底（提示这里可点），不做常驻描边。 */
 .rs-box {
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  background: #f9fafb;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
   overflow: hidden;
   max-width: 100%;
 }
 
-.rs-box.rs-running {
-  border-color: #e0e7ff;
-  background: #f8f9ff;
-}
-
 /* ============ 头部 ============ */
 .rs-head {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 7px 12px;
+  max-width: 100%;
+  padding: 2px 8px 2px 2px;
+  margin-left: -2px;
+  border-radius: 6px;
   cursor: pointer;
   user-select: none;
   font-size: 12.5px;
-  color: #6b7280;
+  color: var(--os-text-3);
+  transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out);
 }
 
 .rs-head:hover {
-  background: rgba(99, 102, 241, 0.06);
+  background: var(--os-bg-hover);
 }
 
 .rs-status {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -172,37 +182,32 @@ onBeforeUnmount(() => {
 }
 
 .rs-running .rs-title {
-  color: #4f46e5;
-  font-weight: 600;
+  color: var(--os-text-2);
 }
 
-/* 运行中的小旋转弧 */
-.rs-spinner {
-  width: 13px;
-  height: 13px;
-  flex-shrink: 0;
-  border: 2px solid #c7d2fe;
-  border-top-color: #6366f1;
-  border-radius: 50%;
-  animation: rs-spin 0.8s linear infinite;
-}
-
-.rs-check {
+/* ============ 状态星标 ============
+   形状固定（四角星），只靠"转不转"和"深浅"区分运行/收口：
+   · 运行中：缓慢旋转 + 主色，暗示"在想"；
+   · 已收口：静止 + 更淡，退回背景层。 */
+.rs-spark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
-  border-radius: 50%;
-  color: #16a34a;
-  background: #dcfce7;
+  color: var(--os-text-4);
+}
+
+.rs-spark-running {
+  color: var(--os-accent);
+  animation: rs-spin 3.2s linear infinite;
 }
 
 .rs-live-hint {
   font-size: 11px;
-  color: #6366f1;
-  background: #eef2ff;
+  color: var(--os-accent);
+  background: var(--dsw-static-blue-50);
   border-radius: 999px;
   padding: 0 7px;
   line-height: 16px;
@@ -211,38 +216,42 @@ onBeforeUnmount(() => {
 
 .rs-caret {
   display: inline-flex;
-  color: #9ca3af;
+  flex-shrink: 0;
+  color: var(--os-text-4);
   transition: transform 0.2s ease;
 }
+
 .rs-caret-open {
   transform: rotate(180deg);
 }
 
 /* ============ 正文 ============ */
+/* 也不描边：用左侧一条极淡的竖线表示"这是附属内容"，比整框更轻。 */
 .rs-body {
-  padding: 4px 12px 10px;
+  margin: 2px 0 2px 8px;
+  padding: 2px 10px 4px;
   font-size: 12.5px;
   line-height: 1.75;
-  color: #4b5563;
+  color: var(--os-text-3);
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 260px;
   overflow-y: auto;
-  border-top: 1px dashed #e5e7eb;
+  border-left: 1px solid var(--os-border-soft);
 }
 
 .rs-empty {
-  color: #9ca3af;
+  color: var(--os-text-4);
 }
 
 /* 运行中的光标（在正文末尾闪，暗示还在写） */
 .rs-cursor {
   display: inline-block;
-  width: 6px;
-  height: 13px;
+  width: 5px;
+  height: 12px;
   margin-left: 1px;
   vertical-align: text-bottom;
-  background: #6366f1;
+  background: var(--os-accent);
   border-radius: 1px;
   animation: rs-blink 1s steps(2, start) infinite;
 }
@@ -260,7 +269,7 @@ onBeforeUnmount(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rs-spinner,
+  .rs-spark-running,
   .rs-live-hint,
   .rs-cursor {
     animation: none;

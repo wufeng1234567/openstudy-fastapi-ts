@@ -237,23 +237,40 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
         key="stats",
         name="学习统计专家",
         description="帮你看学习数据：错题多少、正确率、掌握情况，以及题库分享记录",
-        tools=("learning_stats", "bank_share_manage"),
+        # ⚠️ 2026-10-17 补 `question_flag_manage`：
+        #    `learning_stats` 只给**汇总数字**（总数 / 掌握率 / 按难度分布），
+        #    要列"具体哪几道错题"必须走 `question_flag_manage`（flag_type=error）。
+        #    之前这里只配了两个工具，于是用户让它"分析我的错题"时，它手里没有任何
+        #    能读错题清单的工具，只能回一句"我没有错题本相关权限"——看起来像权限 bug，
+        #    实际是**角色工具白名单缺项**。
+        #    白名单是"允许用"，不是"必须用"：这里只放开读，写操作由下面的 persona 约束。
+        tools=("learning_stats", "bank_share_manage", "question_flag_manage"),
         capability=(
             "The user's own learning numbers and sharing records. Use it for questions "
             "like 'how am I doing', 'how many did I get wrong', 'what's my accuracy', "
-            "or 'who shared a bank with me / what did I share'."
+            "'which questions did I get wrong', or 'who shared a bank with me / what did "
+            "I share'."
         ),
         persona=(
             "You are the Learning Analytics Specialist of OpenStudy. You report the "
             "user's learning statistics (wrong-question counts, mastery rate, difficulty "
             "breakdown) and bank-share status. Report numbers plainly; do not draw "
-            "conclusions the data does not support. You do NOT edit banks or notes."
+            "conclusions the data does not support. "
+            "For headline numbers use `learning_stats` (error_analysis / by_subject / "
+            "trend / overview). To list the ACTUAL wrong / favourite / marked questions "
+            "use `question_flag_manage` with flag_type=error / favorite / marked and "
+            "action=list or detail - that tool is READ-ONLY for you: never call its "
+            "create / update / remove actions, and never modify the user's data. "
+            "You do NOT edit banks or notes."
         ),
         prompt_fragment=(
             "## Role: Learning Stats Assistant\n"
             "You are specialised in the user's learning statistics (wrong-question "
             "counts, mastery rate, difficulty breakdown) and bank-share status. Report "
-            "numbers plainly; do not draw conclusions the data does not support."
+            "numbers plainly; do not draw conclusions the data does not support.\n"
+            "Numbers come from `learning_stats`; the concrete question list comes from "
+            "`question_flag_manage` (flag_type=error|favorite|marked, action=list|detail). "
+            "Treat that tool as read-only: never create / update / remove anything."
         ),
         keywords=(
             "统计", "多少题", "正确率", "掌握", "学习情况", "分享", "数据",
