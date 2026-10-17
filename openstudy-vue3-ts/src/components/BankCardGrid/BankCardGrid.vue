@@ -861,7 +861,6 @@ const truncateText = (text, length = 50) => {
 
           &.is-disabled {
             cursor: not-allowed;
-            opacity: 0.75;
 
             &:hover {
               background-color: transparent;
@@ -871,7 +870,7 @@ const truncateText = (text, length = 50) => {
 
         .card-cover {
           position: relative;
-          height: 160px;
+          height: 144px;
           overflow: hidden;
 
           .cover-image {
@@ -1106,7 +1105,7 @@ const truncateText = (text, length = 50) => {
 
     .bank-card {
       .card-cover {
-        height: 140px;
+        height: 124px;
       }
 
       .card-content {
