@@ -137,16 +137,17 @@
             </div>
           </template>
 
-          <!-- 空状态：DSH 式的"欢迎 + 快捷指令"，让用户第一眼就知道它能干活 -->
+          <!-- 空状态：品牌标 + 一句有分量的话 + 快捷指令（第一眼就知道它能干什么） -->
           <template #empty>
             <div class="hero">
+              <!-- 品牌标（黑底圆角 + 白 O），与侧栏 logo / favicon 同一套几何 -->
               <div class="hero-mark">
-                <OsIcon name="sparkles" :size="18" />
+                <OsLogo :size="44" />
               </div>
-              <h2 class="hero-title">今天想让我帮你做什么？</h2>
+              <h2 class="hero-title">把不会的，问到会</h2>
               <p class="hero-desc">
-                我能读写你的题库、笔记与学习数据：上传文档自动建库导题、按知识点出题批改、
-                把错题整理成复习清单。每一步工具调用都会在对话里实时展开。
+                我能读你的题库、笔记与错题，替你建库、出题、批改、归总。
+                你只管问，剩下的交给它。
               </p>
               <div class="hero-actions">
                 <button
@@ -372,6 +373,7 @@ import {
 } from '@element-plus/icons-vue'
 import AiChatStream from '@/components/AiChatStream/index.vue'
 import AgentOutline from '@/components/AgentOutline/index.vue'
+import OsLogo from '@/components/OsLogo/index.vue'
 import AiModelSelector from '@/components/AiModelSelector/index.vue'
 import AgentToolResult from '@/components/AgentToolResult/index.vue'
 import AgentConfirmCard from '@/components/AgentConfirmCard/index.vue'
@@ -1020,29 +1022,36 @@ const removeSession = async (s: any) => {
 }
 
 /* ===================== 发送 ===================== */
+/*
+ * 快捷指令
+ * --------
+ * 每张卡片 =「一句用户真会说的话」+「它会替你做完哪几步」。
+ * 写法上刻意用第一人称的口语（"我"），而不是「列出全部题库与题量」这种说明书腔 ——
+ * 用户点卡片本质是"替我把这句话打出来"，所以要像人说的话。
+ */
 const quickActions = [
   {
     icon: FolderOpened,
-    label: '看看我的题库',
-    desc: '列出全部题库与题量',
+    label: '我都有哪些题库',
+    desc: '逐个列出，顺带说说每个多少题',
     text: '帮我看看我有哪些题库'
   },
   {
     icon: UploadFilled,
-    label: '导入这份文档',
-    desc: '上传文档后自动建库导题',
+    label: '把这份资料变成题库',
+    desc: '我传文档，它建库、拆分、导题',
     text: '把这个文档的题目导入题库，没有就先创建'
   },
   {
     icon: Search,
-    label: '查题库详情',
-    desc: '题型分布、题目列表',
+    label: '这套题都考什么',
+    desc: '看题型分布，挑出薄弱的知识点',
     text: '看看我第一个题库的题目分布'
   },
   {
     icon: QuestionFilled,
-    label: '建一个题库',
-    desc: '按名字创建并推断科目',
+    label: '开一个新的题库',
+    desc: '报个名字，科目它来推断',
     text: '帮我创建一个题库'
   }
 ]
@@ -1421,33 +1430,37 @@ onBeforeUnmount(() => {
   text-align: center;
 }
 
+/*
+ * hero 的品牌圆标：直接放 `OsLogo`（黑底 + 白 O，44px）。
+ * ⚠️ 不要再套一层灰色底 + 描边 —— logo 自带底色，外面再加框会变成"框里套框"。
+ */
 .hero-mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  background: var(--dsw-static-neutral-bluish-50);
-  border: 1px solid var(--os-border-soft);
-  color: var(--os-text);
+  line-height: 0;
 }
 
 .hero-title {
-  margin: 18px 0 10px;
-  font-size: 26px;
-  font-weight: 600;
-  line-height: 1.3;
-  letter-spacing: -0.02em;
+  margin: 20px 0 12px;
+  font-size: 30px;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
   color: var(--os-text);
 }
 
+/*
+ * 副标题：一行放得下最好，两行也要断得自然。
+ * `text-wrap: balance` 让两行长度接近（否则会出现"…剩下的交给 / 它。"这种孤字）。
+ */
 .hero-desc {
   margin: 0 auto;
-  max-width: 560px;
+  max-width: 620px;
   font-size: 14px;
   line-height: 1.8;
   color: var(--os-text-3);
+  text-wrap: balance;
 }
 
 .hero-actions {

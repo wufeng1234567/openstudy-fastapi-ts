@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="OpenStudy">
+  <!--
+    OpenStudy 品牌标 —— 全站唯一几何来源
+    ================================================================
+    形态与侧栏品牌行里那个 `.sb-mark` 完全一致：
+      黑色圆角方块（radius = 边长的 30%，与 CSS 26px/8px 同比）
+      + 居中白色字母 "O"
+
+    "O" 用「圆环 + 内孔」画，而不是 <text>：
+      · <text> 依赖系统字体，不同机器上字宽/字重会漂，favicon 尤其明显；
+      · 路径在任何尺寸下都一致，16px 也能看清。
+
+    ⚠️ 三处共用本文件的几何（改这里要同步）：
+      1. `index.html` 的 favicon  ——  指向 /favicon.svg
+      2. `FrontSidebar` 品牌行    ——  `OsIcon name="brand"`
+      3. 对话页 hero 的圆标        ——  `OsIcon name="brand"`
+    历史问题：favicon 是另一套旧 .ico，和界内 logo 长得完全不一样。
+  -->
+  <rect width="64" height="64" rx="19" fill="#0f1115" />
+  <!-- 字母 O：外径 r=17，内径 r=7.4 → 笔画约 9.6（与 26px 下 14px 字号 650 字重同比） -->
+  <path
+    fill="#ffffff"
+    fill-rule="evenodd"
+    d="M32 15a17 17 0 1 0 0 34 17 17 0 0 0 0-34zm0 9.6a7.4 7.4 0 1 1 0 14.8 7.4 7.4 0 0 1 0-14.8z"
+  />
+</svg>

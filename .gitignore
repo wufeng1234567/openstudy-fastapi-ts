@@ -97,3 +97,8 @@ _probe_*.json
 #    才不入库。
 openstudy-fastapi/tests/_evidence/
 openstudy-fastapi/tests/_ui_evidence/
+
+# 前端构建时把 TEMP 指到项目内，避免 Windows 上 esbuild 清理临时目录报
+# "remove D:\Temp\esbuild-...: Access is denied"。它只装编译缓存，绝不入库。
+# 2026-10-17 曾误提交 560 个缓存文件，故在此显式忽略。
+openstudy-vue3-ts/.tmp-build/

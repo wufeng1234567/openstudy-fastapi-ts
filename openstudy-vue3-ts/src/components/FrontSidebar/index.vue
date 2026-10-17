@@ -40,7 +40,7 @@
     <div class="sb-head">
       <template v-if="!collapsed">
         <button class="sb-brand" type="button" title="回到智能对话" @click="goEntry">
-          <span class="sb-mark">O</span>
+          <OsLogo :size="26" />
           <span class="sb-name">OpenStudy</span>
         </button>
 
@@ -252,6 +252,7 @@ import useAgentSessionStore, { formatSessionTime } from '@/store/modules/agentSe
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
 import { ensureLogin } from '@/utils/loginGuard'
 import OsIcon from '@/components/OsIcon/index.vue'
+import OsLogo from '@/components/OsLogo/index.vue'
 
 defineOptions({ name: 'FrontSidebar' })
 
@@ -649,20 +650,7 @@ watch(
   overflow: hidden;
 }
 
-.sb-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  flex: none;
-  border-radius: 8px;
-  background: var(--os-primary);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 650;
-  line-height: 1;
-}
+/* 品牌标由 `OsLogo` 组件渲染（与 favicon 同一套几何），这里不再自己画 */
 
 .sb-name {
   font-size: 17px;
