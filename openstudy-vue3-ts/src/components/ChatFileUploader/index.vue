@@ -87,6 +87,13 @@ const pick = () => {
   fileInputRef.value?.click()
 }
 
+/*
+ * 暴露给上层：让别处也能唤起文件选择框。
+ * 场景：新对话页里那张「上传资料」卡片 —— 点它应该**直接弹文件选择框**，
+ * 而不是往对话里发一句"把这资料变成题库"、然后等 AI 反问"哪份资料？"。
+ */
+defineExpose({ openPicker: pick })
+
 const readAsDataURL = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
     const reader = new FileReader()

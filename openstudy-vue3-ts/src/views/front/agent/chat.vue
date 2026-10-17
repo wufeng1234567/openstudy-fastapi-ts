@@ -93,7 +93,7 @@
                不再改变方向（否则：左侧点开知识库再点设置 tab，抽屉会甩到右侧，不合理）。
           -->
           <template #input-footer>
-            <ChatFileUploader v-model="attachments" :disabled="isGenerating" />
+            <ChatFileUploader ref="attachRef" v-model="attachments" :disabled="isGenerating" />
 
             <!-- 知识库：资料是给「这次提问」用的，入口就该在发消息的地方 -->
             <button type="button" class="tb-btn" :class="{ 'is-on': panelOpen && panelTab === 'kb' }"
@@ -155,7 +155,7 @@
                   :key="i"
                   type="button"
                   class="hero-card"
-                  @click="handleSend({ content: q.text })"
+                  @click="onHeroCard(q)"
                 >
                   <span class="hero-card-icon">
                     <el-icon><component :is="q.icon" /></el-icon>
@@ -870,6 +870,9 @@ const attachments = ref<{ images: Array<{ name: string; type: string; base64: st
   files: []
 })
 const attachmentCount = computed(() => attachments.value.images.length + attachments.value.files.length)
+
+/** 上传器实例：引导卡「上传资料」要调它的 openPicker() 唤起文件选择框 */
+const attachRef = ref<InstanceType<typeof ChatFileUploader> | null>(null)
 const attachmentItems = computed(() => [...attachments.value.images, ...attachments.value.files])
 
 const removeAttachment = (idx: number) => {
@@ -1029,32 +1032,78 @@ const removeSession = async (s: any) => {
  * 写法上刻意用第一人称的口语（"我"），而不是「列出全部题库与题量」这种说明书腔 ——
  * 用户点卡片本质是"替我把这句话打出来"，所以要像人说的话。
  */
+/*
+ * 新对话页的四张引导卡
+ * ====================
+ * 硬约束（上一版踩的坑）：
+ *   卡片**标题就是点下去要发出去的那句话**，因此必须同时满足：
+ *     ① 是一句完整的、用户真会说的话（不是功能标签）；
+ *     ② **脱离上下文也成立** —— 此刻用户什么都没提供，AI 不该反问"哪个 / 哪份"。
+ *
+ * 反例（上一版）：「把这份资料变成题库」
+ *   点下去时手里并没有资料，AI 只能回一句"哪份资料？"，第一次交互就废了。
+ *   现在这张走 `action: 'upload'`：点卡片**直接弹文件选择框**，选完才把话发出去。
+ *
+ * 副标题统一写"点完会发生什么"，而不是复述功能名。
+ */
 const quickActions = [
   {
     icon: FolderOpened,
-    label: '我都有哪些题库',
-    desc: '逐个列出，顺带说说每个多少题',
-    text: '帮我看看我有哪些题库'
+    label: '我有哪些题库',
+    desc: '列出已建的库，顺手报个题量',
+    text: '帮我看看我有哪些题库',
+    action: 'chat' as const
   },
   {
     icon: UploadFilled,
-    label: '把这份资料变成题库',
-    desc: '我传文档，它建库、拆分、导题',
-    text: '把这个文档的题目导入题库，没有就先创建'
+    label: '上传资料，帮我出题',
+    desc: '选好文件就直接开始建库导题',
+    // 这句在"附件已就位"之后才发出，所以不会触发"哪份资料"的追问
+    text: '把这份资料整理成题库，能导题就导进来',
+    action: 'upload' as const
   },
   {
     icon: Search,
-    label: '这套题都考什么',
-    desc: '看题型分布，挑出薄弱的知识点',
-    text: '看看我第一个题库的题目分布'
+    label: '我哪块最薄弱',
+    desc: '按错题和正确率找薄弱知识点',
+    text: '根据我的错题和正确率，看看我哪块知识点最薄弱',
+    action: 'chat' as const
   },
   {
     icon: QuestionFilled,
-    label: '开一个新的题库',
-    desc: '报个名字，科目它来推断',
-    text: '帮我创建一个题库'
+    label: '帮我建个新题库',
+    desc: '说个库名就行，科目它来推断',
+    text: '帮我创建一个新题库',
+    action: 'chat' as const
   }
 ]
+
+/**
+ * 引导卡点击分发
+ * --------------
+ * · `chat`   → 直接把标题那句话发出去；
+ * · `upload` → **先唤起文件选择框**；用户选完文件后再自动发送那句话。
+ *              用户若取消选择就什么都不做（不会留下一条"没有资料"的消息）。
+ */
+function onHeroCard(q: (typeof quickActions)[number]) {
+  if (q.action === 'upload') {
+    pendingUploadPrompt.value = q.text
+    attachRef.value?.openPicker?.()
+    return
+  }
+  handleSend({ content: q.text })
+}
+
+/** 点了「上传资料」后，等真正选完文件再自动发这句话 */
+const pendingUploadPrompt = ref('')
+
+watch(attachmentCount, (n, prev) => {
+  if (n > prev && pendingUploadPrompt.value) {
+    const text = pendingUploadPrompt.value
+    pendingUploadPrompt.value = ''
+    handleSend({ content: text })
+  }
+})
 
 const handleSend = async ({ content, injectHistory = false }: { content: string; injectHistory?: boolean }) => {
   if (isGenerating.value) return
