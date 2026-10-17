@@ -42,11 +42,15 @@
       -->
       <div class="agent-main">
         <!--
-          右侧「提问目录」：贴在内容区右侧、垂直居中，一条提问一根短横线，
-          hover 浮出摘要、点击平滑跳转（形态参考 DSH Web 的对话导航）。
-          只在多轮对话时出现（见组件内部判断）。
+          右侧「轮次导航」：窗口右缘一列短横线，一根 = 一轮提问。
+          线长编码状态（未加载最短 / 普通 / 悬停 / 当前最长），悬停浮出提问 + 结论预览。
+          形态与规则对齐 DSH Web 的 TurnNavigator，详见组件内注释。
         -->
-        <AgentOutline :messages="messages" scroll-selector=".chat-messages" />
+        <AgentOutline
+          :messages="messages"
+          :generating="isGenerating"
+          scroll-selector=".chat-messages"
+        />
 
         <!-- 附件告警（文档解析失败 / 插图丢失等） -->
         <div v-for="(warn, i) in metaWarnings" :key="'w' + i" class="meta-warn">
@@ -1377,8 +1381,14 @@ onBeforeUnmount(() => {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  /* 「提问目录」是 position:absolute，需要这个定位基准 */
+  /* 「轮次导航」是 position:absolute，需要这个定位基准 */
   position: relative;
+  /*
+   * 输入框占掉的高度：轮次导航要在这个**可视带**（视口 - 输入框）里垂直居中，
+   * 否则线团会压到输入框上。数值与 ChatInputArea 的实际高度大致对齐，
+   * 偏大一点无妨 —— 它只影响"线团中心偏高一点"，不会溢出。
+   */
+  --ao-composer-h: 150px;
 }
 
 /*
