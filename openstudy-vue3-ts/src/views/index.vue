@@ -28,17 +28,17 @@
 
     <!-- 活动介绍 -->
     <div class="activity-intro">
-      <h2>📚 openstudy正式上线！</h2>
-      <p>我们很高兴地宣布，全新「openstudy」已全面启用！本系统致力于为在校学生打造一个高效、专注、个性化的自主学习环境。</p>
+      <h2>openstudy 正式上线</h2>
+      <p>全新「OpenStudy」已全面启用。本系统为在校学生打造高效、专注、个性化的自主学习环境。</p>
       <ul>
-        <li>✅ 智能制定个性化学习计划</li>
-        <li>✅ 实时在线答疑与辅导支持</li>
-        <li>✅ 海量优质学习资源库（视频/题库/笔记）</li>
-        <li>✅ 学习进度自动追踪与周报反馈</li>
-        <li>✅ 自习室预约、专注计时、成就激励</li>
+        <li><OsIcon name="check-circle" :size="15" class="li-ico" />智能制定个性化学习计划</li>
+        <li><OsIcon name="check-circle" :size="15" class="li-ico" />实时在线答疑与辅导支持</li>
+        <li><OsIcon name="check-circle" :size="15" class="li-ico" />海量优质学习资源库（视频 / 题库 / 笔记）</li>
+        <li><OsIcon name="check-circle" :size="15" class="li-ico" />学习进度自动追踪与周报反馈</li>
+        <li><OsIcon name="check-circle" :size="15" class="li-ico" />自习室预约、专注计时、成就激励</li>
       </ul>
-      <p style="margin-top: 16px; text-align: center; color: #409eff;">
-        🎉 快来体验吧，开启你的高效学习之旅！
+      <p style="margin-top: 16px; text-align: center; color: var(--os-accent);">
+        快来体验，开启你的高效学习之旅
       </p>
     </div>
   </div>
@@ -47,6 +47,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'Index' })
 import { ref, onMounted } from 'vue'
+import OsIcon from '@/components/OsIcon/index.vue'
 import { listCarouselAll } from '@/api/carousel/carousel'
 
 const carouselList = ref([])
@@ -156,12 +157,23 @@ function goTarget(url) {
     }
 
     ul {
-      padding-left: 20px;
+      padding-left: 0;
       margin: 16px 0;
+      list-style: none;
 
       li {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
         margin-bottom: 10px;
-        color: #374151;
+        color: var(--os-text-2);
+        line-height: 1.6;
+      }
+
+      .li-ico {
+        margin-top: 2px;
+        color: var(--os-accent);
+        flex: none;
       }
     }
   }

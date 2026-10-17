@@ -25,11 +25,16 @@
   <div class="agent-tool" :class="[`is-${status}`]">
     <!-- ① 状态 + 结果摘要 -->
     <div class="at-head">
+      <!--
+        状态图标统一走 `OsIcon`（2026-10-18）：
+        原来是字形 ✓ / — / !，与全站线性图标不是一套语言。
+        运行中仍用细转圈（它不是"图标"，是"正在动"的指示）。
+      -->
       <span class="at-icon" aria-hidden="true">
         <span v-if="status === 'running'" class="at-spinner"></span>
-        <span v-else-if="status === 'ok'">✓</span>
-        <span v-else-if="status === 'cancelled'">—</span>
-        <span v-else>!</span>
+        <OsIcon v-else-if="status === 'ok'" name="check" :size="13" />
+        <OsIcon v-else-if="status === 'cancelled'" name="minus" :size="13" />
+        <OsIcon v-else name="alert" :size="13" />
       </span>
       <span class="at-summary">{{ summary }}</span>
     </div>
@@ -71,6 +76,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import AgentToolDetail from '@/components/AgentToolDetail/index.vue'
+import OsIcon from '@/components/OsIcon/index.vue'
 
 const props = defineProps({
   tool: { type: String, default: '' },

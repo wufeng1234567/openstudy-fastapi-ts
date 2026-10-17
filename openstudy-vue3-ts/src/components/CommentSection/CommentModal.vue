@@ -3,7 +3,7 @@
     <div class="comment-modal-container">
       <div class="modal-toolbar">
         <div class="toolbar-title">
-          💬 全部评论
+          全部评论
           <span v-if="total" class="comment-count">({{ total }})</span>
         </div>
         <el-button class="close-btn" size="small" circle @click="handleClose">

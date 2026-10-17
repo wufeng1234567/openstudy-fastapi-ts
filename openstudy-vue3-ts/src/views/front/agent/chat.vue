@@ -324,7 +324,8 @@
       append-to-body
     >
       <div v-if="editingAgentId == null" class="agent-form-tip">
-        💡 也可以直接在下面输入框里说「帮我建一个数学老师智能体」，由「智能体专家」按对话帮你创建。
+        <OsIcon name="lightbulb" :size="14" />
+        也可以直接在下面输入框里说「帮我建一个数学老师智能体」，由「智能体专家」按对话帮你创建。
       </div>
       <el-form label-width="90px" label-position="right">
         <el-form-item label="名称" required>

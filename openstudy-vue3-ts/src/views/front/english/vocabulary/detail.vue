@@ -28,28 +28,28 @@
         <!-- 统计卡片 -->
         <div class="stats-section">
             <div class="stat-card">
-                <div class="stat-icon">📚</div>
+                <div class="stat-icon"><OsIcon name="book" :size="20" /></div>
                 <div class="stat-info">
                     <span class="stat-value">{{ wordList.length }}</span>
                     <span class="stat-label">总单词</span>
                 </div>
             </div>
             <div class="stat-card mastered">
-                <div class="stat-icon">✅</div>
+                <div class="stat-icon"><OsIcon name="check-circle" :size="20" /></div>
                 <div class="stat-info">
                     <span class="stat-value">{{ masteredCount }}</span>
                     <span class="stat-label">已掌握</span>
                 </div>
             </div>
             <div class="stat-card unmastered">
-                <div class="stat-icon">📝</div>
+                <div class="stat-icon"><OsIcon name="pen-line" :size="20" /></div>
                 <div class="stat-info">
                     <span class="stat-value">{{ unmasteredCount }}</span>
                     <span class="stat-label">未掌握</span>
                 </div>
             </div>
             <div class="stat-card progress">
-                <div class="stat-icon">📊</div>
+                <div class="stat-icon"><OsIcon name="chart-column" :size="20" /></div>
                 <div class="stat-info">
                     <span class="stat-value">{{ masteryPercent }}%</span>
                     <span class="stat-label">掌握率</span>
@@ -68,9 +68,9 @@
             </el-input>
             <el-select v-model="filterType" placeholder="类型" class="type-select" clearable>
                 <el-option label="全部" value="all" />
-                <el-option label="📝 单词" value="word" />
-                <el-option label="📚 词组" value="phrase" />
-                <el-option label="💬 句子" value="sentence" />
+                <el-option label="单词" value="word" />
+                <el-option label="词组" value="phrase" />
+                <el-option label="句子" value="sentence" />
             </el-select>
             <el-select v-model="filterStatus" placeholder="掌握状态" class="status-select">
                 <el-option label="全部" value="all" />
@@ -150,9 +150,9 @@
 
             <el-form-item label="类型" prop="wordType">
                 <el-select v-model="editForm.wordType" placeholder="请选择类型" style="width: 100%">
-                    <el-option label="📝 单词" :value="1" />
-                    <el-option label="📚 词组" :value="2" />
-                    <el-option label="💬 句子" :value="3" />
+                    <el-option label="单词" :value="1" />
+                    <el-option label="词组" :value="2" />
+                    <el-option label="句子" :value="3" />
                 </el-select>
             </el-form-item>
         </el-form>
@@ -167,6 +167,7 @@
 </template>
 
 <script setup lang="ts">
+import OsIcon from '@/components/OsIcon/index.vue'
 defineOptions({ name: 'FrontEnglishVocabularyDetail' })
 import { ref, computed, onMounted, onActivated, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -397,9 +398,9 @@ const emptyDescription = computed(() => {
 
 // 获取类型图标
 const getTypeIcon = (type) => {
-    if (type === 1) return '📝'
-    if (type === 2) return '📚'
-    return '💬'
+    if (type === 1) return '单词'
+    if (type === 2) return '词组'
+    return '句子'
 }
 
 // 获取类型样式

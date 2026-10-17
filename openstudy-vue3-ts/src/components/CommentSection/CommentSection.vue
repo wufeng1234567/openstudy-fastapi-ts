@@ -10,7 +10,7 @@
 
       <div class="comment-actions-bar">
         <div class="write-comment" @click="focusWriteInput">
-          <span class="write-placeholder">📝 写评论...</span>
+          <span class="write-placeholder"><OsIcon name="pen-line" :size="13" /> 写评论…</span>
         </div>
         <CommentInput v-if="showWriteInput" ref="writeInputRef" :reply-target="null" placeholder="写下你的评论..."
           @submit="handleSubmitComment" />
@@ -47,6 +47,7 @@ import { ref, computed, onMounted, onDeactivated, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { listComments, createComment, getCommentThread } from '@/api/comment'
+import OsIcon from '@/components/OsIcon/index.vue'
 import { ensureLogin } from '@/utils/loginGuard'
 import { useCommentCacheStore } from '@/store/modules/commentCache'
 import CommentItem from './CommentItem.vue'

@@ -58,11 +58,11 @@
             <!-- 词库列表 -->
             <template v-else>
                 <!-- 默认单词本 -->
-                <div v-if="defaultBooks.length > 0" class="section-title">📌 默认单词本</div>
+                <div v-if="defaultBooks.length > 0" class="section-title">默认单词本</div>
                 <div v-if="defaultBooks.length > 0" class="book-grid">
                     <div v-for="book in defaultBooks" :key="book.id" class="book-card default-card"
                         @click="handleCardClick(book)">
-                        <div class="card-icon">📚</div>
+                        <div class="card-icon"><OsIcon name="book" :size="20" /></div>
                         <div class="card-content">
                             <h3 class="book-name">{{ book.name }}</h3>
                             <p class="book-desc">{{ book.description || '系统默认单词本' }}</p>
@@ -74,10 +74,10 @@
                 </div>
 
                 <!-- 我的词库 -->
-                <div v-if="customBooks.length > 0" class="section-title">📁 我的词库</div>
+                <div v-if="customBooks.length > 0" class="section-title">我的词库</div>
                 <div v-if="customBooks.length > 0" class="book-grid">
                     <div v-for="book in customBooks" :key="book.id" class="book-card" @click="handleCardClick(book)">
-                        <div class="card-icon">📚</div>
+                        <div class="card-icon"><OsIcon name="book" :size="20" /></div>
                         <div class="card-content">
                             <h3 class="book-name">{{ book.name }}</h3>
                             <p class="book-desc">{{ book.description || '暂无描述' }}</p>
@@ -128,6 +128,7 @@
 </template>
 
 <script setup lang="ts">
+import OsIcon from '@/components/OsIcon/index.vue'
 defineOptions({ name: 'FrontEnglishVocabulary' })
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'

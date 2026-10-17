@@ -29,10 +29,10 @@
     <template v-else>
     <div class="ac-head">
       <span class="ac-icon">
-        <span v-if="status === 'running'">{{ destructive ? '⚠' : '?' }}</span>
-        <span v-else-if="status === 'ok'">✓</span>
-        <span v-else>×</span>
-      </span>
+          <OsIcon v-if="status === 'running'" :name="destructive ? 'alert' : 'circle-help'" :size="14" />
+          <OsIcon v-else-if="status === 'ok'" name="check" :size="14" />
+          <OsIcon v-else name="close" :size="14" />
+        </span>
       <span class="ac-title">{{ title }}</span>
       <!-- 原始标识符（bank_manage.delete）只进 title，别摆在用户脸上 -->
       <span v-if="toolLabel" class="ac-name" :title="toolPath">{{ toolLabel }}</span>
@@ -76,6 +76,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import AgentDraftCard from '@/components/AgentDraftCard/index.vue'
+import OsIcon from '@/components/OsIcon/index.vue'
 
 const props = defineProps({
   tool: { type: String, default: '' },

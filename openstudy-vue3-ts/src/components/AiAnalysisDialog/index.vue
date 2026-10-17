@@ -1,5 +1,5 @@
 <template>
-    <el-dialog v-model="visible" title="🤖 AI 题目解析" width="600px" :close-on-click-modal="false" @close="handleClose">
+    <el-dialog v-model="visible" title="AI 题目解析" width="600px" :close-on-click-modal="false" @close="handleClose">
         <div class="model-select-bar">
             <span class="model-label">模型：</span>
             <AiModelSelector v-model="selectedModel" scene="analysis" width="180px" :disabled="deepThink" @select="onModelSelect" />
@@ -24,7 +24,7 @@
                          会把下面的正文不断往下推，用户读到的位置一直变。 -->
                     <div v-if="reasoningContent" class="reasoning-block" ref="reasoningRef"
                         style="max-height: 160px; overflow-y: auto; overflow-anchor: none;">
-                        <div class="reasoning-title">🧠 深度思考过程</div>
+                        <div class="reasoning-title"><OsIcon name="lightbulb" :size="14" /> 深度思考过程</div>
                         <div class="reasoning-text">{{ reasoningContent }}</div>
                     </div>
                     <div v-if="streamContent" class="ai-segments">
@@ -75,6 +75,7 @@
 </template>
 
 <script setup lang="ts">
+import OsIcon from '@/components/OsIcon/index.vue'
 import { ref, computed, watch } from 'vue'
 import { Loading, DocumentCopy } from '@element-plus/icons-vue'
 import { analyzeQuestionStream } from '@/api/ai/ai'

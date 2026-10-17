@@ -63,14 +63,14 @@
               'user-selected': isSubUserSelected(idx, 0),
               'correct-answer': isSubCorrectOption(idx, 0)
             }" @click="$emit('select-sub-option', idx, 0)">
-              <span class="truefalse-icon">✓</span>
+              <span class="truefalse-icon"><OsIcon name="check" :size="14" /></span>
               <span class="truefalse-text">正确</span>
             </div>
             <div class="truefalse-btn" :class="{
               'user-selected': isSubUserSelected(idx, 1),
               'correct-answer': isSubCorrectOption(idx, 1)
             }" @click="$emit('select-sub-option', idx, 1)">
-              <span class="truefalse-icon">✗</span>
+              <span class="truefalse-icon"><OsIcon name="close" :size="14" /></span>
               <span class="truefalse-text">错误</span>
             </div>
           </div>
@@ -137,7 +137,7 @@
     <div v-if="currentQuestion?.type === 'cloze' && currentQuestion?.showAnalysis && currentQuestion?.analysis"
       class="analysis-box">
       <el-divider />
-      <div class="analysis-title">💡 解析：</div>
+      <div class="analysis-title"><OsIcon name="lightbulb" :size="14" /> 解析</div>
       <LatexRenderer class="analysis-content" :content="currentQuestion.analysis" raw-html />
     </div>
   </div>
@@ -155,6 +155,7 @@ import {
   Lightning
 } from '@element-plus/icons-vue'
 import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
+import OsIcon from '@/components/OsIcon/index.vue'
 
 interface SubQuestion {
   question?: string

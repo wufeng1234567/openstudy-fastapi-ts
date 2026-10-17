@@ -72,8 +72,8 @@
             >
               <span class="step-icon">
                 <span v-if="step.state === 'running'" class="step-spinner" aria-hidden="true"></span>
-                <span v-else-if="step.state === 'done'" class="step-check">✓</span>
-                <span v-else class="step-fail">✕</span>
+                <OsIcon v-else-if="step.state === 'done'" name="check" :size="12" class="step-check" />
+                <OsIcon v-else name="close" :size="12" class="step-fail" />
               </span>
               <span class="step-text">{{ step.message }}</span>
             </li>
@@ -265,6 +265,7 @@ import { CopyDocument, Connection, Select, CloseBold, ArrowDown } from '@element
 import { renderAgentMarkdown } from '@/utils/markdown'
 import LoadingDots from '@/components/LoadingDots/index.vue'
 import AgentReasoning from '@/components/AgentReasoning/index.vue'
+import OsIcon from '@/components/OsIcon/index.vue'
 import AgentTurnRollback from '@/components/AgentTurnRollback/index.vue'
 import AgentRollbackNotice from '@/components/AgentRollbackNotice/index.vue'
 import ScrollButton from '@/components/ScrollButton/ScrollButton.vue'

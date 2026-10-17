@@ -95,9 +95,9 @@
                         <span>词库预览</span>
                     </div>
                     <div class="preview-stats">
-                        <span class="stat-word">📝 {{ bookPreview.wordCount }}</span>
-                        <span class="stat-phrase">📚 {{ bookPreview.phraseCount }}</span>
-                        <span class="stat-sentence">💬 {{ bookPreview.sentenceCount }}</span>
+                        <span class="stat-word"><OsIcon name="pen-line" :size="13" /> {{ bookPreview.wordCount }}</span>
+                        <span class="stat-phrase"><OsIcon name="book" :size="13" /> {{ bookPreview.phraseCount }}</span>
+                        <span class="stat-sentence"><OsIcon name="message-circle" :size="13" /> {{ bookPreview.sentenceCount }}</span>
                     </div>
                     <el-icon class="preview-arrow" :class="{ expanded: showPreview }">
                         <ArrowDown />
@@ -189,9 +189,9 @@
                         </el-select>
 
                         <el-select v-model="word.wordType" placeholder="类型" size="small" style="width: 100%">
-                            <el-option label="📝 单词" value="word" />
-                            <el-option label="📚 词组" value="phrase" />
-                            <el-option label="💬 句子" value="sentence" />
+                            <el-option label="单词" value="word" />
+                            <el-option label="词组" value="phrase" />
+                            <el-option label="句子" value="sentence" />
                         </el-select>
                     </div>
 
@@ -270,6 +270,7 @@
 </template>
 
 <script setup lang="ts">
+import OsIcon from '@/components/OsIcon/index.vue'
 defineOptions({ name: 'FrontEnglishOcr' })
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -1058,9 +1059,9 @@ const loadBookPreview = async (bookId) => {
 
 // 获取类型图标
 const getTypeIcon = (type) => {
-    if (type === 1) return '📝'
-    if (type === 2) return '📚'
-    return '💬'
+    if (type === 1) return '单词'
+    if (type === 2) return '词组'
+    return '句子'
 }
 
 // 获取类型样式类

@@ -33,9 +33,9 @@
     <template v-if="isBatchDelete">
       <div class="ad-head">
         <span class="ad-icon">
-          <span v-if="status === 'running'">⚠</span>
-          <span v-else-if="status === 'ok'">✓</span>
-          <span v-else>×</span>
+          <OsIcon v-if="status === 'running'" name="alert" :size="14" />
+          <OsIcon v-else-if="status === 'ok'" name="check" :size="14" />
+          <OsIcon v-else name="close" :size="14" />
         </span>
         <span class="ad-title">批量删除{{ entityLabel }}</span>
         <span class="ad-count">已选 {{ selected.length }} / {{ items.length }}</span>
@@ -96,9 +96,9 @@
     <template v-else>
     <div class="ad-head">
       <span class="ad-icon">
-        <span v-if="status === 'running'">✎</span>
-        <span v-else-if="status === 'ok'">✓</span>
-        <span v-else>×</span>
+        <OsIcon v-if="status === 'running'" name="pen-line" :size="14" />
+          <OsIcon v-else-if="status === 'ok'" name="check" :size="14" />
+          <OsIcon v-else name="close" :size="14" />
       </span>
       <span class="ad-title">导入预览（可编辑）</span>
       <span class="ad-count">{{ questions.length }} 题</span>
@@ -247,6 +247,7 @@
 
 <script setup lang="ts">
 import { reactive, ref, computed, watch } from 'vue'
+import OsIcon from '@/components/OsIcon/index.vue'
 
 const props = defineProps({
   /** 后端草稿：`{ kind:'question_bank_import', bank, questions }` */

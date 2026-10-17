@@ -42,7 +42,7 @@
         :class="['sc-chip', c.ok ? 'ok' : 'bad']"
         :title="c.hint || c.label"
       >
-        {{ c.ok ? '✓' : '✗' }} {{ c.label }}
+        <OsIcon :name="c.ok ? 'check' : 'close'" :size="12" /> {{ c.label }}
       </span>
     </div>
 
@@ -112,6 +112,7 @@
  * （`src/devtools/dfSelfCheck/store.ts`），所以**关掉抽屉不会中止运行也不丢日志**。
  */
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import OsIcon from '@/components/OsIcon/index.vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import {
   entries,

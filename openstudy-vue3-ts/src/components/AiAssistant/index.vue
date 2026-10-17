@@ -164,7 +164,7 @@
             </template>
             <template #empty>
               <div class="welcome-card">
-                <div class="welcome-icon">🤖</div>
+                <div class="welcome-icon"><OsIcon name="bot" :size="22" /></div>
                 <div class="welcome-title">你好，我是 OpenStudy 助手</div>
                 <div class="welcome-desc">开源、低成本、低门槛的 AI 学习平台</div>
                 <div class="quick-actions">
@@ -213,6 +213,7 @@
 </template>
 
 <script setup lang="ts">
+import OsIcon from '@/components/OsIcon/index.vue'
 import { ref, reactive, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {

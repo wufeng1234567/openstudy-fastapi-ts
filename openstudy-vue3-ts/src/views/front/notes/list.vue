@@ -138,11 +138,11 @@
                 <span class="separator">·</span>
                 <span class="time">{{ formatTime(note.createTime) }}</span>
                 <span class="separator">·</span>
-                <span class="clicks">👁 {{ note.viewCount || note.clickCount || 0 }}</span>
+                <span class="clicks"><OsIcon name="eye" :size="13" /> {{ note.viewCount || note.clickCount || 0 }}</span>
                 <span class="separator">·</span>
                 <!-- 评论数含子留言：后端 `note.comment_count` 在建评论时（不分是否回复）就 +1，
                      删评论 / 删笔记时一起扣，所以这里直接用列表接口已经下发的值，不用再查一次 -->
-                <span class="comments">💬 {{ note.commentCount || 0 }}</span>
+                <span class="comments"><OsIcon name="message-circle" :size="13" /> {{ note.commentCount || 0 }}</span>
                 <template v-if="note.tags">
                   <span class="separator">·</span>
                   <span class="tags">
@@ -172,7 +172,7 @@
       <div class="right-column">
         <div class="ranking-card">
           <div class="ranking-header">
-            <span class="ranking-title">🔥 热榜</span>
+            <span class="ranking-title"><OsIcon name="flame" :size="13" /> 热榜</span>
             <div class="ranking-tabs" role="tablist">
               <button type="button" class="ranking-tab" :class="{ active: rankingPeriod === 'week' }"
                 role="tab" :aria-selected="rankingPeriod === 'week'" @click="switchRanking('week')">周榜</button>
@@ -203,21 +203,19 @@
             <div v-for="(item, index) in rankingList" :key="item.noteId" class="ranking-item"
               :class="{ 'top-three': index < 3 }" :title="item.title" @click="goDetail(item.noteId)">
               <div class="ranking-rank" :class="'rank-' + (index + 1)">
-                <span v-if="index === 0" class="medal">🥇</span>
-                <span v-else-if="index === 1" class="medal">🥈</span>
-                <span v-else-if="index === 2" class="medal">🥉</span>
+                <OsIcon v-if="index < 3" name="medal" :size="15" class="medal" />
                 <span v-else class="rank-num">{{ index + 1 }}</span>
               </div>
               <div class="ranking-title-text">{{ item.title }}</div>
               <div class="ranking-clicks" :title="hotTip(item)">
-                <span class="hot-flame">🔥</span>{{ formatHot(itemHot(item)) }}
+                <OsIcon name="flame" :size="12" class="hot-flame" />{{ formatHot(itemHot(item)) }}
               </div>
             </div>
           </transition-group>
 
           <!-- 空态：周榜为空时引导去月榜 -->
           <div v-if="!rankingLoading && !rankingError && rankingList.length === 0" class="ranking-state">
-            <div class="state-empty-icon">📭</div>
+            <div class="state-empty-icon"><OsIcon name="inbox" :size="26" /></div>
             <div class="state-text">{{ rankingPeriodMeta[rankingPeriod].empty }}</div>
             <el-button v-if="rankingPeriod === 'week'" text type="primary" size="small"
               @click="switchRanking('month')">去看看月榜 →</el-button>
@@ -234,6 +232,7 @@ import { ref, computed, onMounted, onActivated, onBeforeUnmount, nextTick } from
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search, Edit, Refresh, Close, ArrowDown } from '@element-plus/icons-vue'
+import OsIcon from '@/components/OsIcon/index.vue'
 import { listPublicNotes, getRanking, getPublicNoteTags } from '@/api/notes/public'
 import { getPublicSections } from '@/api/notes/publicSection'
 import UserAvatar from '@/components/UserAvatar/index.vue'

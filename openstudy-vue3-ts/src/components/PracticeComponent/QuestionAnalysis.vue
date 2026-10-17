@@ -4,7 +4,7 @@
     v-if="currentQuestion?.showAnalysis && currentQuestion?.analysis && !['readingComprehension', 'cloze'].includes(currentQuestion?.type)"
     class="analysis-box">
     <el-divider />
-    <div class="analysis-title">💡 解析：</div>
+    <div class="analysis-title"><OsIcon name="lightbulb" :size="14" /> 解析</div>
     <LatexRenderer class="analysis-content" :content="currentQuestion.analysis" raw-html />
   </div>
 
@@ -18,7 +18,7 @@
   <div v-if="currentQuestion?.showAnalysis && currentQuestion?.type === 'cloze' && currentQuestion?.analysis"
     class="analysis-box">
     <el-divider />
-    <div class="analysis-title">💡 解析：</div>
+    <div class="analysis-title"><OsIcon name="lightbulb" :size="14" /> 解析</div>
     <LatexRenderer class="analysis-content" :content="currentQuestion.analysis" raw-html />
   </div>
 </template>
@@ -26,6 +26,7 @@
 <script setup lang="ts">
 import type { PropType } from 'vue'
 import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
+import OsIcon from '@/components/OsIcon/index.vue'
 import type { TransformedQuestion } from '@/types'
 
 defineProps({

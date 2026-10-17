@@ -114,9 +114,9 @@
                         <el-input v-model="word.chinese" placeholder="中文释义" class="word-input" clearable />
                         <el-input v-model="word.phonetic" placeholder="音标（可选）" class="word-input" clearable />
                         <el-select v-model="word.wordType" placeholder="类型" size="small" style="width: 100%">
-                            <el-option label="📝 单词" value="word" />
-                            <el-option label="📚 词组" value="phrase" />
-                            <el-option label="💬 句子" value="sentence" />
+                            <el-option label="单词" value="word" />
+                            <el-option label="词组" value="phrase" />
+                            <el-option label="句子" value="sentence" />
                         </el-select>
                     </div>
 
