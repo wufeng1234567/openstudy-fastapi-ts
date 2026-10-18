@@ -388,9 +388,14 @@ const featureItems: NavItem[] = [
        */
       { label: '题库管理', to: '/front/myQuestion/myBank', cacheKey: 'myBank' },
       { label: '我的分享', to: '/front/myQuestion/myShares', cacheKey: 'myShares' },
-      { label: '题目收藏', to: '/front/myQuestion/questionCollect', cacheKey: 'questionCollect' },
-      { label: '我的错题', to: '/front/myQuestion/wrongQuestion', cacheKey: 'wrongQuestion' },
-      { label: '我的斩题', to: '/front/myQuestion/masteredQuestion', cacheKey: 'masteredQuestion' },
+      /*
+       * 下面三项都指向同一个「题目管理」页（用户 2026-10-18 要求像题库那样合并）：
+       * 用 `?tab=` 决定进页面时停在哪个分组。三个入口保留是因为用户习惯从
+       * 「我的错题」「我的斩题」直接进，只是落地页变成了带分组切换的统一页面。
+       */
+      { label: '题目管理', to: '/front/myQuestion/questions?tab=favorite', cacheKey: 'questions' },
+      { label: '我的错题', to: '/front/myQuestion/questions?tab=wrong', cacheKey: 'questions' },
+      { label: '我的斩题', to: '/front/myQuestion/questions?tab=marked', cacheKey: 'questions' },
       { label: '我的笔记', to: '/front/myQuestion/myNotes', cacheKey: 'myNotes' },
       { label: '学习统计', to: '/front/myQuestion/myStats', cacheKey: 'myStats' }
     ]

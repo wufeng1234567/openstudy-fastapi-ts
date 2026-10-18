@@ -367,24 +367,34 @@ export const constantRoutes: AppRouteRecordRaw[] = [
             hidden: true
           },
           {
+            /* 「题目收藏 / 我的错题 / 我的斩题」已合并为「题目管理」（用户 2026-10-18）。
+               旧路径保留为 redirect，兼容书签；`?tab=` 直接落到对应分组。 */
             path: 'questionCollect',
             name: 'FrontQuestionCollect',
-            component: () => import('@/views/front/myQuestion/myFavoriteQuestion/index.vue'),
+            redirect: '/front/myQuestion/questions?tab=favorite',
             meta: { title: '题目收藏', layout: 'front' },
             hidden: true
           },
           {
             path: 'wrongQuestion',
             name: 'FrontWrongQuestion',
-            component: () => import('@/views/front/myQuestion/myMistakes/index.vue'),
+            redirect: '/front/myQuestion/questions?tab=wrong',
             meta: { title: '我的错题', layout: 'front' },
             hidden: true
           },
           {
             path: 'masteredQuestion',
             name: 'FrontMasteredQuestion',
-            component: () => import('@/views/front/myQuestion/myMarked/index.vue'),
+            redirect: '/front/myQuestion/questions?tab=marked',
             meta: { title: '我的斩题', layout: 'front' },
+            hidden: true
+          },
+          {
+            /* 「题目管理」：题目收藏 / 我的错题 / 我的斩题 三个分组共用一个页面 */
+            path: 'questions',
+            name: 'FrontQuestionManage',
+            component: () => import('@/views/front/myQuestion/questionManage/index.vue'),
+            meta: { title: '题目管理', layout: 'front' },
             hidden: true
           },
           {

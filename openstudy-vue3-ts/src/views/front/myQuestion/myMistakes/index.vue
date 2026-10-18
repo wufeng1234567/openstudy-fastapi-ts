@@ -1,7 +1,9 @@
-﻿<!-- src/views/MyMistakes/MyMistakes/index.vue -->
+<!-- src/views/MyMistakes/MyMistakes/index.vue -->
 <template>
   <div class="question-page-container">
-    <MyQuestion ref="myQuestionRef" question-type="wrong" :header-title="headerTitle" :show-star-filter="true"
+    <!-- `embedded`：被「题目管理」内嵌时隐藏自己的标题（外层有分组切换） -->
+    <MyQuestion ref="myQuestionRef" question-type="wrong" :header-title="embedded ? '' : headerTitle"
+      :show-star-filter="true"
       :show-favorite-status-filter="false" :show-star="true" :show-favorite-status="false" :show-collect-actions="true"
       :show-study-stats="true" :empty-action-text="'暂无错题，去练习'" :api-config="apiConfig" :question-banks="questionBanks"
       :user-store="userStore" :focus-question-id="focusQuestionId" @empty-action="goToQuestionBank" />
@@ -11,6 +13,9 @@
 <script setup lang="ts">
 defineOptions({ name: 'FrontWrongQuestion' })
 import { ref, computed, onMounted } from 'vue'
+
+/** 是否被「题目管理」内嵌（内嵌时不显示自己的页面标题） */
+withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false })
 import { useRoute, useRouter } from 'vue-router'
 import useUserStore from '@/store/modules/user'
 import { getCurrentInstance } from 'vue'
@@ -272,7 +277,9 @@ defineExpose({
     if (myQuestionRef.value) {
       myQuestionRef.value.refresh()
     }
-  }
+  },
+  /* 供「题目管理」分组壳把条数推到顶栏 */
+  getTotal: () => Number(myQuestionRef.value?.getTotal?.() ?? 0)
 })
 
 onMounted(() => {

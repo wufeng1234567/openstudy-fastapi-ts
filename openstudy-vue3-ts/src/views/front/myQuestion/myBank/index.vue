@@ -2,21 +2,15 @@
   <div class="my-bank-page" ref="pageRef">
     <!-- 搜索区域 -->
     <div ref="searchAreaRef" class="search-area-wrapper">
-      <div class="title-section">
-        <!--
-          内容区标题：只留「题库管理」+ 计数
-          ----------------------------------------------------------------
-          用户 2026-10-18：「图片里你应该可以看到路由区域的顶部（就是用户那行）
-          是有显示『我的学习』四个字的，名字改成『我的学习 · 题库管理』」。
+    <!--
+      内容区不再有「题库管理  5 个题库」这一行
+      ==========================================================================
+      用户 2026-10-18：「题库管理 5 个题库 …这个部分内容多余了，把他提取出来，
+      一起给到第一行去：我的学习 · 题库管理 xx 个题库」。
 
-          也就是说「我的学习 · xxx」这个前缀属于**顶栏**（`layout/front.vue` 的
-          `pageTitle` 已改），内容区再写一遍就是重复。这里只保留本页自己的名字。
-        -->
-        <h2 class="page-title">题库管理</h2>
-        <span class="total-count">
-          {{ activeTab === 'own' ? filteredBankList.length : filteredFavoriteList.length }} 个题库
-        </span>
-      </div>
+      现在顶栏是 `我的学习 · 题库管理   5 个题库`（计数由 `topbar` store 推送），
+      内容区紧接着就是分组切换 —— 少一行、垂直方向更紧凑。
+    -->
 
       <!--
         分组切换（我的题库 / 题库收藏）
@@ -239,7 +233,7 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'FrontMyBank' })
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, FolderOpened, Document, View, Delete, Share, Lock, Unlock, CopyDocument, Star } from '@element-plus/icons-vue'
@@ -250,6 +244,7 @@ import ReceiveShareDialog from '@/views/front/myQuestion/components/ReceiveShare
 import ShareBankDialog from '@/views/front/myQuestion/components/ShareBankDialog.vue'
 import { listMyQuestionBank, delQuestionBank, copyQuestionBank } from '@/api/questionBank/questionBank'
 import { listFavoriteBank, delFavoriteBank } from '@/api/favoriteBank/favoriteBank'
+import useTopbarStore from '@/store/modules/topbar'
 import type { UserBankFavorite } from '@/types'
 
 interface MyBankItem {
@@ -485,6 +480,23 @@ const filteredFavoriteList = computed(() => {
 const goToQuestionBank = () => {
   router.push('/front/questionPractice')
 }
+
+/* ==================== 顶栏计数 ====================
+ *
+ * 把「N 个题库」推到顶栏（与标题同一行），内容区不再单独占一行。
+ * 见 `store/modules/topbar.ts` 与 `layout/front.vue` 的 `os-topbar__count`。
+ */
+const topbarStore = useTopbarStore()
+watch(
+  [activeTab, () => filteredBankList.value.length, () => filteredFavoriteList.value.length],
+  () => {
+    const n = activeTab.value === 'own' ? filteredBankList.value.length : filteredFavoriteList.value.length
+    topbarStore.setCount(`${n} 个题库`)
+  },
+  { immediate: true }
+)
+// keep-alive 页面：离开时必须清，否则会把本页计数带到下一个页面
+onBeforeUnmount(() => topbarStore.clear())
 
 const handleFilterChange = (newFilter: any) => {
   filterForm.value = { ...newFilter }

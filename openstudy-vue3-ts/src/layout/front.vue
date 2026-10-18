@@ -48,6 +48,12 @@
             <OsIcon name="panel-left" :size="17" />
           </button>
           <h1 class="os-topbar__title">{{ pageTitle }}</h1>
+          <!--
+            计数（如「5 个题库」）由页面通过 topbar store 推到顶栏。
+            见 store/modules/topbar.ts 的说明：原来它在内容区另起一行，和这里的
+            标题重复，用户 2026-10-18 要求合并到同一行。
+          -->
+          <span v-if="topbarStore.countText" class="os-topbar__count">{{ topbarStore.countText }}</span>
         </div>
 
         <div class="os-topbar__right">
@@ -156,6 +162,7 @@
 import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import useUserStore from '@/store/modules/user'
+import useTopbarStore from '@/store/modules/topbar'
 import useTagsViewStore from '@/store/modules/tagsView'
 import { ensureLogin } from '@/utils/loginGuard'
 import { checkRole } from '@/utils/permission'
@@ -173,6 +180,8 @@ import GlobalSettings from '@/components/GlobalSettings/index.vue'
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+/** 顶栏副标题计数（由各页面通过 `setCount` 推送） */
+const topbarStore = useTopbarStore()
 const tagsViewStore = useTagsViewStore()
 
 // ==================== 布局状态 ====================
@@ -313,10 +322,8 @@ const SECTION_TITLES: Array<[string, string]> = [
 const MY_LEARNING_SUB: Array<[string, string]> = [
   ['/front/myQuestion/myBank', '题库管理'],
   ['/front/myQuestion/myShares', '我的分享'],
-  /* `bankCollect` 已重定向到 myBank，不会真正命中，故不在这里列（避免误导） */
-  ['/front/myQuestion/questionCollect', '题目收藏'],
-  ['/front/myQuestion/wrongQuestion', '我的错题'],
-  ['/front/myQuestion/masteredQuestion', '我的斩题'],
+  /* 题目收藏 / 我的错题 / 我的斩题 已合并为这一个页面（用户 2026-10-18） */
+  ['/front/myQuestion/questions', '题目管理'],
   ['/front/myQuestion/myNotes', '我的笔记'],
   ['/front/myQuestion/myStats', '学习统计']
 ]
@@ -480,6 +487,18 @@ const cachedViews = computed(() => tagsViewStore.cachedViews)
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/*
+ * 顶栏里的计数（「5 个题库」）
+ * 与标题同一行、次级色，不抢标题的视觉重心。
+ */
+.os-topbar__count {
+  margin-left: 8px;
+  flex: none;
+  font-size: 13px;
+  color: var(--os-text-4, #9ca3af);
+  white-space: nowrap;
 }
 
 .os-topbar__right {

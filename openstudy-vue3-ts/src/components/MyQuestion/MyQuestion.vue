@@ -1183,7 +1183,13 @@ defineExpose({
   refresh: handleRefresh,
   resetFilters,
   getQuestions: () => questions.value,
-  focusQuestion: focusOnQuestion
+  focusQuestion: focusOnQuestion,
+  /*
+   * 当前列表条数。
+   * 供外层（「题目管理」分组壳）把计数推到顶栏 —— 与「题库管理」做法一致：
+   * 用户 2026-10-18 要求把内容区那行「xxx  N 个 xxx」合并进顶栏。
+   */
+  getTotal: () => total.value
 })
 </script>
 

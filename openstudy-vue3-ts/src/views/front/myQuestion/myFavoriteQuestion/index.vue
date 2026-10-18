@@ -1,7 +1,13 @@
 <!-- src/views/MyFavoriteQuestion/MyFavoriteQuestion/index.vue -->
 <template>
   <div class="question-page-container">
-    <MyQuestion ref="myQuestionRef" question-type="favorite" :header-title="headerTitle" :show-star-filter="true"
+    <!--
+      `embedded = true`：本页被「题目管理」以分组的形式内嵌时，
+      不再显示自己的页面标题（外层已有分组切换，且顶栏已显示「我的学习 · 题目管理」）。
+      独立访问本路由时保持原样。
+    -->
+    <MyQuestion ref="myQuestionRef" question-type="favorite" :header-title="embedded ? '' : headerTitle"
+      :show-star-filter="true"
       :show-favorite-status-filter="true" :show-star="true" :show-favorite-status="true" :show-collect-actions="true"
       :show-study-stats="true" :empty-action-text="'去发现题目'" :api-config="apiConfig" :question-banks="questionBanks"
       :user-store="userStore" @empty-action="goToQuestionBank" />
@@ -13,6 +19,12 @@
 <script setup lang="ts">
 defineOptions({ name: 'FrontQuestionCollect' })
 import { ref, computed, onMounted } from 'vue'
+
+/**
+ * 是否被「题目管理」内嵌（内嵌时不显示自己的页面标题）
+ * 独立访问本路由时保持原样。
+ */
+withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false })
 import { useRouter } from 'vue-router'
 import useUserStore from '@/store/modules/user'
 import { getCurrentInstance } from 'vue'
@@ -258,7 +270,9 @@ defineExpose({
     if (myQuestionRef.value) {
       myQuestionRef.value.refresh()
     }
-  }
+  },
+  /* 供「题目管理」分组壳把条数推到顶栏 */
+  getTotal: () => Number(myQuestionRef.value?.getTotal?.() ?? 0)
 })
 
 onMounted(() => {
