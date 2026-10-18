@@ -378,9 +378,16 @@ const featureItems: NavItem[] = [
     cacheKey: 'myQuestion',
     requiresLogin: true,
     children: [
-      { label: '我的题库', to: '/front/myQuestion/myBank', cacheKey: 'myBank' },
+      /*
+       * 「我的题库」改名为「题库管理」（用户 2026-10-18）：
+       * 这一页现在同时管「我的题库」和「题库收藏」两个分组，
+       * 叫「管理」比叫「我的题库」更贴切，也不会和分组名撞车。
+       *
+       * 「题库收藏」这一项**已移除**（用户：「我的学习目录下多余的题库收藏模块可以去掉了」）——
+       * 收藏已经合并进「题库管理」的第二个分组，再放一个侧栏入口就是重复导航。
+       */
+      { label: '题库管理', to: '/front/myQuestion/myBank', cacheKey: 'myBank' },
       { label: '我的分享', to: '/front/myQuestion/myShares', cacheKey: 'myShares' },
-      { label: '题库收藏', to: '/front/myQuestion/bankCollect', cacheKey: 'bankCollect' },
       { label: '题目收藏', to: '/front/myQuestion/questionCollect', cacheKey: 'questionCollect' },
       { label: '我的错题', to: '/front/myQuestion/wrongQuestion', cacheKey: 'wrongQuestion' },
       { label: '我的斩题', to: '/front/myQuestion/masteredQuestion', cacheKey: 'masteredQuestion' },

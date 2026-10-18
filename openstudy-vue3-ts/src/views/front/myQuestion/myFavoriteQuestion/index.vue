@@ -42,7 +42,7 @@ const questionBanks = ref<QuestionBank[]>([])
 // ✅ 关键：使用与原始代码完全相同的转换函数
 const { transformQuestionForDisplay } = useQuestionPractice({ bankId: 0, moduleType: '' }, { proxy }, { isFavoriteMode: true })
 
-const headerTitle = computed(() => '我的题目收藏')
+const headerTitle = computed(() => '题目收藏')
 
 // ✅ 优化获取用户ID的函数
 const getCurrentUserId = (): string | number | null => {

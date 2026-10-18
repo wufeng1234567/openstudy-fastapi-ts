@@ -300,7 +300,32 @@ const SECTION_TITLES: Array<[string, string]> = [
   ['/front/profile', '个人中心']
 ]
 
+/**
+ * 「我的学习」下各子页在顶栏显示的名字
+ * ----------------------------------------------------------------------------
+ * 用户 2026-10-18：「图片里你应该可以看到路由区域的顶部（就是用户那行）
+ * 是有显示『我的学习』四个字的，名字改成『我的学习 · 题库管理』」。
+ *
+ * 所以顶栏不再对所有 `/front/myQuestion/*` 一律显示「我的学习」，
+ * 而是拼成「我的学习 · <子页名>」—— 层级关系一眼可见，也不占用内容区一行。
+ * 同时内容区那个大标题就**去掉**（原来写的是「我的学习 · 题库」，和顶栏重复）。
+ */
+const MY_LEARNING_SUB: Array<[string, string]> = [
+  ['/front/myQuestion/myBank', '题库管理'],
+  ['/front/myQuestion/myShares', '我的分享'],
+  /* `bankCollect` 已重定向到 myBank，不会真正命中，故不在这里列（避免误导） */
+  ['/front/myQuestion/questionCollect', '题目收藏'],
+  ['/front/myQuestion/wrongQuestion', '我的错题'],
+  ['/front/myQuestion/masteredQuestion', '我的斩题'],
+  ['/front/myQuestion/myNotes', '我的笔记'],
+  ['/front/myQuestion/myStats', '学习统计']
+]
+
 const pageTitle = computed(() => {
+  // 「我的学习」优先匹配子页（更长的前缀先命中）
+  const sub = MY_LEARNING_SUB.find(([prefix]) => route.path.startsWith(prefix))
+  if (sub) return `我的学习 · ${sub[1]}`
+
   const hit = SECTION_TITLES.find(([prefix]) => route.path.startsWith(prefix))
   if (hit) return hit[1]
   return (route.meta?.title as string) || 'OpenStudy'
