@@ -74,7 +74,7 @@
         <AiChatStream ref="chatRef" :messages="messages" :is-generating="isGenerating" :is-paused="false"
           :has-attachment="attachmentCount > 0" placeholder="告诉我你想做什么…（Enter 发送，Ctrl+Enter 换行）"
           :show-mode-switch="false" :rollback-states="rollbackStates" @send="handleSend" @stop="stop"
-          @toggle-pause="stop" @rollback-turn="onRollbackTurn">
+          @toggle-pause="stop" @rollback-turn="onRollbackTurn" @window-change="onChatWindowChange">
           <!-- 工具调用卡片 -->
           <template #tool-result="{ message }">
             <AgentToolResult :tool="message.tool" :action="message.action" :content="message.content"
@@ -905,7 +905,7 @@ const visibleMessagesForOutline = ref<any[]>([])
  */
 const outlineWindowOffset = ref(0)
 
-/** 从 AiChatStream 同步「已渲染窗口 + 窗口起点」给右侧导航 */
+/** 从 AiChatStream 读一次「已渲染窗口 + 窗口起点」，刷新给右侧导航 */
 function syncOutlineWindow() {
   const vm = chatRef.value
   const win = vm?.visibleMessages
@@ -914,11 +914,29 @@ function syncOutlineWindow() {
   outlineWindowOffset.value = Number.isFinite(off) && off > 0 ? off : 0
 }
 
+/**
+ * AiChatStream 的 `window-change` 回调
+ *
+ * 为什么必须靠事件而不是父级 watch（用户 2026-10-18 反馈
+ * 「加载新消息后右侧消息跳转条的数量没跟着一起加载」）：
+ *   「加载更早」只改子组件内部的 `renderLimit`，
+ *   父组件的 `messages` **引用和长度都没变** ——
+ *   父级不管 watch 什么都察觉不到，导航会一直停在旧的横线数量上。
+ *   子组件是唯一知道窗口变了的地方，所以由它 emit，这里接住并刷新。
+ */
+function onChatWindowChange(payload?: { visible?: any[]; offset?: number }) {
+  if (payload && Array.isArray(payload.visible)) {
+    visibleMessagesForOutline.value = payload.visible
+    const off = Number(payload.offset)
+    outlineWindowOffset.value = Number.isFinite(off) && off > 0 ? off : 0
+    return
+  }
+  // 兜底：事件没带载荷时回读实例
+  syncOutlineWindow()
+}
+
 watch(
-  // ⚠️ 必须监听 `length`：点「加载更早」时 `messages` 数组**引用不变**、
-  //    只是渲染窗口变了（`windowOffset` 变小、`visibleMessages` 变多）。
-  //    只监听 messages 引用的话，点完加载更早导航不会刷新，
-  //    新增出来的那几轮**点了照样跳不动**。
+  // 切会话 / 清空 / 生成状态变化 → 回读一次（「加载更早」由 window-change 负责）
   [messages, isGenerating, () => messages.value.length],
   () => {
     nextTick(syncOutlineWindow)

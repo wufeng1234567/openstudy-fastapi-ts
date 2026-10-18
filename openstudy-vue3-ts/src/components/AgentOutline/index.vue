@@ -394,7 +394,13 @@ watch(
 .ao-frame {
   position: relative;
   width: 28px;
-  max-height: min(max(0px, calc(100dvh - var(--ao-composer-h, 152px) - 64px)), 420px);
+  /*
+   * 高度上限 420 → 320（用户 2026-10-18：「消息条太多，用户的右边不太好看」）。
+   * 320px 大约装 30 根线（间距 10px），再多就由 `.ao-scroller` 内部滚动，
+   * 两端有 24px 渐变淡出，视觉上不会一直垂到页面底部。
+   * 仍然受视口高度约束（矮屏时更短），不会溢出。
+   */
+  max-height: min(max(0px, calc(100dvh - var(--ao-composer-h, 152px) - 64px)), 320px);
   pointer-events: auto;
   cursor: pointer;
 }

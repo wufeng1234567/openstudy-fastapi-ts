@@ -446,7 +446,17 @@ const emit = defineEmits([
   'update:mode',
   'new-session',
   /** 点「回退」时抛给调用方（载荷 = 那一轮的 `turnId`），由页面调 `rollbackTurn()` */
-  'rollback-turn'
+  'rollback-turn',
+  /**
+   * 渲染窗口变化（点「加载更早」、切会话、清空都会触发）
+   * 载荷：`{ visible: 当前窗口消息, offset: 窗口起点绝对下标 }`
+   *
+   * ⚠️ 给右侧「轮次导航」用。必须由本组件**主动**发：
+   *    「加载更早」只改内部 `renderLimit`，父组件的 `messages`
+   *    引用与长度都不变，父级 watch 根本察觉不到，
+   *    导航会停在旧的横线数量上（用户 2026-10-18 反馈）。
+   */
+  'window-change'
 ])
 
 /**
@@ -886,25 +896,41 @@ watch(() => {
 })
 
 /**
- * 对外暴露：滚动落底 / 滚动容器 / **回填输入框**
+ * 已渲染窗口变化 → 通知外部（给右侧「轮次导航」用）
+ *
+ * ⚠️ 为什么不用 `defineExpose` + 父级 watch（2026-10-18 踩过）：
+ *    「加载更早」只改 `renderLimit`（组件内部 ref），父组件的 `messages`
+ *    **引用和长度都没变**，父级那边无论怎么 watch 都察觉不到，
+ *    导航于是停在旧的横线数量上 —— 用户反馈"加载新消息后右侧条数没跟着变"。
+ *    组件自己是唯一知道窗口变了的地方，所以由它 emit。
+ */
+const emitWindowChange = () => {
+  if (props.messages.length === 0) return
+  emit('window-change', {
+    visible: visibleMessages.value,
+    offset: windowOffset.value
+  })
+}
+
+watch([visibleMessages, windowOffset], () => {
+  nextTick(emitWindowChange)
+})
+
+/**
+ * 对外暴露：滚动落底 / 滚动容器 / **回填输入框** / 已渲染窗口
  *
  * `setInputText` 是给「回退」用的（页面在 `rollbackTurn` 成功后把这一轮的提问正文塞回来），
  * 见它自己的注释。两个消费方（大屏智能体页 + 右侧助手抽屉）都必须接上 ——
  * 少接一个，那一侧的「回退后提问自动回到输入框」就是哑的。
+ *
+ * `visibleMessages` / `windowOffset` 给「轮次导航」用（另见 `window-change` 事件：
+ * 数据仍从这里取，事件只是用来**通知父级"该重新取了"**）。
  */
 defineExpose({
   scrollToBottom,
   messagesRef,
   setInputText,
-  /**
-   * 已渲染的消息窗口（「加载更早」之外的部分）
-   *
-   * 给右侧「轮次导航」（`AgentOutline`）用：它必须只统计**真正渲染在 DOM 里**的
-   * 那部分消息，否则会把还没加载出来的历史也算成可跳转的轮次 ——
-   * 点了跳不过去（那些消息根本没有 `data-msg-idx` 锚点）。
-   */
   visibleMessages,
-  /** 窗口起点在完整数组里的绝对下标（outline 用它把相对序号换算成锚点） */
   windowOffset
 })
 </script>
