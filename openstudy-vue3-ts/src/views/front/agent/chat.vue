@@ -45,9 +45,15 @@
           右侧「轮次导航」：窗口右缘一列短横线，一根 = 一轮提问。
           线长编码状态（未加载最短 / 普通 / 悬停 / 当前最长），悬停浮出提问 + 结论预览。
           形态与规则对齐 DSH Web 的 TurnNavigator，详见组件内注释。
+
+          ⚠️ `:messages` 必须传**当前已渲染的窗口**（`visibleMessagesForOutline`），
+             不能传完整 `messages`：历史很长时 AiChatStream 只渲染最近 N 条，
+             更早的要「加载更早」才进 DOM。若把完整数组交给导航，
+             没加载的轮次也会画成一堆可点的线，点下去没有 `data-msg-idx` 锚点
+             → 跳不动（用户 2026-10-18 报的 bug）。
         -->
         <AgentOutline
-          :messages="messages"
+          :messages="visibleMessagesForOutline"
           :generating="isGenerating"
           scroll-selector=".chat-messages"
         />
@@ -865,6 +871,41 @@ async function removeAgent(a: AgentConfig) {
 
 
 const chatRef = ref<any>(null)
+
+/**
+ * 右侧「轮次导航」要用的消息窗口
+ * ------------------------------------------------------------------
+ * 长的历史会话里，AiChatStream 只渲染最近 `RENDER_CHUNK`(40) 条，
+ * 更早的部分要通过「加载更早的消息」逐段回溯才进 DOM。
+ *
+ * 所以导航不能直接吃完整 `messages`：
+ *   · 完整数组里那些**还没渲染**的用户提问也会画成一根根可点的横线；
+ *   · 点它 → 找不到对应的 `[data-msg-idx]` 锚点（DOM 里根本没有）→ 跳不动，
+ *     用户体感就是"点了没反应"（2026-10-18 反馈）。
+ *
+ * 这里改成读子组件暴露的 `visibleMessages`（已渲染窗口），
+ * 用一个 ref 承接，并在消息数/生成状态变化时同步。
+ *
+ * ⚠️ 为什么不用 computed 直接读 `chatRef.value?.visibleMessages`：
+ *    `chatRef` 是模板 ref，赋值为 null → 实例之间有延迟，computed 不会因
+ *    "实例从 null 变成对象"而重算（它不是响应式依赖）。所以用 watch + ref。
+ */
+const visibleMessagesForOutline = ref<any[]>([])
+
+/** 从 AiChatStream 同步「已渲染窗口」给右侧导航 */
+function syncOutlineWindow() {
+  const vm = chatRef.value
+  const win = vm?.visibleMessages
+  visibleMessagesForOutline.value = Array.isArray(win) ? win : messages.value
+}
+
+watch(
+  [messages, isGenerating],
+  () => {
+    nextTick(syncOutlineWindow)
+  },
+  { deep: false, immediate: true }
+)
 
 /** ds-free 由扩展代发、挂不了 tools，Agent 用不了 */
 const isDsFree = computed(() => model.value === 'deepseek-free')

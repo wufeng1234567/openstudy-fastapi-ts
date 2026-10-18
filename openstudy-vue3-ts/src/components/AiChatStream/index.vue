@@ -227,8 +227,18 @@
     <AgentRollbackNotice v-if="rollbackNotices.length && !noticeClosed" :entries="rollbackNotices"
       @close="noticeClosed = true" />
 
-    <!-- 滚动按钮 -->
-    <ScrollButton :scroll-container="messagesRef" :bottom="scrollButtonBottom" :right="16" />
+    <!--
+      滚动按钮
+      ==================================================================
+      用户 2026-10-18 要求（对齐 DSH Web）：
+        · 位置：浮在**聊天输入框上方**，与输入框留一点间隔（不是压视口底边）；
+        · 尺寸：与 DSH 一致（28px，比原来的 40px 小一圈）。
+
+      `anchor-selector` 指向输入卡片 —— 组件会量它的顶边，把按钮放在它上方；
+      `scroll-container` 指向消息列表 —— 聊天页的滚动发生在这里而不是 window。
+    -->
+    <ScrollButton :scroll-container="messagesRef" anchor-selector=".chat-input-area"
+      :bottom="scrollButtonBottom" :right="16" />
     <!-- 输入区（底部组件：模式切换 / 附件 / 放大输入 / 工具栏 / 发送） -->
     <ChatInputArea v-model="inputContent" :mode="mode" :show-mode-switch="showModeSwitch"
       :show-new-session="showNewSession" :generating="isGenerating" :paused="isPaused" :placeholder="placeholder"
@@ -301,7 +311,7 @@ const props = defineProps({
    * 大屏智能体页把输入区做成了**悬浮卡片**（盖在消息流上），按钮默认位置会正好压在
    * 输入卡片上，所以要把它抬到卡片上方 —— 由那个页面传一个更大的值。
    */
-  scrollButtonBottom: { type: Number, default: 16 },
+  scrollButtonBottom: { type: Number, default: 12 },
   /**
    * **按轮**的回退状态（`useAgentChat` 的 `rollbackStates`）：`{ [turnId]: { status, outcome } }`。
    *
@@ -846,7 +856,21 @@ watch(() => {
  * 见它自己的注释。两个消费方（大屏智能体页 + 右侧助手抽屉）都必须接上 ——
  * 少接一个，那一侧的「回退后提问自动回到输入框」就是哑的。
  */
-defineExpose({ scrollToBottom, messagesRef, setInputText })
+defineExpose({
+  scrollToBottom,
+  messagesRef,
+  setInputText,
+  /**
+   * 已渲染的消息窗口（「加载更早」之外的部分）
+   *
+   * 给右侧「轮次导航」（`AgentOutline`）用：它必须只统计**真正渲染在 DOM 里**的
+   * 那部分消息，否则会把还没加载出来的历史也算成可跳转的轮次 ——
+   * 点了跳不过去（那些消息根本没有 `data-msg-idx` 锚点）。
+   */
+  visibleMessages,
+  /** 窗口起点在完整数组里的绝对下标（outline 用它把相对序号换算成锚点） */
+  windowOffset
+})
 </script>
 
 <style scoped lang="scss">

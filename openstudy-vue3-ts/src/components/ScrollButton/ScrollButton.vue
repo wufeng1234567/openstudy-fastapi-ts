@@ -48,14 +48,14 @@
       >
         <svg
           v-if="direction === 'down'"
-          viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+          viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
           stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
         >
           <path d="m6 9 6 6 6-6" />
         </svg>
         <svg
           v-else
-          viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+          viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
           stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
         >
           <path d="m18 15-6-6-6 6" />
@@ -66,7 +66,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, getCurrentInstance, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, getCurrentInstance, onBeforeUnmount, onMounted, onUpdated, ref, watch } from 'vue'
 
 const props = withDefaults(
   defineProps<{
@@ -79,9 +79,41 @@ const props = withDefaults(
      * 不传则自动向上找最近的可滚动祖先 / 全文档主滚动区，最后退回 window。
      */
     scrollContainer?: any
+    /**
+     * 位置锚点：传选择器时，按钮贴在**该元素上方** `bottom` 像素处（而不是视口底部）。
+     *
+     * 用于智能对话页（用户 2026-10-18 要求）：按钮要像 DSH 那样浮在
+     * **聊天输入框上方**，而不是压在输入框/视口最底边。
+     */
+    anchorSelector?: string
   }>(),
-  { bottom: 24, right: 24, scrollContainer: null }
+  { bottom: 24, right: 24, scrollContainer: null, anchorSelector: '' }
 )
+
+/** 最近一次实际生效的 props（用来判断是否"持续有变化"，见 onUpdated） */
+let lastSnapshot = ''
+
+/**
+ * 父组件是否**显式绑定**了 `scroll-container`
+ *
+ * 为什么要单独判断（2026-10-18）：prop 默认值也是 `null`，
+ * 光看 `props.scrollContainer === null` 分不清"没传"和"传了但元素还没就绪"。
+ * 前者应当自动侦测容器，后者必须等父组件的 ref 挂上，**不能**乱猜。
+ */
+const hasContainerProp = computed(() => {
+  const vnode = getCurrentInstance()?.vnode as any
+  /*
+   * 必须读 `vnode.props`（**父组件原始传入的**那份），不能用 `props.scrollContainer`：
+   * `withDefaults` 会把默认值 `null` 填进去，等于"永远有值"，
+   * 于是没传容器的页面（题库练习 / 笔记 / 题库搭建）会被误判成"传了但没就绪"
+   * → resolveTarget 返回 null → 一直重试 → **按钮永不出现**
+   * （2026-10-18 用户反馈"题库练习浏览模式下也没有一键滚动按钮"就是这个）。
+   */
+  const raw = vnode?.props
+  if (!raw) return false
+  return Object.prototype.hasOwnProperty.call(raw, 'scrollContainer')
+    || Object.prototype.hasOwnProperty.call(raw, 'scroll-container')
+})
 
 /**
  * 端点容差：离顶部/底部多少像素以内算"已经在端点"
@@ -94,10 +126,32 @@ const EDGE_TOLERANCE = 40
 const direction = ref<'up' | 'down'>('down')
 const visible = ref(false)
 
-const posStyle = computed(() => ({
-  right: `${props.right}px`,
-  bottom: `${props.bottom}px`
-}))
+/** 锚点元素的底边距视口底部的高度（决定了按钮"浮在锚点上方"的位置） */
+const anchorBottom = ref(0)
+
+const posStyle = computed(() => {
+  // 有锚点（如聊天输入框）→ 贴在它上方；否则贴视口底部
+  const bottom = props.anchorSelector ? anchorBottom.value + props.bottom : props.bottom
+  return {
+    right: `${props.right}px`,
+    bottom: `${bottom}px`
+  }
+})
+
+/** 量一次锚点位置（窗口尺寸变化、输入框变高变矮都要重算） */
+function measureAnchor() {
+  if (!props.anchorSelector) {
+    anchorBottom.value = 0
+    return
+  }
+  const el = document.querySelector<HTMLElement>(props.anchorSelector)
+  if (!el) {
+    anchorBottom.value = 0
+    return
+  }
+  const rect = el.getBoundingClientRect()
+  anchorBottom.value = Math.max(0, window.innerHeight - rect.top)
+}
 
 /** @type {HTMLElement | Window | null} 真正在滚的东西 */
 let target: any = null
@@ -105,6 +159,8 @@ let raf = 0
 let resizeObserver: ResizeObserver | null = null
 let mutationObserver: MutationObserver | null = null
 let hostEl: HTMLElement | null = null
+/** 容器未就绪时的重试定时器（父组件 ref 挂上后再绑） */
+let retryTimer: ReturnType<typeof setTimeout> | null = null
 
 /** 向上找一个"内容确实超出"的可滚动祖先 */
 function findScrollParent(el: HTMLElement | null): any {
@@ -147,11 +203,27 @@ function findMainScroller(): any {
 /** 解析目标容器 */
 function resolveTarget(): any {
   const given = props.scrollContainer
-  if (given) {
-    if (typeof given === 'string') return document.querySelector(given) || window
+  /*
+   * 显式传了容器：等它就绪。
+   *
+   * ⚠️ 必须容忍 `null`（2026-10-18 智能对话页 bug 的成因）。
+   *    调用方写 `:scroll-container="messagesRef"`，模板里传 ref 会自动解包，
+   *    父组件首次渲染时拿到的是 **null**。若判空后直接去"向上找祖先"，
+   *    就会绑到错误容器，而且**之后再也不会重绑** ——
+   *    表现正是用户说的"箭头永远朝下、不跟滚动走"。
+   *
+   * 区分方式：用 `hasContainerProp` 判断父组件到底有没有绑定这个属性。
+   *    · 绑定过（哪怕是 null）→ 只用它，没就绪就返回 null 等重试；
+   *    · 没绑定            → 自动侦测（向上找 → 全文档找 → window）。
+   */
+  if (hasContainerProp.value) {
+    if (!given) return null
+    if (typeof given === 'string') return document.querySelector(given) || null
     if (given.$el) return given.$el
     if (given instanceof HTMLElement) return given
+    return null
   }
+
   const fromParent = findScrollParent(hostEl)
   if (fromParent !== window) return fromParent
   const main = findMainScroller()
@@ -185,6 +257,8 @@ function readScroll() {
  *   · 顶部且已到底（不可能同时成立，兜底隐藏）。
  */
 function recalc() {
+  // 顺手量锚点：输入框可能随内容变高（多行、附件条出现），按钮要跟着上移
+  measureAnchor()
   const { top, max } = readScroll()
 
   if (max <= EDGE_TOLERANCE) {
@@ -241,8 +315,20 @@ function onClick() {
 
 function bind() {
   unbind()
-  target = resolveTarget()
-  if (!target) return
+  const next = resolveTarget()
+
+  /*
+   * 容器还没就绪（父组件的 ref 仍是 null）→ 不绑、但排一次重试。
+   * 这是智能对话页那个 bug 的修法：父组件首帧传进来的 `messagesRef` 是 null，
+   * 若此时放弃，按钮就永远绑不上，表现为"箭头永不跟随滚动"。
+   */
+  if (!next) {
+    if (retryTimer) clearTimeout(retryTimer)
+    retryTimer = setTimeout(bind, 120)
+    return
+  }
+
+  target = next
   target.addEventListener('scroll', onScroll, { passive: true })
   window.addEventListener('resize', onScroll)
 
@@ -269,6 +355,10 @@ function unbind() {
   mutationObserver?.disconnect()
   mutationObserver = null
   target = null
+  if (retryTimer) {
+    clearTimeout(retryTimer)
+    retryTimer = null
+  }
   if (raf) {
     cancelAnimationFrame(raf)
     raf = 0
@@ -293,6 +383,20 @@ onMounted(() => {
 
 onBeforeUnmount(unbind)
 
+/*
+ * 父组件 ref 就绪 / 容器切换 → 重新绑定
+ *
+ * `onUpdated` 是这里的关键补丁：智能对话页首次渲染时 `messagesRef` 还是 null，
+ * 本组件 bind 拿不到目标；等 DOM 挂好、父组件更新一次之后 ref 才有值，
+ * 这时必须重新 bind，否则永远不会跟滚动走。
+ * 只在"解析结果变了"时才真的重绑，避免每次更新都拆装监听。
+ */
+onUpdated(() => {
+  const now = resolveTarget()
+  if (now && now !== target) bind()
+  else recalc()
+})
+
 // 容器变化（例如切换练习模式）→ 重新绑定
 watch(
   () => props.scrollContainer,
@@ -314,32 +418,28 @@ defineExpose({ recalc, onClick })
 .os-scroll-btn {
   position: fixed;
   z-index: 900;
-  width: 40px;
-  height: 40px;
+  /* 与 DSH Web 的滚动按钮同尺寸（28px，比原来的 40px 小一圈） */
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--os-border, #e5e7eb);
   border-radius: 50%;
   background: #fff;
-  color: var(--os-text-3, #61666b);
+  color: var(--os-text-4, #909399);
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
   transition: color var(--ds-duration-fast, 0.15s) var(--ds-ease-in-out, ease),
     border-color var(--ds-duration-fast, 0.15s) var(--ds-ease-in-out, ease),
     background-color var(--ds-duration-fast, 0.15s) var(--ds-ease-in-out, ease),
-    transform var(--ds-duration-fast, 0.15s) var(--ds-ease-in-out, ease);
+    opacity var(--ds-duration-fast, 0.15s) var(--ds-ease-in-out, ease);
 }
 
 .os-scroll-btn:hover {
   color: var(--os-text, #0f1115);
   border-color: var(--os-border-strong, #d1d5db);
   background: var(--os-bg-hover, #f9fafb);
-  transform: translateY(-1px);
-}
-
-.os-scroll-btn:active {
-  transform: translateY(0);
 }
 
 .os-scroll-btn:focus-visible {
