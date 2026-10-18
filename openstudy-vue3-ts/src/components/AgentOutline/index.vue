@@ -113,8 +113,22 @@ const FADE_PX = 24
 
 const props = withDefaults(
   defineProps<{
-    /** 完整消息数组（与传给 AiChatStream 的是同一份） */
+    /** 消息数组（通常是 AiChatStream 已渲染的那个窗口） */
     messages: any[]
+    /**
+     * 窗口起点在**完整消息数组**里的绝对下标
+     *
+     * ⚠️ 这个 prop 不能省（用户 2026-10-18 报的「点右侧消息条跳转失败、也不报错」）：
+     *    `AiChatStream` 上的锚点是 **绝对**序号（`:data-msg-idx="windowOffset + idx"`），
+     *    而本组件吃的是 `visibleMessages` 这个**窗口切片**，
+     *    切片里的下标是**相对**的（0 起）。
+     *    `windowOffset > 0` 时（历史长、触发了"加载更早"），
+     *    `[data-msg-idx="${item.idx}"]` 查到的是别的元素或查不到，
+     *    `if (!el) return` 就静默返回 —— 表现正是"点了没反应、也不报错"。
+     *
+     *    传 0 时行为与旧版一致（窗口就是全量），兼容短会话。
+     */
+    windowOffset?: number
     /** 滚动容器选择器（默认对话页的消息列表） */
     scrollSelector?: string
     /** 是否正在生成（用于给最后一轮打 busy 脉冲） */
@@ -125,6 +139,7 @@ const props = withDefaults(
     responseChars?: number
   }>(),
   {
+    windowOffset: 0,
     scrollSelector: '.chat-messages',
     generating: false,
     promptChars: 50,
@@ -136,7 +151,10 @@ const props = withDefaults(
 interface TurnItem {
   /** 轮次号（从 1 开始，与 DSH 的 turn 语义一致） */
   turn: number
-  /** 该轮用户消息在 messages 里的绝对下标（锚点用） */
+  /**
+   * 该轮用户消息的 **绝对** 下标（= windowOffset + 窗口内下标）
+   * 直接与 `AiChatStream` 的 `data-msg-idx` 对齐，用于 querySelector 定位。
+   */
   idx: number
   prompt: string
   response: string
@@ -161,7 +179,8 @@ const items = computed<TurnItem[]>(() => {
     if (m?.role === 'user') {
       list.push({
         turn: list.length + 1,
-        idx: i,
+        // 换算成**绝对**序号：与 `AiChatStream` 的 `data-msg-idx` 同一坐标系
+        idx: props.windowOffset + i,
         prompt: trim(m.content, props.promptChars) || '（附件消息）',
         response: '',
         busy: false

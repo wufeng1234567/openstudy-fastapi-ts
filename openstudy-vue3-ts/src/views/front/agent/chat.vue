@@ -54,6 +54,7 @@
         -->
         <AgentOutline
           :messages="visibleMessagesForOutline"
+          :window-offset="outlineWindowOffset"
           :generating="isGenerating"
           scroll-selector=".chat-messages"
         />
@@ -892,15 +893,33 @@ const chatRef = ref<any>(null)
  */
 const visibleMessagesForOutline = ref<any[]>([])
 
-/** 从 AiChatStream 同步「已渲染窗口」给右侧导航 */
+/**
+ * 窗口起点在完整 `messages` 里的绝对下标
+ *
+ * ⚠️ 必须传给 `AgentOutline`（用户 2026-10-18 报的「点右侧消息条跳转失败、
+ *    点了没反应也不报错」）：
+ *      聊天页上的锚点是 **绝对**序号（`AiChatStream` 里 `:data-msg-idx="windowOffset + idx"`），
+ *      而导航吃的是 `visibleMessages` 这个**窗口切片**，切片内下标从 0 起。
+ *      历史长、"加载更早"生效后 `windowOffset > 0`，两者错位 →
+ *      导航按错的序号 querySelector → 查不到 → 静默 return → 点了毫无反应。
+ */
+const outlineWindowOffset = ref(0)
+
+/** 从 AiChatStream 同步「已渲染窗口 + 窗口起点」给右侧导航 */
 function syncOutlineWindow() {
   const vm = chatRef.value
   const win = vm?.visibleMessages
   visibleMessagesForOutline.value = Array.isArray(win) ? win : messages.value
+  const off = Number(vm?.windowOffset)
+  outlineWindowOffset.value = Number.isFinite(off) && off > 0 ? off : 0
 }
 
 watch(
-  [messages, isGenerating],
+  // ⚠️ 必须监听 `length`：点「加载更早」时 `messages` 数组**引用不变**、
+  //    只是渲染窗口变了（`windowOffset` 变小、`visibleMessages` 变多）。
+  //    只监听 messages 引用的话，点完加载更早导航不会刷新，
+  //    新增出来的那几轮**点了照样跳不动**。
+  [messages, isGenerating, () => messages.value.length],
   () => {
     nextTick(syncOutlineWindow)
   },
