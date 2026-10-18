@@ -149,30 +149,54 @@
                   <div v-if="showDescription && item.description" class="bank-description">
                     <div class="description-text" v-html="truncateText(item.description, 80)"></div>
                   </div>
+
+                  <!--
+                    调用方自定义的补充信息（插在统计信息之后、操作按钮之前）
+                    --------------------------------------------------------
+                    场景：「我的收藏」需要展示「来自分享 / 分享者 / 已失效」这类
+                    本组件不该内置的业务信息。提供插槽后，该页面就能复用同一张
+                    卡片骨架，而不必再手写一套（那正是样式漂移的来源）。
+                  -->
+                  <slot name="content-extra" :item="item" />
                 </div>
               </div>
 
-              <!-- 卡片底部操作按钮 -->
+              <!--
+                卡片底部操作按钮
+                ------------------------------------------------------------------
+                `actions` 插槽：调用方提供按钮时**完全替换**默认按钮（而不是并排追加）。
+
+                背景（用户 2026-10-18：「卡片样式不一致，题库卡片、收藏、我的题库
+                样式不一致」）：原先「我的题库」「我的收藏」各自手写了一套卡片，
+                封面高度 144/140、内边距 16/12、按钮 flex:1 / 按内容宽度……
+                数值全部漂移。根因不是配色，是**同一张卡片被实现了三次**。
+
+                统一做法：这两个页面改为复用本组件，差异部分（查看详情 / 分享 /
+                删除 / 复制 / 取消收藏）通过这个插槽注入。
+                插槽作用域暴露 `item`，调用方拿原始数据即可。
+              -->
               <div class="card-actions">
-                <el-button type="primary" size="small" plain :disabled="isEmptyBank(item)" @click.stop="handleViewDetail(item)" class="action-btn">
-                  <el-icon>
-                    <View />
-                  </el-icon>
-                  查看详情
-                </el-button>
+                <slot name="actions" :item="item">
+                  <el-button type="primary" size="small" plain :disabled="isEmptyBank(item)" @click.stop="handleViewDetail(item)" class="action-btn">
+                    <el-icon>
+                      <View />
+                    </el-icon>
+                    查看详情
+                  </el-button>
 
-                <el-button v-if="showUncollectAction && (item.isCollected || item.favoriteId)" type="danger"
-                  size="small" plain @click.stop="handleUncollect(item)"
-                  :loading="uncollectLoading[getFavoriteId(item)]" class="action-btn">
-                  <el-icon>
-                    <Delete />
-                  </el-icon>
-                  取消收藏
-                </el-button>
+                  <el-button v-if="showUncollectAction && (item.isCollected || item.favoriteId)" type="danger"
+                    size="small" plain @click.stop="handleUncollect(item)"
+                    :loading="uncollectLoading[getFavoriteId(item)]" class="action-btn">
+                    <el-icon>
+                      <Delete />
+                    </el-icon>
+                    取消收藏
+                  </el-button>
 
-                <FavoriteButton v-else-if="showFavoriteButton" :type="'bank'" :target-id="item.id"
-                  :initial-collected="item.isCollected" size="small" @collect-success="handleCollectSuccess"
-                  @uncollect-success="handleUncollectSuccess" class="action-btn" />
+                  <FavoriteButton v-else-if="showFavoriteButton" :type="'bank'" :target-id="item.id"
+                    :initial-collected="item.isCollected" size="small" @collect-success="handleCollectSuccess"
+                    @uncollect-success="handleUncollectSuccess" class="action-btn" />
+                </slot>
               </div>
             </div>
           </el-col>

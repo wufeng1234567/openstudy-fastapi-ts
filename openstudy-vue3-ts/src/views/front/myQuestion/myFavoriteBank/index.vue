@@ -37,68 +37,73 @@
     />
 
     <!-- 题库卡片列表 -->
-    <div class="bank-grid" v-loading="loading">
-      <el-empty v-if="!loading && filteredList.length === 0" description="暂无收藏的题库">
-        <template #image>
-          <el-icon size="80"><Star /></el-icon>
-        </template>
-        <el-button @click="goToQuestionBank">去发现题库</el-button>
-      </el-empty>
+    <!--
+      收藏卡片列表
+      ==========================================================================
+      用户 2026-10-18：「卡片样式不一致，题库卡片、收藏、我的题库样式不一致」。
+      与「我的题库」同一处理：复用 `BankCardGrid` 的卡片骨架，
+      本页特有的「来源 / 分享者 / 已失效」通过 `#content-extra` 注入，
+      按钮通过 `#actions` 注入。三处卡片从此只有**一份**实现。
+    -->
+    <BankCardGrid
+      :banks="favoriteBankList"
+      :loading="loading"
+      :show-header="false"
+      :show-search="false"
+      :show-filter="false"
+      :show-refresh="false"
+      :show-star="false"
+      :show-favorite-status="false"
+      :show-favorite-button="false"
+      :show-uncollect-action="false"
+      :col-sm="12"
+      :col-md="8"
+      :col-lg="6"
+      :col-xl="4"
+      @card-click="handleCardClick"
+    >
+      <template #empty>
+        <el-empty description="暂无收藏的题库">
+          <template #image>
+            <el-icon size="80"><Star /></el-icon>
+          </template>
+          <el-button @click="goToQuestionBank">去发现题库</el-button>
+        </el-empty>
+      </template>
 
-      <el-row v-else :gutter="20">
-        <el-col v-for="item in filteredList" :key="item.favoriteId" :xs="24" :sm="12" :md="8" :lg="6" :xl="4">
-          <div class="bank-card" @click="handleCardClick(item)">
-            <div class="card-cover">
-              <BankCover :cover-image="item.bank?.coverImage" :bank-name="item.bank?.bankName"
-                :subject="item.bank?.subject" class="cover-image" />
-              <!-- 公开 / 私有 标识 -->
-              <div v-if="item.bank?.isPublic === 0 || item.bank?.isPublic === 1" class="visibility-badge"
-                :class="isPrivateBank(item.bank) ? 'is-private' : 'is-public'">
-                <el-icon>
-                  <Lock v-if="isPrivateBank(item.bank)" />
-                  <Unlock v-else />
-                </el-icon>
-                <span>{{ isPrivateBank(item.bank) ? '私有' : '公开' }}</span>
-              </div>
-            </div>
-            <div class="card-content">
-              <div class="bank-name">
-                <h3>{{ item.bank?.bankName || '未知题库' }}</h3>
-                <el-tag v-if="item.bank?.subject" size="small" type="info">{{ item.bank.subject }}</el-tag>
-              </div>
-              <div class="source-row">
-                <el-tag v-if="item.source === 'share'" size="small" effect="light"
-                  :type="item.shareStatus === 'invalid' ? 'info' : 'success'">
-                  {{ item.shareStatus === 'invalid' ? '来自分享 · 已失效' : '来自分享' }}
-                </el-tag>
-                <span v-if="item.source === 'share' && item.shareOwnerName" class="source-owner">
-                  来自 {{ item.shareOwnerName }}
-                </span>
-              </div>
-              <div class="bank-stats">
-                <div class="stat-item">
-                  <el-icon><Document /></el-icon>
-                  <span>{{ item.bank?.totalQuestions || 0 }} 题</span>
-                </div>
-              </div>
-            </div>
-            <div class="card-actions">
-              <el-button size="small" @click.stop="handleViewDetail(item)">
-                <el-icon><View /></el-icon>
-                查看详情
-              </el-button>
-              <el-button v-if="item.canCopy !== false" size="small" type="primary" plain @click.stop="handleCopy(item)">
-                <el-icon><CopyDocument /></el-icon>
-                复制
-              </el-button>
-              <el-button size="small" type="danger" @click.stop="handleUncollect(item)" :loading="!!item.favoriteId && uncollectLoading[item.favoriteId]">
-                取消收藏
-              </el-button>
-            </div>
-          </div>
-        </el-col>
-      </el-row>
-    </div>
+      <template #content-extra="{ item }">
+        <div v-if="item.source === 'share'" class="source-row">
+          <el-tag size="small" effect="light" :type="item.shareStatus === 'invalid' ? 'info' : 'success'">
+            {{ item.shareStatus === 'invalid' ? '来自分享 · 已失效' : '来自分享' }}
+          </el-tag>
+          <span v-if="item.shareOwnerName" class="source-owner">来自 {{ item.shareOwnerName }}</span>
+        </div>
+        <!-- 公开 / 私有（与「我的题库」同一套插槽与文案，保持三处一致） -->
+        <div v-if="item.isPublic === 0 || item.isPublic === 1" class="visibility-row"
+          :class="isPrivateBank(item) ? 'is-private' : 'is-public'">
+          <el-icon>
+            <Lock v-if="isPrivateBank(item)" />
+            <Unlock v-else />
+          </el-icon>
+          <span>{{ isPrivateBank(item) ? '私有' : '公开' }}</span>
+        </div>
+      </template>
+
+      <template #actions="{ item }">
+        <el-button size="small" class="action-btn" @click.stop="handleViewDetail(item)">
+          查看详情
+        </el-button>
+        <el-button v-if="item.canCopy !== false" size="small" type="primary" plain class="action-btn"
+          @click.stop="handleCopy(item)">
+          复制
+        </el-button>
+        <el-button size="small" type="danger" class="action-btn"
+          :loading="!!item.favoriteId && uncollectLoading[item.favoriteId]"
+          @click.stop="handleUncollect(item)">
+          取消收藏
+        </el-button>
+      </template>
+    </BankCardGrid>
 
     <!-- 通过分享链接 / 分享码领取 -->
     <ReceiveShareDialog v-model="receiveDialogVisible" @received="fetchFavorites" />
@@ -113,7 +118,7 @@ import { getCurrentInstance } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Star, Refresh, Document, View, Ticket, CopyDocument, Lock, Unlock } from '@element-plus/icons-vue'
 import useUserStore from '@/store/modules/user'
-import BankCover from '@/components/BankCover/index.vue'
+import BankCardGrid from '@/components/BankCardGrid/BankCardGrid.vue'
 import SearchFilterInput from '@/components/SearchFilterInput/index.vue'
 import CommonFilterSidebar from '@/components/CommonFilterSidebar/index.vue'
 import ReceiveShareDialog from '@/views/front/myQuestion/components/ReceiveShareDialog.vue'
@@ -245,6 +250,38 @@ const filteredList = computed(() => {
 
   return list
 })
+
+/**
+ * 扁平化后的收藏列表（喂给共用的 `BankCardGrid`）
+ * ------------------------------------------------------------------
+ * 本接口返回的是 `UserBankFavorite`：题库字段嵌套在 `item.bank` 里
+ * （`item.bank.bankName` / `item.bank.totalQuestions` …），
+ * 而共享卡片是**按题库条目**的扁平结构读的（`item.bankName`）。
+ *
+ * 与其去改共用组件、给它加一套「嵌套/扁平双形态」的兼容分支
+ * （那会让卡片逻辑越来越难维护），不如在这里做一次映射：
+ * 把 `bank` 的字段摊到顶层，同时保留 `favoriteId` / `source` / `canCopy`
+ * 这些收藏自身的信息 —— 卡片、插槽、事件里都能直接用。
+ */
+const favoriteBankList = computed(() =>
+  filteredList.value.map((item: UserBankFavorite) => ({
+    ...(item.bank || {}),
+    /*
+     * ⚠️ 保留 `bank` 原引用。
+     * 本页的事件处理器（handleViewDetail / handleCopy / handleUncollect）
+     * 都是按 `item.bank?.bankName`、`item.bank?.totalQuestions` 取值写的 ——
+     * 只做扁平化会让这些地方全部读到 undefined。
+     * 两个形态都留着，卡片读顶层、处理器读 `bank`，互不影响。
+     */
+    bank: item.bank,
+    favoriteId: item.favoriteId,
+    source: item.source,
+    shareStatus: item.shareStatus,
+    shareOwnerName: item.shareOwnerName,
+    canCopy: item.canCopy,
+    isCollected: true
+  }))
+)
 
 const handleFilterChange = (newFilter: any) => {
   filterForm.value = { ...newFilter }
@@ -454,126 +491,6 @@ onUnmounted(() => {
   border-radius: 8px;
 }
 
-.bank-grid {
-  min-height: 400px;
-}
-
-.bank-card {
-  background: #fff;
-  border-radius: 12px;
-  border: 1px solid #e5e7eb;
-  overflow: hidden;
-  margin-bottom: 20px;
-  transition: all 0.3s ease;
-  cursor: pointer;
-  position: relative;
-
-  &:hover {
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-    transform: translateY(-2px);
-  }
-}
-
-.card-cover {
-  height: 140px;
-  overflow: hidden;
-  background: #f3f4f6;
-  position: relative;
-
-  .cover-image {
-    width: 100%;
-    height: 100%;
-  }
-
-  /* 公开 / 私有 标识 */
-  .visibility-badge {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    font-size: 11px;
-    font-weight: 500;
-    line-height: 1.7;
-    border-radius: 999px;
-    border: 1px solid #e5e7eb;
-    background: rgba(255, 255, 255, 0.92);
-    color: #6b7280;
-    pointer-events: none;
-
-    &.is-public {
-      background: #f0f9eb;
-      border-color: #e1f3d8;
-      color: #67c23a;
-    }
-
-    &.is-private {
-      background: #fefce8;
-      border-color: #e5e0c0;
-      color: #947a4a;
-    }
-
-    .el-icon {
-      font-size: 12px;
-    }
-  }
-}
-
-.card-content {
-  padding: 12px 16px;
-}
-
-.bank-name {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-
-  h3 {
-    margin: 0;
-    font-size: 15px;
-    font-weight: 600;
-    color: #1f2937;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-}
-
-.bank-stats {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 8px;
-
-  .stat-item {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 13px;
-    color: #6b7280;
-  }
-}
-
-.card-actions {
-  display: flex;
-  /* 放不下就换行：卡片变窄/按钮变多时不会把按钮挤出卡片被 overflow:hidden 裁掉 */
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 12px;
-  border-top: 1px solid #f3f4f6;
-
-  .el-button {
-    flex: 1 1 auto;
-    /* 关键：不允许被压缩到内容以下，宁可换行也要保证文案完整 */
-    min-width: max-content;
-    border-radius: 6px;
-    font-size: 12px;
-    margin-left: 0;
-    padding: 0 10px;
-  }
-}
 
 .source-row {
   display: flex;
@@ -589,6 +506,24 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 公开 / 私有 标识（与「我的题库」完全一致的写法） */
+.visibility-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+
+  &.is-private {
+    color: var(--el-color-warning, #e6a23c);
+  }
+
+  &.is-public {
+    color: var(--os-text-4, #9ca3af);
+  }
 }
 
 /* 领取弹窗的样式在公共组件 ReceiveShareDialog.vue 内 */

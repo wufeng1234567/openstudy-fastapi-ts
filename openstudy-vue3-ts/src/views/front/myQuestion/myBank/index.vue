@@ -36,62 +36,75 @@
       @active-change="handleFilterActiveChange"
     />
 
-    <!-- 题库卡片列表 -->
-    <div class="bank-grid" v-loading="loading">
-      <el-empty v-if="!loading && filteredBankList.length === 0" description="还没有创建任何题库">
-        <template #image>
-          <el-icon size="80"><FolderOpened /></el-icon>
-        </template>
-        <el-button @click="goCreateBank">去创建题库</el-button>
-      </el-empty>
+    <!--
+      题库卡片列表
+      ==========================================================================
+      用户 2026-10-18：「卡片样式不一致，题库卡片、收藏、我的题库样式不一致」。
+      根因不是配色，是**同一张卡片被实现了三次** —— 本页原先手写了一套，
+      与共用的 `BankCardGrid`（题库练习页在用）在封面高度(140/144)、
+      内边距(12/16)、按钮布局(flex:0 0 auto / flex:1)、圆角字号上都各自漂移。
 
-      <el-row v-else :gutter="20">
-        <el-col v-for="item in filteredBankList" :key="item.bankId" :xs="24" :sm="12" :md="12" :lg="8" :xl="6">
-          <div class="bank-card" @click="handleCardClick(item)">
-            <div class="card-cover">
-              <BankCover :cover-image="item.coverImage" :bank-name="item.bankName" :subject="item.subject"
-                class="cover-image" />
-              <!-- 公开 / 私有 标识 -->
-              <div v-if="item.isPublic === 0 || item.isPublic === 1" class="visibility-badge"
-                :class="isPrivateBank(item) ? 'is-private' : 'is-public'">
-                <el-icon>
-                  <Lock v-if="isPrivateBank(item)" />
-                  <Unlock v-else />
-                </el-icon>
-                <span>{{ isPrivateBank(item) ? '私有' : '公开' }}</span>
-              </div>
-            </div>
-            <div class="card-content">
-              <div class="bank-name">
-                <h3>{{ item.bankName }}</h3>
-                <el-tag v-if="item.subject" size="small" type="info">{{ item.subject }}</el-tag>
-              </div>
-              <div class="bank-stats">
-                <div class="stat-item">
-                  <el-icon><Document /></el-icon>
-                  <span>{{ item.totalQuestions || 0 }} 题</span>
-                </div>
-              </div>
-              <div v-if="item.description" class="bank-description">
-                {{ item.description }}
-              </div>
-            </div>
-            <div class="card-actions">
-              <el-button size="small" @click.stop="handleViewDetail(item)">
-                查看详情
-              </el-button>
-              <el-button size="small" text @click.stop="handleShare(item)">
-                <el-icon><Share /></el-icon>
-                分享
-              </el-button>
-              <el-button size="small" text type="danger" @click.stop="handleDelete(item)" :loading="deleteLoading[item.bankId]">
-                删除
-              </el-button>
-            </div>
-          </div>
-        </el-col>
-      </el-row>
-    </div>
+      现在改为复用 `BankCardGrid`，本页特有的按钮通过 `#actions` 插槽注入，
+      卡片骨架/间距/悬停效果全站只有一份。
+    -->
+    <BankCardGrid
+      :banks="filteredBankList"
+      :loading="loading"
+      :show-header="false"
+      :show-search="false"
+      :show-filter="false"
+      :show-refresh="false"
+      :show-star="false"
+      :show-favorite-status="false"
+      :show-favorite-button="false"
+      :show-description="true"
+      :col-sm="12"
+      :col-md="12"
+      :col-lg="8"
+      :col-xl="6"
+      empty-text="还没有创建任何题库"
+      @card-click="handleCardClick"
+    >
+      <template #empty>
+        <el-empty description="还没有创建任何题库">
+          <template #image>
+            <el-icon size="80"><FolderOpened /></el-icon>
+          </template>
+          <el-button @click="goCreateBank">去创建题库</el-button>
+        </el-empty>
+      </template>
+
+      <template #content-extra="{ item }">
+        <!--
+          公开 / 私有 标识
+          ----------------------------------------------------------------
+          共用卡片本身不带这个字段（题库练习页没有这个语义），
+          但「我的题库」必须能看到自己建的库是不是私有，所以用插槽补上。
+        -->
+        <div v-if="item.isPublic === 0 || item.isPublic === 1" class="visibility-row"
+          :class="isPrivateBank(item) ? 'is-private' : 'is-public'">
+          <el-icon>
+            <Lock v-if="isPrivateBank(item)" />
+            <Unlock v-else />
+          </el-icon>
+          <span>{{ isPrivateBank(item) ? '私有' : '公开' }}</span>
+        </div>
+      </template>
+
+      <template #actions="{ item }">
+        <el-button size="small" class="action-btn" @click.stop="handleViewDetail(item)">
+          查看详情
+        </el-button>
+        <el-button size="small" text class="action-btn" @click.stop="handleShare(item)">
+          <el-icon><Share /></el-icon>
+          分享
+        </el-button>
+        <el-button size="small" text type="danger" class="action-btn"
+          :loading="deleteLoading[item.bankId]" @click.stop="handleDelete(item)">
+          删除
+        </el-button>
+      </template>
+    </BankCardGrid>
 
     <!-- 通过分享链接 / 分享码领取题库 -->
     <ReceiveShareDialog v-model="receiveDialogVisible" @received="fetchBanks" />
@@ -107,7 +120,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, FolderOpened, Document, View, Delete, Ticket, Share, Lock, Unlock } from '@element-plus/icons-vue'
-import BankCover from '@/components/BankCover/index.vue'
+import BankCardGrid from '@/components/BankCardGrid/BankCardGrid.vue'
 import SearchFilterInput from '@/components/SearchFilterInput/index.vue'
 import CommonFilterSidebar from '@/components/CommonFilterSidebar/index.vue'
 import ReceiveShareDialog from '@/views/front/myQuestion/components/ReceiveShareDialog.vue'
@@ -398,140 +411,26 @@ onUnmounted(() => {
   border-radius: 8px;
 }
 
-.bank-grid {
-  min-height: 400px;
-}
-
-.bank-card {
-  background: #fff;
-  border-radius: var(--os-radius);
-  border: 1px solid var(--os-border-soft);
-  overflow: hidden;
-  margin-bottom: 20px;
-  /* 只动颜色与阴影，不做大位移 —— 列表滚动时卡片不该"跳" */
-  transition: border-color var(--ds-duration-base) var(--ds-ease-in-out),
-    box-shadow var(--ds-duration-base) var(--ds-ease-in-out),
-    transform var(--ds-duration-base) var(--ds-ease-in-out);
-  cursor: pointer;
-
-  &:hover {
-    border-color: var(--os-border-strong);
-    box-shadow: var(--os-shadow-2);
-    transform: translateY(-1px);
-  }
-}
-
-.card-cover {
-  position: relative;
-  height: 140px;
-  overflow: hidden;
-  background: #f3f4f6;
-
-  .cover-image {
-    width: 100%;
-    height: 100%;
-  }
-
-  /* 公开 / 私有 标识 */
-  .visibility-badge {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    font-size: 11px;
-    font-weight: 500;
-    line-height: 1.7;
-    border-radius: 999px;
-    border: 1px solid #e5e7eb;
-    background: rgba(255, 255, 255, 0.92);
-    color: #6b7280;
-    pointer-events: none;
-
-    &.is-public {
-      background: #f0f9eb;
-      border-color: #e1f3d8;
-      color: #67c23a;
-    }
-
-    &.is-private {
-      background: #fefce8;
-      border-color: #e5e0c0;
-      color: #947a4a;
-    }
-
-    .el-icon {
-      font-size: 12px;
-    }
-  }
-}
-
-.card-content {
-  padding: 12px 16px;
-}
-
-.bank-name {
-  display: flex;
+/*
+ * 公开 / 私有 标识（卡片信息区最后一行）
+ * 图标走 OsIcon 同款语义色，不用色块 —— 与全站状态标识保持一致。
+ */
+.visibility-row {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-
-  h3 {
-    margin: 0;
-    font-size: 15px;
-    font-weight: 600;
-    color: #1f2937;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-}
-
-.bank-stats {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 8px;
-
-  .stat-item {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 13px;
-    color: #6b7280;
-  }
-}
-
-.bank-description {
+  gap: 4px;
+  margin-top: 6px;
   font-size: 12px;
-  color: #9ca3af;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  line-height: 1.5;
 
-.card-actions {
-  display: flex;
-  /* 放不下就换行，避免按钮被卡片 overflow:hidden 裁掉 */
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 12px;
-  border-top: 1px solid var(--os-border-soft);
-
-  .el-button {
-    flex: 0 0 auto;
-    min-width: max-content;
-    margin-left: 0;
-    border-radius: var(--os-radius-sm);
-    font-size: 13px;
+  &.is-private {
+    color: var(--el-color-warning, #e6a23c);
   }
 
-  /* 主操作（查看详情）靠左，次要操作贴右 */
-  .el-button:first-child {
-    margin-right: auto;
+  &.is-public {
+    color: var(--os-text-4, #9ca3af);
   }
 }
+
 </style>
 
