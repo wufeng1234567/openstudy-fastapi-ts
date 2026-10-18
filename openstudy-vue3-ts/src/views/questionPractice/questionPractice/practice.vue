@@ -1,9 +1,16 @@
 <!-- src/views/questionPractice/practice.vue -->
 <template>
   <div>
-    <div v-if="!isReady" class="loading-container">
-      <el-loading-spinner />
-    </div>
+    <!--
+      题库加载占位
+      ------------------------------------------------------------------
+      ⚠️ 原来写的是 `<el-loading-spinner />` —— 但 Element Plus **并不导出这个组件**
+         （它的 loading 是内置 `h('svg', ...)` 直接渲染原生 SVG，没有独立组件名）。
+         结果是组件解析失败、控制台刷 `Failed to resolve component: el-loading-spinner`，
+         而且页面上只剩一个空白容器、**看不到转圈动画**（进题库先白屏一下）。
+      改用官方 `v-loading` 指令：遮罩 + 转圈都由 Element Plus 自己渲染。
+    -->
+    <div v-if="!isReady" v-loading="true" class="loading-container" element-loading-text="正在加载题库…"></div>
     <PracticeComponent v-show="isReady" :bank-id="Number(bankId)" :bank-name="bankName" :module-type="moduleType"
       @close="goBack" />
   </div>

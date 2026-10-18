@@ -1,4 +1,4 @@
-﻿<!-- src/components/MyQuestion/QuestionFilterSidebar.vue -->
+<!-- src/components/MyQuestion/QuestionFilterSidebar.vue -->
 <template>
   <div ref="filterRef" class="filter-sidebar" :class="{ collapsed: isCollapsed }">
     <!-- 收缩/展开按钮 -->
@@ -30,7 +30,7 @@
           <div class="filter-label">题型</div>
           <div class="filter-options">
             <el-checkbox-group v-model="localFilter.questionType" @change="handleChange">
-              <el-checkbox v-for="type in questionTypes" :key="type.value" :label="type.value" class="filter-checkbox">
+              <el-checkbox v-for="type in questionTypes" :key="type.value" :value="type.value" class="filter-checkbox">
                 {{ type.label }}
               </el-checkbox>
             </el-checkbox-group>
@@ -42,7 +42,7 @@
           <div class="filter-label">难度</div>
           <div class="filter-options">
             <el-checkbox-group v-model="localFilter.difficulty" @change="handleChange">
-              <el-checkbox v-for="diff in difficultyOptions" :key="diff.value" :label="diff.value"
+              <el-checkbox v-for="diff in difficultyOptions" :key="diff.value" :value="diff.value"
                 class="filter-checkbox">
                 <span :class="`difficulty-${diff.value}`">{{ diff.label }}</span>
               </el-checkbox>
@@ -55,9 +55,9 @@
           <div class="filter-label">标星状态</div>
           <div class="filter-options">
             <el-radio-group v-model="localFilter.isStarred" @change="handleChange">
-              <el-radio :label="null">全部</el-radio>
-              <el-radio :label="1">已标星</el-radio>
-              <el-radio :label="0">未标星</el-radio>
+              <el-radio :value="null">全部</el-radio>
+              <el-radio :value="1">已标星</el-radio>
+              <el-radio :value="0">未标星</el-radio>
             </el-radio-group>
           </div>
         </div>
@@ -67,9 +67,9 @@
           <div class="filter-label">收藏状态</div>
           <div class="filter-options">
             <el-radio-group v-model="localFilter.favoriteStatus" @change="handleChange">
-              <el-radio :label="1">正常收藏</el-radio>
-              <el-radio :label="2">已掌握</el-radio>
-              <el-radio :label="3">待复习</el-radio>
+              <el-radio :value="1">正常收藏</el-radio>
+              <el-radio :value="2">已掌握</el-radio>
+              <el-radio :value="3">待复习</el-radio>
             </el-radio-group>
           </div>
         </div>
@@ -79,9 +79,9 @@
           <div class="filter-label">掌握状态</div>
           <div class="filter-options">
             <el-radio-group v-model="localFilter.isMastered" @change="handleChange">
-              <el-radio :label="null">全部</el-radio>
-              <el-radio :label="0">未掌握</el-radio>
-              <el-radio :label="1">已掌握</el-radio>
+              <el-radio :value="null">全部</el-radio>
+              <el-radio :value="0">未掌握</el-radio>
+              <el-radio :value="1">已掌握</el-radio>
             </el-radio-group>
           </div>
         </div>
@@ -91,12 +91,12 @@
           <div class="filter-label">斩题类型</div>
           <div class="filter-options">
             <el-radio-group v-model="localFilter.markedType" @change="handleChange">
-              <el-radio :label="null">全部</el-radio>
-              <el-radio :label="1">错题</el-radio>
-              <el-radio :label="2">难题</el-radio>
-              <el-radio :label="3">重点</el-radio>
-              <el-radio :label="4">易错</el-radio>
-              <el-radio :label="5">技巧</el-radio>
+              <el-radio :value="null">全部</el-radio>
+              <el-radio :value="1">错题</el-radio>
+              <el-radio :value="2">难题</el-radio>
+              <el-radio :value="3">重点</el-radio>
+              <el-radio :value="4">易错</el-radio>
+              <el-radio :value="5">技巧</el-radio>
             </el-radio-group>
           </div>
         </div>

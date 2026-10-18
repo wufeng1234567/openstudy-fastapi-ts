@@ -43,18 +43,18 @@
 
           <el-form-item label="正确答案">
             <el-radio-group v-if="question.type === 'single'" v-model="question.answer">
-              <el-radio v-for="(opt, idx) in question.options" :key="idx" :label="idx">
+              <el-radio v-for="(opt, idx) in question.options" :key="idx" :value="idx">
                 {{ String.fromCharCode(65 + idx) }}. {{ opt }}
               </el-radio>
             </el-radio-group>
             <el-checkbox-group v-else-if="question.type === 'multiple'" v-model="question.answer">
-              <el-checkbox v-for="(opt, idx) in question.options" :key="idx" :label="idx">
+              <el-checkbox v-for="(opt, idx) in question.options" :key="idx" :value="idx">
                 {{ String.fromCharCode(65 + idx) }}. {{ opt }}
               </el-checkbox>
             </el-checkbox-group>
             <el-radio-group v-else-if="question.type === 'judge'" v-model="question.answer">
-              <el-radio :label="true">正确</el-radio>
-              <el-radio :label="false">错误</el-radio>
+              <el-radio :value="true">正确</el-radio>
+              <el-radio :value="false">错误</el-radio>
             </el-radio-group>
           </el-form-item>
         </template>
@@ -152,8 +152,8 @@
                       </template>
                       <template v-else-if="sub.type === 'judge'">
                         <el-radio-group v-model="sub.answer" size="small">
-                          <el-radio :label="true">正确</el-radio>
-                          <el-radio :label="false">错误</el-radio>
+                          <el-radio :value="true">正确</el-radio>
+                          <el-radio :value="false">错误</el-radio>
                         </el-radio-group>
                       </template>
                       <template v-else>

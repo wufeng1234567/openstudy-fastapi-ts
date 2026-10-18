@@ -19,7 +19,7 @@
           <div class="filter-label">科目分类</div>
           <div class="filter-options">
             <el-checkbox-group v-model="localFilter.subjects" @change="handleChange">
-              <el-checkbox v-for="subject in subjectOptions" :key="subject" :label="subject" class="filter-checkbox">
+              <el-checkbox v-for="subject in subjectOptions" :key="subject" :value="subject" class="filter-checkbox">
                 {{ subject }}
               </el-checkbox>
             </el-checkbox-group>
@@ -31,11 +31,11 @@
           <div class="filter-label">题目数量</div>
           <div class="filter-options">
             <el-radio-group v-model="localFilter.questionCount" @change="handleChange">
-              <el-radio :label="null">全部</el-radio>
-              <el-radio :label="'0-10'">10题以下</el-radio>
-              <el-radio :label="'10-50'">10-50题</el-radio>
-              <el-radio :label="'50-100'">50-100题</el-radio>
-              <el-radio :label="'100+'">100题以上</el-radio>
+              <el-radio :value="null">全部</el-radio>
+              <el-radio :value="'0-10'">10题以下</el-radio>
+              <el-radio :value="'10-50'">10-50题</el-radio>
+              <el-radio :value="'50-100'">50-100题</el-radio>
+              <el-radio :value="'100+'">100题以上</el-radio>
             </el-radio-group>
           </div>
         </div>
@@ -45,9 +45,9 @@
           <div class="filter-label">可见性</div>
           <div class="filter-options">
             <el-radio-group v-model="localFilter.isPublic" @change="handleChange">
-              <el-radio :label="null">全部</el-radio>
-              <el-radio :label="0">公开</el-radio>
-              <el-radio :label="1">私有</el-radio>
+              <el-radio :value="null">全部</el-radio>
+              <el-radio :value="0">公开</el-radio>
+              <el-radio :value="1">私有</el-radio>
             </el-radio-group>
           </div>
         </div>

@@ -10,7 +10,7 @@
 
     <!-- 整体浏览模式 -->
     <template v-if="overviewMode">
-      <PracticeHeader :mode="moduleType" :bank-name="bankName" :formatted-time="formattedRemainingTime"
+      <PracticeHeader :mode="moduleTypeSafe" :bank-name="bankName" :formatted-time="formattedRemainingTime"
         :is-warning="isTimeWarning" :is-danger="isTimeDanger" @close="$emit('close')"
         @open-settings="showSettings = true" />
 
@@ -83,7 +83,7 @@
           :stats="{ correctCount, wrongCount, accuracy }" :is-exam-mode="isExamMode" :is-practice-mode="isPracticeMode"
           :is-last-question="isLastQuestion" :show-exam-result="showExamResult" :total-score="totalScore"
           :answered-count="answeredCount" :total-count="totalQuestions" :remaining-count="remainingCount"
-          :module-type="moduleType" :draft-state="draftState" :draft-button-text="draftButtonText" :number-base="numberBase"
+          :module-type="moduleTypeSafe" :draft-state="draftState" :draft-button-text="draftButtonText" :number-base="numberBase"
           @go-to-question="scrollToQuestion" @toggle-overview="toggleOverview"
           @reset-practice="resetPractice" @submit-exam="handleSubmitExam" @finish-exam="handleFinishExam"
           @save-draft="handleManualSaveDraft" />
@@ -92,7 +92,7 @@
 
     <!-- 逐题模式（原有布局） -->
     <template v-else>
-      <PracticeHeader :mode="moduleType" :bank-name="bankName" :formatted-time="formattedRemainingTime"
+      <PracticeHeader :mode="moduleTypeSafe" :bank-name="bankName" :formatted-time="formattedRemainingTime"
         :is-warning="isTimeWarning" :is-danger="isTimeDanger" @close="$emit('close')"
         @open-settings="showSettings = true" />
 
@@ -118,7 +118,7 @@
           accuracy
         }" :is-exam-mode="isExamMode" :is-practice-mode="isPracticeMode" :is-last-question="isLastQuestion"
           :show-exam-result="showExamResult" :total-score="totalScore" :answered-count="answeredCount"
-          :total-count="totalQuestions" :remaining-count="remainingCount" :module-type="moduleType"
+          :total-count="totalQuestions" :remaining-count="remainingCount" :module-type="moduleTypeSafe"
           :marked-questions="markedQuestionsSet" :favorited-questions="favoritedQuestions" :error-questions="errorQuestions"
           :draft-state="draftState" :draft-button-text="draftButtonText" :number-base="numberBase"
           @go-to-question="goToQuestion" @reset-practice="resetPractice" @submit-exam="handleSubmitExam"
@@ -129,7 +129,7 @@
 
 
       <QuestionNavigation :show-prev="currentQuestionIndex > 0" :show-next="currentQuestionIndex < totalQuestions - 1"
-        :question-id="currentQuestion?.id" :bank-id="bankId" :module-type="moduleType" :is-exam-mode="isExamMode"
+        :question-id="currentQuestion?.id" :bank-id="bankId" :module-type="moduleTypeSafe" :is-exam-mode="isExamMode"
         :is-practice-mode="isPracticeMode" :is-last-question="isLastQuestion" :can-go-prev-batch="canGoPrevBatch"
         :is-last-batch="isLastBatch" :has-submitted-current-batch="hasSubmittedCurrentBatch"
         :show-submit-button="(isExamMode || isPracticeMode) && moduleType !== 'mock'" @prev-question="prevQuestion"
@@ -205,14 +205,32 @@ import {
 const props = defineProps({
   bankId: { type: Number, required: true },
   bankName: { type: String, default: '题库' },
+  /*
+   * 练习模块类型
+   *
+   * ⚠️ 允许 null（`type: [String, Object]` 不写 `required`）：
+   *    页面刚挂载时路由参数可能还没解析出来，父级会先传 `null`。
+   *    原来声明成 `type: String, required: true`，于是控制台每次进练习页都刷
+   *    `Invalid prop: type check failed for prop "moduleType"`（2026-10-18 实测）。
+   *    组件内部用 `moduleTypeSafe` 归一化成 `'sequential'` 兜底，再往下传。
+   */
   moduleType: {
     type: String,
-    required: true,
-    validator: (val: any) => ['sequential', 'random', 'custom', 'mock'].includes(val)
+    default: 'sequential',
+    validator: (val: any) => !val || ['sequential', 'random', 'custom', 'mock'].includes(val)
   }
 })
 
 const emit = defineEmits(['close'])
+
+/**
+ * 归一化后的模块类型（永不为 null）
+ *
+ * 路由参数未就绪时父级会传 `null`；子组件（PracticeHeader / AnswerCard /
+ * QuestionNavigation）的 prop 都声明成 `type: String`，传 `null` 会刷类型警告。
+ * 统一用这个值往下传，组件内部逻辑也用它，避免"有时是 null 有时是字符串"。
+ */
+const moduleTypeSafe = computed(() => (props.moduleType || 'sequential') as string)
 
 const store = usePracticeSettingsStore()
 

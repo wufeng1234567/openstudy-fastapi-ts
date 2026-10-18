@@ -1,4 +1,4 @@
-﻿<!-- components/QuestionCardGrid/QuestionCardGrid.vue -->
+<!-- components/QuestionCardGrid/QuestionCardGrid.vue -->
 <template>
   <div class="question-card-grid">
     <!-- 搜索和标题区域 -->
@@ -41,7 +41,7 @@
           <div class="filter-label">题型</div>
           <div class="filter-options">
             <el-checkbox-group v-model="localFilters.questionType" @change="handleFilterChange">
-              <el-checkbox v-for="type in questionTypes" :key="type.value" :label="type.value" class="filter-checkbox">
+              <el-checkbox v-for="type in questionTypes" :key="type.value" :value="type.value" class="filter-checkbox">
                 {{ type.label }}
               </el-checkbox>
             </el-checkbox-group>
@@ -53,7 +53,7 @@
           <div class="filter-label">难度</div>
           <div class="filter-options">
             <el-checkbox-group v-model="localFilters.difficulty" @change="handleFilterChange">
-              <el-checkbox v-for="diff in difficultyOptions" :key="diff.value" :label="diff.value"
+              <el-checkbox v-for="diff in difficultyOptions" :key="diff.value" :value="diff.value"
                 class="filter-checkbox">
                 <span :class="`difficulty-${diff.value}`">{{ diff.label }}</span>
               </el-checkbox>
@@ -66,9 +66,9 @@
           <div class="filter-label">标星状态</div>
           <div class="filter-options">
             <el-radio-group v-model="localFilters.isStarred" @change="handleFilterChange">
-              <el-radio :label="null">全部</el-radio>
-              <el-radio :label="1">已标星</el-radio>
-              <el-radio :label="0">未标星</el-radio>
+              <el-radio :value="null">全部</el-radio>
+              <el-radio :value="1">已标星</el-radio>
+              <el-radio :value="0">未标星</el-radio>
             </el-radio-group>
           </div>
         </div>
@@ -78,9 +78,9 @@
           <div class="filter-label">收藏状态</div>
           <div class="filter-options">
             <el-radio-group v-model="localFilters.favoriteStatus" @change="handleFilterChange">
-              <el-radio :label="1">正常收藏</el-radio>
-              <el-radio :label="2">已掌握</el-radio>
-              <el-radio :label="3">待复习</el-radio>
+              <el-radio :value="1">正常收藏</el-radio>
+              <el-radio :value="2">已掌握</el-radio>
+              <el-radio :value="3">待复习</el-radio>
             </el-radio-group>
           </div>
         </div>

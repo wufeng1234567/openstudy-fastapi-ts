@@ -97,8 +97,14 @@
       </div>
       <!-- 分页 -->
       <div class="question-pagination">
+        <!--
+          分页器
+          ⚠️ `small` 在 Element Plus 3.0 将移除，改用 `size="small"`。
+             旧写法每次进题库搭建页都会刷
+             `[el-pagination] small is about to be deprecated`（2026-10-18 实测）。
+        -->
         <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :total="allFilteredQuestions.length"
-          :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next" small @size-change="handleSizeChange"
+          :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next" size="small" @size-change="handleSizeChange"
           @current-change="handlePageChange" />
       </div>
     </div>
@@ -174,18 +180,18 @@
             <!-- 正确答案 -->
             <el-form-item label="正确答案">
               <el-radio-group v-if="currentQuestion.type === 'single'" v-model="currentQuestion.answer">
-                <el-radio v-for="(opt, idx) in currentQuestion.options" :key="idx" :label="idx">
+                <el-radio v-for="(opt, idx) in currentQuestion.options" :key="idx" :value="idx">
                   {{ String.fromCharCode(65 + idx) }}. {{ opt }}
                 </el-radio>
               </el-radio-group>
               <el-checkbox-group v-else-if="currentQuestion.type === 'multiple'" v-model="currentQuestion.answer">
-                <el-checkbox v-for="(opt, idx) in currentQuestion.options" :key="idx" :label="idx">
+                <el-checkbox v-for="(opt, idx) in currentQuestion.options" :key="idx" :value="idx">
                   {{ String.fromCharCode(65 + idx) }}. {{ opt }}
                 </el-checkbox>
               </el-checkbox-group>
               <el-radio-group v-else-if="currentQuestion.type === 'judge'" v-model="currentQuestion.answer">
-                <el-radio label="true">正确</el-radio>
-                <el-radio label="false">错误</el-radio>
+                <el-radio :value="true">正确</el-radio>
+                <el-radio :value="false">错误</el-radio>
               </el-radio-group>
             </el-form-item>
           </template>
@@ -257,22 +263,22 @@
                           <div class="sub-answer-label">正确答案：</div>
                           <div v-if="sub.type === 'single'" class="sub-answer-control">
                             <el-radio-group v-model="sub.answer" size="small">
-                              <el-radio v-for="(opt, idx) in sub.options" :key="idx" :label="idx">
+                              <el-radio v-for="(opt, idx) in sub.options" :key="idx" :value="idx">
                                 {{ String.fromCharCode(65 + idx) }}. {{ opt }}
                               </el-radio>
                             </el-radio-group>
                           </div>
                           <div v-else-if="sub.type === 'multiple'" class="sub-answer-control">
                             <el-checkbox-group v-model="sub.answer" size="small">
-                              <el-checkbox v-for="(opt, idx) in sub.options" :key="idx" :label="idx">
+                              <el-checkbox v-for="(opt, idx) in sub.options" :key="idx" :value="idx">
                                 {{ String.fromCharCode(65 + idx) }}. {{ opt }}
                               </el-checkbox>
                             </el-checkbox-group>
                           </div>
                           <div v-else-if="sub.type === 'judge'" class="sub-answer-control">
                             <el-radio-group v-model="sub.answer" size="small">
-                              <el-radio label="true">正确</el-radio>
-                              <el-radio label="false">错误</el-radio>
+                              <el-radio :value="true">正确</el-radio>
+                              <el-radio :value="false">错误</el-radio>
                             </el-radio-group>
                           </div>
                           <div v-else class="sub-answer-control">

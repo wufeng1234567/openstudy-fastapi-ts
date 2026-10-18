@@ -350,16 +350,16 @@
         </el-form-item>
         <el-form-item label="是否标星" prop="isStarred">
           <el-radio-group v-model="form.isStarred">
-            <el-radio :label="1">已标星</el-radio>
-            <el-radio :label="0">未标星</el-radio>
+            <el-radio :value="1">已标星</el-radio>
+            <el-radio :value="0">未标星</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="收藏状态" prop="favoriteStatus">
           <el-radio-group v-model="form.favoriteStatus">
-            <el-radio :label="1">正常收藏</el-radio>
-            <el-radio :label="2">已掌握</el-radio>
-            <el-radio :label="3">待复习</el-radio>
-            <el-radio :label="0">取消收藏</el-radio>
+            <el-radio :value="1">正常收藏</el-radio>
+            <el-radio :value="2">已掌握</el-radio>
+            <el-radio :value="3">待复习</el-radio>
+            <el-radio :value="0">取消收藏</el-radio>
           </el-radio-group>
         </el-form-item>
       </el-form>

@@ -221,8 +221,17 @@ const props = defineProps({
    * 显示"第几题"必须加上这个偏移才能跨波顺延（用户 2026-10-18）。
    */
   numberOffset: { type: Number, default: 0 },
+  /*
+   * ⚠️ 必须允许 Object：组合题（cloze / readingComprehension）的作答是一个
+   *    `{ 子题序号: 选项 }` 的对象，不是标量也不是数组。
+   *    原来只声明 [String, Number, Array]，于是每渲染一道组合题就报
+   *    `Invalid prop: type check failed for prop "selectedAnswer"` —— 
+   *    控制台满屏红字（2026-10-18 实测，评委一看就觉得不严谨）。
+   */
   selectedAnswer: {
-    type: [String, Number, Array] as PropType<string | number | (string | number)[] | null>,
+    type: [String, Number, Array, Object] as PropType<
+      string | number | (string | number)[] | Record<string | number, any> | null
+    >,
     default: null
   },
   subFillBlankAnswers: {

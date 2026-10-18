@@ -25,16 +25,22 @@
         <div v-for="group in filterGroups" :key="group.key" class="filter-group">
           <div class="filter-label">{{ group.label }}</div>
           <div class="filter-options">
-            <!-- 复选框组 -->
+            <!--
+              复选框组
+              ⚠️ Element Plus 3.0 起 `<el-checkbox label>` 不再充当选中值，
+                 必须用 `:value`。旧写法会在控制台刷
+                 `[el-checkbox] label act as value is about to be deprecated`，
+                 而这是题库练习页每次打开都会触发的（2026-10-18 实测）。
+            -->
             <el-checkbox-group v-if="group.type === 'checkbox'" v-model="localFilter[group.key]" @change="handleChange">
-              <el-checkbox v-for="opt in group.options" :key="opt.value" :label="opt.value" class="filter-checkbox">
+              <el-checkbox v-for="opt in group.options" :key="opt.value" :value="opt.value" class="filter-checkbox">
                 <span :class="opt.class">{{ opt.label }}</span>
               </el-checkbox>
             </el-checkbox-group>
 
-            <!-- 单选框组 -->
+            <!-- 单选框组（同上，`:label` → `:value`） -->
             <el-radio-group v-else-if="group.type === 'radio'" v-model="localFilter[group.key]" @change="handleChange">
-              <el-radio v-for="opt in group.options" :key="opt.value" :label="opt.value">
+              <el-radio v-for="opt in group.options" :key="opt.value" :value="opt.value">
                 {{ opt.label }}
               </el-radio>
             </el-radio-group>
