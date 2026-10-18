@@ -125,7 +125,7 @@
         <div v-else-if="msg.type === 'experts'" class="message-content">
           <div class="expert-group">
             <div class="expert-group-title">
-              <el-icon class="eg-icon"><Connection /></el-icon>
+              <OsIcon name="bot" :size="13" class="eg-icon" />
               <span>{{ expertGroupTitle(msg.experts) }}</span>
             </div>
             <div v-for="(ex, ei) in (msg.experts || [])" :key="ei"
@@ -133,8 +133,8 @@
               <div class="expert-row-head" @click="toggleExpert(msg, ei)">
                 <span class="expert-state">
                   <span v-if="ex.status === 'running'" class="expert-spin"></span>
-                  <el-icon v-else-if="ex.status === 'ok'" class="expert-ok"><Select /></el-icon>
-                  <el-icon v-else class="expert-fail"><CloseBold /></el-icon>
+                  <OsIcon v-else-if="ex.status === 'ok'" name="check" :size="12" class="expert-ok" />
+                  <OsIcon v-else name="close" :size="12" class="expert-fail" />
                 </span>
                 <span class="expert-name">{{ ex.name }}</span>
                 <!--
@@ -146,7 +146,7 @@
                   <template v-if="ex.status === 'running'">{{ ex.progress || '正在处理…' }}</template>
                   <template v-else>{{ expertHeadline(ex) }}</template>
                 </span>
-                <el-icon class="expert-caret" :class="{ open: isExpertOpen(msg, ei) }"><ArrowDown /></el-icon>
+                <OsIcon name="chevron-down" :size="12" class="expert-caret" :class="{ open: isExpertOpen(msg, ei) }" />
               </div>
               <!--
                 ⚠️ 进行中**默认收起**（用户 2026-10-16 报「自动展开占地太大、视觉差」）：

@@ -586,26 +586,29 @@ function onRegenerate() {
   line-height: 1.55;
 }
 
+/*
+ * 状态图标：**纯线条 + 语义色**，不要实心圆底
+ * --------------------------------------------------------------------
+ * 原来是 18px 实心靛紫圆（white 图标压在上面）。同一屏里「深度思考」是细线星光
+ * svg、「工具结果 / 确认卡」也都是 OsIcon 线条 —— 实心色块混在里面很跳
+ * （用户 2026-10-18 指出风格不统一）。统一成透明底 + 描边图标 + 语义色。
+ */
 .ad-icon {
   flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
+  width: 16px;
+  height: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-  color: #fff;
-  background: #6366f1;
+  color: #6366f1;
 }
 
 .is-ok .ad-icon {
-  background: #22c55e;
+  color: #22c55e;
 }
 
 .is-fail .ad-icon {
-  background: #9ca3af;
+  color: var(--os-text-4, #9ca3af);
 }
 
 .ad-title {

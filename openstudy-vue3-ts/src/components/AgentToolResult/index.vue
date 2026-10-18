@@ -399,43 +399,53 @@ const hasData = computed(() => nonEmpty(props.data))
   line-height: 1.5;
 }
 
+/*
+ * 状态图标：**纯线条 + 语义色**，不要实心圆底
+ * --------------------------------------------------------------------
+ * 原来这里是 18px 实心彩圆（white 图标压在上面）：running 蓝 / ok 绿 / fail 红。
+ * 而同一屏里「深度思考」用的是细线星光 svg、「确认卡」也是 OsIcon 线条 ——
+ * 实心色块与细线条混排，观感明显不统一（用户 2026-10-18 标箭头指出）。
+ *
+ * 现在统一成和 AgentReasoning 同一套语言：透明底 + 1.75 描边线性图标 + 语义色。
+ * 颜色只表达状态，不再用色块压视觉。
+ */
 .at-icon {
   flex: none;
-  width: 18px;
-  height: 18px;
-  /* 跟第一行文字对齐（18px 的圆压在 1.5 行高的文字上会略高，往下压 1px） */
-  margin-top: 1px;
-  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  /* 跟第一行文字对齐（图标压在 1.5 行高的文字上会略高，往下压 2px） */
+  margin-top: 2px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-  color: #fff;
-  background: #cbd5e1;
+  color: var(--os-text-3, #6b7280);
 }
 
 .is-running .at-icon {
-  background: #60a5fa;
+  color: #3b82f6;
 }
 
 .is-ok .at-icon {
-  background: #34d399;
+  color: #22c55e;
 }
 
 .is-fail .at-icon {
-  background: #f87171;
+  color: #ef4444;
 }
 
 .is-cancelled .at-icon {
-  background: #cbd5e1;
+  color: var(--os-text-4, #9ca3af);
 }
 
+/*
+ * 进行中的转圈：原来用白色 2px 边框（因为底色是深色圆）。
+ * 现在没有底色了，改成当前语义色，否则白圈在白底上完全看不见。
+ */
 .at-spinner {
   width: 10px;
   height: 10px;
-  border: 2px solid rgba(255, 255, 255, 0.45);
-  border-top-color: #fff;
+  border: 1.75px solid currentColor;
+  border-top-color: transparent;
   border-radius: 50%;
   animation: at-spin 0.7s linear infinite;
   box-sizing: border-box;

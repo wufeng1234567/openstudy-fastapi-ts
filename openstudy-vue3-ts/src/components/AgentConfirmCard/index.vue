@@ -499,30 +499,37 @@ const previewLists = computed(() => {
   line-height: 1.55;
 }
 
+/*
+ * 状态图标：**纯线条 + 语义色**，不要实心圆底
+ * --------------------------------------------------------------------
+ * 原来这里是 18px 的实心彩色圆（背景 #f59e0b / #22c55e），图标白色压在上面，
+ * 看起来像"绿色实心圆圈勾"；而同一屏里的「深度思考」用的是细线星光 svg、
+ * 「工具结果」用的是 OsIcon 纯线条 —— 三种形态混在一起非常突兀
+ * （用户 2026-10-18 专门标箭头指出）。
+ *
+ * 现在统一成和 AgentToolResult / AgentReasoning 一致的做法：
+ * 透明底 + 1.75 描边的线性图标 + 语义色。颜色只用来区分状态，不再用色块。
+ */
 .ac-icon {
   flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
+  width: 16px;
+  height: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-  color: #fff;
-  background: #f59e0b;
+  color: var(--os-text-3, #6b7280);
 }
 
 .is-destructive .ac-icon {
-  background: #ef4444;
+  color: #ef4444;
 }
 
 .is-ok .ac-icon {
-  background: #22c55e;
+  color: #22c55e;
 }
 
 .is-fail .ac-icon {
-  background: #9ca3af;
+  color: var(--os-text-4, #9ca3af);
 }
 
 .ac-title {

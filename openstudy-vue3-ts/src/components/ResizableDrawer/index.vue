@@ -20,13 +20,30 @@
 -->
 
 <template>
+  <!--
+    ⚠️ 外层 `v-if` 是**必须的**，不是优化（用户 2026-10-18 报的"抽屉越点越多"就出在这）。
+    --------------------------------------------------------------------------------
+    现象：在「我的学习」子页点设置 → 进对话页抽屉打开 → 点空白关掉 → 再点设置，
+          会看到叠了两个面板；继续点会越来越多。
+
+    原因：`el-drawer` + `append-to-body` 在**关闭后仍把 `.el-overlay` 留在 body 上**
+          （display:none 但 DOM 还在）。实测点一次就留下十几个隐藏 overlay；
+          而 keep-alive 下本组件被反复激活时，Element Plus 会为每次激活再补一层，
+          旧层不被回收 → 遮罩/面板在视觉上叠加。
+
+    修法：关闭时把整个组件卸载掉（`v-if="mounted"`），让 Element Plus 自己回收
+          它创建的 overlay。打开时重新挂载一份干净的。
+          拖拽宽度是持久化在 localStorage 的，卸载不影响；开合状态在父组件手里。
+  -->
   <el-drawer
+    v-if="innerVisible || transitioning"
     v-model="innerVisible"
     :direction="direction"
     :size="width + 'px'"
     :with-header="false"
     append-to-body
     :class="['rd-drawer', `rd-${direction}`, drawerClass]"
+    @closed="onClosed"
   >
     <!-- 拖拽调宽手柄（贴在被拉伸的那条边） -->
     <div
@@ -99,12 +116,31 @@ const innerVisible = computed({
   get: () => props.modelValue,
   set: (v: boolean) => emit('update:modelValue', v)
 })
+
+/**
+ * 关闭动画期间保持挂载
+ *
+ * `v-if` 直接跟 `innerVisible` 会把关闭动画"切没"（抽屉瞬间消失、没有滑出过程）。
+ * 所以关闭时先让 EP 走完动画（`@closed` 回调），再把 `transitioning` 置 false
+ * 触发卸载 —— 见上面模板注释里说的 overlay 残留问题。
+ */
+const transitioning = ref(false)
 watch(
   () => props.modelValue,
   (v) => {
-    if (v) nextTick(() => emit('open'))
-  }
+    if (v) {
+      transitioning.value = true
+      nextTick(() => emit('open'))
+    }
+    // 关闭时不立刻置 false：等 el-drawer 的 @closed（动画结束）再卸
+  },
+  { immediate: true }
 )
+
+/** 抽屉关闭动画结束 → 可以安全卸载（Element Plus 会把 overlay 一起回收） */
+function onClosed() {
+  transitioning.value = false
+}
 /* ---------- 宽度状态 ---------- */
 //: 持久化：只在传了 storageKey 时读写
 const readStored = (): number => {
