@@ -17,7 +17,58 @@ import useUserStore from '@/store/modules/user'
  * ⚠️ 这里的请求都带 userId：后端 `ai_chat_session` 按用户隔离，
  *    不带 userId 会查到别人的会话（历史上踩过）。
  */
+/** 会话标题的统一格式（空标题显示「新会话」） */
 const formatTitle = (s: any) => s?.title || '新会话'
+
+/**
+ * 「上次打开的是哪个会话」的持久化键
+ *
+ * 为什么不放进别的 store / 不塞进 URL：会话切换是纯前端状态，
+ * 且刷新后 URL 不变（保持 #/front/agent/chat），放 localStorage 最省事。
+ * 按用户隔离，避免多账号在同一浏览器里互相串会话。
+ */
+const CURRENT_SESSION_KEY = 'os_agent_current_session'
+
+/**
+ * 读：优先按当前登录用户拼 key
+ *
+ * ⚠️ 用户信息还没到位时（首屏 store 初始化、刷新早期）**不能直接返回空**：
+ *    那会让「刷新后恢复上次会话」永远失效（用户 2026-10-18 报的正是这个）。
+ *    退路：扫一遍 localStorage 里同前缀的键，取最新的那个。
+ *    单人在单浏览器里这就是他自己上次的会话；多账号场景下
+ *    后续（拿到 uid 之后）会以带 uid 的精确键为准并被覆盖。
+ */
+function readStoredSessionId(): string {
+  try {
+    const uid = useUserStore().id
+    if (uid) return localStorage.getItem(`${CURRENT_SESSION_KEY}_${uid}`) || ''
+    // uid 未知：退化为扫前缀
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith(`${CURRENT_SESSION_KEY}_`)) {
+        const v = localStorage.getItem(k)
+        if (v) return v
+      }
+    }
+    return ''
+  } catch {
+    return ''
+  }
+}
+
+/** 写：切会话 / 新建 / 删除时都要同步一次（传空串表示"没有当前会话"） */
+function storeSessionId(id: string) {
+  try {
+    const uid = useUserStore().id
+    // uid 未知时也要写（用 0 占位），否则新会话在刷新后同样恢复不了
+    const key = `${CURRENT_SESSION_KEY}_${uid || 0}`
+    if (id) localStorage.setItem(key, id)
+    else localStorage.removeItem(key)
+  } catch {
+    /* localStorage 不可用（隐私模式）时静默降级为纯内存行为 */
+  }
+}
+
 
 /** 相对时间：与 chat.vue 里会话列表的文案保持一致 */
 export function formatSessionTime(time: any): string {
@@ -40,8 +91,17 @@ const useAgentSessionStore = defineStore('agentSession', {
     /** 全部会话（后端已按 updatedAt 倒序） */
     sessions: [] as any[],
     loading: false,
-    /** 当前打开的会话 id */
-    currentSessionId: '',
+    /**
+     * 当前打开的会话 id
+     *
+     * ⚠️ 初值从 localStorage 恢复（用户 2026-10-18 报「在某个会话里刷新页面，
+     *    自动跑到新会话窗口去了」）：
+     *      Pinia 是纯内存的，刷新即丢；`chat.vue` 的 onMounted 又只做
+     *      `sessionId = sessions[0]`（列表按更新时间倒序，第一条就是最新的那个），
+     *      于是"刷新"永远等于"跳到最新会话"，而不是"回到你看的那条"。
+     *      这里把上一次打开的会话记下来，页面初始化时优先恢复它。
+     */
+    currentSessionId: readStoredSessionId(),
     /** 侧栏搜索关键词 */
     keyword: '',
     /**
@@ -68,10 +128,40 @@ const useAgentSessionStore = defineStore('agentSession', {
   },
 
   actions: {
+    /**
+     * 拉取会话列表
+     *
+     * ⚠️ `userId` 未就绪时**不能直接 return**（用户 2026-10-18 报的
+     *    「在某个会话刷新页面，自动跑到新会话」的真正成因就在这里）：
+     *      刷新时 `chat.vue` 的 onMounted 会 `await loadSessions()` 后立刻判断
+     *      「列表为空就新建会话」；而早期 `userStore.id` 还是空，
+     *      旧实现 `if (!userId) return` 让这个 await **秒回且什么都没加载**，
+     *      于是 sessions 恒为 0 → 直接 newSession() → 用户看到的就是"新会话"。
+     *      而侧栏稍后才加载出 16 个会话，两边就不一致了。
+     *
+     * 现在：等一小会儿（每 60ms 轮询，最多 15 次 ≈ 0.9s）拿 userId，
+     *      仍拿不到才跳过 —— 让"先加载再判断"的调用方拿到真实列表。
+     */
     async loadSessions() {
-      const userId = useUserStore().id
-      // 用户信息还没回来：直接跳过（页面挂载早期很常见），免得发出无 userId 的请求
+      let userId = useUserStore().id
+      if (!userId) {
+        for (let i = 0; i < 15 && !userId; i++) {
+          await new Promise((r) => setTimeout(r, 60))
+          userId = useUserStore().id
+        }
+      }
       if (!userId) return
+      /*
+       * 补读持久化的会话 id。
+       * 为什么不能只在 `state()` 里读一次：Pinia store 可能在**登录信息到位之前**
+       * 就被创建（首屏渲染时 userStore.id 还是空），那时 `readStoredSessionId()`
+       * 拿不到 uid、返回空串，于是"上次的会话"永远恢复不出来。
+       * 这里在拿到 userId 后补一次；只在内存里还是空的时候补，不覆盖用户当前的切换。
+       */
+      if (!this.currentSessionId) {
+        const stored = readStoredSessionId()
+        if (stored) this.currentSessionId = stored
+      }
       this.loading = true
       try {
         const res: any = await listSessions(userId)
@@ -91,11 +181,13 @@ const useAgentSessionStore = defineStore('agentSession', {
         const res: any = await createSession(userId)
         const id = res?.data?.sessionId || `asst_${Date.now()}`
         this.currentSessionId = id
+        storeSessionId(id)
         await this.loadSessions()
         return id
       } catch {
         const id = `asst_${Date.now()}`
         this.currentSessionId = id
+        storeSessionId(id)
         return id
       }
     },
@@ -104,6 +196,7 @@ const useAgentSessionStore = defineStore('agentSession', {
     selectSession(id: string) {
       if (!id) return
       this.currentSessionId = id
+      storeSessionId(id)
       this.switchToken += 1
     },
 
@@ -122,6 +215,7 @@ const useAgentSessionStore = defineStore('agentSession', {
         // 删掉的正好是当前会话 → 通知对话页重置（由 chat.vue 监听 switchToken）
         if (this.currentSessionId === id) {
           this.currentSessionId = ''
+          storeSessionId('')
           this.switchToken += 1
         }
       } catch (e) {

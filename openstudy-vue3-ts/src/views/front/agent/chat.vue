@@ -1319,8 +1319,33 @@ onMounted(async () => {
   //   （用户 2026-10-10 报）。飞行锁保证与后续 openPanel 的调用不重复请求。
   loadExperts()
   await loadSessions()
-  if (sessions.value.length) {
+
+  /*
+   * 恢复「上次打开的那个会话」（用户 2026-10-18 报：
+   * 「在某个会话窗口刷新页面后，就自动跑到新会话窗口去了」）
+   * ------------------------------------------------------------------
+   * 原来的写法是 `sessionId = sessions[0]`，而列表按更新时间倒序 ——
+   * sessions[0] 就是**最新创建/更新的那个**，所以刷新永远等于"跳到最新会话"，
+   * 而不是"回到我正在看的那条"。
+   *
+   * 现在：
+   *   1) 优先用 store 里恢复出来的 `currentSessionId`（来自 localStorage）；
+   *   2) 它必须仍在列表里（会话可能已被别处删掉）→ 否则退回第一条；
+   *   3) 都没有才新建。
+   */
+  const remembered = sessionStore.currentSessionId
+  const canRestore = remembered && sessions.value.some((s: any) => s.sessionId === remembered)
+
+  if (canRestore) {
+    sessionId.value = remembered
+    // 同步回 store，保证侧栏的高亮与对话页一致
+    sessionStore.currentSessionId = remembered
+    await loadHistory(remembered)
+  } else if (sessions.value.length) {
     sessionId.value = sessions.value[0].sessionId
+    // ⚠️ 这里也要写回 store：否则侧栏高亮和 localStorage 都还是空/过期的 id，
+    //    下次刷新又会"跳走"（这条链路上一版就是断的）。
+    sessionStore.currentSessionId = sessionId.value
     await loadHistory(sessionId.value)
   } else {
     await newSession()
