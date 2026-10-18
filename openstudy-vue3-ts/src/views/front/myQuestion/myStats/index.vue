@@ -1,7 +1,12 @@
 <template>
     <div class="my-stats" v-loading="loading">
         <div class="page-header">
-            <h2 class="page-title">学习统计</h2>
+            <!-- 标题格式统一：我的学习 · xxx -->
+            <h2 class="page-title">
+                我的学习
+                <span class="title-sep">·</span>
+                学习统计
+            </h2>
             <span class="page-sub">数据来自你的刷题、错题、斩题与收藏记录</span>
         </div>
 
@@ -540,10 +545,18 @@ onUnmounted(() => {
     }
 
     .page-title {
-        font-size: 22px;
-        font-weight: 700;
-        color: #1f2937;
+        /* 与「我的学习」下其它子页统一：16px / 600（原来 22px/700 明显过重） */
+        font-size: 16px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: var(--os-text, #1f2937);
         margin: 0;
+    }
+
+    .title-sep {
+        margin: 0 6px;
+        color: var(--os-text-4, #9ca3af);
+        font-weight: 400;
     }
 
     .page-sub {

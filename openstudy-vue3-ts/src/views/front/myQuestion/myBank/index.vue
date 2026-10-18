@@ -3,9 +3,25 @@
     <!-- 搜索区域 -->
     <div ref="searchAreaRef" class="search-area-wrapper">
       <div class="title-section">
-        <h2 class="page-title">我的题库</h2>
+        <!--
+          标题格式统一为「我的学习 · xxx ｜ N 个题库」
+          ----------------------------------------------------------------
+          用户 2026-10-18：「进入对应的 tab 路由页面后名字改成把『我的题库』去掉，
+          加到第一行最顶部的『我的学习』那边，改成『我的学习-xxxx  x 个题库』，
+          其他我的学习下面的子 tab 也改成这个形式」。
+
+          为什么不再叫「我的题库」：本页现在同时承载「我的题库」和「题库收藏」
+          两个分组（用户要求合并），页面级标题再叫「我的题库」会和分组名重复、
+          也会让「题库收藏」看起来无处归属。改成「我的学习 · 题库」既覆盖两个分组，
+          又和上一级模块名连起来了。
+        -->
+        <h2 class="page-title">
+          我的学习
+          <span class="title-sep">·</span>
+          题库
+        </h2>
         <span class="total-count">
-          共 {{ activeTab === 'own' ? filteredBankList.length : filteredFavoriteList.length }} 个题库
+          {{ activeTab === 'own' ? filteredBankList.length : filteredFavoriteList.length }} 个题库
         </span>
       </div>
 
@@ -34,10 +50,11 @@
           <el-icon><Refresh /></el-icon>
           刷新
         </el-button>
-        <el-button type="primary" plain class="refresh-btn" @click="receiveDialogVisible = true">
-          <el-icon><Ticket /></el-icon>
-          获取题库分享
-        </el-button>
+        <!--
+          「获取题库分享」按钮已移除（用户 2026-10-18：「我的题库那边的获取题库分享
+          按钮取消掉 不用了」）。
+          领取走的是侧栏「学习分享」页面，这里再放一个入口是重复的。
+        -->
       </div>
     </div>
 
@@ -232,7 +249,7 @@ defineOptions({ name: 'FrontMyBank' })
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, FolderOpened, Document, View, Delete, Ticket, Share, Lock, Unlock, CopyDocument, Star } from '@element-plus/icons-vue'
+import { Refresh, FolderOpened, Document, View, Delete, Share, Lock, Unlock, CopyDocument, Star } from '@element-plus/icons-vue'
 import BankCardGrid from '@/components/BankCardGrid/BankCardGrid.vue'
 import SearchFilterInput from '@/components/SearchFilterInput/index.vue'
 import CommonFilterSidebar from '@/components/CommonFilterSidebar/index.vue'
@@ -426,29 +443,30 @@ const filteredBankList = computed(() => {
 /**
  * 过滤后的收藏列表
  *
- * 与 `filteredBankList` 共用同一个搜索框与筛选面板，但作用在收藏数据上。
- * 注意数据源 `allFavoriteList` 是**嵌套结构**（题库字段在 `item.bank` 里），
- * 所以这里的取值都要走 `item.bank?.xxx`；输出给卡片时由 `favoriteCardList` 摊平。
+ * 与 `filteredBankList` 共用同一个搜索框与筛选面板。
+ * ⚠️ 取值统一写成 `f.bankName ?? f.bank?.bankName` 这种形式：
+ *    后端实际返回**扁平**结构（见 `favoriteCardList` 的注释），
+ *    但处理器里保留了 `bank` 自引用，两种形态都兼容，避免以后再踩一次。
  */
 const filteredFavoriteList = computed(() => {
-  let list: UserBankFavorite[] = favoriteCardList.value as unknown as UserBankFavorite[]
+  let list: any[] = favoriteCardList.value as unknown as any[]
 
   // 关键词搜索（按题库名）
   if (searchKeyword.value) {
     const kw = searchKeyword.value.toLowerCase()
-    list = list.filter((f: any) => (f.bank?.bankName || f.bankName || '').toLowerCase().includes(kw))
+    list = list.filter((f: any) => String(f.bankName ?? f.bank?.bankName ?? '').toLowerCase().includes(kw))
   }
 
   // 科目（多选）
   if (filterForm.value.subjects?.length > 0) {
-    list = list.filter((f: any) => filterForm.value.subjects.includes(f.bank?.subject || f.subject || ''))
+    list = list.filter((f: any) => filterForm.value.subjects.includes(f.subject ?? f.bank?.subject ?? ''))
   }
 
   // 题目数量（多选，命中任一档）
   if (filterForm.value.questionCount?.length > 0) {
     const ranges = filterForm.value.questionCount
     list = list.filter((f: any) => {
-      const total = f.bank?.totalQuestions ?? f.totalQuestions ?? 0
+      const total = Number(f.totalQuestions ?? f.bank?.totalQuestions ?? 0)
       return ranges.some((c: string) => {
         if (c === '0-10') return total < 10
         if (c === '10-50') return total >= 10 && total < 50
@@ -462,7 +480,7 @@ const filteredFavoriteList = computed(() => {
   // 可见性（多选）
   if (filterForm.value.isPublic?.length > 0) {
     list = list.filter((f: any) => {
-      const v = f.bank?.isPublic ?? f.isPublic
+      const v = f.isPublic ?? f.bank?.isPublic
       return filterForm.value.isPublic.includes(v as number)
     })
   }
@@ -580,22 +598,26 @@ const fetchFavorites = () => {
 }
 
 /**
- * 收藏列表 → 扁平结构（喂给共享卡片）
+ * 收藏列表 → 卡片数据
  *
- * 收藏接口返回 `UserBankFavorite`，题库字段嵌在 `item.bank` 里；
- * 共享卡片按扁平结构读。同时保留 `bank` 原引用 ——
- * 下面的 `handleViewDetail` / `handleCopy` / `handleUncollect`
- * 都是按 `item.bank?.xxx` 取值写的。
+ * ⚠️⚠️ 后端 `/favoriteBank/favoriteBank/all` 返回的是**已经摊平**的结构：
+ *    `_format_favorite_bank()` 里是 `row = format_bank(bank)`，题库字段
+ *    （`bankName` / `id` / `totalQuestions` / `coverImage` …）全在**顶层**，
+ *    `favoriteId` / `bankId` / `createTime` 这些收藏字段也与它同级。
+ *    **没有** `item.bank` 这个嵌套对象。
+ *
+ *    我上一版按 `item.bank?.bankName` 去取（那是「后端返回嵌套」的假设），
+ *    结果摊平出空对象 → 卡片显示「题库ID: undefined」（用户 2026-10-18 截图）。
+ *
+ * 所以这里**直接用原始条目**，只补一个 `bank` 自引用，
+ * 让下面的 `handleViewDetail` / `handleCopy` / `handleUncollect`
+ * （它们按 `item.bank?.xxx` 写的）也能正常工作 —— 两种取值都指向同一份数据。
  */
 const favoriteCardList = computed(() =>
   allFavoriteList.value.map((item: UserBankFavorite) => ({
-    ...(item.bank || {}),
-    bank: item.bank,
-    favoriteId: item.favoriteId,
-    source: item.source,
-    shareStatus: item.shareStatus,
-    shareOwnerName: item.shareOwnerName,
-    canCopy: item.canCopy,
+    ...item,
+    // 自引用：兼容按 `item.bank?.xxx` 取值的既有处理器
+    bank: item.bank || item,
     isCollected: true
   }))
 )
@@ -783,6 +805,13 @@ onUnmounted(() => {
   letter-spacing: -0.01em;
   color: var(--os-text);
   margin: 0;
+}
+
+/* 「我的学习 · xxx」里的分隔点：做弱处理，让模块名仍是视觉重心 */
+.title-sep {
+  margin: 0 6px;
+  color: var(--os-text-4, #9ca3af);
+  font-weight: 400;
 }
 
 .total-count {

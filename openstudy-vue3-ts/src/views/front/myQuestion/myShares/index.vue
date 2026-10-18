@@ -3,9 +3,14 @@
 <template>
   <div class="my-shares-page">
     <div class="title-section">
-      <h2 class="page-title">我的分享</h2>
+      <!-- 标题格式统一：我的学习 · xxx ｜ N 条 -->
+      <h2 class="page-title">
+        我的学习
+        <span class="title-sep">·</span>
+        分享
+      </h2>
       <div class="title-right">
-        <span class="total-count">共 {{ shareList.length }} 条分享</span>
+        <span class="total-count">{{ shareList.length }} 条分享</span>
         <el-button type="primary" plain @click="shareDialogVisible = true">
           <el-icon><Share /></el-icon>
           分享我的题库
@@ -157,9 +162,17 @@ onMounted(fetchShares)</script>
 
 .page-title {
   margin: 0;
-  font-size: 20px;
-  font-weight: 700;
-  color: #1f2937;
+  /* 与「我的学习」下其它子页统一：16px / 600（原来这里是 20px/700，显得比外层还重） */
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--os-text, #1f2937);
+}
+
+.title-sep {
+  margin: 0 6px;
+  color: var(--os-text-4, #9ca3af);
+  font-weight: 400;
 }
 
 .total-count {
