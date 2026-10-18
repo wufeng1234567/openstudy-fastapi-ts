@@ -355,9 +355,14 @@ export const constantRoutes: AppRouteRecordRaw[] = [
         hidden: true,
         children: [
           {
+            /*
+             * 题库收藏已合并进「我的题库」（用户 2026-10-18）。
+             * 保留这条路由只为了兼容旧链接 / 书签 —— 直接重定向过去，
+             * 不再指向那个独立页面（两个入口展示同一批数据，本来就没必要）。
+             */
             path: 'bankCollect',
             name: 'FrontBankCollect',
-            component: () => import('@/views/front/myQuestion/myFavoriteBank/index.vue'),
+            redirect: '/front/myQuestion/myBank?tab=favorite',
             meta: { title: '题库收藏', layout: 'front' },
             hidden: true
           },

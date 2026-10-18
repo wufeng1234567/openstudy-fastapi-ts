@@ -269,34 +269,94 @@ const syncEditorMode = async () => {
     // 幂等标记必须在 await 之前置位：否则 await 期间 onActivated 重入会再跑一遍。
     newNoteDraftSettled = true
     // 恢复到内容时给个轻提示：用户（2026-10-11）明确要"能知道上次写过、且被带出来了"。
-    if (await loadDraft()) {
-      notifyDraftRestored()
-    }
+    const restored = await loadDraft()
+    if (restored) notifyDraftRestored(restored)
   }
 }
 
 /**
- * 「已恢复上次未发布的草稿」提示 —— **全局限流 1 秒最多 1 次**
+ * 「已恢复上次未发布的草稿」提示 —— 去重靠**一次性标记**，不靠时间窗
+ * ============================================================================
+ * 用户 2026-10-18：「还是有概率发生连续弹三次」。
  *
- * 用户 2026-10-18：「这个的出现要做好节流，1s 内最多只允许出现一次，
- * 禁止其他地方重复发送这个信息」。
+ * 上一版用的是模块级时间戳闸门（1s 内只放第一条），但它有两个漏洞：
+ *   ① `syncEditorMode()` 有 **4 个入口**（onMounted / onActivated /
+ *      watch(route.query.id) / 切换笔记后），彼此间隔完全可能 > 1s
+ *      （尤其 onActivated 在 keep-alive 唤回时可能晚很多）；
+ *   ② 模块级变量在 HMR / 重新加载后会被重置，等于闸门从没存在过。
  *
- * 为什么组件内的 `newNoteDraftSettled` 不够：
- *   · 它是**实例级**的，页面 keep-alive 之外还有别的路径能进来（路由切换、
- *     悬浮助手唤起、刷新），每次新实例都会放行一次；
- *   · `ElMessage` 本身不去重，两次调用就是两条提示堆在右上角。
+ * 现在换成「同一个草稿只提示一次」的语义：
+ *   · `_draftToastShownFor` 记住**已经提示过的那份草稿的特征**（标题+正文长度+更新时间）；
+ *   · 同一份草稿再次被恢复 → 静默，不再弹；
+ *   · 换了另一份草稿（用户确实又写了一版新的）→ 允许再提示一次。
  *
- * 这里用**模块级**时间戳做闸门：跨实例共享，1s 内只放第一条。
+ * 这样既不会连弹三次，也不会因为"永久只弹一次"而让用户错过新的恢复提示。
  */
-let _lastDraftToastAt = 0
-function notifyDraftRestored() {
-  const now = Date.now()
-  if (now - _lastDraftToastAt < 1000) return
-  _lastDraftToastAt = now
+let _draftToastShownFor = ''
+function draftSignature(d: any): string {
+  const title = String(d?.title || '')
+  const body = String(d?.content || d?.markdownContent || '')
+  const at = String(d?.updatedAt || d?.updateTime || '')
+  return `${title}␟${body.length}␟${at}`
+}
+function notifyDraftRestored(draft?: any) {
+  const sig = draftSignature(draft)
+  if (sig && sig === _draftToastShownFor) return
+  _draftToastShownFor = sig
   ElMessage({ message: '已恢复上次未发布的草稿', type: 'info', duration: 2500 })
 }
 
-const DRAFT_KEY = 'note_draft'
+/**
+ * 草稿的 localStorage key（**按用户隔离**）
+ * ============================================================================
+ * 用户 2026-10-18：「草稿功能没做用户区分！演示用户1 和 演示用户2 共用了一个草稿」。
+ *
+ * 根因：key 是写死的 `'note_draft'`，同一浏览器里所有账号共用一个槽位 ——
+ *      演示用户1 写的草稿，切到演示用户2 会被读出来并覆盖对方的内容。
+ *
+ * 现在 key 带用户 id：`openstudy_note_draft_<userId>`。
+ * 拿不到 userId 时退回旧 key（保证未登录/异常时不至于存不进去），
+ * 但正常登录态一律走隔离 key。
+ *
+ * ⚠️ 同时做**旧 key 的一次性迁移**：把历史上存在 `note_draft` 里的内容
+ *    搬给当前用户，避免升级后老用户以为草稿丢了。
+ */
+const LEGACY_DRAFT_KEY = 'note_draft'
+const DRAFT_KEY_PREFIX = 'openstudy_note_draft'
+
+function currentDraftUserId(): string {
+  try {
+    const id = (useUserStore() as any).id
+    return id === undefined || id === null || id === '' ? '' : String(id)
+  } catch {
+    return ''
+  }
+}
+
+function draftKey(): string {
+  const uid = currentDraftUserId()
+  return uid ? `${DRAFT_KEY_PREFIX}_${uid}` : LEGACY_DRAFT_KEY
+}
+
+/**
+ * 把旧版共享 key 的内容迁到当前用户的隔离 key
+ *
+ * 只在「当前用户的隔离 key 还是空的」且「旧 key 有内容」时搬一次，
+ * 搬完删掉旧 key（否则下一个账号登录还会再搬一次）。
+ */
+function migrateLegacyDraftOnce() {
+  const uid = currentDraftUserId()
+  if (!uid) return
+  const scoped = `${DRAFT_KEY_PREFIX}_${uid}`
+  try {
+    const legacy = localStorage.getItem(LEGACY_DRAFT_KEY)
+    if (!legacy) return
+    if (!localStorage.getItem(scoped)) localStorage.setItem(scoped, legacy)
+    localStorage.removeItem(LEGACY_DRAFT_KEY)
+  } catch {
+    /* 隐私模式下忽略 */
+  }
+}
 
 /** 把一份草稿对象套用到表单（本地草稿与后端草稿共用同一套字段名） */
 const applyDraft = (d: any) => {
@@ -327,11 +387,20 @@ const applyDraft = (d: any) => {
  *
  * ⚠️ 空草稿（标题与正文都空）忽略、**不覆盖**当前表单，也不提示。
  */
-const loadDraft = async (): Promise<boolean> => {
-  // 本地草稿
+/**
+ * 读草稿并套用到表单
+ *
+ * @returns 实际恢复的那份草稿；没有可用草稿时返回 `null`。
+ *          （返回对象而不是 boolean，是为了让提示层能按「哪一份草稿」去重，
+ *            见 `notifyDraftRestored`。）
+ *
+ * ⚠️ 空草稿（标题与正文都空）忽略、**不覆盖**当前表单，也不提示。
+ */
+const loadDraft = async (): Promise<any | null> => {
+  // 本地草稿（按用户隔离的 key，见 draftKey()）
   let local: any = null
   try {
-    const raw = localStorage.getItem(DRAFT_KEY)
+    const raw = localStorage.getItem(draftKey())
     if (raw) local = JSON.parse(raw)
   } catch (e) {
     console.error('读取本地草稿失败:', e)
@@ -347,7 +416,7 @@ const loadDraft = async (): Promise<boolean> => {
 
   const localHas = !!(local && ((local.content || '').trim() || (local.title || '').trim()))
   const remoteHas = !!(remote && ((remote.content || remote.markdownContent || '').trim() || (remote.title || '').trim()))
-  if (!localHas && !remoteHas) return false
+  if (!localHas && !remoteHas) return null
 
   // 谁新用谁：无法比较时间时优先本地（用户本机最新编辑的确定性更高）
   let picked = local
@@ -359,7 +428,7 @@ const loadDraft = async (): Promise<boolean> => {
     picked = remote
   }
   applyDraft(picked)
-  return true
+  return picked
 }
 
 /**
@@ -378,7 +447,7 @@ const saveDraft = () => {
     const md = editorHtmlContent.value ? turndownService.turndown(editorHtmlContent.value) : ''
     // 全空 → 清掉两处草稿，不留脏数据
     if (!md.trim() && !noteTitle.value.trim()) {
-      localStorage.removeItem(DRAFT_KEY)
+      localStorage.removeItem(draftKey())
       clearNoteDraft().catch(() => {})
       return
     }
@@ -391,7 +460,7 @@ const saveDraft = () => {
       tags: selectedTags.value,
       publicSectionId: selectedPublicSectionId.value
     }
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...payload, updatedAt: new Date().toISOString() }))
+    localStorage.setItem(draftKey(), JSON.stringify({ ...payload, updatedAt: new Date().toISOString() }))
     // 同步后端草稿（失败不影响本地草稿，静默即可——本地已是兜底）
     saveNoteDraft(payload).catch(() => {})
   } catch (error) {
@@ -401,7 +470,7 @@ const saveDraft = () => {
 
 const clearDraft = () => {
   try {
-    localStorage.removeItem(DRAFT_KEY)
+    localStorage.removeItem(draftKey())
   } catch (error) {
     console.error('清除草稿失败:', error)
   }
@@ -505,6 +574,8 @@ const loadNoteData = async (id) => {
 }
 
 onMounted(async () => {
+  // 先把旧版共享 key 的草稿迁到当前用户的隔离 key（否则升级后用户会觉得草稿丢了）
+  migrateLegacyDraftOnce()
   await Promise.all([
     loadCategories(),
     loadPublicSections(),
