@@ -690,22 +690,58 @@ const pinnedToLatest = ref(false)
  */
 const RENDER_CHUNK = 40
 const renderLimit = ref(RENDER_CHUNK)
+
+/**
+ * 窗口起点（绝对下标），**对齐到一条用户消息**
+ * ------------------------------------------------------------------
+ * 为什么不能直接 `slice(length - limit)`（用户 2026-10-18 报的 bug）：
+ *   按条数切，起点可能落在一轮**中间** —— 于是窗口最上面会出现
+ *   "某条助手回复"，而它的提问在上一条、被切掉了。
+ *   截图里就是这种情况：顶部是「已深度思考 + 回复」，却看不到是谁问的。
+ *
+ * 修法：从"按条数算出的起点"往下找最近的 `role === 'user'`，
+ *   把起点推到那里。效果是窗口顶部**永远是一轮的提问**，
+ *   用户能看到"这是在回答哪个问题"，加载更早时也是整轮整轮地回来。
+ *
+ * 兜底：如果从起点往后完全没有用户消息（极少数异常数据），
+ *   就退回原起点，至少不至于渲染空白。
+ */
+const windowStart = computed(() => {
+  const all = props.messages
+  if (all.length <= renderLimit.value) return 0
+
+  const rough = all.length - renderLimit.value
+  for (let i = rough; i < all.length; i++) {
+    if (all[i]?.role === 'user') return i
+  }
+  return rough
+})
+
 /** 是否还有更早的消息没渲染出来 */
-const hasEarlier = computed(() => props.messages.length > renderLimit.value)
-/** 实际参与渲染的消息子集（最近 renderLimit 条） */
+const hasEarlier = computed(() => windowStart.value > 0)
+
+/** 实际参与渲染的消息子集（从一轮的提问开始，到末尾） */
 const visibleMessages = computed(() => {
   const all = props.messages
   if (all.length <= renderLimit.value) return all
-  return all.slice(all.length - renderLimit.value)
+  return all.slice(windowStart.value)
 })
+
 /** 窗口起点在完整数组里的绝对下标（`:key` 用它保证条目身份稳定，避免复用错位） */
-const windowOffset = computed(() => Math.max(0, props.messages.length - renderLimit.value))
+const windowOffset = computed(() => (props.messages.length <= renderLimit.value ? 0 : windowStart.value))
 /** 点「加载更早」：多渲染一段；保持滚动位置不跳（在一次 nextTick 内补偿高度差） */
 const loadEarlier = async () => {
   const el = messagesRef.value as HTMLElement | null
   const beforeH = el ? el.scrollHeight : 0
   const beforeTop = el ? el.scrollTop : 0
-  renderLimit.value += RENDER_CHUNK
+  /*
+   * 一次多放一整段（≥ RENDER_CHUNK）。
+   * ⚠️ 窗口起点会对齐到用户消息（见 `windowStart`），所以"加 40 条"实际可能
+   *    只多回一整轮（提问 + 若干条回复）。这里保证至少往前推过当前起点，
+   *    否则点一次看起来"没动静"（用户会以为按钮坏了）。
+   */
+  const prevStart = windowStart.value
+  renderLimit.value = Math.max(renderLimit.value + RENDER_CHUNK, props.messages.length - prevStart + 1)
   await nextTick()
   const e2 = messagesRef.value as HTMLElement | null
   if (e2) e2.scrollTop = e2.scrollHeight - beforeH + beforeTop
