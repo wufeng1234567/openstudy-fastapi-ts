@@ -106,9 +106,14 @@
           <template #input-footer>
             <ChatFileUploader ref="attachRef" v-model="attachments" :disabled="isGenerating" />
 
-            <!-- 知识库：资料是给「这次提问」用的，入口就该在发消息的地方 -->
-            <button type="button" class="tb-btn" :class="{ 'is-on': panelOpen && panelTab === 'kb' }"
-              title="知识库 —— 传资料、让智能体检索后回答" @click="openPanel('kb')">
+            <!--
+              知识库：资料是给「这次提问」用的，入口就该在发消息的地方。
+              ⚠️ 不再自己开抽屉 —— 全站只有外壳上那一个全局抽屉（设置 + 知识库两个 tab）。
+                 这里只是「请求切到 kb tab」，避免出现第二个抽屉实例
+                 （用户 2026-10-18 报的"左右两个面板同时出现"就是两个实例造成的）。
+            -->
+            <button type="button" class="tb-btn" title="知识库 —— 传资料、让智能体检索后回答"
+              @click="agentUiStore.requestPanel('kb')">
               <el-icon>
                 <FolderOpened />
               </el-icon>
@@ -183,48 +188,8 @@
             </div>
           </template>
         </AiChatStream>
-
       </div>
     </div>
-
-    <!--
-      智能体侧栏抽屉（统一容器）：知识库 / 历史会话 / 设置三个功能共用**同一个可拉伸抽屉**，
-      内部用 tab 切换。方向按「入口在哪侧、抽屉就从哪侧滑出」动态给出：
-        设置（右侧入口）→ rtl（右）；知识库/历史会话（左侧入口）→ ltr（左）。
-      见 `panelDirection` 计算属性。
-    -->
-    <ResizableDrawer
-      v-model="panelOpen"
-      :direction="panelDirection"
-      :offset-left="sidebarOffset"
-      storage-key="openstudy_agent_panel_size"
-      :default-width="380"
-      :min="300"
-      :max="720"
-    >
-      <div class="agent-panel">
-        <!--
-          tab 头：只剩「知识库」
-          ------------------------------------------------------------------
-          用户 2026-10-18：「设置按钮应该作为全局设置对象处理，在哪里点击就在那个页面展开」。
-          于是「设置」从对话页里摘掉，改成外壳上的全局抽屉（`components/GlobalSettings`）。
-          这里如果继续保留一个设置 tab，会和全局抽屉重复（两个入口、两套状态）。
-        -->
-        <div class="agent-panel-tabs">
-          <div :class="['aptab', { active: panelTab === 'kb' }]" @click="switchTab('kb')">
-            <el-icon><FolderOpened /></el-icon>
-            <span>知识库</span>
-          </div>
-        </div>
-
-        <!-- ① 设置 -->
-
-        <!-- ② 知识库（与悬浮助手同一个面板组件） -->
-        <div v-show="panelTab === 'kb'" class="agent-panel-body">
-          <KnowledgeBasePanel ref="kbPanelRef" />
-        </div>
-      </div>
-    </ResizableDrawer>
 
     <!-- 「我的智能体」管理弹窗 -->
     <el-dialog v-model="agentMgrVisible" title="我的智能体" width="600px" append-to-body>
@@ -321,8 +286,6 @@ import AgentToolResult from '@/components/AgentToolResult/index.vue'
 import AgentConfirmCard from '@/components/AgentConfirmCard/index.vue'
 import ChatFileUploader from '@/components/ChatFileUploader/index.vue'
 import ChatAttachmentList from '@/components/ChatAttachmentList/index.vue'
-import KnowledgeBasePanel from '@/components/KnowledgeBasePanel/index.vue'
-import ResizableDrawer from '@/components/ResizableDrawer/index.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 // 工具开关清单（设置 tab）：**静态 import**，不再用 `await import()` 动态加载 ——
 // 动态 import 会把「模块何时就绪」变成变量，是「刷新后先点别的 tab 再进设置，工具列表
@@ -484,110 +447,6 @@ const selectedAgentId = computed(() => {
 async function loadAgents() {
   myAgents.value = await listAgentConfigs()
 }
-
-/* ---- 智能体侧栏抽屉（统一容器：设置 / 知识库，内部 tab 切换）---- */
-// 用户 2026-10-10 裁决：把设置与知识库统一到一个可拉伸抽屉 + 内部 tab。
-// 方向原则：**入口在哪侧、抽屉就从哪侧滑出**。
-//
-// ⚠️ 2026-10-17：**设置入口已移到左侧导航栏底部**，所以设置也改走左侧（ltr）。
-//    现在两个 tab 的入口都在左边（设置=侧栏、知识库=输入框左侧工具行），
-//    方向统一为 ltr；保留 `dirOfTab` 这个函数而不是写死，是为了将来若再加右侧入口
-//    还能按 tab 区分（那时只改这一行即可）。
-//
-// ⚠️ 方向**只在「本次打开抽屉」时由入口侧决定一次，之后锁定**——不能随 tab 变：
-//    用户 2026-10-10 反馈「在左侧点开知识库，再点智能体设置 tab，抽屉会甩到右侧，不合理」。
-//    故 `panelDirection` 是 **ref 而非 computed**：`openPanel` 仅在「原本处于关闭态」时设一次。
-const panelOpen = ref(false)
-/** 抽屉现在只有两个 tab（历史会话已移到左侧导航栏） */
-type PanelTab = 'settings' | 'kb'
-const panelTab = ref<PanelTab>('settings')
-/** 抽屉滑出方向：由「打开它的那个入口」决定并锁定（打开期间不随 tab 变） */
-const panelDirection = ref<'rtl' | 'ltr'>('ltr')
-/** 知识库面板实例（切到知识库 tab 时调 activate 载入） */
-const kbPanelRef = ref<InstanceType<typeof KnowledgeBasePanel> | null>(null)
-
-/**
- * 入口侧 → 抽屉方向
- * 两个入口现在都在左侧（设置=侧栏底部，知识库=输入框左侧工具行），故一律 ltr。
- */
-const dirOfTab = (_tab: PanelTab): 'rtl' | 'ltr' => 'ltr'
-
-/**
- * 抽屉要给左侧导航让出的宽度
- * --------------------------
- * 设置入口在侧栏里，抽屉从左侧展开时不能把导航盖住（否则用户点完设置就"回不去"了）。
- * 这里实时量侧栏 DOM 的宽度：展开态是用户拖过的宽度（220–420），收起态是 64。
- * 量不到（例如移动端侧栏抽屉化）就返回 0，退化成全屏抽屉。
- */
-const sidebarOffset = ref(0)
-function measureSidebar() {
-  const el = document.querySelector('.os-sidebar') as HTMLElement | null
-  sidebarOffset.value = el ? Math.round(el.getBoundingClientRect().width) : 0
-}
-watch(panelOpen, (open) => {
-  if (open) nextTick(measureSidebar)
-})
-onMounted(() => {
-  measureSidebar()
-  window.addEventListener('resize', measureSidebar)
-})
-onBeforeUnmount(() => window.removeEventListener('resize', measureSidebar))
-
-/**
- * 进入某个 tab 时要触发的加载。
- *
- * ⚠️ 必须集中在这里，且「工具栏入口」与「抽屉内 tab 头」**都**要走它。
- * 原来的坑：加载只写在 `openPanel()`（工具栏入口）里，而抽屉 tab 头是直接
- * `panelTab = 'kb'` 赋值的 —— 于是「刷新后先点设置，再点知识库」时
- * `activate()` 从没被调用，知识库永远加载不出来（用户 2026-10-16 报）。
- */
-function enterTab(tab: PanelTab) {
-  if (tab === 'settings') loadExperts()
-  // 知识库面板是 v-show 常驻挂载，只有显式 activate 才会拉库列表；
-  // 从抽屉 tab 头直接切进来也必须触发。
-  if (tab === 'kb') nextTick(() => kbPanelRef.value?.activate?.())
-}
-
-/** 抽屉内 tab 头点击：只切 tab + 触发该 tab 的加载（方向不重算，保持打开时锁定） */
-function switchTab(tab: PanelTab) {
-  panelTab.value = tab
-  enterTab(tab)
-}
-
-function openPanel(tab: PanelTab) {
-  // 仅在「抽屉原本关闭」时按入口侧设定方向；已打开时保持当前方向（不横跳）
-  if (!panelOpen.value) panelDirection.value = dirOfTab(tab)
-  panelTab.value = tab
-  panelOpen.value = true
-  enterTab(tab)
-}
-
-/**
- * 侧栏「设置」入口的信号接收
- * --------------------------
- * 设置入口已从输入框工具行挪到**左侧导航栏底部**（用户 2026-10-17：
- * "设置按钮位置需要变化，改到左侧的导航栏去"）。
- * 侧栏与对话页是两个组件，用 store token 传信号；本页 keep-alive，
- * 所以必须 watch 而不是只在 onMounted 判断。
- *
- * 开关语义（用户 2026-10-17 追加）：
- *   抽屉没开 → 打开并停在「设置」；
- *   已经开在设置上 → **再点一次收回**（同一个按钮管开与关，符合"开关"直觉）。
- *   已经从侧栏切到「设置」tab，正文（非设置）时再点 → 切回设置，不关闭。
- */
-let lastSettingsToken = agentUiStore.settingsToken
-watch(
-  () => agentUiStore.settingsToken,
-  (token) => {
-    if (!token || token === lastSettingsToken) return
-    lastSettingsToken = token
-    if (panelOpen.value && panelTab.value === 'settings') {
-      panelOpen.value = false
-      return
-    }
-    openPanel('settings')
-  }
-)
 
 /* ---- 「我的智能体」管理弹窗 ---- */
 const agentMgrVisible = ref(false)
@@ -920,7 +779,6 @@ const loadSessions = async () => {
 const newSession = async () => {
   if (isGenerating.value) stop()
   reset()
-  panelOpen.value = false
   sessionId.value = await sessionStore.startNewSession()
 }
 
@@ -980,7 +838,6 @@ const switchSession = async (s: any) => {
   if (isGenerating.value) return
   reset()
   sessionId.value = s.sessionId
-  panelOpen.value = false
   sessionStore.currentSessionId = s.sessionId
   await loadHistory(s.sessionId)
 }
@@ -1006,7 +863,6 @@ watch(
     if (target === sessionId.value) return
     reset()
     sessionId.value = target
-    panelOpen.value = false
     await loadHistory(target)
   }
 )

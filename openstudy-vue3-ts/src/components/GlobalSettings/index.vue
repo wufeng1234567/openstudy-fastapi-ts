@@ -30,8 +30,8 @@
 <template>
   <ResizableDrawer
     v-model="visible"
-    direction="rtl"
-    :offset-left="offsetLeft"
+    direction="ltr"
+    :offset-left="sidebarOffset"
     storage-key="openstudy_global_settings_size"
     :default-width="380"
     :min="320"
@@ -45,7 +45,25 @@
         </button>
       </div>
 
-      <div class="gs-body">
+      <!--
+        tab 头：设置 / 知识库
+        ----------------------------------------------------------------
+        用户 2026-10-18：「为什么你要把知识库和智能体设置区分开来？不要区分啊」。
+        所以两者**住在同一个抽屉里**，只切 tab、不开第二个抽屉 ——
+        这也正是出现「左边知识库 + 右边设置」双抽屉的直接原因。
+      -->
+      <div class="gs-tabs">
+        <div :class="['gs-tab', { active: tab === 'settings' }]" @click="switchTab('settings')">
+          <OsIcon name="settings" :size="14" />
+          <span>设置</span>
+        </div>
+        <div :class="['gs-tab', { active: tab === 'kb' }]" @click="switchTab('kb')">
+          <OsIcon name="folder" :size="14" />
+          <span>知识库</span>
+        </div>
+      </div>
+
+      <div class="gs-body" v-show="tab === 'settings'">
         <!-- ① 我的智能体 -->
         <section class="gs-row">
           <div class="gs-label-row">
@@ -113,6 +131,11 @@
           </div>
         </section>
       </div>
+
+      <!-- 知识库 tab：与设置同一个抽屉，只是切 tab（用 v-show 保状态，来回切不重载） -->
+      <div class="gs-body is-kb" v-show="tab === 'kb'">
+        <KnowledgeBasePanel ref="kbRef" :closable="false" />
+      </div>
     </div>
   </ResizableDrawer>
 
@@ -121,12 +144,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import ResizableDrawer from '@/components/ResizableDrawer/index.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import AiModelSelector from '@/components/AiModelSelector/index.vue'
 import AgentManagerDialog from './AgentManagerDialog.vue'
+import KnowledgeBasePanel from '@/components/KnowledgeBasePanel/index.vue'
 import { listAgentExperts, setAgentExpertPref, setAgentExpertModel } from '@/api/ai/agent'
 import { listAgentConfigs } from '@/api/ai/agent'
 import useAgentUiStore from '@/store/modules/agentUi'
@@ -138,8 +162,42 @@ const ui = useAgentUiStore()
 
 /* ---------- 开合：由侧栏的全局信号驱动 ---------- */
 const visible = ref(false)
-/** 抽屉贴左时给侧栏让位（与外壳的侧栏宽度保持一致） */
-const offsetLeft = ref(0)
+
+/**
+ * 抽屉要给左侧导航让出的宽度
+ * --------------------------
+ * 用户 2026-10-18：「要从菜单栏那边生成，而不是在最右边生成抽屉；
+ *                  要贴着左侧菜单生成抽屉」。
+ * 所以：方向改 `ltr`（从左往右滑出），并把遮罩/抽屉一起内缩到侧栏右缘 ——
+ * 只让出侧栏，导航仍然可见可点。
+ *
+ * ⚠️ 宽度用**实时量 DOM**，不要读 localStorage：侧栏可拖拽（220–420）、
+ *    可收起（64），存下来的值可能已经过期；量 `.os-sidebar` 最准。
+ */
+const sidebarOffset = ref(0)
+function measureSidebar() {
+  const el = document.querySelector('.os-sidebar') as HTMLElement | null
+  sidebarOffset.value = el ? Math.round(el.getBoundingClientRect().width) : 0
+}
+
+/** 当前 tab：设置 / 知识库（与原来对话页抽屉里的语义一致） */
+type PanelTab = 'settings' | 'kb'
+const tab = ref<PanelTab>('settings')
+const kbRef = ref<InstanceType<typeof KnowledgeBasePanel> | null>(null)
+
+/**
+ * 切 tab
+ *
+ * 知识库面板**故意不在 onMounted 自动加载**（见其源码注释：宿主有两种，懒挂载更稳），
+ * 所以切进来时要显式 `activate()`。用 `nextTick` 等 v-show 生效后再调，
+ * 否则面板还在 display:none 里，尺寸测量会拿到 0。
+ */
+function switchTab(next: PanelTab) {
+  tab.value = next
+  if (next === 'kb') {
+    nextTick(() => kbRef.value?.activate?.())
+  }
+}
 
 /** 当前对话选中的智能体（与对话页共享同一个 localStorage，改完对话页立即生效） */
 const SELECTED_AGENT_KEY = 'openstudy_selected_agent'
@@ -241,20 +299,53 @@ watch(visible, (v) => {
   }
 })
 
+/* ---------- 抽屉打开期间：侧栏宽度变化要跟上 ---------- */
+/*
+ * 用户可能在抽屉打开时拖侧栏、或按 Ctrl+Alt+B 收起侧栏 —— 这时
+ * 抽屉如果还贴在旧位置，就会和侧栏错位（露出空隙或压住导航）。
+ * 用 ResizeObserver 盯住侧栏元素，比轮询更省。
+ */
+let _ro: ResizeObserver | null = null
+watch(visible, (v) => {
+  if (v) {
+    measureSidebar()
+    const el = document.querySelector('.os-sidebar') as HTMLElement | null
+    if (el && typeof ResizeObserver !== 'undefined') {
+      _ro = new ResizeObserver(() => measureSidebar())
+      _ro.observe(el)
+    }
+  } else if (_ro) {
+    _ro.disconnect()
+    _ro = null
+  }
+})
+
 /* ---------- 侧栏信号：打开 / 收起（开关语义） ---------- */
+/*
+ * 信号约定（`agentUi` store）：
+ *   · `settingsToken`  —— 侧栏「设置」；再点一次收起
+ *   · `settingsTab`    —— 本次想停在哪个 tab（'settings' | 'kb'）
+ *
+ * 对话页的「知识库」按钮不再自己开抽屉，而是请求这里切到 kb tab ——
+ * 这样全站只有**一个**抽屉实例，不会再出现"左边知识库 + 右边设置"。
+ */
 let lastToken = ui.settingsToken
 watch(
   () => ui.settingsToken,
   (token) => {
     if (!token || token === lastToken) return
     lastToken = token
-    // 再点一次 = 收起（与原来对话页的行为一致，符合"开关"直觉）
-    visible.value = !visible.value
-    if (visible.value) {
-      // 侧栏宽度：外壳把它写在 CSS 变量上，这里读回来给抽屉让位
-      const w = getComputedStyle(document.documentElement).getPropertyValue('--os-sidebar-w').trim()
-      offsetLeft.value = Number(w.replace('px', '')) || 0
+    const want = (ui.settingsTab as PanelTab) || 'settings'
+    // 再点同一个 tab = 收起；点另一个 tab = 保持打开并切过去
+    if (visible.value && tab.value === want) {
+      visible.value = false
+      return
     }
+    tab.value = want
+    // 打开前先量一次侧栏宽度（拖拽过 / 收起过都能拿到当前真实值）
+    measureSidebar()
+    visible.value = true
+    if (want === 'kb') nextTick(() => kbRef.value?.activate?.())
   }
 )
 </script>
@@ -305,6 +396,50 @@ watch(
   min-height: 0;
   overflow-y: auto;
   padding: 4px 18px 24px;
+
+  &.is-kb {
+    /* 知识库面板自带内边距，这里不再叠加，否则内容会缩进两次 */
+    padding: 0;
+  }
+}
+
+/*
+ * tab 头（设置 / 知识库）
+ * ------------------------------------------------------------------
+ * 上一版漏了这段样式，图标与文字会叠在一起（挤成一团）。
+ * 与对话页原来的 `.agent-panel-tabs` 视觉保持一致：发丝下划线 + 激活态实色。
+ */
+.gs-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 14px;
+  flex: none;
+  border-bottom: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.06));
+}
+
+.gs-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 10px 10px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--os-text-3, #6b7280);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+
+  &:hover {
+    color: var(--os-text, #1f2937);
+  }
+
+  &.active {
+    color: var(--os-text, #1f2937);
+    font-weight: 600;
+    border-bottom-color: var(--os-primary, #4f6ef7);
+  }
 }
 
 .gs-row {
