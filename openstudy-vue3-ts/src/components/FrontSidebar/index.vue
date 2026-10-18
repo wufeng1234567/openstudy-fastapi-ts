@@ -393,9 +393,15 @@ const featureItems: NavItem[] = [
        * 用 `?tab=` 决定进页面时停在哪个分组。三个入口保留是因为用户习惯从
        * 「我的错题」「我的斩题」直接进，只是落地页变成了带分组切换的统一页面。
        */
+      /*
+       * 「题目管理」一个入口管三组：题目收藏 / 我的错题 / 我的斩题。
+       *
+       * 「我的错题」「我的斩题」两个独立入口**已移除**（用户 2026-10-18：
+       * 「把多余的我的错题、我的斩题去掉」）——它们指向的是同一个页面，
+       * 只是 `?tab=` 不同，放在侧栏里等于同一个功能出现三次。
+       * 需要到某个分组，进「题目管理」后点顶部 tab 即可。
+       */
       { label: '题目管理', to: '/front/myQuestion/questions?tab=favorite', cacheKey: 'questions' },
-      { label: '我的错题', to: '/front/myQuestion/questions?tab=wrong', cacheKey: 'questions' },
-      { label: '我的斩题', to: '/front/myQuestion/questions?tab=marked', cacheKey: 'questions' },
       { label: '我的笔记', to: '/front/myQuestion/myNotes', cacheKey: 'myNotes' },
       { label: '学习统计', to: '/front/myQuestion/myStats', cacheKey: 'myStats' }
     ]

@@ -436,6 +436,40 @@ const filteredBankList = computed(() => {
  *    后端实际返回**扁平**结构（见 `favoriteCardList` 的注释），
  *    但处理器里保留了 `bank` 自引用，两种形态都兼容，避免以后再踩一次。
  */
+/**
+ * 收藏列表 → 卡片数据
+ *
+ * ⚠️⚠️ 后端 `/favoriteBank/favoriteBank/all` 返回的是**已经摊平**的结构：
+ *    `_format_favorite_bank()` 里是 `row = format_bank(bank)`，题库字段
+ *    （`bankName` / `id` / `totalQuestions` / `coverImage` …）全在**顶层**，
+ *    `favoriteId` / `bankId` / `createTime` 这些收藏字段也与它同级。
+ *    **没有** `item.bank` 这个嵌套对象。
+ *
+ *    我上一版按 `item.bank?.bankName` 去取（那是「后端返回嵌套」的假设），
+ *    结果摊平出空对象 → 卡片显示「题库ID: undefined」（用户 2026-10-18 截图）。
+ *
+ * 所以这里**直接用原始条目**，只补一个 `bank` 自引用，
+ * 让下面的 `handleViewDetail` / `handleCopy` / `handleUncollect`
+ * （它们按 `item.bank?.xxx` 写的）也能正常工作 —— 两种取值都指向同一份数据。
+ */
+const favoriteCardList = computed(() =>
+  allFavoriteList.value.map((item: UserBankFavorite) => ({
+    ...item,
+    // 自引用：兼容按 `item.bank?.xxx` 取值的既有处理器
+    bank: item.bank || item,
+    isCollected: true
+  }))
+)
+
+/**
+ * 过滤后的收藏列表
+ *
+ * ⚠️ 这里用 `favoriteCardList` 做数据源，所以它**必须声明在上面**。
+ *    computed 的 getter 在组件渲染期间就会执行，此时下方还在暂时性死区的
+ *    `const` 一旦被引用就会抛
+ *    `Cannot access 'favoriteCardList' before initialization`
+ *    （用户 2026-10-18 在线上遇到的就是这个）。
+ */
 const filteredFavoriteList = computed(() => {
   let list: any[] = favoriteCardList.value as unknown as any[]
 
@@ -602,30 +636,6 @@ const fetchFavorites = () => {
   })
 }
 
-/**
- * 收藏列表 → 卡片数据
- *
- * ⚠️⚠️ 后端 `/favoriteBank/favoriteBank/all` 返回的是**已经摊平**的结构：
- *    `_format_favorite_bank()` 里是 `row = format_bank(bank)`，题库字段
- *    （`bankName` / `id` / `totalQuestions` / `coverImage` …）全在**顶层**，
- *    `favoriteId` / `bankId` / `createTime` 这些收藏字段也与它同级。
- *    **没有** `item.bank` 这个嵌套对象。
- *
- *    我上一版按 `item.bank?.bankName` 去取（那是「后端返回嵌套」的假设），
- *    结果摊平出空对象 → 卡片显示「题库ID: undefined」（用户 2026-10-18 截图）。
- *
- * 所以这里**直接用原始条目**，只补一个 `bank` 自引用，
- * 让下面的 `handleViewDetail` / `handleCopy` / `handleUncollect`
- * （它们按 `item.bank?.xxx` 写的）也能正常工作 —— 两种取值都指向同一份数据。
- */
-const favoriteCardList = computed(() =>
-  allFavoriteList.value.map((item: UserBankFavorite) => ({
-    ...item,
-    // 自引用：兼容按 `item.bank?.xxx` 取值的既有处理器
-    bank: item.bank || item,
-    isCollected: true
-  }))
-)
 
 /** 取消收藏（单个） */
 const handleUncollect = async (item: any) => {
