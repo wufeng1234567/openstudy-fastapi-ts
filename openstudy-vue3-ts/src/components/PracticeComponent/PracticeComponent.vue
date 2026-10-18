@@ -711,78 +711,29 @@ const jumpToNextBatch = () => {
   }, 150)
 }
 
+/**
+ * 「继续下一波」—— 只做一件事：切到下一波
+ * ============================================================================
+ * 用户 2026-10-18：「感觉太麻烦了，给我直接简化掉，简化更好的」。
+ *
+ * 旧实现（约 70 行）串了三层弹窗：
+ *   未答题 → 「是否继续提交」→ 「是否继续刷下一波」→ 再决定 jumpToNextBatch 还是
+ *   handleSubmitExam；而 handleSubmitExam 会把 showExamResult 置为 true，
+ *   底部按钮随即变成「结束」—— 于是第一波也会显示「结束」（用户报的 bug）。
+ *
+ * 现在这条链彻底删掉。语义回到最直白的：
+ *   · 「继续下一波」= 往前走一波，别的什么都不做；
+ *   · 「提交」= 进结算（由 handleSubmit 负责，那里有一次未答提醒）；
+ *   · 「回到上一波」= handlePrevBatch。
+ * 三个按钮各自只对应一个动作，不再互相触发弹窗。
+ */
 const handleContinuePractice = () => {
+  // 结算态下不该走到这里（那时按钮是「结束」），兜底先收起结果页
   if (showExamResult.value) {
-    ElMessageBox.confirm('是否留在当前页面继续查看解析？', '查看解析', {
-      confirmButtonText: '留在本页',
-      cancelButtonText: '继续刷题',
-      type: 'info'
-    }).then(() => {
-      showExamResult.value = true
-    }).catch(() => {
-      showExamResult.value = false
-      totalScore.value = 0
-      const count = moduleSettings.value.questionCount || 10
-      questionOffset.value = questionOffset.value + count
-      loadBatchWithoutReset()
-      setTimeout(() => {
-        if (overviewMode.value) {
-          const firstCard = document.querySelector('.overview-question-card')
-          if (firstCard) {
-            firstCard.scrollIntoView({ behavior: 'smooth', block: 'start' })
-          }
-        } else {
-          goToQuestion(0)
-        }
-      }, 150)
-    })
-    return
+    showExamResult.value = false
+    totalScore.value = 0
   }
-
-  const unanswered = totalQuestions.value - answeredCount.value
-  const hasMoreQuestions = allQuestionsData.value.length > questionOffset.value + totalQuestions.value
-  if (unanswered > 0) {
-    ElMessageBox.confirm(`您还有 ${unanswered} 题未作答，是否继续提交并查看解析？`, '提示', {
-      confirmButtonText: '继续提交',
-      cancelButtonText: '继续答题',
-      type: 'warning'
-    }).then(() => {
-      hasSubmittedCurrentBatch.value = true
-      if (isLastBatch.value) {
-        handleSubmitExam()
-      } else if (hasMoreQuestions) {
-        ElMessageBox.confirm('恭喜完成！是否继续刷下一波题目？', '继续刷题', {
-          confirmButtonText: '继续刷下一波',
-          cancelButtonText: '查看结果',
-          type: 'success'
-        }).then(() => {
-          jumpToNextBatch()
-        }).catch(() => {
-          handleSubmitExam()
-        })
-      } else {
-        handleSubmitExam()
-      }
-    }).catch(() => {
-      hasSubmittedCurrentBatch.value = true
-    })
-  } else {
-    handleSubmitExam()
-    hasSubmittedCurrentBatch.value = true
-    if (isLastBatch.value) {
-      // Last batch, just show results
-    } else if (hasMoreQuestions) {
-      ElMessageBox.confirm('恭喜完成！是否继续刷下一波题目？', '继续刷题', {
-        confirmButtonText: '继续刷下一波',
-        cancelButtonText: '查看结果',
-        type: 'success'
-      }).then(() => {
-        jumpToNextBatch()
-      }).catch(() => {
-        handleSubmitExam()
-      })
-    }
-  }
+  jumpToNextBatch()
 }
 
 const handlePrevBatch = () => {
@@ -1235,7 +1186,7 @@ watch(
     JSON.stringify(subEssayAnswers.value)
   ],
   () => {
-    // 结算/成绩页不写（那是结果态，不是"进行中的练习"）
+    // 结算/成绩页不写（那是结果态，不是「进行中的练习」）
     if (showExamResult.value) return
     // 恢复还没完成时不要写：否则会用"空答案"把暂存覆盖掉（最致命的一种数据丢失）
     if (!draftRestoredOnce) return
@@ -1247,7 +1198,7 @@ watch(
  * 兜底：题目首次就绪时尝试恢复
  *
  * 为什么不只依赖 onMounted 里那次：提交流程里 `fetchQuestions()` 有多条触发路径
- * （切换模块、设置变更、重新练习），onMounted 里的 `.then` 不一定是"题目第一次可用"
+ * （切换模块、设置变更、重新练习），onMounted 里的 `.then` 不一定是「题目第一次可用」
  * 的那一刻。这里盯住 `questions.length` 从 0 变正数，任何路径都能覆盖到。
  */
 watch(
