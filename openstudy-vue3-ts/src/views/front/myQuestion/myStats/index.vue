@@ -1,14 +1,16 @@
 <template>
     <div class="my-stats" v-loading="loading">
-        <div class="page-header">
-            <!-- 标题格式统一：我的学习 · xxx -->
-            <h2 class="page-title">
-                我的学习
-                <span class="title-sep">·</span>
-                学习统计
-            </h2>
-            <span class="page-sub">数据来自你的刷题、错题、斩题与收藏记录</span>
-        </div>
+        <!--
+          标题行已整块移除
+          ==========================================================================
+          用户 2026-10-18：「学习统计那边『我的学习 · 学习统计』+『数据来自你的刷题、
+          错题、斩题与收藏记录』这一行去掉，跟前面几个模块一样，把后面的副标题
+          改到第一行的『我的学习 · 学习统计』就行」。
+
+          所以顶栏（`layout/front.vue`）现在显示：
+            `我的学习 · 学习统计  数据来自你的刷题、错题、斩题与收藏记录`
+          内容区直接从内容开始，不再占一行。
+        -->
 
         <!-- ============ 零数据：给出引导而不是一片空图 ============ -->
         <div v-if="!loading && isEmpty" class="onboarding">
@@ -164,6 +166,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'MyStats' })
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import useTopbarStore from '@/store/modules/topbar'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import { TrendCharts, ArrowRight } from '@element-plus/icons-vue'
@@ -520,7 +523,14 @@ const goWrongQuestion = (item: { questionId: number | string }) => {
     })
 }
 
+const topbarStore = useTopbarStore()
+
 onMounted(async () => {
+    /*
+     * 把原来内容区那行副标题推到顶栏
+     * 用户 2026-10-18：内容区不再有标题行，说明文字并到顶栏那一行。
+     */
+    topbarStore.setCount('数据来自你的刷题、错题、斩题与收藏记录')
     await nextTick()
     window.addEventListener('resize', handleResize)
     setTimeout(fetchAll, 100)
@@ -529,6 +539,7 @@ onMounted(async () => {
 onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
     disposeCharts()
+    topbarStore.clear()
 })
 </script>
 

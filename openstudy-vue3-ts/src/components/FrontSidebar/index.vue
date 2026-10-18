@@ -402,7 +402,12 @@ const featureItems: NavItem[] = [
        * 需要到某个分组，进「题目管理」后点顶部 tab 即可。
        */
       { label: '题目管理', to: '/front/myQuestion/questions?tab=favorite', cacheKey: 'questions' },
-      { label: '我的笔记', to: '/front/myQuestion/myNotes', cacheKey: 'myNotes' },
+      /*
+       * 「我的笔记」改名为「笔记管理」并合并了「收藏的笔记」（用户 2026-10-18）。
+       * 旧的两个独立入口（我的笔记 / 收藏的笔记）合成一个 ——
+       * 收藏是笔记管理的第二个分组，不该在侧栏再占一行。
+       */
+      { label: '笔记管理', to: '/front/myQuestion/noteManage?tab=own', cacheKey: 'noteManage' },
       { label: '学习统计', to: '/front/myQuestion/myStats', cacheKey: 'myStats' }
     ]
   },

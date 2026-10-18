@@ -324,7 +324,10 @@ const MY_LEARNING_SUB: Array<[string, string]> = [
   ['/front/myQuestion/myShares', '我的分享'],
   /* 题目收藏 / 我的错题 / 我的斩题 已合并为这一个页面（用户 2026-10-18） */
   ['/front/myQuestion/questions', '题目管理'],
-  ['/front/myQuestion/myNotes', '我的笔记'],
+  /* 我的笔记 / 收藏的笔记 已合并为「笔记管理」（用户 2026-10-18） */
+  ['/front/myQuestion/noteManage', '笔记管理'],
+  ['/front/myQuestion/myNotes', '笔记管理'],
+  ['/front/myQuestion/favoriteNote', '笔记管理'],
   ['/front/myQuestion/myStats', '学习统计']
 ]
 

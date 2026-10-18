@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="note-favorite-container">
     <div v-if="loading" class="loading-container">
       <el-icon class="is-loading">
@@ -39,7 +39,11 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'FrontMyFavoriteNote' })
-import { ref, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
+
+/** 条数变化时通知外层（供「笔记管理」把计数推到顶栏） */
+const emitTotal = defineEmits<{ (e: 'total-change', n: number): void }>()
+
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
@@ -64,6 +68,9 @@ const notes = ref<FavoriteNoteItem[]>([])
 const currentPage = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
+
+// 条数变化 → 通知外层（「笔记管理」据此更新顶栏计数）
+watch(total, (n) => emitTotal('total-change', Number(n) || 0), { immediate: true })
 
 const loadNotes = async () => {
   loading.value = true

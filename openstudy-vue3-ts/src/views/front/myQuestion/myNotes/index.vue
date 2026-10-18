@@ -1,8 +1,12 @@
 <template>
   <div ref="pageRef" class="my-notes-page">
     <div ref="searchAreaRef" class="search-area-wrapper">
+    <!--
+      `embedded = true`（被「笔记管理」内嵌）时用 `hide-title` 隐藏标题行 ——
+      标题与计数由外层分组切换 + 顶栏承担，搜索框和操作按钮保留。
+    -->
     <PageHeader title="我的笔记" :total="total" unit="篇" itemName="笔记" placeholder="搜索笔记..." v-model="searchKeyword"
-      show-filter :filter-open="filterOpen" :filter-active="filterActive"
+      show-filter :filter-open="filterOpen" :filter-active="filterActive" :hide-title="embedded"
       @search="handleSearch" @refresh="handleRefresh" @toggle-filter="toggleFilterSidebar">
       <template #extra>
         <el-button v-if="notesList.length > 0" class="delete-all-btn" @click="handleDeleteAll">
@@ -122,6 +126,14 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'FrontMyNotes' })
+
+/**
+ * `embedded`：被「笔记管理」内嵌时隐藏自己的标题行（外层有分组切换 + 顶栏标题）
+ */
+const props = withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false })
+
+/** 条数变化时通知外层（供「笔记管理」把计数推到顶栏） */
+const emitTotal = defineEmits<{ (e: 'total-change', n: number): void }>()
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -215,6 +227,9 @@ const pageSize = ref(12)
 const total = ref(0)
 const currentBankName = ref('')
 const bankFilteredNoteIds = ref<(number | string)[]>([])
+
+// 条数变化 → 通知外层（「笔记管理」据此更新顶栏计数）
+watch(total, (n) => emitTotal('total-change', Number(n) || 0), { immediate: true })
 
 /**
  * 拉取笔记列表。

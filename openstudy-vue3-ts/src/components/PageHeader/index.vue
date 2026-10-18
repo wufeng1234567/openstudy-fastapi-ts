@@ -3,7 +3,12 @@
   <div class="page-header">
     <!-- 标题和搜索区域 -->
     <div class="search-area">
-      <div class="title-section">
+      <!--
+        `hideTitle`：内嵌到「笔记管理」这类分组壳里时，
+        标题行由外层分组切换 + 顶栏承担，这里不再重复渲染。
+        搜索框与操作按钮保留（那是页面级功能，不是标题）。
+      -->
+      <div v-if="!hideTitle" class="title-section">
         <h2 class="page-title">{{ title }}</h2>
         <span class="total-count">{{ countText }}</span>
       </div>
@@ -35,6 +40,15 @@ const props = defineProps({
   title: {
     type: String,
     default: ''
+  },
+  /**
+   * 隐藏标题行（只保留搜索框与操作按钮）
+   * 用于内嵌到「题库管理 / 题目管理 / 笔记管理」这类带分组切换的壳里 ——
+   * 标题由分组切换 + 顶栏承担，不再重复。
+   */
+  hideTitle: {
+    type: Boolean,
+    default: false
   },
   total: {
     type: Number,

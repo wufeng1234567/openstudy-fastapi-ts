@@ -2,15 +2,18 @@
 <!-- 题库主查看自己发出的分享：有效期 / 领取人数 / 撤销 -->
 <template>
   <div class="my-shares-page">
-    <div class="title-section">
-      <!-- 标题格式统一：我的学习 · xxx ｜ N 条 -->
-      <h2 class="page-title">
-        我的学习
-        <span class="title-sep">·</span>
-        分享
-      </h2>
+    <!--
+      标题行已移除，只留操作按钮
+      ==========================================================================
+      用户 2026-10-18：「我的学习那边也是一样，『我的学习 · 分享』+『5 条分享』
+      同样要修改到对应的第一行去」。
+
+      所以「我的学习 · 分享」和「N 条分享」都在顶栏那一行
+      （见 `layout/front.vue` 的 pageTitle + `topbar` store），
+      内容区这里只剩「分享我的题库 / 刷新」两个动作。
+    -->
+    <div class="title-section is-actions-only">
       <div class="title-right">
-        <span class="total-count">{{ shareList.length }} 条分享</span>
         <el-button type="primary" plain @click="shareDialogVisible = true">
           <el-icon><Share /></el-icon>
           分享我的题库
@@ -78,7 +81,8 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'FrontMyShares' })
-import { ref, onMounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
+import useTopbarStore from '@/store/modules/topbar'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Document, User, Clock, Calendar, Share } from '@element-plus/icons-vue'
 import { listMyBankShares, revokeBankShare } from '@/api/bankShare/bankShare'
@@ -140,7 +144,18 @@ const revoke = async (item: any) => {
   }
 }
 
-onMounted(fetchShares)</script>
+onMounted(fetchShares)
+
+/* ---------- 顶栏计数 ----------
+ * 「N 条分享」原来在内容区标题行，用户 2026-10-18 要求并入顶栏那一行。
+ */
+const topbarStore = useTopbarStore()
+watch(
+  () => shareList.value.length,
+  (n) => topbarStore.setCount(n ? `${n} 条分享` : ''),
+  { immediate: true }
+)
+onUnmounted(() => topbarStore.clear())</script>
 
 <style scoped>
 .my-shares-page {
@@ -152,6 +167,15 @@ onMounted(fetchShares)</script>
   align-items: center;
   justify-content: space-between;
   margin-bottom: 20px;
+
+  /*
+   * 只剩操作按钮时（标题与计数已挪到顶栏），右对齐并收紧下边距 ——
+   * 否则左侧会留一块空白，看起来像"标题没渲染出来"。
+   */
+  &.is-actions-only {
+    justify-content: flex-end;
+    margin-bottom: 12px;
+  }
 }
 
 .title-right {

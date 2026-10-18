@@ -412,10 +412,28 @@ export const constantRoutes: AppRouteRecordRaw[] = [
             hidden: true
           },
           {
+            /* 「我的笔记」已合并进「笔记管理」（用户 2026-10-18）。
+               旧路径保留 redirect，兼容书签。 */
             path: 'myNotes',
             name: 'FrontMyNotes',
-            component: () => import('@/views/front/myQuestion/myNotes/index.vue'),
+            redirect: '/front/myQuestion/noteManage?tab=own',
             meta: { title: '我的笔记', layout: 'front' },
+            hidden: true
+          },
+          {
+            /* 「收藏的笔记」同样并入「笔记管理」的第二个分组 */
+            path: 'favoriteNote',
+            name: 'FrontMyFavoriteNote',
+            redirect: '/front/myQuestion/noteManage?tab=favorite',
+            meta: { title: '收藏的笔记', layout: 'front' },
+            hidden: true
+          },
+          {
+            /* 「笔记管理」：我的笔记 / 收藏的笔记 两个分组共用一个页面 */
+            path: 'noteManage',
+            name: 'FrontNoteManage',
+            component: () => import('@/views/front/myQuestion/noteManage/index.vue'),
+            meta: { title: '笔记管理', layout: 'front' },
             hidden: true
           },
           {
