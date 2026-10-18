@@ -387,12 +387,28 @@ const expertHeadline = (ex: any) => {
   return ex?.status === 'ok' ? '已完成（没有返回结论）' : '已完成'
 }
 
+/**
+ * 某个专家行是否展开
+ * ----------------------------------------------------------------------------
+ * 用户 2026-10-18：「专家并行的时候 会自己自动展开里面的内容 需要修改
+ * 由用户自己决定是否展开」。
+ *
+ * 原先的默认值是这样的：
+ *   `return !!(done && String(ex.summary || '').trim())`
+ * 也就是——专家一完成、只要有结论摘要，就**自动展开正文**。
+ * 单个专家时还不明显，但并行派发时几个专家几乎同时完成，
+ * 于是整屏内容"啪"地一起展开，把对话流冲得没法看。
+ *
+ * 现在默认**一律折叠**：是否展开完全由用户点击决定。
+ * 收起态的摘要仍然可见（见 `expertHeadline`），所以不会出现
+ * "看不到专家说了什么" —— 那正是当初加自动展开想解决的问题。
+ */
 const isExpertOpen = (msg: any, rowIdx: number) => {
   const k = expertKey(msg, rowIdx)
+  // 用户点过就完全听用户的
   if (expertUserToggled.value.has(k)) return expertOpen.value.has(k)
-  const ex = (msg?.experts || [])[rowIdx]
-  const done = ex && ex.status && ex.status !== 'running'
-  return !!(done && String(ex.summary || '').trim())
+  // 没点过：默认折叠，不再根据 summary 自动展开
+  return false
 }
 
 const toggleExpert = (msg: any, rowIdx: number) => {
