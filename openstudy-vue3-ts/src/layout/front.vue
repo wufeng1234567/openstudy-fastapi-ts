@@ -126,6 +126,19 @@
 
     <!-- 全局悬浮 AI 助手：智能体页本身就是对话页，不再叠一个悬浮球 -->
     <AiAssistant v-if="isLogin && !isGuest && !isAgentPage" />
+
+    <!--
+      全局设置抽屉
+      ------------------------------------------------------------------
+      用户 2026-10-18：「设置面板和智能会话目前是绑定在一起的…设置按钮应该作为
+      一个全局设置对象处理，在哪里点击就在那个页面展开。」
+
+      所以它挂在**外壳**上（不是挂在对话页里）：
+        · 任何页面点侧栏「设置」都在**当前页**就地展开，不再被拽去对话页；
+        · 侧栏只发一个信号（`agentUi.requestSettings()`），不做 router.push；
+        · 与对话页彻底解耦，也就不会再出现"keep-alive 反复激活导致两个抽屉"。
+    -->
+    <GlobalSettings v-if="isLogin && !isGuest" />
   </div>
 </template>
 
@@ -155,6 +168,7 @@ import FrontSidebar from '@/components/FrontSidebar/index.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import UserAvatar from '@/components/UserAvatar/index.vue'
 import AiAssistant from '@/components/AiAssistant/index.vue'
+import GlobalSettings from '@/components/GlobalSettings/index.vue'
 
 const route = useRoute()
 const router = useRouter()

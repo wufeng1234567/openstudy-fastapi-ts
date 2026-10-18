@@ -484,14 +484,20 @@ async function startNewChat() {
 /**
  * 打开设置抽屉
  * ------------
- * 设置面板住在智能对话页里（智能体 / 模型 / 可用工具），
- * 所以先送用户到对话页，再发 token 让它打开抽屉。
+ * 用户 2026-10-18：「设置面板和智能会话绑定在一起…我在题库练习页面点设置，
+ * 它会自动跳到智能会话页面，这不合理。设置按钮应该作为全局设置对象，
+ * **在哪里点击就在那个页面展开**。」
+ *
+ * 所以这里**不再 router.push**。设置抽屉已经提升为全局组件
+ * （`components/GlobalSettings`，挂在外壳 `layout/front.vue` 上），
+ * 侧栏只负责发一个信号，它在当前页面就地展开。
+ *
+ * ⚠️ 同时删掉了 `emitNavigate()`：那是"点了导航项就收起移动端侧栏"用的，
+ *    现在点设置不跳页面，再收侧栏会让抽屉莫名其妙跟着收起。
  */
 async function openSettings() {
   if (!(await ensureLogin('修改设置'))) return
   agentUiStore.requestSettings()
-  if (route.path !== '/front/agent/chat') router.push('/front/agent/chat')
-  emitNavigate()
 }
 
 /* ==================== 会话列表 ==================== */

@@ -203,12 +203,14 @@
       :max="720"
     >
       <div class="agent-panel">
-        <!-- tab 头：设置 / 知识库（历史会话已移到左侧导航栏，不再占一个 tab） -->
+        <!--
+          tab 头：只剩「知识库」
+          ------------------------------------------------------------------
+          用户 2026-10-18：「设置按钮应该作为全局设置对象处理，在哪里点击就在那个页面展开」。
+          于是「设置」从对话页里摘掉，改成外壳上的全局抽屉（`components/GlobalSettings`）。
+          这里如果继续保留一个设置 tab，会和全局抽屉重复（两个入口、两套状态）。
+        -->
         <div class="agent-panel-tabs">
-          <div :class="['aptab', { active: panelTab === 'settings' }]" @click="switchTab('settings')">
-            <el-icon><Setting /></el-icon>
-            <span>设置</span>
-          </div>
           <div :class="['aptab', { active: panelTab === 'kb' }]" @click="switchTab('kb')">
             <el-icon><FolderOpened /></el-icon>
             <span>知识库</span>
@@ -216,78 +218,6 @@
         </div>
 
         <!-- ① 设置 -->
-        <div v-show="panelTab === 'settings'" class="agent-panel-body settings-body">
-          <!-- 我的智能体（用户自建角色）——官方"专家"已由下面的「专家」开关管理，
-               故这里**不再**列官方角色（避免与专家开关重复、造成"两个地方管同一批东西"）。
-               「选哪个对话」与「管理（增删改）」是同一件事的两个面，合并在同一区块，
-               不再一个在顶、一个在底，避免割裂感。 -->
-          <div class="settings-row">
-            <div class="settings-label-row">
-              <span class="settings-label">我的智能体</span>
-              <el-button text type="primary" size="small" @click="openAgentManager">
-                管理（新建 / 编辑 / 删除）
-              </el-button>
-            </div>
-            <div class="settings-field">
-              <el-select v-if="myAgents.length" v-model="selectedAgentKey" size="default"
-                :disabled="isGenerating" style="width: 100%">
-                <el-option label="自动（由主助手按需安排）" :value="AUTO_AGENT_KEY" />
-                <el-option v-for="a in myAgents" :key="'a-' + a.agentId" :label="a.name" :value="'user:' + a.agentId" />
-              </el-select>
-              <div class="settings-hint" v-if="myAgents.length">
-                「自动」= 由主助手按需安排；也可指定你创建的某个智能体来对话。
-              </div>
-              <div class="settings-hint" v-else>
-                还没有自定义智能体。点上方「管理」新建一个（可设人设、限定工具、绑定模型）。
-              </div>
-            </div>
-          </div>
-
-          <div class="settings-row">
-            <div class="settings-label">模型</div>
-            <div class="settings-field">
-              <AiModelSelector v-model="model" scene="agent" width="100%" :disabled="isGenerating" @select="onModelSelect" />
-            </div>
-          </div>
-
-          <div class="settings-row">
-            <div class="settings-label">专家</div>
-            <div class="settings-field">
-              <!-- 三种状态分开说：读取中 / 取不到（可重试）/ 有数据 -->
-              <div v-if="expertLoading" class="settings-hint">正在读取专家…</div>
-              <div v-else-if="expertLoadFailed" class="settings-tools-error">
-                <span>专家列表没取到</span>
-                <el-button text type="primary" size="small" @click="loadExperts">重试</el-button>
-              </div>
-              <div v-else class="settings-tools">
-                <div v-for="e in experts" :key="e.key" class="settings-tool settings-expert">
-                  <div class="settings-expert-main">
-                    <span class="settings-tool-name">{{ e.name }}</span>
-                    <span class="settings-expert-desc">{{ e.description }}</span>
-                    <AiModelSelector
-                      :model-value="e.model || ''"
-                      scene="agent-expert"
-                      width="100%"
-                      :auto-default="false"
-                      class="settings-expert-model"
-                      @update:model-value="(v) => onExpertModelChange(e, v)"
-                    />
-                  </div>
-                  <el-switch
-                    :model-value="e.disabled !== 1"
-                    size="small"
-                    :loading="expertTogglingKey === e.key"
-                    :disabled="isGenerating"
-                    @update:model-value="toggleExpert(e, $event)"
-                  />
-                </div>
-              </div>
-              <div class="settings-hint">
-                开启的专家，主助手会在需要时自动请它来帮忙；关掉就完全不用它。
-              </div>
-            </div>
-          </div>
-        </div>
 
         <!-- ② 知识库（与悬浮助手同一个面板组件） -->
         <div v-show="panelTab === 'kb'" class="agent-panel-body">
