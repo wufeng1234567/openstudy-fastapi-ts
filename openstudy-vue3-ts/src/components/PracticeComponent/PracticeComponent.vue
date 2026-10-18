@@ -34,11 +34,15 @@
               :selected-answer="answers[index]" :sub-fill-blank-answers="subFillBlankAnswers"
               :sub-essay-answers="subEssayAnswers" :answers="answers"
               :show-analysis-immediately="showAnalysisImmediately" :show-question-index="false"
+              :overview-mode="true"
+              :overview-need-submit="!isExamMode && needsOverviewSubmit(item) && !overviewCommitted[index]"
+              :overview-committed="!!overviewCommitted[index]"
               @select-option="(optIdx) => handleOverviewSelect(index, optIdx)"
               @update-answer="(value) => handleOverviewUpdateAnswer(index, value)"
               @select-sub-option="(subIndex, optIdx) => handleOverviewSelectSubOption(index, subIndex, optIdx)"
               @update-sub-fill-blank-answer="(subIndex, value) => handleOverviewUpdateSubFillBlank(index, subIndex, value)"
               @update-sub-essay-answer="(subIndex, value) => handleOverviewUpdateSubEssay(index, subIndex, value)"
+              @commit-answer="handleOverviewCommitAnswer(index)"
               @preview-image="openImageViewer" />
           </div>
 
@@ -136,8 +140,18 @@
     <!-- 刷题设置弹窗 -->
     <PracticeSettings v-model="showSettings" :default-module="moduleType" @save="handleSettingsSave" />
 
-    <!-- 滚动按钮 -->
-    <ScrollButton :bottom="20" :right="20" />
+    <!--
+      滚动按钮（回到顶部 / 跳到底部）
+
+      ⚠️ **不要传 scroll-container**（用户 2026-10-18 bug4）。
+         实测这页真正在滚的是**外壳内容区 `.os-content`**（sh 4938 / ch 948），
+         而 `.overview-question-stream` 自己 `scrollHeight === clientHeight`（不滚），
+         `document.documentElement` 也不滚（整页高度 = 视口）。
+         写死任何一个都会踩空。
+      所以交给 ScrollButton 自己从挂载点向上找"内容确实溢出"的可滚动祖先，
+      这样不管是单题模式、浏览模式，还是将来换外壳，都能自动对上。
+    -->
+    <ScrollButton :bottom="24" :right="24" />
 
     <ImageViewer v-model:visible="viewerVisible" :src="viewerSrc" />
   </div>
@@ -504,6 +518,67 @@ const handleMarkedChange = (index: number) => {
   store.saveModuleSettings(props.moduleType, { markedQuestions: markedQuestions.value })
 }
 
+/*
+ * ==================== 整体浏览模式：作答 → 判题 ====================
+ *
+ * 用户 2026-10-18 报的 bug2：
+ *   浏览模式下**单选**点一下就出答案（这是设计初衷），
+ *   但**多选 / 填空 / 简答**也被同样对待：
+ *     · 多选：刚点第一个选项就判了（必然错），没法选第二个；
+ *     · 填空：输入第一个字符就提交了，后面全被"判错"；
+ *     · 简答：同样，写一个字就判。
+ *
+ * 修法：按题型分流。
+ *   · `single` / `truefalse` → 选完**立即判**（保留初衷，不用多点一次）；
+ *   · `multiple` / `fillblank` / `essay` / 组合题子题 → 只记录答案，
+ *     等用户在题目下方点「提交答案」才判（见 `handleOverviewCommitAnswer`）。
+ *
+ * 为什么用"是否即时判"的判定函数、而不是在模板里散写条件：
+ *   同一套判断在 4 个入口（选项 / 子选项 / 填空 / 简答）都要用，
+ *   QuestionDisplay 也要用它决定显示"提交答案"按钮还是直接出解析。
+ */
+
+/** 这类题型"选一个就能定论"，可以即时判；其余需要用户确认后再判 */
+function isInstantJudgeType(type: string | undefined) {
+  return type === 'single' || type === 'truefalse'
+}
+
+/** 该题（在浏览模式下）是否已经提交过答案 */
+const overviewCommitted = ref<Record<number, boolean>>({})
+
+/** 浏览模式下：这道题要不要显示「提交答案」按钮 */
+function needsOverviewSubmit(q: any): boolean {
+  if (!q) return false
+  if (isInstantJudgeType(q.type)) return false
+  // 组合题：只有存在子题时才需要（子题逐题提交）
+  if (q.type === 'composite') {
+    return Array.isArray(q.subQuestions) && q.subQuestions.length > 0
+  }
+  return true
+}
+
+/**
+ * 浏览模式下用户点「提交答案」→ 真正判题
+ *
+ * 同时把 `overviewCommitted[qIndex]` 置真：QuestionDisplay 据此把
+ * 「提交答案」换成解析（它已经通过 `showAnalysisImmediately` 拿到结果）。
+ */
+function handleOverviewCommitAnswer(qIndex: number) {
+  if (currentQuestionIndex.value !== qIndex) {
+    currentQuestionIndex.value = qIndex
+  }
+  const q = questions.value[qIndex]
+  // 空答案（没选 / 没填）不判，避免用户点一下就判错
+  const val = answers.value[qIndex]
+  const empty = val === null || val === undefined || val === '' || (Array.isArray(val) && val.length === 0)
+  if (empty) {
+    ElMessage.warning(q?.type === 'essay' ? '请先写下你的答案' : '请先作答再提交')
+    return
+  }
+  overviewCommitted.value[qIndex] = true
+  handleAnswerSubmission(qIndex)
+}
+
 const handleOverviewSelect = (qIndex: number, optIdx: number) => {
   if (currentQuestionIndex.value !== qIndex) {
     if (currentQuestion.value && !['readingComprehension', 'cloze'].includes(currentQuestion.value.type) && selectedAnswer.value !== null && answers.value[currentQuestionIndex.value] === null) {
@@ -517,7 +592,8 @@ const handleOverviewSelect = (qIndex: number, optIdx: number) => {
   if (questions.value[qIndex]) {
     questions.value[qIndex].answered = true
   }
-  if (!isExamMode.value) {
+  // 单选/判断：即时判（原行为）；多选：等用户点「提交答案」
+  if (!isExamMode.value && isInstantJudgeType(questions.value[qIndex]?.type)) {
     handleAnswerSubmission(qIndex)
   }
 }
@@ -531,7 +607,9 @@ const handleOverviewUpdateAnswer = (qIndex: number, value: any) => {
   if (questions.value[qIndex]) {
     questions.value[qIndex].answered = true
   }
-  if (!isExamMode.value) {
+  // 填空/简答是"边写边改"，**不能**每次输入都判题（原来这里会立刻判错）。
+  // 只有单选/判断这类"一下就定"的题型才即时判。
+  if (!isExamMode.value && isInstantJudgeType(questions.value[qIndex]?.type)) {
     handleAnswerSubmission(qIndex)
   }
 }
@@ -549,9 +627,7 @@ const handleOverviewUpdateSubFillBlank = (qIndex: number, subIndex: number, valu
     currentQuestionIndex.value = qIndex
   }
   updateSubFillBlankAnswer(subIndex, value)
-  if (!isExamMode.value) {
-    handleAnswerSubmission(qIndex)
-  }
+  // 组合题子题（填空）：同样不即时判，等用户点「提交答案」
 }
 
 const handleOverviewUpdateSubEssay = (qIndex: number, subIndex: number, value: any) => {
@@ -559,9 +635,7 @@ const handleOverviewUpdateSubEssay = (qIndex: number, subIndex: number, value: a
     currentQuestionIndex.value = qIndex
   }
   updateSubEssayAnswer(subIndex, value)
-  if (!isExamMode.value) {
-    handleAnswerSubmission(qIndex)
-  }
+  // 组合题子题（简答）：不即时判
 }
 
 const jumpToNextBatch = () => {

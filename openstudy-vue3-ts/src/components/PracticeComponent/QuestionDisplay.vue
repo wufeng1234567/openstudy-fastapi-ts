@@ -104,6 +104,24 @@
       </div>
     </div>
 
+    <!--
+      浏览模式下的「提交答案」（用户 2026-10-18 bug2）
+      ================================================
+      背景：浏览模式原本是"选完立刻判"，单选/判断这样很顺，
+      但多选/填空/简答被同样对待 → 多选点第一个选项就判错、填空题输第一个字就判错。
+
+      现在按题型分流（判定逻辑在 PracticeComponent 的 `isInstantJudgeType`）：
+        · 单选 / 判断 → 仍然点完即判，**不显示**这个按钮；
+        · 多选 / 填空 / 简答 / 组合题 → 先记录答案，用户点「提交答案」才判分。
+      提交过（overviewCommitted）就不再显示按钮，改为展示解析。
+    -->
+    <div v-if="overviewNeedSubmit" class="overview-commit-row">
+      <el-button type="primary" size="small" @click="$emit('commit-answer')">
+        提交答案
+      </el-button>
+      <span class="commit-hint">提交后才会判分并显示解析</span>
+    </div>
+
     <!-- ✅ 修复：完整的解析区域（排除组合题） -->
     <div class="question-analysis" v-if="currentQuestion && currentQuestion.showAnalysis && showAnalysisImmediately && !['readingComprehension', 'cloze'].includes(currentQuestion.type)">
       <el-divider content-position="left">
@@ -214,6 +232,22 @@ const props = defineProps({
   showQuestionIndex: {
     type: Boolean,
     default: true
+  },
+  /* ---- 整体浏览模式：多选/填空/简答需要「提交答案」才判分（见模板里的说明） ---- */
+  /** 是否处于整体浏览模式（单题模式不显示提交按钮） */
+  overviewMode: {
+    type: Boolean,
+    default: false
+  },
+  /** 本题当前是否**需要**显示「提交答案」按钮 */
+  overviewNeedSubmit: {
+    type: Boolean,
+    default: false
+  },
+  /** 本题是否**已经提交过**（提交后不再显示按钮，改为展示解析） */
+  overviewCommitted: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -223,6 +257,7 @@ const emit = defineEmits([
   'select-sub-option',
   'update-sub-fill-blank-answer',
   'update-sub-essay-answer',
+  'commit-answer',
   'preview-image'
 ])
 
@@ -711,5 +746,21 @@ function handleContentClick(e: MouseEvent) {
 
 .reading-analysis {
   margin-top: 30px;
+}
+
+/* 浏览模式的「提交答案」行：与题面留一点空隙，左边按钮、右边灰字提示 */
+.overview-commit-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+
+  .commit-hint {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--os-text-4, #9ca3af);
+  }
 }
 </style>

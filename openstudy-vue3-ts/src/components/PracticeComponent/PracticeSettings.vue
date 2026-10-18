@@ -118,8 +118,29 @@
             <div class="setting-label">练习模式</div>
             <div class="setting-desc">刷题模式答完即显示解析，考试模式提交后统一判题</div>
           </div>
-          <el-switch :model-value="localSettings.practiceMode === 'exam'" @update:model-value="togglePracticeMode"
-            active-text="考试" inactive-text="刷题" inline-prompt />
+          <!--
+            原来是一个 `el-switch`，`model-value = (practiceMode === 'exam')`，
+            意思是「开关的"开"= 考试模式」。结果：
+              · 在**刷题**模式下开关是灰的（关）→ 用户以为"刷题功能被关掉了"；
+              · `inline-prompt` 把「考试/刷题」两字压在开关轨道上，
+                灰色轨道 + 白字几乎看不清（用户 2026-10-18 反馈"切换不明显"）。
+            这里改成**分段选择器**：两个模式并排、当前项高亮实心，
+            语义是"选其中一个"，而不是"开/关某个东西"。
+          -->
+          <div class="mode-segmented" role="radiogroup" aria-label="练习模式">
+            <button type="button" role="radio" :aria-checked="localSettings.practiceMode === 'practice'"
+              :class="['mode-seg', { active: localSettings.practiceMode === 'practice' }]"
+              @click="setPracticeMode('practice')">
+              <span class="ms-title">刷题</span>
+              <span class="ms-desc">答完即看解析</span>
+            </button>
+            <button type="button" role="radio" :aria-checked="localSettings.practiceMode === 'exam'"
+              :class="['mode-seg', { active: localSettings.practiceMode === 'exam' }]"
+              @click="setPracticeMode('exam')">
+              <span class="ms-title">考试</span>
+              <span class="ms-desc">交卷后统一判</span>
+            </button>
+          </div>
         </div>
 
         <!-- 模拟考试模式（只读固定） -->
@@ -221,11 +242,17 @@ function getModuleHint(moduleType: string) {
   return '（全部可调）'
 }
 
-function togglePracticeMode(isExam: boolean) {
-  localSettings.practiceMode = isExam ? 'exam' : 'practice'
-  if (isExam) {
+function setPracticeMode(mode: 'practice' | 'exam') {
+  localSettings.practiceMode = mode
+  // 考试模式下「答对自动跳下一题」没有意义（交卷才判分），强制关掉
+  if (mode === 'exam') {
     localSettings.autoNextOnCorrect = false
   }
+}
+
+/** 兼容旧调用（早期是 el-switch 的布尔回调） */
+function togglePracticeMode(isExam: boolean) {
+  setPracticeMode(isExam ? 'exam' : 'practice')
 }
 
 watch(() => props.modelValue, (val) => {
@@ -501,5 +528,70 @@ function handleCancel() {
   font-size: 13px;
   color: #6b7280;
   white-space: nowrap;
+}
+
+/* ==================== 练习模式：分段选择器 ====================
+ * 替代原来的 el-switch。要点：
+ *   · 两个模式**并排**，用户一眼看出"这是二选一"，不是"开关"；
+ *   · 当前项：近黑实心 + 白字（与全站 primary 一致），另一项：白底灰字；
+ *   · 每项带一行小字说明，避免"刷题/考试"两个词需要猜含义。
+ */
+.mode-segmented {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+
+.mode-seg {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 104px;
+  padding: 7px 12px;
+  border: 1px solid var(--os-border, #e5e7eb);
+  border-radius: var(--os-radius-sm, 8px);
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--ds-duration-fast, 0.15s) var(--ds-ease-in-out, ease),
+    border-color var(--ds-duration-fast, 0.15s) var(--ds-ease-in-out, ease),
+    color var(--ds-duration-fast, 0.15s) var(--ds-ease-in-out, ease);
+
+  .ms-title {
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.4;
+    color: var(--os-text, #1f2937);
+  }
+
+  .ms-desc {
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--os-text-4, #9ca3af);
+  }
+
+  &:hover {
+    border-color: var(--os-border-strong, #d1d5db);
+  }
+
+  &.active {
+    background: var(--os-primary, #0f1115);
+    border-color: var(--os-primary, #0f1115);
+
+    .ms-title,
+    .ms-desc {
+      color: #fff;
+    }
+
+    .ms-desc {
+      opacity: 0.72;
+    }
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--os-primary, #0f1115);
+    outline-offset: 2px;
+  }
 }
 </style>

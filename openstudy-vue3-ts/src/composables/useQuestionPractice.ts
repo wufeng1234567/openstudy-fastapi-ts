@@ -602,6 +602,26 @@ export function useQuestionPractice(
     loading.value = false
   }
 
+  /**
+   * 取组合题的子题数组（**字段名兼容**）
+   *
+   * ⚠️ 这里踩过坑（用户 2026-10-18 bug3「组合题只有题干、看不到子题」）：
+   *    前端原来只读 `q.questionSubList`，但后端 `format_question()` 返回的键叫
+   *    `subQuestions`（见 `app/api/v1/questions.py`）——**永远取不到**，
+   *    于是子题数组恒为空、`ReadingComprehensionDisplay` 的
+   *    `v-if="subQuestions.length > 0"` 整块不渲染，界面上就只剩题干。
+   *
+   *    三个候选键都兼容：`subQuestions`（后端现用）/ `questionSubList`（早期约定，写入时用）/
+   *    `question_sub_list`（蛇形接口）。取到第一个非空数组即返回。
+   */
+  function pickSubList(q: any): any[] {
+    if (!q) return []
+    const candidates = [q.subQuestions, q.questionSubList, q.question_sub_list]
+    for (const c of candidates) {
+      if (Array.isArray(c) && c.length > 0) return c
+    }
+    return []
+  }
   // ✅ 关键：导出的通用转换函数 - 完整版
   function transformQuestionForDisplay(q: any): TransformedQuestion {
     let type: QuestionType = 'unknown'
@@ -794,8 +814,8 @@ export function useQuestionPractice(
         mainContent = mainContent.replace(/\[\[(\d+)\]\]/g, '___$1___')
       }
 
-      if (q.questionSubList && Array.isArray(q.questionSubList) && q.questionSubList.length > 0) {
-        subQuestions = q.questionSubList.map((sq: any, index: number) => {
+      if (pickSubList(q).length > 0) {
+        subQuestions = pickSubList(q).map((sq: any, index: number) => {
           let sqType = 'single'
           switch (sq.questionType || sq.question_type) {
             case 1:
@@ -892,8 +912,8 @@ export function useQuestionPractice(
       mainTitle = q.questionText || '阅读理解'
       hasMainContent = !!mainContent
 
-      if (q.questionSubList && Array.isArray(q.questionSubList)) {
-        subQuestions = q.questionSubList.map((sq: any, index: number) => {
+      if (pickSubList(q).length > 0) {
+        subQuestions = pickSubList(q).map((sq: any, index: number) => {
           let sqType = 'single'
           switch (sq.questionType || sq.question_type) {
             case 1:
