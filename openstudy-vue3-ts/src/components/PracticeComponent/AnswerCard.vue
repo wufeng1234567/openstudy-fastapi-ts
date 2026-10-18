@@ -18,17 +18,8 @@
         </div>
       </div>
 
-      <!--
-        右列：暂存 + 重新练习
-        ----------------------------------------
-        「暂存」是**手动**入口（用户 2026-10-18 要求）：
-        正常刷题时进度会静默自动保存，这个按钮用于"我就是想立刻存一下"，
-        并按 `draft-state` 显示 保存中 / 已暂存 / 暂存失败。
-      -->
+      <!-- 右列：重新练习（「暂存」已移到面板底部，见下方 .card-footer） -->
       <div class="header-right">
-        <el-button text size="small" :loading="draftState === 'saving'" @click="$emit('save-draft')">
-          <span :class="['draft-label', 'is-' + draftState]">{{ draftButtonText }}</span>
-        </el-button>
         <el-button text size="small" @click="$emit('reset-practice')">重新练习</el-button>
       </div>
     </div>
@@ -103,6 +94,25 @@
         </div>
       </div>
     </template>
+
+    <!--
+      底部：手动暂存
+      ================================================================
+      用户 2026-10-18：「位置不对，要改到底部去」。
+      原来放在头部右列，和「重新练习」挤在一起 —— 那个位置属于"导航类"动作，
+      而暂存是"对当前进度做一次写操作"，语义上应该收在面板末尾。
+
+      正常刷题时进度会**静默自动保存**，这个按钮是"我就是想立刻存一下"的手动入口；
+      文案随 `draft-state` 变化：暂存 / 保存中… / 已暂存 / 暂存失败。
+    -->
+    <div class="card-footer">
+      <span class="draft-hint" v-if="draftState === 'saved'">进度已自动保存</span>
+      <span class="draft-hint is-failed" v-else-if="draftState === 'failed'">保存失败，请检查浏览器存储</span>
+      <span class="draft-hint" v-else>答题进度会自动保存</span>
+      <el-button size="small" :loading="draftState === 'saving'" @click="$emit('save-draft')">
+        {{ draftButtonText }}
+      </el-button>
+    </div>
   </div>
 </template>
 
@@ -215,6 +225,38 @@ const getOverviewItemClass = (index: number) => {
   grid-template-columns: auto 1fr auto;
   align-items: center;
   margin-bottom: 8px;
+}
+
+/*
+ * 底部暂存区（用户 2026-10-18：「位置不对，要改到底部去」）
+ * 一条发丝线把"题号网格"和"进度操作"分开，右侧是动作、左侧是状态说明。
+ */
+.card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+
+  .draft-hint {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--os-text-4, #9ca3af);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &.is-failed {
+      color: var(--el-color-danger, #f56c6c);
+    }
+  }
+
+  :deep(.el-button) {
+    flex: none;
+  }
 }
 
 .header-left h4 {
