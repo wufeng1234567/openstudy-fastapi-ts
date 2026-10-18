@@ -161,6 +161,14 @@ let mutationObserver: MutationObserver | null = null
 let hostEl: HTMLElement | null = null
 /** 容器未就绪时的重试定时器（父组件 ref 挂上后再绑） */
 let retryTimer: ReturnType<typeof setTimeout> | null = null
+/**
+ * 上一次的滚动位置（用来算位移方向）
+ *
+ * ⚠️ 方向要靠**相邻两次位置的差**判断，所以必须记住上一次的值。
+ *    换容器 / 重新绑定时要一并归零，否则首帧会算出巨大的 delta、
+ *    把方向误判成"用户正在往下滚"。
+ */
+let lastTop = 0
 
 /** 向上找一个"内容确实超出"的可滚动祖先 */
 function findScrollParent(el: HTMLElement | null): any {
@@ -264,22 +272,51 @@ function recalc() {
   if (max <= EDGE_TOLERANCE) {
     // 内容没溢出 / 几乎不溢出：没有滚动这回事
     visible.value = false
+    lastTop = top
     return
   }
 
   const atTop = top <= EDGE_TOLERANCE
   const atBottom = top >= max - EDGE_TOLERANCE
 
-  if (atBottom && atTop) {
+  /*
+   * ==================== 方向判定：跟随**用户的滚动动作** ====================
+   *
+   * 用户 2026-10-18 明确要求：
+   *   「检测到用户往上滚动，就自动切换成一键滚动顶部；
+   *     向下滚动，自动切换成一键滚动到底部」
+   *
+   * 也就是方向 = **刚才往哪边滚**，而不是"我还能不能往下滚"。
+   * 前两版写成后者，用户看到的现象就是"箭头一直朝下不动"——
+   * 因为在长页面里"还能往下滚"几乎永远成立。
+   *
+   * 规则：
+   *   · 本次 top 比上次**大**（内容往上走、视线往下）→ 用户在看下文 → ↓ 去底部
+   *   · 本次 top 比上次**小**（内容往下走、视线回看）→ 用户在回看   → ↑ 回顶部
+   *   · 位移太小（< 2px，抖动/回弹）→ 保持上一次方向，不要闪
+   *   · 到顶时强制 ↓（下面还有内容可看）；到底时强制 ↑（只能回去）
+   */
+  const delta = top - lastTop
+  if (delta > 2) {
+    direction.value = 'down'
+  } else if (delta < -2) {
+    direction.value = 'up'
+  }
+  lastTop = top
+
+  // 端点纠正：到顶只能往下（否则按钮显示 ↑ 却已经在顶部，点了没反应）
+  if (atTop) direction.value = 'down'
+  else if (atBottom) direction.value = 'up'
+
+  // 已经在顶部且内容也不长 → 没啥可滚，隐藏
+  if (atTop && atBottom) {
     visible.value = false
     return
   }
 
-  // 还能往下 → 去底部；否则（已在底部）→ 回顶部
-  direction.value = atBottom ? 'up' : 'down'
   visible.value = true
 
-  // 调试出口：排查"按钮不出现"时可在控制台读它
+  // 调试出口：排查"按钮不出现/不翻转"时可在控制台读它
   ;(window as any).__osScrollDebug = {
     targetTag:
       target === window
@@ -287,6 +324,7 @@ function recalc() {
         : (target as HTMLElement)?.className || (target as HTMLElement)?.tagName,
     top,
     max,
+    delta,
     atTop,
     atBottom,
     direction: direction.value,
@@ -329,6 +367,8 @@ function bind() {
   }
 
   target = next
+  // 新容器：把方向基准归零，避免首帧用旧值算出一个假的方向
+  lastTop = readScroll().top
   target.addEventListener('scroll', onScroll, { passive: true })
   window.addEventListener('resize', onScroll)
 
