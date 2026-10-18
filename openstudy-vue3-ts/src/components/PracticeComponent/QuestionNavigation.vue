@@ -1,23 +1,39 @@
 <!-- src/components/PracticeComponent/QuestionNavigation.vue -->
 <template>
   <div class="navigation-section">
-    <!-- 操作按钮 -->
+    <!--
+      操作按钮（用户 2026-10-18 的分波规则，与浏览模式保持一致）
+      ==========================================================
+      · 中间题      → 上一题 / 下一题
+      · 这一波最后一题 → 隐藏「下一题」，换成波次按钮：
+          - 第一波            → 「继续下一波」
+          - 中间波            → 「回到上一波」+「继续下一波」
+          - 最后一波          → 「回到上一波」+「提交」
+      为什么在这里拦「下一题」：最后一题再点"下一题"会跑出本波范围，
+      而波外根本没有已加载的题目（会造成空白/错位）。
+    -->
     <div class="navigation-buttons">
-      <el-button size="small" @click="$emit('prev-question')" v-if="showPrev">上一题</el-button>
-      <el-button type="primary" size="small" @click="$emit('next-question')"
-        v-if="showNext && !((isExamMode || isPracticeMode) && isLastQuestion)">
+      <el-button size="small" @click="$emit('prev-question')" v-if="showPrev && !isLastQuestion">上一题</el-button>
+
+      <!-- 非本波最后一题：常规翻页 -->
+      <el-button type="primary" size="small" @click="$emit('next-question')" v-if="showNext && !isLastQuestion">
         下一题
       </el-button>
-      <el-button type="warning" size="small"
-        @click="isLastBatch && hasSubmittedCurrentBatch ? $emit('close') : $emit('submit-exam')"
-        v-if="showSubmitButton && (isExamMode || isPracticeMode) && isLastQuestion" class="submit-btn">
-        <el-icon>
-          <Finished />
-        </el-icon> {{ isLastBatch && hasSubmittedCurrentBatch ? '结束' : '继续提交' }}
-      </el-button>
-      <el-button size="small" @click="$emit('prev-batch')" v-if="canGoPrevBatch && (isExamMode || isPracticeMode)">
-        上一波
-      </el-button>
+
+      <!-- 本波最后一题：波次切换 / 提交 -->
+      <template v-if="isLastQuestion && (isExamMode || isPracticeMode)">
+        <el-button size="small" @click="$emit('prev-batch')" v-if="canGoPrevBatch">
+          回到上一波
+        </el-button>
+        <el-button type="primary" size="small" @click="onNextBatch" v-if="!isLastBatch">
+          继续下一波
+        </el-button>
+        <el-button type="warning" size="small" @click="$emit('submit-exam')" v-else class="submit-btn">
+          <el-icon>
+            <Finished />
+          </el-icon> 提交
+        </el-button>
+      </template>
     </div>
 
     <!-- 功能按钮 -->
@@ -98,7 +114,7 @@ defineProps({
   }
 })
 
-defineEmits([
+const emit = defineEmits([
   'prev-question',
   'next-question',
   'mark',
@@ -107,8 +123,21 @@ defineEmits([
   'ai-analyze',
   'submit-exam',
   'prev-batch',
+  /** 逐题模式：本波最后一题点「继续下一波」（用户 2026-10-18 新增） */
+  'next-batch',
   'close'
 ])
+
+/**
+ * 点「继续下一波」
+ *
+ * 这里不做"这一波做没做完"的校验 —— 与浏览模式的行为保持一致：
+ * 用户已经站在本波最后一题、按钮也显示出来了，就让他走。
+ * （未答题的提醒由「提交」那一侧负责，不该在切波时二次打扰。）
+ */
+const onNextBatch = () => {
+  emit('next-batch')
+}
 
 // 处理斩题状态变化
 const handleMarkedChange = (isMarked: boolean) => {

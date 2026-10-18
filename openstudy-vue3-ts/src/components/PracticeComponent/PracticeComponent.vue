@@ -46,26 +46,28 @@
               @preview-image="openImageViewer" />
           </div>
 
-          <div v-if="moduleType === 'mock' && (isExamMode || isPracticeMode) && !showExamResult"
+          <!--
+            浏览模式底部操作区（用户 2026-10-18 的分波规则）
+            ================================================
+            规则（逐题模式与浏览模式一致）：
+              · 第一波            → 只显示「继续下一波」（不显示"回到上一波"）
+              · 中间波            → 「回到上一波」+「继续下一波」
+              · 最后一波          → 「回到上一波」+「提交」（不再显示"继续下一波"）
+            说明：这里用 `canGoNextBatch` 而不是判断 `hasSubmittedCurrentBatch` ——
+                  "有没有提交这一波"是状态，跟"是不是最后一波"是两件正交的事，
+                  混在一起会导致最后一波提交后按钮突然消失。
+          -->
+          <div v-if="(moduleType === 'mock' || isExamMode || isPracticeMode) && !showExamResult"
             class="overview-submit-area">
-            <el-button v-if="canGoPrevBatch" @click="handlePrevBatch">上一波</el-button>
-            <el-button @click="handleSubmit">提交</el-button>
+            <el-button v-if="canGoPrevBatch" @click="handlePrevBatch">回到上一波</el-button>
+            <el-button v-if="canGoNextBatch" type="primary" @click="handleContinuePractice">
+              继续下一波
+            </el-button>
+            <el-button v-else type="primary" @click="handleSubmit">提交</el-button>
           </div>
 
-          <div v-if="moduleType === 'mock' && showExamResult" class="overview-submit-area">
-            <el-button type="primary" @click="handleFinishExam">结束考试</el-button>
-          </div>
-
-          <div v-if="moduleType !== 'mock' && (isExamMode || isPracticeMode)" class="overview-submit-area">
-            <template v-if="!hasSubmittedCurrentBatch">
-              <el-button v-if="isLastBatch" type="primary" @click="handleContinuePractice">继续刷题</el-button>
-              <el-button v-else type="primary" @click="handleContinuePractice">继续刷下一波</el-button>
-            </template>
-            <template v-else>
-              <el-button v-if="canGoPrevBatch" @click="handlePrevBatch">回到上一波</el-button>
-              <el-button v-if="isLastBatch" type="primary" @click="$emit('close')">结束</el-button>
-              <el-button v-else type="primary" @click="handleContinuePractice">继续刷下一波</el-button>
-            </template>
+          <div v-if="showExamResult" class="overview-submit-area">
+            <el-button type="primary" @click="handleFinishExam">结束</el-button>
           </div>
         </div>
 
@@ -75,8 +77,10 @@
           :stats="{ correctCount, wrongCount, accuracy }" :is-exam-mode="isExamMode" :is-practice-mode="isPracticeMode"
           :is-last-question="isLastQuestion" :show-exam-result="showExamResult" :total-score="totalScore"
           :answered-count="answeredCount" :total-count="totalQuestions" :remaining-count="remainingCount"
-          :module-type="moduleType" @go-to-question="scrollToQuestion" @toggle-overview="toggleOverview"
-          @reset-practice="resetPractice" @submit-exam="handleSubmitExam" @finish-exam="handleFinishExam" />
+          :module-type="moduleType" :draft-state="draftState" :draft-button-text="draftButtonText"
+          @go-to-question="scrollToQuestion" @toggle-overview="toggleOverview"
+          @reset-practice="resetPractice" @submit-exam="handleSubmitExam" @finish-exam="handleFinishExam"
+          @save-draft="handleManualSaveDraft" />
       </div>
     </template>
 
@@ -110,8 +114,10 @@
           :show-exam-result="showExamResult" :total-score="totalScore" :answered-count="answeredCount"
           :total-count="totalQuestions" :remaining-count="remainingCount" :module-type="moduleType"
           :marked-questions="markedQuestionsSet" :favorited-questions="favoritedQuestions" :error-questions="errorQuestions"
+          :draft-state="draftState" :draft-button-text="draftButtonText"
           @go-to-question="goToQuestion" @reset-practice="resetPractice" @submit-exam="handleSubmitExam"
-          @toggle-overview="toggleOverview" @finish-exam="handleFinishExam" />
+          @toggle-overview="toggleOverview" @finish-exam="handleFinishExam"
+          @save-draft="handleManualSaveDraft" />
       </div>
 
 
@@ -123,6 +129,7 @@
         :show-submit-button="(isExamMode || isPracticeMode) && moduleType !== 'mock'" @prev-question="prevQuestion"
         @next-question="nextQuestion" @mark="markQuestion" @add-note="addNote" @report="reportQuestion"
         @ai-analyze="openAiAnalysis" @submit-exam="handleSubmit" @prev-batch="handlePrevBatch"
+        @next-batch="jumpToNextBatch"
         @close="$emit('close')" />
     </template>
 
@@ -159,7 +166,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, getCurrentInstance, nextTick, onMounted, onUnmounted } from 'vue'
-import { ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { InfoFilled, RefreshRight, MagicStick } from '@element-plus/icons-vue'
 import PracticeHeader from './PracticeHeader.vue'
 import QuestionDisplay from './QuestionDisplay.vue'
@@ -172,6 +179,13 @@ import ScrollButton from '@/components/ScrollButton/ScrollButton.vue'
 import ImageViewer from './ImageViewer.vue'
 import { useQuestionPractice } from '@/composables/useQuestionPractice'
 import usePracticeSettingsStore from '@/store/modules/practiceSettings'
+import useUserStore from '@/store/modules/user'
+import {
+  createDraftSaver,
+  loadDraft,
+  clearDraft,
+  type DraftSaveState
+} from '@/utils/practiceDraft'
 import AiAnalysisDialog from '@/components/AiAnalysisDialog/index.vue'
 
 // 调试日志工具
@@ -205,7 +219,26 @@ const isPracticeMode = computed(() => moduleSettings.value.practiceMode === 'pra
 const showAnalysisImmediately = computed(() => !isExamMode.value || showExamResult.value)
 const canGoPrevBatch = computed(() => questionOffset.value > 0 && (isExamMode.value || isPracticeMode.value))
 const isLastQuestion = computed(() => currentQuestionIndex.value === totalQuestions.value - 1)
+/**
+ * 是否已经是**最后一波**
+ *
+ * 语义：这一波之后没有更多题了。
+ * 例：100 题、每波 20 题、当前第 5 波（offset=80）→ 80+20=100 ≤ 100 → 是最后一波。
+ *
+ * ⚠️ 用 `<=` 而不是 `<`：正好整除时（100/20）最后一波的末尾 offset+total 恰好 == 总题数，
+ *    必须是"最后一波"；用 `<` 会把它判成"还有下一波"，于是最后一波还显示"继续下一波"、
+ *    点进去是空波。之前这里是 `<=`，保持正确，勿改回。
+ */
 const isLastBatch = computed(() => allQuestionsData.value.length <= questionOffset.value + totalQuestions.value)
+
+/**
+ * 是否还能「继续下一波」
+ *
+ * 用户 2026-10-18 的分波规则：
+ *   · 最后一波结尾 → **不显示**「继续下一波」，只显示「回到上一波」+「提交」；
+ *   · 其余情况（含第一波）→ 显示「继续下一波」。
+ */
+const canGoNextBatch = computed(() => !isLastBatch.value)
 
 const showSettings = ref(false)
 const showExamResult = ref(false)
@@ -396,7 +429,14 @@ onMounted(() => {
 
   if (!isFirstLoaded.value && props.bankId && props.bankId > 0) {
     isFirstLoaded.value = true
-    fetchQuestions()
+    fetchQuestions().then(() => {
+      // 题目就绪后再尝试恢复暂存（顺序很重要：没有题目就没法按 id 对齐答案）
+      try {
+        restoreDraftIfAny()
+      } catch (e) {
+        console.warn('[practice] 恢复暂存失败', e)
+      }
+    })
   }
   if (props.moduleType === 'mock' && !showExamResult.value) {
     startExamTimer()
@@ -412,6 +452,17 @@ onUnmounted(() => {
 
   // 保存答题状态
   saveCurrentAnswerState()
+
+  /*
+   * 离开页面时**立即**落一次暂存（不走节流）。
+   * 用户可能直接关标签/点走，节流窗口内那次还悬着 —— 这里同步 flush 保证不丢。
+   */
+  try {
+    draftSaver.flush()
+  } catch {
+    /* 暂存失败不该影响离开页面 */
+  }
+  draftSaver.cancel()
 
   stopExamTimer()
 
@@ -761,79 +812,85 @@ const handleSettingsSave = (data: { moduleType: string; settings: any }) => {
   }
 }
 
+/**
+ * 点「提交」→ 进入结算页
+ * ============================================================================
+ * 用户 2026-10-18 的需求：
+ *   「用户做完当前题库后点击"提交"，进入结算页面。结算页面以当前浏览模式
+ *     （瀑布流题目模式）作为主窗口展示；右侧答题卡标记错题并可跳转；
+ *     所有题目解析自动展开。」
+ *
+ * 改前的行为（已废弃）：提交时先弹「是否继续刷下一波」的确认框，
+ * 分波导航靠弹窗完成 —— 既打断阅读，也和"页内按钮"的分波规则冲突
+ * （浏览模式底部已经有「继续下一波 / 提交」按钮了，不该再问一遍）。
+ *
+ * 现在的行为：
+ *   · 只做一次「有未答题」的提醒（这是有价值的防误提交），确认后直接进结算；
+ *   · 结算 = 切到瀑布流（overviewMode）+ showExamResult + 全部解析展开；
+ *   · 刷题模式下解析本来就在答完时更新，这里再 `showAllAnalysis()` 保证全覆盖。
+ *
+ * ⚠️ 逐题模式提交后也会切到瀑布流结算 —— 这是"结算页以浏览模式展示"的落点，
+ *    不是把用户的练习模式永久改掉（`handleFinishExam` / 重新练习会复位）。
+ */
 const handleSubmit = () => {
-  if (props.moduleType === 'mock') {
-    const unanswered = totalQuestions.value - answeredCount.value
-    let msg = `确定要交卷吗？`
-    if (unanswered > 0) {
-      msg = `您还有 ${unanswered} 题未作答，确定要交卷吗？`
+  const unanswered = totalQuestions.value - answeredCount.value
+
+  const enterSettlement = () => {
+    hasSubmittedCurrentBatch.value = true
+
+    /*
+     * 结算页固定用瀑布流展示。
+     * `overviewMode` 是用户设置项，这里**临时**打开用于展示结算；
+     * 不改 `moduleSettings.isOverviewMode`（那是持久化的偏好），
+     * 否则用户下次进来会莫名其妙变成浏览模式。
+     */
+    if (!overviewMode.value) {
+      overviewMode.value = true
     }
+
+    // 进入结算：判分 + 全部解析展开（见 handleSubmitExam 的实现）
+    handleSubmitExam()
+
+    // 滚动到第一题，让用户从头核对（瀑布流里错题跳转由答题卡负责）
+    nextTick(() => {
+      setTimeout(() => {
+        const firstCard = document.querySelector('.overview-question-card')
+        if (firstCard) firstCard.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 120)
+    })
+  }
+
+  // 模拟考试（mock）：沿用原来的"确认交卷"语义
+  if (props.moduleType === 'mock') {
+    let msg = '确定要交卷吗？'
+    if (unanswered > 0) msg = `您还有 ${unanswered} 题未作答，确定要交卷吗？`
     ElMessageBox.confirm(msg, '确认提交', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'warning'
-    }).then(() => {
-      handleSubmitExam()
-    }).catch(() => { })
+    })
+      .then(enterSettlement)
+      .catch(() => {
+        /* 用户取消：什么都不做，留在当前题 */
+      })
     return
   }
 
-  const unanswered = totalQuestions.value - answeredCount.value
-  const hasMoreQuestions = allQuestionsData.value.length > questionOffset.value + totalQuestions.value
-
+  // 练习模式 / 考试模式：有未答题时提醒一次，确认后进结算
   if (unanswered > 0) {
-    ElMessageBox.confirm(`您还有 ${unanswered} 题未作答，是否继续提交并查看解析？`, '提示', {
-      confirmButtonText: '继续提交',
-      cancelButtonText: '继续刷题',
+    ElMessageBox.confirm(`您还有 ${unanswered} 题未作答，是否提交并查看解析？`, '提示', {
+      confirmButtonText: '提交并查看解析',
+      cancelButtonText: '继续答题',
       type: 'warning'
-    }).then(() => {
-      handleSubmitExam()
-      hasSubmittedCurrentBatch.value = true
-      if (hasMoreQuestions) {
-        ElMessageBox.confirm('恭喜完成！是否继续刷下一波题目？', '继续刷题', {
-          confirmButtonText: '继续刷下一波',
-          cancelButtonText: '查看结果',
-          type: 'success'
-        }).then(() => {
-          jumpToNextBatch()
-        }).catch(() => {
-          handleSubmitExam()
-          hasSubmittedCurrentBatch.value = true
-        })
-      }
-    }).catch(() => {
-      handleSubmitExam()
-      hasSubmittedCurrentBatch.value = true
     })
-  } else {
-    handleSubmitExam()
-    hasSubmittedCurrentBatch.value = true
-    if (hasMoreQuestions) {
-      if (isExamMode.value) {
-        ElMessageBox.confirm('恭喜完成！是否继续刷下一波题目？', '继续刷题', {
-          confirmButtonText: '继续刷下一波',
-          cancelButtonText: '查看结果',
-          type: 'success'
-        }).then(() => {
-          jumpToNextBatch()
-        }).catch(() => {
-          handleSubmitExam()
-          hasSubmittedCurrentBatch.value = true
-        })
-      } else {
-        ElMessageBox.confirm('恭喜完成！是否继续刷下一波题目？', '继续刷题', {
-          confirmButtonText: '继续刷下一波',
-          cancelButtonText: '查看结果',
-          type: 'success'
-        }).then(() => {
-          jumpToNextBatch()
-        }).catch(() => {
-          handleSubmitExam()
-          hasSubmittedCurrentBatch.value = true
-        })
-      }
-    }
+      .then(enterSettlement)
+      .catch(() => {
+        /* 继续答题 */
+      })
+    return
   }
+
+  enterSettlement()
 }
 
 const { proxy } = getCurrentInstance() as any
@@ -887,6 +944,320 @@ const {
   questionCount: moduleSettings.value.questionCount,
   onlyWrong: moduleSettings.value.onlyWrong
 })
+
+/* ===================== 页面暂存（练习进度） =====================
+ *
+ * 与 keep-alive 的分工见 `utils/practiceDraft.ts` 顶部说明：
+ *   keep-alive 保的是"组件实例 + 滚动位置"（刷新即丢），
+ *   暂存保的是"答题数据"（落 localStorage，关掉浏览器也在）。
+ *
+ * 这里只做三件事：
+ *   ① 从暂存恢复（进题库时，若该题库/模块有未完成进度）；
+ *   ② 作答/换题/换波后**静默**写一次（节流，用户无感）；
+ *   ③ 给答题卡面板提供手动「暂存」入口与状态文案。
+ */
+const userStore = useUserStore()
+
+/** 手动暂存的状态（驱动答题卡上的按钮文案） */
+const draftState = ref<DraftSaveState>('idle')
+/** 上次成功暂存的时间（用于显示"已暂存 12:03"这类文案） */
+const draftSavedAt = ref<number>(0)
+
+/** 取当前用户 id（登录态可能晚于组件挂载就绪，所以用函数而不是取值） */
+const currentUserId = () => {
+  const id = (userStore as any).id
+  return id === undefined || id === null || id === '' ? null : id
+}
+
+/**
+ * 把"每题 id → 作答"的关联写进暂存
+ *
+ * 为什么用 questionId 而不是数组下标：随机练习 / 重新进入时题目顺序会变，
+ * 用下标恢复会把答案按错位置贴上去（张冠李戴）。
+ */
+function buildDraftSnapshot() {
+  const ids: Array<number | string> = []
+  const answersById: Record<string, any> = {}
+  const judgedById: Record<string, boolean> = {}
+  const correctById: Record<string, boolean> = {}
+  const fillById: Record<string, Record<string, any>> = {}
+  const essayById: Record<string, Record<string, any>> = {}
+
+  const list = questions.value || []
+  list.forEach((q: any, idx: number) => {
+    if (!q) return
+    const qid = q.id ?? q.questionId ?? idx
+    ids.push(qid)
+    const ans = answers.value?.[idx]
+
+    /*
+     * 「这一题到底答过没有」的判据
+     * ------------------------------------------------------------------
+     * ⚠️ 别只判 `!== null && !== ''`（2026-10-18 踩到）：
+     *    组合题（readingComprehension / cloze）在 `answers` 里存的是**对象**
+     *    （`resetAnswers` 会给它们初始化成 `{}`）。空对象 `{}` 既不是 null 也不是 ''，
+     *    于是被当成"答过"，暂存里就会塞进一堆没作答的组合题 id ——
+     *    恢复时它们会覆盖成"已作答"的错误状态。
+     */
+    const hasAnswer =
+      ans === null || ans === undefined
+        ? false
+        : typeof ans === 'object'
+          ? Array.isArray(ans)
+            ? ans.length > 0
+            : Object.keys(ans).length > 0 // 组合题：有子答案才算答过
+          : ans !== ''
+
+    if (hasAnswer) {
+      answersById[String(qid)] = ans
+    }
+    if (q.answered) judgedById[String(qid)] = true
+    if (q.correct === true || q.correct === false) correctById[String(qid)] = !!q.correct
+  })
+
+  // 组合题子题答案：`subFillBlankAnswers` 的 key 是 `${qid}_${subIndex}` 这类拼接
+  Object.keys(subFillBlankAnswers.value || {}).forEach((k) => {
+    const [qid, sub] = String(k).split('_')
+    if (!qid || sub === undefined) return
+    const v = (subFillBlankAnswers.value as any)[k]
+    if (v === null || v === undefined || v === '') return
+    ;(fillById[qid] ||= {})[sub] = v
+  })
+  Object.keys(subEssayAnswers.value || {}).forEach((k) => {
+    const [qid, sub] = String(k).split('_')
+    if (!qid || sub === undefined) return
+    const v = (subEssayAnswers.value as any)[k]
+    if (v === null || v === undefined || v === '') return
+    ;(essayById[qid] ||= {})[sub] = v
+  })
+
+  const cur = currentQuestion.value
+  const curId = cur ? cur.id ?? cur.questionId ?? null : null
+
+  return {
+    bankId: props.bankId,
+    moduleType: props.moduleType,
+    questionIds: ids,
+    answers: answersById,
+    judged: judgedById,
+    correct: correctById,
+    subFillBlank: fillById,
+    subEssay: essayById,
+    currentQuestionId: curId,
+    batchIndex: Math.floor((questionOffset.value || 0) / Math.max(1, moduleSettings.value.questionCount || 10)),
+    batchSize: moduleSettings.value.questionCount || 10,
+    submittedBatches: hasSubmittedCurrentBatch.value ? [(questionOffset.value || 0)] : [],
+    stats: {
+      correct: correctCount.value || 0,
+      wrong: wrongCount.value || 0,
+      elapsedMs: 0
+    }
+  }
+}
+
+const draftSaver = createDraftSaver({
+  getUserId: currentUserId,
+  getBankId: () => props.bankId,
+  getModuleType: () => props.moduleType,
+  buildSnapshot: buildDraftSnapshot as any,
+  onStateChange: (s, at) => {
+    draftState.value = s
+    if (s === 'saved' && at) draftSavedAt.value = at
+    // 失败要明确告知（配额满 / 隐私模式），否则用户以为存上了
+    if (s === 'failed') {
+      ElMessage.warning('暂存失败：浏览器存储不可用或空间不足')
+    }
+  }
+})
+
+/** 手动暂存（答题卡面板的「暂存」按钮） */
+const handleManualSaveDraft = () => {
+  const ok = draftSaver.flush()
+  if (ok) ElMessage.success('已暂存当前练习进度')
+  // 失败提示已在 onStateChange 里统一处理，这里不重复弹
+}
+
+/** 答题卡上显示的暂存按钮文案 */
+const draftButtonText = computed(() => {
+  switch (draftState.value) {
+    case 'saving':
+      return '保存中…'
+    case 'saved':
+      return '已暂存'
+    case 'failed':
+      return '暂存失败'
+    default:
+      return '暂存'
+  }
+})
+
+/**
+ * 进题库时恢复上次进度
+ *
+ * 匹配规则：按 **questionId** 对齐（不是数组下标）——
+ * 随机练习/重新进入时题目顺序可能变，按下标贴答案会张冠李戴。
+ *
+ * 恢复内容：作答、是否已判、对错、组合题子题答案、当前题、当前波次。
+ * 不恢复：计时器、弹窗、临时 UI 状态（那些属于 keep-alive 的范畴）。
+ *
+ * 只在"这个题库这个模块确有暂存"时执行，且**不覆盖**用户当场刚输入的内容：
+ * 只有在答案还是空的时候才回填。
+ */
+/** 是否已经从暂存恢复过（避免重复提示 / 重复覆盖） */
+let draftRestoredOnce = false
+
+function restoreDraftIfAny(retry = 0) {
+  if (draftRestoredOnce) return
+  const draft = loadDraft(currentUserId(), props.bankId, props.moduleType)
+  if (!draft) {
+    draftRestoredOnce = true
+    return
+  }
+
+  /*
+   * 先回到"当时那一波"，再对齐答案
+   * ------------------------------------------------------------------
+   * ⚠️ 顺序非常重要（2026-10-18 实测踩到）：
+   *    `questions` 是 `allQuestionsData` 的**切片**（[questionOffset, +count)），
+   *    不是全量。若用户上次做到第 3 波，而这次进来停在第 1 波，
+   *    切片里的题目完全不同 → 按 questionId 一条也对不上 → 看起来"没恢复"。
+   *    所以必须先把 questionOffset 拨回暂存里记录的批位置。
+   */
+  const batchSize = Math.max(1, Number(draft.batchSize) || moduleSettings.value.questionCount || 10)
+  const wantOffset = Math.max(0, Number(draft.batchIndex || 0) * batchSize)
+  if (wantOffset !== (questionOffset.value || 0) && allQuestionsData.value.length > wantOffset) {
+    questionOffset.value = wantOffset
+    loadBatchWithoutReset()
+  }
+
+  const list = questions.value || []
+  if (!list.length) {
+    /*
+     * 题目还没到（`fetchQuestions()` 是异步的，且可能有别的入口先触发了加载）。
+     * 这里轮询等待，而不是"一次拿不到就放弃" —— 放弃会让用户看到空白的作答题，
+     * 以为进度丢了（2026-10-18 实测踩到）。
+     * 最多等约 3 秒（20 × 150ms），之后安静退出。
+     */
+    if (retry < 20) {
+      setTimeout(() => restoreDraftIfAny(retry + 1), 150)
+    }
+    return
+  }
+
+  // 建 id → 下标 的索引（用字符串比较，避免 number/string 类型差异）
+  const idxById = new Map<string, number>()
+  list.forEach((q: any, i: number) => {
+    const qid = q?.id ?? q?.questionId ?? i
+    idxById.set(String(qid), i)
+  })
+
+  let restoredCount = 0
+
+  Object.keys(draft.answers || {}).forEach((qid) => {
+    const i = idxById.get(String(qid))
+    if (i === undefined) return
+    const val = draft.answers[qid]
+    // 用户已经当场答过的不要覆盖（例如恢复前手快点了选项）
+    const cur = answers.value?.[i]
+    if (cur !== null && cur !== undefined && cur !== '') return
+    answers.value[i] = val
+    restoredCount += 1
+  })
+
+  // 已判状态与对错（刷题模式下答完即判，恢复后解析应该还在）
+  Object.keys(draft.judged || {}).forEach((qid) => {
+    const i = idxById.get(String(qid))
+    if (i === undefined) return
+    const q = list[i]
+    if (!q) return
+    q.answered = true
+    if (draft.correct && typeof draft.correct[qid] === 'boolean') {
+      q.correct = draft.correct[qid]
+    }
+    // 刷题模式：恢复出来的题要能直接看到解析
+    if (isPracticeMode.value) q.showAnalysis = true
+  })
+
+  // 组合题子题答案
+  Object.keys(draft.subFillBlank || {}).forEach((qid) => {
+    const subs = draft.subFillBlank[qid] || {}
+    Object.keys(subs).forEach((sub) => {
+      const k = `${qid}_${sub}`
+      if (!(k in (subFillBlankAnswers.value || {}))) {
+        ;(subFillBlankAnswers.value as any)[k] = subs[sub]
+      }
+    })
+  })
+  Object.keys(draft.subEssay || {}).forEach((qid) => {
+    const subs = draft.subEssay[qid] || {}
+    Object.keys(subs).forEach((sub) => {
+      const k = `${qid}_${sub}`
+      if (!(k in (subEssayAnswers.value || {}))) {
+        ;(subEssayAnswers.value as any)[k] = subs[sub]
+      }
+    })
+  })
+
+  // 定位到上次那一题（按 id）
+  if (draft.currentQuestionId !== undefined && draft.currentQuestionId !== null) {
+    const i = idxById.get(String(draft.currentQuestionId))
+    if (i !== undefined) goToQuestion(i)
+  }
+
+  if (restoredCount > 0) {
+    draftRestoredOnce = true
+    // 明确告诉用户"这是恢复的"，而不是让他以为自己已经答过
+    ElMessage.success(`已恢复上次练习进度（${restoredCount} 题）`)
+    draftState.value = 'saved'
+    draftSavedAt.value = draft.savedAt
+  } else {
+    draftRestoredOnce = true
+  }
+}
+
+/**
+ * 静默暂存：作答 / 判分 / 换题 / 换波 后自动写一次
+ * 为什么 watch 这么多个源而不是"只在作答时存"：
+ *   · `answers` 变了 → 用户选了选项（最核心）；
+ *   · `currentQuestionIndex` 变了 → 换题，要记住"我看到第几题"；
+ *   · `questionOffset` 变了 → 换波，要记住"我做到第几波"；
+ *   · `subFillBlankAnswers` / `subEssayAnswers` → 组合题子题；
+ *   · `hasSubmittedCurrentBatch` → 本波是否提交（考试模式恢复时要知道）。
+ * 全部走 `schedule()`（节流），所以连着敲字也只会在停顿后写一次。
+ */
+watch(
+  () => [
+    JSON.stringify(answers.value),
+    currentQuestionIndex.value,
+    questionOffset.value,
+    hasSubmittedCurrentBatch.value,
+    JSON.stringify(subFillBlankAnswers.value),
+    JSON.stringify(subEssayAnswers.value)
+  ],
+  () => {
+    // 结算/成绩页不写（那是结果态，不是"进行中的练习"）
+    if (showExamResult.value) return
+    // 恢复还没完成时不要写：否则会用"空答案"把暂存覆盖掉（最致命的一种数据丢失）
+    if (!draftRestoredOnce) return
+    draftSaver.schedule()
+  }
+)
+
+/**
+ * 兜底：题目首次就绪时尝试恢复
+ *
+ * 为什么不只依赖 onMounted 里那次：提交流程里 `fetchQuestions()` 有多条触发路径
+ * （切换模块、设置变更、重新练习），onMounted 里的 `.then` 不一定是"题目第一次可用"
+ * 的那一刻。这里盯住 `questions.length` 从 0 变正数，任何路径都能覆盖到。
+ */
+watch(
+  () => questions.value.length,
+  (n, old) => {
+    if (n > 0 && (!old || old === 0)) {
+      restoreDraftIfAny()
+    }
+  }
+)
 
 const handleSubmitExam = () => {
   showAllAnalysis()

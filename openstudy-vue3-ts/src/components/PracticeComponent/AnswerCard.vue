@@ -18,8 +18,17 @@
         </div>
       </div>
 
-      <!-- 右列：重新练习 -->
+      <!--
+        右列：暂存 + 重新练习
+        ----------------------------------------
+        「暂存」是**手动**入口（用户 2026-10-18 要求）：
+        正常刷题时进度会静默自动保存，这个按钮用于"我就是想立刻存一下"，
+        并按 `draft-state` 显示 保存中 / 已暂存 / 暂存失败。
+      -->
       <div class="header-right">
+        <el-button text size="small" :loading="draftState === 'saving'" @click="$emit('save-draft')">
+          <span :class="['draft-label', 'is-' + draftState]">{{ draftButtonText }}</span>
+        </el-button>
         <el-button text size="small" @click="$emit('reset-practice')">重新练习</el-button>
       </div>
     </div>
@@ -143,10 +152,22 @@ const props = defineProps({
   answeredCount: { type: Number, default: 0 },
   totalCount: { type: Number, default: 0 },
   remainingCount: { type: Number, default: 0 },
-  moduleType: { type: String, default: '' }
+  moduleType: { type: String, default: '' },
+  /** 暂存状态：驱动「暂存」按钮的文案与 loading（见 PracticeComponent 的 draftState） */
+  draftState: { type: String, default: 'idle' },
+  /** 暂存按钮文案（由父组件按状态生成，避免子组件重复一套文案） */
+  draftButtonText: { type: String, default: '暂存' }
 })
 
-const emit = defineEmits(['go-to-question', 'reset-practice', 'submit-exam', 'toggle-overview', 'finish-exam'])
+const emit = defineEmits([
+  'go-to-question',
+  'reset-practice',
+  'submit-exam',
+  'toggle-overview',
+  'finish-exam',
+  /** 手动暂存当前练习进度 */
+  'save-draft'
+])
 
 const isMounted = ref(false)
 const gridItemRefs = ref<Record<number, HTMLElement>>({})
