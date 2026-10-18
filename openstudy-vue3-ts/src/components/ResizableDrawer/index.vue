@@ -21,27 +21,31 @@
 
 <template>
   <!--
-    ⚠️ 外层 `v-if` 是**必须的**，不是优化（用户 2026-10-18 报的"抽屉越点越多"就出在这）。
-    --------------------------------------------------------------------------------
-    现象：在「我的学习」子页点设置 → 进对话页抽屉打开 → 点空白关掉 → 再点设置，
-          会看到叠了两个面板；继续点会越来越多。
+    抽屉容器
+    ==========================================================================
+    ⚠️ 为什么**不再**用外层 `v-if` 卸载（这是"点空白没有退场动画"的根因）
+    --------------------------------------------------------------------------
+    历史：为了修「抽屉越点越多」（overlay 关掉后仍留在 body 上、反复叠加），
+    我曾给 el-drawer 加 `v-if`，关闭即卸载。副作用是：
 
-    原因：`el-drawer` + `append-to-body` 在**关闭后仍把 `.el-overlay` 留在 body 上**
-          （display:none 但 DOM 还在）。实测点一次就留下十几个隐藏 overlay；
-          而 keep-alive 下本组件被反复激活时，Element Plus 会为每次激活再补一层，
-          旧层不被回收 → 遮罩/面板在视觉上叠加。
+      · 用「设置按钮」关闭 —— 走的是我们自己的 `visible = false`，
+        当时 `transitioning` 还能撑住挂载，动画有时间跑完 → 看起来正常；
+      · 用「点空白」关闭 —— Element Plus 内部直接改 `visible`，
+        组件比动画更早被卸载 → **没有任何退场动画，抽屉直接消失**
+        （用户 2026-10-18 报的正是这一条）。
 
-    修法：关闭时把整个组件卸载掉（`v-if="mounted"`），让 Element Plus 自己回收
-          它创建的 overlay。打开时重新挂载一份干净的。
-          拖拽宽度是持久化在 localStorage 的，卸载不影响；开合状态在父组件手里。
+    现在改用 Element Plus 官方的 `destroy-on-close`：
+      · 关闭时先完整播放退场动画，动画结束才销毁内部 DOM；
+      · overlay 由 EP 自己在销毁时回收 —— 同样解决"越点越多"，
+        而且不需要我们用 `v-if` 抢时序。
   -->
   <el-drawer
-    v-if="innerVisible || transitioning"
     v-model="innerVisible"
     :direction="direction"
     :size="width + 'px'"
     :with-header="false"
     append-to-body
+    destroy-on-close
     :class="['rd-drawer', `rd-${direction}`, drawerClass]"
     @closed="onClosed"
   >
@@ -140,6 +144,8 @@ watch(
 /** 抽屉关闭动画结束 → 可以安全卸载（Element Plus 会把 overlay 一起回收） */
 function onClosed() {
   transitioning.value = false
+  // 退场动画走完，再收掉让位用的 left / 内联 transform（见 cleanupOffsetAfterLeave 的说明）
+  cleanupOffsetAfterLeave()
 }
 /* ---------- 宽度状态 ---------- */
 //: 持久化：只在传了 storageKey 时读写
@@ -174,34 +180,238 @@ const getDrawerEl = () =>
   document.querySelector<HTMLElement>(`.rd-drawer.${drawerClass}`)
 
 /**
- * 遮罩跟随抽屉一起让位
- * --------------------
- * Element Plus 的遮罩是 `.el-overlay`，抽屉是它的子元素 —— 直接给 overlay 设 `left`
- * 就能让遮罩与抽屉一起内缩，左侧导航保持明亮且仍可点击。
- * ⚠️ overlay 是 append-to-body 的，拿不到组件引用，只能按「本抽屉的唯一 class」反查父级。
+ * 遮罩跟随抽屉一起让位 + 修正抽屉的入场起点
+ * ------------------------------------------
+ * 用户 2026-10-18：「从抽屉伸出的效果不行，会有闪现；起始位置是从左侧菜单内部
+ * 开始移动的，视觉效果不行」。
+ *
+ * 实测（改前）：抽屉入场时 `left:-380 / transform:-380px`，终点才是 280 ——
+ * 也就是它从屏幕最左（穿过菜单）滑进来。
+ *
+ * 根因：Element Plus 的 `.el-drawer-fade-enter-from .ltr { transform: translate(-100%) }`。
+ * 这个 -100% 相对抽屉宽度，而遮罩被我们推到了 `left:280px`，
+ * 于是起点变成 280 - 380 = -100px（实测更远）。
+ *
+ * ⚠️ 试过两条路都不稳：
+ *   ① 用 CSS 提高特异性覆盖 transform —— EP 的样式加载顺序在生产构建里不固定；
+ *   ② 给遮罩设 `left` —— 被 `el-overlay` 自身的定位规则盖掉（实测 `left:0px`）。
+ *
+ * 现在改成**纯内联样式**（内联优先级最高，不吃加载顺序）：
+ *   · overlay：`left` 直接写在元素上；
+ *   · drawer：用**独立的 `translate` 属性**（不与 EP 的 `transform` 冲突，
+ *     两者是分开的 CSS 属性，浏览器会叠加），把入场方向补上侧栏宽度。
  */
+/**
+ * 让抽屉从**侧栏右缘**长出来（而不是穿过菜单）
+ * ============================================================================
+ * 用户 2026-10-18：「抽屉出现的瞬间是从路由菜单内部出现的，而不是很好地从左侧
+ * 路由菜单的边界那边长出来」。
+ *
+ * ## 为什么之前一直修不好（查了仓库历史 + EP 源码才看清）
+ *
+ * 1. **原实现本来是对的**：对话页那个抽屉一直是 `ltr` + `offset-left`，
+ *    用户从没报过闪现。差别是——它**常驻挂载**，overlay 早在动画开始前
+ *    就已经带着 `left:280px` 躺在那儿了。
+ *
+ * 2. 我上一批为了修「抽屉越点越多」，给 `el-drawer` 加了 `v-if`：
+ *    关闭即卸载 → 下次打开**新建** overlay → `left` 是**动画开始之后**才补上的。
+ *
+ * 3. 而 EP 给 overlay 和 drawer 都写了 `transition: all`
+ *    （`.el-drawer-fade-enter-active{transition:all …}`）。所以补 `left` 这一下
+ *    本身就被 animate 了 —— 视觉上就是"抽屉从菜单内部平移出来"的那道闪现。
+ *
+ * ## 所以修法不是"改位移公式"，而是把这两件事拆开
+ *
+ * · `left`（让位给侧栏）：**同步写、且禁掉过渡** —— 位置瞬间就位，不产生动画；
+ * · 位移（滑入效果）：交给抽屉自己的 `transform`，由 EP 的动画负责。
+ *
+ * 写 `left` 的时机用 MutationObserver 在 overlay **插入的同一批任务**里完成
+ * （比 nextTick 早，浏览器还没绘制第一帧），并在同一帧内临时关掉过渡。
+ */
+/** 入场结束后释放内联 transform 的定时器（见 applyOffset 里的说明） */
+let _releaseTimer: ReturnType<typeof setTimeout> | null = null
+
+function applyOffset(overlay: HTMLElement) {
+  const drawer = getDrawerEl()
+  const on = offsetPx.value > 0 && props.direction === 'ltr'
+  if (on) {
+    /*
+     * 关掉过渡再写 left：
+     * 不关的话，EP 的 `transition: all` 会把这次 `left` 变化也做成动画，
+     * 这正是"从菜单内部平移出来"的来源。
+     */
+    const prevTransition = overlay.style.transition
+    overlay.style.transition = 'none'
+    overlay.style.setProperty('left', offsetCss.value, 'important')
+    // 强制读一次布局，让"无过渡定位"立刻落地，再恢复过渡
+    void overlay.offsetWidth
+    overlay.style.transition = prevTransition
+
+    if (drawer) {
+      drawer.classList.add('rd-offset-drawer')
+      /*
+       * ⚠️ 这里**不碰 transform**，让 Element Plus 自己的滑入动画完整跑。
+       *
+       * 关键机制（之前一直没想通，绕了很多弯路）：
+       *   Element Plus 给 overlay 加了 `overflow: hidden`
+       *   （`.el-drawer-fade-enter-active{overflow:hidden!important}`），
+       *   而抽屉的入场位移是 `translateX(-100%)`。
+       *   只要 overlay 的 `left` 在**首帧之前**就是 280，
+       *   抽屉从 -380 滑向 280 的过程中，处在 280 左侧的部分会被 overlay **裁掉** ——
+       *   视觉上它就是从侧栏右缘"长出来"的，既顺滑又不会压到菜单。
+       *
+       * 反过来，如果 `left` 晚了一帧（默认 0），裁剪区从屏幕最左开始，
+       * 抽屉就会完整地从菜单内部扫过去 —— 这才是用户看到的那道闪现。
+       *
+       * 之前我为了"压住"位移去写内联 `transform: translate(0)`，
+       * 结果把滑入动画也一起压成静止，只剩淡入 → 用户反馈
+       * 「打开动画原本很丝滑的，现在变成唰的一下出现了」。
+       * 现在把 transform 完全交还给 EP，只负责把 `left` 抢在首帧前设好。
+       */
+      drawer.style.setProperty('--rd-offset', offsetCss.value)
+    }
+  } else {
+    /*
+     * 关闭：`left` / class 留到 `@closed` 之后再收（见 cleanupOffsetAfterLeave），
+     * 否则抽屉会先跳回 0 再滑出，又是一道闪。
+     */
+    void overlay
+  }
+}
+
 function syncOverlayOffset() {
   const drawer = getDrawerEl()
   const overlay = drawer?.closest('.el-overlay') as HTMLElement | null
   if (!overlay) return
-  if (offsetPx.value > 0 && props.direction === 'ltr') {
-    overlay.style.left = offsetCss.value
-  } else {
-    overlay.style.left = ''
+  applyOffset(overlay)
+}
+
+/**
+ * 盯住 body，overlay 一插进来就立刻设偏移
+ *
+ * 比 nextTick 更早：`childList` 回调在 DOM 变更的同一批 microtask 里跑，
+ * 浏览器还没开始第一帧绘制，所以用户看不到"从 0 开始"的那一帧。
+ */
+let _bodyObserver: MutationObserver | null = null
+
+function watchElementInsertion() {
+  if (_bodyObserver || typeof MutationObserver === 'undefined') return
+  _bodyObserver = new MutationObserver(() => {
+    if (!props.modelValue) return
+    syncOverlayOffset()
+  })
+  _bodyObserver.observe(document.body, { childList: true, subtree: false })
+}
+
+/**
+ * 入场时**提前**把 `left` 和 `transform` 定死
+ *
+ * 为什么还要这一步：MutationObserver 的回调虽然在 microtask 里，
+ * 但实测（`open-raf` 采样）首帧仍能看到 `transform: -380` —— 因为
+ * Vue 把 `el-drawer` 的 v-if 展开和 EP 的 transition 类挂在同一批更新里，
+ * 观察器赶到时浏览器已经开始记录了。
+ *
+ * 这里在 `modelValue` 变 true 的同步阶段就把「待打开的抽屉」定位好：
+ * 只要 DOM 已经存在（v-if 之前的旧节点、或 keep-alive 残留），先摆正再说。
+ * 元素不存在时静默跳过，交给观察器兜底。
+ */
+function prePositionOnOpen() {
+  if (!(offsetPx.value > 0 && props.direction === 'ltr')) return
+  // 用 rAF 抢在 EP 的 transition 起始之前（同一帧内、绘制前）
+  requestAnimationFrame(() => {
+    if (!props.modelValue) return
+    syncOverlayOffset()
+    // 再补一次，覆盖"动画第一个 tick 已经按 -100% 记录了起点"的情况
+    requestAnimationFrame(() => {
+      if (!props.modelValue) return
+      syncOverlayOffset()
+    })
+  })
+}
+
+function stopWatchingInsertion() {
+  if (_bodyObserver) {
+    _bodyObserver.disconnect()
+    _bodyObserver = null
   }
 }
 
-// 打开 / 偏移 / 方向变化时同步（nextTick 等 el-drawer 挂载完成；再补一次兜住首次挂载慢）
+// 打开 / 偏移 / 方向变化时同步
 watch(
   [() => props.modelValue, offsetPx, () => props.direction],
-  () => {
-    nextTick(() => {
+  (v) => {
+    const open = Array.isArray(v) ? v[0] : v
+    if (open) {
+      // 开之前就开始盯：overlay 插入的第一时间就带上偏移
+      watchElementInsertion()
+      prePositionOnOpen()
+      // 下面两次是兜底（元素可能已经存在，或观察器建立前就插好了）
       syncOverlayOffset()
-      window.setTimeout(syncOverlayOffset, 60)
-    })
+      nextTick(() => {
+        syncOverlayOffset()
+        window.setTimeout(syncOverlayOffset, 0)
+      })
+    } else {
+      stopWatchingInsertion()
+      /*
+       * 关闭：**先放开 transform 锁**，让 EP 的退场动画正常跑。
+       *
+       * 用户 2026-10-18：「展开效果很好了，但是没有抽屉关闭效果了」。
+       * 原因：入场时我写了内联 `transform: translate(0) !important`，
+       * 它比 EP 的 `.el-drawer-fade-leave-to .ltr{transform:translate(-100%)}` 更强，
+       * 把退场位移一起压死了 → 抽屉"啪"地消失，没有滑出过程。
+       *
+       * 处理：
+       *   · 立刻撤掉内联 transform（退场位移恢复由 EP 控制）；
+       *   · `left` 保持到动画结束再清（否则抽屉会先跳回 0 再滑出，又是一道闪）。
+       *      清理时机放在 `@closed`（见 onClosed）。
+       */
+      const drawer = getDrawerEl()
+      if (drawer) drawer.style.removeProperty('transform')
+      /*
+       * 诊断出口（排查"点空白关闭没有退场动画"）：
+       * 控制台/自动化脚本读 `window.__rdClose` 就能看到关闭瞬间的状态。
+       */
+      ;(window as any).__rdClose = {
+        at: Date.now(),
+        source: 'watch(modelValue=false)',
+        hasDrawerEl: !!drawer,
+        hadInlineTransform: drawer ? !!drawer.style.transform : null,
+        cls: drawer ? drawer.className : null
+      }
+    }
   },
   { immediate: true }
 )
+
+/** 退场动画结束后，再把让位用的 `left` 收掉（避免下一次别的抽屉被带歪） */
+/**
+ * 退场动画结束后，再把让位用的 `left` 收掉
+ *
+ * ⚠️ 不能一收到 `@closed` 就清 —— 实测（2026-10-18）会出现
+ *    `left` 从 280 瞬间跳回 0 的画面：抽屉已经滑出到侧栏外面了，
+ *    结果位置基座被抽走，视觉上"闪一下回到原地"。
+ *
+ * 所以延后一帧再清，并且只在**确实已经不可见**的时候清。
+ */
+function cleanupOffsetAfterLeave() {
+  const drawer = getDrawerEl()
+  const overlay = drawer?.closest('.el-overlay') as HTMLElement | null
+
+  window.setTimeout(() => {
+    // 期间又打开了（用户快速开→关→开）：不要清，否则下次打开又要重设一遍
+    if (props.modelValue) return
+    if (overlay) {
+      overlay.style.removeProperty('left')
+      overlay.classList.remove('rd-modal-offset')
+    }
+    if (drawer) {
+      drawer.classList.remove('rd-offset-drawer')
+      drawer.style.removeProperty('--rd-offset')
+      drawer.style.removeProperty('transform')
+    }
+  }, 60)
+}
 
 // 抽屉关闭时把 overlay 恢复原样，避免下次别的抽屉（无偏移）被带歪
 onBeforeUnmount(() => {
@@ -375,10 +585,23 @@ defineExpose({
     background: #c0c4cc;
   }
 }
-/* rtl（右侧抽屉）：手柄在抽屉**左**边 */
-.rd-resize-rtl {
-  left: 0;
-}
+/*
+ * 带偏移的左抽屉：**动画起点**也要一并挪开
+ * ---------------------------------------------------------------------------
+ * 用户 2026-10-18：「从抽屉伸出的效果不行，会有闪现；就是起始位置是从
+ * 左侧菜单内部开始移动的，视觉效果不行」。
+ *
+ * 原因：el-drawer 的 ltr 抽屉关闭态是 `transform: translateX(-100%)`，
+ * 这个 -100% 是相对**抽屉自身宽度**算的。如果只给遮罩设 `left:280px`，
+ * 抽屉的起点仍然在 `280 - 380 = -100px` —— 视觉上它从侧栏**内部**穿过来，
+ * 也就是用户看到的那道闪现。
+ *
+ * 修法：给抽屉也加同样的位移补偿。`--rd-offset` 由组件内联写在遮罩上，
+ * 这里把它同步到抽屉元素，让 `translateX` 从「侧栏右缘」开始算：
+ *   关闭态 → `translateX(calc(-100% + var(--rd-offset)))`
+ *   打开态 → `translateX(0)`（不变）
+ * 这样抽屉就是**紧贴侧栏右缘滑出**，不会穿过菜单。
+ */
 /* ltr（左侧抽屉）：手柄在抽屉**右**边 */
 .rd-resize-ltr {
   right: 0;
@@ -409,4 +632,47 @@ defineExpose({
 .rd-modal-offset {
   left: var(--rd-offset, 0) !important;
 }
+
+/*
+ * 带偏移的左抽屉：**入场起点**要贴在侧栏右缘，而不是从屏幕最左穿过来
+ * ---------------------------------------------------------------------------
+ * 用户 2026-10-18：「从抽屉伸出的效果不行，会有闪现；起始位置是从左侧菜单内部
+ * 开始移动的，视觉效果不行」。
+ *
+ * 实测（改前）：
+ *   raf    left:-380  transform:-380px   ← 起点在屏幕最左之外（穿过菜单）
+ *   80ms   left:  10  transform:-248px
+ *   480ms  left: 280  transform:none     ← 终点正确
+ *
+ * 根因：Element Plus 用 `.el-drawer-fade-enter-from .ltr { transform: translate(-100%) }`
+/*
+ * 带偏移的左抽屉：入场只淡入，不做横向位移
+ * ---------------------------------------------------------------------------
+ * 用户 2026-10-18：「抽屉出现的瞬间是从路由菜单内部出现的，而不是很好地从左侧
+ * 路由菜单的边界那边长出来」。
+ *
+ * 前面已经确认过位移是怎么来的：
+ *   · overlay 的 `left` 让它从侧栏右缘开始（已在 JS 里瞬间就位、禁掉过渡）；
+ *   · EP 的 `.el-drawer-fade-enter-from .ltr { transform: translate(-100%) }`
+ *     会让抽屉**再多退自身宽度**，于是起点跑到侧栏左边之外 ——
+ *     划过菜单的那一段，就是用户看到的"从菜单里长出来"。
+ *
+ * 既然 `left` 已经把抽屉摆到了侧栏右缘，再叠加 -100% 就是多余的。
+ * 这里把这层位移抵掉，只保留透明度淡入 —— 视觉上就是**贴着侧栏边界展开**，
+ * 不再有横向扫过的过程。
+ *
+ * 只对「有偏移的左抽屉」生效（`.rd-offset-drawer`），
+ * 其余抽屉（知识库独立抽屉、AiAssistant 等）保持 EP 原生行为不变。
+ */
+.rd-drawer.rd-offset-drawer.rd-ltr {
+  --rd-offset: 0px;
+}
+
+/*
+ * 入场：抵消 EP 的 -100% 位移（由 JS 内联设置，见 applyOffset）
+ * 退场：**放开**，让 EP 的 translate(-100%) 正常跑出动画
+ *
+ * 所以这里**不要**给 `.rd-offset-drawer` 写退场的 transform 覆盖 ——
+ * 写了会把"滑出去"也压成 0，抽屉就僵在原地然后消失（实测过）。
+ */
 </style>

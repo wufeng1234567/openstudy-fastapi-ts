@@ -270,9 +270,30 @@ const syncEditorMode = async () => {
     newNoteDraftSettled = true
     // 恢复到内容时给个轻提示：用户（2026-10-11）明确要"能知道上次写过、且被带出来了"。
     if (await loadDraft()) {
-      ElMessage({ message: '已恢复上次未发布的草稿', type: 'info', duration: 2500 })
+      notifyDraftRestored()
     }
   }
+}
+
+/**
+ * 「已恢复上次未发布的草稿」提示 —— **全局限流 1 秒最多 1 次**
+ *
+ * 用户 2026-10-18：「这个的出现要做好节流，1s 内最多只允许出现一次，
+ * 禁止其他地方重复发送这个信息」。
+ *
+ * 为什么组件内的 `newNoteDraftSettled` 不够：
+ *   · 它是**实例级**的，页面 keep-alive 之外还有别的路径能进来（路由切换、
+ *     悬浮助手唤起、刷新），每次新实例都会放行一次；
+ *   · `ElMessage` 本身不去重，两次调用就是两条提示堆在右上角。
+ *
+ * 这里用**模块级**时间戳做闸门：跨实例共享，1s 内只放第一条。
+ */
+let _lastDraftToastAt = 0
+function notifyDraftRestored() {
+  const now = Date.now()
+  if (now - _lastDraftToastAt < 1000) return
+  _lastDraftToastAt = now
+  ElMessage({ message: '已恢复上次未发布的草稿', type: 'info', duration: 2500 })
 }
 
 const DRAFT_KEY = 'note_draft'
@@ -788,6 +809,18 @@ const handlePublish = async () => {
     display: flex;
     flex-direction: column;
     gap: 12px;
+    /*
+     * ⚠️ 必须自己滚（用户 2026-10-18：「写笔记页面无法滚动，页面好像被限制死了，
+     *    我目前在草稿那边无法进行任何操作，滚动条没有出现」）。
+     *
+     * 原因：顶层 `.notes-editor-container` 是 `height:100%` + flex 列，
+     * 而这一层只有 `flex:1 / min-height:0`，**没有任何 overflow 约束** ——
+     * 内容超过视口就被上层裁掉，外层又不会滚 → 整页卡死、连滚动条都不出现。
+     *
+     * 修法：让这一层成为滚动容器，高度仍由 flex 分配，不撑破外壳。
+     */
+    overflow-y: auto;
+    overscroll-behavior: contain;
 
     .tiptap-editor {
       flex: 1;
