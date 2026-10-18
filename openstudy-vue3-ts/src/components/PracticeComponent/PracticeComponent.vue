@@ -18,7 +18,13 @@
         <div class="overview-question-stream" ref="questionStreamRef" @scroll.passive="onStreamScroll">
           <div v-for="(item, index) in questions" :key="index" class="overview-question-card">
             <div class="overview-card-header">
-              <span class="question-number" v-if="overviewMode">第 {{ index + 1 }} 题</span>
+              <!--
+                题号必须**跨波顺延**（用户 2026-10-18：「点击下一波后还是 1 到 20，
+                应该要顺延」）。
+                原来写的是 `index + 1`，而 `questions` 是分波切片，每波下标都从 0 起 ——
+                所以第二波又从"第 1 题"开始。改成 `numberBase + index + 1`。
+              -->
+              <span class="question-number" v-if="overviewMode">第 {{ numberBase + index + 1 }} 题</span>
               <div v-else class="header-spacer"></div>
               <MarkedButton :question-id="item.id" :bank-id="bankId" size="small" @change="handleMarkedChange(index)" />
               <FavoriteButton type="question" :target-id="item.id" size="small" />
@@ -77,7 +83,7 @@
           :stats="{ correctCount, wrongCount, accuracy }" :is-exam-mode="isExamMode" :is-practice-mode="isPracticeMode"
           :is-last-question="isLastQuestion" :show-exam-result="showExamResult" :total-score="totalScore"
           :answered-count="answeredCount" :total-count="totalQuestions" :remaining-count="remainingCount"
-          :module-type="moduleType" :draft-state="draftState" :draft-button-text="draftButtonText"
+          :module-type="moduleType" :draft-state="draftState" :draft-button-text="draftButtonText" :number-base="numberBase"
           @go-to-question="scrollToQuestion" @toggle-overview="toggleOverview"
           @reset-practice="resetPractice" @submit-exam="handleSubmitExam" @finish-exam="handleFinishExam"
           @save-draft="handleManualSaveDraft" />
@@ -99,7 +105,7 @@
 
       <div class="main-content">
         <QuestionDisplay :current-question="currentQuestion" :current-question-index="currentQuestionIndex"
-          :total-questions="totalQuestions" :selected-answer="selectedAnswer"
+          :total-questions="totalQuestions" :number-offset="numberBase" :selected-answer="selectedAnswer"
           :sub-fill-blank-answers="subFillBlankAnswers" :sub-essay-answers="subEssayAnswers" :answers="answers"
           :show-analysis-immediately="showAnalysisImmediately" @select-option="handleSelectOption"
           @update-answer="value => selectedAnswer = value" @select-sub-option="selectSubOption"
@@ -114,7 +120,7 @@
           :show-exam-result="showExamResult" :total-score="totalScore" :answered-count="answeredCount"
           :total-count="totalQuestions" :remaining-count="remainingCount" :module-type="moduleType"
           :marked-questions="markedQuestionsSet" :favorited-questions="favoritedQuestions" :error-questions="errorQuestions"
-          :draft-state="draftState" :draft-button-text="draftButtonText"
+          :draft-state="draftState" :draft-button-text="draftButtonText" :number-base="numberBase"
           @go-to-question="goToQuestion" @reset-practice="resetPractice" @submit-exam="handleSubmitExam"
           @toggle-overview="toggleOverview" @finish-exam="handleFinishExam"
           @save-draft="handleManualSaveDraft" />
@@ -219,6 +225,20 @@ const isPracticeMode = computed(() => moduleSettings.value.practiceMode === 'pra
 const showAnalysisImmediately = computed(() => !isExamMode.value || showExamResult.value)
 const canGoPrevBatch = computed(() => questionOffset.value > 0 && (isExamMode.value || isPracticeMode.value))
 const isLastQuestion = computed(() => currentQuestionIndex.value === totalQuestions.value - 1)
+
+/**
+ * 本波第一题在整个题库里的**序号偏移**
+ * ------------------------------------------------------------------
+ * 题号要跨波顺延（用户 2026-10-18：「点下一波还是 1 到 20，应该要顺延」）。
+ *
+ * `questions` 是 `allQuestionsData` 的切片（`[questionOffset, +count)`），
+ * 所以波内下标 `i` 对应的全局序号是 `questionOffset + i + 1`。
+ *
+ * ⚠️ 直接等于 `questionOffset`，不要再加判断分支：
+ *    第一波 offset=0 → 1 开始；第二波 offset=20 → 21 开始。所有展示处共用它，
+ *    避免"卡片顺延了、答题卡没顺延"这种不一致。
+ */
+const numberBase = computed(() => Number(questionOffset.value) || 0)
 /**
  * 是否已经是**最后一波**
  *

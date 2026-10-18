@@ -33,7 +33,8 @@
           wrong: !isExamMode && !item.correct && item.answered,
           current: index === currentQuestionIndex
         }" @click="$emit('go-to-question', index)">
-          {{ index + 1 }}
+          <!-- 题号跨波顺延：波内下标 + 本波起点偏移（用户 2026-10-18） -->
+          {{ numberBase + index + 1 }}
         </div>
       </div>
 
@@ -88,7 +89,7 @@
             <div v-for="q in group.items" :key="q.index" :ref="el => setGridItemRef(el, q.index)"
               class="grid-item overview-grid-item" :class="getOverviewItemClass(q.index)"
               @click="$emit('go-to-question', q.index)">
-              {{ q.index + 1 }}
+              {{ numberBase + q.index + 1 }}
             </div>
           </div>
         </div>
@@ -166,7 +167,15 @@ const props = defineProps({
   /** 暂存状态：驱动「暂存」按钮的文案与 loading（见 PracticeComponent 的 draftState） */
   draftState: { type: String, default: 'idle' },
   /** 暂存按钮文案（由父组件按状态生成，避免子组件重复一套文案） */
-  draftButtonText: { type: String, default: '暂存' }
+  draftButtonText: { type: String, default: '暂存' },
+  /**
+   * 题号偏移（= 本波第一题之前的题目数）
+   *
+   * 分波刷题时 `questions` 只是切片，波内下标每波从 0 起；
+   * 题号要跨波顺延，就得加上这个偏移（用户 2026-10-18：
+   * 「点下一波还是 1 到 20，应该要顺延」）。
+   */
+  numberBase: { type: Number, default: 0 }
 })
 
 const emit = defineEmits([

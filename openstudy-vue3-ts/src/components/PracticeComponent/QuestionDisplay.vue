@@ -51,7 +51,12 @@
         <h4>{{ currentQuestion.mainTitle }}</h4>
         <LatexRenderer :content="formatMainContent(currentQuestion.mainContent)" raw-html />
       </div>
-      <span class="question-index" v-if="showQuestionIndex !== false">{{ (currentQuestionIndex ?? 0) + 1 }}/{{ totalQuestions }}</span>
+      <!--
+        题号跨波顺延（用户 2026-10-18）：
+        `currentQuestionIndex` 是**波内**下标（每波从 0 起），
+        全局序号 = `numberOffset + index + 1`。第一波 offset=0 → 1 起；第二波 → 21 起。
+      -->
+      <span class="question-index" v-if="showQuestionIndex !== false">{{ numberOffset + (currentQuestionIndex ?? 0) + 1 }}/{{ totalQuestions }}</span>
 
       <!-- 只有 currentQuestion 存在才显示题目内容 -->
       <template v-if="currentQuestion">
@@ -209,6 +214,13 @@ const props = defineProps({
   },
   currentQuestionIndex: { type: Number, default: 0 },
   totalQuestions: { type: Number, default: 0 },
+  /**
+   * 题号偏移（= 本波第一题之前的题目数）
+   *
+   * 分波刷题时 `questions` 只是切片，波内下标每波都从 0 起；
+   * 显示"第几题"必须加上这个偏移才能跨波顺延（用户 2026-10-18）。
+   */
+  numberOffset: { type: Number, default: 0 },
   selectedAnswer: {
     type: [String, Number, Array] as PropType<string | number | (string | number)[] | null>,
     default: null
