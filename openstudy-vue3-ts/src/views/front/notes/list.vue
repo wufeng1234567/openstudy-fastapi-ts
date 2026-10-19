@@ -2,126 +2,72 @@
 <!-- 功能：展示所有用户公开的笔记，支持搜索、筛选、排序 -->
 <!-- 访问路径：/front/notes/list -->
 <template>
-  <div class="notes-list-container">
-    <!-- ==================== 页面头部 ==================== -->
-    <!-- 顶栏已显示「学习分享」，这里用「公开笔记」做二级标题，避免重复 -->
-    <div class="header">
-      <div class="header-left">
-        <h2 class="header-title">公开笔记</h2>
-        <span class="header-sub">来自所有人的学习笔记与经验沉淀</span>
-      </div>
-      <div class="header-right">
-        <el-button class="refresh-btn" :icon="Refresh" @click="fetchNotes">刷新</el-button>
-        <el-button class="create-btn" type="primary" @click="goEditor()">写笔记</el-button>
-      </div>
-    </div>
+  <div ref="pageRef" class="notes-list-container">
+    <!--
+      标题行已并入顶栏（用户 2026-10-19）
+      ==========================================================================
+      原来内容区第一行是「公开笔记 / 来自所有人的学习笔记与经验沉淀」，
+      右边是「刷新 / 写笔记」。现在：
+        · 顶栏变成 `学习分享 · 公开笔记`（见 layout/front.vue）；
+        · 副标题 + 条数并进顶栏那一行（`N 篇笔记`，由 topbar store 推送）；
+        · 「刷新 / 写笔记」下移，和搜索框同一行（用户要求「移动到搜索框的右边」）。
+
+      所以这里不再有 header 区块，第一行直接是搜索行。
+    -->
 
     <div class="content-layout">
       <div class="left-column">
-        <!-- ==================== 搜索区域 ==================== -->
-        <!-- 支持关键词搜索，带搜索历史下拉框 -->
-        <div class="search-bar">
-          <div class="search-wrapper">
-            <el-input ref="searchInputRef" v-model="searchKeyword" placeholder="搜索笔记..." clearable @input="handleSearch"
-              @focus="handleFocus" @blur="handleBlur" class="search-input">
-              <template #prefix>
-                <el-icon><Search /></el-icon>
-              </template>
-            </el-input>
-            <!-- 搜索历史下拉框：显示用户之前的搜索记录 -->
-            <div v-show="showSearchHistory && searchHistory.length > 0" class="search-history-dropdown"
-              @mousedown.prevent>
-              <div class="history-header">
-                <span class="history-title">搜索历史</span>
-                <span class="clear-history" @click="clearHistory">清空</span>
-              </div>
-              <div class="history-tags">
-                <div v-for="(keyword, index) in searchHistory" :key="index" class="history-tag-item"
-                  @click="selectHistory(keyword)">
-                  <span class="tag-text">{{ keyword }}</span>
-                  <span class="tag-close" @click.stop="removeHistory(keyword)">
-                    <el-icon><Close /></el-icon>
-                  </span>
+        <!--
+          ==================== 搜索行 ====================
+          一行三件：搜索框（内含「筛选」入口）+ 排序下拉 + 刷新 / 写笔记。
+          搜索框复用全站统一组件 `SearchFilterInput`，与「题库管理 / 题目管理 /
+          笔记管理」完全一致；排序下拉改为同一行的次级控件。
+        -->
+        <div ref="searchAreaRef" class="search-bar">
+          <SearchFilterInput v-model="searchKeyword" placeholder="搜索笔记..." class="search-input"
+            :filter-open="filterOpen" :filter-active="filterActive" @input="handleSearchInput"
+            @enter="handleSearchEnter" @clear="handleSearchClear" @toggle-filter="toggleFilterSidebar"
+            @focus="handleFocus" @blur="handleBlur">
+            <!-- 搜索历史：挂在搜索框正下方（样式沿用原来的下拉面板） -->
+            <template #dropdown>
+              <div v-show="showSearchHistory && searchHistory.length > 0" class="search-history-dropdown"
+                @mousedown.prevent>
+                <div class="history-header">
+                  <span class="history-title">搜索历史</span>
+                  <span class="clear-history" @click="clearHistory">清空</span>
+                </div>
+                <div class="history-tags">
+                  <div v-for="(keyword, index) in searchHistory" :key="index" class="history-tag-item"
+                    @click="selectHistory(keyword)">
+                    <span class="tag-text">{{ keyword }}</span>
+                    <span class="tag-close" @click.stop="removeHistory(keyword)">
+                      <el-icon><Close /></el-icon>
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
+            </template>
+          </SearchFilterInput>
 
-          <!-- 排序方式：和搜索框同一行，不再混在筛选标签里 -->
-          <el-select v-model="sortBy" class="sort-select" size="default" @change="handleSortChange">
-            <el-option label="最新发布" value="create_time" />
-            <el-option label="最早发布" value="create_time_asc" />
-            <el-option label="内容最长" value="content_length" />
-            <el-option label="最多浏览" value="click_count" />
-          </el-select>
+          <el-button class="refresh-btn" :icon="Refresh" @click="fetchNotes">刷新</el-button>
+          <el-button class="create-btn" type="primary" @click="goEditor()">写笔记</el-button>
         </div>
 
-        <!-- ==================== 筛选区域 ==================== -->
-        <!-- 每个筛选组都带文字标签：分区 / 时间 / 标签 -->
-        <div class="filter-panel">
-          <!-- 分区：公开笔记所属的分区 -->
-          <div class="filter-group">
-            <span class="filter-label">分区</span>
-            <div class="filter-content" :class="{ 'has-toggle': sectionsHasOverflow }">
-              <div ref="sectionChipsRef" class="filter-chips"
-                :class="{ 'is-collapsed': sectionsHasOverflow && !sectionsExpanded }">
-                <button type="button" class="chip" :class="{ active: selectedPublicSectionIds.length === 0 }"
-                  @click="selectSection(null)">全部</button>
-                <button type="button" v-for="section in publicSectionList" :key="section.id" class="chip"
-                  :class="{ active: selectedPublicSectionIds.includes(section.id) }" @click="selectSection(section.id)">
-                  {{ section.name }}
-                </button>
-                <span v-if="publicSectionList.length === 0" class="filter-empty">暂无分区</span>
-              </div>
-              <button v-if="sectionsHasOverflow" type="button" class="chip-toggle"
-                @click="sectionsExpanded = !sectionsExpanded">
-                {{ sectionsExpanded ? '收起' : '展开' }}
-                <el-icon :class="{ 'is-open': sectionsExpanded }">
-                  <ArrowDown />
-                </el-icon>
-              </button>
-            </div>
-          </div>
+        <!--
+          筛选下拉面板：与「题库管理 / 题目管理 / 笔记管理」同一套组件与交互
+          ==========================================================================
+          用户 2026-10-19：「搜索框那边的下拉框进行功能重构…改造成一个筛选组件，
+          这个组件题库管理和题目管理的输入框里面都有一个复用的筛选组件，把它复用进去」。
 
-          <!-- 时间：快捷区间 + 自定义日期 -->
-          <div class="filter-group">
-            <span class="filter-label">时间</span>
-            <div class="filter-chips">
-              <button type="button" class="chip" :class="{ active: timeRanges.length === 0 && !dateRange }"
-                @click="selectTimeRange('')">全部</button>
-              <button type="button" class="chip" :class="{ active: timeRanges.includes('today') }"
-                @click="selectTimeRange('today')">今天</button>
-              <button type="button" class="chip" :class="{ active: timeRanges.includes('7d') }"
-                @click="selectTimeRange('7d')">近 7 天</button>
-              <button type="button" class="chip" :class="{ active: timeRanges.includes('30d') }"
-                @click="selectTimeRange('30d')">近 30 天</button>
-              <el-date-picker v-model="dateRange" type="daterange" range-separator="至" start-placeholder="开始日期"
-                end-placeholder="结束日期" class="date-picker" size="small" value-format="YYYY-MM-DD"
-                @change="handleDateChange" />
-            </div>
-          </div>
-
-          <!-- 标签：公开笔记的热门标签 -->
-          <div v-if="hotTags.length > 0" class="filter-group">
-            <span class="filter-label">标签</span>
-            <div class="filter-content" :class="{ 'has-toggle': tagsHasOverflow }">
-              <div ref="tagChipsRef" class="filter-chips"
-                :class="{ 'is-collapsed': tagsHasOverflow && !tagsExpanded }">
-                <button type="button" class="chip" :class="{ active: selectedTags.length === 0 }"
-                  @click="selectTag('')">全部</button>
-                <button type="button" v-for="tag in hotTags" :key="tag" class="chip"
-                  :class="{ active: selectedTags.includes(tag) }" @click="selectTag(tag)">{{ tag }}</button>
-              </div>
-              <button v-if="tagsHasOverflow" type="button" class="chip-toggle"
-                @click="tagsExpanded = !tagsExpanded">
-                {{ tagsExpanded ? '收起' : '展开' }}
-                <el-icon :class="{ 'is-open': tagsExpanded }">
-                  <ArrowDown />
-                </el-icon>
-              </button>
-            </div>
-          </div>
-        </div>
+          原来这里是一整块常驻的 chips 面板（分区 / 时间 / 标签三行永远占着高度），
+          现在收进搜索框内的「筛选」按钮里，点开才出现 —— 内容区少 3 行。
+          原来的「展开更多 / 收起」单行折叠逻辑也就不需要了（面板本身是可滚动的）。
+        -->
+        <CommonFilterSidebar ref="filterSidebarRef" title="笔记筛选" hide-trigger :filter-groups="filterGroups"
+          :filter-form="filterForm" :default-filter="defaultFilter" :default-collapsed="true"
+          :style="{ '--filter-top': filterTop + 'px', '--filter-left': filterLeft + 'px' }"
+          @filter-change="handleFilterChange" @reset-filters="handleResetFilters"
+          @collapse-change="handleFilterCollapseChange" @active-change="handleFilterActiveChange" />
 
         <div v-loading="loading" class="notes-list">
           <div v-for="note in notesList" :key="note.noteId" class="note-item" @click="goDetail(note.noteId)">
@@ -228,11 +174,14 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'FrontNotesList' })
-import { ref, computed, onMounted, onActivated, onBeforeUnmount, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, watch, onMounted, onActivated, onBeforeUnmount, onUnmounted, nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Search, Edit, Refresh, Close, ArrowDown } from '@element-plus/icons-vue'
+import { Edit, Refresh, Close } from '@element-plus/icons-vue'
 import OsIcon from '@/components/OsIcon/index.vue'
+import SearchFilterInput from '@/components/SearchFilterInput/index.vue'
+import CommonFilterSidebar from '@/components/CommonFilterSidebar/index.vue'
+import useTopbarStore from '@/store/modules/topbar'
 import { listPublicNotes, getRanking, getPublicNoteTags } from '@/api/notes/public'
 import { getPublicSections } from '@/api/notes/publicSection'
 import UserAvatar from '@/components/UserAvatar/index.vue'
@@ -244,6 +193,8 @@ import defAva from '@/assets/images/profile.jpg'
 const cacheStore = useFrontPageCacheStore()
 const userStore = useUserStore()
 const router = useRouter()
+const route = useRoute()
+const topbarStore = useTopbarStore()
 
 const loading = ref(false)
 const notesList = ref([])
@@ -253,22 +204,49 @@ const pageSize = ref(10)
 const total = ref(0)
 
 const publicSectionList = ref([])
-// 多选筛选：分区 / 时间 / 标签都支持多选，组内 OR、组间 AND
-const selectedPublicSectionIds = ref([])
-const sortBy = ref('create_time')
-const sortOrder = ref('desc')
-const dateRange = ref(null)
-// 时间快捷区间多选：today / 7d / 30d
-const timeRanges = ref([])
-// 分区 / 标签：内容超过一行时，自动显示「展开更多」按钮
-const sectionChipsRef = ref(null)
-const tagChipsRef = ref(null)
-const sectionsExpanded = ref(false)
-const tagsExpanded = ref(false)
-const sectionsHasOverflow = ref(false)
-const tagsHasOverflow = ref(false)
+
+/*
+ * ==================== 筛选状态 ====================
+ * 用户 2026-10-19：「搜索框那边的下拉框进行功能重构，改造成一个筛选组件，
+ * 这个组件题库管理和题目管理的输入框里面都有一个复用的筛选组件，把它复用进去」。
+ *
+ * 所以原来三行常驻的 chips（分区 / 时间 / 标签）+ 搜索框右侧的排序下拉，
+ * 全部收进 `CommonFilterSidebar` 这一个面板：
+ *   · 排序   —— radio（最新发布 / 最早发布 / 内容最长 / 最多浏览）
+ *   · 分区   —— checkbox（来自后端公开分区）
+ *   · 时间   —— checkbox 快捷区间（今天 / 近 7 天 / 近 30 天）
+ *   · 自定义日期 —— dateRange（与快捷区间互斥）
+ *   · 标签   —— checkbox（来自后端热门标签）
+ *
+ * 状态全在 `filterForm` 一个对象里，请求参数从它派生 —— 不再散成五个 ref。
+ */
+const defaultFilter = {
+  sortBy: 'create_time',
+  sections: [] as any[],
+  timeRanges: [] as string[],
+  createRange: null as string[] | null,
+  tags: [] as string[]
+}
+const filterForm = ref({
+  sortBy: 'create_time',
+  sections: [] as any[],
+  timeRanges: [] as string[],
+  createRange: null as string[] | null,
+  tags: [] as string[]
+})
+
+// 筛选入口的按钮态（展开中 / 有生效条件）
+const filterOpen = ref(false)
+const filterActive = ref(false)
+const filterSidebarRef = ref<any>(null)
+// 筛选面板定位：靠它贴到搜索框正下方 + 对齐搜索框左缘
+const searchAreaRef = ref(null)
+const pageRef = ref(null)
+const filterTop = ref(0)
+const filterLeft = ref(0)
+
 const rankingList = ref([])
-  const rankingPeriod = ref('week')
+const rankingPeriod = ref('week')
 // 热榜加载态 / 请求竞态序号（快速切换时只认最后一次结果）
 const rankingLoading = ref(false)
 const rankingError = ref(false)
@@ -280,10 +258,8 @@ let rankingReqSeq = 0
     year: { label: '年榜', subtitle: '近 365 天发布 · 综合热度', empty: '近一年还没有新笔记' }
   }
 const rankingSubtitle = computed(() => rankingPeriodMeta[rankingPeriod.value]?.subtitle || '')
-const selectedTags = ref([])
 const showSearchHistory = ref(false)
 const searchHistory = ref([])
-const searchInputRef = ref(null)
 
 let blurTimer = null
 
@@ -345,10 +321,9 @@ const clearHistory = () => {
 const selectHistory = (keyword) => {
   searchKeyword.value = keyword
   showSearchHistory.value = false
+  pageNum.value = 1
   fetchNotes()
 }
-
-let searchTimer = null
 
 const baseUrl = import.meta.env.VITE_APP_BASE_API || ''
 
@@ -423,37 +398,79 @@ const fetchHotTags = async () => {
   }
 }
 
-const getSortParams = () => {
-  if (sortBy.value === 'create_time_asc') {
-    return { sortBy: 'create_time', sortOrder: 'asc' }
-  }
-  if (sortBy.value === 'create_time') {
-    return { sortBy: 'create_time', sortOrder: 'desc' }
-  }
-  return { sortBy: sortBy.value, sortOrder: sortOrder.value }
-}
-
-// 判断 chips 是否换行（超出第一行）——折叠时 max-height 不影响布局，仍能测出真实行数
-const chipsHasMultipleRows = (el) => {
-  if (!el) return false
-  const chips = Array.from(el.querySelectorAll('.chip'))
-  if (chips.length <= 1) return false
-  const firstTop = chips[0].offsetTop
-  return chips.some(chip => chip.offsetTop - firstTop > 4)
-}
-
-const measureFilterOverflow = () => {
-  sectionsHasOverflow.value = chipsHasMultipleRows(sectionChipsRef.value)
-  tagsHasOverflow.value = chipsHasMultipleRows(tagChipsRef.value)
-}
-
-// 自定义日期范围（快捷区间由后端按 timeRanges 计算，二者可叠加）
-const getFilterTime = () => {
-  if (dateRange.value && dateRange.value.length === 2) {
-    return {
-      startTime: dateRange.value[0] + ' 00:00:00',
-      endTime: dateRange.value[1] + ' 23:59:59'
+/*
+ * ==================== 筛选面板配置 ====================
+ * 分区 / 标签的候选项是后端下发的，所以这里是 computed —— 数据回来会自己更新。
+ * 组内多选 OR、组间 AND（与「题库管理 / 题目管理」完全一致的语义）。
+ */
+const filterGroups = computed(() => {
+  const groups: any[] = [
+    {
+      key: 'sortBy',
+      label: '排序',
+      type: 'radio',
+      options: [
+        { value: 'create_time', label: '最新发布' },
+        { value: 'create_time_asc', label: '最早发布' },
+        { value: 'content_length', label: '内容最长' },
+        { value: 'click_count', label: '最多浏览' }
+      ]
     }
+  ]
+
+  // 分区：后端公开分区（没有分区时不渲染这一组，避免空面板）
+  if (publicSectionList.value.length > 0) {
+    groups.push({
+      key: 'sections',
+      label: '分区',
+      type: 'checkbox',
+      options: publicSectionList.value.map((s: any) => ({ value: s.id, label: s.name }))
+    })
+  }
+
+  groups.push({
+    key: 'timeRanges',
+    label: '时间',
+    type: 'checkbox',
+    options: [
+      { value: 'today', label: '今天' },
+      { value: '7d', label: '近 7 天' },
+      { value: '30d', label: '近 30 天' }
+    ]
+  })
+
+  // 自定义日期：精确区间（选了就覆盖快捷区间，由 handleFilterChange 处理互斥）
+  groups.push({ key: 'createRange', label: '自定义日期', type: 'dateRange' })
+
+  // 标签：后端热门标签
+  if (hotTags.value.length > 0) {
+    groups.push({
+      key: 'tags',
+      label: '标签',
+      type: 'checkbox',
+      options: hotTags.value.map((t: string) => ({ value: t, label: t }))
+    })
+  }
+
+  return groups
+})
+
+/*
+ * 排序 → 后端参数
+ * `create_time_asc` 是前端的一个选项值，后端只认 (sortBy, sortOrder) 两段。
+ */
+const getSortParams = () => {
+  const v = filterForm.value.sortBy
+  if (v === 'create_time_asc') return { sortBy: 'create_time', sortOrder: 'asc' }
+  if (v === 'create_time') return { sortBy: 'create_time', sortOrder: 'desc' }
+  return { sortBy: v, sortOrder: 'desc' }
+}
+
+// 自定义日期范围 → startTime / endTime
+const getFilterTime = () => {
+  const r = filterForm.value.createRange
+  if (r && r.length === 2) {
+    return { startTime: r[0] + ' 00:00:00', endTime: r[1] + ' 23:59:59' }
   }
   return {}
 }
@@ -463,19 +480,21 @@ const fetchNotes = async () => {
   try {
     const sortParams = getSortParams()
     const timeParams = getFilterTime()
+    const f = filterForm.value
     const res = await listPublicNotes({
       pageNum: pageNum.value,
       pageSize: pageSize.value,
       keyword: searchKeyword.value || undefined,
       // 多选：逗号分隔传给后端（组内 OR）
-      tags: selectedTags.value.length ? selectedTags.value.join(',') : undefined,
-      publicSectionIds: selectedPublicSectionIds.value.length ? selectedPublicSectionIds.value.join(',') : undefined,
-      timeRanges: timeRanges.value.length ? timeRanges.value.join(',') : undefined,
+      tags: f.tags.length ? f.tags.join(',') : undefined,
+      publicSectionIds: f.sections.length ? f.sections.join(',') : undefined,
+      timeRanges: f.timeRanges.length ? f.timeRanges.join(',') : undefined,
       ...sortParams,
       ...timeParams
     })
     notesList.value = res.rows || []
     total.value = res.total || 0
+    loaded.value = true
   } catch (error) {
     ElMessage.error('获取笔记列表失败')
     console.error(error)
@@ -523,16 +542,38 @@ const itemHot = (item) => Number(item.hotScore ?? item.viewCount ?? item.clickCo
 // 悬浮提示：展示热度构成
 const hotTip = (item) =>
   `浏览 ${item.viewCount || 0} · 点赞 ${item.likeCount || 0} · 评论 ${item.commentCount || 0}`
-const handleSearch = () => {
+
+/* ---------- 搜索框（复用 SearchFilterInput 后，输入 / 回车 / 清空是三个事件） ---------- */
+let searchTimer = null
+
+const runSearch = () => {
   clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => {
-    if (searchKeyword.value && searchKeyword.value.trim()) {
-      addHistory(searchKeyword.value)
-    }
-    showSearchHistory.value = false
-    pageNum.value = 1
-    fetchNotes()
-  }, 300)
+  if (searchKeyword.value && searchKeyword.value.trim()) {
+    addHistory(searchKeyword.value)
+  }
+  showSearchHistory.value = false
+  pageNum.value = 1
+  fetchNotes()
+}
+
+/** 边打字边搜（300ms 防抖） */
+const handleSearchInput = () => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(runSearch, 300)
+}
+
+/** 回车立即搜，不等防抖 */
+const handleSearchEnter = () => {
+  clearTimeout(searchTimer)
+  runSearch()
+}
+
+/** 清空：立即回到全量 */
+const handleSearchClear = () => {
+  clearTimeout(searchTimer)
+  searchKeyword.value = ''
+  pageNum.value = 1
+  fetchNotes()
 }
 
 const handlePageChange = (page) => {
@@ -540,57 +581,56 @@ const handlePageChange = (page) => {
   fetchNotes()
 }
 
-// 分区多选：id === null 表示「全部」；再次点击已选中的 = 取消
-const selectSection = (id) => {
-  if (id === null) {
-    selectedPublicSectionIds.value = []
+/* ---------- 筛选面板 → 请求 ---------- */
+const handleFilterChange = (newFilter: any) => {
+  /*
+   * 时间互斥：选了自定义日期就清掉快捷区间，反之亦然。
+   * 只在前端归一化，避免用户同时开了两组条件却以为只有一组生效。
+   */
+  const next = { ...newFilter }
+  if (next.createRange && next.createRange.length === 2) {
+    next.timeRanges = []
   } else {
-    const arr = selectedPublicSectionIds.value
-    const idx = arr.indexOf(id)
-    if (idx >= 0) arr.splice(idx, 1)
-    else arr.push(id)
+    next.createRange = null
   }
+  filterForm.value = next
   pageNum.value = 1
   fetchNotes()
 }
 
-const handleSortChange = () => {
-  pageNum.value = 1
-  fetchNotes()
-}
-
-// 时间区间多选：'' 表示「全部」；与自定义日期互斥
-const selectTimeRange = (range) => {
-  if (range === '') {
-    timeRanges.value = []
-    dateRange.value = null
-  } else {
-    const arr = timeRanges.value
-    const idx = arr.indexOf(range)
-    if (idx >= 0) arr.splice(idx, 1)
-    else arr.push(range)
-    dateRange.value = null
+/*「清空筛选」：组件紧接着会再 emit 一次 filter-change，这里只重置本地状态，
+  请求交给 handleFilterChange 统一发，避免一次点击打两次接口 */
+const handleResetFilters = () => {
+  filterForm.value = {
+    sortBy: 'create_time',
+    sections: [],
+    timeRanges: [],
+    createRange: null,
+    tags: []
   }
-  pageNum.value = 1
-  fetchNotes()
 }
 
-// 自定义日期范围（选定后清掉快捷区间）
-const handleDateChange = (val) => {
-  dateRange.value = val && val.length === 2 ? val : null
-  if (dateRange.value) {
-    timeRanges.value = []
-  }
-  pageNum.value = 1
-  fetchNotes()
+/** 点搜索框里的「筛选」：切换面板展开/收起 */
+const toggleFilterSidebar = () => {
+  filterSidebarRef.value?.toggleCollapse?.()
 }
 
-// 标签多选：'' 表示「全部」；再次点击已选中的 = 取消
+/** 面板展开态同步到按钮（事件值 = 是否已收起） */
+const handleFilterCollapseChange = (collapsed: boolean) => {
+  filterOpen.value = !collapsed
+}
+
+/** 是否已有生效条件（按钮小圆点） */
+const handleFilterActiveChange = (active: boolean) => {
+  filterActive.value = !!active
+}
+
+/** 点标签直接参与筛选（笔记卡片上的标签仍可点，等同在面板里勾选它） */
 const selectTag = (tag) => {
   if (tag === '') {
-    selectedTags.value = []
+    filterForm.value.tags = []
   } else {
-    const arr = selectedTags.value
+    const arr = filterForm.value.tags
     const idx = arr.indexOf(tag)
     if (idx >= 0) arr.splice(idx, 1)
     else arr.push(tag)
@@ -630,24 +670,68 @@ const goEditor = async (id) => {
   }
 }
 
+/* ---------- 顶栏计数 ----------
+ * 「公开笔记 来自所有人的学习笔记与经验沉淀 + N 篇笔记」原来在内容区，
+ * 现在标题并进顶栏（`学习分享 · 公开笔记`），计数也一并推过去。
+ * 搜索 / 筛选后 total 会变，所以 watch 这个值而不是只推一次。
+ *
+ * `loaded` 用来区分「还没请求」和「请求回来是 0 条」：
+ * 前者不显示（否则首屏会闪一下 0），后者要显示「0 篇笔记」——
+ * 筛出 0 条时顶栏空白会让人以为计数丢了。
+ */
+const loaded = ref(false)
+watch(
+  () => total.value,
+  (n) => {
+    if (!route.path.startsWith('/front/notes/list')) return
+    if (!loaded.value && !n) return
+    topbarStore.setCount(`${n} 篇笔记`)
+  },
+  { immediate: true }
+)
+
+/* 搜索区高度变化 → 筛选面板跟着挪（窗口缩放也要重算） */
+const updateSearchAreaHeight = () => {
+  nextTick(() => {
+    const page = pageRef.value
+    const area = searchAreaRef.value
+    if (!page || !area) return
+    /*
+     * 面板是 `position:absolute`，定位基准是最近的定位祖先（这里是 `.notes-list-container`）。
+     * 所以要用**相对容器的偏移**，不能用 offsetHeight ——
+     * 搜索行上面还有一行留白（容器 padding-top 22px），
+     * 直接用 offsetHeight 会让面板盖住搜索框下半截（首版就是这样，实测错位 18px）。
+     */
+    const pageRect = page.getBoundingClientRect()
+    const areaRect = area.getBoundingClientRect()
+    filterTop.value = areaRect.bottom - pageRect.top + 8
+    filterLeft.value = areaRect.left - pageRect.left
+  })
+}
+
 onMounted(async () => {
   loadHistory()
   await Promise.all([fetchPublicSections(), fetchHotTags()])
   await nextTick()
-  measureFilterOverflow()
-  window.addEventListener('resize', measureFilterOverflow)
+  updateSearchAreaHeight()
+  window.addEventListener('resize', updateSearchAreaHeight)
   fetchNotes()
   fetchRanking()
 })
 
 onActivated(() => {
   fetchRanking()
-  nextTick(measureFilterOverflow)
+  nextTick(updateSearchAreaHeight)
+  // 回到本页时重推计数（设置抽屉等场景会把顶栏清掉再回来）
+  if (loaded.value) topbarStore.setCount(`${total.value} 篇笔记`)
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', measureFilterOverflow)
+  window.removeEventListener('resize', updateSearchAreaHeight)
 })
+
+// keep-alive 页面：离开时必须清，否则会把计数带到笔记详情 / 编辑器
+onUnmounted(() => topbarStore.clear())
 </script>
 
 <style lang="scss">
@@ -657,50 +741,37 @@ onBeforeUnmount(() => {
   margin: 0 auto;
   padding: 22px 28px 48px;
   box-sizing: border-box;
+  /* 筛选面板（position:absolute）的定位参考 */
+  position: relative;
 
-  .header {
+  /*
+   * ==================== 搜索行 ====================
+   * 一行：搜索框（内含「筛选」入口）+ 刷新 + 写笔记。
+   * 搜索框 flex:1 吃掉剩余宽度，两个按钮定宽靠右。
+   */
+  .search-bar {
+    position: relative;
     display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 18px;
-  }
-
-  .header-left {
-    min-width: 0;
-  }
-
-  .header-title {
-    margin: 0;
-    font-size: 18px;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    color: var(--os-text);
-  }
-
-  .header-sub {
-    display: block;
-    margin-top: 4px;
-    font-size: 13px;
-    color: var(--os-text-3);
-  }
-
-  .header-right {
-    display: flex;
-    justify-content: flex-end;
+    align-items: center;
     gap: 8px;
-    flex: none;
+    margin-bottom: 16px;
+
+    .search-input {
+      flex: 1;
+      min-width: 0;
+    }
 
     .refresh-btn {
+      flex: none;
       border-radius: var(--os-radius-sm);
       font-weight: 500;
       padding: 8px 14px;
       height: auto;
-      min-height: 34px;
-      transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+      min-height: 32px;
       background: #fff;
       border: 1px solid var(--os-border);
       color: var(--os-text-2);
+      transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 
       &:hover {
         background: var(--dsw-static-neutral-bluish-50);
@@ -715,121 +786,54 @@ onBeforeUnmount(() => {
     }
 
     .create-btn {
+      flex: none;
       border-radius: var(--os-radius-sm);
       font-weight: 500;
       padding: 8px 16px;
       height: auto;
-      min-height: 34px;
+      min-height: 32px;
       letter-spacing: 0.01em;
-      transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 
-      &:hover {
-        transform: none;
-      }
-
+      &:hover,
       &:active {
         transform: none;
       }
     }
-  }
 
-  .content-layout {
-    display: flex;
-    gap: 24px;
-    align-items: flex-start;
-  }
-
-  .left-column {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .right-column {
-    width: 280px;
-    flex-shrink: 0;
-  }
-
-  .search-bar {
-    margin-bottom: 20px;
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-
-    .search-wrapper {
-      position: relative;
-      flex: 1;
-      min-width: 0;
-    }
-
-    /* 排序：放在搜索框右侧，独立且直观 */
-    .sort-select {
-      width: 140px;
-      flex-shrink: 0;
-
-      .el-input__wrapper {
-        border-radius: 8px;
-        box-shadow: 0 0 0 1px #e5e7eb;
-
-        &:hover {
-          box-shadow: 0 0 0 1px #d1d5db;
-        }
-
-        &.is-focus {
-          box-shadow: 0 0 0 1px #b3b3b3;
-        }
-      }
-    }
-
-    .search-input {
-      .el-input__wrapper {
-        border-radius: 8px;
-        box-shadow: 0 0 0 1px #e5e7eb;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-
-        &:hover {
-          box-shadow: 0 0 0 1px #d1d5db;
-        }
-
-        &.is-focus {
-          box-shadow: 0 0 0 1px #b3b3b3;
-        }
-      }
-    }
-
+    /* 搜索历史：挂在搜索框正下方（SearchFilterInput 的 #dropdown 插槽） */
     .search-history-dropdown {
       position: absolute;
-      top: 100%;
+      top: calc(100% + 6px);
       left: 0;
       width: 400px;
-      margin-top: 8px;
-      padding: 16px;
+      max-width: 100%;
+      padding: 14px 16px;
       background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+      border: 1px solid var(--os-border-soft);
+      border-radius: var(--os-radius);
+      box-shadow: var(--os-shadow-2, 0 8px 24px rgba(0, 0, 0, 0.08));
       z-index: 100;
 
       .history-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 12px;
+        margin-bottom: 10px;
 
         .history-title {
           font-size: 13px;
           font-weight: 600;
-          color: #1f2937;
+          color: var(--os-text);
         }
 
         .clear-history {
           font-size: 12px;
-          color: #9ca3af;
+          color: var(--os-text-4);
           cursor: pointer;
           transition: color 0.2s;
 
           &:hover {
-            color: #6b7280;
+            color: var(--os-text-2);
           }
         }
       }
@@ -843,23 +847,22 @@ onBeforeUnmount(() => {
           display: inline-flex;
           align-items: center;
           gap: 6px;
-          padding: 6px 12px;
-          background: #f3f4f6;
-          border: 1px solid #e5e7eb;
-          border-radius: 6px;
+          padding: 5px 10px;
+          background: var(--os-bg-hover, #f3f4f6);
+          border: 1px solid var(--os-border-soft);
+          border-radius: var(--os-radius-sm);
           font-size: 13px;
-          color: #6b7280;
+          color: var(--os-text-3);
           cursor: pointer;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 
           &:hover {
-            background: #e5e7eb;
-            border-color: #d1d5db;
-            color: #4b5563;
+            background: var(--dsw-static-neutral-bluish-75);
+            border-color: var(--os-border);
+            color: var(--os-text-2);
           }
 
           .tag-text {
-            color: #6b7280;
             max-width: 200px;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -870,152 +873,16 @@ onBeforeUnmount(() => {
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #9ca3af;
-            transition: color 0.2s;
+            color: var(--os-text-4);
 
             &:hover {
-              color: #4b5563;
+              color: var(--os-text-2);
             }
 
             .el-icon {
               font-size: 12px;
             }
           }
-        }
-      }
-    }
-  }
-
-  /* 筛选面板：每个分组都有文字标签，让用户一眼看懂「这是筛什么」 */
-  .filter-panel {
-    margin-bottom: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 14px 16px;
-    background: #fff;
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
-  }
-
-  .filter-group {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-
-    .filter-label {
-      flex-shrink: 0;
-      width: 32px;
-      padding-top: 5px;
-      font-size: 13px;
-      font-weight: 600;
-      color: #6b7280;
-      line-height: 1.5;
-    }
-
-    /* 分区 / 标签：一行放不下时，右侧出现「展开 / 收起」 */
-    .filter-content {
-      position: relative;
-      flex: 1;
-      min-width: 0;
-
-      &.has-toggle .filter-chips {
-        padding-right: 56px;
-      }
-    }
-
-    .filter-chips {
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 8px;
-
-      /* 折叠成一行的最大高度（chip 高 28 + 间隙余量） */
-      &.is-collapsed {
-        max-height: 30px;
-        overflow: hidden;
-      }
-
-      .chip {
-        display: inline-flex;
-        align-items: center;
-        height: 28px;
-        padding: 0 12px;
-        font-size: 13px;
-        line-height: 1;
-        color: #6b7280;
-        background: #f3f4f6;
-        border: 1px solid #e5e7eb;
-        border-radius: 999px;
-        cursor: pointer;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-
-        &:hover {
-          background: #e5e7eb;
-          border-color: #d1d5db;
-        }
-
-        &.active {
-          background: #e5e7eb;
-          border-color: #9ca3af;
-          color: #1f2937;
-          font-weight: 600;
-        }
-      }
-
-      .filter-empty {
-        font-size: 12px;
-        color: #9ca3af;
-      }
-
-      .date-picker {
-        width: 260px;
-        flex-shrink: 0;
-
-        .el-input__wrapper {
-          border-radius: 8px;
-          box-shadow: 0 0 0 1px #e5e7eb;
-
-          &:hover {
-            box-shadow: 0 0 0 1px #d1d5db;
-          }
-
-          &.is-focus {
-            box-shadow: 0 0 0 1px #b3b3b3;
-          }
-        }
-      }
-    }
-
-    /* 「展开更多 / 收起」按钮 */
-    .chip-toggle {
-      position: absolute;
-      top: 0;
-      right: 0;
-      display: inline-flex;
-      align-items: center;
-      gap: 2px;
-      height: 28px;
-      padding: 0 4px;
-      font-size: 13px;
-      color: #6b7280;
-      background: transparent;
-      border: none;
-      cursor: pointer;
-      white-space: nowrap;
-
-      &:hover {
-        color: #1f2937;
-      }
-
-      .el-icon {
-        font-size: 12px;
-        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-
-        &.is-open {
-          transform: rotate(180deg);
         }
       }
     }
@@ -1041,6 +908,26 @@ onBeforeUnmount(() => {
       }
     }
   }
+}
+
+/* ==================== 双栏布局 ====================
+ * 左：搜索行 + 笔记列表 + 分页；右：热榜卡片。
+ * 这两条规则原先被误删过（页面会变成上下堆叠），所以放在根容器里显式声明。
+ */
+.notes-list-container .content-layout {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.notes-list-container .left-column {
+  flex: 1;
+  min-width: 0;
+}
+
+.notes-list-container .right-column {
+  width: 280px;
+  flex-shrink: 0;
 }
 
 .right-column {

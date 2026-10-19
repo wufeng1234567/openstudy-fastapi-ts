@@ -81,7 +81,8 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'FrontMyShares' })
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, watch, onMounted, onActivated, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
 import useTopbarStore from '@/store/modules/topbar'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Document, User, Clock, Calendar, Share } from '@element-plus/icons-vue'
@@ -89,6 +90,7 @@ import { listMyBankShares, revokeBankShare } from '@/api/bankShare/bankShare'
 import { buildBankShareUrl, copyToClipboard, formatDateTime } from '@/utils/share'
 import ShareBankDialog from '@/views/front/myQuestion/components/ShareBankDialog.vue'
 
+const route = useRoute()
 const loading = ref(false)
 const shareList = ref<any[]>([])
 const shareDialogVisible = ref(false)
@@ -152,9 +154,19 @@ onMounted(fetchShares)
 const topbarStore = useTopbarStore()
 watch(
   () => shareList.value.length,
-  (n) => topbarStore.setCount(n ? `${n} 条分享` : ''),
+  (n) => {
+    // keep-alive 下本页可能已不在前台：不要往顶栏推别人的计数
+    if (!route.path.startsWith('/front/myQuestion/myShares')) return
+    topbarStore.setCount(n ? `${n} 条分享` : '')
+  },
   { immediate: true }
 )
+
+// 回到本页时重新推一次（离开期间顶栏被清空过）
+onActivated(() => {
+  const n = shareList.value.length
+  topbarStore.setCount(n ? `${n} 条分享` : '')
+})
 onUnmounted(() => topbarStore.clear())</script>
 
 <style scoped>

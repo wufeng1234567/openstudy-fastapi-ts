@@ -23,30 +23,33 @@
   代价是首屏三个请求并发。这三个列表本来就是高频互相切换的，
   用一次首屏换掉之后的每次等待，划算。
 
-  ## 计数
+  ## 顶栏计数（2026-10-19 修 bug）
 
-  各分组的条数由子页面自己的 `PageHeader` 显示；顶栏的「N 道题」这里不接管
-  （三个页面各自管理自己的 total，硬抽出来反而要改它们的内部实现）。
+  用户反馈：「第一次点击题目管理，默认进入题目收藏，但上方标题没有题目数，
+  必须点一下别的 tab 才出现」。
+
+  原因是之前只在 `watch([activeTab, refs])` 里读一次 `getTotal()`，
+  而**首次进入时**：三个子页还在挂载 / 首屏请求还没回来，
+  `requestAnimationFrame` 里读到的 `total` 还是 0，之后数据到位也没有再触发。
+
+  现在改成「**子页面自己上报**」：三个子页面各自 `watch` 自己的 total 并 emit，
+  壳只负责记录 + 把当前分组的数字推给顶栏。
+  这样无论数据什么时候回来（首次 / 刷新 / 删除后），顶栏都会跟着更新。
 -->
 <template>
   <div class="question-manage-page">
-    <!-- 分组切换 -->
-    <div class="tab-switch">
-      <button v-for="t in tabs" :key="t.key" type="button" :class="['tab-btn', { active: activeTab === t.key }]"
-        @click="activeTab = t.key">
-        {{ t.label }}
-      </button>
-    </div>
+    <!-- 分组切换（与「题库管理 / 笔记管理」共用一个组件，视觉只有一份定义） -->
+    <SegmentedTabs v-model="activeTab" :tabs="tabItems" />
 
     <!-- 三个分组常驻（v-show：切换瞬时，不重新拉数据） -->
     <div v-show="activeTab === 'favorite'" class="tab-panel">
-      <MyFavoriteQuestion ref="favRef" embedded />
+      <MyFavoriteQuestion ref="favRef" embedded @total-change="onTotalChange('favorite', $event)" />
     </div>
     <div v-show="activeTab === 'wrong'" class="tab-panel">
-      <MyMistakes ref="wrongRef" embedded />
+      <MyMistakes ref="wrongRef" embedded @total-change="onTotalChange('wrong', $event)" />
     </div>
     <div v-show="activeTab === 'marked'" class="tab-panel">
-      <MyMarked ref="markedRef" embedded />
+      <MyMarked ref="markedRef" embedded @total-change="onTotalChange('marked', $event)" />
     </div>
   </div>
 </template>
@@ -54,16 +57,17 @@
 <script setup lang="ts">
 defineOptions({ name: 'FrontQuestionManage' })
 
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onActivated, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import MyFavoriteQuestion from '../myFavoriteQuestion/index.vue'
 import MyMistakes from '../myMistakes/index.vue'
 import MyMarked from '../myMarked/index.vue'
+import SegmentedTabs from '@/components/SegmentedTabs/index.vue'
 import useTopbarStore from '@/store/modules/topbar'
 
 type TabKey = 'favorite' | 'wrong' | 'marked'
 
-const tabs: Array<{ key: TabKey; label: string }> = [
+const TAB_DEFS: Array<{ key: TabKey; label: string }> = [
   { key: 'favorite', label: '题目收藏' },
   { key: 'wrong', label: '我的错题' },
   { key: 'marked', label: '我的斩题' }
@@ -90,6 +94,14 @@ const activeTab = ref<TabKey>(initTab())
 watch(
   () => route.query.tab,
   (t) => {
+    /*
+     * ⚠️ 必须确认「当前确实停在本页」。
+     * 本页是 keep-alive 的，用户切到「笔记管理」后本组件仍然存活；
+     * 「笔记管理」用的也是 `?tab=` —— 不加路径判断，
+     * 这里会被别人的 `?tab=own` 唤醒，把 activeTab 误翻成「题目收藏」，
+     * 还会把「6 道题」推到顶栏（同一个 bug 的反向版本）。
+     */
+    if (!route.path.startsWith('/front/myQuestion/questions')) return
     const k = String(t || '')
     if (k === 'wrong' || k === 'marked' || k === 'favorite') activeTab.value = k as TabKey
   }
@@ -102,33 +114,41 @@ const markedRef = ref<any>(null)
 const topbarStore = useTopbarStore()
 
 /**
- * 把当前分组的总数推到顶栏
- *
- * 子页面的 `MyQuestion` 通过 `getTotal()` 暴露条数（刚加的）。
- * 分组切换 / 数据刷新后都读一次；元素还没挂好时静默跳过，
- * 等下一次 watch 触发。
+ * 各分组的上报条数
+ * 由子页面（题目收藏 / 我的错题 / 我的斩题）在数据变化时 emit `total-change`。
+ * 三个页面都是 `v-show` 常驻的，所以三份数据都会各自上报，切换分组立刻有数。
  */
-function syncTopbarCount() {
-  const map: Record<TabKey, any> = {
-    favorite: favRef.value,
-    wrong: wrongRef.value,
-    marked: markedRef.value
-  }
-  const el = map[activeTab.value]
-  // 子页面 → MyQuestion 的层级：先取页面实例里的 myQuestionRef，再取 getTotal
-  const inner = el?.myQuestionRef ?? el?.$refs?.myQuestionRef
-  const n = Number(inner?.getTotal?.() ?? 0)
-  const unit = '道题'
-  topbarStore.setCount(n ? `${n} ${unit}` : '')
+const counts = ref<Record<TabKey, number>>({ favorite: 0, wrong: 0, marked: 0 })
+
+/** 分组切换条的入参：标签 + 角标计数（数据没回来前不显示 0） */
+const tabItems = computed(() =>
+  TAB_DEFS.map((t) => ({ ...t, count: counts.value[t.key] || undefined }))
+)
+
+function onTotalChange(key: TabKey, n: number) {
+  counts.value[key] = Number(n) || 0
 }
 
-watch([activeTab, favRef, wrongRef, markedRef], () => {
-  // 等子页面的数据渲染完再读
-  requestAnimationFrame(syncTopbarCount)
-}, { immediate: true })
+/* 分组切换或任一数字变化 → 刷新顶栏 */
+watch(
+  [activeTab, () => counts.value.favorite, () => counts.value.wrong, () => counts.value.marked],
+  () => {
+    // keep-alive 下本页可能已不在前台：不要往顶栏推别人的计数
+    if (!route.path.startsWith('/front/myQuestion/questions')) return
+    const n = counts.value[activeTab.value] || 0
+    // 首次数据还没回来时不显示「0 道题」，等上报了再出（避免闪一下 0）
+    topbarStore.setCount(n ? `${n} 道题` : '')
+  },
+  { immediate: true }
+)
+
+// 回到本页时重新推一次（离开期间顶栏被清空过）
+onActivated(() => {
+  const n = counts.value[activeTab.value] || 0
+  topbarStore.setCount(n ? `${n} 道题` : '')
+})
 
 onBeforeUnmount(() => topbarStore.clear())
-
 </script>
 
 <style scoped lang="scss">
@@ -136,43 +156,7 @@ onBeforeUnmount(() => topbarStore.clear())
   padding: 0;
 }
 
-/*
- * 分组切换：与「题库管理」完全一致的形态
- * （下划线 + 无边框按钮；不用 el-tabs，避免外壳里再套一层描边）
- */
-.tab-switch {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.06));
-}
-
-.tab-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px 10px;
-  border: 0;
-  background: transparent;
-  font-size: 13.5px;
-  line-height: 1;
-  color: var(--os-text-3, #6b7280);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  transition: color 0.15s ease, border-color 0.15s ease;
-
-  &:hover {
-    color: var(--os-text, #1f2937);
-  }
-
-  &.active {
-    color: var(--os-text, #1f2937);
-    font-weight: 600;
-    border-bottom-color: var(--os-primary, #4f6ef7);
-  }
-}
+/* 分组切换条已抽到 `SegmentedTabs`（三个管理页共用一份样式），这里不再重复定义 */
 
 .tab-panel {
   min-height: 0;

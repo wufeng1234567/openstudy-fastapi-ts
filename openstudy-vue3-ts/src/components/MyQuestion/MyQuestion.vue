@@ -335,8 +335,23 @@ const emit = defineEmits([
   'empty-action',
   'mark',
   'add-note',
-  'report'
+  'report',
+  /* 条数变化（首屏回来 / 搜索 / 筛选 / 删除后）——外层分组壳用它更新顶栏计数 */
+  'total-change'
 ])
+
+/*
+ * 条数上报
+ * ----------------------------------------------------------------------------
+ * 用户 2026-10-19：「第一次点题目管理，默认进题目收藏，但上方标题没有题目数，
+ * 必须点别的 tab 才出现」。
+ *
+ * 根因是外层只在"切 tab"这个时机去读一次实例上的 total，
+ * 而首屏请求还没回来 —— 读到 0，且之后没有第二次机会。
+ *
+ * 这里在 total 变化时主动抛事件，外层无论何时拿到数据都能更新。
+ */
+watch(total, (n) => emit('total-change', Number(n) || 0), { immediate: true })
 
 const emptyText = computed(() => {
   const textMap = {

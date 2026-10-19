@@ -25,13 +25,8 @@
 -->
 <template>
   <div class="note-manage-page">
-    <!-- 分组切换 -->
-    <div class="tab-switch">
-      <button v-for="t in tabs" :key="t.key" type="button" :class="['tab-btn', { active: activeTab === t.key }]"
-        @click="activeTab = t.key">
-        {{ t.label }}
-      </button>
-    </div>
+    <!-- 分组切换（与「题库管理 / 题目管理」共用一个组件） -->
+    <SegmentedTabs v-model="activeTab" :tabs="tabItems" />
 
     <!-- 我的笔记 -->
     <div v-show="activeTab === 'own'" class="tab-panel">
@@ -48,15 +43,16 @@
 <script setup lang="ts">
 defineOptions({ name: 'FrontNoteManage' })
 
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onActivated, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import MyNotes from '../myNotes/index.vue'
 import MyFavoriteNote from '../myFavoriteNote/index.vue'
+import SegmentedTabs from '@/components/SegmentedTabs/index.vue'
 import useTopbarStore from '@/store/modules/topbar'
 
 type TabKey = 'own' | 'favorite'
 
-const tabs: Array<{ key: TabKey; label: string }> = [
+const TAB_DEFS: Array<{ key: TabKey; label: string }> = [
   { key: 'own', label: '我的笔记' },
   { key: 'favorite', label: '收藏的笔记' }
 ]
@@ -76,6 +72,14 @@ const activeTab = ref<TabKey>(initTab())
 watch(
   () => route.query.tab,
   (t) => {
+    /*
+     * ⚠️ 必须确认「当前确实停在本页」。
+     * 本页是 keep-alive 的，用户切到「题目管理」后本组件仍然存活；
+     * 而「题目管理」用的也是 `?tab=` —— 不加路径判断，
+     * 这里会被别人的 `?tab=favorite` 唤醒，把 activeTab 翻成「收藏的笔记」，
+     * 并把「1 篇笔记」推到顶栏（实测：进题目管理看到「我的学习 · 题目管理  1 篇笔记」）。
+     */
+    if (!route.path.startsWith('/front/myQuestion/noteManage')) return
     activeTab.value = String(t || '') === 'favorite' ? 'favorite' : 'own'
   }
 )
@@ -87,6 +91,11 @@ const topbarStore = useTopbarStore()
 
 const counts = ref<Record<TabKey, number>>({ own: 0, favorite: 0 })
 
+/** 分组切换条的入参：标签 + 角标计数（数据没回来前不显示 0） */
+const tabItems = computed(() =>
+  TAB_DEFS.map((t) => ({ ...t, count: counts.value[t.key] || undefined }))
+)
+
 function onTotalChange(key: TabKey, n: number) {
   counts.value[key] = Number(n) || 0
 }
@@ -94,11 +103,19 @@ function onTotalChange(key: TabKey, n: number) {
 watch(
   [activeTab, () => counts.value.own, () => counts.value.favorite],
   () => {
+    // keep-alive 下本页可能已不在前台：不要往顶栏推别人的计数
+    if (!route.path.startsWith('/front/myQuestion/noteManage')) return
     const n = counts.value[activeTab.value] || 0
     topbarStore.setCount(n ? `${n} 篇笔记` : '')
   },
   { immediate: true }
 )
+
+// 回到本页时重新推一次（离开期间顶栏被清空过）
+onActivated(() => {
+  const n = counts.value[activeTab.value] || 0
+  topbarStore.setCount(n ? `${n} 篇笔记` : '')
+})
 
 onBeforeUnmount(() => topbarStore.clear())
 </script>
@@ -107,41 +124,7 @@ onBeforeUnmount(() => topbarStore.clear())
 .note-manage-page {
   padding: 0;
 }
-
-/* 分组切换：与「题库管理」「题目管理」完全一致（下划线 + 无边框按钮） */
-.tab-switch {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.06));
-}
-
-.tab-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px 10px;
-  border: 0;
-  background: transparent;
-  font-size: 13.5px;
-  line-height: 1;
-  color: var(--os-text-3, #6b7280);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  transition: color 0.15s ease, border-color 0.15s ease;
-
-  &:hover {
-    color: var(--os-text, #1f2937);
-  }
-
-  &.active {
-    color: var(--os-text, #1f2937);
-    font-weight: 600;
-    border-bottom-color: var(--os-primary, #4f6ef7);
-  }
-}
+/* 分组切换条已抽到 `SegmentedTabs`（三个管理页共用一份样式），这里不再重复定义 */
 
 .tab-panel {
   min-height: 0;

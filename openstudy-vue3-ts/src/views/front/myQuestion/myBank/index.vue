@@ -17,18 +17,10 @@
         ----------------------------------------------------------------
         用户 2026-10-18：「题库收藏和我的题库功能高度重合，合并成我的题库包含收藏功能」。
         这里不再跳另一个页面，两套数据共用下面的搜索框与筛选面板。
+
+        2026-10-19：切换条抽成共用组件 `SegmentedTabs`（三个管理页共用一份样式）。
       -->
-      <div class="tab-switch">
-        <button type="button" :class="['tab-btn', { active: activeTab === 'own' }]" @click="activeTab = 'own'">
-          我的题库
-          <span class="tab-count">{{ allBankList.length }}</span>
-        </button>
-        <button type="button" :class="['tab-btn', { active: activeTab === 'favorite' }]"
-          @click="activeTab = 'favorite'">
-          题库收藏
-          <span class="tab-count">{{ allFavoriteList.length }}</span>
-        </button>
-      </div>
+      <SegmentedTabs v-model="activeTab" :tabs="tabItems" />
 
       <div class="search-section">
         <SearchFilterInput v-model="searchKeyword" placeholder="搜索题库名称" class="search-input"
@@ -233,13 +225,14 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'FrontMyBank' })
-import { ref, computed, watch, onMounted, onUnmounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, onActivated, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, FolderOpened, Document, View, Delete, Share, Lock, Unlock, CopyDocument, Star } from '@element-plus/icons-vue'
 import BankCardGrid from '@/components/BankCardGrid/BankCardGrid.vue'
 import SearchFilterInput from '@/components/SearchFilterInput/index.vue'
 import CommonFilterSidebar from '@/components/CommonFilterSidebar/index.vue'
+import SegmentedTabs from '@/components/SegmentedTabs/index.vue'
 import ReceiveShareDialog from '@/views/front/myQuestion/components/ReceiveShareDialog.vue'
 import ShareBankDialog from '@/views/front/myQuestion/components/ShareBankDialog.vue'
 import { listMyQuestionBank, delQuestionBank, copyQuestionBank } from '@/api/questionBank/questionBank'
@@ -288,6 +281,15 @@ const route = useRoute()
  * 所以进入时要认这个参数，否则用户点旧链接会落在「我的题库」分组，像是走错了。
  */
 const activeTab = ref<BankTab>(route.query.tab === 'favorite' ? 'favorite' : 'own')
+
+/**
+ * 分组切换条的入参（共用组件 `SegmentedTabs`）
+ * 角标计数用**原始条数**（不受搜索/筛选影响），这样切分组时数字是稳定的。
+ */
+const tabItems = computed(() => [
+  { key: 'own', label: '我的题库', count: allBankList.value.length },
+  { key: 'favorite', label: '题库收藏', count: allFavoriteList.value.length }
+])
 
 const favoriteLoading = ref(false)
 const allFavoriteList = ref<UserBankFavorite[]>([])
@@ -524,11 +526,19 @@ const topbarStore = useTopbarStore()
 watch(
   [activeTab, () => filteredBankList.value.length, () => filteredFavoriteList.value.length],
   () => {
+    // keep-alive 下本页可能已不在前台：不要往顶栏推别人的计数
+    if (!route.path.startsWith('/front/myQuestion/myBank')) return
     const n = activeTab.value === 'own' ? filteredBankList.value.length : filteredFavoriteList.value.length
     topbarStore.setCount(`${n} 个题库`)
   },
   { immediate: true }
 )
+
+// 回到本页时重新推一次（离开期间顶栏被清空过）
+onActivated(() => {
+  const n = activeTab.value === 'own' ? filteredBankList.value.length : filteredFavoriteList.value.length
+  topbarStore.setCount(`${n} 个题库`)
+})
 // keep-alive 页面：离开时必须清，否则会把本页计数带到下一个页面
 onBeforeUnmount(() => topbarStore.clear())
 
@@ -840,60 +850,7 @@ onUnmounted(() => {
   align-items: center;
 }
 
-/*
- * 分组切换（我的题库 / 题库收藏）
- * ----------------------------------------------------------------
- * 用下划线式分段控件，而不是 el-tabs：这里的两个分组是"同一份数据的两个视图"，
- * 视觉上比 tab 更轻，也不会在外壳里再多一层描边。
- */
-.tab-switch {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.06));
-}
-
-.tab-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px 10px;
-  border: 0;
-  background: transparent;
-  font-size: 13.5px;
-  line-height: 1;
-  color: var(--os-text-3, #6b7280);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  transition: color 0.15s ease, border-color 0.15s ease;
-
-  &:hover {
-    color: var(--os-text, #1f2937);
-  }
-
-  &.active {
-    color: var(--os-text, #1f2937);
-    font-weight: 600;
-    border-bottom-color: var(--os-primary, #4f6ef7);
-  }
-
-  .tab-count {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 18px;
-    height: 18px;
-    padding: 0 5px;
-    border-radius: 9px;
-    font-size: 11px;
-    font-weight: 500;
-    background: var(--os-bg-hover, rgba(0, 0, 0, 0.05));
-    color: var(--os-text-3, #6b7280);
-  }
-}
-
+/* 分组切换条已抽到 `SegmentedTabs`（三个管理页共用一份样式），这里不再重复定义 */
 /* 批量操作栏 */
 .batch-bar {
   display: flex;

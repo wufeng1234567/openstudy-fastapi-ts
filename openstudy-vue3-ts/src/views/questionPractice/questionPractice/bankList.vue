@@ -1,11 +1,22 @@
-<!-- src/views/questionPractice/bankList.vue -->
+<!--
+  题库练习 · 公开题库
+  ============================================================================
+  用户 2026-10-19：「题库练习页面的第二行标题『公开题库 共 35 个题库』要移动到
+  第一行去，变成『题库练习 · 公开题库  共 35 个题库』」。
+
+  做法与「我的学习」下几个子页完全一致：
+    · 顶栏由外壳拼成 `模块 · 子页`（见 `layout/front.vue` 的 `SECOND_LEVEL_BY_ROUTE`）；
+    · 计数由本页推到顶栏（`topbar` store），内容区不再占一行；
+    · 给 `BankCardGrid` 传 `hide-title`，它就只渲染搜索行。
+-->
 <template>
   <div class="app-container">
-    <BankCardGrid :banks="questionBankList" :loading="loading" title="公开题库" :show-total-count="true" :show-search="true"
-      :show-refresh="true" :show-pagination="true" :show-favorite-status="false" :show-star="false" :show-stats="true"
-      :show-collect-count="true" :show-create-time="true" :show-notes="false" :show-study-info="false"
-      :show-description="true" :show-favorite-button="true" :show-uncollect-action="false"
-      :use-full-data-search="true" :enable-card-click-modal="true" @refresh="getList"
+    <BankCardGrid :banks="questionBankList" :loading="loading" title="公开题库" :hide-title="true"
+      :show-total-count="true" :show-search="true" :show-refresh="true" :show-pagination="true"
+      :show-favorite-status="false" :show-star="false" :show-stats="true" :show-collect-count="true"
+      :show-create-time="true" :show-notes="false" :show-study-info="false" :show-description="true"
+      :show-favorite-button="true" :show-uncollect-action="false" :use-full-data-search="true"
+      :enable-card-click-modal="true" @refresh="getList" @total-change="syncTopbarCount"
       @card-click="handleCardClick" @card-click-confirm="handleCardClickConfirm" @view-detail="viewBankDetail"
       @collect-success="handleCollectSuccess" @uncollect-success="handleUncollectSuccess"
       @empty-action="handleEmptyAction" @page-change="handlePageChange" @size-change="handleSizeChange">
@@ -27,10 +38,11 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'FrontQuestionBankList' })
-import { ref, onMounted, onActivated } from 'vue'
+import { ref, onMounted, onActivated, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { getCurrentInstance } from 'vue'
 import useUserStore from '@/store/modules/user'
+import useTopbarStore from '@/store/modules/topbar'
 import { listQuestionBankAll } from '@/api/questionBank/questionBank'
 import { listFavoriteBankAll } from '@/api/favoriteBank/favoriteBank'
 import BankCardGrid from '@/components/BankCardGrid/BankCardGrid.vue'
@@ -40,6 +52,7 @@ import type { UserBankFavorite } from '@/types'
 const router = useRouter()
 const { proxy } = getCurrentInstance() as any
 const userStore = useUserStore()
+const topbarStore = useTopbarStore()
 
 const loading = ref(false)
 const questionBankList = ref<any[]>([])
@@ -90,6 +103,35 @@ const getList = () => {
     loading.value = false
   })
 }
+
+/* ==================== 顶栏计数 ====================
+ *
+ * 「共 N 个题库」原来在内容区标题行，现在并进顶栏那一行：
+ *   `题库练习 · 公开题库   35 个题库`
+ * 搜索 / 筛选之后条数会变，所以计数由 `BankCardGrid` 的 `total-change` 驱动。
+ */
+function syncTopbarCount(n: number) {
+  topbarStore.setCount(Number(n) ? `${n} 个题库` : '')
+}
+
+// 本页是 keep-alive 的：离开时清掉，避免把计数带到题库详情 / 刷题页
+onBeforeUnmount(() => topbarStore.clear())
+
+/*
+ * 刷新时机
+ * ----------------------------------------------------------------------------
+ * `onMounted` 负责首次加载；`onActivated` 负责「从详情 / 刷题页回来」的刷新。
+ * 但 keep-alive 里首次挂载时 onActivated 也会触发一次 —— 用一个标记避免打两次接口。
+ */
+let loadedOnce = false
+onMounted(() => {
+  loadedOnce = true
+  getList()
+})
+onActivated(() => {
+  if (!loadedOnce) return
+  getList()
+})
 
 const handleCardClick = (bank: any) => {
 }
@@ -145,20 +187,10 @@ const handleRefresh = () => {
 }
 
 const handlePageChange = (page: any) => {
-  console.log('页面改变到:', page)
 }
 
 const handleSizeChange = (size: any) => {
-  console.log('每页大小改变到:', size)
 }
-
-onMounted(() => {
-  getList()
-})
-
-onActivated(() => {
-  getList()
-})
 </script>
 
 <style scoped lang="scss">

@@ -331,10 +331,30 @@ const MY_LEARNING_SUB: Array<[string, string]> = [
   ['/front/myQuestion/myStats', '学习统计']
 ]
 
+/**
+ * 其它模块的二级标题（按**路由 name** 精确匹配）
+ * ----------------------------------------------------------------------------
+ * 用户 2026-10-19：「题库练习页面第二行标题『公开题库 共 35 个题库』要移动到第一行去，
+ * 变成『题库练习 · 公开题库 共 35 个题库』」；学习分享同理。
+ *
+ * 这里必须按 name 而不是路径前缀分辨：`/front/questionPractice` 下面还有题库详情、
+ * 刷题页，`/front/notes` 下面还有详情、编辑器 —— 那些页面不该挂「公开题库 / 公开笔记」。
+ */
+const SECOND_LEVEL_BY_ROUTE: Record<string, string> = {
+  FrontQuestionBankList: '公开题库',
+  FrontNotesList: '公开笔记'
+}
+
 const pageTitle = computed(() => {
   // 「我的学习」优先匹配子页（更长的前缀先命中）
   const sub = MY_LEARNING_SUB.find(([prefix]) => route.path.startsWith(prefix))
   if (sub) return `我的学习 · ${sub[1]}`
+
+  const second = SECOND_LEVEL_BY_ROUTE[String(route.name || '')]
+  if (second) {
+    const base = SECTION_TITLES.find(([prefix]) => route.path.startsWith(prefix))?.[1]
+    return base ? `${base} · ${second}` : second
+  }
 
   const hit = SECTION_TITLES.find(([prefix]) => route.path.startsWith(prefix))
   if (hit) return hit[1]
@@ -422,6 +442,18 @@ watch(
 )
 
 const cachedViews = computed(() => tagsViewStore.cachedViews)
+
+/*
+ * 换页时先清空顶栏计数
+ * ----------------------------------------------------------------------------
+ * 计数由页面自己 push，但页面是 keep-alive 的 —— A 页的计数会一直挂着，
+ * 用户切到「题库详情 / 刷题页」这种不设计数的页面时就会看到上一页的数字。
+ * 这里在路由变化时统一清一次，再由目标页面在 `onMounted` / `onActivated` 里重新 push。
+ */
+watch(
+  () => route.fullPath,
+  () => topbarStore.clear()
+)
 </script>
 
 <style scoped lang="scss">

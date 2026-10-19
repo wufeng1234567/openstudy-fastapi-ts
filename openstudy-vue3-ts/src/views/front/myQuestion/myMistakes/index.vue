@@ -6,7 +6,8 @@
       :show-star-filter="true"
       :show-favorite-status-filter="false" :show-star="true" :show-favorite-status="false" :show-collect-actions="true"
       :show-study-stats="true" :empty-action-text="'暂无错题，去练习'" :api-config="apiConfig" :question-banks="questionBanks"
-      :user-store="userStore" :focus-question-id="focusQuestionId" @empty-action="goToQuestionBank" />
+      :user-store="userStore" :focus-question-id="focusQuestionId" @empty-action="goToQuestionBank"
+      @total-change="onTotalChange" />
   </div>
 </template>
 
@@ -281,6 +282,21 @@ defineExpose({
   /* 供「题目管理」分组壳把条数推到顶栏 */
   getTotal: () => Number(myQuestionRef.value?.getTotal?.() ?? 0)
 })
+
+/**
+ * 条数上报
+ * ----------------------------------------------------------------------------
+ * 用户 2026-10-19：首次进「题目管理」顶栏没有题目数，必须点别的 tab 才出现。
+ * 根因是外层只在切 tab 时读一次 `getTotal()`，而首屏请求还没回来 —— 读到 0。
+ *
+ * 改成子页面主动上报：`MyQuestion` 的 total 一变就往上抛，
+ * 外层（分组壳）据此更新顶栏，不依赖"某个时机去读实例"。
+ */
+const emitTotal = defineEmits<{ (e: 'total-change', n: number): void }>()
+
+function onTotalChange(n: number) {
+  emitTotal('total-change', Number(n) || 0)
+}
 
 onMounted(() => {
   loadQuestionBanks()

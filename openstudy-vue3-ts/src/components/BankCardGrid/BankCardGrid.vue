@@ -3,7 +3,11 @@
   <div class="bank-card-grid">
     <!-- 头部区域 -->
     <div ref="headerRef" class="header-section" v-if="showHeader">
-      <div class="title-section">
+      <!--
+        `hideTitle`：标题与计数已经并进顶栏（如「题库练习 · 公开题库  35 个题库」）时，
+        这里不再重复渲染一行 —— 只保留搜索行。
+      -->
+      <div class="title-section" v-if="!hideTitle">
         <h2 class="page-title">{{ title }}</h2>
         <span class="total-count" v-if="showTotalCount">共 {{ total }} 个题库</span>
       </div>
@@ -264,6 +268,14 @@ const props = defineProps({
     type: Boolean,
     default: true
   },
+  /**
+   * 隐藏标题行（标题 + 计数），只保留搜索行
+   * 用于标题已经并进顶栏的页面（题库练习 / 公开题库）。
+   */
+  hideTitle: {
+    type: Boolean,
+    default: false
+  },
   showSearch: {
     type: Boolean,
     default: true
@@ -419,7 +431,9 @@ const emit = defineEmits([
   'uncollect-success',
   'empty-action',
   'page-change',
-  'size-change'
+  'size-change',
+  /* 当前可见条数变化（搜索 / 筛选后也跟着变）——外层用它把计数推到顶栏 */
+  'total-change'
 ])
 
 // 响应式数据
@@ -527,6 +541,14 @@ onBeforeUnmount(() => {
 
 // 计算属性
 const total = computed(() => displayBanks.value.length)
+
+/*
+ * 条数外发
+ * ----------------------------------------------------------------------------
+ * 标题行被 `hideTitle` 隐藏后，计数只能由外层（顶栏）显示，
+ * 而搜索 / 筛选也会改变条数 —— 所以在 total 变化时统一抛一次。
+ */
+watch(total, (n) => emit('total-change', n), { immediate: true })
 
 // 初始化数据
 const initData = () => {
