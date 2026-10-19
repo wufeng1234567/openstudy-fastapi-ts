@@ -145,6 +145,14 @@ def _is_admin(current_user: dict) -> bool:
     return "admin" in (current_user.get("roles") or [])
 
 
+def _is_owner(note, current_user: dict) -> bool:
+    """当前用户是不是这条笔记的作者（关联题库等私人整理的可见性判据）"""
+    if not current_user:
+        return False
+    uid = current_user.get("user_id")
+    return uid is not None and int(note.user_id or 0) == int(uid)
+
+
 def _resolve_user_scope(current_user: dict, requested_user_id):
     """个人数据只允许查自己；管理员可查任意用户。返回 (user_id, err)"""
     current_id = current_user.get("user_id")
@@ -411,7 +419,9 @@ async def list_public_notes(
     return paginate(total, [
         format_note(
             n,
-            banks_map.get(n.note_id, []),
+            # 关联题库只对作者本人返回（同 get_public_note 的理由）：
+            # 列表里混进别人的私有题库名同样是越权泄漏。
+            banks_map.get(n.note_id, []) if _is_owner(n, current_user) else [],
             author_name=author_map[n.user_id].nick_name if n.user_id in author_map else None,
             author_avatar=author_map[n.user_id].avatar if n.user_id in author_map else None,
             is_favorited=n.note_id in favorited_note_ids,
@@ -597,11 +607,16 @@ async def get_public_note(
     # 增加浏览次数
     note.view_count += 1
 
-    linked_banks = await _fetch_linked_banks(db, note.note_id)
+    # 关联题库属于作者的私人整理信息：只有作者本人能看到。
+    # ⚠️ 此前这里无条件 `_fetch_linked_banks`，任何登录用户打开别人的公开笔记都会
+    #    连作者关联了哪些私有题库（含库名）一起拿到 —— 与 noteQuestionBank 的
+    #    `_deny_not_note_owner`（403「无权操作他人笔记的关联」）自相矛盾，
+    #    等于绕过那道防护把同一份数据从侧门漏出去。用户 2026-10-19 报的 403 顺带暴露了它。
+    current_user_id = current_user.get("user_id") if current_user else None
+    linked_banks = await _fetch_linked_banks(db, note.note_id) if _is_owner(note, current_user) else []
 
     # 检查当前用户是否已收藏
     is_favorited = False
-    current_user_id = current_user.get("user_id") if current_user else None
     if current_user_id:
         from app.models.note import UserNoteFavorite
         fav_query = select(UserNoteFavorite).where(

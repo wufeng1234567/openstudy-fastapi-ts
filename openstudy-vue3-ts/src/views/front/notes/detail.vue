@@ -162,15 +162,25 @@ const noteHtmlContent = ref('')
 const linkedBanks = ref<any[]>([])
 const linkedQuestions = ref<any[]>([])
 
-// 当前用户是否为笔记作者（仅作者可取消关联）
+// 当前用户是否为笔记作者
 const isAuthor = computed(() => {
   return noteData.value && noteData.value.userId && noteData.value.userId === userStore.id
 })
 
-// 谁能维护「笔记-题库/题目」关联：作者本人，或收藏了这篇笔记的用户。
-// 关联数据按 user_id 隔离（见后端 _deny_not_note_accessible），
-// 收藏者维护的是自己那一套，不会改动作者的关联。
-const canManageLinks = computed(() => isAuthor.value || !!noteData.value?.isFavorited)
+/**
+ * 谁能维护「笔记-题库/题目」关联：**只有作者本人**。
+ *
+ * ⚠️ 这里曾经写成 `isAuthor || noteData.isFavorited`，理由是「关联按 user_id 隔离，
+ *    收藏者维护自己那一套」。但后端(2026-10 加水平越权防护时)只允许作者读写关联
+ *    （`_deny_not_note_owner` → 403「无权操作他人笔记的关联」），前端这套判断就成了
+ *    空头支票：收藏者看到可点的题库 chip 和按钮，一进详情页就 403。
+ *
+ *    用户 2026-10-19 报的「演示用户1 进 user2 的公开笔记 → 加载关联题库失败 → 当前操作没有权限」
+ *    正是这条链路。现在让前端与后端同口径：非作者直接不请求、不渲染。
+ *    若将来真要放开「收藏者可维护自己那套关联」，得先在后端把 user_id 维度的查询补齐，
+ *    前端再跟着放开 —— 不能只改一边。
+ */
+const canManageLinks = computed(() => !!isAuthor.value)
 
 // 关联题库一多（十几个）就会把元信息行挤爆：默认只露出前几个，其余收进「+N」弹层
 const MAX_VISIBLE_BANKS = 3
