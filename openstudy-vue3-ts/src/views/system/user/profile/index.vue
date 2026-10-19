@@ -374,9 +374,10 @@ watch(() => route.params.userId, () => {
   flex-shrink: 0;
 }
 
+/* 左侧用户卡：与右侧内容卡同一套边框（牌面强度一致，两张卡才不会一深一浅） */
 .user-card {
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--os-border, #e5e7eb);
   border-radius: 16px;
   padding: 24px;
   position: sticky;
@@ -498,10 +499,22 @@ watch(() => route.params.userId, () => {
   min-width: 0;
 }
 
+/*
+ * 右侧内容卡片
+ * ----------------------------------------------------------------------------
+ * ⚠️ 这里原来只写了 `border-top` + `border-bottom`，**漏了左右两边** ——
+ * 配合 `border-radius: 16px`，渲染出来是"上下各有一条线、左右完全敞开"的形状：
+ * 卡片内容直接贴到页面留白上，看起来边框被"吞掉"了（用户 2026-10-19 反馈）。
+ *
+ * 圆角必须四边都有边框才成立 —— 缺任一条边，圆角就没有收口。
+ *
+ * 颜色用 `--os-border`（10% 黑，视觉上≈ #e6e6e6）而不是 `--os-border-soft`
+ * （4% 黑）：后者是**卡片内部**的发丝线级别，作为一张整卡的外框几乎看不见，
+ * 修完还是"像没边框"。原来的 #e5e7eb 就是这个量级，配色意图不该被改掉。
+ */
 .content-section {
   background: #fff;
-  border-top: 1px solid #e5e7eb;
-  border-bottom: 1px solid #e5e7eb;
+  border: 1px solid var(--os-border, #e5e7eb);
   border-radius: 16px;
   padding: 24px;
 }
