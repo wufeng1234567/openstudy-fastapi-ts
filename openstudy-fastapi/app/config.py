@@ -3,9 +3,34 @@
 使用 pydantic-settings 从环境变量加载配置
 """
 
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from typing import List, Optional
 from urllib.parse import quote_plus
+
+# 项目根目录（本文件在 `<repo>/openstudy-fastapi/app/config.py`）
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _default_upload_dir() -> str:
+    """
+    上传落盘根目录的默认值：**项目内部**的 `openstudy-fastapi/data/uploadPath`
+    ----------------------------------------------------------------------------
+    历史上这里写死成 `D:/ruoyi/uploadPath`（若依原版路径）。那个目录是若依
+    Java 版留下的，本机可能根本不存在，或者存在但**当前用户没有写权限** ——
+    题库搭建上传封面就会报：
+
+        upload failed: [WinError 5] 拒绝访问: 'D:/ruoyi/uploadPath\\upload\\2026/10/19'
+
+    `.env` 里其实早就写了「默认指向项目内 data/uploadPath，本机不再需要这一行」，
+    但 `config.py` 的默认值没跟着改，环境变量也没设 → 运行时仍然走旧路径。
+
+    现在改成跟着项目走：
+      · 拷到任何一台机器都能直接用（不需要预建目录、不依赖盘符）；
+      · 目录不存在时 `main.py` / `get_upload_path()` 会自动建；
+      · 想外置仍然可以用 `.env` 里的 `UPLOAD_DIR=` 覆盖（优先级高于本默认值）。
+    """
+    return str(_PROJECT_ROOT / "data" / "uploadPath")
 
 
 class Settings(BaseSettings):
@@ -77,7 +102,9 @@ class Settings(BaseSettings):
     JWT_EXPIRE_MINUTES: int = 30
 
     # File Upload
-    UPLOAD_DIR: str = "D:/ruoyi/uploadPath"
+    # 默认落在项目内 `data/uploadPath`（见 `_default_upload_dir()` 的说明）。
+    # 环境变量 `UPLOAD_DIR` 可覆盖；**不要**再写回 `D:/ruoyi/uploadPath`。
+    UPLOAD_DIR: str = _default_upload_dir()
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
     ALLOWED_EXTENSIONS: set = {
         "jpg", "jpeg", "png", "gif", "bmp",
