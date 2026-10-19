@@ -231,7 +231,7 @@ const loadNoteQuestionBanks = async (noteId) => {
   }
 }
 
-/** 「写新笔记」态是否已处理过草稿（幂等守卫，防 onMounted+onActivated 双触发重复读/重复弹，见 syncEditorMode） */
+/** 「写新笔记」态是否已处理过草稿（幂等守卫，防 onMounted+onActivated 双触发重复读，见 syncEditorMode） */
 let newNoteDraftSettled = false
 
 const syncEditorMode = async () => {
@@ -251,9 +251,9 @@ const syncEditorMode = async () => {
     //    `loadDraft()` **永不执行**（用户 2026-10-11 报「离开/刷新后草稿丢了」的根因）。
     //    正确做法：重置为新笔记态（仅当从编辑态切回时），然后**无条件**读草稿。
     //
-    // ⚠️ 幂等守卫（用户 2026-10-11 报「弹窗两次」）：本组件在 keep-alive 内，首次挂载时
-    //    **onMounted 与 onActivated 都会触发** `syncEditorMode()` → 若不加守卫，else 分支
-    //    会跑两次 → 「已恢复草稿」提示弹两次、第二次还可能覆盖用户已输入内容。已处理过就返回。
+    // ⚠️ 幂等守卫：本组件在 keep-alive 内，首次挂载时 **onMounted 与 onActivated 都会触发**
+    //    `syncEditorMode()` → 若不加守卫，else 分支会跑两次 → 第二次读草稿还可能覆盖
+    //    用户已输入内容。已处理过就返回。
     if (newNoteDraftSettled) return
     if (lastLoadedId !== null || editingNoteId.value !== null) {
       lastLoadedId = null
@@ -268,42 +268,10 @@ const syncEditorMode = async () => {
     }
     // 幂等标记必须在 await 之前置位：否则 await 期间 onActivated 重入会再跑一遍。
     newNoteDraftSettled = true
-    // 恢复到内容时给个轻提示：用户（2026-10-11）明确要"能知道上次写过、且被带出来了"。
-    const restored = await loadDraft()
-    if (restored) notifyDraftRestored(restored)
+    // 恢复草稿**静默**进行：内容会直接出现在编辑器里，不再弹任何提示
+    // （用户 2026-10-19：「直接把整个草稿提示删除掉，不需要了」）。
+    await loadDraft()
   }
-}
-
-/**
- * 「已恢复上次未发布的草稿」提示 —— 去重靠**一次性标记**，不靠时间窗
- * ============================================================================
- * 用户 2026-10-18：「还是有概率发生连续弹三次」。
- *
- * 上一版用的是模块级时间戳闸门（1s 内只放第一条），但它有两个漏洞：
- *   ① `syncEditorMode()` 有 **4 个入口**（onMounted / onActivated /
- *      watch(route.query.id) / 切换笔记后），彼此间隔完全可能 > 1s
- *      （尤其 onActivated 在 keep-alive 唤回时可能晚很多）；
- *   ② 模块级变量在 HMR / 重新加载后会被重置，等于闸门从没存在过。
- *
- * 现在换成「同一个草稿只提示一次」的语义：
- *   · `_draftToastShownFor` 记住**已经提示过的那份草稿的特征**（标题+正文长度+更新时间）；
- *   · 同一份草稿再次被恢复 → 静默，不再弹；
- *   · 换了另一份草稿（用户确实又写了一版新的）→ 允许再提示一次。
- *
- * 这样既不会连弹三次，也不会因为"永久只弹一次"而让用户错过新的恢复提示。
- */
-let _draftToastShownFor = ''
-function draftSignature(d: any): string {
-  const title = String(d?.title || '')
-  const body = String(d?.content || d?.markdownContent || '')
-  const at = String(d?.updatedAt || d?.updateTime || '')
-  return `${title}␟${body.length}␟${at}`
-}
-function notifyDraftRestored(draft?: any) {
-  const sig = draftSignature(draft)
-  if (sig && sig === _draftToastShownFor) return
-  _draftToastShownFor = sig
-  ElMessage({ message: '已恢复上次未发布的草稿', type: 'info', duration: 2500 })
 }
 
 /**
@@ -377,24 +345,16 @@ const applyDraft = (d: any) => {
 }
 
 /**
- * 读回草稿（仅「写新笔记」用；草稿不属于任何笔记、没有 noteId）。
+ * 读草稿并套用到表单（仅「写新笔记」用；草稿不属于任何笔记、没有 noteId）。
  *
  * 用户 2026-10-11：**两个来源合并** —— 浏览器 localStorage 草稿 + 后端「用户草稿」
  * （智能体 `note_manage.save_draft` 写的也是后端那份）。**谁 updateTime 新用谁**，
  * 这样"换设备后智能体帮存的草稿"也能带出来；本地那份作为离线兜底。
  *
- * @returns 是否真的恢复出了内容（有标题或正文）——供调用方决定要不要提示用户。
- *
- * ⚠️ 空草稿（标题与正文都空）忽略、**不覆盖**当前表单，也不提示。
- */
-/**
- * 读草稿并套用到表单
- *
  * @returns 实际恢复的那份草稿；没有可用草稿时返回 `null`。
- *          （返回对象而不是 boolean，是为了让提示层能按「哪一份草稿」去重，
- *            见 `notifyDraftRestored`。）
  *
- * ⚠️ 空草稿（标题与正文都空）忽略、**不覆盖**当前表单，也不提示。
+ * ⚠️ 空草稿（标题与正文都空）忽略、**不覆盖**当前表单。
+ * ⚠️ 恢复过程**不弹提示**：内容直接出现在编辑器里即可（用户 2026-10-19 要求删掉「已恢复上次未发布的草稿」）。
  */
 const loadDraft = async (): Promise<any | null> => {
   // 本地草稿（按用户隔离的 key，见 draftKey()）
