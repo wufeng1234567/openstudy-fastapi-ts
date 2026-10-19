@@ -174,7 +174,7 @@
           :key="s.sessionId"
           type="button"
           class="sb-conv__item"
-          :class="{ 'is-active': s.sessionId === sessionStore.currentSessionId }"
+          :class="{ 'is-active': isSessionActive(s) }"
           :title="sessionStore.title(s)"
           @click="openSession(s)"
         >
@@ -468,6 +468,26 @@ function isChildActive(child: NavChild) {
 }
 
 const isAgentPage = computed(() => route.path.startsWith('/front/agent'))
+
+/**
+ * 侧栏某条会话是否该高亮
+ * ================================
+ * 用户 2026-10-19：「点了 A 会话后离开对话页去刷题，A 会话依旧处于被选中状态」。
+ *
+ * `currentSessionId` 记的是「上次打开过哪个会话」，它是**持久化**的（刷新要恢复），
+ * 用户离开对话页并不会清掉它。所以光比对 id 会让这条会话在任何页面都亮着，
+ * 看起来像"当前正在这里的会话"，实际上你人已经在题库页了。
+ *
+ * 高亮表达的是「你现在在哪儿」，因此必须同时满足：
+ *   · 就在对话页（`isAgentPage`，与收起态那个「回到对话」图标同口径）
+ *   · 且这条正是当前会话
+ *
+ * ⚠️ 不要用 `currentSessionId = ''` 来表示"离开对话页" —— 那会把持久化位置也一起
+ *    抹掉，刷新/切回来就无法恢复上次的会话了（bug 反复的根源就在这两件事被混为一谈）。
+ */
+function isSessionActive(s: any) {
+  return isAgentPage.value && s?.sessionId === sessionStore.currentSessionId
+}
 
 /* ==================== 导航动作 ==================== */
 function onFeatureClick(item: NavItem) {
