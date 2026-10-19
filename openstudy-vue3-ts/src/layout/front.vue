@@ -49,6 +49,11 @@
           </button>
           <h1 class="os-topbar__title">{{ pageTitle }}</h1>
           <!--
+            标题后的说明文字（如题库搭建的「名称、科目与封面…」）。
+            比标题淡一档、小半号，读作"标题 + 注解"，不新增一级标题层级。
+          -->
+          <span v-if="pageHint" class="os-topbar__hint">{{ pageHint }}</span>
+          <!--
             计数（如「5 个题库」）由页面通过 topbar store 推到顶栏。
             见 store/modules/topbar.ts 的说明：原来它在内容区另起一行，和这里的
             标题重复，用户 2026-10-18 要求合并到同一行。
@@ -343,7 +348,24 @@ const MY_LEARNING_SUB: Array<[string, string]> = [
  */
 const SECOND_LEVEL_BY_ROUTE: Record<string, string> = {
   FrontQuestionBankList: '公开题库',
-  FrontNotesList: '公开笔记'
+  FrontNotesList: '公开笔记',
+  /* 题库搭建：内容区那行「题库信息 · 名称、科目与封面…」并到顶栏（用户 2026-10-19） */
+  FrontStudioCreate: '题库信息'
+}
+
+/**
+ * 顶栏标题后面的说明文字（随页面推送，比标题淡一档）
+ * ----------------------------------------------------------------------------
+ * 用户 2026-10-19：「把第一行的『题库信息 · 名称、科目与封面，决定它出现在别人面前的第一眼』
+ * 移动到『题库搭建』后面」—— 即顶栏那一行：
+ *
+ *   题库搭建 · 题库信息 · 名称、科目与封面，决定它出现在别人面前的第一眼
+ *
+ * 三个「·」连在一起会显得层数太多，所以**说明文字单独放**：标题之间用 `·`，
+ * 说明文字用更淡的色 + 稍小的字号，视觉上读作"标题 + 注解"而不是四级标题。
+ */
+const SECOND_LEVEL_HINT: Record<string, string> = {
+  FrontStudioCreate: '名称、科目与封面，决定它出现在别人面前的第一眼'
 }
 
 const pageTitle = computed(() => {
@@ -361,6 +383,9 @@ const pageTitle = computed(() => {
   if (hit) return hit[1]
   return (route.meta?.title as string) || 'OpenStudy'
 })
+
+/** 顶栏标题后的说明文字（只有部分页面有，没配就返回空串 → 不渲染） */
+const pageHint = computed(() => SECOND_LEVEL_HINT[String(route.name || '')] || '')
 
 // ==================== 动作 ====================
 async function goMessages() {
@@ -535,6 +560,30 @@ watch(
   font-size: 13px;
   color: var(--os-text-4, #9ca3af);
   white-space: nowrap;
+}
+
+/*
+ * 标题后的说明文字（题库搭建的「名称、科目与封面…」）
+ * ----------------------------------------------------------------------------
+ * 比标题淡一档、小半号；前面加一个分隔点，与「模块 · 子页」的层级语言一致，
+ * 但字号/颜色把它压成"注解"，不让顶栏看起来像四个层级。
+ * 窄屏放不下时直接省略 —— 它是可选说明，不该把顶栏撑破。
+ */
+.os-topbar__hint {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: 6px;
+  font-size: 12.5px;
+  color: var(--os-text-4, #9ca3af);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  &::before {
+    content: '·';
+    margin-right: 6px;
+    color: var(--os-text-4, #9ca3af);
+  }
 }
 
 .os-topbar__right {

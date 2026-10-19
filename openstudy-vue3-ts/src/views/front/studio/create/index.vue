@@ -1,37 +1,47 @@
 <template>
   <div class="create-studio">
-    <!-- 题库信息 -->
+    <!--
+      题库信息
+      ==========================================================================
+      标题行已整块去掉（用户 2026-10-19）：
+      「把第一行的『题库信息 · 名称、科目与封面，决定它出现在别人面前的第一眼』
+       移动到『题库搭建』后面」。
+
+      所以现在顶栏是：
+        题库搭建 · 题库信息 · 名称、科目与封面，决定它出现在别人面前的第一眼
+      （见 `layout/front.vue` 的 `SECOND_LEVEL_BY_ROUTE` / `SECOND_LEVEL_HINT`）
+
+      内容区不再有「题库信息 + 副标题 + 下拉框」那一行 —— 垂直少 32px，
+      下面直接从表单开始。
+
+      「载入已有题库」原来挂在标题行右侧，标题行没了之后它如果单独占一行，
+      就成了「一个下拉框独占一行」的孤岛（正是用户嫌它占地方的地方）。
+      现在下移到**「题库名称」标签的右侧**：那里本来就是一行只有标签的空白带，
+      下拉框放进去不增加任何行高，语义上也对得上（"载入一个已有题库" 与
+      "给题库起名" 是同一件事的两个方向：新建 or 接着改）。
+    -->
     <section class="os-block">
-      <!--
-        标题行与「载入已有题库」的合并（用户 2026-10-19）
-        ==========================================================================
-        「名称、科目与封面，决定它出现在别人面前的第一眼」原来独占一行副标题，
-        右侧单独挂一个下拉框 —— 一行只有 43px 高，却把「题库信息」这个分块
-        撑成了三行（标题 / 副标题 / 表单），首屏能看到的内容很少。
-
-        现在把副标题并进标题行（`题库信息 · 名称、科目与封面，决定它出现在别人面前的第一眼`），
-        下拉框留在同一行右侧 —— 与「我的学习」几个页面的「模块 · 子页」写法一致，
-        少一行、信息密度更高，也和顶栏的层级语言统一。
-      -->
-      <header class="os-block__head">
-        <div class="os-block__title">
-          <h2>
-            题库信息
-            <span class="os-block__sub">名称、科目与封面，决定它出现在别人面前的第一眼</span>
-          </h2>
-        </div>
-        <div class="head-tools">
-          <el-select v-model="selectedBankId" placeholder="载入已有题库" clearable filterable size="default"
-            class="bank-selector" @change="onBankChange">
-            <el-option v-for="bank in myBanks" :key="bank.bankId" :label="bank.bankName" :value="bank.bankId" />
-          </el-select>
-        </div>
-      </header>
-
       <el-form ref="basicFormRef" :model="basicForm" :rules="basicRules" label-position="top" class="basic-form">
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="题库名称" prop="bankName">
+            <!-- 名称标签行：右侧空位放「载入已有题库」 -->
+            <el-form-item prop="bankName" class="name-item">
+              <template #label>
+                <!--
+                  `el-form-item__label-inner` 这一层是必须的：
+                  Element Plus 给 label 加的必填星号 `*` 是 `::before`，
+                  它作用在 label 的**直接内容前**。如果这里直接放 flex 容器，
+                  星号会被挤到容器外面、单独占一行（实测首版就是这样）。
+                  把文字包一层 span，星号就能正常贴在「题库名称」前面。
+                -->
+                <span class="label-tool-row">
+                  <span class="label-tool-row__text">题库名称</span>
+                  <el-select v-model="selectedBankId" placeholder="载入已有题库" clearable filterable size="small"
+                    class="bank-selector" @change="onBankChange">
+                    <el-option v-for="bank in myBanks" :key="bank.bankId" :label="bank.bankName" :value="bank.bankId" />
+                  </el-select>
+                </span>
+              </template>
               <el-input v-model="basicForm.bankName" placeholder="给你的题库起个名字" size="large" maxlength="50"
                 show-word-limit />
             </el-form-item>
@@ -779,12 +789,72 @@ const handleSave = async () => {
   flex: none;
 }
 
+/*
+ * 「载入已有题库」下拉
+ * ----------------------------------------------------------------------------
+ * 现在挂在「题库名称」的 label 行右侧（见模板注释）。
+ * 用 small 尺寸 + 定宽，让它读作"标签旁边的一个小工具"，而不是一个主表单控件。
+ */
 .bank-selector {
-  width: 220px;
+  width: 180px;
   flex: none;
 
   :deep(.el-select__wrapper) {
     border-radius: var(--os-radius-sm);
+    /* 轻量化：默认的深描边会把它抬成"和输入框同级"，这里压到次级 */
+    box-shadow: 0 0 0 1px var(--os-border, #e5e7eb);
+    background: #fff;
+  }
+}
+
+/* label 行：标签在左、下拉在右，共用一行（外层 label 已是 flex 容器） */
+.label-tool-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  /* 吃掉 label 里除星号外的剩余宽度，下拉才能真的靠右 */
+  flex: 1;
+  min-width: 0;
+  line-height: 1;
+}
+
+.label-tool-row__text {
+  flex: none;
+  white-space: nowrap;
+}
+
+/*
+ * 名称项：label 行要让下拉能撑开，不能按"行内文字"处理
+ * ----------------------------------------------------------------------------
+ * Element Plus 的必填星号是 label 上的 `::before`（content: "*"，inline）。
+ *
+ * 这里把 label 设成 `display: flex`：`::before` 会变成**第一个 flex item**，
+ * 星号 ⇢ 标签文字 ⇢ 下拉框 就能排在同一行。
+ *
+ * ⚠️ 之前踩过两个坑：
+ *   ① label 保持 block，内层放 `display:flex` 的容器 —— 容器是块级盒子，
+ *      星号被顶到上一行，标签行变成两行（首版实测就是这样）；
+ *   ② 内层还是 `display:flex`，只是改成 inline-flex —— 星号回来了，
+ *      但内层不再撑满宽度，下拉框贴着文字而不是靠右。
+ *
+ * 正确做法就是让 label 自己当 flex 容器，内层 `flex: 1` 吃掉剩余宽度。
+ */
+.name-item {
+  :deep(.el-form-item__label) {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 0 0 6px;
+    height: auto;
+    line-height: 1;
+    white-space: normal;
+
+    /* 星号：不参与压缩，留一点右边距 */
+    &::before {
+      flex: none;
+      margin-right: 2px;
+    }
   }
 }
 
@@ -797,6 +867,11 @@ const handleSave = async () => {
 
   .bank-selector {
     width: 100%;
+  }
+
+  .label-tool-row {
+    flex-wrap: wrap;
+    gap: 6px;
   }
 }
 
