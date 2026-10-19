@@ -95,10 +95,11 @@ export function copyQuestionBank(id: number | string, data?: { bankName?: string
  */
 export async function exportQuestionBank(
   id: number | string,
-  format: 'docx' | 'pdf'
+  format: 'docx' | 'pdf',
+  withAnswers: boolean = true
 ): Promise<{ blob?: Blob; filename?: string; error?: string }> {
   const resp = await axios.get(`${import.meta.env.VITE_APP_BASE_API}/questionBank/questionBank/${id}/export`, {
-    params: { format },
+    params: { format, with_answers: withAnswers },
     responseType: 'blob',
     // 含大量图片时可能超过默认 30s，单独放宽
     timeout: 180000,

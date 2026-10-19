@@ -73,4 +73,7 @@ openpyxl==3.1.5
 # · python-docx 见上方 Document Processing（写 .docx）
 # · reportlab 写 .pdf；中文需要 CJK 字体，服务会优先用系统里的
 #   微软雅黑 / 思源黑体，找不到则退回 reportlab 自带的 STSong-Light
+# · latex2mathml 把 LaTeX 公式转 MathML，再由 app/services/mathml_omml.py
+#   映射成 Word 原生公式（OMML）—— Word 与 WPS 都认的格式
 reportlab==4.2.5
+latex2mathml==3.81.1

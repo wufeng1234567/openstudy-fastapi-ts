@@ -63,11 +63,15 @@ def _content_disposition(filename: str) -> str:
 async def export_bank(
     bank_id: int,
     format: str = Query("docx", description="导出格式：docx / pdf"),
+    with_answers: bool = Query(True, description="是否包含答案与解析；false = 学生卷"),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     """
     导出题库为 Word / PDF
+
+    `with_answers=false` 输出「学生卷」：只有题干与选项，去掉答案、解析，
+    简答题留作答空行。用户 2026-10-19 要求两种版本都支持。
 
     权限与「查看题库详情」一致（私密题库仅作者与已领取分享者可导出）：
     既然能看到题目内容，导出只是换一种呈现方式，不该额外设卡；
@@ -107,22 +111,24 @@ async def export_bank(
         questions.append(item)
 
     base_name = _safe_filename(bank.bank_name, f"题库{bank_id}")
+    # 无答案版在文件名里也标出来，避免两个文件混在一起分不清
+    suffix = "" if with_answers else "-无答案"
 
     try:
         if fmt == "docx":
             from app.services.bank_export_service import export_bank_docx
 
-            data = export_bank_docx(bank_dict, questions)
+            data = export_bank_docx(bank_dict, questions, with_answers=with_answers)
             media_type = (
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
-            filename = f"{base_name}.docx"
+            filename = f"{base_name}{suffix}.docx"
         else:
             from app.services.bank_export_service import export_bank_pdf
 
-            data = export_bank_pdf(bank_dict, questions)
+            data = export_bank_pdf(bank_dict, questions, with_answers=with_answers)
             media_type = "application/pdf"
-            filename = f"{base_name}.pdf"
+            filename = f"{base_name}{suffix}.pdf"
     except Exception as exc:  # noqa: BLE001
         from loguru import logger
 

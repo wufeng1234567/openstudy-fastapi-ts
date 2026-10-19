@@ -24,12 +24,7 @@
               </el-tag>
             </div>
             <div class="bank-stats">
-              <span class="stat-item">
-                <el-icon>
-                  <Folder />
-                </el-icon>
-                <span>{{ bank.chapterCount || 0 }} 个章节</span>
-              </span>
+              <!-- 「N 个章节」已移除（用户 2026-10-19：每个题库都显示 0 个章节，不需要） -->
               <span class="stat-item">
                 <el-icon>
                   <Document />
@@ -66,8 +61,8 @@
             </el-icon> 分享
           </el-button>
 
-          <!-- 导出：Word / PDF。下拉而非两个按钮 —— 顶栏已经有收藏/编辑/分享，
-               再多一个按钮会把这一行挤满 -->
+          <!-- 导出：Word / PDF ×（有答案 / 无答案）。
+               下拉而不是四个按钮 —— 顶栏已有收藏/编辑/分享，再堆会把这一行挤爆。 -->
           <el-dropdown
             class="export-dropdown"
             trigger="click"
@@ -81,11 +76,19 @@
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="docx">
-                  <el-icon><Document /></el-icon> 导出为 Word（.docx）
+                <el-dropdown-item disabled class="export-group-label">含答案与解析</el-dropdown-item>
+                <el-dropdown-item command="docx:answers">
+                  <el-icon><Document /></el-icon> Word（.docx）
                 </el-dropdown-item>
-                <el-dropdown-item command="pdf">
-                  <el-icon><Tickets /></el-icon> 导出为 PDF
+                <el-dropdown-item command="pdf:answers">
+                  <el-icon><Tickets /></el-icon> PDF
+                </el-dropdown-item>
+                <el-dropdown-item divided disabled class="export-group-label">无答案（学生卷）</el-dropdown-item>
+                <el-dropdown-item command="docx:blank">
+                  <el-icon><Document /></el-icon> Word（.docx）
+                </el-dropdown-item>
+                <el-dropdown-item command="pdf:blank">
+                  <el-icon><Tickets /></el-icon> PDF
                 </el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -328,7 +331,7 @@ import ShareBankDialog from '@/views/front/myQuestion/components/ShareBankDialog
 import type { QuestionBank } from '@/types'
 
 import {
-  Collection, Folder, Document, Star, Share, ArrowLeft,
+  Collection, Document, Star, Share, ArrowLeft,
   User, Refresh, Warning, Flag, Notebook, ArrowRight,
   Trophy, Sort, Setting, Aim, Clock, Timer,
   Edit, CopyDocument, Download, Tickets
@@ -503,13 +506,27 @@ function openShareDialog() {
  */
 const exporting = ref(false)
 
-async function handleExport(format: 'docx' | 'pdf') {
+/**
+ * 导出 Word / PDF
+ *
+ * command 形如 `docx:answers` / `pdf:blank` —— 前半是格式，后半是版本。
+ * 用户 2026-10-19 要求「无论 word 还是 pdf 都要支持有答案和无答案两种」。
+ */
+async function handleExport(command: string) {
   if (exporting.value) return
+  const [format, variant] = String(command || '').split(':')
+  if (format !== 'docx' && format !== 'pdf') return
+  const withAnswers = variant !== 'blank'
+
   if (!(await ensureLogin('导出题库'))) return
 
   exporting.value = true
   try {
-    const { blob, filename, error } = await exportQuestionBank(props.bank.bankId, format)
+    const { blob, filename, error } = await exportQuestionBank(
+      props.bank.bankId,
+      format as 'docx' | 'pdf',
+      withAnswers
+    )
     if (error || !blob) {
       proxy.$modal.msgError(error || '导出失败')
       return
@@ -518,13 +535,14 @@ async function handleExport(format: 'docx' | 'pdf') {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = filename || `题库-${props.bank.bankId}.${format}`
+    a.download = filename || `题库-${props.bank.bankId}${withAnswers ? '' : '-无答案'}.${format}`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     // 立刻 revoke 在部分浏览器（Safari）会打断下载，延后一点
     setTimeout(() => URL.revokeObjectURL(url), 5000)
-    proxy.$modal.msgSuccess(`已导出为 ${format === 'docx' ? 'Word' : 'PDF'} 文件`)
+    const label = `${format === 'docx' ? 'Word' : 'PDF'}${withAnswers ? '' : '（无答案）'}`
+    proxy.$modal.msgSuccess(`已导出为 ${label} 文件`)
   } catch (e: any) {
     // 后端业务错误（403 无权 / 500 生成失败）走 axios 的 reject
     const msg = e?.response?.data?.msg || e?.message || '导出失败'
@@ -655,6 +673,10 @@ function goBack() {
   gap: 16px;
   flex: 1;
 }
+
+/* 导出下拉的分组标题（「含答案与解析」/「无答案（学生卷）」）：
+   ⚠️ 不能写在这个 scoped 块里 —— `el-dropdown-menu` 会 teleport 到 body，
+   scoped 的 `[data-v-xxx]` 属性加不到那些节点上。实际样式见文件末尾的非 scoped 块。 */
 
 .action-link {
   color: #6b7280;
@@ -1314,4 +1336,29 @@ function goBack() {
   margin: 0;
 }
 
+</style>
+
+<!--
+  导出下拉的分组标题样式：
+  ⚠️ 必须用**非 scoped** 样式 —— `el-dropdown-menu` 由 Element Plus teleport 到 body，
+  scoped 的 `[data-v-xxx]` 属性不会加到那些节点上，规则对它们无效
+  （与 LatexRenderer 的表格样式同一个道理）。
+-->
+<style>
+.export-dropdown-popper .el-dropdown-menu__item.export-group-label,
+.el-dropdown-menu__item.export-group-label {
+  font-size: 12px;
+  color: #9ca3af;
+  cursor: default;
+  padding-top: 6px;
+  padding-bottom: 2px;
+  min-height: auto;
+  line-height: 1.4;
+}
+
+/* disabled 的 el-dropdown-item 默认会变半透明，分组标题不该"看起来坏了" */
+.el-dropdown-menu__item.export-group-label.is-disabled {
+  color: #9ca3af;
+  opacity: 1;
+}
 </style>

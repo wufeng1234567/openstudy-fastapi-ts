@@ -351,6 +351,72 @@ function normalizeTabTables(text: string): string {
 }
 
 /**
+ * 找出文本里**没有被 `$` 包裹**的裸 LaTeX 命令（如 `\overline{A}`、`\frac{a}{b}`）
+ *
+ * 为什么需要它（用户 2026-10-19 报「刷题页公式显示成 P(A B)」）：
+ *   题库里大量公式是**裸 LaTeX**（Word/WPS 导入时没加 `$`），
+ *   而统一管线 `renderMarkdownWithLatex` 原先只认 `$...$`／`$$...$$`，
+ *   于是 `\overline{A}` 原样漏进 HTML，KaTeX 从没参与渲染 ——
+ *   浏览器把反斜杠当普通字符、把 `{A}` 当文本，最终显示成 "A B"，
+ *   上划线完全丢失（正是用户截图里的效果）。
+ *
+ * 与 `renderLatexCommands()` 的区别：
+ *   那个函数**直接产出 HTML**，但会在 Markdown 渲染前就把 `<span>` 塞进正文，
+ *   导致 `marked` 把 HTML 块包进 `<p>` 时错位。这里只**定位区间**，
+ *   交给调用方换成占位符，保持"先占位、后渲染、再回填"的顺序不乱。
+ *
+ * 只认「命令 + 至少一个 `{}` 组」：裸的 `\n`、`\t`、`&` 之类不碰，
+ * 避免把转义字符或普通文本误当公式。
+ */
+function findBareLatexCommands(text: string): Array<{ start: number; end: number; latex: string }> {
+  const found: Array<{ start: number; end: number; latex: string }> = []
+  const cmdRegex = /\\([a-zA-Z]+)/g
+  let match: RegExpExecArray | null
+
+  while ((match = cmdRegex.exec(text)) !== null) {
+    const cmdStart = match.index
+    // ⚠️ 前面若紧跟 `$`，说明已在 `$...$` 里，交给块级/行内公式那条路径处理
+    let back = cmdStart - 1
+    while (back >= 0 && text[back] === ' ') back--
+    if (back >= 0 && text[back] === '$') continue
+
+    let pos = cmdRegex.lastIndex
+    while (pos < text.length && text[pos] === ' ') pos++
+
+    // 收集连续的 `{...}` 组（支持嵌套），如 \frac{A}{k(k+1)}
+    const braceGroups: string[] = []
+    let scanPos = pos
+    while (scanPos < text.length && text[scanPos] === '{') {
+      let depth = 0
+      let end = -1
+      for (let i = scanPos; i < text.length; i++) {
+        if (text[i] === '{') depth++
+        else if (text[i] === '}') {
+          depth--
+          if (depth === 0) {
+            end = i + 1
+            break
+          }
+        }
+      }
+      if (end > 0) {
+        braceGroups.push(text.substring(scanPos, end))
+        scanPos = end
+        while (scanPos < text.length && text[scanPos] === ' ') scanPos++
+      } else {
+        break
+      }
+    }
+
+    if (braceGroups.length > 0) {
+      found.push({ start: cmdStart, end: scanPos, latex: text.substring(cmdStart, scanPos) })
+      cmdRegex.lastIndex = scanPos
+    }
+  }
+  return found
+}
+
+/**
  * **统一渲染管线**：同时支持 `$...$` 公式 + Markdown（表格/列表等）（用户 2026-10-11 方案 A）
  *
  * 背景：项目原先三条路径各管一半——`renderQuestionContent`（裸 `\命令{}`，不认 `$`、不认表格）、
@@ -359,6 +425,8 @@ function normalizeTabTables(text: string): string {
  *
  * 实现顺序（关键，不能反）：
  *   ① 先把 `$...$`/`$$...$$` 渲染成 **占位符**（避免公式内部的 `|`、`*`、`_` 被 Markdown 解析器吃掉）；
+ *   ①-c 再把**裸 LaTeX 命令**（`\overline{A}` 这种没有 `$` 包裹的）也换成占位符 ——
+ *       题库里绝大多数公式就是这个形态，漏掉它就会出现「反斜杠原样显示」；
  *   ② 再 `marked.parse` 渲染 Markdown（表格/列表/加粗…）；
  *   ③ 最后把占位符**回填**成 KaTeX 生成的 HTML。
  * 若先做 Markdown 再做公式，公式里的下划线会被当成斜体、`|` 会被当成表格分隔。
@@ -392,6 +460,23 @@ export function renderMarkdownWithLatex(text: string): string {
       stash.push(html)
       return PH(stash.length - 1)
     })
+
+  // ①-c 裸 LaTeX（无 `$` 包裹）→ 占位符。放在 Markdown 之前，避免 `_`/`|` 被误解析。
+  //      ⚠️ 必须**倒序**替换，否则前面的偏移量会被后面的替换句柄搞乱。
+  const bareCmds = findBareLatexCommands(src)
+  for (let i = bareCmds.length - 1; i >= 0; i--) {
+    const { start, end, latex } = bareCmds[i]
+    let html: string
+    try {
+      // WPS 旧版别名先归一（\overbar → \overline，与 renderQuestionContent 同口径）
+      const normalized = latex.replace(/^\\overbar\{/, '\\overline{').replace(/^\\underbar\{/, '\\underline{')
+      html = katex.renderToString(normalized, { displayMode: false, throwOnError: false })
+    } catch {
+      html = `<span class="latex-error">${latex}</span>`
+    }
+    stash.push(html)
+    src = src.substring(0, start) + PH(stash.length - 1) + src.substring(end)
+  }
 
   // ② 表格格式容错：把"无表头分隔行的裸竖线表格"补成合法 md 表格（用户 2026-10-11：新旧两种格式都要适配）
   //    ⚠️ 放在公式占位化**之后**：此时公式已被替换成占位符，行内的 `|` 只可能来自真表格，

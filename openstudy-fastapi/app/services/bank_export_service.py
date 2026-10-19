@@ -35,6 +35,12 @@ from loguru import logger
 
 from app.config import settings
 
+#: PDF 里表示"上划线"的字符
+#:
+#: 用 U+203E(‾) 而不是组合符 U+0305：后者在微软雅黑 / 文泉驿里**没有字形**
+#: （fontTools 实测 cmap 查不到），reportlab 会画成空方块。
+_OVERLINE_CHAR = "\u203e"
+
 # ──────────────────────────────────────────────────────────── 文本清洗
 
 #: 常见 LaTeX 命令名（用于识别「控制字符 + 命令名剩余部分」的残骸）
@@ -140,6 +146,50 @@ def _clean_text(value: Any) -> str:
     return _RE_ILLEGAL_XML.sub("", s)
 
 
+
+# ──────────────────────────────────────────────────────────── LaTeX 符号表（PDF/文本降级共用）
+
+#: LaTeX 命令 → Unicode 数学符号
+#:
+#: PDF 没有 OMML 这种原生公式格式，reportlab 也不支持 TeX 排版。
+#: 可行的做法只有两种：① 把公式画成图片；② 用 Unicode 数学字符 + 上下标近似。
+#: 这里选 ②，理由：
+#:   · 图片公式在 PDF 里不可选、不可搜索，且缩放后发虚；
+#:   · 题库实际用到的命令很集中（`\overline` `\dfrac` `\frac` `\sqrt` + 希腊字母），
+#:     Unicode 能表达得很好；
+#:   · 生成的 PDF 文字仍可复制/检索。
+#: 实测 CJK 字体（微软雅黑 / 文泉驿）覆盖了下面所有符号的码位。
+_PDF_MATH_SYMBOLS = {
+    # 希腊字母
+    "alpha": "α", "beta": "β", "gamma": "γ", "delta": "δ", "epsilon": "ε",
+    "zeta": "ζ", "eta": "η", "theta": "θ", "iota": "ι", "kappa": "κ",
+    "lambda": "λ", "mu": "μ", "nu": "ν", "xi": "ξ", "pi": "π", "rho": "ρ",
+    "sigma": "σ", "tau": "τ", "upsilon": "υ", "phi": "φ", "chi": "χ",
+    "psi": "ψ", "omega": "ω",
+    "Gamma": "Γ", "Delta": "Δ", "Theta": "Θ", "Lambda": "Λ", "Xi": "Ξ",
+    "Pi": "Π", "Sigma": "Σ", "Phi": "Φ", "Psi": "Ψ", "Omega": "Ω",
+    # 运算符 / 关系
+    "times": "×", "div": "÷", "pm": "±", "mp": "∓", "cdot": "·",
+    "cdots": "⋯", "ldots": "…", "dots": "…",
+    "leq": "≤", "le": "≤", "geq": "≥", "ge": "≥", "neq": "≠", "ne": "≠",
+    "approx": "≈", "equiv": "≡", "sim": "∼", "propto": "∝",
+    "infty": "∞", "partial": "∂", "nabla": "∇",
+    "sum": "∑", "prod": "∏", "int": "∫", "iint": "∬", "oint": "∮",
+    # 集合 / 逻辑
+    "cup": "∪", "cap": "∩", "subset": "⊂", "supset": "⊃",
+    "subseteq": "⊆", "supseteq": "⊇", "in": "∈", "notin": "∉",
+    "emptyset": "∅", "forall": "∀", "exists": "∃",
+    "land": "∧", "lor": "∨", "neg": "¬",
+    # 箭头
+    "to": "→", "rightarrow": "→", "leftarrow": "←",
+    "Rightarrow": "⇒", "Leftarrow": "⇐", "leftrightarrow": "↔",
+    "mapsto": "↦",
+    # 其它
+    "angle": "∠", "perp": "⊥", "parallel": "∥", "degree": "°",
+    "prime": "′", "ast": "∗", "star": "⋆", "bullet": "•",
+}
+
+
 # ──────────────────────────────────────────────────────────── 图片定位
 
 #: `<img …>`（容忍自闭合与任意属性顺序）
@@ -223,6 +273,111 @@ def _inline_text(fragment: str) -> str:
 
 #: 一个"块" = 一段文字 或 一张图，按 HTML 里出现的先后顺序排列
 Block = Tuple[str, Any]  # ("text", str) | ("image", src)
+
+
+# ──────────────────────────────────────────────────────────── 文本 → 文字/公式片段
+
+#: LaTeX 命令起始
+_RE_LATEX_CMD = re.compile(r"\\([a-zA-Z]+)")
+
+#: 一段文字里可能混杂「普通文本 + 裸 LaTeX」；导出时要逐段处理，
+#: 文字用正常字体、公式用 OMML/矢量绘制
+Segment = Tuple[str, str]  # ("text", str) | ("math", latex)
+
+
+def _find_bare_latex(text: str) -> List[Tuple[int, int, str]]:
+    """
+    定位文本里的**裸 LaTeX 命令**（无 `$` 包裹），返回 [(start, end, latex)]
+
+    与前端 `utils/latex.ts` 的 `findBareLatexCommands` 保持同一套判定：
+    只认「命令 + 至少一个 `{}` 组」，支持嵌套花括号（`\\frac{a}{k(k+1)}`）
+    和连续多组（`\\dfrac{1}{2}`）。裸的 `\\n`/`\\t` 之类不碰。
+
+    ⚠️ 另有「无参数符号」这一类：`\\times`、`\\cup`、`\\leq`、`\\lambda`…
+       它们不跟花括号，但同样是公式，也要替换成数学符号（用户 2026-10-19 反馈
+       PDF 里出现 `0.2 \\times 0.04` 原文就是漏了这类）。判定用 `_PDF_MATH_SYMBOLS`
+       白名单，避免把正文里偶然的反斜杠当公式。
+
+    跳过 `$...$` 内部的命令 —— 那些由调用方按行内公式统一处理。
+    """
+    if not text or "\\" not in text:
+        return []
+    found: List[Tuple[int, int, str]] = []
+    for m in _RE_LATEX_CMD.finditer(text):
+        start = m.start()
+        # 前面紧邻 `$` → 已在 $...$ 里
+        back = start - 1
+        while back >= 0 and text[back] == " ":
+            back -= 1
+        if back >= 0 and text[back] == "$":
+            continue
+
+        pos = m.end()
+        while pos < len(text) and text[pos] == " ":
+            pos += 1
+        groups = 0
+        scan = pos
+        while scan < len(text) and text[scan] == "{":
+            depth = 0
+            end = -1
+            for i in range(scan, len(text)):
+                if text[i] == "{":
+                    depth += 1
+                elif text[i] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end = i + 1
+                        break
+            if end > 0:
+                groups += 1
+                scan = end
+                while scan < len(text) and text[scan] == " ":
+                    scan += 1
+            else:
+                break
+        if groups > 0:
+            found.append((start, scan, text[start:scan]))
+        elif m.group(1) in _PDF_MATH_SYMBOLS:
+            # 无参数符号命令（\times \cup \leq …）：整条命令本身就是一个公式片段。
+            # 不加这一步，`0.2 \times 0.04` 里的 `\times` 会原样留在正文里。
+            found.append((start, m.end(), text[start:m.end()]))
+    return found
+
+
+def split_text_and_math(text: str) -> List[Segment]:
+    """
+    把一段纯文本拆成 [("text", ...), ("math", ...), ...]，**保持原始顺序**
+
+    这样 Word 里能用原生 OMML、PDF 里能画成矢量符号，
+    而不是把 `\\overline{A}` 原样印成反斜杠（用户 2026-10-19 反馈的问题）。
+    """
+    if not text:
+        return []
+    if "\\" not in text:
+        return [("text", text)]
+
+    pieces = _find_bare_latex(text)
+    if not pieces:
+        return [("text", text)]
+
+    out: List[Segment] = []
+    cursor = 0
+    for start, end, latex in pieces:
+        if start > cursor:
+            chunk = text[cursor:start]
+            if chunk.strip():
+                out.append(("text", chunk))
+            elif chunk:
+                out.append(("text", chunk))
+        out.append(("math", latex))
+        cursor = end
+    if cursor < len(text):
+        tail = text[cursor:]
+        if tail.strip():
+            out.append(("text", tail))
+        elif tail:
+            out.append(("text", tail))
+    return out or [("text", text)]
 
 
 def split_blocks(raw: Optional[str]) -> List[Block]:
@@ -400,6 +555,49 @@ def _add_run(paragraph, text: Any, **kwargs):
     return run
 
 
+def _add_omml(paragraph, latex: str) -> bool:
+    """
+    把一段 LaTeX 作为**原生 Word 公式（OMML）**写进段落；成功返回 True
+
+    为什么不用图片：图片公式在 Word 里不能编辑、缩放会糊，
+    而且 WPS 常把它当普通图片处理导致基线错位。
+    OMML 是 Word 与 WPS 都认的原生公式格式，是唯一能同时兼容两者的做法。
+
+    失败（latex2mathml 不支持该命令等）时返回 False，调用方退回纯文本。
+    """
+    from app.services.mathml_omml import latex_to_omml, omml_to_xml_string
+
+    om = latex_to_omml(latex)
+    if om is None:
+        return False
+    try:
+        from docx.oxml import parse_xml
+
+        xml = omml_to_xml_string(om)
+        el = parse_xml(xml)
+        paragraph._p.append(el)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[export] OMML 插入失败 {!r}: {}", latex, exc)
+        return False
+
+
+def _add_segments(paragraph, text: str, **font_kwargs) -> None:
+    """
+    把「文字 + 裸 LaTeX」混排进同一个段落
+
+    文字走普通 run，公式走 OMML —— 这样 `P(AB)=P(\\overline{A} \\overline{B})`
+    在 Word 里就是「普通文字 + 真正的 A̅ B̅」，而不是一串反斜杠。
+    """
+    for kind, payload in split_text_and_math(_clean_text(text)):
+        if kind == "math":
+            if not _add_omml(paragraph, payload):
+                # 兜底：转不成就原样输出，至少信息不丢
+                _add_run(paragraph, payload, **font_kwargs)
+        else:
+            _add_run(paragraph, payload, **font_kwargs)
+
+
 def _docx_add_image(doc, src: str, max_width_cm: float = 15.5) -> bool:
     """
     往文档里插一张图；成功返回 True
@@ -438,7 +636,7 @@ def _docx_add_image(doc, src: str, max_width_cm: float = 15.5) -> bool:
 
 
 def _docx_add_blocks(doc, blocks: List[Block], *, indent_cm: float = 0.0) -> None:
-    """把有序块写进 docx：文字成段、图片原地插入"""
+    """把有序块写进 docx：文字成段（含公式）、图片原地插入"""
     from docx.shared import Cm
 
     max_w = 15.5 - indent_cm
@@ -447,7 +645,8 @@ def _docx_add_blocks(doc, blocks: List[Block], *, indent_cm: float = 0.0) -> Non
             p = doc.add_paragraph()
             if indent_cm:
                 p.paragraph_format.left_indent = Cm(indent_cm)
-            _add_run(p, payload, size=10.5)
+            # 文字里可能夹着裸 LaTeX——交给 _add_segments 混排成「文字 + 原生公式」
+            _add_segments(p, payload, size=10.5)
         else:
             if not _docx_add_image(doc, payload, max_width_cm=max_w):
                 p = doc.add_paragraph()
@@ -456,8 +655,18 @@ def _docx_add_blocks(doc, blocks: List[Block], *, indent_cm: float = 0.0) -> Non
                 _add_run(p, f"[图片缺失] {payload}", size=9, color=(0x99, 0x99, 0x99))
 
 
-def export_bank_docx(bank: Dict[str, Any], questions: List[Dict[str, Any]]) -> bytes:
-    """题库 → .docx 字节"""
+def export_bank_docx(
+    bank: Dict[str, Any],
+    questions: List[Dict[str, Any]],
+    *,
+    with_answers: bool = True,
+) -> bytes:
+    """
+    题库 → .docx 字节
+
+    with_answers=False 时输出「学生卷」：只保留题干 / 选项 / 组合题的子题题干，
+    **去掉答案与解析**（用户 2026-10-19 要求支持有答案/无答案两种版本）。
+    """
     from docx import Document
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.shared import Cm, Pt
@@ -482,6 +691,9 @@ def export_bank_docx(bank: Dict[str, Any], questions: List[Dict[str, Any]]) -> b
     meta_bits.append(f"题目数：{len(questions)}")
     if bank.get("createTime"):
         meta_bits.append(f"创建时间：{str(bank['createTime'])[:10]}")
+    # 无答案版在封面上明确标出来，避免老师把学生卷当成答案卷发出去
+    if not with_answers:
+        meta_bits.append("版本：无答案")
     meta_p = doc.add_paragraph()
     meta_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _add_run(meta_p, "　·　".join(meta_bits), size=9, color=(0x66, 0x66, 0x66))
@@ -504,24 +716,23 @@ def export_bank_docx(bank: Dict[str, Any], questions: List[Dict[str, Any]]) -> b
         if type_text:
             _add_run(head, f"［{type_text}］", size=8.5, color=(0x88, 0x88, 0x88))
 
-        # 题干（图文按原序）
+        # 题干（图文按原序，文字里的裸 LaTeX 转原生公式）
         stem_html = q.get("questionText") or q.get("content") or ""
         _docx_add_blocks(doc, split_blocks(stem_html), indent_cm=0.45)
 
-        # 选项
+        # 选项（选项里也可能有公式，如 `A. \dfrac{1}{2}`）
         opts = _option_rows(q.get("options"), qtype)
         for letter, text in opts:
             p = doc.add_paragraph()
             p.paragraph_format.left_indent = Cm(0.75)
             p.paragraph_format.space_after = Pt(2)
             _add_run(p, f"{letter}. ", size=10.5, bold=True)
-            _add_run(p, text, size=10.5)
+            _add_segments(p, text, size=10.5)
 
         # 子题（组合题）
         for s_idx, sub in enumerate(q.get("subQuestions") or [], start=1):
             sp = doc.add_paragraph()
             sp.paragraph_format.left_indent = Cm(0.45)
-            st = sub.get("questionTypeText") or ""
             _add_run(sp, f"({s_idx}) ", size=10.5, bold=True)
             _docx_add_blocks(doc, split_blocks(sub.get("questionText") or ""), indent_cm=0.75)
             for letter, text in _option_rows(sub.get("options"), _as_int(sub.get("questionType")) or 1):
@@ -529,31 +740,41 @@ def export_bank_docx(bank: Dict[str, Any], questions: List[Dict[str, Any]]) -> b
                 op.paragraph_format.left_indent = Cm(1.05)
                 op.paragraph_format.space_after = Pt(2)
                 _add_run(op, f"{letter}. ", size=10, bold=True)
-                _add_run(op, text, size=10)
-            sub_ans = normalize_answer(sub.get("answer"), _as_int(sub.get("questionType")) or 1)
-            if sub_ans:
+                _add_segments(op, text, size=10)
+            if with_answers:
+                sub_ans = normalize_answer(sub.get("answer"), _as_int(sub.get("questionType")) or 1)
+                if sub_ans:
+                    ap = doc.add_paragraph()
+                    ap.paragraph_format.left_indent = Cm(0.75)
+                    _add_run(ap, "答案：", size=10, bold=True, color=(0x11, 0x66, 0x33))
+                    _add_segments(ap, sub_ans, size=10, color=(0x11, 0x66, 0x33))
+
+        if with_answers:
+            # 答案
+            ans = normalize_answer(q.get("answer"), qtype, len(opts))
+            if ans:
                 ap = doc.add_paragraph()
-                ap.paragraph_format.left_indent = Cm(0.75)
-                _add_run(ap, "答案：", size=10, bold=True, color=(0x11, 0x66, 0x33))
-                _add_run(ap, sub_ans, size=10, color=(0x11, 0x66, 0x33))
+                ap.paragraph_format.left_indent = Cm(0.45)
+                ap.paragraph_format.space_before = Pt(4)
+                _add_run(ap, "答案：", size=10.5, bold=True, color=(0x0F, 0x7A, 0x3D))
+                _add_segments(ap, ans, size=10.5, color=(0x0F, 0x7A, 0x3D))
 
-        # 答案
-        ans = normalize_answer(q.get("answer"), qtype, len(opts))
-        if ans:
-            ap = doc.add_paragraph()
-            ap.paragraph_format.left_indent = Cm(0.45)
-            ap.paragraph_format.space_before = Pt(4)
-            _add_run(ap, "答案：", size=10.5, bold=True, color=(0x0F, 0x7A, 0x3D))
-            _add_run(ap, ans, size=10.5, color=(0x0F, 0x7A, 0x3D))
-
-        # 解析（图文按原序）
-        ana_blocks = split_blocks(q.get("analysis") or q.get("questionAnalysis") or "")
-        if ana_blocks:
-            label = doc.add_paragraph()
-            label.paragraph_format.left_indent = Cm(0.45)
-            label.paragraph_format.space_before = Pt(4)
-            _add_run(label, "解析：", size=10.5, bold=True, color=(0x55, 0x55, 0x55))
-            _docx_add_blocks(doc, ana_blocks, indent_cm=0.45)
+            # 解析（图文按原序）
+            ana_blocks = split_blocks(q.get("analysis") or q.get("questionAnalysis") or "")
+            if ana_blocks:
+                label = doc.add_paragraph()
+                label.paragraph_format.left_indent = Cm(0.45)
+                label.paragraph_format.space_before = Pt(4)
+                _add_run(label, "解析：", size=10.5, bold=True, color=(0x55, 0x55, 0x55))
+                _docx_add_blocks(doc, ana_blocks, indent_cm=0.45)
+        else:
+            # 无答案版：留出作答空间（简答题直接空行，选择题选项已给出）
+            if qtype in (4, 5):
+                blank = doc.add_paragraph()
+                blank.paragraph_format.left_indent = Cm(0.45)
+                _add_run(blank, "答：", size=10.5, color=(0x99, 0x99, 0x99))
+                for _ in range(3):
+                    doc.add_paragraph()
 
         # 题间分隔
         sep = doc.add_paragraph()
@@ -631,9 +852,177 @@ def _register_cjk_font() -> str:
     return _CJK_FONT_NAME
 
 
+# ──────────────────────────────────────────────────────────── PDF 公式（Unicode 降级）
+
+#: 带上划线语义的命令
+_RE_OVERLINE_CMD = re.compile(r"\\overline\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}")
+#: 带下划线语义的命令
+_RE_UNDERLINE_CMD = re.compile(r"\\underline\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}")
+#: 分数（含 dfrac/tfrac）
+_RE_FRAC_CMD = re.compile(
+    r"\\(?:d|t)?frac\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}"
+)
+#: 平方根
+_RE_SQRT_CMD = re.compile(r"\\sqrt\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}")
+#: 上标 `x^{2}`
+_RE_SUP = re.compile(r"\^\{([^{}]*)\}|\^(\w)")
+#: 下标 `a_{i}`
+_RE_SUB = re.compile(r"_\{([^{}]*)\}|_(\w)")
+
+
+def _latex_to_pdf_markup(latex: str) -> str:
+    """
+    把一段 LaTeX 转成 reportlab `Paragraph` 的内联标记
+
+    · `\\overline{X}` → `X` + 组合上划线 U+0305（渲染出来就是横杠压在字上）
+    · `\\dfrac{a}{b}` → `a⁄b`（用分数斜线 U+2044，比 `a/b` 更像公式）
+    · `\\sqrt{x}`    → `√x`（加括号避免歧义：`√(x)`）
+    · `x^{2}` / `a_{i}` → `<super>` / `<sub>`（reportlab 原生支持）
+    · 其余符号 → `_PDF_MATH_SYMBOLS` 查表；查不到的保留原样，信息不丢
+    """
+    s = latex.strip()
+    if not s:
+        return ""
+
+    # ① 上划线
+    #
+    # ⚠️ 三种写法都试过，只有 `‾`(U+203E) 前置可用：
+    #    · 组合上划线 U+0305 —— 微软雅黑/文泉驿的 cmap 里**根本没有这个码位**
+    #      （fontTools 实测 `0x305 in cmap = False`），渲染成空方块；
+    #    · reportlab 的 `<u>` 标签 —— 线画在**下方**，数学语义反了；
+    #    · `‾` 前置 —— 实测输出 `P(‾A‾B)`，视觉上就是 A、B 各自带一横，可用。
+    # 多字符（如 `\overline{AB}`）时逐字加前缀，横线才连得起来。
+    def _ov(m: re.Match) -> str:
+        inner = m.group(1)
+        # 已经含 LaTeX 命令就递归处理一次
+        if "\\" in inner:
+            inner = _latex_to_pdf_markup(inner)
+        return "".join(f"{_OVERLINE_CHAR}{ch}" if ch.strip() else ch for ch in inner)
+
+    s = _RE_OVERLINE_CMD.sub(_ov, s)
+
+    # ② 下划线（组合下划线 U+0332）
+    def _ul(m: re.Match) -> str:
+        inner = m.group(1)
+        if "\\" in inner:
+            inner = _latex_to_pdf_markup(inner)
+        return "".join(ch + "\u0332" if ch.strip() else ch for ch in inner)
+
+    s = _RE_UNDERLINE_CMD.sub(_ul, s)
+
+    # ③ 分数
+    def _frac(m: re.Match) -> str:
+        num, den = m.group(1), m.group(2)
+        if "\\" in num:
+            num = _latex_to_pdf_markup(num)
+        if "\\" in den:
+            den = _latex_to_pdf_markup(den)
+        # 分子/分母需要括号时补上，避免 ⁄ 结合歧义
+        if len(num) > 1 and not num.startswith("("):
+            num = f"({num})"
+        if len(den) > 1 and not den.startswith("("):
+            den = f"({den})"
+        return f"{num}\u2044{den}"
+
+    s = _RE_FRAC_CMD.sub(_frac, s)
+
+    # ④ 根号
+    def _sqrt(m: re.Match) -> str:
+        inner = m.group(1)
+        if "\\" in inner:
+            inner = _latex_to_pdf_markup(inner)
+        return f"√({inner})"
+
+    s = _RE_SQRT_CMD.sub(_sqrt, s)
+
+    # ⑤ 上下标 → reportlab 标签
+    s = _RE_SUP.sub(lambda m: f"<super>{m.group(1) or m.group(2)}</super>", s)
+    s = _RE_SUB.sub(lambda m: f"<sub>{m.group(1) or m.group(2)}</sub>", s)
+
+    # ⑥ 剩余命令 → Unicode 符号；未收录的原样保留
+    def _sym(m: re.Match) -> str:
+        name = m.group(1)
+        return _PDF_MATH_SYMBOLS.get(name, "\\" + name)
+
+    s = re.sub(r"\\([a-zA-Z]+)", _sym, s)
+
+    # ⑦ 花括号在公式里只是分组语法，输出时去掉（内容已展开）
+    s = s.replace("{", "").replace("}", "")
+    # ⑧ 转义后交给 reportlab（注意：此时已含 <super>/<sub> 标签，不能再整体转义）
+    return _escape_keeping_tags(s)
+
+
+def _escape_keeping_tags(s: str) -> str:
+    """转义 & < >，但保留 `<super>` / `<sub>` 这类我们主动加的内联标签"""
+    # 先把自家标签换成占位符 → 转义 → 换回来
+    keep = {
+        "<super>": "\u0001SUP\u0001",
+        "</super>": "\u0001/SUP\u0001",
+        "<sub>": "\u0001SUB\u0001",
+        "</sub>": "\u0001/SUB\u0001",
+        "<b>": "\u0001B\u0001",
+        "</b>": "\u0001/B\u0001",
+        "<i>": "\u0001I\u0001",
+        "</i>": "\u0001/I\u0001",
+    }
+    for tag, ph in keep.items():
+        s = s.replace(tag, ph)
+    s = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    for tag, ph in keep.items():
+        s = s.replace(ph, tag)
+    return s
+
+
+def _rl_text_with_math(text: str, font: str, body_size: float = 10.5) -> str:
+    """
+    一段可能含裸 LaTeX 的文字 → reportlab Paragraph 标记
+
+    普通文字保持原样（含换行 → `<br/>`），公式片段交给 `_latex_to_pdf_markup`。
+    """
+    if not text:
+        return ""
+    # 先清洗控制字符（与 docx 同口径），再拆公式
+    cleaned = _clean_text(text)
+    pieces = split_text_and_math(cleaned)
+    out: List[str] = []
+    for kind, payload in pieces:
+        if kind == "math":
+            out.append(_latex_to_pdf_markup(payload))
+        else:
+            # 普通文字：先转义，再把 `C_7^3` 这类**纯文本上下标**转成 <sub>/<super>
+            esc = (
+                payload.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                .replace("\n", "<br/>")
+            )
+            out.append(_plain_subsup(esc))
+    return "".join(out)
+
+
+def _plain_subsup(text: str) -> str:
+    """
+    把纯文本里的 `x_2` / `x^3` 转成 reportlab 的 `<sub>` / `<super>`
+
+    为什么需要：题库里大量上下标**不是 LaTeX**，而是直接写的 `C_7^3`、`x^2`
+    （Word/WPS 导入时被转平了）。不动它的话 PDF 里就原样显示下划线符号，
+    而数学上那应该是下标。
+
+    保守规则（宁可漏转）：
+      · 只有「单个字母或 ) + `_`/`^` + 一到多个字母数字」才转；
+      · `x^2` 这种单字符指数转，`a_b` 单字符下标转；
+      · 避免误伤正常文字里的下划线（如 `user_name`）：要求 `_` 后面紧跟
+        字母数字、且前面是**单个字符**（`C_7` 可以，`user_name` 的 `r_name` 不匹配
+        因为前面是多字符单词 —— 用 `(?<![A-Za-z0-9]{2})` 这种后顾实现）。
+    """
+    # 上标：a^2（裸形式；`a^{...}` 由 _latex_to_pdf_markup 处理）
+    text = re.sub(r"(?<![A-Za-z0-9])(\w)\^(\w+)", r"\1<super>\2</super>", text)
+    # 下标：C_7 —— 前面只能是一个字符（避免 user_name 被转）
+    text = re.sub(r"(?<![A-Za-z0-9])(\w)_(\w+)", r"\1<sub>\2</sub>", text)
+    return text
+
+
 def _pdf_add_blocks(story: List[Any], blocks: List[Block], font: str, *, indent: float = 0.0,
                     body_size: float = 10.5) -> None:
-    """把有序块写进 PDF story：文字成段、图片原地插入"""
+    """把有序块写进 PDF story：文字成段（含公式）、图片原地插入"""
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import cm
     from reportlab.platypus import Image as RLImage
@@ -647,7 +1036,8 @@ def _pdf_add_blocks(story: List[Any], blocks: List[Block], font: str, *, indent:
 
     for kind, payload in blocks:
         if kind == "text":
-            story.append(Paragraph(_escape_for_rl(payload), style))
+            # 文字里可能夹着裸 LaTeX → 用 Paragraph 内联标记把公式画成 Unicode/矢量
+            story.append(Paragraph(_rl_text_with_math(payload, font, body_size), style))
         else:
             data = _load_image_bytes(payload)
             if not data:
@@ -724,8 +1114,17 @@ def _keep_together_if_fits(story: List[Any], parts: List[Any], doc) -> None:
     story.extend(parts)
 
 
-def export_bank_pdf(bank: Dict[str, Any], questions: List[Dict[str, Any]]) -> bytes:
-    """题库 → .pdf 字节"""
+def export_bank_pdf(
+    bank: Dict[str, Any],
+    questions: List[Dict[str, Any]],
+    *,
+    with_answers: bool = True,
+) -> bytes:
+    """
+    题库 → .pdf 字节
+
+    with_answers=False 时输出「学生卷」：去掉答案与解析，简答题留作答空行。
+    """
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_CENTER
     from reportlab.lib.pagesizes import A4
@@ -778,6 +1177,8 @@ def export_bank_pdf(bank: Dict[str, Any], questions: List[Dict[str, Any]]) -> by
     meta_bits.append(f"题目数：{len(questions)}")
     if bank.get("createTime"):
         meta_bits.append(f"创建时间：{str(bank['createTime'])[:10]}")
+    if not with_answers:
+        meta_bits.append("版本：无答案")
     story.append(Paragraph(_escape_for_rl("　·　".join(meta_bits)), st_meta))
     if bank.get("description"):
         story.append(Paragraph(_escape_for_rl(str(bank["description"])), st_desc))
@@ -802,7 +1203,8 @@ def export_bank_pdf(bank: Dict[str, Any], questions: List[Dict[str, Any]]) -> by
 
         opts = _option_rows(q.get("options"), qtype)
         for letter, text in opts:
-            parts.append(Paragraph(f"<b>{letter}.</b> {_escape_for_rl(text)}", st_opt))
+            # 选项里可能有公式（`A. \dfrac{1}{2}`）→ 走公式渲染
+            parts.append(Paragraph(f"<b>{letter}.</b> {_rl_text_with_math(text, font)}", st_opt))
 
         for s_idx, sub in enumerate(q.get("subQuestions") or [], start=1):
             parts.append(Paragraph(f"<b>({s_idx})</b>", st_head))
@@ -810,23 +1212,35 @@ def export_bank_pdf(bank: Dict[str, Any], questions: List[Dict[str, Any]]) -> by
                 parts, split_blocks(sub.get("questionText") or ""), font, indent=0.45, body_size=10
             )
             for letter, text in _option_rows(sub.get("options"), _as_int(sub.get("questionType")) or 1):
-                parts.append(Paragraph(f"<b>{letter}.</b> {_escape_for_rl(text)}", st_opt))
-            sub_ans = normalize_answer(sub.get("answer"), _as_int(sub.get("questionType")) or 1)
-            if sub_ans:
-                parts.append(Paragraph(f"<b>答案：</b>{_escape_for_rl(sub_ans)}", st_ans))
+                parts.append(Paragraph(f"<b>{letter}.</b> {_rl_text_with_math(text, font)}", st_opt))
+            if with_answers:
+                sub_ans = normalize_answer(sub.get("answer"), _as_int(sub.get("questionType")) or 1)
+                if sub_ans:
+                    parts.append(Paragraph(f"<b>答案：</b>{_rl_text_with_math(sub_ans, font)}", st_ans))
 
-        ans = normalize_answer(q.get("answer"), qtype, len(opts))
-        if ans:
-            parts.append(Paragraph(f"<b>答案：</b>{_escape_for_rl(ans)}", st_ans))
+        if with_answers:
+            ans = normalize_answer(q.get("answer"), qtype, len(opts))
+            if ans:
+                parts.append(Paragraph(f"<b>答案：</b>{_rl_text_with_math(ans, font)}", st_ans))
 
-        ana_blocks = split_blocks(q.get("analysis") or q.get("questionAnalysis") or "")
-        if ana_blocks:
-            st_ana_lbl = ParagraphStyle(
-                "al", fontName=font, fontSize=10.5, leading=16.5, leftIndent=0.45 * cm,
-                textColor=colors.HexColor("#555555"), spaceBefore=3,
-            )
-            parts.append(Paragraph("<b>解析：</b>", st_ana_lbl))
-            _pdf_add_blocks(parts, ana_blocks, font, indent=0.45)
+            ana_blocks = split_blocks(q.get("analysis") or q.get("questionAnalysis") or "")
+            if ana_blocks:
+                st_ana_lbl = ParagraphStyle(
+                    "al", fontName=font, fontSize=10.5, leading=16.5, leftIndent=0.45 * cm,
+                    textColor=colors.HexColor("#555555"), spaceBefore=3,
+                )
+                parts.append(Paragraph("<b>解析：</b>", st_ana_lbl))
+                _pdf_add_blocks(parts, ana_blocks, font, indent=0.45)
+        else:
+            # 无答案版：主观题留出作答空间
+            if qtype in (4, 5):
+                st_blank = ParagraphStyle(
+                    "bl", fontName=font, fontSize=10.5, leading=16.5, leftIndent=0.45 * cm,
+                    textColor=colors.HexColor("#999999"), spaceBefore=4,
+                )
+                parts.append(Paragraph("答：", st_blank))
+                for _ in range(2):
+                    parts.append(Spacer(1, 18))
 
         parts.append(Paragraph("─" * 34, st_sep))
 
@@ -837,4 +1251,3 @@ def export_bank_pdf(bank: Dict[str, Any], questions: List[Dict[str, Any]]) -> by
 
     doc.build(story)
     return buf.getvalue()
-
