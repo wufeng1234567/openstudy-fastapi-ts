@@ -27,6 +27,21 @@
       <div class="search-section">
         <SearchFilterInput v-model="searchKeyword" :placeholder="searchPlaceholder" class="search-input"
           :filter-open="filterOpen" :filter-active="filterActive" @toggle-filter="toggleFilterSidebar" />
+        <!--
+          「获取题库分享」按钮（用户 2026-10-19 重新要求加回）：
+          「我的题库页面需要一个获取题库分享按钮，点击可以输入对应的链接和分享码
+          获取对应分享题库」。
+
+          之前（2026-10-18）曾因"入口重复"被移除，但侧栏的「学习分享」是**发布广场**，
+          不是领取入口 —— 用户要在自己的页面里把分享领进来，就得有这个按钮。
+
+          三个分组都显示：领取的结果会落到「题库收藏」，在「我的题库」里点了也会
+          自动跳到那一组（见 `onShareReceived`），所以不必逼用户先切分组再点。
+        -->
+        <el-button v-if="activeTab !== 'share'" class="receive-btn" @click="receiveDialogVisible = true">
+          <el-icon><Download /></el-icon>
+          获取题库分享
+        </el-button>
         <el-button v-if="activeTab === 'share'" type="primary" plain class="share-btn" @click="openShareDialog">
           <el-icon><Share /></el-icon>
           分享我的题库
@@ -35,11 +50,6 @@
           <el-icon><Refresh /></el-icon>
           刷新
         </el-button>
-        <!--
-          「获取题库分享」按钮已移除（用户 2026-10-18：「我的题库那边的获取题库分享
-          按钮取消掉 不用了」）。
-          领取走的是侧栏「学习分享」页面，这里再放一个入口是重复的。
-        -->
       </div>
     </div>
 
@@ -186,11 +196,23 @@
 
       <template #content-extra="{ item }">
         <div class="extra-row">
-          <span v-if="item.source === 'share'" class="source-row">
-            <el-tag size="small" effect="light" :type="item.shareStatus === 'invalid' ? 'info' : 'success'">
+          <!--
+            「来自分享」标记（用户 2026-10-19：「题库卡片那边要标记好是分享的题库」）
+            ------------------------------------------------------------------
+            不用 el-tag：它和右侧的「公开/私有」标签视觉权重相同，
+            两排小标签挤在一起，用户扫一眼分不清哪个是"来源"。
+            这里做成一行**带图标的说明文字**，失效时换成警示色 ——
+            一眼就知道"这个题库不是我自己建的"。
+          -->
+          <span v-if="item.source === 'share'" class="source-badge"
+            :class="item.shareStatus === 'invalid' ? 'is-invalid' : 'is-valid'">
+            <el-icon class="src-ico">
+              <Share />
+            </el-icon>
+            <span class="src-text">
               {{ item.shareStatus === 'invalid' ? '来自分享 · 已失效' : '来自分享' }}
-            </el-tag>
-            <span v-if="item.shareOwnerName" class="source-owner">{{ item.shareOwnerName }}</span>
+            </span>
+            <span v-if="item.shareOwnerName" class="src-owner">· {{ item.shareOwnerName }}</span>
           </span>
           <span v-if="item.isPublic === 0 || item.isPublic === 1" class="visibility-row"
             :class="isPrivateBank(item) ? 'is-private' : 'is-public'">
@@ -236,7 +258,7 @@
     </div>
 
     <!-- 通过分享链接 / 分享码领取题库 -->
-    <ReceiveShareDialog v-model="receiveDialogVisible" @received="fetchBanks" />
+    <ReceiveShareDialog v-model="receiveDialogVisible" @received="onShareReceived" />
 
     <!-- 分享题库弹窗（下拉自由选择题库，默认当前点击的那个） -->
     <ShareBankDialog v-model="shareDialogVisible" :default-bank-id="shareBankId" />
@@ -248,7 +270,7 @@ defineOptions({ name: 'FrontMyBank' })
 import { ref, computed, watch, onMounted, onUnmounted, onActivated, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, FolderOpened, Document, View, Delete, Share, Lock, Unlock, CopyDocument, Star } from '@element-plus/icons-vue'
+import { Refresh, FolderOpened, Document, View, Delete, Share, Lock, Unlock, CopyDocument, Star, Download } from '@element-plus/icons-vue'
 import BankCardGrid from '@/components/BankCardGrid/BankCardGrid.vue'
 import SearchFilterInput from '@/components/SearchFilterInput/index.vue'
 import CommonFilterSidebar from '@/components/CommonFilterSidebar/index.vue'
@@ -368,6 +390,21 @@ function handleRefresh() {
   else mySharesRef.value?.refresh?.()
 }
 
+/**
+ * 领取分享成功后的收尾
+ * ----------------------------------------------------------------------------
+ * 领取结果落在「题库收藏」，所以：
+ *   ① 两个列表都刷一遍（「我的题库」不受影响，但用户在那一组点的按钮，
+ *      刷新一下能让计数/角标立刻正确）；
+ *   ② 直接把用户带到「题库收藏」分组 —— 否则点了「获取」之后停在「我的题库」，
+ *      看不到刚领进来的题库，会以为失败了（用户 2026-10-19 提到的"bug"体感之一）。
+ */
+function onShareReceived() {
+  fetchFavorites()
+  fetchBanks()
+  activeTab.value = 'favorite'
+}
+
 const favoriteLoading = ref(false)
 const allFavoriteList = ref<UserBankFavorite[]>([])
 /** 收藏项的取消收藏 loading（key = favoriteId） */
@@ -408,12 +445,14 @@ const filterForm = ref<{
   questionCount: string[]
   isPublic: number[]
   shareStatuses: string[]
+  sourceTypes: string[]
   createRange: string[] | null
 }>({
   subjects: [],
   questionCount: [],
   isPublic: [],
   shareStatuses: [],
+  sourceTypes: [],
   createRange: null
 })
 
@@ -429,6 +468,7 @@ const defaultFilter = {
   questionCount: [],
   isPublic: [],
   shareStatuses: [],
+  sourceTypes: [],
   createRange: null
 }
 
@@ -495,6 +535,22 @@ const filterGroups = computed(() => {
         { value: 1, label: '私有' }
       ]
     },
+    /*
+     * 来源（仅收藏分组）：区分"自己本来就有"和"从别人的分享领进来的"。
+     * 用户 2026-10-19：「题库卡片那边要标记好是分享的题库，然后筛选组件那边
+     * 也要做好对应的筛选优化」——标记在卡片上，筛选就得能按它筛。
+     */
+    ...(activeTab.value === 'favorite'
+      ? [{
+        key: 'sourceTypes',
+        label: '来源',
+        type: 'checkbox',
+        options: [
+          { value: 'share', label: '来自分享' },
+          { value: 'self', label: '自己收藏' }
+        ]
+      }]
+      : []),
     {
       key: 'createRange',
       label: '创建时间',
@@ -632,6 +688,19 @@ const filteredFavoriteList = computed(() => {
     })
   }
 
+  /*
+   * 来源（多选）：来自分享 / 自己收藏
+   * 后端在 `_enrich_share_source()` 里给每条打了 `source`（'share' / 'self'），
+   * 这里直接按它筛 —— 与卡片上显示的「来自分享」标识同源，不会出现
+   * "卡片说来自分享、筛自己收藏也能筛出来"的矛盾。
+   */
+  if (filterForm.value.sourceTypes?.length > 0) {
+    list = list.filter((f: any) => {
+      const src = f.source || 'self'
+      return filterForm.value.sourceTypes.includes(src)
+    })
+  }
+
   return list
 })
 
@@ -680,6 +749,7 @@ const handleFilterChange = (newFilter: any) => {
     questionCount: newFilter.questionCount || [],
     isPublic: newFilter.isPublic || [],
     shareStatuses: newFilter.shareStatuses || [],
+    sourceTypes: newFilter.sourceTypes || [],
     createRange: newFilter.createRange || null
   }
 }
@@ -690,6 +760,7 @@ const handleResetFilters = () => {
     questionCount: [],
     isPublic: [],
     shareStatuses: [],
+    sourceTypes: [],
     createRange: null
   }
 }
@@ -1028,13 +1099,16 @@ onUnmounted(() => {
   }
 }
 
-/* 卡片信息区最后一行的容器（公开/私有 + 选择框） */
+/* 卡片信息区最后一行的容器（来源 / 公开私有 + 选择框） */
 .extra-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   margin-top: 6px;
+  /* 来源文案 + 可见性 + 选择框，允许挤压但不要换行成两排 */
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 
 .pick-box {
@@ -1075,6 +1149,57 @@ onUnmounted(() => {
   &.is-public {
     color: var(--os-text-4, #9ca3af);
   }
+}
+
+/*
+ * 「来自分享」标记
+ * ----------------------------------------------------------------------------
+ * 与「公开/私有」放在同一行（`justify-content: space-between` 由 `.extra-row` 负责），
+ * 但用图标 + 文字而不是 el-tag：来源是**关系信息**，不是状态徽章，
+ * 用标签会和右侧的可见性标签抢视觉权重。
+ *
+ * 有效 → 品牌色（告诉用户"这份是别人给的，可以复制"）
+ * 失效 → 警示色（分享被撤销/过期，但收藏还在）
+ */
+.source-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+
+  .src-ico {
+    font-size: 12px;
+    flex: none;
+  }
+
+  .src-text,
+  .src-owner {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .src-owner {
+    max-width: 90px;
+    opacity: 0.75;
+  }
+
+  &.is-valid {
+    color: var(--os-primary, #4f6ef7);
+  }
+
+  &.is-invalid {
+    color: var(--el-color-warning, #e6a23c);
+  }
+}
+
+/* 「获取题库分享」按钮：次级动作，与刷新同一档视觉权重 */
+.receive-btn {
+  flex: none;
+  border-radius: var(--os-radius-sm, 8px);
 }
 
 </style>

@@ -2,15 +2,30 @@
   <div class="create-studio">
     <!-- 题库信息 -->
     <section class="os-block">
+      <!--
+        标题行与「载入已有题库」的合并（用户 2026-10-19）
+        ==========================================================================
+        「名称、科目与封面，决定它出现在别人面前的第一眼」原来独占一行副标题，
+        右侧单独挂一个下拉框 —— 一行只有 43px 高，却把「题库信息」这个分块
+        撑成了三行（标题 / 副标题 / 表单），首屏能看到的内容很少。
+
+        现在把副标题并进标题行（`题库信息 · 名称、科目与封面，决定它出现在别人面前的第一眼`），
+        下拉框留在同一行右侧 —— 与「我的学习」几个页面的「模块 · 子页」写法一致，
+        少一行、信息密度更高，也和顶栏的层级语言统一。
+      -->
       <header class="os-block__head">
         <div class="os-block__title">
-          <h2>题库信息</h2>
-          <p>名称、科目与封面，决定它出现在别人面前的第一眼</p>
+          <h2>
+            题库信息
+            <span class="os-block__sub">名称、科目与封面，决定它出现在别人面前的第一眼</span>
+          </h2>
         </div>
-        <el-select v-model="selectedBankId" placeholder="载入已有题库" clearable filterable size="default"
-          class="bank-selector" @change="onBankChange">
-          <el-option v-for="bank in myBanks" :key="bank.bankId" :label="bank.bankName" :value="bank.bankId" />
-        </el-select>
+        <div class="head-tools">
+          <el-select v-model="selectedBankId" placeholder="载入已有题库" clearable filterable size="default"
+            class="bank-selector" @change="onBankChange">
+            <el-option v-for="bank in myBanks" :key="bank.bankId" :label="bank.bankName" :value="bank.bankId" />
+          </el-select>
+        </div>
       </header>
 
       <el-form ref="basicFormRef" :model="basicForm" :rules="basicRules" label-position="top" class="basic-form">
@@ -54,8 +69,10 @@
     <section class="os-block">
       <header class="os-block__head">
         <div class="os-block__title">
-          <h2>题目搭建</h2>
-          <p>手动逐题录入；要 AI 批量出题，直接在左侧「智能对话」里说就行</p>
+          <h2>
+            题目搭建
+            <span class="os-block__sub">手动逐题录入；要 AI 批量出题，直接在左侧「智能对话」里说就行</span>
+          </h2>
         </div>
       </header>
       <!--
@@ -74,8 +91,10 @@
     <section class="os-block">
       <header class="os-block__head">
         <div class="os-block__title">
-          <h2>发布设置</h2>
-          <p>决定它是自己练，还是放进学习分享</p>
+          <h2>
+            发布设置
+            <span class="os-block__sub">决定它是自己练，还是放进学习分享</span>
+          </h2>
         </div>
       </header>
       <!--
@@ -696,12 +715,22 @@ const handleSave = async () => {
 
 .os-block__head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 18px;
 }
 
+/*
+ * 分块标题 + 行内副标题
+ * ----------------------------------------------------------------------------
+ * 用户 2026-10-19：「把『名称、科目与封面，决定它出现在别人面前的第一眼』
+ * 拼接到第一行的『题库搭建』后面」。
+ *
+ * 副标题从独立 `<p>` 改成标题行内的次级文本：
+ * 分隔点用 `·`，与顶栏的「我的学习 · 题库管理」同一套层级语言。
+ * 窄屏放不下时允许换到第二行，但仍与标题同属一个块。
+ */
 .os-block__title {
   min-width: 0;
 
@@ -712,8 +741,28 @@ const handleSave = async () => {
     line-height: 1.4;
     letter-spacing: -0.01em;
     color: var(--os-text);
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0 2px;
   }
 
+  /* 行内副标题：次级色、常规字重，不抢标题 */
+  .os-block__sub {
+    font-size: 12.5px;
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: 0;
+    color: var(--os-text-4);
+
+    &::before {
+      content: '·';
+      margin: 0 6px;
+      color: var(--os-text-4);
+    }
+  }
+
+  /* 少数分块仍用独立副标题（没有并进标题行的那种） */
   p {
     margin: 3px 0 0;
     font-size: 12.5px;
@@ -722,12 +771,32 @@ const handleSave = async () => {
   }
 }
 
+/* 标题行右侧的工具区（载入已有题库） */
+.head-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
 .bank-selector {
   width: 220px;
   flex: none;
 
   :deep(.el-select__wrapper) {
     border-radius: var(--os-radius-sm);
+  }
+}
+
+@media (max-width: 900px) {
+  .os-block__head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .bank-selector {
+    width: 100%;
   }
 }
 
