@@ -114,38 +114,67 @@ const markedRef = ref<any>(null)
 const topbarStore = useTopbarStore()
 
 /**
- * 各分组的上报条数
- * 由子页面（题目收藏 / 我的错题 / 我的斩题）在数据变化时 emit `total-change`。
- * 三个页面都是 `v-show` 常驻的，所以三份数据都会各自上报，切换分组立刻有数。
+ * 各分组的上报状态
+ * ----------------------------------------------------------------------------
+ * 子页面（题目收藏 / 我的错题 / 我的斩题）在数据变化时 emit `total-change`，
+ * payload 是 `{ total, loading }`。三个页面都是 `v-show` 常驻，
+ * 所以三份数据会各自上报，切分组立刻有数。
+ *
+ * `ready` 是关键：加载中收到的数字只是中间值（可能先 0 后 N），
+ * 不能直接显示，否则顶栏会「闪两下」（用户 2026-10-19 反馈）。
  */
-const counts = ref<Record<TabKey, number>>({ favorite: 0, wrong: 0, marked: 0 })
-
-/** 分组切换条的入参：标签 + 角标计数（数据没回来前不显示 0） */
-const tabItems = computed(() =>
-  TAB_DEFS.map((t) => ({ ...t, count: counts.value[t.key] || undefined }))
-)
-
-function onTotalChange(key: TabKey, n: number) {
-  counts.value[key] = Number(n) || 0
+interface CountState {
+  total: number
+  /** 该分组是否已经完成过一次加载（拿到确定的条数） */
+  ready: boolean
 }
 
-/* 分组切换或任一数字变化 → 刷新顶栏 */
+const states = ref<Record<TabKey, CountState>>({
+  favorite: { total: 0, ready: false },
+  wrong: { total: 0, ready: false },
+  marked: { total: 0, ready: false }
+})
+
+/** 分组切换条的入参：标签 + 角标计数（只显示已就绪的分组） */
+const tabItems = computed(() =>
+  TAB_DEFS.map((t) => ({
+    ...t,
+    count: states.value[t.key].ready ? states.value[t.key].total || undefined : undefined
+  }))
+)
+
+function onTotalChange(key: TabKey, payload: { total: number; loading: boolean }) {
+  const prev = states.value[key]
+  // 加载中：只记录数字，不认作"已就绪"
+  if (payload.loading) {
+    states.value = { ...states.value, [key]: { total: payload.total, ready: prev.ready } }
+    return
+  }
+  states.value = { ...states.value, [key]: { total: payload.total, ready: true } }
+}
+
+/* 分组切换或任一状态变化 → 刷新顶栏 */
 watch(
-  [activeTab, () => counts.value.favorite, () => counts.value.wrong, () => counts.value.marked],
+  [activeTab, () => states.value.favorite, () => states.value.wrong, () => states.value.marked],
   () => {
     // keep-alive 下本页可能已不在前台：不要往顶栏推别人的计数
     if (!route.path.startsWith('/front/myQuestion/questions')) return
-    const n = counts.value[activeTab.value] || 0
-    // 首次数据还没回来时不显示「0 道题」，等上报了再出（避免闪一下 0）
-    topbarStore.setCount(n ? `${n} 道题` : '')
+    const st = states.value[activeTab.value]
+    /*
+     * 只有**已就绪**才写顶栏。
+     * 未就绪 = 数据还在路上，这时写 ""（或写中间值）都会让文字跳一下；
+     * 干脆什么都不做，等 ready 后再精确写一次（`topbar` store 本身也做了同值不写）。
+     */
+    if (!st.ready) return
+    topbarStore.setCount(`${st.total} 道题`)
   },
   { immediate: true }
 )
 
 // 回到本页时重新推一次（离开期间顶栏被清空过）
 onActivated(() => {
-  const n = counts.value[activeTab.value] || 0
-  topbarStore.setCount(n ? `${n} 道题` : '')
+  const st = states.value[activeTab.value]
+  topbarStore.setCount(st.ready ? `${st.total} 道题` : '')
 })
 
 onBeforeUnmount(() => topbarStore.clear())

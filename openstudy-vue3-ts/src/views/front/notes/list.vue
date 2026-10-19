@@ -263,8 +263,24 @@ const searchHistory = ref([])
 
 let blurTimer = null
 
+/*
+ * 搜索历史下拉 与 筛选面板 互斥
+ * ----------------------------------------------------------------------------
+ * 用户 2026-10-19：「点击筛选，同时出现筛选框和用户输入历史下拉框」。
+ *
+ * 两个都是挂在搜索框下方的浮层，位置几乎重叠。触发路径是：
+ *   · 点「筛选」按钮时，el-input 还没失焦（或 mousedown 把它又拉回焦点），
+ *     `handleFocus` 把历史下拉打开 → 两个面板叠在一起。
+ *
+ * 所以两边都要主动关对方：
+ *   · 开筛选面板 → 无条件收起历史；
+ *   · 聚焦搜索框 → 先收起筛选面板（这时用户是想打字/看历史，不是想筛选）。
+ */
 const handleFocus = () => {
   clearTimeout(blurTimer)
+  // 打开历史前先收起筛选面板，避免两个浮层重叠
+  filterSidebarRef.value?.close?.()
+  filterOpen.value = false
   if (searchHistory.value.length > 0) {
     showSearchHistory.value = true
   }
@@ -610,9 +626,19 @@ const handleResetFilters = () => {
   }
 }
 
-/** 点搜索框里的「筛选」：切换面板展开/收起 */
+/**
+ * 点搜索框里的「筛选」：切换面板展开/收起
+ *
+ * 展开时强制收起搜索历史 —— 两个浮层都在搜索框正下方，同时出现会叠在一起
+ * （用户 2026-10-19 反馈的就是这个）。收起时不用管历史（它自己会按焦点关）。
+ */
 const toggleFilterSidebar = () => {
+  const wasOpen = filterOpen.value
+  clearTimeout(blurTimer)
+  showSearchHistory.value = false
   filterSidebarRef.value?.toggleCollapse?.()
+  // 兜底：组件若因故没发 collapse-change，本地状态也要跟上
+  filterOpen.value = !wasOpen
 }
 
 /** 面板展开态同步到按钮（事件值 = 是否已收起） */

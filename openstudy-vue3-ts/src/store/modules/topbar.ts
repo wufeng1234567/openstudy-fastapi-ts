@@ -31,10 +31,20 @@ const useTopbarStore = defineStore('topbar', {
   }),
   actions: {
     setCount(text: string) {
-      this.countText = text || ''
+      /*
+       * 同值不写
+       * ------------------------------------------------------------------
+       * 页面里"计数"通常挂在 computed / watch 上，一次挂载可能触发好几遍
+       * （三个分组各自拉数据、各自上报）。值没变还写 store，
+       * 就会让顶栏那个 <span> 被反复打补丁 —— 用户看到的是「数字闪了两下」。
+       * 这里挡掉同值写入，从源头保证「文本真的变了才动 DOM」。
+       */
+      const next = text || ''
+      if (this.countText === next) return
+      this.countText = next
     },
     clear() {
-      this.countText = ''
+      if (this.countText !== '') this.countText = ''
     }
   }
 })

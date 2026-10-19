@@ -284,10 +284,18 @@ defineExpose({
  * 改成子页面主动上报：`MyQuestion` 的 total 一变就往上抛，
  * 外层（分组壳）据此更新顶栏，不依赖"某个时机去读实例"。
  */
-const emitTotal = defineEmits<{ (e: 'total-change', n: number): void }>()
+const emitTotal = defineEmits<{ (e: 'total-change', payload: { total: number; loading: boolean }): void }>()
 
-function onTotalChange(n: number) {
-  emitTotal('total-change', Number(n) || 0)
+/**
+ * 转发 `MyQuestion` 的条数上报
+ * 带上 loading 是让外层能区分「还不知道」和「确实是 0 条」——
+ * 裸数字会让顶栏在加载过程中闪出中间的 0（用户 2026-10-19 反馈"连续刷新两遍"）。
+ */
+function onTotalChange(payload: { total: number; loading: boolean }) {
+  emitTotal('total-change', {
+    total: Number(payload?.total) || 0,
+    loading: !!payload?.loading
+  })
 }
 
 onMounted(() => {
