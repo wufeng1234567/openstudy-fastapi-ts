@@ -26,6 +26,10 @@ WORKDIR /app
 #   - build-essential / libpq-dev：asyncpg、cryptography 等编译期需要
 #   - tesseract-ocr + 中文包：图片文字识别（可选能力，预装更省心）
 #   - curl：健康检查用
+#   - fonts-wqy-zenhei：**题库导出 PDF 的中文字体**。slim 镜像里一个 CJK 字体都没有，
+#     缺了它 reportlab 画出来的中文全是方框（导出功能形同废纸）。
+#     bank_export_service 会按「微软雅黑 → 思源 → 文泉驿」的顺序找系统字体，
+#     Linux 上命中的就是这里装的文泉驿。
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
@@ -33,7 +37,8 @@ RUN set -eux; \
         libpq-dev \
         curl \
         tesseract-ocr \
-        tesseract-ocr-chi-sim; \
+        tesseract-ocr-chi-sim \
+        fonts-wqy-zenhei; \
     rm -rf /var/lib/apt/lists/*
 
 # 先装依赖，利用 Docker 层缓存：requirements 不变则不会重复安装

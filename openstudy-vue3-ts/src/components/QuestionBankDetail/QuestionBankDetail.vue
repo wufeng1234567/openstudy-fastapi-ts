@@ -66,6 +66,31 @@
             </el-icon> 分享
           </el-button>
 
+          <!-- 导出：Word / PDF。下拉而非两个按钮 —— 顶栏已经有收藏/编辑/分享，
+               再多一个按钮会把这一行挤满 -->
+          <el-dropdown
+            class="export-dropdown"
+            trigger="click"
+            :disabled="exporting"
+            @command="handleExport"
+          >
+            <el-button type="info" link class="action-link" :loading="exporting">
+              <el-icon>
+                <Download />
+              </el-icon> 导出
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="docx">
+                  <el-icon><Document /></el-icon> 导出为 Word（.docx）
+                </el-dropdown-item>
+                <el-dropdown-item command="pdf">
+                  <el-icon><Tickets /></el-icon> 导出为 PDF
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+
           <el-button v-if="!isCreator && bankSource.canCopy" type="primary" link class="action-link" :loading="copyLoading" @click="copyBankToMine">
             <el-icon>
               <CopyDocument />
@@ -298,7 +323,7 @@ import {
 } from '@/api/questionMarked/questionMarked'
 import { getNoteQuestionBanksByBankId } from '@/api/noteQuestionBank/noteQuestionBank'
 import { checkBankSource } from '@/api/bankShare/bankShare'
-import { copyQuestionBank } from '@/api/questionBank/questionBank'
+import { copyQuestionBank, exportQuestionBank } from '@/api/questionBank/questionBank'
 import ShareBankDialog from '@/views/front/myQuestion/components/ShareBankDialog.vue'
 import type { QuestionBank } from '@/types'
 
@@ -306,7 +331,7 @@ import {
   Collection, Folder, Document, Star, Share, ArrowLeft,
   User, Refresh, Warning, Flag, Notebook, ArrowRight,
   Trophy, Sort, Setting, Aim, Clock, Timer,
-  Edit, CopyDocument
+  Edit, CopyDocument, Download, Tickets
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -471,6 +496,44 @@ function openShareDialog() {
   shareDialogVisible.value = true
 }
 
+/* ===== 导出 Word / PDF =====
+ * 后端起见 `app/api/v1/bank_export.py`：图文按 HTML 原始顺序输出，
+ * 图片等比缩放后嵌在原位置（不堆到文末）。
+ * 导出可能耗时几秒（题库含几十张图），期间用 loading 锁住按钮，避免重复点。
+ */
+const exporting = ref(false)
+
+async function handleExport(format: 'docx' | 'pdf') {
+  if (exporting.value) return
+  if (!(await ensureLogin('导出题库'))) return
+
+  exporting.value = true
+  try {
+    const { blob, filename, error } = await exportQuestionBank(props.bank.bankId, format)
+    if (error || !blob) {
+      proxy.$modal.msgError(error || '导出失败')
+      return
+    }
+    // 触发浏览器下载
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename || `题库-${props.bank.bankId}.${format}`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    // 立刻 revoke 在部分浏览器（Safari）会打断下载，延后一点
+    setTimeout(() => URL.revokeObjectURL(url), 5000)
+    proxy.$modal.msgSuccess(`已导出为 ${format === 'docx' ? 'Word' : 'PDF'} 文件`)
+  } catch (e: any) {
+    // 后端业务错误（403 无权 / 500 生成失败）走 axios 的 reject
+    const msg = e?.response?.data?.msg || e?.message || '导出失败'
+    proxy.$modal.msgError(msg)
+  } finally {
+    exporting.value = false
+  }
+}
+
 /** 复制题库为我的新题库（生成独立副本，可自由编辑） */
 async function copyBankToMine() {
   if (copyLoading.value) return
@@ -502,7 +565,6 @@ async function copyBankToMine() {
 
 const handleCollectSuccess = (targetId: number | string, type: string) => emit('collect-success', targetId, type)
 const handleUncollectSuccess = (targetId: number | string, type: string) => emit('uncollect-success', targetId, type)
-
 function goBack() {
   emit('back')
 }

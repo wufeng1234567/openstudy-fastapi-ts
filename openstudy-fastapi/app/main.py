@@ -94,12 +94,17 @@ from app.api.v1 import (
     sensitive_word, chat, ocr, document, notice_front, user_front,
     noteQuestionBank, noteQuestion, user_stats,
     common, catch_all, ai_config, bankShare, notification, systemComment,
-    rag, rate_limit_admin,
+    rag, rate_limit_admin, bank_export,
 )
 
 app.include_router(auth.router, tags=["认证"])
 app.include_router(users.router, tags=["用户管理"])
 app.include_router(notices.router, tags=["通知公告"])  # ⚠️ 先注册，/listAll 优先匹配
+# ⚠️ 题库导出必须**先于** questions 注册：questions 里有 `/questionBank/questionBank/{bank_id}`，
+#    若它先注册，`/questionBank/questionBank/12/export` 不会被它匹配（段数不同），
+#    但 `/questionBank/questionBank/export` 这类同段数路径会被当成 bank_id 解析 → 422。
+#    导出端点路径更具体，先注册更稳。
+app.include_router(bank_export.router, tags=["题库导出"])
 app.include_router(questions.router, tags=["题库题目"])
 app.include_router(ai.router, tags=["AI功能"])
 app.include_router(dashboard.router, tags=["仪表盘"])

@@ -1,4 +1,6 @@
 import request from '@/utils/request'
+import axios from 'axios'
+import { getToken } from '@/utils/auth'
 import type { QuestionBank, PageResult, ApiResult } from '@/types'
 
 // 查询题库主列表
@@ -77,4 +79,68 @@ export function copyQuestionBank(id: number | string, data?: { bankName?: string
     method: 'post',
     data: data || {}
   }) as unknown as Promise<ApiResult<QuestionBank>>
+}
+
+/**
+ * 导出题库为 Word / PDF
+ *
+ * 为什么不用 `request`（全局 axios 实例）：
+ *   它的响应拦截器对 `responseType: 'blob'` 只 `return res.data`，
+ *   **响应头被丢掉了** —— 而文件名恰好在 `Content-Disposition` 里。
+ *   这里用独立实例拿到完整 response，顺便避开全局拦截器对二进制的误判。
+ *
+ * 失败时后端返回的是 **JSON**（`{code:403,msg:"..."}`），但 responseType 已是 blob，
+ * 所以要按 `Content-Type` 分流：是 JSON 就转成业务错误，不能把一坨 JSON
+ * 存成 .docx 让用户打开时发现文件损坏。
+ */
+export async function exportQuestionBank(
+  id: number | string,
+  format: 'docx' | 'pdf'
+): Promise<{ blob?: Blob; filename?: string; error?: string }> {
+  const resp = await axios.get(`${import.meta.env.VITE_APP_BASE_API}/questionBank/questionBank/${id}/export`, {
+    params: { format },
+    responseType: 'blob',
+    // 含大量图片时可能超过默认 30s，单独放宽
+    timeout: 180000,
+    headers: getToken() ? { Authorization: 'Bearer ' + getToken() } : {}
+  })
+
+  const blob: Blob = resp.data
+  if (!blob || typeof blob.slice !== 'function') {
+    return { error: '导出失败：服务端未返回文件' }
+  }
+
+  // 后端把错误塞进了 blob（Content-Type: application/json）
+  if (blob.type && blob.type.includes('application/json')) {
+    try {
+      const json = JSON.parse(await blob.text())
+      return { error: json?.msg || '导出失败' }
+    } catch {
+      return { error: '导出失败' }
+    }
+  }
+
+  const disposition = resp.headers?.['content-disposition'] as string | undefined
+  return { blob, filename: parseFilename(disposition, `题库-${id}.${format}`) }
+}
+
+/**
+ * 从 `Content-Disposition` 解析文件名
+ *
+ * 后端同时给了 `filename="ascii"` 和 `filename*=UTF-8''<pct>`，
+ * 优先用后者 —— 那才是中文原名。缺失时退回前端自己拼的名字。
+ */
+export function parseFilename(disposition: string | undefined | null, fallback: string): string {
+  if (!disposition) return fallback
+  const star = /filename\*=(?:UTF-8|utf-8)?''([^;]+)/.exec(disposition)
+  if (star && star[1]) {
+    try {
+      return decodeURIComponent(star[1])
+    } catch {
+      /* 解码失败就用兜底名 */
+    }
+  }
+  const plain = /filename="?([^";]+)"?/.exec(disposition)
+  if (plain && plain[1]) return plain[1]
+  return fallback
 }

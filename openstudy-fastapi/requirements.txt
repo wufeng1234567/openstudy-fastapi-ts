@@ -68,3 +68,9 @@ python-jose==3.3.0
 
 # Excel Export
 openpyxl==3.1.5
+
+# 题库导出（Word / PDF）—— app/services/bank_export_service.py
+# · python-docx 见上方 Document Processing（写 .docx）
+# · reportlab 写 .pdf；中文需要 CJK 字体，服务会优先用系统里的
+#   微软雅黑 / 思源黑体，找不到则退回 reportlab 自带的 STSong-Light
+reportlab==4.2.5
