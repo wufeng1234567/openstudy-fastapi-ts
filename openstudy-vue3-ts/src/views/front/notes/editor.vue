@@ -234,6 +234,32 @@ const loadNoteQuestionBanks = async (noteId) => {
 /** 「写新笔记」态是否已处理过草稿（幂等守卫，防 onMounted+onActivated 双触发重复读，见 syncEditorMode） */
 let newNoteDraftSettled = false
 
+/** 当前登录用户 id（草稿 key 的唯一依据）；未就绪返回空串 */
+function currentDraftUserId(): string {
+  try {
+    const id = (useUserStore() as any).id
+    return id === undefined || id === null || id === '' ? '' : String(id)
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * 等 `userStore.id` 就绪（最多约 1.5s）
+ *
+ * 刷新/首次进站时 Pinia 里的 id 有一段真空期（getInfo 还没回来）。草稿的读写
+ * 全靠它拼 key，没有它就没法判断"这是谁的草稿" —— 详见 draftKey()。
+ * 与 `agentSession.loadSessions()` 的做法保持一致。
+ */
+async function waitForUserId(): Promise<string> {
+  let uid = currentDraftUserId()
+  for (let i = 0; i < 25 && !uid; i++) {
+    await new Promise((r) => setTimeout(r, 60))
+    uid = currentDraftUserId()
+  }
+  return uid
+}
+
 const syncEditorMode = async () => {
   const id = route.query.id
   const numId = id ? Number(id) : null
@@ -255,6 +281,14 @@ const syncEditorMode = async () => {
     //    `syncEditorMode()` → 若不加守卫，else 分支会跑两次 → 第二次读草稿还可能覆盖
     //    用户已输入内容。已处理过就返回。
     if (newNoteDraftSettled) return
+    /*
+     * ⚠️ 必须等 uid 就绪再读草稿（用户 2026-10-19 报「两个演示用户共用一篇草稿」）：
+     *    刷新/首次进站时 `userStore.id` 有一段真空期，此刻 draftKey() 是空，
+     *    读不到"自己的"那份草稿。上一版会在 uid 空时退回共享槽位 —— 那正是串号的来源。
+     *    现在改为**等一下**（与 agentSession.loadSessions 同款轮询），拿不到才放弃。
+     */
+    const uid = await waitForUserId()
+    if (!uid) return
     if (lastLoadedId !== null || editingNoteId.value !== null) {
       lastLoadedId = null
       editingNoteId.value = null
@@ -268,6 +302,21 @@ const syncEditorMode = async () => {
     }
     // 幂等标记必须在 await 之前置位：否则 await 期间 onActivated 重入会再跑一遍。
     newNoteDraftSettled = true
+    /*
+     * 分类列表要先就绪：applyDraft 用它校验草稿里的 categoryId 是否属于当前用户
+     * （见那里的说明）。
+     * ⚠️ 这里**不能**直接 `await loadCategories()` —— 它在下方才用 `const` 声明，
+     *    虽然本函数是在 await 之后才执行到那行（此时模块已求值完），但依赖这种
+     *    时序太脆弱（TDZ 一旦命中就是白屏，且 build 查不出来）。改为内联同一个请求。
+     */
+    if (!Array.isArray(categoryList.value) || !categoryList.value.length) {
+      try {
+        const res: any = await getAllNoteCategory({ userId: userStore.id })
+        if (res.code === 200) categoryList.value = res.data || []
+      } catch {
+        /* 拿不到分类列表 → applyDraft 会认为所有 categoryId 都非法，置空让用户重选 */
+      }
+    }
     // 恢复草稿**静默**进行：内容会直接出现在编辑器里，不再弹任何提示
     // （用户 2026-10-19：「直接把整个草稿提示删除掉，不需要了」）。
     await loadDraft()
@@ -292,18 +341,22 @@ const syncEditorMode = async () => {
 const LEGACY_DRAFT_KEY = 'note_draft'
 const DRAFT_KEY_PREFIX = 'openstudy_note_draft'
 
-function currentDraftUserId(): string {
-  try {
-    const id = (useUserStore() as any).id
-    return id === undefined || id === null || id === '' ? '' : String(id)
-  } catch {
-    return ''
-  }
-}
-
+/**
+ * 草稿 key：**必须**带用户 id（`currentDraftUserId()` 已上移到 waitForUserId 旁边）
+ *
+ * ⚠️ 用户 2026-10-19 再报「演示用户1 的草稿，演示用户2 也是同一篇」。
+ *
+ * 上一版虽然把 key 改成了 `openstudy_note_draft_<uid>`，但**取不到 uid 时会退回
+ * 共享的 `note_draft`**。而 refresh / 首次进站时 `userStore.id` 有一段真空期
+ * （Pinia 刚建、getInfo 还没回来），此时 `onMounted → syncEditorMode → loadDraft`
+ * 拿到的 key 就是那个共享槽位 —— 谁先登录谁的内容落进去，下一个账号原样读出来。
+ *
+ * 现在取不到 uid 时返回空串，调用方一律**跳过**本地草稿（只认后端草稿，
+ * 后端那份天然按 token 隔离）。等 uid 就绪后 onActivated / 切路由会重新走一遍。
+ */
 function draftKey(): string {
   const uid = currentDraftUserId()
-  return uid ? `${DRAFT_KEY_PREFIX}_${uid}` : LEGACY_DRAFT_KEY
+  return uid ? `${DRAFT_KEY_PREFIX}_${uid}` : ''
 }
 
 /**
@@ -311,6 +364,7 @@ function draftKey(): string {
  *
  * 只在「当前用户的隔离 key 还是空的」且「旧 key 有内容」时搬一次，
  * 搬完删掉旧 key（否则下一个账号登录还会再搬一次）。
+ * 迁移只在拿到 uid 后执行，避免把共享槽位的内容写给错误的用户。
  */
 function migrateLegacyDraftOnce() {
   const uid = currentDraftUserId()
@@ -334,7 +388,20 @@ const applyDraft = (d: any) => {
   editorHtmlContent.value = marked.parse(md)
   // ⚠️ 用 ?? 不用 ||：isPublic=0（私密）是合法值，`0 || 1` 会被错误改成 1（公开）。
   isPublic.value = d.isPublic ?? 1
-  selectedCategoryId.value = d.categoryId ?? null
+  /*
+   * 分类要校验归属：草稿里的 categoryId 可能是**别人**的分类 id。
+   *
+   * 历史上草稿串号时（用户 2026-10-19 报的 bug2），user1 的分类 id 被写进了
+   * user2 的草稿里；直接套用会让下拉框显示一个孤零零的数字（el-select 找不到
+   * 对应 option 就回退显示原始 value），既看不懂、发布时还会带上不属于自己的分类。
+   *
+   * 这里只接受「当前用户的分类列表里确实存在」的 id，否则置空让用户重选。
+   * ⚠️ 注意 categoryList 是异步加载的：调用方（loadDraft）已确保它先就绪。
+   */
+  const catId = d.categoryId ?? null
+  const catOk = catId === null || (Array.isArray(categoryList.value) &&
+    categoryList.value.some((c: any) => String(c.id) === String(catId)))
+  selectedCategoryId.value = catOk ? catId : null
   selectedTags.value = d.tags || []
   selectedPublicSectionId.value = d.publicSectionId ?? null
   nextTick(() => {
@@ -358,12 +425,17 @@ const applyDraft = (d: any) => {
  */
 const loadDraft = async (): Promise<any | null> => {
   // 本地草稿（按用户隔离的 key，见 draftKey()）
+  // ⚠️ key 为空 = 还没拿到 uid → 跳过本地那份（绝不能退回共享槽位，否则读到的
+  //    可能是上一个登录账号的草稿，用户 2026-10-19 报的"两个演示用户同一篇"就是它）。
   let local: any = null
-  try {
-    const raw = localStorage.getItem(draftKey())
-    if (raw) local = JSON.parse(raw)
-  } catch (e) {
-    console.error('读取本地草稿失败:', e)
+  const key = draftKey()
+  if (key) {
+    try {
+      const raw = localStorage.getItem(key)
+      if (raw) local = JSON.parse(raw)
+    } catch (e) {
+      console.error('读取本地草稿失败:', e)
+    }
   }
   // 后端草稿（失败当作没有，不影响本地兜底）
   let remote: any = null
@@ -404,10 +476,19 @@ const saveDraft = () => {
     // 编辑已有笔记 → 不写草稿（草稿只属于「尚未发布的新笔记」）
     if (editingNoteId.value) return
 
+    const key = draftKey()
+    /*
+     * ⚠️ 拿不到 uid 时**连后端也不写**（用户 2026-10-19 报的跨用户共享）：
+     *    localStorage 没有隔离槽位可用，而此刻发出去的 PUT 也未必带对用户
+     *    （uid 真空期通常意味着登录态刚建立）；一旦写错，后端那份就是**共享**的，
+     *    下一个账号读出来就是别人的内容。等 uid 就绪后 watch 会再次触发保存。
+     */
+    if (!key) return
+
     const md = editorHtmlContent.value ? turndownService.turndown(editorHtmlContent.value) : ''
     // 全空 → 清掉两处草稿，不留脏数据
     if (!md.trim() && !noteTitle.value.trim()) {
-      localStorage.removeItem(draftKey())
+      localStorage.removeItem(key)
       clearNoteDraft().catch(() => {})
       return
     }
@@ -420,7 +501,7 @@ const saveDraft = () => {
       tags: selectedTags.value,
       publicSectionId: selectedPublicSectionId.value
     }
-    localStorage.setItem(draftKey(), JSON.stringify({ ...payload, updatedAt: new Date().toISOString() }))
+    localStorage.setItem(key, JSON.stringify({ ...payload, updatedAt: new Date().toISOString() }))
     // 同步后端草稿（失败不影响本地草稿，静默即可——本地已是兜底）
     saveNoteDraft(payload).catch(() => {})
   } catch (error) {
@@ -429,8 +510,9 @@ const saveDraft = () => {
 }
 
 const clearDraft = () => {
+  const key = draftKey()
   try {
-    localStorage.removeItem(draftKey())
+    if (key) localStorage.removeItem(key)
   } catch (error) {
     console.error('清除草稿失败:', error)
   }
@@ -853,9 +935,27 @@ const handlePublish = async () => {
     overflow-y: auto;
     overscroll-behavior: contain;
 
+    /*
+     * ⚠️ Tiptap 组件自带 `height:100% + min-height:500px + overflow:hidden`，
+     *    内部 `.editor-content` 又是 `overflow-y:auto` —— 它是一个**自带滚动的盒子**。
+     *    放在编辑页里会和外层 `.editor-main` 形成两层滚动：外层因为内层不撑高
+     *    而永远算不出溢出（可滚量 0），内层又只给出 500px 的窗口，
+     *    用户看到的就是「页面滚不动、内容还被切掉」（用户 2026-10-19 报的 bug3）。
+     *
+     *    修法：编辑页里让 Tiptap **自然增高**（height:auto / min-height:0 /
+     *    overflow:visible），滚动统一交给 `.editor-main` 一层。
+     *    `.editor-content` 同理，否则内容仍被它裁在内部。
+     */
     .tiptap-editor {
-      flex: 1;
-      min-height: 500px;
+      flex: none;
+      height: auto;
+      min-height: 0;
+      overflow: visible;
+
+      .editor-content {
+        flex: none;
+        overflow: visible;
+      }
     }
   }
 

@@ -30,25 +30,47 @@ const formatTitle = (s: any) => s?.title || '新会话'
 const CURRENT_SESSION_KEY = 'os_agent_current_session'
 
 /**
- * 读：优先按当前登录用户拼 key
+ * 读：按当前登录用户拼 key
  *
- * ⚠️ 用户信息还没到位时（首屏 store 初始化、刷新早期）**不能直接返回空**：
- *    那会让「刷新后恢复上次会话」永远失效（用户 2026-10-18 报的正是这个）。
- *    退路：扫一遍 localStorage 里同前缀的键，取最新的那个。
- *    单人在单浏览器里这就是他自己上次的会话；多账号场景下
- *    后续（拿到 uid 之后）会以带 uid 的精确键为准并被覆盖。
+ * ⚠️ 这里**只能**读带当前 uid 的精确键，绝不能"扫前缀兜底"。
+ *
+ * 历史教训（用户 2026-10-19 报「刷新后跑到最新会话」）：
+ *   上一版为了兼容「首屏 userStore.id 还没就绪」，在 uid 为空时扫一遍所有
+ *   `os_agent_current_session_*` 键、返回**第一个**命中的值。而 localStorage 的遍历顺序
+ *   是「先写入的在前」，同一浏览器里只要留过别的账号（admin/user2…）的键，
+ *   就会读到**别人的** session id：
+ *
+ *     · 该 id 不属于当前用户 → 不在 sessions 列表里 → `canRestore` 判负
+ *     · 于是 chat.vue 退回 `sessions[0]`（列表按更新时间倒序 = 最新那个）
+ *     · 用户看到的就是「刷新后跳到最新会话」
+ *
+ *   实测复现：种一个 `os_agent_current_session_1`（admin 的）后刷新，
+ *   当前会话从「你好啊」跳到最新的「你好呀 你都会什么」。
+ *
+ * 正确做法：uid 未知就**返回空**，让上层等真正的 uid。
+ *   store 在 `loadSessions()` 里拿到 userId 后还有一次「补读」机会
+ *   （见那里的 `if (!this.currentSessionId)`），所以不会丢恢复能力 ——
+ *   唯一的要求是那次补读发生在「恢复判断」之前，chat.vue 的 onMounted
+ *   正是 `await loadSessions()` 后才判断，顺序有保证。
  */
 function readStoredSessionId(): string {
   try {
     const uid = useUserStore().id
-    if (uid) return localStorage.getItem(`${CURRENT_SESSION_KEY}_${uid}`) || ''
-    // uid 未知：退化为扫前缀
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i)
-      if (k && k.startsWith(`${CURRENT_SESSION_KEY}_`)) {
-        const v = localStorage.getItem(k)
-        if (v) return v
-      }
+    // uid 未知 → 宁可不恢复，也不能拿别人的会话 id
+    if (!uid) return ''
+    const key = `${CURRENT_SESSION_KEY}_${uid}`
+    const own = localStorage.getItem(key)
+    if (own) return own
+    /*
+     * 认领「无主」键：`_0` 是 uid 还没就绪时写入的占位（见 storeSessionId）。
+     * 它不是任何真实用户（user_id 从 1 起），所以第一个来认领的登录用户可以安全接管；
+     * 认领后立刻搬到自己名下，避免下一个账号又抢一次。
+     */
+    const anon = localStorage.getItem(`${CURRENT_SESSION_KEY}_0`)
+    if (anon) {
+      localStorage.setItem(key, anon)
+      localStorage.removeItem(`${CURRENT_SESSION_KEY}_0`)
+      return anon
     }
     return ''
   } catch {
@@ -60,7 +82,10 @@ function readStoredSessionId(): string {
 function storeSessionId(id: string) {
   try {
     const uid = useUserStore().id
-    // uid 未知时也要写（用 0 占位），否则新会话在刷新后同样恢复不了
+    /*
+     * uid 未知 → 写进 `_0` 占位键（否则新会话在刷新后恢复不了）。
+     * 这个键由 readStoredSessionId 的「认领」逻辑接管，不会被当成某个真实用户的。
+     */
     const key = `${CURRENT_SESSION_KEY}_${uid || 0}`
     if (id) localStorage.setItem(key, id)
     else localStorage.removeItem(key)
