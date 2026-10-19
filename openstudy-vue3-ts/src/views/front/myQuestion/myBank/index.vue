@@ -13,19 +13,25 @@
     -->
 
       <!--
-        分组切换（我的题库 / 题库收藏）
+        分组切换（我的题库 / 题库收藏 / 我的分享）
         ----------------------------------------------------------------
         用户 2026-10-18：「题库收藏和我的题库功能高度重合，合并成我的题库包含收藏功能」。
-        这里不再跳另一个页面，两套数据共用下面的搜索框与筛选面板。
+        用户 2026-10-19：「我的分享也重构，给他作为一个子路由，转移到题库管理内部去，
+        并且配套对应的搜索组件，尽量让他们样式统一」。
 
-        2026-10-19：切换条抽成共用组件 `SegmentedTabs`（三个管理页共用一份样式）。
+        三个分组共用同一个搜索框与一个筛选面板（筛选组按当前分组动态生成），
+        不再各走各的页面。
       -->
       <SegmentedTabs v-model="activeTab" :tabs="tabItems" />
 
       <div class="search-section">
-        <SearchFilterInput v-model="searchKeyword" placeholder="搜索题库名称" class="search-input"
+        <SearchFilterInput v-model="searchKeyword" :placeholder="searchPlaceholder" class="search-input"
           :filter-open="filterOpen" :filter-active="filterActive" @toggle-filter="toggleFilterSidebar" />
-        <el-button @click="activeTab === 'own' ? fetchBanks() : fetchFavorites()" class="refresh-btn">
+        <el-button v-if="activeTab === 'share'" type="primary" plain class="share-btn" @click="openShareDialog">
+          <el-icon><Share /></el-icon>
+          分享我的题库
+        </el-button>
+        <el-button @click="handleRefresh" class="refresh-btn">
           <el-icon><Refresh /></el-icon>
           刷新
         </el-button>
@@ -40,11 +46,14 @@
     <!--
       批量操作栏（有选中项时才出现）
       ----------------------------------------------------------------
+      `activeTab !== 'share'`：分享列表没有多选，切到这一组要收起批量栏，
+      否则会在分享页顶着一排"批量取消收藏 / 批量删除"的无意义按钮。
+
       三个动作的语义严格区分（用户明确要求）：
         · 批量取消收藏 —— 只移出收藏夹，题库不删
         · 批量删除     —— 真正删除题库（仅「我的题库」分组提供）
     -->
-    <div v-if="selectedCount > 0" class="batch-bar">
+    <div v-if="selectedCount > 0 && activeTab !== 'share'" class="batch-bar">
       <span class="batch-info">已选 {{ selectedCount }} 项</span>
       <el-button size="small" :disabled="batchBusy" @click="clearSelection">取消选择</el-button>
       <el-button v-if="activeTab === 'favorite'" size="small" type="warning" plain :loading="batchBusy"
@@ -59,11 +68,11 @@
     <!-- 筛选下拉面板（触发按钮已内嵌到搜索框最左侧） -->
     <CommonFilterSidebar
       ref="filterSidebarRef"
-      title="题库筛选"
+      :title="filterTitle"
       hide-trigger
       :filter-groups="filterGroups"
       :filter-form="filterForm"
-      :default-filter="{ subjects: [], questionCount: [], isPublic: [], createRange: null }"
+      :default-filter="defaultFilter"
       :default-collapsed="true"
       :style="{ '--filter-top': searchAreaHeight + 'px' }"
       @filter-change="handleFilterChange"
@@ -215,6 +224,17 @@
       </template>
     </BankCardGrid>
 
+    <!-- ==================== 我的分享 ==================== -->
+    <!--
+      用户 2026-10-19：把「我的分享」并成题库管理的第三个分组。
+      列表与过滤都在 `MyShares` 里（它自己算 total 并上报），
+      这里只把搜索条件传下去 + 承接「分享我的题库」按钮的调用。
+    -->
+    <div v-show="activeTab === 'share'" class="share-panel">
+      <MyShares ref="mySharesRef" embedded :keyword="searchKeyword" :statuses="shareStatuses"
+        :create-range="filterForm.createRange" @total-change="onShareTotalChange" />
+    </div>
+
     <!-- 通过分享链接 / 分享码领取题库 -->
     <ReceiveShareDialog v-model="receiveDialogVisible" @received="fetchBanks" />
 
@@ -233,6 +253,7 @@ import BankCardGrid from '@/components/BankCardGrid/BankCardGrid.vue'
 import SearchFilterInput from '@/components/SearchFilterInput/index.vue'
 import CommonFilterSidebar from '@/components/CommonFilterSidebar/index.vue'
 import SegmentedTabs from '@/components/SegmentedTabs/index.vue'
+import MyShares from '@/views/front/myQuestion/myShares/index.vue'
 import ReceiveShareDialog from '@/views/front/myQuestion/components/ReceiveShareDialog.vue'
 import ShareBankDialog from '@/views/front/myQuestion/components/ShareBankDialog.vue'
 import { listMyQuestionBank, delQuestionBank, copyQuestionBank } from '@/api/questionBank/questionBank'
@@ -272,15 +293,34 @@ const deleteLoading = ref<Record<string | number, boolean>>({})
  * 两套数据共用一个搜索框与一个筛选面板 —— 筛选组按当前分组动态生成
  * （题库分组按「公开/私有」，收藏分组按「来源/失效」），避免出现点了没反应的筛选项。
  */
-type BankTab = 'own' | 'favorite'
+type BankTab = 'own' | 'favorite' | 'share'
 const route = useRoute()
 /**
- * 初始分组：支持 `?tab=favorite`
+ * 初始分组：支持 `?tab=favorite` / `?tab=share`
  *
  * 「题库收藏」的旧路由现在重定向到这里（`/front/myQuestion/myBank?tab=favorite`），
+ * 「我的分享」的旧路由（`/front/myQuestion/myShares`）也重定向到 `?tab=share`，
  * 所以进入时要认这个参数，否则用户点旧链接会落在「我的题库」分组，像是走错了。
  */
-const activeTab = ref<BankTab>(route.query.tab === 'favorite' ? 'favorite' : 'own')
+const TAB_QUERY_MAP: Record<string, BankTab> = {
+  own: 'own',
+  favorite: 'favorite',
+  share: 'share'
+}
+const activeTab = ref<BankTab>(TAB_QUERY_MAP[String(route.query.tab || '')] || 'own')
+
+/**
+ * 侧栏在同一页内切 `?tab=` 时跟上
+ * ⚠️ 必须确认当前确实停在本页：本页是 keep-alive 的，
+ * 「题目管理 / 笔记管理」也用了 `?tab=`，不加路径判断会被它们的 query 唤醒。
+ */
+watch(
+  () => route.query.tab,
+  (t) => {
+    if (!route.path.startsWith('/front/myQuestion/myBank')) return
+    activeTab.value = TAB_QUERY_MAP[String(t || '')] || 'own'
+  }
+)
 
 /**
  * 分组切换条的入参（共用组件 `SegmentedTabs`）
@@ -288,8 +328,45 @@ const activeTab = ref<BankTab>(route.query.tab === 'favorite' ? 'favorite' : 'ow
  */
 const tabItems = computed(() => [
   { key: 'own', label: '我的题库', count: allBankList.value.length },
-  { key: 'favorite', label: '题库收藏', count: allFavoriteList.value.length }
+  { key: 'favorite', label: '题库收藏', count: allFavoriteList.value.length },
+  { key: 'share', label: '我的分享', count: shareTotal.value || undefined }
 ])
+
+/** 搜索框占位文案：三个分组搜的东西不一样，跟着切 */
+const searchPlaceholder = computed(() => {
+  if (activeTab.value === 'favorite') return '搜索收藏的题库'
+  if (activeTab.value === 'share') return '搜索分享的题库'
+  return '搜索题库名称'
+})
+
+/** 筛选面板标题也跟着分组走（分享分组里叫「题库筛选」不对） */
+const filterTitle = computed(() => {
+  if (activeTab.value === 'favorite') return '收藏筛选'
+  if (activeTab.value === 'share') return '分享筛选'
+  return '题库筛选'
+})
+
+/* ---------- 我的分享（内嵌） ---------- */
+const mySharesRef = ref<any>(null)
+/** 分享条数（由 `MyShares` 上报，用于分组角标） */
+const shareTotal = ref(0)
+
+function onShareTotalChange(payload: { total: number; loading: boolean }) {
+  if (payload.loading) return
+  shareTotal.value = Number(payload.total) || 0
+}
+
+/** 「分享我的题库」：弹窗在 `MyShares` 里，这里只负责打开它 */
+function openShareDialog() {
+  mySharesRef.value?.openShareDialog?.()
+}
+
+/** 刷新：按当前分组刷对应的数据 */
+function handleRefresh() {
+  if (activeTab.value === 'own') fetchBanks()
+  else if (activeTab.value === 'favorite') fetchFavorites()
+  else mySharesRef.value?.refresh?.()
+}
 
 const favoriteLoading = ref(false)
 const allFavoriteList = ref<UserBankFavorite[]>([])
@@ -330,20 +407,66 @@ const filterForm = ref<{
   subjects: string[]
   questionCount: string[]
   isPublic: number[]
+  shareStatuses: string[]
   createRange: string[] | null
 }>({
   subjects: [],
   questionCount: [],
   isPublic: [],
+  shareStatuses: [],
   createRange: null
 })
 
-// 筛选配置（多选 + 时间范围，组内 OR、组间 AND）
+/** 「我的分享」分组用到的状态条件（组件内部按它过滤） */
+const shareStatuses = computed(() => filterForm.value.shareStatuses)
+
+/**
+ * 筛选面板的默认值（三个分组共用一个面板，默认值要覆盖所有 key，
+ * 否则「清空筛选」之后 `isFilterActive` 比对会误判成"还有生效条件"）
+ */
+const defaultFilter = {
+  subjects: [],
+  questionCount: [],
+  isPublic: [],
+  shareStatuses: [],
+  createRange: null
+}
+
+/**
+ * 筛选配置（多选 + 时间范围，组内 OR、组间 AND）
+ *
+ * 三组共用同一个筛选面板，但**每一组有自己的维度**：
+ *   · 我的题库  —— 科目 / 题目数量 / 可见性 / 创建时间
+ *   · 题库收藏  —— 科目 / 题目数量 / 可见性 / 创建时间
+ *   · 我的分享  —— 分享状态 / 创建时间
+ * 所以这里按 `activeTab` 动态生成，不出现"点了没反应"的筛选项。
+ */
 const filterGroups = computed(() => {
   const subjects = new Set<string>()
   allBankList.value.forEach((bank: MyBankItem) => {
     if (bank.subject) subjects.add(bank.subject)
   })
+
+  // 我的分享：只有状态 + 时间两个维度
+  if (activeTab.value === 'share') {
+    return [
+      {
+        key: 'shareStatuses',
+        label: '分享状态',
+        type: 'checkbox',
+        options: [
+          { value: 'effective', label: '有效' },
+          { value: 'expired', label: '已过期' },
+          { value: 'revoked', label: '已撤销' }
+        ]
+      },
+      {
+        key: 'createRange',
+        label: '创建时间',
+        type: 'dateRange'
+      }
+    ]
+  }
 
   return [
     {
@@ -519,35 +642,56 @@ const goToQuestionBank = () => {
 
 /* ==================== 顶栏计数 ====================
  *
- * 把「N 个题库」推到顶栏（与标题同一行），内容区不再单独占一行。
+ * 把「N 个题库 / N 条分享」推到顶栏（与标题同一行），内容区不再单独占一行。
  * 见 `store/modules/topbar.ts` 与 `layout/front.vue` 的 `os-topbar__count`。
+ *
+ * 「我的分享」的条数由 `MyShares` 上报（它在自己内部过滤），
+ * 这里只用 `shareTotal` 一个数字，单位也跟着分组走。
  */
 const topbarStore = useTopbarStore()
+
+/** 当前分组的条数 + 单位 */
+const currentCountText = computed(() => {
+  if (activeTab.value === 'own') return `${filteredBankList.value.length} 个题库`
+  if (activeTab.value === 'favorite') return `${filteredFavoriteList.value.length} 个题库`
+  return `${shareTotal.value} 条分享`
+})
+
 watch(
-  [activeTab, () => filteredBankList.value.length, () => filteredFavoriteList.value.length],
+  [activeTab, () => filteredBankList.value.length, () => filteredFavoriteList.value.length, shareTotal],
   () => {
     // keep-alive 下本页可能已不在前台：不要往顶栏推别人的计数
     if (!route.path.startsWith('/front/myQuestion/myBank')) return
-    const n = activeTab.value === 'own' ? filteredBankList.value.length : filteredFavoriteList.value.length
-    topbarStore.setCount(`${n} 个题库`)
+    topbarStore.setCount(currentCountText.value)
   },
   { immediate: true }
 )
 
 // 回到本页时重新推一次（离开期间顶栏被清空过）
 onActivated(() => {
-  const n = activeTab.value === 'own' ? filteredBankList.value.length : filteredFavoriteList.value.length
-  topbarStore.setCount(`${n} 个题库`)
+  topbarStore.setCount(currentCountText.value)
 })
 // keep-alive 页面：离开时必须清，否则会把本页计数带到下一个页面
 onBeforeUnmount(() => topbarStore.clear())
 
 const handleFilterChange = (newFilter: any) => {
-  filterForm.value = { ...newFilter }
+  filterForm.value = {
+    subjects: newFilter.subjects || [],
+    questionCount: newFilter.questionCount || [],
+    isPublic: newFilter.isPublic || [],
+    shareStatuses: newFilter.shareStatuses || [],
+    createRange: newFilter.createRange || null
+  }
 }
 
 const handleResetFilters = () => {
-  filterForm.value = { subjects: [], questionCount: [], isPublic: [], createRange: null }
+  filterForm.value = {
+    subjects: [],
+    questionCount: [],
+    isPublic: [],
+    shareStatuses: [],
+    createRange: null
+  }
 }
 
 // 内嵌在搜索框里的筛选按钮：切换下方筛选面板
@@ -848,6 +992,22 @@ onUnmounted(() => {
   display: flex;
   gap: 12px;
   align-items: center;
+
+  /* 搜索框吃掉剩余宽度，按钮靠右 */
+  .search-input {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .share-btn,
+  .refresh-btn {
+    flex: none;
+  }
+}
+
+/* 「我的分享」面板：与另外两个分组的卡片区保持同样的上边距 */
+.share-panel {
+  padding-top: 2px;
 }
 
 /* 分组切换条已抽到 `SegmentedTabs`（三个管理页共用一份样式），这里不再重复定义 */

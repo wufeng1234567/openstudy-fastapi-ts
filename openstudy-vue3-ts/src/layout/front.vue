@@ -320,8 +320,9 @@ const SECTION_TITLES: Array<[string, string]> = [
  * 同时内容区那个大标题就**去掉**（原来写的是「我的学习 · 题库」，和顶栏重复）。
  */
 const MY_LEARNING_SUB: Array<[string, string]> = [
+  /* 我的题库 / 题库收藏 / 我的分享 三个分组共用一个页面（用户 2026-10-19） */
   ['/front/myQuestion/myBank', '题库管理'],
-  ['/front/myQuestion/myShares', '我的分享'],
+  ['/front/myQuestion/myShares', '题库管理'],
   /* 题目收藏 / 我的错题 / 我的斩题 已合并为这一个页面（用户 2026-10-18） */
   ['/front/myQuestion/questions', '题目管理'],
   /* 我的笔记 / 收藏的笔记 已合并为「笔记管理」（用户 2026-10-18） */

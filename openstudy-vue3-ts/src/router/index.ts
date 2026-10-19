@@ -405,9 +405,14 @@ export const constantRoutes: AppRouteRecordRaw[] = [
             hidden: true
           },
           {
+            /*
+             * 「我的分享」已并入「题库管理」的第三个分组（用户 2026-10-19：
+             * 「我的分享页面的重构，给他作为一个子路由，转移到题库管理内部去」）。
+             * 旧路径保留 redirect，兼容书签 / 侧栏旧入口 / 分享弹窗回跳。
+             */
             path: 'myShares',
             name: 'FrontMyShares',
-            component: () => import('@/views/front/myQuestion/myShares/index.vue'),
+            redirect: '/front/myQuestion/myBank?tab=share',
             meta: { title: '我的分享', layout: 'front' },
             hidden: true
           },
