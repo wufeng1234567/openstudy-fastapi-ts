@@ -522,7 +522,7 @@
                         </span>
                       </el-option>
                     </el-select>
-                    <el-button size="small" text :loading="kbLoading" @click="loadKnowledgeBases">
+                    <el-button size="small" text :loading="kbLoading" @click="loadKnowledgeBases({ silent: false })">
                       刷新
                     </el-button>
                   </div>
@@ -1712,8 +1712,18 @@ const materialSummaryText = computed(() => {
   return parts.join(' · ')
 })
 
-/** 加载知识库列表（进入 custom 模式时懒加载，避免每次打开弹窗都请求） */
-const loadKnowledgeBases = async () => {
+/**
+ * 加载知识库列表
+ *
+ * 调用时机（2026-10-20 修）：
+ *   · `openAiDialog()` —— 打开弹窗就预加载，**这是主要入口**。
+ *     原来只靠"切换题型时懒加载"，导致首次进入列表是空的、必须点「刷新」；
+ *   · 模板上的「刷新」按钮 —— 用户手动重试（比如刚在别处新建了知识库）。
+ *
+ * 幂等：`kbLoading` 期间直接返回，避免连点刷新发出多个请求。
+ * 失败不阻断出题：知识库只是可选素材，用户仍可用上传文档这条路。
+ */
+const loadKnowledgeBases = async (opts: { silent?: boolean } = {}) => {
   if (kbLoading.value) return
   kbLoading.value = true
   try {
@@ -1721,9 +1731,16 @@ const loadKnowledgeBases = async () => {
     const data = res?.data ?? res?.rows ?? res ?? []
     kbList.value = Array.isArray(data) ? data : (data.rows || [])
   } catch (e) {
-    // 失败不阻断出题：用户仍然可以用上传文档这条路
     console.warn('[material] 加载知识库失败：', e)
-    ElMessage.warning('知识库列表加载失败，可改用上传文档')
+    /*
+     * `silent` 用于"预加载"：弹窗刚打开就弹一条失败提示会很吵，
+     * 而且用户此刻可能根本不想用知识库。失败时下拉里会显示
+     * "还没有知识库 + 可改用上传文档"的说明，已经足够告知。
+     * 手动点「刷新」才提示 —— 那说明用户确实在找这个功能。
+     */
+    if (!opts.silent) {
+      ElMessage.warning('知识库列表加载失败，可改用上传文档')
+    }
   } finally {
     kbLoading.value = false
   }
@@ -2323,9 +2340,30 @@ const openAiDialog = () => {
   aiDialogVisible.value = true
   loadPromptHistory()
 
-  // 新增：加载题库上下文
+  // 加载题库上下文
   loadBankContextInfo()
   loadUserAiConfigs()
+  /*
+   * 预加载知识库列表（2026-10-20 修「第一次进入获取不到，必须点刷新」）
+   *
+   * 根因：`loadKnowledgeBases` 上一轮重构后**一次都没有被自动调用** ——
+   *   我把它从 `onAiTypeChange` 里删掉了（当时改成"展开素材面板才需要"），
+   *   结果只剩模板上那个「刷新」按钮会调它。
+   *   用户第一次打开弹窗、展开素材、点开下拉 → 列表是空的，必须手动点一次刷新。
+   *   这属于"功能能用但要多点一下"的隐性缺陷，比直接报错更烦人。
+   *
+   * 为什么在**打开弹窗时**就加载、而不是等展开素材面板：
+   *   · 一次请求很轻（就是个列表），没必要为省这点流量牺牲首屏体验；
+   *   · 素材面板可以随时展开，等展开再请求会让用户先看到一个空下拉；
+   *   · 与 `loadUserAiConfigs()`（模型列表）同一时机，语义一致：
+   *     "打开弹窗就把可选项准备好"。
+   *
+   * 失败不阻断：`loadKnowledgeBases` 内部已 catch 并提示"可改用上传文档"。
+   */
+  if (kbList.value.length === 0) {
+    // silent: 弹窗刚打开就弹"加载失败"很吵，且用户此刻未必想用知识库
+    loadKnowledgeBases({ silent: true })
+  }
 }
 
 // 更新预览数据（当用户编辑时）
