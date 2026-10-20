@@ -466,6 +466,39 @@ export function useQuestionPractice(
     noWrongQuestionsReason.value = reason
   }
 
+  /**
+   * 把「后端原始题目数组」转成组件能渲染的 `TransformedQuestion[]`
+   *
+   * ⚠️⚠️ **任何给 `questions.value` 赋值的地方都必须经过它**（2026-10-20 修的 bug）。
+   *
+   * 现象（用户口径）：「只刷错题 会变成题型无法识别 全部都一样」，截图里每一道题
+   * 都显示「未知题型 / 暂不支持该题型」。
+   *
+   * 根因：`transformQuestionForDisplay()` 负责把 `questionType`(数字 1~7) 映射成
+   * 组件认识的 `type`('single'/'multiple'/…) 并整理 options 等字段。
+   * `processQuestions` 的分支是 `slicedData.map(transformQuestionForDisplay)`，
+   * 但我在修 bug1 时让错题分支改走 `applyQuestionLimits()` —— 而那个函数里是
+   * **裸赋值** `questions.value = shuffled / slice(...)`，
+   * 于是 `questions` 里躺的是后端原始对象：没有 `type`、没有整理过的 options，
+   * 组件拿不到题型 → 每道题都渲染成「未知题型」。
+   *
+   * 修法：把转换收进这一个函数，`applyQuestionLimits` 的四个赋值点全部改用它。
+   * 这样「哪里赋值」不再重要 —— 只要都走这里，就不会再漏一次。
+   */
+  function toDisplayQuestions(raw: any[]): TransformedQuestion[] {
+    return (raw || []).map((q) => {
+      const processed = transformQuestionForDisplay(q)
+      return {
+        ...processed,
+        // 每次都重置答题态：换波/换筛选之后，上一波的作答不能带过来
+        answered: false,
+        correct: false,
+        showAnalysis: false,
+        userAnswer: null
+      } as TransformedQuestion
+    })
+  }
+
   function applyQuestionLimits(options: { resetOffset?: boolean } = {}): void {
     if (allQuestionsData.value.length === 0) {
       resetAnswers()
@@ -503,11 +536,10 @@ export function useQuestionPractice(
         const j = Math.floor(Math.random() * (i + 1));
         [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
       }
-      if (count === 'all') {
-        questions.value = shuffled
-      } else {
-        questions.value = shuffled.slice(0, count as number)
-      }
+      // ⚠️ 必须 toDisplayQuestions，不能裸赋值（见该函数的注释）
+      questions.value = toDisplayQuestions(
+        count === 'all' ? shuffled : shuffled.slice(0, count as number)
+      )
     } else if (offset >= allQuestionsData.value.length) {
       questions.value = []
       proxy.$modal.msgInfo('已刷完所有题目')
@@ -515,9 +547,13 @@ export function useQuestionPractice(
       loading.value = false
       return
     } else if (count && count !== 'all' && typeof count === 'number' && count < allQuestionsData.value.length) {
-      questions.value = allQuestionsData.value.slice(offset, offset + count)
+      // ⚠️ 同上：必须转换
+      questions.value = toDisplayQuestions(
+        allQuestionsData.value.slice(offset, offset + count)
+      )
     } else {
-      questions.value = allQuestionsData.value
+      // ⚠️ 同上：必须转换
+      questions.value = toDisplayQuestions(allQuestionsData.value)
     }
 
     resetAnswers()
