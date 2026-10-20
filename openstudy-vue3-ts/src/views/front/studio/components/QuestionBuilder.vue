@@ -748,6 +748,33 @@
 
             <!-- 内容展示区 -->
             <div class="stream-body-new" ref="streamBoxRef">
+              <!--
+                深度思考实时展示（2026-10-20）
+
+                用户口径：「要能够让用户看到 llm 深度思考的部分 目前 ai 获取数据后
+                  没法直接看到深度思考部分 必须等待好一会 才能看到正文内容
+                  就很影响用户等待体验」
+
+                开思考的模型要先推理几十秒才吐第一个正文字。原来这段时间只有一句
+                「请稍候...」，用户无法分辨"在干活"和"卡死了"。
+                现在把思考正文实时吐出来 —— 有字在动，等待就有意义。
+
+                ⚠️ 只在**已有思考内容**时显示，且和正文互不遮挡：
+                   · 有正文后思考卡片自动折叠（`aiThinkingOpen` 由代码置 false），
+                     把屏幕让给题目；
+                   · 用户可随时点开回看推理过程。
+              -->
+              <div v-if="aiGenerating && aiThinking" class="think-box">
+                <div class="think-box__head" @click="aiThinkingOpen = !aiThinkingOpen">
+                  <el-icon class="think-box__icon" :class="{ 'is-open': aiThinkingOpen }">
+                    <ArrowDown />
+                  </el-icon>
+                  <span class="think-box__title">深度思考中…</span>
+                  <span class="think-box__len">{{ aiThinking.length }} 字</span>
+                </div>
+                <div v-show="aiThinkingOpen" class="think-box__body">{{ aiThinking }}</div>
+              </div>
+
               <!-- 生成中：有内容时显示流式 JSON，无内容时显示 loading -->
               <pre v-if="aiGenerating && rawJsonContent" class="stream-content streaming">{{ rawJsonContent }}</pre>
               <div v-else-if="aiGenerating" class="generating-tip">
@@ -1120,6 +1147,18 @@ const currentId = ref(null)
 
 // AI 生成相关状态
 const aiGenerating = ref(false)
+/**
+ * 深度思考的**实时正文**（2026-10-20）
+ *
+ * 来源是后端 `\x1e@@THINK@@…\x1e` 标记里的增量（见 `chat_engine.THINK_OPEN`），
+ * 经 `generateQuestionsStreamFull` 的 `onThinking` 回调送达。
+ *
+ * ⚠️ 它**不是**题目内容，绝不能拼进 `rawJsonContent` ——
+ *    那样 JSON 前面会多出一大段推理，解析必失败。
+ */
+const aiThinking = ref('')
+/** 思考卡片是否展开：默认展开（用户要看"在动"），一旦出现正文就自动收起 */
+const aiThinkingOpen = ref(true)
 const streamBoxRef = ref(null)
 const generatedCount = ref(0)
 const pendingImportData = ref(null) // 暂存待导入的数据
@@ -2833,6 +2872,10 @@ const handleAiGenerate = async () => {
   parsedQuestionsForPreview.value = null
   editablePreviewData.value = null
   pendingImportData.value = null
+  // 思考状态必须**每次重新生成都清空**：上一次的推理留在界面上，
+  // 用户会误以为是这次的内容（尤其两次生成的题目主题相似时）。
+  aiThinking.value = ''
+  aiThinkingOpen.value = true
   aiGenerating.value = true
   viewMode.value = 'raw'
 
@@ -2905,8 +2948,30 @@ const handleAiGenerate = async () => {
 
       let prompt = mainInput
       if (materialText) {
+        /*
+         * 前端拼材料时的约束（2026-10-20 修「题干被'材料'污染」）
+         *
+         * 用户口径：「他出的题目被提示词污染了 连续好几道都说'材料 材料'
+         *   问题是我上传的文件只是一个参考材料 用户刷题的时候是看不到材料的」
+         *
+         * 实测废题：「材料中列为 O(n log n) 级别的排序算法包括？」——
+         * 学生做题时看不到材料，这题根本没法答。
+         *
+         * 后端 `prompts._material_rules()` 已经加了铁律，但**这条路径走的是
+         * `requirement`/`knowledge_point`**（材料由前端拼进正文），
+         * 不一定经过后端那段模板（custom 分支会带上，固定题型也会带，
+         * 但为了不依赖后端的拼接顺序，这里也把最关键的一条写在材料边界上）。
+         *
+         * 只保留**最关键**的一条，不复制后端那整套 —— 重复约束会让提示词臃肿，
+         * 反而稀释重点。
+         */
         prompt += '\n\n===== 参考材料开始 =====\n' + materialText + '\n===== 参考材料结束 =====' +
-          '\n\n（如果上面的材料与出题要求相关，请优先依据材料内容出题，并在解析中标注出处；' +
+          '\n\n（上面的材料只用于确定"考什么、答案是什么"，**学生做题时看不到它**。' +
+          '因此题目必须能独立作答：' +
+          '**禁止在题干或选项里出现"材料中/文中/上述/原文"这类指代**，' +
+          '要把具体内容直接写进题干。' +
+          '例如不要出"材料中列出的最短路径算法包括？"，' +
+          '而要出"下列算法中，属于最短路径算法的有？"。' +
           '材料未覆盖的部分可以按你的知识补充。）'
       }
 
@@ -2952,6 +3017,20 @@ const handleAiGenerate = async () => {
          *   两条通道互补，不冲突。
          */
         images: imageUrls.length ? imageUrls : undefined,
+        /*
+         * 深度思考增量（2026-10-20）
+         *
+         * 只累积到 `aiThinking`，**不碰 `rawJsonContent`** ——
+         * 思考正文混进 JSON 会让解析直接失败。
+         * 一旦出现正文，就把思考卡片自动收起，把屏幕让给题目
+         * （用户仍可点开回看）。
+         */
+        onThinking(delta) {
+          aiThinking.value += delta
+          if (rawJsonContent.value && aiThinkingOpen.value) {
+            aiThinkingOpen.value = false
+          }
+        },
         onChunk(fullContent) {
           rawJsonContent.value = fullContent
           nextTick(() => {
@@ -4387,6 +4466,84 @@ defineExpose({ questions, openAiDialog })
       &:hover {
         background: #c0c4cc;
       }
+    }
+  }
+
+  /*
+   * 深度思考卡片（2026-10-20）
+   *
+   * 视觉上要**明显区别于题目正文**，否则用户会以为这些推理就是要导入的题。
+   * 做法：浅灰底 + 斜体 + 等宽、左侧一条竖线（引用感），
+   * 与下方 `pre` 里的 JSON 形成"这是过程 / 那才是结果"的层次。
+   *
+   * 高度上限 180px：思考可能上千字，撑满会让正文完全看不见。
+   */
+  .think-box {
+    margin-bottom: 12px;
+    border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.06));
+    border-left: 3px solid var(--os-text-4, #9ca3af);
+    border-radius: var(--os-radius-sm, 4px);
+    background: var(--os-bg-subtle, #fafafa);
+    overflow: hidden;
+  }
+
+  .think-box__head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 12px;
+    color: var(--os-text-3);
+
+    &:hover {
+      background: rgba(0, 0, 0, 0.02);
+    }
+  }
+
+  .think-box__icon {
+    transition: transform 0.2s;
+    font-size: 12px;
+
+    &.is-open {
+      transform: rotate(0deg);
+    }
+
+    &:not(.is-open) {
+      transform: rotate(-90deg);
+    }
+  }
+
+  .think-box__title {
+    font-weight: 500;
+    color: var(--os-text-2);
+  }
+
+  .think-box__len {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--os-text-4, #9ca3af);
+  }
+
+  .think-box__body {
+    max-height: 180px;
+    overflow-y: auto;
+    padding: 0 10px 10px;
+    font-size: 12px;
+    line-height: 1.7;
+    font-style: italic;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--os-text-3);
+
+    &::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: var(--os-border);
+      border-radius: 2px;
     }
   }
 

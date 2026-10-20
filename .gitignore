@@ -105,3 +105,6 @@ openstudy-vue3-ts/.tmp-build/
 
 # sentence-transformers 运行时缓存（本地 embedding 模型加载时生成）
 openstudy-fastapi/data-gym-cache/
+
+# jieba 分词运行时缓存（RAG tokenize 生成）
+openstudy-fastapi/jieba.cache

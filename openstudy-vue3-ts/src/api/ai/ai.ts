@@ -128,7 +128,15 @@ async function postAiStream(
   opts: AiStreamOptions,
   onChunk?: (content: string) => void,
   onComplete?: (content: string) => void,
-  onError?: (error: any) => void
+  onError?: (error: any) => void,
+  /**
+   * 深度思考增量回调（2026-10-20）
+   *
+   * 与正文回调并列，而不是塞进 `AiStreamOptions`：
+   * 它是**流式回调**（可能被调用几百次），和 `opts` 里的配置项性质不同，
+   * 混在一起会让调用方误以为可以传个字符串进去。
+   */
+  onThinking?: (delta: string) => void
 ): Promise<string> {
   let full = ''
   try {
@@ -174,7 +182,9 @@ async function postAiStream(
       },
       onError,
       // 只用于错误提示里标明场景，便于定位是哪类请求出的问题
-      opts.scene
+      opts.scene,
+      // 深度思考增量：直接转给调用方（不传则被丢弃）
+      onThinking
     )
     return full
   } catch (error: any) {
@@ -188,7 +198,7 @@ async function postAiStream(
   }
 }
 
-export async function generateQuestionsStreamFull({ knowledgePoint, questionType, count, model, configId, userId, bankId, thinking, kbIds, requirement, images, onChunk, onComplete, onError }: {
+export async function generateQuestionsStreamFull({ knowledgePoint, questionType, count, model, configId, userId, bankId, thinking, kbIds, requirement, images, onThinking, onChunk, onComplete, onError }: {
   knowledgePoint: string
   questionType: string
   count: string | number
@@ -219,6 +229,13 @@ export async function generateQuestionsStreamFull({ knowledgePoint, questionType
    * 会把它转成 image content block 交给模型。塞进文本只会变成一串 base64 噪声。
    */
   images?: string[]
+  /**
+   * 深度思考增量回调（2026-10-20）
+   *
+   * 出题可能开深度思考，模型要先推理几十秒才吐第一个正文字 ——
+   * 这段时间把思考正文实时显示，用户才知道"在干活"。
+   */
+  onThinking?: (delta: string) => void
   onChunk?: (content: string) => void
   onComplete?: (content: string) => void
   onError?: (error: any) => void
@@ -250,7 +267,8 @@ export async function generateQuestionsStreamFull({ knowledgePoint, questionType
     },
     onChunk,
     onComplete,
-    onError
+    onError,
+    onThinking
   )
 }
 
@@ -514,6 +532,16 @@ function normalizeUserId(userId?: string | number): number | undefined {
   return Number.isFinite(n) && n > 0 ? n : undefined
 }
 
+  /*
+   * 深度思考增量的传输标记（2026-10-20）
+   *
+   * 与后端 `chat_engine.THINK_OPEN / THINK_CLOSE` **必须严格一致**。
+   * 后端用 ASCII 记录分隔符 `\x1e`(RS) 包裹思考正文，理由见那边的注释：
+   * 正文是纯文本流，混 JSON 事件会污染题目解析。
+   */
+  const THINK_OPEN = '\x1e@@THINK@@'
+  const THINK_CLOSE = '\x1e'
+
 /**
  * 消费助手的后端事件流（GET / POST 两个入口共用）
  *
@@ -529,7 +557,15 @@ async function consumeAssistantStream(
   onComplete?: (content: string) => void,
   onError?: (error: any) => void,
   /** 触发这次请求的场景名，仅用于错误提示里区分（可选） */
-  scene?: string
+  scene?: string,
+  /**
+   * 深度思考增量回调（2026-10-20）
+   *
+   * 开思考的模型要先推理几十秒才吐第一个正文字。这段时间把思考正文
+   * 实时显示出来，用户才知道"在干活"而不是"卡死了"。
+   * 不传就只当它不存在 —— 剥掉标记后照常走正文，绝不影响原有行为。
+   */
+  onThinking?: (delta: string) => void
 ): Promise<void> {
   if (!response.ok) {
     /*
@@ -600,13 +636,51 @@ async function consumeAssistantStream(
   const decoder = new TextDecoder()
   let fullContent = ''
   let streamError = ''
+  /**
+   * 未被闭合处理完的「思考标记」尾巴
+   *
+   * 分片可能在任意字节处切断：`\x1e@@THINK@@我是` | `半个标记`…
+   * 所以每轮先把上一轮的残留 pending 接上，再从头解析；
+   * 末尾不完整的那一节留到下一轮 —— 否则标记会被拆散、漏进正文。
+   */
+  let pending = ''
 
   while (true) {
     const { done, value } = await reader.read()
     if (done) break
 
-    let chunk = decoder.decode(value)
+    let chunk = pending + decoder.decode(value)
+    pending = ''
     if (!chunk) continue
+
+    /*
+     * ── 剥离「深度思考」增量（2026-10-20）─────────────────────────
+     *
+     * 后端把思考正文包在 `\x1e@@THINK@@…\x1e` 里下发（见 `chat_engine.THINK_OPEN`）。
+     * 它**不是正文**，必须剔掉，否则会混进题目 JSON 让解析失败。
+     *
+     * ⚠️ 必须处理"分片切断标记"的情况：
+     *    上一轮可能停在 `\x1e@@THI`，直接丢掉会永久损坏后续内容。
+     *    处理办法：末尾若出现不完整的标记头，截下来留到下一轮。
+     */
+    let thinkDelta = ''
+    for (;;) {
+      const start = chunk.indexOf(THINK_OPEN)
+      if (start < 0) break
+      const end = chunk.indexOf(THINK_CLOSE, start + THINK_OPEN.length)
+      if (end < 0) break // 标记未闭合 → 留给下一轮，本轮先不动它
+      thinkDelta += chunk.slice(start + THINK_OPEN.length, end)
+      chunk = chunk.slice(0, start) + chunk.slice(end + THINK_CLOSE.length)
+    }
+    // 末尾残留的半个标记头：切下来等下一片补齐
+    const tail = chunk.lastIndexOf(THINK_OPEN)
+    if (tail >= 0) {
+      pending = chunk.slice(tail)
+      chunk = chunk.slice(0, tail)
+    }
+
+    if (thinkDelta) onThinking?.(thinkDelta)
+
     // 本项目后端返回纯文本流，仅在结束时附带 [DONE] 标记
     chunk = chunk.replace(/\[DONE\]/g, '')
     if (!chunk) continue
