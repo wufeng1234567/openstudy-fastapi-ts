@@ -509,15 +509,26 @@
                 <div class="material-field">
                   <div class="material-field__label">从知识库取材</div>
                   <div class="material-row">
+                    <!--
+                      ⚠️⚠️ 字段名必须用后端 `_kb_brief` 的真实输出（2026-10-20 修 422）
+                      后端返回：{ kbId, name, description, docCount, chunkCount, ... }
+                      我原来写的是 `kb.id` / `kb.kbName` / `kb.documentCount` —— 全都不存在：
+                        · `:value="kb.id"` → **undefined** →
+                          选中后 kbIds = [undefined]，
+                          而后端 `kbIds: List[int]` 校验失败 → **HTTP 422**；
+                        · 名称侥幸能用，是因为 `kb.kbName || kb.name` 有 `kb.name` 兜底；
+                        · `docCount` 完全没显示（`kb.documentCount` 恒为 undefined）。
+                      教训：跨端字段名不能想当然，要对着 service 的 `_brief()` 抄。
+                    -->
                     <el-select v-model="aiForm.kbIds" multiple filterable clearable collapse-tags
                       collapse-tags-tooltip placeholder="选择一个或多个知识库（可不选）"
                       style="flex: 1" :disabled="aiGenerating" :loading="kbLoading">
-                      <el-option v-for="kb in kbList" :key="kb.id" :label="kb.kbName || kb.name"
-                        :value="kb.id">
+                      <el-option v-for="kb in kbList" :key="kb.kbId" :label="kb.name"
+                        :value="kb.kbId">
                         <span class="kb-option">
-                          <span class="kb-option__name">{{ kb.kbName || kb.name }}</span>
-                          <span class="kb-option__meta" v-if="kb.documentCount !== undefined">
-                            {{ kb.documentCount }} 篇
+                          <span class="kb-option__name">{{ kb.name }}</span>
+                          <span class="kb-option__meta" v-if="kb.docCount !== undefined">
+                            {{ kb.docCount }} 篇
                           </span>
                         </span>
                       </el-option>
@@ -620,9 +631,33 @@
                       </template>
                     </div>
                   </div>
-                  <div v-if="materialParsing" class="material-parsing">
-                    <el-icon class="is-loading"><Loading /></el-icon>
-                    正在解析…
+                  <!--
+                    解析中的等待提示（2026-10-20 用户反馈：
+                      「上传文件没有那种上传加载的过程 比如上传pdf 或者word
+                       就没有那种等待提示 图片上传到挺快的 可能和文件大小或者解析有关」）
+
+                    为什么需要它、为什么原来不够：
+                      原来只有一行小字「正在解析…」，而且**不带文件名**。
+                      但 PDF/Word 要走「上传后端 → 解析 → 抽取文本」，
+                      一份几十页的 PDF 可能等十几秒；图片则纯前端压缩，几乎瞬间完成。
+                      两者耗时差两个数量级，用户只会觉得"我传了但没反应，是不是坏了"。
+
+                    这一版做成**占据整行的进度条 + 文件名**：
+                      · 进度条给"确实在动"的确定感（不确定进度用条纹动画）；
+                      · 文件名让用户确认"在处理我传的那份"（多份时会连续出现）；
+                      · 文案区分"上传/解析"两阶段，避免以为卡死。
+                  -->
+                  <div v-if="materialParsing" class="material-parsing-box">
+                    <div class="material-parsing-box__head">
+                      <el-icon class="is-loading"><Loading /></el-icon>
+                      <span class="material-parsing-box__name">{{ materialParsingName || '文件' }}</span>
+                      <span class="material-parsing-box__stage">{{ materialParsingStage }}</span>
+                    </div>
+                    <el-progress :percentage="100" :show-text="false" :stroke-width="3"
+                      striped striped-flow :duration="12" class="material-parsing-box__bar" />
+                    <div class="material-parsing-box__hint">
+                      文档需要后端解析，页数越多越久；图片通常很快
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1668,6 +1703,18 @@ const kbLoading = ref(false)
  */
 const materialItems = ref([])
 const materialParsing = ref(false)
+
+/**
+ * 解析等待提示的两个辅助状态
+ *
+ * `materialParsingName` —— 正在处理的文件名。多份文件是**串行**处理的，
+ *   不带名字的话用户看到进度条闪一下又闪一下，不知道哪份好了。
+ * `materialParsingStage` —— 当前阶段（读取 / 上传解析 / 压缩）。
+ *   文档和图片耗时差两个数量级（文档走后端解析），
+ *   分阶段说明能让用户理解"为什么这份慢"，而不是怀疑卡死。
+ */
+const materialParsingName = ref('')
+const materialParsingStage = ref('正在解析…')
 /** 自增 id：给 v-for 做稳定 key（用 index 会在删除时错位，导致预览索引错乱） */
 let materialSeq = 0
 
@@ -1764,6 +1811,8 @@ const handleMaterialFileChange = async (uploadFile) => {
   const raw = uploadFile?.raw as File | undefined
   if (!raw) return
   materialParsing.value = true
+  materialParsingName.value = raw.name || '文件'
+  materialParsingStage.value = '正在读取…'
   try {
     const { parseDocFile, isDocFile } = await import('@/utils/doc-parse')
     const { fileToDataUrl, compressImageDataUrl, dataUrlByteSize, humanSize } =
@@ -1781,6 +1830,7 @@ const handleMaterialFileChange = async (uploadFile) => {
        *    （表现为"无法连接到页面"）。复用系统既有的 `compressImageDataUrl`，
        *    与 ChatFileUploader 同一套参数口径，视觉上几乎无损。
        */
+      materialParsingStage.value = '正在压缩图片…'
       const before = await fileToDataUrl(raw)
       const after = await compressImageDataUrl(before)
       if (dataUrlByteSize(after) > 800 * 1024) {
@@ -1811,7 +1861,12 @@ const handleMaterialFileChange = async (uploadFile) => {
      * ⚠️ 用 `textContent`（纯文本）而不是把 `blocks` 拼起来：
      *    blocks 是给**富预览**用的（含图片块），出题正文只需要文字。
      *    直接从 textContent 取，既省一次拼接，也避免把图片占位符混进提示词。
+     *
+     * ⚠️ 这一步是**唯一慢的地方**（文档要上传后端解析）：
+     *    用户感知到的"没有加载提示"就发生在这里。所以处理期间必须
+     *    让 `materialParsing` 保持 true 并显示文件名（见模板的进度条）。
      */
+    materialParsingStage.value = '正在上传并解析文档…'
     const parsed = await parseDocFile(raw)
 
     if (!parsed) {
@@ -1849,7 +1904,10 @@ const handleMaterialFileChange = async (uploadFile) => {
     console.error('[material] 处理素材失败：', e)
     ElMessage.error(`处理 ${raw.name} 失败：${e?.message || '未知错误'}`)
   } finally {
+    // 收尾：等待提示必须无条件关掉，否则解析失败时进度条会永远转下去
     materialParsing.value = false
+    materialParsingName.value = ''
+    materialParsingStage.value = '正在解析…'
   }
 }
 
@@ -2862,7 +2920,25 @@ const handleAiGenerate = async () => {
         thinking: deepThink.value,
         bankId: currentBankId.value,
         // 知识库取材：任何题型都可挂（后端检索后注入 source_context）
-        kbIds: aiForm.value.kbIds.length ? aiForm.value.kbIds : undefined,
+        /*
+         * ⚠️ 必须过滤成**纯净的正整数数组**（2026-10-20 修 422 的第二道防线）。
+         *
+         * 后端 `kbIds: List[int]` 是强校验：一旦混进 undefined / null / 字符串，
+         * FastAPI 直接 422，且错误信息只是 "value is not a valid integer" ——
+         * 用户完全不知道是自己选的知识库有问题。
+         *
+         * 根因（模板字段名写错 `kb.id` 而应为 `kb.kbId`）已经修了，但这里再兜一层：
+         *   · 过滤掉非数字项；
+         *   · 空数组就传 undefined（后端按"不取材"处理）。
+         * 这样即使将来后端起名又改、或列表返回脏数据，最多是"没带上知识库"，
+         * 而不是让整个出题请求挂掉。
+         */
+        kbIds: (() => {
+          const ids = (aiForm.value.kbIds || [])
+            .map((v: any) => Number(v))
+            .filter((n: number) => Number.isInteger(n) && n > 0)
+          return ids.length ? ids : undefined
+        })(),
         // 自定义出题：把完整需求单独传给后端模板（它据此走 custom 分支）
         requirement: isCustom ? prompt : undefined,
         /*
@@ -3962,13 +4038,62 @@ defineExpose({ questions, openAiDialog })
   }
 }
 
-.material-parsing {
+/*
+ * 解析等待提示（2026-10-20 用户反馈「上传 PDF/Word 没有等待提示」）
+ *
+ * 设计要点：
+ *   · **整行占位**而不是一行小字 —— 它表示"正在做一件可能十几秒的事"，
+ *     视觉重量要和这个时长匹配；
+ *   · 顶部一行放「文件名 + 阶段」，用户能确认在处理哪份、到哪一步；
+ *   · 中间是条纹流动的进度条（不确定进度，用 el-progress 的 striped-flow）；
+ *   · 底部一句解释，让用户理解"为什么文档慢、图片快"，避免怀疑卡死。
+ *
+ * 颜色全部用中性灰（不是 loading 蓝）：这是"等待"不是"成功/警告"。
+ */
+.material-parsing-box {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.06));
+  border-radius: var(--os-radius, 8px);
+  background: var(--os-bg-subtle, #fafafa);
+}
+
+.material-parsing-box__head {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 8px;
+  font-size: 13px;
+  color: var(--os-text-2);
+  margin-bottom: 8px;
+}
+
+.material-parsing-box__name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
+}
+
+.material-parsing-box__stage {
+  margin-left: auto;
+  flex: none;
   font-size: 12px;
-  color: var(--os-text-3);
+  color: var(--os-text-4, #9ca3af);
+}
+
+.material-parsing-box__bar {
+  margin-bottom: 6px;
+
+  :deep(.el-progress-bar__outer) {
+    background: var(--os-border-soft, rgba(0, 0, 0, 0.06));
+  }
+}
+
+.material-parsing-box__hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--os-text-4, #9ca3af);
 }
 
 /*

@@ -172,7 +172,9 @@ async function postAiStream(
         full = text
         onComplete?.(text)
       },
-      onError
+      onError,
+      // 只用于错误提示里标明场景，便于定位是哪类请求出的问题
+      opts.scene
     )
     return full
   } catch (error: any) {
@@ -525,9 +527,58 @@ async function consumeAssistantStream(
   response: Response,
   onChunk?: (content: string) => void,
   onComplete?: (content: string) => void,
-  onError?: (error: any) => void
+  onError?: (error: any) => void,
+  /** 触发这次请求的场景名，仅用于错误提示里区分（可选） */
+  scene?: string
 ): Promise<void> {
-  if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+  if (!response.ok) {
+    /*
+     * ⚠️⚠️ 这里必须**先读响应体再抛错**（2026-10-20 修）
+     *
+     * 改前是：
+     *     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+     * 于是 422 的响应体（FastAPI 的 `detail`，会指出**哪个字段**校验失败）
+     * 被完整丢弃，用户和支持者只能看到「HTTP error! status: 422」——
+     * 一条无法定位任何问题的错误信息。排查时正是卡在这里。
+     *
+     * 现在：解析出 detail/msg/message 后拼进错误文案。
+     * FastAPI 的 422 形如：
+     *   { "detail": [{ "loc": ["body","variables"], "msg": "value is not a valid dict", ... }] }
+     * 把它展开成 `variables: value is not a valid dict`，一眼能看出问题字段。
+     */
+    let detail = ''
+    try {
+      const raw = await response.text()
+      if (raw) {
+        try {
+          const body = JSON.parse(raw)
+          if (Array.isArray(body?.detail)) {
+            // FastAPI 校验错误：把每条 loc + msg 拼出来
+            detail = body.detail
+              .map((d: any) => {
+                const loc = Array.isArray(d?.loc) ? d.loc.filter((x: any) => x !== 'body').join('.') : ''
+                return loc ? `${loc}: ${d?.msg || ''}` : (d?.msg || '')
+              })
+              .filter(Boolean)
+              .join('；')
+          } else {
+            detail = body?.detail || body?.msg || body?.message || ''
+          }
+        } catch {
+          // 不是 JSON（例如 nginx 的错误页）→ 截一段原文，总比什么都没有强
+          detail = raw.slice(0, 200)
+        }
+      }
+    } catch {
+      /* 读不出响应体就退回原始状态码 */
+    }
+    const where = scene ? `（${scene}）` : ''
+    throw new Error(
+      detail
+        ? `请求失败 ${response.status}${where}：${detail}`
+        : `HTTP error! status: ${response.status}${where}`
+    )
+  }
 
   // 后端在「请求本身不合法」时（例如附件全部解析失败、且没写文字）返回的是
   // JSON 错误信封而不是事件流。若直接当正文解析，用户会看到一串原始 JSON，
