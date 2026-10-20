@@ -63,12 +63,19 @@
           </el-button>
         </template>
 
-        <!-- 考试模式：交卷按钮（非最后一题时显示） -->
-        <template v-else-if="isExamMode && !isLastQuestion">
+        <!--
+          考试模式：分数区
+          ⚠️ 交卷按钮已经移到下面 footer 的考试态区块（2026-10-20），
+             这里只保留分数占位，避免同一屏出现两个「交卷」。
+          ⚠️ 原来这里是 `v-else-if="isExamMode && !isLastQuestion"` ——
+             意味着**最后一题时交卷按钮消失**，用户做到最后一题反而没法交卷，
+             只能再点一遍"下一题"去触发别的路径。这是明显的逻辑漏洞，
+             现在交卷放在 footer 常驻（考试态一直可见），不再依赖"是不是最后一题"。
+        -->
+        <template v-else-if="isExamMode && !showExamResult">
           <div>答对：<span class="correct">{{ stats.correctCount }}</span>题</div>
           <div>答错：<span class="wrong">{{ stats.wrongCount }}</span>题</div>
           <div>正确率：<span class="rate">{{ stats.accuracy }}%</span></div>
-          <el-button size="small" @click="$emit('submit-exam')">交卷</el-button>
         </template>
 
         <!-- 默认统计（预览模式等） -->
@@ -97,16 +104,35 @@
     </template>
 
     <!--
-      底部：手动暂存
+      底部区块：练习态显示「暂存」，考试态显示「交卷引导」
       ================================================================
-      用户 2026-10-18：「位置不对，要改到底部去」。
-      原来放在头部右列，和「重新练习」挤在一起 —— 那个位置属于"导航类"动作，
-      而暂存是"对当前进度做一次写操作"，语义上应该收在面板末尾。
+      ⚠️ 为什么模拟考试**不能**有暂存按钮（2026-10-20 用户反馈：
+         「模拟考试不该出现暂存按钮 需要进行单独的优化」）：
 
-      正常刷题时进度会**静默自动保存**，这个按钮是"我就是想立刻存一下"的手动入口；
-      文案随 `draft-state` 变化：暂存 / 保存中… / 已暂存 / 暂存失败。
+        暂存按钮传达的是「你可以随时中断，进度会留着，回头接着做」——
+        这是**练习**的语义。而模拟考试考的是"限时、一次成型"：
+          · 有倒计时，中断了时间不会停；
+          · 中途可存 → 用户可以无限次暂停、翻书、查资料再回来，考试失去意义；
+          · 「进度会自动保存」这句话在考试里更是误导 ——
+            用户会以为自己能"先做一半，明天继续考"。
+
+        所以考试态：
+          · **不显示**暂存按钮与"自动保存"文案；
+          · 改成一枚中性的考试提示 + 「交卷」按钮（把唯一有意义的动作放到这里）。
+
+        ⚠️ 但底层的**答案保护**仍然保留（`PracticeComponent` 里的 draftSaver 照常工作）：
+          考试中途刷新/误关页面，回来答案还在。这是"技术上的防丢"，
+          不是"产品上的暂存功能" —— 不告诉用户，也不提供手动入口。
+          两者别混为一谈：前者是兜底，后者是承诺。
     -->
-    <div class="card-footer">
+    <div class="card-footer" v-if="isExamMode && !showExamResult">
+      <span class="draft-hint is-exam">
+        <el-icon><Timer /></el-icon>
+        考试进行中，中途离开不会暂停计时
+      </span>
+      <el-button size="small" type="primary" @click="$emit('submit-exam')">交卷</el-button>
+    </div>
+    <div class="card-footer" v-else-if="!isExamMode">
       <span class="draft-hint" v-if="draftState === 'saved'">进度已自动保存</span>
       <span class="draft-hint is-failed" v-else-if="draftState === 'failed'">保存失败，请检查浏览器存储</span>
       <span class="draft-hint" v-else>答题进度会自动保存</span>
@@ -120,7 +146,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import type { PropType } from 'vue'
-import { Grid, List } from '@element-plus/icons-vue'
+import { Grid, List, Timer } from '@element-plus/icons-vue'
 
 interface QuestionItem {
   id?: number | string
@@ -260,6 +286,20 @@ const getOverviewItemClass = (index: number) => {
 
     &.is-failed {
       color: var(--el-color-danger, #f56c6c);
+    }
+
+    /*
+     * 考试态提示：比普通 draft-hint 更"实"一些
+     *
+     * 练习态的提示是「进度已自动保存」—— 中性、可忽略。
+     * 考试态这句「中途离开不会暂停计时」是**用户需要知道的事实**，
+     * 所以给图标 + 略深的字色，让它有存在感但不喧宾夺主（不用警告色）。
+     */
+    &.is-exam {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--os-text-3, #6b7280);
     }
   }
 

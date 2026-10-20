@@ -481,11 +481,12 @@ function handleTimeUp() {
   }).then(() => {
     console.log(`[EXAM] 用户点击确定，提交试卷`)
     isTimeUpDialogShowing = false
-    handleSubmitExam()
+    // skipConfirm：时间已到，用户没有选择权，不再弹第二次确认
+    handleSubmitExam({ skipConfirm: true })
   }).catch(() => {
     console.log(`[EXAM] 弹窗被关闭，提交试卷`)
     isTimeUpDialogShowing = false
-    handleSubmitExam()
+    handleSubmitExam({ skipConfirm: true })
   })
 }
 
@@ -989,8 +990,16 @@ const handleSubmit = () => {
       overviewMode.value = true
     }
 
-    // 进入结算：判分 + 全部解析展开（见 handleSubmitExam 的实现）
-    handleSubmitExam()
+    /*
+     * 进入结算：判分 + 全部解析展开
+     *
+     * ⚠️ `skipConfirm: true`（2026-10-20）：
+     *   这里是**练习态**的「提交」，`handleSubmit` 已经做过一次
+     *   "有未答题"的确认（那是练习态的防误提交），这里再弹一次考试式的
+     *   "交卷后不能修改"就重复了，而且语义也不对（练习本来就能重练）。
+     *   考试态的确认由 `AnswerCard` 的「交卷」按钮走 —> handleSubmitExam() 自己弹。
+     */
+    handleSubmitExam({ skipConfirm: true })
 
     // 滚动到第一题，让用户从头核对（瀑布流里错题跳转由答题卡负责）
     nextTick(() => {
@@ -1216,7 +1225,20 @@ const draftSaver = createDraftSaver({
 })
 
 /** 手动暂存（答题卡面板的「暂存」按钮） */
+/**
+ * 手动暂存（答题卡底部按钮）
+ *
+ * ⚠️ 考试态直接拒绝（2026-10-20）：
+ *   界面上考试态已经不显示暂存按钮了（见 `AnswerCard` 的 `v-if="isExamMode"` 分支），
+ *   但这里仍然防守一次 —— 原因是"按钮不显示"靠的是模板条件，
+ *   任何人以后新增一个入口（快捷键 / 右键菜单 / 别的组件调它）都会绕过那个条件，
+ *   而"考试中途可存"是**产品语义上的错误**，不该只靠 UI 拦。
+ *
+ *   注意：这不代表考试过程的答案不保护。`draftSaver` 的自动写盘照常工作，
+ *   刷新回来答案还在 —— 那是技术兜底，不是给用户的"暂存"功能。两者不是一回事。
+ */
 const handleManualSaveDraft = () => {
+  if (isExamMode.value) return
   const ok = draftSaver.flush()
   if (ok) ElMessage.success('已暂存当前练习进度')
   // 失败提示已在 onStateChange 里统一处理，这里不重复弹
@@ -1435,14 +1457,65 @@ watch(
   }
 )
 
-const handleSubmitExam = () => {
-  showAllAnalysis()
-  const score = Math.round((correctCount.value / totalQuestions.value) * 100)
-  totalScore.value = score
-  showExamResult.value = true
-  // 清除考试计时器存储
-  clearExamStorage()
-  stopExamTimer()
+/**
+ * 交卷（判分 + 出成绩）
+ * ============================================================================
+ * ⚠️ 不能直接判分，必须先确认（2026-10-20 加的）：
+ *
+ *   改前是「点一下交卷 → 立刻判分出成绩」，中间没有任何阻挡。
+ *   这在模拟考试里是个**不可逆**的操作：倒计时还在跑、手里可能还有没答的题，
+ *   误点一下就再也回不去了（`showExamResult` 一旦为 true，
+ *   答题状态就被结算态覆盖）。
+ *
+ *   所以分成两条路径：
+ *     · **时间到**（`handleTimeUp` 调它）→ 直接判分，不问 ——
+ *       考试时间已经用尽，用户没有选择权，问一遍是多余的骚扰；
+ *     · **用户主动交卷** → 先确认，并把"还有几道没答"明确告诉他，
+ *       让他有机会返回补答。这是考试产品最基本的防误触。
+ *
+ *   确认框的文案尽量"可决策"：说清楚未答数量和后果（交卷后不能修改），
+ *   而不是干巴巴一句"确定交卷吗"。
+ */
+const handleSubmitExam = (options: { skipConfirm?: boolean } = {}) => {
+  const doSubmit = () => {
+    showAllAnalysis()
+    const score = Math.round((correctCount.value / totalQuestions.value) * 100)
+    totalScore.value = score
+    showExamResult.value = true
+    // 清除考试计时器存储
+    clearExamStorage()
+    stopExamTimer()
+  }
+
+  // 时间到 → 直接判分（用户没有选择权，见上面的注释）
+  if (options.skipConfirm) {
+    doSubmit()
+    return
+  }
+
+  /*
+   * 主动交卷 → 确认。
+   *
+   * 用 `totalQuestions - answeredCount` 算未答数量：
+   * 这两个都是"当前这一波/整场"的口径，和答题卡上显示的数字一致，
+   * 不会出现"提示说 3 道没答、答题卡显示 2 道"这种自相矛盾。
+   */
+  const unanswered = Math.max(0, totalQuestions.value - answeredCount.value)
+  const tip = unanswered > 0
+    ? `还有 ${unanswered} 道题没有作答。\n交卷后不能修改答案，确定现在交卷吗？`
+    : '所有题目都已作答。\n交卷后不能修改答案，确定交卷吗？'
+
+  ElMessageBox.confirm(tip, '确认交卷', {
+    confirmButtonText: '确认交卷',
+    cancelButtonText: '继续答题',
+    type: unanswered > 0 ? 'warning' : 'info',
+    // 交卷是重要动作，先别让用户误关（点空白处不关闭）
+    closeOnClickModal: false
+  })
+    .then(() => doSubmit())
+    .catch(() => {
+      // 用户选择继续答题 → 什么都不做，保持当前进度
+    })
 }
 
 // 结束考试：清空模拟考试缓存并关闭
