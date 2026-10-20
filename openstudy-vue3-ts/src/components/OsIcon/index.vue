@@ -69,6 +69,11 @@ const ICONS: Record<string, string> = {
 
   // 操作 / 状态
   plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  // 下载 / 文件 —— 对话里「产物卡片」的下载按钮要用（2026-10-20，题库导出接入 Agent）
+  download:
+    '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+  'file-text':
+    '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
   'arrow-up': '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
   'arrow-right': '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
   'arrow-left': '<path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>',

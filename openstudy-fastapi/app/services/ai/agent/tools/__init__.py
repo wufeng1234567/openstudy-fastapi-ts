@@ -14,6 +14,7 @@ Agent 内置工具集
 
 from app.services.ai.agent.registry import registry
 from app.services.ai.agent.tools.agent_manage import AgentManageTool
+from app.services.ai.agent.tools.bank_export import BankExportTool
 from app.services.ai.agent.tools.bank_manage import BankManageTool
 from app.services.ai.agent.tools.bank_share_manage import BankShareManageTool
 from app.services.ai.agent.tools.delegate import DelegateTaskTool
@@ -46,6 +47,12 @@ registry.register(BankShareManageTool())
 # —— 2026-10-09 放行「从文本 / 附件写入知识库」能力（`knowledge_base_manage` 曾刻意封禁，
 #    原因涉付费 embedding；本次按方案 B（解析落库同步 + 向量化后台）放行，见该模块 docstring）
 registry.register(KnowledgeIngestTool())
+# —— 2026-10-20 题库导出：把「页面上那个导出按钮」接进对话。
+#    ⚠️ 它与 `bank_manage` 是**两个工具**而不是给 `bank_manage` 加一个 `export` action：
+#    导出的产物是**文件**（要落盘、要下载链接），而 `bank_manage` 的每个 action 都在
+#    改题库本身；混在一起会让「导出」被误当成一次写库操作，也让那个工具的描述更长
+#    （描述越长，模型选错 action 的概率越高）。见 `bank_export.py` 模块说明。
+registry.register(BankExportTool())
 # —— 2026-10-09 指挥家模式：`delegate_task` 是**元工具**（指挥家把任务派给子代理）。
 #    ⚠️ 它**不参与任何角色的工具白名单**：`orchestrator.compute_exclude` 会把它永远排除，
 #    只有指挥家模式由 `loop` 单独挂上（防子代理递归委派）。见 delegate.py 模块说明。
@@ -53,6 +60,7 @@ registry.register(DelegateTaskTool())
 
 __all__ = [
     "AgentManageTool",
+    "BankExportTool",
     "BankManageTool",
     "BankShareManageTool",
     "DelegateTaskTool",

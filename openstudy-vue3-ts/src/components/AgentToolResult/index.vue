@@ -52,6 +52,33 @@
       <div v-for="(err, i) in errors" :key="i" class="at-error-line">· {{ err }}</div>
     </div>
 
+    <!--
+      ③ 产物卡片（`bank_export` 等「产出文件」的工具）
+      ==================================================================
+      为什么单独一层而不是塞进详情里：
+        详情是「点开才看」的调试信息，而**文件本身就是这次操作的成果**。
+        用户说「导出这个题库」，他要的不是一行「导出完成」，是那个能下载的文件。
+        把它折叠进「查看详情」等于把成品藏起来，只给看流水账。
+
+      为什么不显示原始 `downloadUrl`：
+        那是一条 `/profile/export/2026/10/20/<uuid>_题库名.docx`。让人复制粘贴这种
+        路径是给开发者用的，不是给学习者用的。点按钮下载才是正常的交互。
+    -->
+    <div v-if="artifact" class="at-artifact">
+      <span class="at-artifact-icon" aria-hidden="true">
+        <OsIcon name="file-text" :size="15" />
+      </span>
+      <span class="at-artifact-main">
+        <span class="at-artifact-name">{{ artifact.fileName }}</span>
+        <span class="at-artifact-meta">{{ artifact.meta }}</span>
+      </span>
+      <button type="button" class="at-artifact-btn" :disabled="downloading" @click="downloadArtifact">
+        <span v-if="downloading" class="at-artifact-spinner" aria-hidden="true"></span>
+        <OsIcon v-else name="download" :size="13" />
+        <span>{{ downloading ? '下载中…' : '下载' }}</span>
+      </button>
+    </div>
+
     <!-- ③ 入参 / 返回（渲染成人能看的形式，不是 JSON） -->
     <div v-if="hasDetails" class="at-details">
       <span class="at-toggle" @click="expanded = !expanded">
@@ -75,8 +102,11 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import axios from 'axios'
+import { ElMessage } from 'element-plus'
 import AgentToolDetail from '@/components/AgentToolDetail/index.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
+import { getToken } from '@/utils/auth'
 
 const props = defineProps({
   tool: { type: String, default: '' },
@@ -156,6 +186,8 @@ const TOOL_LABELS: Record<string, string> = {
   // 内容入库（knowledge_ingest.py）：与管理知识库的 knowledge_base_manage 分工
   knowledge_ingest: '写入知识库',
   bank_share_manage: '题库分享',
+  // 题库导出（bank_export.py）：产出文件，卡片上有独立的「产物行 + 下载按钮」
+  bank_export: '题库导出',
   // 只读检索类：它们没有 action 参数，卡片上只有工具名这一层
   knowledge_search: '知识库检索',
   memory_search: '记忆检索',
@@ -212,6 +244,8 @@ const ACTION_LABELS: Record<string, string> = {
   revoke: '撤销分享',
   receive: '领取分享',
   copy: '复制题库',
+  // bank_export（导出成文件；两个版本的文案不同，让用户在卡片上一眼分清）
+  export: '导出文件',
   // delegate_task（指挥家派发专家）
   delegate: '派发'
 }
@@ -343,6 +377,89 @@ const hasDetails = computed(() => nonEmpty(props.params) || nonEmpty(props.data)
 
 const hasParams = computed(() => nonEmpty(props.params))
 const hasData = computed(() => nonEmpty(props.data))
+
+/* ============================================================
+ * 产物卡片（工具产出了**文件**，如 bank_export 的 Word / PDF）
+ * ============================================================ */
+
+/**
+ * 这个工具的返回里是否有「一份可下载的文件」
+ *
+ * 判据落在 `downloadUrl` 上，而不是「tool === 'bank_export'」：
+ * 将来任何工具（学情报告 PDF、笔记导出、错题本导出）只要回执里给 `downloadUrl`，
+ * 就自动获得这张卡片，不必回来改这里。工具的**输出契约**比工具名稳定。
+ */
+const artifact = computed(() => {
+  if (props.status !== 'ok') return null
+  const d = props.data
+  if (!d || typeof d !== 'object') return null
+  const url = typeof d.downloadUrl === 'string' ? d.downloadUrl.trim() : ''
+  if (!url) return null
+
+  const format = String(d.format || '').toLowerCase()
+  const parts: string[] = []
+  if (d.version) parts.push(String(d.version))
+  if (d.questionCount) parts.push(`${d.questionCount} 道题`)
+  if (d.fileSizeText) parts.push(String(d.fileSizeText))
+
+  return {
+    url,
+    format,
+    fileName: String(d.fileName || (format === 'pdf' ? '导出文件.pdf' : '导出文件.docx')),
+    meta: parts.join(' · ')
+  }
+})
+
+const downloading = ref(false)
+
+/**
+ * 下载产物
+ *
+ * ⚠️ 必须走 axios **带 Authorization 头**再转 Blob，不能直接
+ *     `window.open(url)` / `<a download>`：`/profile/**` 是静态挂载，
+ *     但整站接口都要登录态；直接开新窗口会拿到 401 的 JSON 而不是文件
+ *     （而且跨域场景下那个错误会被浏览器静默吞掉，用户只会觉得「点了没反应」）。
+ */
+const downloadArtifact = async () => {
+  const a = artifact.value
+  if (!a || downloading.value) return
+  downloading.value = true
+  try {
+    const resp = await axios.get(`${import.meta.env.VITE_APP_BASE_API}${a.url}`, {
+      responseType: 'blob',
+      timeout: 180000,
+      headers: getToken() ? { Authorization: 'Bearer ' + getToken() } : {}
+    })
+    const blob: Blob = resp.data
+    if (!blob || typeof blob.slice !== 'function') {
+      ElMessage.error('下载失败：服务端未返回文件')
+      return
+    }
+    // 服务端出错时回来的是 JSON（不是文件），不能存成 .docx 让用户打开时发现损坏
+    if (blob.type && blob.type.includes('application/json')) {
+      try {
+        const json = JSON.parse(await blob.text())
+        ElMessage.error(json?.msg || '下载失败')
+      } catch {
+        ElMessage.error('下载失败')
+      }
+      return
+    }
+    const href = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = href
+    link.download = a.fileName
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    // 延迟回收：立刻 revoke 在部分浏览器里会让下载中断
+    setTimeout(() => URL.revokeObjectURL(href), 4000)
+  } catch (e: any) {
+    ElMessage.error(e?.message ? `下载失败：${e.message}` : '下载失败')
+  } finally {
+    downloading.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -513,13 +630,97 @@ const hasData = computed(() => nonEmpty(props.data))
   font-variant-numeric: tabular-nums;
 }
 
-/* ===================== 第三层：错误 / 详情 ===================== */
+/* ===================== 第三层：错误 / 产物 / 详情 ===================== */
 .at-errors {
   margin-top: 7px;
   font-size: 12px;
   color: #b91c1c;
   line-height: 1.7;
   overflow-wrap: anywhere;
+}
+
+/*
+ * 产物行（工具产出了文件）—— 一行：图标 + 文件名/元信息 + 下载按钮
+ *
+ * 刻意**不加**底色与描边（与工具卡片本身同一条原则：Agent 输出不套白框）。
+ * 分隔靠「与上一行的间距 + 文件名加粗」，不靠画一个盒子。
+ */
+.at-artifact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  max-width: 100%;
+}
+
+.at-artifact-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--os-text-3, #6b7280);
+}
+
+.at-artifact-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.at-artifact-name {
+  font-size: 12.5px;
+  color: var(--os-text, #111827);
+  font-weight: 500;
+  /* 题库名可能很长 —— 省略而不是撑破卡片 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+
+.at-artifact-meta {
+  font-size: 11.5px;
+  color: var(--os-text-4, #9ca3af);
+  white-space: nowrap;
+}
+
+.at-artifact-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 9px;
+  font-size: 12px;
+  color: var(--os-text-2, #4b5563);
+  background: transparent;
+  border: 1px solid var(--os-border, #0000001a);
+  border-radius: var(--os-radius-sm, 6px);
+  cursor: pointer;
+  transition: background var(--ds-duration-base, 0.15s) ease,
+    border-color var(--ds-duration-base, 0.15s) ease;
+}
+
+.at-artifact-btn:hover:not(:disabled) {
+  background: var(--os-fill, #f3f4f6);
+  border-color: var(--os-border-strong, #00000033);
+}
+
+.at-artifact-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.at-artifact-spinner {
+  width: 10px;
+  height: 10px;
+  border: 1.75px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: at-spin 0.7s linear infinite;
 }
 
 .at-details {

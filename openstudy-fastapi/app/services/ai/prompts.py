@@ -456,6 +456,27 @@ AGENT_WORKFLOW_RULES = """## Workflow Rules (MUST FOLLOW STRICTLY)
    action `save_draft`. `create` makes a FINISHED note that instantly appears in the user's note
    list — do NOT use it for drafts. (This is the #1 recurring mistake: turning "save a draft" into
    a real published note.)
+10. **Exporting to Word / PDF is `bank_export`, and it is a verb the user will actually use.**
+    "export / download / save as Word / make a paper / print it out / send a version to the
+    students" all mean ONE thing: call `bank_export` with the bank id.
+    - **Resolve the id first, never guess it.** "Export my Java bank" → if you do not already
+      know that bank's id from this conversation, call `bank_manage` action=list first. An
+      invented id either fails or, worse, exports the wrong bank.
+    - **`with_answers` is a real product decision, not a formatting detail.** A teacher handing
+      a paper to students needs the version WITHOUT answers; a teacher preparing a lesson needs
+      the one WITH. When the user says "student copy" / "no answers" / "for the class" / the
+      Chinese equivalents, pass `with_answers=false`. When they say nothing, default (true) is
+      right — do not ask a question just to find out, produce the teacher copy and mention in
+      one short sentence that a no-answer version is also available.
+    - **Both versions requested → TWO calls, not one.** "给我一份带答案的和一份不带答案的"
+      means call `bank_export` twice (same bank, different `with_answers`). Do not promise two
+      files from one call.
+    - **Report it as a file that is ready, never as a URL.** The tool returns `downloadUrl`, but
+      pasting a raw path into chat is noise — say the file is ready to download and let the card
+      show the button.
+    - **Never claim a file exists unless the tool succeeded.** If `bank_export` returns a failure
+      (empty bank, permission denied, render error), say so plainly; do not describe a document
+      you did not produce.
 
 ## Available Tools
 {{TOOLS}}"""

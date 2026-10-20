@@ -117,12 +117,19 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
     "bank": RoleSpec(
         key="bank",
         name="题库专家",
-        description="帮你建题库、导入题目、改题删题，也能整理错题本和收藏，还能根据你的资料出题",
+        description=(
+            "帮你建题库、导入题目、改题删题，也能整理错题本和收藏，还能根据你的资料出题，"
+            "以及把题库导出成 Word / PDF 试卷"
+        ),
         tools=(
             "bank_manage",
             "question_manage",
             "question_flag_manage",
             "knowledge_search",
+            # 2026-10-20：导出是**题库域**最常用的收尾动作（「出完题，导出来发给我」）。
+            # 不挂在这里的话，用户必须换到「通用」角色才导得出，而路由是按关键词走的 ——
+            # 消息里只要带「题库」二字就会被路由到 bank 角色，于是「导出题库」永远够不着导出工具。
+            "bank_export",
         ),
         capability=(
             "Question banks and questions. Use it when the user wants to: create or "
@@ -132,7 +139,10 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
             "questions generated FROM THEIR OWN MATERIALS — e.g. 'make questions based "
             "on my textbook', 'use the document I uploaded', '出题 based on my knowledge "
             "base'. In that case first call `knowledge_search` to pull the source "
-            "passages, then build the questions from that text (never from memory)."
+            "passages, then build the questions from that text (never from memory). "
+            "ALSO use it when the user wants a bank EXPORTED as a Word/PDF file "
+            "('导出这个题库', '生成试卷', '给我一份打印版', '发一份无答案的给学生') — that is "
+            "`bank_export`."
         ),
         persona=(
             "You are the Question Bank Specialist of OpenStudy. You manage the user's "
