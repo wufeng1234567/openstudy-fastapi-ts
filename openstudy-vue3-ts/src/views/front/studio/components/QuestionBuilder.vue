@@ -341,7 +341,18 @@
       <!-- 内部滚动区域：包含所有配置项 + 流式输出 -->
       <div class="dialog-scroll-area">
         <el-form label-position="top" :model="aiForm" :rules="aiRules" ref="aiFormRef">
-          <!-- 题型选择 -->
+          <!--
+            题型选择
+            ==================================================================
+            2026-10-20 新增 `custom`（素材出题）：用户不想描述"知识点"，
+            而是想让 AI **基于自己手上的材料**出题（某份讲义 / 某个知识库）。
+
+            为什么放在「题型」里而不是另开一个入口：
+              用户的真实心智是"我要生成什么" → 先选题型。素材只是**出题依据**，
+              和"知识点"处于同一层级（都是告诉 AI 出什么题的输入）。
+              另开一个并列按钮会让用户以为那是两套流程，而其实后面完全一样
+              （同样流式生成 → 同样预览 → 同样导入）。
+          -->
           <el-form-item label="题型" prop="questionType">
             <el-select v-model="aiForm.questionType" style="width: 100%" @change="onAiTypeChange">
               <el-option label="单选题" value="single" />
@@ -350,6 +361,13 @@
               <el-option label="填空题" value="fill" />
               <el-option label="简答题" value="essay" />
               <el-option label="组合题（大题套小题）" value="composite" />
+              <!-- 素材出题：从知识库/文档取材，而不是凭空生成 -->
+              <el-option label="从我的材料出题（知识库 / 文档）" value="custom">
+                <span class="opt-with-hint">
+                  从我的材料出题
+                  <span class="opt-hint">知识库 · 文档</span>
+                </span>
+              </el-option>
             </el-select>
           </el-form-item>
 
@@ -378,8 +396,126 @@
             </div>
           </div>
 
+          <!--
+            素材出题配置（questionType === 'custom'）
+            ==================================================================
+            2026-10-20 新增。用户口径：
+              「题型选择下拉框里面 要添加一个自定义选项 支持用户自己添加材料
+               （并且要链接知识库 以及 可以支持直接上传word、pdf、md之类的文档
+               直接创建对应的题库）文字说明 进行相应的创作」
+              「怎么更好满足用户不想用智能体对话的时候 只想自己手动操作导入的时候
+               怎么方便用户使用 要有灵活性」
+
+            设计要点（为什么是"两个来源 + 一段补充说明"）：
+              · **知识库** = 已经在系统里的资料。选中即用，不重复上传 ——
+                这是最省事的一条路，也是最该被优先满足的。
+              · **文档** = 手上临时有的文件。上传后当场解析成文本。
+                用户常见的真实场景是"老师刚发了个 pdf，我想出几道题"，
+                不该强迫他先建知识库、再上传、再回来选。
+              · **补充说明** = 灵活性的出口。有人要"只出第 3 章的内容"、
+                "难度偏难"、"带计算题"，这些用一段自然语言表达最自然，
+                不该做成一堆单选框。
+
+            ⚠️ 两种来源可以**同时用**（知识库 + 文档），内容会合并。
+               真实场景：整门课的知识库 + 今天这节课的补充讲义。
+          -->
+          <template v-if="aiForm.questionType === 'custom'">
+            <!-- 来源一：知识库 -->
+            <el-form-item label="从知识库取材">
+              <div class="material-block">
+                <div class="material-row">
+                  <el-select v-model="aiForm.kbIds" multiple filterable clearable collapse-tags
+                    collapse-tags-tooltip placeholder="选择一个或多个知识库（可不选）"
+                    style="flex: 1" :disabled="aiGenerating" :loading="kbLoading" @change="onKbChange">
+                    <el-option v-for="kb in kbList" :key="kb.id" :label="kb.kbName || kb.name"
+                      :value="kb.id">
+                      <span class="kb-option">
+                        <span class="kb-option__name">{{ kb.kbName || kb.name }}</span>
+                        <span class="kb-option__meta" v-if="kb.documentCount !== undefined">
+                          {{ kb.documentCount }} 篇
+                        </span>
+                      </span>
+                    </el-option>
+                  </el-select>
+                  <el-button size="small" text :loading="kbLoading" @click="loadKnowledgeBases">
+                    刷新
+                  </el-button>
+                </div>
+                <div class="form-hint" v-if="kbList.length === 0 && !kbLoading">
+                  还没有知识库。<router-link to="/front/agent/chat" class="material-link">
+                    在对话里让助手帮你建一个
+                  </router-link>，或直接用下面的文档上传。
+                </div>
+                <div class="form-hint" v-else-if="aiForm.kbIds.length">
+                  已选 {{ aiForm.kbIds.length }} 个知识库，出题时会检索其中的相关内容并把出处标在解析里。
+                </div>
+              </div>
+            </el-form-item>
+
+            <!-- 来源二：临时文档 -->
+            <el-form-item label="上传文档">
+              <div class="material-block">
+                <el-upload drag :auto-upload="false" :show-file-list="false" multiple
+                  accept=".txt,.md,.pdf,.docx,.doc" :on-change="handleMaterialFileChange"
+                  :disabled="aiGenerating" class="material-upload">
+                  <div class="material-upload__inner">
+                    <el-icon class="material-upload__icon"><Upload /></el-icon>
+                    <div class="material-upload__text">
+                      拖入 <em>Word / PDF / Markdown / TXT</em>，或点击选择
+                    </div>
+                    <div class="material-upload__hint">
+                      文件只在本次生成时作为素材，不会自动存进知识库
+                    </div>
+                  </div>
+                </el-upload>
+
+                <!-- 已解析的文档：显示字符数，让用户确认"确实读进去了" -->
+                <div v-if="materialDocs.length" class="material-doc-list">
+                  <div v-for="(doc, i) in materialDocs" :key="i" class="material-doc">
+                    <el-icon class="material-doc__icon"><Document /></el-icon>
+                    <span class="material-doc__name">{{ doc.fileName }}</span>
+                    <span class="material-doc__meta">
+                      {{ doc.content.length }} 字符
+                      <template v-if="doc.note"> · {{ doc.note }}</template>
+                    </span>
+                    <el-button text size="small" type="danger" :disabled="aiGenerating"
+                      @click="removeMaterialDoc(i)">
+                      移除
+                    </el-button>
+                  </div>
+                </div>
+                <div v-if="materialParsing" class="material-parsing">
+                  <el-icon class="is-loading"><Loading /></el-icon>
+                  正在解析文档…
+                </div>
+              </div>
+            </el-form-item>
+
+            <!-- 补充要求：灵活性的出口 -->
+            <el-form-item label="补充要求（可选）">
+              <el-input v-model="aiForm.customRequirement" type="textarea" :rows="3"
+                placeholder="例如：只考第三章的内容；难度偏难，多出应用题；每题解析里要说明对应哪个知识点"
+                :disabled="aiGenerating" maxlength="500" show-word-limit />
+            </el-form-item>
+
+            <el-form-item label="生成数量">
+              <el-input-number v-model="aiForm.count" :min="1" :max="20" style="width: 100%"
+                :disabled="aiGenerating" />
+            </el-form-item>
+
+            <!-- 素材为空时的兜底提示：明确告诉用户还缺什么，而不是让他点生成后失败 -->
+            <el-alert v-if="!hasMaterial()" type="warning" :closable="false" class="material-empty-alert">
+              <template #title>
+                请至少选择 1 个知识库，或上传 1 份文档
+              </template>
+              <div class="form-hint" style="margin-top: 4px">
+                没有素材时 AI 只能凭空编题，容易脱离你的实际教学内容。
+              </div>
+            </el-alert>
+          </template>
+
           <!-- 普通题型配置 -->
-          <template v-if="aiForm.questionType !== 'composite'">
+          <template v-else-if="aiForm.questionType !== 'composite'">
             <el-form-item label="知识点" prop="knowledgePoint">
               <el-input v-model="aiForm.knowledgePoint" placeholder="例如：Java 多态、三角函数、英语时态" :disabled="aiGenerating"
                 maxlength="200" show-word-limit />
@@ -667,9 +803,11 @@
 <script setup lang="ts">
 import { ref, shallowRef, computed, watch, nextTick, onMounted, onBeforeUnmount, markRaw } from 'vue'
 import draggable from 'vuedraggable'
-import { Rank, InfoFilled, Delete, Search, MagicStick, Plus, Loading, Close, CircleCheck, Check, QuestionFilled, EditPen, ChatDotRound, FolderOpened, DocumentCopy, ArrowDown, Clock, VideoPause, VideoPlay, Setting, FullScreen, Grid, RefreshLeft } from '@element-plus/icons-vue'
+import { Rank, InfoFilled, Delete, Search, MagicStick, Plus, Loading, Close, CircleCheck, Check, QuestionFilled, EditPen, ChatDotRound, FolderOpened, DocumentCopy, ArrowDown, Clock, VideoPause, VideoPlay, Setting, FullScreen, Grid, RefreshLeft, Upload, Document } from '@element-plus/icons-vue'
 import { generateQuestionsSync, generateReadingComprehensionSync } from '@/api/ai/ai'
 import { ElMessage, ElNotification, ElMessageBox } from 'element-plus'
+// 素材出题（questionType='custom'）要用知识库列表：拉用户自己的库供选择
+import { listKnowledgeBases } from '@/api/ai/rag'
 import { getBankContextInfo, clearBankConversation, generateQuestionsWithContext, generateQuestionsStreamFull, generateCompositeStreamFull } from '@/api/ai/ai'
 import AiThinkingToggle from '@/components/AiThinkingToggle/index.vue'
 import AiModelSelector from '@/components/AiModelSelector/index.vue'
@@ -1173,15 +1311,43 @@ const aiDialogVisible = ref(false)
 const deepThink = ref(localStorage.getItem('openstudy_ai_thinking') === '1')  // 深度思考开关（跟随全局偏好）
 
 const aiFormRef = ref(null)
-const aiForm = ref({
+
+/**
+ * AI 出题表单的默认值（**唯一来源**）
+ *
+ * ⚠️ 为什么要有这个工厂函数（2026-10-20 踩了坑才抽出来）：
+ *   这个表单的字面量原来在文件里出现**两次** ——
+ *   一次是 `aiForm` 的声明，一次是 `openAiDialog()` 里的整体替换。
+ *   我加「素材出题」字段时只改了声明，忘了 `openAiDialog`，
+ *   于是每次打开弹窗，新字段都被那次赋值**静默抹掉**：
+ *     源码里有 `kbIds`、运行时 `Object.keys(aiForm)` 却没有。
+ *   现象极像"dev server 给了旧代码"，害我查了一小时的构建缓存。
+ *
+ *   抽成工厂后，加字段只需要改这里一处，从根上消除这份重复。
+ *   以后**不要**再在别处手写这个对象字面量。
+ */
+const createDefaultAiForm = () => ({
   questionType: 'single',
   knowledgePoint: '',
   count: 3,
   model: '',
   compositeRequirement: '',
   wordCount: 200,
-  subCount: 5
+  subCount: 5,
+  /*
+   * ↓ 素材出题（`questionType === 'custom'`）用到的字段
+   *
+   * kbIds / customRequirement 与上面的 knowledgePoint 是**并列的输入渠道**，
+   * 不要合并：生成时它们会拼成不同段落注入提示词
+   * （素材 → 作为 source_context；补充要求 → 追加在用户指令后面）。
+   */
+  /** 选中的知识库 id（多选，可空） */
+  kbIds: [],
+  /** 自由补充要求（难度/范围/风格…，可空） */
+  customRequirement: ''
 })
+
+const aiForm = ref(createDefaultAiForm())
 
 // 选中的 AI 配置 id（区分同名系统/用户模型）；由 AiModelSelector 的 @select 提供
 const selectedConfigId = ref(null)
@@ -1205,15 +1371,30 @@ const aiRules = computed(() => {
         { max: 200, message: '不能超过200个字符', trigger: 'blur' }
       ]
     }
-  } else {
+  }
+  /*
+   * 素材出题（custom）：不校验「知识点」（这个模式下它不存在），
+   * 只校验数量。
+   *
+   * ⚠️ 素材是否为空**不放在 rules 里**，而是：
+   *   ① 界面上用一条常驻 alert 提示（用户随时能看到缺什么）；
+   *   ② 点「开始生成」时在 `handleAiGenerate` 里显式拦截并给出可操作的话术。
+   *   为什么不用 rules：rules 的报错绑在具体 form-item 上，
+   *   而"素材"横跨两个控件（知识库 + 文档），挂到任何一个上都说不清。
+   */
+  if (aiForm.value.questionType === 'custom') {
     return {
       questionType: [{ required: true, message: '请选择题型', trigger: 'change' }],
-      knowledgePoint: [
-        { required: true, message: '请输入知识点', trigger: 'blur' },
-        { max: 200, message: '不能超过200个字符', trigger: 'blur' }
-      ],
       count: [{ required: true, message: '请选择数量', trigger: 'change' }]
     }
+  }
+  return {
+    questionType: [{ required: true, message: '请选择题型', trigger: 'change' }],
+    knowledgePoint: [
+      { required: true, message: '请输入知识点', trigger: 'blur' },
+      { max: 200, message: '不能超过200个字符', trigger: 'blur' }
+    ],
+    count: [{ required: true, message: '请选择数量', trigger: 'change' }]
   }
 })
 
@@ -1222,6 +1403,20 @@ const onAiTypeChange = () => {
     aiForm.value.compositeRequirement = ''
     aiForm.value.wordCount = 200
     aiForm.value.subCount = 5
+  } else if (aiForm.value.questionType === 'custom') {
+    /*
+     * 素材出题：**不清空已选素材**，只懒加载知识库列表。
+     *
+     * 为什么不清空 kbIds / materialDocs：
+     *   用户可能在 custom 和别的题型之间来回切（比如先想用材料，
+     *   临时改成单选题看看，又切回来）。此时把已选的知识库和已上传的文档
+     *   清掉会让他白做一遍 —— 这和"切换题型"这个动作的语义也不符。
+     *   （knowledgePoint 每次都清，那是因为它是"这一次要生成的内容"，
+     *    换了题型确实该重填；素材则是"手边的资料"，不该随题型蒸发。）
+     */
+    aiForm.value.count = 3
+    if (kbList.value.length === 0) loadKnowledgeBases()
+    return
   } else {
     aiForm.value.knowledgePoint = ''
     aiForm.value.count = 3
@@ -1242,6 +1437,149 @@ const onAiDialogClose = () => {
   viewMode.value = 'pretty'
   aiDialogVisible.value = false
 }
+
+/* ============================================================================
+ * 素材出题（questionType === 'custom'）
+ * ============================================================================
+ * 用户口径（2026-10-20）：「支持用户自己添加材料（并且要链接知识库 以及 可以支持
+ *   直接上传word pdf md之类的文档直接创建对应的题库）…怎么方便用户使用 要有灵活性」
+ *
+ * 三条数据流：
+ *   ① 知识库 id 列表 → 后端 `chat_engine` 检索原文注入提示词（已有能力，这次暴露出来）
+ *   ② 上传的文档 → 前端解析成纯文本 → 拼进「补充说明」一起作为素材
+ *   ③ 补充要求 → 自然语言约束（范围/难度/风格）
+ *
+ * 为什么文档走"前端解析 → 拼文本"，而不是"上传到知识库再检索"：
+ *   · 用户要的是"就这份文件出题"，不是"在整个库里搜相关内容" ——
+ *     语义不同：前者是**全文**作为素材，后者是**检索命中片段**。
+ *   · 不落库 = 不污染用户的知识库（他只是想出几道题，不该多出一个库/文档）。
+ *   · 也更快：上传到知识库要切块、建索引，等索引完成才能检索；
+ *     而"出几道题"这种一次性需求不该等那么久。
+ *   ⚠️ 代价是长文档会撑大提示词。所以下面有长度上限（`MATERIAL_MAX_CHARS`），
+ *      超出时截断并**明确告知**用户截了多少，而不是静默丢内容。
+ */
+const MATERIAL_MAX_CHARS = 20000
+
+/** 知识库列表 */
+const kbList = ref([])
+const kbLoading = ref(false)
+
+/** 已解析的文档素材：{ fileName, content, note?, truncated? } */
+const materialDocs = ref([])
+const materialParsing = ref(false)
+
+/** 是否已有可用素材（知识库 或 文档） */
+const hasMaterial = () => aiForm.value.kbIds.length > 0 || materialDocs.value.length > 0
+
+const onKbChange = () => {
+  // 仅用于清掉"请至少选一个"的告警感；真正的校验在生成时做
+}
+
+/** 加载知识库列表（进入 custom 模式时懒加载，避免每次打开弹窗都请求） */
+const loadKnowledgeBases = async () => {
+  if (kbLoading.value) return
+  kbLoading.value = true
+  try {
+    const res = await listKnowledgeBases()
+    const data = res?.data ?? res?.rows ?? res ?? []
+    kbList.value = Array.isArray(data) ? data : (data.rows || [])
+  } catch (e) {
+    // 失败不阻断出题：用户仍然可以用上传文档这条路
+    console.warn('[material] 加载知识库失败：', e)
+    ElMessage.warning('知识库列表加载失败，可改用上传文档')
+  } finally {
+    kbLoading.value = false
+  }
+}
+
+/**
+ * 选中文件 → 解析成文本
+ *
+ * ⚠️ 这里是**追加**而不是替换：用户可能分几次拖入几份讲义，
+ *    每次都替换会把前面的悄悄丢掉。
+ */
+const handleMaterialFileChange = async (uploadFile) => {
+  const raw = uploadFile?.raw as File | undefined
+  if (!raw) return
+  materialParsing.value = true
+  try {
+    const { parseDocFile } = await import('@/utils/doc-parse')
+    /*
+     * `parseDocFile(file)` 的签名只有一个入参，返回 `DocParse | null`。
+     * 结构：{ fileName, textContent, blocks, images, totalTextLength, error? }
+     *
+     * ⚠️ 用 `textContent`（纯文本）而不是把 `blocks` 拼起来：
+     *    blocks 是给**富预览**用的（含图片块），出题只需要文字。
+     *    直接从 textContent 取，既省一次拼接，也避免把图片占位符混进提示词。
+     */
+    const parsed = await parseDocFile(raw)
+
+    if (!parsed) {
+      ElMessage.error(`${raw.name} 解析失败（可能是扫描件或纯图片 PDF）`)
+      return
+    }
+    if (parsed.error) {
+      ElMessage.error(`${raw.name} 解析出错：${parsed.error}`)
+      return
+    }
+
+    let text = (parsed.textContent || '').trim()
+    if (!text) {
+      ElMessage.warning(`${raw.name} 里没有可用的文字内容（可能是扫描件或纯图片 PDF）`)
+      return
+    }
+
+    // 截断保护：单份文件超限时截断，并记下"已截断"让 UI 说明
+    let truncated = false
+    if (text.length > MATERIAL_MAX_CHARS) {
+      text = text.slice(0, MATERIAL_MAX_CHARS)
+      truncated = true
+    }
+
+    materialDocs.value.push({
+      fileName: raw.name,
+      content: text,
+      note: truncated ? `已截断到 ${MATERIAL_MAX_CHARS} 字符` : '',
+      truncated
+    })
+    ElMessage.success(`已读取 ${raw.name}`)
+  } catch (e: any) {
+    console.error('[material] 解析文档失败：', e)
+    ElMessage.error(`解析 ${raw.name} 失败：${e?.message || '未知错误'}`)
+  } finally {
+    materialParsing.value = false
+  }
+}
+
+const removeMaterialDoc = (index: number) => {
+  materialDocs.value.splice(index, 1)
+}
+
+/**
+ * 把素材拼成一段给模型的上下文
+ *
+ * 输出格式刻意简单（纯文本 + 分隔标记），因为：
+ *   · 模型对"用 === 分隔的文档段落"这种朴素结构理解得最好；
+ *   · 出问题时用户/我们能直接看懂提示词里到底放了什么。
+ *
+ * ⚠️ 总长度也做上限：多份文档叠加可能远超单份上限。
+ *    超出时**从末尾截断**（前面的文档完整保留），并返回 truncated 标记，
+ *    由调用方决定怎么提示用户。
+ */
+const buildMaterialContext = () => {
+  const parts: string[] = []
+  materialDocs.value.forEach((doc, i) => {
+    parts.push(`【材料 ${i + 1}：${doc.fileName}】\n${doc.content}`)
+  })
+  let text = parts.join('\n\n')
+  let truncated = false
+  if (text.length > MATERIAL_MAX_CHARS) {
+    text = text.slice(0, MATERIAL_MAX_CHARS)
+    truncated = true
+  }
+  return { text, truncated }
+}
+
 
 const applyOptionsJson = () => {
   const q = currentQuestion.value
@@ -1579,15 +1917,40 @@ watch(aiDialogVisible, (val) => {
 
 // 修改打开弹窗的方法，加载上下文
 const openAiDialog = () => {
+  /*
+   * ⚠️⚠️ 这里必须与 `aiForm` 的初始声明保持**同一份字段集**（2026-10-20 踩过）。
+   *
+   * 这是「整体替换」而不是"逐个字段赋值"，所以任何在声明里加了、
+   * 但这里漏掉的字段，都会在**每次打开弹窗时被静默抹掉**。
+   *
+   * 我当时只改了上面的声明（加了 kbIds / customRequirement），
+   * 没同步这里，结果：
+   *   · 改后的代码静态检查全过（字段确实在文件里）；
+   *   · 但运行时 `Object.keys(aiForm)` 永远是 7 个旧字段；
+   *   · 素材面板的 `v-if="aiForm.questionType === 'custom'"` 能进，
+   *     可 `v-model="aiForm.kbIds"` 绑到一个不存在的属性上 ——
+   *     表现就是"选中素材出题后，面板不出现/不工作"。
+   * 排查花了一小时，因为"源码有、运行时没有"这个现象很容易被误判成
+   * dev server 缓存问题（我一开始也确实这么怀疑）。
+   *
+   * 教训：**这类"初始化字面量"在文件里出现几次，就必须改几次。**
+   * 如果以后字段继续增加，考虑抽成一个 `createDefaultAiForm()` 工厂函数，
+   * 从根上消除这份重复。
+   */
+  /*
+   * ⚠️ 用工厂函数，不要手写字面量（2026-10-20 踩过）：
+   *   这里是「整体替换」`aiForm.value`，任何在 `createDefaultAiForm()` 里
+   *   加了、这里却漏掉的字段，都会在每次打开弹窗时被静默抹掉 ——
+   *   表现为"源码有、运行时没有"，极难排查。详见该工厂函数的注释。
+   */
   aiForm.value = {
-    questionType: 'single',
-    knowledgePoint: '',
-    count: 3,
-    model: localStorage.getItem('openstudy_ai_model_question-builder') || '',
-    compositeRequirement: '',
-    wordCount: 200,
-    subCount: 5
+    ...createDefaultAiForm(),
+    // 只有这里的 model 带记忆（上一次用的模型），其余走默认值
+    model: localStorage.getItem('openstudy_ai_model_question-builder') || ''
   }
+  // 每次打开都清掉上一次的文档素材：文件内容不跨会话保留（避免误用旧材料）
+  materialDocs.value = []
+  materialParsing.value = false
   rawJsonContent.value = ''
   parsedQuestionsForPreview.value = null
   editablePreviewData.value = null
@@ -1959,6 +2322,22 @@ const generateQuestionsNormal = async (params, isComposite) => {
 
 
 const handleAiGenerate = async () => {
+  /*
+   * 素材出题的前置拦截（2026-10-20）
+   *
+   * 必须**在 validate 之前**判，因为素材不是 form-item（横跨两个控件），
+   * 挂不到 rules 上（原因见 `aiRules` 里的注释）。
+   *
+   * 为什么要拦而不是"没素材就纯 AI 生成"：
+   *   用户特意选了「从我的材料出题」，结果 AI 凭空编题 ——
+   *   他会以为材料被用上了，这是**沉默的错误**，比报错更糟。
+   *   所以这里明确告诉他缺什么、怎么补。
+   */
+  if (aiForm.value.questionType === 'custom' && !hasMaterial()) {
+    ElMessage.warning('请至少选择 1 个知识库，或上传 1 份文档')
+    return
+  }
+
   const valid = await aiFormRef.value?.validate().catch(() => false)
   if (!valid) return
 
@@ -2008,15 +2387,69 @@ const handleAiGenerate = async () => {
         }
       })
     } else {
+      /*
+       * 素材出题（custom）与普通出题的差别，全部收敛在这里
+       * ==================================================================
+       * 两者的**下游完全相同**（同一个 scene、同一个流式通道、同样的预览与导入），
+       * 区别只在"喂给模型什么"：
+       *
+       *   普通：knowledge_point = 用户写的知识点
+       *   素材：knowledge_point = 素材全文（或素材摘要指令）+ 补充要求
+       *         + kbIds → 后端检索知识库并注入（走 `source_context`）
+       *
+       * 为什么把文档内容塞进 knowledgePoint 而不是另造一个后端字段：
+       *   `scene=question-generate` 的模板已经把这个变量放在"出题依据"的位置，
+       *   语义正好一致。新增一个后端参数要同时改 prompts/chat_engine/接口三处，
+       *   而收益只是"字段名更漂亮" —— 不值得。
+       *   （kbIds 是例外：检索必须由后端做，所以它必须作为独立参数传。）
+       */
+      const isCustom = aiForm.value.questionType === 'custom'
+      let prompt = aiForm.value.knowledgePoint
+
+      if (isCustom) {
+        const { text: materialText, truncated } = buildMaterialContext()
+
+        if (truncated) {
+          ElMessage.warning(`材料较长，已截取前 ${MATERIAL_MAX_CHARS} 字符用于出题`)
+        }
+
+        /*
+         * 拼装顺序：先说明"这是材料" → 材料正文 → 最后给要求。
+         *
+         * 把要求放**末尾**是有意的：模型对提示词末尾的指令服从度更高，
+         * 而材料可能很长，若把要求放前面容易被"淹没"。
+         */
+        const parts: string[] = []
+        if (materialText) {
+          parts.push(
+            '请严格依据下面提供的材料出题，不要引入材料之外的知识；' +
+            '每道题的解析里要指明对应材料中的哪一部分。\n\n' +
+            '===== 材料开始 =====\n' + materialText + '\n===== 材料结束 ====='
+          )
+        } else {
+          // 只选了知识库、没上传文档：知识库内容由后端检索后注入，
+          // 这里只需要给一句"按检索到的内容出题"的指令。
+          parts.push('请依据系统检索到的知识库内容出题，并在解析中注明出处。')
+        }
+
+        if (aiForm.value.customRequirement) {
+          parts.push('补充要求：' + aiForm.value.customRequirement)
+        }
+
+        prompt = parts.join('\n\n')
+      }
+
       await generateQuestionsStreamFull({
-        knowledgePoint: aiForm.value.knowledgePoint,
-        questionType: aiForm.value.questionType,
+        knowledgePoint: prompt,
+        questionType: isCustom ? 'single' : aiForm.value.questionType,
         count: aiForm.value.count,
         model: aiForm.value.model,
         configId: selectedConfigId.value || undefined,
         userId: userId.value,
         thinking: deepThink.value,
         bankId: currentBankId.value,
+        // 知识库取材：后端检索这些库并把命中的原文片段注入提示词（已有能力）
+        kbIds: isCustom ? aiForm.value.kbIds : undefined,
         onChunk(fullContent) {
           rawJsonContent.value = fullContent
           nextTick(() => {
@@ -2900,6 +3333,158 @@ defineExpose({ questions, openAiDialog })
   font-size: 12px;
   color: var(--os-text-3);
   margin-top: 4px;
+}
+
+/* ============================================================================
+ * 素材出题（questionType === 'custom'）
+ * ============================================================================
+ * 视觉基调：**不像"上传控件"，而像"素材清单"**。
+ *   用户此刻的心智是"我要用哪些材料出题"，所以重点是让他一眼确认
+ *   「我已经放了什么」。上传区做成低存在感的虚线框，已解析的文档才是主体。
+ */
+.material-block {
+  width: 100%;
+}
+
+.material-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+/* 知识库下拉里的单行：名称在左、篇数在右 */
+.kb-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.kb-option__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kb-option__meta {
+  flex: none;
+  font-size: 12px;
+  color: var(--os-text-4, #9ca3af);
+}
+
+.material-link {
+  color: var(--os-accent, #409eff);
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+/* 上传区：克制。它是"添加素材"的入口，不该比素材列表更抢眼 */
+.material-upload {
+  :deep(.el-upload) {
+    width: 100%;
+  }
+
+  :deep(.el-upload-dragger) {
+    padding: 16px;
+    border-radius: var(--os-radius, 8px);
+    border: 1px dashed var(--os-border, rgba(0, 0, 0, 0.12));
+    background: var(--os-bg-subtle, #fafafa);
+  }
+
+  :deep(.el-upload-dragger:hover) {
+    border-color: var(--os-primary, #409eff);
+    background: var(--os-bg-hover, #f5f6f7);
+  }
+}
+
+.material-upload__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.material-upload__icon {
+  font-size: 20px;
+  color: var(--os-text-4, #9ca3af);
+}
+
+.material-upload__text {
+  font-size: 13px;
+  color: var(--os-text-2);
+}
+
+.material-upload__hint {
+  font-size: 12px;
+  color: var(--os-text-4, #9ca3af);
+}
+
+/* 已解析文档清单 */
+.material-doc-list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.material-doc {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--os-radius-sm, 6px);
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.06));
+  background: var(--os-bg, #fff);
+  font-size: 13px;
+}
+
+.material-doc__icon {
+  flex: none;
+  color: var(--os-text-3);
+}
+
+.material-doc__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--os-text);
+}
+
+.material-doc__meta {
+  flex: none;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--os-text-4, #9ca3af);
+}
+
+.material-parsing {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--os-text-3);
+}
+
+.material-empty-alert {
+  margin-bottom: 12px;
+}
+
+/* 题型下拉里的"从我的材料出题"：主文案 + 右侧小注解 */
+.opt-with-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.opt-hint {
+  font-size: 12px;
+  color: var(--os-text-4, #9ca3af);
 }
 
 .prompt-history {
