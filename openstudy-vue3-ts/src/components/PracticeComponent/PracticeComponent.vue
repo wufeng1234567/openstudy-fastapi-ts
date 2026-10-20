@@ -103,7 +103,32 @@
         <span>当前为错题练习模式，仅展示错题</span>
       </div>
 
-      <div class="main-content">
+      <!--
+        「只刷错题」但没有可练的错题 —— 空态
+        ==================================================================
+        ⚠️ 为什么必须有这一块（2026-10-20 修的 bug）：
+          原来这种情况只弹一次 `ElMessage`（3 秒自动消失），下面是一片空白 ——
+          用户分不清「加载失败了」还是「本来就没题」，只会以为坏了。
+          （`ElMessage` 本身也是**瞬时**的，回头看什么都看不到。）
+
+        ⚠️ 这里的文案必须**说清是哪种空**：`noWrongQuestionsReason` 由
+          `useQuestionPractice.clearForNoWrongQuestions()` 写入，只有「确实没有错题」
+          才会走到这里；**请求失败**走的是红字 `msgError`，不会进这个分支。
+          两种情况的区分，正是这个 bug 的核心。
+      -->
+      <div class="practice-empty" v-if="noWrongQuestionsReason && questions.length === 0">
+        <OsIcon name="inbox" :size="30" class="practice-empty__icon" />
+        <p class="practice-empty__title">{{ noWrongQuestionsReason }}</p>
+        <p class="practice-empty__desc">
+          错题本会自动记录你答错的题。先去别的模式练几道，答错的题就会出现在这里。
+        </p>
+        <div class="practice-empty__actions">
+          <el-button size="small" @click="showSettings = true">关闭「只刷错题」</el-button>
+          <el-button size="small" type="primary" plain @click="$emit('close')">返回题库</el-button>
+        </div>
+      </div>
+
+      <div class="main-content" v-else>
         <QuestionDisplay :current-question="currentQuestion" :current-question-index="currentQuestionIndex"
           :total-questions="totalQuestions" :number-offset="numberBase" :selected-answer="selectedAnswer"
           :sub-fill-blank-answers="subFillBlankAnswers" :sub-essay-answers="subEssayAnswers" :answers="answers"
@@ -128,7 +153,8 @@
 
 
 
-      <QuestionNavigation :show-prev="currentQuestionIndex > 0" :show-next="currentQuestionIndex < totalQuestions - 1"
+      <QuestionNavigation v-if="!(noWrongQuestionsReason && questions.length === 0)"
+        :show-prev="currentQuestionIndex > 0" :show-next="currentQuestionIndex < totalQuestions - 1"
         :question-id="currentQuestion?.id" :bank-id="bankId" :module-type="moduleTypeSafe" :is-exam-mode="isExamMode"
         :is-practice-mode="isPracticeMode" :is-last-question="isLastQuestion" :can-go-prev-batch="canGoPrevBatch"
         :is-last-batch="isLastBatch" :has-submitted-current-batch="hasSubmittedCurrentBatch"
@@ -182,6 +208,8 @@ import PracticeSettings from './PracticeSettings.vue'
 import MarkedButton from '@/components/MarkedButton/MarkedButton.vue'
 import FavoriteButton from '@/components/FavoriteButton/FavoriteButton.vue'
 import ScrollButton from '@/components/ScrollButton/ScrollButton.vue'
+// 「只刷错题」空态要用线性图标（全站统一走 OsIcon，不用 Element Plus 实心图标）
+import OsIcon from '@/components/OsIcon/index.vue'
 import ImageViewer from './ImageViewer.vue'
 import { useQuestionPractice } from '@/composables/useQuestionPractice'
 import usePracticeSettingsStore from '@/store/modules/practiceSettings'
@@ -890,6 +918,8 @@ const {
   selectedAnswer,
   answers,
   loading,
+  // 「只刷错题」但当前题库没有可练错题时的说明（空串 = 正常）
+  noWrongQuestionsReason,
   subFillBlankAnswers,
   subEssayAnswers,
   questionOffset,
@@ -1417,6 +1447,53 @@ defineExpose({})
   border-radius: 8px;
   font-size: 13px;
   color: #92400e;
+}
+
+/*
+ * 「只刷错题」但没有可练错题的空态
+ *
+ * 与 `.only-wrong-hint`（黄色提示条）分工不同：
+ *   提示条 = 「当前是错题模式」这个**状态**；
+ *   空态   = 「这个模式下没有可练的题」这个**结果 + 下一步**。
+ * 两者可以同时出现，所以空态自己要有足够的垂直空间，不跟提示条挤在一起。
+ *
+ * 配色用中性灰（`--os-text-*`），不用红色 —— 这不是错误。
+ */
+.practice-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.practice-empty__icon {
+  color: var(--os-text-4, #9ca3af);
+}
+
+.practice-empty__title {
+  margin: 2px 0 0;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--os-text, #111827);
+}
+
+.practice-empty__desc {
+  margin: 0;
+  max-width: 420px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--os-text-3, #6b7280);
+}
+
+.practice-empty__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
 }
 
 .continue-practice-area {

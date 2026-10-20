@@ -67,6 +67,16 @@ export function useQuestionPractice(
   const answers = ref<any[]>([])
   const loading = ref<boolean>(true)
   const submissionLock = ref<boolean>(false)
+  /**
+   * 「只刷错题」模式下、当前题库没有可练错题时的说明文案
+   *
+   * ⚠️ 为什么要单独一个状态（而不是只弹一次 `msgInfo`）：
+   *   `ElMessage` 3 秒后自己消失，用户回头看就是一片空白页，
+   *   分不清「加载失败」还是「本来就没题」。把它留在页面状态里，
+   *   模板就能一直显示一句可执行的话（见 `PracticeComponent` 的空态）。
+   *   空串 = 不是这种情况。
+   */
+  const noWrongQuestionsReason = ref<string>('')
 
   // 乱序结果缓存：key 为 `${bankId}_${moduleType}`，value 为打乱后的数据
   const shuffledCache = new Map<string, any[]>()
@@ -262,6 +272,18 @@ export function useQuestionPractice(
       const sliceEnd = count === 'all' ? shuffled.length : count as number
       const slicedData = shuffled.slice(0, sliceEnd)
 
+      // ⚠️ 同顺序分支：只刷错题时**先过滤、后赋值 questions**，
+      //    否则「0 条错题」的题库会先闪一屏全部题目（2026-10-20 修的 bug）。
+      if (onlyWrong.value) {
+        const ok = await filterOnlyWrongQuestions()
+        if (!ok) {
+          clearForNoWrongQuestions('这个题库里还没有你的错题')
+          return
+        }
+        debugProcessComplete(props.moduleType, questions.value, allQuestionsData.value)
+        return
+      }
+
       // 调试日志：设置 questions
       debugSetQuestions(props.moduleType, slicedData, 'processQuestions(shuffle)')
 
@@ -279,13 +301,9 @@ export function useQuestionPractice(
       // 调试日志：处理完成
       debugProcessComplete(props.moduleType, questions.value, allQuestionsData.value)
 
-      if (onlyWrong.value) {
-        await filterOnlyWrongQuestions()
-      } else {
-        resetAnswers()
-        await loadQuestionStatus()
-        loading.value = false
-      }
+      resetAnswers()
+      await loadQuestionStatus()
+      loading.value = false
     } else {
       if (offset >= data.length) {
         proxy.$modal.msgInfo('已刷完所有题目')
@@ -302,6 +320,29 @@ export function useQuestionPractice(
       debugSetAllQuestionsData(props.moduleType, data, 'processQuestions(sequential)')
       allQuestionsData.value = data
 
+      /*
+       * ⚠️⚠️ 「只刷错题」必须在**赋值 questions 之前**过滤（2026-10-20 修的 bug）。
+       *
+       * 原来的顺序是：
+       *     questions.value = slicedData.map(...)   ← 全部题目先渲染
+       *     await filterOnlyWrongQuestions()        ← 一次网络往返之后才清空
+       * 于是「0 条错题」的题库会**先闪一屏全部题目**，再提示失败/暂无错题。
+       * 用户看到的就是「把所有题目获取过来，然后显示获取错题列表失败」。
+       *
+       * 现在：先过滤 allQuestionsData（本函数内部只动它），确认有可练的错题之后，
+       * 才按过滤后的结果赋值 questions —— 一帧都不会闪。
+       */
+      if (onlyWrong.value) {
+        // 让 filterOnlyWrongQuestions 自己去收敛 allQuestionsData 并调用 applyQuestionLimits
+        const ok = await filterOnlyWrongQuestions()
+        if (!ok) {
+          clearForNoWrongQuestions('这个题库里还没有你的错题')
+          return
+        }
+        debugProcessComplete(props.moduleType, questions.value, allQuestionsData.value)
+        return
+      }
+
       // 调试日志：设置 questions（顺序模式）
       debugSetQuestions(props.moduleType, slicedData, 'processQuestions(sequential)')
 
@@ -316,45 +357,111 @@ export function useQuestionPractice(
         }
       })
 
-      if (onlyWrong.value) {
-        await filterOnlyWrongQuestions()
-      } else {
-        resetAnswers()
-        await loadQuestionStatus()
-        loading.value = false
-      }
+      resetAnswers()
+      await loadQuestionStatus()
+      loading.value = false
     }
   }
 
-  async function filterOnlyWrongQuestions(): Promise<void> {
-    try {
-      const userId = userStore.id || (userStore as any).userId
-      if (!userId) {
-        proxy.$modal.msgWarning('请先登录')
-        loading.value = false
-        return
-      }
-      const res = await listQuestionErrorAll({ userId, bankId: props.bankId })
-      if (res.code === 200) {
-        const errorList = res.data || []
-        if (errorList.length === 0) {
-          proxy.$modal.msgInfo('当前暂无错题，请先练习积累错题。')
-          questions.value = []
-          allQuestionsData.value = []
-          loading.value = false
-          return
-        }
-        const errorQuestionIds = new Set(errorList.map((e: any) => e.questionId))
-        const filteredQuestions = allQuestionsData.value.filter(q => errorQuestionIds.has(q.id))
-        allQuestionsData.value = filteredQuestions
-        applyQuestionLimits()
-        // 批量加载收藏/斩题状态（错题状态已通过 errorQuestionIds 确定）
-        await loadQuestionStatus()
-      }
-    } catch (e) {
-      proxy.$modal.msgError('获取错题列表失败')
-      loading.value = false
+  /**
+   * 「只刷错题」：把题目过滤成本题库里**仍在错题本中**的那些
+   *
+   * ⚠️⚠️ 这个函数在 2026-10-20 修过一个用户可见的 bug，改之前先读完这段：
+   *
+   * **现象**：在「刷题设置」里勾上「只刷错题」，进入一个**没有错题**的题库，
+   * 会先看到**整个题库的题目**闪一下，然后提示「获取错题列表失败」，最后空白。
+   *
+   * **根因**（两个叠在一起）：
+   *   1. 调用方 `processQuestions` 是「先把全部题目写进 `questions` / `allQuestionsData`，
+   *      再 `await` 本函数去过滤」——中间隔着**一次网络往返**，所以全部题目必然先渲染一帧；
+   *   2. 本函数原来把「一次网络请求 + 数据过滤 + 状态加载」整段包在**一个 try** 里，
+   *      `catch` 把**任何**异常的文案都替换成「获取错题列表失败」，并且**不打印原始异常**。
+   *      于是「0 条错题」这种**完全正常**的业务情况，一旦中间某步抛错（例如
+   *      `applyQuestionLimits()` 里 `msgInfo` 触发的渲染、或状态接口失败），
+   *      用户看到的就是一句笼统的「获取错题列表失败」，而控制台一个字都没有。
+   *
+   * **修法**：
+   *   · 由调用方**先过滤、再赋值**（见 `processQuestions` 里 `onlyWrong` 分支）；
+   *   · 本函数只负责「取错题 id → 过滤 allQuestionsData → 交给 applyQuestionLimits」，
+   *     且**把「没有错题」当成正常结果**提前返回，不走进 catch；
+   *   · catch 里 `console.error` 打原始异常，提示文案带上真实原因（可诊断）。
+   *
+   * Returns:
+   *   `true`  = 过滤已生效（`allQuestionsData` 已被收窄，调用方应据此决定是否赋值题目）
+   *   `false` = 当前没有错题（调用方应把题目清空并给「暂无错题」的引导）
+   */
+  async function filterOnlyWrongQuestions(): Promise<boolean> {
+    // ① 登录态：拿不到 userId 就不用发请求（这不是「失败」，是前提不满足）
+    const userId = userStore.id || (userStore as any).userId
+    if (!userId) {
+      proxy.$modal.msgWarning('请先登录')
+      return false
     }
+
+    // ② 取错题列表 —— 这一段单独 try，失败原因能精确到「请求本身」
+    let errorList: any[] = []
+    try {
+      const res = await listQuestionErrorAll({ userId, bankId: props.bankId })
+      if (res && res.code === 200) {
+        errorList = Array.isArray(res.data) ? res.data : []
+      } else {
+        // 业务码非 200：把服务端原话带出来，不要笼统说「失败」
+        const why = (res as any)?.msg || `业务码 ${(res as any)?.code}`
+        console.error('[onlyWrong] 错题列表返回异常：', res)
+        proxy.$modal.msgError(`获取错题列表失败：${why}`)
+        return false
+      }
+    } catch (e: any) {
+      console.error('[onlyWrong] 请求错题列表抛异常：', e)
+      proxy.$modal.msgError(`获取错题列表失败：${e?.message || e || '网络错误'}`)
+      return false
+    }
+
+    // ③ 0 条错题 = **正常业务结果**，不是错误。
+    //    ⚠️ 这里必须提前 return，绝不能落进下面的 catch —— 那正是「0 条错题却提示
+    //    『获取失败』」的来源。
+    if (errorList.length === 0) {
+      return false
+    }
+
+    // ④ 过滤 + 收敛题目（这之后才动 questions）
+    try {
+      const errorQuestionIds = new Set(errorList.map((e: any) => Number(e.questionId)))
+      const filtered = allQuestionsData.value.filter((q) => errorQuestionIds.has(Number(q.id)))
+      if (filtered.length === 0) {
+        // 有错题记录，但都不在当前题库/当前这一页里 —— 也是「没有可练的错题」
+        return false
+      }
+      allQuestionsData.value = filtered
+      applyQuestionLimits()
+      // 批量加载收藏/斩题状态（错题状态已通过 errorQuestionIds 确定）
+      await loadQuestionStatus()
+      return true
+    } catch (e: any) {
+      // 走到这里说明**数据本身**有问题（不是请求），原文打出来
+      console.error('[onlyWrong] 过滤错题后渲染失败：', e)
+      proxy.$modal.msgError(`错题练习初始化失败：${e?.message || e}`)
+      questions.value = []
+      allQuestionsData.value = []
+      loading.value = false
+      return false
+    }
+  }
+
+  /**
+   * 「只刷错题」时把题目清空并给出**可执行的引导**
+   *
+   * ⚠️ 为什么需要它：没有错题时，原来只弹一条 `msgInfo` 然后留一个空白页面 ——
+   * 用户不知道「是加载失败了」还是「本来就没题」。这里同时清状态 + 给文案，
+   * 让「空」这件事是**说得清的**。
+   */
+  function clearForNoWrongQuestions(reason: string): void {
+    questions.value = []
+    allQuestionsData.value = []
+    currentQuestionIndex.value = 0
+    resetAnswers()
+    loading.value = false
+    noWrongQuestionsReason.value = reason
   }
 
   function applyQuestionLimits(): void {
@@ -1765,6 +1872,8 @@ export function useQuestionPractice(
     selectedAnswer,
     answers,
     loading,
+    // 「只刷错题」但没有可练错题时的说明（空串 = 不是这种情况）
+    noWrongQuestionsReason,
     subFillBlankAnswers,
     subEssayAnswers,
     questionOffset,
