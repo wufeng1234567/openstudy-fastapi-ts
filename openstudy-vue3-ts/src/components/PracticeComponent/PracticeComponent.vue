@@ -964,6 +964,22 @@ const handleSubmit = () => {
     hasSubmittedCurrentBatch.value = true
 
     /*
+     * 「提交」= 这一轮练习结束 → 丢掉随机题单，下一轮重新随机
+     *
+     * ⚠️ 为什么在这里清（2026-10-20）：
+     *   随机练习现在是「一次随机、题单固定」（用户 2026-10-20 的方案）。
+     *   题单固定的前提是"这一轮还没做完"。用户点了提交/交卷，说明这一轮结束了，
+     *   下次再进就该拿到**新的**随机题单，而不是重做刚才那一套。
+     *
+     *   只对随机模式有意义；其它模式没有题单，调用了也只是删掉一个不存在的键，
+     *   所以不做模式判断 —— 少一个分支，少一处漏判断的机会。
+     *
+     * ⚠️ 不要在这里清"上一轮做过哪些题"（`os_recent_practice_*`）：
+     *   那是下一轮"新题优先"的依据。`clearRandomPlan()` 只清题单，正合适。
+     */
+    clearRandomPlan()
+
+    /*
      * 结算页固定用瀑布流展示。
      * `overviewMode` 是用户设置项，这里**临时**打开用于展示结算；
      * 不改 `moduleSettings.isOverviewMode`（那是持久化的偏好），
@@ -1041,6 +1057,8 @@ const {
   displayOptions,
   fetchQuestions,
   resetAndFetchQuestions,
+  // 随机题单：练完一轮/提交后清掉，下一轮重新随机
+  clearRandomPlan,
   resetAnswers,
   goToQuestion,
   nextQuestion,
@@ -1257,6 +1275,25 @@ function restoreDraftIfAny(retry = 0) {
     loadBatchWithoutReset()
   }
 
+  /*
+   * 关于 `draft.questionIds` 和"恢复题目顺序"
+   * =================================================================
+   * 上一版（同一天早些时候）我在这里做过「按快照重排 allQuestionsData」，
+   * 用来修"刷新题号变、题目不变"。**现已移除**，原因：
+   *
+   *   那是治标。病根是「随机顺序每次刷新都会重算」，所以只能事后用快照把顺序掰回去，
+   *   两个数据源（题单快照 vs 重新洗牌）互相拉扯，迟早还会出别的问题。
+   *
+   *   用户给的方案是治本：「随机只随机一次，没练完就一直用这份」——
+   *   顺序本身持久化了（见 `useQuestionPractice.buildRandomPlan` / `loadRandomPlan`），
+   *   刷新后重新加载拿到的**就是同一份题单**，顺序天然一致，
+   *   于是下面按 `currentQuestionId` 定位也天然正确，不需要任何重排补丁。
+   *
+   *   `questionIds` 仍然保留在草稿结构里：它记录"这份题单当时包含哪些题"，
+   *   在有多个题库入口或将来做"跨设备继续"时是有意义的元数据。
+   *   只是现在**不再需要**靠它来纠正顺序了。
+   */
+
   const list = questions.value || []
   if (!list.length) {
     /*
@@ -1325,7 +1362,19 @@ function restoreDraftIfAny(retry = 0) {
     })
   })
 
-  // 定位到上次那一题（按 id）
+  /*
+   * 定位到上次那一题（按 id，不按数组下标）
+   *
+   * ⚠️ 随机模式也**要跳**（2026-10-20 最终结论，推翻了我当天早些时候的判断）：
+   *   当时我以为"随机模式不跳、回到第一题"更像随机，但这会让用户
+   *   **看不出进度被恢复了** —— 明明做到第 5 题，刷新后回到第 1 题，
+   *   还要自己往下翻，体验比"跳回上次那题"差。
+   *
+   *   现在顺序是持久化的（随机题单存 localStorage），题号与题目的对应关系
+   *   刷新后不变，所以按 id 跳回去**不会**出现"题号变、题目不变"——
+   *   那个老 bug 的根因（每次刷新重排）已经没了。
+   *   既然顺序稳定，"上次那一题"就是一个确定的、唯一的位置，跳过去是对的。
+   */
   if (draft.currentQuestionId !== undefined && draft.currentQuestionId !== null) {
     const i = idxById.get(String(draft.currentQuestionId))
     if (i !== undefined) goToQuestion(i)

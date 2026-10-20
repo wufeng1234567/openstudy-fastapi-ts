@@ -225,6 +225,192 @@ export function useQuestionPractice(
       })
   }
 
+  /**
+   * 随机练习的「固定题单」—— 一次随机，之后一直用它
+   * ==========================================================================
+   * 用户口径（2026-10-20，两次反馈收敛到同一件事）：
+   *   ① 「刷新页面一直都是这题 只是他的序号变了 可能是第一题 可能是第二题
+   *      每次刷新题号不一样 但是题目一样」
+   *   ② 「我的想法是 随机只随机一次 在用户没有提交结果刷完这个题库时
+   *      永远也都是保留暂存结果」
+   *
+   * ★ 为什么采纳②而不是"每次刷新重新抽"★
+   *   随机练习的语义是「我开始了一次练习」。这次练习应该有**固定的题单**：
+   *   刷新、关掉再开、切到别的模块再回来，看到的都还是这一份，进度也还在。
+   *   否则"随机"就变成了"每次刷新换一批题 + 暂存按 id 硬拽回某题"，
+   *   两个机制互相打架 —— 上一版的"按快照重排"只是在事后补救，治标。
+   *
+   *   真实刷题产品（Anki / Duolingo / 各类题库 App）都是这个模型：
+   *   一次会话 = 一份固定题单，做完或主动"重新练习"才换。
+   *
+   * ★ 题单什么时候失效（重新随机）★
+   *   · 用户点「重新练习」（`resetPractice`）
+   *   · 练完/提交结算后（`handleFinishExam` → 下一轮）
+   *   · 题库题目有增删（题单里引用的 id 对不上时自动重建）
+   *   · 每次练习数量 / 只刷错题等设置变了（题单的范围变了）
+   *   除此之外**一律沿用**。
+   *
+   * ★ "更合理的随机"体现在哪★
+   *   题单**第一次生成时**才做优化：
+   *     优先排入上一轮没练过的题（跨轮覆盖更广），再补上一轮练过的；
+   *   生成后写入 localStorage，之后完全稳定。
+   *   这样既满足"固定的随机题单"，又让连续几轮练习的覆盖面自然扩大。
+   */
+
+  const RANDOM_PLAN_PREFIX = 'os_random_plan_'
+
+  /** 题单存储键：同一用户 + 同一题库 + 同一模式，互不影响 */
+  function randomPlanKey(): string {
+    return `${RANDOM_PLAN_PREFIX}${userStore.id || 0}_${props.bankId}_${props.moduleType}`
+  }
+
+  /** 上一轮练过的题（用于新一轮生成时"新题优先"） */
+  function lastRoundKey(): string {
+    return `os_recent_practice_${userStore.id || 0}_${props.bankId}_${props.moduleType}`
+  }
+
+  function readIdSet(key: string): Set<string> {
+    try {
+      const raw = localStorage.getItem(key)
+      if (!raw) return new Set()
+      const arr = JSON.parse(raw)
+      return Array.isArray(arr) ? new Set(arr.map(String)) : new Set()
+    } catch {
+      // 隐私模式 / 配额满 / 数据损坏 → 当成没有历史，不影响练习
+      return new Set()
+    }
+  }
+
+  function writeIdList(key: string, ids: any[]): void {
+    try {
+      localStorage.setItem(key, JSON.stringify(ids))
+    } catch {
+      // 存不下就退化成"每次重新随机"，仍然能练
+    }
+  }
+
+  /**
+   * 读取已持久化的随机题单
+   *
+   * 返回 `null` 表示"没有可用题单，需要重新生成"。校验条件：
+   *   · 题单里的 id 必须**全部**能在当前题库数据里找到（否则题库改过了）
+   *   · 题单长度必须与当前「每次练习数量」的预期一致（否则设置改过了）
+   * 任一不满足就重建 —— 这是"题单失效"的唯一入口。
+   *
+   * ⚠️ 存储格式是**裸数组** `[3044,3045,3046]`（见 `writeIdList`）。
+   *    第一版这里写成 `plan.ids`（以为存的是 `{ids:[...]}` 对象），
+   *    于是永远读不到 → 每次加载都重建题单 → "随机只随机一次"完全没生效。
+   *    探针实测：刷新 3 次题单变了 3 次，才抓到这个错。
+   *    如果以后要加元数据（生成时间等）再改成对象，**读写必须同时改**。
+   */
+  function loadRandomPlan(data: any[], count: number | string): any[] | null {
+    try {
+      const raw = localStorage.getItem(randomPlanKey())
+      if (!raw) return null
+      const plan = JSON.parse(raw)
+      const planIds: any[] = Array.isArray(plan) ? plan : (Array.isArray(plan?.ids) ? plan.ids : [])
+      if (!planIds.length) return null
+
+      // 题目增删 → 题单作废（避免用户点进去发现"少了一道题"）
+      const byId = new Map<string, any>()
+      data.forEach((q) => {
+        const qid = q?.id ?? q?.questionId
+        if (qid !== undefined && qid !== null) byId.set(String(qid), q)
+      })
+      const restored: any[] = []
+      for (const id of planIds) {
+        const q = byId.get(String(id))
+        if (!q) return null   // 有题被删了 → 整体重建，不做部分拼接
+        restored.push(q)
+      }
+
+      /*
+       * 数量变了就重建。
+       *
+       * ⚠️ 这里比较的是**实际会用到的那一段**：`count='all'` 时要求题单覆盖全库，
+       *    否则要求题单长度 === count。用户把"每次 10 题"改成"每次 20 题"时，
+       *    旧题单只有 10 条 → 必须重建，否则页面上只有 10 道题却写着 20。
+       */
+      const want = count === 'all' ? data.length : Math.min(Number(count) || data.length, data.length)
+      if (restored.length !== want) return null
+
+      return restored
+    } catch {
+      return null
+    }
+  }
+
+  /** 生成并持久化一份新的随机题单 */
+  function buildRandomPlan(data: any[], count: number | string): any[] {
+    const lastRound = readIdSet(lastRoundKey())
+
+    // 分成「上一轮没练过」和「练过」两组，新题优先 —— 这是"更合理的随机"
+    const fresh: any[] = []
+    const done: any[] = []
+    data.forEach((q) => {
+      const qid = q?.id ?? q?.questionId
+      if (qid !== undefined && qid !== null && lastRound.has(String(qid))) {
+        done.push(q)
+      } else {
+        fresh.push(q)
+      }
+    })
+
+    const shuffleInPlace = (arr: any[]) => {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]]
+      }
+      return arr
+    }
+
+    /*
+     * 先打乱整体，再把「新题」稳定地提到前面。
+     *
+     * 为什么不是直接 [打乱(fresh), 打乱(done)]：
+     *   那样会让"新题"永远占据最前面 N 个位置，一旦 count < fresh 数量，
+     *   排在后面的 fresh 题在**连续几轮**里都轮不到 —— 覆盖面反而变窄。
+     *   这里改为：整体随机后，把 fresh 集合内的题按随机顺序前置，
+     *   done 的题填在后面。因为在 buildRandomPlan 里 fresh/done 是按
+     *   "上一轮"划分的，每轮都会重算，所以不会有永久饿死的题。
+     */
+    const ordered = [...shuffleInPlace(fresh), ...shuffleInPlace(done)]
+
+    const want = count === 'all' ? ordered.length : Math.min(Number(count) || ordered.length, ordered.length)
+    const picked = ordered.slice(0, want)
+
+    // 落盘：题单本身 + "这一轮将要练的题"（供下一轮生成时避开）
+    writeIdList(randomPlanKey(), picked.map((q) => q?.id ?? q?.questionId).filter((x) => x !== undefined && x !== null))
+    writeIdList(lastRoundKey(), picked.map((q) => q?.id ?? q?.questionId).filter((x) => x !== undefined && x !== null))
+
+    /*
+     * 返回的是**完整顺序**（picked 在前，其余在后）。
+     *
+     * 为什么末尾还要带没被抽中的题：
+     *   `allQuestionsData` 是全库，`questions` 是它的前 count 条切片。
+     *   如果这里只返回 picked，用户把「每次练习数量」调大时（比如 10 → 全部）
+     *   就会没有题可取 —— 明明题库里有 100 道，页面却说总共 10 道。
+     *   把剩余题接在后面，既保证题单稳定，也不丢题。
+     */
+    const pickedIds = new Set(picked.map((q) => String(q?.id ?? q?.questionId)))
+    const rest = ordered.filter((q) => !pickedIds.has(String(q?.id ?? q?.questionId)))
+    return [...picked, ...rest]
+  }
+
+  /**
+   * 清掉随机题单（"重新练习" / 练完一轮时调用）
+   *
+   * ⚠️ 只清**题单**，不清 `lastRoundKey`（上一轮做过哪些题）——
+   *    那份记录正是下一轮"新题优先"的依据，清掉就退化成纯随机了。
+   */
+  function clearRandomPlan(): void {
+    try {
+      localStorage.removeItem(randomPlanKey())
+    } catch {
+      // 忽略：清不掉最多是沿用了旧题单，不影响功能
+    }
+  }
+
   // 通用题目处理函数 - 现在可被外部调用
   async function processQuestions(data: any[]): Promise<void> {
     const count = questionCount.value
@@ -238,7 +424,30 @@ export function useQuestionPractice(
     debugProcessStart(props.moduleType, data, { shouldShuffle, questionCount: count, offset })
 
     if (shouldShuffle) {
-      // 检查缓存：如果已有乱序结果，直接使用
+      /*
+       * 「随机练习」= 一次随机，题单固定（2026-10-20 按用户方案重做）
+       * =================================================================
+       * 用户口径：
+       *   ① 「刷新页面一直都是这题 只是他的序号变了 可能是第一题 可能是第二题
+       *      每次刷新题号不一样 但是题目一样」        ← 报的现象
+       *   ② 「随机只随机一次 在用户没有提交结果刷完这个题库时 永远也都是保留暂存结果」
+       *                                              ← 给的方案，按它实现
+       *
+       * 旧实现的两个毛病：
+       *   · `shuffledCache` 是模块级 Map，**刷新即失效** → 每次刷新重新洗牌；
+       *   · 暂存里又按 `currentQuestionId` 把用户拽回同一道题 →
+       *     "题号变、题目不变"。两个机制互相打架。
+       *
+       * 现在的做法：
+       *   题单持久化在 localStorage（`loadRandomPlan`），刷新/重开浏览器都沿用同一份；
+       *   只有「重新练习」「练完一轮」「题目增删」「练习数量变化」才重建
+       *   （见 `buildRandomPlan` / `clearRandomPlan` 的注释）。
+       *   既然顺序天然稳定，暂存里的 `currentQuestionId` 就能正确定位 ——
+       *   两个机制不再冲突，而是互补。
+       *
+       * `shuffledCache` 仍然保留：它解决的是**同一会话内**重复调用
+       * processQuestions（如切换设置后重进）时不要重排。跨会话的稳定性由 localStorage 保证。
+       */
       const cacheKey = `${props.bankId}_${props.moduleType}`
       let shuffled: any[]
 
@@ -246,26 +455,19 @@ export function useQuestionPractice(
       debugCacheCheck(props.moduleType, cacheKey, hasCache, hasCache ? shuffledCache.get(cacheKey) : null)
 
       if (hasCache) {
-        // 使用缓存的乱序结果
+        // 同一会话内已经排过序 → 沿用，避免"翻着翻着顺序又变"
         shuffled = shuffledCache.get(cacheKey) as any[]
       } else {
-        // 首次进入，生成乱序并缓存
-        shuffled = [...data]
-        const beforeShuffle = [...shuffled]
-        for (let i = shuffled.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
-        }
-
-        // 调试日志：打乱前后对比
-        debugShuffle(props.moduleType, beforeShuffle, shuffled)
+        // 先看有没有持久化的题单；没有（或已失效）才生成新的
+        const planned = loadRandomPlan(data, count)
+        shuffled = planned || buildRandomPlan(data, count)
+        debugShuffle(props.moduleType, [...data], shuffled)
         debugCacheWrite(props.moduleType, cacheKey, shuffled)
         shuffledCache.set(cacheKey, shuffled)
       }
 
       // 调试日志：设置 allQuestionsData
       debugSetAllQuestionsData(props.moduleType, shuffled, 'processQuestions(shuffle)')
-
       // 将打乱后的数组保存到 allQuestionsData，确保后续切片保持乱序
       allQuestionsData.value = shuffled
 
@@ -1749,7 +1951,22 @@ export function useQuestionPractice(
     }
   }
 
+  /**
+   * 「重新练习」—— 这是随机题单**唯一该被丢弃**的用户入口
+   *
+   * ⚠️ 为什么必须在这里清题单（2026-10-20）：
+   *   随机练习现在采用「一次随机、题单固定」的模型（见 `buildRandomPlan`）。
+   *   如果"重新练习"不清题单，用户点它只会把答案清空，
+   *   题目顺序还是老样子 —— 那就不是"重新练习"，而是"重做同一份卷子"。
+   *   用户的诉求是"随机"，重新练习就应该换一批/换一个顺序。
+   *
+   * 注意只清**题单**，不清"上一轮做过哪些题"（`lastRoundKey`）：
+   *   那份记录正是下一轮"新题优先"的依据，清掉就退化成纯随机了。
+   */
   function resetPractice(): void {
+    // 丢掉随机题单 + 会话内的乱序缓存，让下次加载重新生成
+    clearRandomPlan()
+    shuffledCache.delete(`${props.bankId}_${props.moduleType}`)
     questionOffset.value = 0
     resetAnswers()
   }
@@ -1963,6 +2180,8 @@ export function useQuestionPractice(
     updateSubEssayAnswer,
     handleAnswerSubmission,
     resetPractice,
+    // 「练完一轮」时清随机题单（下一轮重新随机）；由 PracticeComponent 在结算时调用
+    clearRandomPlan,
     showAllAnalysis,
     viewResult,
     collectQuestion,
