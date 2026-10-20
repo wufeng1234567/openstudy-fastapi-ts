@@ -563,8 +563,14 @@
 
                   <!--
                     已添加素材清单
-                    · 文档项：显示字符数（让用户确认"确实读进去了"）
-                    · 图片项：缩略图 + 点击放大（复用 el-image 的 preview-src-list）
+                    · 文档项：图标 + 字符数 + 「查看」按钮
+                    · 图片项：缩略图，点击直接放大
+
+                    ⚠️ 为什么文档必须有「查看」（2026-10-20 用户反馈「文档没法预览」）：
+                      我第一版只给图片做了预览，文档只有一个图标和字符数。
+                      用户传完一份 PDF 后，唯一的确认手段是"看字符数"——
+                      但字符数不能说明"是不是解析对了、内容对不对"。
+                      素材要用它出题，**能看见内容**是这个功能能不能被信任的前提。
                   -->
                   <div v-if="materialItems.length" class="material-doc-list">
                     <div v-for="(item, i) in materialItems" :key="item.id" class="material-doc">
@@ -579,18 +585,32 @@
                         </template>
                       </el-image>
                       <!-- 文档：类型图标 -->
-                      <el-icon v-else class="material-doc__icon"><Document /></el-icon>
+                      <template v-else>
+                        <el-icon class="material-doc__icon"><Document /></el-icon>
+                        <span class="material-doc__name material-doc__name--clickable"
+                          :title="item.fileName" @click="openDocPreview(item)">
+                          {{ item.fileName }}
+                        </span>
+                        <span class="material-doc__meta">{{ item.content.length }} 字符
+                          <template v-if="item.note"> · {{ item.note }}</template>
+                        </span>
+                        <el-button text size="small" type="primary" @click="openDocPreview(item)">
+                          查看
+                        </el-button>
+                        <el-button text size="small" type="danger" :disabled="aiGenerating"
+                          @click="removeMaterialItem(item.id)">
+                          移除
+                        </el-button>
+                      </template>
 
-                      <span class="material-doc__name">{{ item.fileName }}</span>
-                      <span class="material-doc__meta">
-                        <template v-if="item.kind === 'image'">图片</template>
-                        <template v-else>{{ item.content.length }} 字符</template>
-                        <template v-if="item.note"> · {{ item.note }}</template>
-                      </span>
-                      <el-button text size="small" type="danger" :disabled="aiGenerating"
-                        @click="removeMaterialItem(item.id)">
-                        移除
-                      </el-button>
+                      <!-- 图片项的操作区（文档项已在上面单独渲染） -->
+                      <template v-if="item.kind === 'image'">
+                        <span class="material-doc__meta">图片</span>
+                        <el-button text size="small" type="danger" :disabled="aiGenerating"
+                          @click="removeMaterialItem(item.id)">
+                          移除
+                        </el-button>
+                      </template>
                     </div>
                   </div>
                   <div v-if="materialParsing" class="material-parsing">
@@ -601,6 +621,42 @@
               </div>
             </el-collapse-item>
           </el-collapse>
+
+          <!--
+            文档内容预览（2026-10-20 用户反馈「文档没法预览」）
+
+            ⚠️ 为什么必须有这个：用户传 PDF 是为了"让 AI 照这份材料出题"，
+               如果看不见解析出来的内容，他无法确认
+                 ① 文件真的读进来了（而不是只有个字符数）
+                 ② 解析质量能接受（表格/公式有没有乱掉）
+               看不见就等于不敢用 —— 素材功能会因此被弃用。
+
+            实现刻意**对齐 `AiQuestionBuilder` 的解析结果对话框**（同一套形态：
+            顶部统计条 + 大文本区 + 复制按钮），这样同一个系统里"看文档"的体验一致，
+            用户不需要学两套。样式复用 `.parsed-dialog-*` 的思路，不另起一套命名。
+          -->
+          <el-dialog v-model="docPreviewVisible" :title="docPreviewTitle" width="80%" top="5vh"
+            append-to-body class="material-doc-preview-dialog">
+            <div class="material-preview-header">
+              <el-tag type="success" size="small">{{ docPreviewContent.length }} 字符</el-tag>
+              <el-tag v-if="docPreviewTruncated" type="warning" size="small">
+                已截断到 {{ MATERIAL_MAX_CHARS }} 字符
+              </el-tag>
+              <el-button type="primary" size="small" style="margin-left: auto"
+                @click="copyDocPreviewContent">
+                <el-icon><DocumentCopy /></el-icon>
+                复制文本
+              </el-button>
+            </div>
+
+            <!--
+              用 textarea + readonly 而不是 div：
+                · 保留原文档的**换行与缩进**（出题很依赖段落结构）；
+                · 用户可以手动选中局部文本复制（比只有一个"复制全部"按钮实用）。
+            -->
+            <el-input v-model="docPreviewContent" type="textarea" :rows="24" readonly
+              resize="vertical" class="material-preview-body" />
+          </el-dialog>
 
           <el-form-item label="AI 模型">
             <div class="ai-model-row">
@@ -1712,6 +1768,43 @@ const handleMaterialFileChange = async (uploadFile) => {
 const removeMaterialItem = (id: number) => {
   const i = materialItems.value.findIndex((it) => it.id === id)
   if (i >= 0) materialItems.value.splice(i, 1)
+}
+
+/* ── 文档内容预览（2026-10-20）────────────────────────────────────────
+ *
+ * 用户口径：「文档没法预览」。
+ *
+ * 三个状态就够了，不需要把 blocks 渲染成富文本：
+ *   · `docPreviewVisible`  —— 对话框开关
+ *   · `docPreviewTitle`    —— 标题带文件名（用户同时开了几份能分清）
+ *   · `docPreviewContent`  —— 解析出的纯文本
+ *
+ * 为什么预览用**纯文本**而不是富块预览：
+ *   出题真正吃进去的就是 `textContent`（见 `handleMaterialFileChange` 里的注释）。
+ *   预览若显示另一种形态（带图片块的富文本），用户看到的内容和模型看到的内容
+ *   就不一致 —— 那会让人误判"明明图里有字，为什么出的题不对"。
+ *   **预览必须真实反映送进模型的东西**，这是可信度的基础。
+ */
+const docPreviewVisible = ref(false)
+const docPreviewTitle = ref('文档内容')
+const docPreviewContent = ref('')
+const docPreviewTruncated = ref(false)
+
+const openDocPreview = (item: { fileName: string; content: string; truncated?: boolean }) => {
+  docPreviewTitle.value = item.fileName || '文档内容'
+  docPreviewContent.value = item.content || ''
+  docPreviewTruncated.value = !!item.truncated
+  docPreviewVisible.value = true
+}
+
+const copyDocPreviewContent = async () => {
+  try {
+    await navigator.clipboard.writeText(docPreviewContent.value || '')
+    ElMessage.success('已复制文档内容')
+  } catch {
+    // 非 https / 无权限时 clipboard 会失败，明确告知而不是静默
+    ElMessage.error('复制失败，请手动选中文本复制')
+  }
 }
 
 /**
@@ -3689,6 +3782,44 @@ defineExpose({ questions, openAiDialog })
   width: 100%;
   height: 100%;
   color: var(--os-text-4, #9ca3af);
+}
+
+/*
+ * 文档名可点击（打开预览）
+ *
+ * 只改可点击态的下划线与颜色，不改变尺寸 ——
+ * 列表行高本来就被缩略图/图标撑到 32px，加下划线不会引起抖动。
+ */
+.material-doc__name--clickable {
+  cursor: pointer;
+
+  &:hover {
+    color: var(--os-accent, #409eff);
+    text-decoration: underline;
+  }
+}
+
+/*
+ * 文档预览对话框
+ *
+ * 与 `AiQuestionBuilder` 的「文档解析结果」保持同一形态（见模板注释），
+ * 所以这里只补必要的间距，不重做视觉。
+ */
+.material-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.material-preview-body {
+  :deep(.el-textarea__inner) {
+    font-family: var(--os-font-code, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--os-text);
+    background: var(--os-bg-subtle, #fafafa);
+  }
 }
 
 .material-parsing {
