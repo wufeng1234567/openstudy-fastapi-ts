@@ -321,22 +321,35 @@ const onTypeChange = () => {
 </script>
 
 <style scoped lang="scss">
-.full-editor-dialog {
-  :deep(.el-dialog) {
-    position: fixed;
-    top: 5vh;
-    left: 50%;
-    transform: translateX(-50%);
-    border-radius: var(--os-radius);
-    display: flex;
-    flex-direction: column;
-    height: 70vh;
-    max-height: 70vh;
-    max-width: 65%;
-  }
-
+/*
+ * ⚠️ 这段样式曾经**完全没生效**（2026-10-20 修「子题没有滚动条」的真根因）
+ *
+ * 原写法有两个错误：
+ *   ① `.full-editor-dialog { :deep(.el-dialog) { ... } }`
+ *      —— class 加在 el-dialog **自己身上**（DOM 是 div.el-dialog.full-editor-dialog），
+ *         所以 `:deep(.el-dialog)` 是"自己里面的自己" → 永远匹配 0 个。
+ *   ② 改成 `.full-editor-dialog.el-dialog { ... }` 后仍不生效：
+ *      scoped 会给整条选择器末尾补 `[data-v-xxx]`，
+ *      而 dialog 根元素由 Element Plus 内部渲染、**不带本组件的哈希**。
+ *
+ * 更隐蔽的一点（有编译产物为证）：嵌套在 SCSS 里的 `:deep()` 在 scoped 转换中
+ * 没被正确编译，产物里字面留着 `:deep(...)`，浏览器根本不认。
+ *
+ * 最终解法：
+ *   · dialog 自身尺寸/滚动 → 文件末尾的**非 scoped** 样式块
+ *     （选择器 `.full-editor-dialog.el-dialog`，已验证出现在构建产物里）；
+ *   · 内部元素样式 → 用 `.full-editor-content` 作锚点（见下）。
+ *     它一定带 scoped 哈希、一定是 dialog 的后代，稳妥。
+ */
+.full-editor-content {
   :deep(.el-dialog__body) {
     flex: 1;
+    /*
+     * `min-height: 0` 是 flex 子项能滚动的**必要条件**：
+     * flex 子项默认 `min-height: auto`（不会小于内容高度），
+     * 于是内容多高它就多高，`overflow-y: auto` 形同虚设。
+     */
+    min-height: 0;
     overflow-y: auto;
     padding: 16px 20px;
   }
@@ -407,7 +420,26 @@ const onTypeChange = () => {
           border: 1px solid var(--os-border);
           box-shadow: none;
           transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out), color var(--ds-duration-fast) var(--ds-ease-in-out);
-          overflow: hidden;
+          /*
+           * ⚠️ 原来是 `overflow: hidden`（2026-10-20 修「子题内容超出看不到」）
+           *
+           * 用户口径：「子题的完整题目编辑对话框里面 组合题里面 子题没有滚动条
+           *   导致内容超出无法看到完整的子题」
+           *
+           * 根因：`overflow: hidden` 会把超出卡片高度的内容**直接裁掉**，
+           * 而且不产生滚动条 —— 用户看不到被裁掉的那部分，也无从滚动。
+           * 一张子题卡里有题干编辑器 + 选项列表 + 答案 + 解析，
+           * 很容易超过对话框 70vh 给它的份额。
+           *
+           * 改成 `visible`：让内容自然撑开高度，由外层 `.el-dialog__body`
+           * 的 `overflow-y: auto` 统一滚动。
+           *
+           * 为什么不让卡片自己滚：卡片内已有 Tiptap 编辑器，
+           * 编辑器内部本身就会滚动/自适应高度；再套一层滚动容器，
+           * 鼠标滚轮会先滚卡片、到边界才滚外层，形成"滚动陷阱"，
+           * 手感非常差。**整个对话框一个滚动条**是最稳的解法。
+           */
+          overflow: visible;
 
           &:hover {
             box-shadow: none;
@@ -528,6 +560,65 @@ const onTypeChange = () => {
       min-height: 50px;
       font-size: 14px;
     }
+  }
+}
+</style>
+
+<!--
+  非 scoped 样式块：专门处理 el-dialog 的尺寸与滚动（2026-10-20）
+
+  ⚠️ 为什么要单独开一个**不带 scoped** 的块：
+
+  1. `class="full-editor-dialog"` 落在 Element Plus 的 dialog 根元素上
+     （实测 DOM：`div.el-dialog.full-editor-dialog`）。
+
+  2. `scoped` 会给选择器补 `[data-v-xxxxx]` 属性哈希，
+     但那个根元素由 **Element Plus 内部** 渲染，不带本组件的哈希 ——
+     无论是 `.full-editor-dialog { :deep(...) }`、`.full-editor-dialog.el-dialog`
+     还是 `:deep(.full-editor-dialog.el-dialog)`，实测都匹配不上
+     （dialog 高度一直是内容撑开的 1350px、body 的 overflow-y 一直是 visible，
+      直接证据是我用 CDP 读 getComputedStyle 拿到的值）。
+
+  3. 与其和 scope 机制较劲，不如**用明确的命名空间避免污染**：
+     所有规则都以 `.full-editor-dialog` 开头，它只在这个组件里出现，
+     全局写也不会影响别处。这是 Vue 官方也认可的逃生方式。
+
+  这样 `height: 70vh` / `overflow-y: auto` / `min-height: 0` 才真正生效，
+  子题超出时对话框内部出现滚动条，用户能看到完整内容。
+-->
+<style lang="scss">
+.full-editor-dialog.el-dialog {
+  position: fixed;
+  top: 5vh;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: var(--os-radius);
+  display: flex;
+  flex-direction: column;
+  height: 70vh;
+  max-height: 70vh;
+  max-width: 65%;
+  overflow: hidden;
+
+  .el-dialog__header {
+    flex-shrink: 0;
+    padding: 14px 20px;
+    border-bottom: 1px solid #e4e7ed;
+    margin-right: 0;
+  }
+
+  .el-dialog__body {
+    flex: 1;
+    /* flex 子项能滚动的必要条件，默认 auto 会让它被内容撑高 */
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px 20px;
+  }
+
+  .el-dialog__footer {
+    flex-shrink: 0;
+    border-top: 1px solid #e4e7ed;
+    padding: 12px 20px;
   }
 }
 </style>

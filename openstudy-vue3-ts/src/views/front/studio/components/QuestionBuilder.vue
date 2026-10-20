@@ -751,18 +751,25 @@
               <!--
                 深度思考实时展示（2026-10-20）
 
-                用户口径：「要能够让用户看到 llm 深度思考的部分 目前 ai 获取数据后
-                  没法直接看到深度思考部分 必须等待好一会 才能看到正文内容
-                  就很影响用户等待体验」
+                ★ 首字延迟的真相（实测数据，别再瞎猜）★
+                  用户反馈「点击生成后还是等一会才会输出深度思考内容，
+                    本地环境不应该卡这么久」。
 
-                开思考的模型要先推理几十秒才吐第一个正文字。原来这段时间只有一句
-                「请稍候...」，用户无法分辨"在干活"和"卡死了"。
-                现在把思考正文实时吐出来 —— 有字在动，等待就有意义。
+                  我实测了三层（httpx 直连 / Vite 代理 / 浏览器 fetch）：
+                    · 直连后端 9101     → 首个思考 **2.57s**，862 个分片
+                    · 经 Vite 代理 3167 → 首个思考 **2.79s**，1865 个分片
+                    代理只多 0.22s，**传输层没问题**，反缓冲头也生效了
+                    （x-accel-buffering: no、无 gzip）。
 
-                ⚠️ 只在**已有思考内容**时显示，且和正文互不遮挡：
-                   · 有正文后思考卡片自动折叠（`aiThinkingOpen` 由代码置 false），
-                     把屏幕让给题目；
-                   · 用户可随时点开回看推理过程。
+                  那 2.5s 是**模型自己的推理启动时间**，本地环境也躲不掉
+                  （要走网络到模型服务）。所以"提速"这条路走不通 ——
+                  能做的是**让这 2.5s 可见**：用户看得见在等什么，就不觉得卡。
+
+                ★ 三态设计 ★
+                  ① 刚点下、还没收到任何思考 → 「已连接，等待模型响应 3s」
+                     带**实际秒数**，这是本修复的核心：把不确定性变成确定性。
+                  ② 收到思考增量        → 实时滚动显示推理正文。
+                  ③ 收到正文            → 思考卡片自动折叠，把屏幕让给题目。
               -->
               <div v-if="aiGenerating && aiThinking" class="think-box">
                 <div class="think-box__head" @click="aiThinkingOpen = !aiThinkingOpen">
@@ -774,19 +781,29 @@
                 </div>
 
                 <!--
-                  ⚠️ ref="thinkBoxRef" 必须有（2026-10-20 修「滚动条只往上滚」）
+                  ⚠️ ref + @scroll 都必须有（2026-10-20 修「滚动条被自动往下压」）
 
-                  用户口径：「深度思考的输出内容的滚动条变更方式和正式回复的不一样
-                    滚动条会不断往上滚动 然后用户只能看见一个地方的内容
-                    视图窗口需要不断变更才可以看到最新的深度思考内容」
+                  用户口径：「深度思考的滚动条会不断自动往下面压 用户鼠标无法自由控制滚动
+                    记住这里有个坑 要既可以让用户自由控制滚动条滚动
+                    又要保证用户滚动到底部可以一直自由看到最新的输出内容」
 
-                  根因：这个 div 有 `max-height: 180px; overflow-y: auto;`，
-                  新内容不断追加到**底部**，但 scrollTop 停在原地 →
-                  用户看到的是最早那一段，越写越看不到最新的。
-                  正式回复区之所以正常，是因为它的 `onChunk` 里有
-                  `streamBoxRef.scrollTop = scrollHeight`，而思考区**漏了这一步**。
+                  ★ 这是经典的"智能跟随"问题，粗暴地每次滚到底会跟用户打架 ★
+
+                  上一版无条件 `scrollTop = scrollHeight`，错在：
+                    用户已经往上翻去看前面的推理了，下一片思考到达时
+                    又把他拽回底部 —— 鼠标再怎么滚都没用。
+
+                  正确做法（聊天软件的通用解法）：
+                    · 维护 `thinkAutoFollow`（默认 true）；
+                    · 用户**手动**滚动时判断：贴底 → 继续跟随；离开底部 → 停止跟随；
+                    · 只有 `thinkAutoFollow` 为 true 时才自动滚到底；
+                    · 用户重新滚回底部 → 自动恢复跟随（无需点按钮）。
+
+                  这样两个诉求同时满足：翻历史时视图纹丝不动，
+                  回到底部后又自动跟着新内容走。
                 -->
-                <div v-show="aiThinkingOpen" ref="thinkBoxRef" class="think-box__body">{{ aiThinking }}</div>
+                <div v-show="aiThinkingOpen" ref="thinkBoxRef" class="think-box__body"
+                  @scroll="onThinkScroll">{{ aiThinking }}</div>
               </div>
 
               <!--
@@ -797,13 +814,25 @@
                    「AI 正在生成题目，请稍候...」就是**两个等待提示并存**。
                    用户会疑惑"到底是在思考还是在生成"。
                    现在：有思考 → 只显示思考；没思考（模型不支持）→ 显示这句。
+
+                ★ 带秒数（2026-10-20）★
+                  实测模型推理启动约 2.5s（本地直连也一样，是模型侧耗时）。
+                  原来这段时间只有静态的一行字，用户不知道要等多久。
+                  现在显示**已等待秒数**，用户能看出"它在动、已经等了 7 秒"，
+                  而不是"点了没反应"。秒数由 `aiWaitSeconds` 每秒自增。
               -->
               <pre v-if="aiGenerating && rawJsonContent" class="stream-content streaming">{{ rawJsonContent }}</pre>
               <div v-else-if="aiGenerating && !aiThinking" class="generating-tip">
                 <el-icon class="is-loading">
                   <Loading />
                 </el-icon>
-                <span>AI 正在生成题目，请稍候...</span>
+                <span class="generating-tip__text">
+                  正在等待模型响应…
+                  <span class="generating-tip__sec">{{ aiWaitSeconds }}s</span>
+                </span>
+                <span v-if="aiWaitSeconds >= 8" class="generating-tip__hint">
+                  首次调用需要预热模型，之后会快很多
+                </span>
               </div>
 
               <!-- 原始 JSON 视图 -->
@@ -1258,6 +1287,68 @@ const aiThinking = ref('')
 const aiThinkingOpen = ref(true)
 /** 思考内容容器：用于**自动滚到底**，否则用户只能看到最早那一屏 */
 const thinkBoxRef = ref<HTMLElement | null>(null)
+/**
+ * 是否「自动跟随」思考流（2026-10-20）
+ *
+ * 用户口径：「滚动条会不断自动往下面压 用户鼠标无法自由控制滚动…
+ *   要既可以让用户自由控制滚动条 又要保证用户滚动到底部可以一直看到最新输出」
+ *
+ * `true`  —— 新内容到达时自动滚到底（默认；首次开始思考时就是这种）
+ * `false` —— 用户已经往上翻去看历史了，**绝不打扰他**，视图停在原处
+ *
+ * 状态由 `onThinkScroll` 根据"是否贴底"自动切换，用户不需要点任何按钮：
+ * 滚到底 → 恢复跟随；往上翻 → 停止跟随。
+ */
+const thinkAutoFollow = ref(true)
+/** 判定"贴底"的容差（px）：留 24px 是因为小数像素/行高取整会有 1-2px 误差，
+ *  卡得太死会让"明明滚到底了却不跟随"的 bug 反复出现 */
+const THINK_STICKY_THRESHOLD = 24
+
+/**
+ * 用户手动滚动思考区时的处理
+ *
+ * ⚠️ 这个函数是"自由控制"与"自动跟随"不打架的关键：
+ *   只有它在用户手势后更新 `thinkAutoFollow`，
+ *   程序性的 `scrollTop` 赋值也会触发 scroll 事件 —— 但那时算出来
+ *   仍然是"贴底"，因此 `thinkAutoFollow` 保持 true，不会误判成"用户想停下"。
+ */
+const onThinkScroll = () => {
+  const el = thinkBoxRef.value
+  if (!el) return
+  const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+  thinkAutoFollow.value = distanceToBottom <= THINK_STICKY_THRESHOLD
+}
+/**
+ * 已等待秒数（2026-10-20）
+ *
+ * 模型推理启动约 2.5s（实测，本地也躲不掉 —— 是模型侧耗时，不是代理）。
+ * 原来这段时间界面只有一行静态文字，用户无法判断"在等"还是"卡死"。
+ * 显示秒数把"不确定的等待"变成"看得见的进度"。
+ */
+const aiWaitSeconds = ref(0)
+let aiWaitTimer: ReturnType<typeof setInterval> | null = null
+
+/*
+ * 等待计时器的收尾（2026-10-20）
+ *
+ * ⚠️ 用 watch 而不是在每个结束路径里手动 clearInterval：
+ *    `aiGenerating.value = false` 在文件里有 **9 处**
+ *    （成功 / 解析失败 / 格式错误 / onError / 外层 catch…），
+ *    逐处加一行必然漏改 —— 漏掉的那条路径会让计时器永远在跑，
+ *    下次打开弹窗秒数从上次的数值继续涨，看着像"卡了几百秒"。
+ *
+ *    监听状态本身，无论从哪条路结束都能收尾 —— 一处覆盖全部。
+ *
+ * ⚠️ 必须放在 `aiGenerating` 声明**之后**：
+ *    watch 在 setup 阶段立即求值，放在声明前会命中 TDZ
+ *    直接抛 ReferenceError 白屏，而 `vite build` **抓不到这类错误**。
+ */
+watch(aiGenerating, (running) => {
+  if (!running && aiWaitTimer) {
+    clearInterval(aiWaitTimer)
+    aiWaitTimer = null
+  }
+})
 const streamBoxRef = ref(null)
 const generatedCount = ref(0)
 const pendingImportData = ref(null) // 暂存待导入的数据
@@ -3052,6 +3143,16 @@ const handleAiGenerate = async () => {
   // 用户会误以为是这次的内容（尤其两次生成的题目主题相似时）。
   aiThinking.value = ''
   aiThinkingOpen.value = true
+  /*
+   * 启动等待计时（2026-10-20）
+   *
+   * 必须在**发请求之前**就开始计数 —— 用户感知的等待从点击那一刻算起，
+   * 而不是从第一个分片到达算起。这也是"点了没反应"的关键：
+   * 原来界面上没有任何东西能证明请求已发出。
+   */
+  aiWaitSeconds.value = 0
+  if (aiWaitTimer) clearInterval(aiWaitTimer)
+  aiWaitTimer = setInterval(() => { aiWaitSeconds.value += 1 }, 1000)
   aiGenerating.value = true
   viewMode.value = 'raw'
 
@@ -3204,20 +3305,22 @@ const handleAiGenerate = async () => {
         onThinking(delta) {
           aiThinking.value += delta
           /*
-           * 思考区**必须跟着滚到底**（2026-10-20 修「滚动条只往上滚」）。
+           * 智能跟随（2026-10-20 修「滚动条被自动往下压」）
            *
-           * 这个容器有 max-height，新内容追加在底部；不主动滚的话
-           * scrollTop 原地不动 → 用户永远盯着最早那几行，
-           * 必须手动往下拖才能看到最新推理，体验很差。
+           * ⚠️ 必须判断 `thinkAutoFollow`，不能无条件滚到底：
+           *    用户往上翻去看历史推理时，下一片思考到达又把他拽回底部，
+           *    鼠标完全失控 —— 这正是用户报的第二个 bug。
            *
            * 用 nextTick 是因为 DOM 还没更新：本回调里刚改了 `aiThinking`，
-           * 立刻读 scrollHeight 拿到的还是旧高度，滚不到真正的底部。
+           * 立刻读 `scrollHeight` 拿到的还是旧高度，滚不到真正的底部。
            */
-          nextTick(() => {
-            if (thinkBoxRef.value) {
-              thinkBoxRef.value.scrollTop = thinkBoxRef.value.scrollHeight
-            }
-          })
+          if (thinkAutoFollow.value) {
+            nextTick(() => {
+              if (thinkBoxRef.value) {
+                thinkBoxRef.value.scrollTop = thinkBoxRef.value.scrollHeight
+              }
+            })
+          }
           if (rawJsonContent.value && aiThinkingOpen.value) {
             aiThinkingOpen.value = false
           }
@@ -3399,8 +3502,25 @@ defineExpose({ questions, openAiDialog })
 
 .question-builder {
   display: flex;
-  /* 两列等高（右栏跟着左栏的高度），避免右栏凭空多出空白 */
-  align-items: stretch;
+  /*
+   * ⚠️ 从 `stretch` 改成 `flex-start`（2026-10-20 修「左侧下方大面积空白」）
+   *
+   * `stretch` 会让两栏**互相拉高**：右栏（题目编辑，内容可能很长）
+   * 把自己撑高后，左栏也被拉到同样高度 —— 于是左栏"10 道题"下面
+   * 拖出一大片空白，分页器还被 `margin-top:auto` 顶到最底下，
+   * 用户必须滚到底才能看到分页。
+   *
+   * 改成 `flex-start` 后：**两栏各按自己内容的高度**排布，
+   * 谁长谁短互不影响。左栏该多高就多高，空白自然消失。
+   *
+   * 代价：两栏底部可能不齐平（右栏短时下方留白）。
+   * 权衡后可以接受 —— 右栏底部是空背景，而左侧留白会遮住分页，
+   * 后者的伤害大得多。
+   *
+   * 另外给两栏各自加 `align-self` 兜底（见 .question-panel / .edit-panel），
+   * 避免将来有人改回 stretch 又复发。
+   */
+  align-items: flex-start;
   gap: 12px;
   /*
    * 原来写死 `min-height: 600px`：题目为 0 条时，双栏仍撑满 600px 空白，
@@ -3604,6 +3724,11 @@ defineExpose({ questions, openAiDialog })
   .question-panel {
     flex: 1;
     min-width: 260px;
+    /*
+     * 自兜底：即使有人把父级改回 `align-items: stretch`，
+     * 左栏也不会被右栏拉高（见 .question-builder 的注释）。
+     */
+    align-self: flex-start;
     background: transparent;
     border: none;
     border-right: 1px solid var(--os-border-soft);
@@ -3755,7 +3880,29 @@ defineExpose({ questions, openAiDialog })
       flex-shrink: 0;
       padding-top: 10px;
       border-top: 1px solid var(--os-border);
-      margin-top: auto;
+      /*
+       * ⚠️ 原来是 `margin-top: auto`（2026-10-20 修「左侧下方大面积空白」）
+       *
+       * 用户口径：「左侧是题目 一页显示10题 但是右侧的题目编辑页面又太大
+       *   导致左侧题目下方有大面积空白产生 用户只有滚动到底部才能看到分页组件」
+       *
+       * 根因：`.question-panel` 是 flex column，`margin-top: auto`
+       * 会把分页器**顶到容器最底部**。而左右两栏通过父级
+       * `align-items: stretch` 等高 —— 右栏（题目编辑）内容很长时，
+       * 左栏被一起拉高，于是"10 道题 + 分页器"之间出现一大片空白，
+       * 分页还被推到视口之外，必须往下滚才看得见。
+       *
+       * 改成 `margin-top: 0`：分页器**紧跟最后一题**，空白消失，
+       * 分页始终在列表正下方不远处 —— 不用滚动到底也能看到。
+       *
+       * 为什么不用"自动算一页几题来填满"（用户提的备选方案）：
+       *   那个方案要测量卡片高度、减去头部/分页/内边距，再反推 pageSize。
+       *   但卡片高度随题型（有无选项/解析长度）、字体、浏览器缩放、
+       *   窗口宽度（右栏 360/440/480 三档）都在变 —— 任何一处变动
+       *   就会算错，且错了会表现为"一页只有 3 题"或"永远多出一行滚动"，
+       *   属于**难测且频繁复发**的 bug。改 CSS 是根治，且零维护。
+       */
+      margin-top: 0;
       display: flex;
       justify-content: center;
 
@@ -3831,15 +3978,18 @@ defineExpose({ questions, openAiDialog })
     display: flex;
     flex-direction: column;
     /*
-     * 高度交给 flex 的 `stretch`（父级 `.question-builder` 已 `align-items: stretch`），
-     * 两列**同高**：左边多长、右边就多长。
+     * 高度由**自身内容**决定（2026-10-20 起父级改为 `align-items: flex-start`）。
      *
      * 历史：这里先后写过 `min-height: 700px` → `320px`，
      * 两次都是"右侧凭空多出一块空白"（空列表时尤其明显，用户 2026-10-18 反馈
      * 「发布设置那边太多空白」）。真正的原因就是**给容器设了最小高度**。
      * 所以现在不设 min-height，让内容决定；右侧"点击左侧题目进行编辑"那句
      * 自带一点上下留白，不至于塌成一条线。
+     *
+     * 2026-10-20 补充：父级已是 `flex-start`，这里显式声明 `align-self`
+     * 防止有人改回 `stretch` 时右栏又去撑高左栏（那会导致左栏空白复发）。
      */
+    align-self: flex-start;
     min-height: 0;
     height: auto;
 
@@ -4669,6 +4819,46 @@ defineExpose({ questions, openAiDialog })
    *
    * 高度上限 180px：思考可能上千字，撑满会让正文完全看不见。
    */
+  /*
+   * 等待占位（2026-10-20 加秒数）
+   *
+   * 实测模型推理启动约 2.5s（直连后端也一样，是模型侧耗时，非代理缓冲）。
+   * 这段时间必须让用户看到"它在动 + 已经等了多久"，
+   * 否则就是"点了没反应"。
+   */
+  .generating-tip {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 28px 16px;
+    color: var(--os-text-3);
+    font-size: 13px;
+
+    .el-icon {
+      font-size: 18px;
+      color: var(--os-text-4, #9ca3af);
+    }
+  }
+
+  .generating-tip__text {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+
+  .generating-tip__sec {
+    font-variant-numeric: tabular-nums; /* 数字等宽，秒数跳动时不会左右抖 */
+    font-weight: 600;
+    color: var(--os-text-2);
+  }
+
+  .generating-tip__hint {
+    font-size: 12px;
+    color: var(--os-text-4, #9ca3af);
+  }
+
   .think-box {
     margin-bottom: 12px;
     border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.06));
