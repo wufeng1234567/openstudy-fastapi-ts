@@ -501,7 +501,8 @@ async def stream_with_config(
     config_id: Optional[int] = None,
     files: Optional[list] = None,
     as_attachment: bool = False,
-) -> AsyncIterator[str]:
+    include_reasoning: bool = False,
+) -> AsyncIterator:
     """流式输出：优先使用 sys_ai_config 表配置；表无配置时回退内置 dynamic_ai 路由
 
     model / provider 都为空时使用默认；model 优先于 provider。
@@ -509,8 +510,25 @@ async def stream_with_config(
     files：**原始文件附件** `[{name, mimeType, base64}]`，仅对 ds-free-nb 桥生效
            （桥把它们原样上传到 DS 网页，由网页解析）。
     as_attachment：正文是否投递为附件（仅 ds-free-nb），见 ChatTurn.inject_history。
-    注意：这里**只输出正式回答（content）**，深度思考的 reasoning_content 会被丢弃，
-    前端用「思考中」动画来占位即可。
+
+    include_reasoning（2026-10-20 新增）：
+        False（默认）→ yield `str`，**只含正式回答**（原有行为，所有老调用方不受影响）。
+        True          → yield `(kind, text)` 二元组：
+                          · `("answer", 正文增量)`
+                          · `("reasoning", 思考增量)`
+                        调用方用 `chat_engine.THINK_OPEN/THINK_CLOSE` 包一下即可。
+
+    ⚠️ 为什么不是"永远 yield 二元组"：
+        这个函数的调用方不止 chat_engine，`agent/loop.py` 等也希望拿到分片对象
+        自己读 `additional_kwargs`。贸然改返回值类型会静默破坏所有老调用方
+        （它们会把 tuple 当字符串拼进正文）。用显式开关，风险可控。
+
+    ⚠️ 修过的坑（2026-10-20，用户报「看不到深度思考内容」）：
+        上一版 chat_engine 里写了 `_extract_reasoning(chunk)`，
+        但本函数**只 yield `chunk.content`（字符串）**，
+        于是 `getattr(chunk, "additional_kwargs", None)` 永远是 None，
+        思考一个字节都拿不到 —— 那段代码看着对，实际是死代码。
+        教训：**跨层取字段前，先确认上层到底 yield 了什么类型。**
     """
     config = await resolve_config(db, provider, model, user_id, config_id)
     if config:
@@ -519,7 +537,7 @@ async def stream_with_config(
             logger.info("[db_config] Using ds-free web client")
             async for kind, text in _stream_via_web_client(config, messages, include_reasoning=False):
                 if kind == "answer":
-                    yield text
+                    yield ("answer", text) if include_reasoning else text
             return
 
         logger.info(
@@ -528,9 +546,18 @@ async def stream_with_config(
         )
         llm = _build_llm(config, temperature, max_tokens, thinking, files=files, as_attachment=as_attachment)
         async for chunk in llm.astream(_to_lc_messages(messages)):
-            # 只转发正式回答；reasoning_content 不输出
-            if chunk.content:
-                yield chunk.content
+            if include_reasoning:
+                # 思考正文由 `langchain_reasoning_patch` 注入到 additional_kwargs
+                # （langchain-openai 默认会丢弃，详见该模块 docstring）
+                reasoning = _reasoning_of(chunk)
+                if reasoning:
+                    yield ("reasoning", reasoning)
+                if chunk.content:
+                    yield ("answer", chunk.content)
+            else:
+                # 只转发正式回答；reasoning_content 不输出
+                if chunk.content:
+                    yield chunk.content
         return
 
     # 回退：内置注册的客户端（provider 可能为 None，走默认 provider）
@@ -538,7 +565,30 @@ async def stream_with_config(
     async for chunk in dynamic_ai.chat_stream(
         messages, model="deepseek-flash", provider=provider, temperature=temperature
     ):
-        yield chunk
+        yield ("answer", chunk) if include_reasoning else chunk
+
+
+#: 各家流式分片里放「思考正文」的字段名（与 `agent/loop.py` 保持一致）
+_REASONING_KEYS = ("reasoning_content", "reasoning")
+
+
+def _reasoning_of(chunk: Any) -> str:
+    """从 LangChain 流式分片里取思考正文（取不到返回空串）。
+
+    分片是 `AIMessageChunk`，思考正文在 `additional_kwargs` 里 ——
+    这是 `langchain_reasoning_patch` 补进去的（上游 langchain-openai
+    用白名单构造 additional_kwargs，会把 reasoning_content 丢掉）。
+
+    容错：模型不支持思考 / 字段名不同 / 上游没发 —— 一律返回 ""。
+    """
+    kwargs = getattr(chunk, "additional_kwargs", None)
+    if not isinstance(kwargs, dict):
+        return ""
+    for key in _REASONING_KEYS:
+        val = kwargs.get(key)
+        if isinstance(val, str) and val:
+            return val
+    return ""
 
 
 async def _stream_via_web_client(config: SysAiConfig, messages: List[ChatMessage], include_reasoning: bool = False):

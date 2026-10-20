@@ -68,31 +68,6 @@ MAX_DOC_IMAGES = 8
 THINK_OPEN = "\x1e@@THINK@@"
 THINK_CLOSE = "\x1e"
 
-#: 各家流式分片里放「思考正文」的字段名（与 `agent/loop.py` 保持一致）
-_REASONING_KEYS = ("reasoning_content", "reasoning")
-
-
-def _extract_reasoning(chunk: Any) -> str:
-    """从流式分片里取出**思考正文**（取不到返回空串）。
-
-    思考正文由 `langchain_reasoning_patch` 注入到 `chunk.additional_kwargs`
-    （langchain-openai 默认会丢弃，详见该模块 docstring）。
-
-    ⚠️ 这里**不能**用 `chunk.content`：那是正式回答。
-       把思考当正文发出去，题目 JSON 前面会多出一大段推理，解析直接失败。
-
-    容错：字段缺失、类型不对、模型不支持思考 —— 一律返回 ""，
-    调用方就不会下发思考标记，UI 表现为"这场没有深度思考"，不影响出题。
-    """
-    kwargs = getattr(chunk, "additional_kwargs", None)
-    if not isinstance(kwargs, dict):
-        return ""
-    for key in _REASONING_KEYS:
-        val = kwargs.get(key)
-        if isinstance(val, str) and val:
-            return val
-    return ""
-
 
 @dataclass
 class ChatTurn:
@@ -688,7 +663,7 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
         ", ".join(f"{f['name']}({f['mimeType']},{len(f['base64'])})" for f in raw_files) or "-",
     )
     try:
-        async for chunk in db_config.stream_with_config(
+        async for item in db_config.stream_with_config(
             db,
             messages,
             provider=effective_provider,
@@ -702,34 +677,39 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
             user_id=turn.user_id,
             files=raw_files,
             as_attachment=as_attachment,
-        ):
             # ── 深度思考增量（2026-10-20）─────────────────────────────
             #
             # 用户口径：「要能够让用户看到 llm 深度思考的部分 目前 ai 获取数据后
             #   没法直接看到深度思考部分 必须等待好一会 才能看到正文内容
             #   就很影响用户等待体验」
             #
-            # 这正是"首字延迟"问题：开思考的模型要先推理几十秒才吐第一个正文字。
-            # 这段时间前端一片空白，用户不知道是在干活还是卡死了。
+            # 开思考的模型要先推理几十秒才吐第一个正文字，这段时间前端一片空白。
+            # 打开 include_reasoning 后本函数 yield `(kind, text)` 二元组，
+            # 我们就能把思考实时转出去。
             #
-            # 后端其实**早就拿到了**思考正文：`langchain_reasoning_patch`
-            # 把它注入了 `chunk.additional_kwargs`（详见该模块 docstring）。
-            # 只是 `agent/loop.py` 用了、`chat_engine`（出题走的这条路）一直没用 → 白丢。
-            #
-            # ⚠️ 传输格式：正文流是**纯文本**（前端按字符串拼接、只识别 `Error:` / `[DONE]`），
-            #    不能塞 JSON 事件行进去，否则会污染正文。
-            #    所以用 ASCII 记录分隔符 `\x1e`(RS) 包一段带前缀的标记：
-            #        \x1e@@THINK@@<增量文本>\x1e
-            #    新前端的 `consumeAssistantStream` 会剥离它并单独回调；
-            #    正文分片**一个字节都不改**，没开思考时行为与以前完全一致。
-            reasoning = _extract_reasoning(chunk)
-            if reasoning:
-                # 只用于下发，**不进** full_response（否则思考会混进题目 JSON，
-                # 污染解析、还会被写进聊天记录）
-                yield f"{THINK_OPEN}{reasoning}{THINK_CLOSE}"
+            # ⚠️ 踩过的坑：上一版没开这个开关，却直接对 chunk 调
+            #    `getattr(chunk, "additional_kwargs")` —— 而那时 chunk 是 str，
+            #    永远取不到 reasoning，思考一个字节都发不出去（死代码）。
+            #    跨层取字段前必须先确认上层 yield 的类型。
+            include_reasoning=True,
+        ):
+            # ① 思考增量：只下发，**不进** full_response
+            #    （否则思考会混进题目 JSON 污染解析、还会被写进聊天记录）
+            if isinstance(item, tuple):
+                kind, text = item
+                if kind == "reasoning":
+                    if text:
+                        yield f"{THINK_OPEN}{text}{THINK_CLOSE}"
+                    continue
+                # kind == "answer"
+                full_response += text or ""
+                if text:
+                    yield text
+                continue
 
-            full_response += chunk
-            yield chunk
+            # ② 兼容：万一某个分支仍返回裸字符串，按正文处理（不会丢内容）
+            full_response += item
+            yield item
     except Exception as e:
         reason = str(e)
         logger.exception(

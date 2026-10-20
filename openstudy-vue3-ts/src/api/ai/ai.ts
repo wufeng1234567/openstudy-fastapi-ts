@@ -659,24 +659,40 @@ async function consumeAssistantStream(
      * 后端把思考正文包在 `\x1e@@THINK@@…\x1e` 里下发（见 `chat_engine.THINK_OPEN`）。
      * 它**不是正文**，必须剔掉，否则会混进题目 JSON 让解析失败。
      *
-     * ⚠️ 必须处理"分片切断标记"的情况：
-     *    上一轮可能停在 `\x1e@@THI`，直接丢掉会永久损坏后续内容。
-     *    处理办法：末尾若出现不完整的标记头，截下来留到下一轮。
+     * ⚠️ 两种"切断"都要处理，否则标记会被拆散、漏进正文：
+     *    ① **标记头被切断**：`\x1e@@THI`（下一片才是 `NK@@…`）
+     *       → 不能当正文吞掉，要截下这段"真前缀"留到下一轮；
+     *    ② **标记头完整但闭合符未到**：`\x1e@@THINK@@我是`（还差结尾的 `\x1e`）
+     *       → 从标记头起整段留存。只留半截标记头会让已到达的思考正文
+     *         被当正文累积，下次再也找不到开头。
+     *
+     * 这两条是实测出来的：最初只处理了 ②，用 3 字符切片跑就露馅了
+     * （`\x1e@@` 落到正文里，思考一个字节都提不出来）。
      */
     let thinkDelta = ''
     for (;;) {
       const start = chunk.indexOf(THINK_OPEN)
-      if (start < 0) break
+      if (start < 0) {
+        // 情形①：末尾可能是标记头的真前缀
+        for (let n = Math.min(THINK_OPEN.length - 1, chunk.length); n > 0; n--) {
+          const tailStr = chunk.slice(chunk.length - n)
+          if (THINK_OPEN.startsWith(tailStr)) {
+            pending = tailStr
+            chunk = chunk.slice(0, chunk.length - n)
+            break
+          }
+        }
+        break
+      }
       const end = chunk.indexOf(THINK_CLOSE, start + THINK_OPEN.length)
-      if (end < 0) break // 标记未闭合 → 留给下一轮，本轮先不动它
+      if (end < 0) {
+        // 情形②：标记头完整、闭合符未到 → 从标记头起整段留存
+        pending = chunk.slice(start)
+        chunk = chunk.slice(0, start)
+        break
+      }
       thinkDelta += chunk.slice(start + THINK_OPEN.length, end)
       chunk = chunk.slice(0, start) + chunk.slice(end + THINK_CLOSE.length)
-    }
-    // 末尾残留的半个标记头：切下来等下一片补齐
-    const tail = chunk.lastIndexOf(THINK_OPEN)
-    if (tail >= 0) {
-      pending = chunk.slice(tail)
-      chunk = chunk.slice(0, tail)
     }
 
     if (thinkDelta) onThinking?.(thinkDelta)
