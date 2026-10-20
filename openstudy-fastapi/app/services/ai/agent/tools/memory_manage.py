@@ -140,7 +140,12 @@ class MemoryManageTool(AgentTool):
         #    都靠它），变的只是「可撤销」这件事的说明。
         return str(params.get("action") or "") in self._WRITE_ACTIONS
 
-    def undo_plan(self, params: Dict[str, Any], result: Dict[str, Any]) -> Dict[str, Any] | None:
+    def undo_plan(
+        self,
+        params: Dict[str, Any],
+        result: Dict[str, Any],
+        before: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any] | None:
         """声明「这一笔记忆操作用什么撤」（契约见 `base.AgentTool.undo_plan`）
 
         两个动作都是逻辑删（`del_flag='2'`），所以逆操作是**恢复** —— 直接复用既有服务函数

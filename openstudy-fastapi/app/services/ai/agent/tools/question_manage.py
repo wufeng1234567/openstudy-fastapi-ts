@@ -307,6 +307,25 @@ class QuestionManageTool(AgentTool):
                 "before": snapshot,
                 "undoable": True,
             }
+        # ⚠️ 下面三条给的是**用户看得懂的具体原因**，不是笼统的「还没实现」。
+        #
+        # 为什么「导入 / 新建题目」不自动撤销：撤它的自然做法是删掉刚导入的题，
+        # 但 `_purge_questions` 是物理删、且会连带清掉用户在这些题上的
+        # 错题/收藏/斩题标记 —— 那些是**别的行为**留下的数据，不该被「撤销导入」牵连。
+        # 用户真要清掉，走 delete_many / clear_questions（那两个带快照、能再撤回来）。
+        if action in ("create", "batch_import"):
+            return {
+                "undoable": False,
+                "reason": "新导入 / 新建的题目不会自动撤销（删除题目会连带清掉相关的错题与收藏标记）；"
+                "要清掉的话说一句「删掉这些题」，删除本身是能回退的",
+            }
+        # 为什么「改题」不自动撤销：`qws` 的题目更新不返回改前值、本工具也没留快照。
+        # 改错了题干再改一次即可，成本远低于为它引入一份题目级 before 快照。
+        if action == "update":
+            return {
+                "undoable": False,
+                "reason": "题目的修改不会自动撤销（题干 / 答案 / 解析再改一次即可，成本很低）",
+            }
         return None
 
     def confirm_policy(self, params: Dict[str, Any]) -> bool:

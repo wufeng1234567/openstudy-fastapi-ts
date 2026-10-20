@@ -294,7 +294,12 @@ class AgentManageTool(AgentTool):
     # 回退（2026-10-20 新增）
     # ------------------------------------------------------------------
 
-    def undo_plan(self, params: Dict[str, Any], result: Dict[str, Any]) -> Dict[str, Any] | None:
+    def undo_plan(
+        self,
+        params: Dict[str, Any],
+        result: Dict[str, Any],
+        before: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any] | None:
         """声明这一笔智能体操作怎么撤（契约见 `base.AgentTool.undo_plan`）
 
         | action   | 逆操作                  | 为什么                        |
@@ -313,7 +318,16 @@ class AgentManageTool(AgentTool):
         （给模型看的），不需要额外塞 `UNDO_BEFORE_KEY`。
         """
         action = str(params.get("action") or "")
-        aid = _to_int(result.get("agentId")) or _to_int(params.get("agent_id"))
+        # ⚠️ id 要同时认**顶层** `agentId` 与**嵌套** `agent.agentId`（2026-10-20 修的真缺陷）：
+        #    `_create` 的回执是 `ok(agent=info, ...)`，id 在 `agent.agentId` 里，
+        #    顶层**没有** `agentId` —— 只读顶层的话 `create` 永远判「定位不到行」，
+        #    于是「建错了一个智能体」这件事根本撤不掉。
+        #    `_delete` 的回执是平铺的 `agentId`，两条路都得认。
+        aid = (
+            _to_int(result.get("agentId"))
+            or _to_int((result.get("agent") or {}).get("agentId"))
+            or _to_int(params.get("agent_id"))
+        )
         if aid is None or aid <= 0:
             return {"undoable": False, "reason": REASON_MISSING_TARGET_ID}
         if action == "create":
@@ -329,6 +343,15 @@ class AgentManageTool(AgentTool):
                 "targetTable": "ai_agent_config",
                 "targetIds": [aid],
                 "undoable": True,
+            }
+        # ⚠️ `update` 给的是**用户看得懂的原因**，不是笼统的「还没实现」。
+        #    服务层 `update_agent` 只接受「改成什么」、不返回改前值，而它的会话在
+        #    服务层内部（本工具拿不到 before）。改错了人设再改一次即可，成本极低，
+        #    不值得为此动一个被 API 路由共用的服务函数。
+        if action == "update":
+            return {
+                "undoable": False,
+                "reason": "智能体的改动不会自动撤销（名称 / 人设 / 工具再改一次即可，成本很低）",
             }
         return None
 

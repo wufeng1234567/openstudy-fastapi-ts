@@ -201,7 +201,12 @@ class KnowledgeBaseManageTool(AgentTool):
         """`create` 一次只建一个知识库（规模固定），不额外强制确认"""
         return False
 
-    def undo_plan(self, params: Dict[str, Any], result: Dict[str, Any]) -> Dict[str, Any] | None:
+    def undo_plan(
+        self,
+        params: Dict[str, Any],
+        result: Dict[str, Any],
+        before: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any] | None:
         """声明「这一笔知识库操作用什么撤」（契约见 `base.AgentTool.undo_plan`）
 
         ⚠️ 知识库的删除语义是**混合**的（见模块 docstring），所以「能不能撤」分四种情况：
@@ -228,10 +233,51 @@ class KnowledgeBaseManageTool(AgentTool):
                 # 只有 delete 是部分回退（create 的逆是软删，库里本来就没别的东西）
                 "reason": REASON_DOCUMENTS_DESTROYED if action == "delete" else "",
             }
+        # ⚠️ `delete_many` 2026-10-20 补上（原来落到 not_declared）：
+        #    它逐个调 `rws.delete_knowledge_base`，而知识库是**逻辑删**（`del_flag`），
+        #    所以整批都能 restore —— 没有理由只让单个 delete 能撤、批量 delete 不能。
+        #    回执里有 `deleted: [{id, name, documents}]`，id 列表从这里取。
+        #    与下面 `delete` 一样带 `documents_destroyed`：库能回来，文档与分块回不来。
+        if action == "delete_many":
+            ids: List[int] = []
+            # ⚠️ `result.get("deleted")` 正常是 `[{id,name,documents}, ...]`，但这里必须
+            #    **防御式**解析：`delete_many` 的失败分支会回 `fail(..., deleted=n)` 之类
+            #    的标量。写成 `for item in result.get("deleted") or []` 时，一旦那个值是
+            #    整数就抛 `TypeError: 'int' object is not iterable` —— 而 `undo_plan`
+            #    抛异常会被 `record_op` 吞成「没声明」，用户只看到「还没实现」，
+            #    真正的 TypeError 永远查不到。由 `_probe_undo_matrix` 抓到。
+            raw_deleted = result.get("deleted")
+            if isinstance(raw_deleted, list):
+                for item in raw_deleted:
+                    kid = _to_int((item or {}).get("id")) if isinstance(item, dict) else None
+                    if kid is not None:
+                        ids.append(kid)
+            if not ids:
+                # 回执里没有可用的 id 列表 → 退回到 `params.kb_ids`（批量删除的原始名单）。
+                # 这条退路是安全的：`delete_many` 的入参就是它要删的那些 id，
+                # 而恢复动作只动**自己的**知识库（`_Target.user_col` 兜着）。
+                for value in _as_list(params.get("kb_ids")):
+                    kid = _to_int(value)
+                    if kid is not None:
+                        ids.append(kid)
+            ids = list(dict.fromkeys(ids))
+            if not ids:
+                return {"undoable": False, "reason": REASON_MISSING_TARGET_ID}
+            return {
+                "op": OP_RESTORE,
+                "targetTable": "rag_knowledge_base",
+                "targetIds": ids,
+                "undoable": True,
+                "reason": REASON_DOCUMENTS_DESTROYED,
+            }
         if action == "delete_document":
             return {"undoable": False, "reason": REASON_CONTENT_DESTROYED}
         if action == "update":
-            return {"undoable": False, "reason": REASON_NO_BEFORE_STATE}
+            return {
+                "undoable": False,
+                "reason": "知识库的名称 / 描述修改不会自动撤销"
+                "（改前值写在知识库服务自己的会话里，工具层拿不到；再改一次即可）",
+            }
         return None
 
     # ------------------------------------------------------------------ 预览

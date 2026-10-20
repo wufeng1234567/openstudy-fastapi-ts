@@ -324,19 +324,16 @@ async def record_op(
         # ⚠️ `before` 必须传给 `undo_plan`：`_execute_tool` 已经把它从 `result` 里
         #    pop 掉了，所以工具无法再从 result 读到自己的快照（见 base 的签名说明）。
         #    题库/题目删除的整树快照正是靠这条路才能被声明。
+        #
+        # ⚠️ 这里**不再**用 `except TypeError` 兜「旧签名」了（2026-10-20 收口）：
+        #    那个兜底会把下面这类**真 bug** 误判成"签名不兼容"然后悄悄再试一次 ——
+        #    最坏情况是 `undo_plan` 内部的 `TypeError` 被吞掉、操作被记成「没声明」，
+        #    用户点回退时看到「这个操作还没有回退实现」，而真正的原因永远查不到。
+        #    现在十个工具（含 bank_export 那个恒返回 None 的）签名已统一为
+        #    `(params, result, before=None)`，所以不需要兜底了。
+        #    新增工具时**必须**照这个签名写，否则记账阶段会抛 TypeError → 记成 not_declared。
         plan = tool.undo_plan(params or {}, result, before)
-    except TypeError:
-        # 兼容**只接受两个参数**的存量工具（没跟上新签名的第三方/测试替身）。
-        # ⚠️ 不要把这个 except 去掉换成 `inspect.signature` 探测：那样每次记账都要
-        #    做一次反射，而记账在热路径上（每次写操作一次）。
-        try:
-            plan = tool.undo_plan(params or {}, result)
-        except Exception as e:  # noqa: BLE001 - 工具声明坏了 → 当作没声明
-            logger.warning(
-                "[rollback] undo_plan 异常 tool={}: {}", getattr(tool, "name", ""), e
-            )
-            plan = None
-    except Exception as e:  # noqa: BLE001 - 工具声明坏了 → 当作没声明
+    except Exception as e:  # noqa: BLE001 - 工具声明坏了 → 当作没声明（但要留痕）
         logger.warning("[rollback] undo_plan 异常 tool={}: {}", getattr(tool, "name", ""), e)
         plan = None
     if plan is not None and not isinstance(plan, dict):

@@ -208,7 +208,10 @@ class KnowledgeIngestTool(AgentTool):
         return False
 
     def undo_plan(
-        self, params: Dict[str, Any], result: Dict[str, Any]
+        self,
+        params: Dict[str, Any],
+        result: Dict[str, Any],
+        before: Dict[str, Any] | None = None,
     ) -> Dict[str, Any] | None:
         """新建文档的逆 = 物理删该文档。
 

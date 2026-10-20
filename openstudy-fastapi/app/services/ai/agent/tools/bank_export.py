@@ -205,17 +205,25 @@ class BankExportTool(AgentTool):
         """
         return False
 
-    def undo_plan(self, params: Dict[str, Any], result: Dict[str, Any]) -> None:
-        """明确声明「不可回退」
+    def undo_plan(
+        self,
+        params: Dict[str, Any],
+        result: Dict[str, Any],
+        before: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any] | None:
+        """明确声明「不可回退」，并给一句人话原因
 
-        返回 `None` = 不可回退（走 `REASON_NOT_DECLARED`）。这里**故意**写成显式
-        `return None` 并留下说明，而不是干脆不写这个方法 —— 差别在于「想过」和「忘了」：
-        将来若有人问「导出为什么不能撤」，答案在这里，不在别人的推测里。
+        返回一个**带 reason 的 dict**（而不是裸 `None`）是有意的：裸 `None` 会让
+        账本记 `not_declared`、界面显示「这个操作还没有回退实现」—— 那句话对导出
+        来说是**假的**：我们是想清楚了不该撤，不是没做。
 
         为什么不该撤：用户的意图是「拿到这份文件」，撤销它等于把刚做好的东西删掉。
         真正的回退需求是「我导错了版本」→ 重新导出一次（幂等、便宜），不是撤销。
         """
-        return None
+        return {
+            "undoable": False,
+            "reason": "导出的文件是结果不是改动，不需要撤销；导错了版本重新导一次即可",
+        }
 
     # ------------------------------------------------------------------
     # 预览

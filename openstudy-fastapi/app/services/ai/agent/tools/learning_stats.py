@@ -143,6 +143,34 @@ class LearningStatsTool(AgentTool):
         """
         return str(params.get("action") or "") in self._WRITE_ACTIONS
 
+    def undo_plan(
+        self,
+        params: Dict[str, Any],
+        result: Dict[str, Any],
+        before: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any] | None:
+        """`plan_review` 写了库，但**刻意不做逆操作** —— 并说清为什么
+
+        `plan_review` 只写 `user_question_error` 的两列：`next_review_time` 与
+        `review_count`。它们存的是**系统算出来的建议值**（不是用户输入的内容），
+        而且：
+
+          · 反复调用是幂等的（同一份作答数据算出同一批日期）；
+          · 用户想改计划，说一句「重新排一下复习计划」就会整批重算覆盖；
+          · 撤销它没有任何实际收益 —— 把「建议什么时候复习」改回 NULL，
+            用户既少了一个可用的功能，也没拿回任何东西。
+
+        所以这里不声明逆操作，但**必须给一句人话原因**（否则用户点回退会看到
+        笼统的「这个操作还没有回退实现」，那是假的 —— 我们是想清楚了不做）。
+        """
+        action = str(params.get("action") or "")
+        if action == "plan_review":
+            return {
+                "undoable": False,
+                "reason": "复习计划是按你的作答记录算出来的建议值，重新排一次就会覆盖，不需要撤销",
+            }
+        return None
+
     async def execute(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
         action = str(params.get("action") or "")
         handler = {

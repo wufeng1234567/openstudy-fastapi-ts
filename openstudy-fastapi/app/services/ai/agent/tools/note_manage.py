@@ -260,7 +260,12 @@ class NoteManageTool(AgentTool):
         except Exception:  # noqa: BLE001
             return False
 
-    def undo_plan(self, params: Dict[str, Any], result: Dict[str, Any]) -> Dict[str, Any] | None:
+    def undo_plan(
+        self,
+        params: Dict[str, Any],
+        result: Dict[str, Any],
+        before: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any] | None:
         """声明「这一笔笔记操作怎么撤」（契约见 `base.AgentTool.undo_plan`）
 
         笔记是**逻辑删**（`del_flag`，与 `api/v1/notes.py:770` 同口径），所以三类都能撤、
@@ -281,6 +286,17 @@ class NoteManageTool(AgentTool):
         # （否则会落到下面的「定位不到行」文案，含义不对）。
         if action == "save_draft":
             return {"undoable": False, "reason": "「存草稿」是临时的、可直接再存覆盖，无需撤销"}
+        # `create_category` 建的是**笔记分类**，不是笔记本身 —— 回执形状也不同
+        # （`category.categoryId`，不是 `note.noteId`）。分类是用户手工维护的轻量结构，
+        # 删掉它会把里面的笔记变成「未分类」而不是删掉笔记，所以**不声明逆操作**，
+        # 但要说清为什么（原来这里落到 `missing_target_id`，文案是「回执里没有可定位的
+        # 数据行 ID」—— 对用户来说等于没说）。
+        if action == "create_category":
+            return {
+                "undoable": False,
+                "reason": "新建的笔记分类不会自动撤销（删分类会把里面的笔记变成未分类）；"
+                "需要的话在「我的学习 · 笔记管理」里手动删掉它",
+            }
         ids = _note_ids_of(result)
         if not ids:
             # 说得出怎么撤却定位不到行 → 明说，不许静默成「点了没反应」

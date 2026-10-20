@@ -315,7 +315,12 @@ class BankShareManageTool(AgentTool):
     # 回退（2026-10-20 新增）
     # ------------------------------------------------------------------
 
-    def undo_plan(self, params: Dict[str, Any], result: Dict[str, Any]) -> Dict[str, Any] | None:
+    def undo_plan(
+        self,
+        params: Dict[str, Any],
+        result: Dict[str, Any],
+        before: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any] | None:
         """声明这一笔分享操作怎么撤（契约见 `base.AgentTool.undo_plan`）
 
         | action  | 逆操作                              | 代价 / 边界                    |
@@ -377,6 +382,25 @@ class BankShareManageTool(AgentTool):
                 "targetTable": "bank_share_receive",
                 "targetIds": [rid],
                 "undoable": True,
+            }
+
+        # ⚠️ `copy` 给的是**用户看得懂的原因**，不是笼统的「还没实现」。
+        #    它用 `question_write_service` 深拷出一个**新题库**（新 id、新题目行）。
+        #    删掉它技术上可以（`bank_manage` 的 delete 能做到），但那是「删一个题库」
+        #    的语义，应当走题库域的回退；在这里声明会让同一次 copy 产生两条账单、
+        #    点一次回退撤两遍。所以明确告诉用户「去删那个新库」。
+        if action == "copy":
+            new_bank = result.get("bank") or {}
+            new_name = str(new_bank.get("bankName") or "").strip()
+            return {
+                "undoable": False,
+                "reason": (
+                    f"复制出的题库「{new_name}」是一个独立的新题库，不会自动撤销；"
+                    "需要的话直接说「删掉这个题库」，删除本身是能回退的"
+                    if new_name
+                    else "复制出的题库是一个独立的新题库，不会自动撤销；"
+                    "需要的话直接说「删掉那个题库」，删除本身是能回退的"
+                ),
             }
 
         return None

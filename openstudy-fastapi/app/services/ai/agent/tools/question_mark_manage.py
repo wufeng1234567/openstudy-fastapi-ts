@@ -327,7 +327,12 @@ class QuestionFlagManageTool(AgentTool):
         """`add` 一次只标记一道题（规模固定），不额外强制确认"""
         return False
 
-    def undo_plan(self, params: Dict[str, Any], result: Dict[str, Any]) -> Dict[str, Any] | None:
+    def undo_plan(
+        self,
+        params: Dict[str, Any],
+        result: Dict[str, Any],
+        before: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any] | None:
         """声明「这一笔标记操作用什么撤」（契约见 `base.AgentTool.undo_plan`）
 
         三类记录形状一样但逆操作分三种（都在这个工具里，`flag_type` 决定表名）：
