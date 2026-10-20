@@ -12,7 +12,23 @@
     <template v-if="overviewMode">
       <PracticeHeader :mode="moduleTypeSafe" :bank-name="bankName" :formatted-time="formattedRemainingTime"
         :is-warning="isTimeWarning" :is-danger="isTimeDanger" @close="$emit('close')"
-        @open-settings="showSettings = true" />
+        @open-settings="openSettings" />
+
+      <!--
+        ⚠️ 状态条在**浏览模式和逐题模式都要有**（2026-10-20）：
+        原来只有逐题模式那一支有，用户一点「整体浏览」就看不到自己还在错题模式里，
+        切回来才发现题目少了一半 —— 状态必须在两种展示下都可读。
+      -->
+      <div class="only-wrong-bar" v-if="moduleSettings.onlyWrong">
+        <span class="only-wrong-bar__chip">
+          <OsIcon name="alert" :size="13" class="only-wrong-bar__icon" />
+          仅错题
+        </span>
+        <span class="only-wrong-bar__text">正在只练你答错过的题</span>
+        <button type="button" class="only-wrong-bar__action" @click="openSettings">
+          调整
+        </button>
+      </div>
 
       <div class="main-content overview-content">
         <div class="overview-question-stream" ref="questionStreamRef" @scroll.passive="onStreamScroll">
@@ -94,13 +110,35 @@
     <template v-else>
       <PracticeHeader :mode="moduleTypeSafe" :bank-name="bankName" :formatted-time="formattedRemainingTime"
         :is-warning="isTimeWarning" :is-danger="isTimeDanger" @close="$emit('close')"
-        @open-settings="showSettings = true" />
+        @open-settings="openSettings" />
 
-      <div class="only-wrong-hint" v-if="moduleSettings.onlyWrong">
-        <el-icon>
-          <InfoFilled />
-        </el-icon>
-        <span>当前为错题练习模式，仅展示错题</span>
+      <!--
+        「只刷错题」状态条
+        ==================================================================
+        2026-10-20 重做视觉（用户：「只练错题这个提示太难看了」）。
+
+        旧版是满宽容的**告警样式**：`#fef3c7` 黄底 + `#fcd34d` 黄框 + 深棕文字，
+        和「题目区」抢同一层注意力，但它的信息量远低于题目 ——
+        用户每次低头看题都被一条黄色横幅晃一下，属于"用告警的视觉说状态"。
+
+        新版按**状态标签**来做（与全站 `.os-chip` 一致的调性）：
+          · 不再是横贯整行的色块，而是贴着标题行下方的一枚小胶囊；
+          · 中性底 + 发丝描边，只有图标用主色 —— 表示"这是一个模式说明"，不是警告；
+          · 右侧给出**可操作**的出口（调整），而不是让用户自己去右上角找齿轮。
+
+        语义边界（重要）：这条只表示「当前处于错题模式」这个**状态**。
+        「这个库里没有错题」是另一件事，由下面 `.practice-empty` 负责 ——
+        两者不会同时出现，所以文案不要合并。
+      -->
+      <div class="only-wrong-bar" v-if="moduleSettings.onlyWrong">
+        <span class="only-wrong-bar__chip">
+          <OsIcon name="alert" :size="13" class="only-wrong-bar__icon" />
+          仅错题
+        </span>
+        <span class="only-wrong-bar__text">正在只练你答错过的题</span>
+        <button type="button" class="only-wrong-bar__action" @click="openSettings">
+          调整
+        </button>
       </div>
 
       <!--
@@ -123,7 +161,7 @@
           错题本会自动记录你答错的题。先去别的模式练几道，答错的题就会出现在这里。
         </p>
         <div class="practice-empty__actions">
-          <el-button size="small" @click="showSettings = true">关闭「只刷错题」</el-button>
+          <el-button size="small" @click="openSettings">关闭「只刷错题」</el-button>
           <el-button size="small" type="primary" plain @click="$emit('close')">返回题库</el-button>
         </div>
       </div>
@@ -197,7 +235,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, getCurrentInstance, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, getCurrentInstance, nextTick, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { InfoFilled, RefreshRight, MagicStick } from '@element-plus/icons-vue'
 import PracticeHeader from './PracticeHeader.vue'
@@ -307,6 +345,23 @@ const isLastBatch = computed(() => allQuestionsData.value.length <= questionOffs
 const canGoNextBatch = computed(() => !isLastBatch.value)
 
 const showSettings = ref(false)
+
+/**
+ * 「打开设置弹窗那一刻」的设置快照
+ *
+ * ⚠️ 存在的唯一原因：`PracticeSettings.handleSave()` 是**先写 store 再 emit**，
+ * 父组件收到 `save` 事件时 `moduleSettings` 已经是新值，没法据此判断"用户改了什么"。
+ * 所以在打开弹窗时把旧值记下来，保存时跟这份快照比。
+ *
+ * 详见 `openSettings()` 与 `handleSettingsSave()` 的注释 —— 这两个函数是配套的，
+ * 改动其一时必须同步另一个，否则「只刷错题」会再次变成"开关点了没反应"。
+ */
+const settingsSnapshot = reactive({
+  onlyWrong: false,
+  questionCount: 10 as number | string,
+  isOverviewMode: false
+})
+
 const showExamResult = ref(false)
 const totalScore = ref(0)
 const showAnalysisDialog = ref(false)
@@ -822,11 +877,64 @@ const handlePrevBatch = () => {
   }, 150)
 }
 
+/**
+ * 设置弹窗保存后的生效逻辑
+ *
+ * ⚠️⚠️ 这里连踩两个坑，改之前先读完（2026-10-20）：
+ *
+ * **坑一：原来只处理「题数变化」，完全没管「只刷错题」。**
+ *   用户口径：「顺序模式下 设置只练错题 没有这个提示」——
+ *   实际提示条出现了，但**题目还是全库的**（1/10 而不是 1/5 道错题）。
+ *   表现上就是"开关没生效"。
+ *
+ * **坑二：不能用 `moduleSettings.value` 判断"值变没变"。**
+ *   `PracticeSettings.handleSave()` 的执行顺序是
+ *       ① `store.saveModuleSettings(...)`   ← 先把新值写进 store
+ *       ② `emit('save', ...)`               ← 才通知父组件
+ *   于是本函数拿到的 `moduleSettings.value.onlyWrong` **已经是新值**，
+ *   `onlyWrongChanged` 恒为 false → 重载逻辑永远不执行。
+ *   （我第一版就是这么写的，探针显示"保存后题量没变"，排查了一轮才发现。）
+ *
+ * 正解：由**打开设置弹窗的那一刻**把旧值记下来，保存回来时跟这份快照比。
+ * `settingsSnapshot` 在 `openSettings()` 里写入，是这一判断的唯一可靠来源。
+ *
+ * 修法：`onlyWrong` 变化时走 `resetAndFetchQuestions()` —— 那个函数正是为此存在：
+ * 清空 questions/allQuestionsData、同步最新设置（含 onlyWrong）、再从接口重拉。
+ * 不能复用 `updateOnlyWrong()` + `fetchQuestions()`：后者开头有
+ *   `if (questions.value.length > 0) return`
+ * 题已在内存里就直接提前返回，永远不会重新拉取。
+ */
 const handleSettingsSave = (data: { moduleType: string; settings: any }) => {
   const { settings } = data
-  if (settings.questionCount !== moduleSettings.value.questionCount) {
+  // 与「打开弹窗时」的快照对比，而不是与已被 store 更新的当前值对比（见上面坑二）
+  const prevOnlyWrong = !!settingsSnapshot.onlyWrong
+  const prevCount = settingsSnapshot.questionCount
+  const onlyWrongChanged = !!settings.onlyWrong !== prevOnlyWrong
+  const countChanged = settings.questionCount !== prevCount
+
+  if (onlyWrongChanged) {
+    // 错题集和全库是两个不同的题目集合，必须整体重拉（不能只切片）
+    resetAndFetchQuestions()
+    return
+  }
+  if (countChanged) {
     updateQuestionCountAndSlice(settings.questionCount)
   }
+}
+
+/**
+ * 打开设置弹窗
+ *
+ * ⚠️ 必须在这里**快照**当前设置：`PracticeSettings.handleSave` 会先写 store 再 emit，
+ * 父组件收到事件时读到的已经是新值，无法据此判断"变了什么"。
+ * 详见 `handleSettingsSave` 的注释。
+ */
+const openSettings = () => {
+  const s = moduleSettings.value
+  settingsSnapshot.onlyWrong = !!s.onlyWrong
+  settingsSnapshot.questionCount = s.questionCount
+  settingsSnapshot.isOverviewMode = !!s.isOverviewMode
+  showSettings.value = true
 }
 
 /**
@@ -1436,17 +1544,88 @@ defineExpose({})
 </script>
 
 <style scoped>
-.only-wrong-hint {
+/*
+ * 「只刷错题」状态条（2026-10-20 重做视觉）
+ *
+ * 设计意图（为什么不再是黄色横幅）：
+ *   旧版满宽 `#fef3c7` 黄底 + `#fcd34d` 边框，是**告警**的视觉语言。
+ *   但「当前在错题模式」是一个**正常状态**，不是需要警觉的异常 ——
+ *   用户每次看题都被一条黄条晃一下，注意力成本完全不划算。
+ *
+ * 新版三要素，克制且可操作：
+ *   · chip   中性底 + 主色图标 = 「筛选已生效」，与全站 `.os-chip` 同一调性
+ *   · text   次级灰字，说明"在做什么"，读者扫一眼就够
+ *   · action 右侧文字按钮，把"想退出/调整"的出口放在原地，而不是让用户找齿轮
+ *
+ * 三个元素同一行、纵向居中、间隔用 gap 控制，整体只占一行高度，
+ * 不再像旧版那样撑出一条独立色块。
+ */
+.only-wrong-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 16px;
-  margin: 0 24px;
-  background: #fef3c7;
-  border: 1px solid #fcd34d;
-  border-radius: 8px;
-  font-size: 13px;
-  color: #92400e;
+  margin: 0 24px 6px;
+  min-height: 24px;
+  /*
+   * 宽度只到「内容需要的程度」，不撑满整行。
+   *
+   * ⚠️ 这里必须限定宽度：如果容器满宽，右侧的「调整」会被推（或靠 auto 甩）到页面
+   * 最右边，离 chip 一千多像素远，看起来像两个不相干的元素
+   * （第一版就是这样：截图里「调整」孤零零挂在右缘，还贴着答题卡）。
+   *
+   * 现在：容器 `max-content` 收缩 + `__action` 不用 margin auto ——
+   * 三者始终是一个贴在一起的小组。
+   */
+  width: max-content;
+  max-width: 100%;
+}
+
+.only-wrong-bar__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  /* 发丝描边 + 极浅中性底：靠形状区分，不靠高饱和色块 */
+  border: 1px solid var(--os-border);
+  background: var(--os-bg-subtle);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--os-text);
+  white-space: nowrap;
+}
+
+.only-wrong-bar__icon {
+  /* 图标是这条里唯一带颜色的元素 —— 一眼定位"这里有筛选" */
+  color: var(--os-accent);
+}
+
+.only-wrong-bar__text {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--os-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.only-wrong-bar__action {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0 2px;
+  /* 不用 margin-left:auto —— 那会把它推到容器最右（见 .only-wrong-bar 的注释） */
+  font-size: 12px;
+  line-height: 1;
+  color: var(--os-text-3);
+  cursor: pointer;
+  transition: color var(--ds-duration-base, 0.15s) ease;
+}
+
+.only-wrong-bar__action:hover {
+  color: var(--os-accent);
 }
 
 /*
