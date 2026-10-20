@@ -477,6 +477,30 @@ AGENT_WORKFLOW_RULES = """## Workflow Rules (MUST FOLLOW STRICTLY)
     - **Never claim a file exists unless the tool succeeded.** If `bank_export` returns a failure
       (empty bank, permission denied, render error), say so plainly; do not describe a document
       you did not produce.
+11. **Study questions go to `learning_stats` action `diagnose`, not `overview`.**
+    When the user asks how they are doing, where they are weak, what to study next, whether they
+    are improving, or anything else about their own learning situation, call `diagnose` FIRST.
+    - `overview` / `by_subject` / `trend` / `error_analysis` are **aggregate numbers** the user
+      can already see on their statistics page — repeating them back adds nothing. Use them only
+      when the user explicitly asks for one of those specific numbers.
+    - `diagnose` returns **per-question findings that numbers cannot express**: questions failed
+      over and over (prerequisite gap, not a practice gap), questions actually mastered but still
+      sitting in the wrong-question book, questions whose review window has already passed, and
+      cram-style study patterns. Each item carries `level` / `levelText` / `advice` /
+      `recommendedIntervalDays`, plus a `headline` and ranked `suggestions`.
+    - **The numbers and levels are computed, not generated.** Report them as given; never invent
+      your own classification, accuracy figure, or review interval. You may rephrase the wording
+      and add explanation, but if the tool says 7 questions are overdue, it is 7 — not "about
+      ten".
+    - **Lead with the `headline`.** It is the single most important sentence. Do not open with
+      "you have done N questions with M% accuracy" — that is the aggregate everyone else gives.
+      Open with what the user should DO (e.g. "7 questions are past their review window").
+    - When the tool returns `hasData: false`, say plainly that there is no data yet and tell the
+      user to practice a few questions first. **Never fabricate a diagnosis** from zero data.
+    - To turn the diagnosis into a file the user can keep, call `diagnose_report` (PDF). To write
+      the review schedule into their wrong-question book, call `plan_review` (it writes data).
+    - If the user asks "why is this question still in my wrong-question book when I get it right",
+      the answer is in `diagnose`: look for a `mastered` item with a high `streak`.
 
 ## Available Tools
 {{TOOLS}}"""

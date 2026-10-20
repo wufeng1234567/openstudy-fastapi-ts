@@ -232,6 +232,10 @@ const ACTION_LABELS: Record<string, string> = {
   trend: '学习趋势',
   error_analysis: '错题分析',
   growth: '成长记录',
+  // 2026-10-20 新增：逐题学情诊断（不是聚合数字，见 study_diagnosis_service）
+  diagnose: '学情诊断',
+  plan_review: '排复习计划',
+  diagnose_report: '学情报告',
   // knowledge_base_manage
   list_documents: '文档列表',
   delete_document: '删除文档',
@@ -308,6 +312,12 @@ const clip = (text: string) => {
 
 function summarizeData(data: any): string {
   if (!data || typeof data !== 'object') return ''
+  // `diagnose` / `diagnose_report` 的结论句：它们不是数组、也没有 named 字段，
+  // 但后端专门给了 `headline`（算法算出的那句话）。不特判的话卡片主行会退化成
+  // 「学情诊断完成」，等于把最有信息量的那句话扔掉。
+  if (typeof data.headline === 'string' && data.headline.trim()) {
+    return clip(data.headline)
+  }
   for (const [key, render] of DATA_SUMMARIES) {
     const value = data[key]
     const isList = Array.isArray(value)

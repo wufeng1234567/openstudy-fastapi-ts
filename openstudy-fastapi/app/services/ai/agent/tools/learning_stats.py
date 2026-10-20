@@ -1,20 +1,31 @@
 """
-`learning_stats` —— 学习统计工具（Agent 自封装，**只读**）
+`learning_stats` —— 学习统计 + 学情诊断工具（Agent 自封装）
 
-对齐项目里那套「学习统计」接口的语义（`app/api/v1/user_stats.py` 的
-overview / bySubject / trend / errorAnalysis / growth）—— 它们是同一批数字，
-用户在「我的学习统计」页面上看到的就是这些。
+两块能力，边界很清楚：
 
-⚠️ 数字**必须与页面一致**，所以这里不自己写查询：直接调
-`app/services/user_stats_service.py`，由它再调那五个路由处理函数（同一份实现）。
-理由与越权说明见那个模块的 docstring。
+一、**聚合数字**（overview / by_subject / trend / error_analysis / growth）
+    对齐项目里那套「学习统计」接口的语义（`app/api/v1/user_stats.py`）——
+    它们在「我的学习统计」页面上也能看到，是同一批数字。
+    ⚠️ 数字**必须与页面一致**，所以这里不自己写查询：直接调
+    `app/services/user_stats_service.py`，由它再调那五个路由处理函数（同一份实现）。
 
-只读的三个证据（改之前先看一眼）
--------------------------------
-· `write_operation = False` —— 它不写库，也不该被 `memory_hook` 记进长期记忆
-  （否则「用户问了一次正确率」都会被记成一条操作记录，把真正有用的记忆淹没）
-· `needs_confirmation` 保持默认 False —— 前端不会为它弹二次确认卡片
-· `is_destructive` 保持默认 False
+二、**逐题诊断**（diagnose / plan_review，2026-10-20 新增）
+    聚合数字回答不了「这道题我练了 12 次为什么还是错」「我明明会了它怎么还在
+    错题本里」。这部分读 `user_practice_log` 的**逐题序列**，做确定性诊断，
+    见 `app/services/study_diagnosis_service.py`。
+
+    ⚠️ 为什么这不是"又一个 AI 分析"：所有分档、间隔、排序都是**算出来的**，
+    同一份数据永远得到同一个结论，可复现、可测试。LLM 的职责是**表达**诊断结果，
+    而不是"看着几个数字自由发挥"—— 后者正是原来那个版本被用户吐槽"别的 ai 都能做"
+    的根因。
+
+写操作口径
+==========
+· 聚合五个字**全部只读**（`write_operation` 由 `needs_confirmation` 按 action 分）。
+· `diagnose` 只读 —— 它是本工具最常被调用的 action（用户问「我最近学得怎么样」
+  就走它），给只读的东西弹确认卡等于把那句最自然的对话彻底打断。
+· `plan_review` **写** `user_question_error`（`next_review_time` / `review_count`），
+  所以它需要确认。
 
 ⚠️ 一个**已知的历史口径问题**（不在本轮修，别顺手改）：`trend`
 用 `datetime.now()`（本地时间）与库里 `create_time` 做日期分组，而
@@ -27,8 +38,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from app.services import study_diagnosis_service as sds
 from app.services import user_stats_service as stats
 from app.services.ai.agent.base import AgentTool, ToolContext, fail, ok
+from app.services.ai.agent.tools.bank_export import _human_size
 
 #: 一次趋势最多看多少天（与路由签名上的 `le=90` 一致）
 MAX_TREND_DAYS = stats.TREND_MAX_DAYS
@@ -48,15 +61,37 @@ class LearningStatsTool(AgentTool):
         "error_analysis=wrong-question analysis (total / still active / mastered / mastery "
         "rate, by difficulty, by question type, by subject, top 5 most-often-wrong), "
         "growth=join date, study days, streak and achievements. "
-        "These are the SAME numbers the user sees on their statistics page. Read-only. "
-        "NOTE: for the actual list of wrong / favourite / marked questions use "
+        "**diagnose=the REAL study diagnosis — STRONGLY PREFER THIS over overview when the "
+        "user asks anything like 'how am I doing' / 'where am I weak' / 'what should I "
+        "study' / 'am I making progress'. It reads the per-question attempt history and "
+        "tells apart things raw numbers cannot: questions failed over and over (a prerequisite "
+        "gap, not a practice gap), questions that are actually mastered but still sitting in "
+        "the wrong-question book, questions whose review window has already passed, and "
+        "cram-style study patterns. Each item carries a `level`, `advice` and "
+        "`recommendedIntervalDays`.** "
+        "plan_review=WRITE the computed review schedule into the wrong-question book "
+        "(sets next_review_time / review_count) so the user can query what is due today. "
+        "Use it when the user asks to set up a review plan or what to review today. "
+        "This one WRITES data (it needs confirmation like other writes). "
+        "diagnose_report=produce a downloadable PDF study report (headline, per-level "
+        "breakdown, per-question diagnosis with advice, subject breakdown, study rhythm). "
+        "Use it when the user wants to keep / print / hand over their study situation "
+        "('give me a report', 'export it as PDF', 'send it to me', 'I want to print it'). "
+        "The reply carries a `downloadUrl`; tell the user the report is ready instead of "
+        "pasting the URL. "
+        "These are the SAME numbers the user sees on their statistics page. "
+        "NOTES: overview/by_subject/trend/error_analysis/growth are read-only aggregates; "
+        "diagnose/plan_review are per-question analysis. "
+        "For the actual LIST of wrong / favourite / marked questions use "
         "`question_flag_manage` (flag_type=error / favorite / marked) instead."
     )
     #: 界面专用（只给前端看；不进 definitions() / describe()）
     label = "学习统计"
     description_zh = (
-        "读学习数据（只读）：overview=总览、by_subject=按科目、trend=趋势、"
-        "error_analysis=错题分析、growth=成长情况。"
+        "读学习数据：overview=总览、by_subject=按科目、trend=趋势、"
+        "error_analysis=错题分析、growth=成长情况；"
+        "diagnose=学情诊断（逐题分析：哪几道反复失守 / 哪几道其实会了 / 哪几道欠复习）；"
+        "plan_review=把复习计划写进错题本。"
     )
     parameters = {
         "type": "object",
@@ -64,7 +99,16 @@ class LearningStatsTool(AgentTool):
             "action": {
                 "type": "string",
                 "description": "Operation to perform",
-                "enum": ["overview", "by_subject", "trend", "error_analysis", "growth"],
+                "enum": [
+                    "overview",
+                    "by_subject",
+                    "trend",
+                    "error_analysis",
+                    "growth",
+                    "diagnose",
+                    "plan_review",
+                    "diagnose_report",
+                ],
             },
             "days": {
                 "type": "integer",
@@ -73,11 +117,31 @@ class LearningStatsTool(AgentTool):
                     f"{stats.TREND_DEFAULT_DAYS}, max {MAX_TREND_DAYS})."
                 ),
             },
+            "limit": {
+                "type": "integer",
+                "description": (
+                    "Max questions per level returned by diagnose / plan_review "
+                    f"(default {sds.MAX_ITEMS_PER_LEVEL}, max 50)."
+                ),
+            },
         },
         "required": ["action"],
     }
-    #: 只读 —— 不写库，也不会出现在 `/ai/agent/tools` 的写操作清单里
-    write_operation = False
+    #: 大部分 action 只读；`plan_review` 会写库（见 `needs_confirmation`）
+    write_operation = True
+
+    #: 会写库的 action（其余仍按只读处理）
+    _WRITE_ACTIONS = {"plan_review"}
+
+    def needs_confirmation(self, params: Dict[str, Any]) -> bool:
+        """只有 `plan_review` 需要确认（它会写 `user_question_error`）
+
+        ⚠️ 为什么不是「整个工具都写操作」就一律确认：`diagnose` 是最常被调用的
+        那一个（用户问「我最近学得怎么样」就会走它），给它弹卡等于**每次问学情都
+        先点一次确认**，把那句最自然的对话彻底打断。而它确实不写任何数据 ——
+        按 action 分，才是诚实的。
+        """
+        return str(params.get("action") or "") in self._WRITE_ACTIONS
 
     async def execute(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
         action = str(params.get("action") or "")
@@ -87,11 +151,15 @@ class LearningStatsTool(AgentTool):
             "trend": self._trend,
             "error_analysis": self._error_analysis,
             "growth": self._growth,
+            "diagnose": self._diagnose,
+            "plan_review": self._plan_review,
+            "diagnose_report": self._diagnose_report,
         }.get(action)
         if handler is None:
             return fail(
                 f"未知操作: {action}",
-                "action 只能是 overview / by_subject / trend / error_analysis / growth",
+                "action 只能是 overview / by_subject / trend / error_analysis / growth "
+                "/ diagnose / plan_review / diagnose_report",
             )
         try:
             return await handler(params, ctx)
@@ -185,6 +253,166 @@ class LearningStatsTool(AgentTool):
                     f"笔记 {data.get('totalNotes') or 0} 篇"
                 ),
             }
+        )
+
+    # ------------------------------------------------------------------
+    # 学情诊断（2026-10-20 新增）
+    # ------------------------------------------------------------------
+
+    async def _diagnose(
+        self, params: Dict[str, Any], ctx: ToolContext
+    ) -> Dict[str, Any]:
+        """逐题学情诊断 —— 与上面五个「聚合数字」的区别见 `study_diagnosis_service`
+
+        ⚠️ 这里**不加**任何自然语言总结：`headline` / `suggestions` / `advice`
+        都是算法给的中文判断，模型拿到后**应当复述并解释**，但**不许**自己另发明
+        一套分档或数字 —— 那会让同一份数据在两次对话里说出不同结论。
+        回执里的 `message` 只是一句"共诊断出什么"，不替代 headline。
+        """
+        raw = params.get("limit")
+        limit = sds.MAX_ITEMS_PER_LEVEL
+        if raw is not None:
+            try:
+                limit = max(1, min(int(raw), 50))
+            except (TypeError, ValueError):
+                limit = sds.MAX_ITEMS_PER_LEVEL
+
+        diag = await sds.diagnose(ctx.db, ctx.user_id, limit=limit)
+        if not diag.get("hasData"):
+            return ok(
+                action="diagnose",
+                hasData=False,
+                headline=diag["headline"],
+                suggestions=diag["suggestions"],
+                message=diag["headline"] + "（没有任何作答记录，请如实告知，不要编造诊断）",
+            )
+
+        summary = diag["summary"]
+        levels = diag.get("byLevel") or {}
+        level_text = "、".join(
+            f"{v['text']} {v['count']} 道" for v in levels.values()
+        )
+        # ⚠️ `message` 的**第一句必须是 headline**（结论 / 该做什么），计数放括号里。
+        #
+        # 为什么这个顺序重要（2026-10-20 实测踩到）：模型极爱照抄 `message` 的开头作为
+        # 回答的开头。原来这段是「诊断了 8 道题…：反复失守 2 道、欠复习 2 道…。有 2 道
+        # 题已经过了复习窗口」，实测回答就变成了「整体状况：最近 30 天里你只有 2 天在
+        # 练习，共做了 27 次题…」—— 又回到"复述聚合数字"那个老毛病上了。
+        # 把 headline 提到最前，回答自然就以行动建议开头；这不是靠提示词求模型，
+        # 而是让它唯一能抄的那句话本身就是对的。
+        message = (
+            f"{diag['headline']}"
+            f"（依据：{summary['questionsSeen']} 道题的 {summary['totalAttempts']} 次作答，"
+            f"{level_text}）"
+        )
+        return ok(
+            action="diagnose",
+            hasData=True,
+            headline=diag["headline"],
+            summary=summary,
+            byLevel=diag["byLevel"],
+            bySubject=diag["bySubject"],
+            activity=diag["activity"],
+            items=diag["items"],
+            suggestions=diag["suggestions"],
+            message=message,
+        )
+
+    async def _plan_review(
+        self, params: Dict[str, Any], ctx: ToolContext
+    ) -> Dict[str, Any]:
+        """把诊断算出的复习间隔写回错题本（`next_review_time` / `review_count`）
+
+        写库部分在 `study_diagnosis_service.persist_plan`（诊断与写库刻意分开：
+        诊断要能随便调，写库只能由用户显式触发 —— 见该模块 docstring）。
+        """
+        raw = params.get("limit")
+        limit = 50
+        if raw is not None:
+            try:
+                limit = max(1, min(int(raw), 200))
+            except (TypeError, ValueError):
+                limit = 50
+
+        result = await sds.persist_plan(ctx.db, ctx.user_id, limit=limit)
+        return ok(action="plan_review", **result)
+
+    async def _diagnose_report(
+        self, params: Dict[str, Any], ctx: ToolContext
+    ) -> Dict[str, Any]:
+        """生成一份可下载的学情报告 PDF
+
+        产物落盘与下载链路复用 `bank_export.save_export_file`（同一个 `export/` 目录、
+        同一个 `/profile/...` 静态挂载、前端同一张产物卡片）—— 见那个函数的注释。
+
+        ⚠️ 它是**只读**的（不写库），所以不进 `_WRITE_ACTIONS`：生成报告不改任何数据，
+        为它弹确认卡等于让「给我一份报告」这句话多一次点击。
+        """
+        from datetime import datetime
+
+        from app.services.ai.agent.tools.bank_export import save_export_file
+        from app.services.diagnosis_report_service import export_diagnosis_pdf
+
+        raw = params.get("limit")
+        limit = sds.MAX_ITEMS_PER_LEVEL
+        if raw is not None:
+            try:
+                limit = max(1, min(int(raw), 50))
+            except (TypeError, ValueError):
+                limit = sds.MAX_ITEMS_PER_LEVEL
+
+        diag = await sds.diagnose(ctx.db, ctx.user_id, limit=limit)
+
+        # 姓名：报告抬头用。取不到就留空（不印「学生：」这种半截），绝不因此失败
+        user_name = ""
+        try:
+            from app.models.user import SysUser
+
+            user_name = str(
+                await ctx.db.scalar(
+                    SysUser.__table__.select()
+                    .with_only_columns(SysUser.user_name)
+                    .where(SysUser.user_id == int(ctx.user_id))
+                )
+                or ""
+            )
+        except Exception:  # noqa: BLE001 - 姓名是装饰，取不到不影响报告
+            user_name = ""
+
+        try:
+            pdf = export_diagnosis_pdf(diag, user_name=user_name)
+        except Exception as e:  # noqa: BLE001
+            return fail(
+                f"生成学情报告失败：{type(e).__name__}: {e}",
+                "这是服务端渲染问题，不是用户数据的问题。请如实告知报告生成失败，"
+                "可以先把诊断结论用文字讲给用户（改用 action=diagnose）",
+            )
+
+        stamp = datetime.now().strftime("%Y%m%d")
+        filename = f"学情诊断报告-{stamp}.pdf"
+        try:
+            rel_path, saved_name = save_export_file(pdf, filename)
+        except OSError as e:
+            return fail(
+                f"报告已生成但保存失败：{e}",
+                "磁盘可能已满或没有写权限。请如实告知，不要谎称生成成功",
+            )
+
+        size = len(pdf)
+        return ok(
+            action="diagnose_report",
+            format="pdf",
+            hasData=bool(diag.get("hasData")),
+            headline=diag.get("headline") or "",
+            fileName=saved_name,
+            fileSize=size,
+            fileSizeText=_human_size(size),
+            downloadUrl=f"/profile/{rel_path}",
+            message=(
+                f"已生成学情诊断报告 PDF（{_human_size(size)}），可以直接下载"
+                if diag.get("hasData")
+                else f"已生成学情报告（{_human_size(size)}），但里面还没有你的作答数据"
+            ),
         )
 
 

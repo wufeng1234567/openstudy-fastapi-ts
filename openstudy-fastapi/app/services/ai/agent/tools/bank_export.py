@@ -66,6 +66,26 @@ EXPORT_SUB_DIR = "export"
 #: 几千道题的 Word 打开要几分钟，用户会以为导出坏了。超过就明确拒绝并给建议。
 MAX_QUESTIONS = 2000
 
+
+def save_export_file(
+    data: bytes, filename: str
+) -> Tuple[str, str]:
+    """把产物字节落盘到 `export/` 目录；返回 `(相对 UPLOAD_DIR 的路径, 文件名)`
+
+    抽成模块级函数（而不是 `BankExportTool` 的静态方法）是为了让**别的工具**也能复用
+    —— 学情诊断报告（`learning_stats.diagnose_report`）产出的 PDF 走的是同一套落盘
+    与下载链路，前端那张产物卡片也是同一个组件。两处各写一份路径拼接必然漂移。
+
+    ⚠️ 文件名带 uuid 前缀：同一个题库 / 同一份学情报告可以导出很多次，用原名会让
+    后一次覆盖前一次 —— 而用户可能正开着前一份在改。
+    """
+    unique = f"{uuid.uuid4().hex[:12]}_{filename}"
+    full = os.path.join(_export_dir(), unique)
+    with open(full, "wb") as fh:
+        fh.write(data)
+    rel = os.path.relpath(full, settings.UPLOAD_DIR).replace("\\", "/")
+    return rel, filename
+
 #: `with_answers` 的「假值」词表 —— 模型把布尔写成字符串是常态。
 #:
 #: ⚠️ 这些是**用户/模型可能原样带回的词**，不是散文描述，所以出现中文是合理的。
@@ -426,18 +446,15 @@ class BankExportTool(AgentTool):
     def _save(
         data: bytes, bank_name: str, ext: str, with_answers: bool
     ) -> Tuple[str, str]:
-        """把字节落盘；返回 `(相对 UPLOAD_DIR 的路径, 文件名)`
-
-        文件名带 uuid 前缀：同一个题库同一版本可以导出很多次（用户改完再导），
-        用题库名当文件名会让后一次覆盖前一次 —— 而用户可能正开着前一份在改。
-        """
+        """把字节落盘；返回 `(相对 UPLOAD_DIR 的路径, 文件名)`（实现见模块级函数）"""
         filename = f"{_safe_filename(bank_name)}{'' if with_answers else '-无答案'}.{ext}"
-        unique = f"{uuid.uuid4().hex[:12]}_{filename}"
-        full = os.path.join(_export_dir(), unique)
-        with open(full, "wb") as fh:
-            fh.write(data)
-        rel = os.path.relpath(full, settings.UPLOAD_DIR).replace("\\", "/")
-        return rel, filename
+        return save_export_file(data, filename)
 
 
-__all__ = ["BankExportTool", "SUPPORTED_FORMATS", "MAX_QUESTIONS", "EXPORT_SUB_DIR"]
+__all__ = [
+    "BankExportTool",
+    "SUPPORTED_FORMATS",
+    "MAX_QUESTIONS",
+    "EXPORT_SUB_DIR",
+    "save_export_file",
+]
