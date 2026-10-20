@@ -388,8 +388,15 @@
             </div>
             <div class="history-list">
               <div v-for="(item, index) in promptHistory" :key="index" class="history-tag-wrapper">
+                <!--
+                  ⚠️ 文案用 `historyContentOf(item)` 取值（2026-10-20 修）。
+                  原来写的是 `item.knowledgePoint || item.compositeRequirement` ——
+                  自定义出题记录这两个字段都是空串，标签会渲染成**空白小方块**，
+                  用户根本不知道那条历史是什么、也点不到（没有可点区域）。
+                  `historyContentOf` 会按题型取到 customRequirement，一并解决显示与回填。
+                -->
                 <el-tag class="history-tag" @click.native="applyHistoryPrompt(item)">
-                  {{ truncateText(item.knowledgePoint || item.compositeRequirement, 30) }}
+                  {{ truncateText(historyContentOf(item), 30) }}
                 </el-tag>
                 <span class="history-tag-delete" @click.stop="deleteHistoryItem(index)">
                   <el-icon>
@@ -1229,6 +1236,24 @@ const PROMPT_HISTORY_KEY = 'ai_prompt_history'
 const MAX_HISTORY_COUNT = 10
 const promptHistory = ref([])
 
+/**
+ * 一条历史记录里「用户到底输入了什么」
+ *
+ * 2026-10-20 修：历史记录原来只认两种输入
+ *   `knowledgePoint`（固定题型）和 `compositeRequirement`（组合题），
+ *   新增的 `customRequirement`（自定义出题）**完全没被记录和回填** ——
+ *   用户在自定义模式下点历史标签，输入框毫无反应。
+ *
+ * 这里把三种输入统一成一个取值函数，避免"每加一种模式就漏改三处"
+ * （记录 / 去重 / 回填）。
+ */
+const historyContentOf = (src: any): string => {
+  const t = String(src?.questionType || '').trim()
+  if (t === 'custom') return String(src?.customRequirement || '')
+  if (t === 'composite') return String(src?.compositeRequirement || '')
+  return String(src?.knowledgePoint || '')
+}
+
 const loadPromptHistory = () => {
   try {
     const stored = localStorage.getItem(PROMPT_HISTORY_KEY)
@@ -1237,14 +1262,21 @@ const loadPromptHistory = () => {
 }
 
 const savePromptToHistory = () => {
-  const isComposite = aiForm.value.questionType === 'composite'
+  const type = aiForm.value.questionType
+  const isComposite = type === 'composite'
+  const isCustom = type === 'custom'
 
   const record = {
-    // 保存当前题型，但只用于展示，点击时不强制切换
-    questionType: aiForm.value.questionType,
-    // 保存核心内容（组合题用 compositeRequirement，普通题用 knowledgePoint）
-    knowledgePoint: isComposite ? '' : (aiForm.value.knowledgePoint || ''),
+    // 保存当前题型：用于判断"这条历史属于哪类输入"
+    questionType: type,
+    /*
+     * 三种输入**各存各的字段**，不合并成一个 content 字符串。
+     * 原因：回填时要写回**对应的输入框**，合并后就不知道该写哪儿了。
+     */
+    knowledgePoint: (isComposite || isCustom) ? '' : (aiForm.value.knowledgePoint || ''),
     compositeRequirement: isComposite ? (aiForm.value.compositeRequirement || '') : '',
+    // ↓ 2026-10-20 新增：自定义出题的需求描述
+    customRequirement: isCustom ? (aiForm.value.customRequirement || '') : '',
     // 保存其他配置
     count: isComposite ? 0 : (aiForm.value.count || 3),
     wordCount: isComposite ? (aiForm.value.wordCount || 200) : 0,
@@ -1253,18 +1285,15 @@ const savePromptToHistory = () => {
     timestamp: Date.now()
   }
 
+  // 去重：按「实际内容 + 题型」判重（不同题型即使文字相同也算两条）
+  const currentContent = historyContentOf(record)
+  const exists = currentContent
+    ? promptHistory.value.some(
+        item => item.questionType === record.questionType && historyContentOf(item) === currentContent
+      )
+    : false
 
-
-
-
-  // 去重逻辑：根据内容判断，而不是题型
-  const exists = promptHistory.value.some(item => {
-    const currentContent = isComposite ? record.compositeRequirement : record.knowledgePoint
-    const itemContent = item.questionType === 'composite' ? item.compositeRequirement : item.knowledgePoint
-    return currentContent && itemContent === currentContent
-  })
-
-  if (!exists && (record.knowledgePoint || record.compositeRequirement)) {
+  if (!exists && currentContent) {
     promptHistory.value.unshift(record)
     if (promptHistory.value.length > MAX_HISTORY_COUNT) {
       promptHistory.value = promptHistory.value.slice(0, MAX_HISTORY_COUNT)
@@ -1303,17 +1332,49 @@ const editPassage = () => {
   editingPassage.value = true
 }
 
+/**
+ * 点击历史记录 → 回填到对应输入框
+ *
+ * 2026-10-20 修：原来只处理 composite / knowledgePoint 两种，
+ * `customRequirement`（自定义出题）从来没有被回填过 ——
+ * 用户在自定义模式下点历史标签，输入框毫无反应，看起来像"历史坏了"。
+ *
+ * ⚠️ 关键决定：**是否连同题型一起切换**？
+ *   这里选择**跟随历史记录切换题型**（`item.questionType` 存在时）。
+ *   理由：历史记录存的是"上次那种模式下的完整输入"。
+ *   比如一条 custom 记录里有「3 道单选 + 2 道填空」，
+ *   若当前在「单选题」模式直接把它塞进 knowledgePoint，
+ *   出题时 questionType 仍是 single，那句需求会被当成"知识点" —— 语义全错。
+ *   切到 custom 再回填，才是用户点它时期待的结果。
+ *
+ *   （原注释写的是"只用于展示，点击时不强制切换"——那是只有两种输入时的
+ *     旧权衡；现在三种输入的语义差异很大，不切反而更容易出错。）
+ */
 const applyHistoryPrompt = (item) => {
   if (!item) return
+
+  const itemType = String(item.questionType || '').trim()
+  // 跟随历史记录的题型（含 composite / custom / 各种固定题型）
+  if (itemType && itemType !== aiForm.value.questionType) {
+    aiForm.value.questionType = itemType
+    // 只同步题型，**不清空**素材（素材是全局附加项，与题型无关）
+    aiForm.value.knowledgePoint = ''
+  }
+
   const isComposite = aiForm.value.questionType === 'composite'
-  if (isComposite) {
+  const isCustom = aiForm.value.questionType === 'custom'
+
+  if (isCustom) {
+    aiForm.value.customRequirement = item.customRequirement || ''
+  } else if (isComposite) {
     aiForm.value.compositeRequirement = item.compositeRequirement || item.knowledgePoint || ''
     if (item.wordCount) aiForm.value.wordCount = item.wordCount
     if (item.subCount) aiForm.value.subCount = item.subCount
   } else {
-    aiForm.value.knowledgePoint = item.knowledgePoint || item.compositeRequirement || ''
+    aiForm.value.knowledgePoint = item.knowledgePoint || ''
     if (item.count) aiForm.value.count = item.count
   }
+
   // 只在用户有该模型配置时才切换，避免删模型后历史记录导致报错
   if (item.model !== undefined && item.model !== null && item.model !== '') {
     const hasModel = userAiConfigs.value.some(config => config.isEnabled === 1 && config.model === item.model)
