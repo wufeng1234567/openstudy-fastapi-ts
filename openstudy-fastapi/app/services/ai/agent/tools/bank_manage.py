@@ -14,11 +14,15 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from loguru import logger
 from sqlalchemy import select
 
 from app.models.question import QuestionBank
 from app.services import question_write_service as qws
 from app.services.ai.agent.base import (
+    OP_RESTORE_TREE,
+    REASON_MISSING_SOFT_DELETE,
+    UNDO_BEFORE_KEY,
     AgentTool,
     ToolContext,
     as_list as _as_list,
@@ -283,6 +287,67 @@ class BankManageTool(AgentTool):
         return out
 
     # ------------------------------------------------------------------
+    # 回退（2026-10-20 新增）
+    # ------------------------------------------------------------------
+
+    def undo_plan(
+        self,
+        params: Dict[str, Any],
+        result: Dict[str, Any],
+        before: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any] | None:
+        """声明这一笔题库操作怎么撤（契约见 `base.AgentTool.undo_plan`）
+
+        | action                              | 逆操作                         |
+        |-------------------------------------|--------------------------------|
+        | create                              | **不可回退**（见下）            |
+        | delete / delete_by_name / delete_many | `restore_tree`（快照整树重插） |
+        | update                              | **不可回退**（见下）            |
+
+        ⚠️ 删除为什么不走 `restore`（逻辑删）：`question_bank` 没有 `del_flag`，
+        且删除是**应用层级联**（一次清掉题目/子题/三张个人标记表/笔记关联/分享）。
+        我们**实测否决**了「加 del_flag + 全仓补过滤」那条路：`with_loader_criteria`
+        对 Core 列 select 无效，而全仓有 129 处方库/题目的读点 —— 漏一处就是
+        「已删题库重新出现在列表里」，比不能回退严重得多。详见 `bank_tree_snapshot`。
+
+        删除的回退数据来自 `_delete` 系列在**删除之前**塞进回执的
+        `UNDO_BEFORE_KEY`（`_execute_tool` 会摘掉它交给账本，模型与界面都看不到）。
+
+        ⚠️ `create` 为什么不可回退：`question_write_service.delete_banks` 是**物理删**
+        且级联清个人标记 —— 用它去撤一次误建，会把用户在那个题库里积累的错题/收藏
+        一起抹掉（那些是**别的行为**留下的数据，不该被「撤销建库」牵连）。
+        用户真要删，走 delete（那个才带快照）。
+        ⚠️ `update` 为什么不可回退：`qws.update_bank` 只接受「改成什么」，不返回改前值，
+        而 `bank_manage._update` 没留快照。改错了题库名/科目的挽回成本极低（再改一次），
+        不值得为此动一个被路由共用的服务函数。
+        """
+        action = str(params.get("action") or "")
+        if action in ("delete", "delete_by_name", "delete_many"):
+            # ⚠️ 快照来自 `before` 参数，**不是** `result`：
+            #    `_execute_tool` 会先 `pop(UNDO_BEFORE_KEY)` 再调 `record_op`，
+            #    而 `record_op` 才调本函数 → `result` 里永远看不到快照。
+            #    （第一版从这里读 result 的 `__snapshot__`，结果快照永远是 None，
+            #      回退静默变成「快照不可用」—— 由 e2e 测试发现。）
+            snapshot = before if isinstance(before, dict) else None
+            if not snapshot or not snapshot.get("rowCount"):
+                return {"undoable": False, "reason": REASON_MISSING_SOFT_DELETE}
+            if snapshot.get("skipped"):
+                return {
+                    "undoable": False,
+                    "reason": str(snapshot.get("reason") or "too_large"),
+                }
+            return {
+                "op": OP_RESTORE_TREE,
+                "targetTable": "question_bank",
+                # 整树恢复走快照，不靠 id 列表；但契约要求 targetIds 能定位到行，
+                # 否则 `record_op` 会判 `MISSING_TARGET_ID`（见那里的守卫）。
+                "targetIds": [int(i) for i in (snapshot.get("bankIds") or [])],
+                "before": snapshot,
+                "undoable": True,
+            }
+        return None
+
+    # ------------------------------------------------------------------
 
     async def execute(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
         action = str(params.get("action") or "")
@@ -420,6 +485,8 @@ class BankManageTool(AgentTool):
         bank_id = params.get("bank_id")
         if bank_id is None:
             return fail("删除题库需要 bank_id", "如果只知道名称，请用 action=delete_by_name")
+        # ⚠️ 快照必须在**删除之前**抓（删完就查不到了）—— 见 `bank_tree_snapshot`
+        snapshot = await self._snapshot(ctx, [int(bank_id)])
         result = await qws.delete_banks(ctx.db, ctx.user_id, [int(bank_id)])
         if not result["deleted"]:
             return fail(
@@ -427,7 +494,12 @@ class BankManageTool(AgentTool):
                 "请先用 action=list 确认题库 ID",
             )
         names = "、".join(f"「{b['bankName']}」" for b in result["deleted"])
-        return ok(action="delete", deleted=result["deleted"], message=f"已删除题库{names}")
+        return ok(
+            action="delete",
+            deleted=result["deleted"],
+            message=f"已删除题库{names}",
+            **{UNDO_BEFORE_KEY: snapshot},
+        )
 
     async def _delete_by_name(
         self, params: Dict[str, Any], ctx: ToolContext
@@ -446,11 +518,13 @@ class BankManageTool(AgentTool):
                 hint = f"名称需要完全一致。名称里包含「{bank_name}」的题库有：{names}"
             return fail(f"没有找到名为「{bank_name}」的题库", hint)
 
+        snapshot = await self._snapshot(ctx, [bank.id])
         result = await qws.delete_banks(ctx.db, ctx.user_id, [bank.id])
         return ok(
             action="delete_by_name",
             deleted=result["deleted"],
             message=f"已删除题库「{bank_name}」及其全部题目",
+            **{UNDO_BEFORE_KEY: snapshot},
         )
 
     async def _delete_many(
@@ -486,6 +560,7 @@ class BankManageTool(AgentTool):
             else:
                 ids.append(bank.id)
 
+        snapshot = await self._snapshot(ctx, ids)
         result = await qws.delete_banks(ctx.db, ctx.user_id, ids)
         deleted = result["deleted"]
         parts = [f"已删除 {len(deleted)} 个题库"]
@@ -501,7 +576,26 @@ class BankManageTool(AgentTool):
             missingIds=result["missing"],
             missingNames=missing_names,
             message="；".join(parts),
+            **{UNDO_BEFORE_KEY: snapshot},
         )
+
+    @staticmethod
+    async def _snapshot(
+        ctx: ToolContext, bank_ids: List[int]
+    ) -> Dict[str, Any]:
+        """抓删除前快照（**只读**；失败时返回空快照，绝不阻断删除本身）
+
+        ⚠️ 快照失败**不能让删除也失败**：用户要的是「删掉这个题库」，
+        而快照只是「万一他后悔了能救回来」的增强项。抓不到快照时宁可
+        「删了但回退不了（并如实告知）」，也不该「因为存不下快照所以删不掉」。
+        """
+        from app.services.ai.agent import bank_tree_snapshot as snap
+
+        try:
+            return await snap.snapshot_banks(ctx.db, ctx.user_id, bank_ids)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[bank_manage] 删除前快照失败（不影响删除）: {}", e)
+            return {"kind": "bank_tree", "rowCount": 0}
 
     # ------------------------------------------------------------------
 

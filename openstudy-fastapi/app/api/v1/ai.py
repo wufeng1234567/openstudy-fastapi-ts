@@ -700,6 +700,19 @@ async def agent_execute(
 
     ⚠️ 需要确认的操作必须带 `confirmTicket`（见 `AgentExecuteRequest` 的字段说明）：
     票据由 `/ai/agent/preview` 签发，校验签名 / 用户 / 工具+参数 / 有效期，且**一次性**。
+
+    ⚠️⚠️ **本接口不接受 `turn_id`**（`AgentExecuteRequest` 里没有这个字段）。
+    后端用 `loop._resolve_turn_id("")` 兜一个 `auto_<hex>` → **一次请求一个 turn**。
+
+    后果（2026-10-20 实测）：同一个 `sessionId` 下连做三次操作（建库 → 导题 → 删库）
+    会在回退账本里产生**三个不同的 `turn_id`**，一个 turn 只对应一次工具调用。
+    想按「一轮 = 用户一次提问引发的一串操作」回退，**不能**靠本接口：
+      · 要么走 `/ai/agent/stream`（api 主链路，`AgentRequest.turn_id` 由前端透传，
+        一轮里的多次调用共用同一个 turn —— 那才是回退按钮的真实粒度）；
+      · 要么按**账本里实际写入的那个 turn** 回退。
+
+    这是 ds-free 链路的**安全退化**而不是缺陷：它的循环在前端，后端根本不知道
+    「这一轮什么时候结束」，所以只能一次调用算一轮 —— 撤销粒度变细，但绝不撤错。
     """
     from app.services.ai.agent.loop import execute_agent_tool, persist_agent_images
     from loguru import logger

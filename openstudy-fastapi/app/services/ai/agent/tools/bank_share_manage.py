@@ -36,7 +36,16 @@ from typing import Any, Dict, List, Optional
 from app.models.question import QuestionBank
 from app.services import bank_share_service as bss
 from app.services import question_write_service as qws
-from app.services.ai.agent.base import AgentTool, ToolContext, fail, ok
+from app.services.ai.agent.base import (
+    OP_RESTORE,
+    OP_SOFT_DELETE,
+    REASON_AFFECTS_OTHERS,
+    REASON_MISSING_TARGET_ID,
+    AgentTool,
+    ToolContext,
+    fail,
+    ok,
+)
 from app.services.bank_copy_service import copy_bank_to_user, copy_suffix_name
 from app.services.bank_share_service import ShareError
 
@@ -301,6 +310,76 @@ class BankShareManageTool(AgentTool):
                 "action 只能是 list_shares / share / revoke / receive / copy",
             )
         return await handler(params, ctx)
+
+    # ------------------------------------------------------------------
+    # 回退（2026-10-20 新增）
+    # ------------------------------------------------------------------
+
+    def undo_plan(self, params: Dict[str, Any], result: Dict[str, Any]) -> Dict[str, Any] | None:
+        """声明这一笔分享操作怎么撤（契约见 `base.AgentTool.undo_plan`）
+
+        | action  | 逆操作                              | 代价 / 边界                    |
+        |---------|-------------------------------------|--------------------------------|
+        | share   | `soft_delete`（status '0'→'1'）      | 全撤，无副作用                  |
+        | revoke  | `restore`（status '1'→'0'）          | ⚠️ **部分回退**，见下           |
+        | receive | `restore`（领取记录 status '1'→'0'） | 收藏题库那行由收藏表自身处理     |
+        | copy    | **不可回退**                         | 见下                            |
+
+        ⚠️ `revoke` 为什么只能「部分回退」：
+        `revoke_share` 做三件事 —— ① 把 `bank_share.status` 置 '1'；② 把全部
+        `bank_share_receive.status` 置 '1'；③ **给每个领取方发一条通知**。
+        ①② 能翻回来（本函数声明了），③ **收不回来** —— 通知已经推到别人手机上。
+        所以声明 `undoable=True` 的同时带上 `reason=REASON_AFFECTS_OTHERS`：
+        回退会执行，界面上标「部分回退」并说清「通知已发出」，这才是诚实的。
+        （原来 `rollback_service._TOOL_ACTION_REASONS` 里写的是「revoke 不可回退」；
+        现在有了 status 翻转能力，从「拒绝回退」升级成「撤了但告知副作用」，
+        那个表项已随之删除 —— 两处声明必然漂移，只留这一处。）
+
+        ⚠️ `copy` 为什么不可回退：它用 `question_write_service` 深拷出一个**新题库**
+        （新 id、新题目行）。删掉它可以（`bank_manage` 的 delete 能做到），但那是
+        「删一个题库」的语义，应当通过题库域的回退去做；在这里声明会导致
+        同一次 copy 产生两条账单、点一次回退撤两遍。返回 `None` = 交给用户显式删除。
+        """
+        action = str(params.get("action") or "")
+
+        if action == "share":
+            sid = _to_int(result.get("shareId"))
+            if sid is None:
+                return {"undoable": False, "reason": REASON_MISSING_TARGET_ID}
+            return {
+                "op": OP_SOFT_DELETE,
+                "targetTable": "bank_share",
+                "targetIds": [sid],
+                "undoable": True,
+            }
+
+        if action == "revoke":
+            sid = _to_int(result.get("shareId")) or _to_int(params.get("share_id"))
+            if sid is None:
+                return {"undoable": False, "reason": REASON_MISSING_TARGET_ID}
+            return {
+                "op": OP_RESTORE,
+                "targetTable": "bank_share",
+                "targetIds": [sid],
+                "undoable": True,
+                # ⚠️ 非空 = **部分回退**：分享本身恢复了，但已经发出去的通知收不回
+                "reason": REASON_AFFECTS_OTHERS,
+            }
+
+        if action == "receive":
+            rid = _to_int(result.get("receiveId")) or _to_int(result.get("id"))
+            if rid is None:
+                # 领取记录 id 不一定在回执里（幂等命中已有记录时是 `exists`）——
+                # 拿不到就如实说「回退不了」，绝不用 bank_id 猜一行（会撤错人）
+                return {"undoable": False, "reason": REASON_MISSING_TARGET_ID}
+            return {
+                "op": OP_RESTORE,
+                "targetTable": "bank_share_receive",
+                "targetIds": [rid],
+                "undoable": True,
+            }
+
+        return None
 
     async def _list_shares(
         self, params: Dict[str, Any], ctx: ToolContext

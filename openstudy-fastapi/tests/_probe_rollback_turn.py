@@ -325,32 +325,66 @@ async def main():
               f"         负对照 n2.del_flag={await note_flag(n2)!r}（必须 '0'=没被撤）；"
               f"正对照 n3.del_flag={await note_flag(n3)!r}（必须 '2'=真撤了）")
 
-        # ---------------- P7 真实路径：题库删除 → 账本记「不可回退 + 原因」----------------
+        # ---------------- P7 真实路径：题库删除 → 账本记「快照整树恢复」→ 回退把数据拿回来 ----------
+        # ⚠️ 2026-10-20 口径变更：原先这里断言「题库物理删、本轮不做回退 → 账本记
+        #    missing_soft_delete、回退只跳过」。现在题库删除**真的能回退**了
+        #    （删除前抓数据快照，回退时按原主键整树重插，见 `bank_tree_snapshot`），
+        #    所以断言反过来：账本必须记 `undoable=True` + `op=restore_tree`，
+        #    回退必须 `reverted>=1`，且**题库与它的题目都要回来**。
         t5 = MARK + "-t5"
+        q_before = int(await s1(
+            "SELECT count(*) FROM question_main WHERE bank_id = :i", i=bank_id) or 0)
         async with async_session_factory() as db:
             r5 = await run_write_tool(db, "bank_manage",
                                       {"action": "delete", "bank_id": bank_id}, uid_a, t5)
         led5 = await op_rows(t5)
         bank_gone = int(await s1("SELECT count(*) FROM question_bank WHERE id = :i",
                                  i=bank_id) or 0)
+        q_gone = int(await s1(
+            "SELECT count(*) FROM question_main WHERE bank_id = :i", i=bank_id) or 0)
         async with async_session_factory() as db:
             out5 = await rollback_service.rollback_turn(db, uid_a, SESSION, t5)
             await db.commit()
-        bank_still_gone = int(await s1("SELECT count(*) FROM question_bank WHERE id = :i",
-                                       i=bank_id) or 0)
-        check("P7", "题库删除（物理删、本轮不做）：账本如实记「不可回退 + 原因」，回退只跳过不执行",
+        bank_back = int(await s1("SELECT count(*) FROM question_bank WHERE id = :i",
+                                 i=bank_id) or 0)
+        q_back = int(await s1(
+            "SELECT count(*) FROM question_main WHERE bank_id = :i", i=bank_id) or 0)
+        check("P7", "题库删除：账本记「快照整树恢复」，回退把题库**和题目**一起拿回来",
               r5.get("success") is True and bank_gone == 0 and len(led5) == 1
-              and led5[0][5] is False and led5[0][6] == "missing_soft_delete"
-              and led5[0][2] == ""
-              and out5["reverted"] == 0 and len(out5["skipped"]) == 1
-              and out5["skipped"][0]["reason"] == "missing_soft_delete"
-              and bool(out5["skipped"][0]["reasonText"])
-              and bank_still_gone == 0,
-              f"删除后 bank 行数={bank_gone} 账本(tool,action,op,table,ids,undoable,reason)="
-              f"{led5[0][:7] if led5 else None}\n"
-              f"         回退结果={json.dumps(out5, ensure_ascii=False)}")
-        # 该题库已被物理删掉，从登记表里摘掉，收尾不用再删
-        ids["bank"] = [i for i in ids["bank"] if i != bank_id]
+              and led5[0][5] is True and led5[0][2] == "restore_tree"
+              and out5["reverted"] >= 1 and not out5["failed"]
+              and bank_back == 1 and q_back == q_before,
+              f"删除后 bank={bank_gone} 题={q_gone}（删前 {q_before}）"
+              f"账本(tool,action,op,table,ids,undoable,reason)={led5[0][:7] if led5 else None}\n"
+              f"         回退后 bank={bank_back} 题={q_back}；"
+              f"回退结果={json.dumps(out5, ensure_ascii=False)}")
+        # ⚠️ 题库已被回退恢复，收尾时它**还在**，所以照常留在 `ids` 待删清单里
+        #    —— 原来这里写的是「已被物理删掉，从登记表里摘掉」，现在不成立了。
+
+        # ---------------- P7b 快照不可用时**如实拒绝**（负对照）----------------
+        # 防「声明了 restore_tree 却没有快照 → 回退时假装成功」。构造一条 before 为空的账本行。
+        t5b = MARK + "-t5b"
+        async with async_session_factory() as db:
+            # ⚠️ 用别名 import：直接 `from ... import AiAgentOpLog` 会在**函数作用域**里
+            #    新建一个同名局部变量，把外层（main 开头）那个 AiAgentOpLog 遮蔽掉 ——
+            #    于是它上面的 `AiAgentOpLog.__table__` 报 UnboundLocalError。
+            from app.models.agent_op_log import AiAgentOpLog as _OpLog
+            from datetime import datetime as _dt
+
+            db.add(_OpLog(
+                user_id=uid_a, session_id=SESSION, turn_id=t5b, op_index=1,
+                tool="bank_manage", action="delete", op="restore_tree",
+                target_table="question_bank", target_ids=[999999], before=None,
+                undoable=True, reason="", create_time=_dt.now(),
+            ))
+            await db.commit()
+        async with async_session_factory() as db:
+            out5b = await rollback_service.rollback_turn(db, uid_a, SESSION, t5b)
+            await db.commit()
+        check("P7b", "没有快照的 restore_tree 账本行 → **判失败并说明**，绝不假装恢复成功",
+              out5b["reverted"] == 0 and len(out5b["failed"]) == 1
+              and "快照" in str(out5b["failed"][0].get("error") or ""),
+              f"回退结果={json.dumps(out5b, ensure_ascii=False)}")
 
         # ---------------- P8 账本与数据**同事务**（决定「哪条 commit 路径会落账本」）----------------
         t6 = MARK + "-t6"

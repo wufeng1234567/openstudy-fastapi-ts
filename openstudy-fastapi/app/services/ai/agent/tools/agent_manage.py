@@ -17,12 +17,35 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from app.services.ai.agent.base import AgentTool, ToolContext, fail, ok
+from app.services.ai.agent.base import (
+    OP_RESTORE,
+    OP_SOFT_DELETE,
+    REASON_MISSING_TARGET_ID,
+    AgentTool,
+    ToolContext,
+    fail,
+    ok,
+)
 from app.services.ai.agent import agent_config_service as svc
 from app.services.ai.agent.registry import ensure_tools_loaded, registry
 
 #: 需要二次确认（会真正落库）的动作
 _WRITE_ACTIONS = {"create", "update", "delete"}
+
+
+def _to_int(value: Any) -> "int | None":
+    """把「可能是字符串的 id」转成 int；转不动返回 None（**绝不抛**）
+
+    ⚠️ `undo_plan` 里不能抛异常：`record_op` 会兜住，但兜住的结果是「当作没声明」，
+    于是该可回退的操作静默变成不可回退 —— 用户点回退会看到「这一轮没有可回退的操作」，
+    而实际上是他刚删的智能体没被记账。
+    """
+    try:
+        if value is None or value == "":
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _valid_tool_names() -> set:
@@ -249,11 +272,65 @@ class AgentManageTool(AgentTool):
         aid = int(params.get("agent_id") or 0)
         if aid <= 0:
             return fail("缺少 agent_id", "delete 必须带 agent_id（可先 list 拿到）")
+        # 回退要用「改前名字」写回执文案（删完之后再也查不到了）
+        before_name = ""
+        try:
+            row = await svc.get_agent_dict(ctx.user_id, aid) if aid else None
+            before_name = str((row or {}).get("name") or "")
+        except Exception:  # noqa: BLE001 - 取不到名字不影响删除
+            before_name = ""
         try:
             info = await svc.delete_agent(ctx.user_id, aid)
         except svc.AgentConfigError as e:
             return fail(str(e), "先 list 确认 agent_id")
-        return ok(action="delete", agentId=aid, message=f"已删除智能体「{info.get('name')}」")
+        return ok(
+            action="delete",
+            agentId=aid,
+            agentName=str(info.get("name") or before_name),
+            message=f"已删除智能体「{info.get('name')}」",
+        )
+
+    # ------------------------------------------------------------------
+    # 回退（2026-10-20 新增）
+    # ------------------------------------------------------------------
+
+    def undo_plan(self, params: Dict[str, Any], result: Dict[str, Any]) -> Dict[str, Any] | None:
+        """声明这一笔智能体操作怎么撤（契约见 `base.AgentTool.undo_plan`）
+
+        | action   | 逆操作                  | 为什么                        |
+        |----------|-------------------------|-------------------------------|
+        | create   | `soft_delete`            | 建错了就把它逻辑删掉           |
+        | delete   | `restore`（`del_flag='0'`）| 本来就有 del_flag，翻回来即可  |
+        | update   | **不可回退**             | 见下                           |
+
+        ⚠️ **`update` 为什么不做**：`agent_config_service.update_agent` 只接受「要改成什么」，
+        不接受「原来是什么」，而它的会话在服务层内部（本工具拿不到改前值）。
+        要做就得改服务层签名 —— 而「改错了智能体人设」这件事的挽回成本极低
+        （再改一次即可），不值得为它动一个被 API 路由共用的服务函数。
+        按契约「宁可为空，绝不谎报」，这里返回 `None` 并由回退结果如实告知。
+
+        ⚠️ `create` / `delete` 的 id 从回执里取：`agentId` 是回执本来就有的字段
+        （给模型看的），不需要额外塞 `UNDO_BEFORE_KEY`。
+        """
+        action = str(params.get("action") or "")
+        aid = _to_int(result.get("agentId")) or _to_int(params.get("agent_id"))
+        if aid is None or aid <= 0:
+            return {"undoable": False, "reason": REASON_MISSING_TARGET_ID}
+        if action == "create":
+            return {
+                "op": OP_SOFT_DELETE,
+                "targetTable": "ai_agent_config",
+                "targetIds": [aid],
+                "undoable": True,
+            }
+        if action == "delete":
+            return {
+                "op": OP_RESTORE,
+                "targetTable": "ai_agent_config",
+                "targetIds": [aid],
+                "undoable": True,
+            }
+        return None
 
     async def _list(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
         agents = await svc.list_agents(ctx.user_id, include_disabled=True)

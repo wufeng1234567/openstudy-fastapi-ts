@@ -47,6 +47,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent_memory import AiAgentMemory
 from app.models.agent_op_log import AiAgentOpLog
+from app.models.agent_config import AiAgentConfig
+from app.models.bank_share import BankShare, BankShareReceive
 from app.models.note import Note
 from app.models.question import (
     UserQuestionError,
@@ -61,6 +63,7 @@ from app.services.ai.agent.base import (
     OP_RESTORE,
     OP_RESTORE_FIELDS,
     OP_RESTORE_MEMORY,
+    OP_RESTORE_TREE,
     OP_SOFT_DELETE,
     REASON_AFFECTS_OTHERS,
     REASON_CONTENT_DESTROYED,
@@ -83,36 +86,43 @@ from app.services.ai.agent.base import (
 #    所以这个映射表就是那层翻译，**由回退结果里同时下发 reason + reasonText**。
 REASON_TEXT: Dict[str, str] = {
     REASON_NOT_DECLARED: "这个操作还没有回退实现",
-    REASON_MISSING_SOFT_DELETE: "题库与题目目前是**物理删除**，暂时无法回退（下一阶段支持）",
+    REASON_MISSING_SOFT_DELETE: "删除时的数据快照不可用，无法回退",
     REASON_CONTENT_DESTROYED: "文档正文与分块已被物理删除（重建要重算向量），无法回退",
-    REASON_AFFECTS_OTHERS: "这条操作影响到了其他用户（领取记录已失效、通知已发出），无法回退",
+    REASON_AFFECTS_OTHERS: "这条操作影响到了其他用户（通知已发出），无法完全回退",
     REASON_NO_BEFORE_STATE: "没有记录修改前的值，无法回退",
     REASON_MISSING_TARGET_ID: "回执里没有可定位的数据行 ID，无法回退",
     REASON_NOT_IN_V1: "这一类操作本轮暂不支持回退",
     REASON_DOCUMENTS_DESTROYED: "知识库已恢复，但其中的文档与分块已被物理删除，无法恢复",
+    # ---- 2026-10-20 新增（题库/题目整树恢复的两条边界）----
+    #: 整树重插时部分行失败（撞主键 / 快照缺行）→ 界面上标「部分回退」
+    "partial_restored": "大部分内容已恢复，但有个别行没能插回来（详见失败清单）",
+    #: 删除时题库太大、快照未保存（见 `bank_tree_snapshot.MAX_SNAPSHOT_ROWS`）
+    "too_large": "题库太大，删除时没有保存数据快照，无法回退",
 }
 
 # ---------------------------------------------------------------------------
 # 没声明 undo 的工具 → 原因码（放到这里，不是放到工具里）
 # ---------------------------------------------------------------------------
-# ⚠️ 为什么放在服务层而不是 `undo_plan`：这三个工具（题库 / 题目 / 分享）本轮
-#    **不在改动面上**（改动面只有 note / memory / knowledge_base / question_flag），
-#    而用户点回退时**必须看到原因**（否则卡片就是一句「不支持」）。所以把「它们为什么
-#    不能撤」收在这一个表里 —— 下一阶段给它们做了 del_flag，删掉这里的两行即可。
-_TOOL_REASON_DEFAULTS: Dict[str, str] = {
-    "bank_manage": REASON_MISSING_SOFT_DELETE,
-    "question_manage": REASON_MISSING_SOFT_DELETE,
-    "bank_share_manage": REASON_NOT_IN_V1,
-}
+# ⚠️ 2026-10-20 起这张表**清空**：bank_manage / question_manage / bank_share_manage
+#    三个工具都已经在各自 `undo_plan` 里声明了逆操作（前两个走整树快照重插、
+#    后者走 status 翻转），不再需要「工具级默认原因」。
+#    保留下面的空结构与查询函数，是因为将来新加工具时仍需要一条统一的兜底路径
+#    —— 但**新工具应当优先在 `undo_plan` 里声明**，而不是往这里塞一行。
+_TOOL_REASON_DEFAULTS: Dict[str, str] = {}
+# ⚠️ 只写「这一类操作本就不该回退」的原因。已经在 `undo_plan` 里声明过的
+#    （note / memory / knowledge_base / question_flag / agent_manage / bank_share /
+#    bank_manage / question_manage）**不许**在这里再写一份 —— 两处声明必然漂移。
 
 #: 工具 + action → 原因码（比工具级默认更具体时用），键是 `(tool, action)`
 _TOOL_ACTION_REASONS: Dict[tuple, str] = {
-    # 撤销分享：会把**别人**的领取记录置失效、且已发出的通知收不回
-    # （`bank_share_service.revoke_share`：325-371；源码自己写明「没有恢复入口」）
-    ("bank_share_manage", "revoke"): REASON_AFFECTS_OTHERS,
+    # 2026-10-20：`("bank_share_manage", "revoke") → REASON_AFFECTS_OTHERS` 已删除。
+    # 那一项原本表达「撤销分享不可回退」；现在 `bank_share_manage.undo_plan` 能真的把
+    # `status` 翻回来，并在 plan 里带 `reason=REASON_AFFECTS_OTHERS`（部分回退语义）。
+    # ⚠️ 两处都写就是两个事实来源，必然漂移（见下面那条注释）。
 }
 # ⚠️ 只写「本轮改不动的工具」的原因。已经在 `undo_plan` 里声明过的（note / memory /
-#    knowledge_base / question_flag）**不许**在这里再写一份 —— 两处声明必然漂移。
+#    knowledge_base / question_flag / agent_manage / bank_share / bank_manage /
+#    question_manage）**不许**在这里再写一份 —— 两处声明必然漂移。
 
 
 # ---------------------------------------------------------------------------
@@ -123,18 +133,38 @@ class _Target:
 
     ⚠️ `restorable()` 只让**真实存在的列**通过：账本里的键名是 JSON 数据，
     绝不能拼进 SQL 文本 —— 这里按 ORM 元数据校验，未知键**丢弃并告警**。
+
+    ⚠️ **归属列可以不是 `user_id`**（2026-10-20 扩展）：`bank_share` / `bank_share_receive`
+    的归属列叫 `owner_id`。硬要求 `user_id` 会让这两张表永远进不了白名单 ——
+    而它们恰恰是「天然可回退」的表（撤销分享只是把 status 从 '1' 翻回 '0'）。
+    用 `user_col` 指定，回退时照旧按它过滤（IDOR 红线不变：只动自己的行）。
     """
 
     #: 绝不写回的列：主键（行身份）、归属（必须由服务端认定）、创建时间（历史事实）
-    _PROTECTED = {"user_id", "create_time"}
+    _PROTECTED = {"user_id", "owner_id", "create_time"}
 
-    def __init__(self, model: Any, pk: str, soft_delete: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        model: Any,
+        pk: str,
+        soft_delete: Optional[str] = None,
+        *,
+        user_col: str = "user_id",
+        alive_value: str = "0",
+        deleted_value: str = "2",
+    ) -> None:
         self.model = model
         self.pk = pk
         self.soft_delete = soft_delete
         self.columns = {c.name for c in model.__table__.columns}
         self.pk_col = getattr(model, pk)
-        self.user_col = model.user_id
+        self.user_col = getattr(model, user_col)
+        #: 「未删」与「已删」的取值。默认是 `del_flag` 的 '0'/'2'；
+        #: `bank_share.status` 用 '0'/'1'（'0' 有效 / '1' 已撤销，见 `models/bank_share.py`）。
+        #: ⚠️ 不能把这两组值揉成一套：两者语义不同（"逻辑删除" vs "业务状态"），
+        #: 混用会让某天给 bank_share 加 del_flag 时一改就错一片。
+        self.alive_value = alive_value
+        self.deleted_value = deleted_value
 
     def restorable(self, before: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         """把 `before` 过滤成「能写回的列 → 值」（按列类型把 ISO 字符串解析回 datetime）"""
@@ -175,6 +205,21 @@ _TABLES: Dict[str, _Target] = {
     "user_question_error": _Target(UserQuestionError, "error_id"),
     "user_question_favorite": _Target(UserQuestionFavorite, "favorite_id"),
     "user_question_marked": _Target(UserQuestionMarked, "marked_id"),
+    # ---- 2026-10-20 新增：把「题库 / 分享 / 智能体」三个域接进回退 ----
+    #: 用户自定义智能体：本来就有 `del_flag`（见 `models/agent_config.py`），
+    #: 只是一直没声明 undo —— 补上即可，无需改表。
+    "ai_agent_config": _Target(AiAgentConfig, "id", soft_delete="del_flag"),
+    #: 题库分享：没有 `del_flag`，但 `status` 的语义正好是「'0' 有效 / '1' 已撤销」。
+    #: ⚠️ 归属列是 `owner_id` 而不是 `user_id` —— 见 `_Target` 的说明。
+    "bank_share": _Target(
+        BankShare, "id", soft_delete="status", user_col="owner_id",
+        alive_value="0", deleted_value="1",
+    ),
+    #: 分享**领取**记录：`receive` 会新增，撤销分享会把它置失效。同样用 status 翻回。
+    "bank_share_receive": _Target(
+        BankShareReceive, "id", soft_delete="status", user_col="receiver_id",
+        alive_value="0", deleted_value="1",
+    ),
 }
 
 
@@ -276,7 +321,21 @@ async def record_op(
 
     action = str((params or {}).get("action") or "")
     try:
-        plan = tool.undo_plan(params or {}, result)
+        # ⚠️ `before` 必须传给 `undo_plan`：`_execute_tool` 已经把它从 `result` 里
+        #    pop 掉了，所以工具无法再从 result 读到自己的快照（见 base 的签名说明）。
+        #    题库/题目删除的整树快照正是靠这条路才能被声明。
+        plan = tool.undo_plan(params or {}, result, before)
+    except TypeError:
+        # 兼容**只接受两个参数**的存量工具（没跟上新签名的第三方/测试替身）。
+        # ⚠️ 不要把这个 except 去掉换成 `inspect.signature` 探测：那样每次记账都要
+        #    做一次反射，而记账在热路径上（每次写操作一次）。
+        try:
+            plan = tool.undo_plan(params or {}, result)
+        except Exception as e:  # noqa: BLE001 - 工具声明坏了 → 当作没声明
+            logger.warning(
+                "[rollback] undo_plan 异常 tool={}: {}", getattr(tool, "name", ""), e
+            )
+            plan = None
     except Exception as e:  # noqa: BLE001 - 工具声明坏了 → 当作没声明
         logger.warning("[rollback] undo_plan 异常 tool={}: {}", getattr(tool, "name", ""), e)
         plan = None
@@ -374,6 +433,14 @@ def _skip_item(row: AiAgentOpLog) -> Dict[str, Any]:
 
 async def _apply(db: AsyncSession, uid: int, row: AiAgentOpLog) -> None:
     """执行一条逆操作；失败**抛异常**（由调用方分类到 `failed`）。"""
+    # ⚠️ `restore_tree` 走**快照**，不按 `targetTable` 单表操作 —— 它要一次插回
+    #    题库 + 题目 + 子题 + 个人标记等一整组表。所以这个分支必须排在
+    #    「查 `_TABLES` 白名单」之**前**：否则会被判成「未知的目标表」
+    #    （e2e 实测：`ValueError: 未知的目标表（不在可回退白名单里）：'question_bank'`）。
+    if row.op == OP_RESTORE_TREE:
+        await _apply_restore_tree(db, row)
+        return
+
     target = _TABLES.get(row.target_table or "")
     if target is None:
         raise ValueError(f"未知的目标表（不在可回退白名单里）：{row.target_table!r}")
@@ -384,7 +451,12 @@ async def _apply(db: AsyncSession, uid: int, row: AiAgentOpLog) -> None:
     if row.op in (OP_RESTORE, OP_SOFT_DELETE):
         if not target.soft_delete:
             raise ValueError(f"表 {row.target_table} 没有逻辑删列，不支持 {row.op}")
-        value = "0" if row.op == OP_RESTORE else "2"
+        # ⚠️ 取值来自 `_Target`，不是写死的 "0" / "2"：`bank_share.status` 用 '0'/'1'。
+        #    写死会让「撤销分享」的回退把 status 写成 '2' —— 那既不是有效也不是已撤销，
+        #    而所有查询都按 '0'/'1' 判，等于把这条分享变成谁都看不见的幽灵行。
+        value = (
+            target.alive_value if row.op == OP_RESTORE else target.deleted_value
+        )
         result = await db.execute(
             update(target.model)
             .where(target.pk_col.in_(ids), target.user_col == uid)
@@ -436,6 +508,52 @@ async def _apply(db: AsyncSession, uid: int, row: AiAgentOpLog) -> None:
         return
 
     raise ValueError(f"未知的撤销动作：{row.op!r}")
+
+
+async def _apply_restore_tree(db: AsyncSession, row: AiAgentOpLog) -> None:
+    """执行一次「整树重插」（题库 / 题目的物理删除回退）
+
+    从账本的 `before` 取快照，交给 `bank_tree_snapshot.restore_snapshot` 逐条插回。
+
+    ⚠️ 部分成功怎么办：`restore_snapshot` 是**逐条容错**的，可能插回 400 行、
+    失败 2 行。这时**不能抛异常**（抛了就等于把已经插进去的 400 行也判失败，
+    用户会看到「回退失败」但数据其实回来大半）。做法是：
+      · 一行都没插进去 → 抛异常（真的失败）；
+      · 插了一部分 → **正常返回**，并给 `row.reason` 打上 `partial_restored`，
+        由 `rollback_turn` 把它归进 `partial` 清单（界面标「部分回退」+ 原因）。
+    """
+    from app.services.ai.agent import bank_tree_snapshot as snap
+
+    snapshot = row.before or {}
+    outcome = await snap.restore_snapshot(db, snapshot)
+
+    if outcome.get("skipped"):
+        raise RuntimeError(
+            "删除时的数据快照不可用（"
+            + str(outcome.get("reason") or "unknown")
+            + "），无法恢复"
+        )
+
+    restored_map = outcome.get("restored") or {}
+    failed = outcome.get("failed") or []
+
+    if not restored_map:
+        detail = "; ".join(
+            f"{f.get('table')}#{f.get('id')} {f.get('error')}" for f in failed[:3]
+        )
+        raise RuntimeError(f"没有任何一行被恢复：{detail or '快照里没有可恢复的行'}")
+
+    if failed and not row.reason:
+        # 部分成功 → 让上层把这行归进 `partial` 而不是静默当全成功
+        row.reason = "partial_restored"
+
+    logger.info(
+        "[rollback] 整树恢复 tool={} action={} 恢复={} 失败={}",
+        row.tool,
+        row.action,
+        restored_map,
+        len(failed),
+    )
 
 
 async def rollback_turn(

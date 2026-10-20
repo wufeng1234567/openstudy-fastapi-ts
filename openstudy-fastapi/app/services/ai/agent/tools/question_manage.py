@@ -31,6 +31,9 @@ from app.models.question import QuestionBank, QuestionMain, QuestionSub
 from app.services import question_write_service as qws
 from app.services.ai.agent import json_repair
 from app.services.ai.agent.base import (
+    OP_RESTORE_TREE,
+    REASON_MISSING_SOFT_DELETE,
+    UNDO_BEFORE_KEY,
     AgentTool,
     ToolContext,
     as_list as _as_list,
@@ -252,6 +255,59 @@ class QuestionManageTool(AgentTool):
 
     def is_destructive(self, params: Dict[str, Any]) -> bool:
         return str(params.get("action") or "") in self._DESTRUCTIVE_ACTIONS
+
+    # ------------------------------------------------------------------
+    # 回退（2026-10-20 新增）
+    # ------------------------------------------------------------------
+
+    def undo_plan(
+        self,
+        params: Dict[str, Any],
+        result: Dict[str, Any],
+        before: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any] | None:
+        """声明这一笔题目操作怎么撤（契约见 `base.AgentTool.undo_plan`）
+
+        | action                                    | 逆操作                        |
+        |-------------------------------------------|-------------------------------|
+        | delete / delete_many / clear_questions    | `restore_tree`（快照重插）    |
+        | create / batch_import / update            | **不可回退**（见下）          |
+
+        ⚠️ 删除的回退数据来自 `_delete` 系列在**删除之前**塞进回执的
+        `UNDO_BEFORE_KEY`（`_execute_tool` 摘掉，模型与界面都看不到），
+        其中包含题目、子题、以及**该用户**的错题/收藏/斩题/笔记关联。
+        别人的标记不进快照 —— 那是别人的数据，不该被恢复动作「复活」。
+        详见 `bank_tree_snapshot` 模块说明。
+
+        ⚠️ `batch_import` / `create` 为什么不可回退：它们是**插入**，看起来撤起来简单
+        （删掉新行即可），但 `_purge_questions` 是物理删且会连带清掉用户在那个题库里
+        的**其他**个人标记 —— 用它去撤一次误导入，会顺手抹掉用户的历史错题。
+        要删导入的题，用户显式 delete 就好（那个带快照、能再撤回来）。
+        ⚠️ `update` 为什么不可回退：`qws` 的题目更新不返回改前值，本工具也没留快照。
+        改错了题干再改一次即可，成本远低于为它引入一份题目级 before 快照。
+        """
+        action = str(params.get("action") or "")
+        if action in ("delete", "delete_many", "clear_questions"):
+            # 快照来自 `before` 参数（不是 `result`）—— 见 `base.undo_plan` 的 Args 说明
+            snapshot = before if isinstance(before, dict) else None
+            if not snapshot or not snapshot.get("rowCount"):
+                return {"undoable": False, "reason": REASON_MISSING_SOFT_DELETE}
+            if snapshot.get("skipped"):
+                return {
+                    "undoable": False,
+                    "reason": str(snapshot.get("reason") or "too_large"),
+                }
+            return {
+                "op": OP_RESTORE_TREE,
+                "targetTable": "question_main",
+                # 契约要求 targetIds 能定位到行（`record_op` 会拿它做「定位不到就不许说可回退」的守卫）
+                "targetIds": [
+                    int(i) for i in (snapshot.get("questionIds") or [])
+                ],
+                "before": snapshot,
+                "undoable": True,
+            }
+        return None
 
     def confirm_policy(self, params: Dict[str, Any]) -> bool:
         """`batch_import` 的**规模**够大（≥5 题）时强制确认；单题 create 不强制
@@ -931,6 +987,7 @@ class QuestionManageTool(AgentTool):
             return question
 
         bank_id = question.bank_id
+        snapshot = await self._snapshot(ctx, [question.id])
         await self._purge_questions(ctx, [question.id])
         total = await qws.recalc_bank_total(ctx.db, bank_id)
         return ok(
@@ -938,6 +995,7 @@ class QuestionManageTool(AgentTool):
             questionId=question.id,
             bankTotal=total,
             message=f"已删除题目（ID={question.id}），题库现有 {total} 题",
+            **{UNDO_BEFORE_KEY: snapshot},
         )
 
     async def _delete_many(
@@ -1005,6 +1063,7 @@ class QuestionManageTool(AgentTool):
                 outOfRange=out_of_range,
             )
 
+        snapshot = await self._snapshot(ctx, final_ids)
         removed = await self._purge_questions(ctx, final_ids)
         total = await qws.recalc_bank_total(ctx.db, bank.id)
         parts = [f"已删除 {removed} 道题", f"题库「{bank.bank_name}」现有 {total} 题"]
@@ -1018,6 +1077,7 @@ class QuestionManageTool(AgentTool):
             bankTotal=total,
             outOfRange=out_of_range,
             message="；".join(parts),
+            **{UNDO_BEFORE_KEY: snapshot},
         )
 
     async def _clear_questions(
@@ -1039,6 +1099,7 @@ class QuestionManageTool(AgentTool):
         ).all()
         ids = sorted({*ids, *(int(r[0]) for r in rows)})
 
+        snapshot = await self._snapshot(ctx, ids)
         removed = await self._purge_questions(ctx, ids)
         total = await qws.recalc_bank_total(ctx.db, bank.id)
         return ok(
@@ -1048,7 +1109,26 @@ class QuestionManageTool(AgentTool):
             deleted=removed,
             bankTotal=total,
             message=f"已清空题库「{bank.bank_name}」的 {removed} 道题目，题库本身保留",
+            **{UNDO_BEFORE_KEY: snapshot},
         )
+
+    @staticmethod
+    async def _snapshot(
+        ctx: ToolContext, question_ids: List[int]
+    ) -> Dict[str, Any]:
+        """抓删除前快照（**只读**；失败返回空快照，绝不阻断删除）
+
+        与 `bank_manage._snapshot` 同一条理由：用户要的是「删掉这些题」，
+        快照只是「万一后悔能救回来」的增强项 —— 抓不到时宁可「删了但回退不了
+        （并如实告知）」，也不该「因为存不下快照所以删不掉」。
+        """
+        from app.services.ai.agent import bank_tree_snapshot as snap
+
+        try:
+            return await snap.snapshot_questions(ctx.db, ctx.user_id, question_ids)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[question_manage] 删除前快照失败（不影响删除）: {}", e)
+            return {"kind": "question_tree", "rowCount": 0}
 
     # ------------------------------------------------------------------
     # 定位辅助

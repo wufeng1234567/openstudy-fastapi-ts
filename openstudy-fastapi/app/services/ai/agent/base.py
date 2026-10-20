@@ -79,6 +79,20 @@ OP_RESTORE_MEMORY = "restore_memory"
 OP_DELETE_RECORD = "delete_record"
 #: 把被物理删掉的行按 `before` 插回来（`remove_record` 的逆操作）
 OP_INSERT_RECORD = "insert_record"
+#: 把**整棵题库树**按 `before` 插回来（2026-10-20：题库 / 题目删除的逆操作）
+#:
+#: ⚠️ 为什么它不是 `insert_record` 的特例：`insert_record` 只管**一张表的一行**，
+#:    而题库删除是**应用层级联**（`question_write_service.delete_banks` 一次清掉
+#:    question_bank / question_main / question_sub / 三张个人标记表 / 笔记关联 /
+#:    分享与领取记录）。回退必须把这一整组行按正确顺序、用**原主键**插回去，
+#:    否则用户看到的是「库回来了但题目没了」，比不回来更糟。
+#:
+#: ⚠️ 为什么不用「软删除 + 读点全量过滤」那条路（已实测否决）：
+#:    实测 `with_loader_criteria` 只对 ORM 实体 select 生效，对 **Core 列 select 无效**；
+#:    而全仓按 `QuestionBank` / `QuestionMain` 的读点有 129 处，其中大量是 Core 列 select。
+#:    漏任何一处，已删的题库就会重新出现在列表里 —— 那比「不能回退」严重得多。
+#:    快照重插只碰**删除路径**，读取代码一行都不用改，回归风险为零。
+OP_RESTORE_TREE = "restore_tree"
 
 # ---- 不可回退 / 部分回退的原因码（账本 `reason` 列的取值域）----
 #: 这个操作**没有声明** undo（默认不可回退 —— 宁可为空，绝不谎报）
@@ -263,7 +277,10 @@ class AgentTool(ABC):
     # ------------------------------------------------------------------
 
     def undo_plan(
-        self, params: Dict[str, Any], result: Dict[str, Any]
+        self,
+        params: Dict[str, Any],
+        result: Dict[str, Any],
+        before: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
         """声明**这次操作该怎么撤**；返回 `None` = 不可回退（默认）。
 
@@ -282,9 +299,24 @@ class AgentTool(ABC):
               "reason": "",                    # 非空时：不可回退的原因，或「部分回退」的说明
             }
 
+        Args:
+            params: 本次工具调用的参数（已归一化）。
+            result: 工具回执（**已摘掉** `UNDO_BEFORE_KEY`）。
+            before: 工具塞在信封里的「改前状态」（`UNDO_BEFORE_KEY` 的内容），
+                由 `record_op` 原样传进来。
+
+                ⚠️ **为什么要有这个参数**（2026-10-20 新增）：
+                `_execute_tool` 会**先** `pop(UNDO_BEFORE_KEY)` 再调 `record_op`，
+                而 `record_op` 才调本函数 —— 所以 `result` 里**永远看不到**那份快照。
+                题库/题目删除的整树快照（`bank_tree_snapshot`）恰恰只能从 `before`
+                里读，否则本函数无法判断「快照到底存下来了没有」，
+                只能盲目声明「可回退」，最后在恢复阶段失败（比诚实地说
+                「快照不可用」糟糕得多）。
+                可选参数、默认 None —— 存量实现不改签名也照常工作。
+
         实现约定：
-        · **只从 `result`（回执）与 `params` 里取 id** —— 两个都是给模型/界面看的，
-          id 本来就该在回执里（如 `noteId` / `recordId`）；
+        · **只从 `result`（回执）/ `params` / `before` 里取 id** —— 三者都是给模型或
+          账本看的，id 本来就该在回执里（如 `noteId` / `recordId`）；
         · 改前值**不要**塞进回执（那是给模型看的），走 `UNDO_BEFORE_KEY`：
           在 `execute()` 里 `return ok(..., **{UNDO_BEFORE_KEY: before})`，
           `_execute_tool` 会把它摘出来交给账本，并把 `before` 合并进本函数返回的 plan；
@@ -322,6 +354,7 @@ __all__ = [
     "OP_RESTORE_MEMORY",
     "OP_DELETE_RECORD",
     "OP_INSERT_RECORD",
+    "OP_RESTORE_TREE",
     "REASON_NOT_DECLARED",
     "REASON_MISSING_SOFT_DELETE",
     "REASON_CONTENT_DESTROYED",
