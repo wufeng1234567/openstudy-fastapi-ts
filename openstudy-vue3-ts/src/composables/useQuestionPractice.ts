@@ -433,7 +433,9 @@ export function useQuestionPractice(
         return false
       }
       allQuestionsData.value = filtered
-      applyQuestionLimits()
+      // ⚠️ resetOffset: true —— 数组已经从「全库」换成「错题集」，旧偏移量失效。
+      //    不归零就是 bug1：offset 越界 → 被判成「已刷完所有题目」→ 空白页。
+      applyQuestionLimits({ resetOffset: true })
       // 批量加载收藏/斩题状态（错题状态已通过 errorQuestionIds 确定）
       await loadQuestionStatus()
       return true
@@ -464,7 +466,7 @@ export function useQuestionPractice(
     noWrongQuestionsReason.value = reason
   }
 
-  function applyQuestionLimits(): void {
+  function applyQuestionLimits(options: { resetOffset?: boolean } = {}): void {
     if (allQuestionsData.value.length === 0) {
       resetAnswers()
       loading.value = false
@@ -472,6 +474,27 @@ export function useQuestionPractice(
     }
     const count = questionCount.value
     const shouldShuffle = props.moduleType === 'random' || props.moduleType === 'mock'
+    /*
+     * ⚠️⚠️ 「只刷错题」时必须把偏移归零（2026-10-20 修的 bug1）。
+     *
+     * 现象（用户口径）：顺序/随机练习 + 勾上「只刷错题」→ 进去一片空白，
+     * 兜底显示「什么都没有」。
+     *
+     * 根因：`questionOffset` 是**按全库题数**算出来的分波进度（例如刷到第 3 波 = offset 40）；
+     * 而「只刷错题」会把 `allQuestionsData` 收窄成几十条里的一两条 ——
+     * 于是下面 `offset >= allQuestionsData.length` 立刻成立，走进「已刷完所有题目」
+     * 分支：清空 questions + 弹提示。用户看到的就是空页面。
+     *
+     * 为什么不能只改判断条件：偏移量的**语义**就是「在这个数组里从第几条开始」。
+     * 数组换了（全库 → 错题集），旧偏移量没有意义，必须归零 ——
+     * 否则即使不越界，也会从错题集中间开始刷，用户以为是漏题。
+     *
+     * 由调用方（`filterOnlyWrongQuestions`）显式传 `resetOffset: true`，
+     * 而不是在这里无条件归零：正常的分波翻页**必须**保留偏移。
+     */
+    if (options.resetOffset) {
+      questionOffset.value = 0
+    }
     const offset = questionOffset.value
 
     if (shouldShuffle) {

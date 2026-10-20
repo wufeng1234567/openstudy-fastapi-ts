@@ -268,14 +268,17 @@
             <el-card shadow="hover" class="practice-card" :class="{ 'compact-mode': isCompactMode }"
               @click="startPractice('custom')">
               <div class="practice-icon-wrapper">
-                <div class="practice-icon custom"><el-icon>
-                    <Setting />
+                <div class="practice-icon wrong"><el-icon>
+                    <WarningFilled />
                   </el-icon></div>
               </div>
               <div class="practice-content">
-                <h4>自定义练习</h4>
-                <p>自由配置顺序、乱序、错题等参数</p>
-                <div class="practice-meta"><span>灵活配置</span></div>
+                <h4>错题练习</h4>
+                <p>只练你答错过的题</p>
+                <div class="practice-meta">
+                  <span v-if="myMistakesCount > 0">{{ myMistakesCount }} 道错题</span>
+                  <span v-else class="is-empty">暂无错题</span>
+                </div>
               </div>
             </el-card>
           </el-col>
@@ -334,6 +337,7 @@ import {
   Collection, Document, Star, Share, ArrowLeft,
   User, Refresh, Warning, Flag, Notebook, ArrowRight,
   Trophy, Sort, Setting, Aim, Clock, Timer,
+  WarningFilled,
   Edit, CopyDocument, Download, Tickets
 } from '@element-plus/icons-vue'
 
@@ -1215,6 +1219,22 @@ function goBack() {
 
 .practice-icon.custom {
   background-color: rgba(103, 194, 58, 0.9);
+}
+
+/*
+ * 「错题练习」（2026-10-20 由「自定义练习」改造而来）
+ *
+ * 用**紫色**而不是复用 custom 的绿色：
+ *   四个入口现在分别是 蓝（顺序）/ 红（随机）/ 紫（错题）/ 橙（模拟考试），
+ *   色相彼此拉开，一眼能靠颜色定位。复用绿色会让用户以为是同一个入口换了名字。
+ */
+.practice-icon.wrong {
+  background-color: rgba(147, 51, 234, 0.9);
+}
+
+/* 「暂无错题」时的弱化文案 —— 与「N 道错题」同一行，但不当成正常数据 */
+.practice-meta .is-empty {
+  color: var(--os-text-4, #9ca3af);
 }
 
 .practice-icon.exam {

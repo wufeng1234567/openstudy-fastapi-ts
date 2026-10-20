@@ -63,7 +63,8 @@ function getModeText(mode: string) {
   const modeMap: Record<string, string> = {
     sequential: '顺序练习',
     random: '随机练习',
-    custom: '自定义练习',
+    // `custom` 这个 key 现在是「错题练习」（2026-10-20 由「自定义练习」改造，见 store）
+    custom: '错题练习',
     mock: '模拟考试'
   }
   return modeMap[mode] || '练习模式'

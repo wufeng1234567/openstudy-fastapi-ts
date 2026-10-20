@@ -86,7 +86,14 @@
           v-if="selectedModule !== 'mock'">
           <div class="setting-info">
             <div class="setting-label">只刷错题</div>
-            <div class="setting-desc">仅练习已记录的错题，针对性强化</div>
+            <div class="setting-desc">
+              <template v-if="selectedModule === 'custom'">
+                错题练习默认只练错题；关掉它就变成「全库练习」
+              </template>
+              <template v-else>
+                仅练习已记录的错题，针对性强化
+              </template>
+            </div>
           </div>
           <el-switch v-model="localSettings.onlyWrong" />
         </div>
@@ -187,7 +194,8 @@ const store = usePracticeSettingsStore()
 const moduleList = [
   { type: 'sequential', label: '顺序练习', icon: 'Sort' },
   { type: 'random', label: '随机练习', icon: 'Refresh' },
-  { type: 'custom', label: '自定义练习', icon: 'Setting' },
+  // `custom` = 错题练习（2026-10-20 改造）。图标用 Warning 与入口卡片的实心图标呼应。
+  { type: 'custom', label: '错题练习', icon: 'Warning' },
   { type: 'mock', label: '模拟考试', icon: 'Clock' }
 ]
 
