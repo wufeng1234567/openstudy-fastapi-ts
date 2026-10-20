@@ -873,6 +873,80 @@
                 <div v-else class="questions-list">
                   <div v-for="(q, idx) in (editablePreviewData || parsedQuestionsForPreview)" :key="idx"
                     class="preview-question-card">
+                    <!--
+                      ── 混排：这一道是组合题（2026-10-20 方案 B）──────────────
+                      一批题里可能既有普通题又有组合题，所以要**逐题分派**，
+                      不能靠整批的 `isCompositePreview` 一刀切。
+
+                      组合题的数据结构与普通题不同：
+                        · 材料在 `q.content`（不是 `q.question`）
+                        · 答案在 `q.subQuestions[]`（不是 `q.correctAnswer`）
+                      所以必须单独一块模板，硬塞进普通题的编辑器只会渲染成空白。
+                    -->
+                    <template v-if="previewTypeOf(q) === 'composite'">
+                      <div class="preview-header">
+                        <span class="preview-index">{{ idx + 1 }}</span>
+                        <el-tag size="small" type="warning">
+                          {{ getTypeName('composite') }}
+                        </el-tag>
+                        <span class="preview-subcount">
+                          共 {{ q.subQuestions?.length || 0 }} 道小题
+                        </span>
+                        <span class="preview-score">
+                          <el-input-number v-model="q.score" :min="0" :max="100" size="small" style="width: 80px"
+                            @change="updatePreviewData" /> 分
+                        </span>
+                      </div>
+
+                      <div class="preview-body">
+                        <div class="preview-passage-label">材料内容</div>
+                        <el-input v-model="q.content" type="textarea" :rows="3" size="small"
+                          placeholder="组合题的材料正文" @input="updatePreviewData" />
+
+                        <div class="preview-sublist">
+                          <div v-for="(sub, subIdx) in (q.subQuestions || [])" :key="subIdx" class="preview-subitem">
+                            <div class="preview-subitem__head">
+                              <span class="preview-sublabel">{{ idx + 1 }}.{{ subIdx + 1 }}</span>
+                              <el-tag size="small">{{ getTypeName(previewTypeOf(sub)) }}</el-tag>
+                            </div>
+                            <el-input v-model="sub.question" type="textarea" :rows="2" size="small"
+                              placeholder="小题题干" @input="updatePreviewData" />
+
+                            <div v-if="['single', 'multiple'].includes(previewTypeOf(sub))" class="preview-options">
+                              <div v-for="(opt, optIdx) in (sub.options || [])" :key="optIdx" class="preview-option">
+                                <span class="option-letter">{{ String.fromCharCode(65 + optIdx) }}.</span>
+                                <el-input v-model="sub.options[optIdx]" size="small" @input="updatePreviewData" />
+                              </div>
+                            </div>
+
+                            <div class="preview-answer">
+                              <span class="answer-label">答案：</span>
+                              <el-input v-if="['fill', 'essay'].includes(previewTypeOf(sub))"
+                                v-model="sub.correctAnswer" size="small" @input="updatePreviewData" />
+                              <el-select v-else-if="previewTypeOf(sub) === 'single'" v-model="sub.correctAnswer"
+                                size="small" @change="updatePreviewData">
+                                <el-option v-for="(opt, optIdx) in (sub.options || [])" :key="optIdx"
+                                  :label="String.fromCharCode(65 + optIdx)" :value="optIdx" />
+                              </el-select>
+                              <el-select v-else-if="previewTypeOf(sub) === 'multiple'" v-model="sub.correctAnswer"
+                                multiple size="small" @change="updatePreviewData">
+                                <el-option v-for="(opt, optIdx) in (sub.options || [])" :key="optIdx"
+                                  :label="String.fromCharCode(65 + optIdx)" :value="optIdx" />
+                              </el-select>
+                              <el-switch v-else-if="previewTypeOf(sub) === 'judge'" v-model="sub.correctAnswer"
+                                active-text="正确" inactive-text="错误" @change="updatePreviewData" />
+                            </div>
+                          </div>
+
+                          <div v-if="!q.subQuestions || q.subQuestions.length === 0" class="preview-empty-hint">
+                            这道组合题没有解析出小题，请检查原始 JSON
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+
+                    <!-- 普通题（原渲染，行为不变） -->
+                    <template v-else>
                     <div class="preview-header">
                       <span class="preview-index">{{ idx + 1 }}</span>
                       <!--
@@ -934,6 +1008,7 @@
                           @input="updatePreviewData" />
                       </div>
                     </div>
+                    </template>
                   </div>
                 </div>
               </div>
@@ -2078,6 +2153,16 @@ const getTypeName = (type) => {
  * （固定题型时前两者通常不存在，回落即原行为，不会改变已有体验）。
  */
 const previewTypeOf = (q: any): string => {
+  /*
+   * 组合题的识别要**看结构兜底**（2026-10-20 方案 B）。
+   *
+   * 混排出题时模型可能不给 `type: "composite"`，但一定给了 passage + 子题数组。
+   * 只看 type 会导致这种题被当成普通题渲染 → 材料和小题全部消失，
+   * 用户看到一道题干是空的单选题。所以结构特征也要认。
+   */
+  if (Array.isArray(q?.subQuestions) && q.subQuestions.length > 0) return 'composite'
+  if (q?.content && Array.isArray(q?.questions) && q.questions.length > 0) return 'composite'
+
   const t = String(q?.type || q?.questionType || '').trim()
   // 'custom' 不是真实题型，不能拿它去匹配渲染分支
   if (t && t !== 'custom') return t
@@ -2656,6 +2741,33 @@ const normalizeAiAnswer = (answer, options, questionType) => {
 const normalizeAiQuestion = (q, defaultScore = 5, questionType = '') => {
   if (!q || typeof q !== 'object') return q
   const normalized = { ...q }
+
+  /*
+   * ── 组合题要**递归归一化子题**（2026-10-20 方案 B）──────────────
+   *
+   * 混排出题时，模型返回的组合题里嵌着 questions[]（子题）。
+   * 如果只归一化外层：
+   *   · 子题的 `answer` 不会转成 `correctAnswer` → 预览里答案框是空的；
+   *   · 子题的 `options` 若是 JSON 字符串，预览 v-for 遍历会报错。
+   *
+   * ⚠️ 只处理一层嵌套：组合题里再套组合题没有业务意义（编辑器也不支持），
+   *    真出现了就让内层保持原样，由用户自己看原始 JSON 修。
+   */
+  const rawSubs = normalized.subQuestions || normalized.questions
+  if (Array.isArray(rawSubs) && rawSubs.length > 0) {
+    normalized.subQuestions = rawSubs.map((s: any) =>
+      normalizeAiQuestion(s, 2, s?.type || s?.questionType || '')
+    )
+    // 材料字段统一成内部命名 `content`（编辑器认这个）
+    if (!normalized.content) {
+      normalized.content = normalized.passage || normalized.material || ''
+    }
+    if (normalized.score === undefined || normalized.score === null) {
+      normalized.score = 10
+    }
+    return normalized
+  }
+
   if (normalized.question === undefined || normalized.question === null || normalized.question === '') {
     normalized.question = normalized.questionText || normalized.title || normalized.questionContent || ''
   }
@@ -2702,6 +2814,31 @@ const convertAiQuestionToInternal = (aiQuestion, questionType) => {
   const resolvedType = mapAiTypeToInternal(
     aiQuestion?.type || aiQuestion?.questionType || questionType
   )
+
+  /*
+   * ── 组合题（2026-10-20 方案 B）────────────────────────────────────
+   *
+   * 背景：自定义出题原来**只能出单一题型**，组合题走独立分支
+   * （`generateCompositeStreamFull`，一次整批都是组合题）。
+   * 用户要求「一批里混组合题」，于是打开了两条链路。
+   *
+   * ⚠️ 为什么要单独走这里、而不是复用 `aiForm.questionType === 'composite'`：
+   *   那个判断是**整批级**的（`isCompositePreview` 看整份数据是否有
+   *   passage + questions）。混排时一批里既有普通题又有组合题，
+   *   整批级判断没法表达"第 7 道是组合题、第 8 道是单选题"。
+   *
+   * 复用 `convertCompositeFromAi`：它已经处理好了 passage → content、
+   * 子题选项/答案归一化、sortOrder。再写一份是重复且容易走偏。
+   */
+  if (resolvedType === 'composite') {
+    return convertCompositeFromAi({
+      passage: aiQuestion.passage || aiQuestion.content || aiQuestion.material || '',
+      // 兼容几种可能的字段名：模型有时用 subQuestions / questions / subs
+      questions: aiQuestion.questions || aiQuestion.subQuestions || aiQuestion.subs || [],
+      title: aiQuestion.title
+    })
+  }
+
   const base = {
     id: newId,
     type: resolvedType,
@@ -2801,7 +2938,22 @@ const convertCompositeFromAi = (aiData) => {
 }
 
 const mapAiTypeToInternal = (typeStr) => {
-  const map = { single: 'single', multiple: 'multiple', judge: 'judge', fill: 'fill', essay: 'essay' }
+  /*
+   * ⚠️ `composite` 必须显式列出（2026-10-20 方案 B）。
+   *
+   * 原来映射表里没有它，AI 返回 `type: "composite"` 时会落到 `|| 'single'`
+   * 兜底 —— 一道带材料的小题组题被静默降级成单选题，
+   * passage 和子题全部丢失，用户只看到一道内容像材料的选择题。
+   * 这种"悄悄改对成错"比报错更难发现。
+   */
+  const map = {
+    single: 'single',
+    multiple: 'multiple',
+    judge: 'judge',
+    fill: 'fill',
+    essay: 'essay',
+    composite: 'composite'
+  }
   return map[typeStr] || 'single'
 }
 
@@ -4628,6 +4780,60 @@ defineExpose({ questions, openAiDialog })
           color: var(--os-text-3);
           font-size: 13px;
           font-weight: 500;
+        }
+
+        /*
+         * 混排里的组合题卡片（2026-10-20 方案 B）
+         *
+         * 需要在**同一份列表**里与普通题区分开，否则用户分不清
+         * "这一条是要读材料的大题"还是"一道单选"。
+         * 用小标题 + 左侧色条 + 子题缩进来表达层级，
+         * 不改变普通题的任何视觉。
+         */
+        .preview-subcount {
+          font-size: 12px;
+          color: var(--os-text-4, #9ca3af);
+          margin-left: 6px;
+        }
+
+        .preview-passage-label {
+          font-size: 12px;
+          font-weight: 500;
+          color: var(--os-text-3);
+          margin-bottom: 6px;
+        }
+
+        .preview-sublist {
+          margin-top: 12px;
+          padding-left: 12px;
+          border-left: 2px solid var(--os-border-soft, rgba(0, 0, 0, 0.06));
+        }
+
+        .preview-subitem {
+          margin-bottom: 14px;
+
+          &:last-child {
+            margin-bottom: 0;
+          }
+        }
+
+        .preview-subitem__head {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-bottom: 6px;
+        }
+
+        .preview-sublabel {
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--os-text-2);
+        }
+
+        .preview-empty-hint {
+          font-size: 12px;
+          color: var(--os-text-4, #9ca3af);
+          padding: 6px 0;
         }
       }
 

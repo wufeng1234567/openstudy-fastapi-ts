@@ -172,6 +172,12 @@ def _material_rules() -> str:
     措辞统一用「材料」：知识库检索到的片段和用户上传的文档doc，
     在下游都是同一份 `source_context`，对模型而言没有区别，
     用两个名字反而会让它以为还有第三种东西。
+
+    ⚠️ 2026-10-20 补充：这段只约束「参考材料」（source_context）。
+       组合题（composite）的 `passage` 是**题干的一部分**，学生看得见，
+       子题**应该**依附它。两者不能混为一谈，故此处明确点出区别
+       —— 否则模型要么把组合题的 passage 也当成"不许指代"，要么反过来
+       把参考材料当成 passage 大段复述。
     """
     return """
 【出题铁律】（违反任何一条都视为不合格）
@@ -195,6 +201,11 @@ def _material_rules() -> str:
    需要引用具体细节时，把细节**直接写进题干**，而不是让读者去翻材料。
 
 4. 解析里可以说明依据，但**题干必须自足**。
+
+5. ⚠️ **以上 1-4 条只针对"参考材料"**，不适用于组合题（composite）的 `passage`。
+   组合题的 passage 是**题干的一部分**，会原样展示给学生，
+   所以子题**应该**依附 passage 提问（例如"上述场景中 X 的复杂度是？"）。
+   两者的区别只有一条：**学生看得见的可以指代，看不见的不行。**
 """
 
 
@@ -244,15 +255,33 @@ def _build_question_generate(prompt: str, **vars: Any) -> List[Dict[str, str]]:
             # 铁律：题目必须自足，绝不能在题干里指代材料
             user += _material_rules()
         user += """
-请以 JSON 数组格式返回，每道题包含：
-- type: 题型，必须是 single / multiple / judge / fill / essay 之一
+请以 JSON 数组格式返回。数组里的每一项是**一道大题**，按 `type` 分两种形态：
+
+【普通题】type = single / multiple / judge / fill / essay
+- type: 题型
 - questionText: 题目内容
 - answer: 正确答案（single/multiple 用选项下标 0 起；judge 用 true/false；fill/essay 用文本）
 - analysis: 解析
 - options: 选项数组（single / multiple 必填；其它题型可为空数组）
 
-⚠️ `type` 必须与用户要求的题型一一对应，数量也要符合要求。
-只返回 JSON，不要有其他文字。"""
+【组合题】type = composite（一段材料 + 若干小题）
+- type: "composite"
+- passage: **材料正文**（一段完整、自足的情境/论述/案例，200-400 字）
+- analysis: 该大题的总体说明（可留空字符串）
+- questions: 子题数组，每项结构同【普通题】，但**不再包含** passage 字段
+  · 子题的 type 只能是 single / multiple / judge / fill / essay
+  · 子题数量 2-4 道，题型可以混合
+  · 子题的 answer / options 规则与普通题完全相同
+
+⚠️ 关键约束
+1. `type` 必须与用户要求的题型一一对应，数量也要符合要求；
+   用户要「3 道组合题」就是 3 个 type="composite" 的项，不要多也不要少。
+2. 组合题的 `passage` 必须**自足**：学生只看这段材料 + 子题就能作答，
+   **禁止**出现「材料中」「文中」「上述」这类指代（材料本身就在题干里，不需要指代）。
+3. 组合题的子题**必须依附 passage 才能作答**（例如"上文中 X 的时间复杂度是？"
+   这种依赖是**允许且必要**的 —— 因为它就在同一道大题里，学生看得见）。
+   这一点与"参考材料"不同：参考材料学生看不到，passage 学生看得到。
+4. 只返回 JSON 数组，不要有其他文字、不要 markdown 代码块。"""
         return [
             {"role": "system", "content": TEACHER_SYSTEM_PROMPT},
             {"role": "user", "content": user},
