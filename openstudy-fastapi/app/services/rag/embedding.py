@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import threading
 from loguru import logger
 
@@ -37,6 +38,48 @@ _local_lock = threading.Lock()
 _local_load_failed = False   # 加载失败过就不再重试（避免每次请求都卡半天）
 
 
+#: 魔搭默认缓存根目录（与 `EMBEDDING_MODEL_DIR` 未配置时的下载目标一致）
+DEFAULT_MODELSCOPE_DIR = os.path.join(
+    os.path.expanduser("~"), ".cache", "modelscope", "openstudy"
+)
+
+
+def _find_model_dir(root: str, model_name: str) -> str | None:
+    """在 `root` 下找**已经下载完整**的模型目录；找不到返回 None。
+
+    判据用两样东西，缺一不可：
+      · `config.json`  —— SentenceTransformer 加载必需；
+      · 权重文件（`pytorch_model.bin` / `model.safetensors` / `*.bin` 分片）
+        —— 只有 config 没有权重时（下载中断、只剩元数据）加载会失败，
+        那时应该回退去下载**补齐**，而不是拿个残缺目录硬加载。
+
+    `model_name` 形如 `BAAI/bge-m3`：优先按 `<root>/<model_name>` 精确匹配
+    （魔搭 snapshot 的实际落盘结构），匹配不到再退回全盘遍历。
+    """
+    exact = os.path.join(root, *model_name.split("/"))
+    candidates = [exact] if os.path.isdir(exact) else []
+    if not candidates:
+        for cur, _dirs, files in os.walk(root):
+            if "config.json" in files:
+                candidates.append(cur)
+
+    for path in candidates:
+        if not os.path.isfile(os.path.join(path, "config.json")):
+            continue
+        names = set(os.listdir(path))
+        has_weights = any(
+            n in names
+            for n in ("pytorch_model.bin", "model.safetensors", "tf_model.h5")
+        ) or any(n.endswith(".bin") or n.endswith(".safetensors") for n in names)
+        if has_weights:
+            return path
+        logger.warning(
+            f"[embedding] 目录 {path} 只有 config.json 没有权重文件，"
+            "可能上次下载未完成，将尝试重新下载"
+        )
+    return None
+
+
 def _resolve_local_model_path(model_name: str, cache_dir: str | None) -> str:
     """把模型名解析为**本地目录路径**。
 
@@ -46,21 +89,47 @@ def _resolve_local_model_path(model_name: str, cache_dir: str | None) -> str:
 
     返回可直接传给 SentenceTransformer 的路径（本地目录或原始模型名）。
     """
-    import os
+    # ① 先看**已经下载好的**模型（离线优先）
+    #
+    # ⚠️ 这里修过一个严重 bug（2026-10-20）：
+    #   原代码只在 `cache_dir` 非空时才去查本地目录，而 `EMBEDDING_MODEL_DIR`
+    #   默认是空串 → `cache_dir = None` → **复用分支永远不执行**。
+    #   可下面第 ③ 步的下载目标 `cache_dir or DEFAULT_MODELSCOPE_DIR` 用的正是
+    #   同一个默认目录 —— 也就是说：模型明明已经完整躺在默认目录里（2.17GB），
+    #   代码却视而不见，每次都重新 `snapshot_download`，然后卡在下载锁上。
+    #
+    #   现象（用户报的"向量化一直失败"）：
+    #     [embedding] 魔搭下载失败（[Errno 13] Permission denied: '...\.mdl'），
+    #                 回退直连 HuggingFace（国内可能不通）
+    #     → 对 huggingface.co 反复重试 5 轮、每轮 10s 超时 → 文档永远停在 status=3。
+    #
+    #   修法：默认目录也要检查。先查「显式配置的目录」，再查「默认缓存目录」。
+    for root in (cache_dir, DEFAULT_MODELSCOPE_DIR):
+        if not root or not os.path.isdir(root):
+            continue
+        found = _find_model_dir(root, model_name)
+        if found:
+            logger.info(f"[embedding] 复用已下载的本地模型目录：{found}")
+            return found
 
-    # 1) 已经指定了本地模型目录，且目录里有内容 → 直接用
-    if cache_dir and os.path.isdir(cache_dir) and os.listdir(cache_dir):
-        # 优先找带 config.json 的子目录（魔搭 snapshot 的典型结构）
-        for root, _dirs, files in os.walk(cache_dir):
-            if "config.json" in files:
-                logger.info(f"[embedding] 复用已下载的本地模型目录：{root}")
-                return root
-    # 2) 尝试从魔搭下载
+    # ② 本地没有 → 从魔搭下载
     try:
         from modelscope import snapshot_download  # 延迟导入
-        target = cache_dir or os.path.join(os.path.expanduser("~"), ".cache", "modelscope", "openstudy")
+
+        target = cache_dir or DEFAULT_MODELSCOPE_DIR
         logger.info(f"[embedding] 从魔搭(ModelScope)下载模型 {model_name} 到 {target}（首次较慢）…")
-        local_dir = snapshot_download(model_name, cache_dir=target)
+        try:
+            local_dir = snapshot_download(model_name, cache_dir=target)
+        except Exception as e:  # noqa: BLE001
+            # 下载锁冲突（.mdl Permission denied）常见于「上次进程被杀后锁残留」或
+            # 「两个进程同时下载」。此时**再查一次**本地目录 —— 很可能别人已经下完了，
+            # 没必要回退到墙外的 HuggingFace 去空转超时。
+            logger.warning(f"[embedding] 魔搭下载异常（{e}），复查本地目录…")
+            found = _find_model_dir(target, model_name)
+            if found:
+                logger.info(f"[embedding] 下载异常但本地已完整，直接使用：{found}")
+                return found
+            raise
         logger.info(f"[embedding] 魔搭下载完成：{local_dir}")
         return local_dir
     except Exception as e:  # noqa: BLE001

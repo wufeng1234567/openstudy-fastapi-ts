@@ -102,3 +102,6 @@ openstudy-fastapi/tests/_ui_evidence/
 # "remove D:\Temp\esbuild-...: Access is denied"。它只装编译缓存，绝不入库。
 # 2026-10-17 曾误提交 560 个缓存文件，故在此显式忽略。
 openstudy-vue3-ts/.tmp-build/
+
+# sentence-transformers 运行时缓存（本地 embedding 模型加载时生成）
+openstudy-fastapi/data-gym-cache/
