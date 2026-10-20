@@ -806,7 +806,18 @@
                     class="preview-question-card">
                     <div class="preview-header">
                       <span class="preview-index">{{ idx + 1 }}</span>
-                      <el-tag size="small" type="primary">{{ getTypeName(aiForm.questionType) }}</el-tag>
+                      <!--
+                        ⚠️ 题型必须**逐题取** `previewTypeOf(q)`，不能用 `aiForm.questionType`
+                        （2026-10-20 修）。
+
+                        自定义出题一次会返回多种题型，各题 `type` 不同；
+                        若这里统一读 `aiForm.questionType`（值是 `'custom'`）：
+                          · 标签显示成 "custom"（不是任何真实题型名）；
+                          · 下面的选项/答案分支全部匹配不上 → 选项框、答案框都不渲染，
+                            用户看到"答案：解析："后面一片空白，以为生成失败了。
+                        固定题型下 `q.type` 与 `aiForm.questionType` 一致，行为不变。
+                      -->
+                      <el-tag size="small" type="primary">{{ getTypeName(previewTypeOf(q)) }}</el-tag>
                       <span class="preview-score">
                         <el-input-number v-model="q.score" :min="0" :max="100" size="small" style="width: 80px"
                           @change="updatePreviewData" /> 分
@@ -819,32 +830,31 @@
                         <el-input v-model="q.question" type="textarea" :rows="2" @input="updatePreviewData" />
                       </div>
 
-                      <!-- 选择题选项 -->
-                      <div
-                        v-if="['single', 'multiple', 'judge'].includes(aiForm.questionType) && aiForm.questionType !== 'judge'"
-                        class="preview-options">
+                      <!-- 选择题选项：仅 single / multiple 需要（judge 用开关，不需要选项） -->
+                      <div v-if="['single', 'multiple'].includes(previewTypeOf(q))" class="preview-options">
                         <div v-for="(opt, optIdx) in q.options" :key="optIdx" class="preview-option">
                           <span class="option-letter">{{ String.fromCharCode(65 + optIdx) }}.</span>
                           <el-input v-model="q.options[optIdx]" size="small" @input="updatePreviewData" />
                         </div>
                       </div>
 
-                      <!-- 答案 -->
+                      <!-- 答案（按逐题题型分派编辑器） -->
                       <div class="preview-answer">
                         <span class="answer-label">答案：</span>
-                        <el-input v-if="aiForm.questionType === 'fill' || aiForm.questionType === 'essay'"
+                        <el-input
+                          v-if="['fill', 'essay'].includes(previewTypeOf(q))"
                           v-model="q.correctAnswer" size="small" @input="updatePreviewData" />
-                        <el-select v-else-if="aiForm.questionType === 'single'" v-model="q.correctAnswer" size="small"
+                        <el-select v-else-if="previewTypeOf(q) === 'single'" v-model="q.correctAnswer" size="small"
                           @change="updatePreviewData">
                           <el-option v-for="(opt, optIdx) in q.options" :key="optIdx"
                             :label="String.fromCharCode(65 + optIdx)" :value="optIdx" />
                         </el-select>
-                        <el-select v-else-if="aiForm.questionType === 'multiple'" v-model="q.correctAnswer" multiple
+                        <el-select v-else-if="previewTypeOf(q) === 'multiple'" v-model="q.correctAnswer" multiple
                           size="small" @change="updatePreviewData">
                           <el-option v-for="(opt, optIdx) in q.options" :key="optIdx"
                             :label="String.fromCharCode(65 + optIdx)" :value="optIdx" />
                         </el-select>
-                        <el-switch v-else-if="aiForm.questionType === 'judge'" v-model="q.correctAnswer"
+                        <el-switch v-else-if="previewTypeOf(q) === 'judge'" v-model="q.correctAnswer"
                           active-text="正确" inactive-text="错误" @change="updatePreviewData" />
                       </div>
 
@@ -1880,6 +1890,26 @@ const getTypeName = (type) => {
   return found?.name || type
 }
 
+/**
+ * 预览里**这一道题**的真实题型
+ *
+ * 为什么需要它（2026-10-20 修）：预览模板原来通篇用 `aiForm.questionType` 判断，
+ * 而自定义出题（custom）模式下它的值是 `'custom'` —— 不是任何真实题型：
+ *   · 题型标签显示成 "custom"；
+ *   · 选项区、答案编辑器全部匹配不上分支 → 渲染成空白，
+ *     用户看到"答案：解析："后面什么都没有，以为生成失败。
+ *
+ * 解析顺序：逐题的 `type` → `questionType` → 回落到 `aiForm.questionType`
+ * （固定题型时前两者通常不存在，回落即原行为，不会改变已有体验）。
+ */
+const previewTypeOf = (q: any): string => {
+  const t = String(q?.type || q?.questionType || '').trim()
+  // 'custom' 不是真实题型，不能拿它去匹配渲染分支
+  if (t && t !== 'custom') return t
+  const fallback = String(aiForm.value.questionType || '').trim()
+  return fallback && fallback !== 'custom' ? fallback : 'single'
+}
+
 // 获取指定题型的数量
 const getTypeCount = (type) => {
   return questions.value.filter(q => q.type === type).length
@@ -2821,9 +2851,20 @@ const finishAiGenerate = (rawData, isComposite) => {
   if (isComposite) {
     parsed.questions = (parsed.questions || []).map(q => normalizeAiQuestion(q, 2, q.type || q.questionType))
   } else {
+    /*
+     * ⚠️ 题型要**逐题取**，不能统一用 `aiForm.questionType`（2026-10-20 修）。
+     *
+     * 原因：自定义出题（custom）一次会返回**多种题型**，每题的 `type` 才是真实题型。
+     * 若这里统一传 `'custom'`，`normalizeAiQuestion` 拿它去归一化答案、
+     * 预览也按它渲染 —— 结果就是每道题都显示 `custom`、答案与解析全空
+     * （因为 `'custom'` 不是任何真实题型的处理分支）。
+     *
+     * 固定题型场景下 `q.type` 通常不存在，自然回落到 `aiForm.questionType`，行为不变。
+     */
+    const fallbackType = aiForm.value.questionType
     parsed = Array.isArray(parsed)
-      ? parsed.map(q => normalizeAiQuestion(q, 5, aiForm.value.questionType))
-      : normalizeAiQuestion(parsed, 5, aiForm.value.questionType)
+      ? parsed.map(q => normalizeAiQuestion(q, 5, q.type || q.questionType || fallbackType))
+      : normalizeAiQuestion(parsed, 5, parsed.type || parsed.questionType || fallbackType)
   }
 
   generatedCount.value = isComposite ? parsed.questions?.length || 0 : (Array.isArray(parsed) ? parsed.length : 1)
