@@ -186,7 +186,7 @@ async function postAiStream(
   }
 }
 
-export async function generateQuestionsStreamFull({ knowledgePoint, questionType, count, model, configId, userId, bankId, thinking, kbIds, onChunk, onComplete, onError }: {
+export async function generateQuestionsStreamFull({ knowledgePoint, questionType, count, model, configId, userId, bankId, thinking, kbIds, requirement, images, onChunk, onComplete, onError }: {
   knowledgePoint: string
   questionType: string
   count: string | number
@@ -199,6 +199,24 @@ export async function generateQuestionsStreamFull({ knowledgePoint, questionType
   thinking?: boolean
   /** 知识库取材：选中的知识库 id（不传 = 纯 AI 生成） */
   kbIds?: number[]
+  /**
+   * 自定义出题的**原始需求描述**（`questionType === 'custom'` 时使用）
+   *
+   * 2026-10-20 新增。和 `knowledgePoint` 分开传，因为后端模板对两者
+   * 的处理方式不同：
+   *   · knowledge_point → 「生成 N 道关于 X 的题」（固定题型）
+   *   · requirement     → 「按这段需求出题」（可混合题型，题数由需求决定）
+   * 揉成一个字段会让后端无法判断该走哪个分支。
+   */
+  requirement?: string
+  /**
+   * 图片素材（data URL 数组）
+   *
+   * 2026-10-20 新增：文档附件走 `variables` 拼文本，
+   * 而图片必须作为**多模态内容块**单独下发 —— 后端 `AssistantStreamRequest.images`
+   * 会把它转成 image content block 交给模型。塞进文本只会变成一串 base64 噪声。
+   */
+  images?: string[]
   onChunk?: (content: string) => void
   onComplete?: (content: string) => void
   onError?: (error: any) => void
@@ -214,13 +232,17 @@ export async function generateQuestionsStreamFull({ knowledgePoint, questionType
       variables: {
         knowledge_point: knowledgePoint,
         question_type: questionType,
-        count: Number(count) || 5
+        count: Number(count) || 5,
+        // 自定义出题：把需求原样交给后端模板（空字符串时后端会忽略）
+        ...(requirement ? { requirement } : {})
       },
       model,
       configId,
       userId,
       thinking,
       kbIds,
+      // 图片素材作为多模态内容块下发（后端 AssistantStreamRequest.images）
+      images,
       // 出题沿用历史口径：温度 0.8
       temperature: 0.8
     },

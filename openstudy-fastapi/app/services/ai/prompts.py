@@ -149,16 +149,67 @@ def _build_plain(prompt: str, **vars: Any) -> List[Dict[str, str]]:
 
 
 def _build_question_generate(prompt: str, **vars: Any) -> List[Dict[str, str]]:
-    """按知识点批量出题
+    """批量出题
 
-    `source_context`（可选）：来自知识库的**原文片段**（由 `chat_engine` 在
-    调用前检索并拼好）。传了就要求模型**只依据这些材料出题**并注明出处 ——
-    这是「基于我的资料出题」的落点；不传则是纯 AI 生成（原行为）。
+    两种用法（由 `question_type` 区分）：
+
+    ① 固定题型（原行为）：`question_type` = single / multiple / judge / fill / essay
+       生成 `count` 道**同一种**题型。
+
+    ② 自定义出题（`question_type == "custom"`，2026-10-20 新增）：
+       以**用户的自然语言需求**为主（`requirement`），可一次要多种题型，
+       例如「3 道选择 + 2 道填空 + 5 道判断」。此时：
+         · `count` 不再决定总数，总题数由需求描述决定；
+         · 模型必须为**每道题**标注 `type` 字段（前端按它分派编辑器）。
+
+    `source_context`（可选）：来自知识库/文档的**原文片段**（由 `chat_engine`
+    在调用前检索并拼好，或前端把上传文档的文本拼进 requirement）。
+    传了就要求模型**只依据这些材料出题**并注明出处 —— 这是「基于我的资料出题」
+    的落点；不传则是纯 AI 生成。
+
+    ⚠️ 素材是**附加项，不是必选项**（2026-10-20 用户明确纠正）：
+       没有 source_context 时**必须照常出题**，绝不能因为"没给材料"就拒绝或降级。
     """
+    source_context = (vars.get("source_context") or "").strip()
+    requirement = (vars.get("requirement") or "").strip()
+    question_type = vars.get("question_type") or "single"
+
+    # ── ② 自定义出题：以用户需求为主，题型可混合 ──────────────────────
+    if question_type == "custom":
+        # 需求文本可能来自 requirement，也可能调用方只塞了 knowledge_point/prompt
+        req = requirement or (vars.get("knowledge_point") or "").strip() or prompt or ""
+        user = f"""请根据下面的需求出题：
+
+{req}
+"""
+        if source_context:
+            user += f"""
+【必须依据的原文材料】
+{source_context}
+
+【出题要求】
+1. 题目必须**严格依据上面的原文材料**，不要引入材料之外的知识；
+2. 每道题的 `analysis` 末尾注明出处，格式：`（来源：<文档名> 第N段）`；
+3. 材料覆盖不到的角度就不要出题，宁可少出，不可编造。
+"""
+        user += """
+请以 JSON 数组格式返回，每道题包含：
+- type: 题型，必须是 single / multiple / judge / fill / essay 之一
+- questionText: 题目内容
+- answer: 正确答案（single/multiple 用选项下标 0 起；judge 用 true/false；fill/essay 用文本）
+- analysis: 解析
+- options: 选项数组（single / multiple 必填；其它题型可为空数组）
+
+⚠️ `type` 必须与用户要求的题型一一对应，数量也要符合要求。
+只返回 JSON，不要有其他文字。"""
+        return [
+            {"role": "system", "content": TEACHER_SYSTEM_PROMPT},
+            {"role": "user", "content": user},
+        ]
+
+    # ── ① 固定题型（原行为，保持不变）────────────────────────────────
     count = vars.get("count") or 5
     knowledge_point = vars.get("knowledge_point") or prompt or ""
-    question_type = vars.get("question_type") or "single"
-    source_context = (vars.get("source_context") or "").strip()
     user = f"""请生成 {count} 道关于 "{knowledge_point}" 的题目。
 
 题型：{question_type}

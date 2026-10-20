@@ -34,6 +34,25 @@ export function dataUrlByteSize(dataUrl: string): number {
   return Math.floor((b64.length * 3) / 4) - padding
 }
 
+/**
+ * `File` → data URL
+ *
+ * 2026-10-20 提取为公共函数：这段 FileReader 逻辑此前在 4 处重复
+ * （AiAssistant / ChatFileUploader / OcrRecognizer / AiQuestionBuilder），
+ * 这次接入图片素材又要用第五次 —— 与其再抄一遍，不如收到这里。
+ *
+ * 失败策略：**reject**（交给调用方决定提示什么），
+ * 不在这里静默吞掉 —— 用户选了文件却什么都没发生是最难排查的体验。
+ */
+export function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(reader.error || new Error('读取文件失败'))
+    reader.readAsDataURL(file)
+  })
+}
+
 /** 人类可读体积，用于提示文案 */
 export function humanSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
