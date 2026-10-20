@@ -772,12 +772,34 @@
                   <span class="think-box__title">深度思考中…</span>
                   <span class="think-box__len">{{ aiThinking.length }} 字</span>
                 </div>
-                <div v-show="aiThinkingOpen" class="think-box__body">{{ aiThinking }}</div>
+
+                <!--
+                  ⚠️ ref="thinkBoxRef" 必须有（2026-10-20 修「滚动条只往上滚」）
+
+                  用户口径：「深度思考的输出内容的滚动条变更方式和正式回复的不一样
+                    滚动条会不断往上滚动 然后用户只能看见一个地方的内容
+                    视图窗口需要不断变更才可以看到最新的深度思考内容」
+
+                  根因：这个 div 有 `max-height: 180px; overflow-y: auto;`，
+                  新内容不断追加到**底部**，但 scrollTop 停在原地 →
+                  用户看到的是最早那一段，越写越看不到最新的。
+                  正式回复区之所以正常，是因为它的 `onChunk` 里有
+                  `streamBoxRef.scrollTop = scrollHeight`，而思考区**漏了这一步**。
+                -->
+                <div v-show="aiThinkingOpen" ref="thinkBoxRef" class="think-box__body">{{ aiThinking }}</div>
               </div>
 
-              <!-- 生成中：有内容时显示流式 JSON，无内容时显示 loading -->
+              <!--
+                生成中的占位提示
+
+                ⚠️ 加了 `&& !aiThinking`（2026-10-20）：
+                   思考内容已经在上面那块实时滚动了，这里再显示一行
+                   「AI 正在生成题目，请稍候...」就是**两个等待提示并存**。
+                   用户会疑惑"到底是在思考还是在生成"。
+                   现在：有思考 → 只显示思考；没思考（模型不支持）→ 显示这句。
+              -->
               <pre v-if="aiGenerating && rawJsonContent" class="stream-content streaming">{{ rawJsonContent }}</pre>
-              <div v-else-if="aiGenerating" class="generating-tip">
+              <div v-else-if="aiGenerating && !aiThinking" class="generating-tip">
                 <el-icon class="is-loading">
                   <Loading />
                 </el-icon>
@@ -1234,6 +1256,8 @@ const aiGenerating = ref(false)
 const aiThinking = ref('')
 /** 思考卡片是否展开：默认展开（用户要看"在动"），一旦出现正文就自动收起 */
 const aiThinkingOpen = ref(true)
+/** 思考内容容器：用于**自动滚到底**，否则用户只能看到最早那一屏 */
+const thinkBoxRef = ref<HTMLElement | null>(null)
 const streamBoxRef = ref(null)
 const generatedCount = ref(0)
 const pendingImportData = ref(null) // 暂存待导入的数据
@@ -3179,6 +3203,21 @@ const handleAiGenerate = async () => {
          */
         onThinking(delta) {
           aiThinking.value += delta
+          /*
+           * 思考区**必须跟着滚到底**（2026-10-20 修「滚动条只往上滚」）。
+           *
+           * 这个容器有 max-height，新内容追加在底部；不主动滚的话
+           * scrollTop 原地不动 → 用户永远盯着最早那几行，
+           * 必须手动往下拖才能看到最新推理，体验很差。
+           *
+           * 用 nextTick 是因为 DOM 还没更新：本回调里刚改了 `aiThinking`，
+           * 立刻读 scrollHeight 拿到的还是旧高度，滚不到真正的底部。
+           */
+          nextTick(() => {
+            if (thinkBoxRef.value) {
+              thinkBoxRef.value.scrollTop = thinkBoxRef.value.scrollHeight
+            }
+          })
           if (rawJsonContent.value && aiThinkingOpen.value) {
             aiThinkingOpen.value = false
           }

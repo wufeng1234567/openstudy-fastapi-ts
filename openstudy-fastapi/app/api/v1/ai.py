@@ -35,6 +35,37 @@ import json
 router = APIRouter(prefix="/ai")
 
 
+def _sse_stream(gen):
+    """构造**不缓冲**的流式响应（2026-10-20）
+
+    ⚠️ 用户报「等待一会后 才能看见深度思考」—— 首字延迟的元凶之一在这里。
+
+    直接 `StreamingResponse(gen, media_type="text/plain")` 不带任何反缓冲头，
+    上游（nginx / 网关 / 浏览器）会按自己的缓冲策略攒够一批再吐：
+      · nginx 的 proxy_buffering 默认 on，够 4k 或超时才下刷；
+      · 部分网关还会做 gzip 缓冲，小分片直接被吃掉。
+    思考增量每片只有几个字（实测 `We` / ` need` / ` answer`…），
+    攒到 4k 要很久 —— 表现为"要等一会才突然冒出一大片"。
+
+    这里显式关掉各层缓冲：
+      · `X-Accel-Buffering: no` —— nginx 的官方反缓冲开关；
+      · `Cache-Control: no-cache` —— 禁止中间层缓存；
+      · `Connection: keep-alive` —— 保持长连接，别在分片间重连。
+
+    ⚠️ 另外把 media_type 保持 `text/plain`：前端按纯文本读取，
+       改成 `text/event-stream` 会让它误以为是 SSE 事件格式。
+    """
+    return StreamingResponse(
+        gen,
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
 @router.get("/prompts/assistant")
 async def get_assistant_prompt(
     current_user: dict = Depends(get_current_user),
@@ -247,7 +278,7 @@ async def generate_questions_stream(
             "question_type": questionType,
         },
     )
-    return StreamingResponse(chat_engine.stream_turn(db, turn), media_type="text/plain")
+    return _sse_stream(chat_engine.stream_turn(db, turn))
 
 
 @router.post("/generate/questions/sync")
@@ -299,7 +330,7 @@ async def generate_reading_stream(
         temperature=0.8,
         variables={"requirement": requirement, "question_count": questionCount},
     )
-    return StreamingResponse(chat_engine.stream_turn(db, turn), media_type="text/plain")
+    return _sse_stream(chat_engine.stream_turn(db, turn))
 
 
 @router.get("/generate/composite/stream")
@@ -328,7 +359,7 @@ async def generate_composite_stream(
             "word_count": wordCount,
         },
     )
-    return StreamingResponse(chat_engine.stream_turn(db, turn), media_type="text/plain")
+    return _sse_stream(chat_engine.stream_turn(db, turn))
 
 
 @router.post("/generate/composite/sync")
@@ -437,7 +468,7 @@ async def assistant_stream(
         session_id=sessionId,
         user_id=user_id,
     )
-    return StreamingResponse(chat_engine.stream_turn(db, turn), media_type="text/plain")
+    return _sse_stream(chat_engine.stream_turn(db, turn))
 
 
 class AssistantAttachment(BaseModel):
@@ -538,7 +569,7 @@ async def assistant_stream_with_attachments(
         # 由它检索原文并作为 source_context 注入模板（见 ChatTurn.kb_ids）。
         kb_ids=list(req.kbIds or []),
     )
-    return StreamingResponse(chat_engine.stream_turn(db, turn), media_type="text/plain")
+    return _sse_stream(chat_engine.stream_turn(db, turn))
 
 
 class GenerateWithImagesRequest(BaseModel):
@@ -1454,7 +1485,7 @@ async def generate_with_images(
         model=req.model,
         thinking=req.thinking,
     )
-    return StreamingResponse(chat_engine.stream_turn(db, turn), media_type="text/plain")
+    return _sse_stream(chat_engine.stream_turn(db, turn))
 
 
 @router.post("/ds-bridge/show")
@@ -1889,7 +1920,7 @@ async def analyze_question_stream(
             "correct_answer": correctAnswer,
         },
     )
-    return StreamingResponse(chat_engine.stream_turn(db, turn), media_type="text/plain")
+    return _sse_stream(chat_engine.stream_turn(db, turn))
 
 
 # ===================== 长期记忆：最近删除 / 恢复 =====================
