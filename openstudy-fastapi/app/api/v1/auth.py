@@ -331,5 +331,23 @@ async def get_routers(current_user: dict = Depends(get_current_user), db: AsyncS
                 }
             ]
         },
+        {
+            "name": "Monitor",
+            "path": "/monitor",
+            "hidden": False,
+            "redirect": "noRedirect",
+            "component": "Layout",
+            "alwaysShow": True,
+            "meta": {"title": "系统监控", "icon": "monitor", "noCache": False, "link": None},
+            "children": [
+                {
+                    "name": "Ratelimit",
+                    "path": "ratelimit",
+                    "hidden": False,
+                    "component": "monitor/ratelimit/index",
+                    "meta": {"title": "AI 限流", "icon": "rate", "noCache": False, "link": None}
+                }
+            ]
+        },
     ]
     return success(routers)

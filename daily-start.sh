@@ -264,6 +264,44 @@ echo -e "${YELLOW}[5/6] DevBridge 隧道 (30天固定)...${NC}"
 source "$DB_SCRIPT"
 db_init > /dev/null 2>&1
 
+# --- DevBridge auth 自动修复 ---
+# 问题：环境重启后 WebUI 的 auth 缓存会过期（报 "api key is invalid or disabled"），
+# 但 keyring 里的 key 其实还有效。用 CLI 重新 login 刷新缓存即可。
+# 不需要用户手动去创建新 key！
+AUTH_STATUS=$(db_auth_status 2>/dev/null | python3 -c "
+import json,sys
+try:
+    d=json.load(sys.stdin)
+    s=d.get('data',{}).get('status','') if d.get('success') else d.get('status','')
+    print('ok' if 'Logged in' in s else 'fail')
+except: print('fail')
+" 2>/dev/null)
+if [ "$AUTH_STATUS" != "ok" ]; then
+    echo -e "  ${YELLOW}DevBridge auth 缓存过期，用 keyring 里的 key 重新登录...${NC}"
+    DB_KEY=$(hwcloud keyring get HW_DEVBRIDGE_API_KEY 2>/dev/null)
+    if [ -n "$DB_KEY" ]; then
+        curl -s -X POST "http://127.0.0.1:8090/api/v1/envs/devbridge/exec" \
+            -H 'Content-Type: application/json' \
+            -d "{\"cmd\":[\"bash\",\"-c\",\"devbridge auth login --api-key=${DB_KEY} 2>&1\"]}" > /dev/null 2>&1
+        sleep 2
+        AUTH_RETRY=$(db_auth_status 2>/dev/null | python3 -c "
+import json,sys
+try:
+    d=json.load(sys.stdin)
+    s=d.get('data',{}).get('status','') if d.get('success') else d.get('status','')
+    print('ok' if 'Logged in' in s else 'fail')
+except: print('fail')
+" 2>/dev/null)
+        if [ "$AUTH_RETRY" = "ok" ]; then
+            echo -e "  ✅ auth 刷新成功"
+        else
+            echo -e "  ${RED}❌ auth 刷新失败，key 可能真的过期了${NC}"
+        fi
+    else
+        echo -e "  ${RED}❌ keyring 里没有 HW_DEVBRIDGE_API_KEY${NC}"
+    fi
+fi
+
 TUNNEL_ID=""
 TUNNEL_URL=""
 
