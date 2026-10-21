@@ -15,7 +15,7 @@ description: "OpenStudy 在线学习平台的部署安装说明书（给 AI 终�
 | ⭐ **Linux 服务器（云主机 / 自有服务器，有 root）** | **§A「服务器 Docker 一键部署」** —— 一条命令起全套 | 极简（推荐） |
 | **华为云 AI Shell / openEuler 沙箱（Docker 装不了）** | §1~§11「免 Docker 手动安装」 | 繁琐 |
 | **Windows 电脑 + Docker Desktop** | §12「Windows Docker 一键启动」 | 简单 |
-| **需要公网地址给评委/用户访问** | 见 §B「公网访问与常驻」 | — |
+| **需要公网地址供外部访问** | 见 §B「公网访问与常驻」 | — |
 
 > 🔑 **一句话**：**只要服务器能用 Docker（能装 Docker），就用 §A，一条命令搞定，别去手动装。**
 > 手动安装（§1~§11）只留给「Docker 确实装不了」的沙箱环境。
@@ -93,7 +93,7 @@ sudo firewall-cmd --add-port=3167/tcp --permanent && sudo firewall-cmd --reload 
 
 ---
 
-## §B. 公网访问与常驻（给评委/用户访问）
+## §B. 公网访问与常驻（供外部访问）
 
 ### B.1 直接暴露端口
 服务器有公网 IP 时，放行 3167 端口后，`http://<公网IP>:3167` 即可访问。
@@ -106,7 +106,7 @@ sudo firewall-cmd --add-port=3167/tcp --permanent && sudo firewall-cmd --reload 
 `docker-compose.yml` 已给所有服务配 `restart: unless-stopped`，服务器重启后容器自动拉回。
 如需开机自启：`sudo systemctl enable docker`。
 
-> ⚠️ **不用** DevBridge 隧道（`hwtunnel.com`）给评委——隧道 24~72h 就失效，只适合临时调试。
+> ⚠️ **不用** DevBridge 隧道（`hwtunnel.com`）对外长期提供访问——隧道 24~72h 就失效，只适合临时调试。
 
 ---
 

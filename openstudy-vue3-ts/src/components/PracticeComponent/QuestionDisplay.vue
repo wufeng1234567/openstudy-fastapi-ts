@@ -226,7 +226,7 @@ const props = defineProps({
    *    `{ 子题序号: 选项 }` 的对象，不是标量也不是数组。
    *    原来只声明 [String, Number, Array]，于是每渲染一道组合题就报
    *    `Invalid prop: type check failed for prop "selectedAnswer"` —— 
-   *    控制台满屏红字（2026-10-18 实测，评委一看就觉得不严谨）。
+   *    控制台满屏红字（2026-10-18 实测，用户看到大量报错会认为系统不稳定）。
    */
   selectedAnswer: {
     type: [String, Number, Array, Object] as PropType<
