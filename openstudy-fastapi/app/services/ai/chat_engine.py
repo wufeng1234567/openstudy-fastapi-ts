@@ -374,6 +374,16 @@ KB_CONTEXT_MAX_CHARS = 6000
 #: 知识库取材默认取回几条
 KB_CONTEXT_TOP_K = 5
 
+#: 知识库取材的超时（秒）——超过就放弃取材、直接出题
+#:
+#: 为什么是 20s 而不是更小：正常路径下（模型已预热）检索只要 ~0.15s，
+#: 留足 20s 是为了容忍大库首次查询、冷页缓存、DB 抖动等偶发慢，不至于动不动就放弃取材。
+#: 又必须封顶：`embed_query` 首次要加载 2.17GB 模型（实测冷启动 43.22s），
+#: 若预热的那个后台任务还没跑完，这 43s 会全部堆在用户面前 —— 且发生在
+#: **模型调用之前**，连"思考中"都看不到，体感就是"点了没反应"。
+#: 20s 是"给足正常波动、又不让用户等一分钟"的折中。
+KB_RETRIEVE_TIMEOUT_SEC = 20
+
 
 async def _retrieve_kb_context(
     db: AsyncSession,
@@ -605,7 +615,36 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
             or str(turn.variables.get("knowledge_point") or "").strip()
             or prompt_text
         )
-        source_context, kb_image_urls = await _retrieve_kb_context(db, turn, kb_query)
+        # ★ 为什么这里必须加超时 ★（2026-10-21，用户报「第一次等 60 多秒」）
+        #
+        # 实测：知识库检索内部要调 `embed_query`，而它**首次会加载
+        # BAAI/bge-m3（2.17GB），冷启动 43.22s**，之后 0.15s。
+        #
+        # 这段等待发生在**模型调用之前**，所以用户连"思考中"都看不到，
+        # 感知就是"点了完全没反应"。这正是"第一次卡一分钟"的最大一块。
+        #
+        # 两层修复：
+        #   ① `app/main.py` 的 lifespan 里**启动时后台预热** ——
+        #      正常情况下这时模型早就加载好了，本函数只是 0.15s 的纯推理；
+        #   ② 这里再加**超时兜底** —— 万一预热还没跑完（刚重启就有人点）、
+        #      或检索卡死在别处，超时后**放弃取材继续出题**，
+        #      而不是让用户干等一分钟。
+        #
+        # 为什么"放弃取材"而不是"等它"：
+        #   取材是**增强项**（`_retrieve_kb_context` 的 docstring 也是这个口径），
+        #   宁可这次没有材料，也不能让整个出题卡住。
+        #   超时后 `source_context` 保持空串，模型照常按知识点出题。
+        try:
+            source_context, kb_image_urls = await asyncio.wait_for(
+                _retrieve_kb_context(db, turn, kb_query),
+                timeout=KB_RETRIEVE_TIMEOUT_SEC,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "[chat_engine] 知识库检索超时（{}s），本次跳过取材直接出题 kb_ids={}",
+                KB_RETRIEVE_TIMEOUT_SEC, turn.kb_ids,
+            )
+            source_context, kb_image_urls = "", []
         if source_context:
             turn.variables["source_context"] = source_context
 

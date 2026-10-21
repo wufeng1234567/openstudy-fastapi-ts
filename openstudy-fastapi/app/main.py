@@ -18,7 +18,47 @@ from app.core.exceptions import (
 from app.core.middleware import RequestIdMiddleware, LogMiddleware
 from app.core.rate_limit import AiRateLimitMiddleware
 from fastapi.exceptions import HTTPException
+import asyncio
 import os
+
+
+async def _warmup_embedding() -> None:
+    """后台预热本地 embedding 模型 + jieba 分词器（失败只记日志，绝不抛）
+
+    见 `lifespan` 里关于「第一次出题卡 60 秒」的说明。
+
+    ⚠️ 两件事都要预热（2026-10-21 实测发现）：
+      只预热 embedding 时，首个思考仍需 5.1s —— 日志显示
+      `embedding 预热完成` 之后 **20 秒**才出现 `jieba 词典预热完成`，
+      说明 jieba 首次 `initialize()` 也在首个检索的同步路径上。
+      两个懒加载都清了，首字延迟才真正降下来。
+    """
+    from loguru import logger
+
+    # ① jieba 分词词典（RAG 检索的全文查询要用；首次建缓存约数秒）
+    try:
+        from app.services.rag import tokenizer as tok
+
+        t0 = asyncio.get_event_loop().time()
+        await asyncio.to_thread(tok._ensure_ready)  # noqa: SLF001 - 预热专用
+        logger.info(
+            "[startup] jieba 预热完成，耗时 {:.1f}s", asyncio.get_event_loop().time() - t0
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[startup] jieba 预热失败（首次检索会慢）: {}", e)
+
+    # ② embedding 模型（2.17GB，冷启动实测 43s）
+    try:
+        from app.services.rag import embedding as emb
+
+        t0 = asyncio.get_event_loop().time()
+        await emb.embed_query("预热")
+        logger.info(
+            "[startup] embedding 预热完成，耗时 {:.1f}s（首次出题不再卡）",
+            asyncio.get_event_loop().time() - t0,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[startup] embedding 预热失败（服务仍可用，首次检索会慢）: {}", e)
 
 
 @asynccontextmanager
@@ -31,9 +71,40 @@ async def lifespan(app: FastAPI):
     # 创建上传目录
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 
+    # ── 后台预热 embedding 模型（2026-10-21）────────────────────────────
+    #
+    # ★ 为什么必须预热 ★
+    #   用户报：「第一次进入足足等待了 60 多秒，ai 生成那边才生成深度思考的内容」。
+    #
+    #   实测冷启动成本（独立进程，等价于后端刚起来）：
+    #     · 首次 embed_query（含加载 BAAI/bge-m3，2.17GB）: **43.22s**
+    #     · 第二次（纯推理）                              : 0.15s
+    #
+    #   而「出题 + 知识库」的链路是：
+    #     _retrieve_kb_context → rqs.search → embed_query   ← 要等 43s
+    #     → 组装 prompts → 调模型 → 才吐出第一个思考
+    #
+    #   这段等待发生在**模型调用之前**，所以用户连"思考中"都看不到，
+    #   感知就是"点了完全没反应"。这就是"第一次卡一分钟"的大头。
+    #
+    #   为什么不在请求里懒加载：那等于让**第一个用户**替所有人付这笔钱。
+    #   移到启动阶段，代价由部署过程吸收，第一个请求就是快的。
+    #
+    # ⚠️ 必须**不阻塞启动**（create_task 而非 await）：
+    #   加载几十秒，若 await 在这里，这段时间整个服务不可用
+    #   （健康检查、登录、静态资源全卡），比慢一点更糟。
+    #   后台跑，失败也只是"首次检索仍慢"，不影响其它功能。
+    warmup_task = None
+    try:
+        warmup_task = asyncio.create_task(_warmup_embedding())
+    except Exception:  # noqa: BLE001
+        warmup_task = None
+
     yield
 
     # Shutdown
+    if warmup_task and not warmup_task.done():
+        warmup_task.cancel()
     await redis_client.disconnect()
     await close_db()
 
