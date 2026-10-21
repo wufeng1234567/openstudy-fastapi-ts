@@ -8,8 +8,74 @@
       </div>
     </div>
 
+    <!--
+      「没有题可练」空态 —— 独立于「逐题 / 整体浏览」两种展示
+      ==================================================================
+      ⚠️⚠️ 这块**必须**放在两个展示分支**之外**（2026-10-21 修的 bug）。
+
+      踩坑经过（这就是「修好的 bug 又回复了」的机制）：
+        · 上一轮把空态写在了 `v-else`（逐题模式）分支内部，
+          而 `overviewMode` 为 true 时走的是另一个 `<template>` —— 空态**根本不存在**；
+        · 更糟的是 `overviewMode` 是 computed，setter 会**立刻写进 localStorage**
+          持久化。而 `handleSubmit` 的结算逻辑里有 `overviewMode.value = true`
+          （注释写着"临时的、不改持久化偏好"，但实际 setter 一赋值就落盘了）。
+          于是：用户点过一次「提交」→ 整体浏览被永久打开 → 之后进顺序练习+仅错题
+          → 走浏览分支 → 空白页，逐题分支里的空态永远显示不出来。
+          用户看到的现象就是「已经修好的 bug 又回来了」。
+
+      所以：空态不挂在任何一个展示分支下面，而是**两个分支的共同前置**。
+      这样不管 `overviewMode` 是 true 还是 false，只要没有题，就一定看到这块 UI。
+    -->
+    <template v-if="isEmptyState">
+      <PracticeHeader :mode="moduleTypeSafe" :bank-name="bankName" :formatted-time="formattedRemainingTime"
+        :is-warning="isTimeWarning" :is-danger="isTimeDanger" @close="$emit('close')"
+        @open-settings="openSettings" />
+
+      <!-- 错题状态条：空态时仍要说明「你当前在错题模式」，否则用户不明白为什么没题 -->
+      <div class="only-wrong-bar" v-if="moduleSettings.onlyWrong">
+        <span class="only-wrong-bar__chip">
+          <OsIcon name="alert" :size="13" class="only-wrong-bar__icon" />
+          仅错题
+        </span>
+        <span class="only-wrong-bar__text">正在只练你答错过的题</span>
+        <button type="button" class="only-wrong-bar__action" @click="openSettings">
+          调整
+        </button>
+      </div>
+
+      <div class="practice-empty">
+        <OsIcon :name="noQuestionsKind === 'finished' ? 'check' : 'inbox'" :size="30" class="practice-empty__icon" />
+        <p class="practice-empty__title">{{ noWrongQuestionsReason }}</p>
+        <!--
+          ⚠️ 两种「没有题」必须给**不同的解释和动作**（2026-10-21）
+          用 `noQuestionsKind` 区分：
+            · noWrong  → 解释错题本怎么用，动作是「关闭只刷错题」
+            · finished → 说明刷完了，动作是「重新练习」
+          否则会给刷完的用户显示「先去别的模式练几道」，完全答非所问。
+        -->
+        <p class="practice-empty__desc">
+          <template v-if="noQuestionsKind === 'finished'">
+            这一轮已经全部作答完毕。可以重新练一遍，或者返回题库换个模式。
+          </template>
+          <template v-else>
+            错题本会自动记录你答错的题。先去别的模式练几道，答错的题就会出现在这里。
+          </template>
+        </p>
+        <div class="practice-empty__actions">
+          <el-button v-if="noQuestionsKind === 'finished'" size="small" type="primary" plain
+            @click="handleEmptyRestart">
+            重新练习
+          </el-button>
+          <el-button v-else size="small" type="primary" plain @click="handleEmptyTurnOffOnlyWrong">
+            关闭「只刷错题」
+          </el-button>
+          <el-button size="small" @click="$emit('close')">返回题库</el-button>
+        </div>
+      </div>
+    </template>
+
     <!-- 整体浏览模式 -->
-    <template v-if="overviewMode">
+    <template v-else-if="isOverviewActive">
       <PracticeHeader :mode="moduleTypeSafe" :bank-name="bankName" :formatted-time="formattedRemainingTime"
         :is-warning="isTimeWarning" :is-danger="isTimeDanger" @close="$emit('close')"
         @open-settings="openSettings" />
@@ -40,7 +106,7 @@
                 原来写的是 `index + 1`，而 `questions` 是分波切片，每波下标都从 0 起 ——
                 所以第二波又从"第 1 题"开始。改成 `numberBase + index + 1`。
               -->
-              <span class="question-number" v-if="overviewMode">第 {{ numberBase + index + 1 }} 题</span>
+              <span class="question-number" v-if="isOverviewActive">第 {{ numberBase + index + 1 }} 题</span>
               <div v-else class="header-spacer"></div>
               <MarkedButton :question-id="item.id" :bank-id="bankId" size="small" @change="handleMarkedChange(index)" />
               <FavoriteButton type="question" :target-id="item.id" size="small" />
@@ -142,31 +208,11 @@
       </div>
 
       <!--
-        「只刷错题」但没有可练的错题 —— 空态
-        ==================================================================
-        ⚠️ 为什么必须有这一块（2026-10-20 修的 bug）：
-          原来这种情况只弹一次 `ElMessage`（3 秒自动消失），下面是一片空白 ——
-          用户分不清「加载失败了」还是「本来就没题」，只会以为坏了。
-          （`ElMessage` 本身也是**瞬时**的，回头看什么都看不到。）
-
-        ⚠️ 这里的文案必须**说清是哪种空**：`noWrongQuestionsReason` 由
-          `useQuestionPractice.clearForNoWrongQuestions()` 写入，只有「确实没有错题」
-          才会走到这里；**请求失败**走的是红字 `msgError`，不会进这个分支。
-          两种情况的区分，正是这个 bug 的核心。
+        ⚠️ 空态已经提到上面、两个展示分支的共同前置里了（见 `isEmptyState`）。
+           那段历史注释保留在 `isEmptyState` 定义处，别在这里再造一块重复的空态 ——
+           两份就会同时渲染，用户看到两遍文案。
       -->
-      <div class="practice-empty" v-if="noWrongQuestionsReason && questions.length === 0">
-        <OsIcon name="inbox" :size="30" class="practice-empty__icon" />
-        <p class="practice-empty__title">{{ noWrongQuestionsReason }}</p>
-        <p class="practice-empty__desc">
-          错题本会自动记录你答错的题。先去别的模式练几道，答错的题就会出现在这里。
-        </p>
-        <div class="practice-empty__actions">
-          <el-button size="small" @click="openSettings">关闭「只刷错题」</el-button>
-          <el-button size="small" type="primary" plain @click="$emit('close')">返回题库</el-button>
-        </div>
-      </div>
-
-      <div class="main-content" v-else>
+      <div class="main-content">
         <QuestionDisplay :current-question="currentQuestion" :current-question-index="currentQuestionIndex"
           :total-questions="totalQuestions" :number-offset="numberBase" :selected-answer="selectedAnswer"
           :sub-fill-blank-answers="subFillBlankAnswers" :sub-essay-answers="subEssayAnswers" :answers="answers"
@@ -596,6 +642,111 @@ const overviewMode = computed({
   get: () => moduleSettings.value.isOverviewMode || false,
   set: (val) => store.saveModuleSettings(props.moduleType, { isOverviewMode: val })
 })
+
+/**
+ * 「临时」打开整体浏览（结算用），**不写进持久化偏好**
+ * ============================================================================
+ * ⚠️⚠️ 这是「修好的 bug 又回复了」的真正根源（2026-10-21）。
+ *
+ * 原来的结算代码写的是：
+ *     if (!overviewMode.value) { overviewMode.value = true }
+ * 注释还写着"这里**临时**打开，不改 `moduleSettings.isOverviewMode`"。
+ * 但 `overviewMode` 是 **computed，且带 setter**：
+ *     set: (val) => store.saveModuleSettings(props.moduleType, { isOverviewMode: val })
+ * 一赋值就直接落 localStorage 了 —— 注释的意图和代码的实际行为完全不同。
+ *
+ * 后果（用户可见）：
+ *   点过一次「提交」→ `isOverviewMode` 被永久置 true →
+ *   下次（以及以后每次）进这个模块都直接是整体浏览视图 →
+ *   而空态当时只写在"逐题模式"那条分支里 → **空白页**。
+ *   于是"我这边验证过空态是好的"，用户那边永远是空白 —— 因为他的
+ *   localStorage 里已经被上一次结算写成了 `isOverviewMode: true`。
+ *
+ * 正确做法：用一个**独立的本地区状态** `forceOverview` 叠加在用户偏好之上。
+ *   · 结算时置 `forceOverview = true`（只影响本次会话的渲染，不落盘）；
+ *   · `isOverviewActive` = 用户偏好 OR 本次强制；
+ *   · 模板用 `isOverviewActive` 判断走哪个分支，用户的偏好设置保持原样。
+ */
+const forceOverview = ref(false)
+const isOverviewActive = computed(() => moduleSettings.value.isOverviewMode || forceOverview.value)
+
+/**
+ * 「当前没有题可练」——空态的总开关
+ * ============================================================================
+ * ⚠️⚠️ 这个 computed 存在的唯一原因，就是**让空态不再依赖 `overviewMode`**
+ * （2026-10-21 修的 bug，用户口径：「刚刚给你修复好的 bug 又回复了
+ *   顺序模式下的只刷错题 没有兜底 ui」）。
+ *
+ * 上一轮把空态写在逐题分支（`v-else`）内部，而模板结构是：
+ *     <template v-if="overviewMode"> …整体浏览… </template>   ← 没有空态
+ *     <template v-else>            …逐题…     </template>   ← 空态在这里
+ * 于是只要 `overviewMode` 为 true，空态就是**不存在的代码路径**。
+ *
+ * 而 `overviewMode` 极易被打开（两个入口，都不是用户主动选的）：
+ *   ① 结算里 `overviewMode.value = true` 一赋值就**持久化**（见上面
+ *      `forceOverview` 的注释 —— 这条是真正的元凶，已修）；
+ *   ② 用户自己在答题卡上点「整体浏览」也会持久化（这个是用户选择，合理）。
+ * 所以"我这边明明修好了、空态也能看到"，到用户那里就是空白页。
+ *
+ * 判据用 `questions.length === 0` 而不是 `totalQuestions`：
+ * 后者是 computed，在 `allQuestionsData` 也被清空时行为不稳定；
+ * `questions` 是模板直接渲染的源，长度 0 = 一定渲染不出题目。
+ * 再与 `noWrongQuestionsReason` 相与，保证只有**明确的"没有题"**才显示空态：
+ * 加载中（loading 遮罩盖住）、第一次进入尚未取到数据等瞬时状态都不会误判成空态。
+ */
+const isEmptyState = computed(
+  () => !!noWrongQuestionsReason.value && questions.value.length === 0
+)
+
+/**
+ * 空态里的「重新练习」/「关闭只刷错题」——必须**真的能离开空态**
+ * ============================================================================
+ * ⚠️ 为什么不能直接绑 `resetPractice` / `openSettings`（2026-10-21）：
+ *
+ * `resetPractice()`（composable 里）只做三件事：清随机题单、清乱序缓存、
+ * `questionOffset = 0` + `resetAnswers()`。
+ * 它**不看 `noWrongQuestionsReason`，也不重新取题**。所以：
+ *   · 在「本轮刷完」空态里点它 → 空态还在（因为它没去重新拉题），
+ *     用户的感觉就是"按钮点了没反应"。这正是必须重拉的原因 ——
+ *     "刷完"是 `offset` 推到了数组末尾，原地重置 offset 并不会让
+ *     `questions` 重新有内容（`processQuestions` 才是那条路径）。
+ *   · 在「没有错题」空态里点「关闭只刷错题」更糟：`openSettings()` 只是
+ *     **打开设置弹窗**，用户看到的是一个弹窗，而不是"关掉后立刻有题练"。
+ *     按钮写的是「关闭『只刷错题』」，行为却是"打开设置"，名不副实。
+ *
+ * 所以这两个入口都走 `resetAndFetchQuestions()`：
+ *   它会「同步最新设置（含 onlyWrong）→ 清空全部题目状态 → 重新从接口拉取」，
+ *   正好是"离开空态、回到正常刷题"需要的全部动作。
+ *   「关闭只刷错题」还要先**把设置真的关掉**（写 store），再重拉 ——
+ *   只重拉不改设置的话，拉回来还是那个空错题集，等于什么都没做。
+ */
+const handleEmptyRestart = () => {
+  /*
+   * 三步，缺一步都会让用户觉得"按钮没反应"或"重练了还是旧卷子"：
+   *   ① `resetPractice()` —— 清随机题单 + 清乱序缓存 + offset 归零 + 清答案
+   *      + 清空态标记。少了它，随机模式重练出来的还是同一份题单，
+   *      只是答案被清空了；
+   *   ② `clearAnswerStateCache()` —— 丢掉这个模块的答题状态缓存。
+   *      少了它，`resetAndFetchQuestions` 会走 `restoreAnswerState()` 直接把
+   *      **上一次的题目和作答**恢复回来，用户看到的是自己刚做完的那份卷子；
+   *   ③ `resetAndFetchQuestions()` —— 真正重拉题目。
+   * 另外撤掉结算留下的临时整体浏览态：用户点「重新练习」是想逐题重做，
+   * 不该因为上一次结算而停在瀑布流。
+   */
+  resetPractice()
+  clearAnswerStateCache(props.moduleType)
+  forceOverview.value = false
+  resetAndFetchQuestions()
+}
+
+const handleEmptyTurnOffOnlyWrong = () => {
+  // ① 真的把「只刷错题」关掉并落盘（store action 内部会 saveToStorage）
+  store.saveModuleSettings(props.moduleType, { onlyWrong: false })
+  // ② 再整体重拉：resetAndFetchQuestions 会重新读设置 → onlyWrong=false
+  resetAndFetchQuestions()
+  // ③ 给一句明确反馈，否则用户不知道刚才那一下按钮做了什么
+  ElMessage.success('已关闭「只刷错题」，正在加载全部题目')
+}
 const highlightedIndex = ref(0)
 const markedQuestions = ref<number[]>([])
 const markedQuestionsSet = computed(() => {
@@ -644,10 +795,21 @@ const answeredCount = computed(() => answers.value.filter(a => a !== null).lengt
 const remainingCount = computed(() => totalQuestions.value - answeredCount.value)
 
 const toggleOverview = () => {
-  if (overviewMode.value) {
+  /*
+   * 用户主动点「整体浏览 / 逐题模式」= 明确的偏好选择，**要持久化**。
+   *
+   * 与结算里的 `forceOverview` 区分开：
+   *   · 这里    → 写 store（用户的长期偏好，下次进来还该是这个视图）；
+   *   · 结算时  → 只置 `forceOverview`（一次性，不改偏好）。
+   * 两条路径以前共用一个 computed setter，于是"临时展示"也被持久化了。
+   */
+  if (isOverviewActive.value) {
     store.saveModuleSettings(props.moduleType, { overviewScrollIndex: highlightedIndex.value })
   }
-  overviewMode.value = !overviewMode.value
+  const next = !isOverviewActive.value
+  // 用户手动切换后，结算留下的临时态就该让位给用户的真实选择
+  forceOverview.value = false
+  overviewMode.value = next
 }
 
 const scrollToQuestion = (index: number) => {
@@ -822,7 +984,7 @@ const jumpToNextBatch = () => {
     startExamTimer()
   }
   setTimeout(() => {
-    if (overviewMode.value) {
+    if (isOverviewActive.value) {
       const firstCard = document.querySelector('.overview-question-card')
       if (firstCard) {
         firstCard.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -867,7 +1029,7 @@ const handlePrevBatch = () => {
   questionOffset.value = Math.max(0, newOffset)
   loadBatchWithoutReset()
   setTimeout(() => {
-    if (overviewMode.value) {
+    if (isOverviewActive.value) {
       const firstCard = document.querySelector('.overview-question-card')
       if (firstCard) {
         firstCard.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -981,14 +1143,19 @@ const handleSubmit = () => {
     clearRandomPlan()
 
     /*
-     * 结算页固定用瀑布流展示。
-     * `overviewMode` 是用户设置项，这里**临时**打开用于展示结算；
-     * 不改 `moduleSettings.isOverviewMode`（那是持久化的偏好），
-     * 否则用户下次进来会莫名其妙变成浏览模式。
+     * 结算页固定用瀑布流展示 —— 但**绝不能写进用户偏好**
+     *
+     * ⚠️⚠️ 这里原来写的是 `overviewMode.value = true`，注释还宣称"临时打开、
+     *   不改 `moduleSettings.isOverviewMode`"。事实是 `overviewMode` 是带 setter
+     *   的 computed，setter 直接 `saveModuleSettings(...)` 落 localStorage ——
+     *   注释的意图和代码行为完全相反，这就是「空态修好了又消失」的元凶：
+     *   用户点一次「提交」→ 偏好被永久改成浏览模式 → 以后每次进都走浏览分支
+     *   （那条分支上没有空态）→ 空白页。
+     *
+     * 正确做法：只置**本地区**的 `forceOverview`，渲染时由 `isOverviewActive`
+     * 与用户偏好取或。用户的 `isOverviewMode` 一个字节都不动。
      */
-    if (!overviewMode.value) {
-      overviewMode.value = true
-    }
+    forceOverview.value = true
 
     /*
      * 进入结算：判分 + 全部解析展开
@@ -1053,6 +1220,8 @@ const {
   loading,
   // 「只刷错题」但当前题库没有可练错题时的说明（空串 = 正常）
   noWrongQuestionsReason,
+  // 「没有题可练」的类型：noWrong（没错题）/ finished（本轮刷完）—— 决定空态文案与动作
+  noQuestionsKind,
   subFillBlankAnswers,
   subEssayAnswers,
   questionOffset,
@@ -1525,6 +1694,16 @@ const handleFinishExam = () => {
   showExamResult.value = false
   totalScore.value = 0
   hasSubmittedCurrentBatch.value = false
+  /*
+   * 结算结束 → 撤掉那一层"临时整体浏览"（2026-10-21）。
+   *
+   * `forceOverview` 是结算为了展示瀑布流临时打开的（见它的定义处）。
+   * 不复位的话，即使 `moduleSettings.isOverviewMode` 一直是 false，
+   * `isOverviewActive` 也会恒为 true —— 用户「结束」完再进这个模块，
+   * 或切到别的题继续练，看到的仍是瀑布流，他的偏好被这层临时态盖住了。
+   * 这里只动本地态，不碰 store。
+   */
+  forceOverview.value = false
   // 清空模拟考试的答题状态缓存
   clearAnswerStateCache('mock')
   console.log(`[EXAM] 缓存已清空，准备关闭页面`)
@@ -1545,7 +1724,7 @@ watch(() => moduleSettings.value.onlyWrong, (val) => {
   fetchQuestions()
 })
 
-watch(overviewMode, (val) => {
+watch(isOverviewActive, (val) => {
   if (val) {
     const savedIndex = moduleSettings.value.overviewScrollIndex || 0
     if (savedIndex > 0 && questionStreamRef.value) {
@@ -1759,6 +1938,21 @@ defineExpose({})
  * 两者可以同时出现，所以空态自己要有足够的垂直空间，不跟提示条挤在一起。
  *
  * 配色用中性灰（`--os-text-*`），不用红色 —— 这不是错误。
+ *
+ * ⚠️ 为什么用 `min-height` 而不是 `flex: 1`（2026-10-21 实测）：
+ *   `.practice-container` 是 `flex-direction: column`，但它的高度**由内容决定**
+ *   （不是 100% / 100vh）—— 父级 `.os-content` 是普通滚动容器，不是
+ *   `is-flush` 的 flex 列。实测 `.practice-container` 只有 357px 高，
+ *   而可视区有 1948px。于是 `flex: 1` 完全撑不开，空态贴在最上面，
+ *   下面留一大片白 —— 看起来像"没渲染完"。
+ *
+ * 高度用 `calc(100vh - 240px)` 而不是固定值/百分比：
+ *   · `%` 需要父级有确定高度，而父级高度正是"内容决定"，永远算不出来；
+ *   · 固定 px 在小窗口上会把整块撑出滚动条，在大屏上还是偏上。
+ *   240px ≈ 顶栏(52) + 练习头(约 90) + 错题状态条(约 30) + 上下留白，
+ *   实测这个余量正好让内容在可视区里居中、且不产生多余滚动。
+ * 外面套一层 `max(320px, …)`：窗口很矮时（比如 600px 高的笔记本分屏）
+ *   保证仍能看到图标+文案+按钮，不会被压成一条。
  */
 .practice-empty {
   display: flex;
@@ -1766,8 +1960,7 @@ defineExpose({})
   align-items: center;
   justify-content: center;
   gap: 10px;
-  flex: 1;
-  min-height: 0;
+  min-height: max(320px, calc(100vh - 240px));
   padding: 48px 24px;
   text-align: center;
 }

@@ -78,6 +78,17 @@ export function useQuestionPractice(
    */
   const noWrongQuestionsReason = ref<string>('')
 
+  /**
+   * 「没有题可练」的**类型**（2026-10-21）
+   *
+   * 空态区域是共用的一块，但两种情况该给**不同的动作**：
+   *   · `'noWrong'`  —— 题库里没有你的错题 → 给「关闭只刷错题」「返回题库」
+   *   · `'finished'` —— 本轮已经刷完 → 给「重新练习」「返回题库」
+   * 放在同一个状态里（而不是两个布尔）是因为它们互斥，
+   * 两个独立布尔迟早会同时为真，UI 就会两段文案叠在一起。
+   */
+  const noQuestionsKind = ref<'noWrong' | 'finished'>('noWrong')
+
   // 乱序结果缓存：key 为 `${bankId}_${moduleType}`，value 为打乱后的数据
   const shuffledCache = new Map<string, any[]>()
   // 答题状态缓存：key 为 `${bankId}_${moduleType}`，value 为答题状态
@@ -413,6 +424,17 @@ export function useQuestionPractice(
 
   // 通用题目处理函数 - 现在可被外部调用
   async function processQuestions(data: any[]): Promise<void> {
+    /*
+     * 一进来先清掉上一次的「没有题」标记。
+     *
+     * ⚠️ 位置很关键：必须在这里（有数据可用、马上要算出新结果的地方），
+     *    而不是在 `fetchQuestions` 开头 —— 那里先清、随后又可能被
+     *    `clearForNoQuestions` 写回，中间会闪一下"没有空态的有空态"。
+     *    放在 `processQuestions` 入口，语义就是"我现在要重新算题了，
+     *    算完是什么结果，下面各分支自己负责写"。见 `clearNoQuestionsState`。
+     */
+    clearNoQuestionsState()
+
     const count = questionCount.value
     // 判断是否需要打乱题目顺序：随机/模拟考试固定打乱，自定义练习根据 shuffleOptions 设置
     const moduleSettings = store.getModuleSettings(props.moduleType)
@@ -508,10 +530,23 @@ export function useQuestionPractice(
       loading.value = false
     } else {
       if (offset >= data.length) {
-        proxy.$modal.msgInfo('已刷完所有题目')
-        questions.value = []
-        resetAnswers()
-        loading.value = false
+        /*
+         * 「这一轮已经刷完」的兜底（2026-10-21 修：原来这里只弹一次瞬时提示，
+         * 下面留一片空白 —— 用户口径「顺序练习模式下的只刷错题…没有兜底 UI 友好提示」）
+         *
+         * 原来的写法：
+         *     proxy.$modal.msgInfo('已刷完所有题目')   ← 3 秒自动消失
+         *     questions.value = []
+         *     return                                  ← 页面永久空白
+         *
+         * 用户看到的是：点了「提交」→ 一条消息一闪而过 → 之后再回来就是空白页，
+         * 分不清「刷完了」还是「坏了」，也没有任何回去/重来的入口。
+         *
+         * 修法与「没有错题」共用同一个空态区域，只是文案和动作不同 ——
+         * 这样**所有"没有题可练"的情况都有说得清、可操作的兜底**，
+         * 不再依赖会消失的 toast。
+         */
+        clearForNoQuestions('本轮题目已经刷完', 'finished')
         return
       }
 
@@ -653,19 +688,54 @@ export function useQuestionPractice(
   }
 
   /**
-   * 「只刷错题」时把题目清空并给出**可执行的引导**
+   * 清空题目并给出**可执行的引导**（统一入口，2026-10-21 扩展）
    *
-   * ⚠️ 为什么需要它：没有错题时，原来只弹一条 `msgInfo` 然后留一个空白页面 ——
-   * 用户不知道「是加载失败了」还是「本来就没题」。这里同时清状态 + 给文案，
-   * 让「空」这件事是**说得清的**。
+   * ⚠️ 为什么需要它：原来「没有题可练」的几种情况处理方式不一致 ——
+   *   · 只刷错题 + 没有错题 → 有 `.practice-empty` 空态（2026-10-20 修的）
+   *   · 顺序模式刷完了      → 只弹一次 `msgInfo('已刷完所有题目')`，**下面一片空白**
+   * 用户口径：「顺序练习模式下的只刷错题的视图 没有错题 没有兜底 ui 友好提示
+   *   用户 其他模式都有」—— 说的就是后者：其他模式有空态，顺序模式这条却只留空白。
+   *
+   * 现在统一走这里，**任何"没有题可练"都落在同一个空态区域**，
+   * 并带 `kind` 让 UI 区分文案与动作：
+   *   · `'noWrong'`   —— 题库里没有你的错题（可「关闭只刷错题」或「返回题库」）
+   *   · `'finished'`  —— 本轮已刷完（可「重新练习」或「返回题库」）
+   *
+   * 为什么坚持**不用 toast 兜底**：`ElMessage` / `$modal.msgInfo` 都是瞬时的，
+   * 3 秒后什么都不剩，用户回头再看只看到一个空白页 ——
+   * 「刷完了」和「坏了」在视觉上完全一样。
    */
-  function clearForNoWrongQuestions(reason: string): void {
+  function clearForNoQuestions(reason: string, kind: 'noWrong' | 'finished' = 'noWrong'): void {
     questions.value = []
     allQuestionsData.value = []
     currentQuestionIndex.value = 0
     resetAnswers()
     loading.value = false
     noWrongQuestionsReason.value = reason
+    noQuestionsKind.value = kind
+  }
+
+  /** 兼容旧调用点：语义与 `clearForNoQuestions(reason, 'noWrong')` 相同 */
+  function clearForNoWrongQuestions(reason: string): void {
+    clearForNoQuestions(reason, 'noWrong')
+  }
+
+  /**
+   * 清掉「没有题可练」的空态标记
+   *
+   * ⚠️ 必须有这一步（2026-10-21）：`noWrongQuestionsReason` 原来**只写不清**，
+   * 一旦被置成非空，就再也不会回到空串。而组件的空态判据是
+   * `noWrongQuestionsReason && questions.length === 0` ——
+   * 平时靠"有题目"掩盖着，看不出问题；但用户点了空态里的
+   * 「关闭只刷错题 / 重新练习」（会重拉题目）之后，只要某个瞬间
+   * `questions` 被清空（重拉时先 `questions.value = []`），
+   * 那个旧文案就会**再次闪出来**，显示的还是上一次的「没有错题」。
+   *
+   * 调用时机：**成功拿到题目**的地方（`processQuestions` 入口、`applyQuestionLimits`
+   * 的非空分支）。失败/真的没有题时由 `clearForNoQuestions` 重新写回。
+   */
+  function clearNoQuestionsState(): void {
+    noWrongQuestionsReason.value = ''
   }
 
   /**
@@ -707,6 +777,13 @@ export function useQuestionPractice(
       loading.value = false
       return
     }
+    /*
+     * 走到这里说明**确实有题可练** —— 前面任何一次留下的"没有题"标记都该失效。
+     * 不在这里清的话，「本轮刷完」→ 用户点「重新练习」→ 重新拉到题目后，
+     * 空态文案还挂在状态里（虽然题目盖住了它），下次任何一次 questions 短暂
+     * 为空的瞬间都会把它闪出来。见 `clearNoQuestionsState` 的注释。
+     */
+    clearNoQuestionsState()
     const count = questionCount.value
     const shouldShuffle = props.moduleType === 'random' || props.moduleType === 'mock'
     /*
@@ -743,10 +820,11 @@ export function useQuestionPractice(
         count === 'all' ? shuffled : shuffled.slice(0, count as number)
       )
     } else if (offset >= allQuestionsData.value.length) {
-      questions.value = []
-      proxy.$modal.msgInfo('已刷完所有题目')
-      resetAnswers()
-      loading.value = false
+      /*
+       * 随机/错题模式下的「本轮刷完」—— 与上面顺序模式那条同因同修（2026-10-21）。
+       * 原来同样是「弹一条瞬时提示 + 留下空白页」，用户回头看不到任何线索。
+       */
+      clearForNoQuestions('本轮题目已经刷完', 'finished')
       return
     } else if (count && count !== 'all' && typeof count === 'number' && count < allQuestionsData.value.length) {
       // ⚠️ 同上：必须转换
@@ -1442,6 +1520,23 @@ export function useQuestionPractice(
       return false
     }
 
+    /*
+     * ⚠️ 缓存里是"空题目"时**不要恢复**（2026-10-21）。
+     *
+     * `resetAndFetchQuestions` 的流程是「先清空 → 再尝试从缓存恢复」。
+     * 如果缓存恰好存着一份 `questions: []`（比如上一次就是在空态里存下的，
+     * 或者保存时机赶上了清空的瞬间），恢复它就等于把 `questions` 又置回空，
+     * 然后函数**直接 return，根本不会去调接口** ——
+     * 用户点「重新练习」后页面依旧停在空态，且请求都没发出去，极难排查。
+     *
+     * 判据用 `allQuestionsData` 而不是 `questions`：真正能重新切出题目的是
+     * 前者（`applyQuestionLimits` 从它切片）。前者非空才算"这份缓存有用"。
+     */
+    if (!Array.isArray(state.allQuestionsData) || state.allQuestionsData.length === 0) {
+      answerStateCache.delete(cacheKey)
+      return false
+    }
+
     questions.value = state.questions
     allQuestionsData.value = state.allQuestionsData
     answers.value = state.answers
@@ -1479,6 +1574,17 @@ export function useQuestionPractice(
     onlyWrong.value = settings.onlyWrong || false
 
     isResetting.value = true
+
+    /*
+     * 「没有题可练」的空态标记必须在这里就清掉（2026-10-21）。
+     *
+     * 不清的后果：用户点空态里的「重新练习 / 关闭只刷错题」→ 本函数开始重拉 →
+     * 但 `noWrongQuestionsReason` 还是上一次的值，而 `questions` 已经被清空
+     * （下面第 6 行）→ `isEmptyState` 依旧为 true → 空态**原样留在屏幕上**，
+     * 看起来就是"按钮点了没反应"。
+     * 清掉之后，重拉期间显示的是 `loading` 遮罩，语义正确（正在加载）。
+     */
+    clearNoQuestionsState()
 
     questions.value = []
     allQuestionsData.value = []
@@ -1969,6 +2075,16 @@ export function useQuestionPractice(
     shuffledCache.delete(`${props.bankId}_${props.moduleType}`)
     questionOffset.value = 0
     resetAnswers()
+    /*
+     * 顺手清掉「没有题可练」的标记（2026-10-21）。
+     *
+     * 答题卡上的「重新练习」绑的就是本函数。它已经把所有进度归零了，
+     * 那个空态标记再留着就自相矛盾（"重新练了"却还挂着"没有题"）。
+     * 这里不清的话，`resetPractice()` 单独调用时（结算页/答题卡那条路径）
+     * 空态会残留，只有走 `resetAndFetchQuestions` 才被清掉 —— 依赖调用方，
+     * 太脆弱。函数自己保证"重置之后不再是空态"更可靠。
+     */
+    clearNoQuestionsState()
   }
 
   function showAllAnalysis(): void {
@@ -2150,6 +2266,10 @@ export function useQuestionPractice(
     loading,
     // 「只刷错题」但没有可练错题时的说明（空串 = 不是这种情况）
     noWrongQuestionsReason,
+    // 「没有题可练」的类型：noWrong（没错题）/ finished（本轮刷完）
+    noQuestionsKind,
+    // 清掉上面的空态标记（拿到题目时调用，见函数注释）
+    clearNoQuestionsState,
     subFillBlankAnswers,
     subEssayAnswers,
     questionOffset,
