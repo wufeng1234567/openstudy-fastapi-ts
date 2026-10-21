@@ -46,6 +46,10 @@ pnpm-debug.log*
 Thumbs.db
 *.log
 
+# 例外：开发过程记录里的日志是刻意保留的资产（见 doc/dev-process/README.md）
+# 它们记录的是 2026-10-08 ~ 10-12 期间工具在本项目的运行事件，已做路径与密钥脱敏。
+!doc/dev-process/logs/*.log
+
 # Test
 tests/**/coverage/
 tests/e2e/reports

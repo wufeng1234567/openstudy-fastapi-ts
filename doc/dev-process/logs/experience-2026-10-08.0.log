@@ -1,0 +1,1388 @@
+[2026/10/8 19:28:31.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:28:31.000] [INFO] [otel-trigger] initOtelDeps: starting to load OTel deps
+[2026/10/8 19:28:31.000] [INFO] [otel-trigger] initOtelDeps: loaded successfully, using real OpenTelemetry modules
+[2026/10/8 19:28:31.000] [INFO] [otel-trigger] initOtelDeps: starting to load OTel deps
+[2026/10/8 19:28:31.000] [INFO] [otel-trigger] initOtelDeps: loaded successfully, using real OpenTelemetry modules
+[2026/10/8 19:28:32.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:28:32.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:28:32.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:28:32.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:28:32.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:28:48.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:28:48.000] [INFO] [otel-trigger] initOtelDeps: starting to load OTel deps
+[2026/10/8 19:28:49.000] [INFO] [otel-trigger] initOtelDeps: loaded successfully, using real OpenTelemetry modules
+[2026/10/8 19:28:49.000] [INFO] [otel-trigger] initOtelDeps: starting to load OTel deps
+[2026/10/8 19:28:49.000] [INFO] [otel-trigger] initOtelDeps: loaded successfully, using real OpenTelemetry modules
+[2026/10/8 19:28:49.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:28:49.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:28:49.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:28:49.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:28:49.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:28:51.000] [WARN] state-sizes extractionStates=0 dreamStates=0 queryStates=0 feedbackStates=0
+[2026/10/8 19:28:51.000] [WARN] rootCache-size size=0
+[2026/10/8 19:28:51.000] [WARN] memory-cache-sizes memoryDirCache=0
+[2026/10/8 19:28:51.000] [DEBUG] runSessionGc: 无可清理项, remainingSessions=0
+[2026/10/8 19:33:59.000] [WARN] state-sizes extractionStates=0 dreamStates=0 queryStates=0 feedbackStates=0
+[2026/10/8 19:33:59.000] [WARN] rootCache-size size=0
+[2026/10/8 19:33:59.000] [WARN] memory-cache-sizes memoryDirCache=0
+[2026/10/8 19:33:59.000] [DEBUG] runSessionGc: 无可清理项, remainingSessions=0
+[2026/10/8 19:45:20.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:45:20.000] [INFO] [otel-trigger] initOtelDeps: starting to load OTel deps
+[2026/10/8 19:45:21.000] [INFO] [otel-trigger] initOtelDeps: loaded successfully, using real OpenTelemetry modules
+[2026/10/8 19:45:21.000] [INFO] [otel-trigger] initOtelDeps: starting to load OTel deps
+[2026/10/8 19:45:21.000] [INFO] [otel-trigger] initOtelDeps: loaded successfully, using real OpenTelemetry modules
+[2026/10/8 19:45:23.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:45:23.000] [INFO] [otel-trigger] initOtelDeps: starting to load OTel deps
+[2026/10/8 19:45:24.000] [INFO] [otel-trigger] initOtelDeps: loaded successfully, using real OpenTelemetry modules
+[2026/10/8 19:45:24.000] [INFO] [otel-trigger] initOtelDeps: starting to load OTel deps
+[2026/10/8 19:45:24.000] [INFO] [otel-trigger] initOtelDeps: loaded successfully, using real OpenTelemetry modules
+[2026/10/8 19:45:24.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:45:24.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:45:24.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:45:24.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:45:24.000] [INFO] ensureProjectConfig: 创建默认配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 19:45:24.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 19:45:24.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 19:45:24.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:45:24.000] [INFO] setupIdleCollectRefineTimer: 设置闲时定时器, projectRoot=<PROJECT>, interval=300000ms
+[2026/10/8 19:45:24.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:45:26.000] [WARN] state-sizes extractionStates=0 dreamStates=0 queryStates=0 feedbackStates=0
+[2026/10/8 19:45:26.000] [WARN] rootCache-size size=0
+[2026/10/8 19:45:26.000] [WARN] memory-cache-sizes memoryDirCache=0
+[2026/10/8 19:45:26.000] [DEBUG] runSessionGc: 无可清理项, remainingSessions=0
+[2026/10/8 19:45:42.000] [DEBUG] event: session.created, 创建会话状态, sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 19:45:42.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:45:42.000] [DEBUG] chat.message: 开始处理 chat.message 钩子
+[2026/10/8 19:45:42.000] [DEBUG] chat.message: sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 19:45:42.000] [DEBUG] chat.message: 已记录 session model, providerID=huaweicloud-maas, modelID=GLM-5.2
+[2026/10/8 19:45:42.000] [DEBUG] chat.message: hasUserText=true
+[2026/10/8 19:45:42.000] [DEBUG] chat.message: query=你好啊
+<system-reminder>重要提示：你必须使用简体中文回复，包括内部思考和推理过程也
+[2026/10/8 19:45:42.000] [INFO] ensureStatusJson: 创建状态目录, path=<TOOLHOME>\memory
+[2026/10/8 19:45:42.000] [INFO] ensureStatusJson: 创建默认状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 19:45:42.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 19:45:42.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:45:42.000] [DEBUG] feedbackStates.set key=<PROJECT>::ses_ee4aa9eafffeaP68Fd7Eunnm5R size=1
+[2026/10/8 19:45:42.000] [DEBUG] queryStates.set key=<PROJECT>::ses_ee4aa9eafffeaP68Fd7Eunnm5R size=1
+[2026/10/8 19:45:42.000] [INFO] chat.message processed (memory) sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R textLength=3
+[2026/10/8 19:45:42.000] [DEBUG] snapshotMemoryContentFiles fileCount=1 totalKB=0 worktree=<PROJECT>
+[2026/10/8 19:45:42.000] [DEBUG] buildInitialUserMemoryContext worktree=<PROJECT> maxFiles=4 minScore=3
+[2026/10/8 19:45:42.000] [DEBUG] selectRelevantMemoriesWithStats headersCount=0 memoriesCount=0 candidateCount=0 query=你好啊 hitFiles=
+[2026/10/8 19:45:42.000] [INFO] memory.call triggered sessionID=<PROJECT> retrieval.hit_count=0 retrieval.status=empty
+[2026/10/8 19:45:42.000] [INFO] memory.call triggered sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R retrieval.hit_count=0 retrieval.status=empty
+[2026/10/8 19:45:42.000] [INFO] wiki: readWikiRetrieval returned undefined, skipping injection
+[2026/10/8 19:45:42.000] [DEBUG] chat.message: 开始执行 maybeAutoInjectForFirstUserTurn
+[2026/10/8 19:45:42.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 19:45:42.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 19:45:42.000] [DEBUG] chat.message: maybeAutoInjectForFirstUserTurn 执行完成
+[2026/10/8 19:45:44.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 19:45:44.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 19:45:49.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 19:45:49.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=1
+[2026/10/8 19:45:49.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 19:45:49.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.status, sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 19:45:49.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 19:45:49.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 19:45:49.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 19:45:49.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 19:45:49.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R, history=未命中, managerDispatch=未命中, managerDispatches_keys=[]
+[2026/10/8 19:45:49.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R 未匹配任何manager记录，跳过session.idle处理，继续后续逻辑
+[2026/10/8 19:45:49.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.idle, sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 19:45:49.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 19:45:49.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 19:45:49.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 19:45:49.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 19:45:49.000] [INFO] session.idle event (memory) sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 19:45:49.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=2
+[2026/10/8 19:45:49.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 19:45:49.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 19:45:49.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 19:45:49.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 19:45:49.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 19:45:49.000] [DEBUG] dream-tracker.write bytes=54 entryCount=1 worktree=<PROJECT>
+[2026/10/8 19:45:50.000] [DEBUG] dreamStates.set worktree=<PROJECT> size=1
+[2026/10/8 19:45:50.000] [INFO] dream skipped: user memory locked sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R worktree=<PROJECT>
+[2026/10/8 19:50:24.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 19:50:24.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:50:24.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 19:50:24.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 19:50:24.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 19:50:24.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 19:55:24.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 19:55:24.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 19:55:24.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 19:55:24.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 19:55:24.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 19:55:24.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 20:00:24.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 20:00:24.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:00:24.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 20:00:24.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:00:24.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:00:24.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 20:05:24.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 20:05:24.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:05:24.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 20:05:24.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:05:24.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:05:24.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 20:10:24.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 20:10:24.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:10:24.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 20:10:24.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:10:24.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:10:24.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 20:12:28.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:12:28.000] [DEBUG] chat.message: 开始处理 chat.message 钩子
+[2026/10/8 20:12:28.000] [DEBUG] chat.message: sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:28.000] [DEBUG] chat.message: 已记录 session model, providerID=huaweicloud-maas, modelID=GLM-5.2
+[2026/10/8 20:12:28.000] [DEBUG] chat.message: hasUserText=true
+[2026/10/8 20:12:28.000] [DEBUG] chat.message: query=你的模型配置文件在哪里 玩想找到
+<system-reminder>重要提示：你必须使用简体中文回复
+[2026/10/8 20:12:28.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:12:28.000] [DEBUG] queryStates.set key=<PROJECT>::ses_ee4aa9eafffeaP68Fd7Eunnm5R size=1
+[2026/10/8 20:12:28.000] [INFO] chat.message processed (memory) sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R textLength=16
+[2026/10/8 20:12:28.000] [DEBUG] snapshotMemoryContentFiles fileCount=1 totalKB=0 worktree=<PROJECT>
+[2026/10/8 20:12:28.000] [DEBUG] buildInitialUserMemoryContext worktree=<PROJECT> maxFiles=4 minScore=3
+[2026/10/8 20:12:28.000] [DEBUG] selectRelevantMemoriesWithStats headersCount=0 memoriesCount=0 candidateCount=0 query=你的模型配置文件在哪里 玩想找到 hitFiles=
+[2026/10/8 20:12:28.000] [INFO] memory.call triggered sessionID=<PROJECT> retrieval.hit_count=0 retrieval.status=empty
+[2026/10/8 20:12:28.000] [INFO] memory.call triggered sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R retrieval.hit_count=0 retrieval.status=empty
+[2026/10/8 20:12:28.000] [INFO] wiki: readWikiRetrieval returned undefined, skipping injection
+[2026/10/8 20:12:28.000] [DEBUG] chat.message: 开始执行 maybeAutoInjectForFirstUserTurn
+[2026/10/8 20:12:28.000] [DEBUG] chat.message: maybeAutoInjectForFirstUserTurn 执行完成
+[2026/10/8 20:12:28.000] [WARN] state-sizes extractionStates=0 dreamStates=1 queryStates=1 feedbackStates=1
+[2026/10/8 20:12:28.000] [WARN] rootCache-size size=0
+[2026/10/8 20:12:28.000] [WARN] memory-cache-sizes memoryDirCache=1
+[2026/10/8 20:12:28.000] [DEBUG] runSessionGc: 无可清理项, remainingSessions=1
+[2026/10/8 20:12:29.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:38.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:12:38.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:12:39.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:12:39.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=3
+[2026/10/8 20:12:39.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:39.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:12:40.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:54.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:12:54.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:12:55.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:12:55.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=4
+[2026/10/8 20:12:55.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:55.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.status, sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.status, sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [INFO] session aborted, marked for skipping memory injection sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:12:58.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:12:58.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R, history=未命中, managerDispatch=未命中, managerDispatches_keys=[]
+[2026/10/8 20:12:58.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R 未匹配任何manager记录，跳过session.idle处理，继续后续逻辑
+[2026/10/8 20:12:58.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R, history=未命中, managerDispatch=未命中, managerDispatches_keys=[]
+[2026/10/8 20:12:58.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R 未匹配任何manager记录，跳过session.idle处理，继续后续逻辑
+[2026/10/8 20:12:58.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.idle, sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.idle, sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:12:58.000] [INFO] session.idle after abort, skipping memory extraction sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:12:58.000] [INFO] session.idle event (memory) sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=5
+[2026/10/8 20:12:58.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:12:58.000] [DEBUG] chat.message: 开始处理 chat.message 钩子
+[2026/10/8 20:12:58.000] [DEBUG] chat.message: sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [DEBUG] chat.message: 已记录 session model, providerID=huaweicloud-maas, modelID=GLM-5.2
+[2026/10/8 20:12:58.000] [DEBUG] chat.message: hasUserText=true
+[2026/10/8 20:12:58.000] [DEBUG] chat.message: query=不是说项目的  是你这个写代码软件的
+<system-reminder>重要提示：你必须使用简体中文
+[2026/10/8 20:12:58.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:12:58.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:12:58.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:12:58.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:12:58.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:12:58.000] [DEBUG] dream-tracker.read rawBytes=54 worktree=<PROJECT>
+[2026/10/8 20:12:58.000] [DEBUG] dream-tracker.entries entryCount=1 worktree=<PROJECT>
+[2026/10/8 20:12:58.000] [DEBUG] dream-tracker.write bytes=54 entryCount=1 worktree=<PROJECT>
+[2026/10/8 20:12:58.000] [DEBUG] queryStates.set key=<PROJECT>::ses_ee4aa9eafffeaP68Fd7Eunnm5R size=1
+[2026/10/8 20:12:58.000] [INFO] chat.message processed (memory) sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R textLength=18
+[2026/10/8 20:12:58.000] [DEBUG] readDefaultModelFromOpenCodeConfig: no model found in opencode.json configs
+[2026/10/8 20:12:58.000] [DEBUG] extractionStates.set key=<PROJECT>::ses_ee4aa9eafffeaP68Fd7Eunnm5R size=1
+[2026/10/8 20:12:58.000] [INFO] dream skipped: user memory locked sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R worktree=<PROJECT>
+[2026/10/8 20:12:58.000] [DEBUG] snapshotMemoryContentFiles fileCount=1 totalKB=0 worktree=<PROJECT>
+[2026/10/8 20:12:58.000] [DEBUG] buildInitialUserMemoryContext worktree=<PROJECT> maxFiles=4 minScore=3
+[2026/10/8 20:12:58.000] [DEBUG] selectRelevantMemoriesWithStats headersCount=0 memoriesCount=0 candidateCount=0 query=不是说项目的  是你这个写代码软件的 hitFiles=
+[2026/10/8 20:12:58.000] [INFO] memory.call triggered sessionID=<PROJECT> retrieval.hit_count=0 retrieval.status=empty
+[2026/10/8 20:12:58.000] [INFO] memory.call triggered sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R retrieval.hit_count=0 retrieval.status=empty
+[2026/10/8 20:12:58.000] [DEBUG] event: session.created, 创建会话状态, sessionID=ses_ee491a97fffebEUR2g2dAvkXeH
+[2026/10/8 20:12:58.000] [INFO] wiki: readWikiRetrieval returned undefined, skipping injection
+[2026/10/8 20:12:58.000] [DEBUG] chat.message: 开始执行 maybeAutoInjectForFirstUserTurn
+[2026/10/8 20:12:58.000] [DEBUG] chat.message: maybeAutoInjectForFirstUserTurn 执行完成
+[2026/10/8 20:12:58.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:12:58.000] [DEBUG] chat.message: 开始处理 chat.message 钩子
+[2026/10/8 20:12:58.000] [DEBUG] chat.message: sessionID=ses_ee491a97fffebEUR2g2dAvkXeH
+[2026/10/8 20:12:58.000] [DEBUG] chat.message: hasUserText=true
+[2026/10/8 20:12:58.000] [DEBUG] chat.message: query=You are now acting as the memory extraction subage
+[2026/10/8 20:12:58.000] [DEBUG] chat.message: 是 memory extraction 子会话，跳过 experience 自动检索, sessionID=ses_ee491a97fffebEUR2g2dAvkXeH, parentID=ses_silent, title=Auto-Memory Extraction
+[2026/10/8 20:12:59.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:13:11.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.status, sessionID=ses_ee491a97fffebEUR2g2dAvkXeH
+[2026/10/8 20:13:11.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee491a97fffebEUR2g2dAvkXeH
+[2026/10/8 20:13:11.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee491a97fffebEUR2g2dAvkXeH
+[2026/10/8 20:13:11.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee491a97fffebEUR2g2dAvkXeH
+[2026/10/8 20:13:11.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:13:11.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee491a97fffebEUR2g2dAvkXeH, history=未命中, managerDispatch=未命中, managerDispatches_keys=[]
+[2026/10/8 20:13:11.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee491a97fffebEUR2g2dAvkXeH 未匹配任何manager记录，跳过session.idle处理，继续后续逻辑
+[2026/10/8 20:13:11.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.idle, sessionID=ses_ee491a97fffebEUR2g2dAvkXeH
+[2026/10/8 20:13:11.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee491a97fffebEUR2g2dAvkXeH
+[2026/10/8 20:13:11.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee491a97fffebEUR2g2dAvkXeH
+[2026/10/8 20:13:11.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee491a97fffebEUR2g2dAvkXeH
+[2026/10/8 20:13:11.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:13:11.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:13:11.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee491a97fffebEUR2g2dAvkXeH
+[2026/10/8 20:13:11.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:13:11.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee491a97fffebEUR2g2dAvkXeH
+[2026/10/8 20:13:11.000] [INFO] extraction completed with no memory changes sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R worktree=<PROJECT>
+[2026/10/8 20:13:11.000] [DEBUG] extraction-state.write file=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\.extraction-state.json bytes=141 entryCount=1
+[2026/10/8 20:13:11.000] [INFO] extractMemories completed (throttled) sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:13:14.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:13:14.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=1
+[2026/10/8 20:13:14.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:13:15.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:13:16.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:13:22.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\cli-data\* storageRoot=<PROJECT>
+[2026/10/8 20:13:22.000] [INFO] permission-ask result touchesMemory=false cleanPatterns=<TOOLHOME>\cli-data\settings.json
+[2026/10/8 20:13:22.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\cli-data\* storageRoot=<PROJECT>
+[2026/10/8 20:13:22.000] [INFO] permission-ask result touchesMemory=false cleanPatterns=<TOOLHOME>\cli-data\settings.json
+[2026/10/8 20:13:22.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:13:24.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:13:24.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=2
+[2026/10/8 20:13:24.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:13:24.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:13:25.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:13:33.000] [WARN] state-sizes extractionStates=1 dreamStates=1 queryStates=1 feedbackStates=1
+[2026/10/8 20:13:33.000] [WARN] rootCache-size size=0
+[2026/10/8 20:13:33.000] [WARN] memory-cache-sizes memoryDirCache=1
+[2026/10/8 20:13:43.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:13:46.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:13:46.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=3
+[2026/10/8 20:13:46.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:13:47.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:13:47.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:14:00.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:14:02.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:14:02.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=4
+[2026/10/8 20:14:02.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:14:02.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:14:03.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:14:11.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\cli-data\* storageRoot=<PROJECT>
+[2026/10/8 20:14:11.000] [INFO] permission-ask result touchesMemory=false cleanPatterns=<TOOLHOME>\cli-data\auth.json
+[2026/10/8 20:14:11.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\cli-data\* storageRoot=<PROJECT>
+[2026/10/8 20:14:11.000] [INFO] permission-ask result touchesMemory=false cleanPatterns=<TOOLHOME>\cli-data\auth.json
+[2026/10/8 20:14:11.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:14:12.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:14:12.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=5
+[2026/10/8 20:14:12.000] [DEBUG] readDefaultModelFromOpenCodeConfig: no model found in opencode.json configs
+[2026/10/8 20:14:12.000] [DEBUG] event: session.created, 创建会话状态, sessionID=ses_ee49088f3ffe2HU5HU1Nh3SMKf
+[2026/10/8 20:14:12.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:14:12.000] [DEBUG] chat.message: 开始处理 chat.message 钩子
+[2026/10/8 20:14:12.000] [DEBUG] chat.message: sessionID=ses_ee49088f3ffe2HU5HU1Nh3SMKf
+[2026/10/8 20:14:12.000] [DEBUG] chat.message: hasUserText=true
+[2026/10/8 20:14:12.000] [DEBUG] chat.message: query=You are now acting as the memory extraction subage
+[2026/10/8 20:14:12.000] [DEBUG] chat.message: 是 memory extraction 子会话，跳过 experience 自动检索, sessionID=ses_ee49088f3ffe2HU5HU1Nh3SMKf, parentID=ses_silent, title=Auto-Memory Extraction
+[2026/10/8 20:14:12.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:14:28.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:14:29.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:14:29.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=1
+[2026/10/8 20:14:29.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:14:30.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:14:30.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:14:31.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.status, sessionID=ses_ee49088f3ffe2HU5HU1Nh3SMKf
+[2026/10/8 20:14:31.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee49088f3ffe2HU5HU1Nh3SMKf
+[2026/10/8 20:14:31.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee49088f3ffe2HU5HU1Nh3SMKf
+[2026/10/8 20:14:31.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee49088f3ffe2HU5HU1Nh3SMKf
+[2026/10/8 20:14:31.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:14:31.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee49088f3ffe2HU5HU1Nh3SMKf, history=未命中, managerDispatch=未命中, managerDispatches_keys=[]
+[2026/10/8 20:14:31.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee49088f3ffe2HU5HU1Nh3SMKf 未匹配任何manager记录，跳过session.idle处理，继续后续逻辑
+[2026/10/8 20:14:31.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.idle, sessionID=ses_ee49088f3ffe2HU5HU1Nh3SMKf
+[2026/10/8 20:14:31.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee49088f3ffe2HU5HU1Nh3SMKf
+[2026/10/8 20:14:31.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee49088f3ffe2HU5HU1Nh3SMKf
+[2026/10/8 20:14:31.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee49088f3ffe2HU5HU1Nh3SMKf
+[2026/10/8 20:14:31.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:14:31.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:14:31.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee49088f3ffe2HU5HU1Nh3SMKf
+[2026/10/8 20:14:31.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:14:31.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee49088f3ffe2HU5HU1Nh3SMKf
+[2026/10/8 20:14:31.000] [INFO] extraction completed with no memory changes sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R worktree=<PROJECT>
+[2026/10/8 20:14:31.000] [DEBUG] extraction-state.read file=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\.extraction-state.json rawBytes=141
+[2026/10/8 20:14:31.000] [DEBUG] extraction-state.entries entryCount=1
+[2026/10/8 20:14:31.000] [DEBUG] extraction-state.write file=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\.extraction-state.json bytes=141 entryCount=1
+[2026/10/8 20:14:31.000] [INFO] extractMemories completed (text.complete) sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:14:37.000] [WARN] state-sizes extractionStates=1 dreamStates=1 queryStates=1 feedbackStates=1
+[2026/10/8 20:14:37.000] [WARN] rootCache-size size=0
+[2026/10/8 20:14:37.000] [WARN] memory-cache-sizes memoryDirCache=1
+[2026/10/8 20:14:42.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:14:42.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=2
+[2026/10/8 20:14:42.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:14:42.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:14:42.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:14:53.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:14:53.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=3
+[2026/10/8 20:14:53.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:14:55.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:14:55.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:15:13.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:15:14.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:15:14.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=4
+[2026/10/8 20:15:14.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:15:15.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:15:15.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:15:24.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 20:15:24.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:15:24.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 20:15:24.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:15:25.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:15:25.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 20:15:34.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:15:34.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=5
+[2026/10/8 20:15:34.000] [DEBUG] readDefaultModelFromOpenCodeConfig: no model found in opencode.json configs
+[2026/10/8 20:15:34.000] [DEBUG] event: session.created, 创建会话状态, sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:15:34.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:15:34.000] [DEBUG] chat.message: 开始处理 chat.message 钩子
+[2026/10/8 20:15:34.000] [DEBUG] chat.message: sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:15:34.000] [DEBUG] chat.message: hasUserText=true
+[2026/10/8 20:15:34.000] [DEBUG] chat.message: query=You are now acting as the memory extraction subage
+[2026/10/8 20:15:34.000] [DEBUG] chat.message: 是 memory extraction 子会话，跳过 experience 自动检索, sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD, parentID=ses_silent, title=Auto-Memory Extraction
+[2026/10/8 20:15:34.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:15:35.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:15:40.000] [WARN] state-sizes extractionStates=1 dreamStates=1 queryStates=1 feedbackStates=1
+[2026/10/8 20:15:40.000] [WARN] rootCache-size size=0
+[2026/10/8 20:15:40.000] [WARN] memory-cache-sizes memoryDirCache=1
+[2026/10/8 20:15:54.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:15:54.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=1
+[2026/10/8 20:15:54.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:15:54.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.status, sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:15:54.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:15:54.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:15:54.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:15:54.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:15:54.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R, history=未命中, managerDispatch=未命中, managerDispatches_keys=[]
+[2026/10/8 20:15:54.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R 未匹配任何manager记录，跳过session.idle处理，继续后续逻辑
+[2026/10/8 20:15:54.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.idle, sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:15:54.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:15:54.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:15:54.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:15:54.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:15:54.000] [INFO] session.idle event (memory) sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:15:54.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=2
+[2026/10/8 20:15:54.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:15:54.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:15:54.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:15:54.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:15:54.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:15:54.000] [DEBUG] dream-tracker.read rawBytes=54 worktree=<PROJECT>
+[2026/10/8 20:15:54.000] [DEBUG] dream-tracker.entries entryCount=1 worktree=<PROJECT>
+[2026/10/8 20:15:54.000] [DEBUG] dream-tracker.write bytes=54 entryCount=1 worktree=<PROJECT>
+[2026/10/8 20:15:54.000] [INFO] dream skipped: user memory locked sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R worktree=<PROJECT>
+[2026/10/8 20:15:54.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:15:54.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:15:54.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:15:54.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:15:54.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:15:54.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:15:54.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:16:10.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:16:10.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-model-config-location.md
+[2026/10/8 20:16:10.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:16:10.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:16:10.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-model-config-location.md
+[2026/10/8 20:16:10.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:16:10.000] [INFO] permission-ask checking permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-model-config-location.md storageRoot=<PROJECT>
+[2026/10/8 20:16:10.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-model-config-location.md
+[2026/10/8 20:16:10.000] [INFO] auto-allow memory write permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-model-config-location.md
+[2026/10/8 20:16:10.000] [INFO] permission-ask checking permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-model-config-location.md storageRoot=<PROJECT>
+[2026/10/8 20:16:10.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-model-config-location.md
+[2026/10/8 20:16:10.000] [INFO] auto-allow memory write permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-model-config-location.md
+[2026/10/8 20:16:10.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:16:12.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:16:12.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:16:12.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:16:12.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:16:12.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:16:12.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:16:23.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:16:23.000] [DEBUG] chat.message: 开始处理 chat.message 钩子
+[2026/10/8 20:16:23.000] [DEBUG] chat.message: sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:16:23.000] [DEBUG] chat.message: 已记录 session model, providerID=huaweicloud-maas, modelID=GLM-5.2
+[2026/10/8 20:16:23.000] [DEBUG] chat.message: hasUserText=true
+[2026/10/8 20:16:23.000] [DEBUG] chat.message: query=codearts 支持用户自定义对接第三方api 写代码吗 我不想用华为提供的模型
+<system-
+[2026/10/8 20:16:23.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:16:23.000] [DEBUG] queryStates.set key=<PROJECT>::ses_ee4aa9eafffeaP68Fd7Eunnm5R size=1
+[2026/10/8 20:16:23.000] [INFO] chat.message processed (memory) sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R textLength=41
+[2026/10/8 20:16:23.000] [DEBUG] snapshotMemoryContentFiles fileCount=2 totalKB=0 worktree=<PROJECT>
+[2026/10/8 20:16:23.000] [DEBUG] buildInitialUserMemoryContext worktree=<PROJECT> maxFiles=4 minScore=3
+[2026/10/8 20:16:23.000] [DEBUG] selectRelevantMemoriesWithStats headersCount=1 memoriesCount=1 candidateCount=1 query=codearts 支持用户自定义对接第三方api 写代码吗 我不想用华为提供的模型 hitFiles=[object Object]
+[2026/10/8 20:16:23.000] [INFO] memory.call triggered sessionID=<PROJECT> retrieval.hit_count=1 retrieval.status=success
+[2026/10/8 20:16:23.000] [INFO] memory.call triggered sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R retrieval.hit_count=1 retrieval.status=success
+[2026/10/8 20:16:23.000] [INFO] wiki: readWikiRetrieval returned undefined, skipping injection
+[2026/10/8 20:16:23.000] [DEBUG] chat.message: 开始执行 maybeAutoInjectForFirstUserTurn
+[2026/10/8 20:16:23.000] [DEBUG] chat.message: maybeAutoInjectForFirstUserTurn 执行完成
+[2026/10/8 20:16:24.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:16:32.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:16:32.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:16:32.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=3
+[2026/10/8 20:16:32.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:16:32.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:16:34.000] [INFO] extraction failed, checking for partial changes sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R changedFiles=codearts-model-config-location.md worktree=<PROJECT>
+[2026/10/8 20:16:34.000] [DEBUG] extraction-state.read file=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\.extraction-state.json rawBytes=141
+[2026/10/8 20:16:34.000] [DEBUG] extraction-state.entries entryCount=1
+[2026/10/8 20:16:34.000] [DEBUG] extraction-state.write file=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\.extraction-state.json bytes=141 entryCount=1
+[2026/10/8 20:16:34.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.status, sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.status, sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [INFO] session aborted, marked for skipping memory injection sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:16:34.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:16:34.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee48f4798ffeMz4PNMeshhX8uD, history=未命中, managerDispatch=未命中, managerDispatches_keys=[]
+[2026/10/8 20:16:34.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee48f4798ffeMz4PNMeshhX8uD 未匹配任何manager记录，跳过session.idle处理，继续后续逻辑
+[2026/10/8 20:16:34.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee48f4798ffeMz4PNMeshhX8uD, history=未命中, managerDispatch=未命中, managerDispatches_keys=[]
+[2026/10/8 20:16:34.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee48f4798ffeMz4PNMeshhX8uD 未匹配任何manager记录，跳过session.idle处理，继续后续逻辑
+[2026/10/8 20:16:34.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.idle, sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.idle, sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:16:34.000] [INFO] session.idle after abort, skipping memory extraction sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:16:34.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:16:34.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:16:34.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:16:34.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:16:34.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee48f4798ffeMz4PNMeshhX8uD
+[2026/10/8 20:16:34.000] [INFO] extractMemories completed (text.complete) sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:16:40.000] [WARN] state-sizes extractionStates=1 dreamStates=1 queryStates=1 feedbackStates=1
+[2026/10/8 20:16:40.000] [WARN] rootCache-size size=0
+[2026/10/8 20:16:40.000] [WARN] memory-cache-sizes memoryDirCache=1
+[2026/10/8 20:16:48.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:16:48.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:16:48.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=4
+[2026/10/8 20:16:48.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:16:48.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:17:16.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:17:16.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:17:16.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:17:26.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:17:26.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=5
+[2026/10/8 20:17:26.000] [DEBUG] readDefaultModelFromOpenCodeConfig: no model found in opencode.json configs
+[2026/10/8 20:17:26.000] [DEBUG] event: session.created, 创建会话状态, sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:17:26.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:17:26.000] [DEBUG] chat.message: 开始处理 chat.message 钩子
+[2026/10/8 20:17:26.000] [DEBUG] chat.message: sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:17:26.000] [DEBUG] chat.message: hasUserText=true
+[2026/10/8 20:17:26.000] [DEBUG] chat.message: query=You are now acting as the memory extraction subage
+[2026/10/8 20:17:26.000] [DEBUG] chat.message: 经验负反馈已识别但未更新, lastHitPaths=0, targetPaths=0, referenced=openstudy-apps-fastapi-v2,2026-07-10,2026-03-05,2026-03-05,up-to-date,who-changed-what,codearts-model-config-location,2026-10-08t12
+[2026/10/8 20:17:26.000] [DEBUG] chat.message: 是 memory extraction 子会话，跳过 experience 自动检索, sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI, parentID=ses_silent, title=Auto-Memory Extraction
+[2026/10/8 20:17:26.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:17:26.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:17:32.000] [DEBUG] runSessionGc: 无可清理项, remainingSessions=2
+[2026/10/8 20:17:40.000] [WARN] state-sizes extractionStates=1 dreamStates=1 queryStates=1 feedbackStates=1
+[2026/10/8 20:17:40.000] [WARN] rootCache-size size=0
+[2026/10/8 20:17:40.000] [WARN] memory-cache-sizes memoryDirCache=1
+[2026/10/8 20:17:43.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:17:43.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:17:43.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:17:43.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:17:43.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:17:43.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:17:43.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:17:43.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:17:43.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-model-config-location.md
+[2026/10/8 20:17:43.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:17:43.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:17:43.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-model-config-location.md
+[2026/10/8 20:17:43.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:17:43.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:17:46.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:17:47.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:17:47.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:17:56.000] [INFO] permission-ask checking permission=external_directory_read patterns=<USERHOME>\AppData\Local\Temp\* storageRoot=<PROJECT>
+[2026/10/8 20:17:56.000] [INFO] permission-ask result touchesMemory=false cleanPatterns=<USERHOME>\AppData\Local\Temp\llms_index.txt
+[2026/10/8 20:17:56.000] [INFO] permission-ask checking permission=external_directory_read patterns=<USERHOME>\AppData\Local\Temp\* storageRoot=<PROJECT>
+[2026/10/8 20:17:56.000] [INFO] permission-ask result touchesMemory=false cleanPatterns=<USERHOME>\AppData\Local\Temp\llms_index.txt
+[2026/10/8 20:17:56.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:17:57.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:17:57.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=1
+[2026/10/8 20:17:57.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:17:57.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:17:58.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:17:58.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-prefers-third-party-model.md
+[2026/10/8 20:17:58.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:17:58.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:17:58.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-prefers-third-party-model.md
+[2026/10/8 20:17:58.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:17:58.000] [INFO] permission-ask checking permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-prefers-third-party-model.md storageRoot=<PROJECT>
+[2026/10/8 20:17:58.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-prefers-third-party-model.md
+[2026/10/8 20:17:58.000] [INFO] auto-allow memory write permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-prefers-third-party-model.md
+[2026/10/8 20:17:58.000] [INFO] permission-ask checking permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-prefers-third-party-model.md storageRoot=<PROJECT>
+[2026/10/8 20:17:58.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-prefers-third-party-model.md
+[2026/10/8 20:17:58.000] [INFO] auto-allow memory write permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-prefers-third-party-model.md
+[2026/10/8 20:17:58.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:18:00.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:18:00.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:18:00.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:18:00.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:18:00.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:18:00.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:18:13.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:18:16.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:18:16.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=2
+[2026/10/8 20:18:16.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:18:18.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:18:18.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:18:26.000] [INFO] extraction failed, checking for partial changes sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R changedFiles=user-prefers-third-party-model.md worktree=<PROJECT>
+[2026/10/8 20:18:26.000] [DEBUG] extraction-state.read file=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\.extraction-state.json rawBytes=141
+[2026/10/8 20:18:26.000] [DEBUG] extraction-state.entries entryCount=1
+[2026/10/8 20:18:26.000] [DEBUG] extraction-state.write file=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\.extraction-state.json bytes=141 entryCount=1
+[2026/10/8 20:18:26.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.status, sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.status, sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [INFO] session aborted, marked for skipping memory injection sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:18:26.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:18:26.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI, history=未命中, managerDispatch=未命中, managerDispatches_keys=[]
+[2026/10/8 20:18:26.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI 未匹配任何manager记录，跳过session.idle处理，继续后续逻辑
+[2026/10/8 20:18:26.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI, history=未命中, managerDispatch=未命中, managerDispatches_keys=[]
+[2026/10/8 20:18:26.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI 未匹配任何manager记录，跳过session.idle处理，继续后续逻辑
+[2026/10/8 20:18:26.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.idle, sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.idle, sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:18:26.000] [INFO] session.idle after abort, skipping memory extraction sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:18:26.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:18:26.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:18:26.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:18:26.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:18:26.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee48d9299ffe9EAGOOvBmpG1hI
+[2026/10/8 20:18:26.000] [INFO] extractMemories completed (text.complete) sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:18:33.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:18:33.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=3
+[2026/10/8 20:18:33.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:18:34.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:18:34.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:18:41.000] [WARN] state-sizes extractionStates=1 dreamStates=1 queryStates=1 feedbackStates=1
+[2026/10/8 20:18:41.000] [WARN] rootCache-size size=0
+[2026/10/8 20:18:41.000] [WARN] memory-cache-sizes memoryDirCache=1
+[2026/10/8 20:19:00.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:19:00.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=4
+[2026/10/8 20:19:00.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:19:00.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:19:01.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:19:15.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:19:15.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=5
+[2026/10/8 20:19:15.000] [DEBUG] readDefaultModelFromOpenCodeConfig: no model found in opencode.json configs
+[2026/10/8 20:19:15.000] [DEBUG] event: session.created, 创建会话状态, sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:19:15.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:19:15.000] [DEBUG] chat.message: 开始处理 chat.message 钩子
+[2026/10/8 20:19:15.000] [DEBUG] chat.message: sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:19:15.000] [DEBUG] chat.message: hasUserText=true
+[2026/10/8 20:19:15.000] [DEBUG] chat.message: query=You are now acting as the memory extraction subage
+[2026/10/8 20:19:15.000] [DEBUG] chat.message: 是 memory extraction 子会话，跳过 experience 自动检索, sessionID=ses_ee48be793ffekvvR161cLNEIPy, parentID=ses_silent, title=Auto-Memory Extraction
+[2026/10/8 20:19:16.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:19:16.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:19:29.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:19:29.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:19:29.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:19:29.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:19:29.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:19:29.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:19:29.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:19:29.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:19:30.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:19:30.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-prefers-third-party-model.md
+[2026/10/8 20:19:30.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:19:30.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:19:30.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-prefers-third-party-model.md
+[2026/10/8 20:19:30.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:19:30.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:19:30.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:19:30.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-model-config-location.md
+[2026/10/8 20:19:30.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:19:30.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:19:30.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-model-config-location.md
+[2026/10/8 20:19:30.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:19:30.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:19:33.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:19:36.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:19:36.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=1
+[2026/10/8 20:19:36.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:19:36.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:19:36.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:19:41.000] [WARN] state-sizes extractionStates=1 dreamStates=1 queryStates=1 feedbackStates=1
+[2026/10/8 20:19:41.000] [WARN] rootCache-size size=0
+[2026/10/8 20:19:41.000] [WARN] memory-cache-sizes memoryDirCache=1
+[2026/10/8 20:19:48.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:19:48.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-doc-download-method.md
+[2026/10/8 20:19:48.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:19:48.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:19:48.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-doc-download-method.md
+[2026/10/8 20:19:48.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:19:48.000] [INFO] permission-ask checking permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-doc-download-method.md storageRoot=<PROJECT>
+[2026/10/8 20:19:48.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-doc-download-method.md
+[2026/10/8 20:19:48.000] [INFO] auto-allow memory write permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-doc-download-method.md
+[2026/10/8 20:19:48.000] [INFO] permission-ask checking permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-doc-download-method.md storageRoot=<PROJECT>
+[2026/10/8 20:19:48.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-doc-download-method.md
+[2026/10/8 20:19:48.000] [INFO] auto-allow memory write permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-doc-download-method.md
+[2026/10/8 20:19:48.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:19:52.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:19:52.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-uses-cli-version.md
+[2026/10/8 20:19:52.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:19:52.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:19:52.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-uses-cli-version.md
+[2026/10/8 20:19:52.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:19:52.000] [INFO] permission-ask checking permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-uses-cli-version.md storageRoot=<PROJECT>
+[2026/10/8 20:19:52.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-uses-cli-version.md
+[2026/10/8 20:19:52.000] [INFO] auto-allow memory write permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-uses-cli-version.md
+[2026/10/8 20:19:52.000] [INFO] permission-ask checking permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-uses-cli-version.md storageRoot=<PROJECT>
+[2026/10/8 20:19:52.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-uses-cli-version.md
+[2026/10/8 20:19:52.000] [INFO] auto-allow memory write permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-uses-cli-version.md
+[2026/10/8 20:19:52.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:19:55.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:19:55.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=2
+[2026/10/8 20:19:55.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:19:56.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:19:56.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:19:56.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:19:56.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:19:56.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:19:56.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:20:12.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:20:12.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:20:12.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:20:15.000] [INFO] extraction failed, checking for partial changes sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R changedFiles=codearts-doc-download-method.md,user-uses-cli-version.md worktree=<PROJECT>
+[2026/10/8 20:20:15.000] [DEBUG] extraction-state.read file=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\.extraction-state.json rawBytes=141
+[2026/10/8 20:20:15.000] [DEBUG] extraction-state.entries entryCount=1
+[2026/10/8 20:20:15.000] [DEBUG] extraction-state.write file=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\.extraction-state.json bytes=141 entryCount=1
+[2026/10/8 20:20:15.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.status, sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.status, sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [INFO] session aborted, marked for skipping memory injection sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:20:15.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:20:15.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee48be793ffekvvR161cLNEIPy, history=未命中, managerDispatch=未命中, managerDispatches_keys=[]
+[2026/10/8 20:20:15.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee48be793ffekvvR161cLNEIPy 未匹配任何manager记录，跳过session.idle处理，继续后续逻辑
+[2026/10/8 20:20:15.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee48be793ffekvvR161cLNEIPy, history=未命中, managerDispatch=未命中, managerDispatches_keys=[]
+[2026/10/8 20:20:15.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee48be793ffekvvR161cLNEIPy 未匹配任何manager记录，跳过session.idle处理，继续后续逻辑
+[2026/10/8 20:20:15.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.idle, sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.idle, sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:20:15.000] [INFO] session.idle after abort, skipping memory extraction sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:20:15.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:20:15.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:20:15.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:20:15.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:20:15.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee48be793ffekvvR161cLNEIPy
+[2026/10/8 20:20:15.000] [INFO] extractMemories completed (text.complete) sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:20:25.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 20:20:25.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:20:25.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 20:20:25.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:20:25.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:20:25.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 20:20:25.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:20:29.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:20:31.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:20:31.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=3
+[2026/10/8 20:20:31.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:20:31.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:20:31.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:20:42.000] [WARN] state-sizes extractionStates=1 dreamStates=1 queryStates=1 feedbackStates=1
+[2026/10/8 20:20:42.000] [WARN] rootCache-size size=0
+[2026/10/8 20:20:42.000] [WARN] memory-cache-sizes memoryDirCache=1
+[2026/10/8 20:20:43.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:20:46.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:20:46.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=4
+[2026/10/8 20:20:46.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:20:46.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:20:46.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:20:57.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\cli-data\docs\* storageRoot=<PROJECT>
+[2026/10/8 20:20:57.000] [INFO] permission-ask result touchesMemory=false cleanPatterns=<TOOLHOME>\cli-data\docs\ug_model.md
+[2026/10/8 20:20:57.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\cli-data\docs\* storageRoot=<PROJECT>
+[2026/10/8 20:20:57.000] [INFO] permission-ask result touchesMemory=false cleanPatterns=<TOOLHOME>\cli-data\docs\ug_model.md
+[2026/10/8 20:20:57.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:21:00.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:21:00.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=5
+[2026/10/8 20:21:00.000] [DEBUG] readDefaultModelFromOpenCodeConfig: no model found in opencode.json configs
+[2026/10/8 20:21:00.000] [DEBUG] event: session.created, 创建会话状态, sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:21:00.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:21:00.000] [DEBUG] chat.message: 开始处理 chat.message 钩子
+[2026/10/8 20:21:00.000] [DEBUG] chat.message: sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:21:00.000] [DEBUG] chat.message: hasUserText=true
+[2026/10/8 20:21:00.000] [DEBUG] chat.message: query=You are now acting as the memory extraction subage
+[2026/10/8 20:21:00.000] [DEBUG] chat.message: 经验负反馈已识别但未更新, lastHitPaths=0, targetPaths=0, referenced=openstudy-apps-fastapi-v2,2026-07-10,2026-03-05,2026-03-05,up-to-date,who-changed-what,user-uses-cli-version,2026-10-08t12,codearts-doc-download-method,2026-10-08t12,user-prefers-third-party-model,2026-10-08t12,codearts-model-config-location,2026-10-08t12
+[2026/10/8 20:21:01.000] [DEBUG] chat.message: 是 memory extraction 子会话，跳过 experience 自动检索, sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b, parentID=ses_silent, title=Auto-Memory Extraction
+[2026/10/8 20:21:01.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:21:01.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:21:12.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\cli-data\docs\* storageRoot=<PROJECT>
+[2026/10/8 20:21:12.000] [INFO] permission-ask result touchesMemory=false cleanPatterns=<TOOLHOME>\cli-data\docs\cli_model.md
+[2026/10/8 20:21:12.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\cli-data\docs\* storageRoot=<PROJECT>
+[2026/10/8 20:21:12.000] [INFO] permission-ask result touchesMemory=false cleanPatterns=<TOOLHOME>\cli-data\docs\cli_model.md
+[2026/10/8 20:21:12.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:21:16.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:21:16.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=1
+[2026/10/8 20:21:16.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:21:16.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:21:16.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:21:30.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\cli-data\docs\* storageRoot=<PROJECT>
+[2026/10/8 20:21:30.000] [INFO] permission-ask result touchesMemory=false cleanPatterns=<TOOLHOME>\cli-data\docs\cli_model.md
+[2026/10/8 20:21:30.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\cli-data\docs\* storageRoot=<PROJECT>
+[2026/10/8 20:21:30.000] [INFO] permission-ask result touchesMemory=false cleanPatterns=<TOOLHOME>\cli-data\docs\cli_model.md
+[2026/10/8 20:21:30.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:21:31.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:21:31.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=2
+[2026/10/8 20:21:31.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:21:31.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:21:34.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:21:34.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-doc-download-method.md
+[2026/10/8 20:21:34.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:21:34.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:21:34.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-doc-download-method.md
+[2026/10/8 20:21:34.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:21:34.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:21:35.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:21:35.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:21:35.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:21:35.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:21:35.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:21:35.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:21:35.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:21:42.000] [WARN] state-sizes extractionStates=1 dreamStates=1 queryStates=1 feedbackStates=1
+[2026/10/8 20:21:42.000] [WARN] rootCache-size size=0
+[2026/10/8 20:21:42.000] [WARN] memory-cache-sizes memoryDirCache=1
+[2026/10/8 20:21:43.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:21:43.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2
+[2026/10/8 20:21:43.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:21:43.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:21:43.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2
+[2026/10/8 20:21:43.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:21:44.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:21:56.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:21:56.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-doc-download-method.md
+[2026/10/8 20:21:56.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:21:56.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:21:56.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\codearts-doc-download-method.md
+[2026/10/8 20:21:56.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:21:59.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:21:59.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:21:59.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:21:59.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:21:59.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:21:59.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:22:00.000] [INFO] extraction failed, checking for partial changes sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R changedFiles= worktree=<PROJECT>
+[2026/10/8 20:22:00.000] [DEBUG] extraction-state.read file=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\.extraction-state.json rawBytes=141
+[2026/10/8 20:22:00.000] [DEBUG] extraction-state.entries entryCount=1
+[2026/10/8 20:22:01.000] [DEBUG] extraction-state.write file=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\.extraction-state.json bytes=141 entryCount=1
+[2026/10/8 20:22:01.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.status, sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.status, sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [INFO] session aborted, marked for skipping memory injection sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:22:01.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:22:01.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee48a4c6cffeczBwp1iYghVI4b, history=未命中, managerDispatch=未命中, managerDispatches_keys=[]
+[2026/10/8 20:22:01.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee48a4c6cffeczBwp1iYghVI4b 未匹配任何manager记录，跳过session.idle处理，继续后续逻辑
+[2026/10/8 20:22:01.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee48a4c6cffeczBwp1iYghVI4b, history=未命中, managerDispatch=未命中, managerDispatches_keys=[]
+[2026/10/8 20:22:01.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee48a4c6cffeczBwp1iYghVI4b 未匹配任何manager记录，跳过session.idle处理，继续后续逻辑
+[2026/10/8 20:22:01.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.idle, sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.idle, sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:22:01.000] [INFO] session.idle after abort, skipping memory extraction sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:22:01.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:22:01.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:22:01.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:22:01.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:22:01.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee48a4c6cffeczBwp1iYghVI4b
+[2026/10/8 20:22:01.000] [INFO] extractMemories completed (text.complete) sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:22:12.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:22:12.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=3
+[2026/10/8 20:22:12.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:22:12.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.status, sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:22:12.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:22:12.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:22:12.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:22:12.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:22:12.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R, history=未命中, managerDispatch=未命中, managerDispatches_keys=[]
+[2026/10/8 20:22:12.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R 未匹配任何manager记录，跳过session.idle处理，继续后续逻辑
+[2026/10/8 20:22:12.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.idle, sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:22:12.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:22:12.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:22:12.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:22:12.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:22:12.000] [INFO] session.idle event (memory) sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:22:12.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=4
+[2026/10/8 20:22:12.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:22:12.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:22:12.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:22:12.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:22:12.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:22:12.000] [DEBUG] dream-tracker.read rawBytes=54 worktree=<PROJECT>
+[2026/10/8 20:22:12.000] [DEBUG] dream-tracker.entries entryCount=1 worktree=<PROJECT>
+[2026/10/8 20:22:12.000] [DEBUG] dream-tracker.write bytes=54 entryCount=1 worktree=<PROJECT>
+[2026/10/8 20:22:12.000] [DEBUG] dream-tracker.read rawBytes=54 worktree=<PROJECT>
+[2026/10/8 20:22:12.000] [DEBUG] dream-tracker.entries entryCount=1 worktree=<PROJECT>
+[2026/10/8 20:22:12.000] [INFO] dream skipped: not enough sessions sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R sessionCount=0 minSessions=10 worktree=<PROJECT>
+[2026/10/8 20:25:25.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 20:25:25.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:25:25.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 20:25:25.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:25:25.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:25:25.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 20:30:25.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 20:30:25.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:30:25.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 20:30:25.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:30:25.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:30:25.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 20:35:25.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 20:35:25.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:35:25.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 20:35:25.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:35:25.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:35:25.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 20:36:19.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:36:19.000] [DEBUG] chat.message: 开始处理 chat.message 钩子
+[2026/10/8 20:36:19.000] [DEBUG] chat.message: sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:36:19.000] [DEBUG] chat.message: 已记录 session model, providerID=huaweicloud-maas, modelID=GLM-5.2
+[2026/10/8 20:36:19.000] [DEBUG] chat.message: hasUserText=true
+[2026/10/8 20:36:19.000] [DEBUG] chat.message: query=请帮我配置自定义模型，接入我的本地统一网关。
+
+配置要求如下：
+
+1. 配置文件路径：~/.code
+[2026/10/8 20:36:19.000] [DEBUG] chat.message: 经验负反馈已识别但未更新, lastHitPaths=0, targetPaths=0, referenced=auto-deepseek-v4-1-flash,auto-deepseek-v4-1-flash,auto-deepseek-v4-1-flash
+[2026/10/8 20:36:19.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:36:19.000] [DEBUG] queryStates.set key=<PROJECT>::ses_ee4aa9eafffeaP68Fd7Eunnm5R size=1
+[2026/10/8 20:36:19.000] [INFO] chat.message processed (memory) sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R textLength=779
+[2026/10/8 20:36:19.000] [DEBUG] snapshotMemoryContentFiles fileCount=5 totalKB=1 worktree=<PROJECT>
+[2026/10/8 20:36:19.000] [DEBUG] buildInitialUserMemoryContext worktree=<PROJECT> maxFiles=4 minScore=3
+[2026/10/8 20:36:19.000] [DEBUG] selectRelevantMemoriesWithStats headersCount=4 memoriesCount=4 candidateCount=4 query=请帮我配置自定义模型，接入我的本地统一网关。
+
+配置要求如下：
+
+1. 配置文件路径：~/.codeartsdoer/codearts_cli.json（Win hitFiles=[object Object],[object Object],[object Object],[object Object]
+[2026/10/8 20:36:19.000] [INFO] memory.call triggered sessionID=<PROJECT> retrieval.hit_count=4 retrieval.status=success
+[2026/10/8 20:36:19.000] [INFO] memory.call triggered sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R retrieval.hit_count=4 retrieval.status=success
+[2026/10/8 20:36:19.000] [INFO] wiki: readWikiRetrieval returned undefined, skipping injection
+[2026/10/8 20:36:19.000] [DEBUG] chat.message: 开始执行 maybeAutoInjectForFirstUserTurn
+[2026/10/8 20:36:19.000] [DEBUG] chat.message: maybeAutoInjectForFirstUserTurn 执行完成
+[2026/10/8 20:36:19.000] [WARN] state-sizes extractionStates=1 dreamStates=1 queryStates=1 feedbackStates=1
+[2026/10/8 20:36:19.000] [WARN] rootCache-size size=0
+[2026/10/8 20:36:19.000] [WARN] memory-cache-sizes memoryDirCache=1
+[2026/10/8 20:36:19.000] [DEBUG] runSessionGc: 无可清理项, remainingSessions=1
+[2026/10/8 20:36:19.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:36:38.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\* storageRoot=<PROJECT>
+[2026/10/8 20:36:38.000] [INFO] permission-ask result touchesMemory=false cleanPatterns=<TOOLHOME>\codearts_cli.json
+[2026/10/8 20:36:38.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\* storageRoot=<PROJECT>
+[2026/10/8 20:36:38.000] [INFO] permission-ask result touchesMemory=false cleanPatterns=<TOOLHOME>\codearts_cli.json
+[2026/10/8 20:36:38.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:36:39.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:36:39.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=5
+[2026/10/8 20:36:39.000] [DEBUG] readDefaultModelFromOpenCodeConfig: no model found in opencode.json configs
+[2026/10/8 20:36:39.000] [DEBUG] event: session.created, 创建会话状态, sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:36:39.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:36:39.000] [DEBUG] chat.message: 开始处理 chat.message 钩子
+[2026/10/8 20:36:39.000] [DEBUG] chat.message: sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:36:39.000] [DEBUG] chat.message: hasUserText=true
+[2026/10/8 20:36:39.000] [DEBUG] chat.message: query=You are now acting as the memory extraction subage
+[2026/10/8 20:36:39.000] [DEBUG] chat.message: 经验负反馈已识别但未更新, lastHitPaths=0, targetPaths=0, referenced=openstudy-apps-fastapi-v2,2026-07-10,auto-deepseek-v4-1-flash,auto-deepseek-v4-1-flash,auto-deepseek-v4-1-flash,2026-03-05,2026-03-05,up-to-date,who-changed-what,user-uses-cli-version,2026-10-08t12,codearts-doc-download-method,2026-10-08t12,user-prefers-third-party-model,2026-10-08t12,codearts-model-config-location,2026-10-08t12
+[2026/10/8 20:36:39.000] [DEBUG] chat.message: 是 memory extraction 子会话，跳过 experience 自动检索, sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4, parentID=ses_silent, title=Auto-Memory Extraction
+[2026/10/8 20:36:39.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:36:51.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\* storageRoot=<PROJECT>
+[2026/10/8 20:36:51.000] [INFO] permission-ask result touchesMemory=false cleanPatterns=<TOOLHOME>\codearts_cli.json
+[2026/10/8 20:36:51.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\* storageRoot=<PROJECT>
+[2026/10/8 20:36:51.000] [INFO] permission-ask result touchesMemory=false cleanPatterns=<TOOLHOME>\codearts_cli.json
+[2026/10/8 20:36:51.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:36:51.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=1
+[2026/10/8 20:36:51.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:36:54.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:36:54.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:36:54.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:36:54.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:36:54.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:36:54.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:36:54.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:36:55.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:36:55.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-prefers-third-party-model.md
+[2026/10/8 20:36:55.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:36:55.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:36:55.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-prefers-third-party-model.md
+[2026/10/8 20:36:55.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:36:55.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:37:14.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:37:14.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-local-model-gateway.md
+[2026/10/8 20:37:14.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:37:14.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:37:14.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-local-model-gateway.md
+[2026/10/8 20:37:14.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:37:14.000] [INFO] permission-ask checking permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-local-model-gateway.md storageRoot=<PROJECT>
+[2026/10/8 20:37:14.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-local-model-gateway.md
+[2026/10/8 20:37:14.000] [INFO] auto-allow memory write permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-local-model-gateway.md
+[2026/10/8 20:37:14.000] [INFO] permission-ask checking permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-local-model-gateway.md storageRoot=<PROJECT>
+[2026/10/8 20:37:14.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-local-model-gateway.md
+[2026/10/8 20:37:14.000] [INFO] auto-allow memory write permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-local-model-gateway.md
+[2026/10/8 20:37:14.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:37:18.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:37:18.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:37:18.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:37:18.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:37:18.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:37:18.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:37:39.000] [INFO] extraction failed, checking for partial changes sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R changedFiles=user-local-model-gateway.md worktree=<PROJECT>
+[2026/10/8 20:37:39.000] [DEBUG] extraction-state.read file=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\.extraction-state.json rawBytes=141
+[2026/10/8 20:37:39.000] [DEBUG] extraction-state.entries entryCount=1
+[2026/10/8 20:37:39.000] [DEBUG] extraction-state.write file=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\.extraction-state.json bytes=141 entryCount=1
+[2026/10/8 20:37:39.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.status, sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.status, sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [WARN] state-sizes extractionStates=1 dreamStates=1 queryStates=1 feedbackStates=1
+[2026/10/8 20:37:39.000] [WARN] rootCache-size size=0
+[2026/10/8 20:37:39.000] [WARN] memory-cache-sizes memoryDirCache=1
+[2026/10/8 20:37:39.000] [INFO] session aborted, marked for skipping memory injection sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:37:39.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:37:39.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee47bfa8effewYUAIFDtFn2HA4, history=未命中, managerDispatch=未命中, managerDispatches_keys=[]
+[2026/10/8 20:37:39.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee47bfa8effewYUAIFDtFn2HA4 未匹配任何manager记录，跳过session.idle处理，继续后续逻辑
+[2026/10/8 20:37:39.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee47bfa8effewYUAIFDtFn2HA4, history=未命中, managerDispatch=未命中, managerDispatches_keys=[]
+[2026/10/8 20:37:39.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee47bfa8effewYUAIFDtFn2HA4 未匹配任何manager记录，跳过session.idle处理，继续后续逻辑
+[2026/10/8 20:37:39.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.idle, sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.idle, sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:37:39.000] [INFO] session.idle after abort, skipping memory extraction sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:37:39.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:37:39.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:37:39.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:37:39.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:37:39.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee47bfa8effewYUAIFDtFn2HA4
+[2026/10/8 20:37:39.000] [INFO] extractMemories completed (text.complete) sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:38:47.000] [WARN] state-sizes extractionStates=1 dreamStates=1 queryStates=1 feedbackStates=1
+[2026/10/8 20:38:47.000] [WARN] rootCache-size size=0
+[2026/10/8 20:38:47.000] [WARN] memory-cache-sizes memoryDirCache=1
+[2026/10/8 20:38:48.000] [INFO] permission-ask checking permission=edit patterns=<TOOLHOME>\codearts_cli.json storageRoot=<PROJECT>
+[2026/10/8 20:38:48.000] [INFO] permission-ask result touchesMemory=false cleanPatterns=<TOOLHOME>\codearts_cli.json
+[2026/10/8 20:38:48.000] [INFO] permission-ask checking permission=edit patterns=<TOOLHOME>\codearts_cli.json storageRoot=<PROJECT>
+[2026/10/8 20:38:48.000] [INFO] permission-ask result touchesMemory=false cleanPatterns=<TOOLHOME>\codearts_cli.json
+[2026/10/8 20:38:50.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:38:50.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:38:50.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:39:05.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\* storageRoot=<PROJECT>
+[2026/10/8 20:39:05.000] [INFO] permission-ask result touchesMemory=false cleanPatterns=<TOOLHOME>\codearts_cli.json
+[2026/10/8 20:39:05.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\* storageRoot=<PROJECT>
+[2026/10/8 20:39:05.000] [INFO] permission-ask result touchesMemory=false cleanPatterns=<TOOLHOME>\codearts_cli.json
+[2026/10/8 20:39:05.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:39:07.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:39:07.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=2
+[2026/10/8 20:39:07.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:39:07.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:39:08.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:39:19.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:39:19.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=3
+[2026/10/8 20:39:19.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:39:21.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:39:21.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:39:39.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:39:39.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=4
+[2026/10/8 20:39:39.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:39:46.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:39:46.000] [INFO] [otel-trigger] initOtelDeps: starting to load OTel deps
+[2026/10/8 20:39:46.000] [INFO] [otel-trigger] initOtelDeps: loaded successfully, using real OpenTelemetry modules
+[2026/10/8 20:39:46.000] [INFO] [otel-trigger] initOtelDeps: starting to load OTel deps
+[2026/10/8 20:39:46.000] [INFO] [otel-trigger] initOtelDeps: loaded successfully, using real OpenTelemetry modules
+[2026/10/8 20:39:46.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:39:47.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:39:47.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:39:54.000] [WARN] state-sizes extractionStates=1 dreamStates=1 queryStates=1 feedbackStates=1
+[2026/10/8 20:39:54.000] [WARN] rootCache-size size=0
+[2026/10/8 20:39:54.000] [WARN] memory-cache-sizes memoryDirCache=1
+[2026/10/8 20:40:25.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 20:40:25.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:40:25.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 20:40:25.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:40:25.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:40:25.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 20:40:43.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:40:43.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=5
+[2026/10/8 20:40:43.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.status, sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:40:43.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:40:43.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:40:43.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:40:43.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:40:43.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R, history=未命中, managerDispatch=未命中, managerDispatches_keys=[]
+[2026/10/8 20:40:43.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R 未匹配任何manager记录，跳过session.idle处理，继续后续逻辑
+[2026/10/8 20:40:43.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.idle, sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:40:43.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:40:43.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:40:43.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:40:43.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:40:43.000] [INFO] session.idle event (memory) sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:40:43.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R messageCount=1
+[2026/10/8 20:40:43.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:40:43.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:40:43.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:40:43.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:40:43.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:40:43.000] [DEBUG] dream-tracker.read rawBytes=54 worktree=<PROJECT>
+[2026/10/8 20:40:43.000] [DEBUG] dream-tracker.entries entryCount=1 worktree=<PROJECT>
+[2026/10/8 20:40:43.000] [DEBUG] readDefaultModelFromOpenCodeConfig: no model found in opencode.json configs
+[2026/10/8 20:40:43.000] [DEBUG] dream-tracker.write bytes=54 entryCount=1 worktree=<PROJECT>
+[2026/10/8 20:40:43.000] [INFO] dream skipped: user memory locked sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R worktree=<PROJECT>
+[2026/10/8 20:40:43.000] [DEBUG] event: session.created, 创建会话状态, sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:40:43.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:40:43.000] [DEBUG] chat.message: 开始处理 chat.message 钩子
+[2026/10/8 20:40:43.000] [DEBUG] chat.message: sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:40:43.000] [DEBUG] chat.message: hasUserText=true
+[2026/10/8 20:40:43.000] [DEBUG] chat.message: query=You are now acting as the memory extraction subage
+[2026/10/8 20:40:43.000] [DEBUG] chat.message: 经验负反馈已识别但未更新, lastHitPaths=0, targetPaths=0, referenced=openstudy-apps-fastapi-v2,2026-07-10,auto-deepseek-v4-1-flash,auto-deepseek-v4-1-flash,auto-deepseek-v4-1-flash,auto-deepseek-v4-1-flash,2026-03-05,2026-03-05,up-to-date,who-changed-what,user-local-model-gateway,2026-10-08t12,user-uses-cli-version,2026-10-08t12,codearts-doc-download-method,2026-10-08t12,user-prefers-third-party-model,2026-10-08t12,codearts-model-config-location,2026-10-08t12
+[2026/10/8 20:40:43.000] [DEBUG] chat.message: 是 memory extraction 子会话，跳过 experience 自动检索, sessionID=ses_ee47841e9ffencmSH6ydtorcFP, parentID=ses_silent, title=Auto-Memory Extraction
+[2026/10/8 20:40:54.000] [WARN] state-sizes extractionStates=1 dreamStates=1 queryStates=1 feedbackStates=1
+[2026/10/8 20:40:54.000] [WARN] rootCache-size size=0
+[2026/10/8 20:40:54.000] [WARN] memory-cache-sizes memoryDirCache=1
+[2026/10/8 20:41:04.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:41:04.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:41:04.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:41:04.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:41:04.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:41:04.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:41:04.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:41:05.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:41:05.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-local-model-gateway.md
+[2026/10/8 20:41:05.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:41:05.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:41:05.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-local-model-gateway.md
+[2026/10/8 20:41:05.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:41:05.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:41:06.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:41:06.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-prefers-third-party-model.md
+[2026/10/8 20:41:06.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:41:06.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:41:06.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-prefers-third-party-model.md
+[2026/10/8 20:41:06.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:41:06.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:41:06.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:41:06.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-uses-cli-version.md
+[2026/10/8 20:41:06.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:41:06.000] [INFO] permission-ask checking permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:41:06.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\user-uses-cli-version.md
+[2026/10/8 20:41:06.000] [INFO] auto-allow memory write permission=external_directory_read patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:41:06.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:41:12.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:41:12.000] [INFO] [otel-trigger] initOtelDeps: starting to load OTel deps
+[2026/10/8 20:41:12.000] [INFO] [otel-trigger] initOtelDeps: loaded successfully, using real OpenTelemetry modules
+[2026/10/8 20:41:12.000] [INFO] [otel-trigger] initOtelDeps: starting to load OTel deps
+[2026/10/8 20:41:12.000] [INFO] [otel-trigger] initOtelDeps: loaded successfully, using real OpenTelemetry modules
+[2026/10/8 20:41:14.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:41:14.000] [INFO] [otel-trigger] initOtelDeps: starting to load OTel deps
+[2026/10/8 20:41:14.000] [INFO] [otel-trigger] initOtelDeps: loaded successfully, using real OpenTelemetry modules
+[2026/10/8 20:41:15.000] [INFO] [otel-trigger] initOtelDeps: starting to load OTel deps
+[2026/10/8 20:41:15.000] [INFO] [otel-trigger] initOtelDeps: loaded successfully, using real OpenTelemetry modules
+[2026/10/8 20:41:16.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:41:16.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:41:16.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:41:16.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:41:16.000] [DEBUG] ensureProjectConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:41:16.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:41:16.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:41:16.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:41:16.000] [INFO] setupIdleCollectRefineTimer: 设置闲时定时器, projectRoot=<PROJECT>, interval=300000ms
+[2026/10/8 20:41:16.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:41:17.000] [WARN] state-sizes extractionStates=0 dreamStates=0 queryStates=0 feedbackStates=0
+[2026/10/8 20:41:17.000] [WARN] rootCache-size size=0
+[2026/10/8 20:41:17.000] [WARN] memory-cache-sizes memoryDirCache=0
+[2026/10/8 20:41:17.000] [DEBUG] runSessionGc: 无可清理项, remainingSessions=0
+[2026/10/8 20:41:19.000] [DEBUG] runSessionGc: 无可清理项, remainingSessions=2
+[2026/10/8 20:41:22.000] [DEBUG] event: session.created, 创建会话状态, sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6
+[2026/10/8 20:41:22.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:41:22.000] [DEBUG] chat.message: 开始处理 chat.message 钩子
+[2026/10/8 20:41:22.000] [DEBUG] chat.message: sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6
+[2026/10/8 20:41:22.000] [DEBUG] chat.message: 已记录 session model, providerID=magpie, modelID=group/auto-deepseek-v4-1-flash
+[2026/10/8 20:41:22.000] [DEBUG] chat.message: hasUserText=true
+[2026/10/8 20:41:22.000] [DEBUG] chat.message: query=你好啊
+<system-reminder>重要提示：你必须使用简体中文回复，包括内部思考和推理过程也
+[2026/10/8 20:41:22.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:41:22.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:41:22.000] [DEBUG] feedbackStates.set key=<PROJECT>::ses_ee477a9d1ffeGQAemiejPCOGF6 size=1
+[2026/10/8 20:41:22.000] [DEBUG] queryStates.set key=<PROJECT>::ses_ee477a9d1ffeGQAemiejPCOGF6 size=1
+[2026/10/8 20:41:22.000] [INFO] chat.message processed (memory) sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6 textLength=3
+[2026/10/8 20:41:22.000] [DEBUG] snapshotMemoryContentFiles fileCount=6 totalKB=2 worktree=<PROJECT>
+[2026/10/8 20:41:22.000] [DEBUG] buildInitialUserMemoryContext worktree=<PROJECT> maxFiles=4 minScore=3
+[2026/10/8 20:41:22.000] [DEBUG] selectRelevantMemoriesWithStats headersCount=5 memoriesCount=0 candidateCount=5 query=你好啊 hitFiles=
+[2026/10/8 20:41:22.000] [INFO] memory.call triggered sessionID=<PROJECT> retrieval.hit_count=0 retrieval.status=empty
+[2026/10/8 20:41:22.000] [INFO] memory.call triggered sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6 retrieval.hit_count=0 retrieval.status=empty
+[2026/10/8 20:41:22.000] [INFO] wiki: readWikiRetrieval returned undefined, skipping injection
+[2026/10/8 20:41:22.000] [DEBUG] chat.message: 开始执行 maybeAutoInjectForFirstUserTurn
+[2026/10/8 20:41:22.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:41:22.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:41:22.000] [DEBUG] chat.message: maybeAutoInjectForFirstUserTurn 执行完成
+[2026/10/8 20:41:23.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6
+[2026/10/8 20:41:23.000] [DEBUG] experimental.chat.system.transform hook sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6
+[2026/10/8 20:41:27.000] [DEBUG] loadMemoryConfig: 找到状态文件, path=<TOOLHOME>\memory\status.json
+[2026/10/8 20:41:27.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6 messageCount=1
+[2026/10/8 20:41:27.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6
+[2026/10/8 20:41:27.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.status, sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6
+[2026/10/8 20:41:27.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6
+[2026/10/8 20:41:27.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6
+[2026/10/8 20:41:27.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6
+[2026/10/8 20:41:27.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:41:27.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee477a9d1ffeGQAemiejPCOGF6, history=未命中, managerDispatch=未命中, managerDispatches_keys=[]
+[2026/10/8 20:41:27.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee477a9d1ffeGQAemiejPCOGF6 未匹配任何manager记录，跳过session.idle处理，继续后续逻辑
+[2026/10/8 20:41:27.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.idle, sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6
+[2026/10/8 20:41:27.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6
+[2026/10/8 20:41:27.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6
+[2026/10/8 20:41:27.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6
+[2026/10/8 20:41:27.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:41:27.000] [INFO] session.idle event (memory) sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6
+[2026/10/8 20:41:27.000] [DEBUG] recordPendingExtraction worktree=<PROJECT> sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6 messageCount=2
+[2026/10/8 20:41:27.000] [DEBUG] extraction throttled, awaiting more userMessages sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6
+[2026/10/8 20:41:27.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:41:27.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6
+[2026/10/8 20:41:27.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:41:27.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6
+[2026/10/8 20:41:27.000] [DEBUG] dream-tracker.read rawBytes=54 worktree=<PROJECT>
+[2026/10/8 20:41:27.000] [DEBUG] dream-tracker.entries entryCount=1 worktree=<PROJECT>
+[2026/10/8 20:41:27.000] [DEBUG] dream-tracker.write bytes=105 entryCount=2 worktree=<PROJECT>
+[2026/10/8 20:41:27.000] [DEBUG] dreamStates.set worktree=<PROJECT> size=1
+[2026/10/8 20:41:27.000] [INFO] dream skipped: user memory locked sessionID=ses_ee477a9d1ffeGQAemiejPCOGF6 worktree=<PROJECT>
+[2026/10/8 20:41:31.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:41:31.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\reference-codearts-cli-ak-sk-auth.md
+[2026/10/8 20:41:31.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:41:31.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:41:31.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\reference-codearts-cli-ak-sk-auth.md
+[2026/10/8 20:41:31.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:41:31.000] [INFO] permission-ask checking permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\reference-codearts-cli-ak-sk-auth.md storageRoot=<PROJECT>
+[2026/10/8 20:41:31.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\reference-codearts-cli-ak-sk-auth.md
+[2026/10/8 20:41:31.000] [INFO] auto-allow memory write permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\reference-codearts-cli-ak-sk-auth.md
+[2026/10/8 20:41:31.000] [INFO] permission-ask checking permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\reference-codearts-cli-ak-sk-auth.md storageRoot=<PROJECT>
+[2026/10/8 20:41:31.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\reference-codearts-cli-ak-sk-auth.md
+[2026/10/8 20:41:31.000] [INFO] auto-allow memory write permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\reference-codearts-cli-ak-sk-auth.md
+[2026/10/8 20:41:31.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:41:37.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:41:37.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:41:37.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:41:37.000] [INFO] permission-ask checking permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\* storageRoot=<PROJECT>
+[2026/10/8 20:41:37.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:41:37.000] [INFO] auto-allow memory write permission=external_directory_write patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\*
+[2026/10/8 20:41:37.000] [INFO] permission-ask checking permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md storageRoot=<PROJECT>
+[2026/10/8 20:41:37.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:41:37.000] [INFO] auto-allow memory write permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:41:37.000] [INFO] permission-ask checking permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md storageRoot=<PROJECT>
+[2026/10/8 20:41:37.000] [INFO] permission-ask result touchesMemory=true cleanPatterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:41:37.000] [INFO] auto-allow memory write permission=edit patterns=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\MEMORY.md
+[2026/10/8 20:41:37.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:41:43.000] [INFO] extraction failed, checking for partial changes sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R changedFiles=reference-codearts-cli-ak-sk-auth.md,MEMORY.md worktree=<PROJECT>
+[2026/10/8 20:41:43.000] [DEBUG] extraction-state.read file=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\.extraction-state.json rawBytes=141
+[2026/10/8 20:41:43.000] [DEBUG] extraction-state.entries entryCount=1
+[2026/10/8 20:41:43.000] [DEBUG] extraction-state.write file=<TOOLHOME>\memory\D--OpenStudy-apps-fastapi-v2\.extraction-state.json bytes=141 entryCount=1
+[2026/10/8 20:41:43.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.status, sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.status, sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [INFO] session aborted, marked for skipping memory injection sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:41:43.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:41:43.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee47841e9ffencmSH6ydtorcFP, history=未命中, managerDispatch=未命中, managerDispatches_keys=[]
+[2026/10/8 20:41:43.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee47841e9ffencmSH6ydtorcFP 未匹配任何manager记录，跳过session.idle处理，继续后续逻辑
+[2026/10/8 20:41:43.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee47841e9ffencmSH6ydtorcFP, history=未命中, managerDispatch=未命中, managerDispatches_keys=[]
+[2026/10/8 20:41:43.000] [INFO] [SESSION-IDLE-ROUTE] idleSessionID=ses_ee47841e9ffencmSH6ydtorcFP 未匹配任何manager记录，跳过session.idle处理，继续后续逻辑
+[2026/10/8 20:41:43.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.idle, sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [DEBUG] [EVENT] 检测到 idle 事件，type=session.idle, sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [DEBUG] [EVENT] 调用 scheduleCollectAfterIdle，sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [INFO] scheduleCollectAfterIdle: [A1] 函数入口，sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [DEBUG] [EVENT] scheduleCollectAfterIdle 已调用，sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:41:43.000] [INFO] session.idle after abort, skipping memory extraction sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:41:43.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:41:43.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:41:43.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:41:43.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:41:43.000] [DEBUG] scheduleCollectAfterIdle: 经验收集未启用，跳过，sessionID=ses_ee47841e9ffencmSH6ydtorcFP
+[2026/10/8 20:41:43.000] [INFO] extractMemories completed (text.complete) sessionID=ses_ee4aa9eafffeaP68Fd7Eunnm5R
+[2026/10/8 20:42:33.000] [WARN] state-sizes extractionStates=0 dreamStates=1 queryStates=1 feedbackStates=1
+[2026/10/8 20:42:33.000] [WARN] rootCache-size size=0
+[2026/10/8 20:42:33.000] [WARN] memory-cache-sizes memoryDirCache=1
+[2026/10/8 20:45:25.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 20:45:25.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:45:25.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 20:45:25.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:45:25.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:45:25.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 20:50:25.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 20:50:25.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:50:25.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 20:50:25.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:50:25.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:50:25.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 20:55:25.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 20:55:25.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 20:55:25.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 20:55:25.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:55:25.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 20:55:25.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 21:00:25.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 21:00:25.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 21:00:25.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 21:00:25.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:00:25.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:00:25.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 21:05:25.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 21:05:25.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 21:05:25.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 21:05:25.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:05:25.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:05:25.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 21:10:25.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 21:10:25.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 21:10:25.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 21:10:25.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:10:25.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:10:25.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 21:15:25.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 21:15:25.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 21:15:25.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 21:15:25.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:15:25.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:15:25.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 21:20:25.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 21:20:25.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 21:20:25.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 21:20:25.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:20:25.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:20:25.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 21:25:25.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 21:25:25.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 21:25:25.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 21:25:25.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:25:25.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:25:25.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 21:30:25.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 21:30:25.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 21:30:25.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 21:30:25.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:30:25.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:30:25.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 21:35:25.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 21:35:25.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 21:35:25.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 21:35:25.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:35:25.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:35:25.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 21:40:25.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 21:40:25.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 21:40:25.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 21:40:25.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:40:25.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:40:25.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 21:45:25.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 21:45:25.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 21:45:25.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 21:45:25.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:45:25.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:45:25.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 21:50:25.000] [INFO] idleCollectRefineTimer: 定时器触发
+[2026/10/8 21:50:25.000] [INFO] getProjectConfigDirName: PLUGIN_ENV=hc, SCENARIO=codeartsdoer
+[2026/10/8 21:50:25.000] [INFO] idleCollectRefineTimer: 开始检测, effectiveProjectRoot=<PROJECT>, initProjectRoot=<PROJECT>
+[2026/10/8 21:50:25.000] [DEBUG] ensureExpConfig: 配置文件已存在, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:50:25.000] [DEBUG] loadExperienceConfig: 找到配置文件, path=<PROJECT>\.codeartsdoer\mem-exp-config.json
+[2026/10/8 21:50:25.000] [INFO] idleCollectRefineTimer: 经验收集开关关闭, 跳过, projectRoot=<PROJECT>
+[2026/10/8 21:51:42.000] [WARN] state-sizes extractionStates=1 dreamStates=1 queryStates=1 feedbackStates=1
+[2026/10/8 21:51:42.000] [WARN] rootCache-size size=0
+[2026/10/8 21:51:42.000] [WARN] memory-cache-sizes memoryDirCache=1
+[2026/10/8 21:51:42.000] [INFO] runSessionGc: sessions=1, queues=0, dispatches=0, timeouts=0, remainingSessions=0
