@@ -1484,16 +1484,31 @@ export function useQuestionPractice(
   // 新增：重置所有数据并重新加载题目（用于模式切换）
   // 保存当前答题状态到缓存
   // moduleType 参数可选，用于在模式切换时指定旧的 moduleType
-  function saveCurrentAnswerState(moduleType?: string): void {
+  /**
+   * 把当前作答状态写进会话内缓存
+   *
+   * @param moduleType 显式指定 key 里的模块名（不传则用 `props.moduleType`）
+   * @param bankIdOverride 显式指定 key 里的题库 id（不传则用 `props.bankId`）
+   *
+   * ⚠️ `bankIdOverride` 是为**切换题库**这个场景加的（2026-10-22）：
+   *    Vue 的 `watch(() => props.bankId, (newId, oldId) => ...)` 回调里，
+   *    `props.bankId` **已经是新题库**了。此时若无脑调用本函数，
+   *    就会把「旧题库的题目」写进「新题库的缓存 key」——
+   *    下一次进新题库，`restoreAnswerState()` 会把旧题目恢复出来，
+   *    等于把「切题库串题」这个 bug 换了个地方复现，而且更难查。
+   *    所以调用方必须把 `oldId` 明传进来。
+   */
+  function saveCurrentAnswerState(moduleType?: string, bankIdOverride?: number | string): void {
     // 如果 moduleType 显式传入且为 undefined，说明是路由过渡，不保存
     if (moduleType === undefined) {
       // 路由过渡状态，跳过保存
       return
     }
     const type = moduleType || props.moduleType
-    if (!props.bankId || !type || questions.value.length === 0) return
+    const bankId = bankIdOverride ?? props.bankId
+    if (!bankId || !type || questions.value.length === 0) return
 
-    const cacheKey = `${props.bankId}_${type}`
+    const cacheKey = `${bankId}_${type}`
     const state = {
       questions: [...questions.value],
       allQuestionsData: [...allQuestionsData.value],
@@ -1561,12 +1576,22 @@ export function useQuestionPractice(
   }
 
   // oldModuleType 参数可选，用于在模式切换时指定旧的 moduleType
-  function resetAndFetchQuestions(oldModuleType?: string): void {
+  /**
+   * 保存旧状态 → 清空 → 尝试从缓存恢复 → 没有缓存就重新拉题
+   *
+   * @param oldModuleType 旧模块名（切换模块时传，用于把旧状态的 key 写对）
+   * @param oldBankId 旧题库 id（**切换题库时必传**，理由见 `saveCurrentAnswerState` 的注释）
+   */
+  function resetAndFetchQuestions(oldModuleType?: string, oldBankId?: number | string): void {
     // 调试日志
     debugResetAndFetch(props.moduleType, props.bankId)
 
-    // 先保存当前答题状态（使用旧的 moduleType 作为 key）
-    saveCurrentAnswerState(oldModuleType)
+    // 先保存当前答题状态（使用旧的 moduleType / bankId 作为 key）
+    if (oldBankId !== undefined) {
+      saveCurrentAnswerState(oldModuleType, oldBankId)
+    } else {
+      saveCurrentAnswerState(oldModuleType)
+    }
 
     // 同步最新的设置（模式切换后 moduleSettings 会变化）
     const settings = store.getModuleSettings(props.moduleType)
