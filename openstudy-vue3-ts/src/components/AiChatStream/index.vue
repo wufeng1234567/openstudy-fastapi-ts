@@ -981,6 +981,18 @@ defineExpose({
   /* 用 flex 列承载消息：空状态（hero）可以靠 `margin: auto` 在可视区垂直居中 */
   display: flex;
   flex-direction: column;
+  /*
+   * 顶部内边距的"可变量"（2026-10-22）
+   * ------------------------------------------------------------------
+   * 工具卡片的吸顶折叠条要贴到**容器真正的顶边**，但 `position: sticky`
+   * 的 `top: 0` 是相对 padding box 算的，会停在上面这 24px 之下 ——
+   * 滚动时那 24px 透出下层内容，看起来就是一条明显间隙（用户报的 bug）。
+   *
+   * 把 padding-top 的值同时暴露成变量，吸顶条用
+   * `top: calc(-1 * var(--os-chat-pad-top))` 就能顶到 border box 边缘。
+   * 这样以后改 padding 只需改这一行，不用去追着改卡片的 top 值。
+   */
+  --os-chat-pad-top: 24px;
 }
 
 /* 消息不参与压缩：内容超出时只让这一层滚动，而不是把每条消息压扁 */

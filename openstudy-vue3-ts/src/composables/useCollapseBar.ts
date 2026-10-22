@@ -57,12 +57,28 @@ export interface CollapseBarOptions {
 /**
  * 吸顶条的公共样式
  *
+ * ⚠️ `top` 必须抵消滚动容器的 `padding-top`（2026-10-22 修的第二个 bug）
+ *
+ * `sticky` 的 `top: 0` 是相对**滚动容器的 padding box** 计算的，
+ * 不是 border box。消息流 `.chat-messages` 有 `padding: 24px 20px 8px`，
+ * 于是 `top: 0` 让吸顶条停在距容器顶边 24px 处 ——
+ * 滚动时那 24px 会**透出下层正在滚过的内容**，看起来就是"上面有条明显间隙"
+ * （用户截图里那一条）。
+ *
+ * 实测证据（修复前的探针数据）：
+ *   `barTop 76` / `wrapTop 52` / `wrapPadTop 24px` → `76 = 52 + 24`。
+ *
+ * 现在用负值把它顶到容器真正的顶边：
+ *   `top: calc(-1 * var(--os-chat-pad-top, 0px))`
+ * 变量由消息流容器提供（见 `AiChatStream` 的 `.chat-messages`）。
+ * 默认 `0px` —— 在别的滚动容器里用这个 composable 时行为不变。
+ *
  * `z-index` 取 2：只需压住卡片内部内容。
  * 设太大会盖住消息流右上角的复制按钮与外层的轮次导航。
  */
 export const COLLAPSE_BAR_STYLE: Record<string, string> = {
   position: 'sticky',
-  top: '0',
+  top: 'calc(-1 * var(--os-chat-pad-top, 0px))',
   zIndex: '2'
 }
 

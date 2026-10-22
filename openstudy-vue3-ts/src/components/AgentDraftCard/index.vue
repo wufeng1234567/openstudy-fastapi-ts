@@ -110,8 +110,23 @@
          "最近的滚动祖先"，放进任何嵌套容器都会被那个容器的高度限制住。
 
       ⚠️ 折叠时**只藏内容、不藏这一条**：否则收起后按钮消失、再也展不开。
+
+      ⚠️⚠️ 收起后**必须取消 sticky**（2026-10-22 修的第二个 bug）
+        sticky 只能在"包含块的可见范围内"滑动。卡片收起后总高只剩这一条
+        （约 46px），等于**没有可滑动的余量** —— 一旦滚过卡片上沿，
+        浏览器就把这条顶到容器底部，表现为「整条被往下推、飘在内容中间」
+        （用户图 2 正是这个现象）。
+
+        所以收起态用普通文档流（`position: static`）：它就正常待在原位，
+        跟着内容一起滚走，不会浮在别的内容上面。
+        收起后本来就不需要吸顶 —— 它的作用已经完成了（把卡片压缩成一行）。
     -->
-    <div v-if="shouldOfferCollapse" class="ad-sticky" :style="COLLAPSE_BAR_STYLE">
+    <div
+      v-if="shouldOfferCollapse"
+      class="ad-sticky"
+      :class="{ 'is-collapsed': collapsed }"
+      :style="collapsed ? undefined : COLLAPSE_BAR_STYLE"
+    >
       <span class="ad-sticky-icon" :class="`is-${status}`">
         <OsIcon v-if="status === 'running'" name="pen-line" :size="13" />
         <OsIcon v-else-if="status === 'ok'" name="check" :size="13" />
@@ -693,8 +708,20 @@ function onRegenerate() {
    */
 }
 
-.agent-draft.has-sticky > .ad-sticky {
+.agent-draft.has-sticky > .ad-sticky:not(.is-collapsed) {
   margin-bottom: -12px;
+}
+
+/*
+ * 收起态还需要把**卡片本身的** `gap` 也关掉
+ *
+ * 收起后卡片只有吸顶条 + 动作区两个子元素，`gap: 12px` 会在它们之间留 12px。
+ * 动作区已经在 `.ad-actions--collapsed` 里做了 `margin-top: -4px`，
+ * 这里再收一下，让"一行标题 + 一排按钮"看起来是一体的。
+ */
+.agent-draft.has-sticky:has(> .ad-sticky.is-collapsed) {
+  gap: 8px;
+  padding-bottom: 10px;
 }
 
 .agent-draft.is-ok {
@@ -747,6 +774,23 @@ function onRegenerate() {
   width: 16px;
   height: 16px;
   color: #6366f1;
+}
+
+/*
+ * 收起态：取消 sticky（见模板里的说明）
+ * ----------------------------------------------------------------------------
+ * 收起后卡片只剩这一条，没有滑动余量，sticky 会把整条顶到容器底部、
+ * 看起来"被往下推"。这里退回普通文档流，它跟着内容正常滚走。
+ *
+ * 同时四角全圆 + 去掉底部分隔线：此时它就是卡片的**全部**内容，
+ * 再留着 `border-radius: 9px 9px 0 0` 会让下方两个角是方的、很别扭。
+ */
+.ad-sticky.is-collapsed {
+  position: static;
+  border-bottom: none;
+  border-radius: 9px;
+  /* 收起态没有"下面的内容"，不需要用负 margin 吃 gap */
+  margin-bottom: 0;
 }
 
 .ad-sticky-icon.is-ok {

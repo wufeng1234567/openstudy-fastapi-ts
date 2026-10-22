@@ -39,7 +39,12 @@
       ⚠️ **动作区（取消 / 确认）在折叠时仍然保留**：用户收起是为了不被挡住，
          不是为了放弃这次操作；把确认按钮一起藏起来是反人类的。
     -->
-    <div v-if="shouldOfferCollapse" class="ac-sticky" :style="COLLAPSE_BAR_STYLE">
+    <div
+      v-if="shouldOfferCollapse"
+      class="ac-sticky"
+      :class="{ 'is-collapsed': collapsed }"
+      :style="collapsed ? undefined : COLLAPSE_BAR_STYLE"
+    >
       <span class="ac-sticky-icon" :class="`is-${status}`">
         <OsIcon v-if="status === 'running'" :name="destructive ? 'alert' : 'circle-help'" :size="13" />
         <OsIcon v-else-if="status === 'ok'" name="check" :size="13" />
@@ -652,6 +657,29 @@ const previewSummary = computed(() => {
  */
 .agent-confirm.has-sticky > .ac-sticky {
   margin-bottom: 10px;
+}
+
+/*
+ * 收起态：取消 sticky（2026-10-22 修的第二个 bug）
+ * ----------------------------------------------------------------------------
+ * sticky 只能在包含块的可见范围内滑动。卡片收起后总高只剩这一条（约 46px），
+ * 等于没有滑动余量 —— 一旦滚过卡片上沿，浏览器把这条顶到容器底部，
+ * 表现为「整条被往下推、飘在别的内容中间」。
+ *
+ * 收起后本来就不需要吸顶（它的作用已经完成：把卡片压成一行），
+ * 所以退回普通文档流，跟着内容正常滚走。
+ * 同时四角全圆 + 去掉底部分隔线 —— 此时它就是卡片的全部内容。
+ */
+.ac-sticky.is-collapsed {
+  position: static;
+  border-bottom: none;
+  border-radius: 9px;
+  margin-bottom: 0;
+}
+
+/* 收起态下动作区与吸顶条之间不要留太大空隙 */
+.agent-confirm.has-sticky > .ac-sticky.is-collapsed {
+  margin-bottom: 8px;
 }
 
 .ac-sticky-icon {
