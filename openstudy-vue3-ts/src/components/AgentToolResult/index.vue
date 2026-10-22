@@ -96,10 +96,6 @@
           <OsIcon name="book-open" :size="13" />
           <span>立即开始刷题</span>
         </button>
-        <button type="button" class="at-jump__btn" @click="goToBank">
-          <span>查看题库</span>
-          <OsIcon name="arrow-right" :size="12" />
-        </button>
       </div>
     </div>
 
