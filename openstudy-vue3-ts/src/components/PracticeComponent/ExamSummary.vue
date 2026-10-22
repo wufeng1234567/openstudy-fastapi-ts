@@ -23,27 +23,33 @@
       </div>
       <div class="head-actions">
         <!--
-          两个按钮的语义必须分开（2026-10-22 修的 bug）
+          顶部动作按钮（2026-10-22 定稿）
           ==================================================================
-          原来这里只有一个「再考一次」，绑的是父组件的 `back-to-setup`。
-          而父组件那个处理函数里带了一个分支：
+          这里踩过两次坑，改之前先读完：
 
-              if (historyRecord.value) { mockPhase = 'history'; return }
+          坑一：原来只有一个「再考一次」，绑的父组件处理函数里带了一条
+                `if (historyRecord.value) → 回历史列表` 的分支，把「再考一次」
+                也一起劫持了 —— 用户从考试记录点进详情、再点「再考一次」，
+                期望重考，实际被送回列表，看起来就是"点了再考一次跳到考试记录页"。
 
-          本意是"从历史记录点进来的，返回时回到历史列表"。但这条分支把
-          **「再考一次」**也一起劫持了 —— 用户从考试记录里查看某场详情后
-          点「再考一次」，期望的是重新开考，实际却被送回考试记录列表，
-          屏幕上只剩一堆历史卡片，看起来就像"点了再考一次跳到考试记录页"。
+          坑二：修坑一时把按钮改成**互斥**的（历史回看只给「返回记录」），
+                结果历史详情里再也找不到「再考一次」，用户想重考同一场
+                只能自己记住配置回去重新设一遍 —— 反而更难用。
 
-          修法：按来源渲染不同的按钮，让文案和行为严格一致：
-            · 回看历史（readonly）→ 「返回记录」，回历史列表
-            · 刚考完（live）      → 「再考一次」，真的重新开考
+          最终口径（用户明确要求「方便用户使用」）：
+            · 历史回看要**保留「再考一次」**，让用户把同一套卷子再考一遍；
+            · 重考时**沿用它自己的配置**（题型、每题分值、时长、及格分、
+              选项乱序、多选判分规则全部照旧），不要用户重新设；
+            · 同时保留「返回记录」，让用户能退回列表，不必先离开再重进。
+
+          所以现在是：返回记录（仅历史回看）+ 再考一次（两种来源都有）+ 离开。
+          两个动作各有各的按钮，互不覆盖。
         -->
         <button v-if="readonly" class="ghost-btn" type="button" @click="$emit('back-to-history')">
           <el-icon><Back /></el-icon>
           <span>返回记录</span>
         </button>
-        <button v-else class="ghost-btn" type="button" @click="$emit('retry')">
+        <button class="ghost-btn ghost-btn--primary" type="button" @click="$emit('retry')">
           <el-icon><Refresh /></el-icon>
           <span>再考一次</span>
         </button>
@@ -520,6 +526,26 @@ onBeforeUnmount(() => {
 .ghost-btn:hover {
   background: var(--os-bg-subtle, #f9fafb);
   border-color: var(--os-border-strong, #d1d5db);
+}
+
+/*
+ * 「再考一次」用主色描边强调（2026-10-22）
+ *
+ * 一排三个按钮里，它是最主要的下一步动作；「返回记录」和「离开」
+ * 都是"退出当前视图"。视觉上要给个主次，否则三个长得一模一样，
+ * 用户得读一遍文字才知道该点哪个。
+ * 只用描边+主色文字，不加实心底色 —— 结果页已经很满，再来一块
+ * 实心主色块会抢走得分环的注意力。
+ */
+.ghost-btn--primary {
+  border-color: var(--os-primary, #2563eb);
+  color: var(--os-primary, #2563eb);
+}
+
+.ghost-btn--primary:hover {
+  background: var(--os-primary, #2563eb);
+  border-color: var(--os-primary, #2563eb);
+  color: #fff;
 }
 
 /* ---------- 成绩主卡 ---------- */

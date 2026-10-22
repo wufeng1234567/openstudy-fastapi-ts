@@ -62,7 +62,7 @@
       :record="currentExamRecord"
       :readonly="!!historyRecord"
       @close="$emit('close')"
-      @retry="handleMockAgain"
+      @retry="handleMockRetryFromSummary"
       @back-to-history="handleMockBackToHistory" />
 
     <!--
@@ -1736,8 +1736,34 @@ function handleMockSubmit() {
   mockPhase.value = 'summary'
 }
 
-/** 从总结页「再考一次」 */
-function handleMockAgain() {
+/**
+ * 从总结页点「再考一次」
+ *
+ * @param preset 要沿用的配置。不传就按"本场快照 / store 当前配置"兜底。
+ *
+ * 两种来源的区别（2026-10-22 用户明确要求「方便用户使用」）：
+ *
+ *   · 刚交完卷 → 沿用这一场的配置 `activeMockConfig`，天然一致。
+ *   · 从考试记录回看 → 沿用那条记录的 `config` 快照。**不能**读 store 里
+ *     当前的配置：用户可能后来改过（那次考的是 5 道单选×2 分，现在设置里
+ *     是 20 道×2 分），直接拿 store 就会"重考"出一张完全不同的卷子，
+ *     与按钮叫「再考一次」的承诺不符。
+ *
+ * ⚠️ 无论哪种来源，都要把这份配置**写回 store**：
+ *   配置页是从 `store.getMockExamConfig()` 读的。不写回的话，用户重考完
+ *   再回配置页，看到的是改之前的旧配置 —— 与刚才实际考的卷子对不上。
+ */
+function handleMockAgain(preset?: MockExamConfig) {
+  /*
+   * 取配置的优先级：
+   *   显式传入的 preset > 本场冻结的快照 > store 当前配置
+   *
+   * 中间那层 `activeMockConfig` 是"刚交完卷"这一路的关键 ——
+   * 即使 store 被改过，重考仍与本场保持一致。
+   */
+  const source = preset || activeMockConfig.value || store.getMockExamConfig()
+  const snapshot: MockExamConfig = JSON.parse(JSON.stringify(source))
+
   currentExamRecord.value = null
   /*
    * ⚠️ `historyRecord` 必须一起清（2026-10-22）。
@@ -1749,15 +1775,58 @@ function handleMockAgain() {
   historyRecord.value = null
   showExamResult.value = false
   totalScore.value = 0
-  mockPhase.value = 'setup'
-  loadMockAvailability()
+
+  // 写回 store：配置页要能反映"我刚才考的就是这套"
+  store.saveMockExamConfig(snapshot)
+
+  /*
+   * 直接开考，不停在配置页。
+   *
+   * 按钮叫「再考一次」，预期就是立刻开始第二遍；配置已经定好，
+   * 再让用户看一眼表单、多点一次「开始考试」，纯属多一步。
+   *
+   * 想改配置再考的用户仍有出口：点「离开」回题库重进即可。
+   */
+  handleMockStart(snapshot)
 }
 
-/** 从历史记录打开一条 */
+/** 从历史记录打开一条（回看） */
 function handleOpenHistoryRecord(r: MockExamRecord) {
   historyRecord.value = r
   currentExamRecord.value = r
   mockPhase.value = 'summary'
+}
+
+/**
+ * 总结页点「再考一次」——按来源决定沿用哪份配置
+ *
+ * 为什么要在这里分流，而不是让 `ExamSummary` 自己判断：
+ * 组件只负责"用户点了要重考"，**用哪份配置是业务知识**，
+ * 应该由持有记录的父组件决定。组件里再判断一次来源，
+ * 等于把同一套规则分散到两个文件，日后必然改漏一边。
+ */
+function handleMockRetryFromSummary() {
+  /*
+   * 历史回看：必须用**那条记录自己的 config 快照**。
+   *
+   * 这是本次需求的核心 —— 用户从考试记录里点「再考一次」，
+   * 期望的是"把那一场原样再考一遍"：同样的题型、同样的每题分值、
+   * 同样的时长和及格线。如果用 store 里当前配置，而用户在这之后
+   * 又调过设置，重考出来的就是另一张卷子，承诺落空。
+   *
+   * 记录里没有 config（更早版本写的旧数据）时退回 store 配置，
+   * 不因为老数据缺字段就整个功能不可用。
+   */
+  if (historyRecord.value) {
+    const snap = historyRecord.value.config
+    if (snap) {
+      handleMockAgain(snap)
+      return
+    }
+    // 旧记录没有 config 快照 → 降级为当前配置，并让用户知道
+    proxy.$modal.msgInfo('这条记录没有保存当时的考试配置，将按当前设置重新组卷')
+  }
+  handleMockAgain()
 }
 
 /** 历史回看时点「返回记录」→ 回考试记录列表 */
