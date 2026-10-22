@@ -14,6 +14,52 @@ NProgress.configure({ showSpinner: false });
 
 const whiteList: string[] = ['/', '/login', '/register', '/front/agent/chat', '/front/courses', '/front/resources'];
 
+/**
+ * 后台管理路径前缀（2026-10-22）
+ *
+ * 为什么需要这份名单：
+ *   这些后台路由在 `router/index.ts` 里是**静态注册**的（`constantRoutes`），
+ *   意味着「路由存在」这件事本身就等于「任何人都能访问」。之前只拦了 `/index/`，
+ *   于是演示用户 user1 登录后直接敲 `#/system/comment` 就能进后台页面
+ *   （页面里能显示，只是接口偶尔返 403 —— 这就是「很奇怪，现在又不会了」的来源）。
+ *
+ * 现在两层防护：
+ *   1. 这里——非 admin 访问任何后台路径，直接重定向回前台；
+ *   2. 后端——`/system/**` 接口统一挂 `require_admin`（core/security.py）。
+ *   前端这层是体验（不让用户看到空壳页面），后端那层才是安全边界。
+ */
+const ADMIN_PATH_PREFIXES = [
+  '/system',
+  '/monitor',
+  '/questionBank',
+  '/questionMain',
+  '/questionError',
+  '/questionMarked',
+  '/favoriteBank',
+  '/favoriteQuestion',
+  '/wordBooks',
+  '/words',
+  '/dictation',
+  '/noteCategory',
+  '/carousel',
+  '/sensitiveWord',
+  '/message-mgr',
+  '/notice-mgr',
+  '/index'
+];
+
+/** 当前路径是否是后台管理页面 */
+function isAdminPath(path: string): boolean {
+  return ADMIN_PATH_PREFIXES.some(
+    (prefix) => path === prefix || path.startsWith(prefix + '/')
+  );
+}
+
+/** 当前用户是否是管理员 */
+function isAdminUser(): boolean {
+  return useUserStore().roles.includes('admin')
+}
+
 /** 当前路由是否标记为必须登录（子路由会继承父级 matched meta） */
 function needsLogin(to: any): boolean {
   return (to.matched || []).some((record: any) => record.meta && record.meta.requiresLogin)
@@ -92,7 +138,7 @@ router.beforeEach((to, from, next) => {
           if (blockGuestToLogin(to, next)) return
 
           // 获取用户信息后，检查是否有权限访问后台页面
-          if (to.path.startsWith('/index/') && !userStore.roles.includes('admin')) {
+          if (isAdminPath(to.path) && !isAdminUser()) {
             next({ path: '/front/agent/chat' })
             NProgress.done()
             return
@@ -121,7 +167,7 @@ router.beforeEach((to, from, next) => {
         if (blockGuestToLogin(to, next)) return
 
         // 已有用户信息，检查是否有权限访问后台页面
-        if (to.path.startsWith('/index/') && !userStore.roles.includes('admin')) {
+        if (isAdminPath(to.path) && !isAdminUser()) {
           next({ path: '/front/agent/chat' })
           NProgress.done()
           return

@@ -250,3 +250,42 @@ async def require_perms(*required_perms: str):
                 )
         return current_user
     return perm_checker
+
+
+# ============================================================
+# 后台管理接口的统一守卫（2026-10-22）
+# ============================================================
+#
+# 为什么要单独加一个：
+#   后台 `/system/**` 下有 20 多个接口原本**只校验了「登录」，没校验「是不是管理员」**。
+#   实测：演示用户 user1 直接 GET /system/user/list 能拿到全部用户列表，
+#   PUT /system/config 能改系统参数 —— 这是实打实的水平越权。
+#
+# 为什么不复用上面的 require_roles：
+#   那个抛的是 HTTPException(403)，而本项目前端统一按 `body.code` 判断
+#   （HTTP 200 + code=403）。抛 HTTPException 会让前端走到 axios 的 catch 分支，
+#   提示文案不可控。这里按项目既有风格返回 200 + code=403。
+#
+# 用法：
+#   @router.get("/system/config/list")
+#   async def list_configs(..., current_user: dict = Depends(require_admin)):
+#       ...
+async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
+    """要求管理员身份；非管理员抛 403（全局处理器会转成 `200 + code=403`）。
+
+    说明：本项目 `core/exceptions.py: http_exception_handler` 已把
+    `HTTPException(403)` 统一转成 `{"code": 403, "msg": ...}` 且 HTTP 状态为 200，
+    与前端 `code !== 200` 的判断完全兼容。所以这里直接抛即可，
+    不要在依赖里 return error(...) —— 那样 FastAPI 会把它当成正常返回值序列化，
+    调用方拿到的是「成功响应里塞了个 error 对象」，反而更危险。
+
+    ⚠️ 这是后台管理接口的**唯一入口守卫**，新增 `/system/**`、`/monitor/**`
+    接口时必须挂上，否则普通登录用户可直接调用。
+    """
+    if not is_admin_user(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="权限不足，仅管理员可访问",
+        )
+    return current_user
+

@@ -9,7 +9,7 @@ from typing import Optional
 from pydantic import BaseModel
 from datetime import datetime
 from app.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_admin
 from app.core.response import success, paginate, error
 from app.models.config import SysConfig
 from app.models.question import QuestionMain
@@ -55,7 +55,7 @@ async def list_configs(
     pageNum: int = Query(1, ge=1),
     pageSize: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """查询参数配置列表"""
     query = select(SysConfig)
@@ -83,7 +83,7 @@ async def list_configs(
 async def get_config(
     config_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """查询参数配置详情"""
     query = select(SysConfig).where(SysConfig.config_id == config_id)
@@ -100,8 +100,14 @@ async def get_config(
 async def get_config_by_key(
     config_key: str,
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin),
 ):
-    """根据键名查询参数配置"""
+    """根据键名查询参数配置
+
+    ⚠️ 必须管理员：`sys_config` 里有 JWT 有效期、演示模式开关、限流阈值等
+    运行参数，暴露给匿名请求等于把系统配置单公开。
+    （2026-10-22 审计发现原本连登录都不校验。）
+    """
     query = select(SysConfig).where(SysConfig.config_key == config_key)
     result = await db.execute(query)
     cfg = result.scalar_one_or_none()
@@ -116,7 +122,7 @@ async def get_config_by_key(
 async def create_config(
     data: ConfigCreateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """新增参数配置（幂等：若 configKey 已存在则直接返回已有项）"""
     existing = (await db.execute(
@@ -144,7 +150,7 @@ async def create_config(
 async def update_config(
     data: ConfigUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """修改参数配置"""
     query = select(SysConfig).where(SysConfig.config_id == data.configId)
@@ -172,7 +178,7 @@ async def update_config(
 @router.post("/system/user/export")
 async def export_users(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """导出用户列表为 Excel"""
     from app.models.user import SysUser
@@ -260,7 +266,7 @@ async def list_dict_types(
     pageNum: int = Query(1, ge=1),
     pageSize: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """查询字典类型列表"""
     filtered = _DICT_TYPES
@@ -276,7 +282,7 @@ async def list_dict_types(
 @router.get("/system/dict/type/optionselect")
 async def dict_type_options(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """字典类型选项"""
     return success(_DICT_TYPES)
@@ -289,7 +295,7 @@ async def list_dict_data(
     pageNum: int = Query(1, ge=1),
     pageSize: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """查询字典数据列表"""
     all_items = []
@@ -335,7 +341,7 @@ class DictDataUpdate(BaseModel):
 @router.post("/system/dict/data")
 async def create_dict_data(
     body: DictDataCreate,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """新增字典数据"""
     if body.dictType not in _DICT_DATA:
@@ -352,7 +358,7 @@ async def create_dict_data(
 @router.put("/system/dict/data")
 async def update_dict_data(
     body: DictDataUpdate,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """修改字典数据"""
     items = _DICT_DATA.get(body.dictType)
@@ -373,7 +379,7 @@ async def delete_dict_data(
     dict_code: int,
     dictType: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """删除字典数据（级联删除题目）"""
     if not dictType:
@@ -433,7 +439,7 @@ def _build_menu_treeselect(menus, parent_id=0):
 async def list_menus(
     menuName: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """查询菜单列表（扁平）"""
     from app.models.menu import SysMenu
@@ -449,7 +455,7 @@ async def list_menus(
 @router.get("/system/menu/treeselect")
 async def menu_tree(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """获取菜单树"""
     from app.models.menu import SysMenu
@@ -463,7 +469,7 @@ async def menu_tree(
 async def role_menu_tree(
     role_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """获取角色菜单树"""
     from app.models.menu import SysMenu
@@ -507,7 +513,7 @@ async def list_roles(
     pageNum: int = Query(1, ge=1),
     pageSize: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """查询角色列表"""
     from app.models.role import SysRole
@@ -553,7 +559,7 @@ async def list_depts(
     deptName: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """查询部门列表"""
     from app.models.user import SysDept
@@ -573,7 +579,7 @@ async def list_depts(
 async def list_depts_exclude(
     dept_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """查询部门列表（排除指定部门）"""
     from app.models.user import SysDept

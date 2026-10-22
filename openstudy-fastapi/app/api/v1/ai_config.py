@@ -566,6 +566,38 @@ async def fetch_provider_models(
     if not api_key:
         return error("请先填写 API Key")
 
+    # ⚠️ SSRF 防护（2026-10-22）：base_url 由前端传入，若不校验，
+    # 任何登录用户都能让服务端去请求内网地址（如 http://127.0.0.1:6379、
+    # http://169.254.169.254/ 云元数据），用响应内容探测内网。
+    # 这里只做「不能指向本机/内网」的最小校验，不限制具体域名
+    # （用户确实可能用自己的中转站）。
+    from urllib.parse import urlparse
+
+    parsed = urlparse(base_url)
+    if parsed.scheme not in ("http", "https"):
+        return error("API 地址必须以 http:// 或 https:// 开头")
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return error("API 地址缺少主机名")
+    blocked = (
+        host in ("localhost", "127.0.0.1", "0.0.0.0", "::1")
+        or host.startswith("127.")
+        or host.startswith("10.")
+        or host.startswith("192.168.")
+        or host.startswith("169.254.")
+        or host.endswith(".local")
+        or host.endswith(".internal")
+    )
+    if host.startswith("172."):
+        try:
+            second = int(host.split(".")[1])
+            if 16 <= second <= 31:
+                blocked = True
+        except Exception:
+            pass
+    if blocked:
+        return error("不允许请求本机或内网地址")
+
     url = base_url.rstrip("/") + "/models"
     try:
         timeout = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0)

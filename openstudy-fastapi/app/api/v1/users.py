@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from datetime import datetime
 from app.database import get_db
-from app.core.security import get_current_user, hash_password, verify_password
+from app.core.security import get_current_user, hash_password, verify_password, require_admin
 from app.core.response import success, paginate, error
 from app.repositories.user_repo import UserRepository
 from app.schemas.user import UserCreate, UserUpdate, ResetPasswordRequest, UserStatusUpdate
@@ -117,7 +117,7 @@ async def list_users(
     pageNum: int = Query(1, ge=1),
     pageSize: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """查询用户列表"""
     user_repo = UserRepository(db)
@@ -187,7 +187,7 @@ async def get_profile(
 @router.get("/deptTree")
 async def dept_tree(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """获取部门树（表单归属部门下拉用）"""
     query = (
@@ -217,7 +217,7 @@ async def dept_tree(
 @router.get("/")
 async def get_user_form_options(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """新增用户时获取角色下拉等表单选项（兼容若依 GET /system/user/ 约定）"""
     role_options = await _list_role_options(db)
@@ -229,7 +229,7 @@ async def get_user_form_options(
 async def get_user(
     user_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """查询用户详情"""
     user_repo = UserRepository(db)
@@ -247,7 +247,7 @@ async def get_user(
 async def create_user(
     data: UserCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """创建用户"""
     user_repo = UserRepository(db)
@@ -282,7 +282,7 @@ async def create_user(
 async def update_user(
     data: UserUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """更新用户"""
     user_repo = UserRepository(db)
@@ -321,7 +321,7 @@ async def update_user(
 async def delete_users(
     user_ids: str,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """删除用户（逻辑删除）"""
     ids = [int(id) for id in user_ids.split(",")]
@@ -337,7 +337,7 @@ async def delete_users(
 async def reset_password(
     data: ResetPasswordRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """重置密码"""
     user_repo = UserRepository(db)
@@ -432,7 +432,7 @@ async def update_avatar(
 async def change_status(
     data: UserStatusUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """修改用户状态（若依前端为 PUT + JSON body）"""
     user_repo = UserRepository(db)
@@ -458,7 +458,7 @@ async def auth_role(
     userId: int = Query(...),
     roleIds: str = Query(""),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """授权角色（同时兼容 PUT/POST，前端以 query 传 userId/roleIds）"""
     user_repo = UserRepository(db)
@@ -476,7 +476,7 @@ async def auth_role(
 async def get_auth_role(
     user_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """获取用户角色授权信息（返回全部角色，已授权角色 flag=true）"""
     user_repo = UserRepository(db)

@@ -13,6 +13,7 @@ from app.core.security import (
     hash_password,
     verify_password,
     get_current_user,
+    is_admin_user,
     remove_token,
 )
 from app.core.response import success, error
@@ -296,8 +297,20 @@ async def get_info(current_user: dict = Depends(get_current_user), db: AsyncSess
 
 @router.get("/getRouters")
 async def get_routers(current_user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """获取路由菜单"""
-    # 返回基础路由结构
+    """获取路由菜单
+
+    ⚠️ 2026-10-22 修复：原来这里**硬编码返回 System / Monitor 两个后台菜单，
+    完全不看当前用户是谁**。结果是任何登录用户（包括演示用户 user1）
+    登录后侧边栏都能看到「系统管理」「系统监控」，点进去还能调用后台接口。
+
+    现在按角色返回：
+      · 管理员 → 后台菜单（系统管理 + 系统监控）
+      · 非管理员 → 空数组（前端不会渲染任何后台入口）
+    """
+    if not is_admin_user(current_user):
+        # 非管理员没有任何后台菜单。前台导航是前端静态路由，不依赖这里。
+        return success([])
+
     routers = [
         {
             "name": "System",
