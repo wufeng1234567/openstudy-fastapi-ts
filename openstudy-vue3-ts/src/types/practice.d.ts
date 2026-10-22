@@ -50,14 +50,55 @@ export interface MockExamConfig {
   partialRatio: number
 }
 
-/** 单题在某场考试里的判分明细（历史记录与总结页共用） */
+/**
+ * 组合题（阅读理解 / 完形填空）的子题明细
+ *
+ * 组合题的答案是"每道子题各答一个"，不是一个大答案。
+ * 不把子题存进历史记录的话，回看时只能看到一个笼统的对错，
+ * 用户根本不知道是哪一问错了。
+ */
+export interface MockExamSubItemDetail {
+  /** 子题序号（从 1 开始） */
+  index: number
+  type: QuestionType
+  /** 子题题干 */
+  question: string
+  /** 子题选项（单选/多选才有） */
+  options?: any[]
+  userAnswer: any
+  correctAnswer: any
+}
+
+/**
+ * 单题在某场考试里的判分明细（历史记录与总结页共用）
+ *
+ * ⚠️ 这里**必须存下选项和子题**，不能只存一个题干字符串（2026-10-22 修的 bug）。
+ *
+ * 原来的实现只存 `stem`（`plainStem()` 处理过的纯文本、截断 160 字），
+ * 结果错题明细里：
+ *   · 选择题只显示「你的答案 A / 正确答案 C」，**看不到 A 和 C 分别是什么**，
+ *     用户必须自己回忆原题 —— 这条明细基本失去复盘价值；
+ *   · 组合题只显示一个大题干，子题和子题答案全丢了；
+ *   · 题干被截断到 160 字，稍长的题读到一半就没了。
+ *
+ * 所以现在把渲染需要的原始信息一并存下来（见 `toMockItemDetail`）。
+ * 存储成本上升是值得的：一条记录从 ~20KB 涨到约 ~30KB，
+ * 而上限 50 条仍在 localStorage 配额内。
+ */
 export interface MockExamItemDetail {
   questionId: number | string
   /** 序号（从 1 开始，进考场时的顺序） */
   index: number
   type: QuestionType
-  /** 题干纯文本片段（用于列表展示） */
+  /** 题干（完整纯文本，不再截断；用于列表与回看） */
   stem: string
+  /** 选项（单选/多选/判断题；字符串数组，顺序即 A/B/C/D） */
+  options?: any[]
+  /** 组合题的引导材料（阅读原文等），无则为空 */
+  mainContent?: string
+  /** 组合题的子题明细 */
+  subItems?: MockExamSubItemDetail[]
+  /** 用户答案与标准答案（数字下标或字符串，渲染时按题型格式化） */
   userAnswer: any
   correctAnswer: any
   isCorrect: boolean

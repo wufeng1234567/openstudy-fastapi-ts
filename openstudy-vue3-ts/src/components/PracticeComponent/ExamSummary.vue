@@ -149,18 +149,99 @@
             <span class="wc-score">{{ formatScore(item.gotScore) }} / {{ formatScore(item.fullScore) }} 分</span>
           </div>
 
-          <div class="wc-stem" v-html="renderStem(item.stem)"></div>
+          <!--
+            组合题：先给阅读材料，再逐子题展开
+            ============================================================
+            原来这里只有一个 `item.stem`，组合题的所有子题都被吞掉了，
+            用户只能看到"这题错了"，不知道具体哪一问错、错在哪。
+          -->
+          <template v-if="isComposite(item.type)">
+            <div v-if="item.mainContent" class="wc-main-content">{{ item.mainContent }}</div>
 
-          <div class="wc-answers">
-            <div class="wa-row">
-              <span class="wa-key">你的答案</span>
-              <span class="wa-val bad">{{ formatAnswer(item.userAnswer) || '未作答' }}</span>
+            <div v-if="item.subItems && item.subItems.length" class="wc-subs">
+              <div v-for="sub in item.subItems" :key="sub.index" class="wc-sub">
+                <div class="wc-sub-head">
+                  <span class="wc-sub-index">第 {{ sub.index }} 问</span>
+                  <span class="wc-sub-type">{{ typeLabel(sub.type) }}</span>
+                </div>
+                <div class="wc-sub-stem">{{ sub.question }}</div>
+
+                <!-- 子题的选项也要显示，否则同样不知道选的是哪个 -->
+                <ul v-if="sub.options && sub.options.length" class="wc-options">
+                  <li v-for="(opt, oi) in sub.options" :key="oi" class="wc-option" :class="optionClass(sub, oi)">
+                    <span class="wo-label">{{ optionLabel(oi) }}</span>
+                    <span class="wo-text">{{ opt }}</span>
+                  </li>
+                </ul>
+
+                <div class="wc-answers">
+                  <div class="wa-row">
+                    <span class="wa-key">你的答案</span>
+                    <span class="wa-val bad">{{ describeAnswer(sub.userAnswer, sub.options) }}</span>
+                  </div>
+                  <div class="wa-row">
+                    <span class="wa-key">正确答案</span>
+                    <span class="wa-val ok">{{ describeAnswer(sub.correctAnswer, sub.options) }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="wa-row">
-              <span class="wa-key">正确答案</span>
-              <span class="wa-val ok">{{ formatAnswer(item.correctAnswer) }}</span>
+
+            <!-- 老记录没有子题明细，退回显示整题答案，至少不空白 -->
+            <div v-else class="wc-answers">
+              <div class="wa-row">
+                <span class="wa-key">你的答案</span>
+                <span class="wa-val bad">{{ describeAnswer(item.userAnswer, item.options) }}</span>
+              </div>
+              <div class="wa-row">
+                <span class="wa-key">正确答案</span>
+                <span class="wa-val ok">{{ describeAnswer(item.correctAnswer, item.options) }}</span>
+              </div>
             </div>
-          </div>
+          </template>
+
+          <!-- 普通题型：题干 + 选项 + 答案 -->
+          <template v-else>
+            <div class="wc-stem">{{ item.stem }}</div>
+
+            <!--
+              选项列表（2026-10-22 新增）
+              ============================================================
+              这是这次修的核心：原来只显示「你的答案 A / 正确答案 C」，
+              但 A 和 C 到底是什么，用户完全看不到 —— 错题明细等于没用。
+              现在把四个选项全列出来，并用颜色标出：
+                · 正确选项 → 绿色
+                · 用户选错的选项 → 红色
+                · 用户漏选的正确项 → 绿色描边（多选题部分给分时很有用）
+            -->
+            <ul v-if="item.options && item.options.length" class="wc-options">
+              <li v-for="(opt, oi) in item.options" :key="oi" class="wc-option" :class="optionClass(item, oi)">
+                <span class="wo-label">{{ optionLabel(oi) }}</span>
+                <span class="wo-text">{{ opt }}</span>
+                <!--
+                  ⚠️ 判断题不打标签（2026-10-22）。
+                  它的选项文字本身就是"正确 / 错误"，再挂一个「正确」标签
+                  会渲染成「A 正确 正确」，看着像 bug。
+                  对错已经由底色+边框表达了，标签对判断题是冗余信息。
+                -->
+                <template v-if="!isTrueFalse(item)">
+                  <span v-if="isCorrectPick(item, oi)" class="wo-tag ok">正确</span>
+                  <span v-if="isWrongPick(item, oi) && !isCorrectPick(item, oi)" class="wo-tag bad">误选</span>
+                </template>
+              </li>
+            </ul>
+
+            <div class="wc-answers">
+              <div class="wa-row">
+                <span class="wa-key">你的答案</span>
+                <span class="wa-val bad">{{ describeAnswer(item.userAnswer, item.options) }}</span>
+              </div>
+              <div class="wa-row">
+                <span class="wa-key">正确答案</span>
+                <span class="wa-val ok">{{ describeAnswer(item.correctAnswer, item.options) }}</span>
+              </div>
+            </div>
+          </template>
 
           <div v-if="item.analysis" class="wc-analysis">
             <span class="wca-title">解析</span>
@@ -283,33 +364,131 @@ function formatTime(ts: number) {
   }
 }
 
+/* ==================== 错题明细：选项与答案的渲染 ==================== */
+
+/** 选项字母：0 → A */
+function optionLabel(i: number) {
+  return String.fromCharCode(65 + i)
+}
+
+/** 是否组合题（阅读 / 完形） */
+function isComposite(type: string) {
+  return type === 'readingComprehension' || type === 'cloze'
+}
+
 /**
- * 答案展示：把索引数组渲染成字母（0 → A）
+ * 是否判断题
  *
- * 单选/多选在内部存的是选项下标（见 `useQuestionPractice` 的答案归一），
- * 直接显示数字用户看不懂「0」是哪个选项。
+ * 判断题的选项只有「正确 / 错误」两项，文字本身就是答案语义，
+ * 所以不打「正确 / 误选」标签（会变成「A 正确 正确」）。
+ * 也兼容选项文字是"对 / 错"、"true / false" 的老数据。
  */
-function formatAnswer(ans: any) {
-  if (ans === null || ans === undefined || ans === '') return ''
-  if (Array.isArray(ans)) {
-    return ans
-      .map((v) => (typeof v === 'number' ? String.fromCharCode(65 + v) : String(v)))
-      .join('、')
+function isTrueFalse(item: any) {
+  if (item?.type === 'truefalse') return true
+  const opts = item?.options
+  if (!Array.isArray(opts) || opts.length !== 2) return false
+  const joined = opts.map((o: any) => String(o).trim()).join('|')
+  return /^(正确|对|true|True|TRUE)\|(错误|错|false|False|FALSE)$/.test(joined)
+}
+
+/**
+ * 把答案归一成"一组选项下标"
+ *
+ * 三种存储形态都要兼容：
+ *   · 数字         → 单选 / 判断（下标）
+ *   · 数字数组     → 多选
+ *   · 数字字符串   → 老数据（后端原始答案 "0" / "1"）
+ */
+function asIndexSet(ans: any): Set<number> {
+  const out = new Set<number>()
+  if (ans === null || ans === undefined || ans === '') return out
+  const push = (v: any) => {
+    if (typeof v === 'number' && Number.isFinite(v)) { out.add(v); return }
+    if (typeof v === 'string') {
+      const t = v.trim()
+      if (!t) return
+      // 纯数字字符串
+      if (/^\d+$/.test(t)) { out.add(Number(t)); return }
+      // 字母（A/B/C…）
+      if (/^[A-Za-z]$/.test(t)) { out.add(t.toUpperCase().charCodeAt(0) - 65); return }
+    }
   }
-  if (typeof ans === 'number') return String.fromCharCode(65 + ans)
-  return String(ans)
+  if (Array.isArray(ans)) ans.forEach(push)
+  else push(ans)
+  return out
 }
 
-function escapeHtml(s: string) {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
+/** 用户是否选了这个选项 */
+function isWrongPick(item: any, oi: number) {
+  return asIndexSet(item.userAnswer).has(oi)
 }
 
-function renderStem(stem: string) {
-  // 题干在入库时已存为纯文本片段，这里只做转义，避免 v-html 注入
-  return escapeHtml(String(stem || '')).replace(/\n/g, '<br>')
+/** 这个选项是不是正确答案 */
+function isCorrectPick(item: any, oi: number) {
+  return asIndexSet(item.correctAnswer).has(oi)
+}
+
+/**
+ * 单个选项的高亮样式
+ *
+ * 只有"选择类"题才有选项，填空/问答走不到这里。
+ *   · 正确答案 → 绿色
+ *   · 用户误选（错且不是答案）→ 红色
+ *   · 用户漏选的正确答案 → 仍然绿色，但标签会显示"正确"帮他对照
+ */
+function optionClass(item: any, oi: number) {
+  return {
+    'is-correct': isCorrectPick(item, oi),
+    'is-wrong': isWrongPick(item, oi) && !isCorrectPick(item, oi),
+    'is-missed': isCorrectPick(item, oi) && !isWrongPick(item, oi)
+  }
+}
+
+/**
+ * 答案文案：不同题型用不同的说法
+ *
+ * ⚠️ 不能一律走 `formatAnswer`（2026-10-22）：
+ *    · 填空/问答的答案是**字符串内容**，转成字母毫无意义
+ *      （当年就吃过这个亏：问答题的答案被渲染成 "A"）；
+ *    · 判断题存的是 0/1，应该显示「正确 / 错误」而不是「A / B」；
+ *    · 选择题最好同时给出字母和选项原文，方便一眼对照。
+ */
+function describeAnswer(ans: any, options?: any[]) {
+  const empty = ans === null || ans === undefined || ans === '' ||
+    (Array.isArray(ans) && ans.length === 0) ||
+    (typeof ans === 'string' && ans.trim() === '')
+
+  if (empty) return '未作答'
+
+  // 填空题 / 问答题：直接给文本
+  if (typeof ans === 'string' && !/^\d+$/.test(ans.trim()) && !/^[A-Za-z]$/.test(ans.trim())) {
+    return ans
+  }
+
+  // 判断题：0 = 正确，1 = 错误（后端约定，见 transformQuestionForDisplay）
+  if (isTrueFalse({ options })) {
+    const idx = Array.from(asIndexSet(ans))[0]
+    if (idx === 0) return '正确'
+    if (idx === 1) return '错误'
+  }
+
+  const set = asIndexSet(ans)
+  if (set.size === 0) {
+    // 既不是下标也不是字母 → 当作纯文本（例如 "true"/"n-1"）
+    return String(ans)
+  }
+
+  const letters = Array.from(set).sort((a, b) => a - b).map(optionLabel)
+  // 有选项原文时，字母后面附上内容，用户不用来回对照
+  if (options && options.length) {
+    const texts = Array.from(set).sort((a, b) => a - b)
+      .map((i) => (options[i] !== undefined ? String(options[i]) : ''))
+      .filter(Boolean)
+    if (texts.length) {
+      return `${letters.join('、')}（${texts.join('；')}）`
+    }
+  }
+  return letters.join('、')
 }
 
 /* ==================== 图表 ==================== */
@@ -849,6 +1028,141 @@ onBeforeUnmount(() => {
   line-height: 1.75;
   color: var(--os-text-2, #4b5563);
   white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ---------- 错题明细：选项列表（2026-10-22 新增） ---------- */
+.wc-options {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/*
+ * 选项行：默认中性，用左色条 + 底色区分对错。
+ * 不用整行大红大绿 —— 一屏四五个选项，全上高饱和色会非常吵，
+ * 而这一屏的主要信息是"我错在哪"，只需要把对/错两行提出来。
+ */
+.wc-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--os-border-subtle, #f1f3f5);
+  background: #fff;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--os-text-2, #4b5563);
+}
+
+.wc-option.is-correct {
+  border-color: #a7f3d0;
+  background: #f0fdf4;
+  color: #065f46;
+}
+
+.wc-option.is-wrong {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+/* 用户漏选的正确项：绿框但底色更淡，和"他选对的绿"区分开 */
+.wc-option.is-missed {
+  border-color: #a7f3d0;
+  background: #f7fefb;
+  color: #065f46;
+}
+
+.wo-label {
+  flex: none;
+  width: 18px;
+  font-weight: 600;
+}
+
+.wo-text {
+  flex: 1;
+  word-break: break-word;
+}
+
+.wo-tag {
+  flex: none;
+  align-self: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.wo-tag.ok {
+  background: #d1fae5;
+  color: #047857;
+}
+
+.wo-tag.bad {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+/* ---------- 错题明细：组合题 ---------- */
+.wc-main-content {
+  margin-bottom: 12px;
+  padding: 11px 13px;
+  border-radius: 9px;
+  background: #fff;
+  border: 1px solid var(--os-border-subtle, #f1f3f5);
+  font-size: 12.5px;
+  line-height: 1.85;
+  color: var(--os-text-2, #4b5563);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.wc-subs {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wc-sub {
+  padding: 11px 13px;
+  border-radius: 9px;
+  background: #fff;
+  border: 1px solid var(--os-border-subtle, #f1f3f5);
+}
+
+.wc-sub-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.wc-sub-index {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--os-text, #111827);
+}
+
+.wc-sub-type {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--os-bg-subtle, #f3f4f6);
+  font-size: 11px;
+  color: var(--os-text-3, #6b7280);
+}
+
+.wc-sub-stem {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--os-text, #111827);
+  margin-bottom: 8px;
   word-break: break-word;
 }
 </style>

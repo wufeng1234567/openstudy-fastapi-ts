@@ -1603,14 +1603,129 @@ function judgeMockItem(q: any, userAnswer: any, cfg: MockExamConfig): { isCorrec
   return { isCorrect: ok, gotScore: ok ? full : 0 }
 }
 
-/** 从题目里取一段纯文本题干（列表展示用） */
-function plainStem(q: any): string {
-  const raw = String(q?.content ?? q?.questionText ?? q?.question ?? q?.mainContent ?? '')
+/** 取完整题干（不截断，用于错题回看） */
+function fullStem(q: any): string {
+  const raw = String(q?.content ?? q?.questionText ?? q?.question ?? '')
   return raw
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 160)
+}
+
+/** 取纯文本（用于组合题的阅读材料） */
+function plainText(raw: any): string {
+  if (!raw) return ''
+  return String(raw)
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** 把选项数组归一成字符串数组（后端可能是 [{label,text}] 或纯字符串） */
+function normalizeOptionList(opts: any): any[] {
+  if (!Array.isArray(opts)) return []
+  return opts.map((o: any) => {
+    if (o === null || o === undefined) return ''
+    if (typeof o === 'object') {
+      // 兼容 { label, text } / { key, value } 等结构
+      const v = o.text ?? o.value ?? o.content ?? o.label ?? o.key ?? ''
+      return typeof v === 'string' ? v : String(v)
+    }
+    return String(o)
+  })
+}
+
+/**
+ * 把一道「考过的题」转成可长期保存的判分明细
+ *
+ * ⚠️ 为什么不在 `handleMockSubmit` 里直接拼对象（2026-10-22 重构）：
+ *    原来那段内联代码只取了 `plainStem(q)`（截断 160 字）和答案，
+ *    选项 / 子题 / 阅读材料全部丢失 —— 于是错题明细里选择题只显示
+ *    "你的答案 A / 正确答案 C"，看不到 A、C 到底是什么，无法复盘。
+ *
+ *    渲染需要什么，这里就存什么。组合题还要把每道子题的题干、
+ *    选项、子答案都带上，否则回看时只看到一个笼统的对错。
+ */
+function toMockItemDetail(
+  q: any,
+  userAnswer: any,
+  isCorrect: boolean,
+  gotScore: number,
+  index: number
+): MockExamItemDetail {
+  const type = String(q._mockType || q.type || 'unknown') as any
+  const isComposite = type === 'readingComprehension' || type === 'cloze'
+
+  const detail: MockExamItemDetail = {
+    questionId: q.id,
+    index,
+    type,
+    // 组合题的题干在 mainContent 里，用完整文本；其余用不截断的题干
+    stem: isComposite ? (plainText(q.mainContent) || fullStem(q)) : fullStem(q),
+    userAnswer,
+    correctAnswer: correctAnswerOf(q),
+    isCorrect,
+    gotScore,
+    fullScore: Number(q._mockScore) || 0,
+    analysis: String(q.analysis ?? '') || undefined
+  }
+
+  // 选项：单选 / 多选 / 判断都要带上，否则用户不知道 ABCD 是什么
+  if (Array.isArray(q.options) && q.options.length) {
+    detail.options = normalizeOptionList(q.options)
+  }
+
+  // 组合题：材料 + 逐子题明细
+  if (isComposite) {
+    const mainText = plainText(q.mainContent)
+    if (mainText) detail.mainContent = mainText
+
+    const subs = Array.isArray(q.subQuestions) ? q.subQuestions : []
+    if (subs.length) {
+      /*
+       * 子题的答案在 `answers[i]` 里是**按题型分桶**存的
+       * （见 `useQuestionPractice` 的 selectSubOption / updateSubFillBlankAnswer /
+       *  updateSubEssayAnswer）：
+       *
+       *   · 单选 / 多选 / 判断 → `answers[i][子题下标]` 直接是下标或下标数组
+       *   · 填空              → `answers[i].fillblank[子题下标]` 是字符串
+       *   · 问答              → `answers[i].essay[子题下标]` 是字符串
+       *
+       * 注意 `fillblank` 和 `essay` 这两个 key 同时也是**子题下标**冲突源：
+       * 若某题有 5 道子题，`answers[i][2]` 是第 3 题的选择答案，
+       * 而 `answers[i].fillblank[2]` 是第 3 题的填空答案，两者并存不冲突。
+       */
+      const pickSubAnswer = (si: number, sqType: string): any => {
+        const box = userAnswer
+        if (!box || typeof box !== 'object' || Array.isArray(box)) {
+          return undefined
+        }
+        if (sqType === 'fillblank') {
+          return box.fillblank ? box.fillblank[si] : undefined
+        }
+        if (sqType === 'essay') {
+          return box.essay ? box.essay[si] : undefined
+        }
+        return box[si]
+      }
+
+      detail.subItems = subs.map((sq: any, si: number) => {
+        const sqType = String(sq.type || 'single')
+        return {
+          index: si + 1,
+          type: sqType as any,
+          question: String(sq.question || `问题 ${si + 1}`),
+          options: Array.isArray(sq.options) && sq.options.length
+            ? normalizeOptionList(sq.options)
+            : undefined,
+          userAnswer: pickSubAnswer(si, sqType),
+          correctAnswer: sq.correctAnswer
+        }
+      })
+    }
+  }
+
+  return detail
 }
 
 /** 点击「开始考试」 */
@@ -1682,18 +1797,8 @@ function handleMockSubmit() {
     gotScore += gs
     if (isCorrect) correct += 1
     else wrong += 1
-    items.push({
-      questionId: q.id,
-      index: i + 1,
-      type: (q._mockType || q.type || 'unknown') as any,
-      stem: plainStem(q),
-      userAnswer,
-      correctAnswer: correctAnswerOf(q),
-      isCorrect,
-      gotScore: gs,
-      fullScore: Number(q._mockScore) || 0,
-      analysis: String(q.analysis ?? '') || undefined
-    })
+    // 选项 / 子题 / 完整题干都在 `toMockItemDetail` 里统一取，别在这里内联拼对象
+    items.push(toMockItemDetail(q, userAnswer, isCorrect, gs, i + 1))
   })
 
   const fullScore = items.reduce((s, it) => s + (Number(it.fullScore) || 0), 0)
