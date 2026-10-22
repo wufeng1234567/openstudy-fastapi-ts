@@ -679,7 +679,23 @@ const handleSave = async () => {
     }
 
     cacheStore.clearCachedForm('studioCreateForm')
-    router.push('/front/myQuestion/myBank')
+
+    /*
+     * 发布后去哪儿（2026-10-22 修）
+     * ----------------------------
+     * 原来一律 `router.push('/front/myQuestion/myBank')` —— 把用户丢回「我的题库」列表，
+     * 刚建好的那个库混在一堆库里，还得自己找。
+     * 但 `targetBankId` 这时**已经在手上**（新建时来自 create 的返回，编辑时来自入参），
+     * 没有任何理由不直接送到它面前。
+     *
+     * 现在跳题库详情页：用户能立刻确认「题进去了没有、封面对不对」，
+     * 从那里点「开始刷题」也就一步。
+     */
+    if (targetBankId) {
+      router.push(`/front/questionPractice/${targetBankId}?from=myLearning`)
+    } else {
+      router.push('/front/myQuestion/myBank')
+    }
   } catch (error) {
     console.error('保存失败:', error)
     ElMessage.error(error.message || '保存失败，请重试')

@@ -806,8 +806,37 @@ const handlePublish = async () => {
     //    「编辑已有笔记」，ta 之前攒的「写笔记」草稿不该被这次编辑保存顺手清掉。
     if (isNewNote) clearDraft()
     editingNoteId.value = null
-    cacheStore.setLastVisited('notes', 'list')
-    router.push('/front/notes/list')
+
+    /*
+     * 发布后去哪儿（2026-10-22 修）
+     * ----------------------------
+     * 原来无论新建还是编辑，一律 `router.push('/front/notes/list')` ——
+     * 用户刚写完一篇笔记，被丢回列表，还得自己在一堆笔记里找刚才那篇。
+     * 而这时 `savedNoteId` 其实**已经拿到了**，只是没用。
+     *
+     * 现在：新发布的先进**这篇笔记的详情页**（能看到成品长什么样、确认发布效果），
+     * 编辑已有笔记则回它自己的详情页。只有拿不到 id 时才退回列表兜底。
+     */
+    if (savedNoteId) {
+      // lastVisited 只记「回来时落在哪个子路由」，详情页要 id、不能当持久落点，
+      // 所以缓存仍记 list；本次直接跳详情即可。
+      cacheStore.setLastVisited('notes', 'list')
+      /*
+       * `published=1`：告诉详情页「这是刚发布成功的」，由它显示一条成功提示条。
+       * 为什么不用 ElMessage 就够了：发布成功时人已经被跳到新页面，
+       * 一条 3 秒就消失的 toast 很容易被忽略；而"我到底发出去没有"是用户此刻
+       * 最想知道的事，值得在页面上留一个明确的落脚点。
+       * 只在**新发布**时带这个参数，编辑已有笔记走 else 分支不带。
+       */
+      router.push(
+        isNewNote
+          ? `/front/notes/detail/${savedNoteId}?published=1`
+          : `/front/notes/detail/${savedNoteId}`
+      )
+    } else {
+      cacheStore.setLastVisited('notes', 'list')
+      router.push('/front/notes/list')
+    }
   } catch (error) {
     ElMessage.error(editingNoteId.value ? '保存失败' : '发布失败')
     console.error(error)

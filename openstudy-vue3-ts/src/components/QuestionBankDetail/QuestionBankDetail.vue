@@ -470,7 +470,13 @@ function goToNotesEditor() {
 }
 
 async function startPractice(type: string) {
+  /*
+   * 空题库：原来直接 `return` —— 按钮点了什么反应都没有，
+   * 用户只会以为「坏了」。而现在从「题库搭建」发布完会直接落到详情页，
+   * 刚建好但还没加题的库正好走到这条路径上，必须说清楚下一步。
+   */
   if (!props.bank.totalQuestions || props.bank.totalQuestions === 0) {
+    proxy.$modal.msgWarning('这个题库还没有题目，先加点题再刷')
     return
   }
   if (!(await ensureLogin('刷题'))) return

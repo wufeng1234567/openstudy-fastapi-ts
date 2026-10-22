@@ -17,6 +17,33 @@
     </div>
 
     <div v-loading="loading" class="content-wrapper">
+      <!--
+        刚发布成功的提示条（`?published=1`，由编辑器的发布动作带过来）
+        ------------------------------------------------
+        发布完直接落到详情页，用户最想知道的是"发出去了吗、别人能不能看到"。
+        一条会自己消失的 toast 很容易被错过，所以在页面上留一个明确的落脚点，
+        并顺手给出两个**下一步**：再写一篇 / 回列表。
+        私密笔记额外说明一句"只有你自己能看到" —— 否则用户会以为发失败了。
+      -->
+      <div v-if="justPublished && noteData.noteId" class="published-banner">
+        <div class="published-banner__main">
+          <OsIcon name="check-circle" :size="17" />
+          <span class="published-banner__text">
+            笔记已发布
+            <template v-if="noteData.isPublic === 1">，大家现在可以在「学习分享」里看到它</template>
+            <template v-else>。它是<strong>私密</strong>的，只有你自己能看到</template>
+          </span>
+        </div>
+        <div class="published-banner__ops">
+          <button type="button" class="published-banner__btn is-primary" @click="goNewNote">
+            再写一篇
+          </button>
+          <button type="button" class="published-banner__btn" @click="goBack">
+            看我的笔记
+          </button>
+        </div>
+      </div>
+
       <div v-if="error" class="error-container">
         <el-empty description="笔记加载失败" />
         <el-button type="primary" @click="goBack" style="margin-top: 16px;">
@@ -138,6 +165,7 @@ import FavoriteButton from '@/components/FavoriteButton/FavoriteButton.vue'
 import ScrollButton from '@/components/ScrollButton/ScrollButton.vue'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
 import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
+import OsIcon from '@/components/OsIcon/index.vue'
 
 const cacheStore = useFrontPageCacheStore()
 const userStore = useUserStore()
@@ -147,6 +175,22 @@ const route = useRoute()
 const loading = ref(false)
 const noteData = ref({})
 const error = ref(false)
+
+/**
+ * 是不是「刚发布完跳过来的」
+ *
+ * 由编辑器在发布成功后带 `?published=1`（见 notes/editor.vue 的 handlePublish）。
+ * 只认 query 上的那个值 —— 刷新页面时参数还在，提示条会再出现一次；
+ * 这是可接受的：用户确实刚发过，而且这条提示本身不打扰（不是弹窗）。
+ */
+const justPublished = computed(() => route.query.published === '1')
+
+/** 「再写一篇」：直接进编辑器空白页 */
+const goNewNote = () => {
+  cacheStore.setLastVisited('notes', 'editor')
+  router.push('/front/notes/editor')
+}
+
 const prevNote = ref({ noteId: '', title: '' })
 const nextNote = ref({ noteId: '', title: '' })
 const imageViewerVisible = ref(false)
@@ -548,6 +592,73 @@ onActivated(async () => {
 
   .content-wrapper {
     min-height: 400px;
+
+    /* ===== 发布成功提示条（?published=1） ===== */
+    .published-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      border: 1px solid #bbf7d0;
+      background: #f0fdf4;
+
+      &__main {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        color: #15803d;
+      }
+
+      &__text {
+        font-size: 13px;
+        line-height: 1.5;
+        color: #166534;
+
+        strong {
+          font-weight: 600;
+        }
+      }
+
+      &__ops {
+        display: flex;
+        gap: 8px;
+        flex: none;
+      }
+
+      &__btn {
+        height: 30px;
+        padding: 0 12px;
+        font-size: 12.5px;
+        font-family: inherit;
+        border-radius: 7px;
+        border: 1px solid #bbf7d0;
+        background: #fff;
+        color: #166534;
+        cursor: pointer;
+        transition: all 0.15s;
+
+        &:hover {
+          border-color: #16a34a;
+          color: #15803d;
+        }
+
+        &.is-primary {
+          background: #16a34a;
+          border-color: #16a34a;
+          color: #fff;
+
+          &:hover {
+            background: #15803d;
+            border-color: #15803d;
+          }
+        }
+      }
+    }
 
     .error-container {
       display: flex;
