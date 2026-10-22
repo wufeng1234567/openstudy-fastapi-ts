@@ -808,6 +808,8 @@ async def search_workspace(
                 "knowledgeBases": result.get("knowledgeBases") or [],
                 "files": _group_hits_by_file(hits, limit),
                 "reason": result.get("reason") or "",
+                # 两路都没关键词命中 = 结果可能不相关（见 rag_query_service.search 的说明）
+                "lowConfidence": bool(result.get("lowConfidence")),
             }
         )
     except Exception as e:

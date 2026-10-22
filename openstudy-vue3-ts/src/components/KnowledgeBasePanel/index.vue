@@ -72,10 +72,29 @@
         <div v-if='resultsMode' class='kb-results'>
           <div class='kb-results-head'>
             <div class='kb-results-title'>
-              找到 <b>{{ searchHits.length }}</b> 段相关资料
+              <!--
+                低置信时不能说"找到 N 段相关资料" —— 那是把"最像的几条"说成"相关的"。
+                向量检索总会凑够 top_k 条（见 hybrid_search.DEFAULT_MIN_SIMILARITY 的实测），
+                所以这里如实降级措辞，并在下面给一条提示。
+              -->
+              <template v-if='searchLowConfidence'>
+                没有明显匹配，下面 {{ searchHits.length }} 段<strong>可能不相关</strong>
+              </template>
+              <template v-else>
+                找到 <b>{{ searchHits.length }}</b> 段相关资料
+              </template>
               <span class='kb-results-scope'>{{ searchedScopeLabel }}</span>
             </div>
             <el-button size='small' text @click='exitResults'>返回知识库</el-button>
+          </div>
+
+          <!-- 低置信提示：说清"这是模型凑出来的最像的结果"，而不是假装搜到了 -->
+          <div v-if='searchLowConfidence && searchHits.length' class='kb-lowconf'>
+            <el-icon><Warning /></el-icon>
+            <span>
+              你的问题和这些资料可能对不上 —— 这个知识库里也许没有相关内容。
+              换个说法试试，或确认勾选的知识库是否正确。
+            </span>
           </div>
 
           <div v-if='!searchHits.length' class='kb-empty'>
@@ -345,7 +364,7 @@ defineOptions({ name: 'KnowledgeBasePanel' })
 
 import { ref, computed, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, Delete, Document, DocumentCopy, EditPen, FolderOpened, Plus, RefreshRight, Search, UploadFilled, View } from '@element-plus/icons-vue'
+import { Close, Delete, Document, DocumentCopy, EditPen, FolderOpened, Plus, RefreshRight, Search, UploadFilled, View, Warning } from '@element-plus/icons-vue'
 import {
   DOC_FAILED,
   DOC_PARSED,
@@ -440,6 +459,13 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 const resultsMode = ref(false)
 const searching = ref(false)
 const searchHits = ref<RagSearchHit[]>([])
+/**
+ * 结果可能不相关（后端 `lowConfidence`）
+ *
+ * 向量路总会返回 top_k 条，两路都没有关键词命中时，这些只是"最像的"而非"相关的"。
+ * 不能直接把条数说成"找到 N 段相关资料"——那是把噪声包装成结果。
+ */
+const searchLowConfidence = ref(false)
 /** 本次结果实际用的检索范围（结果里如实回显，避免用户误读成「搜了全部库」） */
 const searchedScopeLabel = ref('')
 const searchedQuery = ref('')
@@ -669,6 +695,7 @@ const selectKb = async (kb: RagKnowledgeBase) => {
 const exitResults = () => {
   resultsMode.value = false
   searchHits.value = []
+  searchLowConfidence.value = false
   expandedIds.value = []
   searchedScopeLabel.value = ''
   searchedQuery.value = ''
@@ -697,6 +724,7 @@ const runSearch = async () => {
     const res: any = await searchKnowledge(q, ids)
     if (res?.code === 200) {
       searchHits.value = res.data?.hits || []
+      searchLowConfidence.value = !!res.data?.lowConfidence
       const names: string[] = (res.data?.knowledgeBases || []).map((k: any) => k.name)
       searchedScopeLabel.value = names.length
         ? (names.length === 1 ? `来自「${names[0]}」` : `来自 ${names.length} 个知识库`)
@@ -1282,6 +1310,31 @@ defineExpose({ activate, refreshList, getKbCount })
   margin-left: 6px;
   font-size: 11.5px;
   color: #b6bdc9;
+}
+
+/*
+ * 低置信提示（2026-10-22）
+ *
+ * 向量检索总会凑够 top_k 条，两路都没有关键词命中时这些只是"最像的"。
+ * 用琥珀色而不是红色：它不是错误，只是提醒"别把这些当成答案"。
+ */
+.kb-lowconf {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #92400e;
+}
+
+.kb-lowconf .el-icon {
+  flex: none;
+  margin-top: 2px;
+  color: #d97706;
 }
 
 /* 结果按**文档**分组：一组 = 一篇文档，组内是它命中的若干段 */

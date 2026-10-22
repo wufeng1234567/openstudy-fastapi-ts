@@ -80,7 +80,19 @@ async def search(
     kb_ids: Optional[Sequence[int]] = None,
     top_k: int = DEFAULT_TOP_K,
 ) -> dict:
-    """只做检索，不调模型。给前端做「命中了哪些片段」的预览。"""
+    """只做检索，不调模型。给前端做「命中了哪些片段」的预览。
+
+    ⚠️ 返回里带 `lowConfidence`（2026-10-22 补）：
+       向量检索**天然会给每个查询返回 top_k 条**，哪怕库里根本没有相关内容 ——
+       bge-m3 对中文有个很高的「相似度地板」（实测无关查询 top1=0.6182），
+       靠余弦阈值区分不了相关/无关（见 `hybrid_search.DEFAULT_MIN_SIMILARITY` 的实测）。
+
+       所以这里复用 `answer()` 早就在用的那条更可靠的信号：**关键词那一路有没有命中**。
+       两路都没命中时 RRF 分数恒为 0，用户看到的会是 5 条毫不相关的内容却以为"搜到了"。
+
+       注意这是**置信度提示、不是拦截**：换词提问（「哪种树查找是 O(logn)」）
+       也可能关键词零命中但语义相关，所以只标记、不丢结果，由前端决定怎么提示。
+    """
     # 先清 NUL / 非法 UTF-8：JSON 能编码 NUL，而 PG 的 text 参数拒收 0x00，
     # 留着它会一路带到向量化与全文检索（都会 500）。
     query = sanitize_text(query or "").strip()
@@ -89,7 +101,13 @@ async def search(
 
     kbs = await resolve_knowledge_bases(db, user_id, kb_ids)
     if not kbs:
-        return {"query": query, "hits": [], "knowledgeBases": [], "reason": "没有可检索的知识库"}
+        return {
+            "query": query,
+            "hits": [],
+            "knowledgeBases": [],
+            "reason": "没有可检索的知识库",
+            "lowConfidence": False,
+        }
 
     query_vector = await embed_query(query)
     hits = await hybrid_search(
@@ -99,6 +117,8 @@ async def search(
         "query": query,
         "hits": [h.to_dict() for h in hits],
         "knowledgeBases": [{"kbId": kb.id, "name": kb.name} for kb in kbs],
+        # 有结果但两路都没关键词命中 = 可能是换词提问，也可能是跑题 —— 标出来让界面提示
+        "lowConfidence": bool(hits) and not has_keyword_agreement(hits),
     }
 
 

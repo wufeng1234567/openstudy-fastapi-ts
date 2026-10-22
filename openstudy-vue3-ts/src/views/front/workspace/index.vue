@@ -274,11 +274,26 @@
             </div>
 
             <transition-group v-if="tryResult.length" name="kbp-fade" tag="div" class="kbp-try__result">
+              <!--
+                低置信提示（2026-10-22）
+                ------------------------
+                向量检索**总会**返回 top_k 条，哪怕库里根本没有相关内容。
+                后端用「关键词那一路有没有命中」判断置信度，这里如实告诉用户
+                「这些可能不相关」——而不是让他误以为真的搜到了。
+              -->
+              <div v-if="lowConfidence" class="kbp-try__warn">
+                <OsIcon name="alert" :size="14" />
+                <span>
+                  这些结果可能和你的问题关系不大 —— 这个库里也许没有相关内容。
+                  可以换个说法，或确认是否选对了知识库。
+                </span>
+              </div>
+
               <div
                 v-for="(f, i) in tryResult"
                 :key="f.docId"
                 class="kbp-try__file"
-                :class="{ 'is-best': i === 0 }"
+                :class="{ 'is-best': i === 0 && !lowConfidence }"
               >
                 <span class="kbp-try__rank">{{ i + 1 }}</span>
                 <div class="kbp-try__file-main">
@@ -463,6 +478,14 @@ const tried = ref(false)
 const tryResult = ref<any[]>([])
 /** 后端给的「为什么没结果」人话原因（如「没有可检索的知识库」），有就优先显示 */
 const tryReason = ref('')
+/**
+ * 结果可能不相关（后端 `lowConfidence`）
+ *
+ * 判据 = 向量路和关键词路都没命中，只是向量返回了"最像的几条"。
+ * 这时不能装作搜到了，也不能直接吞掉结果（可能是换词提问）——
+ * 折中：照常列出来，但在上面加一条明确提示。
+ */
+const lowConfidence = ref(false)
 
 /* 分块 */
 const chunksVisible = ref(false)
@@ -776,11 +799,13 @@ async function doTry() {
   tried.value = false
   tryReason.value = ''
   tryResult.value = []
+  lowConfidence.value = false
   try {
     const res: any = await searchWorkspace(q, 5, [kb.kbId])
     if (res.code === 200) {
       tryResult.value = res.data.files || []
       tryReason.value = res.data.reason || ''
+      lowConfidence.value = !!res.data.lowConfidence
       tried.value = true
     } else {
       ElMessage.error(res.msg || '查找失败')
@@ -1502,6 +1527,26 @@ onMounted(() => load(false))
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* 低置信提示条：与结果并列，不遮住内容，也不当作错误红 */
+.kbp-try__warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #92400e;
+
+  :deep(svg) {
+    flex: none;
+    margin-top: 1px;
+    color: #d97706;
+  }
 }
 
 .kbp-try__file {
