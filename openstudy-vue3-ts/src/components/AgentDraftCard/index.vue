@@ -17,7 +17,7 @@
     · 重新生成 → `{ approved: false, regenerate: true, opinion }`（由页面转为取消 + 追问一轮）
 -->
 <template>
-  <div class="agent-draft" :class="`is-${status}`">
+  <div class="agent-draft" :class="[`is-${status}`, { 'has-sticky': shouldOfferCollapse }]">
     <!--
       批量删除卡（用户 2026-10-17 需求）
 
@@ -112,10 +112,12 @@
       ⚠️ 折叠时**只藏内容、不藏这一条**：否则收起后按钮消失、再也展不开。
     -->
     <div v-if="shouldOfferCollapse" class="ad-sticky" :style="COLLAPSE_BAR_STYLE">
-      <span class="ad-sticky-title">
-        <OsIcon name="pen-line" :size="13" />
-        导入预览（可编辑）
+      <span class="ad-sticky-icon" :class="`is-${status}`">
+        <OsIcon v-if="status === 'running'" name="pen-line" :size="13" />
+        <OsIcon v-else-if="status === 'ok'" name="check" :size="13" />
+        <OsIcon v-else name="close" :size="13" />
       </span>
+      <span class="ad-sticky-title">导入预览（可编辑）</span>
       <span class="ad-sticky-meta">{{ questions.length }} 题</span>
       <button
         type="button"
@@ -131,7 +133,13 @@
 
     <!-- 折叠时整块内容不渲染：比 max-height 动画更省，也不会留下可聚焦的隐藏控件 -->
     <template v-if="!collapsed">
-    <div class="ad-head">
+    <!--
+      ⚠️ 有吸顶条时**不再渲染这个 `.ad-head`**（2026-10-22 修）
+      吸顶条已经写了「✎ 导入预览（可编辑）· 15 题」，再渲染一遍标题与数量
+      就是完全重复的两行 —— 用户截图里正是「收起」条下面紧跟一行同样的标题。
+      只有短卡片（不显示吸顶条）才需要它来提供头部。
+    -->
+    <div v-if="!shouldOfferCollapse" class="ad-head">
       <span class="ad-icon">
         <OsIcon v-if="status === 'running'" name="pen-line" :size="14" />
           <OsIcon v-else-if="status === 'ok'" name="check" :size="14" />
@@ -660,6 +668,35 @@ function onRegenerate() {
   gap: 12px;
 }
 
+/*
+ * 有吸顶条时：顶部不留 padding（2026-10-22）
+ * ----------------------------------------------------------------------------
+ * 吸顶条要**贴到卡片边框内侧**，中间不能有缝。
+ *
+ * 上一版的做法是用 `margin-top: -14px` 去抵消卡片 14px 的 padding。
+ * 数学上是对的，但实测会露出一条 1~2px 的缝：圆角 + 边框的抗锯齿让
+ * "负边距刚好抵到边框"这件事并不可靠（不同缩放比下缝的宽度还会变）。
+ *
+ * 现在直接把卡片顶部 padding 归零，吸顶条天然填满顶部那一块 ——
+ * 没有负边距、就没有"算不准"这回事。
+ * 注意 `padding-bottom` / 左右保持不变，卡片其余部分的呼吸感不变。
+ */
+.agent-draft.has-sticky {
+  padding-top: 0;
+  /*
+   * `gap` 也要在顶部这一处失效
+   *
+   * `.agent-draft` 是 flex 列 + `gap: 12px`。`gap` 加在**每两个子元素之间**，
+   * 第一个子元素（吸顶条）与第二个子元素（内容）之间会因此多出 12px ——
+   * 看起来就是"吸顶条下面悬空"。这里用负的 `margin-bottom` 让吸顶条
+   * 自己吃掉那 12px，使内容紧贴分隔线。
+   */
+}
+
+.agent-draft.has-sticky > .ad-sticky {
+  margin-bottom: -12px;
+}
+
 .agent-draft.is-ok {
   border-left-color: #22c55e;
 }
@@ -681,26 +718,48 @@ function onRegenerate() {
  * 用 `margin: -14px -14px 0` 把它拉到卡片边缘（宽出 padding 那一圈），
  * 再补回自己的左右内边距，得到一条**通栏、不透光**的吸附条。
  *
- * 底部 `border-bottom` 做一条发丝线：吸附时它能和下面滚动的内容
- * 形成清晰的分界，用户不会误以为内容被裁掉了。
+ * ⚠️ 2026-10-22 追加修复：卡片顶部改成 `padding-top: 0`（见 `.agent-draft`
+ *    的 `.has-sticky` 变体），这条的 `margin-top` 也随之归零。
+ *    原来的 `-14px` 负边距与 14px padding 相互抵消时，圆角与边框的
+ *    抗锯齿会让吸附条**上沿露出一条 1~2px 的缝**（用户截图里能看到）。
+ *    现在直接让卡片顶部没有 padding，吸附条天然贴在边框内侧 ——
+ *    没有负边距、就不会算错。
  */
 .ad-sticky {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: -14px -14px 0;
-  padding: 9px 14px;
+  /* 左右仍用负边距抵消卡片 padding；顶部不用了（卡片已无 padding-top） */
+  margin: 0 -14px 0;
+  padding: 10px 14px;
   background: #fff;
   border-bottom: 1px solid #eef0f3;
-  border-radius: 10px 10px 0 0;
+  border-radius: 9px 9px 0 0;
   font-size: 12.5px;
   line-height: 1.4;
+}
+
+.ad-sticky-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: #6366f1;
+}
+
+.ad-sticky-icon.is-ok {
+  color: #22c55e;
+}
+
+.ad-sticky-icon.is-fail {
+  color: #9ca3af;
 }
 
 .ad-sticky-title {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
   font-weight: 600;
   color: var(--os-text, #1f2937);
   min-width: 0;

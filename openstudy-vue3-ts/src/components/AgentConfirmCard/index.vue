@@ -15,7 +15,7 @@
       （旧实现会把 `batch_import` 的 `count` / `sample` 整段丢掉，见下方注释）。
 -->
 <template>
-  <div class="agent-confirm" :class="[`is-${status}`, { 'is-destructive': destructive, 'is-draft': isDraft }]">
+  <div class="agent-confirm" :class="[`is-${status}`, { 'is-destructive': destructive, 'is-draft': isDraft, 'has-sticky': shouldOfferCollapse && !isDraft }]">
     <!--
       建库导入草稿（需求二）：交给 AgentDraftCard —— 用户在导入前可改题库信息与每道题，
       确认时把改动随 `edited` 回传。非草稿卡片走下面原来的只读预览。
@@ -40,6 +40,11 @@
          不是为了放弃这次操作；把确认按钮一起藏起来是反人类的。
     -->
     <div v-if="shouldOfferCollapse" class="ac-sticky" :style="COLLAPSE_BAR_STYLE">
+      <span class="ac-sticky-icon" :class="`is-${status}`">
+        <OsIcon v-if="status === 'running'" :name="destructive ? 'alert' : 'circle-help'" :size="13" />
+        <OsIcon v-else-if="status === 'ok'" name="check" :size="13" />
+        <OsIcon v-else name="close" :size="13" />
+      </span>
       <span class="ac-sticky-title">{{ title }}</span>
       <span v-if="previewSummary" class="ac-sticky-meta">{{ previewSummary }}</span>
       <button
@@ -55,7 +60,20 @@
     </div>
 
     <template v-if="!collapsed">
-    <div class="ac-head">
+    <!--
+      ⚠️ 有吸顶条时头部**只保留工具名**（2026-10-22 修重复标题）
+      吸顶条已经写了「需要确认：写操作」+ 图标，`.ac-head` 再写一遍就是两行重复。
+      但 `toolLabel`（题库管理 · 批量删除）不能丢 —— 它是最有信息量的那一句，
+      而吸顶条里放不下（会挤掉收起按钮）。所以这里只渲染工具名这一行。
+    -->
+    <div v-if="shouldOfferCollapse" class="ac-head ac-head--compact">
+      <span
+        v-if="toolLabel"
+        class="ac-name ac-name--solo"
+        :title="toolPath"
+      >{{ toolLabel }}</span>
+    </div>
+    <div v-else class="ac-head">
       <span class="ac-icon">
           <OsIcon v-if="status === 'running'" :name="destructive ? 'alert' : 'circle-help'" :size="14" />
           <OsIcon v-else-if="status === 'ok'" name="check" :size="14" />
@@ -603,12 +621,55 @@ const previewSummary = computed(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: -10px -14px 10px;
-  padding: 8px 14px;
+  /*
+   * 顶部**不用负边距**（2026-10-22 修间隙）
+   * ------------------------------------------------------------------
+   * 上一版是 `margin: -10px -14px 10px` 去抵消卡片 padding，
+   * 结果上沿在圆角处露出一条 1~2px 的缝（与 AgentDraftCard 同一问题）。
+   * 现在卡片在有吸顶条时顶部 padding 归零（`.agent-confirm.has-sticky`），
+   * 这条天然贴到边框内侧。
+   */
+  margin: 0 -14px 0;
+  padding: 9px 14px;
   background: var(--ac-sticky-bg, #fffbeb);
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 9px 9px 0 0;
   font-size: 12.5px;
   line-height: 1.4;
+}
+
+/* 有吸顶条时：卡片顶部不留 padding，避免圆角处露缝 */
+.agent-confirm.has-sticky {
+  padding-top: 0;
+}
+
+/*
+ * 吸顶条与下方内容的间隔
+ * ----------------------------------------------------------------------------
+ * 卡片不是 flex 布局（普通 block），所以不能靠 `gap` 控制。
+ * 这里给吸顶条自己一个 `margin-bottom`，让它与第一个内容块之间保持
+ * 与卡片原来 `padding` 视觉相当的间距 —— 不能贴太紧，否则像被裁掉了。
+ */
+.agent-confirm.has-sticky > .ac-sticky {
+  margin-bottom: 10px;
+}
+
+.ac-sticky-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: #f59e0b;
+}
+
+.ac-sticky-icon.is-ok {
+  color: #22c55e;
+}
+
+.ac-sticky-icon.is-fail {
+  color: #9ca3af;
 }
 
 /* 三种状态各自的吸顶条底色，与卡片底色一致 */
@@ -752,6 +813,31 @@ const previewSummary = computed(() => {
   border: 1px solid #e5e7eb;
   padding: 1px 7px;
   border-radius: 9px;
+}
+
+/*
+ * 有吸顶条时的头部：只有「工具 · 动作」这一行
+ *
+ * `.ac-name` 本身是给**机器码**用的等宽小胶囊（`bank_manage.delete`），
+ * 而这里的 `toolLabel` 是「题库管理 · 批量删除」这种人话 ——
+ * 用等宽字体 + 灰胶囊会显得是内部标识符。所以 solo 变体改成正常字体、
+ * 常规字色，只做一个轻量的"上下文行"。
+ */
+.ac-head--compact {
+  margin-top: 0;
+  min-height: 18px;
+}
+
+.ac-name--solo {
+  margin-left: 0;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--os-text-3, #6b7280);
+  background: transparent;
+  border: none;
+  padding: 0;
+  border-radius: 0;
 }
 
 .ac-desc {
