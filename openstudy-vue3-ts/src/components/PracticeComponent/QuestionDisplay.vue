@@ -116,21 +116,33 @@
     </div>
 
     <!--
-      浏览模式下的「提交答案」（用户 2026-10-18 bug2）
+      「确认答案」按钮（2026-10-22 统一两种模式）
       ================================================
-      背景：浏览模式原本是"选完立刻判"，单选/判断这样很顺，
-      但多选/填空/简答被同样对待 → 多选点第一个选项就判错、填空题输第一个字就判错。
+      历史演进（三版）：
 
-      现在按题型分流（判定逻辑在 PracticeComponent 的 `isInstantJudgeType`）：
-        · 单选 / 判断 → 仍然点完即判，**不显示**这个按钮；
-        · 多选 / 填空 / 简答 / 组合题 → 先记录答案，用户点「提交答案」才判分。
-      提交过（overviewCommitted）就不再显示按钮，改为展示解析。
+        ① 最初两种模式都是"选完立刻判"：
+           单选/判断很顺，但多选点第一个选项就判错、填空题输第一个字就判错。
+
+        ② 浏览模式改成按题型分流（单选/判断点完即判，其余等「提交答案」），
+           但**逐题模式被漏掉了** —— 它既没有确认按钮，
+           也不会在点选项时判分（判分只在「下一题/上一题」时才被触发）。
+           实测结果：逐题模式点选项后什么都不发生，看不到答案，
+           填空/简答的输入甚至没写进 `answers`，属于**功能缺失**。
+
+        ③ 现在（用户要求）：「逐题模式……点击一次单选选项就自动出现答案，
+           然后多选填空简答那些要有确认按钮，确认才比对答案，
+           和浏览模式的刷题逻辑保持一致」。
+
+      所以判据统一为 `needSubmit`（由父组件按题型算出，两种模式共用同一套）：
+        · 单选 / 判断          → `needSubmit = false` → 点完即判，无按钮；
+        · 多选 / 填空 / 简答 / 组合 → `needSubmit = true` → 显示本按钮，点了才判。
+      提交过（`committed`）就不再显示，改为展示解析。
     -->
-    <div v-if="overviewNeedSubmit" class="overview-commit-row">
+    <div v-if="needSubmit" class="overview-commit-row">
       <el-button type="primary" size="small" @click="$emit('commit-answer')">
-        提交答案
+        确认答案
       </el-button>
-      <span class="commit-hint">提交后才会判分并显示解析</span>
+      <span class="commit-hint">确认后比对答案并显示解析</span>
     </div>
 
     <!-- ✅ 修复：完整的解析区域（排除组合题） -->
@@ -270,19 +282,22 @@ const props = defineProps({
     type: Boolean,
     default: true
   },
-  /* ---- 整体浏览模式：多选/填空/简答需要「提交答案」才判分（见模板里的说明） ---- */
-  /** 是否处于整体浏览模式（单题模式不显示提交按钮） */
-  overviewMode: {
-    type: Boolean,
-    default: false
-  },
-  /** 本题当前是否**需要**显示「提交答案」按钮 */
-  overviewNeedSubmit: {
+  /* ---- 确认式判分：多选/填空/简答/组合需要「确认答案」才比对（两种模式共用） ---- */
+  /**
+   * 本题当前是否**需要**显示「确认答案」按钮
+   *
+   * ⚠️ 判据由父组件按题型算（`PracticeComponent.needsSubmit`），
+   *    组件内部不重复判断题型 —— 否则"哪些题型要确认"会散落在两处，
+   *    将来加题型时必然漏改一边。
+   *    历史上这里叫 `overviewNeedSubmit`，名字带着"只在浏览模式用"的假设，
+   *    正是逐题模式被漏掉的原因之一，故改名为中性的 `needSubmit`。
+   */
+  needSubmit: {
     type: Boolean,
     default: false
   },
   /** 本题是否**已经提交过**（提交后不再显示按钮，改为展示解析） */
-  overviewCommitted: {
+  committed: {
     type: Boolean,
     default: false
   }

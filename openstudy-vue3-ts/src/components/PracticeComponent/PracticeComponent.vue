@@ -179,16 +179,15 @@
               :selected-answer="answers[index]" :sub-fill-blank-answers="subFillBlankAnswers"
               :sub-essay-answers="subEssayAnswers" :answers="answers"
               :show-analysis-immediately="showAnalysisImmediately" :show-question-index="false"
-              :overview-mode="true"
               :shuffle-options="effectiveShuffleOptions"
-              :overview-need-submit="!isExamMode && needsOverviewSubmit(item) && !overviewCommitted[index]"
-              :overview-committed="!!overviewCommitted[index]"
+              :need-submit="!isExamMode && needsSubmit(item) && !committedQuestions[index]"
+              :committed="!!committedQuestions[index]"
               @select-option="(optIdx) => handleOverviewSelect(index, optIdx)"
               @update-answer="(value) => handleOverviewUpdateAnswer(index, value)"
               @select-sub-option="(subIndex, optIdx) => handleOverviewSelectSubOption(index, subIndex, optIdx)"
               @update-sub-fill-blank-answer="(subIndex, value) => handleOverviewUpdateSubFillBlank(index, subIndex, value)"
               @update-sub-essay-answer="(subIndex, value) => handleOverviewUpdateSubEssay(index, subIndex, value)"
-              @commit-answer="handleOverviewCommitAnswer(index)"
+              @commit-answer="handleCommitAnswer(index)"
               @preview-image="openImageViewer" />
           </div>
 
@@ -279,7 +278,10 @@
           :sub-fill-blank-answers="subFillBlankAnswers" :sub-essay-answers="subEssayAnswers" :answers="answers"
           :show-analysis-immediately="showAnalysisImmediately" @select-option="handleSelectOption"
           :shuffle-options="effectiveShuffleOptions"
-          @update-answer="value => selectedAnswer = value" @select-sub-option="selectSubOption"
+          :need-submit="!isExamMode && needsSubmit(currentQuestion) && !committedQuestions[currentQuestionIndex]"
+          :committed="!!committedQuestions[currentQuestionIndex]"
+          @commit-answer="handleCommitAnswer(currentQuestionIndex)"
+          @update-answer="handleUpdateAnswer" @select-sub-option="selectSubOption"
           @update-sub-fill-blank-answer="updateSubFillBlankAnswer" @update-sub-essay-answer="updateSubEssayAnswer"
           @preview-image="openImageViewer" />
 
@@ -1266,7 +1268,7 @@ const handleMarkedChange = (index: number) => {
 }
 
 /*
- * ==================== 整体浏览模式：作答 → 判题 ====================
+ * ==================== 作答 → 判题（两种模式共用） ====================
  *
  * 用户 2026-10-18 报的 bug2：
  *   浏览模式下**单选**点一下就出答案（这是设计初衷），
@@ -1278,11 +1280,17 @@ const handleMarkedChange = (index: number) => {
  * 修法：按题型分流。
  *   · `single` / `truefalse` → 选完**立即判**（保留初衷，不用多点一次）；
  *   · `multiple` / `fillblank` / `essay` / 组合题子题 → 只记录答案，
- *     等用户在题目下方点「提交答案」才判（见 `handleOverviewCommitAnswer`）。
+ *     等用户在题目下方点「确认答案」才判（见 `handleCommitAnswer`）。
+ *
+ * ⚠️ 这段判据**两种模式共用**（2026-10-22 修正）：
+ *    上一版只有浏览模式接了这套逻辑，逐题模式既没有确认按钮、
+ *    点选项也不判分（判分要等点「下一题」），属于功能缺失。
+ *    现在 `needsSubmit` / `committedQuestions` / `handleCommitAnswer`
+ *    同时服务逐题与浏览两条模板分支。
  *
  * 为什么用"是否即时判"的判定函数、而不是在模板里散写条件：
  *   同一套判断在 4 个入口（选项 / 子选项 / 填空 / 简答）都要用，
- *   QuestionDisplay 也要用它决定显示"提交答案"按钮还是直接出解析。
+ *   QuestionDisplay 也要用它决定显示"确认答案"按钮还是直接出解析。
  */
 
 /** 这类题型"选一个就能定论"，可以即时判；其余需要用户确认后再判 */
@@ -1290,14 +1298,28 @@ function isInstantJudgeType(type: string | undefined) {
   return type === 'single' || type === 'truefalse'
 }
 
-/** 该题（在浏览模式下）是否已经提交过答案 */
-const overviewCommitted = ref<Record<number, boolean>>({})
+/**
+ * 已提交（已确认答案）的题目
+ *
+ * ⚠️ 从"仅浏览模式"改为**两种模式共用**（2026-10-22）：
+ *    原来它叫 `overviewCommitted`，只在浏览模式那条分支上传给 QuestionDisplay，
+ *    于是逐题模式既没有确认按钮、点选项也不判分 —— 功能是缺的。
+ *    key 是**题目下标**（波内下标），换波时整体清空（见 `resetPractice` 等路径），
+ *    与 `answers` 的下标语义保持一致。
+ */
+const committedQuestions = ref<Record<number, boolean>>({})
 
-/** 浏览模式下：这道题要不要显示「提交答案」按钮 */
-function needsOverviewSubmit(q: any): boolean {
+/**
+ * 这道题是否需要「确认答案」才比对
+ *
+ * 两种模式共用同一套判据（用户要求"和浏览模式的刷题逻辑保持一致"）：
+ *   · 单选 / 判断              → false，点完即判、不显示按钮；
+ *   · 多选 / 填空 / 简答        → true，显示按钮，点了才判；
+ *   · 组合题                   → 有子题才需要（子题逐个作答，最后统一确认）。
+ */
+function needsSubmit(q: any): boolean {
   if (!q) return false
   if (isInstantJudgeType(q.type)) return false
-  // 组合题：只有存在子题时才需要（子题逐题提交）
   if (q.type === 'composite') {
     return Array.isArray(q.subQuestions) && q.subQuestions.length > 0
   }
@@ -1305,24 +1327,28 @@ function needsOverviewSubmit(q: any): boolean {
 }
 
 /**
- * 浏览模式下用户点「提交答案」→ 真正判题
+ * 用户点「确认答案」→ 真正判题（两种模式共用）
  *
- * 同时把 `overviewCommitted[qIndex]` 置真：QuestionDisplay 据此把
- * 「提交答案」换成解析（它已经通过 `showAnalysisImmediately` 拿到结果）。
+ * 同时把 `committedQuestions[qIndex]` 置真：QuestionDisplay 据此把
+ * 「确认答案」换成解析（它已经通过 `showAnalysisImmediately` 拿到结果）。
+ *
+ * ⚠️ 空答案不判（`ElMessage` 提示返回）：否则用户只是随手点一下确认，
+ *    就会得到"答错"并写入错题记录 —— 这是真实的数据污染。
  */
-function handleOverviewCommitAnswer(qIndex: number) {
+function handleCommitAnswer(qIndex: number) {
   if (currentQuestionIndex.value !== qIndex) {
     currentQuestionIndex.value = qIndex
   }
   const q = questions.value[qIndex]
-  // 空答案（没选 / 没填）不判，避免用户点一下就判错
   const val = answers.value[qIndex]
-  const empty = val === null || val === undefined || val === '' || (Array.isArray(val) && val.length === 0)
-  if (empty) {
-    ElMessage.warning(q?.type === 'essay' ? '请先写下你的答案' : '请先作答再提交')
+  const isEmpty =
+    val === null || val === undefined || val === '' ||
+    (Array.isArray(val) && val.length === 0)
+  if (isEmpty) {
+    ElMessage.warning(q?.type === 'essay' ? '请先写下你的答案' : '请先作答再确认')
     return
   }
-  overviewCommitted.value[qIndex] = true
+  committedQuestions.value[qIndex] = true
   handleAnswerSubmission(qIndex)
 }
 
@@ -1339,9 +1365,21 @@ const handleOverviewSelect = (qIndex: number, optIdx: number) => {
   if (questions.value[qIndex]) {
     questions.value[qIndex].answered = true
   }
-  // 单选/判断：即时判（原行为）；多选：等用户点「提交答案」
+  // 单选/判断：即时判（原行为）；多选：等用户点「确认答案」
   if (!isExamMode.value && isInstantJudgeType(questions.value[qIndex]?.type)) {
+    // 记下"已确认"，让 QuestionDisplay 收起确认按钮、直接展示解析
+    committedQuestions.value[qIndex] = true
     handleAnswerSubmission(qIndex)
+  } else if (!isExamMode.value && committedQuestions.value[qIndex]) {
+    // 已确认的多选题又改了选项 → 撤销确认，让「确认答案」重新出现
+    // （否则解析停在旧结果、按钮不再出现，用户没法重新比对）
+    committedQuestions.value[qIndex] = false
+    const q = questions.value[qIndex]
+    if (q) {
+      q.showAnalysis = false
+      q.answered = false
+      q.correct = false
+    }
   }
 }
 
@@ -1357,7 +1395,18 @@ const handleOverviewUpdateAnswer = (qIndex: number, value: any) => {
   // 填空/简答是"边写边改"，**不能**每次输入都判题（原来这里会立刻判错）。
   // 只有单选/判断这类"一下就定"的题型才即时判。
   if (!isExamMode.value && isInstantJudgeType(questions.value[qIndex]?.type)) {
+    committedQuestions.value[qIndex] = true
     handleAnswerSubmission(qIndex)
+  } else if (!isExamMode.value && committedQuestions.value[qIndex]) {
+    // 已确认的填空/简答又被编辑 → 撤销确认，「确认答案」重新出现
+    // （理由同 handleOverviewSelect：否则解析停在旧结果、用户无法重新比对）
+    committedQuestions.value[qIndex] = false
+    const q = questions.value[qIndex]
+    if (q) {
+      q.showAnalysis = false
+      q.answered = false
+      q.correct = false
+    }
   }
 }
 
@@ -1389,6 +1438,15 @@ const jumpToNextBatch = () => {
   hasSubmittedCurrentBatch.value = false
   showExamResult.value = false
   totalScore.value = 0
+  /*
+   * 清空"已确认答案"标记（2026-10-22）
+   *
+   * key 是**波内下标**，换波后下标 0 已经是另一道题；
+   * 不清空的话，新一波的第 1 题会继承上一波第 1 题的"已确认"状态，
+   * 表现为：多选/填空题一出现就是"已判分 + 显示解析"的样子，
+   * 而且「确认答案」按钮不会显示 —— 用户完全没法作答。
+   */
+  committedQuestions.value = {}
   const count = moduleSettings.value.questionCount || 10
   questionOffset.value = questionOffset.value + count
   loadBatchWithoutReset()
@@ -1681,6 +1739,34 @@ const {
   questionCount: moduleSettings.value.questionCount,
   onlyWrong: moduleSettings.value.onlyWrong
 })
+
+/* ==================== 「已确认答案」标记的生命周期 ==================== */
+
+/**
+ * 这批题目换了 → 清空确认标记（2026-10-22）
+ *
+ * `committedQuestions` 的 key 是**波内下标**，它只在"同一批题目"内部有意义。
+ * 但这些标记在以下路径上都可能残留：
+ *   · 换波（`jumpToNextBatch` / `handlePrevBatch`）；
+ *   · 重新练习（`handleEmptyRestart` → `resetAndFetchQuestions`）；
+ *   · 改设置后重拉、切题库、切模块。
+ *
+ * 不清空的后果很具体：新一批题目的第 1 题会继承上一批第 1 题的"已确认"，
+ * 于是多选/填空题一出现就是"已判分 + 解析展开"的样子，
+ * 而且「确认答案」按钮**不显示** → 用户完全没法作答。
+ *
+ * 为什么用 watch 题目流、而不是在每个调用点手动清：
+ *   重拉题目的入口有 5+ 处（上面列的那些），逐个加必然漏。
+ *   这里盯住 `questions` 的**身份变化**（用首题 id 判断，不是长度），
+ *   一次性覆盖全部路径。`jumpToNextBatch` 里那次显式清空可以保留 ——
+ *   watch 是异步的，而换波后紧接着就会渲染，早清一步更稳。
+ */
+watch(
+  () => questions.value.map((q: any) => q?.id).join(','),
+  () => {
+    committedQuestions.value = {}
+  }
+)
 
 /* ==================== 滚动锚点：跟随展示内容变化重算 ==================== */
 
@@ -2838,6 +2924,46 @@ function handleAnalysisClose() {
   isAnalysisGenerating.value = false
 }
 
+/**
+ * 填空 / 简答输入（逐题模式）
+ *
+ * ⚠️ 除了更新 `selectedAnswer`，**必须同步写进 `answers`**（2026-10-22）。
+ *
+ * 原来模板里是内联的 `value => selectedAnswer = value`，只改临时值：
+ *   · 「确认答案」读的是 `answers[qIndex]` → 读到 `undefined` → 永远提示"请先作答"；
+ *   · 自动保存快照也读 `answers` → 用户写的字从来没被存下来；
+ *   · 点「下一题」时虽然会被 `handleAnswerSubmission` 补写，
+ *     但如果用户一直停在这题、中途刷新，内容就丢了。
+ *
+ * 写 `answers` 而不是只在确认时写，还有一个原因：`buildDraftSnapshot`
+ * 会据此判断"这题答过没有"，进而决定要不要写进暂存。
+ */
+function handleUpdateAnswer(value: any) {
+  selectedAnswer.value = value
+  const qIndex = currentQuestionIndex.value
+  if (qIndex >= 0 && qIndex < answers.value.length) {
+    answers.value[qIndex] = value
+  }
+  /*
+   * 注意：这里**不判分**。填空/简答是"边写边改"，
+   * 每敲一个字就比对会立刻判错（历史 bug），必须等用户点「确认答案」。
+   */
+  /*
+   * 但**已确认过的**要撤销确认：「确认答案」重新出现，
+   * 解析复位。否则用户改完答案后解析还停在旧结果、
+   * 按钮也不会再出现，等于永远没法重新比对（实测发现的死角）。
+   */
+  if (!isExamMode.value && committedQuestions.value[qIndex]) {
+    committedQuestions.value[qIndex] = false
+    const q = questions.value[qIndex]
+    if (q) {
+      q.showAnalysis = false
+      q.answered = false
+      q.correct = false
+    }
+  }
+}
+
 function handleSelectOption(index: number) {
   selectOption(index)
 
@@ -2868,6 +2994,45 @@ function handleSelectOption(index: number) {
   }
 
   if (isExamMode.value) return
+
+  /*
+   * 单选 / 判断：**点一次就出答案**（2026-10-22 用户明确要求）
+   * ==================================================================
+   * 原来这里只同步 `answers`，判分要等用户点「下一题」才发生 ——
+   * 表现就是"点了选项什么都没发生，看不到对错，也没有解析"，
+   * 而浏览模式下同样的点击会立刻出答案。两种模式行为不一致，属于遗漏。
+   *
+   * 现在与浏览模式完全对齐：
+   *   · 单选 / 判断 → 选完立即判（`isInstantJudgeType`）；
+   *   · 多选 / 填空 / 简答 / 组合 → 不判，等用户点「确认答案」
+   *     （见 `handleCommitAnswer`，按钮由 `needsSubmit` 控制显示）。
+   * 同时记 `committedQuestions`，让 QuestionDisplay 收起确认按钮、展示解析。
+   */
+  if (isInstantJudgeType(currentQuestion.value?.type)) {
+    committedQuestions.value[qIndex] = true
+    handleAnswerSubmission(qIndex)
+  } else if (committedQuestions.value[qIndex]) {
+    /*
+     * 已确认过的多选/填空/简答，用户又改了答案 → **撤销"已确认"**
+     * ==================================================================
+     * 不撤销的话会出现一个死角（实测发现）：
+     *   多选题确认后显示解析 → 用户发现选错了，再点一个选项 →
+     *   答案变了，但解析还停在旧结果上，而且「确认答案」按钮**不会再出现**
+     *   （因为 `committed` 仍为 true）→ 用户永远没法重新比对。
+     *
+     * 撤销后按钮重新出现，状态回到"已作答但未确认"，
+     * 与"刚选完还没确认"完全一致 —— 心智模型统一。
+     * `showAnalysis` 也一并复位，否则解析区会继续显示上一次的判定。
+     */
+    committedQuestions.value[qIndex] = false
+    const q = questions.value[qIndex]
+    if (q) {
+      q.showAnalysis = false
+      q.answered = false
+      q.correct = false
+    }
+  }
+
   /*
    * ⚠️ 自动跳下一题的逻辑必须留在下面 `autoNextOnCorrect` 的闸门之后，
    *    不要因为上面新增的同步而提前 return（会破坏"答对自动翻页"）。
