@@ -178,96 +178,49 @@
   margin: 20px 0 10px;
 }
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 15px;
+/*
+ * 答题卡头部 / 题号格子
+ * ============================================================================
+ * ⚠️ 这里原来的 `.card-header`（flex + space-between）、`.card-header .header-left/
+ *    .header-center/.header-right`、`.card-header .mode-group`、`.card-header h4`、
+ *    `.question-grid`、`.grid-item` 整块**已被删除**（2026-10-22）。
+ *
+ * 原因：答题卡头部已经重构成「标题 + 一组同规格文字按钮」（见 `AnswerCard.vue`
+ * 的 `<style scoped>`），模板里不再有 header-left/center/right 与 mode-group。
+ * 这套全局规则留着不仅没用，还会和 scoped 里同名类**互相覆盖**：
+ *   · 全局 `.grid-item` 是 32px/12px 字、scoped 是 36px/13px 字；
+ *   · 全局 `.question-grid` 是 7 列 1fr、scoped 是 5 列 36px。
+ * 两者特异性相同，谁后加载谁生效 —— 这类"看起来改了却没生效"的问题极难排查，
+ * 所以直接删掉，答题卡样式只保留 scoped 一份来源。
+ *
+ * 注意：`.stats` / `.correct` / `.wrong` / `.rate` 等仍保留在下方，
+ *       因为其它面板也在用这些语义色类。
+ */
+
+.settings {
+  margin-top: 10px;
 }
 
-.card-header .header-left,
-.card-header .header-center,
-.card-header .header-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.card-header .header-center {
-  justify-content: center;
-}
-
-.card-header .header-right {
-  justify-content: flex-end;
-}
-
-.card-header .mode-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.card-header h4 {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1f2937;
-  margin: 0;
-}
-
-.question-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 6px;
-  margin-bottom: 20px;
-}
-
-.grid-item {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid #e5e7eb;
-  border-radius: 4px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.grid-item.answered {
-  background-color: #e8f4ff;
-  border-color: #b3d8ff;
-}
-
-.grid-item.correct {
-  background-color: #f0f9eb;
-  color: #67c23a;
-}
-
-.grid-item.wrong {
-  background-color: #fef2f2;
-  color: #b45353;
-}
-
-.grid-item.current {
-  background-color: #f3f4f6;
-  border-color: #d1d5db;
-  font-weight: bold;
-}
-
+/*
+ * 判分语义色（全练习模块共用）
+ * ============================================================================
+ * `.correct` / `.wrong` / `.rate` / `.stats` 这几个类**不能删**：
+ *   · `AnswerCard.vue` 的一行统计在用（答对 / 答错 / 正确率）；
+ *   · `PracticeResult.vue` 的 `.stat-num.correct/.stat-num.wrong` 也依赖这两个颜色。
+ * 上面删掉的只是答题卡**结构类**（.card-header / .question-grid / .grid-item），
+ * 那些已经整体搬到 `AnswerCard.vue` 的 scoped 里，避免两份同名规则互相覆盖。
+ */
 .stats {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .stats div {
-  margin-bottom: 5px;
-  font-size: 14px;
-  color: #6b7280;
+  font-size: 12px;
+  color: var(--os-text-3, #6b7280);
 }
 
 .correct {
-  color: #67c23a;
+  color: #4e9e2a;
 }
 
 .wrong {
@@ -275,12 +228,8 @@
 }
 
 .rate {
-  font-weight: bold;
-  color: #1f2937;
-}
-
-.settings {
-  margin-top: 10px;
+  font-weight: 600;
+  color: var(--os-text, #1f2937);
 }
 
 .settings h4 {

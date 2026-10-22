@@ -1,25 +1,35 @@
 <template>
   <div class="answer-card">
+    <!--
+      头部（2026-10-22 重做对齐）
+      ==================================================================
+      用户反馈：「里面的按钮组件要对齐 文字简洁」，并附了截图，暴露出三个问题：
+
+        ① 标题「答题卡」被挤成**两行**（"答题 / 卡"）。
+           根因是头部原本用 `grid-template-columns: auto 1fr auto`，
+           卡片只有 25% 宽时三列互相挤压，`h4` 没有 `nowrap` 就按字符折行了。
+
+        ② 三种控件形态混排、基线不齐：`el-tag`（胶囊）+ `el-button circle`（圆钮）
+           + `el-button text`（文字按钮）。三者高度/内边距各不相同，
+           中间那列还 `justify-content: center`，于是视觉上横着一串、高低错落。
+
+        ③ 文案冗长：模式标签「整体浏览」+ 圆形切换按钮其实在说同一件事，
+           等于**两个控件表达一个状态**。
+
+      现在改为一条 flex 行：左边标题（nowrap 不换行），右边一组**同规格文字按钮**。
+        · 模式标签与圆形切换按钮合并成一个按钮：显示当前模式、点击即切换
+          （「逐题」/「浏览」），控件数 3 → 2，且不再有圆钮这种异形；
+        · 两个按钮都用 `el-button text size="small"`，高度/字号/内边距天然一致，
+          右对齐落在同一条基线上。
+    -->
     <div class="card-header">
-      <!-- 左列：标题 -->
-      <div class="header-left">
-        <h4>答题卡</h4>
-      </div>
-
-      <!-- 中列：模式标签 + 切换图标 -->
-      <div class="header-center">
-        <div class="mode-group">
-          <el-tag size="small" :type="isOverviewMode ? 'primary' : 'info'" effect="plain" round>
-            {{ isOverviewMode ? '整体浏览' : '逐题模式' }}
-          </el-tag>
-          <el-tooltip :content="isOverviewMode ? '切换为逐题模式' : '切换为整体浏览'" placement="top">
-            <el-button :icon="isOverviewMode ? List : Grid" circle size="small" @click="$emit('toggle-overview')" />
-          </el-tooltip>
-        </div>
-      </div>
-
-      <!-- 右列：重新练习（自动保存状态在面板底部，见下方 .card-footer） -->
-      <div class="header-right">
+      <h4 class="card-title">答题卡</h4>
+      <div class="card-tools">
+        <el-tooltip :content="isOverviewMode ? '切换为逐题模式' : '切换为整体浏览'" placement="top">
+          <el-button text size="small" :icon="isOverviewMode ? List : Grid" @click="$emit('toggle-overview')">
+            {{ isOverviewMode ? '浏览' : '逐题' }}
+          </el-button>
+        </el-tooltip>
         <el-button text size="small" @click="$emit('reset-practice')">重新练习</el-button>
       </div>
     </div>
@@ -39,15 +49,17 @@
       </div>
 
       <div class="stats">
-        <!-- 刷题模式：显示进度 -->
+        <!-- 刷题模式：显示进度（文案收紧，2026-10-22） -->
         <template v-if="isPracticeMode">
-          <div class="progress-text">已刷：{{ answeredCount }} / {{ totalCount }} 题</div>
-          <div class="progress-hint" v-if="remainingCount > 0">剩余 {{ remainingCount }} 题待练习</div>
+          <div class="progress-text">
+            已答 <b>{{ answeredCount }}</b> / {{ totalCount }}
+          </div>
+          <div class="progress-hint" v-if="remainingCount > 0">剩 {{ remainingCount }} 题</div>
         </template>
 
         <!-- 考试模式：显示总分 -->
         <template v-else-if="isExamMode && showExamResult">
-          <div class="total-score">总分：{{ totalScore }} 分</div>
+          <div class="total-score">{{ totalScore }} 分</div>
           <el-button v-if="moduleType === 'mock'" type="primary" size="small" @click="$emit('finish-exam')">
             结束考试
           </el-button>
@@ -55,9 +67,11 @@
 
         <!-- 模拟考试提交后（非考试模式）：显示结束按钮 -->
         <template v-else-if="moduleType === 'mock' && showExamResult">
-          <div>答对：<span class="correct">{{ stats.correctCount }}</span>题</div>
-          <div>答错：<span class="wrong">{{ stats.wrongCount }}</span>题</div>
-          <div>正确率：<span class="rate">{{ stats.accuracy }}%</span></div>
+          <div class="stat-line">
+            <span>答对 <b class="correct">{{ stats.correctCount }}</b></span>
+            <span>答错 <b class="wrong">{{ stats.wrongCount }}</b></span>
+            <span>正确率 <b class="rate">{{ stats.accuracy }}%</b></span>
+          </div>
           <el-button type="primary" size="small" @click="$emit('finish-exam')">
             结束考试
           </el-button>
@@ -73,16 +87,20 @@
              现在交卷放在 footer 常驻（考试态一直可见），不再依赖"是不是最后一题"。
         -->
         <template v-else-if="isExamMode && !showExamResult">
-          <div>答对：<span class="correct">{{ stats.correctCount }}</span>题</div>
-          <div>答错：<span class="wrong">{{ stats.wrongCount }}</span>题</div>
-          <div>正确率：<span class="rate">{{ stats.accuracy }}%</span></div>
+          <div class="stat-line">
+            <span>答对 <b class="correct">{{ stats.correctCount }}</b></span>
+            <span>答错 <b class="wrong">{{ stats.wrongCount }}</b></span>
+            <span>正确率 <b class="rate">{{ stats.accuracy }}%</b></span>
+          </div>
         </template>
 
         <!-- 默认统计（预览模式等） -->
         <template v-else>
-          <div>答对：<span class="correct">{{ stats.correctCount }}</span>题</div>
-          <div>答错：<span class="wrong">{{ stats.wrongCount }}</span>题</div>
-          <div>正确率：<span class="rate">{{ stats.accuracy }}%</span></div>
+          <div class="stat-line">
+            <span>答对 <b class="correct">{{ stats.correctCount }}</b></span>
+            <span>答错 <b class="wrong">{{ stats.wrongCount }}</b></span>
+            <span>正确率 <b class="rate">{{ stats.accuracy }}%</b></span>
+          </div>
         </template>
       </div>
     </template>
@@ -91,7 +109,16 @@
     <template v-else>
       <div class="overview-card-body">
         <div v-for="group in questionGroups" :key="group.typeName" class="group-section">
-          <div class="group-title">{{ group.typeLabel }}（共 {{ group.items.length }} 题）</div>
+          <!--
+            分组标题只留「题型 + 数量」（2026-10-22 文案收紧）
+            原来写「单选题（共 4 题）」——「选择题」三个字里已经含"题"，
+            后面再补"（共 4 题）"是重复计量的啰嗦。改成「单选题 4」：
+            题型名 + 数量，一眼扫过就够，且与右侧网格左对齐、不折行。
+          -->
+          <div class="group-title">
+            <span class="group-name">{{ group.typeLabel }}</span>
+            <span class="group-count">{{ group.items.length }}</span>
+          </div>
           <div class="group-grid">
             <div v-for="q in group.items" :key="q.index" :ref="el => setGridItemRef(el, q.index)"
               class="grid-item overview-grid-item" :class="getOverviewItemClass(q.index)"
@@ -137,10 +164,17 @@
     <div v-if="showShuffleToggle" class="shuffle-row">
       <span class="shuffle-label">
         <el-icon><Sort /></el-icon>
-        选项乱序
+        乱序
       </span>
       <el-switch :model-value="shuffleOptions" size="small" @update:model-value="onShuffleChange" />
-      <span class="shuffle-hint">{{ shuffleOptions ? '已打乱，避免凭位置记答案' : '按题库原始顺序' }}</span>
+      <!--
+        提示语收紧（2026-10-22）
+        原：「已打乱，避免凭位置记答案」/「按题库原始顺序」—— 两句都太长，
+        在 25% 宽的卡片里会把开关挤出可用区。
+        现在只留 4 个字的状态本身：开 =「已打乱」，关 =「原顺序」。
+        "为什么要打乱"属于解释性文案，不该常驻在一个控制面板里。
+      -->
+      <span class="shuffle-hint">{{ shuffleOptions ? '已打乱' : '原顺序' }}</span>
     </div>
 
     <!--
@@ -185,7 +219,7 @@
           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="m18 15-6-6-6 6" />
         </svg>
-        回到顶部
+        顶部
       </button>
       <span class="scroll-anchors__divider" aria-hidden="true"></span>
       <button type="button" class="scroll-anchor" @click="$emit('scroll-bottom')">
@@ -193,7 +227,7 @@
           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="m6 9 6 6 6-6" />
         </svg>
-        跳到底部
+        底部
       </button>
     </div>
 
@@ -387,11 +421,78 @@ const getOverviewItemClass = (index: number) => {
   height: fit-content;
 }
 
+/*
+ * 头部：一条 flex 行，左标题 + 右工具组（2026-10-22 重做）
+ * ============================================================================
+ * 原先是 `grid-template-columns: auto 1fr auto` 三列，中间那列装
+ * 「标签 + 圆钮」。卡片只有 25% 宽时三列互相挤，`h4` 又没有 nowrap，
+ * 于是「答题卡」被按字符折成「答题 / 卡」两行（用户截图里很明显）。
+ *
+ * 现在：
+ *   · flex 单行 + `header` 不换行，标题自然占它需要的宽度；
+ *   · 工具组 `margin-left: auto` 贴右，各项 `align-items: center` 同一基线；
+ *   · 两个工具按钮都是 `el-button text size="small"`，
+ *     高度/字号/内边距由 Element Plus 保证一致，不再出现"胶囊 + 圆钮 + 文字"
+ *     三种形态混排。组内不用 gap 拉太开，保持紧凑。
+ */
 .card-header {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: flex;
   align-items: center;
-  margin-bottom: 8px;
+  gap: 8px;
+  margin-bottom: 12px;
+  /* 头部任何情况都不折行：一折行就是"标题竖排"那种灾难 */
+  flex-wrap: nowrap;
+}
+
+/* 标题：不换行、不压缩（挤压时宁可让工具组挤，也不让标题断字） */
+.card-title {
+  flex: none;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--os-text, #1f2937);
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+}
+
+/*
+ * 工具组：贴右，两个按钮同规格
+ *
+ * `margin-left: auto` 而不是 `justify-content: space-between`：
+ * 后者在只有一个子元素时也会把它推到最右，语义上不如显式的 auto 清楚。
+ */
+.card-tools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+
+  /*
+   * 统一工具按钮的视觉重量
+   *
+   * Element Plus 的 text 按钮默认内边距偏大（左右各约 8px），
+   * 两个并排时在 25% 宽卡片里会显得松散。这里把左右内边距收到 4px，
+   * 并统一行高，让两个按钮看起来是"同一组控件"而不是两个独立按钮。
+   */
+  :deep(.el-button) {
+    padding: 0 4px;
+    height: 22px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--os-text-3, #6b7280);
+  }
+
+  :deep(.el-button:hover) {
+    color: var(--os-accent, var(--os-primary, #0f1115));
+    background: transparent;
+  }
+
+  :deep(.el-button .el-icon) {
+    margin-right: 3px;
+    font-size: 13px;
+  }
 }
 
 /*
@@ -491,69 +592,55 @@ const getOverviewItemClass = (index: number) => {
   }
 }
 
-.header-left h4 {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1f2937;
-  margin: 0;
-}
-
-.header-center {
-  display: flex;
-  justify-content: center;
-}
-
-.mode-group {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  /* 标签和图标紧贴 */
-}
-
-.header-right {
-  display: flex;
-  margin-right: -10px;
-  justify-content: flex-end;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.header-left h4 {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1f2937;
-  margin: 0;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
+/*
+ * ⚠️ 旧头部规则已删除（2026-10-22）
+ * ============================================================================
+ * 这里原来有一整串 `.header-left h4`（写了两遍）、`.header-center`、
+ * `.mode-group`、`.header-right`、`.header-actions`。
+ * 头部重构后模板里已经没有 `header-left/center/right` 与 `mode-group` 这些元素，
+ * 留着就是死代码 —— 而且它们**不是 scoped 之外就没影响**：
+ * `PracticeComponent.css` 里也有一份同名的 `.card-header .header-*` 全局规则，
+ * 两套并存在排查样式问题时极易误判（这次"标题竖排"就差点被误以为是全局样式覆盖）。
+ * 现在头部只有 `.card-header` / `.card-title` / `.card-tools` 三个类。
+ */
 
 .question-grid {
   display: grid;
+  /* 5 列等宽（36px）：卡片宽度变化时网格不跳，列与列之间用 gap 控制 */
   grid-template-columns: repeat(5, 36px);
-  gap: 6px 2px;
-  margin-bottom: 20px;
-  justify-content: center;
+  gap: 6px;
+  margin-bottom: 16px;
+  /* 靠左对齐，与头部标题、分组标题同一条左缘 */
+  justify-content: flex-start;
 }
 
+/*
+ * 题号格子
+ * ----------------------------------------------------------------------------
+ * `box-sizing: border-box` 必须显式写：全局 `PracticeComponent.css` 里的
+ * `.grid-item` 也有 32px 的一版，而 scoped 这份是 36px + 1px 边框。
+ * 不加 border-box 时 36+2=38px 会超出 5×36+gap 的列宽，网格右侧错位。
+ */
 .grid-item {
+  box-sizing: border-box;
   width: 36px;
   height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  font-size: 14px;
+  border: 1px solid var(--os-border, #e5e7eb);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--os-text-3, #6b7280);
+  background: #fff;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.grid-item:hover {
+  border-color: var(--os-border-strong, #d1d5db);
+  color: var(--os-text, #1f2937);
 }
 
 .grid-item.answered {
@@ -564,32 +651,53 @@ const getOverviewItemClass = (index: number) => {
 
 .grid-item.correct {
   background-color: #f0f9eb;
-  color: #67c23a;
+  border-color: #d6ecc4;
+  color: #4e9e2a;
 }
 
 .grid-item.wrong {
   background-color: #fef2f2;
+  border-color: #f6d5d5;
   color: #b45353;
 }
 
+/*
+ * 当前题：用描边 + 加粗表示"你在这里"
+ *
+ * 底色刻意保持白色：`.current` 常与 `.answered / .correct / .wrong` 叠加，
+ * 若也改底色就会把那三种语义色盖掉（用户看到"当前题"却看不出对错）。
+ */
 .grid-item.current {
-  background-color: #f3f4f6;
-  border-color: #d1d5db;
-  font-weight: bold;
+  border-color: var(--os-primary, #0f1115);
+  color: var(--os-text, #1f1115);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--os-primary, #0f1115);
 }
 
 .stats {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
-.stats div {
-  margin-bottom: 5px;
-  font-size: 14px;
-  color: #6b7280;
+/*
+ * 一行三项统计（2026-10-22）
+ * 原来三行「答对：x 题 / 答错：x 题 / 正确率：x%」在卡片里占了 3 行高度，
+ * 而它们是最不常看的信息。改成一行，用间距分隔，高度从约 60px 压到 20px。
+ */
+.stat-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--os-text-3, #6b7280);
+
+  b {
+    font-weight: 600;
+  }
 }
 
 .correct {
-  color: #67c23a;
+  color: #4e9e2a;
 }
 
 .wrong {
@@ -597,26 +705,32 @@ const getOverviewItemClass = (index: number) => {
 }
 
 .rate {
-  font-weight: bold;
-  color: #1f2937;
+  color: var(--os-text, #1f2937);
 }
 
 .progress-text {
-  font-size: 14px;
-  color: #6b7280;
-  margin-bottom: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--os-text-3, #6b7280);
+  margin-bottom: 2px;
+
+  b {
+    font-weight: 600;
+    color: var(--os-text, #1f2937);
+  }
 }
 
 .progress-hint {
-  font-size: 13px;
-  color: #9ca3af;
-  margin-bottom: 8px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--os-text-4, #9ca3af);
+  margin-bottom: 0;
 }
 
 .total-score {
-  font-size: 20px;
-  font-weight: bold;
-  color: #1f2937;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--os-text, #1f2937);
   margin-bottom: 8px;
 }
 
@@ -685,68 +799,74 @@ const getOverviewItemClass = (index: number) => {
   flex: none;
 }
 
-/* 整体浏览模式样式 */
+/* ==================== 整体浏览模式 ==================== */
+
+/*
+ * 分组列表的滚动区
+ *
+ * `scrollbar-gutter: stable` 预留滚动条宽度，避免"有滚动条/没滚动条"时
+ * 网格左右跳动；`margin-right: -10px` 把预留给滚动条的空间反向吃掉，
+ * 让网格左缘仍与上方标题对齐（原来只写了 -10px，没写 gutter，两者要配套）。
+ */
 .overview-card-body {
-  max-height: calc(100vh - 280px);
+  max-height: calc(100vh - 300px);
   overflow-y: auto;
   scrollbar-gutter: stable;
   margin-right: -10px;
+  padding-right: 10px;
 }
 
 .group-section {
   margin-bottom: 12px;
 }
 
+.group-section:last-child {
+  margin-bottom: 0;
+}
+
+/*
+ * 分组标题：「题型」+「数量」
+ *
+ * 不再写「单选题（共 4 题）」——括号和"共…题"是重复计量。
+ * 现在题型用常规字重、数量用更浅的颜色贴在后面，形成"标签 + 计数"的层级，
+ * 一眼扫过就知道这组有多少题，而不需要读完一整句。
+ */
 .group-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #6b7280;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
   margin-bottom: 6px;
-  padding-left: 2px;
+  font-size: 12px;
+  line-height: 1.5;
+
+  .group-name {
+    font-weight: 600;
+    color: var(--os-text-2, #4b5563);
+    white-space: nowrap;
+  }
+
+  .group-count {
+    font-size: 11px;
+    color: var(--os-text-4, #9ca3af);
+  }
 }
 
 .group-grid {
   display: grid;
   grid-template-columns: repeat(5, 36px);
-  gap: 6px 2px;
-  max-width: calc(100% - 24px);
+  gap: 6px;
 }
 
+/*
+ * 浏览模式的格子复用 `.grid-item` 的基础尺寸与配色，
+ * 这里只覆盖圆角/悬停这类"模式差异"，避免两份样式各自漂移
+ * （原来这里重复声明了 width/height/border/font-size，与 `.grid-item` 冲突）。
+ */
 .overview-grid-item {
-  width: 36px;
-  height: 36px;
-  border-radius: 6px;
-  font-size: 14px;
-  border: 1px solid #e5e7eb;
-  background: #fff;
-  color: #6b7280;
-  transition: all 0.2s ease;
+  border-radius: 8px;
 }
 
 .overview-grid-item:hover {
-  border-color: #d1d5db;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
-}
-
-.overview-grid-item.answered {
-  background: #e8f0fe;
-  border-color: #c5d9f5;
-  color: #1a56db;
-}
-
-.overview-grid-item.current {
-  background-color: #f3f4f6;
-  border-color: #d1d5db;
-  font-weight: bold;
-}
-
-.overview-grid-item.correct {
-  background-color: #f0f9eb;
-  color: #67c23a;
-}
-
-.overview-grid-item.wrong {
-  background-color: #fef2f2;
-  color: #b45353;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 </style>
