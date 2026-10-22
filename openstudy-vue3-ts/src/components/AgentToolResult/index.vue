@@ -95,7 +95,23 @@
       </button>
     </div>
 
-    <!-- ④ 「AI 翻文件」可视化：它在空间里找到了什么 -->
+    <!-- ④ 跳转卡片：笔记写完/改完，一步直达那篇笔记 -->
+    <div v-if="noteJump" class="at-jump">
+      <div class="at-jump__main">
+        <span class="at-jump__badge">
+          <OsIcon name="check-circle" :size="13" />
+          {{ noteJump.isNew ? '笔记已发布' : '笔记已更新' }}
+        </span>
+        <span class="at-jump__name">{{ noteJump.title }}</span>
+        <span v-if="noteJump.meta" class="at-jump__meta">{{ noteJump.meta }}</span>
+      </div>
+      <button type="button" class="at-jump__btn at-jump__btn--primary" @click="goToNote">
+        <OsIcon name="file-text" :size="13" />
+        <span>查看笔记</span>
+      </button>
+    </div>
+
+    <!-- ⑤ 「AI 翻文件」可视化：它在空间里找到了什么 -->
     <div v-if="spaceScan" class="at-scan">
       <div class="at-scan__head">
         <span class="at-scan__icon" :class="{ 'is-done': spaceScan.done }">
@@ -520,8 +536,14 @@ function pickBankPayload(d: any): any | null {
   return null
 }
 
+/** 只有题库类工具才出「去刷题」卡片 */
+const BANK_TOOLS = new Set(['bank_manage', 'question_manage'])
+
 const bankJump = computed(() => {
   if (props.status !== 'ok') return null
+  // 加工具白名单：下面的 `pickBankPayload` 会兜底读顶层 `id`，
+  // 若不限定工具，别的工具回执里恰好有个 `id` 也会被误当成题库。
+  if (props.tool && !BANK_TOOLS.has(props.tool)) return null
   const d = props.data
   if (!d || typeof d !== 'object') return null
 
@@ -568,6 +590,61 @@ function goToBank() {
   const b = bankJump.value
   if (!b) return
   router.push(`/front/questionPractice/${b.bankId}`)
+}
+
+/* ============================================================
+ * 笔记跳转卡片（note_manage）
+ * ============================================================ */
+
+/** 只有「刚写完 / 刚改完」才给入口；list / detail 这类只读回执不需要 */
+const NOTE_ACTIONS = new Set(['create', 'update'])
+
+/**
+ * 为什么笔记也要这张卡
+ * ------------------
+ * 用户对 AI 说「帮我建一篇笔记」，AI 回一句「已保存到分类 Vue（ID=467）」——
+ * 信息是全的，但**下一步没了**：想看看它写成什么样，得自己离开对话、
+ * 点进「学习管理 → 笔记管理」、再在一堆笔记里找那篇。
+ *
+ * 建题库早就有「立即开始刷题」这种一步直达，笔记不该是二等公民。
+ *
+ * 回执结构（`note_manage._create` / `_update`）：
+ *   { action:'create', note:{ noteId, title, categoryId, visibility, statusText, tags, ... }, message }
+ * 与题库一样，笔记信息在**嵌套的 `note` 对象**里，不是顶层字段 —— 照抄顶层字段会拿不到。
+ */
+const noteJump = computed(() => {
+  if (props.tool !== 'note_manage') return null
+  if (props.status !== 'ok') return null
+  const d = props.data
+  if (!d || typeof d !== 'object') return null
+
+  const action = String(d.action || '').toLowerCase()
+  if (action && !NOTE_ACTIONS.has(action)) return null
+
+  const note = d.note && typeof d.note === 'object' ? d.note : d
+  const noteId = Number(note.noteId ?? note.note_id ?? 0)
+  if (!noteId) return null
+
+  const title = String(note.title || '笔记')
+
+  // 副标题挑用户最关心的两件事：可见性（发给谁看）+ 标签
+  const metaParts: string[] = []
+  if (note.visibility) metaParts.push(String(note.visibility))
+  const tags = String(note.tags || '').trim()
+  if (tags) metaParts.push(tags.replace(/,/g, ' · '))
+
+  return {
+    noteId,
+    title,
+    meta: metaParts.join(' · '),
+    isNew: action === 'create'
+  }
+})
+
+function goToNote() {
+  const n = noteJump.value
+  if (!n) return
+  router.push(`/front/notes/detail/${n.noteId}`)
 }
 
 /* ============================================================
