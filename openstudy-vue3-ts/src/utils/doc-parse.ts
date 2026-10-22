@@ -11,8 +11,7 @@
  * 「AI 搭建题库」的富预览用的就是这个接口；聊天助手的附件预览现在也走同一套，
  * 于是「Word 里的插图」既能被看见（上传时一并送给模型 / DS），也能被点开预览。
  *
- * ⚠️ 本模块**不 import `@/api/ai/ai`**，避免和 `ai.ts` 形成循环依赖；
- * `ai.ts` 反过来从这里 re-export `parseFileBlocks`（保持旧调用方签名不变）。
+ * ⚠️ 本模块**不 import `@/api/ai/ai`**，避免和 `ai.ts` 形成循环依赖。
  */
 
 import request from '@/utils/request'

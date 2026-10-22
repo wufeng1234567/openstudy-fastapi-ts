@@ -38,7 +38,7 @@ from: Agent
 **2026-10-11 三轮实锤（读到源码，根因锁定在 `LatexRenderer` 分支短路）**：
 - **`LatexRenderer` 的 computed 分支短路 bug**：`rawLatex` **默认 `true`**，故所有 `<LatexRenderer :content="..." raw-html />` 调用都命中 `rawLatex` 分支 → 走 `renderQuestionContent`（**不认 `$...$`**），`rawHtml` 属性被完全忽略；而能认 `$...$` 的 `renderLatexSafe`（`rawHtml` 分支）与能渲表格的 `renderMarkdownContent`（`markdown` 分支）**永远走不到**。全局搜索确认**无任何模板传过 `markdown` 属性** —— 路径 A（渲表格）从未启用。
 - **`latex.ts` 三条函数现状**：`renderMarkdownContent`（认 markdown 表格、**不认 `$`**）、`renderLatexSafe`（认 `$`、**不认表格**）、`renderQuestionContent`（**两者都不认**）。**核心=须造一条同时支持 `$...$` 与 markdown 表格的统一管线**（`renderMarkdownWithLatex`：先渲公式为占位符 → `marked.parse` 渲表格 → 回填公式 HTML；顺序关键，先公式后 md，避免 `$` 内的 `|` 被当表格）。
-- **受影响面（不止做题页）**：`QuestionDisplay.vue`（题干/选项/解析）、`ReadingComprehensionDisplay.vue`（组合题）、`QuestionAnalysis.vue`（解析）均包了 `LatexRenderer` 但走失效路径 B；`AiQuestionBuilder.vue`（AI 预览）、`QuestionBuilder.vue`/`questionMain`（题库管理）、`PracticeResult.vue`（交卷 `v-html` 直出）、`QuestionCard.vue`/`QuestionCardGrid.vue`（卡片只换行）**连 `LatexRenderer` 都没用**。
+- **受影响面（不止做题页）**：`QuestionDisplay.vue`（题干/选项/解析）、`ReadingComprehensionDisplay.vue`（组合题）、`QuestionAnalysis.vue`（解析）均包了 `LatexRenderer` 但走失效路径 B；~~`AiQuestionBuilder.vue`（AI 预览）~~〔2026-10-22 该文件已删除〕、`QuestionBuilder.vue`/`questionMain`（题库管理）、`PracticeResult.vue`（交卷 `v-html` 直出）、`QuestionCard.vue`/`QuestionCardGrid.vue`（卡片只换行）**连 `LatexRenderer` 都没用**。
 
 **2026-10-11 用户拍板（本轮定案）**：
 - **方案 A 被采纳**——修 `LatexRenderer` 让渲染管线让 `rawHtml`/`markdown` 真正生效，且默认就能渲 `$...$` + 表格（治本·前端核心）。

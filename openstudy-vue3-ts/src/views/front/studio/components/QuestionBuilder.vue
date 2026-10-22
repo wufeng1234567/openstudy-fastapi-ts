@@ -560,8 +560,8 @@
                     · 图片（png/jpg/webp…）  → 直接读成 data URL，作为视觉素材
                   用户不需要先想"这是哪种"，拖进来就行。
 
-                  预览复用系统既有模式（与 `AiQuestionBuilder.vue` 一致）：
-                    `el-image` + `:preview-src-list` → 点击放大。
+                  预览复用系统既有模式（`el-image` + `:preview-src-list` → 点击放大），
+                  与站内其它图片预览保持一致。
                 -->
                 <div class="material-field">
                   <div class="material-field__label">上传文档或图片</div>
@@ -673,7 +673,7 @@
                  ② 解析质量能接受（表格/公式有没有乱掉）
                看不见就等于不敢用 —— 素材功能会因此被弃用。
 
-            实现刻意**对齐 `AiQuestionBuilder` 的解析结果对话框**（同一套形态：
+            实现刻意**沿用站内既有的解析结果对话框形态**（同一套形态：
             顶部统计条 + 大文本区 + 复制按钮），这样同一个系统里"看文档"的体验一致，
             用户不需要学两套。样式复用 `.parsed-dialog-*` 的思路，不另起一套命名。
           -->
@@ -4398,7 +4398,7 @@ defineExpose({ questions, openAiDialog })
  * 图片素材缩略图（2026-10-20）
  *
  * 32px 见方、圆角、可点击放大（点击行为由 el-image 的 preview-src-list 提供，
- * 与 AiQuestionBuilder 的配图预览是同一套，不另造弹窗）。
+ * 与站内其它图片预览是同一套，不另造弹窗）。
  * 用 `object-fit: cover`（模板里 fit="cover"）保证缩略图不变形。
  */
 .material-doc__thumb {
@@ -4438,7 +4438,7 @@ defineExpose({ questions, openAiDialog })
 /*
  * 文档预览对话框
  *
- * 与 `AiQuestionBuilder` 的「文档解析结果」保持同一形态（见模板注释），
+ * 与站内既有的「文档解析结果」保持同一形态（见模板注释），
  * 所以这里只补必要的间距，不重做视觉。
  */
 .material-preview-header {

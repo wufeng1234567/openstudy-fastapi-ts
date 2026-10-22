@@ -57,13 +57,11 @@ export function generateReadingComprehension(data: any) {
   })
 }
 
-/**
- * 解析文件为结构化块（含图片提取）
- *
- * 实现已搬到 `@/utils/doc-parse`（聊天助手的附件在线预览走同一套，必须单一事实来源），
- * 这里 re-export 是为了保持旧调用方（`AiQuestionBuilder.vue`）的 import 不变。
+/*
+ * 说明：这里原本还 re-export 过 `parseFileBlocks`（从 `@/utils/doc-parse` 转出），
+ * 唯一调用方是已下线的 `AiQuestionBuilder.vue`。该组件 2026-10-22 删除后，
+ * 这条导出已无人使用，一并去掉 —— 需要解析文件请直接从 `@/utils/doc-parse` 引。
  */
-export { parseFileBlocks } from '@/utils/doc-parse'
 
 /** {@link postAiStream} 的入参：一次「AI 流式轮次」的全部信息 */
 export interface AiStreamOptions {

@@ -38,7 +38,7 @@ export function dataUrlByteSize(dataUrl: string): number {
  * `File` → data URL
  *
  * 2026-10-20 提取为公共函数：这段 FileReader 逻辑此前在 4 处重复
- * （AiAssistant / ChatFileUploader / OcrRecognizer / AiQuestionBuilder），
+ * （AiAssistant / ChatFileUploader / OcrRecognizer / 当时的 AI 出题面板），
  * 这次接入图片素材又要用第五次 —— 与其再抄一遍，不如收到这里。
  *
  * 失败策略：**reject**（交给调用方决定提示什么），

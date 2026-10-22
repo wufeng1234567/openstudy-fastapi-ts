@@ -1091,8 +1091,8 @@ const reprocess = async (doc: RagDocument) => {
 /**
  * 图片 URL 归一：data URL / http(s) 原样；相对路径（`/profile/...`）拼上 API 前缀。
  *
- * ⚠️ 与出题面板 `AiQuestionBuilder.getFullImageUrl` 同口径。`VITE_APP_BASE_API`
- * 为空串时拼出来就是单斜杠相对路径（正确）；非空时为 `/dev-api` 等前缀。
+ * `VITE_APP_BASE_API` 为空串时拼出来就是单斜杠相对路径（正确）；
+ * 非空时为 `/dev-api` 等前缀。出题面板那份实现与本处同一口径。
  */
 const kbImageUrl = (url: string): string => {
   const v = String(url || '').trim()
