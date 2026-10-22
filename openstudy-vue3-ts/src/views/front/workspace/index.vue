@@ -57,7 +57,15 @@
       </div>
     </header>
 
-    <div class="kbp-body">
+    <!--
+      ⚠️ 一个知识库都没有时**不渲染两栏区**（v-if）。
+         否则会出现「左边：还没有知识库 / 右边：左边选一个知识库」这种
+         两块空面板互相指路的尴尬画面 —— 那是典型的"没设计过空态"。
+         这种情况下直接用下面那张整页引导替代。
+         注意：默认库是自动创建的，所以这个分支实际上只在接口返回异常时出现，
+         但兜底必须画对。
+    -->
+    <div v-if="loading || (kbs.length && !loadFailed)" class="kbp-body">
       <!-- ============ 左：知识库列表 ============ -->
       <aside class="kbp-side">
         <div class="kbp-side__head">
@@ -99,7 +107,11 @@
           </button>
 
           <div v-if="!loading && !kbs.length" class="kbp-side__empty">
-            还没有知识库
+            <p>还没有知识库</p>
+            <span>建一个来放课件和真题</span>
+            <el-button size="small" type="primary" :icon="Plus" @click="promptCreate">
+              新建知识库
+            </el-button>
           </div>
         </div>
       </aside>
@@ -209,9 +221,26 @@
               </div>
 
               <div v-if="!docsLoading && !activeKb.files.length" class="kbp-docs__empty">
-                <OsIcon name="inbox" :size="30" />
-                <p>这个知识库还是空的</p>
-                <span>把文件拖进来，或点右上角「上传文档」</span>
+                <div class="kbp-empty__art">
+                  <OsIcon name="inbox" :size="30" />
+                </div>
+                <p class="kbp-empty__title">这个知识库还是空的</p>
+                <span class="kbp-empty__desc">
+                  把课件、真题、笔记传进来，智能体出题时就能翻到它们
+                </span>
+                <div class="kbp-empty__actions">
+                  <button type="button" class="kbp-empty__btn is-primary" :disabled="busy" @click="onPick">
+                    <OsIcon name="arrow-up" :size="14" />
+                    <span>上传文档</span>
+                  </button>
+                  <button type="button" class="kbp-empty__btn" :disabled="busy" @click="openTextImport">
+                    <OsIcon name="file-text" :size="14" />
+                    <span>粘贴文本</span>
+                  </button>
+                </div>
+                <span class="kbp-empty__formats">
+                  支持 Word / PDF / Markdown / TXT，带公式和图片也能读
+                </span>
               </div>
             </div>
           </div>
@@ -253,11 +282,50 @@
         </template>
 
         <div v-else-if="!loading" class="kbp-main__empty">
-          <OsIcon name="folder" :size="34" />
-          <p>左边选一个知识库</p>
-          <span>或者点「新建」建一个</span>
+          <div class="kbp-empty__art">
+            <OsIcon name="folder" :size="30" />
+          </div>
+          <p class="kbp-empty__title">左边选一个知识库</p>
+          <span class="kbp-empty__desc">选中后这里会显示它里面的资料</span>
         </div>
       </section>
+    </div>
+
+    <!-- 全页空态：一个知识库都没有时，用一张完整引导替代整个两栏区 -->
+    <div v-if="!loading && !kbs.length && loadFailed" class="kbp-blank">
+      <div class="kbp-blank__box">
+        <div class="kbp-blank__art is-warn">
+          <OsIcon name="alert" :size="32" />
+        </div>
+        <h2 class="kbp-blank__title">知识库没能加载出来</h2>
+        <p class="kbp-blank__desc">
+          可能是网络或服务暂时不可用。这不代表你的资料丢了，
+          重试一下通常就好。
+        </p>
+        <button type="button" class="kbp-blank__btn" :disabled="loading" @click="load(false)">
+          <OsIcon name="zap" :size="15" />
+          <span>重新加载</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 全页空态：一个知识库都没有时，用一张完整引导替代整个两栏区 -->
+    <div v-else-if="!loading && !kbs.length" class="kbp-blank">
+      <div class="kbp-blank__box">
+        <div class="kbp-blank__art">
+          <OsIcon name="folder-plus" :size="34" />
+        </div>
+        <h2 class="kbp-blank__title">先建一个知识库</h2>
+        <p class="kbp-blank__desc">
+          知识库就是你的资料夹。把课件、真题、笔记放进去，
+          智能体出题时会自己翻这些资料，不用你每次都重新传。
+        </p>
+        <button type="button" class="kbp-blank__btn" :disabled="creating" @click="promptCreate">
+          <OsIcon name="plus" :size="15" />
+          <span>新建知识库</span>
+        </button>
+        <span class="kbp-blank__hint">建好后可以往里拖文件</span>
+      </div>
     </div>
 
     <!-- 分块预览 -->
@@ -273,7 +341,9 @@
           </div>
           <div class="kbp-chunk__text">{{ c.content }}</div>
         </div>
-        <div v-if="!chunksLoading && !chunks.length" class="kbp-docs__empty">没有分块</div>
+        <div v-if="!chunksLoading && !chunks.length" class="kbp-chunks__empty">
+          这份资料还没有切出分块，可能还在解析中
+        </div>
       </div>
     </el-dialog>
 
@@ -318,6 +388,7 @@ import {
   updateKnowledgeBase,
   uploadDocument
 } from '@/api/ai/rag'
+import { Plus } from '@element-plus/icons-vue'
 
 /* ===================== 状态 ===================== */
 
@@ -328,6 +399,16 @@ const uploadTip = ref('')
 const dragOver = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const docsLoading = ref(false)
+/**
+ * 加载失败标记
+ *
+ * 为什么不能只靠 `kbs.length === 0` 判断空态：
+ *   接口挂了和「真的一个库都没有」在这件事上长得一模一样，
+ *   但用户看到的应该是**两种完全不同的画面** ——
+ *   前者要说"没加载出来，重试"，后者要说"来建第一个库"。
+ *   混在一起的话，服务故障会被伪装成"你的资料没了"，这是最吓人的那种误导。
+ */
+const loadFailed = ref(false)
 
 const kbs = ref<any[]>([])
 const activeKbId = ref<number | null>(null)
@@ -359,9 +440,10 @@ const textImportFileName = ref('')
 
 async function load(keepActive = true) {
   loading.value = true
+  loadFailed.value = false
   try {
     const res: any = await getWorkspaceOverview()
-    if (res.code === 200) {
+    if (res.code === 200 && res.data) {
       kbs.value = res.data.knowledgeBases || []
       Object.assign(stats, res.data.stats || {})
 
@@ -369,9 +451,12 @@ async function load(keepActive = true) {
       if (!keepActive || !kbs.value.some((k) => k.kbId === activeKbId.value)) {
         activeKbId.value = res.data.defaultKbId || kbs.value[0]?.kbId || null
       }
+    } else {
+      loadFailed.value = true
     }
   } catch (e: any) {
-    ElMessage.error('读取知识库失败：' + (e?.message || e))
+    loadFailed.value = true
+    console.warn('[kb] 加载知识库失败', e)
   } finally {
     loading.value = false
   }
@@ -728,15 +813,26 @@ onMounted(() => load(false))
 }
 
 /* ---------- 两栏 ---------- */
+/*
+ * `align-items: start` 改掉（2026-10-22）：
+ *   原来两栏各自按内容高度收缩，右边只有一行文档、左边只有三个库时，
+ *   整块内容只占屏幕上半截，下半屏一片白 —— 用户原话「空白多用户观感差」。
+ *   现在两栏**等高拉伸**，由外层给出一个随视口走的最小高度，
+ *   内容少时面板也是完整的一整块，不会看着像"没加载完"。
+ */
 .kbp-body {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
   gap: 18px;
-  align-items: start;
+  align-items: stretch;
+  /* 视口高度 - 顶栏 - 页头 - 上下留白；下限定 420 避免小屏被压扁 */
+  min-height: clamp(420px, calc(100vh - 260px), 720px);
 }
 
 /* ---------- 左：库列表 ---------- */
 .kbp-side {
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--os-border, #e5e7eb);
   border-radius: 12px;
   background: #fff;
@@ -749,6 +845,7 @@ onMounted(() => load(false))
   justify-content: space-between;
   gap: 8px;
   padding: 12px 12px 10px;
+  flex: none;
   border-bottom: 1px solid var(--os-border-light, #f1f3f5);
 }
 
@@ -759,16 +856,36 @@ onMounted(() => load(false))
 }
 
 .kbp-side__list {
+  flex: 1;
+  min-height: 0;
   padding: 6px;
-  max-height: calc(100vh - 260px);
   overflow-y: auto;
 }
 
 .kbp-side__empty {
-  padding: 24px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 36px 14px;
   text-align: center;
-  font-size: 12px;
   color: var(--os-text-3, #9ca3af);
+
+  p {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--os-text-2, #4b5563);
+  }
+
+  span {
+    font-size: 11.5px;
+    line-height: 1.5;
+  }
+
+  .el-button {
+    margin-top: 4px;
+  }
 }
 
 .kbp-kb {
@@ -883,6 +1000,8 @@ onMounted(() => load(false))
 /* ---------- 右：文档区 ---------- */
 .kbp-main {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--os-border, #e5e7eb);
   border-radius: 12px;
   background: #fff;
@@ -953,8 +1072,16 @@ onMounted(() => load(false))
 }
 
 /* ---------- 拖拽投放区 ---------- */
+/*
+ * 撑满右侧面板剩余高度（`flex:1`）。
+ * 面板本身是 flex 列（见 .kbp-main），所以这里能一直长到面板底部 ——
+ * 空态就用这个高度做真正的垂直居中，而不是靠一层层 padding 硬撑。
+ */
 .kbp-drop {
   position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   border-radius: 10px;
   transition: background 0.15s;
 
@@ -990,7 +1117,9 @@ onMounted(() => load(false))
   display: flex;
   flex-direction: column;
   gap: 2px;
-  min-height: 120px;
+  /* 不再是固定的 120px 最小高度 —— 由父级 flex 分配，空态时也铺满 */
+  flex: 1;
+  min-height: 0;
 }
 
 .kbp-doc {
@@ -1093,25 +1222,186 @@ onMounted(() => load(false))
 
 .kbp-docs__empty,
 .kbp-main__empty {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 56px 20px;
+  gap: 8px;
+  padding: 40px 20px;
   color: var(--os-text-3, #9ca3af);
   text-align: center;
+}
 
-  p {
-    margin: 6px 0 0;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--os-text-2, #6b7280);
+/* ---------- 通用空态零件（三处空态共用，避免各写一套） ---------- */
+.kbp-empty__art {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 2px;
+  border-radius: 16px;
+  background: var(--os-bg-subtle, #fafafa);
+  border: 1px solid var(--os-border-light, #f1f3f5);
+  color: var(--os-text-3, #9ca3af);
+}
+
+.kbp-empty__title {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--os-text-2, #4b5563);
+}
+
+.kbp-empty__desc {
+  max-width: 320px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--os-text-3, #9ca3af);
+}
+
+.kbp-empty__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.kbp-empty__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-family: inherit;
+  border-radius: 8px;
+  border: 1px solid var(--os-border, #e5e7eb);
+  background: #fff;
+  color: var(--os-text, #111827);
+  cursor: pointer;
+  transition: all 0.15s;
+
+  &:hover:not(:disabled) {
+    border-color: var(--os-accent, #2563eb);
+    color: var(--os-accent, #2563eb);
   }
 
-  span {
-    font-size: 12px;
+  &.is-primary {
+    background: var(--os-text, #111827);
+    border-color: var(--os-text, #111827);
+    color: #fff;
+
+    &:hover:not(:disabled) {
+      background: #000;
+      border-color: #000;
+      color: #fff;
+    }
   }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.kbp-empty__formats {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--os-text-4, #9ca3af);
+}
+
+/* ---------- 全页空态（一个知识库都没有） ---------- */
+.kbp-blank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: clamp(420px, calc(100vh - 260px), 720px);
+}
+
+.kbp-blank__box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 460px;
+  padding: 44px 36px;
+  text-align: center;
+  border: 1px dashed var(--os-border, #e5e7eb);
+  border-radius: 16px;
+  background: var(--os-bg-subtle, #fafafa);
+}
+
+.kbp-blank__art {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  background: #fff;
+  border: 1px solid var(--os-border-light, #f1f3f5);
+  color: var(--os-accent, #2563eb);
+
+  /* 加载失败：换成警示色，别让"故障"看起来和"空"一模一样 */
+  &.is-warn {
+    color: #d97706;
+    background: #fffbeb;
+    border-color: #fde68a;
+  }
+}
+
+.kbp-chunks__empty {
+  padding: 28px 12px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--os-text-3, #9ca3af);
+}
+
+.kbp-blank__title {
+  margin: 2px 0 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--os-text, #111827);
+}
+
+.kbp-blank__desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--os-text-3, #6b7280);
+}
+
+.kbp-blank__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  margin-top: 6px;
+  padding: 0 18px;
+  font-size: 13.5px;
+  font-weight: 500;
+  font-family: inherit;
+  border: none;
+  border-radius: 8px;
+  background: var(--os-text, #111827);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover:not(:disabled) {
+    background: #000;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.kbp-blank__hint {
+  font-size: 11.5px;
+  color: var(--os-text-4, #9ca3af);
 }
 
 /* ---------- 试试 AI 怎么找 ---------- */
@@ -1281,8 +1571,14 @@ onMounted(() => load(false))
 
 /* ---------- 窄屏 ---------- */
 @media (max-width: 900px) {
+  /*
+   * 堆叠布局下不能再套「两栏等高」那套最小高度：
+   * 左栏在上、右栏在下，若整体还锁 clamp(420px…)，右栏会被推得很长，
+   * 空态又在里面垂直居中 → 中间大片空。这里交还给自然高度。
+   */
   .kbp-body {
     grid-template-columns: 1fr;
+    min-height: 0;
   }
 
   .kbp-head {
@@ -1293,6 +1589,14 @@ onMounted(() => load(false))
 
   .kbp-side__list {
     max-height: 240px;
+  }
+
+  .kbp-blank {
+    min-height: 320px;
+  }
+
+  .kbp-blank__box {
+    padding: 32px 22px;
   }
 }
 </style>

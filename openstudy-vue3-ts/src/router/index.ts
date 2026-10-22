@@ -457,12 +457,12 @@ export const constantRoutes: AppRouteRecordRaw[] = [
           }
         ]
       },
-      // 我的空间（2026-10-22）：用户的「资料抽屉」
+      // 知识库（2026-10-22 由「我的空间」改名并升级为多库管理页）
       {
         path: 'workspace',
         name: 'FrontWorkspace',
         component: () => import('@/views/front/workspace/index.vue'),
-        meta: { title: '我的空间', layout: 'front', requiresLogin: true },
+        meta: { title: '知识库', layout: 'front', requiresLogin: true },
         hidden: true
       },
       // studio 题库搭建模块（直接进入 create 页面）
