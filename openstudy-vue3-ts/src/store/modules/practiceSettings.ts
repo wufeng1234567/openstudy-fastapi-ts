@@ -8,7 +8,77 @@ import type {
   MockExamRecord
 } from '@/types'
 
-const STORAGE_KEY = 'practice-settings'
+/**
+ * localStorage 键前缀
+ *
+ * ⚠️ **必须按用户分区**（2026-10-22 修的串号 bug）
+ *
+ * 原来是一个固定的 `practice-settings` 键，所有人共用。后果实测过：
+ *   同一浏览器先让 user1 考一场，退出登录换 user2 →
+ *   user2 的「考试记录」里**直接出现 user1 的卷子**（bankName 都能看到）；
+ *   再让 user2 考一场，两人的记录就混在同一个数组里，
+ *   切回 user1 还能看到 user2 的记录。
+ *
+ * 这不仅是隐私问题，也让"我的考试记录"这个功能失去意义 ——
+ * 用户点开一条记录，看到的是别人的成绩单。
+ *
+ * 现在 key = `practice-settings_{userId}`，与 `os_practice_draft_*`、
+ * `os_mock_session_*` 的分区方式保持一致（那两处早就带了 userId）。
+ */
+const STORAGE_KEY_PREFIX = 'practice-settings'
+
+/** 旧版全局键（迁移用；迁移完成后删除） */
+const LEGACY_STORAGE_KEY = 'practice-settings'
+
+/**
+ * 当前用户 id（分区依据）
+ *
+ * ⚠️⚠️ 这里踩过一个坑，务必看清（2026-10-22）
+ *
+ * 第一版我写的是 `JSON.parse(localStorage.getItem('user')).id` —— 想当然地以为
+ * 登录后会像 RuoYi 原版那样把用户信息持久化到 localStorage。
+ * **实际这个项目根本不写 `user` 这个键**（`store/modules/user.ts` 里没有任何
+ * `localStorage.setItem('user', ...)`），于是它永远是 `null`，
+ * 所有用户的数据都被塞进 `practice-settings_0` 匿名区 —— 等于**没做隔离**。
+ * 实测才发现：user1 和 user2 的记录还是混在一起。
+ *
+ * 可靠来源只有一个：`userStore.id`，它在 `getInfo()` 之后被赋值。
+ * 但本文件是 store 定义模块，**不能**在 `state()` 里 `useUserStore()`
+ * （Pinia 要求 store 创建完成后才能互相取用，且会形成循环依赖）。
+ *
+ * 所以改成"由外部注入"：外壳 `layout/front.vue` 在用户 id 变化时
+ * 调 `setActiveUserId(id)`，这里记在模块级变量里供读写分区使用。
+ * 未注入时退回 `null`（匿名区），保证不会串到任何真实用户身上。
+ */
+let activeUserId: string | number | null = null
+
+/**
+ * 设置当前活跃用户（由外壳在登录态变化时调用）
+ *
+ * @returns 用户是否发生了变化（`true` 时调用方应随即 `reloadForCurrentUser()`）
+ */
+export function setActiveUserId(id: string | number | null | undefined): boolean {
+  const next = id === undefined || id === null || id === '' ? null : id
+  const changed = String(next ?? '') !== String(activeUserId ?? '')
+  activeUserId = next
+  return changed
+}
+
+/** 读当前活跃用户 id */
+export function getActiveUserId(): string | number | null {
+  return activeUserId
+}
+
+/** 生成按用户分区的存储键 */
+function storageKeyFor(userId: string | number | null): string {
+  return `${STORAGE_KEY_PREFIX}_${userId ?? 0}`
+}
+
+/** 当前用户对应的存储键（运行时动态取，用户可能中途换账号） */
+function currentStorageKey(): string {
+  return storageKeyFor(activeUserId)
+}
+
 
 /**
  * 模拟考试的默认配置（2026-10-22）
@@ -93,7 +163,32 @@ const defaultModules: PracticeModuleConfig = {
 
 function loadFromStorage(): PracticeSettings | null {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY)
+    /*
+     * 读取顺序：先读**当前用户**的分区键，读不到再看旧全局键（迁移）。
+     *
+     * 迁移策略（只做一次）：
+     *   旧版是单一 `practice-settings`，无法知道它属于谁 ——
+     *   按"谁先登录就归谁"处理：第一次读到旧键的用户接管它，
+     *   随后把旧键删掉，避免后登录的另一个用户又把同一份数据搬走。
+     *   这是牺牲一点历史数据的确定性，换取"之后永不再串号"。
+     */
+    const key = currentStorageKey()
+    let saved = localStorage.getItem(key)
+
+    if (!saved) {
+      const legacy = localStorage.getItem(LEGACY_STORAGE_KEY)
+      if (legacy) {
+        // 旧数据整体过户给当前用户
+        saved = legacy
+        try {
+          localStorage.setItem(key, legacy)
+          localStorage.removeItem(LEGACY_STORAGE_KEY)
+        } catch {
+          /* 写不进去也不影响本次读取 */
+        }
+      }
+    }
+
     if (saved) {
       const data: any = JSON.parse(saved)
       // 兼容旧数据：wrong → custom
@@ -175,7 +270,7 @@ function loadFromStorage(): PracticeSettings | null {
         }
         if (_migrated) {
           try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+            localStorage.setItem(currentStorageKey(), JSON.stringify(data))
           } catch (e) {
             console.warn('刷题设置迁移落盘失败（不影响使用）:', e)
           }
@@ -191,7 +286,7 @@ function loadFromStorage(): PracticeSettings | null {
 
 function saveToStorage(state: PracticeSettings) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    localStorage.setItem(currentStorageKey(), JSON.stringify({
       currentBankId: state.currentBankId,
       currentBankName: state.currentBankName,
       modules: state.modules,
@@ -232,10 +327,53 @@ const usePracticeSettingsStore = defineStore('practiceSettings', {
       migrations: (saved as any)?.migrations || {},
       mockExamHistory: Array.isArray((saved as any)?.mockExamHistory)
         ? (saved as any).mockExamHistory
-        : []
+        : [],
+      /*
+       * 本份数据属于哪个用户（`null` = 匿名区）
+       *
+       * ⚠️ 不能省（2026-10-22 串号 bug 的第二层）
+       *
+       * `state()` 只在 store **首次创建**时执行一次，之后整个 SPA 生命周期
+       * 都是同一个实例。用户在同一个浏览器里退出登录、换个账号登录，
+       * store 不会重建 —— 内存里还是上一个人的 `mockExamHistory` 与模块偏好。
+       *
+       * 所以要把"这份数据是谁的"记在 state 里，由外壳在用户变化时比对；
+       * 不一致就调 `reloadForCurrentUser()` 从新用户的分区键重读。
+       */
+      ownerUserId: activeUserId as any
     } as PracticeSettings
   },
   actions: {
+    /**
+     * 换账号后重新加载本用户的数据
+     *
+     * ⚠️ 为什么必须有这个（2026-10-22 串号 bug）
+     *
+     * `state()` 只在 store 创建时跑一次，整个 SPA 生命周期同一个实例。
+     * 同一浏览器里 user1 退出、user2 登录，store 不会重建 ——
+     * 于是 user2 看到的是 user1 的考试记录与模块偏好（实测复现过）。
+     *
+     * 调用时机：外壳 `layout/front.vue` 监听当前用户 id 变化时调用。
+     * 内部做三件事：读新分区 → 覆盖 state → 记下 ownerUserId。
+     *
+     * @returns 是否真的发生了切换（`false` 表示用户没变，什么都没做）
+     */
+    reloadForCurrentUser(): boolean {
+      const uid = activeUserId
+      if (String(uid ?? '') === String((this as any).ownerUserId ?? '')) return false
+
+      const saved = loadFromStorage()
+      this.currentBankId = saved?.currentBankId ?? null
+      this.currentBankName = saved?.currentBankName ?? ''
+      this.modules = saved?.modules ? saved.modules : JSON.parse(JSON.stringify(defaultModules))
+      ;(this as any).migrations = (saved as any)?.migrations || {}
+      this.mockExamHistory = Array.isArray((saved as any)?.mockExamHistory)
+        ? (saved as any).mockExamHistory
+        : []
+      ;(this as any).ownerUserId = uid
+      return true
+    },
+
     setCurrentBank(bankId: number | string | null, bankName: string) {
       this.currentBankId = bankId
       this.currentBankName = bankName

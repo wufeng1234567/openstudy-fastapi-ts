@@ -184,6 +184,8 @@
 import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import useUserStore from '@/store/modules/user'
+// 用户切换时要把「刷题设置 / 考试记录」换成新用户的那份（见下方 watch 的说明）
+import usePracticeSettingsStore, { setActiveUserId } from '@/store/modules/practiceSettings'
 import useTopbarStore from '@/store/modules/topbar'
 import useTagsViewStore from '@/store/modules/tagsView'
 import { ensureLogin } from '@/utils/loginGuard'
@@ -300,6 +302,36 @@ async function fetchUnread() {
 }
 
 watch(() => route.path, fetchUnread)
+
+/*
+ * 用户切换 → 重新加载「刷题设置 / 考试记录」（2026-10-22 串号 bug）
+ * ============================================================================
+ * Pinia store 在整个 SPA 生命周期里是**同一个实例**，`state()` 只跑一次。
+ * 同一浏览器里 user1 退出、user2 登录，store 不会重建 ——
+ * 于是 user2 会看到 user1 的 `mockExamHistory`（实测复现：
+ * user2 的考试记录里出现了 user1 的 JAVA_U1 卷子）。
+ *
+ * 数据按 `practice-settings_{userId}` 分区存放，这里负责两步：
+ *   ① `setActiveUserId(id)` —— 把当前用户告诉 store 模块（分区键靠它生成）；
+ *   ② `reloadForCurrentUser()` —— 用户真的变了才重读。
+ *
+ * ⚠️ 顺序不能反：先 set 再 reload，否则 reload 读到的还是旧分区。
+ * ⚠️ 必须 `immediate: true`：首次进入时 store 可能创建于
+ *    "userId 还没注入"的早期，这里补一次。
+ */
+watch(
+  () => userStore.id,
+  (id) => {
+    try {
+      setActiveUserId(id)
+      usePracticeSettingsStore().reloadForCurrentUser()
+    } catch (e) {
+      console.warn('[front] 重新加载刷题设置失败', e)
+    }
+  },
+  { immediate: true }
+)
+
 
 // ==================== 用户态 / 页面模式 ====================
 const isLogin = computed(() => !!userStore.token)
