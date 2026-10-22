@@ -111,6 +111,19 @@ class RagKnowledgeBase(Base):
         SmallInteger, nullable=False, default=0, server_default="0"
     )
 
+    #: 「工作空间」标记：`1` = 该用户的工作空间（每人一个），`0` = 普通知识库。
+    #:
+    #: 为什么复用知识库表而不是新建 Workspace 表：
+    #:   工作空间里的文件同样要「解析 → 分块 → 向量化 → 被 AI 检索」，
+    #:   与知识库是同一套链路。新建表等于把这套逻辑再抄一遍（早晚漂移），
+    #:   而且 AI 的 `knowledge_search` 工具还得再写一份。
+    #:
+    #: 与普通知识库的差别只在**产品语义**：工作空间是「用户的资料抽屉」，
+    #: 前端单独入口展示，不参与「选哪个库来出题」的显式选择。
+    is_workspace: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=0, server_default="0"
+    )
+
     create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     update_time: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
@@ -149,6 +162,14 @@ class RagDocument(Base):
     #:     ② 回给模型前用 `chat_engine.stored_image_to_data_url` 转回 data URL 即可。
     #: 空 / NULL = 该文档没有图。
     image_map: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    #: 用户给这份资料写的一句话说明（如「高二期末卷」「第四章课件」）。
+    #:
+    #: 为什么需要它：工作空间里的文件往往名字很随便（`新建文档(2).docx`、
+    #: `扫描件001.pdf`），只靠文件名 AI 分不清哪份是用户说的「那份概率论的资料」。
+    #: 用户写一句人话说明，AI 找文件时就能对上。
+    #: NULL = 没写（此时 AI 只能靠文件名 + 正文内容判断）。
+    user_note: Mapped[Optional[str]] = mapped_column(String(200))
 
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[int] = mapped_column(Integer, nullable=False, default=DOC_PENDING)

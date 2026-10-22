@@ -60,6 +60,23 @@ function isAdminUser(): boolean {
   return useUserStore().roles.includes('admin')
 }
 
+/**
+ * 动态路由是否已经初始化过（2026-10-22）
+ *
+ * ⚠️ 为什么需要这个标记：
+ *   普通用户调用 `/getRouters` 现在返回**空数组**（后台按角色返回，正确行为），
+ *   于是 `permissionStore.addRoutes` 一直是 `[]`。而守卫里判断的是
+ *   `if (addRoutes.length === 0) { ...generateRoutes().then(() => next({...to, replace:true})) }`
+ *   —— 空数组 → 每次都重新生成 → 每次都 `next({...to, replace:true})` →
+ *   **无限重定向**（vue-router 直接报 "Infinite redirect in navigation guard"）。
+ *
+ *   表现为：点了「立即开始刷题」，地址栏 hash 不动、页面也不跳。
+ *
+ *   加一个「只初始化一次」的标记：第一次跑完就置 true，
+ *   之后不管 addRoutes 是不是空，都直接 `next()` 放行。
+ */
+let routesInitialized = false
+
 /** 当前路由是否标记为必须登录（子路由会继承父级 matched meta） */
 function needsLogin(to: any): boolean {
   return (to.matched || []).some((record: any) => record.meta && record.meta.requiresLogin)
@@ -173,13 +190,16 @@ router.beforeEach((to, from, next) => {
           return
         }
 
-        if (permissionStore.addRoutes.length === 0) {
+        if (permissionStore.addRoutes.length === 0 && !routesInitialized) {
+          routesInitialized = true
           permissionStore.generateRoutes().then((accessRoutes: RouteRecordRaw[]) => {
             accessRoutes.forEach((route: RouteRecordRaw) => {
               if (!isHttp(route.path)) {
                 router.addRoute(route)
               }
             })
+            next({ ...to, replace: true })
+          }).catch(() => {
             next({ ...to, replace: true })
           })
         } else {

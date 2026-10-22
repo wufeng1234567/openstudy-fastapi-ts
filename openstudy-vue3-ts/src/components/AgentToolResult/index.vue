@@ -126,6 +126,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import AgentToolDetail from '@/components/AgentToolDetail/index.vue'
@@ -465,27 +466,57 @@ const artifact = computed(() => {
  */
 const BANK_ACTIONS = new Set(['create', 'batch_import', 'import', 'update'])
 
+/**
+ * 从工具回执里找出「题库」对象。
+ *
+ * ⚠️ 2026-10-22 修 bug：不同工具的回执结构**不一样**，这里原先只读顶层字段，
+ * 于是 `bank_manage(action=create)` 完全不出卡片 —— 因为它把题库信息放在
+ * **嵌套的 `bank` 对象**里：
+ *
+ *   bank_manage(create)           → { action:'create', bank:{bankId,bankName,totalQuestions,...}, message }
+ *   question_manage(batch_import) → { action:'batch_import', bankId, bankName, imported, bankTotal }
+ *   bank_manage(update)           → { action:'update', bank:{...} }
+ *
+ * 所以先看 `d.bank` 是否有 bankId，没有再看顶层。两条路都覆盖，
+ * 以后哪个工具换成另一种写法也不会再丢卡片。
+ */
+function pickBankPayload(d: any): any | null {
+  if (!d || typeof d !== 'object') return null
+  const nested = d.bank
+  if (nested && typeof nested === 'object') {
+    const nid = nested.bankId ?? nested.bank_id ?? nested.id
+    if (nid) return nested
+  }
+  const did = d.bankId ?? d.bank_id ?? d.id
+  if (did) return d
+  return null
+}
+
 const bankJump = computed(() => {
   if (props.status !== 'ok') return null
   const d = props.data
   if (!d || typeof d !== 'object') return null
 
-  const bankId = Number(d.bankId ?? d.bank_id ?? 0)
+  const payload = pickBankPayload(d)
+  if (!payload) return null
+
+  const bankId = Number(payload.bankId ?? payload.bank_id ?? payload.id ?? 0)
   if (!bankId) return null
 
   // 只对「刚建好 / 刚填好」的动作出卡片；
   // list / detail 这类只读查询回执里也有 bankId，但那时用户并不需要跳转
-  const action = String(d.action || '').toLowerCase()
+  const action = String(d.action || props.action || '').toLowerCase()
   if (action && !BANK_ACTIONS.has(action)) return null
 
-  const bankName = String(d.bankName || d.bank_name || '题库')
-  const total = Number(d.bankTotal ?? d.totalQuestions ?? d.imported ?? 0)
+  const bankName = String(payload.bankName || payload.bank_name || payload.name || '题库')
+  const total = Number(payload.bankTotal ?? payload.totalQuestions ?? payload.total_questions ?? d.imported ?? 0)
 
-  // 副标题：优先说「共几题」，其次是「导入了几题」
+  // 副标题：优先说「共几题」，其次是「本次导入了几题」
   const metaParts: string[] = []
   if (total > 0) metaParts.push(`共 ${total} 题`)
   if (d.imported) metaParts.push(`本次导入 ${d.imported} 题`)
-  if (d.subject) metaParts.push(String(d.subject))
+  const subject = payload.subject || d.subject
+  if (subject) metaParts.push(String(subject))
 
   return {
     bankId,
@@ -496,19 +527,19 @@ const bankJump = computed(() => {
   }
 })
 
+const router = useRouter()
+
 /**
  * 跳到题库详情页
  *
- * 用 hash 路由跳转（本项目是 createWebHashHistory）。
- * 带上 `from=agent` 便于题库页将来做「返回对话」的引导；
- * 目前题库页不消费这个参数，加了也无副作用。
+ * ⚠️ 2026-10-22 修 bug：原来用 `window.location.hash = '#/front/...'` 直接改地址栏，
+ *    结果**只有 hash 变了、页面没切换**（vue-router 没收到这次导航）。
+ *    必须走 `router.push()`，让路由守卫、组件挂载、keep-alive 都正常触发。
  */
 function goToBank() {
   const b = bankJump.value
   if (!b) return
-  const target = `/front/questionPractice/${b.bankId}`
-  // 同页内改 hash 不会触发整页刷新，交给 vue-router 处理
-  window.location.hash = '#' + target
+  router.push(`/front/questionPractice/${b.bankId}`)
 }
 
 
