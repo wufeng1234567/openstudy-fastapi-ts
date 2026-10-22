@@ -37,7 +37,7 @@ DEFAULT_LIMIT = 5
 class WorkspaceSearchTool(AgentTool):
     name = "workspace_search"
     description = (
-        "Look up files the user put in their personal workspace ('我的空间'). "
+        "Look up files the user put in their personal workspace (the 'My Space' area). "
         "Use this FIRST when the user refers to a document by description "
         "(e.g. 'the probability notes I uploaded', 'my final exam paper') "
         "instead of naming an exact file. "
