@@ -50,11 +50,19 @@ export function deleteWorkspaceFile(docId: number | string) {
   })
 }
 
-/** 按自然语言找文件（页面上的「试试 AI 怎么找」用） */
-export function searchWorkspace(query: string, limit = 5) {
+/**
+ * 语义检索（RAG）
+ *
+ * ⚠️ 2026-10-22 重做：后端这个接口原先走的是**纯字符串匹配**且只搜默认库，
+ * 现在已改为真正的混合检索（向量 + 全文 + RRF）。
+ * `kbIds` 传了 = 只搜这些库；不传 = 搜该用户全部知识库。
+ */
+export function searchWorkspace(query: string, limit = 5, kbIds?: number[]) {
   return request({
     url: '/rag/workspace/search',
     method: 'post',
-    data: { query, limit }
+    data: { query, limit, kbIds: kbIds && kbIds.length ? kbIds : undefined },
+    // 首次检索要现加载 embedding 模型（本地 bge-m3 约 15s），超时给足
+    timeout: 120000
   })
 }

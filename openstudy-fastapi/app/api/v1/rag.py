@@ -764,16 +764,83 @@ async def search_workspace(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """按自然语言找文件（调试/前端预览用；Agent 走 `workspace_search` 工具）"""
+    """按自然语言找文件（页面「试试 AI 会怎么找」）。
+
+    ⚠️ 2026-10-22 重写：原来这里调 `workspace_service.search_files()` ——
+    那是一个**纯字符串匹配**（`if token in content`），而且写死只搜**默认知识库**。
+    结果：
+      · 在「数据结构」库里搜「随机事件」，实际查的是默认库 → 一条都搜不到；
+      · `score=1` 的分全是假阳性（单个二元组在正文里撞上一个字就算命中）。
+
+    现在改走**真正的 RAG 链路**（`rag_query_service.search`：bge-m3 向量 +
+    jieba 全文 + RRF 融合），并且支持传 `kbIds` 收窄到指定库；
+    不传就是该用户的全部知识库。返回结构同时保留 `files`（按文件去重，
+    给页面列表用）和 `hits`（原始分块命中，给"看详情/看分块"用）。
+    """
     try:
-        q = str((data or {}).get("query") or "").strip()
-        limit = int((data or {}).get("limit") or 5)
+        body = data or {}
+        q = str(body.get("query") or "").strip()
+        limit = int(body.get("limit") or 5)
+        # 不传 kbIds = 搜全部知识库；传了就只搜这些（下面的 resolve 会校验归属）
+        raw_ids = body.get("kbIds")
+        kb_ids = [int(x) for x in raw_ids] if isinstance(raw_ids, list) and raw_ids else None
+
+        result = await rag_query_service.search(
+            db, _uid(current_user), q, kb_ids, top_k=max(limit, 1)
+        )
+        hits = result.get("hits") or []
+        # `ChunkHit.to_dict()` 只有 kbId，没有库名；从本次检索范围里补一张 id→name 表
+        kb_names = {
+            int(k.get("kbId")): str(k.get("name") or "")
+            for k in (result.get("knowledgeBases") or [])
+            if k.get("kbId") is not None
+        }
+        for h in hits:
+            try:
+                h["kbName"] = kb_names.get(int(h.get("kbId")), "")
+            except (TypeError, ValueError):
+                h["kbName"] = ""
+
         return success(
             {
                 "query": q,
-                "tokens": workspace_service._tokens(q),
-                "files": await workspace_service.search_files(db, _uid(current_user), q, limit),
+                "hits": hits,
+                "knowledgeBases": result.get("knowledgeBases") or [],
+                "files": _group_hits_by_file(hits, limit),
+                "reason": result.get("reason") or "",
             }
         )
     except Exception as e:
         return _fail(e)
+
+
+def _group_hits_by_file(hits: list, limit: int) -> list:
+    """把分块命中按**文件**聚合，供页面列表展示。
+
+    为什么不直接返回分块：用户问「找下概率论那份资料」时想看的是**哪份文件**，
+    而不是十几条零散片段。文件级列表 + 命中段数，才是这个页面该给的东西。
+    组内保留第一段正文摘要，方便用户确认「就是这份」。
+    """
+    groups: dict[int, dict] = {}
+    order: list[int] = []
+
+    for h in hits:
+        doc_id = h.get("docId")
+        if doc_id is None:
+            continue
+        if doc_id not in groups:
+            content = str(h.get("content") or "")
+            groups[doc_id] = {
+                "docId": doc_id,
+                "kbId": h.get("kbId"),
+                "kbName": h.get("kbName") or "",
+                "fileName": h.get("docName") or h.get("fileName") or "未命名文档",
+                "score": float(h.get("score") or 0),
+                "hitCount": 0,
+                "snippet": content[:120] + ("…" if len(content) > 120 else ""),
+                "images": list(h.get("images") or [])[:3],
+            }
+            order.append(doc_id)
+        groups[doc_id]["hitCount"] += 1
+
+    return [groups[d] for d in order][:limit]

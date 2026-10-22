@@ -245,23 +245,34 @@
             </div>
           </div>
 
-          <!-- 试试 AI 会怎么找：只在默认库显示，因为它才是 AI 自动翻的地方 -->
+          <!--
+            语义检索（RAG）—— 2026-10-22 重做
+            =================================
+            原来这块是「纯字符串匹配」且写死只搜默认库，在别的库里搜什么都搜不到；
+            而且结果只有文件名，点不了、看不了，用户拿到一句"找到了"就没了。
+
+            现在：
+              · 走后端真正的混合检索（向量 + 全文 + RRF），**默认只搜当前选中的库**；
+              · 每条结果给两个动作：「查看内容」（看命中片段原文）/
+                「看分块」（复用分块预览弹窗，能看到它到底被切成什么样）。
+          -->
           <section v-if="activeKb.files.length" class="kbp-try">
             <div class="kbp-try__head">
               <span class="kbp-try__title">试试 AI 会怎么找</span>
               <span class="kbp-try__hint">
-                在对话里说「用我那份概率论的资料出题」时，AI 就是这么找的
+                在「{{ activeKb.name }}」里按意思找，不是只匹配字面
               </span>
             </div>
             <div class="kbp-try__row">
               <el-input
                 v-model="tryQuery"
-                placeholder="例如：那份概率论的资料"
+                placeholder="例如：随机事件、二叉树的时间复杂度"
                 clearable
                 @keyup.enter="doTry"
               />
               <el-button type="primary" :loading="trying" @click="doTry">找找看</el-button>
             </div>
+
             <transition-group v-if="tryResult.length" name="kbp-fade" tag="div" class="kbp-try__result">
               <div
                 v-for="(f, i) in tryResult"
@@ -270,13 +281,40 @@
                 :class="{ 'is-best': i === 0 }"
               >
                 <span class="kbp-try__rank">{{ i + 1 }}</span>
-                <span class="kbp-try__file-name">{{ f.fileName }}</span>
-                <span v-if="f.note" class="kbp-try__file-note">{{ f.note }}</span>
-                <span v-if="i === 0" class="kbp-try__badge">最匹配</span>
+                <div class="kbp-try__file-main">
+                  <div class="kbp-try__file-name-row">
+                    <span class="kbp-try__file-name">{{ f.fileName }}</span>
+                    <span v-if="i === 0" class="kbp-try__badge">最匹配</span>
+                  </div>
+                  <div class="kbp-try__file-meta">
+                    <span v-if="f.kbName" class="kbp-try__kb">{{ f.kbName }}</span>
+                    <span v-if="f.hitCount">命中 {{ f.hitCount }} 段</span>
+                  </div>
+                  <!-- 命中片段摘要：让用户不用点进去就能判断"是不是这份" -->
+                  <div v-if="f.snippet" class="kbp-try__snippet">{{ f.snippet }}</div>
+                </div>
+                <div class="kbp-try__ops">
+                  <button type="button" class="kbp-try__op" @click="openHit(f)">
+                    查看内容
+                  </button>
+                  <button
+                    v-if="f.hitCount"
+                    type="button"
+                    class="kbp-try__op"
+                    @click="showChunks({ docId: f.docId, fileName: f.fileName })"
+                  >
+                    看分块
+                  </button>
+                </div>
               </div>
             </transition-group>
+
             <div v-else-if="tried" class="kbp-try__empty">
-              没找到对得上的文件。可以换个说法，或者在备注里加个关键词。
+              <template v-if="tryReason">{{ tryReason }}</template>
+              <template v-else>
+                没找到相关的内容。可以换个说法试试 —— 检索是按意思匹配的，
+                不必和原文用一样的词。
+              </template>
             </div>
           </section>
         </template>
@@ -423,6 +461,8 @@ const tryQuery = ref('')
 const trying = ref(false)
 const tried = ref(false)
 const tryResult = ref<any[]>([])
+/** 后端给的「为什么没结果」人话原因（如「没有可检索的知识库」），有就优先显示 */
+const tryReason = ref('')
 
 /* 分块 */
 const chunksVisible = ref(false)
@@ -716,25 +756,45 @@ async function submitTextImport() {
 
 /* ===================== 试试 AI 怎么找 ===================== */
 
+/**
+ * 语义检索
+ *
+ * ⚠️ 必须把当前选中的库传过去（`kbIds`）。
+ * 不传的话后端会搜"该用户的全部知识库"，用户明明在「数据结构」库里，
+ * 却在结果里看到「cpp」库的文件 —— 那才是真正的困惑来源。
+ */
 async function doTry() {
   const q = tryQuery.value.trim()
   if (!q) {
     ElMessage.warning('先输入一句描述')
     return
   }
+  const kb = activeKb.value
+  if (!kb) return
+
   trying.value = true
   tried.value = false
+  tryReason.value = ''
+  tryResult.value = []
   try {
-    const res: any = await searchWorkspace(q, 5)
+    const res: any = await searchWorkspace(q, 5, [kb.kbId])
     if (res.code === 200) {
       tryResult.value = res.data.files || []
+      tryReason.value = res.data.reason || ''
       tried.value = true
+    } else {
+      ElMessage.error(res.msg || '查找失败')
     }
   } catch (e: any) {
     ElMessage.error('查找失败：' + (e?.message || e))
   } finally {
     trying.value = false
   }
+}
+
+/** 打开命中的文件：直接看它的分块（= 检索实际用到的那段原文） */
+function openHit(f: any) {
+  showChunks({ docId: f.docId, fileName: f.fileName })
 }
 
 /* ===================== 工具 ===================== */
@@ -1446,16 +1506,86 @@ onMounted(() => load(false))
 
 .kbp-try__file {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
-  padding: 9px 12px;
+  padding: 10px 12px;
   background: #fff;
   border-radius: 8px;
   border: 1px solid transparent;
   font-size: 13px;
+  transition: border-color 0.15s;
 
   &.is-best {
     border-color: var(--os-accent, #2563eb);
+  }
+
+  &:hover {
+    border-color: var(--os-border, #e5e7eb);
+  }
+}
+
+.kbp-try__file-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.kbp-try__file-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kbp-try__file-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--os-text-3, #9ca3af);
+}
+
+.kbp-try__kb {
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--os-bg-subtle, #f3f4f6);
+  color: var(--os-text-2, #6b7280);
+}
+
+/* 命中片段摘要：判断"是不是这份"的主要依据 */
+.kbp-try__snippet {
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--os-text-2, #4b5563);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.kbp-try__ops {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.kbp-try__op {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-family: inherit;
+  border-radius: 6px;
+  border: 1px solid var(--os-border, #e5e7eb);
+  background: #fff;
+  color: var(--os-text-2, #4b5563);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+
+  &:hover {
+    border-color: var(--os-accent, #2563eb);
+    color: var(--os-accent, #2563eb);
   }
 }
 
@@ -1463,6 +1593,7 @@ onMounted(() => load(false))
   width: 18px;
   height: 18px;
   flex: none;
+  margin-top: 2px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1481,15 +1612,13 @@ onMounted(() => load(false))
 .kbp-try__file-name {
   font-weight: 500;
   color: var(--os-text, #111827);
-}
-
-.kbp-try__file-note {
-  font-size: 12px;
-  color: var(--os-text-3, #6b7280);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .kbp-try__badge {
-  margin-left: auto;
+  flex: none;
   font-size: 11px;
   font-weight: 600;
   color: var(--os-accent, #2563eb);
@@ -1498,6 +1627,7 @@ onMounted(() => load(false))
 .kbp-try__empty {
   margin-top: 10px;
   font-size: 12px;
+  line-height: 1.7;
   color: var(--os-text-3, #6b7280);
 }
 
