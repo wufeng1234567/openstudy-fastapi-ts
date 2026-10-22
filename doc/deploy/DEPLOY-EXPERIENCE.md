@@ -24,7 +24,7 @@
 部署完成后逐项验证，任何一项 ❌ 都必须修复后再交付：
 
 ```bash
-URL="https://***REMOVED***"
+URL="${DEMO_URL}"
 COOKIE="bridge_phishing_protection=1"
 
 # 1. 首页能加载
@@ -44,7 +44,7 @@ JS=$(curl -s -H "Cookie: $COOKIE" "$URL/" | grep -oP 'src="\K[^"]*\.js' | head -
 curl -s -o /dev/null -w "%{http_code}" "$URL$JS" | grep -q "200" && echo "✅ 静态资源" || echo "❌ 静态资源"
 
 # 6. 登录能成功
-LOGIN=$(curl -s -X POST "$URL/login" -H "Content-Type: application/json" -d '{"username":"demo","password":"***REMOVED***"}')
+LOGIN=$(curl -s -X POST "$URL/login" -H "Content-Type: application/json" -d '{"username":"demo","password":"${DEMO_PASSWORD}"}')
 echo "$LOGIN" | grep -q "操作成功" && echo "✅ 登录" || echo "❌ 登录"
 
 # 7. AI 接口能访问（需先登录）

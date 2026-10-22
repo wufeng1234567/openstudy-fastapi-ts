@@ -10,7 +10,7 @@ TARGET="${1:-local}"
 case "$TARGET" in
     local)  BASE="http://127.0.0.1:9101" ;;
     nginx)  BASE="http://127.0.0.1:3167" ;;
-    tunnel) BASE="https://***REMOVED***" ;;
+    tunnel) BASE="${DEMO_URL}" ;;
     *)      echo "用法: bash $0 [local|nginx|tunnel] [--wait]"; exit 1 ;;
 esac
 
@@ -54,7 +54,7 @@ echo ""
 echo "[1] 登录获取 token"
 TOKEN=$(curl -s -X POST "$BASE/login" \
   -H "Content-Type: application/json" \
-  -d '{"username":"demo","password":"***REMOVED***"}' \
+  -d '{"username":"demo","password":"${DEMO_PASSWORD}"}' \
   | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['data']['token'] if d.get('data') else '')" 2>/dev/null)
 if [ -z "$TOKEN" ]; then fail "登录失败"; exit 1; fi
 ok "登录成功: ${TOKEN:0:8}..."

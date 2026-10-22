@@ -1,0 +1,129 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  backend-syntax:
+    name: 后端语法与导入检查
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: root
+          POSTGRES_PASSWORD: ci-test-password
+          POSTGRES_DB: openstudy_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U root -d openstudy_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: openstudy-fastapi/requirements.txt
+
+      - name: 装依赖
+        working-directory: openstudy-fastapi
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 字节码编译（全量语法检查）
+        working-directory: openstudy-fastapi
+        run: python -m compileall -q app
+
+      - name: 应用能导入（捕获路由/模型装配错误）
+        working-directory: openstudy-fastapi
+        env:
+          DB_DRIVER: postgres
+          PG_HOST: localhost
+          PG_PORT: "5432"
+          PG_NAME: openstudy_ci
+          PG_USER: root
+          PG_PASSWORD: ci-test-password
+          REDIS_HOST: localhost
+          REDIS_PORT: "6379"
+          JWT_SECRET: ci-only-not-a-real-secret
+          AI_RATE_LIMIT_ENABLED: "false"
+          EMBEDDING_BACKEND: local
+        run: |
+          python -c "from app.main import app; print('routes:', len(app.routes))"
+
+  frontend-build:
+    name: 前端类型检查与构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: openstudy-vue3-ts/package-lock.json
+
+      - name: 装依赖
+        working-directory: openstudy-vue3-ts
+        run: npm ci
+
+      - name: 类型检查
+        working-directory: openstudy-vue3-ts
+        run: npm run type-check --if-present
+
+      - name: 构建
+        working-directory: openstudy-vue3-ts
+        run: npx vite build
+
+  repo-hygiene:
+    name: 仓库卫生检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 禁止提交真实 .env
+        run: |
+          if git ls-files | grep -E '(^|/)\.env$'; then
+            echo "::error::仓库里出现了真实 .env 文件"
+            exit 1
+          fi
+          echo "✅ 无真实 .env"
+
+      - name: 禁止提交 node_modules / venv
+        run: |
+          if git ls-files | grep -E 'node_modules/|\.venv/'; then
+            echo "::error::仓库里出现了依赖目录"
+            exit 1
+          fi
+          echo "✅ 无依赖目录"
+
+      - name: 扫描硬编码密钥
+        run: |
+          if git grep -nE "(api[_-]?key|secret|password)\s*[:=]\s*['\"][A-Za-z0-9_\-]{24,}['\"]" \
+               -- '*.py' '*.ts' '*.vue' '*.yml' '*.yaml' | grep -v 'example' | grep -v 'test'; then
+            echo "::error::疑似硬编码密钥"
+            exit 1
+          fi
+          echo "✅ 未发现硬编码密钥"

@@ -1,160 +1,258 @@
-# OpenStudy 在线学习平台
+# OpenStudy · 把不会的，问到会
 
-> 一个面向在线学习场景的全栈应用：题库刷题、错题本、笔记、学习分享、消息通知，并内置 **AI 助手（Agent + RAG 知识库 + 长期记忆）**。
+> 上传一份 Word / PDF / Markdown，它自己读、自己出题、自己组卷，你直接开刷。
 
-> 🛠️ **本项目的智能体核心能力（Agent 工具循环 / 工具链 / RAG 检索）使用华为云码道 CodeArts 开发**；
-> 开发过程记录见 [doc/dev-process/](doc/dev-process/)，含每日日志、AI 辅助分析会话与工程决策笔记。
+<p align="center">
+  <img src="doc/screenshots/01-agent-chat.png" width="880" alt="OpenStudy 智能对话页">
+</p>
 
-- **后端**：Python 3.11 · FastAPI · SQLAlchemy 2.0（异步）· PostgreSQL + pgvector
-- **前端**：Vue 3 · TypeScript · Vite · Element Plus · Pinia
-- **AI**：LangChain · DeepSeek / 智谱 / 硅基流动 多模型动态路由
-- **部署**：提供完整的逐步安装说明，支持 Linux 服务器 / 云沙箱 / 本机运行
+<p align="center">
+  <b>对话即入口</b> · <b>资料即题库</b> · <b>练习即诊断</b>
+  <br><br>
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white">
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white">
+  <img alt="Vue" src="https://img.shields.io/badge/Vue-3.4-4FC08D?logo=vuedotjs&logoColor=white">
+  <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-16+pgvector-4169E1?logo=postgresql&logoColor=white">
+  <img alt="License" src="https://img.shields.io/badge/License-MIT-green">
+</p>
 
 ---
 
-## 目录结构
+## 这是什么
+
+**学生不缺题刷，缺的是「把资料变成题」这几步。**
+
+老师的课件、历年真题、教材，大多是 Word / PDF / 扫描件。想变成能刷的题，得手动录入——
+20 道题大约一小时，公式和图还会丢。刷完之后，错题散落在各处，没人告诉你下一步该练什么。
+
+OpenStudy 把这条链路做通了：
 
 ```
-fastapi-v2/
-├── openstudy-fastapi/        # 后端（FastAPI）
-│   ├── app/
-│   │   ├── api/v1/           # 路由层（题库/笔记/错题/AI/RAG/OCR… 共 30+ 模块）
-│   │   ├── core/             # 安全、响应封装、中间件、异常
-│   │   ├── models/           # SQLAlchemy ORM 模型
-│   │   ├── schemas/          # Pydantic 模型
-│   │   ├── repositories/     # 数据访问层
-│   │   └── services/
-│   │       ├── ai/           # AI 能力：多模型客户端、Agent 循环、工具、记忆
-│   │       │   └── agent/    # Agent 运行时（loop / 工具注册表 / 回退 / 确认）
-│   │       └── rag/          # 知识库：分块 / 向量化 / 混合检索 / 写入流水线
-│   ├── requirements.txt      # Python 依赖
-│   └── .env.example          # 环境变量样例（真实 .env 不入库）
-├── openstudy-vue3-ts/        # 前端（Vue3 + TS）
-│   ├── src/                  # 源码（api / views / components / layout / utils）
-│   └── package.json
-├── deploy/
-│   └── db-init/              # 数据库 SQL（按文件名顺序导入）
-│       ├── 01_openstudy_v2_pgsql_deploy.sql   # 结构 + 基础种子
-│       ├── 05_change_password.sql             # 演示账号改强密码
-│       ├── 97_demo_seed.sql                   # 演示账号 + 题库/笔记数据
-│       └── 98_social_seed.sql                 # 评论 / 分享 / 通知
-├── startup-scripts/          # 启动脚本与数据库脚本
-├── SKILL.md                  # ⭐ 部署安装说明书（给 AI 终端 / 部署人员，含公网访问方案）
-└── README.md                 # 本文件（面向使用者的项目介绍）
+上传资料  →  自动解析  →  导入系统  →  直接开刷
+Word/PDF/MD    拆段落·认公式·抠图片    变成题库·标注出处    顺序/随机/错题/模拟考
 ```
 
-> 📌 **要开始部署 / 在服务器或云端跑起来？请阅读 [`SKILL.md`](./SKILL.md)。**
-> 本 README 只做项目介绍；具体的安装、启动、公网访问步骤都在 `SKILL.md` 里。
+**它不是一个聊天框。** 对话里的每个动作都调用真实工具、写真实数据表——
+你说"用这份资料建个题库，出 10 道题"，它真的会建出来，你能点进去刷。
+
+> 📖 四步各做了什么、代码在哪、答辩怎么讲 → **[doc/CORE-FLOW.md](doc/CORE-FLOW.md)**
 
 ---
 
-## 核心功能
+## 核心功能：一条从资料到成绩的闭环
 
-### 学习域
-- **题库 / 刷题**：题库管理、题目练习、答题卡
-- **错题本 / 收藏**：错题与收藏题目的归类管理
-- **笔记**：富文本笔记（TipTap）、笔记分类、题目关联
-- **课程 / 单词本**：课程与词汇学习模块
-- **学习分享**：题库分享与领取
-- **消息通知 / 评论 / 轮播 / 敏感词** 等系统能力
+### ① 上传资料 → 自动解析
 
-### AI 能力
-- **多模型动态路由**：DeepSeek、智谱、硅基流动等按配置选模型
-- **AI 助手 Agent**：Function Calling 工具循环，支持参数校验、报错自纠
-  - 工具集：题库管理、题目管理、笔记管理、记忆管理、学习统计、知识库管理与检索、题目标记等
-- **RAG 知识库**：
-  - 文档上传 → 解析 → 分块（jieba 中文分词）→ 向量化（bge-m3，1024 维）
-  - 混合检索：**向量路（HNSW 余弦）+ 关键词路（tsvector / trigram）**
-  - 知识库「屏蔽」闸门：被屏蔽的库对模型彻底不可见
-- **长期记忆**：跨会话记忆摘要与按需检索
-- **OCR**：图片文字识别
-- **回退机制**：一轮对话的操作可撤销（含部分回退语义）
+支持 **Word（.doc / .docx）、PDF、Markdown、TXT**。
+
+不只是抽文字。解析器会：
+
+- **拆结构**：按标题/段落分块，保留章节层级
+- **认公式**：Word 原生公式（OMML）和 LaTeX 都能识别，前端用 KaTeX 渲染
+- **抠图片**：Word 内嵌图、PDF 里的图，按位置归属到对应段落，正文里留 `【图N】` 标记
+- **转格式**：老版 `.doc` 自动调 Word 转 `.docx`，扩展名骗人的文件也能识别（改名的 docx/pdf 会被看穿）
+
+> 传统方案在这一步就断了：扫描件抽不出正文、图片和文字对不上、公式变成乱码。
+> 我们做的是**图文一起进**，所以后面出的题才带图、带公式。
+
+### ② 导入系统 → 变成能检索的知识
+
+解析完的文档进知识库，走完整流水线：
+
+| 环节 | 做了什么 |
+|---|---|
+| 分块 | jieba 中文分词，按语义切，不是硬切字数 |
+| 向量化 | bge-m3 模型，1024 维，存进 pgvector |
+| 索引 | 两套索引并行：HNSW 向量索引 + GIN 全文索引 |
+| 检索 | 两种方式同时找，再按排名合并（RRF），不拍脑袋定权重 |
+
+**这套东西的价值是：AI 出题时能找到原文，并在每道题后面标注「出自哪一段」。**
+不是凭空编题。
+
+### ③ 出题 → 变成你的题库
+
+三种方式：
+
+- **一句话出题**：「用这份资料出 10 道单选题，覆盖前三章」
+- **按知识点出题**：指定知识点和数量，AI 从知识库里取材
+- **整份文档直接入库**：上传即建库
+
+出的题可以带图、带公式、带解析，题型覆盖单选/多选/判断/填空/简答，还能生成组合题（材料 + 若干小题）。
+
+### ④ 开刷 → 练习与诊断
+
+<p align="center">
+  <img src="doc/screenshots/06-bank-detail.png" width="760" alt="题库详情：四种练习模式">
+</p>
+
+| 模式 | 说明 |
+|---|---|
+| 顺序练习 | 按章节顺序逐题练 |
+| 随机练习 | 随机抽题，一次抽定不刷新 |
+| 错题练习 | 只练答错过的题 |
+| 模拟考试 | 自定义组卷、限时、交卷判分、历史回看 |
+
+刷完还有：**错题本、收藏、斩题、笔记（草稿自动保存）、学习统计（正确率/趋势/薄弱点 TOP5）。**
+
+<p align="center">
+  <img src="doc/screenshots/09-stats.png" width="760" alt="学习统计：正确率、趋势、薄弱知识点">
+</p>
 
 ---
 
-## 快速开始（一句话版）
+## AI 智能体：会办事，不只是会聊
 
-本系统支持 **一条命令部署到 Linux 服务器**（推荐），也可运行于云沙箱 / 本机。
+<p align="center">
+  <img src="doc/screenshots/judge-1-chat.png" width="820" alt="两位专家并行建库 + 写题">
+</p>
 
-**服务器部署（Docker，最省事）**：
+- **多专家并行**：一句话要干两件事，两个专家同时开工；只有一件事就不打扰你
+- **写操作先确认**：改数据之前弹确认卡，看清楚再点（下图）
+
+<p align="center">
+  <img src="doc/screenshots/05-write-confirm.png" width="760" alt="写操作二次确认">
+</p>
+
+- **改错能撤回**：题库、题目、分享、智能体四个域支持整树快照恢复；回退不了的会明确告诉你
+- **跨会话记忆**：记住你做过的操作，下次接着聊
+- **14 个工具**：题库管理、题目管理、笔记、知识库、检索、学情统计、记忆、导出…
+
+---
+
+## 30 秒跑起来
 
 ```bash
 git clone https://gitcode.com/qi142410131/openstudy-fastapi-ts.git
 cd openstudy-fastapi-ts
-docker compose up -d --build      # 自动拉起 pgvector + Redis + 前后端
+docker compose up -d --build
 ```
 
-完成后访问：
-
-| 服务 | 地址 |
-|---|---|
-| 前端主页 | http://<服务器IP>:3167 |
-| 后端文档（Swagger） | http://<服务器IP>:9101/swagger-ui.html |
-
-数据库**首次启动自动初始化**（含结构与演示数据），无需手动操作。
-
-**演示账号**（登录页「一键登录」可直接用）：
+浏览器打开 **http://localhost:3167**，登录页点「一键登录」即可。
 
 | 账号 | 密码 | 说明 |
 |---|---|---|
+| `user1` | `***REMOVED***` | 演示用户，带题库 / 笔记 / 学习统计 |
+| `user2` | `***REMOVED***` | 分享接收方 |
+| `guest` | 免密一键登录 | 只读游客 |
 | `admin` | `***REMOVED***` | 管理员（可进后台） |
-| `user1` | `***REMOVED***` | 普通用户，带 2 个演示题库 + 学习统计/笔记/评论 |
-| `user2` | `***REMOVED***` | 普通用户（分享接收方） |
-| `guest` | 免密（一键登录） | 只读游客 |
 
-> **演示模式开关**：数据库配置项 `sys.demo.mode` —— `true` 显示演示账号一键登录（自用/答辩）；
-> `false` 直接走账号密码登录/注册（上线给别人体验）。后台「系统管理 → 参数设置」可切换。
->
-> **知识库向量化**：默认用本地模型（无需外部 Key，首次会自动下载 bge-m3 约 2.2GB）。
-> 内存较小的机器可设 `EMBEDDING_BACKEND=siliconflow` + `SILICONFLOW_API_KEY` 走云端。
+> 以上为**演示账号**，仅用于体验与评审。正式部署请到「系统管理 → 用户管理」改密码，
+> 并同步修改 `deploy/db-init/05_change_password.sql`。
 
-> 登录页的**「一键登录」**按钮对应 `user1 / user2 / guest / admin`，导入演示 SQL 后即可直接使用。
+> 数据库首次启动会自动建表 + 导种子数据，无需手动操作。
+> **不配 AI Key 也能跑**——除 AI 对话和知识库外，其余功能全部可用。
+> 完整部署说明（含 Linux 手动部署、公网访问、Windows 本地）见 [`doc/deploy/SKILL.md`](doc/deploy/SKILL.md)。
 
-> 完整的**逐步安装说明**（含各系统依赖安装命令、数据库初始化、演示账号、依赖清单）、AI Key 配置、
-> 以及**云端沙箱 / 公网访问**的操作，全部写在 **[`SKILL.md`](./SKILL.md)** 中。
-> 若是把你的机器人 / AI 终端接入本项目，**让 AI 终端直接读取 `SKILL.md` 并按其指引执行即可**。
+### AI Key 配置（可选）
 
----
-
-## 环境变量（AI Key 等）
-
-后端读取 **`openstudy-fastapi/.env`**（从 `openstudy-fastapi/.env.example` 复制）。关键配置：
+复制 `openstudy-fastapi/.env.example` 为 `.env`：
 
 ```dotenv
-# 数据库
-PG_NAME=openstudy_v2_pgsql
-PG_USER=root
-PG_PASSWORD=123456
-
-# 安全：公开访问务必改成长随机串
-JWT_SECRET=openstudy-change-me-in-production
-
-# 上传目录（Linux 下必改为本机真实存在的目录）
-UPLOAD_DIR=/opt/openstudy/uploadPath
-
-# AI 模型 Key（不填则 AI 对话 / 知识库不可用，其余功能正常）
-DEEPSEEK_API_KEY=
-SILICONFLOW_API_KEY=      # RAG 向量化（BAAI/bge-m3）
-ZHIPU_API_KEY=
+DEEPSEEK_API_KEY=      # 对话模型
+SILICONFLOW_API_KEY=   # 向量化（BAAI/bge-m3）
+ZHIPU_API_KEY=         # 备用模型
 ```
 
-> ⚠️ **安全提示**：请勿将任何真实密钥、数据库口令、账号信息提交到仓库。
-> 所有敏感配置一律通过 `.env` 或系统环境变量注入；`.env` 已被 `.gitignore` 忽略。
+> 知识库向量化默认走本地模型（首次自动下载 bge-m3 约 2.2GB）。
+> 小内存机器可设 `EMBEDDING_BACKEND=siliconflow` 走云端。
 
 ---
 
-## 技术要点
+## 技术栈
 
-| 主题 | 说明 |
+| 层 | 技术 |
 |---|---|
-| 异步 ORM | SQLAlchemy 2.0 async + asyncpg，写操作用 SAVEPOINT 隔离 |
-| 向量检索 | pgvector `vector(1024)`，HNSW + 余弦距离 |
-| 中文全文检索 | jieba 分词写入 `content_tokens` → PG 生成列 `search_vec` |
-| Agent 工具契约 | 统一结果信封 `{success, error, hint}`，描述分「模型侧（英文）/ 界面侧（中文）」两套 |
-| 状态机 | 文档处理：`1待解析 → 2解析中 → 3已解析 → 5已向量化 / 4失败` |
+| 前端 | Vue 3.4 · TypeScript · Vite · Element Plus · Pinia |
+| 后端 | Python 3.11 · FastAPI · SQLAlchemy 2.0（异步）· asyncpg |
+| 数据库 | PostgreSQL 16 + pgvector（向量检索）+ pg_trgm（模糊匹配） |
+| 缓存 | Redis 7（登录态 / 限流） |
+| AI | LangChain · DeepSeek / 智谱 / 硅基流动 多模型动态路由 |
+| 部署 | Docker Compose 一键起（PG + Redis + 后端 + Nginx） |
+
+### 几个技术选择
+
+**为什么自己写 Agent 循环，不用 LangGraph？**
+因为要省 token、要可控。路由用关键词规则而不是再打一次模型——省下的钱不能被路由花回去。
+按功能域把工具切成 5 类专家，每个只挂自己那组，工具越少选错越少。
+
+**为什么检索用 RRF 不用加权分数？**
+加权要先拍一个"向量分 0.8、关键词分 0.6"的系数，换个查询就反过来了。
+RRF 只看排名不看分数，天然规避这个问题。
+
+**为什么流式要自己写中间件？**
+默认的 ASGI 中间件会把响应攒批，表现为"思考过程卡住几秒然后一次性刷出来"。
+改成纯 ASGI 透传后才真正逐字下发。
 
 ---
 
-## 声明
+## 项目结构
 
-本项目为学习/研究用途。仓库中不包含任何生产密钥；使用时请自行配置各项服务凭据。
+```
+openstudy-fastapi-ts/
+├── openstudy-fastapi/          # 后端（FastAPI）
+│   ├── app/
+│   │   ├── api/v1/             # 路由层（32 个模块）
+│   │   ├── models/             # ORM 模型
+│   │   ├── repositories/       # 数据访问
+│   │   └── services/
+│   │       ├── ai/             # 模型客户端 / Agent 循环 / 工具 / 记忆
+│   │       │   └── agent/      # 编排 / 子代理 / 回退 / 确认
+│   │       ├── rag/            # 分块 / 向量化 / 混合检索
+│   │       └── file_parser.py  # 文档解析（Word / PDF / MD）
+│   └── tests/                  # 45 个自动化探针
+├── openstudy-vue3-ts/          # 前端（Vue3 + TS）
+│   └── src/
+├── deploy/db-init/             # 数据库初始化 SQL
+├── doc/                        # 文档
+│   ├── deploy/                 # 部署说明
+│   ├── dev-process/            # 开发过程记录（码道）
+│   ├── testing/                # 接口测试用例
+│   └── competition/            # 参赛材料
+└── docker-compose.yml          # 一键部署
+```
+
+---
+
+## 开发方式：核心能力用华为云码道 CodeArts 开发
+
+本项目的**智能体核心三块**——Agent 工具循环、工具链、RAG 检索——
+是使用**华为云码道 CodeArts 代码智能体**完成优化与重构的，全过程留痕、可复核。
+
+| 证据 | 位置 |
+|---|---|
+| 每日开发日志（5 天，10.9 MB） | [`doc/dev-process/logs/`](doc/dev-process/logs/) |
+| 完整 AI 分析会话（6 份） | [`doc/dev-process/sessions/`](doc/dev-process/sessions/) |
+| 决策与踩坑笔记（91 份） | [`doc/dev-process/memory/`](doc/dev-process/memory/) |
+| 代码库索引记录 | [`doc/dev-process/codebase/index-report.md`](doc/dev-process/codebase/index-report.md) |
+| 说明与复现方式 | [`doc/dev-process/README.md`](doc/dev-process/README.md) |
+
+> 五天里码道执行了 **3,166 次工具调用**（1,658 次命令 / 629 次读文件 / 667 次改写文件），
+> 产生 **50 次 Git 提交**。会话 ID、时间戳、工具调用记录、提交记录四者可交叉核对。
+
+---
+
+## 文档
+
+| 文档 | 内容 |
+|---|---|
+| [doc/deploy/SKILL.md](doc/deploy/SKILL.md) | 完整部署说明（Docker / Linux / Windows / 公网访问） |
+| [doc/deploy/TROUBLESHOOTING.md](doc/deploy/TROUBLESHOOTING.md) | 常见问题排查 |
+| [doc/deploy/DEPLOY-EXPERIENCE.md](doc/deploy/DEPLOY-EXPERIENCE.md) | 部署踩坑记录 |
+| [ROADMAP.md](ROADMAP.md) | 已知边界与迭代方向 |
+| [doc/testing/](doc/testing/) | 题库域接口功能测试用例表 |
+| [doc/dev-process/](doc/dev-process/) | 开发过程原始记录 |
+
+---
+
+## 已知边界（如实说明）
+
+- **扫描版 PDF** 目前抽不出正文（没有文字层），只能拿到目录骨架 → 已在 30 天计划里排 OCR
+- 图片**不参与向量化**，只能随文字被检索到，不能"以图搜图"
+- 公网演示环境依赖隧道，地址可能变化
+- AI 限流：每用户每分钟 10 次、每日 50 次（评测期可通过环境变量放宽）
+
+---
+
+## License
+
+[MIT](LICENSE)

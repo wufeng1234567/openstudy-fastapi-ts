@@ -26,7 +26,7 @@ bash /root/start.sh
 
 **部署后验证（检查一遍）：**
 ```bash
-URL="https://***REMOVED***"
+URL="${DEMO_URL}"
 COOKIE="bridge_phishing_protection=1"
 
 # 1. 首页能加载
@@ -42,10 +42,10 @@ grep -q '//ai/agent' /var/www/openstudy-dist/assets/*.js && echo "❌ 双斜杠b
 curl -s -o /dev/null -w "%{http_code}" "$URL/carousel-static/carousel-1.jpg" | grep -q "200" && echo "✅ 轮播图" || echo "❌ 轮播图"
 
 # 5. 登录能成功（admin 走账号密码；演示账号走一键登录 /quickLogin）
-curl -s -X POST "$URL/login" -H "Content-Type: application/json" -d '{"username":"admin","password":"***REMOVED***"}' | grep -q "操作成功" && echo "✅ 登录" || echo "❌ 登录"
+curl -s -X POST "$URL/login" -H "Content-Type: application/json" -d '{"username":"admin","password":"${DEMO_PASSWORD}"}' | grep -q "操作成功" && echo "✅ 登录" || echo "❌ 登录"
 
 # 6. AI 接口能访问（需登录）
-TOKEN=$(curl -s -X POST "$URL/login" -H "Content-Type: application/json" -d '{"username":"admin","password":"***REMOVED***"}' | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['token'])")
+TOKEN=$(curl -s -X POST "$URL/login" -H "Content-Type: application/json" -d '{"username":"admin","password":"${DEMO_PASSWORD}"}' | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['token'])")
 curl -s "$URL/ai/agent/experts" -H "Authorization: Bearer $TOKEN" | grep -q "experts" && echo "✅ AI接口" || echo "❌ AI接口"
 ```
 
@@ -54,7 +54,7 @@ curl -s "$URL/ai/agent/experts" -H "Authorization: Bearer $TOKEN" | grep -q "exp
 ## 固定公网地址
 
 ```
-https://***REMOVED***
+${DEMO_URL}
 ```
 
 - 30 天内不变
@@ -64,7 +64,7 @@ https://***REMOVED***
 ## 验证启动成功
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}" https://***REMOVED***/
+curl -s -o /dev/null -w "%{http_code}" ${DEMO_URL}/
 # 返回 200 就是成功
 ```
 
@@ -72,8 +72,8 @@ curl -s -o /dev/null -w "%{http_code}" https://***REMOVED***/
 
 - **演示模式开启时**（`sys.demo.mode=true`），登录页提供**一键登录**（`POST /quickLogin`，免密）：
   - `user1` = 演示用户1、`user2` = 演示用户2、`guest` = 游客
-- **管理员**：`admin` / 密码 `***REMOVED***`（走普通登录 `/login`，不在一键登录白名单里）
-- 账号密码登录（`/login`）：`admin`、`user1`、`user2`、`guest` 密码均为 `***REMOVED***`
+- **管理员**：`admin` / 密码 `${DEMO_PASSWORD}`（走普通登录 `/login`，不在一键登录白名单里）
+- 账号密码登录（`/login`）：`admin`、`user1`、`user2`、`guest` 密码均为 `${DEMO_PASSWORD}`
 - ⚠️ **演示模式关闭时**（线上体验版）`/quickLogin` 会**直接拒绝**，且登录页不显示一键登录入口；
   由后台「演示模式」开关（`sys_config.sys.demo.mode`）控制。
 - 数据库中若无用户，daily-start.sh 会自动导入种子数据（`01_deploy` 建 admin，`97_demo_seed` 建 user1/user2/guest）

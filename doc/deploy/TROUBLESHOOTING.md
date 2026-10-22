@@ -23,8 +23,8 @@
   devbridge auth login --api-key="$DB_KEY"
   ```
 - 登录成功后，`db_auth_status` 立即恢复 `"Logged in (Huawei Cloud IAM)"`
-- 隧道 `***REMOVED***` 仍在服务端（没被删），直接 `db_host ***REMOVED***` 重新托管即可
-- **地址不变**：`https://***REMOVED***`
+- 隧道 `<隧道ID>` 仍在服务端（没被删），直接 `db_host <隧道ID>` 重新托管即可
+- **地址不变**：`https://<你的隧道地址>`
 
 **已写入 daily-start.sh 的自动修复**（第 267 行附近）：
 - `db_init` 之后自动检查 `db_auth_status`
