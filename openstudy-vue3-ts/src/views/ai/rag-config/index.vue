@@ -99,8 +99,8 @@
         </el-descriptions-item>
         <el-descriptions-item label="模型名称">{{ status.local.modelName }}</el-descriptions-item>
         <el-descriptions-item label="预计占用">{{ status.local.estimatedSizeMB }} MB</el-descriptions-item>
-        <el-descriptions-item label="缓存目录" :span="2">
-          <span class="mono">{{ status.local.modelDir || '（默认目录）' }}</span>
+        <el-descriptions-item label="模型位置" :span="2">
+          <span class="mono">{{ status.local.modelPath || status.local.modelDir || '（默认目录）' }}</span>
         </el-descriptions-item>
       </el-descriptions>
 
@@ -114,6 +114,53 @@
       >
         <div class="reason-text">{{ status.local.suggestion }}</div>
       </el-alert>
+    </el-card>
+
+    <!-- ============ 云端 API Key ============ -->
+    <el-card shadow="never" class="section-card">
+      <template #header>
+        <div class="card-header">
+          <span>云端 API Key</span>
+          <el-tag v-if="status.cloud.keyConfigured" type="success" size="small" effect="plain">
+            已配置
+          </el-tag>
+          <el-tag v-else type="warning" size="small" effect="plain">未配置</el-tag>
+        </div>
+      </template>
+
+      <el-form :model="form" label-width="180px" class="param-form">
+        <el-form-item label="硅基流动 API Key">
+          <div class="key-row">
+            <el-input
+              v-model="form.cloudApiKey"
+              :type="showKey ? 'text' : 'password'"
+              :placeholder="keyPlaceholder"
+              clearable
+              class="key-input"
+            />
+            <el-button text @click="showKey = !showKey">
+              {{ showKey ? '隐藏' : '显示' }}
+            </el-button>
+            <el-button v-if="status.cloud.keyConfigured" text type="danger" @click="clearKey">
+              清除
+            </el-button>
+          </div>
+          <div class="field-tip key-tip">
+            在
+            <a href="https://cloud.siliconflow.cn/account/ak" target="_blank" rel="noopener">
+              siliconflow.cn
+            </a>
+            控制台创建，形如 <code>sk-xxxxxxxx</code>。保存后立即生效，无需重启。
+            <br />
+            <span v-if="status.cloud.keySource === 'env'" class="source-note">
+              当前 Key 来自 .env 配置；在这里填写会覆盖它。
+            </span>
+            <span v-else-if="status.cloud.keyConfigured" class="source-note">
+              当前 Key：{{ status.cloud.keyMasked }}（已隐藏，不会回传原文）
+            </span>
+          </div>
+        </el-form-item>
+      </el-form>
     </el-card>
 
     <!-- ============ 检索参数 ============ -->
@@ -190,14 +237,15 @@ import { getRagConfig, updateRagConfig } from '@/api/ai/ragConfig'
 const loading = ref(false)
 const saving = ref(false)
 const showInstallHelp = ref(false)
+const showKey = ref(false)
 
 const status = reactive<any>({
   config: {},
   current: 'auto',
   effective: 'unavailable',
   summary: '',
-  local: { available: false, depsInstalled: false, modelCached: false, modelName: '', modelDir: '', estimatedSizeMB: 0, reason: '', suggestion: '' },
-  cloud: { available: false, keyConfigured: false, model: '', reason: '', suggestion: '' }
+  local: { available: false, depsInstalled: false, modelCached: false, modelName: '', modelPath: '', modelDir: '', estimatedSizeMB: 0, reason: '', suggestion: '' },
+  cloud: { available: false, keyConfigured: false, keyMasked: '', keySource: '', model: '', reason: '', suggestion: '' }
 })
 
 const form = reactive({
@@ -208,8 +256,24 @@ const form = reactive({
   topK: 5,
   rrfK: 60,
   cloudModel: '',
-  autoFallback: true
+  autoFallback: true,
+  // 用户新填的 Key。空 = 不改；__CLEAR__ = 清空
+  cloudApiKey: ''
 })
+
+/** Key 输入框的占位文案：已配置时提示「留空即不修改」 */
+const keyPlaceholder = computed(() =>
+  status.cloud.keyConfigured
+    ? `已配置（${status.cloud.keyMasked}），留空表示不修改`
+    : '粘贴 sk- 开头的硅基流动 API Key'
+)
+
+/** 清空 Key（需要用户在保存时确认，这里只置标记） */
+function clearKey() {
+  form.cloudApiKey = '__CLEAR__'
+  ElMessage.info('已标记为清除，点「保存配置」后生效')
+}
+
 
 const backendLabel = computed(() => {
   const map: Record<string, string> = {
@@ -262,6 +326,8 @@ async function load() {
       form.rrfK = Number(c['rag.embedding.rrfK'] ?? 60)
       form.cloudModel = c['rag.embedding.cloudModel'] ?? ''
       form.autoFallback = String(c['rag.embedding.autoFallback'] ?? 'true') === 'true'
+      // Key 永远不回显原文：清空输入框，已配置状态由 status.cloud 展示
+      form.cloudApiKey = ''
     } else {
       ElMessage.error(res.msg || '读取失败')
     }
@@ -274,19 +340,26 @@ async function load() {
 
 function onBackendChange(val: string) {
   if (val === 'siliconflow' && !status.cloud.available) {
-    ElMessage.warning(status.cloud.reason || '云端未配置 API Key')
+    ElMessage.warning(status.cloud.reason || '云端未配置 API Key，请在下方填写')
   }
 }
 
+/** 一键切云端：如果还没 Key，先把焦点引导到 Key 输入框 */
 async function switchToCloud() {
   form.backend = 'siliconflow'
+  if (!status.cloud.keyConfigured) {
+    ElMessage.warning('请先在「云端 API Key」处填写 Key，再保存')
+    // 滚到 Key 区域
+    document.querySelector('.key-input')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    return
+  }
   await save()
 }
 
 async function save() {
   saving.value = true
   try {
-    const res: any = await updateRagConfig({
+    const payload: Record<string, any> = {
       backend: form.backend,
       model: form.model || undefined,
       chunkSize: form.chunkSize,
@@ -295,9 +368,15 @@ async function save() {
       rrfK: form.rrfK,
       cloudModel: form.cloudModel || undefined,
       autoFallback: form.autoFallback
-    })
+    }
+    // 只有用户真的输入了才传（空 = 不改；__CLEAR__ = 清空）
+    if (form.cloudApiKey) {
+      payload.cloudApiKey = form.cloudApiKey
+    }
+    const res: any = await updateRagConfig(payload)
     if (res.code === 200) {
       Object.assign(status, res.data)
+      form.cloudApiKey = ''
       ElMessage.success('配置已保存并生效')
       if (res.data?.needReindex && res.data?.reindexHint) {
         ElMessage.warning({ message: res.data.reindexHint, duration: 8000, showClose: true })
@@ -442,6 +521,43 @@ onMounted(load)
 
 .param-form {
   max-width: 760px;
+}
+
+/* 云端 Key 输入行 */
+.key-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 560px;
+}
+
+.key-input {
+  flex: 1;
+}
+
+.key-tip {
+  display: block;
+  margin-left: 0;
+  margin-top: 6px;
+  line-height: 1.7;
+}
+
+.key-tip a {
+  color: var(--el-color-primary);
+  text-decoration: none;
+}
+
+.key-tip code {
+  background: var(--el-fill-color-light);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.source-note {
+  color: var(--el-text-color-placeholder);
+  font-size: 11px;
 }
 
 .field-tip {

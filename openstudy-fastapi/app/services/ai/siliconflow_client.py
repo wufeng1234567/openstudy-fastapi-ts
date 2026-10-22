@@ -25,6 +25,30 @@ class SiliconFlowClient(BaseAiClient):
     def provider(self) -> str:
         return "siliconflow"
 
+    def _effective_api_key(self) -> str:
+        """当前生效的 Key。
+
+        优先级：
+          1. 构造时显式传入的 key（老行为，保持兼容）
+          2. 后台「知识库向量化」页填的 `rag.embedding.cloudApiKey`（运行时）
+          3. `.env` 的 `SILICONFLOW_API_KEY`
+
+        ⚠️ 为什么需要运行时读取（2026-10-22）：
+          原来只在 `__init__` 里读一次 `.env`，后台改了 Key 必须重启才生效。
+          但用户是在页面上填 Key 的，不能要求他填完再重启服务。
+        """
+        if (self._api_key or "").strip():
+            return self._api_key.strip()
+        try:
+            from app.services.rag.rag_config_service import get_runtime_cloud_api_key
+
+            k = get_runtime_cloud_api_key()
+            if k:
+                return k
+        except Exception:
+            pass
+        return (settings.SILICONFLOW_API_KEY or "").strip()
+
     @property
     def supported_models(self) -> List[str]:
         return [
@@ -113,16 +137,16 @@ class SiliconFlowClient(BaseAiClient):
 
         # 缺 Key 时给**明确**的中文提示，而不是让 SDK 抛含糊的
         # 「api_key client option must be set」——用户看到不知道是哪把 key。
-        if not (self._api_key or "").strip():
+        api_key = self._effective_api_key()
+        if not api_key:
             raise RuntimeError(
                 f"RAG 向量化需要硅基流动 API Key（模型 {model or 'BAAI/bge-m3'}），"
-                "但未配置。请在服务端 .env 里设置 SILICONFLOW_API_KEY（见 .env.example），"
-                "或在「系统管理 → AI 模型配置」里为嵌入模型填写 Key，然后重启后端。"
+                "但还没有配置。请到「系统管理 → 知识库向量化」页面填写 Key，保存后立即生效。"
             )
 
         embeddings_model = OpenAIEmbeddings(
             model=model or "BAAI/bge-m3",
-            openai_api_key=self._api_key,
+            openai_api_key=api_key,
             openai_api_base="https://api.siliconflow.cn/v1",
         )
         return await embeddings_model.aembed_documents(texts)

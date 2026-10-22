@@ -515,6 +515,8 @@ class RagConfigUpdate(BaseModel):
     rrfK: Optional[int] = Field(None, ge=1, le=200)
     cloudModel: Optional[str] = None
     autoFallback: Optional[bool] = None
+    #: 硅基流动 API Key。传空串或不传 = 不改；传 "__CLEAR__" = 清空
+    cloudApiKey: Optional[str] = None
 
 
 @router.get("/config")
@@ -562,6 +564,19 @@ async def update_rag_config(
             rag_config_service.KEY_CLOUD_MODEL: data.cloudModel,
             rag_config_service.KEY_AUTO_FALLBACK: data.autoFallback,
         }
+
+        # ── 云端 API Key（2026-10-22 新增）───────────────────────────
+        # 语义：不传 / 传空串 = 保持原值；传 "__CLEAR__" = 清空。
+        # 为什么不接受「空串即清空」：前端回填的是掩码，用户没动就原样提交，
+        # 若把空串当清空，用户只是改个分块大小就会把 Key 清掉。
+        if data.cloudApiKey is not None:
+            v = data.cloudApiKey.strip()
+            if v == "__CLEAR__":
+                payload[rag_config_service.KEY_CLOUD_API_KEY] = ""
+            elif v and "••••" not in v:
+                # 前端把掩码回传时（含 ••••）视为未修改
+                payload[rag_config_service.KEY_CLOUD_API_KEY] = v
+
         await rag_config_service.set_configs(db, payload)
         await db.commit()
 
@@ -573,6 +588,13 @@ async def update_rag_config(
         embedding_service.refresh_runtime_config(
             backend=new.get(rag_config_service.KEY_BACKEND),
             model=new.get(rag_config_service.KEY_MODEL),
+        )
+
+        # 把最新 Key 刷进进程内缓存（siliconflow_client 会读它）。
+        # siliconflow_client 本身不再缓存旧的 api_key（改成每次动态读），
+        # 所以这里不需要重建客户端实例。
+        rag_config_service.refresh_runtime_cloud_api_key(
+            new.get(rag_config_service.KEY_CLOUD_API_KEY) or ""
         )
 
         need_reindex = (

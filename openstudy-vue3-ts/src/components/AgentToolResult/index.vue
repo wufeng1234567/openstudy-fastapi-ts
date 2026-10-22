@@ -79,6 +79,30 @@
       </button>
     </div>
 
+    <!-- ③ 跳转卡片：建库/导题完成后，一步直达题库 -->
+    <div v-if="bankJump" class="at-jump">
+      <div class="at-jump__head">
+        <span class="at-jump__badge">
+          <OsIcon name="check-circle" :size="13" />
+          {{ bankJump.isNew ? '题库已建好' : '题目已导入' }}
+        </span>
+      </div>
+      <div class="at-jump__body">
+        <span class="at-jump__name">{{ bankJump.bankName }}</span>
+        <span v-if="bankJump.meta" class="at-jump__meta">{{ bankJump.meta }}</span>
+      </div>
+      <div class="at-jump__actions">
+        <button type="button" class="at-jump__btn at-jump__btn--primary" @click="goToBank">
+          <OsIcon name="book-open" :size="13" />
+          <span>立即开始刷题</span>
+        </button>
+        <button type="button" class="at-jump__btn" @click="goToBank">
+          <span>查看题库</span>
+          <OsIcon name="arrow-right" :size="12" />
+        </button>
+      </div>
+    </div>
+
     <!-- ③ 入参 / 返回（渲染成人能看的形式，不是 JSON） -->
     <div v-if="hasDetails" class="at-details">
       <span class="at-toggle" @click="expanded = !expanded">
@@ -420,6 +444,74 @@ const artifact = computed(() => {
   }
 })
 
+/* ============================================================
+ * 跳转卡片（工具刚建好/填好一个题库，用户下一步就是「去刷题」）
+ * ============================================================ */
+
+/**
+ * 为什么需要这张卡片
+ * ----------------
+ * 建库成功后，AI 会回一句「题库已建好，共 20 题」。然后呢？
+ * 用户得自己去点「题库练习」→ 找一个可能重名的库 → 再点「查看详情」→
+ * 再选练习模式。**从"建好了"到"开始刷"要 4 次点击**。
+ *
+ * 这里把「建好了」和「去刷题」缝在一起：回执里只要有 `bankId`，
+ * 就在这条工具结果下面直接给一个按钮，一点直达题库详情页。
+ *
+ * 判据同样落在**输出契约**（bankId + 有意义的动作）上，而不是工具名：
+ *   · bank_manage(action=create)        → 建库完成
+ *   · question_manage(action=batch_import) → 题目导完了
+ *   · 后续任何工具只要回执带 bankId，自动获得这张卡
+ */
+const BANK_ACTIONS = new Set(['create', 'batch_import', 'import', 'update'])
+
+const bankJump = computed(() => {
+  if (props.status !== 'ok') return null
+  const d = props.data
+  if (!d || typeof d !== 'object') return null
+
+  const bankId = Number(d.bankId ?? d.bank_id ?? 0)
+  if (!bankId) return null
+
+  // 只对「刚建好 / 刚填好」的动作出卡片；
+  // list / detail 这类只读查询回执里也有 bankId，但那时用户并不需要跳转
+  const action = String(d.action || '').toLowerCase()
+  if (action && !BANK_ACTIONS.has(action)) return null
+
+  const bankName = String(d.bankName || d.bank_name || '题库')
+  const total = Number(d.bankTotal ?? d.totalQuestions ?? d.imported ?? 0)
+
+  // 副标题：优先说「共几题」，其次是「导入了几题」
+  const metaParts: string[] = []
+  if (total > 0) metaParts.push(`共 ${total} 题`)
+  if (d.imported) metaParts.push(`本次导入 ${d.imported} 题`)
+  if (d.subject) metaParts.push(String(d.subject))
+
+  return {
+    bankId,
+    bankName,
+    meta: metaParts.join(' · '),
+    isNew: action === 'create',
+    total
+  }
+})
+
+/**
+ * 跳到题库详情页
+ *
+ * 用 hash 路由跳转（本项目是 createWebHashHistory）。
+ * 带上 `from=agent` 便于题库页将来做「返回对话」的引导；
+ * 目前题库页不消费这个参数，加了也无副作用。
+ */
+function goToBank() {
+  const b = bankJump.value
+  if (!b) return
+  const target = `/front/questionPractice/${b.bankId}`
+  // 同页内改 hash 不会触发整页刷新，交给 vue-router 处理
+  window.location.hash = '#' + target
+}
+
+
 const downloading = ref(false)
 
 /**
@@ -671,6 +763,94 @@ const downloadArtifact = async () => {
   width: 16px;
   height: 16px;
   color: var(--os-text-3, #6b7280);
+}
+
+/* ============================================================
+ * 跳转卡片：建库/导题完成 → 一键去刷题
+ *
+ * 与「产物卡片」的区别：产物卡片是**极简一行**（工具流水账里的一份文件），
+ * 这里是**一张有边界的小卡**——因为它是这一轮对话的「成果落地」，
+ * 值得占一点视觉重量。但仍不套大白框，用浅底 + 发丝描边，与整站一致。
+ * ============================================================ */
+.at-jump {
+  margin-top: 10px;
+  padding: 12px 14px;
+  max-width: 460px;
+  border: 1px solid var(--os-border, #e5e7eb);
+  border-radius: 12px;
+  background: var(--os-bg-subtle, #fafafa);
+}
+
+.at-jump__head {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.at-jump__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--os-success, #16a34a);
+}
+
+.at-jump__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.at-jump__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--os-text, #111827);
+  word-break: break-all;
+}
+
+.at-jump__meta {
+  font-size: 12px;
+  color: var(--os-text-3, #6b7280);
+}
+
+.at-jump__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.at-jump__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid var(--os-border, #e5e7eb);
+  background: #fff;
+  color: var(--os-text, #111827);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.at-jump__btn:hover {
+  border-color: var(--os-accent, #2563eb);
+  color: var(--os-accent, #2563eb);
+}
+
+.at-jump__btn--primary {
+  background: var(--os-text, #111827);
+  border-color: var(--os-text, #111827);
+  color: #fff;
+  font-weight: 500;
+}
+
+.at-jump__btn--primary:hover {
+  background: #000;
+  border-color: #000;
+  color: #fff;
 }
 
 .at-artifact-main {

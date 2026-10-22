@@ -85,14 +85,17 @@ async def lifespan(app: FastAPI):
 
         async with async_session_factory() as _db:
             _cfg = await rag_config_service.get_config_map(_db)
+            # 同时把云端 API Key 读进内存（后台填的优先，其次 .env）
+            _cloud_key = await rag_config_service.load_cloud_api_key_from_db(_db)
         emb.refresh_runtime_config(
             backend=_cfg.get(rag_config_service.KEY_BACKEND),
             model=_cfg.get(rag_config_service.KEY_MODEL),
         )
         _logger.info(
-            "[startup] RAG 配置已加载：backend={} model={}",
+            "[startup] RAG 配置已加载：backend={} model={} cloudKey={}",
             emb.current_backend(),
             emb.current_model(),
+            "已配置" if _cloud_key else "未配置",
         )
     except Exception as e:  # noqa: BLE001
         _logger.warning("[startup] RAG 配置加载失败（回落 .env 默认值）: {}", e)
