@@ -60,8 +60,10 @@
     <ExamSummary
       v-else-if="isMockFlow && mockPhase === 'summary' && currentExamRecord"
       :record="currentExamRecord"
+      :readonly="!!historyRecord"
       @close="$emit('close')"
-      @back-to-setup="handleMockSummaryBack" />
+      @retry="handleMockAgain"
+      @back-to-history="handleMockBackToHistory" />
 
     <!--
       「没有题可练」空态 —— 独立于「逐题 / 整体浏览」两种展示
@@ -1737,6 +1739,14 @@ function handleMockSubmit() {
 /** 从总结页「再考一次」 */
 function handleMockAgain() {
   currentExamRecord.value = null
+  /*
+   * ⚠️ `historyRecord` 必须一起清（2026-10-22）。
+   *
+   * 它是"当前看的是不是历史回看"的标记。如果重考时不清，
+   * 下一场交卷后总结页会因为 `readonly = !!historyRecord` 仍为真，
+   * 而把按钮显示成「返回记录」—— 用户刚考完却找不到"再考一次"。
+   */
+  historyRecord.value = null
   showExamResult.value = false
   totalScore.value = 0
   mockPhase.value = 'setup'
@@ -1748,6 +1758,13 @@ function handleOpenHistoryRecord(r: MockExamRecord) {
   historyRecord.value = r
   currentExamRecord.value = r
   mockPhase.value = 'summary'
+}
+
+/** 历史回看时点「返回记录」→ 回考试记录列表 */
+function handleMockBackToHistory() {
+  historyRecord.value = null
+  currentExamRecord.value = null
+  mockPhase.value = 'history'
 }
 
 /**
@@ -1781,16 +1798,17 @@ function handleToggleShuffle(val: boolean) {
   proxy.$modal.msgSuccess(val ? '已打乱选项顺序' : '已恢复选项原始顺序')
 }
 
-/** 从总结页返回（历史回看时回历史列表，否则回配置页） */
-function handleMockSummaryBack() {
-  if (historyRecord.value) {
-    historyRecord.value = null
-    currentExamRecord.value = null
-    mockPhase.value = 'history'
-    return
-  }
-  handleMockAgain()
-}
+/*
+ * ⚠️ 这里原本有个 `handleMockSummaryBack`，逻辑是
+ *     「historyRecord 有值就回历史列表，否则重新开考」。
+ *   它被「再考一次」按钮调用，于是从历史详情进来的用户点「再考一次」
+ *   会被送回考试记录列表 —— 文案说重考，行为是回列表，严重不符预期。
+ *
+ *   现在拆成两个语义明确的事件（见 ExamSummary 的 readonly prop）：
+ *     · retry           → handleMockAgain（真的重新开考）
+ *     · back-to-history → handleMockBackToHistory（回列表）
+ *   不要再合并回一个函数，那样又会把两个动作搅在一起。
+ */
 
 // 进入 mock 模块时的初始化：拉题量、复位阶段
 watch(

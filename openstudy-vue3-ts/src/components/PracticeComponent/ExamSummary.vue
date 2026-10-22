@@ -22,7 +22,28 @@
         <span class="head-sub">{{ record.bankName }} · {{ formatTime(record.submittedAt) }}</span>
       </div>
       <div class="head-actions">
-        <button class="ghost-btn" type="button" @click="$emit('back-to-setup')">
+        <!--
+          两个按钮的语义必须分开（2026-10-22 修的 bug）
+          ==================================================================
+          原来这里只有一个「再考一次」，绑的是父组件的 `back-to-setup`。
+          而父组件那个处理函数里带了一个分支：
+
+              if (historyRecord.value) { mockPhase = 'history'; return }
+
+          本意是"从历史记录点进来的，返回时回到历史列表"。但这条分支把
+          **「再考一次」**也一起劫持了 —— 用户从考试记录里查看某场详情后
+          点「再考一次」，期望的是重新开考，实际却被送回考试记录列表，
+          屏幕上只剩一堆历史卡片，看起来就像"点了再考一次跳到考试记录页"。
+
+          修法：按来源渲染不同的按钮，让文案和行为严格一致：
+            · 回看历史（readonly）→ 「返回记录」，回历史列表
+            · 刚考完（live）      → 「再考一次」，真的重新开考
+        -->
+        <button v-if="readonly" class="ghost-btn" type="button" @click="$emit('back-to-history')">
+          <el-icon><Back /></el-icon>
+          <span>返回记录</span>
+        </button>
+        <button v-else class="ghost-btn" type="button" @click="$emit('retry')">
           <el-icon><Refresh /></el-icon>
           <span>再考一次</span>
         </button>
@@ -151,18 +172,31 @@ import * as echarts from 'echarts'
 import {
   ArrowDown,
   ArrowUp,
+  Back,
   Close,
   Refresh
 } from '@element-plus/icons-vue'
 import type { MockExamItemDetail, MockExamRecord, QuestionType } from '@/types'
 
 const props = defineProps({
-  record: { type: Object as () => MockExamRecord, required: true }
+  record: { type: Object as () => MockExamRecord, required: true },
+  /**
+   * 是否是"回看历史记录"（只读）
+   *
+   * true  → 这一场已经结束了，用户是从考试记录里翻出来看的。
+   *         此时不提供"再考一次"（那会让人以为在重考这一场），
+   *         只提供"返回记录"回到列表。
+   * false → 刚交完卷的结果页，可以再考一次。
+   */
+  readonly: { type: Boolean, default: false }
 })
 
 defineEmits<{
   (e: 'close'): void
-  (e: 'back-to-setup'): void
+  /** 刚考完 → 再考一次 */
+  (e: 'retry'): void
+  /** 历史回看 → 返回考试记录列表 */
+  (e: 'back-to-history'): void
 }>()
 
 const showDetail = ref(false)
