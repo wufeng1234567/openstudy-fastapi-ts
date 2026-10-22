@@ -223,14 +223,13 @@
           :stats="{ correctCount, wrongCount, accuracy }" :is-exam-mode="isExamMode" :is-practice-mode="isPracticeMode"
           :is-last-question="isLastQuestion" :show-exam-result="showExamResult" :total-score="totalScore"
           :answered-count="answeredCount" :total-count="totalQuestions" :remaining-count="remainingCount"
-          :module-type="moduleTypeSafe" :draft-state="draftState" :draft-button-text="draftButtonText" :number-base="numberBase"
+          :module-type="moduleTypeSafe" :draft-state="draftState" :number-base="numberBase"
           :shuffle-options="effectiveShuffleOptions"
           :scrollable="scrollable"
           @scroll-top="handleScrollTop" @scroll-bottom="handleScrollBottom"
           @update:shuffle-options="handleToggleShuffle"
           @go-to-question="scrollToQuestion" @toggle-overview="toggleOverview"
-          @reset-practice="resetPractice" @submit-exam="handleSubmitExam" @finish-exam="handleFinishExam"
-          @save-draft="handleManualSaveDraft" />
+          @reset-practice="resetPractice" @submit-exam="handleSubmitExam" @finish-exam="handleFinishExam" />
       </div>
     </template>
 
@@ -292,14 +291,13 @@
           :show-exam-result="showExamResult" :total-score="totalScore" :answered-count="answeredCount"
           :total-count="totalQuestions" :remaining-count="remainingCount" :module-type="moduleTypeSafe"
           :marked-questions="markedQuestionsSet" :favorited-questions="favoritedQuestions" :error-questions="errorQuestions"
-          :draft-state="draftState" :draft-button-text="draftButtonText" :number-base="numberBase"
+          :draft-state="draftState" :number-base="numberBase"
           :shuffle-options="effectiveShuffleOptions"
           :scrollable="scrollable"
           @scroll-top="handleScrollTop" @scroll-bottom="handleScrollBottom"
           @update:shuffle-options="handleToggleShuffle"
           @go-to-question="goToQuestion" @reset-practice="resetPractice" @submit-exam="handleSubmitExam"
-          @toggle-overview="toggleOverview" @finish-exam="handleFinishExam"
-          @save-draft="handleManualSaveDraft" />
+          @toggle-overview="toggleOverview" @finish-exam="handleFinishExam" />
       </div>
 
 
@@ -2283,9 +2281,20 @@ watch(
  */
 const userStore = useUserStore()
 
-/** 手动暂存的状态（驱动答题卡上的按钮文案） */
+/**
+ * 自动保存状态（驱动 `AnswerCard` 底行那句提示的语气：正常 / 失败）
+ *
+ * ⚠️ 手动「暂存」按钮已于 2026-10-22 删除（用户：「进度是不是一直会自动保存
+ *    如果会的话 那就把暂存按钮去掉吧 彻底搞成静默自动保存用户刷题记录」）。
+ *    确认过：`draftSaver.schedule()` 在每次作答 / 判分 / 换题 / 换波后都会
+ *    静默写盘（600ms 节流），离开页面时还会 `flush()` 立刻落一次 ——
+ *    手动按钮调用的 `flush()` 与自动保存是**同一个写盘动作**，纯属多余入口。
+ *
+ *    但状态本身还要留着：失败时必须显性告知（配额满 / 隐私模式 / 无痕），
+ *    否则用户以为存上了，关掉页面才发现全丢。
+ */
 const draftState = ref<DraftSaveState>('idle')
-/** 上次成功暂存的时间（用于显示"已暂存 12:03"这类文案） */
+/** 上次成功保存的时间（目前不展示，保留给将来"最近保存于"类文案） */
 const draftSavedAt = ref<number>(0)
 
 /** 取当前用户 id（登录态可能晚于组件挂载就绪，所以用函数而不是取值） */
@@ -2380,54 +2389,47 @@ function buildDraftSnapshot() {
   }
 }
 
+/**
+ * 自动保存的失败提示
+ *
+ * 只在 `failed` 时弹一次轻提示 —— 这是**静默保存唯一的例外**：
+ * 其余状态（saving / saved）对用户完全不可见。
+ *
+ * 为什么不弹"已保存"：用户每答一题都弹一条，比什么都烦。
+ * 静默保存的价值就在于"不用被打断"，只在它真的失败时才值得打断。
+ */
+const handleDraftStateChange = (s: DraftSaveState, at?: number) => {
+  draftState.value = s
+  if (s === 'saved' && at) draftSavedAt.value = at
+  if (s === 'failed') {
+    ElMessage.warning('进度自动保存失败：浏览器存储不可用或空间不足')
+  }
+}
+
+/**
+ * 保存器
+ *
+ * 只负责**静默**自动保存，不再对外提供手动入口。
+ * `flush()` 仍然被 `onUnmounted` 与切走页面时调用（离开前保证落盘）。
+ */
 const draftSaver = createDraftSaver({
   getUserId: currentUserId,
   getBankId: () => props.bankId,
   getModuleType: () => props.moduleType,
   buildSnapshot: buildDraftSnapshot as any,
-  onStateChange: (s, at) => {
-    draftState.value = s
-    if (s === 'saved' && at) draftSavedAt.value = at
-    // 失败要明确告知（配额满 / 隐私模式），否则用户以为存上了
-    if (s === 'failed') {
-      ElMessage.warning('暂存失败：浏览器存储不可用或空间不足')
-    }
-  }
+  onStateChange: handleDraftStateChange
 })
 
-/** 手动暂存（答题卡面板的「暂存」按钮） */
-/**
- * 手动暂存（答题卡底部按钮）
+/*
+ * 手动暂存入口已删除（2026-10-22）
+ * ============================================================================
+ * 原 `handleManualSaveDraft` 与 `draftButtonText` 一并移除。
+ * 理由见上面 `draftState` 的注释：自动保存本来就在跑，
+ * 手动按钮做的 `flush()` 与它是同一个动作，对用户是纯多余的心智负担。
  *
- * ⚠️ 考试态直接拒绝（2026-10-20）：
- *   界面上考试态已经不显示暂存按钮了（见 `AnswerCard` 的 `v-if="isExamMode"` 分支），
- *   但这里仍然防守一次 —— 原因是"按钮不显示"靠的是模板条件，
- *   任何人以后新增一个入口（快捷键 / 右键菜单 / 别的组件调它）都会绕过那个条件，
- *   而"考试中途可存"是**产品语义上的错误**，不该只靠 UI 拦。
- *
- *   注意：这不代表考试过程的答案不保护。`draftSaver` 的自动写盘照常工作，
- *   刷新回来答案还在 —— 那是技术兜底，不是给用户的"暂存"功能。两者不是一回事。
+ * 真正的"离开前保证落盘"逻辑仍在 `onUnmounted` 里 `draftSaver.flush()`，
+ * 那条不能删 —— 它防的是"节流窗口内用户直接关标签页"这种真实丢数据场景。
  */
-const handleManualSaveDraft = () => {
-  if (isExamMode.value) return
-  const ok = draftSaver.flush()
-  if (ok) ElMessage.success('已暂存当前练习进度')
-  // 失败提示已在 onStateChange 里统一处理，这里不重复弹
-}
-
-/** 答题卡上显示的暂存按钮文案 */
-const draftButtonText = computed(() => {
-  switch (draftState.value) {
-    case 'saving':
-      return '保存中…'
-    case 'saved':
-      return '已暂存'
-    case 'failed':
-      return '暂存失败'
-    default:
-      return '暂存'
-  }
-})
 
 /**
  * 进题库时恢复上次进度
@@ -2834,7 +2836,37 @@ function handleAnalysisClose() {
 function handleSelectOption(index: number) {
   selectOption(index)
 
+  /*
+   * 把刚选的值同步进 `answers`（2026-10-22）
+   * ==================================================================
+   * ⚠️ 这是"静默自动保存"能成立的前提，之前漏了这一句。
+   *
+   * `selectOption()` 只改 `selectedAnswer`（当前题的临时选择），
+   * 真正写进 `answers[qIndex]` 的是 `handleAnswerSubmission()` —— 而它只在
+   * 「下一题 / 上一题 / 跳题」时才被调用。于是存在一个真实的数据丢失窗口：
+   *
+   *     用户点 A  →  selectedAnswer = 0，answers[0] 仍是 null
+   *               →  自动保存快照读 answers → 存进去的是 {}
+   *               →  用户直接刷新 / 关掉页面  →  刚才那一下白选了
+   *
+   * 实测复现过：点「A. 堆」后 `answers` 仍是 `[null, null, ...]`，
+   * localStorage 里 `answers: {}`，刷新后选中态也没有了。
+   *
+   * 所以这里立即同步一次。副作用是良性的：
+   *   · 单选题下它就是"我选了但还没判"的中间态，与界面表现一致；
+   *   · 判分逻辑仍然由后面的 `handleAnswerSubmission` 负责，这里不判；
+   *   · 考试模式下同样需要 —— 考试中途刷新本就该保住已选答案。
+   */
+  const qIndex = currentQuestionIndex.value
+  if (qIndex >= 0 && qIndex < answers.value.length) {
+    answers.value[qIndex] = selectedAnswer.value
+  }
+
   if (isExamMode.value) return
+  /*
+   * ⚠️ 自动跳下一题的逻辑必须留在下面 `autoNextOnCorrect` 的闸门之后，
+   *    不要因为上面新增的同步而提前 return（会破坏"答对自动翻页"）。
+   */
   if (!moduleSettings.value.autoNextOnCorrect) return
 
   const q = currentQuestion.value

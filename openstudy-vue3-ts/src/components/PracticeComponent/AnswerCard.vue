@@ -18,7 +18,7 @@
         </div>
       </div>
 
-      <!-- 右列：重新练习（「暂存」已移到面板底部，见下方 .card-footer） -->
+      <!-- 右列：重新练习（自动保存状态在面板底部，见下方 .card-footer） -->
       <div class="header-right">
         <el-button text size="small" @click="$emit('reset-practice')">重新练习</el-button>
       </div>
@@ -104,21 +104,19 @@
     </template>
 
     <!--
-      底部区块：练习态显示「暂存」，考试态显示「交卷引导」
+      底部区块：练习态显示「自动保存状态」，考试态显示「交卷引导」
       ================================================================
-      ⚠️ 为什么模拟考试**不能**有暂存按钮（2026-10-20 用户反馈：
-         「模拟考试不该出现暂存按钮 需要进行单独的优化」）：
+      ⚠️ 为什么模拟考试**不显示任何"自动保存 / 暂存"相关信息**（2026-10-20）：
+         「模拟考试不该出现暂存按钮 需要进行单独的优化」。
 
-        暂存按钮传达的是「你可以随时中断，进度会留着，回头接着做」——
+        自动保存这类文案传达的是「你可以随时中断，进度会留着，回头接着做」——
         这是**练习**的语义。而模拟考试考的是"限时、一次成型"：
           · 有倒计时，中断了时间不会停；
-          · 中途可存 → 用户可以无限次暂停、翻书、查资料再回来，考试失去意义；
-          · 「进度会自动保存」这句话在考试里更是误导 ——
+          · 「进度会自动保存」在考试里是误导 ——
             用户会以为自己能"先做一半，明天继续考"。
 
-        所以考试态：
-          · **不显示**暂存按钮与"自动保存"文案；
-          · 改成一枚中性的考试提示 + 「交卷」按钮（把唯一有意义的动作放到这里）。
+        所以考试态只给一枚中性的考试提示 + 「交卷」按钮
+        （把唯一有意义的动作放在这里）。
 
         ⚠️ 但底层的**答案保护**仍然保留（`PracticeComponent` 里的 draftSaver 照常工作）：
           考试中途刷新/误关页面，回来答案还在。这是"技术上的防丢"，
@@ -134,7 +132,7 @@
 
       ⚠️ 位置放在 footer **之前**、答题卡主体之后：
         它不是"操作按钮"，而是"显示偏好"，跟着答题卡走更符合语义；
-        放 footer 里会和「交卷 / 暂存」混成一排，看不出它属于"显示设置"。
+        放 footer 里会和「交卷」混成一排，看不出它属于"显示设置"。
     -->
     <div v-if="showShuffleToggle" class="shuffle-row">
       <span class="shuffle-label">
@@ -158,7 +156,7 @@
                 滚动能力收进答题卡这个"控制列"里，变成一行静态文本按钮。
 
       为什么放在这里（而不是继续浮着）：
-        · 答题卡本身就是这一屏的"控制面板"（题号、进度、乱序、暂存、交卷都在里面）
+        · 答题卡本身就是这一屏的"控制面板"（题号、进度、乱序、自动保存、交卷都在里面）
           —— 滚动导航属于同一类操作，天生该在这儿；
         · 它 `position: sticky`，右侧这一列始终在视野内，按钮不会找不到；
         · 不再有 fixed 元素去和答题卡抢右缘，右下角彻底干净。
@@ -206,13 +204,35 @@
       </span>
       <el-button size="small" type="primary" @click="$emit('submit-exam')">交卷</el-button>
     </div>
+
+    <!--
+      练习态底行：**只剩一句静默状态说明，没有按钮**（2026-10-22）
+      ==================================================================
+      用户：「进度是不是一直会自动保存 如果会的话 那就把暂存按钮去掉吧
+             彻底搞成静默自动保存用户刷题记录」
+
+      确认：确实是**一直**自动保存 —— 每次作答 / 判分 / 换题 / 换波后都会
+      静默写一次 localStorage（`draftSaver.schedule()`，600ms 节流），
+      离开页面时还会 `flush()` 立刻落盘一次。
+      所以那个「暂存」按钮纯属多余：它做的 `flush()` 与自动保存是**同一个写盘动作**
+      （见 `utils/practiceDraft.ts` 的 `createDraftSaver`），
+      用户不需要为了"保住进度"去点任何东西。
+
+      那为什么还留这一行字？因为**静默不能等于无感**：
+        · 正常态：一句极浅的「进度自动保存」，让人心里有底，且完全不抢注意力；
+        · 失败态：必须显性提示（配额满 / 隐私模式 / 无痕窗口），
+                  否则用户以为存上了、关掉页面才发现全丢 —— 这是真实的数据损失。
+      所以：常态是 11.5px 的 `--os-text-4`，失败才升到警示色 + 图标。
+    -->
     <div class="card-footer" v-else-if="!isExamMode">
-      <span class="draft-hint" v-if="draftState === 'saved'">进度已自动保存</span>
-      <span class="draft-hint is-failed" v-else-if="draftState === 'failed'">保存失败，请检查浏览器存储</span>
-      <span class="draft-hint" v-else>答题进度会自动保存</span>
-      <el-button size="small" :loading="draftState === 'saving'" @click="$emit('save-draft')">
-        {{ draftButtonText }}
-      </el-button>
+      <span class="draft-hint is-failed" v-if="draftState === 'failed'">
+        <el-icon><WarningFilled /></el-icon>
+        自动保存失败，进度可能丢失
+      </span>
+      <span class="draft-hint" v-else>
+        <el-icon><CircleCheck /></el-icon>
+        进度自动保存
+      </span>
     </div>
   </div>
 </template>
@@ -220,7 +240,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import type { PropType } from 'vue'
-import { Grid, List, Sort, Timer } from '@element-plus/icons-vue'
+import { Grid, List, Sort, Timer, CircleCheck, WarningFilled } from '@element-plus/icons-vue'
 
 interface QuestionItem {
   id?: number | string
@@ -264,10 +284,13 @@ const props = defineProps({
   totalCount: { type: Number, default: 0 },
   remainingCount: { type: Number, default: 0 },
   moduleType: { type: String, default: '' },
-  /** 暂存状态：驱动「暂存」按钮的文案与 loading（见 PracticeComponent 的 draftState） */
+  /**
+   * 自动保存状态（`idle` / `saving` / `saved` / `failed`）
+   *
+   * 只用来决定底行那句提示的**语气**（正常 / 失败），
+   * 不再驱动任何按钮 —— 手动「暂存」按钮已删除（2026-10-22）。
+   */
   draftState: { type: String, default: 'idle' },
-  /** 暂存按钮文案（由父组件按状态生成，避免子组件重复一套文案） */
-  draftButtonText: { type: String, default: '暂存' },
   /**
    * 题号偏移（= 本波第一题之前的题目数）
    *
@@ -301,8 +324,6 @@ const emit = defineEmits([
   'submit-exam',
   'toggle-overview',
   'finish-exam',
-  /** 手动暂存当前练习进度 */
-  'save-draft',
   /** 切换选项乱序（2026-10-22，仅非考试模块可用） */
   'update:shuffle-options',
   /** 滚到页面顶部（2026-10-22，替代原右下角悬浮滚动球） */
@@ -407,20 +428,31 @@ const getOverviewItemClass = (index: number) => {
 }
 
 /*
- * 底部暂存区（用户 2026-10-18：「位置不对，要改到底部去」）
- * 一条发丝线把"题号网格"和"进度操作"分开，右侧是动作、左侧是状态说明。
+ * 底部状态行
+ * ----------------------------------------------------------------------------
+ * 原先是「左侧状态说明 + 右侧暂存按钮」，`justify-content: space-between` 把
+ * 文字和按钮拉到两端（用户 2026-10-18：「位置不对，要改到底部去」）。
+ *
+ * 2026-10-22 删掉手动暂存按钮后，这里**只剩一行字**，所以：
+ *   · `space-between` → `flex-start`：单个子元素在 space-between 下也会贴左，
+ *     但语义上留着一个"两端对齐"会误导后来者以为右边还有东西；
+ *   · 常态提示降到 11.5px + `--os-text-4`：它现在是纯背景信息，
+ *     存在感要低于题号与统计，只求"扫一眼有底"，不求被读到。
  */
 .card-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: flex-start;
+  gap: 8px;
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
 
   .draft-hint {
-    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11.5px;
     line-height: 1.5;
     color: var(--os-text-4, #9ca3af);
     min-width: 0;
@@ -428,21 +460,28 @@ const getOverviewItemClass = (index: number) => {
     text-overflow: ellipsis;
     white-space: nowrap;
 
+    /*
+     * 自动保存失败：这是**必须被看到**的一条
+     *
+     * 静默保存的前提是"它真的在保存"。一旦写盘失败（配额满 / 隐私模式 /
+     * 无痕窗口），用户如果还以为存上了，关掉页面就是真实的数据丢失。
+     * 所以失败态从"背景信息"升级为"警示"：危险色 + 图标 + 更实的字重。
+     */
     &.is-failed {
+      font-size: 12px;
+      font-weight: 500;
       color: var(--el-color-danger, #f56c6c);
     }
 
     /*
      * 考试态提示：比普通 draft-hint 更"实"一些
      *
-     * 练习态的提示是「进度已自动保存」—— 中性、可忽略。
+     * 练习态的提示是「进度自动保存」—— 中性、可忽略。
      * 考试态这句「中途离开不会暂停计时」是**用户需要知道的事实**，
      * 所以给图标 + 略深的字色，让它有存在感但不喧宾夺主（不用警告色）。
      */
     &.is-exam {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
+      font-size: 12px;
       color: var(--os-text-3, #6b7280);
     }
   }
@@ -585,11 +624,11 @@ const getOverviewItemClass = (index: number) => {
  * 滚动锚点行（2026-10-22）
  * ============================================================================
  * 形态取"文字按钮 + 发丝分隔线"，与 `.only-wrong-bar__action` 同一调性：
- *   · 不用 ElButton：这里是**辅助导航**，不该和「暂存 / 交卷」抢视觉重量；
+ *   · 不用 ElButton：这里是**辅助导航**，不该和「交卷」抢视觉重量；
  *   · 不用图标圆钮：圆钮会让人想起被回滚掉的那个浮球，形态上要拉开距离；
  *   · 分隔线只做"两个方向"的语义提示，不画整条边框。
  *
- * 位置：紧贴在 footer（暂存 / 交卷）**之上**、乱序开关**之下** ——
+ * 位置：紧贴在 footer（自动保存状态 / 交卷）**之上**、乱序开关**之下** ——
  * 上面是"显示设置"，下面是"离开 / 提交"，滚动导航夹在中间正好属于"看内容"。
  */
 .scroll-anchors {
