@@ -135,8 +135,25 @@
       </main>
     </div>
 
-    <!-- 全局悬浮 AI 助手：智能体页本身就是对话页，不再叠一个悬浮球 -->
-    <AiAssistant v-if="isLogin && !isGuest && !isAgentPage" />
+    <!--
+      全局悬浮 AI 助手
+      ------------------------------------------------------------------
+      · 智能体页本身就是对话页 → 不再叠一个悬浮球（`!isAgentPage`）；
+      · **模拟考试页一律不显示**（`!isMockExamPage`，2026-10-22 用户补充要点：
+        「模拟考试页面不能看见这个助手按钮」）。
+
+        为什么模拟考试必须藏起来（不只是"不好看"）：
+          ① 考试是**限时、一次成型**的场景，右侧答题卡已经占满控制列，
+             44×44 的实心主色浮球压在卡片上，等于在考场上放一个干扰源；
+          ② 它是全局常驻元素，会挡住答题卡右缘的题号与「交卷」；
+          ③ 语义上也不对：考场里提供一个「随时问 AI」的入口，等于给了作弊通道。
+
+        ⚠️ 判据用**路由参数**而不是 `PracticeComponent` 内部状态：
+           外壳（本文件）与练习组件是父子关系，拿不到 `mockPhase`；
+           而路由 `:moduleType === 'mock'` 恰好覆盖模拟考试的**全部四个阶段**
+           （配置 / 作答 / 结果 / 历史），正好是用户要的"整个模拟考试页面"。
+    -->
+    <AiAssistant v-if="isLogin && !isGuest && !isAgentPage && !isMockExamPage" />
 
     <!--
       全局设置抽屉
@@ -291,6 +308,24 @@ const isGuest = computed(() => userStore.isGuest)
 const isAgentPage = computed(() => route.path.startsWith('/front/agent'))
 const isNotesEditorPage = computed(() => route.path === '/front/notes/editor')
 const isMessagesPage = computed(() => route.path.startsWith('/front/messages'))
+
+/**
+ * 模拟考试页（配置 / 作答 / 结果 / 历史 四个阶段都算）
+ *
+ * 路由形如 `/front/questionPractice/:bankId/practice/:moduleType`，
+ * 其中 `moduleType === 'mock'` 即模拟考试。
+ *
+ * 为什么用路由而不是组件内状态：外壳与练习组件是父子关系，
+ * 父级拿不到子级的 `mockPhase`；而 mock 这条路由本身就只承载模拟考试流程，
+ * 用它当判据既准确又不会多渲染一次。
+ *
+ * ⚠️ 用 `route.params` 而非 `route.path.includes('/mock')`：
+ *    后者会被 `/front/xxx/mockery` 这类前缀相同的路径误伤。
+ */
+const isMockExamPage = computed(() => {
+  const moduleType = route.params?.moduleType
+  return route.path.startsWith('/front/questionPractice') && moduleType === 'mock'
+})
 
 /** 满高页面：自己管滚动，外壳不套 padding */
 const isFlushPage = computed(

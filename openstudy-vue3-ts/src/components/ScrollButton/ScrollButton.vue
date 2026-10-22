@@ -67,6 +67,14 @@
 
 <script setup lang="ts">
 import { computed, getCurrentInstance, onBeforeUnmount, onMounted, onUpdated, ref, watch } from 'vue'
+/*
+ * 滚动宿主探测统一走 `@/utils/scrollHost`（2026-10-22）
+ *
+ * 这段逻辑原来就长在本文件里。练习页答题卡新增的「回到顶部 / 跳到底部」
+ * 需要**完全同一套**判据（它也要落在 `.os-content` 上，不能写死容器），
+ * 所以抽成公共 util，本组件改为调用 —— 行为与之前一模一样。
+ */
+import { findMainScroller, findScrollParent, readScrollPosition } from '@/utils/scrollHost'
 
 const props = withDefaults(
   defineProps<{
@@ -170,43 +178,11 @@ let retryTimer: ReturnType<typeof setTimeout> | null = null
  */
 let lastTop = 0
 
-/** 向上找一个"内容确实超出"的可滚动祖先 */
-function findScrollParent(el: HTMLElement | null): any {
-  let node: HTMLElement | null = el
-  while (node && node !== document.body && node !== document.documentElement) {
-    const style = getComputedStyle(node)
-    const scrollable = /(auto|scroll|overlay)/.test(style.overflowY)
-    if (scrollable && node.scrollHeight > node.clientHeight + 4) return node
-    node = node.parentElement
-  }
-  return window
-}
-
-/**
- * 兜底：全文档里找"最像主滚动区"的元素
- *
- * 为什么要它：`.os-scroll-fab-host` 挂在页面组件里，而组件可能在 `<transition>` /
- * KeepAlive 下、于外壳内容区尚未撑开时 mount —— 那时向上找每一层都不溢出，
- * 只能退回 window；但整页高度 = 视口时 window 根本不动，`top/max` 恒为 0。
- * 判据：overflowY 可滚 + 内容溢出，取**溢出量最大**的那个。
+/*
+ * `findScrollParent` / `findMainScroller` / `readScrollPosition` 现已抽到
+ * `@/utils/scrollHost`，本组件直接调用，判据与练习页答题卡里的
+ * 「回到顶部 / 跳到底部」完全一致。
  */
-function findMainScroller(): any {
-  let best: HTMLElement | null = null
-  let bestOverflow = 0
-  const nodes = document.querySelectorAll<HTMLElement>(
-    '.os-content, .os-main, .main-content, .overview-question-stream, [class*="content"]'
-  )
-  for (const node of nodes) {
-    const style = getComputedStyle(node)
-    if (!/(auto|scroll|overlay)/.test(style.overflowY)) continue
-    const overflow = node.scrollHeight - node.clientHeight
-    if (overflow > bestOverflow) {
-      best = node
-      bestOverflow = overflow
-    }
-  }
-  return bestOverflow > 4 ? best : null
-}
 
 /** 解析目标容器 */
 function resolveTarget(): any {
@@ -239,20 +215,9 @@ function resolveTarget(): any {
   return window
 }
 
-/** 读取滚动位置（window 与元素两种口径） */
+/** 读取滚动位置（window 与元素两种口径，实现见 `@/utils/scrollHost`） */
 function readScroll() {
-  if (!target) return { top: 0, max: 0 }
-  if (target === window) {
-    const doc = document.documentElement
-    return {
-      top: window.scrollY || doc.scrollTop || 0,
-      max: Math.max(0, doc.scrollHeight - window.innerHeight)
-    }
-  }
-  return {
-    top: target.scrollTop || 0,
-    max: Math.max(0, (target.scrollHeight || 0) - (target.clientHeight || 0))
-  }
+  return readScrollPosition(target)
 }
 
 /**

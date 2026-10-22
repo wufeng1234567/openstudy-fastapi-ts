@@ -145,6 +145,60 @@
       <span class="shuffle-hint">{{ shuffleOptions ? '已打乱，避免凭位置记答案' : '按题库原始顺序' }}</span>
     </div>
 
+    <!--
+      滚动锚点行（2026-10-22）
+      ==================================================================
+      用户需求演进（三版）：
+        ① 初版：视口右下角一个悬浮「一键滚动」球 + 全局悬浮 AI 助手
+                → 两个浮层在右下角**叠在一起**，还压住了答题卡。
+        ② 方案A（已回滚）：用 `avoidSelector` 动态测量、把两个浮层上下错开
+                → 用户判定「不行这样做 没有解决不美观的问题」。
+                   错开只是挪位置，右侧仍然挂着一串浮层，整体不简洁。
+        ③ 现行（本段）：**练习页不放任何常驻浮层**。
+                滚动能力收进答题卡这个"控制列"里，变成一行静态文本按钮。
+
+      为什么放在这里（而不是继续浮着）：
+        · 答题卡本身就是这一屏的"控制面板"（题号、进度、乱序、暂存、交卷都在里面）
+          —— 滚动导航属于同一类操作，天生该在这儿；
+        · 它 `position: sticky`，右侧这一列始终在视野内，按钮不会找不到；
+        · 不再有 fixed 元素去和答题卡抢右缘，右下角彻底干净。
+
+      为什么是**两个**静态按钮（而不是原来那个自动翻向的单球）：
+        浮球需要"猜用户想往上还是往下"（靠 delta 判断），静态按钮不需要猜 ——
+        用户点哪个就是哪个，零歧义。这也正好绕开了上一版方向判定的全部复杂度。
+
+      ⚠️ 显示条件（`scrollable`）由父组件算：只有当前滚动宿主真的溢出时才渲染。
+         · 逐题模式 + 普通单选题（一题一屏）→ 不溢出 → **整行不出现**，保持极简；
+         · 逐题模式 + 长组合题/长解析 → 溢出 → 出现；
+         · 整体浏览（瀑布流）→ 几乎总溢出 → 出现（正是最需要的时候）。
+
+      ⚠️⚠️ 两个按钮**永远可点，不做 disabled/置灰**（2026-10-22 实测踩到）：
+        第一版按"是否已在端点"置灰，结果在后台标签页里 Chrome **不派发 scroll 事件**，
+        状态停在初始值 → 「回到顶部」永久 disabled → 用户点了完全没反应
+        （探针里复现：跳到底部后回不到顶部）。
+        只要按钮可用性依赖滚动事件，就必然存在"事件没到 → 按钮废掉"的失败模式。
+        而这两个动作**本身就是幂等的**：已经在顶部再点一次回到顶部，
+        毫无副作用。所以直接去掉置灰，既消掉整个失败模式，视觉也更干净
+        （用户嫌的本来就是"元素太多不简洁"，一排灰按钮只会更吵）。
+    -->
+    <div v-if="scrollable" class="scroll-anchors">
+      <button type="button" class="scroll-anchor" @click="$emit('scroll-top')">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m18 15-6-6-6 6" />
+        </svg>
+        回到顶部
+      </button>
+      <span class="scroll-anchors__divider" aria-hidden="true"></span>
+      <button type="button" class="scroll-anchor" @click="$emit('scroll-bottom')">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+        跳到底部
+      </button>
+    </div>
+
     <div class="card-footer" v-if="isExamMode && !showExamResult">
       <span class="draft-hint is-exam">
         <el-icon><Timer /></el-icon>
@@ -230,7 +284,15 @@ const props = defineProps({
    *   是否用打乱后的顺序渲染）。答题卡只是**入口**，不掌握状态 —— 否则
    *   卡片里的开关和题目的实际顺序会各说各话。
    */
-  shuffleOptions: { type: Boolean, default: false }
+  shuffleOptions: { type: Boolean, default: false },
+  /**
+   * 当前滚动宿主是否真的能滚（有溢出）
+   *
+   * 由父组件探测（见 `PracticeComponent` 的 `scrollable`），因为真正的滚动容器
+   * 是外壳 `.os-content`，子组件自己"向上找"会找到答题卡内部、判错。
+   * 为 false 时整行锚点不渲染 —— 这是"一题一屏、不需要滚动"时保持极简的关键。
+   */
+  scrollable: { type: Boolean, default: false }
 })
 
 const emit = defineEmits([
@@ -242,7 +304,11 @@ const emit = defineEmits([
   /** 手动暂存当前练习进度 */
   'save-draft',
   /** 切换选项乱序（2026-10-22，仅非考试模块可用） */
-  'update:shuffle-options'
+  'update:shuffle-options',
+  /** 滚到页面顶部（2026-10-22，替代原右下角悬浮滚动球） */
+  'scroll-top',
+  /** 滚到页面底部（2026-10-22） */
+  'scroll-bottom'
 ])
 
 /**
@@ -513,6 +579,71 @@ const getOverviewItemClass = (index: number) => {
   font-weight: bold;
   color: #1f2937;
   margin-bottom: 8px;
+}
+
+/*
+ * 滚动锚点行（2026-10-22）
+ * ============================================================================
+ * 形态取"文字按钮 + 发丝分隔线"，与 `.only-wrong-bar__action` 同一调性：
+ *   · 不用 ElButton：这里是**辅助导航**，不该和「暂存 / 交卷」抢视觉重量；
+ *   · 不用图标圆钮：圆钮会让人想起被回滚掉的那个浮球，形态上要拉开距离；
+ *   · 分隔线只做"两个方向"的语义提示，不画整条边框。
+ *
+ * 位置：紧贴在 footer（暂存 / 交卷）**之上**、乱序开关**之下** ——
+ * 上面是"显示设置"，下面是"离开 / 提交"，滚动导航夹在中间正好属于"看内容"。
+ */
+.scroll-anchors {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+}
+
+.scroll-anchor {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 2px 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--os-text-3, #6b7280);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color var(--ds-duration-fast, 0.15s) ease,
+    background-color var(--ds-duration-fast, 0.15s) ease;
+}
+
+.scroll-anchor:hover:not(:disabled) {
+  color: var(--os-accent, var(--os-primary, #0f1115));
+  background: var(--os-bg-hover, rgba(0, 0, 0, 0.03));
+}
+
+.scroll-anchor:focus-visible {
+  outline: 2px solid var(--os-primary, #0f1115);
+  outline-offset: 2px;
+}
+
+/*
+ * 已经在端点 → 不再置灰（见模板里那段注释）
+ *
+ * 这里只保留 hover / focus 的交互反馈；`:disabled` 样式一并去掉，
+ * 因为按钮不再有 disabled 状态，留着会成为"永远不生效的死代码"。
+ */
+.scroll-anchor:active {
+  background: var(--os-bg-hover, rgba(0, 0, 0, 0.05));
+}
+
+.scroll-anchors__divider {
+  width: 1px;
+  height: 10px;
+  background: var(--os-border, #e5e7eb);
+  flex: none;
 }
 
 /* 整体浏览模式样式 */

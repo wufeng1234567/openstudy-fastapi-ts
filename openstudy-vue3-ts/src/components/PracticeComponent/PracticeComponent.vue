@@ -1,5 +1,5 @@
 <template>
-  <div class="practice-container">
+  <div class="practice-container" ref="containerRef">
     <!--
       加载动画
       ==================================================================
@@ -225,6 +225,8 @@
           :answered-count="answeredCount" :total-count="totalQuestions" :remaining-count="remainingCount"
           :module-type="moduleTypeSafe" :draft-state="draftState" :draft-button-text="draftButtonText" :number-base="numberBase"
           :shuffle-options="effectiveShuffleOptions"
+          :scrollable="scrollable"
+          @scroll-top="handleScrollTop" @scroll-bottom="handleScrollBottom"
           @update:shuffle-options="handleToggleShuffle"
           @go-to-question="scrollToQuestion" @toggle-overview="toggleOverview"
           @reset-practice="resetPractice" @submit-exam="handleSubmitExam" @finish-exam="handleFinishExam"
@@ -292,6 +294,8 @@
           :marked-questions="markedQuestionsSet" :favorited-questions="favoritedQuestions" :error-questions="errorQuestions"
           :draft-state="draftState" :draft-button-text="draftButtonText" :number-base="numberBase"
           :shuffle-options="effectiveShuffleOptions"
+          :scrollable="scrollable"
+          @scroll-top="handleScrollTop" @scroll-bottom="handleScrollBottom"
           @update:shuffle-options="handleToggleShuffle"
           @go-to-question="goToQuestion" @reset-practice="resetPractice" @submit-exam="handleSubmitExam"
           @toggle-overview="toggleOverview" @finish-exam="handleFinishExam"
@@ -327,17 +331,21 @@
     <PracticeSettings v-model="showSettings" :default-module="moduleType" @save="handleSettingsSave" />
 
     <!--
-      滚动按钮（回到顶部 / 跳到底部）
+      滚动入口已从「右下角悬浮球」搬到**答题卡内部**（2026-10-22）
+      ==================================================================
+      用户明确否掉了两版浮层方案：
+        ① 浮球 + 悬浮助手叠在右下角 → 两个浮层挤在一起，还压住答题卡；
+        ② 方案A 用 `avoidSelector` 动态测量把二者错开
+           → 「不行这样做 没有解决不美观的问题 回滚换别的方案」。
+      结论不是"再摆一次位置"，而是**练习页不要常驻浮层**：
+      滚动能力收进答题卡这一列（见 `AnswerCard` 的 `.scroll-anchors`），
+      右下角留白。所以这里不再渲染 `<ScrollButton>`。
 
-      ⚠️ **不要传 scroll-container**（用户 2026-10-18 bug4）。
-         实测这页真正在滚的是**外壳内容区 `.os-content`**（sh 4938 / ch 948），
-         而 `.overview-question-stream` 自己 `scrollHeight === clientHeight`（不滚），
-         `document.documentElement` 也不滚（整页高度 = 视口）。
-         写死任何一个都会踩空。
-      所以交给 ScrollButton 自己从挂载点向上找"内容确实溢出"的可滚动祖先，
-      这样不管是单题模式、浏览模式，还是将来换外壳，都能自动对上。
+      ⚠️ 不要因为"看着空"又把 ScrollButton 加回来 ——
+         那会立刻重现用户抱怨的拥挤感，且与答题卡右缘重叠。
+      滚动宿主的探测复用 `@/utils/scrollHost`（与 ScrollButton 同一套判据，
+      落在真正在滚的外壳 `.os-content` 上，不写死容器）。
     -->
-    <ScrollButton :bottom="24" :right="24" />
 
     <ImageViewer v-model:visible="viewerVisible" :src="viewerSrc" />
   </div>
@@ -354,7 +362,15 @@ import QuestionNavigation from './QuestionNavigation.vue'
 import PracticeSettings from './PracticeSettings.vue'
 import MarkedButton from '@/components/MarkedButton/MarkedButton.vue'
 import FavoriteButton from '@/components/FavoriteButton/FavoriteButton.vue'
-import ScrollButton from '@/components/ScrollButton/ScrollButton.vue'
+/*
+ * 滚动宿主探测（2026-10-22）
+ *
+ * 练习页原来在右下角渲染 `<ScrollButton>` 浮球。用户指出「浮球 + 悬浮助手 +
+ * 右侧答题卡」三样东西挤在一起、不简洁，错开摆放也救不回来。
+ * 现在滚动入口收进答题卡内部（静态的「回到顶部 / 跳到底部」两个文本按钮），
+ * 浮球不再出现。判据复用同一个 util，保证"到底在滚谁"始终只有一份答案。
+ */
+import { readScrollPosition, resolveScrollHost, scrollHostTo, type ScrollHost } from '@/utils/scrollHost'
 // 「只刷错题」空态要用线性图标（全站统一走 OsIcon，不用 Element Plus 实心图标）
 import OsIcon from '@/components/OsIcon/index.vue'
 import ImageViewer from './ImageViewer.vue'
@@ -493,6 +509,186 @@ const showMockSummaryUI = computed(() => isMockFlow.value && mockPhase.value ===
  *    若判分时再读 store，就会出现"按新配置判旧卷子"的错乱。
  */
 const activeMockConfig = ref<MockExamConfig | null>(null)
+
+/* ==================== 滚动状态（答题卡内的「回到顶部 / 跳到底部」） ==================== */
+
+/**
+ * 为什么把滚动状态放在 `PracticeComponent` 而不是 `AnswerCard` 里
+ * ----------------------------------------------------------------------------
+ * 因为**真正在滚的不是答题卡**：实测练习页滚的是外壳 `.os-content`
+ * （scrollHeight 4938 / clientHeight 948），而 `.overview-question-stream`
+ * 与答题卡自身都不滚。子组件若"从自己往上找"，第一个可滚祖先就是错的。
+ *
+ * 所以：探测 + 监听 + 执行滚动都留在本组件（它持有页面根节点 `containerRef`），
+ * `AnswerCard` 只接收布尔值、只 emit 意图 —— 纯展示，不做 DOM 查询。
+ */
+
+/** 页面根节点，作为"向上找滚动宿主"的起点 */
+const containerRef = ref<HTMLElement | null>(null)
+
+/** 当前像素级可滚量（>0 才需要锚点；0 表示这一屏根本不溢出） */
+const scrollMax = ref(0)
+
+/**
+ * 是否需要滚动锚点
+ *
+ * 阈值 80px 而不是 0：这是"用户得滚好一会儿"的量级。
+ * 逐题模式下普通单选题只有几十像素的抖动溢出（图片、解析边距），
+ * 那种情况给两个按钮反而是噪音 —— 用户会觉得"这么点高度也值得跳？"。
+ * 整体浏览（瀑布流）动辄几千像素，必然越过阈值。
+ *
+ * ⚠️ 只维护 `scrollMax`，**不再追踪 `scrollTop`**（2026-10-22）：
+ *    第一版还算了 `atScrollTop` / `atScrollBottom` 去置灰按钮，
+ *    但后台标签页里 Chrome 根本不派发 scroll 事件，状态永远停在初始值，
+ *    于是「回到顶部」永久 disabled、点了毫无反应。
+ *    按钮可用性只要依赖滚动事件，就必然有这种失败模式；
+ *    而回到顶部 / 跳到底部本身是幂等动作，置灰没有任何收益，已整体去掉。
+ */
+const scrollable = computed(() => scrollMax.value > 80)
+
+/** 真正在滚的宿主（元素或 window），懒解析并缓存 */
+let scrollHost: ScrollHost | null = null
+let lastScrollSyncAt = 0
+let scrollHostResizeObserver: ResizeObserver | null = null
+let scrollHostMutationObserver: MutationObserver | null = null
+let scrollHostRetryTimers: Array<ReturnType<typeof setTimeout>> = []
+
+/**
+ * 读一次可滚量并落入响应式状态
+ *
+ * 只取 `max`：`top` 已经没有消费方了（见 `scrollable` 的注释）。
+ */
+function syncScrollState() {
+  const { max } = readScrollPosition(scrollHost)
+  scrollMax.value = max
+}
+
+/**
+ * 滚动 / 尺寸变化时的同步（时间戳节流）
+ *
+ * ⚠️⚠️ 这里**不能用 `requestAnimationFrame` + 布尔锁**，这是踩过的坑（2026-10-22）：
+ *
+ *   上一版写法：
+ *       if (raf) return
+ *       raf = requestAnimationFrame(() => { raf = 0; sync() })
+ *
+ *   一旦某一次 rAF 被浏览器**节流或丢弃**（后台标签、窗口被遮挡、省电模式都会），
+ *   回调不执行 → `raf` 永远非 0 → 之后每一次调用都在第一行被 return，
+ *   **永久死锁**，状态就停在旧值再也不更新。
+ *
+ *   实测症状：整体浏览模式真实溢出 5172px，但 `scrollMax` 卡在切模式之前的 31px，
+ *   于是 `scrollable` 恒为 false、锚点整行不渲染 —— 而且滚多少下都救不回来。
+ *
+ * 现在只用时间戳节流：不需要任何回调复位，无论事件怎么丢都不会锁死。
+ * 60ms ≈ 16fps，足够跟手，也避免每次 scroll 都强制同步布局。
+ */
+const SCROLL_SYNC_INTERVAL = 60
+function onPracticeScroll() {
+  const now = performance.now()
+  if (now - lastScrollSyncAt < SCROLL_SYNC_INTERVAL) return
+  lastScrollSyncAt = now
+  syncScrollState()
+}
+
+/**
+ * 确保滚动宿主已绑定（**幂等**）
+ *
+ * 与上一版的关键差别：宿主还活着（`isConnected`）且**确实能滚**时不再拆了重绑。
+ * 原因是两种展示模式（逐题 / 整体浏览）只替换页面**内部**的 DOM，
+ * 真正在滚的外壳 `.os-content` 始终是同一个元素 —— 每次切模式都拆监听，
+ * 等于白白制造一个"监听真空期"，期间的尺寸变化全部丢失。
+ *
+ * ⚠️ 但「当前宿主不溢出」时必须重探，这条不能省：
+ *    逐题模式碰上很短的题目时 `.os-content` 可能完全不溢出（overflow = 0），
+ *    此时 `resolveScrollHost` 会退回 `window`；而 window 在整页高度 = 视口时
+ *    永远不滚。若不在切到瀑布流后重新探测，锚点就**永远不会出现**。
+ */
+function ensureScrollHost() {
+  const current = scrollHost
+  const alive = current === window || (current instanceof HTMLElement && current.isConnected)
+  if (alive) {
+    // 还活着，但要确认它现在真的能滚；能滚就直接复用监听
+    const { max } = readScrollPosition(current)
+    if (max > 4) return
+  }
+
+  detachScrollHost()
+  scrollHost = resolveScrollHost(containerRef.value)
+  lastScrollSyncAt = 0
+  syncScrollState()
+
+  if (scrollHost && scrollHost !== window) {
+    const el = scrollHost as HTMLElement
+    el.addEventListener('scroll', onPracticeScroll, { passive: true })
+    /*
+     * 内容尺寸/结构变化不会触发 scroll（切题、展开解析、图片加载、切换展示模式
+     * 都会改变高度）→ 用两个 observer 补齐，否则会出现"内容变长了但按钮还不出现"。
+     */
+    if (typeof ResizeObserver !== 'undefined') {
+      scrollHostResizeObserver = new ResizeObserver(onPracticeScroll)
+      scrollHostResizeObserver.observe(el)
+      if (el.firstElementChild) scrollHostResizeObserver.observe(el.firstElementChild as HTMLElement)
+    }
+    if (typeof MutationObserver !== 'undefined') {
+      scrollHostMutationObserver = new MutationObserver(onPracticeScroll)
+      scrollHostMutationObserver.observe(el, { childList: true, subtree: true })
+    }
+  } else {
+    window.addEventListener('scroll', onPracticeScroll, { passive: true })
+  }
+  window.addEventListener('resize', onPracticeScroll)
+}
+
+/** 拆掉监听（不动重试定时器；重试定时器由 unmount 统一清） */
+function detachScrollHost() {
+  if (scrollHost) {
+    if (scrollHost === window) window.removeEventListener('scroll', onPracticeScroll)
+    else (scrollHost as HTMLElement).removeEventListener('scroll', onPracticeScroll)
+  }
+  window.removeEventListener('resize', onPracticeScroll)
+  scrollHostResizeObserver?.disconnect()
+  scrollHostResizeObserver = null
+  scrollHostMutationObserver?.disconnect()
+  scrollHostMutationObserver = null
+  scrollHost = null
+}
+
+/**
+ * 绑定入口（挂载时 / 延时重试）
+ *
+ * 首次挂载时外壳内容区可能还没撑开（每层都"不溢出"），只能退回 window，
+ * 而 window 在整页高度 = 视口时根本不动 —— 那正是历史上"滚动按钮永不出现"的成因。
+ * 所以除了 onMounted，还要在两次延时后再解析一次。
+ */
+function bindPracticeScrollHost() {
+  detachScrollHost()
+  ensureScrollHost()
+  syncScrollState()
+}
+
+/** 解绑 */
+function unbindPracticeScrollHost(clearRetry = true) {
+  detachScrollHost()
+  if (clearRetry) {
+    scrollHostRetryTimers.forEach(t => clearTimeout(t))
+    scrollHostRetryTimers = []
+  }
+}
+
+/** 滚到顶部（答题卡 emit 的 `scroll-top`） */
+function handleScrollTop() {
+  scrollHostTo(scrollHost, 0)
+}
+
+/**
+ * 滚到底部
+ *
+ * ⚠️ 目标值取**当前**的 max，不缓存：整体浏览模式下最后一波题可能刚渲染完，
+ *    max 在点下去那一刻才准确。用旧值会停在"离底部还差一屏"的位置。
+ */
+function handleScrollBottom() {
+  scrollHostTo(scrollHost, readScrollPosition(scrollHost).max)
+}
 
 /**
  * 选项是否打乱（下发给 `QuestionDisplay` / `AnswerCard`）
@@ -796,6 +992,20 @@ onMounted(() => {
 
   // 添加页面可见性变化监听
   document.addEventListener('visibilitychange', handleVisibilityChange)
+
+  /*
+   * 绑定滚动宿主（答题卡里的「回到顶部 / 跳到底部」依赖它）
+   *
+   * 三次尝试的原因见 `bindPracticeScrollHost` 的注释：
+   * 首次挂载时外壳内容区可能还没撑开，那时只能退回 window（不滚），
+   * 等布局稳定再解析一次才能真正落到 `.os-content` 上。
+   * 定时器存进 `scrollHostRetryTimers`，卸载时统一清掉。
+   */
+  requestAnimationFrame(bindPracticeScrollHost)
+  scrollHostRetryTimers.push(
+    setTimeout(bindPracticeScrollHost, 300),
+    setTimeout(bindPracticeScrollHost, 1200)
+  )
 })
 
 onUnmounted(() => {
@@ -820,12 +1030,23 @@ onUnmounted(() => {
 
   // 移除页面可见性变化监听
   document.removeEventListener('visibilitychange', handleVisibilityChange)
+
+  // 解绑滚动宿主（含重试定时器）
+  unbindPracticeScrollHost(true)
 })
 
 const overviewMode = computed({
   get: () => moduleSettings.value.isOverviewMode || false,
   set: (val) => store.saveModuleSettings(props.moduleType, { isOverviewMode: val })
 })
+
+/* ==================== 滚动锚点：跟随展示内容变化重算 ==================== */
+
+/**
+ * ⚠️ 这两个 watch 必须放在 `isOverviewActive` / `forceOverview` **之后**。
+ *    它们是 `ref`/`computed`，声明前引用会踩 TDZ（Cannot access before initialization）。
+ *    见下方 `isOverviewActive` 的定义位置 —— 滚动相关的 watch 已挪到那里。
+ */
 
 /**
  * 「临时」打开整体浏览（结算用），**不写进持久化偏好**
@@ -853,6 +1074,15 @@ const overviewMode = computed({
  */
 const forceOverview = ref(false)
 const isOverviewActive = computed(() => moduleSettings.value.isOverviewMode || forceOverview.value)
+
+/**
+ * 滚动相关的 watch **位置说明**
+ * ----------------------------------------------------------------------------
+ * 它们依赖 `isOverviewActive`、`questions`、`currentQuestionIndex`，
+ * 后两者来自下面的 `useQuestionPractice(...)` 解构，必须等它执行完才存在。
+ * 所以 watch 写在解构之后（见本文件 `/* 滚动锚点：跟随展示内容变化重算 *\/` 那一段），
+ * 不要挪回上面 —— 会踩 TDZ。
+ */
 
 /**
  * 「当前没有题可练」——空态的总开关
@@ -1453,6 +1683,46 @@ const {
   questionCount: moduleSettings.value.questionCount,
   onlyWrong: moduleSettings.value.onlyWrong
 })
+
+/* ==================== 滚动锚点：跟随展示内容变化重算 ==================== */
+
+/**
+ * 什么时候需要重新同步滚动状态
+ * ----------------------------------------------------------------------------
+ * 用户明确指出练习页有**两种模式**，两者的可滚量完全不同：
+ *   · 逐题模式（一题一屏）→ 通常不溢出，锚点整行不出现；
+ *   · 整体浏览（瀑布流）  → 几乎总是溢出，锚点必须有。
+ *
+ * ⚠️ 这里只调 `ensureScrollHost()`（幂等）+ `syncScrollState()`，
+ *    **不**再拆监听：两种模式只替换页面内部的 DOM，真正在滚的外壳
+ *    `.os-content` 是同一个元素。上一版每次都 `detach` 再靠 rAF 重绑，
+ *    结果 rAF 被节流时监听永久丢失、状态卡死（详见 `onPracticeScroll` 的注释）。
+ *
+ * `questions.length` 也纳入：切题库 / 换波 / 换题量都会改变内容高度。
+ * 用 `flush: 'post'` 是必须的：DOM 还没打完补丁时量出来的高度是旧的。
+ */
+watch(
+  [() => isOverviewActive.value, () => questions.value.length],
+  () => {
+    ensureScrollHost()
+    syncScrollState()
+  },
+  { flush: 'post' }
+)
+
+/**
+ * 切题时也要重算
+ *
+ * 逐题模式下换一道题，内容高度可能从"不溢出"变成"溢出"（长题干 / 组合题），
+ * 这时锚点才应该出现。不做这一步，用户必须切一下模式或滚一下才会更新。
+ */
+watch(
+  () => currentQuestionIndex.value,
+  () => {
+    syncScrollState()
+  },
+  { flush: 'post' }
+)
 
 /* ============================================================================
  * 模拟考试：组卷 / 判分 / 生成记录（2026-10-22）
