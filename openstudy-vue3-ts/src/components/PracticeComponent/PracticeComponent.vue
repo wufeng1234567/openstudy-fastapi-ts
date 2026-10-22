@@ -1,16 +1,48 @@
 <template>
   <div class="practice-container">
     <!--
-      模拟考试的三段式界面（2026-10-22）
+      加载动画
       ==================================================================
-      ⚠️ 必须放在**所有刷题 UI 之前**，且三态互斥。
-      原因：这三态与"考卷界面"是并列关系，而不是嵌套关系。
-      若把配置页塞在 loading/空态之后，会出现"配置页下面还挂着一份考卷"的叠加；
-      同时计时器是在进入考卷时才启动的（见 handleMockStart），放前面才能保证
-      用户在配置页停留的时间不被计入考试时长。
+      ⚠️ 必须放在下面那条 v-if 链**之前**，且自身是一条独立的短链。
+         绝不能插在 v-if / v-else-if 兄弟之间 —— Vue 要求 v-else-if 紧跟
+         上一个分支，中间夹一个元素会直接编译报错。
+    -->
+    <div v-if="loading && !showMockSetupUI && !showMockSummaryUI" class="loading-overlay">
+      <div class="loading-spinner">
+        <div class="loading-ring"></div>
+        <div class="loading-text">正在加载题目...</div>
+      </div>
+    </div>
+
+    <!--
+      主界面：一条链管到底（2026-10-22 重构）
+      ==================================================================
+      这里是**唯一**一条渲染链，从上到下依次是：
+
+          模拟考试（配置 / 历史 / 总结）
+          → 空态
+          → 整体浏览
+          → 逐题（考卷）
+
+      ⚠️⚠️ 踩过的严重 bug，改之前先读完：
+        原来「模拟考试三态」是独立的一条 v-if 链，刷题 UI 是另一条，
+        两条链之间隔着加载动画等兄弟节点 —— 于是它们**互不排斥**：
+        用户在配置页设置题目时，配置页**下面还完整渲染着一份考卷**（含答题卡）。
+
+        当时试过在刷题链里加一个 `v-else-if` 占位去"挡住"考卷，但那条链是从
+        `isEmptyState` 起步的，占位分支排在它后面 —— 永远轮不到，等于没挡。
+
+        正确做法就是现在这样：把模拟考试三态作为**同一条链的前三个分支**。
+        Vue 的 v-if 链天生只有一个分支能渲染，互斥由结构保证，
+        不需要任何"占位挡住"的技巧，也不可能再出现叠加。
+
+      下方分支顺序也有讲究（都是修过的 bug，别随意调整）：
+        · 空态必须排在浏览/逐题**之前** —— 否则"没有题"时会被考卷分支吃掉，
+          用户看到的是空白而不是解释（见 2026-10-21 那段注释）。
+        · 浏览模式排在逐题之前 —— 它是 `isOverviewActive` 为真时的展示形态。
     -->
     <MockExamSetup
-      v-if="showMockSetupUI && mockPhase === 'setup'"
+      v-if="isMockFlow && mockPhase === 'setup'"
       :bank-id="bankId"
       :bank-name="bankName"
       :available="mockAvailable"
@@ -19,25 +51,17 @@
       @start="handleMockStart" />
 
     <MockExamHistory
-      v-else-if="showMockSetupUI && mockPhase === 'history'"
+      v-else-if="isMockFlow && mockPhase === 'history'"
       :bank-id="bankId"
       :bank-name="bankName"
       @cancel="mockPhase = 'setup'"
       @open-record="handleOpenHistoryRecord" />
 
     <ExamSummary
-      v-else-if="showMockSummaryUI && currentExamRecord"
+      v-else-if="isMockFlow && mockPhase === 'summary' && currentExamRecord"
       :record="currentExamRecord"
       @close="$emit('close')"
       @back-to-setup="handleMockSummaryBack" />
-
-    <!-- 加载动画 -->
-    <div v-if="loading && !showMockSetupUI && !showMockSummaryUI" class="loading-overlay">
-      <div class="loading-spinner">
-        <div class="loading-ring"></div>
-        <div class="loading-text">正在加载题目...</div>
-      </div>
-    </div>
 
     <!--
       「没有题可练」空态 —— 独立于「逐题 / 整体浏览」两种展示
@@ -57,7 +81,7 @@
       所以：空态不挂在任何一个展示分支下面，而是**两个分支的共同前置**。
       这样不管 `overviewMode` 是 true 还是 false，只要没有题，就一定看到这块 UI。
     -->
-    <template v-if="isEmptyState">
+    <template v-else-if="isEmptyState">
       <PracticeHeader :mode="moduleTypeSafe" :bank-name="bankName" :formatted-time="formattedRemainingTime"
         :is-warning="isTimeWarning" :is-danger="isTimeDanger" @close="$emit('close')"
         @open-settings="openSettings" />
@@ -207,15 +231,6 @@
     </template>
 
     <!-- 逐题模式（原有布局） -->
-    <!--
-      模拟考试在「配置 / 历史 / 总结」阶段时，考卷区域整体让位。
-      用 v-else-if 接在空态之后，保证三者互斥：
-      不能让考卷挂在配置页下面（会同时出现两份 UI，且计时器仍在跑）。
-    -->
-    <template v-else-if="showMockSetupUI || showMockSummaryUI">
-      <!-- 占位：真正的界面已在模板最前面渲染，这里只是把考卷分支挡住 -->
-    </template>
-
     <template v-else>
       <PracticeHeader :mode="moduleTypeSafe" :bank-name="bankName" :formatted-time="formattedRemainingTime"
         :is-warning="isTimeWarning" :is-danger="isTimeDanger" @close="$emit('close')"
