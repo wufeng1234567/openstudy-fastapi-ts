@@ -436,9 +436,25 @@ export function useQuestionPractice(
     clearNoQuestionsState()
 
     const count = questionCount.value
-    // 判断是否需要打乱题目顺序：随机/模拟考试固定打乱，自定义练习根据 shuffleOptions 设置
+    // 判断是否需要打乱题目顺序：随机练习固定打乱，自定义练习根据 shuffleOptions 设置
     const moduleSettings = store.getModuleSettings(props.moduleType)
-    const shouldShuffle = props.moduleType === 'random' || props.moduleType === 'mock' ||
+    /*
+     * ⚠️⚠️ 模拟考试**必须**排除在这个分支之外（2026-10-22 修的 bug）。
+     *
+     * 现象（用户口径）：在考试配置页设了「单选 5 道 × 2 分」，
+     * 开考后卷子里却是 2 道问答题 + 2 道填空题 + 1 道单选，满分显示 0。
+     *
+     * 根因：`mock` 原来和 `random` 共用这条分支，于是走进
+     *   `loadRandomPlan(data, count)` —— 它会把**上一次随机练习留在
+     *   localStorage 里的题单**按 id 还原出来，组卷方辛苦抽好的卷子被整份丢弃。
+     *   而这张还原出来的题单里的题目是后端原始对象（没有 `_mockScore`），
+     *   所以每道题分值都算成 0 → 满分 0 → `0 >= 0` 被判及格。
+     *
+     * 两者的"乱序"只是字面相似，语义完全不同：
+     *   · 随机练习：题单要**跨会话稳定**（换页/刷新都还是这批题）；
+     *   · 模拟考试：每次开考都是**一张新卷子**，绝不该复用上一场的题单。
+     */
+    const shouldShuffle = props.moduleType === 'random' ||
                          (props.moduleType === 'custom' && moduleSettings.shuffleOptions)
     const offset = questionOffset.value
 
@@ -1465,6 +1481,17 @@ export function useQuestionPractice(
       options,
       correctAnswer,
       analysis: q.analysis || '',
+      /*
+       * 模拟考试的分值 / 题型标记必须**透传**过来（2026-10-22）。
+       *
+       * 本函数是白名单式重建对象 —— 不在这里显式列出的字段会被丢掉。
+       * 组卷时挂在原始题目上的 `_mockScore`（每题分值）和 `_mockType`
+       * 一旦丢失，判分时 `Number(q._mockScore) || 0` 全是 0，
+       * 于是"满分 0 分、0 分及格"。
+       * 其它模式没有这两个字段，透传 undefined 无副作用。
+       */
+      _mockScore: q._mockScore,
+      _mockType: q._mockType,
       mainContent,
       mainTitle,
       hasMainContent,
@@ -2277,10 +2304,26 @@ export function useQuestionPractice(
     totalQuestions.value > 0 ? Math.round((correctCount.value / totalQuestions.value) * 100) : 0
   )
 
+  /*
+   * 选项乱序的实际实现在 `QuestionDisplay.vue`（2026-10-22）
+   * ==========================================================================
+   * ⚠️ 这里**刻意保持原样**（原样返回 options），不做打乱。原因：
+   *
+   *   真正渲染选项的组件是 `QuestionDisplay`，它有**自己的** `displayOptions`，
+   *   并且用"显示下标"去判断选中态、发射 `select-option`。
+   *   如果在这里先打乱，`QuestionDisplay` 会把它当成"原始顺序"再渲染一遍，
+   *   于是下标与 `answers` 里存的原始下标错位 —— 选中态会跳到别的选项上。
+   *
+   *   正确的分工：
+   *     · 本 composable 负责**答案**（存原始下标，永不因显示顺序变化而改）；
+   *     · `QuestionDisplay` 负责**显示顺序**（打乱后用 `_origin` 映射回原始下标）。
+   *   两边各管一件事，就不会错位。
+   */
   const displayOptions = computed<any[]>(() => {
     const opts = currentQuestion.value?.options
     return Array.isArray(opts) ? opts : []
   })
+
 
   return {
     // 响应式数据

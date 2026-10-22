@@ -1,7 +1,35 @@
 import { defineStore } from 'pinia'
-import type { ModuleType, ModuleSettings, PracticeSettings, PracticeModuleConfig } from '@/types'
+import type {
+  ModuleType,
+  ModuleSettings,
+  PracticeSettings,
+  PracticeModuleConfig,
+  MockExamConfig,
+  MockExamRecord
+} from '@/types'
 
 const STORAGE_KEY = 'practice-settings'
+
+/**
+ * 模拟考试的默认配置（2026-10-22）
+ *
+ * 刻意做成"一份可用的默认考卷"而不是空白：
+ *   用户点「模拟考试」应当能直接开始，而不是先被丢进一个空表单。
+ *   默认值参考常见考试结构：单选多、判断少、多选居中；总分 100。
+ *   若某题型在该题库里没有，组卷时会自动跳过（见 `PracticeComponent` 的组卷逻辑）。
+ */
+export const DEFAULT_MOCK_EXAM: MockExamConfig = {
+  typeRows: [
+    { type: 'single', count: 20, score: 2 },
+    { type: 'multiple', count: 10, score: 4 },
+    { type: 'truefalse', count: 10, score: 2 }
+  ],
+  timeLimit: 60,
+  passScore: 60,
+  shuffleOptions: true,
+  multipleMode: 'strict',
+  partialRatio: 0.5
+}
 
 const defaultModules: PracticeModuleConfig = {
   sequential: {
@@ -57,7 +85,9 @@ const defaultModules: PracticeModuleConfig = {
     isOverviewMode: false,
     overviewScrollIndex: 0,
     markedQuestions: [],
-    examTimeLimit: 60
+    examTimeLimit: 60,
+    // 模拟考试的按题型组卷配置（2026-10-22）
+    mockExam: JSON.parse(JSON.stringify(DEFAULT_MOCK_EXAM))
   }
 }
 
@@ -84,6 +114,36 @@ function loadFromStorage(): PracticeSettings | null {
             data.modules[key].isOverviewMode = false
           }
         })
+
+        /*
+         * 存量迁移：给 mock 模块补上 `mockExam`（2026-10-22）
+         *
+         * 老用户的 localStorage 里只有 `examTimeLimit`，没有按题型组卷的配置。
+         * 不补的话，进「模拟考试」会读到 `undefined.mockExam.typeRows` 直接报错
+         * （考场页第一件事就是读 typeRows 来组卷）。
+         *
+         * 这里用**深拷贝**补默认值：不能直接引用 `DEFAULT_MOCK_EXAM`，
+         * 否则用户 A 改了自己的考题数，会顺着同一个对象改到默认值上。
+         */
+        if (data.modules.mock && !data.modules.mock.mockExam) {
+          data.modules.mock.mockExam = JSON.parse(JSON.stringify(DEFAULT_MOCK_EXAM))
+          // 把老的「考试时间」迁移进新配置，用户之前的设置不该被丢掉
+          if (typeof data.modules.mock.examTimeLimit === 'number') {
+            data.modules.mock.mockExam.timeLimit = data.modules.mock.examTimeLimit
+          }
+        }
+        // 新配置里缺字段时补齐（可能来自更早的中间版本）
+        if (data.modules.mock && data.modules.mock.mockExam) {
+          data.modules.mock.mockExam = {
+            ...JSON.parse(JSON.stringify(DEFAULT_MOCK_EXAM)),
+            ...data.modules.mock.mockExam
+          }
+          if (!Array.isArray(data.modules.mock.mockExam.typeRows) ||
+              data.modules.mock.mockExam.typeRows.length === 0) {
+            data.modules.mock.mockExam.typeRows =
+              JSON.parse(JSON.stringify(DEFAULT_MOCK_EXAM.typeRows))
+          }
+        }
 
         /*
          * ⚠️⚠️ 存量迁移：`custom` 从「自定义练习」变成「错题练习」（2026-10-20）
@@ -144,7 +204,17 @@ function saveToStorage(state: PracticeSettings) {
        * 下次启动又跑一次迁移 → **用户关不掉「只刷错题」**，
        * 而且他每次关完重进都会发现又开了，完全无法理解。
        */
-      migrations: (state as any).migrations || {}
+      migrations: (state as any).migrations || {},
+      /*
+       * 模拟考试历史（2026-10-22）
+       *
+       * 与 `modules` 分开持久化：历史是**用户数据**，不是模块偏好。
+       * `resetModuleSettings('mock')` / `resetAllSettings()` 都不该把它一起清掉
+       * （后者的语义见该 action 的注释 —— 它只重置"设置"，不删用户考卷）。
+       */
+      mockExamHistory: Array.isArray((state as any).mockExamHistory)
+        ? (state as any).mockExamHistory
+        : []
     }))
   } catch (e) {
     console.warn('保存刷题设置失败:', e)
@@ -159,7 +229,10 @@ const usePracticeSettingsStore = defineStore('practiceSettings', {
       currentBankName: saved?.currentBankName ?? '',
       modules: saved?.modules ? saved.modules : JSON.parse(JSON.stringify(defaultModules)),
       // 与 `saveToStorage` 里的 `migrations` 成对出现（见那里的注释）
-      migrations: (saved as any)?.migrations || {}
+      migrations: (saved as any)?.migrations || {},
+      mockExamHistory: Array.isArray((saved as any)?.mockExamHistory)
+        ? (saved as any).mockExamHistory
+        : []
     } as PracticeSettings
   },
   actions: {
@@ -198,7 +271,68 @@ const usePracticeSettingsStore = defineStore('practiceSettings', {
       this.modules = JSON.parse(JSON.stringify(defaultModules))
       this.currentBankId = null
       this.currentBankName = ''
-      localStorage.removeItem(STORAGE_KEY)
+      // ⚠️ 刻意**不清** mockExamHistory：这是"重置设置"，不是"删除我的考试记录"。
+      //    用户点重置是想把偏好恢复默认，他考过的卷子不属于偏好。
+      saveToStorage(this.$state)
+    },
+
+    /* ==================== 模拟考试（2026-10-22） ==================== */
+
+    /** 读取模拟考试配置（保证返回一份完整可用的对象，绝不返回 undefined） */
+    getMockExamConfig(): MockExamConfig {
+      const mock = this.modules.mock as any
+      const cfg = mock?.mockExam
+      if (!cfg) return JSON.parse(JSON.stringify(DEFAULT_MOCK_EXAM))
+      return {
+        ...JSON.parse(JSON.stringify(DEFAULT_MOCK_EXAM)),
+        ...cfg,
+        typeRows: Array.isArray(cfg.typeRows) && cfg.typeRows.length
+          ? cfg.typeRows
+          : JSON.parse(JSON.stringify(DEFAULT_MOCK_EXAM.typeRows))
+      }
+    },
+
+    /** 保存模拟考试配置 */
+    saveMockExamConfig(cfg: MockExamConfig) {
+      const mock = this.modules.mock as any
+      if (!mock) return
+      mock.mockExam = JSON.parse(JSON.stringify(cfg))
+      // 兼容仍在使用 `examTimeLimit` 的老代码路径（计时器读的是它）
+      mock.examTimeLimit = cfg.timeLimit
+      saveToStorage(this.$state)
+    },
+
+    /**
+     * 追加一条考试历史
+     *
+     * 上限 50 条：localStorage 有 5MB 左右配额，而一条记录含逐题明细
+     * （30 题约 20~40KB），不设上限迟早把配额写爆 —— 那时**整份设置都存不进去**，
+     * 用户会发现"改了设置刷新就丢"，比丢历史严重得多。
+     */
+    addMockExamRecord(record: MockExamRecord) {
+      const list = Array.isArray(this.mockExamHistory) ? this.mockExamHistory : []
+      list.unshift(record)
+      this.mockExamHistory = list.slice(0, 50)
+      saveToStorage(this.$state)
+    },
+
+    /** 删除一条考试历史 */
+    removeMockExamRecord(id: string) {
+      if (!Array.isArray(this.mockExamHistory)) return
+      this.mockExamHistory = this.mockExamHistory.filter((r: MockExamRecord) => r.id !== id)
+      saveToStorage(this.$state)
+    },
+
+    /** 清空全部考试历史 */
+    clearMockExamHistory() {
+      this.mockExamHistory = []
+      saveToStorage(this.$state)
+    },
+
+    /** 按 id 取一条历史 */
+    getMockExamRecord(id: string): MockExamRecord | undefined {
+      if (!Array.isArray(this.mockExamHistory)) return undefined
+      return this.mockExamHistory.find((r: MockExamRecord) => r.id === id)
     }
   }
 })

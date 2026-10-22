@@ -73,13 +73,19 @@
     <!-- 题目内容区（根据题型动态渲染） -->
     <div class="question-body" v-if="currentQuestion">
       <!-- 单选题、多选题、判断题 -->
+      <!--
+        选项乱序（2026-10-22）：`displayOptions` 每项带 `_origin`（原始下标）。
+        · 选中态/正确答案用 `_origin` 判断（answers 里存的是原始下标）；
+        · 点击时也把 `_origin` 发出去，保证记录下来的仍是原始下标。
+        这样"显示顺序变了"与"答案指向哪个选项"是两件互不干扰的事。
+      -->
       <div v-if="['single', 'multiple', 'truefalse'].includes(currentQuestion.type)" class="options">
-        <div v-for="(option, index) in displayOptions" :key="index" class="option-item" :class="{
-          'user-selected': isUserSelected(index),
-          'correct-answer': isCorrectOption(index)
-        }" @click="$emit('select-option', index)">
+        <div v-for="(option, index) in displayOptions" :key="option._origin" class="option-item" :class="{
+          'user-selected': isUserSelected(option._origin),
+          'correct-answer': isCorrectOption(option._origin)
+        }" @click="$emit('select-option', option._origin)">
           <span class="option-letter">{{ getOptionLabel(index) }}.</span>
-          <LatexRenderer class="option-text" :content="option" />
+          <LatexRenderer class="option-text" :content="option.text" />
         </div>
       </div>
 
@@ -188,7 +194,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import type { PropType } from 'vue'
 import {
   Select,
@@ -249,6 +255,16 @@ const props = defineProps({
   showAnalysisImmediately: {
     type: Boolean,
     default: true
+  },
+  /**
+   * 是否打乱选项显示顺序（2026-10-22）
+   *
+   * 传 `false` / 不传时行为与改造前完全一致（原样返回 options），
+   * 所以对不关心这个开关的调用方（如题目详情弹窗）没有任何影响。
+   */
+  shuffleOptions: {
+    type: Boolean,
+    default: false
   },
   showQuestionIndex: {
     type: Boolean,
@@ -333,10 +349,73 @@ function getOptionLabel(index: number) {
   return String.fromCharCode(65 + index)
 }
 
-const displayOptions = computed(() => {
-  const opts = props.currentQuestion?.options
-  return Array.isArray(opts) ? opts : []
+/*
+ * 选项乱序（2026-10-22）
+ * ==========================================================================
+ * ⚠️ 这是本组件**自己的** `displayOptions`，与 `useQuestionPractice` 里同名 computed
+ *    不是同一个东西。父组件通过 `shuffle-options` 把开关传进来，这里做真正的重排。
+ *
+ * 两个必须处理对的地方：
+ *
+ * ① 洗牌结果必须**按题记忆**。computed 会因答案变化等依赖重算，
+ *    每次重算都重新洗 → 选项跳来跳去，根本没法答题。
+ *
+ * ② **下标必须映射回原始下标**。
+ *    `selectedAnswer` / `correctAnswer` 里存的都是**原始下标**（0=A、1=B…）。
+ *    打乱后，屏幕上第 0 个位置可能是原始第 2 个选项。所以：
+ *      · 渲染时用 `_origin` 判断"这个选项是不是用户选的 / 是不是正确答案"；
+ *      · 点击时把 `_origin` 发出去，让 `answers` 里记录的仍是原始下标。
+ *    这样打乱只影响**显示顺序**，判分、暂存、历史记录全都不受影响。
+ */
+const optionOrderCache = new Map<string, number[]>()
+
+function shuffleCacheKey(): string {
+  const q = props.currentQuestion
+  return `${q?.id ?? q?.questionId ?? ''}`
+}
+
+function fisherYates(n: number): number[] {
+  const arr = Array.from({ length: n }, (_, i) => i)
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[arr[i], arr[j]] = [arr[j], arr[i]]
+  }
+  return arr
+}
+
+/** 渲染用的选项列表：每项带 `_origin`（原始下标） */
+const displayOptions = computed<Array<{ text: any; _origin: number }>>(() => {
+  const q: any = props.currentQuestion
+  const opts = q?.options
+  if (!Array.isArray(opts) || opts.length === 0) return []
+
+  const plain = opts.map((o: any, i: number) => ({
+    // 选项既可能是纯字符串，也可能是 { label/text } 对象
+    text: typeof o === 'object' && o !== null ? o : o,
+    _origin: i
+  }))
+
+  if (!props.shuffleOptions) {
+    optionOrderCache.delete(shuffleCacheKey())
+    return plain
+  }
+
+  const key = shuffleCacheKey()
+  let order = optionOrderCache.get(key)
+  if (!order || order.length !== plain.length) {
+    order = fisherYates(plain.length)
+    optionOrderCache.set(key, order)
+  }
+  return order.map((origin) => plain[origin])
 })
+
+/** 打开新题时清掉旧题的记忆，避免缓存无限增长 */
+watch(
+  () => props.currentQuestion?.id ?? props.currentQuestion?.questionId,
+  () => {
+    if (optionOrderCache.size > 200) optionOrderCache.clear()
+  }
+)
 
 function isUserSelected(index: number) {
   const type = props.currentQuestion?.type

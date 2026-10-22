@@ -1,7 +1,38 @@
 <template>
   <div class="practice-container">
+    <!--
+      模拟考试的三段式界面（2026-10-22）
+      ==================================================================
+      ⚠️ 必须放在**所有刷题 UI 之前**，且三态互斥。
+      原因：这三态与"考卷界面"是并列关系，而不是嵌套关系。
+      若把配置页塞在 loading/空态之后，会出现"配置页下面还挂着一份考卷"的叠加；
+      同时计时器是在进入考卷时才启动的（见 handleMockStart），放前面才能保证
+      用户在配置页停留的时间不被计入考试时长。
+    -->
+    <MockExamSetup
+      v-if="showMockSetupUI && mockPhase === 'setup'"
+      :bank-id="bankId"
+      :bank-name="bankName"
+      :available="mockAvailable"
+      @cancel="$emit('close')"
+      @open-history="mockPhase = 'history'"
+      @start="handleMockStart" />
+
+    <MockExamHistory
+      v-else-if="showMockSetupUI && mockPhase === 'history'"
+      :bank-id="bankId"
+      :bank-name="bankName"
+      @cancel="mockPhase = 'setup'"
+      @open-record="handleOpenHistoryRecord" />
+
+    <ExamSummary
+      v-else-if="showMockSummaryUI && currentExamRecord"
+      :record="currentExamRecord"
+      @close="$emit('close')"
+      @back-to-setup="handleMockSummaryBack" />
+
     <!-- 加载动画 -->
-    <div v-if="loading" class="loading-overlay">
+    <div v-if="loading && !showMockSetupUI && !showMockSummaryUI" class="loading-overlay">
       <div class="loading-spinner">
         <div class="loading-ring"></div>
         <div class="loading-text">正在加载题目...</div>
@@ -123,6 +154,7 @@
               :sub-essay-answers="subEssayAnswers" :answers="answers"
               :show-analysis-immediately="showAnalysisImmediately" :show-question-index="false"
               :overview-mode="true"
+              :shuffle-options="effectiveShuffleOptions"
               :overview-need-submit="!isExamMode && needsOverviewSubmit(item) && !overviewCommitted[index]"
               :overview-committed="!!overviewCommitted[index]"
               @select-option="(optIdx) => handleOverviewSelect(index, optIdx)"
@@ -166,6 +198,8 @@
           :is-last-question="isLastQuestion" :show-exam-result="showExamResult" :total-score="totalScore"
           :answered-count="answeredCount" :total-count="totalQuestions" :remaining-count="remainingCount"
           :module-type="moduleTypeSafe" :draft-state="draftState" :draft-button-text="draftButtonText" :number-base="numberBase"
+          :shuffle-options="effectiveShuffleOptions"
+          @update:shuffle-options="handleToggleShuffle"
           @go-to-question="scrollToQuestion" @toggle-overview="toggleOverview"
           @reset-practice="resetPractice" @submit-exam="handleSubmitExam" @finish-exam="handleFinishExam"
           @save-draft="handleManualSaveDraft" />
@@ -173,6 +207,15 @@
     </template>
 
     <!-- 逐题模式（原有布局） -->
+    <!--
+      模拟考试在「配置 / 历史 / 总结」阶段时，考卷区域整体让位。
+      用 v-else-if 接在空态之后，保证三者互斥：
+      不能让考卷挂在配置页下面（会同时出现两份 UI，且计时器仍在跑）。
+    -->
+    <template v-else-if="showMockSetupUI || showMockSummaryUI">
+      <!-- 占位：真正的界面已在模板最前面渲染，这里只是把考卷分支挡住 -->
+    </template>
+
     <template v-else>
       <PracticeHeader :mode="moduleTypeSafe" :bank-name="bankName" :formatted-time="formattedRemainingTime"
         :is-warning="isTimeWarning" :is-danger="isTimeDanger" @close="$emit('close')"
@@ -217,6 +260,7 @@
           :total-questions="totalQuestions" :number-offset="numberBase" :selected-answer="selectedAnswer"
           :sub-fill-blank-answers="subFillBlankAnswers" :sub-essay-answers="subEssayAnswers" :answers="answers"
           :show-analysis-immediately="showAnalysisImmediately" @select-option="handleSelectOption"
+          :shuffle-options="effectiveShuffleOptions"
           @update-answer="value => selectedAnswer = value" @select-sub-option="selectSubOption"
           @update-sub-fill-blank-answer="updateSubFillBlankAnswer" @update-sub-essay-answer="updateSubEssayAnswer"
           @preview-image="openImageViewer" />
@@ -230,6 +274,8 @@
           :total-count="totalQuestions" :remaining-count="remainingCount" :module-type="moduleTypeSafe"
           :marked-questions="markedQuestionsSet" :favorited-questions="favoritedQuestions" :error-questions="errorQuestions"
           :draft-state="draftState" :draft-button-text="draftButtonText" :number-base="numberBase"
+          :shuffle-options="effectiveShuffleOptions"
+          @update:shuffle-options="handleToggleShuffle"
           @go-to-question="goToQuestion" @reset-practice="resetPractice" @submit-exam="handleSubmitExam"
           @toggle-overview="toggleOverview" @finish-exam="handleFinishExam"
           @save-draft="handleManualSaveDraft" />
@@ -305,6 +351,13 @@ import {
   type DraftSaveState
 } from '@/utils/practiceDraft'
 import AiAnalysisDialog from '@/components/AiAnalysisDialog/index.vue'
+// 模拟考试的三个新界面（2026-10-22）
+import MockExamSetup from './MockExamSetup.vue'
+import ExamSummary from './ExamSummary.vue'
+import MockExamHistory from './MockExamHistory.vue'
+import type { MockExamConfig, MockExamRecord, MockExamItemDetail } from '@/types'
+// 模拟考试组卷要拉全量题目（见 loadMockAvailability / handleMockStart）
+import { listQuestionMainAll } from '@/api/questionMain/questionMain'
 
 // 调试日志工具
 import {
@@ -391,6 +444,67 @@ const isLastBatch = computed(() => allQuestionsData.value.length <= questionOffs
 const canGoNextBatch = computed(() => !isLastBatch.value)
 
 const showSettings = ref(false)
+
+/* ============================================================================
+ * 模拟考试的三个阶段（2026-10-22）
+ * ============================================================================
+ *   setup   → 考试配置页（选题型、题数、分值、时长、及格分）
+ *   running → 正在作答（原来的刷题界面）
+ *   summary → 交卷后的结果页（得分环 + 对错饼图 + 错题明细）
+ *   history → 历史记录列表（从配置页进）
+ *
+ * 为什么用状态机而不是"再加几个布尔"：
+ *   这三态互斥，且任何一态显示时其他两态必须完全让位（不能让"配置页"和"考卷"
+ *   同时挂在 DOM 上 —— 那会导致计时器在配置页就开始跑）。
+ *   三个独立布尔迟早会出现两个同时为真。
+ */
+type MockPhase = 'setup' | 'running' | 'summary' | 'history'
+const mockPhase = ref<MockPhase>('setup')
+
+/** 是否处于模拟考试流程（决定模板走哪一套 UI） */
+const isMockFlow = computed(() => moduleTypeSafe.value === 'mock')
+/** 是否应显示考试配置/历史/总结，而不是考卷 */
+const showMockSetupUI = computed(
+  () => isMockFlow.value && (mockPhase.value === 'setup' || mockPhase.value === 'history')
+)
+const showMockSummaryUI = computed(() => isMockFlow.value && mockPhase.value === 'summary')
+
+/**
+ * 本次考试的配置（开考时从 store 载入并冻结）
+ *
+ * ⚠️ 必须**冻结快照**：考试进行中用户可能去设置页改配置，
+ *    若判分时再读 store，就会出现"按新配置判旧卷子"的错乱。
+ */
+const activeMockConfig = ref<MockExamConfig | null>(null)
+
+/**
+ * 选项是否打乱（下发给 `QuestionDisplay` / `AnswerCard`）
+ *
+ * 两种模式的「乱序」来源不同，不能混用一个值：
+ *   · 模拟考试：由**本次考试的配置**决定（用户开考时在配置页勾的），
+ *     且它在开考瞬间就冻结了 —— 考试中途改全局设置不该影响进行中的卷子。
+ *   · 其余三个入口：读全局设置，用户在答题卡面板里随时可开关、实时生效。
+ *
+ * ⚠️ 必须定义在 `activeMockConfig` **之后**：computed 的 getter 虽然延迟执行，
+ *    但声明顺序错了在首次渲染时就会踩到 TDZ（Cannot access before initialization）。
+ */
+const effectiveShuffleOptions = computed(() => {
+  if (isMockFlow.value) return !!activeMockConfig.value?.shuffleOptions
+  return !!moduleSettings.value.shuffleOptions
+})
+
+/** 各题型的可选题量（配置页显示"最多能抽几道"用） */
+const mockAvailable = ref<Record<string, number>>({})
+
+/** 交卷后的结果（总结页与历史页共用） */
+const currentExamRecord = ref<MockExamRecord | null>(null)
+
+/** 从历史记录打开的那一条（与 currentExamRecord 分开：历史是只读回看） */
+const historyRecord = ref<MockExamRecord | null>(null)
+
+/** 考试开始时间（算用时） */
+const examStartAt = ref<number>(0)
+
 
 /**
  * 「打开设置弹窗那一刻」的设置快照
@@ -1310,6 +1424,8 @@ const {
   errorQuestions,
   updateOnlyWrong,
   updateQuestionCount,
+  // 模拟考试组卷要用：把整份卷子灌进题目流（见 handleMockStart 的注释）
+  processQuestions,
   updateQuestionOffset,
   applyQuestionLimits,
   loadBatchWithoutReset,
@@ -1320,6 +1436,362 @@ const {
   questionCount: moduleSettings.value.questionCount,
   onlyWrong: moduleSettings.value.onlyWrong
 })
+
+/* ============================================================================
+ * 模拟考试：组卷 / 判分 / 生成记录（2026-10-22）
+ * ============================================================================
+ * 这一块整体是「新增的一段独立逻辑」，只在 moduleType === 'mock' 时启用，
+ * 不影响其他三个刷题入口的任何行为。
+ */
+
+/** 题型归一：后端数字题型 → 前端字符串（与 useQuestionPractice 的映射保持一致） */
+function normalizeType(raw: any): string {
+  switch (Number(raw)) {
+    case 1: return 'single'
+    case 2: return 'multiple'
+    case 3: return 'truefalse'
+    case 4: return 'fillblank'
+    case 5: return 'essay'
+    case 6: return 'readingComprehension'
+    case 7: return 'cloze'
+    default: return String(raw || 'unknown')
+  }
+}
+
+/**
+ * 拉一份全量题目并按题型统计可选题量
+ *
+ * 配置页要显示「/ 262 道」这样的上限提示，必须先把题库拿到手。
+ * ⚠️ 这里直接调接口而不是复用 `allQuestionsData`：后者可能只装了"某一波"的切片，
+ *    也可能因为「只刷错题」被过滤过 —— 用它算上限会给出错误的可选范围。
+ */
+async function loadMockAvailability(): Promise<void> {
+  try {
+    const res: any = await listQuestionMainAll({ bankId: props.bankId, status: '0' })
+    const data: any[] = Array.isArray(res?.data) ? res.data
+      : Array.isArray(res?.result) ? res.result : []
+    const counter: Record<string, number> = {}
+    for (const q of data) {
+      const t = normalizeType(q.questionType ?? q.question_type)
+      counter[t] = (counter[t] || 0) + 1
+    }
+    mockAvailable.value = counter
+    /*
+     * 顺手把最新配置里"超出题库实际题量"的题数收回来。
+     * 不收的话：用户上次设了单选 70 道，换到一个只有 10 道单选的题库，
+     * 点开始会组出一份 10 道的卷子但界面写着 70 —— 直接对不上。
+     */
+    const cfg = store.getMockExamConfig()
+    let changed = false
+    for (const row of cfg.typeRows) {
+      const cap = counter[row.type] || 0
+      if (row.count > cap) { row.count = cap; changed = true }
+    }
+    if (changed) store.saveMockExamConfig(cfg)
+  } catch (e) {
+    console.warn('[mock] 读取题库题量失败', e)
+    mockAvailable.value = {}
+  }
+}
+
+/**
+ * 按配置组卷
+ *
+ * 规则：
+ *   · 每个题型独立随机抽 `count` 道（题库不够就抽多少算多少，不报错）；
+ *   · 抽完后整体打乱：真实考试不会把同一题型排在一起，混排更像"一份卷子"；
+ *   · 每道题挂上 `_mockScore`（该题满分）与 `_mockType`，供判分使用。
+ *
+ * ⚠️ 分值写在题目对象上（`_mockScore`）而不是另开一张表：
+ *    题目对象本来就贯穿"渲染 → 作答 → 判分"整条链路，挂在它身上最不容易丢。
+ *    下划线前缀与 `guard.params_payload` 的"内部字段"约定一致，不会被误当业务字段。
+ */
+function buildMockPaper(cfg: MockExamConfig, pool: any[]): any[] {
+  const byType = new Map<string, any[]>()
+  for (const q of pool) {
+    const t = normalizeType(q.questionType ?? q.question_type)
+    if (!byType.has(t)) byType.set(t, [])
+    byType.get(t)!.push(q)
+  }
+
+  const picked: any[] = []
+  for (const row of cfg.typeRows) {
+    const list = byType.get(row.type) || []
+    if (!list.length || row.count <= 0) continue
+    const shuffled = [...list]
+    // Fisher-Yates：比 sort(() => Math.random() - 0.5) 分布更均匀
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+    }
+    for (const q of shuffled.slice(0, row.count)) {
+      picked.push({ ...q, _mockScore: Number(row.score) || 0, _mockType: row.type })
+    }
+  }
+
+  // 整体混排
+  for (let i = picked.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[picked[i], picked[j]] = [picked[j], picked[i]]
+  }
+  return picked
+}
+
+/** 取某题的标准答案（与原判分逻辑同口径，但只读不依赖 answers 数组位置） */
+function correctAnswerOf(q: any): any {
+  return q.correctAnswer ?? q.answer
+}
+
+/**
+ * 判定一道题对错，并返回实得分
+ *
+ * 与原 `correctCount` 计算的差别只在多选题：
+ *   · 原逻辑：必须完全一致才算对（0/1）；
+ *   · 这里额外支持 `partial`（漏选按比例得分），且**错选一律 0 分** ——
+ *     这是绝大多数真实考试的规则，也是用户截图里那个选项的语义。
+ */
+function judgeMockItem(q: any, userAnswer: any, cfg: MockExamConfig): { isCorrect: boolean; gotScore: number } {
+  const full = Number(q._mockScore) || 0
+  const type = String(q._mockType || q.type || 'unknown')
+  const correct = correctAnswerOf(q)
+
+  const empty = userAnswer === null || userAnswer === undefined ||
+    (Array.isArray(userAnswer) && userAnswer.length === 0) ||
+    (typeof userAnswer === 'string' && userAnswer.trim() === '')
+  if (empty) return { isCorrect: false, gotScore: 0 }
+
+  if (type === 'multiple') {
+    const user = (Array.isArray(userAnswer) ? userAnswer : [userAnswer]).map(String).sort()
+    const std = (Array.isArray(correct) ? correct : String(correct).split(/[,，]/)).map(String).sort()
+    const exact = user.length === std.length && user.every((v, i) => v === std[i])
+    if (exact) return { isCorrect: true, gotScore: full }
+
+    const noWrongPick = user.every((v) => std.includes(v))
+    if (cfg.multipleMode === 'partial' && noWrongPick && user.length > 0) {
+      // 漏选：按已选对的比例给分（比例可配），封顶不超过满分
+      const ratio = Math.min(1, Math.max(0, Number(cfg.partialRatio) || 0)) * user.length
+      const got = Math.min(full, Math.round(full * ratio * 10) / 10)
+      return { isCorrect: false, gotScore: got }
+    }
+    return { isCorrect: false, gotScore: 0 }
+  }
+
+  if (type === 'fillblank' || type === 'essay') {
+    const ok = String(userAnswer).trim().toLowerCase() === String(correct ?? '').trim().toLowerCase()
+    return { isCorrect: ok, gotScore: ok ? full : 0 }
+  }
+
+  // 单选 / 判断：严格相等
+  const ok = String(userAnswer) === String(correct)
+  return { isCorrect: ok, gotScore: ok ? full : 0 }
+}
+
+/** 从题目里取一段纯文本题干（列表展示用） */
+function plainStem(q: any): string {
+  const raw = String(q?.content ?? q?.questionText ?? q?.question ?? q?.mainContent ?? '')
+  return raw
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 160)
+}
+
+/** 点击「开始考试」 */
+async function handleMockStart(cfg: MockExamConfig) {
+  activeMockConfig.value = JSON.parse(JSON.stringify(cfg))
+  examStartAt.value = Date.now()
+
+  // 重新按配置组卷（不能复用配置页那次统计的结果，用户可能刚改过）
+  try {
+    const res: any = await listQuestionMainAll({ bankId: props.bankId, status: '0' })
+    const pool: any[] = Array.isArray(res?.data) ? res.data
+      : Array.isArray(res?.result) ? res.result : []
+    if (!pool.length) {
+      proxy.$modal.msgWarning('这个题库还没有题目，无法开始考试')
+      mockPhase.value = 'setup'
+      return
+    }
+    const paper = buildMockPaper(cfg, pool)
+    if (!paper.length) {
+      proxy.$modal.msgWarning('按当前配置没有抽到题目，请调整题型题数')
+      mockPhase.value = 'setup'
+      return
+    }
+    /*
+     * 把整份卷子一次性塞进 allQuestionsData，并让 questionOffset 归零。
+     *
+     * 为什么不走分波（questionCount 切片）：
+     *   模拟考试的"题数"是由配置决定的整卷，不该再被"每波 10 题"这个刷题偏好切片，
+     *   否则用户设了 40 题却只做到 10 题就必须点"继续下一波"，不像考试。
+     *   这里直接用 `processQuestions` 处理全量，再把切片宽度放到整卷长度。
+     *
+     * ⚠️ 偏移量必须一起归零：`questionOffset` 是**按全库题数**记的分波进度，
+     *    用户在别的模式刷到第 3 波再回来考试时它还是 20 —— 于是卷子从第 21 条
+     *    开始取，前 20 条直接没了（表现为"交卷只有几道题"）。
+     */
+    const prevOffset = questionOffset.value
+    updateQuestionOffset(0)
+    updateQuestionCount(paper.length)
+    processQuestions(paper).then(() => {
+      // 卷子处理完把偏移量还回去，不影响用户在其它模式的分波进度
+      updateQuestionOffset(prevOffset)
+    })
+  } catch (e) {
+    console.error('[mock] 组卷失败', e)
+    proxy.$modal.msgError('组卷失败，请重试')
+    mockPhase.value = 'setup'
+    return
+  }
+
+  mockPhase.value = 'running'
+  // 进入考卷后再启动计时（配置页不该消耗考试时间）
+  await nextTick()
+  startExamTimer()
+}
+
+/** 交卷：判分 + 生成记录 + 切到总结页 */
+function handleMockSubmit() {
+  const cfg = activeMockConfig.value
+  if (!cfg) return
+
+  const items: MockExamItemDetail[] = []
+  let gotScore = 0
+  let correct = 0
+  let wrong = 0
+
+  questions.value.forEach((q: any, i: number) => {
+    const userAnswer = answers.value[i]
+    const { isCorrect, gotScore: gs } = judgeMockItem(q, userAnswer, cfg)
+    gotScore += gs
+    if (isCorrect) correct += 1
+    else wrong += 1
+    items.push({
+      questionId: q.id,
+      index: i + 1,
+      type: (q._mockType || q.type || 'unknown') as any,
+      stem: plainStem(q),
+      userAnswer,
+      correctAnswer: correctAnswerOf(q),
+      isCorrect,
+      gotScore: gs,
+      fullScore: Number(q._mockScore) || 0,
+      analysis: String(q.analysis ?? '') || undefined
+    })
+  })
+
+  const fullScore = items.reduce((s, it) => s + (Number(it.fullScore) || 0), 0)
+  const durationSec = examStartAt.value
+    ? Math.max(0, Math.round((Date.now() - examStartAt.value) / 1000))
+    : 0
+
+  const record: MockExamRecord = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    bankId: props.bankId,
+    bankName: props.bankName,
+    submittedAt: Date.now(),
+    config: JSON.parse(JSON.stringify(cfg)),
+    totalQuestions: items.length,
+    correctCount: correct,
+    wrongCount: wrong,
+    gotScore: Math.round(gotScore * 10) / 10,
+    fullScore,
+    /*
+     * ⚠️ `fullScore <= 0` 时**一律判不及格**（2026-10-22 修的 bug）。
+     *
+     * 旧写法直接比 `gotScore >= passScore`。一旦满分因为配置读错而算成 0，
+     * 而及格分也是 0，就成了"一题没做对也显示通过"—— 这是最不能出现的那种错。
+     * 满分拿不到说明这张卷子本身有问题，不应该给出"通过"的结论。
+     */
+    passed: fullScore > 0 && gotScore >= (Number(cfg.passScore) || 0),
+    durationSec,
+    items
+  }
+
+  currentExamRecord.value = record
+  store.addMockExamRecord(record)
+
+  // 收尾：停计时、清考试存储、展开解析
+  stopExamTimer()
+  clearExamStorage()
+  showAllAnalysis()
+  totalScore.value = Math.round(record.gotScore)
+  showExamResult.value = true
+  mockPhase.value = 'summary'
+}
+
+/** 从总结页「再考一次」 */
+function handleMockAgain() {
+  currentExamRecord.value = null
+  showExamResult.value = false
+  totalScore.value = 0
+  mockPhase.value = 'setup'
+  loadMockAvailability()
+}
+
+/** 从历史记录打开一条 */
+function handleOpenHistoryRecord(r: MockExamRecord) {
+  historyRecord.value = r
+  currentExamRecord.value = r
+  mockPhase.value = 'summary'
+}
+
+/**
+ * 实时切换「选项乱序」（2026-10-22）
+ *
+ * 需求口径：这三个入口的答题卡上，用户点开关就要**当场打乱/还原选项**，
+ * 而不是"改了设置、下次进来才生效"。
+ *
+ * ⚠️ 关键取舍：切换后**要不要清空已选答案**？
+ *    不清 —— 用户可能答了几题才发现想打乱。清掉等于把进度删了，这是最不能接受的。
+ *    但打乱后选项下标变了，原来选"第 2 个"现在指向别的选项文案 ——
+ *    这会让"用户以为自己选的 A 变成了 B"。
+ *
+ *    处理办法：`useQuestionPractice.displayOptions` 打乱时用的是**稳定的随机种子**
+ *    （见那里的注释），同一道题在同一会话内重复打乱得到同一个顺序；
+ *    且答案按**选项内容**而非下标存储于 `answers`（单选/多选存的是原始下标，
+ *    经 `selectOption` 归一）。因此切换开关**只影响显示顺序**，不改变已选内容的语义。
+ *
+ *    这里只做三件事：写 store、清乱序缓存（让下次进入重新打乱）、提示用户。
+ */
+function handleToggleShuffle(val: boolean) {
+  if (moduleTypeSafe.value === 'mock') return
+  /*
+   * 只写 store —— 打乱由 `QuestionDisplay` 的 `displayOptions` 负责。
+   *
+   * `moduleSettings` 是 `store.getModuleSettings()` 的 computed，
+   * 写进 store 后它会重算，`shuffle-options` prop 随之变化，
+   * `QuestionDisplay` 里的 computed 立刻重新洗牌或还原 —— 实时生效，无需刷新。
+   */
+  store.saveModuleSettings(props.moduleType, { shuffleOptions: val })
+  proxy.$modal.msgSuccess(val ? '已打乱选项顺序' : '已恢复选项原始顺序')
+}
+
+/** 从总结页返回（历史回看时回历史列表，否则回配置页） */
+function handleMockSummaryBack() {
+  if (historyRecord.value) {
+    historyRecord.value = null
+    currentExamRecord.value = null
+    mockPhase.value = 'history'
+    return
+  }
+  handleMockAgain()
+}
+
+// 进入 mock 模块时的初始化：拉题量、复位阶段
+watch(
+  () => [props.moduleType, props.bankId],
+  async () => {
+    if (moduleTypeSafe.value !== 'mock') return
+    historyRecord.value = null
+    currentExamRecord.value = null
+    showExamResult.value = false
+    totalScore.value = 0
+    mockPhase.value = 'setup'
+    await loadMockAvailability()
+  },
+  { immediate: true }
+)
+
 
 /* ===================== 页面暂存（练习进度） =====================
  *
@@ -1700,6 +2172,18 @@ watch(
  */
 const handleSubmitExam = (options: { skipConfirm?: boolean } = {}) => {
   const doSubmit = () => {
+    /*
+     * 模拟考试走独立的判分与结果页（2026-10-22）。
+     *
+     * 分歧点：原来的 `Math.round(correct/total*100)` 是"按题数算百分比"，
+     * 而模拟考试的分值是按题型配置的（单选 2 分、多选 4 分……），
+     * 还可能有多选漏选按比例给分 —— 用"题数百分比"当分数是错的。
+     * 所以 mock 交给 `handleMockSubmit`，其余模块保持原逻辑不变。
+     */
+    if (isMockFlow.value && activeMockConfig.value) {
+      handleMockSubmit()
+      return
+    }
     showAllAnalysis()
     const score = Math.round((correctCount.value / totalQuestions.value) * 100)
     totalScore.value = score

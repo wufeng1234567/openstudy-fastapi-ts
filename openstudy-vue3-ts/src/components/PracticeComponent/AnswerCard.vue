@@ -125,6 +125,26 @@
           不是"产品上的暂存功能" —— 不告诉用户，也不提供手动入口。
           两者别混为一谈：前者是兜底，后者是承诺。
     -->
+    <!--
+      选项乱序开关（2026-10-22）
+      ==================================================================
+      需求口径：模拟考试的答题卡**不出现**这个开关（考试规则在开考前一次性定好，
+                考场中途不该让用户改"选项要不要乱"——那等于允许作弊性调整）；
+                顺序 / 随机 / 错题练习三个入口的答题卡**要出现**，供用户实时打乱。
+
+      ⚠️ 位置放在 footer **之前**、答题卡主体之后：
+        它不是"操作按钮"，而是"显示偏好"，跟着答题卡走更符合语义；
+        放 footer 里会和「交卷 / 暂存」混成一排，看不出它属于"显示设置"。
+    -->
+    <div v-if="showShuffleToggle" class="shuffle-row">
+      <span class="shuffle-label">
+        <el-icon><Sort /></el-icon>
+        选项乱序
+      </span>
+      <el-switch :model-value="shuffleOptions" size="small" @update:model-value="onShuffleChange" />
+      <span class="shuffle-hint">{{ shuffleOptions ? '已打乱，避免凭位置记答案' : '按题库原始顺序' }}</span>
+    </div>
+
     <div class="card-footer" v-if="isExamMode && !showExamResult">
       <span class="draft-hint is-exam">
         <el-icon><Timer /></el-icon>
@@ -144,9 +164,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import type { PropType } from 'vue'
-import { Grid, List, Timer } from '@element-plus/icons-vue'
+import { Grid, List, Sort, Timer } from '@element-plus/icons-vue'
 
 interface QuestionItem {
   id?: number | string
@@ -201,7 +221,16 @@ const props = defineProps({
    * 题号要跨波顺延，就得加上这个偏移（用户 2026-10-18：
    * 「点下一波还是 1 到 20，应该要顺延」）。
    */
-  numberBase: { type: Number, default: 0 }
+  numberBase: { type: Number, default: 0 },
+  /**
+   * 是否打乱选项（受控值，由父组件从 store 读取）
+   *
+   * 为什么把值放在父组件而不是本组件内部：
+   *   真正的乱序发生在 `useQuestionPractice.displayOptions`（它按这个开关决定
+   *   是否用打乱后的顺序渲染）。答题卡只是**入口**，不掌握状态 —— 否则
+   *   卡片里的开关和题目的实际顺序会各说各话。
+   */
+  shuffleOptions: { type: Boolean, default: false }
 })
 
 const emit = defineEmits([
@@ -211,8 +240,24 @@ const emit = defineEmits([
   'toggle-overview',
   'finish-exam',
   /** 手动暂存当前练习进度 */
-  'save-draft'
+  'save-draft',
+  /** 切换选项乱序（2026-10-22，仅非考试模块可用） */
+  'update:shuffle-options'
 ])
+
+/**
+ * 是否显示「选项乱序」开关
+ *
+ * 只排除模拟考试；顺序 / 随机 / 错题练习都显示。
+ * ⚠️ 注意不要顺手用 `isExamMode` 判断：`isExamMode` 是"练习模式选成了考试"，
+ *    而「自定义/错题练习」里用户也可能把模式切到考试 —— 那种情况下同理不该给开关。
+ *    所以判据 = "不是模拟考试模块，且当前不在考试模式"。
+ */
+const showShuffleToggle = computed(() => props.moduleType !== 'mock' && !props.isExamMode)
+
+function onShuffleChange(val: boolean | string | number) {
+  emit('update:shuffle-options', Boolean(val))
+}
 
 const isMounted = ref(false)
 const gridItemRefs = ref<Record<number, HTMLElement>>({})
@@ -260,6 +305,39 @@ const getOverviewItemClass = (index: number) => {
   grid-template-columns: auto 1fr auto;
   align-items: center;
   margin-bottom: 8px;
+}
+
+/*
+ * 选项乱序开关行（2026-10-22）
+ * 与 footer 用同一条发丝线分隔，但在 footer **之上**：
+ * 它属于"显示设置"，不属于"提交动作"。
+ */
+.shuffle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+
+  .shuffle-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--os-text-2, #4b5563);
+    flex: none;
+  }
+
+  .shuffle-hint {
+    font-size: 11.5px;
+    color: var(--os-text-4, #9ca3af);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 /*
