@@ -92,6 +92,13 @@ export const constantRoutes: AppRouteRecordRaw[] = [
         component: () => import('@/views/ai/config/index.vue'),
         name: 'AiConfig',
         meta: { title: 'AI配置', icon: 'ai' }
+      },
+      {
+        // 知识库向量化：本地 / 云端切换 + 环境检测 + 检索参数
+        path: 'rag',
+        component: () => import('@/views/ai/rag-config/index.vue'),
+        name: 'AiRagConfig',
+        meta: { title: '知识库向量化', icon: 'rag' }
       }
     ]
   },

@@ -71,6 +71,32 @@ async def lifespan(app: FastAPI):
     # 创建上传目录
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 
+    # ── 从 sys_config 载入 RAG 运行时配置（2026-10-22）──────────────
+    #
+    # 后台「AI 配置 → 知识库向量化」改的值存在 sys_config 里，进程重启后
+    # 内存里的覆盖值就没了。这里读一次塞回 embedding 模块，
+    # 保证「后台改过的配置」在重启后依然生效，而不是悄悄回到 .env 的默认值。
+    from loguru import logger as _logger
+
+    try:
+        from app.database import async_session_factory
+        from app.services.rag import embedding as emb
+        from app.services.rag import rag_config_service
+
+        async with async_session_factory() as _db:
+            _cfg = await rag_config_service.get_config_map(_db)
+        emb.refresh_runtime_config(
+            backend=_cfg.get(rag_config_service.KEY_BACKEND),
+            model=_cfg.get(rag_config_service.KEY_MODEL),
+        )
+        _logger.info(
+            "[startup] RAG 配置已加载：backend={} model={}",
+            emb.current_backend(),
+            emb.current_model(),
+        )
+    except Exception as e:  # noqa: BLE001
+        _logger.warning("[startup] RAG 配置加载失败（回落 .env 默认值）: {}", e)
+
     # ── 后台预热 embedding 模型（2026-10-21）────────────────────────────
     #
     # ★ 为什么必须预热 ★

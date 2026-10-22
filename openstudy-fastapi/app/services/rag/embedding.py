@@ -1,7 +1,11 @@
 """
 文本向量化
 
-支持两种后端（由 `settings.EMBEDDING_BACKEND` 控制）：
+后端由**两层配置**决定（后台页面改的优先，.env 只是基线）：
+  1. `sys_config` 的 `rag.embedding.backend`（后台「AI 配置 → 知识库向量化」可改，即时生效）
+  2. 没配时回落到 `settings.EMBEDDING_BACKEND`（.env）
+
+后端三选一：
   - `local`       —— 用本机 sentence-transformers 加载 `BAAI/bge-m3`（**无需任何外部 Key**）
   - `siliconflow` —— 调硅基流动云端 embeddings 接口（需 SILICONFLOW_API_KEY）
   - `auto`（默认）—— 优先 local，本地依赖缺失/加载失败时回退 siliconflow
@@ -24,6 +28,38 @@ from app.services.ai.dynamic_ai import dynamic_ai
 
 #: 单批条数。云端 embedding 接口对 batch 大小有限制；本地逐条/小批更稳
 BATCH_SIZE = 16
+
+#: 运行时配置缓存（后台改配置后由 rag_config_service 调 refresh_runtime_config 刷新）
+_runtime_backend: str | None = None
+_runtime_model: str | None = None
+
+
+def refresh_runtime_config(backend: str | None = None, model: str | None = None) -> None:
+    """后台改了配置后调用，让本进程立刻用新值（不用重启）。
+
+    传 None 表示「清空覆盖，回落到 .env」。
+    """
+    global _runtime_backend, _runtime_model
+    _runtime_backend = (backend or "").strip().lower() or None
+    _runtime_model = (model or "").strip() or None
+    # 模型换了 → 之前加载的本地实例已不对，需要重置
+    _reset_local_model()
+
+
+def _reset_local_model() -> None:
+    global _local_model, _local_load_failed
+    with _local_lock:
+        _local_model = None
+        _local_load_failed = False
+
+
+def current_backend() -> str:
+    """当前生效的后端（未做可用性判断，仅读配置）"""
+    return _runtime_backend or (settings.EMBEDDING_BACKEND or "auto").strip().lower()
+
+
+def current_model() -> str:
+    return _runtime_model or settings.AI_DEFAULT_EMBEDDING_MODEL
 
 
 class EmbeddingError(RuntimeError):
@@ -156,7 +192,7 @@ def _load_local_model():
                 f"本地 embedding 需要 sentence-transformers，但导入失败：{e}。"
                 "请在 requirements 安装 sentence-transformers（或设 EMBEDDING_BACKEND=siliconflow）。"
             ) from e
-        model_name = settings.AI_DEFAULT_EMBEDDING_MODEL
+        model_name = current_model()
         cache_dir = (settings.EMBEDDING_MODEL_DIR or "").strip() or None
         try:
             path_or_name = _resolve_local_model_path(model_name, cache_dir)
@@ -185,13 +221,13 @@ async def _embed_via_local(texts: list[str]) -> list[list[float]]:
 
 
 async def _embed_via_siliconflow(texts: list[str]) -> list[list[float]]:
-    model = settings.AI_DEFAULT_EMBEDDING_MODEL
+    model = current_model()
     return await dynamic_ai.embeddings(texts=texts, model=model)
 
 
 def _resolve_backend() -> str:
     """决定本次用哪个后端。auto 时先试 local（依赖能导入就算可用）。"""
-    backend = (settings.EMBEDDING_BACKEND or "auto").strip().lower()
+    backend = current_backend()
     if backend in ("local", "siliconflow"):
         return backend
     # auto
@@ -212,12 +248,12 @@ async def embed_texts(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
 
-    model = settings.AI_DEFAULT_EMBEDDING_MODEL
+    model = current_model()
     backend = _resolve_backend()
     logger.info(f"[embedding] backend={backend} model={model} 条数={len(texts)}")
 
     # auto 模式下：本地失败（模型下载不了 / 依赖缺失 / 维度不符）时，自动回退硅基流动
-    auto_fallback = (settings.EMBEDDING_BACKEND or "auto").strip().lower() not in ("local", "siliconflow")
+    auto_fallback = current_backend() not in ("local", "siliconflow")
 
     async def _do(bk: str, batch: list[str]) -> list[list[float]]:
         if bk == "local":

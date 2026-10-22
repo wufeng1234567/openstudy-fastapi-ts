@@ -28,7 +28,7 @@ from app.config import settings
 from app.core.response import error, success
 from app.core.security import get_current_user
 from app.database import get_db
-from app.services.rag import document_pipeline, rag_query_service, rag_write_service
+from app.services.rag import document_pipeline, rag_config_service, rag_query_service, rag_write_service
 from app.services.rag.rag_write_service import RagConflict, RagNotFound
 
 router = APIRouter(prefix="/rag")
@@ -494,5 +494,100 @@ async def ask(
                 session_id=data.sessionId,
             )
         )
+    except Exception as e:
+        return _fail(e)
+
+
+# ============================================================ 向量化后端配置
+#
+# 后台「AI 配置 → 知识库向量化」页用。
+# 为什么单独一组接口：`.env` 只能重启生效，而用户切换本地/云端是**产品行为**，
+# 必须能即时生效并看到检测结果。
+
+class RagConfigUpdate(BaseModel):
+    """可更新项全部可选 —— 前端只传改过的字段。"""
+
+    backend: Optional[str] = Field(None, description="local | siliconflow | auto")
+    model: Optional[str] = None
+    chunkSize: Optional[int] = Field(None, ge=100, le=4000)
+    chunkOverlap: Optional[int] = Field(None, ge=0, le=1000)
+    topK: Optional[int] = Field(None, ge=1, le=50)
+    rrfK: Optional[int] = Field(None, ge=1, le=200)
+    cloudModel: Optional[str] = None
+    autoFallback: Optional[bool] = None
+
+
+@router.get("/config")
+async def get_rag_config(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """读当前配置 + 本地/云端两条链路的可用性检测。
+
+    前端进页面就调它，据此渲染：
+      · 三个后端选项哪个可选、哪个禁用；
+      · 本地不可用时提示「没装模型」，并引导去用云端；
+      · 云端不可用时提示「没配 Key」。
+    """
+    try:
+        return success(await rag_config_service.get_status(db))
+    except Exception as e:
+        return _fail(e)
+
+
+@router.put("/config")
+async def update_rag_config(
+    data: RagConfigUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """更新向量化配置（即时生效，无需重启）。
+
+    注意：切换后端**不会**自动重算已有向量。历史文档的向量是旧模型算的，
+    换模型后新旧向量不在同一空间，检索会失真。所以响应里会带一个
+    `needReindex` 标志，由前端提示用户「要不要重建索引」。
+    """
+    try:
+        if data.backend and data.backend not in rag_config_service.BACKENDS:
+            return error(f"不支持的后端：{data.backend}，可选 {rag_config_service.BACKENDS}", code=400)
+
+        old = await rag_config_service.get_config_map(db)
+        payload = {
+            rag_config_service.KEY_BACKEND: data.backend,
+            rag_config_service.KEY_MODEL: data.model,
+            rag_config_service.KEY_CHUNK_SIZE: data.chunkSize,
+            rag_config_service.KEY_CHUNK_OVERLAP: data.chunkOverlap,
+            rag_config_service.KEY_TOP_K: data.topK,
+            rag_config_service.KEY_RRF_K: data.rrfK,
+            rag_config_service.KEY_CLOUD_MODEL: data.cloudModel,
+            rag_config_service.KEY_AUTO_FALLBACK: data.autoFallback,
+        }
+        await rag_config_service.set_configs(db, payload)
+        await db.commit()
+
+        new = await rag_config_service.get_config_map(db)
+
+        # 让本进程立刻用新配置（否则要重启才生效）
+        from app.services.rag import embedding as embedding_service
+
+        embedding_service.refresh_runtime_config(
+            backend=new.get(rag_config_service.KEY_BACKEND),
+            model=new.get(rag_config_service.KEY_MODEL),
+        )
+
+        need_reindex = (
+            old.get(rag_config_service.KEY_MODEL) != new.get(rag_config_service.KEY_MODEL)
+            or old.get(rag_config_service.KEY_CLOUD_MODEL) != new.get(rag_config_service.KEY_CLOUD_MODEL)
+        )
+
+        status = await rag_config_service.get_status(db)
+        status["needReindex"] = need_reindex
+        status["reindexHint"] = (
+            "向量化模型已变更。已有文档的向量是用旧模型算的，与新向量不在同一空间，"
+            "检索结果会不准。请到知识库页面点「重建索引」，或重新上传文档。"
+            if need_reindex
+            else ""
+        )
+        return success(status)
     except Exception as e:
         return _fail(e)
