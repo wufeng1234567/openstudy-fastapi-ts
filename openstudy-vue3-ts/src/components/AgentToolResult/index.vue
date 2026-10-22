@@ -81,22 +81,18 @@
 
     <!-- ③ 跳转卡片：建库/导题完成后，一步直达题库 -->
     <div v-if="bankJump" class="at-jump">
-      <div class="at-jump__head">
+      <div class="at-jump__main">
         <span class="at-jump__badge">
           <OsIcon name="check-circle" :size="13" />
           {{ bankJump.isNew ? '题库已建好' : '题目已导入' }}
         </span>
-      </div>
-      <div class="at-jump__body">
         <span class="at-jump__name">{{ bankJump.bankName }}</span>
         <span v-if="bankJump.meta" class="at-jump__meta">{{ bankJump.meta }}</span>
       </div>
-      <div class="at-jump__actions">
-        <button type="button" class="at-jump__btn at-jump__btn--primary" @click="goToBank">
-          <OsIcon name="book-open" :size="13" />
-          <span>立即开始刷题</span>
-        </button>
-      </div>
+      <button type="button" class="at-jump__btn at-jump__btn--primary" @click="goToBank">
+        <OsIcon name="book-open" :size="13" />
+        <span>立即开始刷题</span>
+      </button>
     </div>
 
     <!-- ④ 「AI 翻文件」可视化：它在空间里找到了什么 -->
@@ -876,6 +872,10 @@ const downloadArtifact = async () => {
  * 值得占一点视觉重量。但仍不套大白框，用浅底 + 发丝描边，与整站一致。
  * ============================================================ */
 .at-jump {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   margin-top: 10px;
   padding: 12px 14px;
   max-width: 460px;
@@ -884,10 +884,12 @@ const downloadArtifact = async () => {
   background: var(--os-bg-subtle, #fafafa);
 }
 
-.at-jump__head {
+/* 左侧信息：徽标 / 题库名 / 副标题，纵向三行紧密排布 */
+.at-jump__main {
   display: flex;
-  align-items: center;
-  margin-bottom: 6px;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0; /* 让长题库名可以正常收缩换行，不把按钮挤出去 */
 }
 
 .at-jump__badge {
@@ -899,37 +901,29 @@ const downloadArtifact = async () => {
   color: var(--os-success, #16a34a);
 }
 
-.at-jump__body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: 10px;
-}
-
 .at-jump__name {
   font-size: 14px;
   font-weight: 600;
+  line-height: 1.35;
   color: var(--os-text, #111827);
   word-break: break-all;
 }
 
 .at-jump__meta {
   font-size: 12px;
+  line-height: 1.35;
   color: var(--os-text-3, #6b7280);
 }
 
-.at-jump__actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
+/* 按钮固定不掉行，避免长题库名把它压换行 */
 .at-jump__btn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 6px 14px;
+  flex: none;
+  padding: 7px 14px;
   font-size: 13px;
+  white-space: nowrap;
   border-radius: 8px;
   border: 1px solid var(--os-border, #e5e7eb);
   background: #fff;
@@ -954,6 +948,15 @@ const downloadArtifact = async () => {
   background: #000;
   border-color: #000;
   color: #fff;
+}
+
+/* 窄屏：横向排不下时回落成上下两段，按钮靠左 */
+@media (max-width: 560px) {
+  .at-jump {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
 }
 
 /* ============================================================
