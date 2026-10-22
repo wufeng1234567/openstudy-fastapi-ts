@@ -53,7 +53,7 @@ async def captcha_image(db: AsyncSession = Depends(get_db)):
     captcha_config = config_result.scalar_one_or_none()
     captcha_enabled = captcha_config.config_value.lower() == "true" if captcha_config else True
 
-    # 演示模式开关：true=保留「演示账号一键登录」入口（自用/答辩）；
+    # 演示模式开关：true=保留「演示账号一键登录」入口（自用/演示）；
     # false=上线体验版，登录页默认走账号密码登录/注册，不暴露演示账号。
     # ⚠️ 与 `/quickLogin` 共用 `_demo_mode_enabled`，避免「前端藏了按钮、接口却仍放行」。
     demo_mode = await _demo_mode_enabled(db)

@@ -14,7 +14,7 @@
 # 访问：
 #   前端主页   http://localhost:3167
 #   后端文档   http://localhost:9101/swagger-ui.html
-#   演示账号   admin / ***REMOVED***（详见 README）
+#   演示账号   admin / 123456（详见 README）
 #
 # 说明：
 #   · 数据库 / Redis 不映射到宿主机端口，只在内网互通，避免端口冲突。

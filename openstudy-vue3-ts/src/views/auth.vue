@@ -248,7 +248,7 @@ const loginRules = {
 const codeUrl = ref("");
 const loading = ref(false);
 const captchaEnabled = ref(true);
-// 演示模式：true=显示「演示账号一键登录」入口（自用/答辩）；false=上线体验版，
+// 演示模式：true=显示「演示账号一键登录」入口（自用/演示）；false=上线体验版，
 // 默认走账号密码登录/注册，不暴露演示账号。由后端 /captchaImage 的 demoMode 下发。
 // ⚠️ 初始值取 false（安全优先）：接口返回前先按「体验版」渲染，避免闪出一键登录入口。
 const demoMode = ref(false);

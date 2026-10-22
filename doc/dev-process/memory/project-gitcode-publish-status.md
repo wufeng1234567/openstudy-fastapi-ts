@@ -52,7 +52,7 @@ from: Agent
 - 用户被问及是否把 README 也补推到 `delivery` 分支。
 
 **追加发布（2026-10-09）：README + .env.example 到 main**
-- 新增根目录 `README.md`（基于实际代码结构、运行方式与配置说明，**脱敏**，用环境变量占位）——对应赛事"说明运行方式便于复现"的要求。
+- 新增根目录 `README.md`（基于实际代码结构、运行方式与配置说明，**脱敏**，用环境变量占位）——说明运行方式，便于他人复现。
 - README 引用了 `.env.example` 但该文件原本不存在；已创建 `openstudy-fastapi/.env.example`（全部脱敏样例，键名从 `config.py` 提取：JWT、Redis 等），使 README 指引成立且利公开仓。
 - 执行方式：**继续用 git worktree**（目标目录 `../fastapi-v2-mainclean`）从远程 `main` 检出，在其上添加 README + `.env.example` 并推送，**不碰当前 `delivery` 工作区**（其仍有 59 个历史遗留修改）。
 - 在 `delivery` 分支时工作区为脏状态，故避免直接在该工作区操作。
@@ -105,5 +105,5 @@ from: Agent
 
 **指挥家模式已推送到 main（2026-10-09，✅）：** 指挥家模式（Orchestrator+子代理，11 文件）经 worktree 提交 `8e08bb6` 并推送 main：推送区间 `dc25db6..8e08bb6`、GitCode hook PASSED；推送后已清理 worktree 与临时文件，并核对远程 main = `8e08bb6`、无残留。**当前远程 main tip = `8e08bb6`。**
 
-**Why:** 赛事要求代码上传 GitCode 公开仓，公开即永久，须在推送前守住敏感边界并确认文档取舍；`delivery` 工作区存在大量与本次建仓无关的历史改动，直接在该工作区提交并推 main 会污染公开历史。
+**Why:** 代码上传 GitCode 公开仓，公开即永久，须在推送前守住敏感边界并确认文档取舍；`delivery` 工作区存在大量与本次建仓无关的历史改动，直接在该工作区提交并推 main 会污染公开历史。
 **How to apply:** 继续此任务时，在 `../fastapi-v2-mainclean` worktree 内基于 main 提交清理并推送；切勿把 `delivery` 的 59 个历史遗留修改混入；确认交接文档是否排除；推送完成后提醒吊销令牌。

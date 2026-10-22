@@ -100,7 +100,7 @@ def main():
         checks.append((cid, title, cond, actual))
         print(f"  [{'通过' if cond else '失败'}] {cid} {title}" + (f" | {actual}" if not cond else ""))
 
-    st, body = _post("/login", body={"username": "admin", "password": "***REMOVED***"})
+    st, body = _post("/login", body={"username": "admin", "password": "123456"})
     token = body["data"]["token"]
     ck("Z-01", "登录成功", bool(token))
 

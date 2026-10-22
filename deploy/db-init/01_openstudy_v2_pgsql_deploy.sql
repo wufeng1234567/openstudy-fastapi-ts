@@ -4,7 +4,7 @@
 -- ------------------------------------------------------------
 -- 内容：① 建表结构  ② 部门/角色/菜单/参数种子  ③ 演示数据
 -- ⚠️ 已清洗：真实 API Key / 密码 / 隐私业务数据均已移除或替换为占位。
---    演示账号密码统一为 ***REMOVED***，首次登录后请立即修改。
+--    演示账号密码统一为 123456，首次登录后请立即修改。
 -- 用法：
 --   createdb openstudy_v2_pgsql
 --   psql -U root -d openstudy_v2_pgsql -f openstudy_v2_pgsql_deploy.sql
@@ -3151,7 +3151,7 @@ INSERT INTO public.sys_config (config_id, config_name, config_key, config_value,
 INSERT INTO public.sys_config (config_id, config_name, config_key, config_value, config_type, create_by, create_time, update_by, update_time, remark) VALUES (6, '用户登录-黑名单列表', 'sys.login.blackIPList', '', 'Y', 'admin', '2025-10-23 20:06:49', '', NULL, '设置登录IP黑名单限制，多个匹配项以;分隔，支持匹配（*通配、网段）');
 INSERT INTO public.sys_config (config_id, config_name, config_key, config_value, config_type, create_by, create_time, update_by, update_time, remark) VALUES (7, '用户管理-初始密码修改策略', 'sys.account.initPasswordModify', '1', 'Y', 'admin', '2025-10-23 20:06:49', '', NULL, '0：初始密码修改策略关闭，没有任何提示，1：提醒用户，如果未修改初始密码，则在登录时就会提醒修改密码对话框');
 INSERT INTO public.sys_config (config_id, config_name, config_key, config_value, config_type, create_by, create_time, update_by, update_time, remark) VALUES (8, '用户管理-账号密码更新周期', 'sys.account.passwordValidateDays', '0', 'Y', 'admin', '2025-10-23 20:06:49', '', NULL, '密码更新周期（填写数字，数据初始化值为0不限制，若修改必须为大于0小于365的正整数），如果超过这个周期登录系统时，则在登录时就会提醒修改密码对话框');
-INSERT INTO public.sys_config (config_id, config_name, config_key, config_value, config_type, create_by, create_time, update_by, update_time, remark) VALUES (9, '系统-演示模式', 'sys.demo.mode', 'true', 'Y', 'admin', now(), '', NULL, '演示模式：true=登录页显示「演示账号一键登录」入口（自用/答辩）；false=上线体验版，直接走账号密码登录/注册，不暴露演示账号');
+INSERT INTO public.sys_config (config_id, config_name, config_key, config_value, config_type, create_by, create_time, update_by, update_time, remark) VALUES (9, '系统-演示模式', 'sys.demo.mode', 'true', 'Y', 'admin', now(), '', NULL, '演示模式：true=登录页显示「演示账号一键登录」入口（自用/演示）；false=上线体验版，直接走账号密码登录/注册，不暴露演示账号');
 
 
 --
@@ -3390,7 +3390,7 @@ SELECT pg_catalog.setval('public.sys_menu_menu_id_seq', 2114, true);
 -- 执行顺序：01_schema.sql → 02_seed.sql（本文件）。
 -- ============================================================
 
--- ---------- 演示用户（密码统一 = ***REMOVED***，见 05_change_password.sql） ----------
+-- ---------- 演示用户（密码统一 = 123456，见 05_change_password.sql） ----------
 INSERT INTO public.sys_user (user_id, user_name, nick_name, email, phonenumber, sex, avatar, password, status, del_flag, login_ip, login_date, dept_id, create_by, create_time, update_by, update_time, remark) VALUES
 (1, 'admin', '管理员',   'admin@example.com', '15888888888', '1', '', '$2b$12$XCWtkQ37WqBbWgMklX2of.qe6Lps5fXh5ehMUr3zJ6fMe62QQahlW', '0', '0', '127.0.0.1', now(), 103, 'admin', now(), '', NULL, '演示超级管理员');
 

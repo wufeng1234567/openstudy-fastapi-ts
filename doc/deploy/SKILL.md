@@ -43,7 +43,7 @@ docker --version && docker compose version
 ### A.2 拉取代码并一键启动
 
 ```bash
-git clone https://gitcode.com/qi142410131/openstudy-fastapi-ts.git
+git clone https://gitcode.com/123456/openstudy-fastapi-ts.git
 cd openstudy-fastapi-ts
 
 # 可选：配置 AI Key（不填则 AI 功能不可用，其余功能正常）
@@ -378,12 +378,12 @@ psql -U root -d openstudy_v2_pgsql -c "SELECT extname FROM pg_extension WHERE ex
 
 | 账号 | 密码 | 说明 |
 |---|---|---|
-| `admin` | `***REMOVED***` | 管理员（可进后台） |
-| `user1` | `***REMOVED***` | 普通用户，带 **2 个演示题库**（10 题 + 8 题）+ 学习统计/错题/收藏/笔记 |
-| `user2` | `***REMOVED***` | 普通用户（分享接收方） |
+| `admin` | `123456` | 管理员（可进后台） |
+| `user1` | `123456` | 普通用户，带 **2 个演示题库**（10 题 + 8 题）+ 学习统计/错题/收藏/笔记 |
+| `user2` | `123456` | 普通用户（分享接收方） |
 | `guest` | 免密（一键登录） | 只读游客 |
 
-> ⚠️ **密码由 `05_change_password.sql` 统一改为强密码**（默认 `***REMOVED***`）。
+> ⚠️ **密码由 `05_change_password.sql` 统一改为强密码**（默认 `123456`）。
 > 想换密码：跑 `python -c "from app.core.security import hash_password; print(hash_password('新密码'))"`
 > 生成 bcrypt 哈希，替换该 SQL 里的值（或直接在数据库里 UPDATE）。
 >
@@ -395,7 +395,7 @@ psql -U root -d openstudy_v2_pgsql -c "SELECT extname FROM pg_extension WHERE ex
 
 | 值 | 登录页表现 | 适用 |
 |---|---|---|
-| `true`（默认） | 显示「演示账号 · 一键登录」入口 | 自己答辩/自用 |
+| `true`（默认） | 显示「演示账号 · 一键登录」入口 | 自己演示/自用 |
 | `false` | **直接显示账号密码登录 / 注册**，不暴露演示账号 | 上线给别人体验 |
 
 切换：管理员登录后台 →「系统管理 → 参数设置」→ 搜索「演示模式」→ 改值（即时生效，无需重启）。

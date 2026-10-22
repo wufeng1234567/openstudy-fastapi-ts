@@ -44,7 +44,7 @@ def main():
         checks.append((cid, title, cond, actual))
         print(f"  [{'通过' if cond else '失败'}] {cid} {title}" + (f" | {actual}" if not cond else ""))
 
-    st, body = _req("POST", "/login", body={"username": "admin", "password": "***REMOVED***"})
+    st, body = _req("POST", "/login", body={"username": "admin", "password": "123456"})
     token = body.get("data", {}).get("token")
     ck("CI-01", "登录成功", bool(token))
 

@@ -3151,7 +3151,7 @@ INSERT INTO public.sys_config (config_id, config_name, config_key, config_value,
 INSERT INTO public.sys_config (config_id, config_name, config_key, config_value, config_type, create_by, create_time, update_by, update_time, remark) VALUES (6, '用户登录-黑名单列表', 'sys.login.blackIPList', '', 'Y', 'admin', '2025-10-23 20:06:49', '', NULL, '设置登录IP黑名单限制，多个匹配项以;分隔，支持匹配（*通配、网段）');
 INSERT INTO public.sys_config (config_id, config_name, config_key, config_value, config_type, create_by, create_time, update_by, update_time, remark) VALUES (7, '用户管理-初始密码修改策略', 'sys.account.initPasswordModify', '1', 'Y', 'admin', '2025-10-23 20:06:49', '', NULL, '0：初始密码修改策略关闭，没有任何提示，1：提醒用户，如果未修改初始密码，则在登录时就会提醒修改密码对话框');
 INSERT INTO public.sys_config (config_id, config_name, config_key, config_value, config_type, create_by, create_time, update_by, update_time, remark) VALUES (8, '用户管理-账号密码更新周期', 'sys.account.passwordValidateDays', '0', 'Y', 'admin', '2025-10-23 20:06:49', '', NULL, '密码更新周期（填写数字，数据初始化值为0不限制，若修改必须为大于0小于365的正整数），如果超过这个周期登录系统时，则在登录时就会提醒修改密码对话框');
-INSERT INTO public.sys_config (config_id, config_name, config_key, config_value, config_type, create_by, create_time, update_by, update_time, remark) VALUES (9, '系统-演示模式', 'sys.demo.mode', 'true', 'Y', 'admin', now(), '', NULL, '演示模式：true=登录页显示「演示账号一键登录」入口（自用/答辩）；false=上线体验版，直接走账号密码登录/注册，不暴露演示账号');
+INSERT INTO public.sys_config (config_id, config_name, config_key, config_value, config_type, create_by, create_time, update_by, update_time, remark) VALUES (9, '系统-演示模式', 'sys.demo.mode', 'true', 'Y', 'admin', now(), '', NULL, '演示模式：true=登录页显示「演示账号一键登录」入口（自用/演示）；false=上线体验版，直接走账号密码登录/注册，不暴露演示账号');
 
 
 --

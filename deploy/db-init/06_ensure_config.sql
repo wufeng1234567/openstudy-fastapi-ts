@@ -7,7 +7,7 @@
 
 INSERT INTO public.sys_config (config_name, config_key, config_value, config_type, create_by, create_time, update_by, update_time, remark)
 SELECT '系统-演示模式', 'sys.demo.mode', 'true', 'Y', 'admin', now(), '', NULL,
-       '演示模式：true=登录页显示「演示账号一键登录」入口（自用/答辩）；false=上线体验版，直接走账号密码登录/注册，不暴露演示账号'
+       '演示模式：true=登录页显示「演示账号一键登录」入口（自用/演示）；false=上线体验版，直接走账号密码登录/注册，不暴露演示账号'
 WHERE NOT EXISTS (SELECT 1 FROM public.sys_config WHERE config_key = 'sys.demo.mode');
 
 -- 校验
