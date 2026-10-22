@@ -604,6 +604,8 @@ def _kb_brief(kb: RagKnowledgeBase) -> dict:
         "docCount": kb.doc_count,
         "chunkCount": kb.chunk_count,
         "disabled": kb_disabled_flag(kb),
+        # 默认库标记：前端据此在列表里显示「默认」徽标，并禁止改名/删除
+        "isDefault": 1 if getattr(kb, "is_workspace", 0) == 1 else 0,
         "embeddingModel": kb.embedding_model,
         "chunkSize": kb.chunk_size,
         "chunkOverlap": kb.chunk_overlap,

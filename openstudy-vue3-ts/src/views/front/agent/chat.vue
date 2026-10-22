@@ -16,7 +16,41 @@
   （那种做法要靠 `padding-bottom` 的魔法数字给消息区垫位，输入框长一行就会盖住最后一条消息）。
 -->
 <template>
-  <div class="agent-page">
+  <div
+    class="agent-page"
+    :class="{ 'is-dragover': dragOver }"
+    @dragenter="onDragEnter"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
+    @drop="onDropFiles"
+  >
+    <!--
+      整页拖拽上传（2026-10-22）
+      -----------------------
+      用户要求：「智能体页面 要支持用户从外面拖拽图片 pdf md word txt 等文件，
+                拖拽进入后 自动上传到输入框里面去」。
+
+      做法：把拖拽监听挂在**整页**（不是只挂在那个 36px 的回形针按钮上）——
+      用户从资源管理器拖文件过来时，鼠标大概率落在消息区或空白处，
+      只监听按钮会让人觉得"拖了没反应"。
+
+      真正的"上传到输入框"是把 File[] 交给 `ChatFileUploader.addFiles()`：
+      它负责读成 data URL / 压缩图片 / 校验数量与体积，结果写进 `attachments`，
+      也就是输入框上方那排待发送附件 —— 和点回形针选文件**完全同一条路径**。
+
+      ⚠️ 拖拽事件必须 `preventDefault`，否则浏览器会用文件替换整个页面
+         （这是拖放最常见的坑：一不小心把整页导航走了）。
+      ⚠️ `dragleave` 在移动到子元素上时也会触发，直接用会让遮罩疯狂闪烁。
+         这里用计数器（dragDepth）判断"是否真的离开了整页"。
+    -->
+    <div v-if="dragOver" class="drop-mask">
+      <div class="drop-mask__box">
+        <OsIcon name="arrow-up" :size="30" />
+        <p class="drop-mask__title">松手，放进输入框</p>
+        <p class="drop-mask__hint">支持图片 / Word / PDF / Markdown / TXT</p>
+      </div>
+    </div>
+
     <div class="agent-shell">
       <!--
         ⚠️ 这里**没有常驻左侧历史栏**（2026-09-20 用户要求改形态）：
@@ -755,6 +789,58 @@ const removeAttachment = (idx: number) => {
   attachments.value = { images, files }
 }
 
+/* ===================== 整页拖拽上传 =====================
+ * 见模板顶部那段注释。要点：
+ *   · dragDepth 计数解决「移到子元素上触发 dragleave」导致遮罩闪烁；
+ *   · 只在真的带着文件时才显示遮罩（拖一段选中的文字进来不该弹「松手放进输入框」）；
+ *   · 交给 ChatFileUploader.addFiles() —— 与点选走同一条处理路径。
+ */
+const dragOver = ref(false)
+let dragDepth = 0
+
+/** 这次拖拽里有没有文件（拖文字/链接时不接管） */
+function hasFiles(e: DragEvent): boolean {
+  const t = e.dataTransfer
+  if (!t) return false
+  // types 在某些浏览器里拖文件时是 ['Files']，拖文字时是 ['text/plain']
+  return Array.from(t.types || []).includes('Files')
+}
+
+function onDragEnter(e: DragEvent) {
+  if (!hasFiles(e) || isGenerating.value) return
+  e.preventDefault()
+  dragDepth++
+  dragOver.value = true
+}
+
+function onDragOver(e: DragEvent) {
+  if (!hasFiles(e) || isGenerating.value) return
+  // 必须挡掉默认行为，否则浏览器会尝试「打开/下载」这个文件
+  e.preventDefault()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+}
+
+function onDragLeave(e: DragEvent) {
+  if (!hasFiles(e)) return
+  dragDepth = Math.max(0, dragDepth - 1)
+  if (dragDepth === 0) dragOver.value = false
+}
+
+async function onDropFiles(e: DragEvent) {
+  if (!hasFiles(e)) return
+  e.preventDefault()
+  dragDepth = 0
+  dragOver.value = false
+  if (isGenerating.value) {
+    ElMessage.warning('正在生成回答，等这一轮结束再传')
+    return
+  }
+  const files = Array.from(e.dataTransfer?.files || [])
+  if (!files.length) return
+  // 统一交给上传器：读 data URL / 压缩图片 / 校验数量体积都在那边
+  await attachRef.value?.addFiles?.(files)
+}
+
 /* ===================== 会话历史 =====================
  * ⚠️ 2026-10-17：会话列表已提到 `store/modules/agentSession.ts`，
  *    因为现在它显示在**左侧导航栏**（对齐 DSH），而消息流仍在本页。
@@ -1166,6 +1252,47 @@ onBeforeUnmount(() => {
   padding: 0;
   box-sizing: border-box;
   background: #fff;
+  /* 拖拽遮罩按整页定位（见模板里的 .drop-mask） */
+  position: relative;
+}
+
+/* ===================== 整页拖拽遮罩 ===================== */
+.drop-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(239, 246, 255, 0.86);
+  backdrop-filter: blur(2px);
+  pointer-events: none; /* 遮罩不能吃掉 drop 事件，否则会"松手没反应" */
+}
+
+.drop-mask__box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 34px 48px;
+  border: 2px dashed var(--os-accent, #2563eb);
+  border-radius: 16px;
+  background: #fff;
+  color: var(--os-accent, #2563eb);
+  box-shadow: 0 8px 28px rgba(37, 99, 235, 0.12);
+}
+
+.drop-mask__title {
+  margin: 4px 0 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--os-text, #111827);
+}
+
+.drop-mask__hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--os-text-3, #6b7280);
 }
 
 .agent-shell {

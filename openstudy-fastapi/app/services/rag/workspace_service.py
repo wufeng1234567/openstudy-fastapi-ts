@@ -1,15 +1,20 @@
 """
-工作空间（Workspace）服务 —— 「用户的资料抽屉」
+默认知识库（原「工作空间 / 我的空间」）服务
 
 产品定位
 ========
-用户在侧栏有一个「我的空间」，把自己觉得会用到的资料丢进去（Word / PDF / MD）。
-之后在对话里说「用我空间里那份概率论的资料出题」，AI 会**自己去空间里找**，
-不需要用户手动选文件。
+每个用户有一个**默认知识库**，新传的资料先落这里，不用先想「该放哪个库」。
+之后在对话里说「用我那份概率论的资料出题」，AI 会**自己去库找**，不需要手动选文件。
+
+⚠️ 2026-10-22 改名：这个模块原来叫「工作空间 / 我的空间」，
+   现已统一并入「知识库」—— 侧栏入口改名为「知识库」，
+   页面升级为完整的多知识库管理（见 `views/front/workspace/index.vue`）。
+   代码里的 `workspace` 标识（表字段 `is_workspace`、`/rag/workspace/*` 接口）
+   **保持不动**：改名只是产品文案层面的事，动标识要连带迁移数据与工具调用，不值得。
 
 为什么复用知识库（`rag_knowledge_base`）
 =====================================
-空间里的文件同样要「解析 → 分块 → 向量化 → 被 AI 检索」 —— 和知识库是同一套链路。
+默认库里的文件同样要「解析 → 分块 → 向量化 → 被 AI 检索」 —— 和普通知识库是同一条链路。
 新建一张表等于把这套逻辑抄第二遍（早晚漂移），而且 `knowledge_search` 工具
 还得再写一份。所以这里只是给知识库加了一个 `is_workspace=1` 标记：
 每个用户有且仅有一个这样的库。
@@ -25,9 +30,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.rag import RagDocument, RagKnowledgeBase
 
-#: 工作空间在界面上显示的名字（用户不可改）
-WORKSPACE_NAME = "我的空间"
-WORKSPACE_DESC = "你的资料抽屉：把常用资料放这里，AI 会自己找"
+#: 默认知识库在界面上显示的名字（用户不可改）
+#: 与普通知识库并列展示，所以名字要像"一个库"，而不是"一个特殊区域"
+WORKSPACE_NAME = "默认知识库"
+WORKSPACE_DESC = "新传的资料先放这里，AI 会自己找"
 
 
 async def get_or_create_workspace(db: AsyncSession, user_id: int) -> RagKnowledgeBase:
@@ -83,12 +89,17 @@ async def get_or_create_workspace(db: AsyncSession, user_id: int) -> RagKnowledg
 
 
 async def list_space_files(db: AsyncSession, user_id: int) -> List[Dict[str, Any]]:
-    """列出工作空间里的文件（给前端「我的空间」用）"""
+    """列出默认知识库里的文件"""
     kb = await get_or_create_workspace(db, user_id)
+    return await _files_of_kb(db, kb.id)
+
+
+async def _files_of_kb(db: AsyncSession, kb_id: int) -> List[Dict[str, Any]]:
+    """某个知识库下的全部文档（含备注、分块数、解析状态）"""
     rows = (
         await db.execute(
             select(RagDocument)
-            .where(RagDocument.kb_id == kb.id)
+            .where(RagDocument.kb_id == kb_id)
             .order_by(RagDocument.create_time.desc())
         )
     ).scalars().all()
@@ -96,6 +107,7 @@ async def list_space_files(db: AsyncSession, user_id: int) -> List[Dict[str, Any
     return [
         {
             "docId": d.id,
+            "kbId": d.kb_id,
             "fileName": d.file_name,
             "fileType": d.file_type,
             "fileSize": d.file_size,
@@ -104,6 +116,7 @@ async def list_space_files(db: AsyncSession, user_id: int) -> List[Dict[str, Any
             "chunkCount": d.chunk_count or 0,
             "status": d.status,
             "statusText": _status_text(d.status),
+            "errorMsg": d.error_msg or "",
             "createTime": d.create_time.strftime("%Y-%m-%d %H:%M") if d.create_time else None,
         }
         for d in rows
@@ -266,4 +279,85 @@ async def space_stats(db: AsyncSession, user_id: int) -> Dict[str, Any]:
         "readyCount": int(ready or 0),
         "totalSize": int(total_size or 0),
         "totalSizeText": _size_text(int(total_size or 0)),
+    }
+
+
+# ============================================================
+# 知识库总览（新版「知识库」整页的唯一数据源）
+# ============================================================
+
+async def overview(db: AsyncSession, user_id: int) -> Dict[str, Any]:
+    """列出该用户**全部**知识库 + 每个库的文档，一次给全。
+
+    为什么一次给全（而不是「先列库、点进去再拉文档」）
+    ------------------------------------------------
+    知识库的数量级很小（实测十几个），文档也就几十份。一次取完的好处：
+      · 左边点库、右边**立刻**出文档，没有转圈等待；
+      · 头部统计（共几个库 / 共几份资料）不用再发一个请求；
+      · 前端不必维护「文档缓存失效」这一层，少一类 bug。
+
+    返回结构
+    --------
+    {
+      "stats": {kbCount, docCount, readyCount, totalSizeText},
+      "knowledgeBases": [{kbId, name, description, isDefault, disabled,
+                          docCount, chunkCount, createTime, files: [...]}]
+    }
+
+    ⚠️ 默认库（`is_workspace=1`）**也在这份列表里**，且排在最前面 ——
+       它现在就是一个普通的知识库，不再是侧栏里那个独立的东西。
+    """
+    default_kb = await get_or_create_workspace(db, user_id)
+
+    rows = (
+        await db.execute(
+            select(RagKnowledgeBase)
+            .where(
+                RagKnowledgeBase.user_id == user_id,
+                RagKnowledgeBase.del_flag == "0",
+            )
+            .order_by(RagKnowledgeBase.create_time.desc(), RagKnowledgeBase.id.desc())
+        )
+    ).scalars().all()
+
+    # 默认库排最前，其余保持「新的在前」
+    ordered = [default_kb] + [k for k in rows if k.id != default_kb.id]
+
+    kbs: List[Dict[str, Any]] = []
+    total_docs = 0
+    total_ready = 0
+    total_size = 0
+
+    for kb in ordered:
+        files = await _files_of_kb(db, kb.id)
+        for f in files:
+            total_size += int(f.get("fileSize") or 0)
+        ready = sum(1 for f in files if f.get("status") == 5)
+        total_docs += len(files)
+        total_ready += ready
+
+        kbs.append(
+            {
+                "kbId": kb.id,
+                "name": kb.name,
+                "description": kb.description or "",
+                "isDefault": 1 if kb.is_workspace == 1 else 0,
+                "disabled": 1 if kb.disabled == 1 else 0,
+                "docCount": len(files),
+                "chunkCount": sum(int(f.get("chunkCount") or 0) for f in files),
+                "createTime": kb.create_time.strftime("%Y-%m-%d") if kb.create_time else None,
+                "files": files,
+            }
+        )
+
+    return {
+        "stats": {
+            "kbCount": len(kbs),
+            "docCount": total_docs,
+            "readyCount": total_ready,
+            "totalSize": total_size,
+            "totalSizeText": _size_text(total_size),
+        },
+        "knowledgeBases": kbs,
+        "defaultKbId": default_kb.id,
     }

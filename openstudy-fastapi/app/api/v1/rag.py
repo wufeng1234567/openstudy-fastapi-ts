@@ -634,12 +634,31 @@ async def get_workspace(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """工作空间概况 + 文件列表（侧栏「我的空间」用）"""
+    """默认知识库概况 + 文件列表（旧版页面/工具仍在用，保留兼容）"""
     try:
         uid = _uid(current_user)
         stats = await workspace_service.space_stats(db, uid)
         files = await workspace_service.list_space_files(db, uid)
         return success({"stats": stats, "files": files})
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/workspace/overview")
+async def get_workspace_overview(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """**知识库总览** —— 全部知识库 + 每个库的文档，一次返回。
+
+    新版「知识库」整页（侧栏入口 `/front/workspace`）用它渲染：
+    左侧是库列表，右侧是当前库的文档，头部是全站统计。
+
+    ⚠️ 与上面的 `/workspace` 的区别：那个只返回**默认库**的文件（给旧页面和
+       `workspace_search` 工具用），这个返回**所有库**。不要互相替代。
+    """
+    try:
+        return success(await workspace_service.overview(db, _uid(current_user)))
     except Exception as e:
         return _fail(e)
 

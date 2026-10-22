@@ -2,9 +2,9 @@
   <div class="chat-file-uploader">
     <!-- 隐藏的原生文件选择器，由回形针按钮触发（模仿 DS 网页） -->
     <input ref="fileInputRef" type="file" :accept="ACCEPT" multiple style="display: none"
-      @change="handleFiles" />
+      @change="handleChange" />
 
-    <el-tooltip content="上传图片或文件（Word / PDF / md / txt 等）" placement="top" :show-after="150">
+    <el-tooltip content="上传图片或文件（Word / PDF / md / txt），也可以直接把文件拖进输入框" placement="top" :show-after="150">
       <button type="button" class="upload-btn" :disabled="disabled" @click="pick">
         <!-- 回形针图标，与 DS 网页端的附件按钮一致 -->
         <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="upload-icon">
@@ -47,18 +47,33 @@ export interface ChatAttachment {
 
 export type ChatAttachments = { images: ChatAttachment[]; files: ChatAttachment[] }
 
-/** 与 DS 网页端接受的类型对齐（取其常用子集，避免 accept 串过长） */
+/**
+ * 与后端 `file_parser.parse_file` **真实支持**的格式对齐
+ *
+ * ⚠️ 2026-10-22 修：这里原来抄的是 DS 网页端的接受列表（ppt/pptx/xls/xlsx/
+ * csv/json/py/java/go…），但本系统的解析器只认 Word / PDF / 纯文本。
+ * 结果是用户兴冲冲拖进来一个 .xlsx，选文件框里能选中、上传后却「解析失败」——
+ * 前端给了个不该给的承诺。现在 accept 只列真支持的，
+ * 并在 `addFiles` 里对不支持的格式直接挡掉、说清楚原因。
+ */
 const ACCEPT = [
-  // 图片
+  // 图片（走多模态，不经过 file_parser）
   'image/*',
-  // 文档
-  '.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx',
-  // 文本 / 数据
-  '.txt', '.md', '.csv', '.tsv', '.json', '.xml', '.yaml', '.yml', '.log',
-  '.html', '.htm', '.css', '.js', '.ts', '.jsx', '.tsx', '.vue',
-  // 代码
-  '.py', '.java', '.go', '.rs', '.c', '.h', '.cpp', '.hpp', '.sql', '.sh', '.bat'
+  // 文档（file_parser 支持）
+  '.pdf', '.doc', '.docx',
+  // 文本（file_parser 按纯文本读）
+  '.txt', '.md', '.markdown'
 ].join(',')
+
+/** 后端 `KB_FILE_EXTENSIONS` 同源口径（不含图片 —— 图片走另一条通道） */
+const DOC_EXTS = ['pdf', 'doc', 'docx', 'txt', 'md', 'markdown']
+
+const isSupportedDoc = (file: File): boolean => {
+  if (file.type.startsWith('image/')) return true
+  const dot = file.name.lastIndexOf('.')
+  if (dot < 0) return false
+  return DOC_EXTS.includes(file.name.slice(dot + 1).toLowerCase())
+}
 
 const MAX_IMAGE_COUNT = 6
 const MAX_FILE_COUNT = 6
@@ -88,11 +103,15 @@ const pick = () => {
 }
 
 /*
- * 暴露给上层：让别处也能唤起文件选择框。
- * 场景：新对话页里那张「上传资料」卡片 —— 点它应该**直接弹文件选择框**，
- * 而不是往对话里发一句"把这资料变成题库"、然后等 AI 反问"哪份资料？"。
+ * 暴露给上层（放在文件末尾 —— `addFiles` 是 const 声明，
+ * 在它之前调用会命中 TDZ 报错，不能图省事放上面）：
+ *   · `openPicker()` —— 让别处也能唤起文件选择框。
+ *     场景：新对话页里那张「上传资料」卡片 —— 点它应该**直接弹文件选择框**，
+ *     而不是往对话里发一句"把这资料变成题库"、然后等 AI 反问"哪份资料？"。
+ *   · `addFiles()` —— 让上层把**拖进来的文件**塞进来（见 chat.vue 的整页拖拽区）。
+ *     把「读文件 / 压缩 / 校验 / 计数」这摊事留在本组件，上层只管把 File[] 递进来，
+ *     这样拖拽和点选走的是**同一条**处理路径，不会出现「拖进来能传、点选不能传」这类分叉。
  */
-defineExpose({ openPicker: pick })
 
 const readAsDataURL = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
@@ -102,11 +121,21 @@ const readAsDataURL = (file: File): Promise<string> =>
     reader.readAsDataURL(file)
   })
 
-const handleFiles = async (e: Event) => {
+/** 点选文件：把 input 的 FileList 交给 addFiles，并清空 input 以便重选同一个文件 */
+const handleChange = (e: Event) => {
   const input = e.target as HTMLInputElement
   const files = Array.from(input.files || [])
-  // 立刻清空，保证同一个文件连续选择两次也能触发 change
   input.value = ''
+  if (files.length) addFiles(files)
+}
+
+/**
+ * 把一批文件加进附件区（点选与拖拽的**共用**入口）
+ *
+ * 这里同时承担校验：数量上限、单文件体积、图片压缩。
+ * 上层（chat.vue 的拖拽区）只负责把 File[] 递进来，不要再重复校验一遍。
+ */
+const addFiles = async (files: File[]) => {
   if (!files.length) return
 
   const next: ChatAttachments = {
@@ -115,6 +144,12 @@ const handleFiles = async (e: Event) => {
   }
 
   for (const file of files) {
+    // 先挡掉后端解析不了的格式（.xlsx/.pptx/代码文件等），别让它白传一趟
+    if (!isSupportedDoc(file)) {
+      ElMessage.warning(`${file.name} 这个格式读不了，支持图片 / Word / PDF / Markdown / TXT`)
+      continue
+    }
+
     const isImage = file.type.startsWith('image/')
     const list = isImage ? next.images : next.files
     const maxCount = isImage ? MAX_IMAGE_COUNT : MAX_FILE_COUNT
@@ -149,6 +184,9 @@ const handleFiles = async (e: Event) => {
 
   emit('update:modelValue', next)
 }
+
+// 必须在 addFiles 定义之后（见上方注释）
+defineExpose({ openPicker: pick, addFiles })
 </script>
 
 <style scoped>
