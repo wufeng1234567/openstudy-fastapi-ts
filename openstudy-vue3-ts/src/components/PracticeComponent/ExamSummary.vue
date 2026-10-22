@@ -134,10 +134,12 @@
       </div>
 
       <div v-if="record.wrongCount > 0" class="wrong-actions">
-        <button class="primary-btn" type="button" @click="showDetail = !showDetail">
+        <button class="primary-btn" type="button" @click="toggleDetail">
           <el-icon><component :is="showDetail ? ArrowUp : ArrowDown" /></el-icon>
           <span>{{ showDetail ? '收起错题明细' : '查看错题明细' }}</span>
         </button>
+        <!-- 旧记录补全选项时给个提示，否则用户会觉得"选项怎么还没出来" -->
+        <span v-if="hydrating" class="hydrate-hint">正在补全选项…</span>
       </div>
 
       <!-- 内联展开：不跳页，用户看完还能回来看统计 -->
@@ -191,11 +193,11 @@
             <div v-else class="wc-answers">
               <div class="wa-row">
                 <span class="wa-key">你的答案</span>
-                <span class="wa-val bad">{{ describeAnswer(item.userAnswer, item.options) }}</span>
+                <span class="wa-val bad">{{ describeAnswer(item.userAnswer, optionsOf(item)) }}</span>
               </div>
               <div class="wa-row">
                 <span class="wa-key">正确答案</span>
-                <span class="wa-val ok">{{ describeAnswer(item.correctAnswer, item.options) }}</span>
+                <span class="wa-val ok">{{ describeAnswer(item.correctAnswer, optionsOf(item)) }}</span>
               </div>
             </div>
           </template>
@@ -214,8 +216,13 @@
                 · 用户选错的选项 → 红色
                 · 用户漏选的正确项 → 绿色描边（多选题部分给分时很有用）
             -->
-            <ul v-if="item.options && item.options.length" class="wc-options">
-              <li v-for="(opt, oi) in item.options" :key="oi" class="wc-option" :class="optionClass(item, oi)">
+            <!--
+              `optionsOf(item)` 而不是 `item.options`（2026-10-22）：
+              早期版本保存的记录里没有 options 字段，需要现场回查题库补全，
+              补全结果存在 `hydratedOptions` 里，由 `optionsOf` 统一取。
+            -->
+            <ul v-if="optionsOf(item).length" class="wc-options">
+              <li v-for="(opt, oi) in optionsOf(item)" :key="oi" class="wc-option" :class="optionClass(item, oi)">
                 <span class="wo-label">{{ optionLabel(oi) }}</span>
                 <span class="wo-text">{{ opt }}</span>
                 <!--
@@ -234,11 +241,11 @@
             <div class="wc-answers">
               <div class="wa-row">
                 <span class="wa-key">你的答案</span>
-                <span class="wa-val bad">{{ describeAnswer(item.userAnswer, item.options) }}</span>
+                <span class="wa-val bad">{{ describeAnswer(item.userAnswer, optionsOf(item)) }}</span>
               </div>
               <div class="wa-row">
                 <span class="wa-key">正确答案</span>
-                <span class="wa-val ok">{{ describeAnswer(item.correctAnswer, item.options) }}</span>
+                <span class="wa-val ok">{{ describeAnswer(item.correctAnswer, optionsOf(item)) }}</span>
               </div>
             </div>
           </template>
@@ -264,6 +271,9 @@ import {
   Refresh
 } from '@element-plus/icons-vue'
 import type { MockExamItemDetail, MockExamRecord, QuestionType } from '@/types'
+import { getQuestionMain } from '@/api/questionMain/questionMain'
+import { parseOptions } from '@/utils/questionUtils'
+import usePracticeSettingsStore from '@/store/modules/practiceSettings'
 
 const props = defineProps({
   record: { type: Object as () => MockExamRecord, required: true },
@@ -292,6 +302,113 @@ const scoreChartRef = ref<HTMLElement | null>(null)
 const pieChartRef = ref<HTMLElement | null>(null)
 let scoreChart: echarts.ECharts | null = null
 let pieChart: echarts.ECharts | null = null
+
+/* ==================== 旧记录补全选项 ==================== */
+
+const settingsStore = usePracticeSettingsStore()
+
+/**
+ * 本地补全后的选项（key = 题目序号 index）
+ *
+ * 为什么需要这份"影子数据"：
+ *   早期版本保存的历史记录里**没有 `options` 字段**（只存了题干和答案），
+ *   回看时选项区是空的，用户只看到「你的答案 A / 正确答案 C」，
+ *   不知道 A、C 是什么 —— 这正是用户反馈的问题。
+ *
+ *   已丢失的数据没法凭空变出来，但记录里有 `questionId`，
+ *   可以按题号回查题库拿到选项，补全后写回 localStorage。
+ *   之后再打开就不用再请求。
+ */
+const hydratedOptions = ref<Record<string, any[]>>({})
+
+/** 哪些题正在补全（用于显示轻提示，避免看起来像卡住） */
+const hydrating = ref(false)
+
+/** 这条记录是否缺选项（缺才需要回查） */
+const needsHydrate = computed(() => {
+  if (!props.readonly) return false // 刚交完卷的记录一定有 options
+  const items = props.record.items || []
+  return items.some((it) => !Array.isArray(it.options) || it.options.length === 0)
+})
+
+/** 取某题的选项：优先用补全结果，其次用记录里的 */
+function optionsOf(item: any): any[] {
+  const key = String(item?.index ?? item?.questionId ?? '')
+  const h = hydratedOptions.value[key]
+  if (Array.isArray(h) && h.length) return h
+  return Array.isArray(item?.options) ? item.options : []
+}
+
+/**
+ * 按题号回查题库，补全缺失的选项
+ *
+ * ⚠️ 只在**历史回看**且确实缺选项时才跑，且有并发上限 ——
+ *    一条记录可能有几十道题，一次性发几十个请求既慢又容易把后端打满。
+ *    这里串行 + 限量：只补前 30 道（更多的话用户也翻不到），
+ *    并且请求失败就跳过，绝不阻塞页面。
+ */
+async function hydrateMissingOptions() {
+  if (!needsHydrate.value || hydrating.value) return
+  const items = props.record.items || []
+  const missing = items.filter((it) => !Array.isArray(it.options) || it.options.length === 0)
+  if (!missing.length) return
+
+  hydrating.value = true
+  const next = { ...hydratedOptions.value }
+  let changed = false
+
+  for (const it of missing.slice(0, 30)) {
+    const qid = it.questionId
+    if (qid === null || qid === undefined) continue
+    try {
+      const res: any = await getQuestionMain(qid)
+      const raw = res?.data
+      if (!raw) continue
+      // 判断题没有真实 options，parseOptions 会返回 ['正确','错误']
+      const opts = parseOptions(raw.options, raw.questionType ?? raw.question_type)
+      if (Array.isArray(opts) && opts.length) {
+        next[String(it.index)] = opts
+        changed = true
+      }
+    } catch {
+      // 单题失败不影响其它题，也不打扰用户
+    }
+  }
+
+  hydrating.value = false
+  if (!changed) return
+
+  hydratedOptions.value = next
+  /*
+   * 写回历史记录，下次打开直接就有选项。
+   *
+   * ⚠️ 只补 `options`，**不动任何判分字段**（得分/对错/答案）。
+   *    那些是历史事实，改了就成了篡改成绩。
+   */
+  try {
+    const patched: MockExamRecord = JSON.parse(JSON.stringify(props.record))
+    patched.items = patched.items.map((it) => {
+      const opts = next[String(it.index)]
+      return Array.isArray(it.options) && it.options.length
+        ? it
+        : (opts ? { ...it, options: opts } : it)
+    })
+    settingsStore.updateMockExamRecord(patched.id, patched)
+  } catch {
+    // 存不下也不影响本次浏览
+  }
+}
+
+/** 展开错题明细时顺带补全（用户不展开就不浪费请求） */
+async function toggleDetail() {
+  showDetail.value = !showDetail.value
+  if (showDetail.value) await hydrateMissingOptions()
+}
+
+onMounted(() => {
+  // 历史回看一进来就补，让用户展开时选项已经就位
+  if (needsHydrate.value) hydrateMissingOptions()
+})
 
 const TYPE_LABELS: Record<string, string> = {
   single: '单选题',
@@ -1032,6 +1149,12 @@ onBeforeUnmount(() => {
 }
 
 /* ---------- 错题明细：选项列表（2026-10-22 新增） ---------- */
+.hydrate-hint {
+  margin-left: 10px;
+  font-size: 12px;
+  color: var(--os-text-4, #9ca3af);
+}
+
 .wc-options {
   list-style: none;
   margin: 0 0 10px;

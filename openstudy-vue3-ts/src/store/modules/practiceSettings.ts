@@ -333,6 +333,24 @@ const usePracticeSettingsStore = defineStore('practiceSettings', {
     getMockExamRecord(id: string): MockExamRecord | undefined {
       if (!Array.isArray(this.mockExamHistory)) return undefined
       return this.mockExamHistory.find((r: MockExamRecord) => r.id === id)
+    },
+
+    /**
+     * 就地替换一条历史记录（2026-10-22）
+     *
+     * 用途：早期版本保存的记录里没有 `options` 字段（只存了题干和答案），
+     * 回看时选项区是空的。`ExamSummary` 会按题号从题库补全选项，
+     * 补完用这个方法写回，下次再打开就不必再拉一次接口。
+     *
+     * ⚠️ 只用于**补充展示字段**，不允许改判分结果（得分/对错）。
+     *    那些是历史事实，改了就是篡改成绩。
+     */
+    updateMockExamRecord(id: string, record: MockExamRecord) {
+      if (!Array.isArray(this.mockExamHistory)) return
+      const i = this.mockExamHistory.findIndex((r: MockExamRecord) => r.id === id)
+      if (i < 0) return
+      this.mockExamHistory[i] = record
+      saveToStorage(this.$state)
     }
   }
 })
