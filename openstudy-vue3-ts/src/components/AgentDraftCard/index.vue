@@ -94,6 +94,43 @@
     </template>
 
     <template v-else>
+    <!--
+      吸顶折叠条（2026-10-22）
+      ==================================================================
+      用户：一张导入预览卡里可能有 15 道题，「需要滚动很久才能看到底部
+      或者看到卡片之前的消息」「用户往下滚动的时候可以直接看到那个卡片的按钮
+      然后可以直接点击收起来，也可以一键展开」。
+
+      为什么用 sticky 而不是"滚到某处才出现的浮层"：
+        · 纯 CSS，浏览器自己算贴合位置，零监听、零边界情况；
+        · 只要卡片还有任何一部分在视口内，这条就贴在消息流顶部 ——
+          用户滚到卡片中间、甚至底部，按钮都还在手里。
+
+      ⚠️ 必须放在卡片**最外层**、且是第一个子元素：sticky 的贴合范围是
+         "最近的滚动祖先"，放进任何嵌套容器都会被那个容器的高度限制住。
+
+      ⚠️ 折叠时**只藏内容、不藏这一条**：否则收起后按钮消失、再也展不开。
+    -->
+    <div v-if="shouldOfferCollapse" class="ad-sticky" :style="COLLAPSE_BAR_STYLE">
+      <span class="ad-sticky-title">
+        <OsIcon name="pen-line" :size="13" />
+        导入预览（可编辑）
+      </span>
+      <span class="ad-sticky-meta">{{ questions.length }} 题</span>
+      <button
+        type="button"
+        class="ad-sticky-toggle"
+        :aria-expanded="!collapsed"
+        :title="collapsed ? '展开这张卡片' : '收起这张卡片'"
+        @click="toggleCollapse"
+      >
+        {{ collapsed ? '展开' : '收起' }}
+        <span class="ad-sticky-caret" :class="{ 'is-collapsed': collapsed }">▾</span>
+      </button>
+    </div>
+
+    <!-- 折叠时整块内容不渲染：比 max-height 动画更省，也不会留下可聚焦的隐藏控件 -->
+    <template v-if="!collapsed">
     <div class="ad-head">
       <span class="ad-icon">
         <OsIcon v-if="status === 'running'" name="pen-line" :size="14" />
@@ -242,12 +279,41 @@
     </div>
     <div v-else class="ad-result">{{ status === 'ok' ? '已确认导入' : '已取消' }}</div>
     </template>
+    <!--
+      ⚠️ 收起时仍保留**动作区**（取消 / 确认导入）
+      用户滚下去是为了"别再被这张卡挡住"，不是为了取消这次操作。
+      把确认按钮一起藏起来会逼用户先展开再确认，多一步毫无意义。
+      这也和吸顶条的分工一致：条上管"看/收"，这里管"定"。
+    -->
+    <div v-if="collapsed && status === 'running'" class="ad-actions ad-actions--collapsed">
+      <button type="button" class="ad-btn ad-cancel" @click="onCancel">取消</button>
+      <button type="button" class="ad-btn ad-ok" @click="onConfirm">确认导入</button>
+    </div>
+    <div v-else-if="collapsed" class="ad-result">
+      {{ status === 'ok' ? '已确认导入' : '已取消' }}
+    </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { reactive, ref, computed, watch } from 'vue'
 import OsIcon from '@/components/OsIcon/index.vue'
+import { useCollapseBar, COLLAPSE_BAR_STYLE } from '@/composables/useCollapseBar'
+
+/*
+ * 吸顶折叠条（2026-10-22）
+ * ----------------------------------------------------------------------------
+ * 阈值取 6：一张卡里 6 道题以上就值得给折叠条。
+ * 实测一个「导入预览」典型是 10~20 题，卡片高度 1500~3000px，远超一屏；
+ * 而 1~5 题的卡通常一屏能看完（或者只多一点点），加折叠条反而多一层干扰。
+ */
+const { collapsed, setContentLines, shouldOfferCollapse, toggle } = useCollapseBar({
+  threshold: 6
+})
+
+/** 模板里用（避免把 composable 的返回整体解构进模板） */
+const toggleCollapse = toggle
 
 const props = defineProps({
   /** 后端草稿：`{ kind:'question_bank_import', bank, questions }` */
@@ -374,6 +440,31 @@ const items = computed<BatchDeleteItem[]>(() => {
     subtitle: it?.subtitle ? String(it.subtitle) : ''
   }))
 })
+
+/* ============================================================
+ * 吸顶折叠条：内容量级上报
+ * ============================================================ */
+
+/**
+ * 把"这张卡有多长"告诉折叠条
+ *
+ * ⚠️ 用**题目条数**而不是 DOM 高度：
+ *    折叠后高度会变，若用高度判断"要不要折叠条"就会自相矛盾
+ *    （收起 → 变矮 → 判定不需要 → 折叠条消失 → 用户再也展不开）。
+ *    条数只随内容变化，与折叠状态无关。
+ *
+ * 批量删除模式按行数算（多条删除项同样会把卡片撑得很长）。
+ * `immediate` 必须开：初始就有内容，不开的话第一帧不显示折叠条。
+ */
+watch(
+  () => [questions.value.length, items.value.length] as const,
+  () => {
+    const n = isBatchDelete.value ? items.value.length : questions.value.length
+    // 每题大约 12 行表单（题干/选项/答案/解析），换算成"行"的量级
+    setContentLines(n * 12)
+  },
+  { immediate: true }
+)
 
 /**
  * 勾选状态（默认**全选**）
@@ -575,6 +666,109 @@ function onRegenerate() {
 
 .agent-draft.is-fail {
   border-left-color: #9ca3af;
+}
+
+/* ============================================================
+ * 吸顶折叠条（2026-10-22）
+ * ============================================================ */
+
+/*
+ * 为什么用负边距 + 内边距"反向抵消"
+ * ----------------------------------------------------------------------------
+ * 卡片本身有 `padding: 14px`。如果那条直接放在内容流里，它会缩进 14px、
+ * 左右留出空白 —— 滚动时底下的内容会从两侧透出来，看起来像"悬浮残影"。
+ *
+ * 用 `margin: -14px -14px 0` 把它拉到卡片边缘（宽出 padding 那一圈），
+ * 再补回自己的左右内边距，得到一条**通栏、不透光**的吸附条。
+ *
+ * 底部 `border-bottom` 做一条发丝线：吸附时它能和下面滚动的内容
+ * 形成清晰的分界，用户不会误以为内容被裁掉了。
+ */
+.ad-sticky {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -14px -14px 0;
+  padding: 9px 14px;
+  background: #fff;
+  border-bottom: 1px solid #eef0f3;
+  border-radius: 10px 10px 0 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.ad-sticky-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--os-text, #1f2937);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ad-sticky-meta {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--os-text-4, #9ca3af);
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--os-bg-subtle, #f5f6f8);
+}
+
+/*
+ * 折叠按钮：贴右，文字 + 小箭头
+ *
+ * 用文字按钮而不是圆形图标：
+ *   · 「收起 / 展开」两个字零歧义，图标（chevron / minus）在这个场景里
+ *     容易被理解成"滚动到这里"或"删除这条"；
+ *   · 与卡片内其它按钮（ad-del / ad-add-opt 均为文字）风格一致。
+ */
+.ad-sticky-toggle {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border: 1px solid var(--os-border, #e5e7eb);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--os-text-2, #4b5563);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.ad-sticky-toggle:hover {
+  color: var(--os-accent, #6366f1);
+  border-color: currentColor;
+  background: var(--os-bg-hover, #f7f8fa);
+}
+
+.ad-sticky-toggle:focus-visible {
+  outline: 2px solid var(--os-primary, #0f1115);
+  outline-offset: 2px;
+}
+
+/* 箭头：展开朝下、收起朝上，用位移表达"内容的方向" */
+.ad-sticky-caret {
+  display: inline-block;
+  font-size: 10px;
+  line-height: 1;
+  transition: transform 0.18s ease;
+}
+
+.ad-sticky-caret.is-collapsed {
+  transform: rotate(180deg);
+}
+
+/* 收起后那排动作区：吸顶条下面直接跟按钮，不要卡片原本的大间距 */
+.ad-actions--collapsed {
+  margin-top: -4px;
 }
 
 .ad-head {

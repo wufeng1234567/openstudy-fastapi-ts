@@ -27,6 +27,34 @@
       @resolve="onDraftResolve"
     />
     <template v-else>
+    <!--
+      吸顶折叠条（2026-10-22）
+      ==================================================================
+      与 `AgentDraftCard` 同一套机制（见 `composables/useCollapseBar.ts`）。
+      确认卡的 preview 可能是「逐条列出 50 条将删除的对象」，
+      一样会把卡片撑到几屏高 —— 用户滚到中间就找不到按钮了。
+
+      ⚠️ 这条必须放在卡片最外层、且是第一个子元素。
+      ⚠️ 折叠时只藏内容、不藏这一条，否则收起后无法展开。
+      ⚠️ **动作区（取消 / 确认）在折叠时仍然保留**：用户收起是为了不被挡住，
+         不是为了放弃这次操作；把确认按钮一起藏起来是反人类的。
+    -->
+    <div v-if="shouldOfferCollapse" class="ac-sticky" :style="COLLAPSE_BAR_STYLE">
+      <span class="ac-sticky-title">{{ title }}</span>
+      <span v-if="previewSummary" class="ac-sticky-meta">{{ previewSummary }}</span>
+      <button
+        type="button"
+        class="ac-sticky-toggle"
+        :aria-expanded="!collapsed"
+        :title="collapsed ? '展开这张卡片' : '收起这张卡片'"
+        @click="toggleCollapse"
+      >
+        {{ collapsed ? '展开' : '收起' }}
+        <span class="ac-sticky-caret" :class="{ 'is-collapsed': collapsed }">▾</span>
+      </button>
+    </div>
+
+    <template v-if="!collapsed">
     <div class="ac-head">
       <span class="ac-icon">
           <OsIcon v-if="status === 'running'" :name="destructive ? 'alert' : 'circle-help'" :size="14" />
@@ -70,13 +98,44 @@
     </div>
     <div v-else class="ac-result">{{ status === 'ok' ? '已确认' : '已取消' }}</div>
     </template>
+
+    <!--
+      收起后仍显示状态结果（已确认 / 已取消）
+      不显示的话，收起一张已确认的卡会看起来"什么都没发生"。
+      注意动作区已经在上面那段里，这段只负责终态。
+    -->
+    <div v-if="collapsed && status !== 'running'" class="ac-result">
+      {{ status === 'ok' ? '已确认' : '已取消' }}
+    </div>
+    <!-- 收起但仍在待确认：动作按钮必须保留，否则用户没法确认 -->
+    <div v-if="collapsed && status === 'running'" class="ac-actions">
+      <button class="ac-btn ac-cancel" @click="$emit('resolve', false)">取消</button>
+      <button class="ac-btn ac-ok" @click="$emit('resolve', true)">
+        {{ destructive ? '确认删除' : '确认执行' }}
+      </button>
+    </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import AgentDraftCard from '@/components/AgentDraftCard/index.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
+import { useCollapseBar, COLLAPSE_BAR_STYLE } from '@/composables/useCollapseBar'
+
+/*
+ * 吸顶折叠条（2026-10-22）
+ * ----------------------------------------------------------------------------
+ * 阈值 8：确认卡的 preview 行数（键值行 + 列表条目）超过 8 条，
+ * 卡片就够高了、值得给折叠条。实测「批量删除 50 条」这种卡远超阈值，
+ * 而「删除 1 个题库」只有两三行，不需要。
+ */
+const { collapsed, setContentLines, shouldOfferCollapse, toggle } = useCollapseBar({
+  threshold: 8
+})
+
+const toggleCollapse = toggle
 
 const props = defineProps({
   tool: { type: String, default: '' },
@@ -452,6 +511,41 @@ const previewLists = computed(() => {
       }
     })
 })
+
+/* ============================================================
+ * 吸顶折叠条：内容量级 + 收起后的一行摘要
+ * ============================================================ */
+
+/**
+ * 把"这张卡有多长"告诉折叠条
+ *
+ * ⚠️ 用**行数/条数**而不是 DOM 高度：折叠会改变高度，
+ *    用高度判断"要不要折叠条"会自相矛盾（收起 → 变矮 → 判定不需要 →
+ *    折叠条消失 → 用户再也展不开）。详见 `useCollapseBar` 顶部注释。
+ *
+ * `immediate` 必须开：卡片一出现就要决定是否显示折叠条。
+ */
+watch(
+  () => [previewRows.value.length, previewLists.value.length, previewLists.value.reduce((s, l) => s + l.items.length, 0)] as const,
+  ([rows, lists, items]) => {
+    setContentLines(rows + lists + items)
+  },
+  { immediate: true }
+)
+
+/**
+ * 收起后显示的一行摘要
+ *
+ * 收起时卡片只剩吸顶条，用户需要一眼知道"这是什么、影响多大"。
+ * 优先用样例总数（最能表达规模），没有就退回行数。
+ */
+const previewSummary = computed(() => {
+  const p = props.preview as any
+  if (p && typeof p.count === 'number' && p.count > 0) return `${p.count} 项`
+  const total = previewLists.value.reduce((s, l) => s + l.items.length, 0)
+  if (total > 0) return `${total} 项`
+  return ''
+})
 </script>
 
 <style scoped>
@@ -489,6 +583,108 @@ const previewLists = computed(() => {
   background: transparent;
   padding: 0;
   border-radius: 0;
+}
+
+/* ============================================================
+ * 吸顶折叠条（2026-10-22）
+ * ============================================================ */
+
+/*
+ * 背景色必须**跟随卡片状态色**（琥珀 / 绿 / 灰）
+ * ----------------------------------------------------------------------------
+ * 卡片本身有底色（`#fffbeb` / `#f0fdf4` / `#f9fafb`）。折叠条若固定用白色，
+ * 吸附时会在卡片里"贴一块白",看起来像另一张卡片浮在上面。
+ * 这里用与卡片同色的底 + 发丝分隔线，视觉上仍是这张卡的一部分。
+ *
+ * 负边距抵消卡片 padding（`10px 14px`），让这条通栏到卡片边缘，
+ * 避免滚动时两侧透出下面的内容（详见 AgentDraftCard 里同类注释）。
+ */
+.ac-sticky {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -10px -14px 10px;
+  padding: 8px 14px;
+  background: var(--ac-sticky-bg, #fffbeb);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+/* 三种状态各自的吸顶条底色，与卡片底色一致 */
+.agent-confirm.is-destructive .ac-sticky {
+  --ac-sticky-bg: #fffbeb;
+}
+
+.agent-confirm.is-ok .ac-sticky {
+  --ac-sticky-bg: #f0fdf4;
+}
+
+.agent-confirm.is-fail .ac-sticky {
+  --ac-sticky-bg: #f9fafb;
+}
+
+/* 草稿模式外层无 padding，吸顶条也被 AgentDraftCard 自己接管，不需要偏移 */
+.agent-confirm.is-draft .ac-sticky {
+  margin: 0;
+}
+
+.ac-sticky-title {
+  font-weight: 600;
+  color: var(--os-text, #1f2937);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ac-sticky-meta {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--os-text-4, #9ca3af);
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+/* 折叠按钮：贴右，文字 + 小箭头（与 AgentDraftCard 保持同一形态） */
+.ac-sticky-toggle {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--os-text-2, #4b5563);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.ac-sticky-toggle:hover {
+  color: var(--os-text, #1f2937);
+  border-color: rgba(0, 0, 0, 0.24);
+  background: #fff;
+}
+
+.ac-sticky-toggle:focus-visible {
+  outline: 2px solid var(--os-primary, #0f1115);
+  outline-offset: 2px;
+}
+
+.ac-sticky-caret {
+  display: inline-block;
+  font-size: 10px;
+  line-height: 1;
+  transition: transform 0.18s ease;
+}
+
+.ac-sticky-caret.is-collapsed {
+  transform: rotate(180deg);
 }
 
 .ac-head {
