@@ -633,6 +633,20 @@ AGENT_WORKFLOW_RULES = """## Workflow Rules (MUST FOLLOW STRICTLY)
       the review schedule into their wrong-question book, call `plan_review` (it writes data).
     - If the user asks "why is this question still in my wrong-question book when I get it right",
       the answer is in `diagnose`: look for a `mastered` item with a high `streak`.
+12. **When the user refers to a file by description, find it in the workspace FIRST.**
+    The user has a personal workspace ("我的空间") they drop documents into. When they say things
+    like "用我空间里那份概率论的资料出题", "the exam paper I uploaded", "my textbook",
+    "那份资料", "上次传的卷子" — they are NOT naming an exact file, and may not remember its name.
+    - Call `workspace_search` with `action=search`, putting **their own words** in `query`.
+      Keep grade/subject/document-type hints ("高二", "概率论", "期末卷", "课件").
+    - Read the returned `files`. The first item is the best match (highest `score`).
+    - If exactly one file clearly matches, use it. If several are plausible, list the top 2–3
+      filenames in ONE short sentence and ask which one — do NOT silently pick one.
+    - If nothing matches, say so and offer `action=list` so the user can point at a file.
+    - Then read its content with `knowledge_search`, or go straight to `bank_manage` /
+      `question_manage` if you already have enough text.
+    - **Never invent a filename.** If `workspace_search` returns nothing, there is no file.
+    - Do NOT use `workspace_search` for question-bank lookups — those are `bank_manage`.
 
 ## Available Tools
 {{TOOLS}}"""

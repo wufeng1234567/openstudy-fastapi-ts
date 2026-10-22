@@ -27,6 +27,7 @@ from app.services.ai.agent.tools.memory_search import MemorySearchTool
 from app.services.ai.agent.tools.note_manage import NoteManageTool
 from app.services.ai.agent.tools.question_manage import QuestionManageTool
 from app.services.ai.agent.tools.question_mark_manage import QuestionFlagManageTool
+from app.services.ai.agent.tools.workspace_search import WorkspaceSearchTool
 
 # 幂等注册：重复 import 不会重复覆盖（registry.register 按 name 覆盖，行为一致）
 registry.register(AgentManageTool())
@@ -34,6 +35,10 @@ registry.register(BankManageTool())
 registry.register(NoteManageTool())
 registry.register(QuestionManageTool())
 registry.register(KnowledgeSearchTool())
+# —— 2026-10-22 工作空间：按文件名 / 备注 / 正文找「用户空间里的那份资料」。
+#    与 knowledge_search 分工：这个找**文件**（返回 docId），那个找**正文片段**。
+#    用户说「用那份概率论的资料出题」时，先用这个定位文件，再用 knowledge_search 读内容。
+registry.register(WorkspaceSearchTool())
 registry.register(MemorySearchTool())
 # —— 2026-09-22 补齐的五组能力（记忆管理 / 学习统计 / 题目标记 / 知识库管理 / 分享复制）= 5 个工具
 #    ⚠️ 错题本 / 收藏 / 斩题是**一个**工具（`question_flag_manage`，用 flag_type 区分）——
@@ -73,4 +78,5 @@ __all__ = [
     "NoteManageTool",
     "QuestionFlagManageTool",
     "QuestionManageTool",
+    "WorkspaceSearchTool",
 ]

@@ -28,7 +28,13 @@ from app.config import settings
 from app.core.response import error, success
 from app.core.security import get_current_user
 from app.database import get_db
-from app.services.rag import document_pipeline, rag_config_service, rag_query_service, rag_write_service
+from app.services.rag import (
+    document_pipeline,
+    rag_config_service,
+    rag_query_service,
+    rag_write_service,
+    workspace_service,
+)
 from app.services.rag.rag_write_service import RagConflict, RagNotFound
 
 router = APIRouter(prefix="/rag")
@@ -611,5 +617,144 @@ async def update_rag_config(
             else ""
         )
         return success(status)
+    except Exception as e:
+        return _fail(e)
+
+
+# ============================================================ 工作空间
+#
+# 产品定位：用户的「资料抽屉」。
+# 在对话里说「用我空间里那份概率论的资料出题」，AI 自己去空间里找 —— 不需要用户选文件。
+#
+# 实现：复用 `rag_knowledge_base`（`is_workspace=1`），文件仍是普通 `rag_document`，
+# 分块/向量化/检索全部走既有链路。详见 `services/rag/workspace_service.py` 顶部说明。
+
+@router.get("/workspace")
+async def get_workspace(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """工作空间概况 + 文件列表（侧栏「我的空间」用）"""
+    try:
+        uid = _uid(current_user)
+        stats = await workspace_service.space_stats(db, uid)
+        files = await workspace_service.list_space_files(db, uid)
+        return success({"stats": stats, "files": files})
+    except Exception as e:
+        return _fail(e)
+
+
+@router.post("/workspace/upload")
+async def upload_to_workspace(
+    background: BackgroundTasks,
+    file: UploadFile = File(...),
+    note: Optional[str] = Query(None, description="用户给这份资料写的一句话说明"),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """上传文件到工作空间。
+
+    与 `/rag/document/upload` 的差别只有两处：
+      · 目标库自动取「该用户的工作空间」（没有就建），不需要传 kbId；
+      · 可以顺手写一句 `note`（如「高二期末卷」），帮 AI 以后认出这份资料。
+    解析/落图/分块/向量化全部复用同一条流水线。
+    """
+    from app.services.file_parser import build_marked_document, parse_file
+
+    uid = _uid(current_user)
+    try:
+        kb = await workspace_service.get_or_create_workspace(db, uid)
+    except Exception as e:
+        return _fail(e)
+
+    raw = await file.read()
+    if not raw:
+        return error("文件为空", code=400)
+    if len(raw) > MAX_UPLOAD_BYTES:
+        return error(
+            f"文件过大（{len(raw) // 1024 // 1024}MB），上限 {MAX_UPLOAD_BYTES // 1024 // 1024}MB",
+            code=400,
+        )
+
+    filename = file.filename or "未命名文档"
+    try:
+        parsed = await asyncio.to_thread(parse_file, filename, raw)
+    except Exception as e:
+        return error(f"文档解析失败：{e}", code=400)
+
+    text = (parsed.get("textContent") or "").strip()
+    if not text:
+        return error(
+            f"没能从「{filename}」中提取出文本：{parsed.get('error') or '内容为空'}", code=400
+        )
+
+    marked_text, image_data_urls = build_marked_document(parsed)
+    body_text = (marked_text or "").strip() or text
+    image_map = rag_write_service.persist_document_images(image_data_urls)
+
+    try:
+        doc = await rag_write_service.create_document(
+            db,
+            uid,
+            kb.id,
+            file_name=filename,
+            raw_content=body_text,
+            file_type=(filename.rsplit(".", 1)[-1].lower() if "." in filename else None),
+            file_size=len(raw),
+            image_map=image_map,
+        )
+        # 用户备注（可选）
+        if note and note.strip():
+            doc.user_note = note.strip()[:200]
+            await db.flush()
+    except Exception as e:
+        return _fail(e)
+
+    background.add_task(document_pipeline.process_document, doc.id)
+    return success(
+        {
+            "docId": doc.id,
+            "kbId": kb.id,
+            "fileName": doc.file_name,
+            "note": doc.user_note or "",
+            "contentLength": len(body_text),
+            "imageCount": len(image_map),
+            "status": doc.status,
+            "statusText": "待解析",
+        },
+        "已放进工作空间，正在后台解析",
+    )
+
+
+@router.delete("/workspace/file/{doc_id}")
+async def delete_workspace_file(
+    doc_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """从工作空间移除文件（软删除 + 删分块）"""
+    try:
+        return success(await rag_write_service.delete_document(db, _uid(current_user), doc_id))
+    except Exception as e:
+        return _fail(e)
+
+
+@router.post("/workspace/search")
+async def search_workspace(
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """按自然语言找文件（调试/前端预览用；Agent 走 `workspace_search` 工具）"""
+    try:
+        q = str((data or {}).get("query") or "").strip()
+        limit = int((data or {}).get("limit") or 5)
+        return success(
+            {
+                "query": q,
+                "tokens": workspace_service._tokens(q),
+                "files": await workspace_service.search_files(db, _uid(current_user), q, limit),
+            }
+        )
     except Exception as e:
         return _fail(e)

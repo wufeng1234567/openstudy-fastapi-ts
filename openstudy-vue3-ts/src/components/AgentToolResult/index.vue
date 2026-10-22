@@ -103,6 +103,40 @@
       </div>
     </div>
 
+    <!-- ④ 「AI 翻文件」可视化：它在空间里找到了什么 -->
+    <div v-if="spaceScan" class="at-scan">
+      <div class="at-scan__head">
+        <span class="at-scan__icon" :class="{ 'is-done': spaceScan.done }">
+          <OsIcon :name="spaceScan.done ? 'check-circle' : 'search'" :size="13" />
+        </span>
+        <span class="at-scan__title">
+          {{ spaceScan.done ? '在空间里找到了' : '正在翻你的空间…' }}
+        </span>
+        <span v-if="spaceScan.query" class="at-scan__query">「{{ spaceScan.query }}」</span>
+      </div>
+
+      <ul class="at-scan__list">
+        <li
+          v-for="(f, i) in spaceScan.files"
+          :key="f.docId || i"
+          class="at-scan__file"
+          :class="{ 'is-best': i === 0 && spaceScan.done }"
+        >
+          <span class="at-scan__dot" />
+          <span class="at-scan__name">{{ f.fileName }}</span>
+          <span v-if="f.note" class="at-scan__note">{{ f.note }}</span>
+          <span v-if="i === 0 && spaceScan.done" class="at-scan__tag">最匹配</span>
+        </li>
+      </ul>
+
+      <div v-if="spaceScan.done && spaceScan.count === 0" class="at-scan__empty">
+        空间里没有对得上的文件
+      </div>
+      <div v-else-if="spaceScan.done && spaceScan.summary" class="at-scan__summary">
+        {{ spaceScan.summary }}
+      </div>
+    </div>
+
     <!-- ③ 入参 / 返回（渲染成人能看的形式，不是 JSON） -->
     <div v-if="hasDetails" class="at-details">
       <span class="at-toggle" @click="expanded = !expanded">
@@ -216,6 +250,8 @@ const TOOL_LABELS: Record<string, string> = {
   // 只读检索类：它们没有 action 参数，卡片上只有工具名这一层
   knowledge_search: '知识库检索',
   memory_search: '记忆检索',
+  // 工作空间找文件（workspace_search.py）——2026-10-22
+  workspace_search: '找资料',
   // 用户自定义智能体的管理工具（agent_manage.py）
   agent_manage: '智能体管理',
   // 指挥家「派发专家」的元工具：对用户只该说「请专家帮忙」，不该露出 delegate_task
@@ -541,6 +577,46 @@ function goToBank() {
   if (!b) return
   router.push(`/front/questionPractice/${b.bankId}`)
 }
+
+/* ============================================================
+ * 「AI 翻文件」可视化（workspace_search）
+ * ============================================================ */
+
+/**
+ * 为什么单独做这张卡
+ * ----------------
+ * `workspace_search` 发生时，界面上原本只有一行「找资料 · search」，
+ * 用户（和评委）完全看不到 AI **去了哪里、翻到了什么**。
+ *
+ * 而这件事恰恰是这个功能最值得展示的部分：
+ * 用户说「用那份概率论的资料出题」，AI 不是凭空变出题，
+ * 是真的在他的资料抽屉里翻了一遍、挑中了《概率论与数理统计.pdf》。
+ *
+ * 所以这里把回执渲染成「翻文件」的过程：
+ *   · 运行中：正在翻你的空间…
+ *   · 完成后：在空间里找到了 + 文件清单（第一个标「最匹配」）
+ */
+const spaceScan = computed(() => {
+  if (props.tool !== 'workspace_search') return null
+  const d = props.data
+  const running = props.status === 'running'
+
+  // 运行中还没有 data（工具没跑完），只显示「正在翻」
+  if (running) {
+    const q = props.params?.query || ''
+    return { done: false, query: q, files: [], count: 0, summary: '' }
+  }
+  if (props.status !== 'ok' || !d || typeof d !== 'object') return null
+
+  const files = Array.isArray(d.files) ? d.files : []
+  return {
+    done: true,
+    query: d.query || '',
+    files,
+    count: Number(d.count ?? files.length),
+    summary: typeof d.message === 'string' ? d.message : ''
+  }
+})
 
 
 const downloading = ref(false)
@@ -882,6 +958,136 @@ const downloadArtifact = async () => {
   background: #000;
   border-color: #000;
   color: #fff;
+}
+
+/* ============================================================
+ * 「AI 翻文件」可视化
+ *
+ * 与跳转卡片同一视觉语言（浅底 + 发丝描边 + 12px 圆角），
+ * 但更「过程感」：左侧一条竖线模拟"扫描"，文件一行一行浮出来。
+ * ============================================================ */
+.at-scan {
+  margin-top: 10px;
+  padding: 12px 14px;
+  max-width: 480px;
+  border: 1px solid var(--os-border, #e5e7eb);
+  border-radius: 12px;
+  background: var(--os-bg-subtle, #fafafa);
+}
+
+.at-scan__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--os-text-2, #4b5563);
+  margin-bottom: 9px;
+}
+
+.at-scan__icon {
+  display: inline-flex;
+  color: var(--os-text-3, #9ca3af);
+}
+
+.at-scan__icon.is-done {
+  color: var(--os-success, #16a34a);
+}
+
+.at-scan__query {
+  font-weight: 400;
+  color: var(--os-text-3, #6b7280);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.at-scan__list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 10px;
+  border-left: 1.5px solid var(--os-border, #e5e7eb);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.at-scan__file {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--os-text, #111827);
+  padding: 2px 0;
+  animation: at-scan-in 0.25s ease-out;
+}
+
+@keyframes at-scan-in {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.at-scan__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--os-border, #d1d5db);
+  flex: none;
+}
+
+.at-scan__file.is-best .at-scan__dot {
+  background: var(--os-success, #16a34a);
+}
+
+.at-scan__file.is-best .at-scan__name {
+  font-weight: 600;
+}
+
+.at-scan__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.at-scan__note {
+  font-size: 11.5px;
+  color: var(--os-text-3, #9ca3af);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.at-scan__tag {
+  margin-left: auto;
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--os-success, #16a34a);
+  background: var(--os-success-bg, #ecfdf5);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.at-scan__empty {
+  margin-top: 8px;
+  padding-left: 12px;
+  font-size: 12px;
+  color: var(--os-text-3, #9ca3af);
+}
+
+.at-scan__summary {
+  margin-top: 9px;
+  padding-left: 12px;
+  font-size: 11.5px;
+  color: var(--os-text-3, #6b7280);
+  line-height: 1.6;
 }
 
 .at-artifact-main {

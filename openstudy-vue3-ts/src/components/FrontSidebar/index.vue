@@ -429,6 +429,27 @@ const featureItems: NavItem[] = [
     match: '/front/studio',
     cacheKey: 'studio',
     requiresLogin: true
+  },
+  /*
+   * 「我的空间」（2026-10-22）
+   * ------------------------
+   * 产品定位：用户的「资料抽屉」。把自己觉得会用到的资料丢进来，
+   * 之后在对话里说「用我空间里那份概率论的资料出题」，AI 会自己去找，
+   * 不需要用户手动选文件。
+   *
+   * 为什么放在「题库搭建」下面而不是「我的学习」里：
+   *   「我的学习」是**已经沉淀成学习成果**的东西（题库、笔记、错题）；
+   *   空间是**原始资料**，是它们的上游。放在一起会让用户分不清
+   *   「我上传的资料」和「我做出来的题」。
+   */
+  {
+    key: 'workspace',
+    label: '我的空间',
+    icon: 'folder',
+    to: '/front/workspace',
+    match: '/front/workspace',
+    cacheKey: 'workspace',
+    requiresLogin: true
   }
   /*
    * 以下两个模块本系统暂时不需要，隐藏（路由与页面都还在，解开注释即可恢复）：

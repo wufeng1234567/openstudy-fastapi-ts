@@ -126,6 +126,10 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
             "question_manage",
             "question_flag_manage",
             "knowledge_search",
+            # 2026-10-22 工作空间：用户说「用我空间里那份 XX 资料出题」时，
+            # 先用 workspace_search 把**文件**找出来（返回 docId），
+            # 再用 knowledge_search 读正文。少这一步，模型只能瞎猜是哪份。
+            "workspace_search",
             # 2026-10-20：导出是**题库域**最常用的收尾动作（「出完题，导出来发给我」）。
             # 不挂在这里的话，用户必须换到「通用」角色才导得出，而路由是按关键词走的 ——
             # 消息里只要带「题库」二字就会被路由到 bank 角色，于是「导出题库」永远够不着导出工具。
@@ -209,6 +213,9 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
             "knowledge_search",
             "knowledge_ingest",
             "knowledge_base_manage",
+            # 2026-10-22：知识库专家也要能「先找文件再处理」——
+            # 用户说「把我空间里那份资料存进知识库」时用得上
+            "workspace_search",
         ),
         capability=(
             "Knowledge bases (collections of the user's own material). Use it when the "

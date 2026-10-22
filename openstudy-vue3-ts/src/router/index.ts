@@ -457,6 +457,14 @@ export const constantRoutes: AppRouteRecordRaw[] = [
           }
         ]
       },
+      // 我的空间（2026-10-22）：用户的「资料抽屉」
+      {
+        path: 'workspace',
+        name: 'FrontWorkspace',
+        component: () => import('@/views/front/workspace/index.vue'),
+        meta: { title: '我的空间', layout: 'front', requiresLogin: true },
+        hidden: true
+      },
       // studio 题库搭建模块（直接进入 create 页面）
       {
         path: 'studio',
