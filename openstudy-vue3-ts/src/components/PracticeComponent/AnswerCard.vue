@@ -240,32 +240,30 @@
     </div>
 
     <!--
-      练习态底行：**只剩一句静默状态说明，没有按钮**（2026-10-22）
+      练习态底行：**常态什么都不显示**（2026-10-22 再次收紧）
       ==================================================================
-      用户：「进度是不是一直会自动保存 如果会的话 那就把暂存按钮去掉吧
-             彻底搞成静默自动保存用户刷题记录」
+      演进：
+        ① 最初：「进度已自动保存」+「暂存」按钮；
+        ② 上一版：删掉按钮，只留「进度自动保存」+ 对勾图标；
+        ③ 现在：**这句说明也去掉**（用户：「这个不用说明」）。
 
-      确认：确实是**一直**自动保存 —— 每次作答 / 判分 / 换题 / 换波后都会
-      静默写一次 localStorage（`draftSaver.schedule()`，600ms 节流），
-      离开页面时还会 `flush()` 立刻落盘一次。
-      所以那个「暂存」按钮纯属多余：它做的 `flush()` 与自动保存是**同一个写盘动作**
-      （见 `utils/practiceDraft.ts` 的 `createDraftSaver`），
-      用户不需要为了"保住进度"去点任何东西。
+      为什么说明确实多余：
+        · 自动保存是**默认行为**，不是需要用户知道的功能。
+          就像手机输入法不会在屏幕上写"我在自动保存草稿"——
+          没有意外时，任何提示都是噪音；
+        · 它占着面板最底一行，而这一行原本是「暂存」按钮的位置，
+          用户每次看答题卡都会扫到一句和自己无关的话。
 
-      那为什么还留这一行字？因为**静默不能等于无感**：
-        · 正常态：一句极浅的「进度自动保存」，让人心里有底，且完全不抢注意力；
-        · 失败态：必须显性提示（配额满 / 隐私模式 / 无痕窗口），
-                  否则用户以为存上了、关掉页面才发现全丢 —— 这是真实的数据损失。
-      所以：常态是 11.5px 的 `--os-text-4`，失败才升到警示色 + 图标。
+      但**失败态必须保留**（这是唯一的例外，不是"说明"而是"警报"）：
+        配额满 / 隐私模式 / 无痕窗口下写盘会失败。此时如果仍然什么都不说，
+        用户会以为存上了，关掉页面才发现全丢 —— 这是真实的数据损失，
+        属于"必须打断用户"的那一类信息。
+        所以这一行现在**只在失败时出现**，正常时整行不渲染（连分隔线都没有）。
     -->
-    <div class="card-footer" v-else-if="!isExamMode">
-      <span class="draft-hint is-failed" v-if="draftState === 'failed'">
+    <div class="card-footer" v-else-if="!isExamMode && draftState === 'failed'">
+      <span class="draft-hint is-failed">
         <el-icon><WarningFilled /></el-icon>
         自动保存失败，进度可能丢失
-      </span>
-      <span class="draft-hint" v-else>
-        <el-icon><CircleCheck /></el-icon>
-        进度自动保存
       </span>
     </div>
   </div>
@@ -274,7 +272,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import type { PropType } from 'vue'
-import { Grid, List, Sort, Timer, CircleCheck, WarningFilled } from '@element-plus/icons-vue'
+import { Grid, List, Sort, Timer, WarningFilled } from '@element-plus/icons-vue'
 
 interface QuestionItem {
   id?: number | string
@@ -531,14 +529,12 @@ const getOverviewItemClass = (index: number) => {
 /*
  * 底部状态行
  * ----------------------------------------------------------------------------
- * 原先是「左侧状态说明 + 右侧暂存按钮」，`justify-content: space-between` 把
- * 文字和按钮拉到两端（用户 2026-10-18：「位置不对，要改到底部去」）。
+ * 现在**只在两种情况出现**，其余时候整行不存在（连分隔线都不渲染）：
+ *   · 考试态  → 「中途离开不会暂停计时」+ 交卷按钮；
+ *   · 保存失败 → 「自动保存失败，进度可能丢失」。
  *
- * 2026-10-22 删掉手动暂存按钮后，这里**只剩一行字**，所以：
- *   · `space-between` → `flex-start`：单个子元素在 space-between 下也会贴左，
- *     但语义上留着一个"两端对齐"会误导后来者以为右边还有东西；
- *   · 常态提示降到 11.5px + `--os-text-4`：它现在是纯背景信息，
- *     存在感要低于题号与统计，只求"扫一眼有底"，不求被读到。
+ * 练习态的「进度自动保存」已经去掉（2026-10-22 用户：「这个不用说明」）——
+ * 自动保存是默认行为，没有意外时任何提示都是噪音。
  */
 .card-footer {
   display: flex;
@@ -553,9 +549,9 @@ const getOverviewItemClass = (index: number) => {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 11.5px;
+    font-size: 12px;
     line-height: 1.5;
-    color: var(--os-text-4, #9ca3af);
+    color: var(--os-text-3, #6b7280);
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -566,29 +562,18 @@ const getOverviewItemClass = (index: number) => {
      *
      * 静默保存的前提是"它真的在保存"。一旦写盘失败（配额满 / 隐私模式 /
      * 无痕窗口），用户如果还以为存上了，关掉页面就是真实的数据丢失。
-     * 所以失败态从"背景信息"升级为"警示"：危险色 + 图标 + 更实的字重。
+     * 所以失败态用危险色 + 图标 + 更实的字重，把它从"提示"升级为"警报"。
      */
     &.is-failed {
-      font-size: 12px;
       font-weight: 500;
       color: var(--el-color-danger, #f56c6c);
-    }
-
-    /*
-     * 考试态提示：比普通 draft-hint 更"实"一些
-     *
-     * 练习态的提示是「进度自动保存」—— 中性、可忽略。
-     * 考试态这句「中途离开不会暂停计时」是**用户需要知道的事实**，
-     * 所以给图标 + 略深的字色，让它有存在感但不喧宾夺主（不用警告色）。
-     */
-    &.is-exam {
-      font-size: 12px;
-      color: var(--os-text-3, #6b7280);
     }
   }
 
   :deep(.el-button) {
     flex: none;
+    /* 考试态：提示占满左侧，交卷按钮贴右 */
+    margin-left: auto;
   }
 }
 
