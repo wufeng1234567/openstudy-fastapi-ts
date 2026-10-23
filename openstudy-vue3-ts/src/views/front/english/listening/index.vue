@@ -101,7 +101,8 @@
 
             <!-- 当前单词卡片 -->
             <div class="word-card">
-                <div class="word-chinese">{{ currentWord?.chinese || '' }}</div>
+                <!-- ⚠️ 后端字段是 `translation` / `word`，不是 `chinese` / `english`（2026-10-23 修） -->
+                <div class="word-chinese">{{ currentWord?.translation || '' }}</div>
                 <div class="word-phonetic" v-if="currentWord?.phonetic">{{ currentWord.phonetic }}</div>
 
                 <!-- 播放按钮 -->
@@ -153,7 +154,7 @@
                         <div class="feedback-content">
                             <div class="correct-answer">
                                 <span class="label">正确答案：</span>
-                                <span class="value">{{ currentWord.english }}</span>
+                                <span class="value">{{ currentWord.word }}</span>
                             </div>
                             <div class="your-answer" v-if="!isCorrect">
                                 <span class="label">你的答案：</span>
@@ -161,7 +162,7 @@
                             </div>
                             <div class="word-meaning">
                                 <span class="label">释义：</span>
-                                <span class="value">{{ currentWord.chinese }}</span>
+                                <span class="value">{{ currentWord.translation }}</span>
                             </div>
                         </div>
                     </div>
@@ -204,13 +205,11 @@ import {
     CircleCheck, CircleClose
 } from '@element-plus/icons-vue'
 import { listFrontWordBooks } from '@/api/wordBooks/wordBooks'
-import { listWords } from '@/api/words/words'
-import useUserStore from '@/store/modules/user'
+import { listAllWords } from '@/api/words/words'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
 
 const router = useRouter()
-const userStore = useUserStore()
 const cacheStore = useFrontPageCacheStore()
 
 // 状态
@@ -280,14 +279,16 @@ const progressPercent = computed(() => {
 // 加载词库选项
 const loadBookOptions = async () => {
     try {
-        const userId = userStore.id
-        const response = await listFrontWordBooks({
-            pageNum: 1,
-            pageSize: 100,
-            userId
-        })
+        // ⚠️ 2026-10-23 修「加词库 422」：
+        //    原来传 `pageSize: 100` 给 `/wordBooks/wordBooks/list` —— 那个接口上限就是 100，
+        //    刚好卡在边界上没问题；但换个写法（>100）立刻 422。
+        //    这里统一用 `listFrontWordBooks`（内部按 100 翻页取全量），不再依赖调用方算上限。
+        //    另外 `userId` 后端不收（归属由登录态决定），传了也会被忽略，已去掉。
+        const response = await listFrontWordBooks()
         if (response.code === 200) {
             bookOptions.value = response.rows || []
+        } else {
+            ElMessage.error(response.msg || '加载词库失败')
         }
     } catch (error) {
         console.error('加载词库失败:', error)
@@ -301,13 +302,16 @@ const onBookChange = async (bookId) => {
     loadingWords.value = true
     try {
         // ⚠️ 后端参数名是 `bookId`
-        const response = await listWords({
-            pageNum: 1,
-            pageSize: 1000,
-            bookId: bookId
-        })
+        //
+        // ⚠️ 2026-10-23 修「加载单词 422」：
+        //    原来 `pageSize: 1000`，后端 `le=200` 是硬上限 → FastAPI 直接 HTTP 422，
+        //    单词永远加载不出来（页面只会显示"该词库还没有单词"）。
+        //    听写要练的就是**整本书**，所以用 listAllWords（内部翻页取完）。
+        const response = await listAllWords({ bookId: bookId })
         if (response.code === 200) {
             wordList.value = response.rows || []
+        } else {
+            ElMessage.error(response.msg || '加载单词失败')
         }
     } catch (error) {
         console.error('加载单词失败:', error)
@@ -535,7 +539,7 @@ const playCurrentWord = async () => {
     // 停止当前播放
     stopSpeaking()
 
-    const chinese = currentWord.value.chinese
+    const chinese = currentWord.value.translation
     if (!chinese) {
         ElMessage.warning('该单词没有中文释义')
         return
@@ -616,7 +620,7 @@ const submitAnswer = () => {
 
     if (!currentWord.value) return
 
-    const correctEnglish = currentWord.value.english.toLowerCase().trim()
+    const correctEnglish = String(currentWord.value.word || '').toLowerCase().trim()
     const userEnglish = userAnswer.value.toLowerCase().trim()
 
     // 判断是否正确（忽略大小写和前后空格）

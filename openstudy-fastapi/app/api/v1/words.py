@@ -102,7 +102,12 @@ async def list_word_books(
     count_query = select(func.count()).select_from(query.subquery())
     total = await db.scalar(count_query)
 
-    query = query.order_by(WordBook.create_time.desc())
+    # ⚠️ 必须带第二排序键（2026-10-23 修）：
+    #    只按 `create_time` 排序时，**同一秒建的两本书顺序不稳定** ——
+    #    PostgreSQL 对并列行不保证返回顺序，翻页时同一行可能在第 1 页和第 2 页
+    #    各出现一次，另有一行永远翻不到。
+    #    加 `book_id` 兜底后排序是全序，翻页结果可复现。
+    query = query.order_by(WordBook.create_time.desc(), WordBook.book_id.desc())
     query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
 
     result = await db.execute(query)
@@ -278,7 +283,9 @@ async def list_words(
     count_query = select(func.count()).select_from(query.subquery())
     total = await db.scalar(count_query)
 
-    query = query.order_by(Word.sort_order.asc())
+    # ⚠️ 同上：`sort_order` 可能重复（批量导入时都是 0），必须有第二排序键兜底，
+    #    否则翻页会出现「同一词出现在两页」或「有的词永远看不到」。
+    query = query.order_by(Word.sort_order.asc(), Word.word_id.asc())
     query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
 
     result = await db.execute(query)

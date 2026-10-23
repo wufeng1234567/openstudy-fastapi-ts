@@ -174,7 +174,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import { getWordBooks } from '@/api/wordBooks/wordBooks'
-import { listWords, addWords, updateWords, delWords } from '@/api/words/words'
+import { listAllWords, addWords, updateWords, delWords } from '@/api/words/words'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
 import OcrRecognizer from '@/components/OcrRecognizer/index.vue'
 
@@ -251,7 +251,13 @@ async function load() {
   loading.value = true
   try {
     // ⚠️ 后端参数名是 `bookId`（不是 wordBookId）
-    const res: any = await listWords({ bookId: bookId.value, pageNum: 1, pageSize: 1000 })
+    //
+    // ⚠️ 2026-10-23 修「系统接口 422 异常」：
+    //    这里原来是 `listWords({ bookId, pageNum: 1, pageSize: 1000 })`，
+    //    而后端是 `pageSize: int = Query(50, ge=1, le=200)` —— 1000 超上限，
+    //    FastAPI 直接返 HTTP 422，整页读不出单词。
+    //    详情页需要「这本书的全部单词」，所以改用 listAllWords（内部按 200 翻页取完）。
+    const res: any = await listAllWords({ bookId: bookId.value })
     if (res.code === 200) {
       words.value = res.rows || []
     } else {

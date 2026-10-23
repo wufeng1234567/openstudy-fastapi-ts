@@ -165,7 +165,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import {
-  listWordBooks,
+  listFrontWordBooks,
   addWordBooks,
   updateWordBooks,
   delWordBooks
@@ -210,7 +210,11 @@ const myBooks = computed(() => filteredBooks.value.filter((b) => b.isDefault !==
 async function load() {
   loading.value = true
   try {
-    const res: any = await listWordBooks({ pageNum: 1, pageSize: 200 })
+    // ⚠️ 2026-10-23 修「读取词库失败：422」：
+    //    原来写的是 `listWordBooks({ pageSize: 200 })`，但后端 `le=100` 是硬上限，
+    //    FastAPI 直接返回 HTTP 422（不是 `{code:500}` 信封）。
+    //    这个页面要的是「全部词库」，正确做法是翻页取完 —— 用 listFrontWordBooks。
+    const res: any = await listFrontWordBooks()
     // 注意：分页接口返回的是 `rows`（不是 data）
     if (res.code === 200) {
       books.value = res.rows || []

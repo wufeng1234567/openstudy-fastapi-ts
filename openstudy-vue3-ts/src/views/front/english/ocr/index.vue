@@ -95,9 +95,14 @@
                         <span>词库预览</span>
                     </div>
                     <div class="preview-stats">
-                        <span class="stat-word"><OsIcon name="pen-line" :size="13" /> {{ bookPreview.wordCount }}</span>
-                        <span class="stat-phrase"><OsIcon name="book" :size="13" /> {{ bookPreview.phraseCount }}</span>
-                        <span class="stat-sentence"><OsIcon name="message-circle" :size="13" /> {{ bookPreview.sentenceCount }}</span>
+                        <!--
+                          ⚠️ 2026-10-23 修：原来分「单词 / 词组 / 句子」三项统计，
+                             但 `words` 表没有 wordType 列，后两项恒为 0 —— 等于展示两个假数字。
+                             现在只保留一个真实的「共 N 条」。
+                        -->
+                        <span class="stat-word">
+                            <OsIcon name="book" :size="13" /> 共 {{ bookPreview.total }} 条
+                        </span>
                     </div>
                     <el-icon class="preview-arrow" :class="{ expanded: showPreview }">
                         <ArrowDown />
@@ -106,11 +111,16 @@
 
                 <div class="preview-content" v-show="showPreview">
                     <div class="preview-list">
-                        <div v-for="item in bookPreview.items" :key="item.id" class="preview-item"
-                            :class="getTypeClass(item.wordType)">
-                            <span class="item-type">{{ getTypeIcon(item.wordType) }}</span>
-                            <span class="item-english">{{ item.english }}</span>
-                            <span class="item-chinese">{{ item.chinese }}</span>
+                        <!--
+                          ⚠️ 2026-10-23 修：这里原来读 `item.wordType / item.english / item.chinese`，
+                             但 `loadBookPreview` 拿的是 `/words/words/list` 的原始行 —— 字段是
+                             `word / translation`，且**没有 wordType 列**。结果是预览列表每行都是空白
+                             （英文、中文全 undefined），三个统计里两个恒为 0。
+                             现在按后端真实字段渲染；`wordType` 整个概念已去掉（表里没有）。
+                        -->
+                        <div v-for="item in bookPreview.items" :key="item.wordId" class="preview-item">
+                            <span class="item-english">{{ item.word }}</span>
+                            <span class="item-chinese">{{ item.translation }}</span>
                         </div>
                     </div>
                     <div class="preview-footer">
@@ -159,19 +169,7 @@
                 <div v-for="(word, index) in recognizedList" :key="index" class="word-card">
                     <div class="card-header">
                         <span class="word-index">{{ index + 1 }}</span>
-                        <div class="header-center">
-                            <span class="word-type-badge" :title="getTypeText(word.wordType)">
-                                <el-icon v-if="word.wordType === 'word'">
-                                    <Document />
-                                </el-icon>
-                                <el-icon v-else-if="word.wordType === 'phrase'">
-                                    <Collection />
-                                </el-icon>
-                                <el-icon v-else>
-                                    <ChatLineSquare />
-                                </el-icon>
-                            </span>
-                        </div>
+                        <div class="header-center"></div>
                         <el-button type="danger" size="small" text @click="removeWord(index)">
                             <el-icon>
                                 <Delete />
@@ -184,14 +182,17 @@
                         <el-input v-model="word.chinese" placeholder="中文释义" class="word-input" clearable />
                         <el-input v-model="word.phonetic" placeholder="音标（可选）" class="word-input" clearable />
 
+                        <!--
+                          ⚠️ 2026-10-23 修：这里原来绑 `word.bookId`，但识别结果里写的是
+                             `wordBookId`（三处创建处都是），所以这个下拉永远是空值 ——
+                             单个「添加」只能靠全局 `selectedBookId` 兜底。
+                             现在统一绑 `word.bookId`，并在下面两处创建时一起改名。
+
+                          ⚠️ 另一个 `el-select v-model="word.wordType"`（单词/词组/句子）已删除：
+                             `words` 表**没有 wordType 列**，选了也存不进去 —— 那是个假控件。
+                        -->
                         <el-select v-model="word.bookId" placeholder="选择词库" size="small" style="width: 100%">
                             <el-option v-for="book in bookOptions" :key="book.bookId" :label="book.bookName" :value="book.bookId" />
-                        </el-select>
-
-                        <el-select v-model="word.wordType" placeholder="类型" size="small" style="width: 100%">
-                            <el-option label="单词" value="word" />
-                            <el-option label="词组" value="phrase" />
-                            <el-option label="句子" value="sentence" />
                         </el-select>
                     </div>
 
@@ -278,14 +279,13 @@ import { ElMessage } from 'element-plus'
 import {
     ArrowLeft, Camera, Search, Picture, Delete, Plus, Loading,
     RefreshRight, ZoomIn, ZoomOut, Refresh, Close, Switch, Download,
-    Document, Collection, ChatLineSquare, View, ArrowDown, ArrowRight,
+    View, ArrowDown, ArrowRight,
     DocumentCopy
 } from '@element-plus/icons-vue'
 import { getToken } from '@/utils/auth'
 import { ocrRecognize, ocrRecognizeStream } from '@/api/english/ocr'
-import { listWordBooks } from '@/api/wordBooks/wordBooks'
+import { listFrontWordBooks } from '@/api/wordBooks/wordBooks'
 import { addWords, batchAddWords, listWords } from '@/api/words/words'
-import useUserStore from '@/store/modules/user'
 
 import { Cropper } from 'vue-advanced-cropper'
 import 'vue-advanced-cropper/dist/style.css'
@@ -296,10 +296,10 @@ import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
 
 
 const router = useRouter()
-const userStore = useUserStore()
 
-// 当前用户ID
-const currentUserId = computed(() => userStore.id)
+// ⚠️ `currentUserId` 已删除（2026-10-23）：
+//    它只被用来给 `/wordBooks/wordBooks/list` 传 `userId`，而后端**不接受**这个参数
+//    （词书归属由登录态决定），传了也被忽略。现在改走 listFrontWordBooks，这个变量没有调用方了。
 
 // 上传配置
 const baseUrl = import.meta.env.VITE_APP_BASE_API
@@ -344,21 +344,8 @@ const cacheStore = useFrontPageCacheStore()
 const showPreview = ref(true)
 const bookPreview = ref({
     total: 0,
-    wordCount: 0,
-    phraseCount: 0,
-    sentenceCount: 0,
     items: []
 })
-
-// 获取类型显示文本
-const getTypeText = (type) => {
-    const map = {
-        'word': '单词',
-        'phrase': '词组',
-        'sentence': '句子'
-    }
-    return map[type] || '单词'
-}
 
 // 编辑器相关
 const editorVisible = ref(false)
@@ -789,13 +776,15 @@ const parseOcrResultFromWords = (words) => {
     }
 
     // 映射为统一的词条格式
+    // ⚠️ `bookId`（不是 wordBookId）：模板里的下拉绑的是 `word.bookId`，
+    //    填成 wordBookId 会让每张卡片的词库选择框都是空的。
+    // ⚠️ `wordType` 已去掉：`words` 表没有这一列。
     recognizedList.value = words.map((item, index) => ({
         id: index,
         english: item.english || '',
         chinese: item.chinese || '',
         phonetic: item.phonetic || '',
-        wordType: item.type || 'word',
-        wordBookId: selectedBookId.value,  // 默认使用全局选择的词库
+        bookId: selectedBookId.value,  // 默认使用全局选择的词库
         adding: false
     }))
 
@@ -819,7 +808,7 @@ const parseOcrResult = (text) => {
                 chinese: item.chinese || '',
                 phonetic: item.phonetic || '',
                 adding: false,
-                wordBookId: selectedBookId.value
+                bookId: selectedBookId.value
             }))
             console.log('JSON 解析成功，词条数:', recognizedList.value.length)
             return
@@ -882,7 +871,7 @@ const parseOcrResult = (text) => {
                 chinese,
                 phonetic,
                 adding: false,
-                wordBookId: selectedBookId.value
+                bookId: selectedBookId.value
             })
         }
     })
@@ -994,11 +983,10 @@ const addAllWords = async () => {
 // 获取当前用户的所有词库，用于下拉选择
 const loadBookOptions = async () => {
     try {
-        const response = await listWordBooks({
-            pageNum: 1,
-            pageSize: 100,
-            userId: currentUserId.value
-        })
+        // ⚠️ 2026-10-23 修：原来传 `pageSize: 100` 撞在后端上限（le=100）边界上，
+        //    且多传了一个后端不认的 `userId`（归属由登录态决定）。
+        //    改用 listFrontWordBooks（内部按 100 翻页取全量），词库多于 100 本也不会漏。
+        const response = await listFrontWordBooks()
         if (response.code === 200) {
             bookOptions.value = response.rows || []
             if (bookOptions.value.length > 0) {
@@ -1006,6 +994,8 @@ const loadBookOptions = async () => {
                 // 加载第一个词库的预览
                 loadBookPreview(selectedBookId.value)
             }
+        } else {
+            ElMessage.error(response.msg || '加载词库失败')
         }
     } catch (error) {
         console.error('加载词库失败:', error)
@@ -1031,34 +1021,16 @@ const loadBookPreview = async (bookId) => {
         })
         if (response.code === 200) {
             const items = response.rows || []
-
             // ⚠️ `words` 表没有 wordType 列，原先按类型分三项统计永远是 0。
             //    这里只报总数 —— 数字必须是真的。
             bookPreview.value = {
                 total: response.total || 0,
-                wordCount: response.total || 0,
-                phraseCount: 0,
-                sentenceCount: 0,
                 items: items.slice(0, 5) // 只显示前5条
             }
         }
     } catch (error) {
         console.error('加载词库预览失败:', error)
     }
-}
-
-// 获取类型图标
-const getTypeIcon = (type) => {
-    if (type === 1) return '单词'
-    if (type === 2) return '词组'
-    return '句子'
-}
-
-// 获取类型样式类
-const getTypeClass = (type) => {
-    if (type === 1) return 'type-word'
-    if (type === 2) return 'type-phrase'
-    return 'type-sentence'
 }
 
 // 跳转到词库管理

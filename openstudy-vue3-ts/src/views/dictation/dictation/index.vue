@@ -360,7 +360,7 @@
 defineOptions({ name: 'Dictation' })
 import { ref, reactive, computed, toRefs, getCurrentInstance, onMounted, watch, nextTick } from 'vue'
 import useUserStore from '@/store/modules/user'
-import { listWordBooks, getWordBooks, delWordBooks, addWordBooks, updateWordBooks } from "@/api/wordBooks/wordBooks"
+import { listWordBooks, listFrontWordBooks, getWordBooks, delWordBooks, addWordBooks, updateWordBooks } from "@/api/wordBooks/wordBooks"
 import { listWords, getWords, delWords, addWords, updateWords, batchAddWords } from "@/api/words/words"
 import { ocrRecognize } from "@/api/ocr/ocr"
 import DictationPractice from "@/components/Dictation/DictationPractice.vue"
@@ -1089,21 +1089,21 @@ function stopTouch() {
 
 // ========== 辅助方法 ==========
 async function initWordBookOptions() {
-  const query = {
-    pageNum: 1,
-    pageSize: 1000,
-    userId: currentUserId.value
-  }
-  
+  // ⚠️ 2026-10-23 修「系统接口 422 异常」：
+  //    后端 `GET /wordBooks/wordBooks/list` 的 `pageSize` 上限是 **100**
+  //    （`Query(10, ge=1, le=100)`），原来这里传 1000 → FastAPI 直接 HTTP 422，
+  //    整个「单词本」下拉框永远是空的。
+  //    现在改用 listFrontWordBooks（内部按 100 翻页取全量）。
+  //    另外 `userId` 后端不收（归属由登录态决定），已去掉。
   try {
-    const response = await listWordBooks(query)
-    wordBookOptions.value = response.rows
-    
-    if (wordBookOptions.value.length > 0 && !wordQuery.value.wordBookId) {
-      wordQuery.value.wordBookId = wordBookOptions.value[0].id
+    const response = await listFrontWordBooks()
+    wordBookOptions.value = response.rows || []
+
+    if (wordBookOptions.value.length > 0 && !wordQuery.value.bookId) {
+      wordQuery.value.bookId = wordBookOptions.value[0].bookId
     }
-    
-    return response.rows
+
+    return wordBookOptions.value
   } catch (error) {
     console.error('获取单词本选项失败:', error)
     wordBookOptions.value = []

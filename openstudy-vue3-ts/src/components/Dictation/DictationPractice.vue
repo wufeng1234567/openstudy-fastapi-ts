@@ -197,7 +197,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
-import { listWords } from "@/api/words/words"
+import { listWords, listAllWords } from "@/api/words/words"
 
 const props = defineProps({
   wordBookOptions: {
@@ -241,10 +241,12 @@ const dictationForm = reactive({
 })
 
 // 单词本单词分页相关数据
+// ⚠️ 键名必须是 `bookId`（后端认的参数名）。原来是 `wordBookId`，
+//    后端读不到就当没传，返回的是「我所有词书」的单词。
 const wordBookWordsQuery = reactive({
   pageNum: 1,
   pageSize: 10,
-  wordBookId: null
+  bookId: null
 })
 const wordBookWordsTotal = ref(0)
 
@@ -275,10 +277,13 @@ function loadWordBookWords() {
     return
   }
   
-  console.log('加载单词本数据，查询参数:', {...wordBookWordsQuery, wordBookId: dictationForm.wordBookId});
+  console.log('加载单词本数据，查询参数:', {...wordBookWordsQuery, bookId: dictationForm.wordBookId});
 
   // 设置查询参数
-  wordBookWordsQuery.wordBookId = dictationForm.wordBookId
+  // ⚠️ 2026-10-23 修：后端参数名是 `bookId`（不是 wordBookId）。
+  //    传 wordBookId 会被 FastAPI 静默忽略 → 返回「我所有词书」的单词，
+  //    听写会练到别的词书里去。
+  wordBookWordsQuery.bookId = dictationForm.wordBookId
 
   // 加载分页数据用于表格显示
   listWords(wordBookWordsQuery).then(response => {
@@ -300,14 +305,15 @@ function loadWordBookWords() {
 
   // 同时加载完整的单词列表用于播放（仅在单词本改变时加载）
   if (arguments.length === 0) { // 只有在非分页调用时才加载完整列表
+    // ⚠️ 2026-10-23 修：原来写 `pageSize: 1000`，但后端 `le=200` 是硬上限，
+    //    超了会被 FastAPI 直接 HTTP 422（整本词书加载失败）。
+    //    现在改用 listAllWords：内部按 200 翻页把整本词书取完，词书再大也不截断。
     const fullListQuery = {
-      wordBookId: dictationForm.wordBookId,
-      pageSize: 1000, // 假设单词本不会超过1000个单词
-      pageNum: 1
+      bookId: dictationForm.wordBookId
     };
     console.log('加载完整单词列表，查询参数:', fullListQuery);
     
-    listWords(fullListQuery).then(response => {
+    listAllWords(fullListQuery).then(response => {
       console.log('完整单词列表加载完成，数据:', response);
       fullWordBookWords.value = response.rows
       // 更新总单词数为当前单词本的实际单词数
