@@ -216,7 +216,7 @@ import {
 import { listFrontWordBooks } from '@/api/wordBooks/wordBooks'
 import { listAllWords } from '@/api/words/words'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { speak, stopSpeak, speakReasonText, warmUpVoices } from '@/utils/speech'
+import { speak, stopSpeak, speakReasonText, warmUpVoices, unlockAudio } from '@/utils/speech'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
 
 const router = useRouter()
@@ -798,6 +798,20 @@ onMounted(() => {
     // 否则 Chrome 会以 not-allowed 拒绝发声）。
     warmUpVoices()
     loadBookOptions()
+
+    /*
+     * 第一次交互时解锁 Web Audio 通道。
+     * 服务端合成的声音走 Web Audio 播放（`<audio>` 在本环境会卡在
+     * readyState 0，见 utils/speech.ts 顶部注释），而 AudioContext
+     * 必须在用户手势里 resume 才不会一直被挂起。
+     */
+    const unlock = () => {
+        unlockAudio()
+        window.removeEventListener('pointerdown', unlock)
+        window.removeEventListener('keydown', unlock)
+    }
+    window.addEventListener('pointerdown', unlock)
+    window.addEventListener('keydown', unlock)
 })
 
 // 监听页面离开

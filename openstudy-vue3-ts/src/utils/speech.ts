@@ -75,8 +75,8 @@ let speakToken = 0
  */
 let browserTtsBroken = false
 
-/** 服务端合成结果的 URL 缓存：同一个词不用反复请求 */
-const serverAudioCache = new Map<string, string>()
+/** 服务端合成结果缓存：同一个词不用反复请求（存解码后的 AudioBuffer） */
+const serverAudioCache = new Map<string, AudioBuffer>()
 
 function synth(): SpeechSynthesis | undefined {
   if (typeof window === 'undefined') return undefined
@@ -149,6 +149,48 @@ export function loadVoices(timeoutMs = 1500): Promise<SpeechSynthesisVoice[]> {
   })
 
   return voicesPromise
+}
+
+/** 当前正在播放的 Web Audio 源节点 */
+let serverSource: AudioBufferSourceNode | null = null
+/** 复用的 AudioContext（每个页面一个就够，频繁 new 会耗尽句柄） */
+let audioCtx: AudioContext | null = null
+/** 每次服务端播放自增，用于作废过期回调 */
+let serverToken = 0
+
+function getAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null
+  const AC = (window as any).AudioContext || (window as any).webkitAudioContext
+  if (!AC) return null
+  if (!audioCtx || audioCtx.state === 'closed') {
+    audioCtx = new AC()
+  }
+  return audioCtx
+}
+
+/**
+ * 解锁音频通道（Web Audio）。
+ *
+ * 应当在用户第一次交互时调用（click / keydown），把 AudioContext 从
+ * `suspended` 拉成 `running`。之后由 `speakViaServer` 播放就不再需要
+ * 用户手势 —— 否则每次播放都可能被自动播放策略拦下。
+ *
+ * 幂等：重复调用无副作用。
+ */
+export function unlockAudio(): void {
+  const ctx = getAudioContext()
+  if (!ctx) return
+  if (ctx.state === 'suspended') {
+    try { ctx.resume() } catch { /* 忽略 */ }
+  }
+  // 播一个极短的静音，确保通道真的被"暖"过
+  try {
+    const buffer = ctx.createBuffer(1, 1, 22050)
+    const src = ctx.createBufferSource()
+    src.buffer = buffer
+    src.connect(ctx.destination)
+    src.start(0)
+  } catch { /* 忽略 */ }
 }
 
 /**
@@ -469,25 +511,36 @@ export function stopSpeak(): void {
  * ============================================================================
  * 背景见 `app/api/v1/tts.py` 顶部注释：部分 Windows 环境下浏览器
  * `speechSynthesis` 会静默失效（有语音列表、speaking 变 true，但不出声）。
- * 这时改用后端 `/tts/synthize` 合成 mp3，再用 `Audio` 播放。
+ * 这时改用后端 `/tts/synthize` 合成 mp3 再播放。
  *
- * 用 `Audio` 而不是 Web Audio：audio 元素自带播放控制与缓冲，
- * 且实测在本机 `Audio.play()` 正常。
+ * ⚠️ 2026-10-23 关键实测：不能用 `<audio>` 元素，要用 **Web Audio**。
+ *
+ *    在出问题的机器上量了同一份 mp3 字节，两条路径表现完全不同：
+ *
+ *      · `new Audio(blobUrl).play()` —— **坏的**
+ *          readyState 永远是 0，currentTime 永远是 0，
+ *          play() 返回的 Promise 永不 resolve，只抛一个 `stalled` 事件；
+ *          `onended` 因此永不触发（播放状态机根本没起来）。
+ *      · `AudioContext.decodeAudioData(...)` + `BufferSource` —— **好的**
+ *          同一份字节能解码出 duration=1.224s、peak=0.68、rms=0.082 的波形。
+ *
+ *    也就是说该环境下"媒体元素管线"和"speechSynthesis"一起坏了，
+ *    只有 Web Audio 的软件解码/混音通道是通的。
+ *    所以这里全程用 Web Audio：fetch -> arrayBuffer -> decodeAudioData -> 播放。
+ *    好处是还能精确知道"何时播完"（用 source.onended + 时长兜底）。
  */
 
-/** 当前正在播放的服务端音频 */
-let serverAudio: HTMLAudioElement | null = null
-/** 每次服务端播放自增，用于作废过期回调 */
-let serverToken = 0
+/** 当前正在播放的 Web Audio 源节点（`serverSource` 等量在文件上方声明） */
 
 function stopServerAudio(): void {
   serverToken++
-  if (serverAudio) {
+  if (serverSource) {
     try {
-      serverAudio.pause()
-      serverAudio.src = ''
+      serverSource.onended = null
+      serverSource.stop()
+      serverSource.disconnect()
     } catch { /* 忽略 */ }
-    serverAudio = null
+    serverSource = null
   }
 }
 
@@ -503,10 +556,10 @@ function ttsUrl(text: string, lang: string, rate: number): string {
 }
 
 /**
- * 用服务端合成的声音朗读。
+ * 用服务端合成的声音朗读（Web Audio 路径）。
  *
- * 音频带鉴权：后端接口要 token，而 `<audio src>` 无法带 Header，
- * 所以这里用 fetch 拿 blob 再喂给 Audio（顺带享受浏览器缓存）。
+ * 音频带鉴权：后端接口要 token，`<audio src>` 无法带 Header，
+ * 所以用 fetch 取 arrayBuffer，再交给 decodeAudioData。
  */
 async function speakViaServer(
   text: string,
@@ -515,17 +568,16 @@ async function speakViaServer(
   volume: number,
   token: number
 ): Promise<SpeakResult> {
-  if (typeof window === 'undefined' || typeof window.Audio !== 'function') {
-    return { ok: false, reason: 'unsupported' }
-  }
+  const ctx = getAudioContext()
+  if (!ctx) return { ok: false, reason: 'unsupported' }
 
   const url = ttsUrl(text, lang, rate)
   const cacheKey = url
 
   try {
-    let objectUrl = serverAudioCache.get(cacheKey)
+    let buffer = serverAudioCache.get(cacheKey)
 
-    if (!objectUrl) {
+    if (!buffer) {
       const { getToken } = await import('@/utils/auth')
       const tk = getToken()
       const headers: Record<string, string> = {}
@@ -544,20 +596,26 @@ async function speakViaServer(
         return { ok: false, reason: 'failed', error: msg || `HTTP ${res.status}` }
       }
 
-      const blob = await res.blob()
-      if (!blob.size) return { ok: false, reason: 'failed', error: '音频为空' }
+      const ab = await res.arrayBuffer()
+      if (!ab.byteLength) return { ok: false, reason: 'failed', error: '音频为空' }
 
-      objectUrl = URL.createObjectURL(blob)
-      // 只在成功时缓存，且限制条目数，避免长词库无限增长
+      /*
+       * 解码：这一步在实测中能成功，而 `<audio>` 会卡在 readyState 0。
+       * decodeAudioData 会消费（detach）传入的 ArrayBuffer，失败重试时
+       * 需要新副本，所以这里传 `ab.slice(0)`。
+       */
+      try {
+        buffer = await ctx.decodeAudioData(ab.slice(0))
+      } catch (e: any) {
+        return { ok: false, reason: 'failed', error: '音频解码失败: ' + (e?.message || e) }
+      }
+
+      // 只在成功时缓存，并限制条目数，避免长词库无限增长
       if (serverAudioCache.size > 300) {
         const firstKey = serverAudioCache.keys().next().value
-        if (firstKey) {
-          const old = serverAudioCache.get(firstKey)
-          if (old) URL.revokeObjectURL(old)
-          serverAudioCache.delete(firstKey)
-        }
+        if (firstKey) serverAudioCache.delete(firstKey)
       }
-      serverAudioCache.set(cacheKey, objectUrl)
+      serverAudioCache.set(cacheKey, buffer)
     }
 
     if (token !== speakToken) return { ok: false, reason: 'interrupted' }
@@ -565,53 +623,47 @@ async function speakViaServer(
     stopServerAudio()
     const myServerToken = ++serverToken
 
+    // 有些浏览器在用户手势外创建的 ctx 是 suspended，播放前 resume
+    if (ctx.state === 'suspended') {
+      try { await ctx.resume() } catch { /* 忽略 */ }
+    }
+
     return await new Promise<SpeakResult>((resolve) => {
-      const audio = new window.Audio(objectUrl as string)
-      audio.volume = Math.max(0, Math.min(1, volume))
-      serverAudio = audio
+      let settled = false
+      const source = ctx.createBufferSource()
+      source.buffer = buffer as AudioBuffer
 
-      const cleanup = () => {
-        if (serverAudio === audio) serverAudio = null
+      const gain = ctx.createGain()
+      gain.gain.value = Math.max(0, Math.min(1, volume))
+      source.connect(gain)
+      gain.connect(ctx.destination)
+
+      serverSource = source
+
+      const finish = (result: SpeakResult) => {
+        if (settled) return
+        settled = true
+        try { source.onended = null } catch { /* 忽略 */ }
+        try { source.disconnect() } catch { /* 忽略 */ }
+        try { gain.disconnect() } catch { /* 忽略 */ }
+        if (serverSource === source) serverSource = null
+        resolve(result)
       }
 
-      audio.onended = () => { cleanup(); resolve({ ok: true }) }
-      audio.onerror = () => {
-        cleanup()
-        resolve({ ok: false, reason: 'failed', error: '音频解码失败' })
-      }
+      // 正常播完
+      source.onended = () => finish({ ok: true })
 
-      // 解码/缓冲卡住时的兜底，避免 Promise 永不 resolve
+      // 兜底：onended 偶发不派发时，按时长 + 缓冲后收尾
+      const ms = Math.ceil(((buffer as AudioBuffer).duration + 0.8) * 1000)
       const guard = setTimeout(() => {
-        if (myServerToken === serverToken && audio.paused === false) {
-          // 还在播（只是事件没来），视为正常收尾
-          cleanup()
-          resolve({ ok: true })
-        }
-      }, 20000)
+        if (myServerToken === serverToken) finish({ ok: true })
+      }, Math.min(60000, Math.max(1500, ms)))
 
-      audio.play().then(() => {
-        // 播放在正常进行；等 onended
-      }).catch((e: any) => {
+      try {
+        source.start(0)
+      } catch (e: any) {
         clearTimeout(guard)
-        cleanup()
-        const name = e?.name || ''
-        resolve({
-          ok: false,
-          reason: name === 'NotAllowedError' ? 'not-allowed' : 'failed',
-          error: e?.message
-        })
-      })
-
-      // 正常结束时清掉 guard
-      const origEnd = audio.onended
-      audio.onended = (ev) => {
-        clearTimeout(guard)
-        if (origEnd) (origEnd as any).call(audio, ev)
-      }
-      const origErr = audio.onerror
-      audio.onerror = (ev) => {
-        clearTimeout(guard)
-        if (origErr) (origErr as any).call(audio, ev)
+        finish({ ok: false, reason: 'failed', error: e?.message || String(e) })
       }
     })
   } catch (e: any) {
