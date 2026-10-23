@@ -82,7 +82,7 @@
             <div class="select-label">选择词库</div>
             <el-select v-model="selectedBookId" placeholder="请选择词库" size="large" style="width: 100%"
                 @change="onBookChange">
-                <el-option v-for="book in bookOptions" :key="book.id" :label="book.name" :value="book.id" />
+                <el-option v-for="book in bookOptions" :key="book.bookId" :label="book.bookName" :value="book.bookId" />
             </el-select>
 
             <!-- 词库预览面板 -->
@@ -184,8 +184,8 @@
                         <el-input v-model="word.chinese" placeholder="中文释义" class="word-input" clearable />
                         <el-input v-model="word.phonetic" placeholder="音标（可选）" class="word-input" clearable />
 
-                        <el-select v-model="word.wordBookId" placeholder="选择词库" size="small" style="width: 100%">
-                            <el-option v-for="book in bookOptions" :key="book.id" :label="book.name" :value="book.id" />
+                        <el-select v-model="word.bookId" placeholder="选择词库" size="small" style="width: 100%">
+                            <el-option v-for="book in bookOptions" :key="book.bookId" :label="book.bookName" :value="book.bookId" />
                         </el-select>
 
                         <el-select v-model="word.wordType" placeholder="类型" size="small" style="width: 100%">
@@ -909,7 +909,7 @@ const removeWord = (index) => {
 
 // 添加单个单词到词库
 const addSingleWord = async (word, index) => {
-    if (!word.wordBookId) {
+    if (!word.bookId && !selectedBookId.value) {
         ElMessage.warning('请先选择词库')
         return
     }
@@ -921,15 +921,13 @@ const addSingleWord = async (word, index) => {
 
     word.adding = true
 
-    const typeMap = { 'word': 1, 'phrase': 2, 'sentence': 3 }
-    const wordType = typeMap[word.wordType] || 1
-
+    // ⚠️ 后端契约：`bookId / word / translation`。
+    //    `words` 表**没有 wordType 列**，所以不再传它（原代码传了也存不进去）。
     const wordData = {
-        wordBookId: word.wordBookId,
-        english: word.english,
-        chinese: word.chinese,
-        phonetic: word.phonetic || '',
-        wordType: wordType
+        bookId: word.bookId || selectedBookId.value,
+        word: word.english,
+        translation: word.chinese,
+        phonetic: word.phonetic || ''
     }
 
     try {
@@ -963,24 +961,21 @@ const addAllWords = async () => {
 
     const invalidWords = recognizedList.value.filter(w => !w.english || !w.chinese)
     if (invalidWords.length > 0) {
-        ElMessage.warning(`有 ${invalidWords.length} 个词条缺少英文或中文，请补充完整`)
+        ElMessage.warning(`有 ${invalidWords.length} 个词条缺少单词或释义，请补充完整`)
         return
     }
 
     batchAdding.value = true
 
-    // 类型映射：前端字符串 → 后端数字
-    const typeMap = { 'word': 1, 'phrase': 2, 'sentence': 3 }
+    // ⚠️ 后端契约：`batchAddWords(bookId, words[])`（不再传 wordType）
     const batchData = recognizedList.value.map(word => ({
-        wordBookId: selectedBookId.value,
-        english: word.english,
-        chinese: word.chinese,
-        phonetic: word.phonetic || '',
-        wordType: typeMap[word.wordType] || 1
+        word: word.english,
+        translation: word.chinese,
+        phonetic: word.phonetic || ''
     }))
 
     try {
-        const response = await batchAddWords(batchData)
+        const response = await batchAddWords(selectedBookId.value, batchData)
         if (response.code === 200) {
             ElMessage.success(`成功添加 ${batchData.length} 个词条`)
             recognizedList.value = []
@@ -1007,7 +1002,7 @@ const loadBookOptions = async () => {
         if (response.code === 200) {
             bookOptions.value = response.rows || []
             if (bookOptions.value.length > 0) {
-                selectedBookId.value = bookOptions.value[0].id
+                selectedBookId.value = bookOptions.value[0].bookId
                 // 加载第一个词库的预览
                 loadBookPreview(selectedBookId.value)
             }
@@ -1028,27 +1023,22 @@ const onBookChange = (bookId) => {
 // 加载词库预览数据
 const loadBookPreview = async (bookId) => {
     try {
+        // ⚠️ 后端参数名是 `bookId`
         const response = await listWords({
-            wordBookId: bookId,
+            bookId: bookId,
             pageNum: 1,
             pageSize: 10
         })
         if (response.code === 200) {
             const items = response.rows || []
 
-            // 统计各类型数量（需要获取全部数据统计，这里简化处理）
-            let wordCount = 0, phraseCount = 0, sentenceCount = 0
-            items.forEach(item => {
-                if (item.wordType === 1) wordCount++
-                else if (item.wordType === 2) phraseCount++
-                else if (item.wordType === 3) sentenceCount++
-            })
-
+            // ⚠️ `words` 表没有 wordType 列，原先按类型分三项统计永远是 0。
+            //    这里只报总数 —— 数字必须是真的。
             bookPreview.value = {
                 total: response.total || 0,
-                wordCount,
-                phraseCount,
-                sentenceCount,
+                wordCount: response.total || 0,
+                phraseCount: 0,
+                sentenceCount: 0,
                 items: items.slice(0, 5) // 只显示前5条
             }
         }

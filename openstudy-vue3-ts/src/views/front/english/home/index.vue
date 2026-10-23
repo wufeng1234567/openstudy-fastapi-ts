@@ -1,66 +1,49 @@
+<!--
+  英语学习 · 首页
+  ============================================================================
+  2026-10-23 重做。原来的首页把「听力」「阅读」标成「开发中」并禁用，
+  但那两个页面实际上是有实现的（听力 963 行 / OCR 1443 行）——
+  只是被隐藏了。既然现在要把英语功能放出来，就必须先让入口是真的能点的。
+
+  本页只做一件事：**把四个能力讲清楚、点得动**。
+  不自造统计数字（词库当前可能还是空的），也不写"开发中"。
+-->
 <template>
-  <div class="english-home os-page">
-    <p class="page-desc">轻量级英语学习工具箱：识词、词库、听写与阅读，边学边攒。</p>
+  <div class="en-home">
+    <header class="en-head">
+      <h1 class="en-head__title">英语学习</h1>
+      <p class="en-head__desc">
+        背单词、听写、阅读，工具都在这儿。查词可以用拍照识词，生词直接存进词库。
+      </p>
+    </header>
 
-    <div class="tool-grid">
-      <!-- 拍照识词 -->
-      <button type="button" class="tool-card" @click="goToOcr">
-        <span class="tool-icon">
-          <el-icon :size="20"><Camera /></el-icon>
+    <div class="en-grid">
+      <button
+        v-for="t in tools"
+        :key="t.key"
+        type="button"
+        class="en-card"
+        @click="go(t)"
+      >
+        <span class="en-card__icon">
+          <OsIcon :name="t.icon" :size="20" />
         </span>
-        <span class="tool-content">
-          <span class="tool-title">拍照识词</span>
-          <span class="tool-desc">拍照或上传图片，快速识别单词</span>
+        <span class="en-card__main">
+          <span class="en-card__title">{{ t.title }}</span>
+          <span class="en-card__desc">{{ t.desc }}</span>
         </span>
-        <span class="tool-arrow">
-          <el-icon><ArrowRight /></el-icon>
+        <span class="en-card__arrow">
+          <OsIcon name="arrow-right" :size="15" />
         </span>
       </button>
+    </div>
 
-      <!-- 我的词库 -->
-      <button type="button" class="tool-card" @click="goToVocabulary">
-        <span class="tool-icon">
-          <el-icon :size="20"><Notebook /></el-icon>
-        </span>
-        <span class="tool-content">
-          <span class="tool-title">我的词库</span>
-          <span class="tool-desc">管理你的单词本和词组库</span>
-        </span>
-        <span class="tool-arrow">
-          <el-icon><ArrowRight /></el-icon>
-        </span>
-      </button>
-
-      <!-- 听力练习 -->
-      <button type="button" class="tool-card" @click="goToListListening">
-        <span class="tool-icon">
-          <el-icon :size="20"><Headset /></el-icon>
-        </span>
-        <span class="tool-content">
-          <span class="tool-title">
-            听力练习
-            <el-tag size="small" type="info">开发中</el-tag>
-          </span>
-          <span class="tool-desc">单词听写，提升听力水平</span>
-        </span>
-        <span class="tool-arrow">
-          <el-icon><ArrowRight /></el-icon>
-        </span>
-      </button>
-
-      <!-- 阅读练习（暂未开放） -->
-      <div class="tool-card is-disabled">
-        <span class="tool-icon">
-          <el-icon :size="20"><Reading /></el-icon>
-        </span>
-        <span class="tool-content">
-          <span class="tool-title">
-            阅读练习
-            <el-tag size="small" type="info">开发中</el-tag>
-          </span>
-          <span class="tool-desc">短文阅读，积累生词</span>
-        </span>
-      </div>
+    <div class="en-tip">
+      <OsIcon name="lightbulb" :size="14" />
+      <span>
+        生词攒够一批后，可以让 AI 用它们出一套题 —— 在「智能对话」里说
+        「用我的 xx 词库出几道词汇题」就行。
+      </span>
     </div>
   </div>
 </template>
@@ -68,95 +51,126 @@
 <script setup lang="ts">
 defineOptions({ name: 'FrontEnglishHome' })
 import { useRouter } from 'vue-router'
-import { Camera, Notebook, Headset, Reading, ArrowRight } from '@element-plus/icons-vue'
+import OsIcon from '@/components/OsIcon/index.vue'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
 
 const router = useRouter()
 const cacheStore = useFrontPageCacheStore()
 
-const goToOcr = () => {
-  cacheStore.setLastVisited('english', 'ocr')
-  router.push('/front/english/ocr')
-}
+/**
+ * 四个入口 —— 全部**真实可用**，不再有「开发中」。
+ *
+ * 「阅读练习」此前页面是空壳（只有一句"开发中"）。这次没有把它做成假的入口，
+ * 而是用它真正该做的事：**用 AI 生成一篇阅读理解** —— 后端
+ * `/ai/generate/reading/stream` 早就存在（scene=reading），
+ * 只是一直没有前端页面接它。见 `views/front/english/reading/index.vue`。
+ */
+const tools = [
+  {
+    key: 'ocr',
+    title: '拍照识词',
+    desc: '拍张照片，把上面的生词抓下来存进词库',
+    icon: 'sparkles',
+    to: '/front/english/ocr'
+  },
+  {
+    key: 'vocabulary',
+    title: '我的词库',
+    desc: '整理要背的单词，支持朗读和例句',
+    icon: 'book',
+    to: '/front/english/vocabulary'
+  },
+  {
+    key: 'listening',
+    title: '单词听写',
+    desc: '听发音写单词，错了会重来',
+    icon: 'megaphone',
+    to: '/front/english/listening'
+  },
+  {
+    key: 'reading',
+    title: '阅读练习',
+    desc: '让 AI 按你的水平生成短文 + 题目',
+    icon: 'file-text',
+    to: '/front/english/reading'
+  }
+]
 
-const goToVocabulary = () => {
-  cacheStore.setLastVisited('english', 'vocabulary')
-  router.push('/front/english/vocabulary')
-}
-
-const goToListListening = () => {
-  cacheStore.setLastVisited('english', 'listening')
-  router.push('/front/english/listening')
+function go(t: { key: string; to: string }) {
+  cacheStore.setLastVisited('english', t.key)
+  router.push(t.to)
 }
 </script>
 
 <style scoped lang="scss">
-.english-home {
-  max-width: 1000px;
+.en-home {
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 28px 20px 60px;
 }
 
-.page-desc {
-  margin: 0 0 18px;
+.en-head {
+  margin-bottom: 22px;
+}
+
+.en-head__title {
+  margin: 0 0 7px;
+  font-size: 25px;
+  font-weight: 700;
+  color: var(--os-text, #111827);
+}
+
+.en-head__desc {
+  margin: 0;
+  max-width: 560px;
   font-size: 13px;
-  line-height: 1.6;
-  color: var(--os-text-3);
+  line-height: 1.65;
+  color: var(--os-text-3, #6b7280);
 }
 
-.tool-grid {
+.en-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
-.tool-card {
+.en-card {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 13px;
   width: 100%;
-  padding: 16px 18px;
-  border: 1px solid var(--os-border-soft);
-  border-radius: var(--os-radius);
+  padding: 16px 17px;
+  border: 1px solid var(--os-border, #e5e7eb);
+  border-radius: 12px;
   background: #fff;
-  color: inherit;
   font-family: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out),
-    border-color var(--ds-duration-fast) var(--ds-ease-in-out);
+  transition: all 0.15s;
 
   &:hover {
-    background: var(--dsw-static-neutral-bluish-50);
-    border-color: var(--os-border-strong);
+    border-color: var(--os-border-strong, #d1d5db);
+    background: var(--os-bg-subtle, #fafafa);
   }
 
-  &:hover .tool-arrow {
+  &:hover .en-card__arrow {
     opacity: 1;
   }
 }
 
-.tool-card.is-disabled {
-  cursor: not-allowed;
-  opacity: 0.62;
-
-  &:hover {
-    background: #fff;
-    border-color: var(--os-border-soft);
-  }
-}
-
-.tool-icon {
+.en-card__icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   flex: none;
-  border-radius: 10px;
-  background: var(--dsw-static-neutral-bluish-75);
-  color: var(--os-text-2);
+  border-radius: 11px;
+  background: var(--os-bg-subtle, #f3f4f6);
+  color: var(--os-text-2, #4b5563);
 }
 
-.tool-content {
+.en-card__main {
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -164,31 +178,46 @@ const goToListListening = () => {
   min-width: 0;
 }
 
-.tool-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--os-text);
+.en-card__title {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--os-text, #111827);
 }
 
-.tool-desc {
+.en-card__desc {
   font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--os-text-3);
+  line-height: 1.55;
+  color: var(--os-text-3, #6b7280);
 }
 
-.tool-arrow {
+.en-card__arrow {
   flex: none;
-  color: var(--os-text-4);
+  color: var(--os-text-4, #9ca3af);
   opacity: 0;
-  transition: opacity var(--ds-duration-fast) var(--ds-ease-in-out);
+  transition: opacity 0.15s;
+}
+
+.en-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 22px;
+  padding: 12px 15px;
+  border-radius: 10px;
+  background: var(--os-bg-subtle, #fafafa);
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--os-text-3, #6b7280);
+
+  :deep(svg) {
+    flex: none;
+    margin-top: 1px;
+  }
 }
 
 @media (max-width: 720px) {
-  .tool-grid {
-    grid-template-columns: minmax(0, 1fr);
+  .en-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

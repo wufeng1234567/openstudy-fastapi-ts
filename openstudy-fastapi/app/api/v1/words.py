@@ -16,6 +16,11 @@ from datetime import datetime
 router = APIRouter()
 
 
+def _uid(current_user: dict) -> int:
+    """从登录态取用户 id（与仓库其它模块同一口径）"""
+    return int((current_user or {}).get("user_id") or 0)
+
+
 def format_word_book(book):
     return {
         "bookId": book.book_id,
@@ -24,8 +29,38 @@ def format_word_book(book):
         "wordCount": book.word_count,
         "coverImage": book.cover_image,
         "status": book.status,
+        # `isDefault`：系统预置词书（user_id 为空）= 所有登录用户只读可见。
+        # 前端据此显示「默认」徽标，并隐藏改名/删除入口。
+        "isDefault": 1 if getattr(book, "user_id", None) is None else 0,
         "createTime": book.create_time.isoformat() if book.create_time else None,
     }
+
+
+async def _get_owned_book(db: AsyncSession, book_id: int, uid: int, *, for_write: bool = False):
+    """取词书并校验归属。
+
+    · 自己的书：可读可写；
+    · 系统预置书（`user_id IS NULL`）：**只读**，`for_write=True` 时拒绝；
+    · 别人的书：一律拒绝（不区分"不存在"以防探测）。
+
+    返回 `(book, err)`，`err` 非空时直接把它 return 给调用方。
+    """
+    book = (
+        await db.execute(
+            select(WordBook).where(WordBook.book_id == book_id, WordBook.del_flag == "0")
+        )
+    ).scalar_one_or_none()
+
+    if book is None:
+        return None, error("词书不存在")
+    if book.user_id is None:
+        if for_write:
+            return None, error("系统预置词书不能修改")
+        return book, None
+    if int(book.user_id) != int(uid):
+        # 刻意不说"这是别人的" —— 避免被用来探测别人有哪些词书
+        return None, error("词书不存在")
+    return book, None
 
 
 def format_word(word):
@@ -50,7 +85,17 @@ async def list_word_books(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    query = select(WordBook).where(WordBook.del_flag == "0")
+    """列出「我的词书」+「系统预置词书」。
+
+    ⚠️ 2026-10-23 修：原来无条件列出**全站所有词书** ——
+       用户 A 能看到用户 B 的词书，还能点进去。
+       现在只返回自己的（`user_id = 我`）和系统预置的（`user_id IS NULL`）。
+    """
+    uid = _uid(current_user)
+    query = select(WordBook).where(
+        WordBook.del_flag == "0",
+        (WordBook.user_id == uid) | (WordBook.user_id.is_(None)),
+    )
     if bookName:
         query = query.where(WordBook.book_name.ilike(f"%{bookName}%"))
 
@@ -69,8 +114,18 @@ async def list_word_books(
 @router.get("/wordBooks/wordBooks/all")
 async def list_all_word_books(
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
-    query = select(WordBook).where(WordBook.del_flag == "0").order_by(WordBook.create_time.desc())
+    """不分页的「我的 + 预置」词书列表（下拉框用）"""
+    uid = _uid(current_user)
+    query = (
+        select(WordBook)
+        .where(
+            WordBook.del_flag == "0",
+            (WordBook.user_id == uid) | (WordBook.user_id.is_(None)),
+        )
+        .order_by(WordBook.create_time.desc())
+    )
     result = await db.execute(query)
     books = list(result.scalars().all())
     return success([format_word_book(b) for b in books])
@@ -80,12 +135,11 @@ async def list_all_word_books(
 async def get_word_book(
     book_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
-    query = select(WordBook).where(WordBook.book_id == book_id, WordBook.del_flag == "0")
-    result = await db.execute(query)
-    book = result.scalar_one_or_none()
-    if not book:
-        return error("词书不存在")
+    book, err = await _get_owned_book(db, book_id, _uid(current_user))
+    if err:
+        return err
     return success(format_word_book(book))
 
 
@@ -97,7 +151,9 @@ async def create_word_book(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    """新建词书 —— 归属当前登录用户"""
     book = WordBook(
+        user_id=_uid(current_user),
         book_name=bookName,
         book_description=bookDescription,
         cover_image=coverImage,
@@ -117,11 +173,9 @@ async def update_word_book(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    query = select(WordBook).where(WordBook.book_id == bookId, WordBook.del_flag == "0")
-    result = await db.execute(query)
-    book = result.scalar_one_or_none()
-    if not book:
-        return error("词书不存在")
+    book, err = await _get_owned_book(db, bookId, _uid(current_user), for_write=True)
+    if err:
+        return err
 
     if bookName is not None:
         book.book_name = bookName
@@ -143,36 +197,42 @@ async def delete_word_books(
 ):
     """批量软删词书（`del_flag='2'`）
 
-    ⚠️ 这里 `current_user` **拿到了却没用**，是一个**已知的、有意暂时保留**的缺口：
-    `word_books` 没有归属列（实测列：book_id / book_name / book_description /
-    word_count / cover_image / status / del_flag / create_time，没有 user_id），
-    所以任何登录用户拿一串 id 就能软删任意词书。
+    ⚠️ 2026-10-23 已修（此前是一个**已知缺口**）：
+       原注释写着「`word_books` 没有归属列，任何登录用户拿一串 id 就能软删任意词书」，
+       并说明不能靠 403 硬堵（会把普通用户删自己单词本的功能改瘫）。
 
-    2026-09-22 实测**不能**按「非管理员一律 403」来堵 —— 那会把**用户端功能改瘫**：
-      · `src/views/dictation/dictation/index.vue:25,41` 的「删除单词本」按钮是
-        `v-hasRole="['common']"`（**普通用户**），`:603` 调的就是本端点；
-      · 菜单实测：`sys_menu` 2006/2018（单词本 / 单词练习）都授给了角色 `common`，
-        且 2010「单词本删除」= `wordBooks:wordBooks:remove` 也在 `common` 名下；
-      · 真实用户（uid=105 `user1`）的角色就是 `common` —— 加 403 他立刻删不掉自己的单词本。
-    ⚠️ **不要**改成「非管理员一律 403」，**也不要**按权限点 `wordBooks:wordBooks:remove`
-    做后端闸门 —— 后者对本例是**假修**：`common` 本来就持有该权限点（见上），闸门等于
-    没闸，只挡得住没有该权限的账号。「词书是全局资源、只有管理员能删」这条也没有依据：
-    删词书本来就是普通用户功能（team-lead 2026-09-22 复核后同意不改）。
-      · 角色实测（`sys_user_role` + `sys_role`）：全库**只有 uid=1（admin）是 `admin`**，
-        uid=2/103/104/105/106 **全是 `common`**，而用户自己的真实数据在 uid=105（user1）
-        —— 所以「只有管理员能删」= 把除 admin 外的所有账号（含用户平时用的那个）锁在门外。
-      · 现状实测（**别把这个洞写成「用户数据正在被删」**）：v2 里英语模块是**空的** ——
-        `word_books` **0 行**、`words` **0 行**（对照 `courses` 10 行），
-        即目前没有任何真实词书可伤；`addWordBooks` 与它同属一个开放端点，建了才谈得上删。
-    保持原状，等定下后续两条路：
-      ① **给 `word_books` 加归属列**（`user_id`），用户只列/只删自己的 —— 真正的修法，
-         但属于**加功能**：已按 information_schema 实测该表只有 8 列且无归属列，
-         所以这是**真要改表**（+ 前端只列自己的），建议和题库那条线一起排；
-      ② **先只给词书加恢复入口** —— 它本来就已经是软删（`del_flag='2'`），加恢复最便宜，
-         而且与「用户端删除全部逻辑删除、一键恢复」的总方向一致。
+       真正的修法就是当时列的第 ① 条 —— **给表加 `user_id` 归属列**
+       （`deploy/db-init/15_english_wordbook_owner.sql`）。
+       现在按归属过滤：只能删自己的书；系统预置书（`user_id IS NULL`）不可删。
+
+       这既堵住了越权，又没有误伤普通用户 —— 因为判据从「你是不是管理员」
+       换成了「这是不是你的书」，与角色无关。
     """
-    ids = [int(id) for id in book_ids.split(",")]
-    stmt = update(WordBook).where(WordBook.book_id.in_(ids)).values(del_flag="2")
+    uid = _uid(current_user)
+    ids = []
+    for raw in str(book_ids).split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            ids.append(int(raw))
+        except ValueError:
+            return error(f"词书 id 不合法：{raw}")
+
+    if not ids:
+        return error("请提供要删除的词书 id")
+
+    # 只软删「属于当前用户」的那些；别人的 / 系统预置的 id 会被静默跳过。
+    # 刻意不逐个报错：否则这个端点就成了「探测别人有哪些词书」的工具。
+    stmt = (
+        update(WordBook)
+        .where(
+            WordBook.book_id.in_(ids),
+            WordBook.del_flag == "0",
+            WordBook.user_id == uid,
+        )
+        .values(del_flag="2")
+    )
     await db.execute(stmt)
     return success()
 
@@ -186,9 +246,32 @@ async def list_words(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    query = select(Word)
+    """列出单词。
+
+    ⚠️ 归属校验：传了 `bookId` 就先确认这本书是「我的」或「系统预置的」，
+       否则任何人改个 id 就能翻别人的生词本。不传 bookId 时，
+       只返回属于「我的书」和「预置书」的单词（不列全站）。
+    """
+    uid = _uid(current_user)
+
+    # 允许访问的词书 id 集合：我的 + 系统预置
+    allowed_rows = (
+        await db.execute(
+            select(WordBook.book_id).where(
+                WordBook.del_flag == "0",
+                (WordBook.user_id == uid) | (WordBook.user_id.is_(None)),
+            )
+        )
+    ).scalars().all()
+    allowed_ids = list(allowed_rows)
+
     if bookId:
-        query = query.where(Word.book_id == bookId)
+        if int(bookId) not in allowed_ids:
+            return error("词书不存在")
+        query = select(Word).where(Word.book_id == bookId)
+    else:
+        query = select(Word).where(Word.book_id.in_(allowed_ids))
+
     if word:
         query = query.where(Word.word.ilike(f"%{word}%"))
 
@@ -204,6 +287,24 @@ async def list_words(
     return paginate(total, [format_word(w) for w in words])
 
 
+async def _recount_book(db: AsyncSession, book_id: int) -> None:
+    """重算词书单词数
+
+    ⚠️ 2026-10-23 修：原来批量导入写的是 `count + len(word_list)`，
+       而 `count` 是**插入之前**统计的，前面又已经 `db.add` 过这批词 ——
+       于是每导一次，数字就在原有基础上多叠一遍（导 10 个词，计数可能变 20）。
+
+       现在统一"以库里实际条数为准"：单条与批量、新增与删除都调这一个函数，
+       不存在两套算法漂移的可能。
+    """
+    cnt = await db.scalar(
+        select(func.count()).select_from(Word).where(Word.book_id == book_id)
+    )
+    await db.execute(
+        update(WordBook).where(WordBook.book_id == book_id).values(word_count=int(cnt or 0))
+    )
+
+
 @router.post("/words/words")
 async def create_word(
     bookId: int = Query(...),
@@ -216,6 +317,10 @@ async def create_word(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    book, err = await _get_owned_book(db, bookId, _uid(current_user), for_write=True)
+    if err:
+        return err
+
     word_obj = Word(
         book_id=bookId,
         word=word,
@@ -228,15 +333,7 @@ async def create_word(
     db.add(word_obj)
     await db.flush()
 
-    # 更新词书单词数
-    book_query = select(WordBook).where(WordBook.book_id == bookId)
-    book_result = await db.execute(book_query)
-    book = book_result.scalar_one_or_none()
-    if book:
-        count_query = select(func.count()).where(Word.book_id == bookId)
-        count = await db.scalar(count_query)
-        book.word_count = count
-
+    await _recount_book(db, bookId)
     return success(format_word(word_obj))
 
 
@@ -252,11 +349,16 @@ async def update_word(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    query = select(Word).where(Word.word_id == wordId)
-    result = await db.execute(query)
-    word_obj = result.scalar_one_or_none()
+    word_obj = (
+        await db.execute(select(Word).where(Word.word_id == wordId))
+    ).scalar_one_or_none()
     if not word_obj:
         return error("单词不存在")
+
+    # 单词的归属由它所属的词书决定
+    _book, err = await _get_owned_book(db, word_obj.book_id, _uid(current_user), for_write=True)
+    if err:
+        return err
 
     if word is not None:
         word_obj.word = word
@@ -280,9 +382,45 @@ async def delete_words(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    ids = [int(id) for id in word_ids.split(",")]
-    stmt = delete(Word).where(Word.word_id.in_(ids))
-    await db.execute(stmt)
+    """删除单词（只能删自己词书里的）"""
+    uid = _uid(current_user)
+    ids = []
+    for raw in str(word_ids).split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            ids.append(int(raw))
+        except ValueError:
+            return error(f"单词 id 不合法：{raw}")
+    if not ids:
+        return error("请提供要删除的单词 id")
+
+    # 只删「所属词书属于我」的单词。别人的 / 预置书里的静默跳过。
+    my_book_ids = (
+        await db.execute(
+            select(WordBook.book_id).where(WordBook.user_id == uid)
+        )
+    ).scalars().all()
+    my_ids = list(my_book_ids)
+    if not my_ids:
+        return success()
+
+    touched_books = (
+        await db.execute(
+            select(Word.book_id).where(
+                Word.word_id.in_(ids), Word.book_id.in_(my_ids)
+            )
+        )
+    ).scalars().all()
+
+    await db.execute(
+        delete(Word).where(Word.word_id.in_(ids), Word.book_id.in_(my_ids))
+    )
+
+    for bid in set(touched_books):
+        await _recount_book(db, bid)
+
     return success()
 
 
@@ -295,29 +433,38 @@ async def batch_create_words(
 ):
     """批量添加单词"""
     import json
-    word_list = json.loads(words)
+
+    book, err = await _get_owned_book(db, bookId, _uid(current_user), for_write=True)
+    if err:
+        return err
+
+    try:
+        word_list = json.loads(words)
+    except json.JSONDecodeError:
+        return error("单词列表不是合法 JSON")
+    if not isinstance(word_list, list):
+        return error("单词列表必须是数组")
 
     for item in word_list:
-        word_obj = Word(
-            book_id=bookId,
-            word=item.get("word", ""),
-            phonetic=item.get("phonetic"),
-            translation=item.get("translation"),
-            example=item.get("example"),
-            audio_url=item.get("audioUrl"),
-            sort_order=item.get("sortOrder", 0),
+        if not isinstance(item, dict):
+            continue
+        word_text = str(item.get("word") or "").strip()
+        if not word_text:
+            continue
+        db.add(
+            Word(
+                book_id=bookId,
+                word=word_text,
+                phonetic=item.get("phonetic"),
+                translation=item.get("translation"),
+                example=item.get("example"),
+                audio_url=item.get("audioUrl"),
+                sort_order=item.get("sortOrder", 0),
+            )
         )
-        db.add(word_obj)
 
-    # 更新词书单词数
-    book_query = select(WordBook).where(WordBook.book_id == bookId)
-    book_result = await db.execute(book_query)
-    book = book_result.scalar_one_or_none()
-    if book:
-        count_query = select(func.count()).where(Word.book_id == bookId)
-        count = await db.scalar(count_query)
-        book.word_count = count + len(word_list)
-
+    await db.flush()
+    await _recount_book(db, bookId)
     return success()
 
 

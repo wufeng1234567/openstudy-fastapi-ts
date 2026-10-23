@@ -455,12 +455,41 @@ const featureItems: NavItem[] = [
     match: '/front/workspace',
     cacheKey: 'workspace',
     requiresLogin: true
+  },
+  /*
+   * 「英语学习」（2026-10-23 重新开放）
+   * --------------------------------
+   * 之前因为「系统只做题库」被注释隐藏。现在按用户要求放出来 ——
+   * 只聚焦题库确实单调，英语是第二个真实的练习场景。
+   *
+   * 放出来之前已经把这条链路上的**真实 bug 修完**（不是只把注释解开）：
+   *   · 词书接口打的是不存在的 `/front/list` 路由，被 catch_all 兜成空列表；
+   *   · 前端读 `book.id / word.english / word.chinese`，后端给的是
+   *     `bookId / word / translation` —— 点卡片会跳到 `/undefined`；
+   *   · 还有个 `isMastered` 概念，后端表里压根没有这一列。
+   * 详见各页面顶部的说明。
+   *
+   * 子项直接用二级菜单，让用户一眼看到四个能力，而不是进去再找。
+   */
+  {
+    key: 'english',
+    label: '英语学习',
+    icon: 'languages',
+    to: '/front/english/home',
+    match: '/front/english',
+    cacheKey: 'english',
+    requiresLogin: true,
+    children: [
+      { label: '首页', to: '/front/english/home', cacheKey: 'home' },
+      { label: '拍照识词', to: '/front/english/ocr', cacheKey: 'ocr' },
+      { label: '我的词库', to: '/front/english/vocabulary', cacheKey: 'vocabulary' },
+      { label: '单词听写', to: '/front/english/listening', cacheKey: 'listening' },
+      { label: '阅读练习', to: '/front/english/reading', cacheKey: 'reading' }
+    ]
   }
   /*
-   * 以下两个模块本系统暂时不需要，隐藏（路由与页面都还在，解开注释即可恢复）：
+   * 「实用工具」本系统暂时不需要，隐藏（路由与页面都还在，解开注释即可恢复）：
    *
-   * { key: 'english', label: '英语学习', icon: 'languages', to: '/front/english/home',
-   *   match: '/front/english', cacheKey: 'english', children: [...] },
    * { key: 'tools', label: '实用工具', icon: 'wrench', to: '/front/tools/home',
    *   match: '/front/tools', cacheKey: 'tools', children: [...] },
    */

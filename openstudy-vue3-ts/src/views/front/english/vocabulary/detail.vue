@@ -1,180 +1,180 @@
+<!--
+  词库详情（英语学习）
+  ============================================================================
+  2026-10-23 重写。原实现有整片字段错位，功能从来没通：
+
+    · 后端返回 `wordId / word / translation / phonetic / example`，
+      前端读的是 `word.id / word.english / word.chinese`；
+    · 前端还用了 `wordType`、`isMastered` —— **后端表里根本没有这两列**
+      （`words` 只有 word_id / book_id / word / phonetic / translation /
+        example / audio_url / sort_order / create_time）；
+      于是"掌握状态"开关永远发不出去、「类型」筛选永远筛不到东西。
+    · 编辑保存把 `{id, english, chinese, wordType}` 放 JSON body，
+      后端要的是 Query 参数 `wordId / word / translation`。
+
+  这次按后端真实契约重写：
+    · 字段全部对齐（wordId / word / translation / phonetic / example）；
+    · 去掉不存在的「掌握状态 / 类型」——不假装有；
+    · 增删改都走 Query 参数；
+    · 保留能用的能力：朗读、OCR 识词、搜索、分页。
+-->
 <template>
-    <div class="vocabulary-detail-page">
-        <!-- 顶部导航栏 -->
-        <div class="page-header">
-            <div class="header-left" @click="goBack">
-                <el-icon>
-                    <ArrowLeft />
-                </el-icon>
-                <span>返回</span>
-            </div>
-            <div class="header-title">{{ bookInfo.name || '词库详情' }}</div>
-            <div class="header-right">
-                <el-button type="primary" size="small" @click="ocrDialogVisible = true">
-                    <el-icon>
-                        <Camera />
-                    </el-icon>
-                    拍照识词
-                </el-button>
-                <el-button type="success" size="small" @click="startLearning" v-if="wordList.length > 0">
-                    <el-icon>
-                        <Notebook />
-                    </el-icon>
-                    开始学习
-                </el-button>
-            </div>
-        </div>
+  <div class="wd-page">
+    <header class="wd-head">
+      <button type="button" class="wd-back" @click="goBack">
+        <OsIcon name="arrow-left" :size="16" />
+        <span>词库</span>
+      </button>
+      <div class="wd-head__main">
+        <h1 class="wd-head__title">{{ bookInfo.bookName || '词库' }}</h1>
+        <p class="wd-head__desc">
+          {{ bookInfo.bookDescription || '还没有说明' }}
+        </p>
+      </div>
+      <div class="wd-head__ops">
+        <button type="button" class="wd-btn" @click="ocrVisible = true">
+          <OsIcon name="sparkles" :size="14" />
+          <span>拍照识词</span>
+        </button>
+        <button type="button" class="wd-btn is-primary" @click="openCreate">
+          <OsIcon name="plus" :size="14" />
+          <span>添加单词</span>
+        </button>
+      </div>
+    </header>
 
-        <!-- 统计卡片 -->
-        <div class="stats-section">
-            <div class="stat-card">
-                <div class="stat-icon"><OsIcon name="book" :size="20" /></div>
-                <div class="stat-info">
-                    <span class="stat-value">{{ wordList.length }}</span>
-                    <span class="stat-label">总单词</span>
-                </div>
-            </div>
-            <div class="stat-card mastered">
-                <div class="stat-icon"><OsIcon name="check-circle" :size="20" /></div>
-                <div class="stat-info">
-                    <span class="stat-value">{{ masteredCount }}</span>
-                    <span class="stat-label">已掌握</span>
-                </div>
-            </div>
-            <div class="stat-card unmastered">
-                <div class="stat-icon"><OsIcon name="pen-line" :size="20" /></div>
-                <div class="stat-info">
-                    <span class="stat-value">{{ unmasteredCount }}</span>
-                    <span class="stat-label">未掌握</span>
-                </div>
-            </div>
-            <div class="stat-card progress">
-                <div class="stat-icon"><OsIcon name="chart-column" :size="20" /></div>
-                <div class="stat-info">
-                    <span class="stat-value">{{ masteryPercent }}%</span>
-                    <span class="stat-label">掌握率</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- 搜索和筛选 -->
-        <div class="filter-section">
-            <el-input v-model="searchKeyword" placeholder="搜索单词..." clearable class="search-input">
-                <template #prefix>
-                    <el-icon>
-                        <Search />
-                    </el-icon>
-                </template>
-            </el-input>
-            <el-select v-model="filterType" placeholder="类型" class="type-select" clearable>
-                <el-option label="全部" value="all" />
-                <el-option label="单词" value="word" />
-                <el-option label="词组" value="phrase" />
-                <el-option label="句子" value="sentence" />
-            </el-select>
-            <el-select v-model="filterStatus" placeholder="掌握状态" class="status-select">
-                <el-option label="全部" value="all" />
-                <el-option label="未掌握" value="unmastered" />
-                <el-option label="已掌握" value="mastered" />
-            </el-select>
-        </div>
-
-        <!-- 单词列表 -->
-        <div class="word-list-section" v-loading="loading">
-            <el-empty v-if="filteredWordList.length === 0" :description="emptyDescription" />
-
-            <div class="word-cards" v-else>
-                <div v-for="word in paginatedWordList" :key="word.id" class="word-card"
-                    :class="{ mastered: word.isMastered === 1 }">
-                    <div class="card-left">
-                        <div class="word-type-badge" :class="getTypeClass(word.wordType)">
-                            {{ getTypeIcon(word.wordType) }}
-                        </div>
-                        <div class="word-info">
-                            <div class="word-english">
-                                {{ word.english }}
-                                <el-button class="pronounce-btn" text size="small"
-                                    @click="playPronunciation(word.english)">
-                                    <el-icon>
-                                        <Microphone />
-                                    </el-icon>
-                                </el-button>
-                            </div>
-                            <div class="word-chinese">{{ word.chinese }}</div>
-                            <div class="word-phonetic" v-if="word.phonetic">{{ word.phonetic }}</div>
-                        </div>
-                    </div>
-                    <div class="card-right">
-                        <el-button type="primary" text size="small" @click.stop="handleEditWord(word)">
-                            <el-icon>
-                                <Edit />
-                            </el-icon>
-                        </el-button>
-                        <el-switch v-model="word.isMastered" :active-value="1" :inactive-value="0" active-text="已掌握"
-                            inactive-text="未掌握" @change="toggleMastered(word)" :loading="word.toggling"
-                            style="margin-left: 8px" />
-                        <el-button type="danger" text size="small" @click.stop="handleDeleteWord(word)"
-                            :loading="word.deleting" style="margin-left: 8px">
-                            <el-icon>
-                                <Delete />
-                            </el-icon>
-                        </el-button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 分页 -->
-            <div class="pagination-wrapper" v-if="filteredWordList.length > pageSize">
-                <el-pagination v-model:current-page="currentPage" :page-size="pageSize" :total="filteredWordList.length"
-                    layout="prev, pager, next" small />
-            </div>
-        </div>
+    <!-- 搜索 -->
+    <div class="wd-toolbar">
+      <el-input
+        v-model="keyword"
+        placeholder="搜索单词或释义"
+        clearable
+        :prefix-icon="Search"
+        class="wd-search"
+      />
+      <span class="wd-count">
+        共 <b>{{ words.length }}</b> 个单词
+        <template v-if="keyword.trim()">，匹配 {{ filtered.length }} 个</template>
+      </span>
     </div>
 
-    <!-- OCR 识词组件 -->
-    <OcrRecognizer v-model="ocrDialogVisible" :word-book-id="bookId" @success="fetchWordList" />
-    <!-- 编辑单词对话框 -->
-    <el-dialog v-model="editDialogVisible" title="编辑单词" width="450px" :close-on-click-modal="false" destroy-on-close>
-        <el-form ref="editFormRef" :model="editForm" :rules="editFormRules" label-width="80px" label-position="top">
-            <el-form-item label="英文" prop="english">
-                <el-input v-model="editForm.english" placeholder="请输入英文单词/词组/句子" clearable />
-            </el-form-item>
+    <!-- 列表 -->
+    <div v-loading="loading" class="wd-body">
+      <div v-if="!loading && !filtered.length" class="wd-empty">
+        <div class="wd-empty__art">
+          <OsIcon :name="keyword.trim() ? 'search' : 'book'" :size="26" />
+        </div>
+        <p class="wd-empty__title">
+          {{ keyword.trim() ? `没有匹配「${keyword}」的单词` : '这个词库还是空的' }}
+        </p>
+        <span class="wd-empty__desc">
+          {{
+            keyword.trim()
+              ? '换个词试试，或清空搜索'
+              : '手动加几个单词，或者用「拍照识词」从图片里抓'
+          }}
+        </span>
+        <div class="wd-empty__actions">
+          <button v-if="keyword.trim()" type="button" class="wd-btn" @click="keyword = ''">
+            清空搜索
+          </button>
+          <button v-else type="button" class="wd-btn is-primary" @click="openCreate">
+            添加单词
+          </button>
+        </div>
+      </div>
 
-            <el-form-item label="中文释义" prop="chinese">
-                <el-input v-model="editForm.chinese" placeholder="请输入中文释义" clearable />
-            </el-form-item>
+      <div v-else class="wd-list">
+        <div v-for="w in pagedWords" :key="w.wordId" class="wd-item">
+          <div class="wd-item__main">
+            <div class="wd-item__word-row">
+              <span class="wd-item__word">{{ w.word }}</span>
+              <button
+                type="button"
+                class="wd-item__say"
+                title="朗读"
+                @click="speak(w.word)"
+              >
+                <OsIcon name="megaphone" :size="13" />
+              </button>
+              <span v-if="w.phonetic" class="wd-item__phonetic">/{{ w.phonetic }}/</span>
+            </div>
+            <div class="wd-item__trans">{{ w.translation || '（还没有释义）' }}</div>
+            <div v-if="w.example" class="wd-item__example">{{ w.example }}</div>
+          </div>
+          <div class="wd-item__ops">
+            <span class="wd-item__op" title="编辑" @click="openEdit(w)">
+              <OsIcon name="pen-line" :size="14" />
+            </span>
+            <span class="wd-item__op is-danger" title="删除" @click="removeWord(w)">
+              <OsIcon name="trash" :size="14" />
+            </span>
+          </div>
+        </div>
+      </div>
 
-            <el-form-item label="音标" prop="phonetic">
-                <el-input v-model="editForm.phonetic" placeholder="请输入音标（选填）" clearable />
-            </el-form-item>
+      <div v-if="filtered.length > pageSize" class="wd-pager">
+        <el-pagination
+          v-model:current-page="page"
+          :page-size="pageSize"
+          :total="filtered.length"
+          layout="prev, pager, next"
+          small
+          background
+        />
+      </div>
+    </div>
 
-            <el-form-item label="类型" prop="wordType">
-                <el-select v-model="editForm.wordType" placeholder="请选择类型" style="width: 100%">
-                    <el-option label="单词" :value="1" />
-                    <el-option label="词组" :value="2" />
-                    <el-option label="句子" :value="3" />
-                </el-select>
-            </el-form-item>
-        </el-form>
+    <!-- OCR 识词 -->
+    <OcrRecognizer v-model="ocrVisible" :word-book-id="bookId" @success="load" />
 
-        <template #footer>
-            <el-button @click="editDialogVisible = false">取消</el-button>
-            <el-button type="primary" @click="handleSaveEdit" :loading="editSaving">
-                保存
-            </el-button>
-        </template>
+    <!-- 新增 / 编辑单词 -->
+    <el-dialog
+      v-model="dialogVisible"
+      :title="editingId ? '编辑单词' : '添加单词'"
+      width="460px"
+      :close-on-click-modal="false"
+      @closed="resetForm"
+    >
+      <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
+        <el-form-item label="单词 / 词组" prop="word">
+          <el-input v-model="form.word" placeholder="例如：abandon" maxlength="100" clearable />
+        </el-form-item>
+        <el-form-item label="中文释义" prop="translation">
+          <el-input v-model="form.translation" placeholder="例如：v. 放弃；抛弃" maxlength="200" clearable />
+        </el-form-item>
+        <el-form-item label="音标（选填）" prop="phonetic">
+          <el-input v-model="form.phonetic" placeholder="例如：əˈbændən" maxlength="100" clearable />
+        </el-form-item>
+        <el-form-item label="例句（选填）" prop="example">
+          <el-input
+            v-model="form.example"
+            type="textarea"
+            :rows="2"
+            placeholder="放一句带这个词的句子，复习时更有语境"
+            maxlength="300"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="submit">
+          {{ editingId ? '保存' : '添加' }}
+        </el-button>
+      </template>
     </el-dialog>
+  </div>
 </template>
 
 <script setup lang="ts">
-import OsIcon from '@/components/OsIcon/index.vue'
 defineOptions({ name: 'FrontEnglishVocabularyDetail' })
-import { ref, computed, onMounted, onActivated, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onActivated, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ArrowLeft, Search, Notebook, Microphone, Camera, Delete, Edit } from '@element-plus/icons-vue'
-import { getWordBooks } from '@/api/wordBooks/wordBooks'
-import { listWords, updateWords, delWords } from '@/api/words/words'  // ✅ 添加 delWords
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Search } from '@element-plus/icons-vue'
+import OsIcon from '@/components/OsIcon/index.vue'
+import { getWordBooks } from '@/api/wordBooks/wordBooks'
+import { listWords, addWords, updateWords, delWords } from '@/api/words/words'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
 import OcrRecognizer from '@/components/OcrRecognizer/index.vue'
 
@@ -182,608 +182,515 @@ const router = useRouter()
 const route = useRoute()
 const cacheStore = useFrontPageCacheStore()
 
-// 编辑相关
-const editDialogVisible = ref(false)
-const editSaving = ref(false)
-const editFormRef = ref(null)
-const editingWord = ref(null)
+const bookId = ref<number | null>(null)
 
-const editForm = ref({
-    id: null,
-    english: '',
-    chinese: '',
-    phonetic: '',
-    wordType: 1
-})
+/**
+ * 词书信息 —— 字段名与后端 `format_word_book` 一致：
+ * `bookId / bookName / bookDescription / wordCount / isDefault`
+ * （原实现读的是 `bookInfo.name`，永远拿不到，标题一直是「词库详情」）
+ */
+const bookInfo = ref<any>({})
 
-const editFormRules = {
-    english: [
-        { required: true, message: '请输入英文', trigger: 'blur' },
-        { min: 1, max: 255, message: '长度在 1 到 255 个字符', trigger: 'blur' }
-    ],
-    chinese: [
-        { required: true, message: '请输入中文释义', trigger: 'blur' },
-        { min: 1, max: 255, message: '长度在 1 到 255 个字符', trigger: 'blur' }
-    ]
-}
-
-// OCR 对话框
-const ocrDialogVisible = ref(false)
-
-// 词库ID
-const bookId = ref(null)
-
-// 词库信息
-const bookInfo = ref({
-    id: null,
-    name: '',
-    description: '',
-    isDefault: 0
-})
-
-// 单词列表
-const wordList = ref([])
+const words = ref<any[]>([])
 const loading = ref(false)
+const keyword = ref('')
+const page = ref(1)
+const pageSize = 20
 
-// 类型筛选
-const filterType = ref('all')
+const ocrVisible = ref(false)
 
-// 搜索和筛选
-const searchKeyword = ref('')
-const filterStatus = ref('all')
+const dialogVisible = ref(false)
+const saving = ref(false)
+const editingId = ref<number | null>(null)
+const formRef = ref<any>(null)
+const form = ref({ word: '', translation: '', phonetic: '', example: '' })
 
-// 分页
-const currentPage = ref(1)
-const pageSize = ref(10)
+const rules = {
+  word: [
+    { required: true, message: '请输入单词', trigger: 'blur' },
+    { max: 100, message: '最多 100 个字符', trigger: 'blur' }
+  ],
+  translation: [{ max: 200, message: '最多 200 个字符', trigger: 'blur' }],
+  phonetic: [{ max: 100, message: '最多 100 个字符', trigger: 'blur' }]
+}
 
-// 打开编辑对话框
-const handleEditWord = (word) => {
-    editingWord.value = word
-    editForm.value = {
-        id: word.id,
-        english: word.english || '',
-        chinese: word.chinese || '',
-        phonetic: word.phonetic || '',
-        wordType: word.wordType || 1
+const filtered = computed(() => {
+  const k = keyword.value.trim().toLowerCase()
+  if (!k) return words.value
+  return words.value.filter(
+    (w) =>
+      String(w.word || '').toLowerCase().includes(k) ||
+      String(w.translation || '').toLowerCase().includes(k)
+  )
+})
+
+const pagedWords = computed(() => {
+  const start = (page.value - 1) * pageSize
+  return filtered.value.slice(start, start + pageSize)
+})
+
+watch(keyword, () => {
+  page.value = 1
+})
+
+async function loadBook() {
+  if (!bookId.value) return
+  try {
+    const res: any = await getWordBooks(bookId.value)
+    if (res.code === 200) bookInfo.value = res.data || {}
+  } catch {
+    // 词书信息取不到不阻塞单词列表，标题退回默认文案
+  }
+}
+
+async function load() {
+  if (!bookId.value) {
+    ElMessage.error('没有拿到词库 ID，请从「我的词库」重新进入')
+    return
+  }
+  loading.value = true
+  try {
+    // ⚠️ 后端参数名是 `bookId`（不是 wordBookId）
+    const res: any = await listWords({ bookId: bookId.value, pageNum: 1, pageSize: 1000 })
+    if (res.code === 200) {
+      words.value = res.rows || []
+    } else {
+      ElMessage.error(res.msg || '读取单词失败')
     }
-    editDialogVisible.value = true
+  } catch (e: any) {
+    ElMessage.error('读取单词失败：' + (e?.message || e))
+  } finally {
+    loading.value = false
+  }
+}
 
-    // 清空表单验证
-    nextTick(() => {
-        editFormRef.value?.clearValidate()
+function openCreate() {
+  editingId.value = null
+  form.value = { word: '', translation: '', phonetic: '', example: '' }
+  dialogVisible.value = true
+}
+
+function openEdit(w: any) {
+  editingId.value = w.wordId
+  form.value = {
+    word: w.word || '',
+    translation: w.translation || '',
+    phonetic: w.phonetic || '',
+    example: w.example || ''
+  }
+  dialogVisible.value = true
+}
+
+function resetForm() {
+  editingId.value = null
+  form.value = { word: '', translation: '', phonetic: '', example: '' }
+}
+
+async function submit() {
+  try {
+    await formRef.value?.validate()
+  } catch {
+    return
+  }
+  if (!bookId.value) return
+
+  saving.value = true
+  try {
+    const payload = {
+      word: form.value.word.trim(),
+      translation: form.value.translation.trim() || undefined,
+      phonetic: form.value.phonetic.trim() || undefined,
+      example: form.value.example.trim() || undefined
+    }
+    const res: any = editingId.value
+      ? await updateWords({ wordId: editingId.value, ...payload })
+      : await addWords({ bookId: bookId.value, ...payload })
+
+    if (res.code === 200) {
+      ElMessage.success(editingId.value ? '已保存' : '已添加')
+      dialogVisible.value = false
+      await load()
+    } else {
+      ElMessage.error(res.msg || '保存失败')
+    }
+  } catch (e: any) {
+    ElMessage.error('保存失败：' + (e?.message || e))
+  } finally {
+    saving.value = false
+  }
+}
+
+async function removeWord(w: any) {
+  try {
+    await ElMessageBox.confirm(`确定删除「${w.word}」吗？`, '删除单词', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning'
     })
-}
-
-// 保存编辑
-const handleSaveEdit = async () => {
-    try {
-        await editFormRef.value?.validate()
-    } catch {
-        return
+  } catch {
+    return
+  }
+  try {
+    const res: any = await delWords(w.wordId)
+    if (res.code === 200) {
+      ElMessage.success('已删除')
+      await load()
+    } else {
+      ElMessage.error(res.msg || '删除失败')
     }
-
-    editSaving.value = true
-    try {
-        const response = await updateWords({
-            id: editForm.value.id,
-            english: editForm.value.english,
-            chinese: editForm.value.chinese,
-            phonetic: editForm.value.phonetic || '',
-            wordType: editForm.value.wordType
-        })
-
-        if (response.code === 200) {
-            ElMessage.success('保存成功')
-            editDialogVisible.value = false
-
-            // 更新列表中的单词
-            if (editingWord.value) {
-                editingWord.value.english = editForm.value.english
-                editingWord.value.chinese = editForm.value.chinese
-                editingWord.value.phonetic = editForm.value.phonetic
-                editingWord.value.wordType = editForm.value.wordType
-            }
-        } else {
-            ElMessage.error(response.msg || '保存失败')
-        }
-    } catch (error) {
-        console.error('保存失败:', error)
-        ElMessage.error('保存失败')
-    } finally {
-        editSaving.value = false
-    }
+  } catch (e: any) {
+    ElMessage.error('删除失败：' + (e?.message || e))
+  }
 }
 
-// 加载数据的方法
-const loadData = () => {
-    if (bookId.value) {
-        fetchBookInfo()
-        fetchWordList()
-    }
+/** 朗读：优先用浏览器 TTS（零依赖、离线可用） */
+function speak(text: string) {
+  if (!text || !('speechSynthesis' in window)) {
+    ElMessage.warning('当前浏览器不支持朗读')
+    return
+  }
+  window.speechSynthesis.cancel()
+  const u = new SpeechSynthesisUtterance(text)
+  u.lang = 'en-US'
+  u.rate = 0.85
+  window.speechSynthesis.speak(u)
 }
 
-// 计算属性
-const masteredCount = computed(() => {
-    return wordList.value.filter(w => w.isMastered === 1).length
-})
-
-const unmasteredCount = computed(() => {
-    return wordList.value.filter(w => w.isMastered !== 1).length
-})
-
-const masteryPercent = computed(() => {
-    if (wordList.value.length === 0) return 0
-    return Math.round((masteredCount.value / wordList.value.length) * 100)
-})
-
-// 删除单词
-// 删除单词
-const handleDeleteWord = async (word) => {
-    try {
-        await ElMessageBox.confirm(
-            `确定要删除单词 "${word.english}" 吗？`,
-            '删除确认',
-            {
-                confirmButtonText: '确定',
-                cancelButtonText: '取消',
-                type: 'warning'
-            }
-        )
-
-        word.deleting = true
-        const response = await delWords(word.id)
-
-        if (response.code === 200) {
-            ElMessage.success('删除成功')
-            const index = wordList.value.findIndex(w => w.id === word.id)
-            if (index !== -1) {
-                wordList.value.splice(index, 1)
-            }
-        } else {
-            ElMessage.error(response.msg || '删除失败')
-        }
-    } catch (error) {
-        if (error !== 'cancel') {
-            console.error('删除失败:', error)
-            ElMessage.error('删除失败')
-        }
-    } finally {
-        word.deleting = false
-    }
+function goBack() {
+  cacheStore.setLastVisited('english', 'vocabulary')
+  router.push('/front/english/vocabulary')
 }
 
-// 过滤后的单词列表
-const filteredWordList = computed(() => {
-    let list = wordList.value
-
-    if (filterType.value === 'word') {
-        list = list.filter(w => w.wordType === 1)
-    } else if (filterType.value === 'phrase') {
-        list = list.filter(w => w.wordType === 2)
-    } else if (filterType.value === 'sentence') {
-        list = list.filter(w => w.wordType === 3)
-    }
-
-    if (filterStatus.value === 'mastered') {
-        list = list.filter(w => w.isMastered === 1)
-    } else if (filterStatus.value === 'unmastered') {
-        list = list.filter(w => w.isMastered !== 1)
-    }
-
-    if (searchKeyword.value) {
-        const keyword = searchKeyword.value.toLowerCase()
-        list = list.filter(w => {
-            return (w.english || '').toLowerCase().includes(keyword) ||
-                (w.chinese || '').toLowerCase().includes(keyword)
-        })
-    }
-
-    return list
-})
-
-// 分页后的单词列表
-const paginatedWordList = computed(() => {
-    const start = (currentPage.value - 1) * pageSize.value
-    const end = start + pageSize.value
-    return filteredWordList.value.slice(start, end)
-})
-
-// 空状态描述
-const emptyDescription = computed(() => {
-    if (searchKeyword.value) return '未找到相关单词'
-    if (filterStatus.value === 'mastered') return '还没有已掌握的单词'
-    if (filterStatus.value === 'unmastered') return '所有单词都已掌握，太棒了！'
-    return '词库中还没有单词，快去添加吧'
-})
-
-// 获取类型图标
-const getTypeIcon = (type) => {
-    if (type === 1) return '单词'
-    if (type === 2) return '词组'
-    return '句子'
+function syncFromRoute() {
+  const raw = route.params.id
+  const id = Number(raw)
+  if (!id || Number.isNaN(id)) {
+    ElMessage.error('词库 ID 不合法')
+    return
+  }
+  if (bookId.value === id) return
+  bookId.value = id
+  page.value = 1
+  keyword.value = ''
+  loadBook()
+  load()
 }
 
-// 获取类型样式
-const getTypeClass = (type) => {
-    if (type === 1) return 'type-word'
-    if (type === 2) return 'type-phrase'
-    return 'type-sentence'
-}
+onMounted(syncFromRoute)
 
-// 加载词库信息
-const fetchBookInfo = async () => {
-    try {
-        const response = await getWordBooks(bookId.value)
-        if (response.code === 200) {
-            bookInfo.value = response.data || {}
-        } else {
-            ElMessage.error(response.msg || '获取词库信息失败')
-        }
-    } catch (error) {
-        console.error('获取词库信息失败:', error)
-        ElMessage.error('获取词库信息失败')
-    }
-}
-
-// 加载单词列表
-const fetchWordList = async () => {
-    loading.value = true
-    try {
-        const response = await listWords({
-            pageNum: 1,
-            pageSize: 1000,
-            wordBookId: bookId.value
-        })
-        if (response.code === 200) {
-            wordList.value = (response.rows || []).map(word => ({
-                ...word,
-                toggling: false,
-                pronouncing: false,
-                deleting: false  // ✅ 添加删除状态
-            }))
-        } else {
-            ElMessage.error(response.msg || '获取单词列表失败')
-        }
-    } catch (error) {
-        console.error('获取单词列表失败:', error)
-        ElMessage.error('获取单词列表失败')
-    } finally {
-        loading.value = false
-    }
-}
-
-// 切换掌握状态
-const toggleMastered = async (word) => {
-    word.toggling = true
-    try {
-        const response = await updateWords({
-            id: word.id,
-            isMastered: word.isMastered
-        })
-        if (response.code === 200) {
-            ElMessage.success(word.isMastered === 1 ? '已标记为掌握' : '已取消掌握标记')
-        } else {
-            word.isMastered = word.isMastered === 1 ? 0 : 1
-            ElMessage.error(response.msg || '更新失败')
-        }
-    } catch (error) {
-        word.isMastered = word.isMastered === 1 ? 0 : 1
-        console.error('更新失败:', error)
-        ElMessage.error('更新失败')
-    } finally {
-        word.toggling = false
-    }
-}
-
-// 播放读音
-const playPronunciation = (word) => {
-    if (!word) return
-    window.speechSynthesis.cancel()
-    const utterance = new SpeechSynthesisUtterance(word)
-    utterance.lang = 'en-US'
-    utterance.rate = 0.8
-    utterance.pitch = 1
-    window.speechSynthesis.speak(utterance)
-}
-
-// 开始学习
-const startLearning = () => {
-    ElMessage.info('学习功能开发中...')
-}
-
-// 返回
-const goBack = () => {
-    cacheStore.setLastVisited('english', 'vocabulary')
-    router.push('/front/english/vocabulary')
-}
-
-// 监听筛选变化
-watch([searchKeyword, filterType, filterStatus], () => {
-    currentPage.value = 1
-})
-
-// 组件激活时
+// keep-alive 回到本页（换了 id 才重新拉，避免每次切回来都请求）
 onActivated(() => {
-    const newId = route.params.id
-    if (bookId.value !== newId) {
-        bookId.value = newId
-        currentPage.value = 1
-        searchKeyword.value = ''
-        filterStatus.value = 'all'
-        filterType.value = 'all'
-        loadData()
-    }
+  const id = Number(route.params.id)
+  if (id && id !== bookId.value) syncFromRoute()
 })
 
-// 首次加载
-onMounted(() => {
-    bookId.value = route.params.id
-    loadData()
+watch(() => route.params.id, (nv, ov) => {
+  if (nv && nv !== ov) syncFromRoute()
 })
 </script>
 
 <style scoped lang="scss">
-.vocabulary-detail-page {
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-
-    .page-header {
-        display: grid;
-        grid-template-columns: 1fr 1fr 1fr;
-        align-items: center;
-        padding: 16px 20px;
-        background: #fff;
-        border-bottom: 1px solid #e5e7eb;
-
-        .header-left {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            color: #6b7280;
-            cursor: pointer;
-            font-size: 15px;
-            justify-self: start;
-            width: fit-content;
-
-            &:hover {
-                color: #4b5563;
-            }
-        }
-
-        .header-title {
-            font-size: 20px;
-            font-weight: 700;
-            color: #1f2937;
-            text-align: center;
-            white-space: nowrap;
-        }
-
-        .header-right {
-            justify-self: end;
-            display: flex;
-            gap: 8px;
-        }
-    }
-
-    .stats-section {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 12px;
-        padding: 16px 20px;
-        background: #fff;
-        border-bottom: 1px solid #e5e7eb;
-
-        .stat-card {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 12px 16px;
-            background: #f8f9fa;
-            border-radius: 16px;
-            border: 1px solid #e5e7eb;
-
-            .stat-icon {
-                font-size: 28px;
-            }
-
-            .stat-info {
-                display: flex;
-                flex-direction: column;
-
-                .stat-value {
-                    font-size: 22px;
-                    font-weight: 700;
-                    color: #1f2937;
-                    line-height: 1.2;
-                }
-
-                .stat-label {
-                    font-size: 13px;
-                    color: #6b7280;
-                }
-            }
-
-            &.mastered .stat-value {
-                color: #67c23a;
-            }
-
-            &.unmastered .stat-value {
-                color: #e6a23c;
-            }
-
-            &.progress .stat-value {
-                color: #409eff;
-            }
-        }
-    }
-
-    .filter-section {
-        display: flex;
-        gap: 12px;
-        padding: 16px 20px;
-        background: #fff;
-        border-bottom: 1px solid #e5e7eb;
-
-        .search-input {
-            flex: 1;
-            max-width: 250px;
-        }
-
-        .type-select {
-            width: 120px;
-        }
-
-        .status-select {
-            width: 130px;
-        }
-    }
-
-    .word-list-section {
-        flex: 1;
-        padding: 20px;
-        min-height: 400px;
-
-        .word-cards {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .word-card {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 16px 20px;
-            background: #fff;
-            border-radius: 16px;
-            border: 1px solid #e5e7eb;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-
-            &:hover {
-                border-color: #d1d5db;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
-            }
-
-            &.mastered {
-                background: #f6ffed;
-                border-color: #b7eb8f;
-            }
-
-            .card-left {
-                display: flex;
-                align-items: center;
-                gap: 16px;
-                flex: 1;
-
-                .word-type-badge {
-                    width: 40px;
-                    height: 40px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    font-size: 18px;
-                    border-radius: 8px;
-                    background: #f3f4f6;
-                    flex-shrink: 0;
-
-                    &.type-word {
-                        background: #e8f4ff;
-                    }
-
-                    &.type-phrase {
-                        background: #f0f9eb;
-                    }
-
-                    &.type-sentence {
-                        background: #fefce8;
-                    }
-                }
-
-                .word-info {
-                    .word-english {
-                        display: flex;
-                        align-items: center;
-                        gap: 8px;
-                        font-size: 18px;
-                        font-weight: 600;
-                        color: #1f2937;
-                        margin-bottom: 4px;
-
-                        .pronounce-btn {
-                            padding: 4px;
-                            color: #409eff;
-                            opacity: 0.6;
-                            transition: opacity 0.2s;
-
-                            &:hover {
-                                opacity: 1;
-                            }
-                        }
-                    }
-
-                    .word-chinese {
-                        font-size: 14px;
-                        color: #6b7280;
-                        margin-bottom: 2px;
-                    }
-
-                    .word-phonetic {
-                        font-size: 12px;
-                        color: #9ca3af;
-                        font-family: monospace;
-                    }
-                }
-            }
-
-            .card-right {
-                flex-shrink: 0;
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            }
-        }
-
-        .pagination-wrapper {
-            display: flex;
-            justify-content: center;
-            margin-top: 24px;
-            padding-top: 16px;
-        }
-    }
+.wd-page {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 20px 20px 60px;
 }
 
-@media (max-width: 768px) {
-    .vocabulary-detail-page {
-        .stats-section {
-            grid-template-columns: repeat(2, 1fr);
-        }
+/* ---------- 头部 ---------- */
+.wd-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 18px;
+}
 
-        .filter-section {
-            flex-direction: column;
+.wd-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 10px;
+  flex: none;
+  font-size: 13px;
+  font-family: inherit;
+  border: 1px solid var(--os-border, #e5e7eb);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--os-text-2, #4b5563);
+  cursor: pointer;
 
-            .search-input {
-                max-width: 100%;
-            }
+  &:hover {
+    border-color: var(--os-accent, #2563eb);
+    color: var(--os-accent, #2563eb);
+  }
+}
 
-            .type-select,
-            .status-select {
-                width: 100%;
-            }
-        }
+.wd-head__main {
+  flex: 1;
+  min-width: 0;
+}
 
-        .word-list-section .word-card {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 16px;
+.wd-head__title {
+  margin: 0 0 4px;
+  font-size: 21px;
+  font-weight: 700;
+  color: var(--os-text, #111827);
+}
 
-            .card-right {
-                width: 100%;
-                display: flex;
-                justify-content: flex-end;
-                gap: 8px;
-            }
-        }
+.wd-head__desc {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--os-text-3, #9ca3af);
+}
+
+.wd-head__ops {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+
+.wd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 13px;
+  font-size: 13px;
+  font-family: inherit;
+  border-radius: 8px;
+  border: 1px solid var(--os-border, #e5e7eb);
+  background: #fff;
+  color: var(--os-text, #111827);
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover {
+    border-color: var(--os-accent, #2563eb);
+    color: var(--os-accent, #2563eb);
+  }
+
+  &.is-primary {
+    background: var(--os-text, #111827);
+    border-color: var(--os-text, #111827);
+    color: #fff;
+
+    &:hover {
+      background: #000;
+      border-color: #000;
+      color: #fff;
     }
+  }
+}
+
+/* ---------- 工具条 ---------- */
+.wd-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.wd-search {
+  max-width: 300px;
+}
+
+.wd-count {
+  font-size: 12.5px;
+  color: var(--os-text-3, #9ca3af);
+
+  b {
+    color: var(--os-text, #111827);
+    font-weight: 600;
+  }
+}
+
+/* ---------- 列表 ---------- */
+.wd-body {
+  min-height: 220px;
+}
+
+.wd-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wd-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+
+  &:hover {
+    border-color: var(--os-border, #e5e7eb);
+    background: var(--os-bg-subtle, #fafafa);
+  }
+
+  &:hover .wd-item__ops {
+    opacity: 1;
+  }
+}
+
+.wd-item__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.wd-item__word-row {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.wd-item__word {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--os-text, #111827);
+}
+
+.wd-item__say {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--os-text-3, #9ca3af);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--os-bg-hover, #f3f4f6);
+    color: var(--os-accent, #2563eb);
+  }
+}
+
+.wd-item__phonetic {
+  font-size: 12.5px;
+  color: var(--os-text-3, #9ca3af);
+}
+
+.wd-item__trans {
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--os-text-2, #4b5563);
+}
+
+.wd-item__example {
+  margin-top: 5px;
+  padding-left: 9px;
+  border-left: 2px solid var(--os-border, #e5e7eb);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--os-text-3, #9ca3af);
+}
+
+.wd-item__ops {
+  display: flex;
+  gap: 2px;
+  flex: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.wd-item__op {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--os-text-3, #9ca3af);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--os-bg-hover, #f3f4f6);
+    color: var(--os-text, #111827);
+  }
+
+  &.is-danger:hover {
+    background: #fee2e2;
+    color: #ef4444;
+  }
+}
+
+.wd-pager {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+/* ---------- 空态 ---------- */
+.wd-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 60px 20px;
+  text-align: center;
+  border: 1px dashed var(--os-border, #e5e7eb);
+  border-radius: 14px;
+  background: var(--os-bg-subtle, #fafafa);
+}
+
+.wd-empty__art {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 2px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid var(--os-border-light, #f1f3f5);
+  color: var(--os-text-3, #9ca3af);
+}
+
+.wd-empty__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--os-text-2, #4b5563);
+}
+
+.wd-empty__desc {
+  max-width: 340px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--os-text-3, #9ca3af);
+}
+
+.wd-empty__actions {
+  margin-top: 6px;
+}
+
+@media (max-width: 720px) {
+  .wd-head {
+    flex-wrap: wrap;
+  }
+
+  .wd-head__ops {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .wd-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .wd-search {
+    max-width: none;
+  }
 }
 </style>

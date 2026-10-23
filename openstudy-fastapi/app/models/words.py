@@ -14,6 +14,8 @@ class WordBook(Base):
     __tablename__ = "word_books"
 
     book_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    #: 归属用户；NULL = 系统预置词书（所有登录用户只读可见，不可改删）
+    user_id: Mapped[Optional[int]] = mapped_column(BigInteger)
     book_name: Mapped[str] = mapped_column(String(255), nullable=False)
     book_description: Mapped[Optional[str]] = mapped_column(Text)
     word_count: Mapped[int] = mapped_column(Integer, default=0)

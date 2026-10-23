@@ -17,22 +17,21 @@
             <div class="select-label">选择词库</div>
             <el-select v-model="selectedBookId" placeholder="请选择词库" size="large" style="width: 100%"
                 @change="onBookChange">
-                <el-option v-for="book in bookOptions" :key="book.id" :label="book.name" :value="book.id" />
+                <el-option v-for="book in bookOptions" :key="book.bookId" :label="book.bookName" :value="book.bookId" />
             </el-select>
 
             <!-- 词库统计 -->
+            <!--
+              只说「总单词」。
+              原来还有「已掌握 / 未掌握」两项，但 `words` 表根本没有掌握状态列
+              （word_id / book_id / word / phonetic / translation / example /
+                audio_url / sort_order / create_time），那两个数字永远是
+              0 和全部 —— 等于给用户看两个假指标。2026-10-23 去掉。
+            -->
             <div class="book-stats" v-if="selectedBookId && wordList.length > 0">
                 <div class="stat-item">
                     <span class="stat-value">{{ wordList.length }}</span>
                     <span class="stat-label">总单词</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-value">{{ masteredCount }}</span>
-                    <span class="stat-label">已掌握</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-value">{{ unmasteredCount }}</span>
-                    <span class="stat-label">未掌握</span>
                 </div>
             </div>
 
@@ -42,7 +41,6 @@
                     <span class="setting-label">练习范围</span>
                     <el-radio-group v-model="practiceRange">
                         <el-radio value="all">全部单词</el-radio>
-                        <el-radio value="unmastered">仅未掌握</el-radio>
                     </el-radio-group>
                 </div>
                 <div class="setting-item">
@@ -206,7 +204,7 @@ import {
     CircleCheck, CircleClose
 } from '@element-plus/icons-vue'
 import { listFrontWordBooks } from '@/api/wordBooks/wordBooks'
-import { listWords, updateWords } from '@/api/words/words'
+import { listWords } from '@/api/words/words'
 import useUserStore from '@/store/modules/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
@@ -267,13 +265,8 @@ let currentUtterance = null  // 当前正在播放的语音实例，用于中途
 const practiceResults = ref([])
 
 // 计算属性
-const masteredCount = computed(() => {
-    return wordList.value.filter(w => w.isMastered === 1).length
-})
-
-const unmasteredCount = computed(() => {
-    return wordList.value.filter(w => w.isMastered !== 1).length
-})
+// ⚠️ `masteredCount` / `unmasteredCount` 已删除（2026-10-23）：
+//    `words` 表没有掌握状态列，这两个数只能是 0 和"全部"，属于假指标。
 
 const currentWord = computed(() => {
     return practiceWords.value[currentIndex.value] || null
@@ -307,10 +300,11 @@ const onBookChange = async (bookId) => {
     if (!bookId) return
     loadingWords.value = true
     try {
+        // ⚠️ 后端参数名是 `bookId`
         const response = await listWords({
             pageNum: 1,
             pageSize: 1000,
-            wordBookId: bookId
+            bookId: bookId
         })
         if (response.code === 200) {
             wordList.value = response.rows || []
@@ -325,11 +319,9 @@ const onBookChange = async (bookId) => {
 
 // 开始练习
 const startPractice = () => {
-    // 筛选单词
+    // ⚠️ `words` 表没有 isMastered 列，原先按「未掌握」筛选永远为空。
+    //    现在不做这个筛选：练的就是这本词库里的全部单词。
     let words = [...wordList.value]
-    if (practiceRange.value === 'unmastered') {
-        words = words.filter(w => w.isMastered !== 1)
-    }
 
     if (words.length === 0) {
         ElMessage.warning('没有可练习的单词')
@@ -381,7 +373,7 @@ const startDictationRound = async () => {
     isWaitingAutoNext.value = false
 
     const word = currentWord.value
-    const chinese = word.chinese
+    const chinese = word.translation
 
     if (!chinese) {
         ElMessage.warning('该单词没有中文释义')
@@ -453,7 +445,7 @@ const autoNextWord = () => {
     // 记录当前单词为已完成（跳过，因为没输入答案）
     if (practiceMode.value === 'dictation') {
         practiceResults.value.push({
-            wordId: currentWord.value.id,
+            wordId: currentWord.value.wordId,
             word: currentWord.value,
             userAnswer: '',
             isCorrect: false,
@@ -634,16 +626,11 @@ const submitAnswer = () => {
 
     // 记录结果
     practiceResults.value.push({
-        wordId: currentWord.value.id,
+        wordId: currentWord.value.wordId,
         word: currentWord.value,
         userAnswer: userAnswer.value,
         isCorrect: isCorrect.value
     })
-
-    // 如果答对了，自动标记为掌握（可选）
-    if (isCorrect.value && currentWord.value.isMastered !== 1) {
-        markAsMastered(currentWord.value.id)
-    }
 
     // 聚焦到下一题按钮
     nextTick(() => {
@@ -651,20 +638,15 @@ const submitAnswer = () => {
     })
 }
 
-// 标记为掌握
-const markAsMastered = async (wordId) => {
-    try {
-        await updateWords({
-            id: wordId,
-            isMastered: 1
-        })
-        // 更新本地状态
-        const word = wordList.value.find(w => w.id === wordId)
-        if (word) word.isMastered = 1
-    } catch (error) {
-        console.error('更新掌握状态失败:', error)
-    }
-}
+/*
+ * 原 `markAsMastered()` 已删除（2026-10-23）
+ * ----------------------------------------
+ * 它写的是 `updateWords({ id, isMastered: 1 })`，但：
+ *   · `words` 表**没有 isMastered 列**，后端不认这个字段；
+ *   · 参数名也错（要 `wordId`，不是 `id`）。
+ * 也就是说这个函数从来没成功过，只是把错误吞进了 catch。
+ * 与其留一个假装存在的"掌握"概念，不如去掉 —— 见 `practiceRange` 的说明。
+ */
 
 // 下一题
 const nextWord = () => {
@@ -689,7 +671,7 @@ const nextWord = () => {
 const skipWord = () => {
     if (currentIndex.value < practiceWords.value.length - 1) {
         practiceResults.value.push({
-            wordId: currentWord.value.id,
+            wordId: currentWord.value.wordId,
             word: currentWord.value,
             userAnswer: '',
             isCorrect: false,

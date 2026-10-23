@@ -1,6 +1,9 @@
 .DS_Store
 node_modules/
 dist/
+# 构建校验用的临时输出目录（`npx vite build --outDir dist-verify`）。
+# 忘了删就会跟着 git add -A 一起进提交 —— 2026-10-23 真发生过一次。
+dist-verify/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
