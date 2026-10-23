@@ -95,6 +95,9 @@ openstudy-fastapi/data/
 _scratch_mut/
 _probe_*.txt
 _probe_*.json
+# 浏览器自动化（CDP）跑测试时常在仓库根目录留下 tmpXXXXXXX 临时文件，
+# 2026-10-23 曾出现一个 tmpqlzm7e21（Edge 下载的缓存）误入 git status。
+/tmp[a-z0-9]*
 # ⚠️ 不要忽略 `openstudy-fastapi/tests/_probe_*.py`：那些是**刻意保留**的零成本
 #    验证脚本（如 _kbdisable_probe.py / _probe_nested_commit.py），是仓库正式资产，
 #    会被代码 docstring 引用为证据。只有运行时**输出**（_evidence / _ui_evidence）

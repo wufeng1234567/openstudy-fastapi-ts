@@ -176,7 +176,7 @@ import OsIcon from '@/components/OsIcon/index.vue'
 import { getWordBooks } from '@/api/wordBooks/wordBooks'
 import { listAllWords, addWords, updateWords, delWords } from '@/api/words/words'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
-import { speak as speakText, isSpeechSupported, speakReasonText } from '@/utils/speech'
+import { speak as speakText, isSpeechSupported, speakReasonText, warmUpVoices } from '@/utils/speech'
 import OcrRecognizer from '@/components/OcrRecognizer/index.vue'
 
 const router = useRouter()
@@ -393,7 +393,11 @@ function syncFromRoute() {
   load()
 }
 
-onMounted(syncFromRoute)
+onMounted(() => {
+  // 预热语音列表：让「朗读」按钮点击时不必 await，保住用户手势上下文
+  warmUpVoices()
+  syncFromRoute()
+})
 
 // keep-alive 回到本页（换了 id 才重新拉，避免每次切回来都请求）
 onActivated(() => {

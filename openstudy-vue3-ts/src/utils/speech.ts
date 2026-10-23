@@ -54,12 +54,29 @@ export interface SpeakOptions {
   volume?: number
   /** cancel 之后到 speak 之间的等待，规避 Chrome 丢帧。默认 80ms */
   settleMs?: number
-  /** 超过这个时间还没真正开始发声，就判定失败。默认 1500ms */
+  /** 超过这个时间还没真正开始发声，就判定失败。默认 1200ms */
   startTimeoutMs?: number
+  /**
+   * 浏览器 TTS 失败时，是否回退到服务端合成（`/tts/synthize`）。
+   * 默认 true —— 部分环境下浏览器 TTS 完全不出声，兜底是唯一的出路。
+   */
+  fallbackToServer?: boolean
 }
 
 /** 每次播放自增，用于作废"上一轮还没结束的回调" */
 let speakToken = 0
+
+/**
+ * 浏览器 TTS 是否被判定为「坏了」。
+ *
+ * 一旦某次失败原因是 `failed`（引擎拿到请求却不发声），就把这个标记置上，
+ * 之后**直接走服务端合成**，不再让每个词都干等一次超时。
+ * 刷新页面会重置（模块级变量）。
+ */
+let browserTtsBroken = false
+
+/** 服务端合成结果的 URL 缓存：同一个词不用反复请求 */
+const serverAudioCache = new Map<string, string>()
 
 function synth(): SpeechSynthesis | undefined {
   if (typeof window === 'undefined') return undefined
@@ -134,6 +151,46 @@ export function loadVoices(timeoutMs = 1500): Promise<SpeechSynthesisVoice[]> {
   return voicesPromise
 }
 
+/**
+ * 预热语音列表。
+ *
+ * 应当在页面初始化时调用一次（onMounted），把 `getVoices()` 的结果提前放进
+ * 同步缓存 —— 这样用户真正点"播放"时，`speak()` 里不需要为了拿语音列表
+ * 而 `await`，从而保住用户手势上下文（见 `speak()` 顶部注释）。
+ *
+ * 不调用也能工作，只是首次点击时可能选不到最合适的 voice
+ * （引擎会按 `lang` 自己挑，通常也能出声）。
+ */
+export function warmUpVoices(): void {
+  const s = synth()
+  if (!s || typeof s.getVoices !== 'function') return
+
+  const fill = () => {
+    const vs = s.getVoices() || []
+    if (vs.length) voicesCache = vs
+  }
+
+  fill()
+  if (!voicesCache.length) {
+    // 首帧常为空；等一次 voiceschanged。这里**不阻塞**任何调用。
+    try {
+      const prev = s.onvoiceschanged
+      s.onvoiceschanged = (ev: Event) => {
+        fill()
+        if (typeof prev === 'function') {
+          try { (prev as any).call(s, ev) } catch { /* 忽略 */ }
+        }
+      }
+    } catch { /* 忽略 */ }
+    // 兜底轮询：有的环境不派发 voiceschanged
+    let tries = 0
+    const timer = setInterval(() => {
+      fill()
+      if (voicesCache.length || ++tries > 20) clearInterval(timer)
+    }, 250)
+  }
+}
+
 /** 按语言挑一个语音：先精确匹配，再按主语言前缀匹配，优先本地语音 */
 export function pickVoice(voices: SpeechSynthesisVoice[], lang: string): SpeechSynthesisVoice | null {
   if (!voices.length) return null
@@ -176,7 +233,8 @@ function normalizeReason(code: string | undefined): SpeakReason {
 function attemptOnce(
   content: string,
   opts: Required<Pick<SpeakOptions, 'lang' | 'rate' | 'pitch' | 'volume' | 'startTimeoutMs'>>,
-  voice: SpeechSynthesisVoice | null
+  voice: SpeechSynthesisVoice | null,
+  token: number
 ): Promise<SpeakResult> {
   const s = synth()
   if (!s) return Promise.resolve({ ok: false, reason: 'unsupported' })
@@ -208,20 +266,33 @@ function attemptOnce(
     // 看门狗①：到点还没开始发声，就不再等了（否则 isPlaying 会永远卡住）
     watchdog = setTimeout(() => {
       if (started) return
-      // 队列里确实有东西在播，只是 onstart 没派发 —— 认作已开始
-      if (s.speaking || s.pending) {
-        started = true
+
+      /*
+       * ⚠️ 2026-10-23 修：这里原来写的是
+       *      if (s.speaking || s.pending) { started = true; return }
+       *    —— 只要队列里有东西就"认定已经开始发声"。这是**错的**。
+       *
+       *    实测本机 Chrome/Edge：`speak()` 之后 `speaking` 会一直是 true，
+       *    但 `onstart` / `onend` 永远不触发、也完全没有声音。
+       *    按老写法会一路走到 hardStop 并 report `ok:true` ——
+       *    **用户什么都没听到，我们却报告播放成功**，比直接报错更糟。
+       *
+       *    正确的判据只有一个：`onstart` 有没有真的派发过。
+       *    没派发就是没开始，如实报失败。
+       */
+      // 被更新的播放取代了，交给新的一轮去报告
+      if (token !== speakToken) {
+        finish({ ok: false, reason: 'interrupted' })
         return
       }
       finish({ ok: false, reason: 'failed' })
     }, opts.startTimeoutMs)
 
-    // 看门狗②：已开始发声、但 onend 永远不来（引擎卡死 / 事件丢失）。
-    // 这种情况按「播放完成」处理 —— onstart 已经确认声音确实出去了，
-    // 报失败反而会让用户以为没播。关键是**必须**把 Promise 收掉，
-    // 否则调用方的 isPlaying 永久为 true，按钮就废了。
+    // 看门狗②：`onstart` 已经确认声音真的出去了，但 `onend` 迟迟不来
+    // （引擎卡死 / 事件丢失）。此时按「播放完成」收尾是合理的 ——
+    // 关键是**必须**把 Promise 收掉，否则调用方的 isPlaying 永久为 true，按钮就废了。
     const maxMs = Math.min(60000, 3000 + content.length * 250)
-    hardStop = setTimeout(() => finish({ ok: true }), maxMs)
+    hardStop = setTimeout(() => finish({ ok: started, reason: started ? undefined : 'failed' }), maxMs)
 
     utterance.onstart = () => {
       started = true
@@ -233,6 +304,10 @@ function attemptOnce(
       finish({ ok: false, reason: normalizeReason(e?.error), error: e })
     }
 
+    /*
+     * ⚠️ 这里是**同步**调用，调用栈必须仍然处于用户手势之中。
+     *    千万不要在它前面插 await —— 见 `speak()` 顶部注释。
+     */
     try {
       s.speak(utterance)
       // Chrome 有时队列会莫名停在 paused，resume 一下
@@ -248,64 +323,133 @@ function attemptOnce(
  *
  * 成功 resolve `{ok:true}`；失败 resolve `{ok:false, reason}` ——
  * **不 reject**，调用方用 `if (!res.ok)` 判断即可，不必写 try/catch。
+ *
+ * ⚠️ 2026-10-23 重要修正：**`speak()` 必须在调用方的用户手势里同步发出。**
+ *
+ *    Chrome 的自动播放策略把 `speechSynthesis.speak()` 当作"发声"行为。
+ *    如果它被推迟到某个 `await` 之后（哪怕只等 80ms），就已经脱离了
+ *    用户手势的激活窗口，浏览器会直接以 `not-allowed` 拒绝 ——
+ *    表现就是"点了按钮完全没声音，控制台也不报错"。
+ *
+ *    早期实现为了规避「cancel 后立刻 speak 被丢弃」，在 speak 前
+ *    `await sleep(80)` + `await loadVoices()`（最多等 1.5s）。
+ *    这**两件事都会破坏手势上下文**，等于用 A 问题换来了更致命的 B 问题。
+ *
+ *    现在的做法：
+ *      · 语音列表用**同步缓存**（`getVoices()` 首帧常为空，但通常在
+ *        页面加载后很快就会就绪，且 `loadVoices()` 已在别处预热）；
+ *      · 不在 speak 前 await 任何东西，第一发**同步**打出去；
+ *      · cancel 与 speak 之间不插 sleep —— 改由 attemptOnce 内部
+ *        「第一发同步打、失败了再异步重试」来兼顾。
  */
 export async function speak(text: string, options: SpeakOptions = {}): Promise<SpeakResult> {
-  if (!isSpeechSupported()) return { ok: false, reason: 'unsupported' }
-
   const content = String(text ?? '').trim()
   if (!content) return { ok: false, reason: 'empty' }
 
-  const s = synth()!
   const opts = {
     lang: options.lang ?? 'zh-CN',
     rate: options.rate ?? 0.9,
     pitch: options.pitch ?? 1,
     volume: options.volume ?? 1,
-    startTimeoutMs: options.startTimeoutMs ?? 1500
+    startTimeoutMs: options.startTimeoutMs ?? 1200
   }
-  const settleMs = options.settleMs ?? 80
+  const allowFallback = options.fallbackToServer !== false
 
   const token = ++speakToken
 
-  // 先打断上一次，并留出间隔（Chrome：cancel 后立即 speak 可能被丢弃）
-  try { s.cancel() } catch { /* 忽略 */ }
-  await sleep(settleMs)
-  if (token !== speakToken) return { ok: false, reason: 'interrupted' }
+  /*
+   * ⚠️ 浏览器 TTS 被判定为坏了之后（见 browserTtsBroken 注释），
+   *    直接走服务端合成，不再让用户对着每个词干等 1.2 秒超时。
+   */
+  if (browserTtsBroken && allowFallback) {
+    return speakViaServer(content, opts.lang, opts.rate, opts.volume, token)
+  }
 
-  const voices = await loadVoices()
-  if (token !== speakToken) return { ok: false, reason: 'interrupted' }
+  if (!isSpeechSupported()) {
+    if (allowFallback) {
+      return speakViaServer(content, opts.lang, opts.rate, opts.volume, token)
+    }
+    return { ok: false, reason: 'unsupported' }
+  }
 
-  const voice = pickVoice(voices, opts.lang)
+  const s = synth()!
 
   /*
-   * ⚠️ 这里**不**因为「找不到对应语言的语音」就直接返回失败。
+   * ⚠️ 同步取语音：这里**不能** await。
    *
-   *    实际情况比"有/没有语音包"复杂得多：
-   *    · 有的系统 getVoices() 只暴露部分语音，但引擎仍能按 `lang` 自行挑选；
-   *    · 有的环境（如部分 Linux / 旧版 Android）语音列表为空但照样能发声；
-   *    · 强行判定 no-voice 会把**本来能响**的机器判成错误。
+   *    `getVoices()` 是同步 API，首帧可能返回空数组（语音包异步加载），
+   *    空的时候交给引擎按 `lang` 自己挑即可 —— 不能为了"等语音包"而
+   *    丢掉用户手势。
    *
-   *    所以策略是：能挑到就显式指定（更可控），挑不到就交给引擎按 `lang` 决定，
-   *    只有**真的没能发出声音**（attemptOnce 失败）时，才归因为缺语音包。
+   *    预热放在 `loadVoices()`，页面初始化时调用一次即可。
    */
+  let voices = voicesCache
+  if (!voices.length) {
+    voices = (s.getVoices() || [])
+    if (voices.length) voicesCache = voices
+  }
+  const voice = pickVoice(voices, opts.lang)
   const noVoiceHint = voices.length > 0 && !voice
 
-  const first = await attemptOnce(content, opts, voice)
+  // —— 以下全部同步执行，保证仍在用户手势内 ——
+  try { s.cancel() } catch { /* 忽略 */ }
+
+  const first = await attemptOnce(content, opts, voice, token)
   if (first.ok) return first
-  // 被新播放打断 / 主动停止，不需要重试
-  if (first.reason === 'interrupted' || first.reason === 'canceled') return first
+  if (first.reason === 'interrupted') return first
+
+  /*
+   * ⚠️ 2026-10-23 修「点了半天没有任何提示」：
+   *
+   *    原来这里无条件重试一次，于是失败路径要等
+   *      startTimeoutMs(1.5s) + 120ms + startTimeoutMs(1.5s) ≈ 3.1s
+   *    才返回。而调用方还要再串行走几轮重复播放，用户实测**15.5 秒**
+   *    才看到提示 —— 那时人早就以为"点了没反应"刷新页面了。
+   *
+   *    现在区分处理：
+   *      · `failed`（引擎压根没开始发声）：重试基本没用，直接返回，
+   *        让用户**立刻**看到原因；
+   *      · 其它情况（如 not-allowed 之外的偶发）才重试一次。
+   *
+   *    宁可少重试一次，也不要让用户对着静音的按钮等三秒。
+   */
+  const worthRetry = first.reason !== 'failed' && first.reason !== 'no-voice'
+  if (!worthRetry) {
+    /*
+     * `failed` = 引擎拿到了请求却不发声。这正是本机 Chromium 的症状
+     * （见文件顶部注释）。标记下来，后续直接走服务端合成，不再逐个词超时。
+     */
+    if (first.reason === 'failed') {
+      browserTtsBroken = true
+      if (allowFallback) {
+        const viaServer = await speakViaServer(content, opts.lang, opts.rate, opts.volume, token)
+        if (viaServer.ok) return viaServer
+        // 服务端也不行，把更有信息量的那个错误返回给调用方
+        return viaServer.reason && viaServer.reason !== 'failed' ? viaServer : first
+      }
+    }
+    if (noVoiceHint) return { ok: false, reason: 'no-voice', error: first.error }
+    return first
+  }
+
+  await sleep(120)
   if (token !== speakToken) return { ok: false, reason: 'interrupted' }
 
-  // 引擎偶尔吞掉第一发，再给一次机会
-  await sleep(80)
-  if (token !== speakToken) return { ok: false, reason: 'interrupted' }
-
-  const second = await attemptOnce(content, opts, voice)
+  const second = await attemptOnce(content, opts, voice, token)
   if (second.ok) return second
 
   // 两次都没发出声音。如果本来就没匹配到对应语言的语音包，
   // 那么"缺语音包"比笼统的"播放失败"更能指导用户怎么办。
   if (noVoiceHint) return { ok: false, reason: 'no-voice', error: second.error }
+
+  // 依旧是引擎不发声 → 标记 + 尝试服务端
+  if (second.reason === 'failed') {
+    browserTtsBroken = true
+    if (allowFallback) {
+      const viaServer = await speakViaServer(content, opts.lang, opts.rate, opts.volume, token)
+      if (viaServer.ok) return viaServer
+    }
+  }
 
   return second
 }
@@ -314,8 +458,165 @@ export async function speak(text: string, options: SpeakOptions = {}): Promise<S
 export function stopSpeak(): void {
   speakToken++
   const s = synth()
-  if (!s) return
-  try { s.cancel() } catch { /* 忽略 */ }
+  if (s) {
+    try { s.cancel() } catch { /* 忽略 */ }
+  }
+  stopServerAudio()
+}
+
+/* ============================================================================
+ * 服务端合成兜底
+ * ============================================================================
+ * 背景见 `app/api/v1/tts.py` 顶部注释：部分 Windows 环境下浏览器
+ * `speechSynthesis` 会静默失效（有语音列表、speaking 变 true，但不出声）。
+ * 这时改用后端 `/tts/synthize` 合成 mp3，再用 `Audio` 播放。
+ *
+ * 用 `Audio` 而不是 Web Audio：audio 元素自带播放控制与缓冲，
+ * 且实测在本机 `Audio.play()` 正常。
+ */
+
+/** 当前正在播放的服务端音频 */
+let serverAudio: HTMLAudioElement | null = null
+/** 每次服务端播放自增，用于作废过期回调 */
+let serverToken = 0
+
+function stopServerAudio(): void {
+  serverToken++
+  if (serverAudio) {
+    try {
+      serverAudio.pause()
+      serverAudio.src = ''
+    } catch { /* 忽略 */ }
+    serverAudio = null
+  }
+}
+
+/** 服务端合成接口地址（带 /dev-api 前缀由环境变量决定） */
+function ttsUrl(text: string, lang: string, rate: number): string {
+  const base = (import.meta as any).env?.VITE_APP_BASE_API || ''
+  const q = new URLSearchParams({
+    text,
+    lang,
+    rate: String(Math.round((rate - 1) * 100))
+  })
+  return `${base}/tts/synthize?${q.toString()}`
+}
+
+/**
+ * 用服务端合成的声音朗读。
+ *
+ * 音频带鉴权：后端接口要 token，而 `<audio src>` 无法带 Header，
+ * 所以这里用 fetch 拿 blob 再喂给 Audio（顺带享受浏览器缓存）。
+ */
+async function speakViaServer(
+  text: string,
+  lang: string,
+  rate: number,
+  volume: number,
+  token: number
+): Promise<SpeakResult> {
+  if (typeof window === 'undefined' || typeof window.Audio !== 'function') {
+    return { ok: false, reason: 'unsupported' }
+  }
+
+  const url = ttsUrl(text, lang, rate)
+  const cacheKey = url
+
+  try {
+    let objectUrl = serverAudioCache.get(cacheKey)
+
+    if (!objectUrl) {
+      const { getToken } = await import('@/utils/auth')
+      const tk = getToken()
+      const headers: Record<string, string> = {}
+      if (tk) headers.Authorization = 'Bearer ' + tk
+
+      const res = await fetch(url, { headers })
+      const ct = res.headers.get('content-type') || ''
+
+      if (!res.ok || ct.includes('application/json')) {
+        // 后端返回的是 JSON 错误（edge-tts 未装 / 网络失败等）
+        let msg = ''
+        try {
+          const j = await res.json()
+          msg = j?.msg || ''
+        } catch { /* 忽略 */ }
+        return { ok: false, reason: 'failed', error: msg || `HTTP ${res.status}` }
+      }
+
+      const blob = await res.blob()
+      if (!blob.size) return { ok: false, reason: 'failed', error: '音频为空' }
+
+      objectUrl = URL.createObjectURL(blob)
+      // 只在成功时缓存，且限制条目数，避免长词库无限增长
+      if (serverAudioCache.size > 300) {
+        const firstKey = serverAudioCache.keys().next().value
+        if (firstKey) {
+          const old = serverAudioCache.get(firstKey)
+          if (old) URL.revokeObjectURL(old)
+          serverAudioCache.delete(firstKey)
+        }
+      }
+      serverAudioCache.set(cacheKey, objectUrl)
+    }
+
+    if (token !== speakToken) return { ok: false, reason: 'interrupted' }
+
+    stopServerAudio()
+    const myServerToken = ++serverToken
+
+    return await new Promise<SpeakResult>((resolve) => {
+      const audio = new window.Audio(objectUrl as string)
+      audio.volume = Math.max(0, Math.min(1, volume))
+      serverAudio = audio
+
+      const cleanup = () => {
+        if (serverAudio === audio) serverAudio = null
+      }
+
+      audio.onended = () => { cleanup(); resolve({ ok: true }) }
+      audio.onerror = () => {
+        cleanup()
+        resolve({ ok: false, reason: 'failed', error: '音频解码失败' })
+      }
+
+      // 解码/缓冲卡住时的兜底，避免 Promise 永不 resolve
+      const guard = setTimeout(() => {
+        if (myServerToken === serverToken && audio.paused === false) {
+          // 还在播（只是事件没来），视为正常收尾
+          cleanup()
+          resolve({ ok: true })
+        }
+      }, 20000)
+
+      audio.play().then(() => {
+        // 播放在正常进行；等 onended
+      }).catch((e: any) => {
+        clearTimeout(guard)
+        cleanup()
+        const name = e?.name || ''
+        resolve({
+          ok: false,
+          reason: name === 'NotAllowedError' ? 'not-allowed' : 'failed',
+          error: e?.message
+        })
+      })
+
+      // 正常结束时清掉 guard
+      const origEnd = audio.onended
+      audio.onended = (ev) => {
+        clearTimeout(guard)
+        if (origEnd) (origEnd as any).call(audio, ev)
+      }
+      const origErr = audio.onerror
+      audio.onerror = (ev) => {
+        clearTimeout(guard)
+        if (origErr) (origErr as any).call(audio, ev)
+      }
+    })
+  } catch (e: any) {
+    return { ok: false, reason: 'failed', error: e?.message || String(e) }
+  }
 }
 
 /** 把失败原因转成给用户看的中文提示 */
@@ -338,6 +639,12 @@ export function speakReasonText(reason?: SpeakReason, lang?: string): string {
     case 'canceled':
       return '播放已被打断'
     default:
-      return '播放失败，请检查系统音量和语音引擎'
+      /*
+       * 走到这里通常是「浏览器拿到了请求但语音引擎没真正发声」——
+       * 实测在部分 Windows 环境下 Chromium 的 TTS 桥接会静默失效
+       * （`getVoices()` 有语音、`speaking` 变 true，但 onstart 永不触发）。
+       * 这种情况用户自己很难判断，所以提示里带上最可能的两条出路。
+       */
+      return '语音播放失败：浏览器没能调用系统语音。可尝试刷新页面，或改用 Edge/Chrome 最新版；若仍无声，请在系统设置里确认已安装对应语言的语音包'
   }
 }

@@ -69,6 +69,18 @@ python-jose==3.3.0
 # Excel Export
 openpyxl==3.1.5
 
+# 服务端语音合成（见 app/api/v1/tts.py）
+# ⚠️ 为什么要它：前端用浏览器 speechSynthesis 朗读单词，但实测部分 Windows
+#    环境下 Chromium 的 TTS 桥接会静默失效 —— getVoices() 有语音、speak() 后
+#    speaking 变 true，可 onstart/onend 永不触发、也没有声音（Chrome 156 与
+#    Edge 155 一致，加 --no-sandbox 等参数无效）；而同一台机器的系统 SAPI
+#    朗读正常、浏览器的 Audio.play() 也正常，坏的只有 speechSynthesis 这一条链路。
+#    这里用 edge-tts（微软 Edge 的在线合成，免费、无需 Key）提供兜底：
+#    前端拿不到声音时改调本服务，用 Audio 播放 mp3。
+#    装了更好；不装也不会让服务起不来 —— tts.py 里是延迟 import，
+#    缺包时接口返回「不可用」，前端自动降级回浏览器 TTS。
+edge-tts>=6.1.0
+
 # 题库导出（Word / PDF）—— app/services/bank_export_service.py
 # · python-docx 见上方 Document Processing（写 .docx）
 # · reportlab 写 .pdf；中文需要 CJK 字体，服务会优先用系统里的

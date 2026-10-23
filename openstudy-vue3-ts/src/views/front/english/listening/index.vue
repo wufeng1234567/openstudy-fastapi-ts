@@ -216,7 +216,7 @@ import {
 import { listFrontWordBooks } from '@/api/wordBooks/wordBooks'
 import { listAllWords } from '@/api/words/words'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { speak, stopSpeak, speakReasonText } from '@/utils/speech'
+import { speak, stopSpeak, speakReasonText, warmUpVoices } from '@/utils/speech'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
 
 const router = useRouter()
@@ -576,7 +576,12 @@ const playCurrentWord = async () => {
             }
             const res = await speakChinese(chinese)
             if (res && res.ok === false) {
-                // 'interrupted' / 'canceled' 是用户主动停止或切了题，不打扰
+                /*
+                 * ⚠️ 失败必须**立刻**提示并退出循环。
+                 *    原来只有 `return`，没有提示，而且外层还会继续下一轮 ——
+                 *    用户实测要等 15.5 秒才看到一行提示，期间毫无反应。
+                 *    现在第一发失败就报原因并停下，不做无意义的重播。
+                 */
                 if (res.reason !== 'interrupted' && res.reason !== 'canceled') {
                     ElMessage.warning(speakReasonText(res.reason, 'zh-CN'))
                 }
@@ -787,8 +792,11 @@ const goBack = () => {
     }
 }
 
-// 组件卸载时停止播放
+// 组件挂载：预热语音 + 加载词库
 onMounted(() => {
+    // 预热语音列表，让用户点播放时不必 await（保住用户手势上下文，
+    // 否则 Chrome 会以 not-allowed 拒绝发声）。
+    warmUpVoices()
     loadBookOptions()
 })
 
