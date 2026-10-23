@@ -298,15 +298,21 @@
                 <span class="kbp-try__rank">{{ i + 1 }}</span>
                 <div class="kbp-try__file-main">
                   <div class="kbp-try__file-name-row">
-                    <span class="kbp-try__file-name">{{ f.fileName }}</span>
-                    <span v-if="i === 0" class="kbp-try__badge">最匹配</span>
+                    <!--
+                      文件名也高亮：用户搜「数据结构」，命中的那份文件名里就带着这几个字，
+                      不给它标出来反而要去正文里找 —— 而文件名往往是最强的"就是这份"信号。
+                      ⚠️ v-html 的内容由 `highlight()` 生成，**正文先转义再插标记**，
+                         不能反过来（见该函数注释）。
+                    -->
+                    <span class="kbp-try__file-name" v-html="highlight(f.fileName)"></span>
+                    <span v-if="i === 0 && !lowConfidence" class="kbp-try__badge">最匹配</span>
                   </div>
                   <div class="kbp-try__file-meta">
                     <span v-if="f.kbName" class="kbp-try__kb">{{ f.kbName }}</span>
                     <span v-if="f.hitCount">命中 {{ f.hitCount }} 段</span>
                   </div>
-                  <!-- 命中片段摘要：让用户不用点进去就能判断"是不是这份" -->
-                  <div v-if="f.snippet" class="kbp-try__snippet">{{ f.snippet }}</div>
+                  <!-- 命中片段摘要：关键词高亮，让用户不用点进去就能判断"是不是这份" -->
+                  <div v-if="f.snippet" class="kbp-try__snippet" v-html="highlight(f.snippet)"></div>
                 </div>
                 <div class="kbp-try__ops">
                   <button type="button" class="kbp-try__op" @click="openHit(f)">
@@ -486,6 +492,14 @@ const tryReason = ref('')
  * 折中：照常列出来，但在上面加一条明确提示。
  */
 const lowConfidence = ref(false)
+/**
+ * **本次检索用的词**（高亮依据）
+ *
+ * 单独存一份、而不是直接用 `tryQuery`：输入框是随时可改的，
+ * 结果列表却对应"上一次点找找看时"的那个词。两者混用会导致
+ * 用户一改输入框，已有结果的高亮就乱跳。
+ */
+const trySearchedQuery = ref('')
 
 /* 分块 */
 const chunksVisible = ref(false)
@@ -800,6 +814,7 @@ async function doTry() {
   tryReason.value = ''
   tryResult.value = []
   lowConfidence.value = false
+  trySearchedQuery.value = q
   try {
     const res: any = await searchWorkspace(q, 5, [kb.kbId])
     if (res.code === 200) {
@@ -820,6 +835,36 @@ async function doTry() {
 /** 打开命中的文件：直接看它的分块（= 检索实际用到的那段原文） */
 function openHit(f: any) {
   showChunks({ docId: f.docId, fileName: f.fileName })
+}
+
+/**
+ * 命中关键词高亮（与知识库面板 `KnowledgeBasePanel.highlight` 同一套做法）
+ *
+ * 三条要点，都是踩过的坑：
+ *   1. **先转义、再插标记**。片段是文档正文，可能含尖括号甚至故意的 HTML；
+ *      顺序反了就是把用户内容当代码执行（XSS）。标记 `<mark>` 由我们自己拼，
+ *      正文里的 `<` `>` 已经变成实体，所以安全。
+ *   2. **高亮词取「本次检索用的那个词」**（`trySearchedQuery`），不是输入框当前值 ——
+ *      用户搜完再去改输入框，结果列表不该跟着乱跳。
+ *   3. 正则元字符要转义，否则搜 `C++` 这种词会直接抛异常。
+ */
+function highlight(content: string): string {
+  const escaped = String(content || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+
+  const terms = trySearchedQuery.value.trim().split(/\s+/).filter((t) => t.length > 0)
+  if (!terms.length) return escaped
+
+  // 长词优先：「数据结构」要先于「数据」匹配，否则会被切成两段高亮
+  terms.sort((a, b) => b.length - a.length)
+  const pattern = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+  try {
+    return escaped.replace(new RegExp(`(${pattern})`, 'gi'), '<mark>$1</mark>')
+  } catch {
+    return escaped
+  }
 }
 
 /* ===================== 工具 ===================== */
@@ -1607,6 +1652,21 @@ onMounted(() => load(false))
   -webkit-line-clamp: 2;
   line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+/*
+ * 关键词高亮（与知识库面板 `.kb-hit-body :deep(mark)` 同一套观感）
+ *
+ * `:deep()` 是必须的：`<mark>` 由 `v-html` 注入，不在本组件的 scoped 作用域里，
+ * 不加 :deep 的话选择器根本匹配不到生成的元素。
+ * 用暖黄而不是主题蓝：高亮是"标出一段文字"，不是链接/可点区域，别让人想点。
+ */
+.kbp-try__snippet :deep(mark),
+.kbp-try__file-name :deep(mark) {
+  background: #fff3c4;
+  color: inherit;
+  padding: 0 1px;
+  border-radius: 2px;
 }
 
 .kbp-try__ops {
