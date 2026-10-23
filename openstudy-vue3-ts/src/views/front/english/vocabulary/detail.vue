@@ -176,6 +176,7 @@ import OsIcon from '@/components/OsIcon/index.vue'
 import { getWordBooks } from '@/api/wordBooks/wordBooks'
 import { listAllWords, addWords, updateWords, delWords } from '@/api/words/words'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
+import { speak as speakText, isSpeechSupported, speakReasonText } from '@/utils/speech'
 import OcrRecognizer from '@/components/OcrRecognizer/index.vue'
 
 const router = useRouter()
@@ -349,17 +350,27 @@ async function removeWord(w: any) {
   }
 }
 
-/** 朗读：优先用浏览器 TTS（零依赖、离线可用） */
-function speak(text: string) {
-  if (!text || !('speechSynthesis' in window)) {
-    ElMessage.warning('当前浏览器不支持朗读')
+/**
+ * 朗读单词
+ *
+ * 2026-10-23 改：原来直接 `window.speechSynthesis.speak()`，有两个问题：
+ *  · 不指定 `voice`，只用 `lang='en-US'` 靠引擎自己挑。系统里没有英文语音包时
+ *    会**静默不响**（onerror 没人接）；
+ *  · `cancel()` 之后立刻 `speak()`，Chrome 下这一发有概率被直接丢弃。
+ * 现在统一走 @/utils/speech，失败会明确告诉用户原因，而不是点了没反应。
+ */
+async function speak(text: string) {
+  if (!text) return
+  if (!isSpeechSupported()) {
+    ElMessage.warning(speakReasonText('unsupported', 'en-US'))
     return
   }
-  window.speechSynthesis.cancel()
-  const u = new SpeechSynthesisUtterance(text)
-  u.lang = 'en-US'
-  u.rate = 0.85
-  window.speechSynthesis.speak(u)
+  const res = await speakText(text, { lang: 'en-US', rate: 0.85 })
+  if (!res.ok) {
+    if (res.reason !== 'interrupted' && res.reason !== 'canceled') {
+      ElMessage.warning(speakReasonText(res.reason, 'en-US'))
+    }
+  }
 }
 
 function goBack() {

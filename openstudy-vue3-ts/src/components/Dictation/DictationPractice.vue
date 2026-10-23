@@ -160,15 +160,18 @@
         </el-button>
 
         <!-- 修改单词列表抽屉中的表格部分 -->
+        <!-- ⚠️ 2026-10-23 修：prop 原来是 `english` / `chinese`，
+             但后端 `/words/words/list` 返回的字段是 `word` / `translation`，
+             所以这两列一直是空白。 -->
         <el-table :data="wordBookWords" height="calc(100vh - 250px)" class="word-list-table mt15">
-          <el-table-column label="英文单词" prop="english" min-width="150">
+          <el-table-column label="英文单词" prop="word" min-width="150">
             <template #default="scope">
-              <span class="word-english">{{ scope.row.english }}</span>
+              <span class="word-english">{{ scope.row.word }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="中文意思" prop="chinese" min-width="200">
+          <el-table-column label="中文意思" prop="translation" min-width="200">
             <template #default="scope">
-              <span class="word-chinese">{{ scope.row.chinese }}</span>
+              <span class="word-chinese">{{ scope.row.translation }}</span>
             </template>
           </el-table-column>
           <el-table-column label="音标" prop="phonetic" min-width="120">
@@ -180,7 +183,7 @@
           <!-- 在抽屉表格的播放按钮中添加禁用条件 -->
           <el-table-column label="操作" width="100" align="center">
             <template #default="scope">
-              <el-button type="primary" icon="Headset" circle size="small" @click="playWord(scope.row.english)"
+              <el-button type="primary" icon="Headset" circle size="small" @click="playWord(scope.row.word)"
                 :disabled="isPlayingDictation" title="播放单词发音" />
             </template>
           </el-table-column>
@@ -197,7 +200,9 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
+import { ElMessage } from 'element-plus'
 import { listWords, listAllWords } from "@/api/words/words"
+import { speak, stopSpeak, speakReasonText } from '@/utils/speech'
 
 const props = defineProps({
   wordBookOptions: {
@@ -218,8 +223,8 @@ const wordBookWords = ref([]) // 单词本中的单词列表
 const showWordList = ref(false) // 控制单词列表抽屉显示
 
 // 语音播放相关
-const speechSynthesis = window.speechSynthesis
-const utterance = ref(null)
+// ⚠️ 2026-10-23：`speechSynthesis` / `utterance` 两个本地句柄已不再需要，
+//    播放统一走 @/utils/speech。这里只保留状态位。
 const isPlaying = ref(false)
 const isPlayingDictation = ref(false) // 是否正在播放听写练习
 const currentWordIndex = ref(0) // 当前播放的单词索引
@@ -359,7 +364,9 @@ function updateCurrentWordDisplay() {
   // 使用完整单词列表而不是分页列表
   if (fullWordBookWords.value.length > 0 && currentWordIndex.value < fullWordBookWords.value.length) {
     const word = fullWordBookWords.value[currentWordIndex.value]
-    currentWord.value = dictationForm.playType === 'english' ? word.english : word.chinese
+    // ⚠️ 2026-10-23 修：字段是 `word` / `translation`（不是 english / chinese），
+    //    原来取到 undefined → 屏幕上的当前单词永远是空的。
+    currentWord.value = dictationForm.playType === 'english' ? word.word : word.translation
     console.log('当前显示单词:', currentWord.value);
 
     // 正确更新进度显示
@@ -540,10 +547,11 @@ function playCurrentWordWithRepeat() {
   const word = fullWordBookWords.value[currentWordIndex.value]
   let textToSpeak = ""
 
+  // ⚠️ 2026-10-23 修：字段是 `word` / `translation`（不是 english / chinese）
   if (dictationForm.playType === 'english') {
-    textToSpeak = word.english
+    textToSpeak = word.word
   } else {
-    textToSpeak = word.chinese
+    textToSpeak = word.translation
   }
 
   if (textToSpeak) {
@@ -573,10 +581,12 @@ function playCurrentWord() {
   const word = fullWordBookWords.value[currentWordIndex.value]
   let textToSpeak = ""
 
+  // ⚠️ 2026-10-23 修：后端字段是 `word` / `translation`，不是 `english` / `chinese`。
+  //    原来取到的是 undefined → `if (textToSpeak)` 判断失败 → **点了完全没反应**。
   if (dictationForm.playType === 'english') {
-    textToSpeak = word.english
+    textToSpeak = word.word
   } else {
-    textToSpeak = word.chinese
+    textToSpeak = word.translation
   }
 
   if (textToSpeak) {
@@ -584,11 +594,11 @@ function playCurrentWord() {
   }
 }
 // 添加抽屉列表播放单词方法
+// ⚠️ 2026-10-23 改：同样收归到 @/utils/speech。
 function playWord(englishWord) {
-  // 预处理文本，替换常见缩写
-  let processedText = englishWord;
+  if (!englishWord) return
   // 处理英语缩写
-  processedText = englishWord
+  const processedText = String(englishWord)
     .replace(/\bsth\b/g, "something")
     .replace(/\bsb\b/g, "somebody")
     .replace(/\bkb\b/g, "kilobyte")
@@ -596,39 +606,23 @@ function playWord(englishWord) {
     .replace(/\bg\b/g, "gram")
     .replace(/\bkg\b/g, "kilogram");
 
-  // 停止当前播放
-  if (isPlaying.value) {
-    speechSynthesis.cancel();
-  }
-
-  // 创建语音对象
-  const utterance = new SpeechSynthesisUtterance(processedText);
-
-  // 设置语音参数
-  utterance.lang = 'en-US';
-  utterance.rate = 0.8; // 语速
-  utterance.pitch = 1; // 音调
-  utterance.volume = 1; // 音量
-
-  // 设置播放状态
-  utterance.onstart = () => {
-    isPlaying.value = true;
-  };
-
-  utterance.onend = () => {
-    isPlaying.value = false;
-  };
-
-  utterance.onerror = () => {
-    isPlaying.value = false;
-    console.error("语音播放出错");
-  };
-
-  // 开始播放
-  speechSynthesis.speak(utterance);
+  isPlaying.value = true;
+  speak(processedText, { lang: 'en-US', rate: 0.8 })
+    .then((res) => {
+      isPlaying.value = false;
+      if (!res.ok && res.reason !== 'interrupted' && res.reason !== 'canceled') {
+        ElMessage.warning(speakReasonText(res.reason, 'en-US'));
+      }
+    })
+    .catch(() => {
+      isPlaying.value = false;
+    });
 }
 
 // 使用Web Speech API播放文字
+// ⚠️ 2026-10-23 改：原来自己 new SpeechSynthesisUtterance + speak，
+//    踩了「cancel 后立刻 speak 被 Chrome 丢弃」「onerror 被吞」两个坑。
+//    现在交给 @/utils/speech（统一处理语音包选择、看门狗、错误提示）。
 function speakWord(text, onEndCallback) {
   // 预处理文本，替换常见缩写
   let processedText = text;
@@ -643,39 +637,25 @@ function speakWord(text, onEndCallback) {
       .replace(/\bkg\b/g, "kilogram");
   }
 
-  // 停止当前播放
-  if (isPlaying.value) {
-    speechSynthesis.cancel();
-  }
+  const lang = dictationForm.playType === 'english' ? 'en-US' : 'zh-CN';
 
-  // 创建语音对象
-  utterance.value = new SpeechSynthesisUtterance(processedText);
-
-  // 设置语音参数
-  utterance.value.lang = dictationForm.playType === 'english' ? 'en-US' : 'zh-CN';
-  utterance.value.rate = 0.8; // 语速
-  utterance.value.pitch = 1; // 音调
-  utterance.value.volume = 1; // 音量
-
-  // 设置播放状态
-  utterance.value.onstart = () => {
-    isPlaying.value = true;
-  };
-
-  utterance.value.onend = () => {
-    isPlaying.value = false;
-    if (onEndCallback) {
-      onEndCallback();
-    }
-  };
-
-  utterance.value.onerror = () => {
-    isPlaying.value = false;
-    console.error("语音播放出错");
-  };
-
-  // 开始播放
-  speechSynthesis.speak(utterance.value);
+  isPlaying.value = true;
+  speak(processedText, { lang, rate: 0.8 })
+    .then((res) => {
+      isPlaying.value = false;
+      if (!res.ok) {
+        if (res.reason !== 'interrupted' && res.reason !== 'canceled') {
+          ElMessage.warning(speakReasonText(res.reason, lang));
+        }
+        return;
+      }
+      if (onEndCallback) {
+        onEndCallback();
+      }
+    })
+    .catch(() => {
+      isPlaying.value = false;
+    });
 }
 // 添加切换播放状态的方法
 function toggleDictation() {
@@ -688,11 +668,11 @@ function toggleDictation() {
   }
 }
 // 停止语音播放
+// ⚠️ 2026-10-23 改：原来只在 `isPlaying` 为 true 时才 cancel()，
+//    Chrome 卡在 pending 状态时永远停不下来。现在无条件停。
 function stopSpeech() {
-  if (isPlaying.value) {
-    speechSynthesis.cancel()
-    isPlaying.value = false
-  }
+  stopSpeak()
+  isPlaying.value = false
 }
 
 // 手动播放下一个单词（用于练习区按钮）

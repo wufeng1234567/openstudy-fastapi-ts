@@ -106,10 +106,19 @@
                 <div class="word-phonetic" v-if="currentWord?.phonetic">{{ currentWord.phonetic }}</div>
 
                 <!-- 播放按钮 -->
+                <!--
+                  ⚠️ 2026-10-23 修：原来是 `:loading="isPlaying"`。
+                      Element Plus 的 button 在 loading 时会**同时置 disabled**，
+                      并且 `handleClick` 里 `if (props.loading) { evt.stopPropagation(); return }`
+                      —— 也就是说只要 `isPlaying` 卡在 true，这个按钮就永久点不动，
+                      表现正是「点击没反应」。
+                      现在去掉 loading，只用图标在 播放/暂停 之间切换：
+                      按钮始终可点，用户可以随时重播或打断。
+                -->
                 <div class="play-section">
                     <el-button type="primary" circle size="large"
                         @click="practiceMode === 'dictation' ? startDictationRound() : playCurrentWord()"
-                        :loading="isPlaying" class="play-btn" :disabled="isWaitingAutoNext">
+                        class="play-btn" :disabled="isWaitingAutoNext">
                         <el-icon :size="28">
                             <VideoPlay v-if="!isPlaying" />
                             <VideoPause v-else />
@@ -207,6 +216,7 @@ import {
 import { listFrontWordBooks } from '@/api/wordBooks/wordBooks'
 import { listAllWords } from '@/api/words/words'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { speak, stopSpeak, speakReasonText } from '@/utils/speech'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
 
 const router = useRouter()
@@ -254,11 +264,18 @@ const isPlaying = ref(false)
 const inputRef = ref(null)
 
 // ==================== 语音合成（Web Speech API） ====================
-// 使用浏览器内置的 SpeechSynthesis API，无需后端接口或第三方服务
-// MDN 文档：https://developer.mozilla.org/zh-CN/docs/Web/API/SpeechSynthesis
-// 兼容性：Chrome、Edge、Safari、Firefox 均支持
-let speechSynthesis = window.speechSynthesis
-let currentUtterance = null  // 当前正在播放的语音实例，用于中途停止
+// 2026-10-23 改：原来这一页自己手写 `speechSynthesis.speak()`，踩了三个坑，
+// 表现就是「点了没声音 / 点了没反应」。现在统一走 @/utils/speech：
+//
+//   ① `cancel()` 后立刻 `speak()` 会被 Chrome 静默丢弃（不报错、不触发 onend）
+//      —— 原代码每次播放前都 cancel()，于是「第一次能响，之后点就哑了」。
+//   ② `onerror` 一律 `() => resolve()`，缺语音包 / 被策略拦下全被吞掉，
+//      用户永远不知道为什么没声音。
+//   ③ 没有任何超时。引擎卡住时 `isPlaying` 永远是 true，而播放按钮是
+//      `:loading="isPlaying"`，Element Plus 的 loading 会同时变成 disabled
+//      并在 handleClick 里直接 return —— 按钮就**永久点不动**了。
+//
+// 具体细节见 `src/utils/speech.ts` 顶部注释。
 
 // 统计
 const practiceResults = ref([])
@@ -368,6 +385,12 @@ const startPractice = () => {
  * 开始一轮听写播放
  * 听写模式下：播放 N 遍中文发音，每遍间隔 playInterval 秒
  * 播放完成后启动自动下一题倒计时
+ *
+ * 2026-10-23 改：
+ *  · 失败时会提示原因，而不是「看着转圈、没有声音、然后自动跳到下一题」；
+ *  · `isPlaying` 由 try/finally 兜底，异常不会把播放按钮永久锁死；
+ *  · 播放失败**不再**自动进入下一题 —— 那样用户会眼睁睁看着题目一题题跳过，
+ *    却不知道为什么每个都没声音。
  */
 const startDictationRound = async () => {
     if (!currentWord.value) return
@@ -394,19 +417,27 @@ const startDictationRound = async () => {
     isPlaying.value = true
     currentPlayCount.value = 0
 
-    for (let i = 0; i < repeatCount.value; i++) {
-        currentPlayCount.value = i + 1
-        await speakChinesePromise(chinese)
-        if (i < repeatCount.value - 1) {
-            await sleep(playInterval.value * 1000)
+    try {
+        for (let i = 0; i < repeatCount.value; i++) {
+            currentPlayCount.value = i + 1
+            const res = await speakChinesePromise(chinese)
+            if (res && res.ok === false) {
+                if (res.reason !== 'interrupted' && res.reason !== 'canceled') {
+                    ElMessage.warning(speakReasonText(res.reason, 'zh-CN'))
+                }
+                return
+            }
+            if (i < repeatCount.value - 1) {
+                await sleep(playInterval.value * 1000)
+            }
         }
+
+        // 播放完成后，等待自动下一题
+        startAutoNextCountdown()
+    } finally {
+        isPlaying.value = false
+        currentPlayCount.value = 0
     }
-
-    isPlaying.value = false
-    currentPlayCount.value = 0
-
-    // 播放完成后，等待自动下一题
-    startAutoNextCountdown()
 }
 
 
@@ -494,29 +525,12 @@ const clearAutoNextTimer = () => {
 }
 /**
  * 中文语音播放（Promise 版本）
- * 使用 Web Speech API 的 SpeechSynthesisUtterance 对象
- * @param text 要朗读的中文文本
- * @returns Promise 朗读结束时 resolve
  *
- * 参数说明：
- * - lang: 'zh-CN'  中文语音
- * - rate: 0.9      语速（0.1~10，默认1，0.9稍慢更清晰）
- * - pitch: 1       音高（0~2，默认1）
- * - volume: 1      音量（0~1，默认1）
+ * 走统一的 `speak()`：内部已处理 cancel→speak 的间隔、语音包选择、
+ * 错误码透出和看门狗超时。返回 `{ok, reason}`，不再无声吞掉失败。
  */
 const speakChinesePromise = (text) => {
-    return new Promise((resolve) => {
-        const utterance = new SpeechSynthesisUtterance(text)
-        utterance.lang = 'zh-CN'
-        utterance.rate = 0.9
-        utterance.pitch = 1
-        utterance.volume = 1
-
-        utterance.onend = () => resolve()
-        utterance.onerror = () => resolve()
-
-        speechSynthesis.speak(utterance)
-    })
+    return speak(text, { lang: 'zh-CN', rate: 0.9 })
 }
 
 // 数组随机打乱
@@ -532,6 +546,14 @@ const shuffleArray = (array) => {
 /**
  * 播放当前单词的中文发音（输入模式）
  * 根据 repeatCount 设置播放 1~3 遍，每遍间隔 playInterval 秒
+ *
+ * 2026-10-23 改：
+ *  · 原来用 `speakChinese()` + `waitForSpeechEnd()` 轮询 speaking。
+ *    一旦浏览器吞掉发声（cancel 后立刻 speak），`speaking` 一直是 false，
+ *    轮询立刻 resolve，循环空转完就结束了 —— **有间隔、没声音**。
+ *    现在直接 `await speak()`，成功了才算播完。
+ *  · 失败要说话。原来是静默的，用户只看到按钮转了一圈。
+ *  · `isPlaying` 用 try/finally 兜底，任何异常都不会把按钮永久卡在 loading。
  */
 const playCurrentWord = async () => {
     if (!currentWord.value) return
@@ -546,66 +568,45 @@ const playCurrentWord = async () => {
     }
 
     isPlaying.value = true
-
-    // 根据设置播放多次
-    for (let i = 0; i < repeatCount.value; i++) {
-        if (i > 0) {
-            await sleep(playInterval.value * 1000)
+    try {
+        // 根据设置播放多次
+        for (let i = 0; i < repeatCount.value; i++) {
+            if (i > 0) {
+                await sleep(playInterval.value * 1000)
+            }
+            const res = await speakChinese(chinese)
+            if (res && res.ok === false) {
+                // 'interrupted' / 'canceled' 是用户主动停止或切了题，不打扰
+                if (res.reason !== 'interrupted' && res.reason !== 'canceled') {
+                    ElMessage.warning(speakReasonText(res.reason, 'zh-CN'))
+                }
+                return
+            }
         }
-        speakChinese(chinese)
-        // 等待播放完成
-        await waitForSpeechEnd()
+    } finally {
+        isPlaying.value = false
     }
-
-    isPlaying.value = false
 }
 
 /**
  * 播放中文语音（内部方法）
- * 创建 SpeechSynthesisUtterance 对象并调用 speechSynthesis.speak()
- * 浏览器会使用系统内置的中文语音引擎朗读文本
+ *
+ * 2026-10-23 改：原实现自己 new SpeechSynthesisUtterance 并直接 speak，
+ * 失败时 `onerror = () => resolve()` 把错误吞掉。现在交给统一的 speak()。
  */
 const speakChinese = (text) => {
-    return new Promise((resolve) => {
-        const utterance = new SpeechSynthesisUtterance(text)
-        utterance.lang = 'zh-CN'
-        utterance.rate = 0.9
-        utterance.pitch = 1
-        utterance.volume = 1
-
-        utterance.onend = () => resolve()
-        utterance.onerror = () => resolve()
-
-        currentUtterance = utterance
-        speechSynthesis.speak(utterance)
-    })
-}
-
-/**
- * 等待语音播放结束
- * 轮询 speechSynthesis.speaking 状态，每 100ms 检查一次
- * 当 speaking 变为 false 时 resolve
- */
-const waitForSpeechEnd = () => {
-    return new Promise((resolve) => {
-        const checkInterval = setInterval(() => {
-            if (!speechSynthesis.speaking) {
-                clearInterval(checkInterval)
-                resolve()
-            }
-        }, 100)
-    })
+    return speak(text, { lang: 'zh-CN', rate: 0.9 })
 }
 
 /**
  * 停止当前语音播放
- * 调用 speechSynthesis.cancel() 会立即停止所有排队中的语音
+ *
+ * 2026-10-23 改：原实现只在 `speechSynthesis.speaking` 为 true 时才 cancel()。
+ * 但 Chrome 里队列可能处于「pending 却没进入 speaking」的卡住状态，
+ * 此时不 cancel 就永远解锁不了。现在无条件 cancel()，并把排队回调作废。
  */
 const stopSpeaking = () => {
-    if (speechSynthesis.speaking) {
-        speechSynthesis.cancel()
-    }
-    currentUtterance = null
+    stopSpeak()
 }
 
 // 延时函数
