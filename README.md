@@ -37,6 +37,19 @@ Word/PDF/MD    拆段落·认公式·抠图片    变成题库·标注出处    
 
 > 📖 四步各自做了什么、代码在哪 → **[doc/CORE-FLOW.md](doc/CORE-FLOW.md)**
 
+### 从 Spring Boot 到 FastAPI
+
+这个项目**最初是 Spring Boot 3 + Vue 3 实现的**（[Java 版仓库](https://github.com/wufeng1234567/open-study-backend)），
+跑通之后重构到了 FastAPI。换技术栈不是赶潮流，是两个具体问题：
+
+| 问题 | Spring Boot 版 | 重构后 |
+|---|---|---|
+| **流式输出** | SSE 要走 WebFlux，同步栈里接 Agent 的逐字流很别扭 | FastAPI 原生 `StreamingResponse`，纯 ASGI 透传即可逐字下发 |
+| **AI 生态** | LangChain / sentence-transformers / bge-m3 的主力都在 Python | 直接 `pip install`，本地向量化同进程加载，不用再起一个 Python 服务 |
+
+Java 那套的多模块分层（admin / common / framework / quartz / system）保留了思路，
+Python 版按 `api / models / repositories / services` 重新组织，业务规则逐条对齐。
+
 ---
 
 ## 核心功能：一条从资料到成绩的闭环
@@ -143,7 +156,7 @@ Word/PDF/MD    拆段落·认公式·抠图片    变成题库·标注出处    
 ### 方式一：本地部署（Docker，推荐自建）
 
 ```bash
-git clone https://gitcode.com/qi142410131/openstudy-fastapi-ts.git
+git clone https://github.com/wufeng1234567/openstudy-fastapi-ts.git
 cd openstudy-fastapi-ts
 docker compose up -d --build
 ```
