@@ -179,6 +179,23 @@
                     </el-radio-group>
                 </div>
 
+                <!-- 播放内容：中文 / 英文 / 中文+英文 -->
+                <div class="setting-item">
+                    <span class="setting-label">播放内容</span>
+                    <div class="setting-control setting-control--stack">
+                        <el-radio-group v-model="audioContent">
+                            <el-radio value="zh">中文</el-radio>
+                            <el-radio value="en">英文</el-radio>
+                            <el-radio value="both">中文+英文</el-radio>
+                        </el-radio-group>
+                        <span class="setting-hint">
+                            {{ audioContent === 'zh' ? '播中文释义，你写英文单词（中译英，考回忆）'
+                                : audioContent === 'en' ? '播英文发音，你拼出单词（真听力，考辨音 + 拼写）'
+                                : '每遍先中文后英文，先自己回想再听答案核对' }}
+                        </span>
+                    </div>
+                </div>
+
                 <!-- 播放速度：三种模式都有意义 -->
                 <div class="setting-item setting-item--slider">
                     <span class="setting-label">播放速度</span>
@@ -284,7 +301,8 @@
                     </el-icon>
                     <span>实时设置</span>
                     <span class="live-settings__summary">
-                        {{ speechRate.toFixed(1) }}× 速度
+                        {{ audioContent === 'zh' ? '中文' : audioContent === 'en' ? '英文' : '中英' }}
+                        · {{ speechRate.toFixed(1) }}× 速度
                         · {{ practiceMode === 'input' ? 1 : repeatCount }} 遍
                         <template v-if="practiceMode !== 'input' && repeatCount > 1"> · 间隔 {{ playInterval }}s</template>
                         <template v-if="practiceMode === 'dictation'"> · 自动跳 {{ autoNextInterval }}s</template>
@@ -338,7 +356,21 @@
                         <span class="live-row__value"></span>
                     </div>
 
+                    <!-- 播放内容：实时可调，且会同步改变卡片显示 -->
+                    <div class="live-row live-row--mode">
+                        <span class="live-row__label">播放内容</span>
+                        <el-radio-group v-model="audioContent" size="small">
+                            <el-radio-button value="zh">中文</el-radio-button>
+                            <el-radio-button value="en">英文</el-radio-button>
+                            <el-radio-button value="both">中文+英文</el-radio-button>
+                        </el-radio-group>
+                    </div>
+
                     <p class="live-settings__hint">
+                        {{ audioContent === 'zh' ? '播中文释义，你写英文单词'
+                            : audioContent === 'en' ? '播英文发音，你拼出单词（卡片不显示任何提示）'
+                            : '每遍先中文后英文，先自己回想再听答案' }}
+                        <br />
                         改完立即对下一次播放生效，不用退出练习；切模式也不会丢本轮进度。
                     </p>
                 </div>
@@ -349,19 +381,19 @@
                 <!--
                   ⚠️ 字段是 `translation` / `word`，不是 `chinese` / `english`（2026-10-23 修）
 
-                  2026-10-26：**纯听力模式不能显示中文释义和音标**。
-                  截图实测：纯听力模式下页面把「adj. 根本的 / ˈfʌndəmentl」全摆出来了 ——
-                  用户照着抄就行，"听力"练了个寂寞。
-                  现在纯听力只显示"第几题"和播放入口，释义与音标一律隐藏；
-                  打字输入 / 自动听写才显示中文（它们是"中译英"，需要题面）。
+                  2026-10-26：显示什么由「播放内容」决定，不是由模式决定。
+                  见 `showChineseOnCard` / `showPhoneticOnCard` 的注释：
+                  播英文时绝不能显示中文和音标（两者都能反推出答案）。
                 -->
-                <template v-if="practiceMode !== 'listen'">
+                <template v-if="showChineseOnCard">
                     <div class="word-chinese">{{ currentWord?.translation || '' }}</div>
-                    <div class="word-phonetic" v-if="currentWord?.phonetic">{{ currentWord.phonetic }}</div>
+                    <div class="word-phonetic" v-if="showPhoneticOnCard && currentWord?.phonetic">
+                        {{ currentWord.phonetic }}
+                    </div>
                 </template>
                 <template v-else>
                     <div class="listen-question-mark">?</div>
-                    <div class="listen-question-hint">听发音，写出这个单词</div>
+                    <div class="listen-question-hint">{{ cardPlaceholderHint }}</div>
                 </template>
 
                 <!-- 播放按钮 -->
@@ -548,6 +580,21 @@ const practiceMode = ref<PracticeMode>('input')
 /** 播放速度（0.5~1.5，1 = 正常）。传给 TTS 的 rate */
 const speechRate = ref(1)
 
+/**
+ * 播放内容（2026-10-26 新增）
+ *
+ *   zh   —— 只播中文释义：听「益处」写 benefit（中译英，考回忆）
+ *   en   —— 只播英文发音：听 /bɪˈnefɪt/ 拼出来（真听力，考辨音 + 拼写）
+ *   both —— 先中文后英文：先自己想一遍，再听英文对答案（自测）
+ *
+ * ⚠️ 这个设置**同时决定屏幕上显示什么**，不只是播放内容：
+ *    播 `en` 时若还显示中文释义，等于把答案摆在眼前（用户听到 /bɪˈnefɪt/
+ *    再照着「益处」抄，练了个寂寞）。
+ *    显示规则由 `showChineseOnCard` / `showEnglishOnCard` 两个 computed 统一决定。
+ */
+type AudioContent = 'zh' | 'en' | 'both'
+const audioContent = ref<AudioContent>('zh')
+
 /** 播放次数（1~3 遍） */
 const repeatCount = ref(2)
 
@@ -657,6 +704,49 @@ const progressPercent = computed(() => {
     return Math.round(((currentIndex.value) / practiceWords.value.length) * 100)
 })
 
+/* ============================================================================
+ * 屏幕显示规则（2026-10-26，跟随「播放内容」）
+ *
+ * 核心原则：**页面上不能出现用户要靠听才能得到的信息**，否则等于给答案。
+ *
+ *   播放内容   卡片显示                      为什么
+ *   ─────────────────────────────────────────────────────────────────────
+ *   zh（中文）  中文释义 + 音标               听中文写英文，题面就是那条中文
+ *   en（英文）  **什么都不显示**（只一个 ?）   听英文拼写，中文和拼写都不能给
+ *   both       中文释义                      先中文自测，英文靠听
+ *
+ * 另外：`listen`（纯听力）模式一律不显示 —— 用户是纸笔听写，
+ * 任何提示都会削弱练习。
+ * ========================================================================== */
+
+/** 卡片上是否显示中文释义 */
+const showChineseOnCard = computed(() => {
+    if (practiceMode.value === 'listen') return false
+    return audioContent.value !== 'en'
+})
+
+/**
+ * 卡片上是否显示英文拼写
+ *
+ * ⚠️ 永远不显示。这是听写练习 —— 英文拼写就是要写出来的答案。
+ *    这里显式写成一个恒 false 的变量而不是直接不写，
+ *    是为了让"为什么没有英文"这个决定在代码里是可见的，
+ *    以后想改成「答完再显示」时知道该动这里。
+ */
+const showEnglishOnCard = computed(() => false)
+
+/** 卡片上是否显示音标 —— 只在播中文时给（音标能反推出拼写，播英文时不能给） */
+const showPhoneticOnCard = computed(() => {
+    if (practiceMode.value === 'listen') return false
+    return audioContent.value === 'zh'
+})
+
+/** 纯听力模式 / 播英文时的占位文案 */
+const cardPlaceholderHint = computed(() => {
+    if (audioContent.value === 'en') return '听发音，写出这个单词'
+    return '听发音，写出这个单词'
+})
+
 // 加载词库选项
 const loadBookOptions = async () => {
     try {
@@ -756,15 +846,17 @@ const startPractice = () => {
 
 // ==================== 播放（三种模式共用） ====================
 /**
- * 播放当前单词的中文发音 N 遍
+ * 播放当前单词 N 遍
  *
  * 2026-10-26 抽出来给三种模式共用：
  *   · listen    —— 播完就停，**不自动跳题**（用户可能正在纸上写）
- *   · input     —— 手动点播放，播一遍就行（用户要看中文释义打字）
+ *   · input     —— 手动点播放，播一遍就行
  *   · dictation —— 播 N 遍后启动自动下一题倒计时
  *
  * `autoNext` 参数决定播完是否启动倒计时 —— 这是三个模式唯一的行为差异，
  * 所以不再写三份播放循环。
+ *
+ * 播放内容由 `audioContent`（zh / en / both）决定，见下方 segments 的说明。
  */
 const playRound = async ({ autoNext = false } = {}) => {
     if (!currentWord.value) return
@@ -772,14 +864,7 @@ const playRound = async ({ autoNext = false } = {}) => {
     clearAutoNextTimer()
     isWaitingAutoNext.value = false
 
-    const chinese = currentWord.value.translation
-    if (!chinese) {
-        ElMessage.warning('该单词没有中文释义')
-        if (autoNext) autoNextWord()
-        return
-    }
-
-    // input 模式只播一遍（用户是看着中文打字，重复播放没意义）
+    // input 模式只播一遍（用户是看着题面打字，重复播放没意义）
     const times = practiceMode.value === 'input' ? 1 : repeatCount.value
     /*
      * ⚠️ 本轮遍数在**循环开始前**就固定（`times`），而不是每轮重新读 `repeatCount`。
@@ -791,19 +876,56 @@ const playRound = async ({ autoNext = false } = {}) => {
     isPlaying.value = true
     currentPlayCount.value = 0
 
+    /*
+     * 播放内容（2026-10-26 新增三选一）
+     * ----------------------------------------------------------------
+     *   zh   —— 只播中文释义：听「益处」写 benefit（中译英，考回忆）
+     *   en   —— 只播英文单词：听 /bɪˈnefɪt/ 拼出来（真听力，考辨音+拼写）
+     *   both —— 先中文后英文：先自己想，再听英文对答案（自测）
+     *
+     * ⚠️ 一段"每一遍要念什么"的序列，而不是在循环里写 if/else ——
+     *    `both` 需要一遍里念两段，用序列表达最直接；
+     *    遍与遍之间、段与段之间都用同一个 `playInterval` 间隔，
+     *    用户调一个值就能控制所有停顿，不用记两套参数。
+     */
+    const segments: Array<{ text: string; lang: string }> = []
+    const content = audioContent.value
+    if (content === 'zh' || content === 'both') {
+        const zh = String(currentWord.value.translation || '').trim()
+        if (zh) segments.push({ text: zh, lang: 'zh-CN' })
+    }
+    if (content === 'en' || content === 'both') {
+        const en = String(currentWord.value.word || '').trim()
+        if (en) segments.push({ text: en, lang: 'en-US' })
+    }
+
+    if (!segments.length) {
+        ElMessage.warning(
+            content === 'zh' ? '该单词没有中文释义，换个播放内容试试' : '该单词没有英文拼写'
+        )
+        return
+    }
+
     try {
         for (let i = 0; i < times; i++) {
             currentPlayCount.value = i + 1
-            const res = await speakChinesePromise(chinese)
-            if (res && res.ok === false) {
-                if (res.reason !== 'interrupted' && res.reason !== 'canceled') {
-                    ElMessage.warning(speakReasonText(res.reason, 'zh-CN'))
+
+            for (let s = 0; s < segments.length; s++) {
+                const seg = segments[s]
+                const res = await speakWithLang(seg.text, seg.lang)
+                if (res && res.ok === false) {
+                    if (res.reason !== 'interrupted' && res.reason !== 'canceled') {
+                        ElMessage.warning(speakReasonText(res.reason, seg.lang))
+                    }
+                    // 播放失败不自动跳题：否则用户会看着题目一题题跳过却不知道为什么
+                    return
                 }
-                // 播放失败不自动跳题：否则用户会看着题目一题题跳过却不知道为什么
-                return
-            }
-            if (i < times - 1) {
-                await sleep(playInterval.value * 1000)
+
+                // 段与段、遍与遍之间都停 playInterval
+                const isLastSegmentOfLastRound = i === times - 1 && s === segments.length - 1
+                if (!isLastSegmentOfLastRound) {
+                    await sleep(playInterval.value * 1000)
+                }
             }
         }
 
@@ -918,7 +1040,7 @@ const clearAutoNextTimer = () => {
     autoNextCountdown.value = 0  // ✅ 重置为 0
 }
 /**
- * 中文语音播放（Promise 版本）
+ * 语音播放（Promise 版本，支持任意语言）
  *
  * 走统一的 `speak()`：内部已处理 cancel→speak 的间隔、语音包选择、
  * 错误码透出和看门狗超时。返回 `{ok, reason}`，不再无声吞掉失败。
@@ -926,9 +1048,13 @@ const clearAutoNextTimer = () => {
  * ⚠️ 2026-10-26：`rate` 原来是硬编码的 `0.9`，现在读用户设置的
  * `speechRate`（0.5~1.5）。语速是听力练习最常被需要的参数 ——
  * 太快听不懂、太慢没挑战，写死一个值等于替用户做了决定。
+ *
+ * ⚠️ 同日扩展：原来只播中文（`speakChinesePromise`），现在支持 `en-US`。
+ *    英文单词由 `speak()` 自动挑英文语音（`pickVoice` 按 lang 匹配），
+ *    与中文走同一条链路，包括服务端 `edge-tts` 兜底。
  */
-const speakChinesePromise = (text) => {
-    return speak(text, { lang: 'zh-CN', rate: speechRate.value })
+const speakWithLang = (text: string, lang: string) => {
+    return speak(text, { lang, rate: speechRate.value })
 }
 
 // 数组随机打乱
@@ -1704,6 +1830,14 @@ watch(() => isPracticing.value, (val) => {
                     flex-direction: column;
                     gap: 2px;
                     min-width: 0;
+                }
+
+                /*
+                 * 「播放内容」这类「单选框 + 一行说明」的组合：
+                 * 说明文字要跟在选项下方、贴着左边缘，不能和选项同一行。
+                 */
+                .setting-control--stack {
+                    gap: 6px;
                 }
 
                 :deep(.el-slider) {
