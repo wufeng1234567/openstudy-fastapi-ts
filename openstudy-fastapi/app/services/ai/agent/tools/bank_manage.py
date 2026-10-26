@@ -464,6 +464,10 @@ class BankManageTool(AgentTool):
             action="create",
             bank=qws.bank_brief(bank),
             message=f"题库「{bank.bank_name}」创建成功（ID={bank.id}）",
+            # 2026-10-26：写成功后给出落地页，前端渲染成「去看看」按钮。
+            # 原来只有英语类工具带 jumpUrl，题库创建完用户还得自己去侧边栏找 ——
+            # 这是「智能体说建好了，但我看不到」的典型断点。
+            jumpUrl=f"/front/questionPractice/{int(bank.id)}",
         )
 
     async def _update(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:

@@ -692,6 +692,8 @@ class QuestionManageTool(AgentTool):
             bankName=bank.bank_name,
             message=f"已在「{bank.bank_name}」中创建题目（ID={question.id}）",
             droppedMarkers=dropped,
+            # 2026-10-26：新建题目后能直接去题库看/练
+            jumpUrl=f"/front/questionPractice/{int(bank.id)}",
         )
 
     @staticmethod
@@ -867,6 +869,10 @@ class QuestionManageTool(AgentTool):
                 + (f"（{failed} 道失败）" if failed else "")
                 + f"，题库现有 {total} 题"
             ),
+            # 2026-10-26：导入成功后能直接跳到题库详情开始刷题。
+            # 没有这个字段时，用户看到「已导入 20 题」却不知道去哪儿练 ——
+            # 闭环就差这一步。
+            jumpUrl=f"/front/questionPractice/{int(bank.id)}",
         )
 
     async def _update(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:

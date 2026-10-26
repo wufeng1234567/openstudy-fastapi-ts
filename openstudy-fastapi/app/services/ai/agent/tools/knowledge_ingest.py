@@ -349,6 +349,10 @@ class KnowledgeIngestTool(AgentTool):
                     f"{('「' + kb_name + '」') if kb_name else ''}（docId={doc_id}），"
                     "正在后台分块并向量化，稍后即可用 knowledge_search 检索到"
                 ),
+                # 2026-10-26：导入后能直接跳到知识库看处理进度。
+                # 「上传完了却没地方确认它好了没」是资料入库这条链路最容易断的地方 ——
+                # 用户看到"处理中"却不知道去哪里看，只能等。
+                "jumpUrl": "/front/workspace",
             }
         )
 

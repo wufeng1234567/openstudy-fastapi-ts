@@ -696,15 +696,26 @@ function goToNote() {
  * （方便用户去看），但用户当时只是问问，弹一张卡反而打断阅读。
  */
 const LINK_WRITE_ACTIONS = new Set([
+  // 英语词库
   'create_book',
   'rename_book',
   'add_word',
-  'batch_add_words'
+  'batch_add_words',
+  // 题库 / 题目（2026-10-26 补）
+  'create',
+  'batch_import',
+  // 知识库入库（2026-10-26 补）
+  'from_text',
+  'from_attachment'
 ])
 
 /** 不同工具落地页的文案/图标（没配的走默认） */
 const LINK_UI: Record<string, { badge: string; buttonText: string; icon: string }> = {
-  english_wordbook: { badge: '词库已更新', buttonText: '去看看', icon: 'book' }
+  english_wordbook: { badge: '词库已更新', buttonText: '去看看', icon: 'book' },
+  // 2026-10-26：把「智能体说做完了」和「去哪里看」接上
+  bank_manage: { badge: '题库已创建', buttonText: '去题库看看', icon: 'book-open' },
+  question_manage: { badge: '题目已就绪', buttonText: '去刷题', icon: 'pen-line' },
+  knowledge_ingest: { badge: '资料已入库', buttonText: '查看处理进度', icon: 'folder' }
 }
 
 const linkJump = computed(() => {
