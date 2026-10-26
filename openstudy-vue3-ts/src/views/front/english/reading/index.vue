@@ -12,17 +12,15 @@
 -->
 <template>
   <div class="rd-page">
+    <!--
+      ⚠️ 2026-10-26：标题与说明已上移到顶栏（`英语学习 · 阅读练习` + 灰色副标题）。
+         这里只保留返回按钮，避免同一标题在顶栏和内容区各出现一次。
+    -->
     <header class="rd-head">
       <button type="button" class="rd-back" @click="goBack">
         <OsIcon name="arrow-left" :size="16" />
         <span>英语学习</span>
       </button>
-      <div class="rd-head__main">
-        <h1 class="rd-head__title">阅读练习</h1>
-        <p class="rd-head__desc">
-          说一句你想练什么，AI 会写一篇短文并出几道题。
-        </p>
-      </div>
     </header>
 
     <!-- 生成设置 -->
@@ -256,9 +254,10 @@ function reset() {
   error.value = ''
 }
 
+// ⚠️ 2026-10-26：「英语学习」的入口首页已下线，返回目标改成「我的词库」。
 function goBack() {
-  cacheStore.setLastVisited('english', 'home')
-  router.push('/front/english/home')
+  cacheStore.setLastVisited('english', 'vocabulary')
+  router.push('/front/english/vocabulary')
 }
 </script>
 
@@ -295,25 +294,6 @@ function goBack() {
     border-color: var(--os-accent, #2563eb);
     color: var(--os-accent, #2563eb);
   }
-}
-
-.rd-head__main {
-  flex: 1;
-  min-width: 0;
-}
-
-.rd-head__title {
-  margin: 0 0 4px;
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--os-text, #111827);
-}
-
-.rd-head__desc {
-  margin: 0;
-  font-size: 12.5px;
-  line-height: 1.6;
-  color: var(--os-text-3, #9ca3af);
 }
 
 /* ---------- 设置 ---------- */

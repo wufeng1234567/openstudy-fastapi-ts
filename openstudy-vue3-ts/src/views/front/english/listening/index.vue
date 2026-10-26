@@ -1,6 +1,12 @@
 <template>
     <div class="listening-page">
-        <!-- 顶部导航栏 -->
+        <!--
+          顶部导航栏
+          ⚠️ 2026-10-26：中间的「听力练习」标题已上移到全局顶栏
+             （`英语学习 · 单词听写` + 灰色副标题），这里删掉以免重复。
+             顺带把页面名统一为「单词听写」——侧边菜单和顶栏都是这个名字，
+             原来这里写「听力练习」会造成同一功能两个叫法。
+        -->
         <div class="page-header">
             <div class="header-left" @click="goBack">
                 <el-icon>
@@ -8,7 +14,7 @@
                 </el-icon>
                 <span>返回</span>
             </div>
-            <div class="header-title">听力练习</div>
+            <div class="header-title"></div>
             <div class="header-right"></div>
         </div>
 
@@ -783,12 +789,14 @@ watch(() => isPracticing.value, (val) => {
     }
 })
 // 返回
+// ⚠️ 2026-10-26：「英语学习」的入口首页已下线，返回目标改成「我的词库」
+//    （听写之前通常先去词库确认有哪些词书）。
 const goBack = () => {
     if (isPracticing.value) {
         stopPractice()
     } else {
-        cacheStore.setLastVisited('english', 'home')
-        router.push('/front/english/home')
+        cacheStore.setLastVisited('english', 'vocabulary')
+        router.push('/front/english/vocabulary')
     }
 }
 

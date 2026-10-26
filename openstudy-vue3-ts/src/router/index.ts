@@ -489,6 +489,16 @@ export const constantRoutes: AppRouteRecordRaw[] = [
         component: () => import('@/views/front/english/index.vue'),
         meta: { title: '英语学习', layout: 'front' },
         hidden: true,
+        /*
+         * ⚠️ 2026-10-26：「首页」下线（用户要求），进入 /front/english
+         *    直接落到「拍照识词」。
+         *
+         *    `home` 路由**保留**但不再作为入口 —— 旧书签 / 外部链接
+         *    （如 `/front/english/home`）打进来仍能渲染，不会 404。
+         *    之所以不删，是因为删掉后命中的是兜底路由，用户会看到空白页，
+         *    比"停留在还能看的旧页面"体验更差。
+         */
+        redirect: '/front/english/ocr',
         children: [
           {
             path: 'home',
@@ -522,7 +532,7 @@ export const constantRoutes: AppRouteRecordRaw[] = [
             path: 'listening',
             name: 'FrontEnglishListening',
             component: () => import('@/views/front/english/listening/index.vue'),
-            meta: { title: '听力练习', layout: 'front', keepAlive: true, requiresLogin: true },
+            meta: { title: '单词听写', layout: 'front', keepAlive: true, requiresLogin: true },
             hidden: true
           },
           {

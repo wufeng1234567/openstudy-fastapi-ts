@@ -1,6 +1,11 @@
 <template>
     <div class="ocr-page">
-        <!-- 顶部导航栏 -->
+        <!--
+          顶部导航栏
+          ⚠️ 2026-10-26：中间的「拍照识词」标题已上移到全局顶栏
+             （`英语学习 · 拍照识词` + 灰色副标题），这里删掉以免重复。
+             左侧返回、右侧"已识别 N 个"仍有信息价值，保留。
+        -->
         <div class="page-header">
             <div class="header-left" @click="goBack">
                 <el-icon>
@@ -8,7 +13,7 @@
                 </el-icon>
                 <span>返回</span>
             </div>
-            <div class="header-title">拍照识词</div>
+            <div class="header-title"></div>
             <div class="header-right">
                 <span v-if="recognizedList.length > 0" class="word-count">
                     已识别 {{ recognizedList.length }} 个
@@ -649,10 +654,11 @@ const resetRotation = () => {
 }
 
 // 返回上一页
+// ⚠️ 2026-10-26：「英语学习」的入口首页已下线，返回目标改成第一个子页
+//    （拍照识词自己就是入口，所以返回「我的词库」—— 这是下一个最常去的页面）。
 const goBack = () => {
-    cacheStore.setLastVisited('english', 'home')
-    router.push('/front/english/home')
-
+    cacheStore.setLastVisited('english', 'vocabulary')
+    router.push('/front/english/vocabulary')
 }
 
 // 上传前校验

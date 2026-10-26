@@ -16,13 +16,12 @@
 -->
 <template>
   <div class="vocab-page">
+    <!--
+      ⚠️ 2026-10-26：标题与说明已上移到顶栏（`英语学习 · 我的词库` + 灰色副标题），
+         这里原来那行 `<h1>我的词库</h1> + <p>把要背的单词整理成词库…</p>`
+         会与顶栏重复，属于"同一个标题出现两次"。现在只保留右侧操作按钮。
+    -->
     <header class="vp-head">
-      <div class="vp-head__main">
-        <h1 class="vp-head__title">我的词库</h1>
-        <p class="vp-head__desc">
-          把要背的单词整理成词库，之后可以听写、也可以让 AI 用它们出题。
-        </p>
-      </div>
       <button type="button" class="vp-new" @click="openCreate">
         <OsIcon name="plus" :size="15" />
         <span>新建词库</span>
@@ -320,28 +319,16 @@ onMounted(load)
   padding: 24px 20px 60px;
 }
 
-/* ---------- 头部 ---------- */
+/* ---------- 头部 ----------
+ * 2026-10-26：标题/说明已上移顶栏，这行只剩右侧「新建词库」按钮。
+ * 改成右对齐，避免按钮孤零零挂在左边。
+ */
 .vp-head {
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: flex-end;
   gap: 20px;
-  margin-bottom: 18px;
-}
-
-.vp-head__title {
-  margin: 0 0 6px;
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--os-text, #111827);
-}
-
-.vp-head__desc {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--os-text-3, #6b7280);
-  max-width: 520px;
+  margin-bottom: 16px;
 }
 
 .vp-new {

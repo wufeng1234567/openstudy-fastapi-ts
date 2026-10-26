@@ -412,12 +412,21 @@ const MY_LEARNING_SUB: Array<[string, string]> = [
  *
  * 这里必须按 name 而不是路径前缀分辨：`/front/questionPractice` 下面还有题库详情、
  * 刷题页，`/front/notes` 下面还有详情、编辑器 —— 那些页面不该挂「公开题库 / 公开笔记」。
+ *
+ * ⚠️ 2026-10-26 补英语学习四个子页（用户：「英语学习那边其他四个子tab都要做
+ *    相应的优化，第一行大标题那边显示 英语学习 - xxxx 然后灰色副标题解释」）。
+ *    同时内容区各自那行标题要**删掉**，避免和顶栏重复。
  */
 const SECOND_LEVEL_BY_ROUTE: Record<string, string> = {
   FrontQuestionBankList: '公开题库',
   FrontNotesList: '公开笔记',
   /* 题库搭建：内容区那行「题库信息 · 名称、科目与封面…」并到顶栏（用户 2026-10-19） */
-  FrontStudioCreate: '题库信息'
+  FrontStudioCreate: '题库信息',
+  /* 英语学习四子页（首页已下线，见 FrontSidebar） */
+  FrontEnglishOcr: '拍照识词',
+  FrontEnglishVocabulary: '我的词库',
+  FrontEnglishListening: '单词听写',
+  FrontEnglishReading: '阅读练习'
 }
 
 /**
@@ -432,7 +441,12 @@ const SECOND_LEVEL_BY_ROUTE: Record<string, string> = {
  * 说明文字用更淡的色 + 稍小的字号，视觉上读作"标题 + 注解"而不是四级标题。
  */
 const SECOND_LEVEL_HINT: Record<string, string> = {
-  FrontStudioCreate: '名称、科目与封面，决定它出现在别人面前的第一眼'
+  FrontStudioCreate: '名称、科目与封面，决定它出现在别人面前的第一眼',
+  /* 英语学习四子页的灰色副标题 —— 一句话说清这个页面能干什么 */
+  FrontEnglishOcr: '拍一张课本或笔记，自动认出上面的单词并整理成词库',
+  FrontEnglishVocabulary: '把要背的单词整理成词库，之后可以听写、也可以让 AI 用它们出题',
+  FrontEnglishListening: '听中文发音写英文单词，练的是拼写和反应',
+  FrontEnglishReading: '给一个主题，AI 生成短文和选择题，做完立刻看解析'
 }
 
 const pageTitle = computed(() => {

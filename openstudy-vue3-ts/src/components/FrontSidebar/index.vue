@@ -469,18 +469,25 @@ const featureItems: NavItem[] = [
    *   · 还有个 `isMastered` 概念，后端表里压根没有这一列。
    * 详见各页面顶部的说明。
    *
-   * 子项直接用二级菜单，让用户一眼看到四个能力，而不是进去再找。
+   * ⚠️ 2026-10-26 下线「首页」（用户：「英语学习的首页直接去掉」）。
+   *
+   *    原来这里是 5 项，第一项是「首页」——一张四宫格入口卡片。
+   *    但它和左侧二级菜单**完全重复**：下面四项就是那四张卡片，
+   *    用户点进来还要在"菜单"和"卡片"之间做同一个选择，多一层跳转。
+   *
+   *    去掉后点击「英语学习」直接落在「拍照识词」，二级菜单只剩四项，
+   *    与其它模块（我的学习 / 题库练习）的层级习惯一致。
+   *    `home/index.vue` 文件保留但不再被菜单引用（路由也已重定向，见 router）。
    */
   {
     key: 'english',
     label: '英语学习',
     icon: 'languages',
-    to: '/front/english/home',
+    to: '/front/english/ocr',
     match: '/front/english',
     cacheKey: 'english',
     requiresLogin: true,
     children: [
-      { label: '首页', to: '/front/english/home', cacheKey: 'home' },
       { label: '拍照识词', to: '/front/english/ocr', cacheKey: 'ocr' },
       { label: '我的词库', to: '/front/english/vocabulary', cacheKey: 'vocabulary' },
       { label: '单词听写', to: '/front/english/listening', cacheKey: 'listening' },
