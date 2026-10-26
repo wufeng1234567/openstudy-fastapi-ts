@@ -121,7 +121,22 @@
                 </div>
             </div>
 
-            <!-- 练习设置 -->
+            <!--
+              练习设置（2026-10-26 重排）
+              -----------------------------------------------------------------
+              改前两处结构/排版问题（截图实测）：
+                ① 「练习模式」的 `.setting-item` 被**错误嵌套在「播放顺序」里面** ——
+                   「播放顺序」是 flex 行，于是「练习模式」这个标签和两个单选框
+                   直接压到「随机」右边，和它重叠在一起；
+                ② 「播放间隔」一行塞了 2 个滑块 + 1 个标签 + 1 句提示，
+                   宽度不够时全部挤成一团。
+
+              改后：
+                · 修正嵌套，每个设置项独立成行；
+                · 统一「左标签 96px + 右控件」的两列网格，各行左边缘对齐；
+                · 滑块行拆成「标签 / 滑块 / 提示」三栏，提示换到滑块下方；
+                · 「自动下一题间隔」只在听写模式下才有意义，顺手也用同一个网格。
+            -->
             <div class="practice-settings" v-if="selectedBookId && wordList.length > 0">
                 <div class="setting-item">
                     <span class="setting-label">练习范围</span>
@@ -129,20 +144,23 @@
                         <el-radio value="all">全部单词</el-radio>
                     </el-radio-group>
                 </div>
+
                 <div class="setting-item">
                     <span class="setting-label">播放顺序</span>
                     <el-radio-group v-model="playOrder">
                         <el-radio value="sequential">顺序</el-radio>
                         <el-radio value="random">随机</el-radio>
                     </el-radio-group>
-                    <div class="setting-item">
-                        <span class="setting-label">练习模式</span>
-                        <el-radio-group v-model="practiceMode">
-                            <el-radio value="input">输入模式</el-radio>
-                            <el-radio value="dictation">听写模式</el-radio>
-                        </el-radio-group>
-                    </div>
                 </div>
+
+                <div class="setting-item">
+                    <span class="setting-label">练习模式</span>
+                    <el-radio-group v-model="practiceMode">
+                        <el-radio value="input">输入模式</el-radio>
+                        <el-radio value="dictation">听写模式</el-radio>
+                    </el-radio-group>
+                </div>
+
                 <div class="setting-item">
                     <span class="setting-label">播放次数</span>
                     <el-radio-group v-model="repeatCount">
@@ -151,14 +169,23 @@
                         <el-radio :value="3">3次</el-radio>
                     </el-radio-group>
                 </div>
-                <div class="setting-item" v-if="practiceMode === 'dictation'">
+
+                <!-- 以下两项只在「听写模式」下出现 -->
+                <div class="setting-item setting-item--slider" v-if="practiceMode === 'dictation'">
                     <span class="setting-label">播放间隔</span>
-                    <el-slider v-model="playInterval" :min="1" :max="5" :step="0.5" show-stops
-                        :format-tooltip="(val) => val + '秒'" style="width: 200px" />
-                    <span class="setting-label">自动下一题间隔</span>
-                    <el-slider v-model="autoNextInterval" :min="1" :max="10" :step="0.5" show-stops
-                        :format-tooltip="(val) => val + '秒'" style="width: 200px" />
-                    <span class="setting-hint">播放完成后等待此时间自动进入下一题</span>
+                    <div class="setting-control">
+                        <el-slider v-model="playInterval" :min="1" :max="5" :step="0.5" show-stops
+                            :format-tooltip="(val) => val + '秒'" />
+                    </div>
+                </div>
+
+                <div class="setting-item setting-item--slider" v-if="practiceMode === 'dictation'">
+                    <span class="setting-label">自动下一题</span>
+                    <div class="setting-control">
+                        <el-slider v-model="autoNextInterval" :min="1" :max="10" :step="0.5" show-stops
+                            :format-tooltip="(val) => val + '秒'" />
+                        <span class="setting-hint">播放完成后等待此时间自动进入下一题</span>
+                    </div>
                 </div>
             </div>
 
@@ -1314,22 +1341,24 @@ watch(() => isPracticing.value, (val) => {
         .book-stats {
             display: flex;
             gap: 24px;
-            margin-top: 20px;
-            padding: 16px;
+            margin-top: 16px;
+            padding: 14px 20px;
             background: #fff;
-            border-radius: 16px;
+            border-radius: 14px;
             border: 1px solid #e5e7eb;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 
             .stat-item {
                 display: flex;
-                flex-direction: column;
-                align-items: center;
+                /* 2026-10-26：原来 `column + center` —— 一个数字孤零零居中，
+                   下面还顶着"总单词"，看起来像张空卡片。改成一行横排更紧凑。 */
+                align-items: baseline;
+                gap: 8px;
 
                 .stat-value {
-                    font-size: 24px;
+                    font-size: 20px;
                     font-weight: 700;
-                    color: #409eff;
+                    line-height: 1;
+                    color: #3b82f6;
                 }
 
                 .stat-label {
@@ -1347,25 +1376,79 @@ watch(() => isPracticing.value, (val) => {
             border: 1px solid #e5e7eb;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 
+            /*
+             * 2026-10-26 重排
+             * -----------------------------------------------------------------
+             * 改前：`.setting-label` 是 `display: block`（标签独占一行），
+             *       而「练习模式」又被错嵌进「播放顺序」里 —— 那一行是 flex，
+             *       于是标签和单选框直接压在一起（截图里能看到字叠字）。
+             *
+             * 改后：统一两列网格 —— 左列 96px 放标签、右列放控件。
+             *       标签不再独占一行，各行左边缘对齐，视觉上是一条竖线。
+             */
             .setting-item {
-                margin-bottom: 20px;
+                display: grid;
+                grid-template-columns: 96px minmax(0, 1fr);
+                align-items: center;
+                gap: 16px;
+                margin-bottom: 18px;
 
                 &:last-child {
                     margin-bottom: 0;
                 }
 
                 .setting-label {
-                    display: block;
-                    font-size: 14px;
+                    font-size: 13.5px;
                     font-weight: 500;
                     color: #1f2937;
-                    margin-bottom: 12px;
+                    /* 不再 block：在网格里它天然占左列 */
+                    white-space: nowrap;
+                }
+
+                /* 单选框之间留出呼吸感，避免挤在一起 */
+                :deep(.el-radio) {
+                    margin-right: 20px;
+
+                    &:last-child {
+                        margin-right: 0;
+                    }
+                }
+            }
+
+            /*
+             * 滑块行：`align-items: center` 会让滑块和标签基线错位，
+             * 这里改成顶部对齐，并让滑块占满右列。
+             */
+            .setting-item--slider {
+                align-items: start;
+
+                .setting-label {
+                    /* 与滑块轨道视觉对齐（滑块本身有内边距） */
+                    padding-top: 2px;
+                }
+
+                .setting-control {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 2px;
+                    min-width: 0;
+                }
+
+                :deep(.el-slider) {
+                    /* 去掉默认左右外边距，让它和上方单选框左边缘对齐 */
+                    padding: 0 6px;
+                }
+
+                .setting-hint {
+                    font-size: 12px;
+                    line-height: 1.5;
+                    color: #9ca3af;
                 }
             }
         }
 
         .start-section {
-            margin-top: 32px;
+            margin-top: 28px;
             text-align: center;
 
             .el-button {
