@@ -194,7 +194,7 @@ from app.api.v1 import (
     sensitive_word, chat, ocr, document, notice_front, user_front,
     noteQuestionBank, noteQuestion, user_stats,
     common, catch_all, ai_config, bankShare, notification, systemComment,
-    rag, rate_limit_admin, bank_export, tts,
+    rag, rate_limit_admin, bank_export, tts, english_practice,
 )
 
 app.include_router(auth.router, tags=["认证"])
@@ -211,6 +211,11 @@ app.include_router(dashboard.router, tags=["仪表盘"])
 app.include_router(carousel.router, tags=["轮播图"])
 app.include_router(courses.router, tags=["课程"])
 app.include_router(words.router, tags=["词书单词"])
+# —— 2026-10-26 英语练习记录：把「听写 / 阅读」练完的结果落库，
+#    页面上才有「继续上次」入口，智能体也才有数据可诊断。
+#    ⚠️ 路径是 `/words/practice/*`，与 words.router 的 `/words/...` 同前缀，
+#    但 words.py 里没有 `/practice` 段，所以不会冲突。
+app.include_router(english_practice.router, prefix="/words", tags=["英语练习记录"])
 app.include_router(notes.router, tags=["笔记"])
 app.include_router(noteQuestionBank.router, tags=["笔记题库关联"])
 app.include_router(noteQuestion.router, tags=["笔记题目关联"])

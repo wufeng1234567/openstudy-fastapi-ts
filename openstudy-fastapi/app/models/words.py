@@ -1,10 +1,11 @@
 """
-英语学习模型（词书/单词）
+英语学习模型（词书 / 单词 / 练习记录）
 """
 
 from datetime import datetime
-from typing import Optional, List
+from typing import Any, Dict, List, Optional
 from sqlalchemy import BigInteger, String, Integer, Text, DateTime, ForeignKey, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
@@ -44,3 +45,51 @@ class Word(Base):
 
     # 关系
     book: Mapped["WordBook"] = relationship(back_populates="words", lazy="selectin")
+
+
+class EnglishPracticeLog(Base):
+    """英语练习记录（听写 / 阅读 / 识词）
+
+    ## 为什么要有这张表
+
+    三个英语子页面原先是**开环**的：听写关掉就忘了练到哪、阅读做完错题不留存。
+    没有记录就没有"下次"，也谈不上复盘 —— 而复盘恰恰是学习产品最核心的价值。
+
+    这张表只做一件事：**把一次练习的结果落下来**，供三处使用：
+      ① 页面上的「上次练到哪」入口（`GET /words/practice/last`）；
+      ② 智能体 `english_practice` 工具读出来做诊断
+         （「我哪类词老错」「阅读正确率在涨吗」）；
+      ③ 未来的复习计划（错词按遗忘曲线重排）。
+
+    ## 设计取舍
+
+    · `detail` 用 JSONB 存逐题明细，**不建第二张"逐题表"** ——
+      明细只被整体读取（渲染结果页 / 算正确率），从不按单题查询；
+      拆表只会让每次练习多写 N 行、多一次 join。
+    · `mode` 用一个字段装三类练习：它们的字段形状完全一致
+      （总题数 / 对几题 / 正确率 / 用时），拆三个表只会让统计要写三遍。
+    """
+
+    __tablename__ = "english_practice_log"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    #: 归属用户
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    #: dictation=单词听写 / reading=阅读练习 / ocr=拍照识词
+    mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    #: 关联词书（阅读 / 识词可为空）
+    book_id: Mapped[Optional[int]] = mapped_column(BigInteger)
+    #: 词书名 / 阅读主题（冗余存一份，列表展示不必回表 join）
+    title: Mapped[Optional[str]] = mapped_column(String(255))
+    #: 题量 / 总词数
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    #: 答对 / 写对的数量
+    correct: Mapped[int] = mapped_column(Integer, default=0)
+    #: 正确率（0~100 整数，避免前端再算一遍导致口径不一致）
+    accuracy: Mapped[int] = mapped_column(Integer, default=0)
+    #: 用时（秒）
+    duration: Mapped[int] = mapped_column(Integer, default=0)
+    #: 逐题明细 [{"word": "abandon", "input": "abandan", "ok": false}, ...]
+    detail: Mapped[List[Dict[str, Any]]] = mapped_column(JSONB, default=list)
+    del_flag: Mapped[str] = mapped_column(String(1), default="0")
+    create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

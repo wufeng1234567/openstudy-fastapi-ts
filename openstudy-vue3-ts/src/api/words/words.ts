@@ -139,3 +139,51 @@ export function delWords(id: number | string) {
     method: 'delete'
   })
 }
+
+/* ============================================================================
+ * 英语练习记录（2026-10-26）
+ *
+ * 为什么要有这层：听写 / 阅读原本练完即弃 —— 关掉页面就不知道上次练了什么、
+ * 错了哪些词。这三个接口把结果留下来，页面才能接上"下次"，
+ * 智能体的 `english_practice` 工具也才有数据可分析。
+ * ========================================================================== */
+
+/** 一次练习的提交体 */
+export interface PracticeSubmitPayload {
+  /** dictation=单词听写 / reading=阅读练习 / ocr=拍照识词 */
+  mode: 'dictation' | 'reading' | 'ocr'
+  bookId?: number | string
+  title?: string
+  total: number
+  correct: number
+  /** 用时（秒），不传按 0 算 */
+  duration?: number
+  /** 逐题明细 */
+  detail?: Array<{ word?: string; input?: string; ok: boolean }>
+}
+
+/** 提交练习结果（⚠️ accuracy 由后端算，前端不要自己再算一遍） */
+export function submitPractice(data: PracticeSubmitPayload) {
+  return request({
+    url: '/words/practice/submit',
+    method: 'post',
+    data
+  })
+}
+
+/** 取最近一次练习（页面「继续上次」入口） */
+export function getLastPractice(mode?: 'dictation' | 'reading' | 'ocr') {
+  return request({
+    url: '/words/practice/last',
+    method: 'get',
+    params: mode ? { mode } : {}
+  })
+}
+
+/** 练习汇总（各模式正确率 / 7 天趋势 / 最常错词） */
+export function getPracticeStats() {
+  return request({
+    url: '/words/practice/stats',
+    method: 'get'
+  })
+}

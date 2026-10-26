@@ -6,8 +6,70 @@
           再来一行返回栏只是重复占位（用户反馈「第二行多余了」）。
           练习中的「结束练习」按钮仍可退出，返回逻辑保留在 `goBack()` 里备用。
         -->
+        <!--
+          练习结果面板（2026-10-26 闭环）
+          --------------------------------
+          改前：练完弹一个 ElMessageBox（只有 4 个数字），点「返回」就丢光了。
+          改后：结果留在页面里，能看到**具体写错了哪些词**，并给出三个出口。
+        -->
+        <div class="result-panel" v-if="hasResult && !isPracticing">
+            <div class="result-panel__head">
+                <div class="result-panel__score">
+                    <span class="result-panel__pct">{{ resultSummary.accuracy }}<i>%</i></span>
+                    <span class="result-panel__label">本次正确率</span>
+                </div>
+                <div class="result-panel__nums">
+                    <span>共 {{ resultSummary.total }} 题</span>
+                    <span class="is-ok">对 {{ resultSummary.correct }}</span>
+                    <span class="is-bad">错 {{ resultSummary.total - resultSummary.correct }}</span>
+                </div>
+            </div>
+
+            <div class="result-panel__wrong" v-if="resultWrongWords.length">
+                <div class="result-panel__wrong-title">
+                    写错的 {{ resultWrongWords.length }} 个词
+                </div>
+                <div class="wrong-list">
+                    <div v-for="(w, i) in resultWrongWords" :key="i" class="wrong-item">
+                        <span class="wrong-item__word">{{ w.word }}</span>
+                        <span class="wrong-item__trans">{{ w.translation }}</span>
+                        <span class="wrong-item__mine">你写的是：{{ w.userAnswer || '（空）' }}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="result-panel__allok" v-else>
+                <el-icon :size="20"><CircleCheck /></el-icon>
+                <span>全部写对了，这本词库掌握得不错</span>
+            </div>
+
+            <div class="result-panel__actions">
+                <el-button
+                    v-if="resultWrongWords.length"
+                    type="primary"
+                    size="large"
+                    @click="retryWrongWords"
+                >
+                    再练一遍错词（{{ resultWrongWords.length }}）
+                </el-button>
+                <el-button size="large" @click="backToBookSelect">换一本词库</el-button>
+                <el-button size="large" text @click="router.push('/front/english/vocabulary')">
+                    去我的词库
+                </el-button>
+            </div>
+
+            <!--
+              把这次练习交给智能体分析：跳过去时把问题带在 route state 里，
+              智能体的 `english_practice` 工具能读到刚提交的这条记录，
+              于是"页面练完 → 聊天里复盘"也接上了。
+            -->
+            <p class="result-panel__ai">
+                想让 AI 帮你看看这次练习？
+                <a class="result-panel__link" @click="askAiForAnalysis">交给智能体分析</a>
+            </p>
+        </div>
+
         <!-- 词库选择（未开始时显示） -->
-        <div class="book-select-section" v-if="!isPracticing">
+        <div class="book-select-section" v-if="!isPracticing && !hasResult">
             <div class="select-label">选择词库</div>
             <el-select v-model="selectedBookId" placeholder="请选择词库" size="large" style="width: 100%"
                 @change="onBookChange">
@@ -115,8 +177,14 @@
                 description="该词库还没有单词，请先添加单词" />
         </div>
 
-        <!-- 练习界面 -->
-        <div class="practice-section" v-else>
+        <!--
+          练习界面
+          ⚠️ 2026-10-26：加上 `!hasResult`。
+          原来这里是裸 `v-else`，接在 `book-select-section`（`!isPracticing && !hasResult`）
+          后面，所以当 `isPracticing=false` 且 `hasResult=true` 时，
+          它仍然成立 —— 结果面板和题目卡会同时渲染（截图实测叠在一起）。
+        -->
+        <div class="practice-section" v-else-if="!hasResult">
             <!-- 进度条 -->
             <div class="progress-bar">
                 <div class="progress-text">{{ currentIndex + 1 }} / {{ practiceWords.length }}</div>
@@ -238,7 +306,7 @@ import {
     CircleCheck, CircleClose, Headset, Collection
 } from '@element-plus/icons-vue'
 import { listFrontWordBooks } from '@/api/wordBooks/wordBooks'
-import { listAllWords } from '@/api/words/words'
+import { listAllWords, submitPractice } from '@/api/words/words'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { speak, stopSpeak, speakReasonText, warmUpVoices, unlockAudio } from '@/utils/speech'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
@@ -304,6 +372,28 @@ const inputRef = ref(null)
 // 统计
 const practiceResults = ref([])
 
+/* ============================================================================
+ * 练习结果面板状态（2026-10-26 闭环）
+ *
+ * 改前练完只弹一个 ElMessageBox，关掉就什么都不剩。
+ * 现在结果留在页面里，用户可以：
+ *   · 看到本次写错的具体单词（不是只给个数字）
+ *   · 点「再练一遍错词」只练这几个
+ *   · 去词库 / 让 AI 分析这次练习
+ * ========================================================================== */
+const hasResult = ref(false)
+const resultSummary = ref({ total: 0, correct: 0, accuracy: 0 })
+const resultWrongWords = ref<Array<{ word: string; translation: string; userAnswer: string }>>([])
+
+/** 本次练习用时（秒）—— 从点「开始听写」起算 */
+const practiceStartedAt = ref(0)
+const practiceElapsedSeconds = computed(() =>
+    practiceStartedAt.value ? Math.max(0, Math.round((Date.now() - practiceStartedAt.value) / 1000)) : 0
+)
+
+/** 当前词书名（提交记录时带上，列表里能看出练的哪本） */
+const currentBookName = ref('')
+
 // 计算属性
 // ⚠️ `masteredCount` / `unmasteredCount` 已删除（2026-10-23）：
 //    `words` 表没有掌握状态列，这两个数只能是 0 和"全部"，属于假指标。
@@ -341,6 +431,9 @@ const loadBookOptions = async () => {
 const onBookChange = async (bookId) => {
     if (!bookId) return
     loadingWords.value = true
+    // 记住书名：提交练习记录时要带上，列表里才看得出练的哪本
+    currentBookName.value =
+        String(bookOptions.value.find((b) => b.bookId === bookId)?.bookName || '')
     try {
         // ⚠️ 后端参数名是 `bookId`
         //
@@ -388,6 +481,13 @@ const startPractice = () => {
     isWrong.value = false
     isWaitingAutoNext.value = false
     currentPlayCount.value = 0
+
+    // 2026-10-26：清掉上一轮的结果面板，开始计时（提交记录时要报用时）
+    hasResult.value = false
+    resultWrongWords.value = []
+    resultSummary.value = { total: 0, correct: 0, accuracy: 0 }
+    practiceSubmitted.value = false
+    practiceStartedAt.value = Date.now()
 
     // 清除之前的定时器
     clearAutoNextTimer()
@@ -727,37 +827,97 @@ const skipWord = () => {
 }
 
 // 显示练习结果
-const showPracticeResult = () => {
+/*
+ * 2026-10-26 闭环改造
+ * ---------------------------------------------------------------------------
+ * 改前：练完只弹一个 ElMessageBox（总题数/正确/错误/正确率），点「返回」
+ *       就把 `practiceResults` 丢掉 —— 关掉页面什么都不剩。
+ *       下次进来重头开始，也不知道上次哪些词写错了。
+ *
+ * 改后：
+ *   ① 把结果 POST 到 `/words/practice/submit` 落库；
+ *   ② 结果面板里列出**本次写错的词**（不是只给个数字）；
+ *   ③ 点「再练一遍错词」直接只练这几个词；
+ *   ④ 「去词库」/「让 AI 帮我分析」两个出口。
+ *      后者跳到智能体并带上问题，智能体的 `english_practice` 工具
+ *      能读到刚才这次练习 —— 页面与对话就此闭环。
+ */
+/**
+ * 本次练习是否已经提交过记录
+ *
+ * ⚠️ 2026-10-26 修「一次练习存了 3 条记录」：
+ *    `showPracticeResult()` 有**三个**触发点 ——
+ *      · 答完最后一题的 `nextWord()`
+ *      · `skipWord()` 跳过最后一题
+ *      · 「结束练习」按钮
+ *    用户点「结束练习」时如果刚好已经答完，这三条路径会各调一次，
+ *    于是同一次练习在库里躺了 3 条（实测：id 2/3/4 完全相同的数据）。
+ *
+ *    用这个标记做幂等：提交过一次就不再提交，
+ *    新一轮练习开始时（`startPractice` / `retryWrongWords`）重置为 false。
+ */
+const practiceSubmitted = ref(false)
+
+const submitPracticeRecord = async () => {
+    if (!practiceResults.value.length) return
+    // 幂等：同一次练习只落库一条
+    if (practiceSubmitted.value) return
+    practiceSubmitted.value = true
+
+    const total = practiceResults.value.length
+    const correct = practiceResults.value.filter(r => r.isCorrect).length
+    try {
+        await submitPractice({
+            mode: 'dictation',
+            bookId: selectedBookId.value || undefined,
+            title: currentBookName.value || undefined,
+            total,
+            correct,
+            duration: practiceElapsedSeconds.value,
+            detail: practiceResults.value.map(r => ({
+                word: String(r.word?.word || ''),
+                input: String(r.userAnswer || ''),
+                ok: !!r.isCorrect
+            }))
+        })
+    } catch (e) {
+        // 记录失败不该打断用户看结果，静默即可。
+        // 但要把幂等标记放开，让用户还能重试。
+        practiceSubmitted.value = false
+        console.warn('[listening] 练习记录保存失败', e)
+    }
+}
+
+// 显示练习结果
+const showPracticeResult = async () => {
     stopSpeaking()
 
     const total = practiceResults.value.length
     const correct = practiceResults.value.filter(r => r.isCorrect).length
     const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0
+    const wrongList = practiceResults.value.filter(r => !r.isCorrect)
 
-    ElMessageBox.alert(
-        `
-        <div style="text-align: center;">
-            <h3>练习完成！</h3>
-            <p>总题数：${total}</p>
-            <p>正确：${correct}</p>
-            <p>错误：${total - correct}</p>
-            <p>正确率：${accuracy}%</p>
-        </div>
-        `,
-        '练习结果',
-        {
-            dangerouslyUseHTMLString: true,
-            confirmButtonText: '返回',
-            callback: () => {
-                isPracticing.value = false
-                // 刷新单词列表
-                if (selectedBookId.value) {
-                    onBookChange(selectedBookId.value)
-                }
-            }
-        }
-    )
+    // 先落库，再展示（顺序反了会在用户点得太快时丢记录）
+    await submitPracticeRecord()
+
+    /*
+     * ⚠️ 必须把 `isPracticing` 置 false：结果面板的显示条件是
+     *    `hasResult && !isPracticing`，而练习区（题目卡片）的条件是
+     *    `isPracticing`。不清掉的话两块钱同时渲染 ——
+     *    截图实测：结果面板和题目卡叠在一起，页面很长很乱。
+     */
+    isPracticing.value = false
+    clearAutoNextTimer()
+
+    hasResult.value = true
+    resultSummary.value = { total, correct, accuracy }
+    resultWrongWords.value = wrongList.map(r => ({
+        word: String(r.word?.word || ''),
+        translation: String(r.word?.translation || ''),
+        userAnswer: String(r.userAnswer || '')
+    }))
 }
+
 
 // 结束练习
 const stopPractice = () => {
@@ -765,38 +925,78 @@ const stopPractice = () => {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'warning'
-    }).then(() => {
+    }).then(async () => {
         stopSpeaking()
-        clearAutoNextTimer()  // ✅ 清除定时器
+        clearAutoNextTimer()
 
-        // 如果已经做了一些题，显示结果
+        // 已经做了一些题 → 落到结果面板（会先提交记录）
         if (practiceResults.value.length > 0) {
-            const total = practiceResults.value.length
-            const correct = practiceResults.value.filter(r => r.isCorrect).length
-
-            ElMessageBox.alert(
-                `
-                <div style="text-align: center;">
-                    <h3>练习已结束</h3>
-                    <p>已完成：${total} 题</p>
-                    <p>正确：${correct}</p>
-                    <p>错误：${total - correct}</p>
-                </div>
-                `,
-                '练习结果',
-                {
-                    dangerouslyUseHTMLString: true,
-                    confirmButtonText: '确定'
-                }
-            )
+            isPracticing.value = false
+            await showPracticeResult()
+            return
         }
 
         isPracticing.value = false
-        clearAutoNextTimer()  // ✅ 再次确保清除
         if (selectedBookId.value) {
             onBookChange(selectedBookId.value)
         }
     }).catch(() => { })
+}
+
+/* ============================================================================
+ * 结果面板的三个出口（2026-10-26 闭环）
+ * ========================================================================== */
+
+/** 只练刚才写错的那几个词 */
+function retryWrongWords() {
+    const wanted = new Set(resultWrongWords.value.map((w) => w.word))
+    const subset = wordList.value.filter((w: any) => wanted.has(String(w.word || '')))
+    if (!subset.length) {
+        ElMessage.warning('错词已经不在当前词库里了')
+        return
+    }
+    hasResult.value = false
+    practiceWords.value = subset
+    currentIndex.value = 0
+    isPracticing.value = true
+    practiceResults.value = []
+    userAnswer.value = ''
+    showFeedback.value = false
+    isCorrect.value = false
+    isWrong.value = false
+    isWaitingAutoNext.value = false
+    currentPlayCount.value = 0
+    practiceSubmitted.value = false
+    practiceStartedAt.value = Date.now()
+    nextTick(() => {
+        if (practiceMode.value === 'dictation') {
+            playCurrentWord()
+        }
+    })
+}
+
+/** 回到词库选择态 */
+function backToBookSelect() {
+    hasResult.value = false
+    resultWrongWords.value = []
+    if (selectedBookId.value) {
+        onBookChange(selectedBookId.value)
+    }
+}
+
+/**
+ * 交给智能体分析
+ *
+ * 跳过去时把问题带在 route state 里 —— 智能体那边的 `english_practice`
+ * 工具刚读到这次提交的记录，于是「页面练完 → 聊天里复盘」这条线也接通了。
+ */
+function askAiForAnalysis() {
+    router.push({
+        path: '/front/agent/chat',
+        state: {
+            seedQuestion: '我刚练完一次英语听写，帮我分析一下这次练习，我该重点复习哪些词？'
+        } as any
+    })
 }
 
 // 监听页面离开
@@ -897,6 +1097,151 @@ watch(() => isPracticing.value, (val) => {
         .header-right {
             justify-self: end;
             width: 60px;
+        }
+    }
+
+    /*
+     * 练习结果面板（2026-10-26 闭环）
+     * ---------------------------------
+     * 取代原来那个只有 4 个数字的 ElMessageBox：
+     * 给分数、列错词、三个出口，让"练完 → 复盘 → 再练"形成回路。
+     */
+    .result-panel {
+        max-width: 620px;
+        margin: 0 auto;
+        padding: 28px 26px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+    }
+
+    .result-panel__head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid #f1f5f9;
+    }
+
+    .result-panel__score {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .result-panel__pct {
+        font-size: 40px;
+        font-weight: 700;
+        line-height: 1;
+        color: #111827;
+
+        i {
+            font-style: normal;
+            font-size: 18px;
+            font-weight: 600;
+            color: #9ca3af;
+            margin-left: 2px;
+        }
+    }
+
+    .result-panel__label {
+        font-size: 12.5px;
+        color: #9ca3af;
+    }
+
+    .result-panel__nums {
+        display: flex;
+        gap: 14px;
+        font-size: 13px;
+        color: #6b7280;
+
+        .is-ok {
+            color: #10b981;
+        }
+
+        .is-bad {
+            color: #ef4444;
+        }
+    }
+
+    .result-panel__wrong-title {
+        margin-bottom: 10px;
+        font-size: 12.5px;
+        font-weight: 600;
+        letter-spacing: .02em;
+        color: #9ca3af;
+    }
+
+    .wrong-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 280px;
+        overflow-y: auto;
+    }
+
+    .wrong-item {
+        display: grid;
+        grid-template-columns: minmax(90px, 140px) 1fr;
+        gap: 4px 12px;
+        padding: 10px 12px;
+        background: #fef2f2;
+        border: 1px solid #fee2e2;
+        border-radius: 10px;
+        font-size: 13px;
+
+        .wrong-item__word {
+            font-weight: 600;
+            color: #b91c1c;
+        }
+
+        .wrong-item__trans {
+            color: #6b7280;
+        }
+
+        .wrong-item__mine {
+            grid-column: 1 / -1;
+            font-size: 12px;
+            color: #9ca3af;
+        }
+    }
+
+    .result-panel__allok {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 22px;
+        background: #ecfdf5;
+        border-radius: 12px;
+        color: #047857;
+        font-size: 14px;
+    }
+
+    .result-panel__actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .result-panel__ai {
+        margin: 0;
+        padding-top: 14px;
+        border-top: 1px dashed #f1f5f9;
+        font-size: 13px;
+        color: #9ca3af;
+    }
+
+    .result-panel__link {
+        color: #3b82f6;
+        cursor: pointer;
+
+        &:hover {
+            text-decoration: underline;
         }
     }
 

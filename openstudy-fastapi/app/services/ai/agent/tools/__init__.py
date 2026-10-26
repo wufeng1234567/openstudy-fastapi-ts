@@ -18,6 +18,8 @@ from app.services.ai.agent.tools.bank_export import BankExportTool
 from app.services.ai.agent.tools.bank_manage import BankManageTool
 from app.services.ai.agent.tools.bank_share_manage import BankShareManageTool
 from app.services.ai.agent.tools.delegate import DelegateTaskTool
+from app.services.ai.agent.tools.english_practice import EnglishPracticeTool
+from app.services.ai.agent.tools.english_wordbook import EnglishWordbookTool
 from app.services.ai.agent.tools.knowledge_base_manage import KnowledgeBaseManageTool
 from app.services.ai.agent.tools.knowledge_ingest import KnowledgeIngestTool
 from app.services.ai.agent.tools.knowledge_search import KnowledgeSearchTool
@@ -62,6 +64,21 @@ registry.register(BankExportTool())
 #    ⚠️ 它**不参与任何角色的工具白名单**：`orchestrator.compute_exclude` 会把它永远排除，
 #    只有指挥家模式由 `loop` 单独挂上（防子代理递归委派）。见 delegate.py 模块说明。
 registry.register(DelegateTaskTool())
+# —— 2026-10-26 英语词库：把「英语学习」那几个页面接进对话。
+#    ⚠️ 在此之前 15 个工具里**没有一个碰词库**，于是用户在聊天里问
+#    「我在背什么词」「帮我加几个四级词」智能体只能答"做不到" ——
+#    英语模块与对话是两座孤岛。这个工具让两边互通：
+#        聊天说「加词」→ 写库 + 返回 jumpUrl → 前端渲染「去看看」卡片
+#        → 用户点进去看到刚加的词 → 再点「去听写」，闭环成立。
+registry.register(EnglishWordbookTool())
+# —— 2026-10-26 英语练习记录：与 `english_wordbook` 配对。
+#    ⚠️ 两者刻意分开（而不是给 wordbook 加几个 action）：
+#      · wordbook 管**静态资产**（有哪些词书、里面有什么词）；
+#      · practice 管**动态记录**（练了几次、错在哪）。
+#    混在一起会让「我在背什么」（高频、只读）和「我练得怎么样」
+#    （另一张表、另一个心智模型）挤进同一份描述，模型选错 action 的概率上升。
+#    这也与 `learning_stats` / `bank_manage` 的分工口径一致。
+registry.register(EnglishPracticeTool())
 
 __all__ = [
     "AgentManageTool",
@@ -69,6 +86,8 @@ __all__ = [
     "BankManageTool",
     "BankShareManageTool",
     "DelegateTaskTool",
+    "EnglishPracticeTool",
+    "EnglishWordbookTool",
     "KnowledgeBaseManageTool",
     "KnowledgeIngestTool",
     "KnowledgeSearchTool",

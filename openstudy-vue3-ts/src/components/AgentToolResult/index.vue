@@ -111,6 +111,36 @@
       </button>
     </div>
 
+    <!--
+      ④b 通用跳转卡片（2026-10-26）
+      ------------------------------
+      任何工具只要在回执里带上 `jumpUrl`，就自动获得一张「去看看」卡片。
+
+      为什么要有这条通用通道：原来只有 `bank_manage` / `note_manage` /
+      `question_manage` 三处**硬编码**的跳转（各自判 bankId / noteId）。
+      新加的 `english_wordbook` 回执里带的是 `jumpUrl`（词库页地址），
+      前端不认 —— 用户看到的是「已创建词书『雅思核心词』」加一个折叠的
+      `▸ 查看详情`，**下一步又断了**，闭环差最后一环。
+
+      有了它，以后任何工具（英语词库、知识库、学习统计…）只要返回
+      `jumpUrl` + 一句 message，就自动接上"去哪儿看"的入口，
+      不用每加一个工具就改一次这个组件。
+    -->
+    <div v-if="linkJump" class="at-jump">
+      <div class="at-jump__main">
+        <span class="at-jump__badge">
+          <OsIcon name="check-circle" :size="13" />
+          {{ linkJump.badge }}
+        </span>
+        <span class="at-jump__name">{{ linkJump.name }}</span>
+        <span v-if="linkJump.meta" class="at-jump__meta">{{ linkJump.meta }}</span>
+      </div>
+      <button type="button" class="at-jump__btn at-jump__btn--primary" @click="goToLink">
+        <OsIcon :name="linkJump.icon" :size="13" />
+        <span>{{ linkJump.buttonText }}</span>
+      </button>
+    </div>
+
     <!-- ⑤ 「AI 翻文件」可视化：它在空间里找到了什么 -->
     <div v-if="spaceScan" class="at-scan">
       <div class="at-scan__head">
@@ -645,6 +675,97 @@ function goToNote() {
   const n = noteJump.value
   if (!n) return
   router.push(`/front/notes/detail/${n.noteId}`)
+}
+
+/* ============================================================
+ * 通用跳转卡片（2026-10-26）
+ * ============================================================ */
+
+/**
+ * 判据落在**输出契约**上：回执里有非空的 `jumpUrl` 字符串 → 出一张卡。
+ * 不按工具名白名单 —— 那正是原来每加一个工具就要改一次组件的根因。
+ *
+ * 为什么需要它：`english_wordbook` 的回执带 `jumpUrl`（词库页地址），
+ * 但前端只认 `bankId` / `noteId`，于是用户看到「已创建词书『雅思核心词』」
+ * 后面跟一个折叠的 `▸ 查看详情`，**下一步又断了**，闭环差最后一环。
+ *
+ * 有了它，以后任何工具只要返回 `jumpUrl` + 一句 message，
+ * 就自动接上"去哪儿看"的入口。
+ *
+ * 只对「写操作」出卡：`list_books` / `stats` 这类只读回执也带 jumpUrl
+ * （方便用户去看），但用户当时只是问问，弹一张卡反而打断阅读。
+ */
+const LINK_WRITE_ACTIONS = new Set([
+  'create_book',
+  'rename_book',
+  'add_word',
+  'batch_add_words'
+])
+
+/** 不同工具落地页的文案/图标（没配的走默认） */
+const LINK_UI: Record<string, { badge: string; buttonText: string; icon: string }> = {
+  english_wordbook: { badge: '词库已更新', buttonText: '去看看', icon: 'book' }
+}
+
+const linkJump = computed(() => {
+  if (props.status !== 'ok') return null
+
+  const d = props.data
+  if (!d || typeof d !== 'object') return null
+
+  const raw = d.jumpUrl
+  if (typeof raw !== 'string' || !raw.trim()) return null
+
+  // 只读 action 不出卡（见上方注释）
+  const action = String(d.action || props.action || '').toLowerCase()
+  if (action && !LINK_WRITE_ACTIONS.has(action)) return null
+
+  // 已经被 bankJump / noteJump 覆盖的，不重复出卡
+  if (bankJump.value || noteJump.value) return null
+
+  const ui = LINK_UI[String(props.tool || '')] || {
+    badge: '已保存',
+    buttonText: '去看看',
+    icon: 'arrow-right'
+  }
+
+  /*
+   * 卡片标题：从回执里挑一个像"名字"的字段。
+   * ⚠️ 注意 `create_book` 的回执把词书放在**嵌套的 `book` 对象**里
+   *    （`{action, book: {bookId, bookName...}, message}`），而 `batch_add_words`
+   *    是顶层 `bookName`。原来只读顶层，导致「已创建词书」那张卡片标题是空的。
+   */
+  const nested = d.book && typeof d.book === 'object' ? d.book : null
+  const name = String(
+    d.bookName || nested?.bookName || d.noteTitle || d.title || ''
+  )
+  const meta =
+    typeof d.message === 'string'
+      ? d.message
+      : d.addedCount
+        ? `本次加入 ${d.addedCount} 个`
+        : ''
+
+  return {
+    url: raw.trim(),
+    badge: ui.badge,
+    buttonText: ui.buttonText,
+    icon: ui.icon,
+    name,
+    meta
+  }
+})
+
+/**
+ * 跳转到通用 jumpUrl
+ *
+ * ⚠️ 必须走 `router.push()`，不能改 `location.hash` ——
+ *    后者只改地址栏、vue-router 收不到导航（见 `goToBank` 的注释）。
+ */
+function goToLink() {
+  const j = linkJump.value
+  if (!j) return
+  router.push(j.url)
 }
 
 /* ============================================================
