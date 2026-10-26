@@ -541,6 +541,14 @@ export const constantRoutes: AppRouteRecordRaw[] = [
             component: () => import('@/views/front/english/reading/index.vue'),
             meta: { title: '阅读练习', layout: 'front', keepAlive: true },
             hidden: true
+          },
+          // 学习统计（2026-10-26）：把 english_practice_log 里已有的数据用起来
+          {
+            path: 'statistics',
+            name: 'FrontEnglishStatistics',
+            component: () => import('@/views/front/english/statistics/index.vue'),
+            meta: { title: '学习统计', layout: 'front', keepAlive: true, requiresLogin: true },
+            hidden: true
           }
         ]
       },

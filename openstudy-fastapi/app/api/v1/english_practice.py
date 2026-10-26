@@ -173,11 +173,15 @@ async def last_practice(
 
 @router.get("/stats")
 async def practice_stats(
+    days: int = Query(7, description="趋势窗口天数：7 / 30"),
     db: AsyncSession = Depends(get_db),
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    """练习汇总：各模式次数与平均正确率、最近 7 天趋势、最常错的词"""
+    """练习汇总：各模式次数与平均正确率、趋势、最常错的词、最近记录"""
     uid = _uid(current_user)
+
+    # 窗口只允许 7 / 30，避免任意值把 SQL 拖慢或被当成扫描器
+    days = 30 if int(days or 7) >= 30 else 7
 
     # ① 各模式累计
     by_mode_rows = (
@@ -207,8 +211,14 @@ async def practice_stats(
             "accuracy": int(round(correct * 100.0 / total)) if total else 0,
         }
 
-    # ② 最近 7 天趋势（按天聚合）
-    since = datetime.now() - timedelta(days=7)
+    # ② 趋势（按天聚合）
+    #
+    # ⚠️ 原来只返回**有练习记录的那几天**，没练的日子直接不出现在数组里。
+    #    前端画折线时，日期会从 10-20 直接跳到 10-24 —— 视觉上像"每天都练了"，
+    #    其实中间断了好几天。所以这里必须把窗口内每一天都补齐（没练就是 0）。
+    today = datetime.now().date()
+    start_date = today - timedelta(days=days - 1)
+
     trend_rows = (
         await db.execute(
             select(
@@ -220,26 +230,42 @@ async def practice_stats(
             .where(
                 EnglishPracticeLog.user_id == uid,
                 EnglishPracticeLog.del_flag == "0",
-                EnglishPracticeLog.create_time >= since,
+                func.date(EnglishPracticeLog.create_time) >= start_date,
             )
             .group_by(func.date(EnglishPracticeLog.create_time))
             .order_by(func.date(EnglishPracticeLog.create_time))
         )
     ).all()
 
-    trend = [
-        {
+    # 先建一张「日期 -> 数据」的表，再按连续日期铺开
+    raw_trend: Dict[str, Dict[str, Any]] = {}
+    for d, sessions, total, correct in trend_rows:
+        total = int(total or 0)
+        correct = int(correct or 0)
+        raw_trend[str(d)] = {
             "date": str(d),
             "sessions": int(sessions or 0),
-            "total": int(total or 0),
-            "accuracy": (
-                int(round(int(correct or 0) * 100.0 / int(total)))
-                if int(total or 0)
-                else 0
-            ),
+            "total": total,
+            "correct": correct,
+            "accuracy": int(round(correct * 100.0 / total)) if total else 0,
         }
-        for d, sessions, total, correct in trend_rows
-    ]
+
+    trend: List[Dict[str, Any]] = []
+    for i in range(days):
+        d = start_date + timedelta(days=i)
+        key = d.isoformat()
+        item = raw_trend.get(key)
+        trend.append(
+            item
+            if item
+            else {
+                "date": key,
+                "sessions": 0,
+                "total": 0,
+                "correct": 0,
+                "accuracy": 0,
+            }
+        )
 
     # ③ 最常错的词（扫描最近 20 次的明细）
     #    明细是 JSONB，逐条在 Python 里统计比写 SQL jsonb 展开更好读，
@@ -270,6 +296,75 @@ async def practice_stats(
     total_words = sum(v["total"] for v in by_mode.values())
     total_correct = sum(v["correct"] for v in by_mode.values())
 
+    # ④ 最近 10 次练习（给统计页的「练习记录」列表用）
+    #
+    # ⚠️ 不返回 detail 明细 —— 那个字段可能有几百条，一次拉 10 条
+    #    会把响应撑到几百 KB，而列表只显示「模式 / 数量 / 正确率 / 时间」。
+    #
+    # ⚠️ 主键字段名是 `id`，不是 `log_id`（表名 english_practice_log 是另一回事）。
+    log_rows = (
+        await db.execute(
+            select(
+                EnglishPracticeLog.id,
+                EnglishPracticeLog.mode,
+                EnglishPracticeLog.title,
+                EnglishPracticeLog.total,
+                EnglishPracticeLog.correct,
+                EnglishPracticeLog.accuracy,
+                EnglishPracticeLog.duration,
+                EnglishPracticeLog.create_time,
+            )
+            .where(
+                EnglishPracticeLog.user_id == uid,
+                EnglishPracticeLog.del_flag == "0",
+            )
+            .order_by(EnglishPracticeLog.create_time.desc())
+            .limit(10)
+        )
+    ).all()
+
+    recent_logs = [
+        {
+            "logId": int(log_id),
+            "mode": mode,
+            "title": title or "",
+            "total": int(total or 0),
+            "correct": int(correct or 0),
+            "accuracy": int(accuracy or 0),
+            "duration": int(duration or 0),
+            "createTime": create_time.strftime("%Y-%m-%d %H:%M")
+            if create_time
+            else "",
+        }
+        for log_id, mode, title, total, correct, accuracy, duration, create_time in log_rows
+    ]
+
+    # ⑤ 连续练习天数（streak）—— 统计页最有激励感的指标
+    #
+    # 从今天往回数，只要某天有记录就 +1，遇到空白天就停。
+    # 今天还没练不算断（用户可能晚上才练），所以今天为 0 时从昨天开始数。
+    practiced_dates = {
+        str(d)
+        for (d,) in (
+            await db.execute(
+                select(func.date(EnglishPracticeLog.create_time).label("d"))
+                .where(
+                    EnglishPracticeLog.user_id == uid,
+                    EnglishPracticeLog.del_flag == "0",
+                )
+                .group_by(func.date(EnglishPracticeLog.create_time))
+            )
+        ).all()
+    }
+
+    streak = 0
+    cursor = today
+    if cursor.isoformat() not in practiced_dates:
+        cursor = cursor - timedelta(days=1)
+    while cursor.isoformat() in practiced_dates:
+        streak += 1
+        cursor = cursor - timedelta(days=1)
+
     return success(
         {
             "sessions": total_sessions,
@@ -280,6 +375,9 @@ async def practice_stats(
             ),
             "byMode": by_mode,
             "trend": trend,
+            "days": days,
+            "streak": streak,
             "topWrong": [{"word": w, "count": c} for w, c in top_wrong],
+            "recentLogs": recent_logs,
         }
     )

@@ -198,6 +198,45 @@
                     </div>
                 </div>
 
+                <!--
+                  题目范围（2026-10-26 新增）
+                  用户反馈：「只能按词库顺序或随机，不能只练最近加的 20 个」。
+                  放在「播放顺序」上面 —— 它决定"练哪些"，比"按什么顺序练"更前置。
+                -->
+                <div class="setting-item">
+                    <span class="setting-label">题目范围</span>
+                    <div class="setting-control setting-control--stack">
+                        <div class="scope-row">
+                            <el-radio-group v-model="practiceScope">
+                                <el-radio value="all">全部</el-radio>
+                                <el-radio value="recent">最近加入</el-radio>
+                                <el-radio value="count">前几个</el-radio>
+                            </el-radio-group>
+                            <!-- 只有选了「最近/前几个」才出现数量下拉，避免占位 -->
+                            <el-select
+                                v-if="practiceScope !== 'all'"
+                                v-model="scopeLimit"
+                                size="small"
+                                class="scope-limit"
+                            >
+                                <el-option
+                                    v-for="n in scopeLimitOptions"
+                                    :key="n"
+                                    :label="`${n} 个`"
+                                    :value="n"
+                                />
+                            </el-select>
+                        </div>
+                        <span class="setting-hint">
+                            {{ practiceScope === 'all'
+                                ? `整本词库共 ${wordList.length} 个单词`
+                                : practiceScope === 'recent'
+                                    ? `按加入时间倒序，练最近加的 ${Math.min(scopeLimit, wordList.length)} 个`
+                                    : `按词库顺序，练前 ${Math.min(scopeLimit, wordList.length)} 个` }}
+                        </span>
+                    </div>
+                </div>
+
                 <!-- 播放顺序：三种模式都用得上 -->
                 <div class="setting-item">
                     <span class="setting-label">播放顺序</span>
@@ -559,7 +598,7 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'FrontEnglishListening' })
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import {
     ArrowLeft, VideoPlay, VideoPause, ArrowRight,
@@ -568,7 +607,7 @@ import {
     EditPen, Timer, InfoFilled
 } from '@element-plus/icons-vue'
 import { listFrontWordBooks } from '@/api/wordBooks/wordBooks'
-import { listAllWords, submitPractice } from '@/api/words/words'
+import { listAllWords, listWords, submitPractice } from '@/api/words/words'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { speak, stopSpeak, speakReasonText, warmUpVoices, unlockAudio } from '@/utils/speech'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
@@ -671,6 +710,45 @@ const currentBookId = ref(null)
  *    留一个只有一种选择的下拉，用户会以为坏了。
  */
 const playOrder = ref('random')
+
+/**
+ * 题目范围（2026-10-26 新增）
+ *
+ * 用户反馈：「不能只练最近加的 20 个」。
+ *
+ *   all    —— 整本词库
+ *   recent —— 最近加入的 N 个（按 `wordId` 倒序）
+ *   count  —— 只练前 N 个
+ *
+ * ⚠️ 「最近」用 `wordId` 倒序而不是 `createTime`：
+ *    `words` 表虽然有 `create_time`，但它是数据库 `server_default=now()`
+ *    写入的，批量导入时同一批词的毫秒时间戳可能完全相同 → 排序不稳定。
+ *    `wordId` 是自增主键，天然就是加入顺序，且唯一、稳定。
+ *
+ * ⚠️ 这段正好补上之前删掉的 `practiceRange` 的位置 ——
+ *    那次删它是因为只有"全部单词"一个选项等于装饰；
+ *    这次是**真有多个选项可切**，才重新立起来。
+ */
+type PracticeScope = 'all' | 'recent' | 'count'
+const practiceScope = ref<PracticeScope>('all')
+
+/** 「只练 N 个」里的 N */
+const scopeLimit = ref(20)
+
+/** 可选题量 */
+const scopeLimitOptions = [10, 20, 30, 50]
+
+/**
+ * 错词种子（2026-10-26）
+ *
+ * 学习统计页里点「用这些错词练一轮」时，会把错词通过 `sessionStorage`
+ * 传过来（key 见统计页的 `practiceWrongWords`）。
+ *
+ * 这里读到后直接进入练习，**不写进词库** —— 用户只是"现在练这几个"，
+ * 不是"把这几词加进词库"，两者是不同意图，混在一起会污染词库。
+ */
+const seedWords = ref<string[]>([])
+
 // ⚠️ `repeatCount` / `playInterval` 已上移到模式定义处（2026-10-26），
 //    那里和 speechRate 放在一起更易读，不再重复声明。
 
@@ -974,25 +1052,156 @@ const refreshBooks = async () => {
     }
 }
 
+/**
+ * 跨词库按单词捞词（2026-10-26）
+ *
+ * 统计页的错词来自用户练过的**所有**词库，不一定是当前选中的这本。
+ * 后端 `/words/words/list` 支持 `word` 精确匹配、且不传 `bookId` 时
+ * 会搜「我的书 + 系统预置书」范围 —— 正好是用户能访问的全部词库。
+ *
+ * 每个词单独发一次请求（错词最多 10 个，并发 10 个请求在本机后端
+ * 也就几十毫秒）。用 `Promise.allSettled` 而不是 `Promise.all`：
+ * 某一个词查失败不该让整轮练习失败。
+ */
+async function fetchWordsAcrossBooks(words: string[]): Promise<any[]> {
+    const results = await Promise.allSettled(
+        words.map((w) =>
+            listWords({ word: w, pageNum: 1, pageSize: 5 }).then((res: any) => {
+                const rows = res?.rows || res?.data?.rows || []
+                // 后端 `word` 是模糊匹配（LIKE），这里再按词形精确过滤一次
+                const target = String(w).toLowerCase()
+                return rows.find(
+                    (r: any) => String(r.word || '').toLowerCase() === target
+                )
+            })
+        )
+    )
+
+    const out: any[] = []
+    for (const r of results) {
+        if (r.status === 'fulfilled' && r.value) out.push(r.value)
+    }
+    return out
+}
+
 // 开始练习
-const startPractice = () => {
+const startPractice = async () => {
     // ⚠️ `words` 表没有 isMastered 列，原先按「未掌握」筛选永远为空。
     //    现在不做这个筛选：练的就是这本词库里的全部单词。
     let words = [...wordList.value]
+
+    // ------------------------------------------------------------------
+    // 错词种子优先（2026-10-26）
+    // ------------------------------------------------------------------
+    // 从统计页「用这些错词练一轮」过来时，只练这几个词。
+    //
+    // ⚠️ 错词天然会**跨词库** —— 统计页统计的是这个人所有练习，
+    //    错词可能来自"四级核心词""考研高频词"好几本。
+    //    如果只在「当前选中的词库」里匹配，很容易出现
+    //    "3 个错词只练到 1 个"（实测就是这个问题）。
+    //
+    // 所以分两步：
+    //   ① 先在当前词库里按词形找（命中最多，且不用发请求）；
+    //   ② 剩下的按单词去后端跨词库查回来。
+    // 两步都找不到的才放弃，并明确告诉用户少了哪几个。
+    const seed = seedWords.value
+    if (seed.length) {
+        // 一次性消费掉
+        seedWords.value = []
+
+        const byWord = new Map<string, any>()
+        for (const w of wordList.value) {
+            const key = String((w as any).word || '').toLowerCase()
+            if (key && !byWord.has(key)) byWord.set(key, w)
+        }
+
+        const matched: any[] = []
+        const missing: string[] = []
+        const seen = new Set<string>()
+
+        for (const s of seed) {
+            const key = String(s).toLowerCase()
+            if (seen.has(key)) continue
+            seen.add(key)
+            const hit = byWord.get(key)
+            if (hit) matched.push(hit)
+            else missing.push(s)
+        }
+
+        // ② 跨词库补齐
+        if (missing.length) {
+            const fetched = await fetchWordsAcrossBooks(missing)
+            for (const w of fetched) {
+                const key = String((w as any).word || '').toLowerCase()
+                if (key && !seen.has('f:' + key)) {
+                    seen.add('f:' + key)
+                    matched.push(w)
+                }
+            }
+        }
+
+        if (matched.length) {
+            words = [...matched]
+            if (playOrder.value === 'random') words = shuffleArray(words)
+            if (matched.length < seed.length) {
+                ElMessage.warning(
+                    `本轮练 ${matched.length} 个错词；另外 ${seed.length - matched.length} 个已从词库里删掉了，跳过`
+                )
+            } else {
+                ElMessage.info(`本轮只练 ${matched.length} 个错词`)
+            }
+            // 种子已接管本轮题目，直接进入练习，不再走下面的范围筛选
+            return beginPractice(words)
+        }
+
+        ElMessage.warning('这些错词在当前词库里都找不到了，已改为练整本')
+    }
 
     if (words.length === 0) {
         ElMessage.warning('没有可练习的单词')
         return
     }
 
-    // 随机打乱
+    // ------------------------------------------------------------------
+    // 题目范围（2026-10-26）
+    // ------------------------------------------------------------------
+    // 顺序说明：**先按范围取子集，再打乱**。
+    // 反了的话「最近 20 个」会变成"随机抽 20 个"，和新加的词一点关系都没有。
+    if (practiceScope.value === 'recent') {
+        const n = Math.min(scopeLimit.value, words.length)
+        // 按 wordId 倒序取最近的 n 个
+        words = [...words]
+            .sort((a: any, b: any) => (b.wordId ?? 0) - (a.wordId ?? 0))
+            .slice(0, n)
+    } else if (practiceScope.value === 'count') {
+        words = words.slice(0, Math.min(scopeLimit.value, words.length))
+    }
+
+    // 随机打乱（在范围筛选**之后**）
     if (playOrder.value === 'random') {
         words = shuffleArray(words)
     }
 
+    // 范围比实际词数大时提示一下，避免用户以为没生效
+    if (practiceScope.value !== 'all' && scopeLimit.value > wordList.value.length) {
+        ElMessage.info(`这本词库只有 ${wordList.value.length} 个单词，本轮全练`)
+    }
+
+    beginPractice(words)
+}
+
+/**
+ * 真正进入练习态（2026-10-26 抽出）
+ *
+ * 原来这段代码直接写在 `startPractice` 末尾，两处入口（正常开始 / 错词种子）
+ * 都要用，抽出来避免复制一份 —— 复制出来的第二份最容易和第一份走偏。
+ */
+function beginPractice(words: any[]) {
     practiceWords.value = words
     currentIndex.value = 0
     isPracticing.value = true
+    // 允许下一批种子进来（详见 resetSeedFlag 的注释）
+    resetSeedFlag()
     practiceResults.value = []
     userAnswer.value = ''
     showFeedback.value = false
@@ -1529,6 +1738,7 @@ onMounted(() => {
     // 预热语音列表，让用户点播放时不必 await（保住用户手势上下文，
     // 否则 Chrome 会以 not-allowed 拒绝发声）。
     warmUpVoices()
+
     loadBookOptions()
 
     /*
@@ -1544,12 +1754,86 @@ onMounted(() => {
     }
     window.addEventListener('pointerdown', unlock)
     window.addEventListener('keydown', unlock)
+
+    startSeedWatcher()
 })
+
+/*
+ * 错词种子监听（2026-10-26）
+ * ---------------------------------------------------------------------------
+ * 为什么不能只靠 `onMounted` 读：
+ *
+ * 本页在路由里带 `keepAlive: true`，从统计页跳回来时组件**已被缓存**，
+ * 既不会重新 `mount`，也不会触发 `onActivated`（实测两者都不行 ——
+ * 同一个路由第二次进入时 Vue 直接复用旧实例）。
+ * 但 `sessionStorage` 的写入是立刻生效的。
+ *
+ * 所以只能轮询：每 400ms 看一眼有没有种子，有就读走并删掉。
+ * 400ms 对用户无感，也不会带来可测的开销（同步内存操作）。
+ * 这套方案与 `views/front/agent/chat.vue` 的 `consumeSeedQuestion` 一致。
+ */
+let seedTimer: number | null = null
+
+/**
+ * 已消费标记
+ *
+ * ⚠️ 不能只靠 `sessionStorage.removeItem` 去重 —— 实测出现过提示弹两次：
+ *    轮询的第一次读到了值并删除，但 `startSeedWatcher()` 里那次同步调用
+ *    与 `setInterval` 的首个 tick 之间没有顺序保证，在极短窗口内
+ *    两次读到的都是"删除前"的值（浏览器里 removeItem 与 getItem
+ *    之间若夹了渲染帧，这块内存视图可能还没刷新）。
+ *    加个内存标记最省事，且语义正确：一个种子只消费一次。
+ */
+let seedConsumed = false
+
+function consumeSeedWords() {
+    if (seedConsumed) return
+    try {
+        const raw = sessionStorage.getItem('practiceSeedWords')
+        if (!raw) return
+        seedConsumed = true
+        // 立刻删掉 —— 否则用户下次正常进来还会被这组错词拦住
+        sessionStorage.removeItem('practiceSeedWords')
+        const parsed = JSON.parse(raw)
+        if (!Array.isArray(parsed)) return
+        const list = parsed.map((s) => String(s)).filter(Boolean)
+        if (!list.length) return
+
+        seedWords.value = list
+        ElMessage.success(`已带上 ${list.length} 个错词，点「开始听写」即可`)
+    } catch {
+        /* 解析失败就当没有种子，不影响正常使用 */
+    }
+}
+
+function startSeedWatcher() {
+    consumeSeedWords()
+    if (seedTimer !== null) return
+    seedTimer = window.setInterval(consumeSeedWords, 400)
+}
+
+/*
+ * 允许"第二次带种子进来"
+ *
+ * 用户可能：统计页点错词练一轮 → 退出 → 又点了另一个错词。这时组件没重建，
+ * `seedConsumed` 还是 true，会拒绝消费。所以每次开始练习（beginPractice）
+ * 之后复位，让下一批种子能进来。
+ */
+function resetSeedFlag() {
+    seedConsumed = false
+}
 
 // 监听页面离开
 watch(() => isPracticing.value, (val) => {
     if (!val) {
         stopSpeaking()
+    }
+})
+
+onBeforeUnmount(() => {
+    if (seedTimer !== null) {
+        clearInterval(seedTimer)
+        seedTimer = null
     }
 })
 </script>
@@ -1980,6 +2264,47 @@ watch(() => isPracticing.value, (val) => {
                     margin-right: 0;
                 }
             }
+
+            /*
+             * 题目范围行：单选框 + 数量下拉横向排列
+             *
+             * ⚠️ 这段必须在 `.setting-item` 这一级，不能嵌进 `.setting-item--slider`。
+             *    「题目范围」用的是普通 `.setting-item`（不带 `--slider`，
+             *    因为它不需要滑块那种顶部对齐）。第一次写在了 `--slider` 里面，
+             *    编译成 `.setting-item--slider .scope-row` → 匹配不到 →
+             *    `.scope-limit` 的 `width: 86px` 失效，下拉撑满整行 416px。
+             *    这是本项目第四次踩「嵌套层级与 DOM 不符」的坑。
+             */
+            .scope-row {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                flex-wrap: wrap;
+                min-width: 0;
+
+                .scope-limit {
+                    width: 86px;
+                    flex: none;
+                }
+            }
+
+            /* 带说明的设置项要能竖排（题目范围 / 播放内容都用） */
+            .setting-control {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+                min-width: 0;
+
+                &--stack {
+                    gap: 6px;
+                }
+            }
+
+            .setting-hint {
+                font-size: 11.5px;
+                line-height: 1.5;
+                color: #9ca3af;
+            }
         }
 
         /* 滑块行：顶部对齐，滑块占满右列 */
@@ -1990,26 +2315,8 @@ watch(() => isPracticing.value, (val) => {
                 padding-top: 2px;
             }
 
-            .setting-control {
-                display: flex;
-                flex-direction: column;
-                gap: 2px;
-                min-width: 0;
-            }
-
-            /* 「单选框 + 说明」竖排 */
-            .setting-control--stack {
-                gap: 6px;
-            }
-
             :deep(.el-slider) {
                 padding: 0 6px;
-            }
-
-            .setting-hint {
-                font-size: 11.5px;
-                line-height: 1.5;
-                color: #9ca3af;
             }
         }
 

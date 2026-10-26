@@ -491,7 +491,9 @@ const featureItems: NavItem[] = [
       { label: '拍照识词', to: '/front/english/ocr', cacheKey: 'ocr' },
       { label: '我的词库', to: '/front/english/vocabulary', cacheKey: 'vocabulary' },
       { label: '单词听写', to: '/front/english/listening', cacheKey: 'listening' },
-      { label: '阅读练习', to: '/front/english/reading', cacheKey: 'reading' }
+      { label: '阅读练习', to: '/front/english/reading', cacheKey: 'reading' },
+      // 学习统计（2026-10-26）
+      { label: '学习统计', to: '/front/english/statistics', cacheKey: 'statistics' }
     ]
   }
   /*

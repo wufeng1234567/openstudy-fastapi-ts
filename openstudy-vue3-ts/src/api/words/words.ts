@@ -180,10 +180,16 @@ export function getLastPractice(mode?: 'dictation' | 'reading' | 'ocr') {
   })
 }
 
-/** 练习汇总（各模式正确率 / 7 天趋势 / 最常错词） */
-export function getPracticeStats() {
+/**
+ * 练习汇总
+ *
+ * 2026-10-26：加 `days` 参数（7 / 30），统计页要在两个窗口间切换。
+ * 后端只接受这两个值 —— 任意值会被归一化成 7 或 30，避免被当成扫描器。
+ */
+export function getPracticeStats(days: number = 7) {
   return request({
     url: '/words/practice/stats',
-    method: 'get'
+    method: 'get',
+    params: { days }
   })
 }
