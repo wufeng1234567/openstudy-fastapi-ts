@@ -18,7 +18,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -29,7 +29,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.response import error, success
 from app.core.security import get_current_user
 from app.database import get_db
-from app.models.words import EnglishPracticeLog, WordBook
+from app.models.words import (
+    EnglishPracticeLog,
+    Word,
+    WordBook,
+    WordLearningState,
+)
+from app.services.english.spaced_repetition import (
+    DEFAULT_EASE,
+    LearningState,
+    is_due,
+    mastery_of,
+    review,
+)
 
 router = APIRouter(prefix="/practice")
 
@@ -78,6 +90,195 @@ def _brief(row: EnglishPracticeLog) -> Dict[str, Any]:
         "duration": row.duration,
         "createTime": row.create_time.strftime("%Y-%m-%d %H:%M:%S") if row.create_time else None,
     }
+
+
+def _to_state(row: Optional[WordLearningState]) -> Optional[LearningState]:
+    """ORM 行 → 算法用的纯数据对象
+
+    算法层刻意不依赖 SQLAlchemy（见 spaced_repetition.py 顶部注释），
+    所以这里做一次显式转换。看起来多写几行，但换来的是算法可以脱离
+    数据库单元测试 —— 那 29 条用例就是这么跑起来的。
+    """
+    if row is None:
+        return None
+    return LearningState(
+        stage=int(row.stage or 0),
+        ease=float(row.ease or DEFAULT_EASE),
+        interval_days=int(row.interval_days or 0),
+        due_date=row.due_date,
+        right_count=int(row.right_count or 0),
+        wrong_count=int(row.wrong_count or 0),
+        lapses=int(row.lapses or 0),
+        first_seen_at=row.first_seen_at,
+        last_review_at=row.last_review_at,
+    )
+
+
+def _apply_state(row: WordLearningState, state: LearningState) -> None:
+    """算法结果 → ORM 行（就地修改，由调用方 commit）"""
+    row.stage = int(state.stage)
+    row.ease = float(state.ease)
+    row.interval_days = int(state.interval_days)
+    row.due_date = state.due_date
+    row.right_count = int(state.right_count)
+    row.wrong_count = int(state.wrong_count)
+    row.lapses = int(state.lapses)
+    row.first_seen_at = state.first_seen_at
+    row.last_review_at = state.last_review_at
+
+
+async def _update_learning_state(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    book_id: Optional[int],
+    detail: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """按这次的逐词对错，更新每个词的记忆状态
+
+    ## 为什么按 word 文本再查一次 id
+
+    前端传来的明细长这样（见听写页的提交逻辑）：
+
+        {"word": "abandon", "input": "abandan", "ok": false}
+
+    只有**词形**，没有 `wordId`。所以要用「词形 + 词书」反查 `words.word_id`。
+
+    ⚠️ 限定在 `book_id` 内查：不同词书可能有同名词（`book` 在四级和雅思里
+       都出现），混着查会把进度记到别的书上。前端没传 bookId 时退化为
+       只按词形查（此时用第一次命中的那条，并在返回里注明）。
+
+    ## 为什么不报错
+
+    这个词可能已经被删了、或者前端传了脏数据。这种情况**跳过即可** ——
+    练习记录本身已经保存好了，为了一个查不到的单词让整次提交失败，
+    用户会以为"白练了"。
+    """
+    # 收集本次出现的词形（去重，保留最后一次对错结果）
+    # 同一个词在一次练习里出现两次的情况很少，但真出现时以最后一次为准
+    by_word: Dict[str, bool] = {}
+    for item in detail:
+        if not isinstance(item, dict):
+            continue
+        w = str(item.get("word") or "").strip()
+        if not w:
+            continue
+        by_word[w.lower()] = bool(item.get("ok"))
+
+    if not by_word:
+        return {}
+
+    # 词形 → word_id
+    cond = [func.lower(Word.word).in_(list(by_word.keys()))]
+    if book_id:
+        cond.append(Word.book_id == int(book_id))
+
+    try:
+        rows = (
+            await db.execute(select(Word.word_id, Word.word).where(*cond))
+        ).all()
+    except Exception:  # noqa: BLE001 - 状态更新失败不影响练习记录
+        return {}
+
+    word_id_by_lower: Dict[str, int] = {}
+    for wid, w in rows:
+        word_id_by_lower.setdefault(str(w).lower(), int(wid))
+
+    if not word_id_by_lower:
+        return {}
+
+    # 读出已有状态
+    existing_rows = (
+        await db.execute(
+            select(WordLearningState).where(
+                WordLearningState.user_id == int(user_id),
+                WordLearningState.word_id.in_(list(word_id_by_lower.values())),
+            )
+        )
+    ).scalars().all()
+    existing = {int(r.word_id): r for r in existing_rows}
+
+    today = date.today()
+    now = datetime.now()
+
+    entered = 0          # 本次进入复习队列（答对，stage 前进）
+    still_learning = 0   # 答错，回到队列
+    due_count = 0        # 更新后「今天该复习」的数量
+
+    for lower_word, is_ok in by_word.items():
+        wid = word_id_by_lower.get(lower_word)
+        if wid is None:
+            continue
+
+        cur_row = existing.get(wid)
+        cur_state = _to_state(cur_row)
+
+        new_state = review(cur_state, is_ok, today=today, now=now)
+
+        if cur_row is None:
+            cur_row = WordLearningState(user_id=int(user_id), word_id=wid)
+            db.add(cur_row)
+            existing[wid] = cur_row
+
+        _apply_state(cur_row, new_state)
+
+        if is_ok:
+            entered += 1
+        else:
+            still_learning += 1
+        if is_due(new_state, today):
+            due_count += 1
+
+    await db.flush()
+
+    # 顺便统计这个词书整体的掌握情况 —— 前端提交完可以直接刷新徽标，
+    # 不用再发一次请求
+    mastery = {}
+    if book_id:
+        mastery = await _book_mastery(db, user_id=user_id, book_id=int(book_id))
+
+    return {
+        "mastery": {
+            "reviewed": entered + still_learning,
+            "entered": entered,
+            "stillLearning": still_learning,
+            "dueNow": due_count,
+            **({"book": mastery} if mastery else {}),
+        }
+    }
+
+
+async def _book_mastery(
+    db: AsyncSession, *, user_id: int, book_id: int
+) -> Dict[str, Any]:
+    """某个词书对某个用户的掌握情况
+
+    返回 mastered / learning / new / total / masteryRate，
+    口径见 `spaced_repetition.mastery_of`。
+    """
+    total_words = int(
+        await db.scalar(
+            select(func.count()).select_from(Word).where(Word.book_id == int(book_id))
+        )
+        or 0
+    )
+
+    rows = (
+        await db.execute(
+            select(WordLearningState).where(
+                WordLearningState.user_id == int(user_id),
+                WordLearningState.word_id.in_(
+                    select(Word.word_id).where(Word.book_id == int(book_id))
+                ),
+            )
+        )
+    ).scalars().all()
+
+    m = mastery_of([_to_state(r) for r in rows])
+    # 「新词」按词书总词数算更准确：没进过 state 表的词也是新词
+    m["new"] = max(0, total_words - (m["mastered"] + m["learning"]))
+    m["total"] = total_words
+    return m
 
 
 @router.post("/submit")
@@ -130,10 +331,26 @@ async def submit_practice(
     db.add(row)
     await db.flush()
 
+    # ------------------------------------------------------------------
+    # 记忆曲线：把这次的对错落到每个词上（2026-10-26）
+    # ------------------------------------------------------------------
+    # 只有听写类练习才有"逐词对错"，阅读/识词没有可复习的单词维度。
+    # 更新结果放在回执里，前端可以立刻显示「本轮 x 个词进入复习」
+    # 或者「有 y 个词该复习了」。
+    mastery_update: Dict[str, Any] = {}
+    if req.mode == "dictation" and detail:
+        mastery_update = await _update_learning_state(
+            db,
+            user_id=_uid(current_user),
+            book_id=int(req.bookId) if req.bookId else None,
+            detail=detail,
+        )
+
     return success(
         {
             **_brief(row),
             "wrongCount": total - correct,
+            **mastery_update,
         },
         msg="练习记录已保存",
     )
@@ -379,5 +596,241 @@ async def practice_stats(
             "streak": streak,
             "topWrong": [{"word": w, "count": c} for w, c in top_wrong],
             "recentLogs": recent_logs,
+        }
+    )
+
+# ============================================================================
+# 记忆曲线相关接口（2026-10-26）
+# ============================================================================
+
+
+@router.get("/new-words")
+async def new_words(
+    bookId: int = Query(..., description="词书 ID"),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """这本词书里**还没学过**的词（2026-10-26）
+
+    给「练新词」用。判定标准：`word_learning_state` 里没有这一行，
+    或 stage = 0 且从没练过（right_count = wrong_count = 0）。
+
+    按 `sort_order, word_id` 升序，保证每次拿到的是同一批 ——
+    用户点两次「练新词」看到的该是同一批词，而不是随机跳。
+    """
+    uid = _uid(current_user)
+
+    # ------------------------------------------------------------------
+    # 「学过」的判定：练过至少一次，而不是 stage > 0（2026-10-26 修）
+    # ------------------------------------------------------------------
+    # 原来用 `stage > 0`。问题是**答错会让 stage 退到 0**（SM-2 的退档逻辑），
+    # 于是 campaign / deadline 这种"练过但答错了"的词被算成「没学过」，
+    # 又出现在「练新词」里 —— 用户会觉得"这词我刚练过，怎么又是新的"。
+    #
+    # 正确的判定是「有没有练习记录」：right_count + wrong_count > 0。
+    tracked = select(WordLearningState.word_id).where(
+        WordLearningState.user_id == uid,
+        (WordLearningState.right_count + WordLearningState.wrong_count) > 0,
+    )
+
+    total = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(Word)
+            .where(Word.book_id == int(bookId), Word.word_id.not_in(tracked))
+        )
+        or 0
+    )
+
+    rows = (
+        await db.execute(
+            select(Word)
+            .where(Word.book_id == int(bookId), Word.word_id.not_in(tracked))
+            .order_by(Word.sort_order.asc(), Word.word_id.asc())
+            .limit(int(limit))
+        )
+    ).scalars().all()
+
+    items = [
+        {
+            "wordId": int(w.word_id),
+            "word": w.word,
+            "translation": w.translation,
+            "phonetic": w.phonetic,
+        }
+        for w in rows
+    ]
+
+    return success(
+        {
+            "count": total,
+            "returned": len(items),
+            "items": items,
+        }
+    )
+
+
+@router.get("/mastery")
+async def book_mastery(
+    bookId: int = Query(..., description="词书 ID"),
+    db: AsyncSession = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """某个词书的掌握情况
+
+    给词库列表/详情页显示「已掌握 8 / 学习中 12 / 新词 22」这类徽标用。
+    """
+    m = await _book_mastery(db, user_id=_uid(current_user), book_id=int(bookId))
+    return success(m)
+
+
+@router.get("/due")
+async def due_words(
+    bookId: Optional[int] = Query(None, description="限定词书；不传则全部"),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """今天该复习的单词（按遗忘曲线到期）
+
+    ## 排序规则
+
+    1. **先到期的先来**（`due_date` 升序）—— 拖得越久越该补；
+    2. 同一天到期的，**错得多的先来**（`wrong_count` 降序）——
+       薄弱词优先，而不是随机；
+    3. 都没练过的（`due_date IS NULL`）**排在最后**，不算"复习"，
+       它们是"新词"，由听写页的「新词配额」决定要不要练。
+
+    ⚠️ 只返回**已经练过的词**。全新词不该从「复习」入口进来 ——
+       那样会把"复习 20 个"变成"背 20 个新词"，两个心理预期完全不同。
+    """
+    uid = _uid(current_user)
+    today = date.today()
+
+    cond = [
+        WordLearningState.user_id == uid,
+        WordLearningState.due_date.is_not(None),
+        WordLearningState.due_date <= today,
+    ]
+
+    stmt = (
+        select(WordLearningState, Word)
+        .join(Word, Word.word_id == WordLearningState.word_id)
+        .where(*cond)
+    )
+    if bookId:
+        stmt = stmt.where(Word.book_id == int(bookId))
+
+    stmt = stmt.order_by(
+        WordLearningState.due_date.asc(),
+        WordLearningState.wrong_count.desc(),
+        Word.word.asc(),
+    ).limit(int(limit))
+
+    rows = (await db.execute(stmt)).all()
+
+    # ------------------------------------------------------------------
+    # count 是「符合条件的总数」，不是「本次返回的条数」（2026-10-26 修）
+    # ------------------------------------------------------------------
+    # 原来直接 `len(items)`，于是 `limit=1` 时 count 也变成 1 ——
+    # 而调用方传小 limit 正是为了"只要数字、不要列表"（词库页的徽标
+    # 就显示「今天该复习 1 个」，实际有 5 个）。
+    # 多算一次 count 很便宜（同样的 where，走 idx_wls_due 索引）。
+    total = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(WordLearningState)
+            .join(Word, Word.word_id == WordLearningState.word_id)
+            .where(*cond)
+        )
+        or 0
+    )
+
+    items = [
+        {
+            "wordId": int(w.word_id),
+            "word": w.word,
+            "translation": w.translation,
+            "phonetic": w.phonetic,
+            "bookId": int(w.book_id),
+            "stage": int(s.stage or 0),
+            "dueDate": s.due_date.isoformat() if s.due_date else None,
+            "wrongCount": int(s.wrong_count or 0),
+            "rightCount": int(s.right_count or 0),
+            "lapses": int(s.lapses or 0),
+            # 逾期几天（0 = 正好今天，正数 = 拖了几天）
+            "overdueDays": (today - s.due_date).days if s.due_date else 0,
+        }
+        for s, w in rows
+    ]
+
+    return success(
+        {
+            "date": today.isoformat(),
+            # 总数 vs 本次返回：两个都给，调用方按需取
+            "count": total,
+            "returned": len(items),
+            "items": items,
+        }
+    )
+
+
+@router.get("/overview")
+async def learning_overview(
+    db: AsyncSession = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """全局学习概览：今天该复习多少、总共掌握多少
+
+    智能体（english_practice 工具）和统计页都用它。
+    """
+    uid = _uid(current_user)
+    today = date.today()
+
+    total = int(
+        await db.scalar(
+            select(func.count()).select_from(WordLearningState).where(
+                WordLearningState.user_id == uid
+            )
+        )
+        or 0
+    )
+
+    done_count = int(
+        await db.scalar(
+            select(func.count()).select_from(EnglishPracticeLog).where(
+                EnglishPracticeLog.user_id == uid,
+                EnglishPracticeLog.del_flag == "0",
+            )
+        )
+        or 0
+    )
+
+    due_today = int(
+        await db.scalar(
+            select(func.count()).select_from(WordLearningState).where(
+                WordLearningState.user_id == uid,
+                WordLearningState.due_date.is_not(None),
+                WordLearningState.due_date <= today,
+            )
+        )
+        or 0
+    )
+
+    rows = (
+        await db.execute(
+            select(WordLearningState).where(WordLearningState.user_id == uid)
+        )
+    ).scalars().all()
+    m = mastery_of([_to_state(r) for r in rows])
+
+    return success(
+        {
+            "date": today.isoformat(),
+            "trackedWords": total,      # 进入记忆曲线的词数
+            "practicedSessions": done_count,
+            "dueToday": due_today,
+            **m,
         }
     )

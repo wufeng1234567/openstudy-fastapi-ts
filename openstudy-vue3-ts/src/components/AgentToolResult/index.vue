@@ -706,7 +706,25 @@ const LINK_WRITE_ACTIONS = new Set([
   'batch_import',
   // 知识库入库（2026-10-26 补）
   'from_text',
-  'from_attachment'
+  'from_attachment',
+  /*
+   * 「生成练习」（2026-10-26 补）
+   *
+   * 这个动作名看起来像只读（它确实不写库），但它产出的是一组
+   * **带参数的练习链接**：
+   *
+   *   /front/english/listening?auto=1&bookId=128&mode=dictation
+   *                          &scope=due&words=abandon,benefit,...
+   *
+   * 用户说「帮我生成一组听力练习」，智能体回「已准备好 20 个词，
+   * 点下面的按钮直接开始」—— 如果没有这张卡，那句"点下面的按钮"
+   * 就是空话，用户根本找不到按钮。
+   *
+   * 这就是白名单按「动作是否只读」分类不够用的地方：
+   * 真正该判的是「这个回执有没有下一步动作」。有 jumpUrl 且有
+   * 明确意图的，就该出卡。
+   */
+  'start'
 ])
 
 /** 不同工具落地页的文案/图标（没配的走默认） */
@@ -715,7 +733,9 @@ const LINK_UI: Record<string, { badge: string; buttonText: string; icon: string 
   // 2026-10-26：把「智能体说做完了」和「去哪里看」接上
   bank_manage: { badge: '题库已创建', buttonText: '去题库看看', icon: 'book-open' },
   question_manage: { badge: '题目已就绪', buttonText: '去刷题', icon: 'pen-line' },
-  knowledge_ingest: { badge: '资料已入库', buttonText: '查看处理进度', icon: 'folder' }
+  knowledge_ingest: { badge: '资料已入库', buttonText: '查看处理进度', icon: 'folder' },
+  // 练习已就绪 —— 按钮文案直接说"开始"，不用"去看看"这种含糊说法
+  english_practice: { badge: '练习已就绪', buttonText: '开始听力练习', icon: 'book-open' }
 }
 
 const linkJump = computed(() => {
@@ -750,8 +770,34 @@ const linkJump = computed(() => {
   const name = String(
     d.bookName || nested?.bookName || d.noteTitle || d.title || ''
   )
-  const meta =
-    typeof d.message === 'string'
+
+  /*
+   * 练习类回执（english_practice · start）单独处理副标题
+   * ---------------------------------------------------------------
+   * 它的 message 是一整句话（"已准备好一组听力练习：18 个到期复习 +
+   * 2 个新词（模式：自动听写）。点下面的按钮直接开始。"），
+   * 塞进卡片副标题会挤成两行、把按钮推下去。
+   *
+   * 改成结构化摘要：「18 个到期 · 2 个新词 · 自动听写」——
+   * 一眼看清这组题是什么，细节交给下面那句话去说。
+   */
+  const isPractice = action === 'start'
+  const practiceMeta = (() => {
+    if (!isPractice) return ''
+    const parts: string[] = []
+    const total = Number(d.count || 0)
+    if (total) parts.push(`${total} 个词`)
+    const modeText =
+      d.mode === 'input' ? '打字输入' : d.mode === 'listen' ? '纯听力' : '自动听写'
+    parts.push(modeText)
+    if (d.scope === 'due') parts.push('按记忆曲线排的')
+    else if (d.scope === 'wrong') parts.push('易错词')
+    return parts.join(' · ')
+  })()
+
+  const meta = isPractice
+    ? practiceMeta
+    : typeof d.message === 'string'
       ? d.message
       : d.addedCount
         ? `本次加入 ${d.addedCount} 个`

@@ -598,8 +598,8 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'FrontEnglishListening' })
-import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, onActivated, onBeforeUnmount, watch, nextTick } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import {
     ArrowLeft, VideoPlay, VideoPause, ArrowRight,
     CircleCheck, CircleClose, Headset, Collection,
@@ -607,12 +607,13 @@ import {
     EditPen, Timer, InfoFilled
 } from '@element-plus/icons-vue'
 import { listFrontWordBooks } from '@/api/wordBooks/wordBooks'
-import { listAllWords, listWords, submitPractice } from '@/api/words/words'
+import { listAllWords, listWords, submitPractice, getDueWords, getNewWords } from '@/api/words/words'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { speak, stopSpeak, speakReasonText, warmUpVoices, unlockAudio } from '@/utils/speech'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
 
 const router = useRouter()
+const route = useRoute()
 const cacheStore = useFrontPageCacheStore()
 
 // 状态
@@ -749,6 +750,21 @@ const scopeLimitOptions = [10, 20, 30, 50]
  */
 const seedWords = ref<string[]>([])
 
+/** URL 指定的词书 ID（等词库列表加载完再切） */
+const pendingBookId = ref<number | null>(null)
+
+/** URL 里带了 `auto=1` —— 词库和词就绪后自动开练 */
+const urlAutoStart = ref(false)
+
+/**
+ * 这批种子是否来自 URL（智能体生成的链接）
+ *
+ * 区别对待的原因：URL 种子是**从指定词书里选出来的**，
+ * 匹配不上就是真的没了，不该跨库去捞；而统计页的错词没有指定词书，
+ * 天然可能散在多本里，必须跨库捞。见 startPractice 里的注释。
+ */
+const seedFromUrl = ref(false)
+
 // ⚠️ `repeatCount` / `playInterval` 已上移到模式定义处（2026-10-26），
 //    那里和 speechRate 放在一起更易读，不再重复声明。
 
@@ -880,13 +896,41 @@ const loadBookOptions = async () => {
              *    有词的优先，实在都空才退回第一本。
              */
             if (bookOptions.value.length > 0 && !selectedBookId.value) {
+                /*
+                 * URL 指定了词书就优先用它（2026-10-26）
+                 *
+                 * 智能体生成的链接带 `bookId=128` —— 用户点的就是这本，
+                 * 不该再被"自动选第一本有词的"覆盖掉。
+                 * 但要校验这本还在（可能已被删），不存在才回退。
+                 */
+                const wanted = pendingBookId.value
+                    ? bookOptions.value.find(
+                          (b: any) => Number(b.bookId) === Number(pendingBookId.value)
+                      )
+                    : null
+
                 const firstWithWords =
+                    wanted ||
                     bookOptions.value.find((b: any) => Number(b.wordCount || 0) > 0) ||
                     bookOptions.value[0]
                 const first = firstWithWords.bookId
                 selectedBookId.value = first
                 currentBookId.value = first
                 await onBookChange(first)
+            }
+
+            /*
+             * 词和词书都就绪了 → 处理「URL 带 auto=1 自动开练」
+             *
+             * ⚠️ 必须放在 `onBookChange` 之后：那时 `wordList` 才是新词库的词，
+             *    提前调 startPractice 会拿旧词库的列表去匹配种子，一个都匹配不上。
+             */
+            if (urlAutoStart.value && wordList.value.length > 0) {
+                urlAutoStart.value = false
+                // 等一帧让按钮/设置区渲染完，避免同时出现"设置区 + 练习区"
+                nextTick(() => {
+                    startPractice()
+                })
             }
         } else {
             ElMessage.error(response.msg || '加载词库失败')
@@ -1105,6 +1149,10 @@ const startPractice = async () => {
     //   ② 剩下的按单词去后端跨词库查回来。
     // 两步都找不到的才放弃，并明确告诉用户少了哪几个。
     const seed = seedWords.value
+    // 这批种子是智能体通过 URL 传来的吗（决定要不要跨词库补齐）
+    const fromUrl = seedFromUrl.value
+    seedFromUrl.value = false
+
     if (seed.length) {
         // 一次性消费掉
         seedWords.value = []
@@ -1129,7 +1177,12 @@ const startPractice = async () => {
         }
 
         // ② 跨词库补齐
-        if (missing.length) {
+        //
+        // ⚠️ 只在**不是** URL 种子时做（2026-10-26）。
+        //    智能体生成的链接带 bookId，那些词就是从这本词书里选出来的；
+        //    跨库补会把别的词书的同名词拉进来，导致"练的不是我选的那本"。
+        //    统计页的错词没有指定词书，才需要跨库捞。
+        if (missing.length && !fromUrl) {
             const fetched = await fetchWordsAcrossBooks(missing)
             for (const w of fetched) {
                 const key = String((w as any).word || '').toLowerCase()
@@ -1739,7 +1792,23 @@ onMounted(() => {
     // 否则 Chrome 会以 not-allowed 拒绝发声）。
     warmUpVoices()
 
-    loadBookOptions()
+    /*
+     * ⚠️ 顺序不能反（2026-10-26 修）
+     * ------------------------------------------------------------------
+     * 先消费种子（会设置 pendingBookId），再加载词库列表 ——
+     * 因为 `loadBookOptions` 内部要用 `pendingBookId` 决定选哪本书。
+     *
+     * 原来顺序是反的：loadBookOptions 先跑（pendingBookId 还是 null），
+     * 于是永远选"第一本有词的"，URL 里的 bookId 被完全忽略。
+     * 症状：从"四级核心词"（12 词）跳过来，却练的是"四级高频词汇"（20 词）。
+     */
+    /*
+     * 串行执行：等种子消费完（含按 scope 请求后端取词）再加载词库列表。
+     *
+     * 并行不行 —— consumeSeedWords 内部要 await 一次接口，
+     * 而 loadBookOptions 依赖它设置好的 pendingBookId。
+     */
+    void consumeSeedWords().then(() => loadBookOptions())
 
     /*
      * 第一次交互时解锁 Web Audio 通道。
@@ -1786,8 +1855,122 @@ let seedTimer: number | null = null
  */
 let seedConsumed = false
 
-function consumeSeedWords() {
+/**
+ * 消费「预置题目」—— 两种来源
+ * ============================================================================
+ *
+ * **① URL 参数（2026-10-26 新增）**
+ *    智能体 `english_practice(action=start)` 返回的 jumpUrl 长这样：
+ *
+ *      /front/english/listening?auto=1&bookId=128&mode=dictation
+ *                              &scope=due&words=abandon,benefit,campaign
+ *
+ *    `auto=1` 表示"进来就直接开练"，用户不用再点一次「开始听写」。
+ *    这条路径是**跨页面跳转**，所以必须走 URL —— sessionStorage 在
+ *    router.push 时也能用，但 URL 可分享、可刷新、可回退，语义更对。
+ *
+ * **② sessionStorage（原有的错词重练）**
+ *    统计页点「用这些错词练一轮」时写入，见 statistics/index.vue。
+ *
+ * 两者统一处理：都转成 `seedWords` + 可选的 `bookId/mode`，
+ * 然后交给 `startPractice` 走同一套选词逻辑。
+ */
+async function consumeSeedWords() {
     if (seedConsumed) return
+
+    // ---------- ① URL 参数 ----------
+    const q = route.query || {}
+    if (q.auto === '1' || q.words) {
+        seedConsumed = true
+
+        const rawWords = String(q.words || '').trim()
+        const urlScope = String(q.scope || '')
+        /*
+         * ⚠️ `bid` 必须在这里定义（2026-10-26 修 TDZ）
+         *
+         * 原先它定义在下面「设置 pendingBookId」那一段，
+         * 但上面的 scope 分支（`getDueWords({ bookId: bid })`）先用到了它 ——
+         * `const` 有暂时性死区，于是抛 ReferenceError，
+         * 被外层 try/catch 静默吞掉 → list 一直是空 → 退化成"练整本"。
+         *
+         * 症状：点「今天该复习 5 个」结果练了 12 个，且没有任何报错提示。
+         */
+        const bid = Number(q.bookId || 0)
+        let list = rawWords
+            ? rawWords.split(',').map((x) => decodeURIComponent(x).trim()).filter(Boolean)
+            : []
+
+        /*
+         * 没有明确词表时，按 scope 向后端要（2026-10-26）
+         * ---------------------------------------------------------------
+         * 词库页的「开始听写」只传 `scope=due`（今天该复习的），
+         * 不带 words —— 因为它不知道到期的是哪几个，那是后端的判断。
+         *
+         * 之前只认 `words`，于是这类跳转退化成"练整本"，
+         * 用户点「今天该复习 5 个」结果练了 12 个，预期完全不对。
+         */
+        if (!list.length && urlScope) {
+            try {
+                if (urlScope === 'due') {
+                    const res: any = await getDueWords({
+                        bookId: bid || undefined,
+                        limit: 100
+                    })
+                    const data = res?.data ?? res
+                    list = (data?.items || []).map((it: any) => String(it.word || '')).filter(Boolean)
+                    if (!list.length) {
+                        ElMessage.info('今天没有到期该复习的词，改为练整本')
+                    }
+                } else if (urlScope === 'new') {
+                    const res: any = await getNewWords({
+                        bookId: bid || 0,
+                        limit: 100
+                    })
+                    const data = res?.data ?? res
+                    list = (data?.items || []).map((it: any) => String(it.word || '')).filter(Boolean)
+                    if (!list.length) {
+                        ElMessage.success('这本词书的词都学过了，换成复习吧')
+                    }
+                }
+            } catch (e) {
+                console.warn('按 scope 取词失败:', e)
+            }
+        }
+
+        // 模式：URL 指定了就覆盖设置
+        const m = String(q.mode || '')
+        if (m === 'dictation' || m === 'input' || m === 'listen') {
+            practiceMode.value = m as any
+        }
+        // 词书：URL 指定了就切过去（等词库列表加载完再切，见 pendingBookId）
+        if (bid) pendingBookId.value = bid
+
+        if (list.length) {
+            seedWords.value = list
+            seedFromUrl.value = true
+            ElMessage.success(`已为你准备好 ${list.length} 个词的练习`)
+        }
+
+        /*
+         * 清掉 URL 上的这些参数
+         *
+         * 为什么要清：用户练完刷新页面时，如果再读一次 `auto=1`，
+         * 会被强行再开一轮 —— 而用户刷新可能只是想看看结果面板。
+         * 用 replace 不留历史记录。
+         */
+        const rest = { ...q }
+        delete rest.auto
+        delete rest.words
+        delete rest.mode
+        delete rest.scope
+        delete rest.bookId
+        router.replace({ path: route.path, query: rest })
+
+        urlAutoStart.value = q.auto === '1'
+        return
+    }
+
+    // ---------- ② sessionStorage（错词重练） ----------
     try {
         const raw = sessionStorage.getItem('practiceSeedWords')
         if (!raw) return
@@ -1807,10 +1990,71 @@ function consumeSeedWords() {
 }
 
 function startSeedWatcher() {
-    consumeSeedWords()
+    /*
+     * 注意：`consumeSeedWords` 是 async（要按 scope 请求后端取词），
+     * 但 setInterval 的回调**不能 await**，也没必要 ——
+     * 它内部靠 `seedConsumed` 标记防重入，异步期间再次进入会被挡掉。
+     */
+    void consumeSeedWords()
     if (seedTimer !== null) return
-    seedTimer = window.setInterval(consumeSeedWords, 400)
+    seedTimer = window.setInterval(() => {
+        void consumeSeedWords()
+    }, 400)
 }
+
+/**
+ * 本页被 keep-alive 复用时，重置"一次性状态"（2026-10-26）
+ * ============================================================================
+ * 实测踩到的坑：连着用不同参数打开本页三次
+ *
+ *     ?scope=due   → 1 / 2
+ *     ?scope=new   → 1 / 2   ← 应该变成 7 个新词，但没变
+ *     ?words=a,b   → 1 / 2   ← 应该只有 2 个，也没变
+ *
+ * 原因是本页带 `keepAlive: true`，第二次进入时组件被**复用**：
+ *   · `seedConsumed` 还是上一次的 true → `consumeSeedWords` 直接 return；
+ *   · `isPracticing` 还是 true → 页面停在上次的练习态。
+ *
+ * 所以每次被激活且 URL 里带了 `auto=1` 时，把状态清干净再重新消费。
+ */
+function resetForNewUrlRun() {
+    seedConsumed = false
+    seedWords.value = []
+    seedFromUrl.value = false
+    pendingBookId.value = null
+    urlAutoStart.value = false
+    // 退出上一次的练习态，回到"选词库 + 设置"的起点
+    isPracticing.value = false
+    hasResult.value = false
+    practiceResults.value = []
+    practiceWords.value = []
+    currentIndex.value = 0
+    stopSpeaking()
+    clearAutoNextTimer()
+}
+
+/*
+ * 监听 URL 里的 `auto` / `words`（2026-10-26）
+ * ============================================================================
+ * 为什么不用 `onActivated`：实测在本页**不触发**。
+ *
+ * 本页路由带 `keepAlive: true`，但连续用不同参数导航到同一路由时，
+ * Vue Router 认为是"同一条路由"，既不重新 mount，也不一定触发 activated。
+ * 而 `route.query` 的变化一定能被 watch 捕获 —— 这是唯一可靠的入口。
+ *
+ * 这也是本项目第四次在 keep-alive 上栽跟头（前三次：智能体预填问题、
+ * 听写页错词种子、统计页 tab 参数）。规律已经很清楚：
+ * **凡是要"根据外部传参改变已缓存页面的状态"，都不能只依赖生命周期钩子。**
+ */
+watch(
+    () => [route.query.auto, route.query.words, route.query.bookId, route.query.scope],
+    (nv) => {
+        const [auto, words] = nv as any[]
+        if (auto !== '1' && !words) return
+        resetForNewUrlRun()
+        void consumeSeedWords().then(() => loadBookOptions())
+    }
+)
 
 /*
  * 允许"第二次带种子进来"

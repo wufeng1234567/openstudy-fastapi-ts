@@ -79,6 +79,99 @@
     </header>
 
     <!-- 搜索 -->
+    <!--
+      进度条 + 开始听写（2026-10-26）
+      ============================================================================
+      用户提了两件事，它们其实是同一个需求的两面：
+        · 「词库这边添加一个一键跳转听力练习的按钮，位置要好，不要太拥挤」
+        · 「提供记忆曲线，用户今天刷了，词库那边标记为已学习过，
+           下次学习的时候可以换一批」
+
+      所以这一条同时解决"去哪儿练"和"练到哪了"：
+
+        左边  → 记忆曲线进度（已掌握 / 学习中 / 新词），一眼看到还剩多少
+        右边  → 「开始听写」主按钮，点了直接带着**今天该复习的词**进练习
+
+      ## 为什么放在搜索栏上方，而不是 header 的按钮组里
+
+        header 现在已经有「拍照识词 / 导出 / 添加单词」三个按钮，
+        再加一个必然挤成一行小按钮，且语义也不对：
+        那三个是**编辑词库**，这个是**去学习**，是两种不同的意图。
+
+      放在这里的好处：
+        · 视觉上有独立一行，不挤压任何已有控件；
+        · 和学习进度挨在一起，形成"看进度 → 去练习"的动线；
+        · 搜索栏就在下面，用户想找某个词也不受影响。
+    -->
+    <div class="wd-learn">
+      <div class="wd-learn__progress">
+        <!--
+          进度条：三段色块
+          ---------------------------------------------------------------
+          mastered（绿）= 已掌握，learning（蓝）= 学习中，new（灰）= 新词。
+          宽度按占比算，总数为 0 时不显示色块（避免除零）。
+        -->
+        <div class="wd-learn__bar" v-if="mastery.total > 0" :title="masteryTitle">
+          <i
+            class="seg is-mastered"
+            :style="{ width: pct(mastery.mastered) }"
+          />
+          <i
+            class="seg is-learning"
+            :style="{ width: pct(mastery.learning) }"
+          />
+          <i class="seg is-new" :style="{ width: pct(mastery.new) }" />
+        </div>
+        <div class="wd-learn__meta">
+          <span class="m is-mastered">
+            <b>{{ mastery.mastered }}</b> 已掌握
+          </span>
+          <span class="m is-learning">
+            <b>{{ mastery.learning }}</b> 学习中
+          </span>
+          <span class="m is-new">
+            <b>{{ mastery.new }}</b> 未学
+          </span>
+          <!--
+            今日待复习：只有 >0 才显示。
+            这个数字是记忆曲线的"发起信号" —— 它一出现，用户就知道该练了。
+          -->
+          <span v-if="dueCount > 0" class="wd-learn__due">
+            今天该复习 <b>{{ dueCount }}</b> 个
+          </span>
+        </div>
+      </div>
+
+      <div class="wd-learn__ops">
+        <button
+          type="button"
+          class="wd-btn"
+          :disabled="!words.length"
+          :title="dueCount > 0 ? `先练今天到期的 ${dueCount} 个词` : '按词库顺序练全部单词'"
+          @click="startListening()"
+        >
+          <OsIcon name="book-open" :size="14" />
+          <span>开始听写</span>
+        </button>
+        <!--
+          「练新词」入口：只在还有未学的词时出现
+          ---------------------------------------------------------------
+          这就是用户说的「下次学习的时候可以换一批」——
+          点它只练**没学过的**，等于自动换了一批。
+        -->
+        <button
+          v-if="mastery.new > 0"
+          type="button"
+          class="wd-btn is-primary"
+          :title="`练还没学过的 ${mastery.new} 个词`"
+          @click="startListening('new')"
+        >
+          <OsIcon name="sparkles" :size="14" />
+          <span>练新词（{{ mastery.new }}）</span>
+        </button>
+      </div>
+    </div>
+
     <div class="wd-toolbar">
       <el-input
         v-model="keyword"
@@ -241,7 +334,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import { getWordBooks } from '@/api/wordBooks/wordBooks'
-import { listAllWords, addWords, updateWords, delWords } from '@/api/words/words'
+import { listAllWords, addWords, updateWords, delWords, getBookMastery, getDueWords } from '@/api/words/words'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
 import { speak as speakText, isSpeechSupported, speakReasonText, warmUpVoices } from '@/utils/speech'
 import OcrRecognizer from '@/components/OcrRecognizer/index.vue'
@@ -275,6 +368,92 @@ const saving = ref(false)
 const batchDeleting = ref(false)
 /** 导出中（防止重复点击） */
 const exporting = ref(false)
+
+/* ============================================================================
+ * 记忆曲线（2026-10-26）
+ *
+ * 这块数据来自 `/words/practice/mastery?bookId=`，反映这本书里
+ * 每个词学到什么程度了：
+ *
+ *   mastered  已掌握（SM-2 stage 8，不再进日常复习）
+ *   learning  学习中（stage 1~7，按 due_date 排期）
+ *   new       没学过
+ *
+ * 「今天该复习几个」单独查一次 `/words/practice/due?bookId=&limit=1`，
+ * 只为拿 count —— 那个接口真正返回的是词列表，这里不需要列表。
+ * ========================================================================== */
+const mastery = ref({
+  mastered: 0,
+  learning: 0,
+  new: 0,
+  total: 0,
+  masteryRate: 0
+})
+
+/** 今天到期的复习词数 */
+const dueCount = ref(0)
+
+/** 进度条的悬浮提示：把三段数字说清楚 */
+const masteryTitle = computed(
+  () =>
+    `共 ${mastery.value.total} 个词：` +
+    `已掌握 ${mastery.value.mastered}，` +
+    `学习中 ${mastery.value.learning}，` +
+    `未学 ${mastery.value.new}`
+)
+
+/** 某一段占的百分比（给进度条用） */
+function pct(n: number): string {
+  const total = mastery.value.total || 0
+  if (!total) return '0%'
+  return ((n / total) * 100).toFixed(2) + '%'
+}
+
+async function loadMastery() {
+  if (!bookId.value) return
+  try {
+    const [m, d] = await Promise.all([
+      getBookMastery(bookId.value),
+      getDueWords({ bookId: bookId.value, limit: 1 })
+    ])
+    const md: any = (m as any)?.data ?? m
+    if (md && typeof md === 'object') {
+      mastery.value = {
+        mastered: Number(md.mastered || 0),
+        learning: Number(md.learning || 0),
+        new: Number(md.new || 0),
+        total: Number(md.total || 0),
+        masteryRate: Number(md.masteryRate || 0)
+      }
+    }
+    const dd: any = (d as any)?.data ?? d
+    dueCount.value = Number(dd?.count || 0)
+  } catch (e) {
+    // 进度拿不到不影响主流程（词列表已经出来了），静默处理
+    console.warn('加载记忆曲线进度失败:', e)
+  }
+}
+
+/**
+ * 带着参数跳到听写页
+ *
+ * @param scope 'due' = 今天该复习的（默认）；'new' = 还没学过的；'all' = 整本
+ *
+ * 为什么用 URL 而不是 sessionStorage：
+ *   · 可分享 —— 用户能把这链接发给同学；
+ *   · 可刷新 —— 刷一下还在同一组题；
+ *   · 可回退 —— 浏览器后退能回词库页。
+ *   听写页读 `auto=1` 会自动开练，见 listening/index.vue 的 consumeSeedWords。
+ */
+function startListening(scope: 'due' | 'new' | 'all' = 'due') {
+  const query: Record<string, string> = {
+    auto: '1',
+    bookId: String(bookId.value || ''),
+    scope
+  }
+  router.push({ path: '/front/english/listening', query })
+}
+
 const editingId = ref<number | null>(null)
 const formRef = ref<any>(null)
 const form = ref({ word: '', translation: '', phonetic: '', example: '' })
@@ -581,6 +760,8 @@ function syncFromRoute() {
   keyword.value = ''
   loadBook()
   load()
+  // 记忆曲线进度跟着词库一起刷（2026-10-26）
+  loadMastery()
 }
 
 onMounted(() => {
@@ -592,7 +773,18 @@ onMounted(() => {
 // keep-alive 回到本页（换了 id 才重新拉，避免每次切回来都请求）
 onActivated(() => {
   const id = Number(route.params.id)
-  if (id && id !== bookId.value) syncFromRoute()
+  if (id && id !== bookId.value) {
+    syncFromRoute()
+  } else {
+    /*
+     * 同一本词库返回时也要刷进度（2026-10-26）
+     *
+     * 用户从听写页练完点「去我的词库」回来，最想看的就是
+     * 「已掌握」那个数字变了没有。不刷的话他看到的是进练习前的旧值，
+     * 会以为"练了没用"。
+     */
+    loadMastery()
+  }
 })
 
 watch(() => route.params.id, (nv, ov) => {
@@ -692,6 +884,117 @@ watch(() => route.params.id, (nv, ov) => {
       color: #fff;
     }
   }
+}
+
+/* ---------- 学习进度 + 开始听写（2026-10-26） ---------- */
+/*
+ * 一条独立的横条，夹在头部和搜索栏之间。
+ * 左半边是记忆曲线进度（三段进度条 + 数字），右半边是练习入口。
+ *
+ * 用 `flex-wrap: wrap`：窄屏时右侧按钮组会掉到下一行，
+ * 而不是把进度条压成一条线 —— 这是"不要拥挤"的兜底。
+ */
+.wd-learn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--os-border, #eef0f3);
+  border-radius: 12px;
+  background: var(--os-bg-soft, #fafbfc);
+}
+
+.wd-learn__progress {
+  flex: 1;
+  min-width: 220px;
+}
+
+/* 三段进度条：绿=已掌握 蓝=学习中 灰=未学 */
+.wd-learn__bar {
+  display: flex;
+  width: 100%;
+  height: 7px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #e5e7eb;
+
+  .seg {
+    display: block;
+    height: 100%;
+    transition: width 0.3s ease;
+
+    &.is-mastered {
+      background: #10b981;
+    }
+    &.is-learning {
+      background: #3b82f6;
+    }
+    &.is-new {
+      background: #d1d5db;
+    }
+  }
+}
+
+.wd-learn__meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--os-text-3, #9ca3af);
+
+  .m {
+    b {
+      font-weight: 600;
+      color: var(--os-text, #111827);
+    }
+
+    /* 用小圆点传达颜色，比整段上色克制 */
+    &:before {
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      margin-right: 5px;
+      border-radius: 50%;
+      vertical-align: 1px;
+    }
+
+    &.is-mastered:before {
+      background: #10b981;
+    }
+    &.is-learning:before {
+      background: #3b82f6;
+    }
+    &.is-new:before {
+      background: #d1d5db;
+    }
+  }
+}
+
+/* 今日待复习：整条里唯一的高亮 —— 它是"该行动了"的信号 */
+.wd-learn__due {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #fef3c7;
+  color: #b45309;
+  font-size: 11.5px;
+
+  b {
+    font-weight: 700;
+  }
+}
+
+.wd-learn__ops {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  flex-wrap: wrap;
 }
 
 /* ---------- 工具条 ---------- */

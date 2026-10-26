@@ -37,11 +37,12 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, Dict, List
 
 from sqlalchemy import func, select
 
-from app.models.words import EnglishPracticeLog
+from app.models.words import EnglishPracticeLog, Word, WordBook, WordLearningState
 from app.services.ai.agent.base import AgentTool, ToolContext, fail, ok
 
 #: 一次最多看多少条记录
@@ -70,7 +71,8 @@ def _brief(row: EnglishPracticeLog) -> Dict[str, Any]:
 class EnglishPracticeTool(AgentTool):
     name = "english_practice"
     description = (
-        "Read the user's ENGLISH practice history and diagnose how they are doing. "
+        "Read the user's ENGLISH practice history and diagnose how they are doing, "
+        "AND start a listening/dictation practice session for them. "
         "This covers the three English modules: 单词听写 (dictation), 阅读练习 "
         "(reading comprehension), and 拍照识词 (OCR vocabulary capture). "
         "Use it whenever the user asks about their English practice rather than their "
@@ -84,14 +86,30 @@ class EnglishPracticeTool(AgentTool):
         "recent=list the most recent practice sessions (pass `limit`, default 10, max 50). "
         "review=the computed review list: which words to re-practise, ordered by how "
         "often they were wrong. Each item carries `word`, `wrongCount` and `advice`. "
-        "NOTE: this tool is read-only. To add or change word books use "
-        "`english_wordbook`; for question-bank study stats use `learning_stats`. "
-        "If the user has never practised, say so honestly — do NOT invent numbers."
+        "due=the words due for review TODAY under the spaced-repetition schedule "
+        "(SM-2). Use this for 'what should I study today', 'what's due', "
+        "'帮我安排今天的复习'. Each item carries word, stage, overdueDays, wrongCount. "
+        "start=**START AN ACTUAL LISTENING PRACTICE** and give the user a one-click "
+        "entry. Use this for '帮我生成听力练习', '我想练听力', '给我来一组听写', "
+        "'开始背单词'. Optional args: `bookId` (which word book), `scope` "
+        "(due=only due words [default], all=whole book, wrong=most-misspelled), "
+        "`count` (how many words, default 20, max 100), `mode` "
+        "(dictation=auto-play+auto-next [default], input=type with no time limit, "
+        "listen=pure listening). Returns a `jumpUrl` the frontend renders as a "
+        "one-click button that opens the listening page with those words preloaded. "
+        "IMPORTANT: after calling `start`, tell the user they can click the button "
+        "to begin, and keep your reply short — do NOT recite the word list. "
+        "NOTE: stats / recent / review / due are read-only. To add or change word "
+        "books use `english_wordbook`; for question-bank study stats use "
+        "`learning_stats`. If the user has never practised, say so honestly — "
+        "do NOT invent numbers."
     )
     label = "英语练习"
     description_zh = (
         "读英语练习记录：stats=总览（各模式正确率/7天趋势/最常错词）、"
-        "recent=最近几次练习、review=该重点复习哪些词。只读。"
+        "recent=最近几次练习、review=该重点复习哪些词、"
+        "due=今天按记忆曲线该复习哪些词、"
+        "start=**直接生成一组听力练习**并给出一键进入按钮。"
     )
     parameters = {
         "type": "object",
@@ -99,16 +117,40 @@ class EnglishPracticeTool(AgentTool):
             "action": {
                 "type": "string",
                 "description": "Operation to perform",
-                "enum": ["stats", "recent", "review"],
+                "enum": ["stats", "recent", "review", "due", "start"],
             },
             "limit": {
                 "type": "integer",
                 "description": "For recent: how many sessions to return (default 10, max 50).",
             },
+            "bookId": {
+                "type": "integer",
+                "description": "For start: which word book to practise. Omit to let it pick.",
+            },
+            "scope": {
+                "type": "string",
+                "description": (
+                    "For start: due=only words due for review today (default), "
+                    "all=the whole book, wrong=the most frequently misspelled words."
+                ),
+                "enum": ["due", "all", "wrong"],
+            },
+            "count": {
+                "type": "integer",
+                "description": "For start: how many words to include (default 20, max 100).",
+            },
+            "mode": {
+                "type": "string",
+                "description": (
+                    "For start: dictation=auto play + auto next (default), "
+                    "input=type the answer with no time limit, listen=pure listening."
+                ),
+                "enum": ["dictation", "input", "listen"],
+            },
         },
         "required": ["action"],
     }
-    #: 全部只读，永不弹确认卡
+    #: 读类动作只读；start 不写库（只是生成一个入口链接），同样不需要确认
     write_operation = False
 
     async def execute(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
@@ -117,11 +159,13 @@ class EnglishPracticeTool(AgentTool):
             "stats": self._stats,
             "recent": self._recent,
             "review": self._review,
+            "due": self._due,
+            "start": self._start,
         }.get(action)
         if handler is None:
             return fail(
                 f"未知操作: {action}",
-                "action 只能是 stats / recent / review",
+                "action 只能是 stats / recent / review / due / start",
             )
         try:
             return await handler(params, ctx)
@@ -361,6 +405,357 @@ class EnglishPracticeTool(AgentTool):
             ),
             jumpUrl="/front/english/listening",
         )
+
+
+    # ------------------------------------------------------------------
+    # 记忆曲线：今天该复习什么（2026-10-26）
+    # ------------------------------------------------------------------
+
+    async def _due(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+        """今天按遗忘曲线该复习的词
+
+        排序：先到期的、错得多的优先。**只含练过的词** ——
+        全新词不该从「复习」进来，见 API 层 `/words/practice/due` 的注释。
+        """
+        uid = _uid(ctx)
+        today = date.today()
+
+        rows = (
+            await ctx.db.execute(
+                select(WordLearningState, Word)
+                .join(Word, Word.word_id == WordLearningState.word_id)
+                .where(
+                    WordLearningState.user_id == uid,
+                    WordLearningState.due_date.is_not(None),
+                    WordLearningState.due_date <= today,
+                )
+                .order_by(
+                    WordLearningState.due_date.asc(),
+                    WordLearningState.wrong_count.desc(),
+                )
+                .limit(50)
+            )
+        ).all()
+
+        if not rows:
+            # 分两种情况说，不要笼统说"没有"
+            tracked = int(
+                await ctx.db.scalar(
+                    select(func.count())
+                    .select_from(WordLearningState)
+                    .where(WordLearningState.user_id == uid)
+                )
+                or 0
+            )
+            if tracked == 0:
+                return ok(
+                    action="due",
+                    count=0,
+                    items=[],
+                    message=(
+                        "该用户还没有任何单词进入记忆曲线（没练过听写）。"
+                        "请如实告知，并建议先去听写一轮。"
+                    ),
+                    jumpUrl="/front/english/listening",
+                )
+            return ok(
+                action="due",
+                count=0,
+                items=[],
+                message="今天没有到期该复习的词（都排在未来）。可以练新词或加量。",
+                jumpUrl="/front/english/listening",
+            )
+
+        items = [
+            {
+                "word": w.word,
+                "translation": w.translation,
+                "stage": int(st.stage or 0),
+                "wrongCount": int(st.wrong_count or 0),
+                "overdueDays": (today - st.due_date).days if st.due_date else 0,
+            }
+            for st, w in rows
+        ]
+
+        overdue = sum(1 for i in items if i["overdueDays"] > 0)
+        return ok(
+            action="due",
+            count=len(items),
+            overdue=overdue,
+            items=items,
+            message=(
+                f"今天有 {len(items)} 个词到期待复习"
+                + (f"，其中 {overdue} 个已经逾期" if overdue else "")
+                + "：" + "、".join(i["word"] for i in items[:8])
+            ),
+            jumpUrl="/front/english/listening",
+        )
+
+    # ------------------------------------------------------------------
+    # 生成一组听力练习（2026-10-26）
+    # ------------------------------------------------------------------
+
+    async def _start(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+        """生成一组听力练习，返回带参 URL
+
+        ## 为什么返回 URL 而不是直接开练
+
+        智能体跑在服务端，它没法"替用户点开始"。但它可以给出一个
+        **带好参数的落地链接**，前端渲染成「开始听力练习」按钮，
+        点一下就直接进到已经选好词、选好模式的练习态 —— 不用用户
+        再去选词库、调设置。
+
+        ## 选词策略（scope）
+
+            due   优先取今天到期的词；**不够则用新词补足**
+            wrong 取错得最多的词
+            all   整本词书（按 word_id 倒序 = 最近加入的）
+
+        `due` 不够时补新词，是因为"今天该复习的只有 3 个"时，
+        只给 3 个词的练习太敷衍；补到 count 个更像"一组练习"。
+        补进来的新词按 word_id 顺序取，不随机 —— 保证同一个请求
+        每次得到同样的结果，便于复现和解释。
+        """
+        uid = _uid(ctx)
+
+        # 参数归一
+        try:
+            count = int(params.get("count") or 20)
+        except (TypeError, ValueError):
+            count = 20
+        count = max(1, min(count, 100))
+
+        scope = str(params.get("scope") or "due")
+        if scope not in ("due", "all", "wrong"):
+            scope = "due"
+
+        mode = str(params.get("mode") or "dictation")
+        if mode not in ("dictation", "input", "listen"):
+            mode = "dictation"
+
+        # 选词书：指定了就用指定的（要校验归属），否则挑用户词最多的一本
+        book_id = params.get("bookId")
+        book = None
+        if book_id is not None:
+            try:
+                book = await ctx.db.scalar(
+                    select(WordBook).where(
+                        WordBook.book_id == int(book_id),
+                        WordBook.del_flag == "0",
+                    )
+                )
+            except (TypeError, ValueError):
+                book = None
+            if book is not None and book.user_id not in (None, uid):
+                # 不是自己的书（且不是系统预置）→ 当作没指定
+                book = None
+
+        if book is None:
+            book = await self._pick_book(ctx, uid)
+
+        if book is None:
+            return ok(
+                action="start",
+                count=0,
+                message="该用户还没有任何词书，没法生成听力练习。请如实告知。",
+            )
+
+        words: List[Dict[str, Any]] = []
+        if scope == "due":
+            words = await self._pick_due_words(ctx, uid, int(book.book_id), count)
+        elif scope == "wrong":
+            words = await self._pick_wrong_words(ctx, uid, int(book.book_id), count)
+
+        if len(words) < count:
+            # 补新词（未进入记忆曲线的优先，其次任意未选的）
+            have = {w["word"].lower() for w in words}
+            extra = await self._pick_new_words(
+                ctx, uid, int(book.book_id), count - len(words), have
+            )
+            words.extend(extra)
+
+        if not words:
+            return ok(
+                action="start",
+                count=0,
+                message=f"词书「{book.book_name}」里还没有单词，没法练习。",
+                jumpUrl=f"/front/english/vocabulary/{int(book.book_id)}",
+            )
+
+        # 组装落地链接：听写页读这些参数自动进入练习态
+        from urllib.parse import quote
+
+        seed = ",".join(w["word"] for w in words)
+        jump = (
+            f"/front/english/listening"
+            f"?auto=1"
+            f"&bookId={int(book.book_id)}"
+            f"&mode={mode}"
+            f"&scope={scope}"
+            f"&words={quote(seed, safe=',')}"
+        )
+
+        due_n = sum(1 for w in words if w.get("isDue"))
+        new_n = len(words) - due_n
+        scope_text = {
+            "due": f"{due_n} 个到期复习 + {new_n} 个新词" if new_n else f"{due_n} 个到期复习",
+            "wrong": f"{len(words)} 个易错词",
+            "all": f"「{book.book_name}」的 {len(words)} 个词",
+        }[scope]
+
+        return ok(
+            action="start",
+            count=len(words),
+            bookId=int(book.book_id),
+            bookName=book.book_name,
+            mode=mode,
+            scope=scope,
+            words=[w["word"] for w in words],
+            message=(
+                f"已准备好一组听力练习：{scope_text}"
+                f"（模式：{'自动听写' if mode == 'dictation' else '打字输入' if mode == 'input' else '纯听力'}）。"
+                "点下面的按钮直接开始。"
+            ),
+            # 前端把这个渲染成「开始听力练习」按钮
+            jumpUrl=jump,
+        )
+
+    # ---- 选词辅助 ----
+
+    async def _pick_book(self, ctx: ToolContext, uid: int):
+        """挑一本词书：优先用户自己建的、词最多的那本
+
+        系统预置书（user_id IS NULL）排在后面 —— 自己的书更可能是
+        当前正在背的那本。
+        """
+        rows = (
+            await ctx.db.execute(
+                select(WordBook)
+                .where(WordBook.del_flag == "0")
+                .where((WordBook.user_id == uid) | (WordBook.user_id.is_(None)))
+                .order_by(WordBook.word_count.desc(), WordBook.book_id.asc())
+                .limit(20)
+            )
+        ).scalars().all()
+
+        mine = [b for b in rows if b.user_id == uid and (b.word_count or 0) > 0]
+        if mine:
+            return mine[0]
+        preset = [b for b in rows if (b.word_count or 0) > 0]
+        return preset[0] if preset else None
+
+    async def _pick_due_words(
+        self, ctx: ToolContext, uid: int, book_id: int, count: int
+    ) -> List[Dict[str, Any]]:
+        today = date.today()
+        rows = (
+            await ctx.db.execute(
+                select(WordLearningState, Word)
+                .join(Word, Word.word_id == WordLearningState.word_id)
+                .where(
+                    WordLearningState.user_id == uid,
+                    WordLearningState.due_date.is_not(None),
+                    WordLearningState.due_date <= today,
+                    Word.book_id == book_id,
+                )
+                .order_by(
+                    WordLearningState.due_date.asc(),
+                    WordLearningState.wrong_count.desc(),
+                )
+                .limit(count)
+            )
+        ).all()
+        return [
+            {
+                "word": w.word,
+                "translation": w.translation,
+                "isDue": True,
+                "wrongCount": int(st.wrong_count or 0),
+            }
+            for st, w in rows
+        ]
+
+    async def _pick_wrong_words(
+        self, ctx: ToolContext, uid: int, book_id: int, count: int
+    ) -> List[Dict[str, Any]]:
+        rows = (
+            await ctx.db.execute(
+                select(WordLearningState, Word)
+                .join(Word, Word.word_id == WordLearningState.word_id)
+                .where(
+                    WordLearningState.user_id == uid,
+                    WordLearningState.wrong_count > 0,
+                    Word.book_id == book_id,
+                )
+                .order_by(
+                    WordLearningState.wrong_count.desc(),
+                    WordLearningState.lapses.desc(),
+                )
+                .limit(count)
+            )
+        ).all()
+        return [
+            {"word": w.word, "translation": w.translation, "isDue": False}
+            for st, w in rows
+        ]
+
+    async def _pick_new_words(
+        self,
+        ctx: ToolContext,
+        uid: int,
+        book_id: int,
+        count: int,
+        exclude: set,
+    ) -> List[Dict[str, Any]]:
+        """补充没练过的词
+
+        优先取**从未进入记忆曲线**的（真正的新词），
+        其次是练过但没被 `exclude` 掉的。
+        """
+        if count <= 0:
+            return []
+
+        # 已有状态的 word_id
+        tracked = set(
+            (
+                await ctx.db.execute(
+                    select(WordLearningState.word_id).where(
+                        WordLearningState.user_id == uid
+                    )
+                )
+            ).scalars().all()
+        )
+
+        stmt = (
+            select(Word)
+            .where(Word.book_id == book_id)
+            .order_by(Word.word_id.asc())
+            .limit(count * 3 + len(exclude))
+        )
+        rows = (await ctx.db.execute(stmt)).scalars().all()
+
+        out: List[Dict[str, Any]] = []
+        for w in rows:
+            if len(out) >= count:
+                break
+            if str(w.word).lower() in exclude:
+                continue
+            if int(w.word_id) in tracked:
+                continue
+            out.append({"word": w.word, "translation": w.translation, "isDue": False})
+            exclude.add(str(w.word).lower())
+
+        # 不够就放宽（允许复习过的词）
+        if len(out) < count:
+            for w in rows:
+                if len(out) >= count:
+                    break
+                if str(w.word).lower() in exclude:
+                    continue
+                out.append({"word": w.word, "translation": w.translation, "isDue": False})
+                exclude.add(str(w.word).lower())
+
+        return out
 
 
 __all__ = ["EnglishPracticeTool", "MAX_RECENT"]

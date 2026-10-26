@@ -2,9 +2,20 @@
 英语学习模型（词书 / 单词 / 练习记录）
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
-from sqlalchemy import BigInteger, String, Integer, Text, DateTime, ForeignKey, func
+from sqlalchemy import (
+    BigInteger,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    SmallInteger,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
@@ -93,3 +104,59 @@ class EnglishPracticeLog(Base):
     detail: Mapped[List[Dict[str, Any]]] = mapped_column(JSONB, default=list)
     del_flag: Mapped[str] = mapped_column(String(1), default="0")
     create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class WordLearningState(Base):
+    """单词记忆状态（SM-2 简化的间隔重复，2026-10-26）
+
+    ## 为什么要有这张表
+
+    在这之前，`words` 表只是一份**静态清单**：它知道"这个库有 42 个词"，
+    不知道"哪几个我已经记住了""今天该复习哪几个"。
+
+    结果是每次打开听写页看到的永远是同一批词、同一个起点 ——
+    练完关掉，下次还得从头翻。
+
+    ## 状态怎么流转
+
+    算法在 `app/services/english/spaced_repetition.py`（纯函数，有 29 条用例），
+    这张表只负责**存当前快照**：
+
+        stage 0            → 新词，没练过
+        stage 1 ~ 7        → 复习中，按 due_date 排期
+        stage 8            → 已掌握，不再进日常队列
+
+    每次练习提交时，`/words/practice/submit` 会按明细里的对错
+    逐词更新这里的状态 —— 所以用户"刷完一批"，下一批自然就变了。
+
+    ## 设计取舍
+
+    · 主键 (user_id, word_id)：同一个词在不同用户下进度必须独立。
+    · 只存当前状态，不存历史明细 —— 历史已经在
+      `english_practice_log.detail` 里，这里再存一遍就是双写。
+    · 用 `word_id` 而不是 `word` 文本：同形不同义（如 `bank`）也要分开算。
+    """
+
+    __tablename__ = "word_learning_state"
+
+    #: 归属用户
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    #: 对应 words.word_id
+    word_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+
+    #: 复习阶段：0=新词 / 1~7=复习中 / 8=已掌握
+    stage: Mapped[int] = mapped_column(SmallInteger, default=0)
+    #: SM-2 难度系数 [1.3, 3.0]
+    ease: Mapped[float] = mapped_column(Float, default=2.5)
+    #: 当前复习间隔（天）
+    interval_days: Mapped[int] = mapped_column(Integer, default=0)
+    #: 下次该复习的日期
+    due_date: Mapped[Optional[date]] = mapped_column(Date)
+    #: 累计答对 / 答错
+    right_count: Mapped[int] = mapped_column(Integer, default=0)
+    wrong_count: Mapped[int] = mapped_column(Integer, default=0)
+    #: 遗忘次数（记住后又答错）
+    lapses: Mapped[int] = mapped_column(Integer, default=0)
+    #: 首次 / 最近练习时间
+    first_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    last_review_at: Mapped[Optional[datetime]] = mapped_column(DateTime)

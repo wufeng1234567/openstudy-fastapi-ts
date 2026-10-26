@@ -193,3 +193,41 @@ export function getPracticeStats(days: number = 7) {
     params: { days }
   })
 }
+
+/* ============================================================================
+ * 记忆曲线（2026-10-26）
+ * ==========================================================================*/
+
+/** 某个词书的掌握情况：已掌握 / 学习中 / 未学 */
+export function getBookMastery(bookId: number) {
+  return request({
+    url: '/words/practice/mastery',
+    method: 'get',
+    params: { bookId }
+  })
+}
+
+/** 今天该复习的词（按遗忘曲线到期）。limit 传小值可只取 count */
+export function getDueWords(params: { bookId?: number; limit?: number } = {}) {
+  return request({
+    url: '/words/practice/due',
+    method: 'get',
+    params
+  })
+}
+
+/** 全局学习概览：今天该复习多少、总共掌握多少 */
+export function getLearningOverview() {
+  return request({
+    url: '/words/practice/overview',
+    method: 'get'
+  })
+}
+/** 某本词书里还没学过的词（用于「练新词」） */
+export function getNewWords(params: { bookId: number; limit?: number }) {
+  return request({
+    url: '/words/practice/new-words',
+    method: 'get',
+    params
+  })
+}
