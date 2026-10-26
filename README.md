@@ -2,6 +2,10 @@
 
 > 上传一份 Word / PDF / Markdown，它自己读、自己出题、自己组卷，你直接开刷。
 
+**仓库地址**：[gitee.com/wufeng1234567/openstudy-fastapi-ts](https://gitee.com/wufeng1234567/openstudy-fastapi-ts)
+　|　[GitHub](https://github.com/wufeng1234567/openstudy-fastapi-ts)
+　|　[GitCode](https://gitcode.com/qi142410131/openstudy-fastapi-ts)
+
 <p align="center">
   <img src="doc/screenshots/01-agent-chat.png" width="880" alt="OpenStudy 智能对话页">
 </p>
@@ -135,6 +139,27 @@ Python 版按 `api / models / repositories / services` 重新组织，业务规�
   <img src="doc/screenshots/05-stats.png" width="760" alt="学习统计：正确率、趋势、薄弱知识点">
 </p>
 
+### ⑤ 英语学习：从识词到统计，五个环节都能走通
+
+同一套「资料 → 练习 → 诊断」的思路，在英语科目上做了一遍垂直版本：
+
+| 环节 | 能做什么 |
+|---|---|
+| 拍照识词 | 拍一张书页照片，或直接传 PDF / Word / Markdown / txt，AI 抽出单词自动建词库 |
+| 我的词库 | 增删改查、批量删除、搜索、朗读；**可导出 Anki / Excel / Word** |
+| 单词听写 | 三种模式（纯听力 / 打字输入 / 自动听写）× 三档播放内容（中文 / 英文 / 中英） |
+| 阅读练习 | AI 生成短文 + 阅读理解题，答完即时判分 |
+| 学习统计 | 正确率趋势（7 天 / 30 天）、各模式对比、最常写错的词、连续练习天数 |
+
+几个刻意的设计：
+
+- **听写的「题目范围」可选** —— 全部 / 最近加入的 20 个 / 前几个，不必每次从第一页刷起。
+  顺序上**先取子集再打乱**，否则「最近 20 个」会变成"随机抽 20 个"。
+- **统计页不是只读报表** —— 「最常写错」下面直接有个「用这些错词练一轮」，
+  点了就带着错词跳进听写页。错词跨词库也能练到（会按单词去别的词库查回来）。
+- **导出不经过后端** —— Anki 是 TSV、Excel 用 SpreadsheetML、Word 用 HTML + `.doc`，
+  三种都只是字符串拼接，纯前端生成 Blob 直接下载。不占带宽，也不用为三种格式各写一个接口。
+
 ---
 
 ## AI 智能体：会办事，不只是会聊
@@ -156,10 +181,13 @@ Python 版按 `api / models / repositories / services` 重新组织，业务规�
 ### 方式一：本地部署（Docker，推荐自建）
 
 ```bash
-# GitHub
+# Gitee（国内访问最快，推荐国内用户）
+git clone https://gitee.com/wufeng1234567/openstudy-fastapi-ts.git
+
+# GitHub（海外 / 镜像备份）
 git clone https://github.com/wufeng1234567/openstudy-fastapi-ts.git
 
-# GitCode（国内访问更快）
+# GitCode（国内备用线路）
 git clone https://gitcode.com/qi142410131/openstudy-fastapi-ts.git
 
 cd openstudy-fastapi-ts
