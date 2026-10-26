@@ -320,14 +320,26 @@ def _build_question_generate(prompt: str, **vars: Any) -> List[Dict[str, str]]:
 
 
 def _build_reading(prompt: str, **vars: Any) -> List[Dict[str, str]]:
-    """生成阅读理解题
+    """生成阅读理解题（**短文 + 题目**）
 
     `source_context`（可选）：知识库原文片段，见 `_build_question_generate`。
+
+    ⚠️ 2026-10-26 修「阅读练习只出题、没有短文」：
+    原来的提示词只写「生成 N 道阅读理解题 / 请以 JSON 数组格式返回」，
+    模型于是只吐了一个题目数组 —— 页面上就有题无文，
+    「阅读理解」变成了「凭想象答题」。
+
+    现在明确要求：
+      · 先写一篇完整短文（passage）；
+      · 再基于这篇短文出题；
+      · 返回**对象**而不是数组：`{"passage": "...", "questions": [...]}`。
+        前端 `reading/index.vue` 同时兼容「挂在题目上的 passage」与
+        「单独字段」，两种形态都能读到。
     """
     question_count = vars.get("question_count") or 5
     requirement = vars.get("requirement") or prompt or ""
     source_context = (vars.get("source_context") or "").strip()
-    user = f"""请根据以下要求生成 {question_count} 道阅读理解题：
+    user = f"""请根据以下要求，先写一篇英语短文，再基于**这篇短文**出 {question_count} 道单项选择题：
 
 {requirement}
 """
@@ -336,10 +348,20 @@ def _build_reading(prompt: str, **vars: Any) -> List[Dict[str, str]]:
 【必须依据的原文材料】
 {source_context}
 
-【要求】基于上面的材料出题，不要引入材料之外的内容；解析末尾注明出处
-（格式：`（来源：<文档名> 第N段）`）。
+【要求】短文必须基于上面的材料改写或节选，不要引入材料之外的内容；
+解析末尾注明出处（格式：`（来源：<文档名> 第N段）`）。
 """
-    user += "\n请以 JSON 数组格式返回。"
+    user += """
+【输出要求】
+1. `passage`：完整的英语短文正文（150~300 词），不要放进 code fence；
+2. `questions`：恰好上面要求的题目数，每题包含
+   `question`（英文题干）、`options`（4 个选项，形如 "A. ..."）、
+   `answer`（正确选项字母，如 "B"）、`explanation`（中文解析）；
+3. 所有题目必须**能从短文里找到依据**，不要依赖短文之外的知识。
+
+严格按下面的 JSON 对象返回（不要额外文字、不要 markdown 代码块）：
+{"passage": "短文正文", "questions": [{"question": "...", "options": ["A. ...", "B. ...", "C. ...", "D. ..."], "answer": "B", "explanation": "..."}]}
+"""
     return [
         {"role": "system", "content": TEACHER_SYSTEM_PROMPT},
         {"role": "user", "content": user},

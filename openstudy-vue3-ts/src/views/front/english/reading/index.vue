@@ -170,19 +170,38 @@ async function generate() {
           error.value = 'AI 这次没生成出题目，换个说法再试一次'
           return
         }
-        // 短文可能挂在题目上（composite 形态），也可能单独给
-        const first = list[0] || {}
-        passage.value = String(first.passage || first.title || '')
+
+        /*
+         * ⚠️ 2026-10-26 修「只出题、没有短文」：
+         *
+         *    后端 `_build_reading` 现在返回的是**对象**
+         *        { "passage": "短文正文", "questions": [...] }
+         *    而这里原来只从 `list[0].passage` 取正文 —— 拿不到，
+         *    于是 `passage` 为空，页面的 `.rd-article`（短文区）整块不渲染，
+         *    用户看到的就是"直接给了一堆题，却没有文章"。
+         *
+         *    三种形态都要兼容（历史数据 / composite 场景 / 新格式）：
+         *      ① `data.passage`            —— 新格式（当前后端）
+         *      ② `data.passage` 挂在每题上  —— composite 形态
+         *      ③ 纯数组                    —— 旧格式，没有正文
+         */
+        const topPassage = String(data?.passage || '').trim()
+        passage.value = topPassage
+
         questions.value = list.map((q: any) => ({
           ...q,
           // 没有 passage 的题目就是普通题，短文留空即可
           title: q.title || ''
         }))
 
-        // 如果所有题都没有 passage，说明后端只给了纯题目
+        // 顶层没给正文时，再看题目上有没有挂
         if (!passage.value) {
           const anyWithPassage = list.find((q: any) => q.passage)
           if (anyWithPassage) passage.value = String(anyWithPassage.passage)
+        }
+        // 最后退回标题（有些模型会把短文放在 title 里）
+        if (!passage.value) {
+          passage.value = String(list[0]?.title || '')
         }
       },
       (e: any) => {

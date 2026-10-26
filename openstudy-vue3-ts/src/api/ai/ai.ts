@@ -376,7 +376,6 @@ export async function generateReadingComprehensionStream(
   onComplete?: (data: any) => void,
   onError?: (error: any) => void
 ): Promise<void> {
-  let lastParsedJson: any = null
   const full = await postAiStream(
     {
       scene: 'reading',
@@ -388,24 +387,64 @@ export async function generateReadingComprehensionStream(
     },
     (text) => {
       onMessage?.(text)
-      try {
-        lastParsedJson = JSON.parse(text)
-      } catch {
-        /* 继续累积 */
-      }
     },
     undefined,
     onError
   )
   if (!full) return
-  if (lastParsedJson) {
-    onComplete?.(lastParsedJson)
+
+  /*
+   * ⚠️ 2026-10-26 修「AI 生成的阅读短文显示不出来」：
+   *
+   *    原实现在**流式回调里**对每个增量尝试 `JSON.parse(text)`，
+   *    能 parse 成功才记下来（`lastParsedJson`）。问题是：
+   *      · 流式过程中文本是**不完整**的，parse 基本必然失败；
+   *      · 退到最后用 `fixJsonContent(full)` 兜底，而那个函数是为
+   *        "模型多吐了引号/多余字符" 设计的粗糙正则修复，
+   *        对正常的 `{"passage": "...", "questions": [...]}` **反而会破坏它**
+   *        （它会给合法 JSON 的字符串值再插一层转义）。
+   *
+   *    所以改成：先按原样 parse 完整文本；失败再剥 markdown 代码块；
+   *    最后才考虑 `fixJsonContent`。顺序对了，合法 JSON 就不会被改坏。
+   */
+  const raw = String(full).trim()
+
+  // ① 原样解析
+  let parsed: any = tryParseJson(raw)
+
+  // ② 剥掉 ```json ... ``` 代码块再试
+  if (parsed === undefined) {
+    const stripped = raw
+      .replace(/```json\s*/gi, '')
+      .replace(/```\s*/g, '')
+      .trim()
+    parsed = tryParseJson(stripped)
+  }
+
+  // ③ 去掉可能混入的 [DONE] 标记再试
+  if (parsed === undefined) {
+    parsed = tryParseJson(raw.replace(/\[DONE\]/g, '').trim())
+  }
+
+  // ④ 最后才用粗糙的修复函数（仅当以上都失败）
+  if (parsed === undefined) {
+    parsed = tryParseJson(fixJsonContent(raw))
+  }
+
+  if (parsed === undefined) {
+    onError?.(new Error('JSON 解析失败'))
     return
   }
+  onComplete?.(parsed)
+}
+
+/** 安全解析：失败返回 undefined，不抛异常 */
+function tryParseJson(text: string): any {
+  if (!text) return undefined
   try {
-    onComplete?.(JSON.parse(fixJsonContent(full)))
+    return JSON.parse(text)
   } catch {
-    onError?.(new Error('JSON 解析失败'))
+    return undefined
   }
 }
 
