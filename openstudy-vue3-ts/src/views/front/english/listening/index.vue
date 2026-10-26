@@ -68,58 +68,86 @@
             </p>
         </div>
 
-        <!-- 词库选择（未开始时显示） -->
-        <div class="book-select-section" v-if="!isPracticing && !hasResult">
-            <div class="select-label">选择词库</div>
-            <el-select v-model="selectedBookId" placeholder="请选择词库" size="large" style="width: 100%"
-                @change="onBookChange">
-                <el-option v-for="book in bookOptions" :key="book.bookId" :label="book.bookName" :value="book.bookId" />
-            </el-select>
+        <!--
+          词库选择（2026-10-26 融合改造，始终可见）
+          =================================================================
+          用户反馈：「进入听力词库选择然后才可以进行听力播放，但是进行听力播放
+          就无法进行词库选择 / 实时更换。需要将这两个页面进行融合。」
 
-            <!--
-              2026-10-26 新增：未选词库时的空状态。
-              改前这里什么都没有 —— 整页只有一个下拉框，下方全空，
-              用户不知道下一步该干什么。现在给出明确指引。
-            -->
-            <div class="start-empty" v-if="!selectedBookId">
-                <div class="start-empty__icon">
-                    <el-icon :size="26">
-                        <Headset />
-                    </el-icon>
-                </div>
-                <p class="start-empty__title">先选一本词库</p>
-                <span class="start-empty__desc">
-                    选好后点「开始听写」，系统会念中文释义，你拼出对应的英文单词
-                </span>
+          改前：`v-if="!isPracticing && !hasResult"` —— 一旦开始练习，整个
+                词库选择区就从 DOM 里消失，想换一本书只能先「结束练习」，
+                而结束会丢掉本轮进度。两个状态互斥，页面被切成两半。
+
+          改后：**词库选择常驻页面顶部**，练习中也一直可见、可切换。
+                切换时由 `onBookChange` 负责：
+                  · 正在播放 → 立刻停声
+                  · 有作答进度 → 提示会丢失，确认后才切
+                  · 已经在练这本 → 不重复重载
+
+          练习中的显示分两段：
+            顶部 = 词库选择 + 实时设置（收起态，省空间）
+            下方 = 结果面板 / 练习区 / 空状态
+        -->
+        <div class="book-select-section">
+            <div class="select-label">
+                选择词库
+                <span v-if="isPracticing" class="select-label__badge">练习中可随时切换</span>
             </div>
-
-            <div class="start-empty" v-else-if="wordList.length === 0 && !loadingWords">
-                <div class="start-empty__icon">
-                    <el-icon :size="26">
-                        <Collection />
-                    </el-icon>
-                </div>
-                <p class="start-empty__title">这本词库还是空的</p>
-                <span class="start-empty__desc">先去「我的词库」往里加几个单词，再回来听写</span>
-                <el-button class="start-empty__btn" size="small" @click="router.push('/front/english/vocabulary')">
-                    去添加单词
+            <div class="book-select-row">
+                <el-select v-model="selectedBookId" placeholder="请选择词库" size="large" class="book-select-el"
+                    @change="onBookChange">
+                    <el-option v-for="book in bookOptions" :key="book.bookId" :label="book.bookName"
+                        :value="book.bookId">
+                        <span class="book-option">
+                            <span class="book-option__name">{{ book.bookName }}</span>
+                            <span class="book-option__count">{{ book.wordCount || 0 }} 词</span>
+                        </span>
+                    </el-option>
+                </el-select>
+                <el-button size="large" class="book-refresh-btn" @click="refreshBooks" :loading="loadingBooks"
+                    title="重新加载词库列表">
+                    <el-icon><RefreshRight /></el-icon>
                 </el-button>
             </div>
 
-            <!-- 词库统计 -->
-            <!--
-              只说「总单词」。
-              原来还有「已掌握 / 未掌握」两项，但 `words` 表根本没有掌握状态列
-              （word_id / book_id / word / phonetic / translation / example /
-                audio_url / sort_order / create_time），那两个数字永远是
-              0 和全部 —— 等于给用户看两个假指标。2026-10-23 去掉。
-            -->
+            <!-- 词库统计：练习中也显示，让用户知道这本有多少词 -->
             <div class="book-stats" v-if="selectedBookId && wordList.length > 0">
                 <div class="stat-item">
                     <span class="stat-value">{{ wordList.length }}</span>
                     <span class="stat-label">总单词</span>
                 </div>
+                <div class="stat-item" v-if="isPracticing">
+                    <span class="stat-value">{{ practiceWords.length }}</span>
+                    <span class="stat-label">本轮题数</span>
+                </div>
             </div>
+        </div>
+
+        <!-- 未开始练习时的空状态 -->
+        <div class="start-empty" v-if="!isPracticing && !hasResult && !selectedBookId">
+            <div class="start-empty__icon">
+                <el-icon :size="26">
+                    <Headset />
+                </el-icon>
+            </div>
+            <p class="start-empty__title">先选一本词库</p>
+            <span class="start-empty__desc">
+                选好后点「开始听写」，系统会念中文释义，你拼出对应的英文单词
+            </span>
+        </div>
+
+        <div class="start-empty" v-else-if="!isPracticing && !hasResult && wordList.length === 0 && !loadingWords">
+            <div class="start-empty__icon">
+                <el-icon :size="26">
+                    <Collection />
+                </el-icon>
+            </div>
+            <p class="start-empty__title">这本词库还是空的</p>
+            <span class="start-empty__desc">先去「我的词库」往里加几个单词，再回来听写</span>
+            <el-button class="start-empty__btn" size="small" @click="router.push('/front/english/vocabulary')">
+                去添加单词
+            </el-button>
+        </div>
 
             <!--
               练习设置（2026-10-26 重构：三模式 + 可调参数）
@@ -133,7 +161,7 @@
                 第一行 模式（三选一，带一句话说明）
                 其余   与模式相关的参数，逐个一行，两列网格对齐
             -->
-            <div class="practice-settings" v-if="selectedBookId && wordList.length > 0">
+            <div class="practice-settings" v-if="!isPracticing && !hasResult && selectedBookId && wordList.length > 0">
                 <!-- 模式选择：用卡片而不是单选框，因为三个选项差别大、需要解释 -->
                 <div class="mode-picker">
                     <div class="mode-card" :class="{ 'is-active': practiceMode === 'listen' }"
@@ -253,7 +281,7 @@
             </div>
 
             <!-- 开始按钮 -->
-            <div class="start-section" v-if="selectedBookId && wordList.length > 0">
+            <div class="start-section" v-if="!isPracticing && !hasResult && selectedBookId && wordList.length > 0">
                 <el-button type="primary" size="large" @click="startPractice" :loading="loadingWords">
                     <el-icon>
                         <VideoPlay />
@@ -261,20 +289,19 @@
                     开始听写
                 </el-button>
             </div>
-
-            <!-- 空状态 -->
-            <el-empty v-else-if="selectedBookId && wordList.length === 0 && !loadingWords"
-                description="该词库还没有单词，请先添加单词" />
-        </div>
+            <!--
+              ⚠️ 原来的 `<el-empty v-else-if="selectedBookId && wordList.length === 0">`
+                 已删除：它和上面那个 `.start-empty`（「这本词库还是空的」）
+                 说的是同一件事，两个空状态叠在一起出现过。
+            -->
 
         <!--
           练习界面
-          ⚠️ 2026-10-26：加上 `!hasResult`。
-          原来这里是裸 `v-else`，接在 `book-select-section`（`!isPracticing && !hasResult`）
-          后面，所以当 `isPracticing=false` 且 `hasResult=true` 时，
-          它仍然成立 —— 结果面板和题目卡会同时渲染（截图实测叠在一起）。
+          ⚠️ 2026-10-26：词库选择已移到页面顶部常驻，
+             这里的条件从 `v-else` 改成显式的 `isPracticing` ——
+             否则结果面板显隐时会把练习区一起拽出来（之前踩过）。
         -->
-        <div class="practice-section" v-else-if="!hasResult">
+        <div class="practice-section" v-if="isPracticing && !hasResult">
             <!-- 进度条 -->
             <div class="progress-bar">
                 <div class="progress-text">{{ currentIndex + 1 }} / {{ practiceWords.length }}</div>
@@ -552,6 +579,8 @@ const cacheStore = useFrontPageCacheStore()
 // 状态
 const isPracticing = ref(false)
 const loadingWords = ref(false)
+/** 词库列表刷新中（2026-10-26） */
+const loadingBooks = ref(false)
 
 /*
  * 练习模式（2026-10-26 重构）
@@ -624,6 +653,14 @@ const currentPlayCount = ref(0)
 const bookOptions = ref([])
 const selectedBookId = ref(null)
 const wordList = ref([])
+/**
+ * 当前**正在练**的词库 id（2026-10-26）
+ *
+ * ⚠️ 与 `selectedBookId` 的区别：那是下拉框里的值（用户正在挑的），
+ *    这是实际加载了单词、可能正在练的那本。两者在「用户点了下拉但取消了确认」
+ *    这类场景下会不一致 —— 用这个值来判定「是不是真的切了库」。
+ */
+const currentBookId = ref(null)
 
 // 练习设置
 /*
@@ -758,6 +795,24 @@ const loadBookOptions = async () => {
         const response = await listFrontWordBooks()
         if (response.code === 200) {
             bookOptions.value = response.rows || []
+            /*
+             * 首次加载：自动选中一本并加载它的单词（2026-10-26）。
+             *
+             * ⚠️ 优先选**第一本有单词的**，而不是无条件选 `[0]`。
+             *    实测踩过：列表里有一本 0 词的空词库排在前面，
+             *    自动选中它之后页面显示「这本词库还是空的」——
+             *    用户会以为功能坏了，其实是他自己建过一个空库。
+             *    有词的优先，实在都空才退回第一本。
+             */
+            if (bookOptions.value.length > 0 && !selectedBookId.value) {
+                const firstWithWords =
+                    bookOptions.value.find((b: any) => Number(b.wordCount || 0) > 0) ||
+                    bookOptions.value[0]
+                const first = firstWithWords.bookId
+                selectedBookId.value = first
+                currentBookId.value = first
+                await onBookChange(first)
+            }
         } else {
             ElMessage.error(response.msg || '加载词库失败')
         }
@@ -767,13 +822,84 @@ const loadBookOptions = async () => {
     }
 }
 
-// 词库切换
+/**
+ * 词库切换（2026-10-26 重写：融合 + 自动停止）
+ * ============================================================================
+ * 用户反馈：「进入听力词库选择然后才可以进行听力播放，但是进行听力播放
+ * 就无法进行词库选择 / 实时更换。需要将这两个页面进行融合…
+ * 并且听力播放时检测到词库被切换，做好相对应的自动停止功能。」
+ *
+ * 现在词库选择常驻页面顶部，练习中随时可切。切换时必须处理四件事：
+ *
+ *   ① **停止播放** —— 这是用户明确要求的。不然会出现
+ *      「题库 A 的单词还在念，界面已经变成题库 B」的错位，
+ *      用户听到的和看到的对不上，完全没法用。
+ *   ② **停掉自动下一题的倒计时** —— `autoNextTimer` 是个 setTimeout，
+ *      不停会在切库后突然跳题，跳的还是新词库的第 1 题。
+ *   ③ **处理已有作答进度** —— 练到第 8 题切库，那 8 题的结果还有意义吗？
+ *      没有（它们属于旧词库）。所以要有确认提示，且切完清空。
+ *   ④ **不重复重载** —— 如果选的就是当前这本（比如手动重选一次），
+ *      不该无谓地清空进度。
+ */
 const onBookChange = async (bookId) => {
     if (!bookId) return
-    loadingWords.value = true
+
+    // ④ 选的是同一本：什么都不做（避免误清进度）
+    if (isPracticing.value && bookId === currentBookId.value) {
+        return
+    }
+
+    /*
+     * ③ 练习中切库：先确认
+     *
+     * 判据是「有没有已经作答的题」而不是「是否在练习」——
+     * 刚点开始、还没答一题就切库，不该弹确认框烦人。
+     */
+    if (isPracticing.value && practiceResults.value.length > 0) {
+        try {
+            await ElMessageBox.confirm(
+                `本轮已经做了 ${practiceResults.value.length} 题，切换词库会结束当前练习并清空进度。确定切换吗？`,
+                '切换词库',
+                { confirmButtonText: '切换', cancelButtonText: '继续练这本', type: 'warning' }
+            )
+        } catch {
+            // 用户取消：把下拉框还原成当前正在练的那本
+            selectedBookId.value = currentBookId.value
+            return
+        }
+    }
+
+    /*
+     * ①② 停止一切正在进行的播放/计时。
+     *
+     * ⚠️ 顺序很重要：先 `stopSpeaking()`（它会把语音队列 cancel 掉），
+     *    再清定时器。反过来会出现「定时器已清，但语音还在念」的残留。
+     */
+    if (isPracticing.value) {
+        stopSpeaking()
+        clearAutoNextTimer()
+        // 退出练习态（练习区会随之隐藏）
+        isPracticing.value = false
+        // 清空本轮，避免旧词库的题目残留到新词库
+        practiceWords.value = []
+        practiceResults.value = []
+        currentIndex.value = 0
+        userAnswer.value = ''
+        showFeedback.value = false
+        isCorrect.value = false
+        isWrong.value = false
+        hasResult.value = false
+        resultWrongWords.value = []
+        resultSummary.value = { total: 0, correct: 0, accuracy: 0 }
+        practiceSubmitted.value = false
+    }
+
     // 记住书名：提交练习记录时要带上，列表里才看得出练的哪本
     currentBookName.value =
         String(bookOptions.value.find((b) => b.bookId === bookId)?.bookName || '')
+    currentBookId.value = bookId
+
+    loadingWords.value = true
     try {
         // ⚠️ 后端参数名是 `bookId`
         //
@@ -784,6 +910,24 @@ const onBookChange = async (bookId) => {
         const response = await listAllWords({ bookId: bookId })
         if (response.code === 200) {
             wordList.value = response.rows || []
+            /*
+             * 用实际加载到的单词数**修正**下拉里的计数（2026-10-26）。
+             *
+             * `word_books.word_count` 是冗余字段，靠 `_recount_book()` 维护；
+             * 只要有别的路径忘了重算（或历史数据对不上），
+             * 下拉里就会显示「0 词」而实际有 17 个 —— 用户看到自相矛盾的数字，
+             * 会怀疑到底哪个是真的。
+             *
+             * 这里是唯一同时拿到「词书名 + 真实单词」的地方，
+             * 顺手把列表里那一本的计数改对，比再发一次请求划算。
+             */
+            const idx = bookOptions.value.findIndex((b: any) => b.bookId === bookId)
+            if (idx >= 0) {
+                bookOptions.value[idx] = {
+                    ...bookOptions.value[idx],
+                    wordCount: wordList.value.length
+                }
+            }
         } else {
             ElMessage.error(response.msg || '加载单词失败')
         }
@@ -792,6 +936,44 @@ const onBookChange = async (bookId) => {
         ElMessage.error('加载单词失败')
     } finally {
         loadingWords.value = false
+    }
+}
+
+/**
+ * 刷新词库列表（2026-10-26）
+ *
+ * 场景：用户在另一个标签页/别的页面新建了词库，回到这里下拉里看不到 ——
+ * 只能刷新整个页面。这个按钮解决的就是这个。
+ *
+ * ⚠️ 刷新后要保持当前选中的词库（如果它还在），而不是重置成第一本 ——
+ *    否则练习中点一下刷新，词库就被悄悄换掉了。
+ */
+const refreshBooks = async () => {
+    loadingBooks.value = true
+    try {
+        const res = await listFrontWordBooks()
+        if (res.code !== 200) {
+            ElMessage.error(res.msg || '刷新词库失败')
+            return
+        }
+        const rows = res.rows || []
+        const keepId = selectedBookId.value
+        bookOptions.value = rows
+
+        const stillThere = rows.some((b) => b.bookId === keepId)
+        if (!stillThere && rows.length > 0) {
+            // 原来选的那本没了（被删了）：退到第一本，并同步加载它的单词
+            selectedBookId.value = rows[0].bookId
+            await onBookChange(rows[0].bookId)
+            ElMessage.info('原来的词库已不存在，已切到第一本')
+        } else {
+            ElMessage.success(`已刷新，共 ${rows.length} 本词库`)
+        }
+    } catch (e: any) {
+        console.error('刷新词库失败:', e)
+        ElMessage.error('刷新词库失败')
+    } finally {
+        loadingBooks.value = false
     }
 }
 
@@ -1585,72 +1767,78 @@ watch(() => isPracticing.value, (val) => {
         }
     }
 
+    /*
+     * 词库选择（2026-10-26 融合改造）
+     * -----------------------------------------------------------------
+     * 改前：`flex: 1` + `justify-content: center` + `min-height: calc(100vh-220px)`
+     *       —— 它被设计成"占满整页"的独占状态，因为当时它和练习界面互斥。
+     * 改后：它是常驻顶部的选择条，练习中也一直在，所以不能再撑满高度，
+     *       否则练习区会被挤到屏幕外。
+     */
     .book-select-section {
-        flex: 1;
+        flex: none;
         padding: 0;
         max-width: 560px;
-        margin: 0 auto;
+        margin: 0 auto 14px;
         width: 100%;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        /* 垂直方向也居中，避免内容全挤在页面顶部、下方一大片空白 */
-        min-height: calc(100vh - 220px);
+
         .select-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
             font-size: 13px;
             font-weight: 600;
             letter-spacing: .02em;
             color: #6b7280;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
+        }
+
+        /* 练习中的提示徽标：告诉用户这里还能切 */
+        .select-label__badge {
+            padding: 1px 7px;
+            border-radius: 20px;
+            background: #eff6ff;
+            color: #2563eb;
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 0;
+        }
+
+        .book-select-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+
+            .book-select-el {
+                flex: 1;
+                min-width: 0;
+            }
+
+            .book-refresh-btn {
+                flex: none;
+            }
+        }
+
+        .book-option {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+
+            .book-option__count {
+                font-size: 12px;
+                color: #9ca3af;
+            }
         }
 
         /*
-         * 空状态卡片（2026-10-26 新增）
+         * 空状态卡片（2026-10-26）
          * 改前未选词库时页面只有一个孤立下拉框，下方空无一物。
+         *
+         * ⚠️ 2026-10-26 二次调整：词库选择区改成顶部常驻条后，
+         *    空状态已经**不再**嵌在它里面（它是独立的一段），
+         *    所以样式也从 `.book-select-section` 里提出来，见下方顶级 `.start-empty`。
          */
-        .start-empty {
-            margin-top: 28px;
-            padding: 44px 24px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-            gap: 6px;
-            background: #fff;
-            border: 1px dashed #e2e8f0;
-            border-radius: 16px;
-
-            .start-empty__icon {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                width: 56px;
-                height: 56px;
-                margin-bottom: 6px;
-                border-radius: 14px;
-                background: #f1f5f9;
-                color: #94a3b8;
-            }
-
-            .start-empty__title {
-                margin: 0;
-                font-size: 15px;
-                font-weight: 600;
-                color: #374151;
-            }
-
-            .start-empty__desc {
-                max-width: 340px;
-                font-size: 13px;
-                line-height: 1.7;
-                color: #9ca3af;
-            }
-
-            .start-empty__btn {
-                margin-top: 10px;
-            }
-        }
-
         .book-stats {
             display: flex;
             gap: 24px;
@@ -1853,6 +2041,55 @@ watch(() => isPracticing.value, (val) => {
             }
         }
 
+        /*
+         * 空状态卡片（2026-10-26）
+         * 顶端顶级样式：它已经不在 `.book-select-section` 里了
+         * （词库选择区改成常驻顶栏后，空状态是它下方独立的一段）。
+         */
+        .start-empty {
+            max-width: 560px;
+            margin: 8px auto 0;
+            padding: 44px 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: 6px;
+            background: #fff;
+            border: 1px dashed #e2e8f0;
+            border-radius: 16px;
+
+            .start-empty__icon {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 56px;
+                height: 56px;
+                margin-bottom: 6px;
+                border-radius: 14px;
+                background: #f1f5f9;
+                color: #94a3b8;
+            }
+
+            .start-empty__title {
+                margin: 0;
+                font-size: 15px;
+                font-weight: 600;
+                color: #374151;
+            }
+
+            .start-empty__desc {
+                max-width: 340px;
+                font-size: 13px;
+                line-height: 1.7;
+                color: #9ca3af;
+            }
+
+            .start-empty__btn {
+                margin-top: 10px;
+            }
+        }
+
         .start-section {
             margin-top: 28px;
             text-align: center;
@@ -1867,10 +2104,18 @@ watch(() => isPracticing.value, (val) => {
     }
 
     .practice-section {
-        flex: 1;
+        /*
+         * 2026-10-26：`flex: 1` 改为 `flex: none`。
+         *
+         * 词库选择区从"独占整页"改成顶部常驻条后，练习区不再是页面上
+         * 唯一的 flex 子项；继续 `flex: 1` 会把它拉到剩余高度，
+         * 但它的内容（进度条 + 实时设置 + 题卡）是固定高度的，
+         * 拉长只会让底部多出一块无意义的空白。
+         */
+        flex: none;
         display: flex;
         flex-direction: column;
-        padding: 24px 20px;
+        padding: 0 20px;
         max-width: 600px;
         margin: 0 auto;
         width: 100%;

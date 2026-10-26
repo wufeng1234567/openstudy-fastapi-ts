@@ -32,6 +32,18 @@
           :prefix-icon="Search"
         />
       </div>
+      <!--
+        刷新按钮（2026-10-26）
+        用户反馈：「我的词库没有刷新按钮」。
+
+        场景：在拍照识词 / 词库详情里加了词，或者别的标签页建了新词库，
+        回到这个列表时数字还是旧的，只能整页刷新。
+        这里给一个显式入口，顺便把「几本 / 共几个词」一起更新。
+      -->
+      <button type="button" class="vp-refresh" :disabled="loading" @click="load()" title="刷新词库列表">
+        <el-icon :size="15"><RefreshRight /></el-icon>
+        <span>刷新</span>
+      </button>
       <button type="button" class="vp-new" @click="openCreate">
         <OsIcon name="plus" :size="15" />
         <span>新建词库</span>
@@ -161,7 +173,7 @@ defineOptions({ name: 'FrontEnglishVocabulary' })
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search } from '@element-plus/icons-vue'
+import { Search, RefreshRight } from '@element-plus/icons-vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import {
   listFrontWordBooks,
@@ -330,9 +342,45 @@ onMounted(load)
   gap: 12px;
   margin-bottom: 22px;
 
-  /* 按钮紧挨搜索框，而不是被推到屏幕最右边（实测那样看着很散） */
-  .vp-new {
+  /*
+   * 右侧两个按钮（刷新 / 新建）挨在一起，整体靠右。
+   *
+   * ⚠️ `margin-left: auto` 要加在**右边那一组的第一个**上（刷新），
+   *    不能加在 `.vp-new` 上 —— 那样会把刷新挤到搜索框旁边、
+   *    和新建隔着一整片空白（加按钮时踩过一次）。
+   */
+  .vp-refresh {
     margin-left: auto;
+  }
+}
+
+/* ---------- 刷新（2026-10-26） ---------- */
+.vp-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  flex: none;
+  font-size: 13.5px;
+  font-weight: 500;
+  font-family: inherit;
+  border: 1px solid var(--os-border, #e5e7eb);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--os-text-2, #4b5563);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+
+  &:hover:not(:disabled) {
+    border-color: var(--os-accent, #2563eb);
+    color: var(--os-accent, #2563eb);
+    background: #f8faff;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 }
 
