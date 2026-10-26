@@ -683,9 +683,6 @@ const isCorrect = ref(false)
 const isWrong = ref(false)
 const isPlaying = ref(false)
 
-
-
-
 // 输入框引用
 const inputRef = ref(null)
 
@@ -1125,7 +1122,6 @@ const startDictationRound = () => playRound({ autoNext: true })
 /** listen / input 模式：只播，不自动跳题 */
 const playCurrentWord = () => playRound({ autoNext: false })
 
-
 // 倒计时显示
 const autoNextCountdown = ref(0)
 let countdownInterval = null
@@ -1154,9 +1150,6 @@ const startAutoNextCountdown = () => {
         autoNextWord()
     }, autoNextInterval.value * 1000)
 }
-
-
-
 
 // 进入下一题（手动或自动）
 const autoNextWord = () => {
@@ -1204,9 +1197,6 @@ const autoNextWord = () => {
         showPracticeResult()
     }
 }
-
-
-
 
 // 清除定时器
 const clearAutoNextTimer = () => {
@@ -1439,7 +1429,6 @@ const showPracticeResult = async () => {
         userAnswer: String(r.userAnswer || '')
     }))
 }
-
 
 // 结束练习
 const stopPractice = () => {
@@ -1869,237 +1858,239 @@ watch(() => isPracticing.value, (val) => {
             }
         }
 
-        .practice-settings {
-            margin-top: 24px;
-            padding: 20px;
-            background: #fff;
-            border-radius: 16px;
-            border: 1px solid #e5e7eb;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    }
 
-            /*
-             * 模式选择卡片（2026-10-26）
-             * -----------------------------------------------------------------
-             * 用卡片而不是 radio：三个模式差别大、各需一句说明，
-             * radio 那样一行排不下，用户也看不出「纯听力」和「自动听写」的区别。
-             */
-            .mode-picker {
-                display: flex;
-                flex-direction: column;
-                gap: 10px;
-                margin-bottom: 22px;
-            }
+    /*
+     * ========================================================================
+     * 以下三块（practice-settings / start-empty / start-section）
+     * 原来是嵌在 `.book-select-section` 里的 —— **这是错的**。
+     * ========================================================================
+     *
+     * 2026-10-26 融合改造把词库选择区限制成 560px 的顶部条，
+     * 模板里这三个块已经移到了它的**兄弟位置**，
+     * 但样式还留在 `.book-select-section { ... }` 的括号里，
+     * 于是被编译成 `.book-select-section .practice-settings` 之类 ——
+     * 选择器根本匹配不到（它们是兄弟，不是后代）。
+     *
+     * 后果（截图实测）：设置区完全没有样式约束，
+     * 直接按内容撑满整个视口宽度，左边被裁切、右边溢出、中间一片空白。
+     *
+     * 现在把它们提到 `.listening-page` 的直接子级，与 DOM 结构对齐。
+     * ⚠️ 以后往模板里加块、或调整层级，务必同步检查这里的嵌套深度。
+     */
 
-            .mode-card {
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                padding: 12px 14px;
-                border: 1.5px solid #e5e7eb;
-                border-radius: 12px;
-                cursor: pointer;
-                transition: border-color .18s, background .18s, box-shadow .18s;
-
-                &:hover {
-                    border-color: #c7d2fe;
-                    background: #f8faff;
-                }
-
-                &.is-active {
-                    border-color: #3b82f6;
-                    background: #eff6ff;
-                    box-shadow: 0 0 0 3px rgba(59, 130, 246, .08);
-                }
-
-                .mode-card__icon {
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    width: 34px;
-                    height: 34px;
-                    flex: none;
-                    border-radius: 9px;
-                    background: #f1f5f9;
-                    color: #64748b;
-                }
-
-                &.is-active .mode-card__icon {
-                    background: #dbeafe;
-                    color: #2563eb;
-                }
-
-                .mode-card__title {
-                    font-size: 13.5px;
-                    font-weight: 600;
-                    color: #111827;
-                }
-
-                .mode-card__desc {
-                    margin-top: 1px;
-                    font-size: 12px;
-                    line-height: 1.5;
-                    color: #9ca3af;
-                }
-            }
-
-            /* 「不限时」说明条 */
-            .mode-note {
-                display: flex;
-                align-items: flex-start;
-                gap: 7px;
-                margin-top: 4px;
-                padding: 10px 12px;
-                border-radius: 10px;
-                background: #f8fafc;
-                font-size: 12.5px;
-                line-height: 1.55;
-                color: #64748b;
-
-                .el-icon {
-                    margin-top: 2px;
-                    flex: none;
-                    color: #94a3b8;
-                }
-            }
-
-            /*
-             * 2026-10-26 重排
-             * -----------------------------------------------------------------
-             * 改前：`.setting-label` 是 `display: block`（标签独占一行），
-             *       而「练习模式」又被错嵌进「播放顺序」里 —— 那一行是 flex，
-             *       于是标签和单选框直接压在一起（截图里能看到字叠字）。
-             *
-             * 改后：统一两列网格 —— 左列 96px 放标签、右列放控件。
-             *       标签不再独占一行，各行左边缘对齐，视觉上是一条竖线。
-             */
-            .setting-item {
-                display: grid;
-                grid-template-columns: 96px minmax(0, 1fr);
-                align-items: center;
-                gap: 16px;
-                margin-bottom: 18px;
-
-                &:last-child {
-                    margin-bottom: 0;
-                }
-
-                .setting-label {
-                    font-size: 13.5px;
-                    font-weight: 500;
-                    color: #1f2937;
-                    /* 不再 block：在网格里它天然占左列 */
-                    white-space: nowrap;
-                }
-
-                /* 单选框之间留出呼吸感，避免挤在一起 */
-                :deep(.el-radio) {
-                    margin-right: 20px;
-
-                    &:last-child {
-                        margin-right: 0;
-                    }
-                }
-            }
-
-            /*
-             * 滑块行：`align-items: center` 会让滑块和标签基线错位，
-             * 这里改成顶部对齐，并让滑块占满右列。
-             */
-            .setting-item--slider {
-                align-items: start;
-
-                .setting-label {
-                    /* 与滑块轨道视觉对齐（滑块本身有内边距） */
-                    padding-top: 2px;
-                }
-
-                .setting-control {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 2px;
-                    min-width: 0;
-                }
-
-                /*
-                 * 「播放内容」这类「单选框 + 一行说明」的组合：
-                 * 说明文字要跟在选项下方、贴着左边缘，不能和选项同一行。
-                 */
-                .setting-control--stack {
-                    gap: 6px;
-                }
-
-                :deep(.el-slider) {
-                    /* 去掉默认左右外边距，让它和上方单选框左边缘对齐 */
-                    padding: 0 6px;
-                }
-
-                .setting-hint {
-                    font-size: 12px;
-                    line-height: 1.5;
-                    color: #9ca3af;
-                }
-            }
-        }
+    /*
+     * 练习设置（2026-10-26：三模式 + 可调参数）
+     * 与词库选择条同宽（560px）并居中，页面左右边缘对齐。
+     */
+    .practice-settings {
+        width: 100%;
+        max-width: 560px;
+        margin: 0 auto;
+        padding: 18px 20px;
+        background: #fff;
+        border-radius: 14px;
+        border: 1px solid #e5e7eb;
 
         /*
-         * 空状态卡片（2026-10-26）
-         * 顶端顶级样式：它已经不在 `.book-select-section` 里了
-         * （词库选择区改成常驻顶栏后，空状态是它下方独立的一段）。
+         * 模式选择卡片
+         * 用卡片而不是 radio：三个模式差别大、各需一句说明。
          */
-        .start-empty {
-            max-width: 560px;
-            margin: 8px auto 0;
-            padding: 44px 24px;
+        .mode-picker {
             display: flex;
             flex-direction: column;
-            align-items: center;
-            text-align: center;
-            gap: 6px;
-            background: #fff;
-            border: 1px dashed #e2e8f0;
-            border-radius: 16px;
+            gap: 8px;
+            margin-bottom: 18px;
+        }
 
-            .start-empty__icon {
+        .mode-card {
+            display: flex;
+            align-items: center;
+            gap: 11px;
+            padding: 10px 12px;
+            border: 1.5px solid #e5e7eb;
+            border-radius: 11px;
+            cursor: pointer;
+            transition: border-color .18s, background .18s;
+
+            &:hover {
+                border-color: #c7d2fe;
+                background: #f8faff;
+            }
+
+            &.is-active {
+                border-color: #3b82f6;
+                background: #eff6ff;
+            }
+
+            .mode-card__icon {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                width: 56px;
-                height: 56px;
-                margin-bottom: 6px;
-                border-radius: 14px;
+                width: 30px;
+                height: 30px;
+                flex: none;
+                border-radius: 8px;
                 background: #f1f5f9;
-                color: #94a3b8;
+                color: #64748b;
             }
 
-            .start-empty__title {
-                margin: 0;
-                font-size: 15px;
-                font-weight: 600;
-                color: #374151;
+            &.is-active .mode-card__icon {
+                background: #dbeafe;
+                color: #2563eb;
             }
 
-            .start-empty__desc {
-                max-width: 340px;
+            .mode-card__title {
                 font-size: 13px;
-                line-height: 1.7;
-                color: #9ca3af;
+                font-weight: 600;
+                color: #111827;
             }
 
-            .start-empty__btn {
-                margin-top: 10px;
+            .mode-card__desc {
+                margin-top: 1px;
+                font-size: 11.5px;
+                line-height: 1.45;
+                color: #9ca3af;
             }
         }
 
-        .start-section {
-            margin-top: 28px;
-            text-align: center;
+        /* 两列网格：左标签 88px、右控件自适应 */
+        .setting-item {
+            display: grid;
+            grid-template-columns: 88px minmax(0, 1fr);
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 14px;
 
-            .el-button {
-                width: 200px;
-                height: 48px;
-                font-size: 16px;
-                border-radius: 8px;
+            &:last-child {
+                margin-bottom: 0;
             }
+
+            .setting-label {
+                font-size: 13px;
+                font-weight: 500;
+                color: #374151;
+                white-space: nowrap;
+            }
+
+            :deep(.el-radio) {
+                margin-right: 16px;
+
+                &:last-child {
+                    margin-right: 0;
+                }
+            }
+        }
+
+        /* 滑块行：顶部对齐，滑块占满右列 */
+        .setting-item--slider {
+            align-items: start;
+
+            .setting-label {
+                padding-top: 2px;
+            }
+
+            .setting-control {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+                min-width: 0;
+            }
+
+            /* 「单选框 + 说明」竖排 */
+            .setting-control--stack {
+                gap: 6px;
+            }
+
+            :deep(.el-slider) {
+                padding: 0 6px;
+            }
+
+            .setting-hint {
+                font-size: 11.5px;
+                line-height: 1.5;
+                color: #9ca3af;
+            }
+        }
+
+        .mode-note {
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+            margin-top: 12px;
+            padding: 9px 11px;
+            border-radius: 9px;
+            background: #f8fafc;
+            font-size: 11.5px;
+            line-height: 1.55;
+            color: #64748b;
+
+            .el-icon {
+                margin-top: 2px;
+                flex: none;
+                color: #94a3b8;
+            }
+        }
+    }
+
+    /* 空状态卡片 */
+    .start-empty {
+        width: 100%;
+        max-width: 560px;
+        margin: 0 auto;
+        padding: 40px 24px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 6px;
+        background: #fff;
+        border: 1px dashed #e2e8f0;
+        border-radius: 14px;
+
+        .start-empty__icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 52px;
+            height: 52px;
+            margin-bottom: 6px;
+            border-radius: 13px;
+            background: #f1f5f9;
+            color: #94a3b8;
+        }
+
+        .start-empty__title {
+            margin: 0;
+            font-size: 14.5px;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .start-empty__desc {
+            max-width: 340px;
+            font-size: 12.5px;
+            line-height: 1.7;
+            color: #9ca3af;
+        }
+
+        .start-empty__btn {
+            margin-top: 8px;
+        }
+    }
+
+    /* 开始按钮 */
+    .start-section {
+        width: 100%;
+        max-width: 560px;
+        margin: 16px auto 0;
+        text-align: center;
+
+        .el-button {
+            width: 200px;
+            height: 46px;
+            font-size: 15px;
+            border-radius: 10px;
         }
     }
 
@@ -2131,7 +2122,6 @@ watch(() => isPracticing.value, (val) => {
                 margin-bottom: 12px;
             }
         }
-
 
             /*
              * 练习中的实时设置（2026-10-26）
@@ -2289,7 +2279,6 @@ watch(() => isPracticing.value, (val) => {
                     color: #6b7280;
                 }
             }
-
 
             /*
              * 纯听力的题面（2026-10-26）
