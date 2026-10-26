@@ -1,16 +1,26 @@
 <template>
-  <div class="stat-page">
-    <!-- 顶栏 -->
-    <header class="st-head">
-      <button type="button" class="st-back" @click="goBack">
+  <div class="stat-page" :class="{ 'is-embedded': embedded }">
+    <!--
+      工具条（2026-10-26 改造）
+      ==========================================================================
+      原来是整页顶栏（返回按钮 + 「学习统计」大标题 + 右侧 7天/30天 + 刷新）。
+
+      现在这个页面被**嵌进「我的学习 · 学习统计」的第二个 tab** 里，
+      大标题和返回按钮会和外层顶栏重复 —— 所以改成一条轻量的工具条，
+      只留真正需要操作的两个控件，标题交给外层 tab 去表达。
+
+      `embedded` 为 false 时（直接访问 /front/english/statistics 这种老链接）
+      仍保留返回入口，避免用户进来后无路可退。
+    -->
+    <div class="st-toolbar">
+      <button v-if="!embedded" type="button" class="st-back" @click="goBack">
         <OsIcon name="arrow-left" :size="16" />
         <span>英语学习</span>
       </button>
-      <div class="st-head__main">
-        <h1 class="st-head__title">学习统计</h1>
-        <p class="st-head__desc">看看这段时间练了多少、哪里还薄弱</p>
-      </div>
-      <div class="st-head__ops">
+      <span class="st-toolbar__hint">
+        数据来自单词听写与阅读练习
+      </span>
+      <div class="st-toolbar__ops">
         <!-- 窗口切换：7 天 / 30 天 -->
         <div class="st-range">
           <button
@@ -29,7 +39,7 @@
           <span>刷新</span>
         </button>
       </div>
-    </header>
+    </div>
 
     <!-- 骨架 -->
     <div v-if="loading && !loaded" class="st-skeleton">
@@ -249,6 +259,18 @@
  *   ⑤ 最近 10 次练习记录
  *
  * 图表是手写 SVG/CSS 柱状图，没有引入图表库 —— 见模板里的注释。
+ *
+ * ## 2026-10-26 改造：从「独立页面」变成「可嵌入组件」
+ *
+ * 用户反馈：「两个页面的学习统计有点多余了，想办法融合起来」——
+ * 指的是「我的学习 › 学习统计」（题库维度）和「英语学习 › 学习统计」
+ * （英语维度）两个同名入口。
+ *
+ * 现在这一页既可以当独立页面用（`/front/english/statistics`），
+ * 也可以被 `<EnglishStatistics embedded />` 嵌进题库统计页的第二个 tab。
+ * 差别只在顶栏：嵌入时不渲染「返回」按钮和标题（外层已有），
+ * 也不在 `onMounted` 自动加载 —— 由外层在切到该 tab 时调 `refresh()`，
+ * 避免用户没看这一屏就先发一次请求。
  */
 import { ref, computed, onMounted, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
@@ -257,13 +279,27 @@ import OsIcon from '@/components/OsIcon/index.vue'
 import { getPracticeStats } from '@/api/words/words'
 import { speak } from '@/utils/speech'
 
+const props = withDefaults(
+  defineProps<{
+    /** 是否作为嵌入组件使用（隐藏返回按钮、不自动加载） */
+    embedded?: boolean
+    /** 嵌入时的初始窗口天数 */
+    initialDays?: number
+  }>(),
+  { embedded: false, initialDays: 7 }
+)
+
+const emit = defineEmits<{
+  (e: 'loaded', stats: any): void
+}>()
+
 const router = useRouter()
 
 /* ============================ 状态 ============================ */
 
 const loading = ref(false)
 const loaded = ref(false)
-const days = ref(7)
+const days = ref(props.initialDays === 30 ? 30 : 7)
 
 const rangeOptions = [
   { days: 7, label: '7 天' },
@@ -422,6 +458,8 @@ async function load() {
         recentLogs: Array.isArray(data.recentLogs) ? data.recentLogs : []
       }
       loaded.value = true
+      // 通知外层（嵌入模式下用来显示 tab 角标 / 判断空态）
+      emit('loaded', stats.value)
     }
   } catch (e: any) {
     console.error('加载学习统计失败:', e)
@@ -430,6 +468,13 @@ async function load() {
     loading.value = false
   }
 }
+
+/**
+ * 对外暴露的刷新入口
+ *
+ * 嵌入模式下外层在切到本 tab 时才调它 —— 见组件顶部注释。
+ */
+defineExpose({ refresh: load, reset: () => { loaded.value = false } })
 
 async function switchDays(d: number) {
   if (days.value === d) return
@@ -473,10 +518,20 @@ function practiceWrongWords() {
 
 /* ============================ 生命周期 ============================ */
 
-onMounted(load)
-// 页面被 keep-alive 缓存，从练习页回来时要刷新
+/*
+ * 生命周期（2026-10-26 改造）
+ *
+ * 嵌入模式**不自动加载** —— 外层在用户切到本 tab 时才调 `refresh()`。
+ * 理由：统计页要发 1 个请求 + 算 30 根柱子，用户可能只想看题库那部分，
+ * 没切过去就先加载是白费。
+ */
+onMounted(() => {
+  if (!props.embedded) load()
+})
+
+// 独立页面被 keep-alive 缓存，从练习页回来时要刷新
 onActivated(() => {
-  if (loaded.value) load()
+  if (!props.embedded && loaded.value) load()
 })
 </script>
 
@@ -486,14 +541,59 @@ onActivated(() => {
   padding-bottom: 40px;
   background: #f8fafc;
 
-  /* ==================== 顶栏 ==================== */
-  .st-head {
+  /*
+   * 嵌入模式（2026-10-26）
+   *
+   * 被塞进「我的学习 › 学习统计」的 tab 里时，外层已经有白底容器和左右留白，
+   * 所以这里去掉自己的背景色和顶部工具条的分隔线，避免出现"框中框"。
+   */
+  &.is-embedded {
+    min-height: auto;
+    padding-bottom: 0;
+    background: transparent;
+
+    .st-toolbar {
+      padding: 0 0 14px;
+      border-bottom: 0;
+    }
+
+    /* 内容区不再自己限制宽度 —— 外层容器已经限制了 */
+    .st-kpi,
+    .st-card,
+    .st-twocol {
+      max-width: none;
+      padding-left: 0;
+      padding-right: 0;
+    }
+
+    .st-kpi {
+      padding-top: 0;
+    }
+  }
+
+  /* ==================== 工具条 ==================== */
+  .st-toolbar {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
     padding: 14px 28px;
     background: #fff;
     border-bottom: 1px solid #e5e7eb;
+    margin-bottom: 4px;
+
+    &__hint {
+      flex: 1;
+      min-width: 0;
+      font-size: 12px;
+      color: #9ca3af;
+    }
+
+    &__ops {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: none;
+    }
   }
 
   .st-back {
@@ -513,31 +613,6 @@ onActivated(() => {
       background: #f1f5f9;
       color: #111827;
     }
-  }
-
-  .st-head__main {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .st-head__title {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-    color: #111827;
-  }
-
-  .st-head__desc {
-    margin: 2px 0 0;
-    font-size: 12px;
-    color: #9ca3af;
-  }
-
-  .st-head__ops {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex: none;
   }
 
   /* 7天/30天 切换 */

@@ -542,12 +542,24 @@ export const constantRoutes: AppRouteRecordRaw[] = [
             meta: { title: '阅读练习', layout: 'front', keepAlive: true },
             hidden: true
           },
-          // 学习统计（2026-10-26）：把 english_practice_log 里已有的数据用起来
+          /*
+           * 学习统计 —— 已并入「我的学习 › 学习统计」（2026-10-26）
+           *
+           * 用户：「两个页面的学习统计有点多余了，想办法融合起来」。
+           * 英语统计现在是 `/front/myQuestion/myStats?tab=english` 的第二个 tab。
+           *
+           * 这里保留这条路由并**重定向**过去，而不是直接删掉：
+           *   · 用户可能还开着旧链接 / 浏览器历史里有这条地址；
+           *   · 智能体工具 `english_practice` 返回的 jumpUrl 可能指向它。
+           * 删路由会让这些入口 404，重定向最平滑。
+           */
           {
             path: 'statistics',
             name: 'FrontEnglishStatistics',
-            component: () => import('@/views/front/english/statistics/index.vue'),
-            meta: { title: '学习统计', layout: 'front', keepAlive: true, requiresLogin: true },
+            redirect: (to) => ({
+              path: '/front/myQuestion/myStats',
+              query: { ...to.query, tab: 'english' }
+            }),
             hidden: true
           }
         ]

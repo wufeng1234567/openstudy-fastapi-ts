@@ -491,9 +491,20 @@ const featureItems: NavItem[] = [
       { label: '拍照识词', to: '/front/english/ocr', cacheKey: 'ocr' },
       { label: '我的词库', to: '/front/english/vocabulary', cacheKey: 'vocabulary' },
       { label: '单词听写', to: '/front/english/listening', cacheKey: 'listening' },
-      { label: '阅读练习', to: '/front/english/reading', cacheKey: 'reading' },
-      // 学习统计（2026-10-26）
-      { label: '学习统计', to: '/front/english/statistics', cacheKey: 'statistics' }
+      { label: '阅读练习', to: '/front/english/reading', cacheKey: 'reading' }
+      /*
+       * 「学习统计」入口已移除（2026-10-26）
+       * ---------------------------------
+       * 用户：「两个页面的学习统计有点多余了，想办法融合起来」。
+       *
+       * 英语统计已经并进「我的学习 › 学习统计」的第二个 tab，
+       * 侧边栏再留一个同名项就是重复导航 —— 和之前处理
+       * 「我的错题 / 我的斩题」「题库收藏」是同一个判断：
+       * 同一个功能不该在侧栏出现两次。
+       *
+       * 路由 `/front/english/statistics` 仍然保留（见 router/index.ts），
+       * 从别的页面直接跳过去仍能打开，只是不再有侧栏入口。
+       */
     ]
   }
   /*

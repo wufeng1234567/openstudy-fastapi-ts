@@ -1,30 +1,61 @@
 <template>
-    <div class="my-stats" v-loading="loading">
+    <div class="my-stats">
         <!--
-          标题行已整块移除
           ==========================================================================
-          用户 2026-10-18：「学习统计那边『我的学习 · 学习统计』+『数据来自你的刷题、
-          错题、斩题与收藏记录』这一行去掉，跟前面几个模块一样，把后面的副标题
-          改到第一行的『我的学习 · 学习统计』就行」。
+          两个「学习统计」合并（2026-10-26）
+          ==========================================================================
 
-          所以顶栏（`layout/front.vue`）现在显示：
-            `我的学习 · 学习统计  数据来自你的刷题、错题、斩题与收藏记录`
-          内容区直接从内容开始，不再占一行。
+          用户反馈：「两个页面的学习统计有点多余了，想办法融合起来」。
+
+          指的是这两个同名入口：
+            · 我的学习 › 学习统计  → /front/myQuestion/myStats（题库练习数据）
+            · 英语学习 › 学习统计  → /front/english/statistics（英语练习数据）
+
+          它们统计的是**同一个人的学习**，只是数据来自两条不同的练习链路，
+          在侧边栏各占一个同名入口，用户会以为是重复功能。
+
+          现在合成这一个页面，用 tab 切换：
+            · 题库练习 —— 原有的总览 / 趋势 / 科目分布 / 错题诊断，逻辑一行没动
+            · 英语练习 —— 复用 EnglishStatistics 组件（同一个文件既能当独立页，
+                          也能当嵌入组件，见该组件顶部注释）
+
+          ⚠️ 英语 tab 必须**懒挂载**（`v-if="tabSeen.english"`）：
+             它内含手写柱状图，靠百分比宽度撑开；如果一进页面就渲染但容器
+             处于 `display:none` 的隐藏状态，布局计算时宽度为 0，
+             切过去后柱子会全部塌成 0 高 —— 这是 CSS 隐藏元素做图表的经典坑。
+             懒挂载还顺带省掉一次不必要的请求（用户可能只想看题库那部分）。
         -->
-
-        <!-- ============ 零数据：给出引导而不是一片空图 ============ -->
-        <div v-if="!loading && isEmpty" class="onboarding">
-            <div class="onboarding-mark" aria-hidden="true">
-                <el-icon :size="26">
-                    <TrendCharts />
-                </el-icon>
-            </div>
-            <h3 class="onboarding-title">还没有学习记录</h3>
-            <p class="onboarding-text">
-                去「题库练习」刷几道题吧。之后这里会记录你的正确率、错题分布、斩题进度和学习趋势。
-            </p>
-            <el-button type="primary" @click="goPractice">去题库练习</el-button>
+        <div class="stats-tabs">
+            <SegmentedTabs v-model="activeTab" :tabs="tabList" @change="onTabChange" />
         </div>
+
+        <!-- ==================== Tab 1：题库练习 ==================== -->
+        <div v-show="activeTab === 'bank'" class="tab-pane" v-loading="loading">
+            <!--
+              标题行已整块移除
+              ==========================================================================
+              用户 2026-10-18：「学习统计那边『我的学习 · 学习统计』+『数据来自你的刷题、
+              错题、斩题与收藏记录』这一行去掉，跟前面几个模块一样，把后面的副标题
+              改到第一行的『我的学习 · 学习统计』就行」。
+
+              所以顶栏（`layout/front.vue`）现在显示：
+                `我的学习 · 学习统计  数据来自你的刷题、错题、斩题与收藏记录`
+              内容区直接从内容开始，不再占一行。
+            -->
+
+            <!-- ============ 零数据：给出引导而不是一片空图 ============ -->
+            <div v-if="!loading && isEmpty" class="onboarding">
+                <div class="onboarding-mark" aria-hidden="true">
+                    <el-icon :size="26">
+                        <TrendCharts />
+                    </el-icon>
+                </div>
+                <h3 class="onboarding-title">还没有学习记录</h3>
+                <p class="onboarding-text">
+                    去「题库练习」刷几道题吧。之后这里会记录你的正确率、错题分布、斩题进度和学习趋势。
+                </p>
+                <el-button type="primary" @click="goPractice">去题库练习</el-button>
+            </div>
 
         <template v-else>
             <!-- ============ 学习总览 ============ -->
@@ -159,17 +190,34 @@
                     <span class="accum-hint">全部里程碑已达成</span>
                 </div>
             </section>
-        </template>
+            </template>
+        </div>
+
+        <!-- ==================== Tab 2：英语练习 ==================== -->
+        <!--
+          `v-if="tabSeen.english"` 而不是 v-show：见顶部注释里关于
+          「隐藏容器里算图表尺寸会塌成 0」的说明。第一次切到这个 tab 后才挂载。
+        -->
+        <div v-show="activeTab === 'english'" class="tab-pane">
+            <EnglishStatistics
+                v-if="tabSeen.english"
+                ref="englishStatsRef"
+                embedded
+                @loaded="onEnglishLoaded"
+            />
+        </div>
     </div>
 </template>
 
 <script setup lang="ts">
 defineOptions({ name: 'MyStats' })
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, reactive, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import useTopbarStore from '@/store/modules/topbar'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import { TrendCharts, ArrowRight } from '@element-plus/icons-vue'
+import SegmentedTabs from '@/components/SegmentedTabs/index.vue'
+import EnglishStatistics from '@/views/front/english/statistics/index.vue'
 import {
     getOverview,
     getBySubject,
@@ -186,6 +234,129 @@ import type {
 } from '@/api/userStats/userStats'
 
 const router = useRouter()
+
+/* ============================================================================
+ * Tab 切换（2026-10-26）
+ *
+ * 两个 tab 的数据源完全独立：
+ *   bank    —— /userStats/*（题库练习）
+ *   english —— /words/practice/stats（英语练习）
+ *
+ * 所以切换时不需要互相同步，只要保证英语那边**第一次切过去才加载**。
+ * ========================================================================== */
+type StatsTab = 'bank' | 'english'
+
+const activeTab = ref<StatsTab>('bank')
+
+/** 各 tab 是否已挂载过（英语 tab 懒挂载的关键） */
+const tabSeen = reactive({ bank: true, english: false })
+
+/** 题库数据是否已经拉过（决定切回 tab 时要不要补拉） */
+const bankLoaded = ref(false)
+
+const englishStatsRef = ref<any>(null)
+
+const tabList = [
+    { key: 'bank', label: '题库练习' },
+    { key: 'english', label: '英语练习' }
+]
+
+/*
+ * 顶栏副标题跟着 tab 走（2026-10-26）
+ *
+ * 合并前这句固定是「数据来自你的刷题、错题、斩题与收藏记录」——
+ * 那是题库的说明。现在同一页还有英语练习，如果切到英语 tab
+ * 副标题还写着"刷题/斩题"，就文不对题了。
+ */
+function syncTopbarSubtitle() {
+    topbarStore.setCount(
+        activeTab.value === 'english'
+            ? '数据来自你的单词听写与阅读练习'
+            : '数据来自你的刷题、错题、斩题与收藏记录'
+    )
+}
+
+function onTabChange(key: string) {
+    const k = key as StatsTab
+
+    /*
+     * 把 tab 同步进 URL（2026-10-26）
+     *
+     * 好处：刷新页面 / 把链接发给别人 / 浏览器后退，都能回到同一个 tab。
+     * 用 `replace` 不用 `push` —— 切 tab 不该在历史里堆一串记录，
+     * 否则用户点后退要按好几次才能离开这一页。
+     */
+    const cur = router.currentRoute.value
+    if (cur.query.tab !== k) {
+        router.replace({ path: cur.path, query: { ...cur.query, tab: k } })
+    }
+    syncTopbarSubtitle()
+
+    if (k === 'english') {
+        if (!tabSeen.english) {
+            // 首次切过去：标记挂载，DOM 渲染完再让它加载
+            tabSeen.english = true
+            nextTick(() => englishStatsRef.value?.refresh?.())
+        } else {
+            // 已经挂载过：回来时刷新一次，避免看到过期数据
+            nextTick(() => englishStatsRef.value?.refresh?.())
+        }
+        return
+    }
+
+    /*
+     * 切回题库 tab
+     *
+     * ⚠️ 两个都要做：
+     *   ① 如果之前从 `?tab=english` 进来，题库数据**一次都没拉过**（见 onMounted），
+     *      这里必须补拉，否则切回来是一片空白；
+     *   ② echarts 容器刚从 `display:none` 变可见，之前算的尺寸是错的，
+     *      必须 resize，否则图会挤在左上角一小块。
+     */
+    if (!bankLoaded.value) {
+        setTimeout(fetchAll, 50)
+    }
+    nextTick(() => handleResize())
+}
+
+function onEnglishLoaded(_stats: any) {
+    // 目前只用来占位（未来可以在 tab 上显示练习次数角标）
+}
+
+/*
+ * 从 URL 的 `?tab=english` 直接落到英语 tab
+ *
+ * 用于旧链接 `/front/english/statistics` 的重定向（见 router/index.ts），
+ * 以及智能体工具返回的 jumpUrl。
+ *
+ * ⚠️ 光在 `onMounted` 里调不够 —— 本页带 `keepAlive: true`，
+ *    用户如果之前已经打开过统计页，再从旧链接进来时组件是**复用**的，
+ *    `onMounted` 根本不会触发，于是停在原来的 tab 上（实测就是这样）。
+ *    所以除了 onMounted，还要 watch 路由 query 变化。
+ */
+function applyTabFromQuery() {
+    const t = router.currentRoute.value.query.tab
+    if (t === 'english') {
+        activeTab.value = 'english'
+        if (!tabSeen.english) {
+            tabSeen.english = true
+            nextTick(() => englishStatsRef.value?.refresh?.())
+        }
+    } else if (t === 'bank') {
+        activeTab.value = 'bank'
+    }
+    // 副标题跟着一起变，否则会显示题库那句说明
+    syncTopbarSubtitle()
+}
+
+// 监听 query.tab（覆盖 keep-alive 复用的情况）
+watch(
+    () => router.currentRoute.value.query.tab,
+    (t) => {
+        if (t === 'english' || t === 'bank') applyTabFromQuery()
+    }
+)
+
 const loading = ref(true)
 
 // 总览数据
@@ -505,6 +676,8 @@ async function fetchAll() {
             void initSubjectChart(subjectStats.value)
             initDifficultyChart(errorAnalysis.value.byDifficulty)
         }
+        // 标记题库数据已拉过 —— 切回 tab 时不用重复拉（见 onTabChange）
+        bankLoaded.value = true
     } catch (e) {
         console.warn('用户统计接口异常:', e)
     } finally {
@@ -527,13 +700,32 @@ const topbarStore = useTopbarStore()
 
 onMounted(async () => {
     /*
+     * 支持 ?tab=english 直达（旧链接重定向过来的）
+     *
+     * ⚠️ 必须排在 `syncTopbarSubtitle()` **之前**：
+     *    它内部会改 `activeTab`，而副标题要按 activeTab 决定文案。
+     *    反过来的话会先渲染一句"数据来自刷题…"再被纠正，肉眼能看到闪一下。
+     */
+    applyTabFromQuery()
+
+    /*
      * 把原来内容区那行副标题推到顶栏
      * 用户 2026-10-18：内容区不再有标题行，说明文字并到顶栏那一行。
      */
-    topbarStore.setCount('数据来自你的刷题、错题、斩题与收藏记录')
+    syncTopbarSubtitle()
+
     await nextTick()
     window.addEventListener('resize', handleResize)
-    setTimeout(fetchAll, 100)
+
+    /*
+     * 只有落在题库 tab 时才拉题库数据
+     *
+     * 从 `?tab=english` 进来时用户根本不看题库那一屏，
+     * 拉 4 个接口 + 画 3 张 echarts 纯属浪费（而且容器还隐藏着画不出来）。
+     */
+    if (activeTab.value === 'bank') {
+        setTimeout(fetchAll, 100)
+    }
 })
 
 onUnmounted(() => {
@@ -546,6 +738,23 @@ onUnmounted(() => {
 <style scoped lang="scss">
 .my-stats {
     padding: 0 16px;
+
+    /*
+     * Tab 栏（2026-10-26）
+     *
+     * 位置在内容区最上方，与「题库管理 / 题目管理 / 笔记管理」三页的分组切换
+     * 保持一致（都是 SegmentedTabs）—— 用户在同一批页面间切换时不需要重新认。
+     */
+    .stats-tabs {
+        margin-bottom: 16px;
+        border-bottom: 1px solid var(--os-border, #eef0f3);
+        padding-bottom: 2px;
+    }
+
+    .tab-pane {
+        /* 两个 tab 的内容宽度一致，切换时不会跳 */
+        width: 100%;
+    }
 
     .page-header {
         display: flex;
