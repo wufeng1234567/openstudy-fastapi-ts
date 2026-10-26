@@ -122,70 +122,116 @@
             </div>
 
             <!--
-              练习设置（2026-10-26 重排）
+              练习设置（2026-10-26 重构：三模式 + 可调参数）
               -----------------------------------------------------------------
-              改前两处结构/排版问题（截图实测）：
-                ① 「练习模式」的 `.setting-item` 被**错误嵌套在「播放顺序」里面** ——
-                   「播放顺序」是 flex 行，于是「练习模式」这个标签和两个单选框
-                   直接压到「随机」右边，和它重叠在一起；
-                ② 「播放间隔」一行塞了 2 个滑块 + 1 个标签 + 1 句提示，
-                   宽度不够时全部挤成一团。
+              用户要求：
+                · 模式可选 —— ①纯播放听力（自己手写）②打字输入 ③自动听写
+                · 打字输入**不设时间限制**
+                · 播放速度 / 间隔等参数可调
 
-              改后：
-                · 修正嵌套，每个设置项独立成行；
-                · 统一「左标签 96px + 右控件」的两列网格，各行左边缘对齐；
-                · 滑块行拆成「标签 / 滑块 / 提示」三栏，提示换到滑块下方；
-                · 「自动下一题间隔」只在听写模式下才有意义，顺手也用同一个网格。
+              结构：
+                第一行 模式（三选一，带一句话说明）
+                其余   与模式相关的参数，逐个一行，两列网格对齐
             -->
             <div class="practice-settings" v-if="selectedBookId && wordList.length > 0">
-                <div class="setting-item">
-                    <span class="setting-label">练习范围</span>
-                    <el-radio-group v-model="practiceRange">
-                        <el-radio value="all">全部单词</el-radio>
-                    </el-radio-group>
+                <!-- 模式选择：用卡片而不是单选框，因为三个选项差别大、需要解释 -->
+                <div class="mode-picker">
+                    <div class="mode-card" :class="{ 'is-active': practiceMode === 'listen' }"
+                        @click="practiceMode = 'listen'">
+                        <div class="mode-card__icon">
+                            <el-icon :size="18"><Headset /></el-icon>
+                        </div>
+                        <div class="mode-card__body">
+                            <div class="mode-card__title">纯听力</div>
+                            <div class="mode-card__desc">只播放，自己在纸上写，不限时</div>
+                        </div>
+                    </div>
+
+                    <div class="mode-card" :class="{ 'is-active': practiceMode === 'input' }"
+                        @click="practiceMode = 'input'">
+                        <div class="mode-card__icon">
+                            <el-icon :size="18"><EditPen /></el-icon>
+                        </div>
+                        <div class="mode-card__body">
+                            <div class="mode-card__title">打字输入</div>
+                            <div class="mode-card__desc">看中文敲英文，提交判对错，不限时</div>
+                        </div>
+                    </div>
+
+                    <div class="mode-card" :class="{ 'is-active': practiceMode === 'dictation' }"
+                        @click="practiceMode = 'dictation'">
+                        <div class="mode-card__icon">
+                            <el-icon :size="18"><Timer /></el-icon>
+                        </div>
+                        <div class="mode-card__body">
+                            <div class="mode-card__title">自动听写</div>
+                            <div class="mode-card__desc">播完自动跳下一题，适合快速过一遍</div>
+                        </div>
+                    </div>
                 </div>
 
+                <!-- 播放顺序：三种模式都用得上 -->
                 <div class="setting-item">
                     <span class="setting-label">播放顺序</span>
                     <el-radio-group v-model="playOrder">
-                        <el-radio value="sequential">顺序</el-radio>
+                        <el-radio value="sequential">按词库顺序</el-radio>
                         <el-radio value="random">随机</el-radio>
                     </el-radio-group>
                 </div>
 
-                <div class="setting-item">
-                    <span class="setting-label">练习模式</span>
-                    <el-radio-group v-model="practiceMode">
-                        <el-radio value="input">输入模式</el-radio>
-                        <el-radio value="dictation">听写模式</el-radio>
-                    </el-radio-group>
-                </div>
-
-                <div class="setting-item">
-                    <span class="setting-label">播放次数</span>
-                    <el-radio-group v-model="repeatCount">
-                        <el-radio :value="1">1次</el-radio>
-                        <el-radio :value="2">2次</el-radio>
-                        <el-radio :value="3">3次</el-radio>
-                    </el-radio-group>
-                </div>
-
-                <!-- 以下两项只在「听写模式」下出现 -->
-                <div class="setting-item setting-item--slider" v-if="practiceMode === 'dictation'">
-                    <span class="setting-label">播放间隔</span>
+                <!-- 播放速度：三种模式都有意义 -->
+                <div class="setting-item setting-item--slider">
+                    <span class="setting-label">播放速度</span>
                     <div class="setting-control">
-                        <el-slider v-model="playInterval" :min="1" :max="5" :step="0.5" show-stops
-                            :format-tooltip="(val) => val + '秒'" />
+                        <el-slider v-model="speechRate" :min="0.5" :max="1.5" :step="0.1" show-stops
+                            :format-tooltip="(v) => v.toFixed(1) + '×'" />
+                        <span class="setting-hint">
+                            当前 {{ speechRate.toFixed(1) }}×
+                            <template v-if="speechRate < 0.9">（较慢，适合跟读）</template>
+                            <template v-else-if="speechRate > 1.1">（较快，接近母语语速）</template>
+                            <template v-else>（正常语速）</template>
+                        </span>
                     </div>
                 </div>
 
+                <!-- 播放次数：纯听力 / 自动听写有意义；打字输入只播一遍 -->
+                <div class="setting-item" v-if="practiceMode !== 'input'">
+                    <span class="setting-label">播放遍数</span>
+                    <el-radio-group v-model="repeatCount">
+                        <el-radio :value="1">1 遍</el-radio>
+                        <el-radio :value="2">2 遍</el-radio>
+                        <el-radio :value="3">3 遍</el-radio>
+                    </el-radio-group>
+                </div>
+
+                <!-- 每遍之间的间隔 -->
+                <div class="setting-item setting-item--slider" v-if="practiceMode !== 'input' && repeatCount > 1">
+                    <span class="setting-label">遍间隔</span>
+                    <div class="setting-control">
+                        <el-slider v-model="playInterval" :min="0.5" :max="5" :step="0.5" show-stops
+                            :format-tooltip="(v) => v + ' 秒'" />
+                        <span class="setting-hint">每遍播放之间停 {{ playInterval }} 秒，留给书写时间</span>
+                    </div>
+                </div>
+
+                <!-- 自动下一题：只有「自动听写」模式才需要 -->
                 <div class="setting-item setting-item--slider" v-if="practiceMode === 'dictation'">
                     <span class="setting-label">自动下一题</span>
                     <div class="setting-control">
                         <el-slider v-model="autoNextInterval" :min="1" :max="10" :step="0.5" show-stops
-                            :format-tooltip="(val) => val + '秒'" />
+                            :format-tooltip="(v) => v + ' 秒'" />
                         <span class="setting-hint">播放完成后等待此时间自动进入下一题</span>
                     </div>
+                </div>
+
+                <!-- 打字输入 / 纯听力的说明（明确「不限时」） -->
+                <div class="mode-note" v-if="practiceMode !== 'dictation'">
+                    <el-icon :size="14"><InfoFilled /></el-icon>
+                    <span>
+                        {{ practiceMode === 'listen'
+                            ? '纯听力模式不计分、不限时，跟着播放自己写，写完点「下一题」。'
+                            : '打字输入不限时，想多久都可以；打完按 Enter 或点「提交」判定。' }}
+                    </span>
                 </div>
             </div>
 
@@ -220,9 +266,23 @@
 
             <!-- 当前单词卡片 -->
             <div class="word-card">
-                <!-- ⚠️ 后端字段是 `translation` / `word`，不是 `chinese` / `english`（2026-10-23 修） -->
-                <div class="word-chinese">{{ currentWord?.translation || '' }}</div>
-                <div class="word-phonetic" v-if="currentWord?.phonetic">{{ currentWord.phonetic }}</div>
+                <!--
+                  ⚠️ 字段是 `translation` / `word`，不是 `chinese` / `english`（2026-10-23 修）
+
+                  2026-10-26：**纯听力模式不能显示中文释义和音标**。
+                  截图实测：纯听力模式下页面把「adj. 根本的 / ˈfʌndəmentl」全摆出来了 ——
+                  用户照着抄就行，"听力"练了个寂寞。
+                  现在纯听力只显示"第几题"和播放入口，释义与音标一律隐藏；
+                  打字输入 / 自动听写才显示中文（它们是"中译英"，需要题面）。
+                -->
+                <template v-if="practiceMode !== 'listen'">
+                    <div class="word-chinese">{{ currentWord?.translation || '' }}</div>
+                    <div class="word-phonetic" v-if="currentWord?.phonetic">{{ currentWord.phonetic }}</div>
+                </template>
+                <template v-else>
+                    <div class="listen-question-mark">?</div>
+                    <div class="listen-question-hint">听发音，写出这个单词</div>
+                </template>
 
                 <!-- 播放按钮 -->
                 <!--
@@ -233,6 +293,9 @@
                       表现正是「点击没反应」。
                       现在去掉 loading，只用图标在 播放/暂停 之间切换：
                       按钮始终可点，用户可以随时重播或打断。
+
+                  2026-10-26：三种模式共用同一个按钮，
+                  只有 dictation 才走「播 N 遍后自动跳」，其余都是纯播放。
                 -->
                 <div class="play-section">
                     <el-button type="primary" circle size="large"
@@ -243,24 +306,31 @@
                             <VideoPause v-else />
                         </el-icon>
                     </el-button>
-                    <span class="play-hint" v-if="practiceMode === 'input'">点击播放中文发音</span>
-                    <span class="play-hint" v-else>
+
+                    <span class="play-hint">
                         <span v-if="isPlaying">
-                            正在播放第 {{ currentPlayCount }}/{{ repeatCount }} 遍...
+                            正在播放第 {{ currentPlayCount }}/{{ practiceMode === 'input' ? 1 : repeatCount }} 遍...
                         </span>
                         <span v-else-if="isWaitingAutoNext">
-                            ⏳ {{ autoNextCountdown }}秒后自动下一题 <!-- ✅ 已经是整数 -->
+                            ⏳ {{ autoNextCountdown }}秒后自动下一题
                         </span>
-                        <span v-else>
-                            点击重新播放
+                        <span v-else-if="practiceMode === 'listen'">
+                            点击播放，可反复听，写完点「下一题」
                         </span>
+                        <span v-else>点击重新播放</span>
                     </span>
                 </div>
 
-                <!-- 输入区域 -->
-                <div class="input-section">
-                    <el-input ref="inputRef" v-model="userAnswer" placeholder="请输入英文单词..." size="large" clearable
-                        @keyup.enter="submitAnswer" :disabled="isCorrect || isWrong">
+                <!--
+                  输入区域：只有「打字输入」模式才有
+                  ------------------------------------------------------
+                  纯听力（listen）是纸笔写，页面上不该出现输入框；
+                  自动听写（dictation）是播完就跳，也没有输入。
+                  输入框**不设任何计时**：不打字不催、不自动跳。
+                -->
+                <div class="input-section" v-if="practiceMode === 'input'">
+                    <el-input ref="inputRef" v-model="userAnswer" placeholder="请输入英文单词...（不限时）" size="large"
+                        clearable @keyup.enter="submitAnswer" :disabled="isCorrect || isWrong">
                         <template #suffix>
                             <el-button type="primary" @click="submitAnswer"
                                 :disabled="!userAnswer.trim() || isCorrect || isWrong">
@@ -270,8 +340,14 @@
                     </el-input>
                 </div>
 
-                <!-- 结果反馈 -->
-                <div class="feedback-section" v-if="showFeedback">
+                <!-- 纯听力模式：给一句明确的操作指引，代替输入框 -->
+                <div class="listen-tip" v-else-if="practiceMode === 'listen'">
+                    <el-icon :size="15"><Headset /></el-icon>
+                    <span>听发音，在纸上写下单词；想听几遍都行，写完点下方「下一题」</span>
+                </div>
+
+                <!-- 结果反馈：只有打字输入才有对错 -->
+                <div class="feedback-section" v-if="showFeedback && practiceMode === 'input'">
                     <div :class="['feedback-card', isCorrect ? 'correct' : 'wrong']">
                         <div class="feedback-icon">
                             <el-icon :size="32">
@@ -297,8 +373,26 @@
                 </div>
             </div>
 
-            <!-- 操作按钮 -->
+            <!--
+              操作按钮（2026-10-26 适配三模式）
+              -----------------------------------------------------------------
+                listen    —— 只有「下一题」＋「重听」＋「结束」。
+                             下一题**永远手动**，绝不自动跳（用户可能还在写）。
+                input     —— 提交前有「跳过」；提交后出现「下一题」。
+                dictation —— 播完自动跳，未跳前可手动「下一题」。
+            -->
             <div class="action-buttons">
+                <!-- 纯听力：重听 + 下一题 -->
+                <template v-if="practiceMode === 'listen'">
+                    <el-button size="large" @click="playCurrentWord" :disabled="isPlaying">
+                        重听一遍
+                    </el-button>
+                    <el-button type="primary" size="large" @click="autoNextWord">
+                        下一题
+                        <el-icon><ArrowRight /></el-icon>
+                    </el-button>
+                </template>
+
                 <el-button v-if="practiceMode === 'input' && showFeedback" type="primary" size="large"
                     @click="nextWord">
                     下一题
@@ -330,7 +424,9 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import {
     ArrowLeft, VideoPlay, VideoPause, ArrowRight,
-    CircleCheck, CircleClose, Headset, Collection
+    CircleCheck, CircleClose, Headset, Collection,
+    // 三种练习模式的卡片图标（2026-10-26）
+    EditPen, Timer, InfoFilled
 } from '@element-plus/icons-vue'
 import { listFrontWordBooks } from '@/api/wordBooks/wordBooks'
 import { listAllWords, submitPractice } from '@/api/words/words'
@@ -345,10 +441,42 @@ const cacheStore = useFrontPageCacheStore()
 const isPracticing = ref(false)
 const loadingWords = ref(false)
 
-// 练习模式：input-输入模式，dictation-听写模式
-const practiceMode = ref('input')
-// 自动下一题间隔（秒）
+/*
+ * 练习模式（2026-10-26 重构）
+ * ============================================================================
+ * 用户要求：「要可以选择模式 —— 一种是单纯播放听力、用户自己手动听写（纸笔写），
+ * 另一种才是用户输入单词；手动打字输入的不需要时间限制；
+ * 并且要可以调节播放速度 / 间隔等等相关设置。」
+ *
+ * 于是三种模式：
+ *
+ *   listen   —— **纯听力**：只播放，不输入、不判分、不限时。
+ *               页面上显示「播放第 N/M 遍」，用户自己在纸上写。
+ *               下一题完全手动（点「下一题」），绝不自动跳 ——
+ *               自动跳会让还在写的人丢题。
+ *
+ *   input    —— **打字输入**：显示中文释义，用户敲英文，提交判对错。
+ *               **不设任何计时**：不打字也不催、不自动跳，
+ *               想多久想多久（这是用户明确要求的）。
+ *
+ *   dictation—— **听写模式**（原有）：播放 N 遍后自动进入下一题。
+ *               保留它是因为"跟读式快练"确实有人用，但默认不再是它。
+ */
+type PracticeMode = 'listen' | 'input' | 'dictation'
+const practiceMode = ref<PracticeMode>('input')
+
+/** 播放速度（0.5~1.5，1 = 正常）。传给 TTS 的 rate */
+const speechRate = ref(1)
+
+/** 播放次数（1~3 遍） */
+const repeatCount = ref(2)
+
+/** 每遍之间的间隔（秒） */
+const playInterval = ref(2)
+
+/** 自动下一题间隔（秒）—— 只有 dictation 模式用 */
 const autoNextInterval = ref(3)
+
 // 自动下一题定时器
 let autoNextTimer = null
 // 是否正在等待自动下一题
@@ -362,10 +490,16 @@ const selectedBookId = ref(null)
 const wordList = ref([])
 
 // 练习设置
-const practiceRange = ref('all')
+/*
+ * ⚠️ `practiceRange` 已删除（2026-10-26）：
+ *    它只有「全部单词」一个选项 —— 不是设置项，是个装饰。
+ *    原设计想按「已掌握/未掌握」筛选，但 `words` 表没有掌握状态列，
+ *    那个筛选永远返回空，所以选项被砍到只剩一个。
+ *    留一个只有一种选择的下拉，用户会以为坏了。
+ */
 const playOrder = ref('random')
-const repeatCount = ref(2)
-const playInterval = ref(2)
+// ⚠️ `repeatCount` / `playInterval` 已上移到模式定义处（2026-10-26），
+//    那里和 speechRate 放在一起更易读，不再重复声明。
 
 // 练习状态
 const practiceWords = ref([])
@@ -531,65 +665,66 @@ const startPractice = () => {
     })
 }
 
-// ==================== 听写模式播放 ====================
+// ==================== 播放（三种模式共用） ====================
 /**
- * 开始一轮听写播放
- * 听写模式下：播放 N 遍中文发音，每遍间隔 playInterval 秒
- * 播放完成后启动自动下一题倒计时
+ * 播放当前单词的中文发音 N 遍
  *
- * 2026-10-23 改：
- *  · 失败时会提示原因，而不是「看着转圈、没有声音、然后自动跳到下一题」；
- *  · `isPlaying` 由 try/finally 兜底，异常不会把播放按钮永久锁死；
- *  · 播放失败**不再**自动进入下一题 —— 那样用户会眼睁睁看着题目一题题跳过，
- *    却不知道为什么每个都没声音。
+ * 2026-10-26 抽出来给三种模式共用：
+ *   · listen    —— 播完就停，**不自动跳题**（用户可能正在纸上写）
+ *   · input     —— 手动点播放，播一遍就行（用户要看中文释义打字）
+ *   · dictation —— 播 N 遍后启动自动下一题倒计时
+ *
+ * `autoNext` 参数决定播完是否启动倒计时 —— 这是三个模式唯一的行为差异，
+ * 所以不再写三份播放循环。
  */
-const startDictationRound = async () => {
+const playRound = async ({ autoNext = false } = {}) => {
     if (!currentWord.value) return
 
-    // 清除之前的定时器
     clearAutoNextTimer()
     isWaitingAutoNext.value = false
 
-    const word = currentWord.value
-    const chinese = word.translation
-
+    const chinese = currentWord.value.translation
     if (!chinese) {
         ElMessage.warning('该单词没有中文释义')
-        autoNextWord()
+        if (autoNext) autoNextWord()
         return
     }
 
-    // 标记为已练习
-    if (!word.practiced) {
-        word.practiced = true
-    }
+    // input 模式只播一遍（用户是看着中文打字，重复播放没意义）
+    const times = practiceMode.value === 'input' ? 1 : repeatCount.value
 
-    // 播放中文
     isPlaying.value = true
     currentPlayCount.value = 0
 
     try {
-        for (let i = 0; i < repeatCount.value; i++) {
+        for (let i = 0; i < times; i++) {
             currentPlayCount.value = i + 1
             const res = await speakChinesePromise(chinese)
             if (res && res.ok === false) {
                 if (res.reason !== 'interrupted' && res.reason !== 'canceled') {
                     ElMessage.warning(speakReasonText(res.reason, 'zh-CN'))
                 }
+                // 播放失败不自动跳题：否则用户会看着题目一题题跳过却不知道为什么
                 return
             }
-            if (i < repeatCount.value - 1) {
+            if (i < times - 1) {
                 await sleep(playInterval.value * 1000)
             }
         }
 
-        // 播放完成后，等待自动下一题
-        startAutoNextCountdown()
+        // 只有 dictation 模式才自动进入下一题
+        if (autoNext) startAutoNextCountdown()
     } finally {
         isPlaying.value = false
         currentPlayCount.value = 0
     }
 }
+
+/** dictation 模式：播 N 遍 → 自动下一题 */
+const startDictationRound = () => playRound({ autoNext: true })
+
+/** listen / input 模式：只播，不自动跳题 */
+const playCurrentWord = () => playRound({ autoNext: false })
 
 
 // 倒计时显示
@@ -624,19 +759,27 @@ const startAutoNextCountdown = () => {
 
 
 
-// 自动进入下一题
+// 进入下一题（手动或自动）
 const autoNextWord = () => {
     clearAutoNextTimer()
 
-    // 记录当前单词为已完成（跳过，因为没输入答案）
-    if (practiceMode.value === 'dictation') {
+    /*
+     * 记录"跳过"只在**需要作答的模式**下才有意义：
+     *   · dictation —— 播完自动跳，用户没机会写，记 skipped
+     *   · input     —— 用户自己点「跳过」，记 skipped
+     *   · listen    —— **纯听力不计分**，用户就是来听的，
+     *                  把每一题都记成"错"会让正确率永远是 0，
+     *                  那个数字毫无意义。所以 listen 模式不写结果。
+     */
+    const countsAsAnswer = practiceMode.value === 'dictation' || practiceMode.value === 'input'
+    if (countsAsAnswer && currentWord.value) {
         practiceResults.value.push({
             wordId: currentWord.value.wordId,
             word: currentWord.value,
             userAnswer: '',
             isCorrect: false,
             skipped: true,
-            mode: 'dictation'
+            mode: practiceMode.value
         })
     }
 
@@ -649,7 +792,12 @@ const autoNextWord = () => {
         isWaitingAutoNext.value = false
 
         nextTick(() => {
-            startDictationRound()
+            // dictation 自动播，其余模式交给用户点
+            if (practiceMode.value === 'dictation') {
+                startDictationRound()
+            } else if (practiceMode.value === 'listen') {
+                playCurrentWord()
+            }
         })
     } else {
         // 练习完成
@@ -679,9 +827,13 @@ const clearAutoNextTimer = () => {
  *
  * 走统一的 `speak()`：内部已处理 cancel→speak 的间隔、语音包选择、
  * 错误码透出和看门狗超时。返回 `{ok, reason}`，不再无声吞掉失败。
+ *
+ * ⚠️ 2026-10-26：`rate` 原来是硬编码的 `0.9`，现在读用户设置的
+ * `speechRate`（0.5~1.5）。语速是听力练习最常被需要的参数 ——
+ * 太快听不懂、太慢没挑战，写死一个值等于替用户做了决定。
  */
 const speakChinesePromise = (text) => {
-    return speak(text, { lang: 'zh-CN', rate: 0.9 })
+    return speak(text, { lang: 'zh-CN', rate: speechRate.value })
 }
 
 // 数组随机打乱
@@ -692,66 +844,6 @@ const shuffleArray = (array) => {
             ;[newArray[i], newArray[j]] = [newArray[j], newArray[i]]
     }
     return newArray
-}
-
-/**
- * 播放当前单词的中文发音（输入模式）
- * 根据 repeatCount 设置播放 1~3 遍，每遍间隔 playInterval 秒
- *
- * 2026-10-23 改：
- *  · 原来用 `speakChinese()` + `waitForSpeechEnd()` 轮询 speaking。
- *    一旦浏览器吞掉发声（cancel 后立刻 speak），`speaking` 一直是 false，
- *    轮询立刻 resolve，循环空转完就结束了 —— **有间隔、没声音**。
- *    现在直接 `await speak()`，成功了才算播完。
- *  · 失败要说话。原来是静默的，用户只看到按钮转了一圈。
- *  · `isPlaying` 用 try/finally 兜底，任何异常都不会把按钮永久卡在 loading。
- */
-const playCurrentWord = async () => {
-    if (!currentWord.value) return
-
-    // 停止当前播放
-    stopSpeaking()
-
-    const chinese = currentWord.value.translation
-    if (!chinese) {
-        ElMessage.warning('该单词没有中文释义')
-        return
-    }
-
-    isPlaying.value = true
-    try {
-        // 根据设置播放多次
-        for (let i = 0; i < repeatCount.value; i++) {
-            if (i > 0) {
-                await sleep(playInterval.value * 1000)
-            }
-            const res = await speakChinese(chinese)
-            if (res && res.ok === false) {
-                /*
-                 * ⚠️ 失败必须**立刻**提示并退出循环。
-                 *    原来只有 `return`，没有提示，而且外层还会继续下一轮 ——
-                 *    用户实测要等 15.5 秒才看到一行提示，期间毫无反应。
-                 *    现在第一发失败就报原因并停下，不做无意义的重播。
-                 */
-                if (res.reason !== 'interrupted' && res.reason !== 'canceled') {
-                    ElMessage.warning(speakReasonText(res.reason, 'zh-CN'))
-                }
-                return
-            }
-        }
-    } finally {
-        isPlaying.value = false
-    }
-}
-
-/**
- * 播放中文语音（内部方法）
- *
- * 2026-10-23 改：原实现自己 new SpeechSynthesisUtterance 并直接 speak，
- * 失败时 `onerror = () => resolve()` 把错误吞掉。现在交给统一的 speak()。
- */
-const speakChinese = (text) => {
-    return speak(text, { lang: 'zh-CN', rate: 0.9 })
 }
 
 /**
@@ -1377,6 +1469,91 @@ watch(() => isPracticing.value, (val) => {
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 
             /*
+             * 模式选择卡片（2026-10-26）
+             * -----------------------------------------------------------------
+             * 用卡片而不是 radio：三个模式差别大、各需一句说明，
+             * radio 那样一行排不下，用户也看不出「纯听力」和「自动听写」的区别。
+             */
+            .mode-picker {
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                margin-bottom: 22px;
+            }
+
+            .mode-card {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding: 12px 14px;
+                border: 1.5px solid #e5e7eb;
+                border-radius: 12px;
+                cursor: pointer;
+                transition: border-color .18s, background .18s, box-shadow .18s;
+
+                &:hover {
+                    border-color: #c7d2fe;
+                    background: #f8faff;
+                }
+
+                &.is-active {
+                    border-color: #3b82f6;
+                    background: #eff6ff;
+                    box-shadow: 0 0 0 3px rgba(59, 130, 246, .08);
+                }
+
+                .mode-card__icon {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 34px;
+                    height: 34px;
+                    flex: none;
+                    border-radius: 9px;
+                    background: #f1f5f9;
+                    color: #64748b;
+                }
+
+                &.is-active .mode-card__icon {
+                    background: #dbeafe;
+                    color: #2563eb;
+                }
+
+                .mode-card__title {
+                    font-size: 13.5px;
+                    font-weight: 600;
+                    color: #111827;
+                }
+
+                .mode-card__desc {
+                    margin-top: 1px;
+                    font-size: 12px;
+                    line-height: 1.5;
+                    color: #9ca3af;
+                }
+            }
+
+            /* 「不限时」说明条 */
+            .mode-note {
+                display: flex;
+                align-items: flex-start;
+                gap: 7px;
+                margin-top: 4px;
+                padding: 10px 12px;
+                border-radius: 10px;
+                background: #f8fafc;
+                font-size: 12.5px;
+                line-height: 1.55;
+                color: #64748b;
+
+                .el-icon {
+                    margin-top: 2px;
+                    flex: none;
+                    color: #94a3b8;
+                }
+            }
+
+            /*
              * 2026-10-26 重排
              * -----------------------------------------------------------------
              * 改前：`.setting-label` 是 `display: block`（标签独占一行），
@@ -1528,8 +1705,53 @@ watch(() => isPracticing.value, (val) => {
                 }
             }
 
+            /*
+             * 纯听力的题面（2026-10-26）
+             * 不显示释义/音标，只给一个问号占位 ——
+             * 否则用户直接照抄，听力练习失去意义。
+             */
+            .listen-question-mark {
+                font-size: 56px;
+                font-weight: 700;
+                line-height: 1;
+                color: #e2e8f0;
+                text-align: center;
+            }
+
+            .listen-question-hint {
+                margin-top: 6px;
+                font-size: 13px;
+                color: #9ca3af;
+                text-align: center;
+            }
+
             .input-section {
                 margin-bottom: 24px;
+            }
+
+            /*
+             * 纯听力模式的提示条（2026-10-26）
+             * 这个模式没有输入框，需要一句话告诉用户"现在该干什么"，
+             * 否则页面上只剩一个播放按钮和"下一题"，很容易懵。
+             */
+            .listen-tip {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                margin-bottom: 24px;
+                padding: 14px 16px;
+                border-radius: 12px;
+                background: #f8fafc;
+                border: 1px dashed #e2e8f0;
+                font-size: 13px;
+                color: #64748b;
+                text-align: center;
+
+                .el-icon {
+                    flex: none;
+                    color: #94a3b8;
+                }
             }
 
             .feedback-section {
