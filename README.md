@@ -156,7 +156,12 @@ Python 版按 `api / models / repositories / services` 重新组织，业务规�
 ### 方式一：本地部署（Docker，推荐自建）
 
 ```bash
+# GitHub
 git clone https://github.com/wufeng1234567/openstudy-fastapi-ts.git
+
+# GitCode（国内访问更快）
+git clone https://gitcode.com/qi142410131/openstudy-fastapi-ts.git
+
 cd openstudy-fastapi-ts
 docker compose up -d --build
 ```
