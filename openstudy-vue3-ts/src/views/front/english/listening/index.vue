@@ -1,23 +1,11 @@
 <template>
     <div class="listening-page">
         <!--
-          顶部导航栏
-          ⚠️ 2026-10-26：中间的「听力练习」标题已上移到全局顶栏
-             （`英语学习 · 单词听写` + 灰色副标题），这里删掉以免重复。
-             顺带把页面名统一为「单词听写」——侧边菜单和顶栏都是这个名字，
-             原来这里写「听力练习」会造成同一功能两个叫法。
+          2026-10-26：整行「< 返回」导航栏已删除。
+          顶栏已经显示 `英语学习 · 单词听写`，页面层级清晰，
+          再来一行返回栏只是重复占位（用户反馈「第二行多余了」）。
+          练习中的「结束练习」按钮仍可退出，返回逻辑保留在 `goBack()` 里备用。
         -->
-        <div class="page-header">
-            <div class="header-left" @click="goBack">
-                <el-icon>
-                    <ArrowLeft />
-                </el-icon>
-                <span>返回</span>
-            </div>
-            <div class="header-title"></div>
-            <div class="header-right"></div>
-        </div>
-
         <!-- 词库选择（未开始时显示） -->
         <div class="book-select-section" v-if="!isPracticing">
             <div class="select-label">选择词库</div>
@@ -25,6 +13,36 @@
                 @change="onBookChange">
                 <el-option v-for="book in bookOptions" :key="book.bookId" :label="book.bookName" :value="book.bookId" />
             </el-select>
+
+            <!--
+              2026-10-26 新增：未选词库时的空状态。
+              改前这里什么都没有 —— 整页只有一个下拉框，下方全空，
+              用户不知道下一步该干什么。现在给出明确指引。
+            -->
+            <div class="start-empty" v-if="!selectedBookId">
+                <div class="start-empty__icon">
+                    <el-icon :size="26">
+                        <Headset />
+                    </el-icon>
+                </div>
+                <p class="start-empty__title">先选一本词库</p>
+                <span class="start-empty__desc">
+                    选好后点「开始听写」，系统会念中文释义，你拼出对应的英文单词
+                </span>
+            </div>
+
+            <div class="start-empty" v-else-if="wordList.length === 0 && !loadingWords">
+                <div class="start-empty__icon">
+                    <el-icon :size="26">
+                        <Collection />
+                    </el-icon>
+                </div>
+                <p class="start-empty__title">这本词库还是空的</p>
+                <span class="start-empty__desc">先去「我的词库」往里加几个单词，再回来听写</span>
+                <el-button class="start-empty__btn" size="small" @click="router.push('/front/english/vocabulary')">
+                    去添加单词
+                </el-button>
+            </div>
 
             <!-- 词库统计 -->
             <!--
@@ -217,7 +235,7 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import {
     ArrowLeft, VideoPlay, VideoPause, ArrowRight,
-    CircleCheck, CircleClose
+    CircleCheck, CircleClose, Headset, Collection
 } from '@element-plus/icons-vue'
 import { listFrontWordBooks } from '@/api/wordBooks/wordBooks'
 import { listAllWords } from '@/api/words/words'
@@ -788,17 +806,12 @@ watch(() => isPracticing.value, (val) => {
         clearAutoNextTimer()  // ✅ 清除定时器
     }
 })
-// 返回
-// ⚠️ 2026-10-26：「英语学习」的入口首页已下线，返回目标改成「我的词库」
-//    （听写之前通常先去词库确认有哪些词书）。
-const goBack = () => {
-    if (isPracticing.value) {
-        stopPractice()
-    } else {
-        cacheStore.setLastVisited('english', 'vocabulary')
-        router.push('/front/english/vocabulary')
-    }
-}
+/*
+ * 原 `goBack()` 已删除（2026-10-26）
+ * ---------------------------------
+ * 返回栏从模板移除后它没有调用方了。练习中退出用「结束练习」按钮，
+ * 它内部会弹确认框并回到词库选择态，覆盖了唯一的退出需求。
+ */
 
 // 组件挂载：预热语音 + 加载词库
 onMounted(() => {
@@ -832,7 +845,15 @@ watch(() => isPracticing.value, (val) => {
 
 <style scoped lang="scss">
 .listening-page {
-    min-height: 100vh;
+    /*
+     * 2026-10-26：原来 `min-height: 100vh` 会让页面比可视区高一点
+     * （顶栏已占掉 52px），出现不必要的滚动条。改成 100%。
+     *
+     * ⚠️ 这里**不要**写 `align-items: center`：子元素已用
+     *    `max-width + margin: 0 auto` 水平居中，再叠一层 center
+     *    会因为 `width: 100%` 与 flex 收缩规则打架，实测整体偏右。
+     */
+    min-height: 100%;
     display: flex;
     flex-direction: column;
 
@@ -881,16 +902,68 @@ watch(() => isPracticing.value, (val) => {
 
     .book-select-section {
         flex: 1;
-        padding: 24px 20px;
-        max-width: 500px;
+        padding: 0;
+        max-width: 560px;
         margin: 0 auto;
         width: 100%;
-
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        /* 垂直方向也居中，避免内容全挤在页面顶部、下方一大片空白 */
+        min-height: calc(100vh - 220px);
         .select-label {
-            font-size: 14px;
-            font-weight: 500;
-            color: #1f2937;
-            margin-bottom: 12px;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: .02em;
+            color: #6b7280;
+            margin-bottom: 10px;
+        }
+
+        /*
+         * 空状态卡片（2026-10-26 新增）
+         * 改前未选词库时页面只有一个孤立下拉框，下方空无一物。
+         */
+        .start-empty {
+            margin-top: 28px;
+            padding: 44px 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: 6px;
+            background: #fff;
+            border: 1px dashed #e2e8f0;
+            border-radius: 16px;
+
+            .start-empty__icon {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 56px;
+                height: 56px;
+                margin-bottom: 6px;
+                border-radius: 14px;
+                background: #f1f5f9;
+                color: #94a3b8;
+            }
+
+            .start-empty__title {
+                margin: 0;
+                font-size: 15px;
+                font-weight: 600;
+                color: #374151;
+            }
+
+            .start-empty__desc {
+                max-width: 340px;
+                font-size: 13px;
+                line-height: 1.7;
+                color: #9ca3af;
+            }
+
+            .start-empty__btn {
+                margin-top: 10px;
+            }
         }
 
         .book-stats {

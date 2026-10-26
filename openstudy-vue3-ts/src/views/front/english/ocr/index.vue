@@ -1,38 +1,29 @@
 <template>
     <div class="ocr-page">
         <!--
-          顶部导航栏
-          ⚠️ 2026-10-26：中间的「拍照识词」标题已上移到全局顶栏
-             （`英语学习 · 拍照识词` + 灰色副标题），这里删掉以免重复。
-             左侧返回、右侧"已识别 N 个"仍有信息价值，保留。
-        -->
-        <div class="page-header">
-            <div class="header-left" @click="goBack">
-                <el-icon>
-                    <ArrowLeft />
-                </el-icon>
-                <span>返回</span>
-            </div>
-            <div class="header-title"></div>
-            <div class="header-right">
-                <span v-if="recognizedList.length > 0" class="word-count">
-                    已识别 {{ recognizedList.length }} 个
-                </span>
-            </div>
-        </div>
+          2026-10-26 改造（用户：「拍照识词第二行多余了 返回功能不需要了」）：
+          原来这里有一整行「< 返回」导航栏，但顶栏已经显示
+          `英语学习 · 拍照识词`，页面层级一目了然，返回按钮纯属重复。
 
-        <!-- 图片上传区域 -->
+          删掉后，页面直接进入上传区，并改成：
+            · 内容居中（`max-width` + `margin: auto`），不再挤在左上角；
+            · 空状态下用 `min-height` 把上传区垂直居中，避免下方大片灰白；
+            · 上传框放大，成为页面唯一视觉焦点。
+        -->
+        <!-- 图片上传 / 预览区 -->
         <div class="image-section">
             <div class="upload-wrapper">
                 <el-upload ref="uploadRef" :action="uploadUrl" :headers="uploadHeaders" :before-upload="beforeUpload"
                     :on-success="handleUploadSuccess" :on-error="handleUploadError" :show-file-list="false" :limit="1"
                     accept="image/png,image/jpeg,image/jpg" class="ocr-upload">
                     <div class="upload-area" v-if="!imageUrl">
-                        <el-icon :size="48">
-                            <Camera />
-                        </el-icon>
-                        <span class="upload-text">点击拍照或上传图片</span>
-                        <span class="upload-hint">支持 JPG、PNG 格式，不超过 10MB</span>
+                        <div class="upload-icon">
+                            <el-icon :size="40">
+                                <Camera />
+                            </el-icon>
+                        </div>
+                        <span class="upload-text">点击拍照或拖入图片</span>
+                        <span class="upload-hint">支持 JPG、PNG，不超过 10MB</span>
                     </div>
                 </el-upload>
 
@@ -219,13 +210,14 @@
             </div>
         </div>
 
-        <!-- 空状态 -->
-        <div class="empty-state" v-else-if="!imageUrl && !recognizing">
-            <el-icon :size="48">
-                <Picture />
-            </el-icon>
-            <span>上传图片后点击「开始识别」</span>
-        </div>
+        <!--
+          空状态已删除（2026-10-26）
+          ---------------------------
+          原来这里还有一块「上传图片后点击开始识别」的占位区，但它和上面的
+          上传框说的是同一件事（上传框里已经写着「点击拍照或拖入图片」）。
+          两块并排出现时，右边那块看起来像"坏掉了的空白区域"，
+          实际只是重复提示。保留上传框一个入口就够了。
+        -->
 
         <!-- 图片编辑模态框 -->
         <teleport to="body">
@@ -656,10 +648,9 @@ const resetRotation = () => {
 // 返回上一页
 // ⚠️ 2026-10-26：「英语学习」的入口首页已下线，返回目标改成第一个子页
 //    （拍照识词自己就是入口，所以返回「我的词库」—— 这是下一个最常去的页面）。
-const goBack = () => {
-    cacheStore.setLastVisited('english', 'vocabulary')
-    router.push('/front/english/vocabulary')
-}
+/*
+ * 原 `goBack()` 已删除（2026-10-26）：返回栏从模板移除后没有调用方。
+ */
 
 // 上传前校验
 const beforeUpload = (file) => {
@@ -1063,79 +1054,104 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
+/*
+ * 2026-10-26 视觉改造
+ * ---------------------------------------------------------------------------
+ * 改前（截图实测）：返回栏占掉一整行，上传框只有 200px 高、缩在左上角，
+ * 下方留着约 700px 的灰色空白 —— 整页看起来"什么都没做"。
+ *
+ * 改后：
+ *   · 去掉 `.page-header`（返回栏已从模板删除）；
+ *   · 内容用 `max-width: 920px` + `margin: 0 auto` 居中，
+ *     不再贴着左边、右侧空出一大块；
+ *   · 空状态时用 `flex: 1` + 垂直居中把上传区撑到页面中部，
+ *     上传框高度改为 `clamp(240px, 38vh, 360px)`，成为视觉主体。
+ */
 .ocr-page {
-    min-height: 100vh;
+    min-height: 100%;
     background: #f5f7fa;
     display: flex;
     flex-direction: column;
+    padding: 24px clamp(16px, 4vw, 48px) 40px;
+    /* 内容整体居中，避免在大屏上贴着左边 */
+    align-items: center;
+
+    > * {
+        width: 100%;
+        max-width: 920px;
+    }
 
     .page-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 16px 20px;
-        background: #fff;
-        border-bottom: 1px solid #e4e7ed;
-
-        .header-left {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            color: #666;
-            cursor: pointer;
-            font-size: 15px;
-
-            &:hover {
-                color: #409eff;
-            }
-        }
-
-        .header-title {
-            font-size: 18px;
-            font-weight: 600;
-            color: #1a1a1a;
-        }
-
-        .header-right {
-            .word-count {
-                font-size: 14px;
-                color: #409eff;
-                font-weight: 500;
-            }
-        }
+        display: none; /* 模板里已删除，这里兜底防止残留样式撑高 */
     }
 
     .image-section {
-        padding: 20px;
-        background: #fff;
-        margin-bottom: 12px;
+        padding: 0;
+        background: transparent;
+        margin-bottom: 16px;
 
         .upload-wrapper {
+            /*
+             * ⚠️ `el-upload` 默认是 `display: inline-block` + 宽度随内容，
+             *    只给内层 `.upload-area` 设 `width: 100%` 没用 ——
+             *    外层撑不开，上传框就会缩成一条竖着的窄条（实测截图如此）。
+             *    必须把 upload 自身的触发器也撑满。
+             */
             .ocr-upload {
                 width: 100%;
+                display: block;
+            }
+
+            /* Element Plus 的触发器容器，默认 inline-block，同样要撑满 */
+            .ocr-upload :deep(.el-upload) {
+                width: 100%;
+                display: block;
             }
 
             .upload-area {
                 width: 100%;
-                min-height: 200px;
-                background: #fafafa;
-                border-radius: 16px;
-                border: 2px dashed #e4e7ed;
+                /* 空状态下占据页面主要视觉区域，而不是一条小方块 */
+                min-height: clamp(240px, 38vh, 360px);
+                background: #fff;
+                border-radius: 18px;
+                border: 2px dashed #dfe4ec;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
+                gap: 10px;
                 cursor: pointer;
-                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                transition: border-color .2s, background .2s, box-shadow .2s;
 
                 &:hover {
-                    border-color: #b3d8ff;
-                    background: #f0f7ff;
+                    border-color: #93c5fd;
+                    background: #f8fbff;
+                    box-shadow: 0 4px 16px rgba(59, 130, 246, .06);
+                }
+
+                /* 图标单独放进一个圆形底衬，比裸图标更有分量 */
+                .upload-icon {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 72px;
+                    height: 72px;
+                    margin-bottom: 4px;
+                    border-radius: 50%;
+                    background: #f1f5f9;
+                    color: #64748b;
+                    transition: background .2s, color .2s;
+                }
+
+                &:hover .upload-icon {
+                    background: #e8f2ff;
+                    color: #3b82f6;
                 }
 
                 .upload-text {
                     font-size: 15px;
-                    color: #666;
+                    font-weight: 500;
+                    color: #374151;
                     margin-top: 8px;
                 }
 

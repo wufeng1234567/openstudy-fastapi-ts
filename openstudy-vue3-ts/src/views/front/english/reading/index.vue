@@ -13,15 +13,10 @@
 <template>
   <div class="rd-page">
     <!--
-      ⚠️ 2026-10-26：标题与说明已上移到顶栏（`英语学习 · 阅读练习` + 灰色副标题）。
-         这里只保留返回按钮，避免同一标题在顶栏和内容区各出现一次。
+      2026-10-26：整行返回按钮已删除（用户：「返回功能不需要了」）。
+      顶栏已显示 `英语学习 · 阅读练习`，层级清晰。
+      生成设置卡片直接作为页面主体，居中并限制最大宽度。
     -->
-    <header class="rd-head">
-      <button type="button" class="rd-back" @click="goBack">
-        <OsIcon name="arrow-left" :size="16" />
-        <span>英语学习</span>
-      </button>
-    </header>
 
     <!-- 生成设置 -->
     <section v-if="!passage" class="rd-setup">
@@ -255,53 +250,45 @@ function reset() {
 }
 
 // ⚠️ 2026-10-26：「英语学习」的入口首页已下线，返回目标改成「我的词库」。
-function goBack() {
-  cacheStore.setLastVisited('english', 'vocabulary')
-  router.push('/front/english/vocabulary')
-}
+/*
+ * 原 `goBack()` 已删除（2026-10-26）：返回按钮已从模板移除，没有调用方。
+ */
 </script>
 
 <style scoped lang="scss">
+/*
+ * 2026-10-26 视觉改造
+ * ---------------------------------------------------------------------------
+ * 改前：返回按钮占一行，设置卡片贴着顶部，下方约 600px 全是空白。
+ * 改后：
+ *   · 去掉 `.rd-head`（返回栏已从模板删除）；
+ *   · 卡片居中、最大宽度收到 720px，读起来不散；
+ *   · 空状态下把设置卡片垂直居中，页面不再是"顶部一小块"。
+ *
+ * ⚠️ 不能用 `align-items: center` + `justify-content: center` 一起写在小容器上：
+ *    `max-width` + `margin: 0 auto` 已经负责水平居中，
+ *    再加 `align-items:center` 会把子元素按内容宽度收窄，反而偏右。
+ *    这里只做垂直居中。
+ */
 .rd-page {
-  max-width: 820px;
+  max-width: 720px;
   margin: 0 auto;
-  padding: 20px 20px 60px;
-}
-
-.rd-head {
+  padding: clamp(20px, 3vw, 36px) 20px 48px;
+  min-height: calc(100vh - 52px);
   display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  margin-bottom: 20px;
-}
-
-.rd-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 30px;
-  padding: 0 10px;
-  flex: none;
-  font-size: 13px;
-  font-family: inherit;
-  border: 1px solid var(--os-border, #e5e7eb);
-  border-radius: 7px;
-  background: #fff;
-  color: var(--os-text-2, #4b5563);
-  cursor: pointer;
-
-  &:hover {
-    border-color: var(--os-accent, #2563eb);
-    color: var(--os-accent, #2563eb);
-  }
+  flex-direction: column;
+  justify-content: center;
+  /* 卡片撑满容器宽度，而不是按内容收缩 */
+  align-items: stretch;
 }
 
 /* ---------- 设置 ---------- */
 .rd-setup {
-  padding: 18px;
+  padding: 24px;
   border: 1px solid var(--os-border, #e5e7eb);
-  border-radius: 12px;
+  border-radius: 16px;
   background: #fff;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
 }
 
 .rd-field {

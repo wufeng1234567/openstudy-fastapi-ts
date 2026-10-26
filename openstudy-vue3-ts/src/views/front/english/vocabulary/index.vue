@@ -17,25 +17,25 @@
 <template>
   <div class="vocab-page">
     <!--
-      ⚠️ 2026-10-26：标题与说明已上移到顶栏（`英语学习 · 我的词库` + 灰色副标题），
-         这里原来那行 `<h1>我的词库</h1> + <p>把要背的单词整理成词库…</p>`
-         会与顶栏重复，属于"同一个标题出现两次"。现在只保留右侧操作按钮。
+      2026-10-26 改造（用户：「这些页面都不是很美观 空白太多」）：
+      改前：标题行只剩一个按钮、孤零零挂在最右上角，和下面的搜索框完全脱节，
+            两块之间还夹着一片空白。
+      改后：搜索框与「新建词库」放进同一行（左搜右建），符合常见管理页习惯，
+            也顺手消掉了原来那行空白。
     -->
-    <header class="vp-head">
+    <div class="vp-toolbar">
+      <div class="vp-search">
+        <el-input
+          v-model="keyword"
+          placeholder="搜索词库名称"
+          clearable
+          :prefix-icon="Search"
+        />
+      </div>
       <button type="button" class="vp-new" @click="openCreate">
         <OsIcon name="plus" :size="15" />
         <span>新建词库</span>
       </button>
-    </header>
-
-    <!-- 搜索 -->
-    <div class="vp-search">
-      <el-input
-        v-model="keyword"
-        placeholder="搜索词库名称"
-        clearable
-        :prefix-icon="Search"
-      />
     </div>
 
     <!-- 列表 -->
@@ -314,21 +314,26 @@ onMounted(load)
 
 <style scoped lang="scss">
 .vocab-page {
-  max-width: 1000px;
+  max-width: 1080px;
   margin: 0 auto;
-  padding: 24px 20px 60px;
+  padding: clamp(20px, 3vw, 32px) 20px 56px;
 }
 
-/* ---------- 头部 ----------
- * 2026-10-26：标题/说明已上移顶栏，这行只剩右侧「新建词库」按钮。
- * 改成右对齐，避免按钮孤零零挂在左边。
+/* ---------- 工具栏（搜索 + 新建，同一行）----------
+ * 2026-10-26：原来「新建词库」孤零零一行挂在最右上角，和搜索框脱节。
+ * 现在放同一行：左搜索、右新建，符合常见管理页习惯。
  */
-.vp-head {
+.vp-toolbar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 20px;
-  margin-bottom: 16px;
+  justify-content: flex-start;
+  gap: 12px;
+  margin-bottom: 22px;
+
+  /* 按钮紧挨搜索框，而不是被推到屏幕最右边（实测那样看着很散） */
+  .vp-new {
+    margin-left: auto;
+  }
 }
 
 .vp-new {
@@ -355,13 +360,14 @@ onMounted(load)
 
 /* ---------- 搜索 ---------- */
 .vp-search {
+  flex: 1;
   max-width: 320px;
-  margin-bottom: 20px;
+  min-width: 160px;
 }
 
 /* ---------- 列表 ---------- */
 .vp-body {
-  min-height: 260px;
+  min-height: 300px;
 }
 
 .vp-group-title {
@@ -490,7 +496,9 @@ onMounted(load)
   align-items: center;
   justify-content: center;
   gap: 7px;
-  padding: 64px 20px;
+  /* 空态占满剩余高度，避免页面下方留一大片空白 */
+  min-height: clamp(320px, calc(100vh - 340px), 520px);
+  padding: 48px 20px;
   text-align: center;
   border: 1px dashed var(--os-border, #e5e7eb);
   border-radius: 14px;
