@@ -72,6 +72,43 @@
       </div>
     </section>
 
+    <!--
+      成绩汇总（2026-10-26 闭环）
+      -----------------------------------------------------------------
+      用户反馈过「阅读练习做完就没了」。改前答完每题只显示单题对错，
+      整篇练完既没有总分也没有任何留存，关掉页面什么也不剩。
+
+      现在：答完任意一题就出现这条汇总（实时更新），全部答完后
+      自动落库到 `english_practice_log`（mode=reading），
+      并给出「再练一篇 / 去听写 / 让 AI 分析」三个出口。
+    -->
+    <section v-if="questions.length && answeredCount > 0" class="rd-summary">
+      <div class="rd-summary__main">
+        <div class="rd-summary__score">
+          <span class="rd-summary__pct">{{ accuracy }}<i>%</i></span>
+          <span class="rd-summary__label">本篇正确率</span>
+        </div>
+        <div class="rd-summary__nums">
+          <span>已答 {{ answeredCount }} / {{ questions.length }}</span>
+          <span class="is-ok">对 {{ correctCount }}</span>
+          <span class="is-bad">错 {{ answeredCount - correctCount }}</span>
+        </div>
+      </div>
+
+      <div class="rd-summary__actions">
+        <el-button v-if="answeredCount === questions.length" type="primary" @click="retryWrongReading">
+          只重做错题（{{ wrongQuestions.length }}）
+        </el-button>
+        <el-button @click="reset">换一篇</el-button>
+        <el-button text @click="askAiForReadingAnalysis">让 AI 分析这篇</el-button>
+      </div>
+
+      <p v-if="answeredCount === questions.length && savedToHistory" class="rd-summary__saved">
+        <el-icon :size="13"><CircleCheck /></el-icon>
+        这次成绩已保存，可以在「学习统计」里看到
+      </p>
+    </section>
+
     <section v-if="questions.length" class="rd-questions">
       <div v-for="(q, qi) in questions" :key="qi" class="rd-q">
         <div class="rd-q__head">
@@ -115,6 +152,9 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import OsIcon from '@/components/OsIcon/index.vue'
 import { generateReadingComprehensionStream } from '@/api/ai/ai'
+// 阅读成绩落库（2026-10-26）：与听写共用同一张 english_practice_log
+import { submitPractice } from '@/api/words/words'
+import { CircleCheck } from '@element-plus/icons-vue'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
 
 const router = useRouter()
@@ -157,6 +197,9 @@ async function generate() {
   questions.value = []
   picks.value = {}
   revealed.value = {}
+  // 新的一篇 = 新的一次记录，放开幂等标记
+  readingSubmitted = false
+  savedToHistory.value = false
 
   try {
     await generateReadingComprehensionStream(
@@ -219,6 +262,104 @@ async function generate() {
 function choose(qi: number, oi: number) {
   picks.value = { ...picks.value, [qi]: oi }
   revealed.value = { ...revealed.value, [qi]: true }
+  // 答完最后一题自动落库（幂等：`readingSubmitted` 保证只提交一次）
+  if (Object.keys(picks.value).length === questions.value.length) {
+    void saveReadingRecord()
+  }
+}
+
+/* ============================================================================
+ * 阅读成绩闭环（2026-10-26）
+ *
+ * 改前：答完只显示单题对错，整篇练完没有总分、没有任何留存 ——
+ *       关掉页面就什么都不剩，也无法回顾「这篇我错在哪」。
+ *
+ * 改后：
+ *   · 已答 > 0 就出现实时汇总条（正确率 / 对几错几）；
+ *   · 全部答完自动 POST 到 `/words/practice/submit`（mode=reading）；
+ *   · 提交内容带逐题明细，智能体 `english_practice` 工具能读出
+ *     「阅读正确率趋势」和「常错题型」。
+ * ========================================================================== */
+
+const answeredCount = computed(() => Object.keys(picks.value).length)
+
+const correctCount = computed(
+  () => questions.value.filter((q: any, qi: number) => isCorrect(qi, q)).length
+)
+
+const accuracy = computed(() =>
+  answeredCount.value ? Math.round((correctCount.value * 100) / answeredCount.value) : 0
+)
+
+/** 答错的题（重做/分析用） */
+const wrongQuestions = computed(() =>
+  questions.value
+    .map((q: any, qi: number) => ({ q, qi }))
+    .filter(({ q, qi }) => revealed.value[qi] && !isCorrect(qi, q))
+)
+
+/** 是否已落库（避免重复提交） */
+const savedToHistory = ref(false)
+let readingSubmitted = false
+
+/** 提交本次阅读成绩 */
+async function saveReadingRecord() {
+  if (readingSubmitted) return
+  if (!questions.value.length) return
+  readingSubmitted = true
+
+  const total = questions.value.length
+  const correct = correctCount.value
+  try {
+    await submitPractice({
+      mode: 'reading',
+      title: requirement.value.trim().slice(0, 60) || '阅读练习',
+      total,
+      correct,
+      detail: questions.value.map((q: any, qi: number) => ({
+        word: String(q.questionText || q.title || `第 ${qi + 1} 题`).slice(0, 120),
+        input: picks.value[qi] !== undefined ? String.fromCharCode(65 + picks.value[qi]) : '',
+        ok: isCorrect(qi, q)
+      }))
+    })
+    savedToHistory.value = true
+  } catch (e) {
+    // 保存失败不影响用户看结果
+    readingSubmitted = false
+    console.warn('[reading] 成绩保存失败', e)
+  }
+}
+
+/** 只重做错题：清掉错题的作答记录，其余保留 */
+function retryWrongReading() {
+  const nextPicks = { ...picks.value }
+  const nextRevealed = { ...revealed.value }
+  wrongQuestions.value.forEach(({ qi }) => {
+    delete nextPicks[qi]
+    delete nextRevealed[qi]
+  })
+  picks.value = nextPicks
+  revealed.value = nextRevealed
+  // 重做算新的一次，允许再次落库
+  readingSubmitted = false
+  savedToHistory.value = false
+  ElMessage.success(`已清空 ${wrongQuestions.value.length} 道错题，可以重新作答`)
+}
+
+/** 交给智能体分析这篇阅读 */
+function askAiForReadingAnalysis() {
+  const wrongWords = wrongQuestions.value
+    .map(({ q, qi }) => `第${qi + 1}题「${String(q.questionText || q.title || '').slice(0, 40)}」`)
+    .join('；')
+  router.push({
+    path: '/front/agent/chat',
+    state: {
+      seedQuestion:
+        `我刚做完一篇英语阅读练习，正确率 ${accuracy.value}%（${correctCount.value}/${answeredCount.value}）。` +
+        (wrongWords ? `做错的是：${wrongWords}。` : '全部答对了。') +
+        '帮我分析一下我的薄弱点，以及接下来该练什么。'
+    } as any
+  })
 }
 
 /** 后端 answer 对选择题是「选项下标（0 起）」也可能是字母/文本，这里统一判 */
@@ -266,6 +407,9 @@ function reset() {
   picks.value = {}
   revealed.value = {}
   error.value = ''
+  // 重置闭环状态，否则下一篇会被当成「已提交」而不再落库
+  readingSubmitted = false
+  savedToHistory.value = false
 }
 
 // ⚠️ 2026-10-26：「英语学习」的入口首页已下线，返回目标改成「我的词库」。
@@ -458,6 +602,85 @@ function reset() {
 }
 
 /* ---------- 题目 ---------- */
+/*
+ * 成绩汇总条（2026-10-26 闭环）
+ * 答完任意一题就出现，实时更新；全部答完后下方追加"已保存"提示。
+ */
+.rd-summary {
+  margin-bottom: 16px;
+  padding: 16px 18px;
+  background: #fff;
+  border: 1px solid var(--os-border, #e5e7eb);
+  border-radius: 14px;
+}
+
+.rd-summary__main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.rd-summary__score {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rd-summary__pct {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+  color: #111827;
+
+  i {
+    font-style: normal;
+    font-size: 14px;
+    font-weight: 600;
+    color: #9ca3af;
+    margin-left: 2px;
+  }
+}
+
+.rd-summary__label {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.rd-summary__nums {
+  display: flex;
+  gap: 14px;
+  font-size: 13px;
+  color: #6b7280;
+
+  .is-ok {
+    color: #10b981;
+  }
+
+  .is-bad {
+    color: #ef4444;
+  }
+}
+
+.rd-summary__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.rd-summary__saved {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: #10b981;
+}
+
 .rd-questions {
   display: flex;
   flex-direction: column;

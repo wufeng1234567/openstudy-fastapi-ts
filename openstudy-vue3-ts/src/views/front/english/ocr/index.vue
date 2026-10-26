@@ -10,22 +10,56 @@
             · 空状态下用 `min-height` 把上传区垂直居中，避免下方大片灰白；
             · 上传框放大，成为页面唯一视觉焦点。
         -->
-        <!-- 图片上传 / 预览区 -->
+        <!-- 图片 / 文档上传（2026-10-26：accept 加上文档类型） -->
         <div class="image-section">
             <div class="upload-wrapper">
-                <el-upload ref="uploadRef" :action="uploadUrl" :headers="uploadHeaders" :before-upload="beforeUpload"
-                    :on-success="handleUploadSuccess" :on-error="handleUploadError" :show-file-list="false" :limit="1"
-                    accept="image/png,image/jpeg,image/jpg" class="ocr-upload">
-                    <div class="upload-area" v-if="!imageUrl">
+                <!--
+                  ⚠️ `auto-upload="false"`：文件类型不同，处理方式也不同
+                      （图片走多模态识别，文档走文本解析），
+                      必须在 `on-change` 里分流，不能让 el-upload 自动 POST 到 `/common/upload`。
+                -->
+                <el-upload ref="uploadRef" :auto-upload="false" :show-file-list="false" :limit="1"
+                    :on-change="handleFileChange"
+                    accept="image/png,image/jpeg,image/jpg,image/webp,.pdf,.doc,.docx,.md,.markdown,.txt"
+                    class="ocr-upload" drag>
+                    <div class="upload-area" v-if="!imageUrl && !parsedDocText">
                         <div class="upload-icon">
                             <el-icon :size="40">
-                                <Camera />
+                                <UploadFilled />
                             </el-icon>
                         </div>
-                        <span class="upload-text">点击拍照或拖入图片</span>
-                        <span class="upload-hint">支持 JPG、PNG，不超过 10MB</span>
+                        <span class="upload-text">拖入文件，或点击选择</span>
+                        <span class="upload-hint">
+                            图片（JPG / PNG / WebP）· 文档（PDF / Word / Markdown / TXT）
+                        </span>
                     </div>
                 </el-upload>
+
+                <!-- 文档已解析：显示文本摘要 + 预览（2026-10-26） -->
+                <div class="doc-panel" v-if="isDocMode && parsedDocText">
+                    <div class="doc-panel__head">
+                        <div class="doc-panel__icon">
+                            <el-icon :size="18"><Document /></el-icon>
+                        </div>
+                        <div class="doc-panel__meta">
+                            <div class="doc-panel__name">{{ docInfo?.name }}</div>
+                            <div class="doc-panel__stat">
+                                已提取 {{ docInfo?.chars }} 个字符
+                            </div>
+                        </div>
+                        <el-button text type="danger" size="small" @click="removeDoc">
+                            移除
+                        </el-button>
+                    </div>
+                    <pre class="doc-panel__preview">{{ parsedDocText.slice(0, 600) }}{{ parsedDocText.length > 600 ? '\n…' : '' }}</pre>
+                    <div class="doc-panel__actions">
+                        <el-button type="primary" @click="startDocExtract" :loading="recognizing">
+                            <el-icon v-if="!recognizing"><MagicStick /></el-icon>
+                            {{ recognizing ? 'AI 提取中…' : '让 AI 提取单词' }}
+                        </el-button>
+                        <span class="doc-panel__hint">AI 会从上面的文字里找出英文单词并配好中文释义</span>
+                    </div>
+                </div>
 
                 <!-- 图片预览 -->
                 <div class="image-preview" v-if="imageUrl">
@@ -73,13 +107,66 @@
             </div>
         </div>
 
-        <!-- 词库选择 -->
+        <!--
+          词库选择（2026-10-26 改造）
+          -----------------------------------------------------------------
+          用户反馈：「目前只能选择已有的词库，不能选择新的词库」。
+
+          改前：一个光秃秃的下拉框，只能从已有词库里挑。
+                第一次用的用户（或者想按主题新建一本的人）走到这里就卡住了 ——
+                他得先离开这个页面、去「我的词库」建一本、再回来重新识别一遍。
+
+          改后：下拉框右侧加「新建」按钮，直接在原地建库并选中，
+                识别结果不用重来。下拉里额外放一行「+ 新建词库」作为第二入口
+                （很多人会先点开下拉找，找不到才发现旁边有按钮）。
+        -->
         <div class="book-select-section" v-if="recognizedList.length > 0">
-            <div class="select-label">选择词库</div>
-            <el-select v-model="selectedBookId" placeholder="请选择词库" size="large" style="width: 100%"
-                @change="onBookChange">
-                <el-option v-for="book in bookOptions" :key="book.bookId" :label="book.bookName" :value="book.bookId" />
-            </el-select>
+            <div class="select-label">
+                选择词库
+                <span class="select-label__hint">导入前可以先建一本新的</span>
+            </div>
+
+            <div class="book-select-row">
+                <el-select v-model="selectedBookId" placeholder="请选择词库" size="large" class="book-select-el"
+                    @change="onBookChange">
+                    <el-option v-for="book in bookOptions" :key="book.bookId" :label="book.bookName"
+                        :value="book.bookId">
+                        <span class="book-option">
+                            <span class="book-option__name">{{ book.bookName }}</span>
+                            <span class="book-option__count">{{ book.wordCount || 0 }} 词</span>
+                        </span>
+                    </el-option>
+                    <!-- 下拉底部的新建入口 -->
+                    <el-option value="__create__" label="+ 新建词库" class="book-option-create" />
+                </el-select>
+
+                <el-button size="large" class="book-new-btn" @click="openCreateBook">
+                    <el-icon><Plus /></el-icon>
+                    新建
+                </el-button>
+            </div>
+
+            <!-- 新建词库弹窗 -->
+            <el-dialog v-model="createBookVisible" title="新建词库" width="420px" append-to-body
+                :close-on-click-modal="!creatingBook">
+                <el-form label-position="top" @submit.prevent>
+                    <el-form-item label="词库名称" required>
+                        <el-input v-model="createBookName" placeholder="例如：考研高频词、四级核心词"
+                            maxlength="50" show-word-limit clearable
+                            @keyup.enter="confirmCreateBook" />
+                    </el-form-item>
+                    <el-form-item label="一句话说明（可选）">
+                        <el-input v-model="createBookDesc" type="textarea" :rows="2"
+                            placeholder="例如：考研英语阅读常见词，偏学术语境" maxlength="120" show-word-limit />
+                    </el-form-item>
+                </el-form>
+                <template #footer>
+                    <el-button @click="createBookVisible = false" :disabled="creatingBook">取消</el-button>
+                    <el-button type="primary" @click="confirmCreateBook" :loading="creatingBook">
+                        创建并使用
+                    </el-button>
+                </template>
+            </el-dialog>
 
             <!-- 词库预览面板 -->
             <div class="book-preview" v-if="selectedBookId && bookPreview.total > 0">
@@ -338,12 +425,18 @@ import {
     View, ArrowDown, ArrowRight,
     DocumentCopy,
     // 闭环完成面板用的两个图标（2026-10-26）
-    CircleCheck, Headset
+    CircleCheck, Headset,
+    // 文档解析入口（2026-10-26）
+    UploadFilled, Document, MagicStick
 } from '@element-plus/icons-vue'
-import { getToken } from '@/utils/auth'
 import { ocrRecognize, ocrRecognizeStream } from '@/api/english/ocr'
-import { listFrontWordBooks } from '@/api/wordBooks/wordBooks'
+import { listFrontWordBooks, addWordBooks } from '@/api/wordBooks/wordBooks'
 import { addWords, batchAddWords, listWords } from '@/api/words/words'
+// 文档解析（2026-10-26）：后端 `/ai/question-bank/parse-files-blocks` 的封装，
+// 支持 PDF / DOCX / DOC / TXT / MD / PPTX / XLSX
+import { parseDocFile, isDocFile } from '@/utils/doc-parse'
+// 复用聊天助手的流式接口（scene=ocr），不另写一条
+import { assistantStream } from '@/api/ai/ai'
 
 import { Cropper } from 'vue-advanced-cropper'
 import 'vue-advanced-cropper/dist/style.css'
@@ -360,9 +453,14 @@ const router = useRouter()
 //    （词书归属由登录态决定），传了也被忽略。现在改走 listFrontWordBooks，这个变量没有调用方了。
 
 // 上传配置
-const baseUrl = import.meta.env.VITE_APP_BASE_API
-const uploadUrl = ref(baseUrl + '/common/upload')
-const uploadHeaders = ref({ Authorization: 'Bearer ' + getToken() })
+/*
+ * ⚠️ 2026-10-26：`uploadUrl` / `uploadHeaders` / `baseUrl` / `getToken` 全部删除。
+ *
+ *    它们原本服务于 `<el-upload :action="uploadUrl">` 的自动上传
+ *    （文件先 POST 到 `/common/upload` 拿 URL）。改成本地分流处理后
+ *    不再需要：图片用 `URL.createObjectURL()` 在浏览器内预览并保留 File，
+ *    文档走 `parseDocFile()` 解析，两者都不必先"上传"。
+ */
 
 // 响应式数据
 const uploadRef = ref(null)
@@ -373,6 +471,45 @@ const batchAdding = ref(false)
 const recognizedList = ref([])
 const bookOptions = ref([])
 const selectedBookId = ref(null)
+
+/* ============================================================================
+ * 新建词库（2026-10-26）
+ *
+ * 用户反馈：「目前只能选择已有的词库，不能选择新的词库」。
+ * 原来必须先去「我的词库」建一本再回来，识别结果白识别一遍。
+ * 现在在原地就能建，建完直接选中，识别结果不用重来。
+ * ========================================================================== */
+const createBookVisible = ref(false)
+const creatingBook = ref(false)
+const createBookName = ref('')
+const createBookDesc = ref('')
+
+/* ============================================================================
+ * 文档解析（2026-10-26 新增）
+ *
+ * 用户反馈：「不支持 pdf md txt word 之类的文件解析」。
+ *
+ * 改前：`accept="image/png,image/jpeg,image/jpg"` —— 只能传图片。
+ * 但后端其实早就有完整的文档解析能力
+ * （`POST /ai/question-bank/parse-files-blocks`，走 `services/file_parser.py`，
+ *  支持 PDF / DOCX / DOC / TXT / MD / PPTX / XLSX），
+ * 前端 `utils/doc-parse.ts` 也早就封装好了 `parseDocFile()` ——
+ * 只是这个页面没接。等于能力躺在仓库里没人用。
+ *
+ * 现在两种输入并存：
+ *   · 图片 → 走多模态大模型识别（原有）
+ *   · 文档 → 先解析出纯文本，再让大模型从文本里抽词条
+ *
+ * 为什么不把文档也塞给多模态模型：PDF/DOCX 是容器格式，
+ * 多模态接口只吃图片；而且文档里可能有几十页文本，
+ * 走纯文本抽取比让视觉模型"读"省几十倍 token。
+ * ========================================================================== */
+const parsedDocText = ref('')
+const parsingFile = ref(false)
+/** 当前处理的是文档而非图片 */
+const isDocMode = ref(false)
+/** 文档基本信息（展示用） */
+const docInfo = ref<{ name: string; chars: number } | null>(null)
 
 // 流式输出相关
 const streamContent = ref('')
@@ -773,29 +910,184 @@ const resetRotation = () => {
  * 原 `goBack()` 已删除（2026-10-26）：返回栏从模板移除后没有调用方。
  */
 
-// 上传前校验
-const beforeUpload = (file) => {
-    const isImage = file.type.startsWith('image/')
+// ==================== 文件入口（2026-10-26 重写） ====================
+/**
+ * 统一的文件处理入口：按类型分流
+ *
+ *   图片  → 读成 data URL 预览 + 保留 File（走多模态识别）
+ *   文档  → 调 `parseDocFile()` 解析出纯文本（走 AI 文本抽取）
+ *
+ * ⚠️ `auto-upload="false"` 是这个分流能成立的前提。
+ *    原来 el-upload 配了 `:action` + `:on-success`，文件会被它自己 POST 到
+ *    `/common/upload`，拿到一个 URL —— 那条路只对图片有意义。
+ *    文档不需要上传，需要的是**解析**，所以改成自己接 `on-change`。
+ */
+const handleFileChange = async (uploadFile: any) => {
+    const raw: File | undefined = uploadFile?.raw
+    if (!raw) return
+
+    // 大小限制：图片 10MB，文档 20MB（PDF 常见几十页，给宽一点）
+    const ext = (raw.name.split('.').pop() || '').toLowerCase()
+    const isDoc = isDocFile(raw.name, raw.type)
+    const limitMB = isDoc ? 20 : 10
+    if (raw.size / 1024 / 1024 > limitMB) {
+        ElMessage.error(`${isDoc ? '文档' : '图片'}大小不能超过 ${limitMB}MB`)
+        uploadRef.value?.clearFiles()
+        return
+    }
+
+    if (isDoc) {
+        await parseDocInput(raw)
+        return
+    }
+
+    // 图片分支
+    const isImage = (raw.type || '').startsWith('image/') ||
+        ['png', 'jpg', 'jpeg', 'webp', 'bmp'].includes(ext)
     if (!isImage) {
-        ElMessage.error('只能上传图片文件')
-        return false
+        ElMessage.error(`不支持的文件类型：.${ext}`)
+        uploadRef.value?.clearFiles()
+        return
     }
 
-    const isLt10M = file.size / 1024 / 1024 < 10
-    if (!isLt10M) {
-        ElMessage.error('图片大小不能超过 10MB')
-        return false
-    }
+    // 重置文档态
+    isDocMode.value = false
+    parsedDocText.value = ''
+    docInfo.value = null
 
-    selectedFile.value = file
-    return true
+    selectedFile.value = raw
+    imageUrl.value = URL.createObjectURL(raw)
+    rotation.value = 0
+    editedImageFile.value = null
+    imageScale.value = 1
+    imagePosition.value = { x: 0, y: 0 }
+    ElMessage.success('图片已就绪，点「开始识别」')
 }
 
+/**
+ * 解析文档（PDF / Word / Markdown / TXT …）
+ *
+ * 后端 `parse_file()` 支持 PDF / DOCX / DOC / TXT / MD / PPTX / XLSX，
+ * 前端 `parseDocFile()` 是它的封装。这里只负责：
+ *   ① 拿到纯文本；
+ *   ② 处理「解析出 0 字符」这种最常见的失败（扫描版 PDF / 空文档）；
+ *   ③ 把结果放进 `parsedDocText`，交给 `startDocExtract()` 抽词条。
+ */
+const parseDocInput = async (file: File) => {
+    parsingFile.value = true
+    try {
+        const parsed = await parseDocFile(file)
+        if (!parsed) {
+            ElMessage.error('文档解析失败，换个文件试试')
+            return
+        }
+        if (parsed.error) {
+            ElMessage.error(parsed.error)
+            return
+        }
+
+        const text = String(parsed.textContent || '').trim()
+        if (!text) {
+            /*
+             * 解析成功但一个字都没有 —— 最典型的是**扫描版 PDF**（图片层）。
+             * 这时纯文本抽取无能为力，得让用户走图片识别。
+             * 明确告诉他该怎么做，而不是只说"失败了"。
+             */
+            ElMessage.warning(
+                '这个文档里没有可提取的文字（可能是扫描版 PDF）。可以截图后按图片上传识别。'
+            )
+            return
+        }
+
+        isDocMode.value = true
+        parsedDocText.value = text
+        docInfo.value = { name: file.name, chars: text.length }
+        // 清掉图片态，两种模式互斥
+        imageUrl.value = ''
+        selectedFile.value = null
+        recognizedList.value = []
+
+        ElMessage.success(`已提取 ${text.length} 个字符，点「让 AI 提取单词」`)
+    } catch (error: any) {
+        console.error('文档解析失败:', error)
+        ElMessage.error('文档解析失败：' + (error?.message || error))
+    } finally {
+        parsingFile.value = false
+        uploadRef.value?.clearFiles()
+    }
+}
+
+/** 移除文档 */
+const removeDoc = () => {
+    isDocMode.value = false
+    parsedDocText.value = ''
+    docInfo.value = null
+    recognizedList.value = []
+    uploadRef.value?.clearFiles()
+}
+
+/**
+ * 从文档文本里抽词条
+ *
+ * 走和多模态识别**同一个** scene=`ocr` 的流式接口 ——
+ * 该场景的提示词就是"输出词条 JSON 数组"，只是这次喂的是文本而不是图片。
+ * 复用同一条链路的好处：解析、渲染、导入、去重全都不用再写一遍。
+ */
+const startDocExtract = async () => {
+    if (!parsedDocText.value.trim()) {
+        ElMessage.warning('没有可提取的文字')
+        return
+    }
+
+    recognizing.value = true
+    recognizedList.value = []
+    streamContent.value = ''
+    resultViewMode.value = 'words'
+
+    const prompt = `下面是一份英语学习材料，请从中提取英文单词 / 词组，输出 JSON 数组。
+每个元素包含 english（英文）、chinese（中文释义）、phonetic（音标，可空）。
+只提取真正值得背的词条，跳过人名、语法术语和明显无关的内容。
+如果材料里已经带了中文释义，优先沿用材料里的释义。
+
+【材料开始】
+${parsedDocText.value.slice(0, 12000)}
+【材料结束】`
+
+    try {
+        await assistantStream(
+            prompt,
+            (full) => {
+                streamContent.value = full
+            },
+            (full) => {
+                streamContent.value = full
+                recognizing.value = false
+                parseStreamResult(full)
+            },
+            (err: any) => {
+                console.error('文档提取失败:', err)
+                ElMessage.error('AI 提取失败：' + (err?.message || err))
+                recognizing.value = false
+            },
+            undefined,
+            undefined,
+            undefined,
+            // 空 sessionId：一次性生成，不写聊天历史
+            '',
+            undefined,
+            { scene: 'ocr' }
+        )
+    } catch (e: any) {
+        console.error('文档提取异常:', e)
+        ElMessage.error('AI 提取失败')
+        recognizing.value = false
+    }
+}
 
 
 // 上传失败
 const handleUploadError = () => {
-    ElMessage.error('图片上传失败')
+    ElMessage.error('文件处理失败')
 }
 
 // 删除图片
@@ -808,20 +1100,6 @@ const removeImage = () => {
     imageScale.value = 1
     imagePosition.value = { x: 0, y: 0 }
     uploadRef.value?.clearFiles()
-}
-
-// 上传成功
-const handleUploadSuccess = (response) => {
-    if (response.code === 200) {
-        imageUrl.value = baseUrl + response.fileName
-        rotation.value = 0
-        editedImageFile.value = null
-        imageScale.value = 1
-        imagePosition.value = { x: 0, y: 0 }
-        ElMessage.success('图片上传成功')
-    } else {
-        ElMessage.error(response.msg || '上传失败')
-    }
 }
 
 // ==================== 开始 OCR 识别（流式输出） ====================
@@ -1127,6 +1405,7 @@ const loadBookOptions = async () => {
             bookOptions.value = response.rows || []
             if (bookOptions.value.length > 0) {
                 selectedBookId.value = bookOptions.value[0].bookId
+                previousBookId.value = selectedBookId.value
                 // 加载第一个词库的预览
                 loadBookPreview(selectedBookId.value)
             }
@@ -1140,9 +1419,95 @@ const loadBookOptions = async () => {
 
 
 // 词库切换时加载预览
+/*
+ * ⚠️ 下拉里混了一个「+ 新建词库」选项（value = '__create__'）。
+ *    它必须在这里被拦下来：`v-model` 会先把 `selectedBookId` 改成 '__create__'，
+ *    如果直接往下走，`loadBookPreview('__create__')` 会拿一个非数字去请求后端 → 422。
+ *    处理完把 `selectedBookId` 还原成原来那本，再打开新建弹窗。
+ */
 const onBookChange = (bookId) => {
+    if (bookId === '__create__') {
+        // 还原选择：新建完才真正切换
+        selectedBookId.value = previousBookId.value
+        openCreateBook()
+        return
+    }
+    previousBookId.value = bookId
     if (bookId) {
         loadBookPreview(bookId)
+    }
+}
+
+/** 上一次选中的词库 id（用于「+ 新建词库」被点中时还原选择） */
+const previousBookId = ref(null)
+
+/** 打开新建词库弹窗 */
+const openCreateBook = () => {
+    createBookName.value = ''
+    createBookDesc.value = ''
+    createBookVisible.value = true
+}
+
+/**
+ * 真正创建词库并选中
+ *
+ * 建完立刻：
+ *   ① 塞进 `bookOptions` 顶部（不用重新拉列表，省一次请求，也能马上看到）；
+ *   ② 选中它并加载预览（此时是空的，预览会显示"共 0 条"，属正常）；
+ *   ③ 清空识别结果里的 `bookId` 旧值 ——
+ *      识别时每张卡片会带一个 `word.bookId`，如果那个值还指向旧词库，
+ *      单个「添加」会绕开刚选的新词库走旧值（`word.bookId || selectedBookId`）。
+ */
+const confirmCreateBook = async () => {
+    const name = createBookName.value.trim()
+    if (!name) {
+        ElMessage.warning('请填写词库名称')
+        return
+    }
+    // 重名检查：词库名不唯一，但用户建两本同名的自己也会懵
+    if (bookOptions.value.some((b) => String(b.bookName) === name)) {
+        ElMessage.warning(`已经有叫「${name}」的词库了，换个名字或直接选中那本`)
+        return
+    }
+
+    creatingBook.value = true
+    try {
+        const res = await addWordBooks({
+            bookName: name,
+            bookDescription: createBookDesc.value.trim() || undefined
+        })
+        if (res.code !== 200) {
+            ElMessage.error(res.msg || '创建词库失败')
+            return
+        }
+
+        /*
+         * 后端 `POST /wordBooks/wordBooks` 只返回 `{code, msg}` —— **不带新书的 id**
+         * （见 `api/v1/words.py`）。所以不能直接用返回值，得重新拉一次列表，
+         * 按名字倒查 id，再选中它。多一次请求，但可靠。
+         */
+        const list = await listFrontWordBooks()
+        if (list.code === 200) {
+            bookOptions.value = list.rows || []
+            const created = bookOptions.value.find((b) => String(b.bookName) === name)
+            if (created) {
+                selectedBookId.value = created.bookId
+                previousBookId.value = created.bookId
+                loadBookPreview(created.bookId)
+            }
+            // 识别结果里已有的 `bookId` 全部指向新书，避免单个「添加」走旧值
+            recognizedList.value.forEach((w) => {
+                w.bookId = created?.bookId ?? w.bookId
+            })
+        }
+
+        createBookVisible.value = false
+        ElMessage.success(`已创建词库「${name}」并选中`)
+    } catch (error) {
+        console.error('创建词库失败:', error)
+        ElMessage.error('创建词库失败')
+    } finally {
+        creatingBook.value = false
     }
 }
 
@@ -1245,6 +1610,87 @@ onMounted(() => {
             .ocr-upload :deep(.el-upload) {
                 width: 100%;
                 display: block;
+            }
+
+            /*
+             * 文档解析面板（2026-10-26）
+             * -----------------------------------------------------
+             * 文档和图片是两条不同的路：图片进多模态识别，
+             * 文档先解析出文本再让 AI 抽词条。这块把「解析出来了什么、
+             * 下一步点什么」摆清楚，避免用户面对一大段文字不知所措。
+             */
+            .doc-panel {
+                background: #fff;
+                border: 1px solid #e5e7eb;
+                border-radius: 16px;
+                overflow: hidden;
+            }
+
+            .doc-panel__head {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding: 14px 18px;
+                border-bottom: 1px solid #f1f5f9;
+            }
+
+            .doc-panel__icon {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 34px;
+                height: 34px;
+                flex: none;
+                border-radius: 9px;
+                background: #eff6ff;
+                color: #2563eb;
+            }
+
+            .doc-panel__meta {
+                flex: 1;
+                min-width: 0;
+            }
+
+            .doc-panel__name {
+                font-size: 13.5px;
+                font-weight: 600;
+                color: #111827;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .doc-panel__stat {
+                margin-top: 2px;
+                font-size: 12px;
+                color: #9ca3af;
+            }
+
+            .doc-panel__preview {
+                max-height: 200px;
+                margin: 0;
+                padding: 16px 18px;
+                overflow-y: auto;
+                background: #fafbfc;
+                font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                font-size: 12.5px;
+                line-height: 1.7;
+                color: #4b5563;
+                white-space: pre-wrap;
+                word-break: break-word;
+            }
+
+            .doc-panel__actions {
+                display: flex;
+                align-items: center;
+                gap: 14px;
+                padding: 14px 18px;
+                border-top: 1px solid #f1f5f9;
+            }
+
+            .doc-panel__hint {
+                font-size: 12.5px;
+                color: #9ca3af;
             }
 
             .upload-area {
@@ -1372,10 +1818,48 @@ onMounted(() => {
         margin-bottom: 12px;
 
         .select-label {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
             font-size: 14px;
             font-weight: 500;
             color: #333;
             margin-bottom: 8px;
+
+            .select-label__hint {
+                font-size: 12px;
+                font-weight: 400;
+                color: #9ca3af;
+            }
+        }
+
+        /* 「下拉 + 新建按钮」同一行（2026-10-26） */
+        .book-select-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+
+            .book-select-el {
+                flex: 1;
+                min-width: 0;
+            }
+
+            .book-new-btn {
+                flex: none;
+            }
+        }
+
+        /* 下拉选项：名字靠左、词数靠右 */
+        .book-option {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+
+            .book-option__count {
+                font-size: 12px;
+                color: #9ca3af;
+            }
         }
 
         .book-preview {
