@@ -130,6 +130,65 @@
             </div>
         </div>
 
+        <!--
+          导入完成面板（2026-10-26 闭环）
+          --------------------------------
+          用户点「一键导入全部」成功后，原来只是清空列表就"断"了 ——
+          加完词不知道该干什么。这里给出三个明确的下一步。
+        -->
+        <div class="done-panel" v-if="donePanel && !recognizing">
+            <div class="done-panel__icon">
+                <el-icon :size="30">
+                    <CircleCheck />
+                </el-icon>
+            </div>
+            <h3 class="done-panel__title">已成功添加 {{ donePanel.count }} 个单词</h3>
+            <p class="done-panel__desc">
+                都加进了「{{ donePanel.bookName }}」。接下来可以：
+            </p>
+            <div class="done-panel__actions">
+                <el-button type="primary" size="large" @click="goListeningNow">
+                    <el-icon><Headset /></el-icon>
+                    马上听写这些词
+                </el-button>
+                <el-button size="large" @click="goBookDetail">
+                    去词库看看
+                </el-button>
+                <el-button size="large" text @click="restartOcr">
+                    再识别一张
+                </el-button>
+            </div>
+        </div>
+
+        <!--
+          底部引导区（2026-10-26）
+          -------------------------
+          截图实测：上传框只占上半屏，下半屏约 400px 是纯白空白，
+          整页看起来"没做完"。
+          这里补一条轻量的使用说明 + 直达入口，把空白变成有用的东西。
+        -->
+        <div class="ocr-tips" v-if="!imageUrl && !recognizing && !recognizedList.length && !donePanel">
+            <div class="tips-head">怎么用</div>
+            <ol class="tips-steps">
+                <li>
+                    <span class="tips-num">1</span>
+                    <span>拍照或拖入一张带英文的图片（课本、笔记、试卷都行）</span>
+                </li>
+                <li>
+                    <span class="tips-num">2</span>
+                    <span>点「开始识别」，AI 会读出上面的单词并配好中文释义</span>
+                </li>
+                <li>
+                    <span class="tips-num">3</span>
+                    <span>确认无误后一键导入词库，直接开始听写</span>
+                </li>
+            </ol>
+            <div class="tips-foot">
+                已经有词库了？
+                <a class="tips-link" @click="router.push('/front/english/vocabulary')">去我的词库看看</a>
+            </div>
+        </div>
+
         <!-- 流式识别中 -->
         <div class="stream-loading" v-if="recognizing">
             <div class="stream-loading-header">
@@ -277,7 +336,9 @@ import {
     ArrowLeft, Camera, Search, Picture, Delete, Plus, Loading,
     RefreshRight, ZoomIn, ZoomOut, Refresh, Close, Switch, Download,
     View, ArrowDown, ArrowRight,
-    DocumentCopy
+    DocumentCopy,
+    // 闭环完成面板用的两个图标（2026-10-26）
+    CircleCheck, Headset
 } from '@element-plus/icons-vue'
 import { getToken } from '@/utils/auth'
 import { ocrRecognize, ocrRecognizeStream } from '@/api/english/ocr'
@@ -316,6 +377,66 @@ const selectedBookId = ref(null)
 // 流式输出相关
 const streamContent = ref('')
 const resultViewMode = ref('words') // 'words' | 'json'
+
+/**
+ * 导入完成面板（2026-10-26 闭环）
+ * ---------------------------------
+ * 记录"刚把 N 个词加进了哪本词库"，用于渲染完成后的下一步入口。
+ * 为 null 表示没有待展示的完成态。
+ */
+const donePanel = ref<{ bookId: number | null; bookName: string; count: number } | null>(null)
+
+/** 导入成功后切到完成面板 */
+function showDonePanel(bookId: number | null, count: number) {
+    const book = bookOptions.value.find((b: any) => b.bookId === bookId)
+    donePanel.value = {
+        bookId: bookId || null,
+        bookName: book?.bookName || '词库',
+        count
+    }
+    /*
+     * ⚠️ 2026-10-26：导入成功后要把图片预览收起来。
+     *
+     *    截图实测：图片预览占着上半屏（约 400px），完成面板被挤到下面，
+     *    用户得滚动才能看到"已成功添加" —— 明明闭环做完了，却像没反应。
+     *
+     *    这里清掉预览（图片已经识别完、词也加进库了，留着没有意义），
+     *    让完成面板独占视野。
+     */
+    imageUrl.value = ''
+    selectedFile.value = null
+    streamContent.value = ''
+    const input = document.querySelector('.ocr-upload input[type=file]') as HTMLInputElement | null
+    if (input) input.value = ''
+}
+
+/** 去词库详情看刚加的词 */
+function goBookDetail() {
+    const id = donePanel.value?.bookId
+    if (!id) {
+        router.push('/front/english/vocabulary')
+        return
+    }
+    router.push(`/front/english/vocabulary/${id}`)
+}
+
+/** 直接开始听写（刚加的词就在这本词库里） */
+function goListeningNow() {
+    // 听写页当前不读 query 选词库，这里先跳过去，用户在那里选同一本即可
+    router.push('/front/english/listening')
+}
+
+/** 再识别一张：把页面恢复到初始态 */
+function restartOcr() {
+    donePanel.value = null
+    recognizedList.value = []
+    streamContent.value = ''
+    imageUrl.value = ''
+    selectedFile.value = null
+    resultViewMode.value = 'words'
+    const input = document.querySelector('.ocr-upload input[type=file]') as HTMLInputElement | null
+    if (input) input.value = ''
+}
 
 // 格式化后的 JSON
 const formattedStreamJson = computed(() => {
@@ -921,6 +1042,10 @@ const addSingleWord = async (word, index) => {
         if (response.code === 200) {
             ElMessage.success(`"${word.english}" 添加成功`)
             recognizedList.value.splice(index, 1)
+            // 全部加完时给出闭环出口
+            if (recognizedList.value.length === 0) {
+                showDonePanel(wordData.bookId || selectedBookId.value, 1)
+            }
         } else {
             ElMessage.error(response.msg || '添加失败')
         }
@@ -963,8 +1088,22 @@ const addAllWords = async () => {
     try {
         const response = await batchAddWords(selectedBookId.value, batchData)
         if (response.code === 200) {
-            ElMessage.success(`成功添加 ${batchData.length} 个词条`)
+            const bookId = selectedBookId.value
+            const count = batchData.length
+            ElMessage.success(`成功添加 ${count} 个词条`)
             recognizedList.value = []
+            /*
+             * 2026-10-26 闭环（用户：「要形成闭环」）
+             * -------------------------------------
+             * 原来导入成功后只是把列表清空 —— 用户加完词就"断"在那里，
+             * 不知道接下来该干什么，也没法直接去背这些词。
+             *
+             * 现在导入成功会切到一个「完成面板」，给出三个下一步：
+             *   · 去词库看/继续加词
+             *   · 直接开始听写（刚加的词就是练习内容）
+             *   · 再识别一张
+             */
+            showDonePanel(bookId, count)
         } else {
             ElMessage.error(response.msg || '批量添加失败')
         }
@@ -1473,6 +1612,124 @@ onMounted(() => {
 
     .loading-state {
         color: #409eff;
+    }
+
+    /*
+     * 导入完成面板（2026-10-26 闭环）
+     * 导入成功后取代上传区，给三个明确的下一步。
+     */
+    .done-panel {
+        margin-top: 8px;
+        padding: 48px 28px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 16px;
+
+        .done-panel__icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 64px;
+            height: 64px;
+            margin-bottom: 14px;
+            border-radius: 50%;
+            background: #ecfdf5;
+            color: #10b981;
+        }
+
+        .done-panel__title {
+            margin: 0 0 6px;
+            font-size: 18px;
+            font-weight: 600;
+            color: #111827;
+        }
+
+        .done-panel__desc {
+            margin: 0 0 22px;
+            font-size: 13.5px;
+            color: #6b7280;
+        }
+
+        .done-panel__actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+    }
+
+    /*
+     * 底部使用说明（2026-10-26）
+     * 填掉上传框下方那块纯白空白，顺带告诉第一次来的人怎么用。
+     */
+    .ocr-tips {
+        margin-top: 18px;
+        padding: 20px 24px;
+        background: #fff;
+        border: 1px solid #eef1f5;
+        border-radius: 14px;
+
+        .tips-head {
+            margin-bottom: 12px;
+            font-size: 12.5px;
+            font-weight: 600;
+            letter-spacing: .02em;
+            color: #9ca3af;
+        }
+
+        .tips-steps {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+
+            li {
+                display: flex;
+                align-items: flex-start;
+                gap: 10px;
+                font-size: 13.5px;
+                line-height: 1.6;
+                color: #4b5563;
+            }
+
+            .tips-num {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 20px;
+                height: 20px;
+                flex: none;
+                margin-top: 1px;
+                border-radius: 50%;
+                background: #f1f5f9;
+                color: #64748b;
+                font-size: 11.5px;
+                font-weight: 600;
+            }
+        }
+
+        .tips-foot {
+            margin-top: 14px;
+            padding-top: 14px;
+            border-top: 1px dashed #eef1f5;
+            font-size: 13px;
+            color: #9ca3af;
+        }
+
+        .tips-link {
+            color: #3b82f6;
+            cursor: pointer;
+
+            &:hover {
+                text-decoration: underline;
+            }
+        }
     }
 
     // 流式识别中
