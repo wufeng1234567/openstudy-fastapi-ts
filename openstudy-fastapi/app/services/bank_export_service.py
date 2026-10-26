@@ -271,8 +271,268 @@ def _inline_text(fragment: str) -> str:
     return "\n".join(lines).strip()
 
 
-#: 一个"块" = 一段文字 或 一张图，按 HTML 里出现的先后顺序排列
-Block = Tuple[str, Any]  # ("text", str) | ("image", src)
+#: 一个"块" = 一段文字 / 一张图 / 一个表格，按 HTML 里出现的先后顺序排列
+#:
+#: ```python
+#: ("text",  str)
+#: ("image", src)
+#: ("table", TableData)      # 2026-10-26 v3 新增
+#: ```
+#:
+#: `TableData` 是 `{"headers": [str], "rows": [[str]], "align": [str]}`，
+#: 单元格里允许出现**裸 LaTeX**（渲染时再由 `_add_segments` / 公式层处理）。
+Block = Tuple[str, Any]  # ("text", str) | ("image", src) | ("table", TableData)
+
+#: 表格的数据结构
+#:
+#: · `headers` 为空列表表示这张表**没有表头**（纯数据表），此时不画表头底纹
+#: · `rows` 每行的列数必须与 `headers`（或第一行）一致 —— 由 `_normalize_table` 保证
+TableData = Dict[str, Any]
+
+
+#: 单个 `<table ...>`（不嵌套；嵌套表格由 `_parse_html_table` 内部拍平）
+_RE_HTML_TABLE = re.compile(r"<table\b[^>]*>(.*?)</table\s*>", re.I | re.S)
+_RE_TR = re.compile(r"<tr\b[^>]*>(.*?)</tr\s*>", re.I | re.S)
+_RE_TH = re.compile(r"<t[hd]\b([^>]*)>(.*?)</t[hd]\s*>", re.I | re.S)
+_RE_COLSPAN = re.compile(r"colspan\s*=\s*[\"']?(\d+)", re.I)
+_RE_ROWSPAN = re.compile(r"rowspan\s*=\s*[\"']?(\d+)", re.I)
+
+#: Markdown 表格的可选对齐行：`| --- | :--: | --: |`
+_RE_MD_ALIGN_CELL = re.compile(r"^:?-{1,}:?$")
+
+
+def _clean_cell(raw: str) -> str:
+    """把单元格 HTML/文本清成单行可用文本（保留行内公式与换行折叠）"""
+    s = _RE_BR.sub(" ", raw or "")
+    s = _RE_TAG.sub("", s)
+    s = _html.unescape(s)
+    s = s.replace("\r", " ").replace("\n", " ")
+    return " ".join(s.split())
+
+
+def _normalize_table(headers: List[str], rows: List[List[str]], align: Optional[List[str]] = None) -> TableData:
+    """
+    把表格规整成固定列宽结构
+
+    Markdown 来源经常出现「某一行列数少一个」的情况（手写的表尤其常见），
+    docx / reportlab 的表格都要求**每行列数一致**，否则会崩或错列。
+    这里统一补齐 + 裁剪，保证下游不用再判。
+    """
+    ncol = max([len(headers)] + [len(r) for r in rows]) if (headers or rows) else 0
+    if ncol == 0:
+        return {"headers": [], "rows": [], "align": []}
+    h = list(headers) + [""] * (ncol - len(headers))
+    rr = [list(r) + [""] * (ncol - len(r)) for r in rows]
+    al = list(align or []) + [""] * (ncol - len(align or []))
+    return {"headers": h, "rows": rr, "align": al[:ncol]}
+
+
+def _parse_html_table(inner: str) -> Optional[TableData]:
+    """
+    解析 `<table>` 内部 → TableData
+
+    支持：
+      · `<th>` 表头行（全 `<th>` 且是第一行 → 当表头）
+      · `colspan` 横向合并（用空串占位，视觉上等价）
+      · `rowspan` 纵向合并（同样占位；真正的纵向合并 OMML 写起来风险高，
+        这里选择"内容不会丢"，而不是"格子一定合并" —— 后者会让单元格错位）
+      · 嵌套表格拍平成文本（外层列数不变）
+    """
+    rows_raw = _RE_TR.findall(inner)
+    if not rows_raw:
+        return None
+
+    headers: List[str] = []
+    rows: List[List[str]] = []
+    first = True
+
+    for tr_inner in rows_raw:
+        cells = _RE_TH.findall(tr_inner)
+        if not cells:
+            continue
+        texts: List[str] = []
+        for attrs, cell_inner in cells:
+            span_m = _RE_COLSPAN.search(attrs or "")
+            span = int(span_m.group(1)) if span_m else 1
+            span = max(1, min(span, 20))
+            texts.append(_clean_cell(cell_inner))
+            # colspan：额外补空单元格，保证列数对齐（不合并，但内容不丢、不错列）
+            for _ in range(span - 1):
+                texts.append("")
+        # 第一行且全是 `<th>` → 表头
+        if first and _row_is_header(tr_inner):
+            headers = texts
+            first = False
+            continue
+        rows.append(texts)
+        first = False
+
+    if not headers and not rows:
+        return None
+    return _normalize_table(headers, rows)
+
+
+def _row_is_header(tr_inner: str) -> bool:
+    """这一行是不是表头：所有单元格都是 `<th>`"""
+    ths = re.findall(r"<th\b", tr_inner, re.I)
+    tds = re.findall(r"<td\b", tr_inner, re.I)
+    return bool(ths) and not tds
+
+
+def _parse_md_table(lines: List[str]) -> Optional[TableData]:
+    """
+    解析 Markdown 表格 → TableData
+
+    形如：
+        | X\\Y | 0 | 1 |
+        | --- | --- | --- |
+        | 0   | 0.1 | 0.3 |
+
+    对齐行（`---` / `:---:` / `---:`）同时决定列对齐：
+        `:--:` → center，`--:` → right，其余 → left
+    """
+    if len(lines) < 2:
+        return None
+
+    def _cells(line: str) -> List[str]:
+        s = line.strip()
+        if s.startswith("|"):
+            s = s[1:]
+        if s.endswith("|"):
+            s = s[:-1]
+        # 单元格内的 `\|` 是转义的竖线，不能被切开
+        parts = re.split(r"(?<!\\)\|", s)
+        return [p.replace("\\|", "|").strip() for p in parts]
+
+    header = _cells(lines[0])
+    sep = _cells(lines[1])
+
+    # 第二行的每一格都必须是 `---` 形态，才认作 Markdown 表格
+    if not sep or not all(_RE_MD_ALIGN_CELL.match(c.replace(" ", "")) for c in sep if c):
+        return None
+    if not all(_RE_MD_ALIGN_CELL.match(c.replace(" ", "")) for c in sep):
+        return None
+
+    align: List[str] = []
+    for c in sep:
+        c = c.replace(" ", "")
+        if c.startswith(":") and c.endswith(":"):
+            align.append("center")
+        elif c.endswith(":"):
+            align.append("right")
+        elif c.startswith(":"):
+            align.append("left")
+        else:
+            align.append("")
+
+    rows = [_cells(ln) for ln in lines[2:] if ln.strip()]
+    return _normalize_table(header, rows, align)
+
+
+#: 连续的 `|...|` 行看起来像 Markdown 表格
+_RE_MD_TABLE_LINE = re.compile(r"^\s*\|.*\|\s*$")
+
+
+def _extract_md_tables_from_text(text: str) -> List[Tuple[str, Any]]:
+    """
+    从**纯文本块**里把 Markdown 表格抠出来，返回 [("text",..)/("table",..)]
+
+    为什么需要：Word 表格在 `file_parser` 里被转成 Markdown 存进了题干
+    （`file_parser.py:717` `builder.add_text()`），所以到了导出层，
+    题干里是一段**含 `| --- |` 的普通文本**。实测（题库 432 第 33 题）
+    这些竖线原样印在 PDF 上。
+    """
+    if "|" not in text or "\n" not in text:
+        return [("text", text)] if text else []
+
+    lines = text.split("\n")
+    out: List[Tuple[str, Any]] = []
+    buf: List[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if _RE_MD_TABLE_LINE.match(line) and i + 1 < len(lines) and _RE_MD_TABLE_LINE.match(lines[i + 1]):
+            # 收集连续的表格行
+            j = i
+            block: List[str] = []
+            while j < len(lines) and _RE_MD_TABLE_LINE.match(lines[j]):
+                block.append(lines[j])
+                j += 1
+            table = _parse_md_table(block)
+            if table:
+                if buf:
+                    t = "\n".join(buf).strip()
+                    if t:
+                        out.append(("text", t))
+                    buf = []
+                out.append(("table", table))
+                i = j
+                continue
+        buf.append(line)
+        i += 1
+    if buf:
+        t = "\n".join(buf).strip()
+        if t:
+            out.append(("text", t))
+    return out
+
+
+def split_blocks(raw: Optional[str]) -> List[Block]:
+    """
+    把题干/解析这类 HTML 拆成有序块，**保持图文原始顺序**
+
+    做法：把 `<img>` / `<table>` 与其余文本交替切开，每段文本再按块级结束符切行。
+    这样 `<p>文字</p><p><img></p><p>文字</p>` →
+        [("text","文字"), ("image",src), ("text","文字")]
+    而不是"所有文字 + 所有图片"。
+
+    ── 2026-10-26 v3：新增 `("table", TableData)` 块 ──
+    在此之前，表格会被 `_RE_TAG` 无差别剥成纯文本：
+      · HTML `<table>` → `X\\Y01` / `00.10.3`（单元格全粘连，实测如此）
+      · Markdown `| --- |` → 竖线原样印在 Word/PDF 上
+    现在两种来源都转成真表格块，由 `_docx_add_seq` / PDF 侧渲染成原生表格。
+    """
+    if not raw:
+        return []
+    if not isinstance(raw, str):
+        raw = str(raw)
+
+    # 纯文本（没有标签）也要过一遍 Markdown 表格提取
+    if "<" not in raw:
+        t = _inline_text(raw)
+        if not t:
+            return []
+        return _extract_md_tables_from_text(t)
+
+    # 把 <img> 与 <table> 都当作「分隔符」，取二者位置最近的先切
+    marks: List[Tuple[int, int, str, Any]] = []
+    for m in _RE_IMG.finditer(raw):
+        marks.append((m.start(), m.end(), "image", m.group(0)))
+    for m in _RE_HTML_TABLE.finditer(raw):
+        marks.append((m.start(), m.end(), "table", m.group(1)))
+    marks.sort(key=lambda x: x[0])
+
+    blocks: List[Block] = []
+    pos = 0
+    for start, end, kind, payload in marks:
+        if start < pos:
+            continue  # 嵌套（table 内部有 img）时跳过内层，交给 table 解析
+        blocks.extend(_text_blocks_with_tables(raw[pos:start]))
+        if kind == "image":
+            src_m = _RE_ATTR_SRC.search(payload)
+            src = (src_m.group(1) or src_m.group(2)) if src_m else ""
+            if src:
+                blocks.append(("image", _html.unescape(src.strip())))
+        else:
+            table = _parse_html_table(payload)
+            if table:
+                blocks.append(("table", table))
+            # 解析不出结构时退化成文本，至少内容不丢
+            elif payload.strip():
+                blocks.extend(_text_blocks_with_tables(payload))
+        pos = end
+    blocks.extend(_text_blocks_with_tables(raw[pos:]))
+    return blocks
 
 
 # ──────────────────────────────────────────────────────────── 文本 → 文字/公式片段
@@ -300,7 +560,9 @@ def _find_bare_latex(text: str) -> List[Tuple[int, int, str]]:
 
     跳过 `$...$` 内部的命令 —— 那些由调用方按行内公式统一处理。
     """
-    if not text or "\\" not in text:
+    # ⚠️ 不能只判断反斜杠：`C_7^3` / `X^{2}` / `∫_{0}^{10}` 一个反斜杠都没有，
+    #    但它们是公式。裸记号交给 `_find_bare_scripts` 收。
+    if not text or ("\\" not in text and not _RE_BARE_MARKER.search(text)):
         return []
     found: List[Tuple[int, int, str]] = []
     for m in _RE_LATEX_CMD.finditer(text):
@@ -341,7 +603,104 @@ def _find_bare_latex(text: str) -> List[Tuple[int, int, str]]:
             # 无参数符号命令（\times \cup \leq …）：整条命令本身就是一个公式片段。
             # 不加这一步，`0.2 \times 0.04` 里的 `\times` 会原样留在正文里。
             found.append((start, m.end(), text[start:m.end()]))
-    return found
+
+    # ── 2026-10-26 新增：裸上标/下标与 Unicode 数学符号 ──
+    #
+    # 只认反斜杠命令是不够的。实测漏掉的情况（全部原样印在纸上）：
+    #   `e^{-x}`      → 上标紧跟普通字符，没有反斜杠
+    #   `X^{2}`       → 同上
+    #   `C_7^3=35`    → 下标 + 上标组合
+    #   `∫_{0}^{10}`  → Unicode 积分号 + 上下限
+    #   `∑_{i=1}^{n}` → Unicode 求和号
+    #
+    # latex2mathml **本身完全支持这些写法**（实测 `e^{-x}` / `C_7^3` / `∫_{0}^{10}`
+    # 都能转出正确的 MathML），所以这里只要把它们「圈出来」即可。
+    #
+    # ⚠️ 优先级（2026-10-26 修）：**裸上标必须压过它内部的反斜杠命令**。
+    #    典型失败案例 `e^{-\lambda}`：
+    #      · 反斜杠逻辑先把 `\lambda` 圈走（位置 3..10）
+    #      · 上标逻辑再找 `e^{-\lambda}` 时被"已被占用"挡掉
+    #      · 结果正文印成 `e^{-}`，公式只剩一个孤零零的 λ
+    #    实测就是这么坏掉的。所以先跑上标，再把「被上标完整包含」的
+    #    反斜杠片段剔掉。
+    script_hits = _find_bare_scripts(text, [])
+    if script_hits:
+        found = [
+            (s, e, lx)
+            for (s, e, lx) in found
+            if not any(ss <= s and e <= se for ss, se, _ in script_hits)
+        ]
+        found.extend(script_hits)
+    found.sort(key=lambda x: x[0])
+    # 去重叠：后面的片段若被前面的完整覆盖则丢弃
+    merged: List[Tuple[int, int, str]] = []
+    for s, e, lx in found:
+        if merged and s < merged[-1][1]:
+            continue
+        merged.append((s, e, lx))
+    return merged
+
+
+#: Unicode 数学「大运算符」—— 这些字符后面紧跟 `_{...}` / `^{...}` 就是公式
+_UNICODE_BIG_OPS = "∫∬∭∮∑∏∐⋃⋂√"
+
+#: 可能出现在「底数」位置的单个数学符号（含拉丁/希腊字母与数字）
+#:
+#: · 单个字母：`e^{-x}`、`X^{2}`、`C_7^3`
+#: · Unicode 大运算符：`∫_{0}^{10}`、`∑_{i=1}^{n}`
+#: · 单个数字：`2^k`、`3^{n+1}`（概率题里极常见，如 `C/2^k`）
+_RE_SCRIPT_BASE = re.compile(
+    r"(?:" + "[" + re.escape(_UNICODE_BIG_OPS) + r"]"
+    r"|[A-Za-zΑ-Ωα-ω](?![A-Za-z])"
+    r"|[0-9](?![0-9]))"
+    r"(?:[_^](?:\{[^{}]{0,40}\}|[A-Za-z0-9]))+"
+)
+
+
+def _find_bare_scripts(
+    text: str, already: List[Tuple[int, int, str]]
+) -> List[Tuple[int, int, str]]:
+    """
+    找出「裸上标/下标」形态的公式片段，返回 [(start, end, latex)]
+
+    识别两类：
+
+    ① **Unicode 大运算符 + 上下限**：`∫_{0}^{10}`、`∑_{i=1}^{n}`
+       这类必须整段吃掉，否则 `_` `^` 会作为普通字符印出来。
+
+    ② **单字符底数 + 上下标**：`e^{-x}`、`X^{2}`、`C_7^3`、`a_{n+1}`
+       底数限定为**单个字母或单个 Unicode 大运算符**，理由是：
+       · `abc_1` 这种多字母底数在正文里更可能是变量名而不是排版公式
+       · 单字符是数学排版的常见形式，误判代价低（顶多变一个 OMML 小公式）
+
+    ⚠️ 已经被 `already` 覆盖的区间要跳过，否则会和反斜杠命令的匹配打架。
+    """
+    if not text:
+        return []
+
+    occupied = [(s, e) for s, e, _ in already]
+
+    def _is_free(s: int, e: int) -> bool:
+        return not any(s < oe and e > os_ for os_, oe in occupied)
+
+    out: List[Tuple[int, int, str]] = []
+    for m in _RE_SCRIPT_BASE.finditer(text):
+        s, e = m.start(), m.end()
+        if not _is_free(s, e):
+            continue
+        # 前面若紧贴**ASCII 字母/数字/下划线**，说明是更长单词的一部分
+        # （如 `value_1`、`abc^2`），不当作公式。
+        #
+        # ⚠️ 2026-10-26 修复：这里原本用 `str.isalnum()`，而**汉字也满足 isalnum()**，
+        #    于是 `由∫_{-∞}^{+∞}f(x)dx=1` 被误挡 —— `∫` 前面是汉字「由」，
+        #    整条积分式原样印在 PDF 上（实测题库 432）。
+        #    正文里中文紧邻公式是常态，绝不能用 isalnum() 判断。
+        if s > 0:
+            prev = text[s - 1]
+            if (prev.isascii() and prev.isalnum()) or prev in "_^":
+                continue
+        out.append((s, e, text[s:e]))
+    return out
 
 
 def split_text_and_math(text: str) -> List[Segment]:
@@ -350,10 +709,98 @@ def split_text_and_math(text: str) -> List[Segment]:
 
     这样 Word 里能用原生 OMML、PDF 里能画成矢量符号，
     而不是把 `\\overline{A}` 原样印成反斜杠（用户 2026-10-19 反馈的问题）。
+
+    ── 2026-10-26 重写（v3）────────────────────────────────────────────
+    原实现有两个硬伤，都是用户实测拍到的：
+
+    ① **`$...$` / `$$...$$` 完全没被识别**
+       `_find_bare_latex` 的 docstring 写着「跳过 `$...$` 内部的命令 ——
+       那些由调用方按行内公式统一处理」，但**那个调用方从来不存在**。
+       实测：题库 408（10 道题含 `$` 公式）导出后 document.xml 残留 126 个 `$`，
+       PDF 里原样印出 `$\int_01 x2 dx$`。
+
+    ② **裸上标/下标识别不出来**
+       原逻辑只认「反斜杠命令 + 至少一个 `{}`」，于是
+       `e^{-x}`、`X^{2}`、`C_7^3`、`∫_{0}^{10}` 全部漏掉，原样印在纸上。
+       实测：20 页 PDF 里 23 行 LaTeX 泄漏。
+
+    现在按「显式定界符优先，其次裸记号」两段处理：
+      · 先吃 `$$...$$`（块级）与 `$...$`（行内）—— 定界符内的内容整体当公式，不再二次切分
+      · 再对剩下的纯文本跑 `_find_bare_latex`（已扩展，见该函数）
     """
     if not text:
         return []
-    if "\\" not in text:
+
+    # ── 第一遍：显式定界符 ──
+    out: List[Segment] = []
+    for kind, payload in _split_delimited_math(text):
+        if kind == "text":
+            # ── 第二遍：文本段里再找裸 LaTeX ──
+            out.extend(_split_bare_math(payload))
+        else:
+            out.append((kind, payload))
+    return out or [("text", text)]
+
+
+#: `$$...$$`（块级）与 `$...$`（行内）
+#:
+#: ⚠️ 行内那一条必须排除「货币」误判：`$5` / `$ 5` 后面紧跟数字且没有配对的 `$` 时不算公式。
+#:    判定方式是要求闭合 `$` 之前至少有一个非空白、非数字起始的字符，
+#:    并且整段长度合理（<= 400）—— 太长的不是公式，是正文里恰好出现的 `$`。
+_RE_DISPLAY_MATH = re.compile(r"\$\$(.+?)\$\$", re.S)
+_RE_INLINE_MATH = re.compile(r"(?<![\\$])\$(?!\s)([^$\n]{1,400}?)(?<!\s)\$(?!\d)")
+
+
+def _split_delimited_math(text: str) -> List[Segment]:
+    """按 `$$...$$` / `$...$` 切成 text / math 交替的片段"""
+    if "$" not in text:
+        return [("text", text)]
+
+    out: List[Segment] = []
+    pos = 0
+    # 先把块级公式圈出来，再在剩下的空隙里找行内
+    spans: List[Tuple[int, int, str]] = []
+    for m in _RE_DISPLAY_MATH.finditer(text):
+        body = m.group(1).strip()
+        if body:
+            spans.append((m.start(), m.end(), body))
+    covered = [(s, e) for s, e, _ in spans]
+
+    for m in _RE_INLINE_MATH.finditer(text):
+        s, e = m.start(), m.end()
+        if any(cs <= s < ce for cs, ce in covered):
+            continue
+        body = m.group(1).strip()
+        if not body:
+            continue
+        spans.append((s, e, body))
+
+    if not spans:
+        return [("text", text)]
+
+    spans.sort(key=lambda x: x[0])
+    for s, e, body in spans:
+        if s < pos:
+            continue
+        if s > pos:
+            chunk = text[pos:s]
+            if chunk:
+                out.append(("text", chunk))
+        out.append(("math", body))
+        pos = e
+    if pos < len(text):
+        rest = text[pos:]
+        if rest:
+            out.append(("text", rest))
+    return out
+
+
+def _split_bare_math(text: str) -> List[Segment]:
+    """文本段里再找「裸露的 LaTeX」（没有 `$` 包裹）"""
+    if not text:
+        return []
+    # 只有「有反斜杠」或「有裸数学记号」时才值得跑一遍正则（纯中文正文直接放行）
+    if "\\" not in text and not _RE_BARE_MARKER.search(text):
         return [("text", text)]
 
     pieces = _find_bare_latex(text)
@@ -365,55 +812,22 @@ def split_text_and_math(text: str) -> List[Segment]:
     for start, end, latex in pieces:
         if start > cursor:
             chunk = text[cursor:start]
-            if chunk.strip():
-                out.append(("text", chunk))
-            elif chunk:
+            if chunk.strip() or chunk:
                 out.append(("text", chunk))
         out.append(("math", latex))
         cursor = end
     if cursor < len(text):
         tail = text[cursor:]
-        if tail.strip():
-            out.append(("text", tail))
-        elif tail:
+        if tail.strip() or tail:
             out.append(("text", tail))
     return out or [("text", text)]
 
 
-def split_blocks(raw: Optional[str]) -> List[Block]:
-    """
-    把题干/解析这类 HTML 拆成有序块，**保持图文原始顺序**
-
-    做法：把 `<img>` 与其余文本交替切开，每段文本再按块级结束符切行。
-    这样 `<p>文字</p><p><img></p><p>文字</p>` →
-        [("text","文字"), ("image",src), ("text","文字")]
-    而不是"所有文字 + 所有图片"。
-    """
-    if not raw:
-        return []
-    if not isinstance(raw, str):
-        raw = str(raw)
-
-    # 纯文本（没有标签）直接一段
-    if "<" not in raw:
-        t = _inline_text(raw)
-        return [("text", t)] if t else []
-
-    blocks: List[Block] = []
-    pos = 0
-    for m in _RE_IMG.finditer(raw):
-        before = raw[pos:m.start()]
-        for piece in _split_text_pieces(before):
-            blocks.append(("text", piece))
-        tag = m.group(0)
-        src_m = _RE_ATTR_SRC.search(tag)
-        src = (src_m.group(1) or src_m.group(2)) if src_m else ""
-        if src:
-            blocks.append(("image", _html.unescape(src.strip())))
-        pos = m.end()
-    for piece in _split_text_pieces(raw[pos:]):
-        blocks.append(("text", piece))
-    return blocks
+#: 「裸数学记号」的粗筛：出现这些字符才值得进 `_find_bare_latex`
+#:
+#: 注意 `^` 和 `_` 单独出现太常见（`a_b` 变量名、`2^10`），
+#: 所以真正的判定在 `_find_bare_latex` 里做，这里只做"要不要跑"的快速判断。
+_RE_BARE_MARKER = re.compile(r"[\^_\\∫∑∏√∞≤≥≠≈±×÷∪∩∈⊂⊆→←⇒⇔∂∇]")
 
 
 def _split_text_pieces(fragment: str) -> List[str]:
@@ -424,6 +838,41 @@ def _split_text_pieces(fragment: str) -> List[str]:
     if not txt:
         return []
     return [ln for ln in txt.split("\n") if ln.strip()]
+
+
+def _text_blocks_with_tables(fragment: str) -> List[Block]:
+    """
+    HTML 片段 → 有序块，**其中连续的 Markdown 表格行合成一个 table 块**
+
+    ⚠️ 为什么不能直接用 `_split_text_pieces`（2026-10-26 v3 踩到）：
+       它把文本按 `\\n` 拆成**独立的一行一块**。而 Markdown 表格必须看到
+       **连续多行**（表头 + `| --- |` + 数据行）才能判定成表格。
+       拆散之后每行单独看都不像表格，于是照样退化成竖线文本 ——
+       实测题库 432 第 33 题就是这么漏掉的。
+
+    所以这里先在"整段文本"层面找连续的 `|...|` 行，再对非表格部分按行切。
+    """
+    if not fragment:
+        return []
+
+    txt = _inline_text(fragment)
+    if not txt:
+        return []
+
+    # 没有竖线 → 老老实实按行切，不走表格逻辑
+    if "|" not in txt:
+        return [("text", ln) for ln in txt.split("\n") if ln.strip()]
+
+    blocks: List[Block] = []
+    # 先把整段文本按 Markdown 表格提取一次（它会保留非表格文本）
+    for kind, payload in _extract_md_tables_from_text(txt):
+        if kind == "table":
+            blocks.append(("table", payload))
+        else:
+            for ln in str(payload).split("\n"):
+                if ln.strip():
+                    blocks.append(("text", ln))
+    return blocks
 
 
 # ──────────────────────────────────────────────────────────── 答案归一化
@@ -555,13 +1004,18 @@ def _add_run(paragraph, text: Any, **kwargs):
     return run
 
 
-def _add_omml(paragraph, latex: str) -> bool:
+def _add_omml(paragraph, latex: str, *, size: Optional[float] = None) -> bool:
     """
     把一段 LaTeX 作为**原生 Word 公式（OMML）**写进段落；成功返回 True
 
     为什么不用图片：图片公式在 Word 里不能编辑、缩放会糊，
     而且 WPS 常把它当普通图片处理导致基线错位。
     OMML 是 Word 与 WPS 都认的原生公式格式，是唯一能同时兼容两者的做法。
+
+    `size`：公式字号（pt）。OMML 默认继承段落字号，但实测发现：
+      · 上下限会被自动缩到 ~60%（11.9pt → 7.2pt），这是标准排版行为
+      · 当正文 10.5pt 时，公式里的上标只有 6.3pt，**打印出来偏小**
+    给公式单独设一个略大于正文的字号，能让上下标也保持在可读区间。
 
     失败（latex2mathml 不支持该命令等）时返回 False，调用方退回纯文本。
     """
@@ -575,11 +1029,53 @@ def _add_omml(paragraph, latex: str) -> bool:
 
         xml = omml_to_xml_string(om)
         el = parse_xml(xml)
+
+        # 给公式里每个 m:r 挂一个 w:rPr 指定字号。
+        # ⚠️ 必须挂在 m:r 下的 w:rPr（不是 m:rPr）：前者是"文字属性"（字号/字体），
+        #    后者控制的是数学属性（是否斜体、是否正体）。
+        if size:
+            _apply_omml_font_size(el, size)
+
         paragraph._p.append(el)
         return True
     except Exception as exc:  # noqa: BLE001
         logger.warning("[export] OMML 插入失败 {!r}: {}", latex, exc)
         return False
+
+
+def _apply_omml_font_size(omml_el, size_pt: float) -> None:
+    """
+    给 OMML 里所有 `m:r` 加字号
+
+    结构（Word 规范）::
+
+        <m:r>
+          <w:rPr><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr>
+          <m:t>e</m:t>
+        </m:r>
+
+    `w:sz` 的单位是**半磅**，所以 11pt 要写 22。
+    """
+    try:
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+
+        half = str(int(round(size_pt * 2)))
+        m_ns = "http://schemas.openxmlformats.org/officeDocument/2006/math"
+        for r in omml_el.iter(f"{{{m_ns}}}r"):
+            # 避免重复添加
+            old = r.find(qn("w:rPr"))
+            if old is not None:
+                r.remove(old)
+            rpr = OxmlElement("w:rPr")
+            for tag in ("w:sz", "w:szCs"):
+                el = OxmlElement(tag)
+                el.set(qn("w:val"), half)
+                rpr.append(el)
+            # w:rPr 必须是 m:r 的第一个子元素
+            r.insert(0, rpr)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[export] OMML 字号设置失败: {}", exc)
 
 
 def _add_segments(paragraph, text: str, **font_kwargs) -> None:
@@ -591,19 +1087,25 @@ def _add_segments(paragraph, text: str, **font_kwargs) -> None:
     """
     for kind, payload in split_text_and_math(_clean_text(text)):
         if kind == "math":
-            if not _add_omml(paragraph, payload):
+            # 公式字号比正文大一档：OMML 的上下限会被自动缩到 ~60%，
+            # 若公式本身与正文同号，上标只有 6pt 左右，打印出来偏小。
+            body_size = font_kwargs.get("size") or 10.5
+            if not _add_omml(paragraph, payload, size=float(body_size) * 1.12):
                 # 兜底：转不成就原样输出，至少信息不丢
                 _add_run(paragraph, payload, **font_kwargs)
         else:
             _add_run(paragraph, payload, **font_kwargs)
 
 
-def _docx_add_image(doc, src: str, max_width_cm: float = 15.5) -> bool:
+def _docx_add_image(container, src: str, max_width_cm: float = 15.5) -> bool:
     """
     往文档里插一张图；成功返回 True
 
     图片按**原始像素比例**缩放到版心宽度以内，不拉伸变形 ——
     题目里的截图常是宽图，等比缩放后位置才对得上。
+
+    `container` 可以是 `Document`（普通插图）**或 `_Cell`**（表格单元格内插图）。
+    两者都有 `add_picture`，签名一致，所以这里不用分支。
     """
     data = _load_image_bytes(src)
     if not data:
@@ -624,19 +1126,272 @@ def _docx_add_image(doc, src: str, max_width_cm: float = 15.5) -> bool:
         if height_cm > max_height_cm:
             width_cm = width_cm * max_height_cm / height_cm
             height_cm = max_height_cm
-        doc.add_picture(io.BytesIO(data), width=Cm(width_cm), height=Cm(height_cm))
-        # 居中，与网页里的排版观感一致
+        container.add_picture(io.BytesIO(data), width=Cm(width_cm), height=Cm(height_cm))
+        # 居中，与网页里的排版观感一致。
+        # `_Cell` 没有 `.paragraphs[-1].alignment` 的直接通路时用 last paragraph。
         from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-        doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        try:
+            last = container.paragraphs[-1] if hasattr(container, "paragraphs") else None
+            if last is not None:
+                last.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        except Exception:  # noqa: BLE001
+            pass
         return True
     except Exception as exc:  # noqa: BLE001
         logger.warning("[export] docx 插图失败 {}: {}", src, exc)
         return False
 
 
+def _docx_set_cell_shading(cell, fill_hex: str) -> None:
+    """
+    给单元格加底纹（`w:shd`）
+
+    python-docx 1.1.2 **没有**暴露底纹 API，只能手写 oxml。
+    表头底纹是"看起来像真表格"最直观的标志，所以必须做。
+    """
+    try:
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+
+        tc_pr = cell._tc.get_or_add_tcPr()
+        # 同一格重复设置时先删旧的，避免出现两个 w:shd
+        for old in tc_pr.findall(qn("w:shd")):
+            tc_pr.remove(old)
+        shd = OxmlElement("w:shd")
+        shd.set(qn("w:val"), "clear")
+        shd.set(qn("w:color"), "auto")
+        shd.set(qn("w:fill"), fill_hex)
+        tc_pr.append(shd)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[export] 单元格底纹失败: {}", exc)
+
+
+def _docx_set_cell_margins(cell, top=60, bottom=60, left=90, right=90) -> None:
+    """单元格内边距（`w:tcMar`），单位 dxa（1/20 pt）"""
+    try:
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+
+        tc_pr = cell._tc.get_or_add_tcPr()
+        for old in tc_pr.findall(qn("w:tcMar")):
+            tc_pr.remove(old)
+        mar = OxmlElement("w:tcMar")
+        for side, val in (("top", top), ("bottom", bottom), ("start", left), ("end", right)):
+            el = OxmlElement(f"w:{side}")
+            el.set(qn("w:w"), str(val))
+            el.set(qn("w:type"), "dxa")
+            mar.append(el)
+        tc_pr.append(mar)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[export] 单元格边距失败: {}", exc)
+
+
+def _docx_set_table_borders(table, color: str = "BFBFBF", sz: int = 4) -> None:
+    """
+    给整表加边框（`w:tblBorders`）
+
+    ⚠️ 不用 `table.style = "Table Grid"`：那是**英文样式名**，
+    WPS 中文版 / 部分精简 Office 里可能不存在，届时表格会变成无框线，
+    而"看起来像表格"恰恰依赖框线。手写 oxml 与样式名无关，最稳。
+    """
+    try:
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+
+        tbl_pr = table._tbl.tblPr
+        for old in tbl_pr.findall(qn("w:tblBorders")):
+            tbl_pr.remove(old)
+        borders = OxmlElement("w:tblBorders")
+        for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+            el = OxmlElement(f"w:{edge}")
+            el.set(qn("w:val"), "single")
+            el.set(qn("w:sz"), str(sz))
+            el.set(qn("w:space"), "0")
+            el.set(qn("w:color"), color)
+            borders.append(el)
+        tbl_pr.append(borders)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[export] 表格边框失败: {}", exc)
+
+
+def _docx_mark_header_row(row) -> None:
+    """
+    把某行标记为「跨页重复表头」（`w:tblHeader`）
+
+    表格跨页时，Word 会在下一页自动重复这一行。
+    python-docx 1.1.2 没有 API（`row.repeat_table_header` 不存在），必须手撸。
+    """
+    try:
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+
+        tr_pr = row._tr.get_or_add_trPr()
+        for old in tr_pr.findall(qn("w:tblHeader")):
+            tr_pr.remove(old)
+        el = OxmlElement("w:tblHeader")
+        el.set(qn("w:val"), "true")
+        tr_pr.append(el)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[export] 表头重复标记失败: {}", exc)
+
+
+def _docx_forbid_row_split(row) -> None:
+    """禁止某一行被分页切断（`w:cantSplit`）"""
+    try:
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+
+        tr_pr = row._tr.get_or_add_trPr()
+        for old in tr_pr.findall(qn("w:cantSplit")):
+            tr_pr.remove(old)
+        tr_pr.append(OxmlElement("w:cantSplit"))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[export] 行禁止分页失败: {}", exc)
+
+
+def _docx_fill_cell(cell, text: str, *, base_size: float = 10, bold: bool = False,
+                    align: str = "") -> None:
+    """
+    往一个单元格里写内容：**文字 + 原生 OMML 公式**，并按需居中/右对齐
+
+    这是把现有能力复用进表格的关键点：
+    `_add_segments` / `_add_omml` 的参数都是 **paragraph**，
+    而单元格里的段落同样是 `w:p` —— 所以零改动就能用（已实测通过）。
+
+    单元格里若含 `<img>`（表格里嵌截图很常见），也一并插图：
+    先按 `<img>` 切开，文字写段落、图片插进同一个 cell。
+    """
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    cell.text = ""  # 清掉默认空段落里的内容，复用它的段落
+    p = cell.paragraphs[0] if cell.paragraphs else cell.add_paragraph()
+    if align == "center":
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    elif align == "right":
+        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+    raw = str(text or "")
+
+    # 单元格里有图 → 先插图，再把文字写进段落（图在 Word 单元格里是单独一段）
+    if "<img" in raw.lower():
+        for kind, payload in split_blocks(raw):
+            if kind == "image":
+                _docx_add_image(cell, payload, max_width_cm=6.0)
+            else:
+                if bold:
+                    _add_run(p, str(payload), size=base_size, bold=True)
+                else:
+                    _add_segments(p, str(payload), size=base_size)
+        return
+
+    if bold:
+        _add_run(p, raw, size=base_size, bold=True)
+        return
+    # 单元格里也可能有公式（如概率分布表里的 `C_7^3`）
+    _add_segments(p, raw, size=base_size)
+
+
+def _docx_add_table(doc, table_data: TableData, *, indent_cm: float = 0.0) -> None:
+    """
+    表格块 → Word **原生表格**
+
+    六项能力全部实现（2026-10-26 实测通过）：
+      ① 表头底纹（w:shd）      ② 边框（w:tblBorders）
+      ③ 固定列宽（w:gridCol）  ④ 跨页重复表头（w:tblHeader）
+      ⑤ 单元格内原生 OMML 公式 ⑥ 单元格内图片
+
+    列宽策略：按各列「最长内容长度」分配，总宽固定 15.5cm（版心内）。
+    不按字数绝对比例，而是加一个下限，避免"1"这种极短列被压成 0.3cm。
+    """
+    from docx.shared import Cm
+
+    headers: List[str] = list(table_data.get("headers") or [])
+    rows: List[List[str]] = [list(r) for r in (table_data.get("rows") or [])]
+    aligns: List[str] = list(table_data.get("align") or [])
+
+    ncol = max([len(headers)] + [len(r) for r in rows]) if (headers or rows) else 0
+    if ncol <= 0:
+        return
+
+    total_rows = (1 if headers else 0) + len(rows)
+    if total_rows <= 0:
+        return
+
+    avail_w = max(6.0, 15.5 - indent_cm)
+
+    # ── 列宽：按内容长度加权，每列至少 1.5cm ──
+    col_max = [1] * ncol
+    for r in ([headers] if headers else []) + rows:
+        for j in range(min(ncol, len(r))):
+            # 中文字符按 2 个宽度算，避免中文列被压窄
+            ln = sum(2 if ord(ch) > 0x2E80 else 1 for ch in str(r[j]))
+            col_max[j] = max(col_max[j], min(ln, 40))
+    weight_sum = sum(col_max) or ncol
+    widths = [max(1.5, avail_w * (c / weight_sum)) for c in col_max]
+    # 归一化到 avail_w
+    scale = avail_w / sum(widths) if sum(widths) > 0 else 1
+    widths = [w * scale for w in widths]
+
+    table = doc.add_table(rows=total_rows, cols=ncol)
+    # ⚠️ 不设 table.style：手写边框，与样式名无关（WPS 兼容）
+    table.autofit = False
+
+    _docx_set_table_borders(table)
+
+    # 固定列宽（同时写 tblGrid 与每个 tc 的 tcW，Word/WPS 都认）
+    try:
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+
+        tbl_pr = table._tbl.tblPr
+        layout = OxmlElement("w:tblLayout")
+        layout.set(qn("w:type"), "fixed")
+        tbl_pr.append(layout)
+    except Exception:  # noqa: BLE001
+        pass
+
+    for j, w in enumerate(widths):
+        try:
+            table.columns[j].width = Cm(w)
+        except Exception:  # noqa: BLE001
+            pass
+        for row in table.rows:
+            try:
+                row.cells[j].width = Cm(w)
+            except Exception:  # noqa: BLE001
+                pass
+
+    # ── 写内容 ──
+    r0 = 0
+    if headers:
+        hrow = table.rows[0]
+        _docx_mark_header_row(hrow)
+        _docx_forbid_row_split(hrow)
+        for j in range(ncol):
+            cell = hrow.cells[j]
+            _docx_set_cell_shading(cell, "E8EEF7")
+            _docx_set_cell_margins(cell)
+            _docx_fill_cell(cell, str(headers[j]) if j < len(headers) else "",
+                            base_size=9.5, bold=True, align="center")
+        r0 = 1
+
+    for i, r in enumerate(rows):
+        row = table.rows[r0 + i]
+        _docx_forbid_row_split(row)
+        for j in range(ncol):
+            cell = row.cells[j]
+            _docx_set_cell_margins(cell)
+            txt = str(r[j]) if j < len(r) else ""
+            al = aligns[j] if j < len(aligns) else ""
+            _docx_fill_cell(cell, txt, base_size=9.5, align=al)
+
+    # 表格后留一点空隙，避免紧贴下一题
+    doc.add_paragraph()
+
+
 def _docx_add_blocks(doc, blocks: List[Block], *, indent_cm: float = 0.0) -> None:
-    """把有序块写进 docx：文字成段（含公式）、图片原地插入"""
+    """把有序块写进 docx：文字成段（含公式）、图片原地插入、表格成真表格"""
     from docx.shared import Cm
 
     max_w = 15.5 - indent_cm
@@ -645,8 +1400,11 @@ def _docx_add_blocks(doc, blocks: List[Block], *, indent_cm: float = 0.0) -> Non
             p = doc.add_paragraph()
             if indent_cm:
                 p.paragraph_format.left_indent = Cm(indent_cm)
-            # 文字里可能夹着裸 LaTeX——交给 _add_segments 混排成「文字 + 原生公式」
+            # 文字里可能夹着裸 LaTeX / $...$ —— 交给 _add_segments 混排成「文字 + 原生公式」
             _add_segments(p, payload, size=10.5)
+        elif kind == "table":
+            # 2026-10-26 v3：表格 → Word 原生表格（不再退化成竖线文本）
+            _docx_add_table(doc, payload, indent_cm=indent_cm)
         else:
             if not _docx_add_image(doc, payload, max_width_cm=max_w):
                 p = doc.add_paragraph()
@@ -1020,9 +1778,126 @@ def _plain_subsup(text: str) -> str:
     return text
 
 
+def _pdf_add_table(story: List[Any], table_data: TableData, font: str, *,
+                   indent: float = 0.0, body_size: float = 9.5) -> None:
+    """
+    表格块 → PDF **原生表格**（reportlab `Table`）
+
+    实现的能力：
+      · 表头底纹（BACKGROUND）           · 全表网格线（GRID）
+      · **跨页重复表头**（`repeatRows=1`）· 单元格内公式（走 `_rl_text_with_math`）
+      · 列宽按内容加权，总宽压在版心内
+      · 单元格垂直居中 + 内边距，避免文字贴边
+
+    ⚠️ 为什么不用 `LongTable`：`Table` + `repeatRows` 已经能在跨页时重复表头，
+    而 `LongTable` 的分页行为更激进（它会把一行拆开），题目表格宁可不拆行。
+    """
+    from reportlab.lib import colors
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import Paragraph
+    from reportlab.platypus import Table as RLTable
+    from reportlab.platypus import TableStyle
+
+    headers: List[str] = list(table_data.get("headers") or [])
+    rows: List[List[str]] = [list(r) for r in (table_data.get("rows") or [])]
+    aligns: List[str] = list(table_data.get("align") or [])
+
+    ncol = max([len(headers)] + [len(r) for r in rows]) if (headers or rows) else 0
+    if ncol <= 0:
+        return
+
+    avail_w = max(6.0, 15.5 - indent) * cm
+
+    # 单元格样式（比正文小一号，表格里塞 10.5pt 会很挤）
+    cell_style = ParagraphStyle(
+        "tcell", fontName=font, fontSize=body_size, leading=body_size * 1.45,
+    )
+    head_style = ParagraphStyle(
+        "tcellh", fontName=font, fontSize=body_size, leading=body_size * 1.45,
+        alignment=1,  # 居中
+    )
+
+    def _cell(text: str, style) -> Any:
+        """单元格内容：公式走 _rl_text_with_math，普通文字转义后用 Paragraph"""
+        s = str(text or "")
+        try:
+            return Paragraph(_rl_text_with_math(s, font, body_size), style)
+        except Exception:  # noqa: BLE001
+            return Paragraph(_escape_for_rl(s), style)
+
+    data: List[List[Any]] = []
+    if headers:
+        data.append([_cell(headers[j] if j < len(headers) else "", head_style) for j in range(ncol)])
+    for r in rows:
+        data.append([_cell(r[j] if j < len(r) else "", cell_style) for j in range(ncol)])
+
+    if not data:
+        return
+
+    # ── 列宽：按内容长度加权，每列至少 1.6cm ──
+    col_max = [1] * ncol
+    for r in ([headers] if headers else []) + rows:
+        for j in range(min(ncol, len(r))):
+            ln = sum(2 if ord(ch) > 0x2E80 else 1 for ch in str(r[j]))
+            col_max[j] = max(col_max[j], min(ln, 40))
+    min_w = 1.6 * cm
+    weight_sum = sum(col_max) or ncol
+    widths = [max(min_w, avail_w * (c / weight_sum)) for c in col_max]
+    # 归一化：总宽必须 <= avail_w，否则 reportlab 会告警并自动缩
+    total = sum(widths)
+    if total > avail_w:
+        widths = [w * avail_w / total for w in widths]
+
+    try:
+        table = RLTable(data, colWidths=widths, repeatRows=1 if headers else 0)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[export] PDF 表格构建失败: {}", exc)
+        # 退化成纯文本，至少内容不丢
+        for r in data:
+            story.append(Paragraph(_escape_for_rl(str(r)), cell_style))
+        return
+
+    ts = [
+        # 网格线
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#BFBFBF")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]
+    if headers:
+        ts.append(("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E8EEF7")))
+
+    # 对齐方式（表头已居中；数据列按 md 对齐标记）
+    for j in range(ncol):
+        al = aligns[j] if j < len(aligns) else ""
+        if al == "center":
+            ts.append(("ALIGN", (j, 1 if headers else 0), (j, -1), "CENTER"))
+        elif al == "right":
+            ts.append(("ALIGN", (j, 1 if headers else 0), (j, -1), "RIGHT"))
+
+    table.setStyle(TableStyle(ts))
+    if indent:
+        table.hAlign = "LEFT"
+    else:
+        table.hAlign = "CENTER"
+
+    story.append(table)
+    story.append(_pdf_spacer(4))
+
+
+def _pdf_spacer(h: float) -> Any:
+    """表格后的空隙（延迟 import，避免模块级依赖 reportlab）"""
+    from reportlab.platypus import Spacer
+
+    return Spacer(1, h)
+
+
 def _pdf_add_blocks(story: List[Any], blocks: List[Block], font: str, *, indent: float = 0.0,
                     body_size: float = 10.5) -> None:
-    """把有序块写进 PDF story：文字成段（含公式）、图片原地插入"""
+    """把有序块写进 PDF story：文字成段（含公式）、图片原地插入、表格成真表格"""
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import cm
     from reportlab.platypus import Image as RLImage
@@ -1036,8 +1911,11 @@ def _pdf_add_blocks(story: List[Any], blocks: List[Block], font: str, *, indent:
 
     for kind, payload in blocks:
         if kind == "text":
-            # 文字里可能夹着裸 LaTeX → 用 Paragraph 内联标记把公式画成 Unicode/矢量
+            # 文字里可能夹着 $...$ / 裸 LaTeX → 用 Paragraph 内联标记画成公式
             story.append(Paragraph(_rl_text_with_math(payload, font, body_size), style))
+        elif kind == "table":
+            # 2026-10-26 v3：表格 → PDF 原生表格（不再退化成竖线文本）
+            _pdf_add_table(story, payload, font, indent=indent, body_size=max(8.5, body_size - 1))
         else:
             data = _load_image_bytes(payload)
             if not data:

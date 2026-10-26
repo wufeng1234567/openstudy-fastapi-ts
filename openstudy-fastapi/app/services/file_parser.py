@@ -19,6 +19,7 @@
 
 import base64
 import io
+import re
 import xml.etree.ElementTree as ET
 from typing import Optional
 
@@ -314,6 +315,95 @@ def _payload_to_data_url(blob: bytes, mime: str) -> str:
 # ============================================================
 # 块收集器（docx / pdf 共用）
 # ============================================================
+#: Markdown 表格的一行：`| a | b | c |`
+_RE_MD_TABLE_LINE = re.compile(r"^\s*\|.*\|\s*$")
+
+#: Markdown 表格的对齐/分隔行：`| --- | :--: | --: |`
+_RE_MD_TABLE_SEP = re.compile(r"^\s*\|[\s:|-]+\|\s*$")
+
+
+def _split_markdown_tables(text: str) -> list:
+    """
+    把一段纯文本按 **Markdown 表格** 切开
+
+    Returns:
+        `[("text", str) | ("table", {"headers": [...], "rows": [[...]], "markdown": str})]`
+
+    判定条件（两条都满足才算表格）：
+      ① 连续 `|...|` 行
+      ② 其中有**且仅有一行**是分隔行（全是 `-` / `:` / `|` / 空格）
+
+    为什么需要：`.txt` / `.md` 输入走 `add_text` 整段写入，
+    纯文本里的表格从此与 docx 表格一样被识别成 table 块，
+    导出时才能渲染成真表格（否则竖线原样印在纸上）。
+    """
+    if "|" not in text or "\n" not in text:
+        return []
+
+    lines = text.split("\n")
+    out: list = []
+    buf: list = []
+    i = 0
+
+    def _flush() -> None:
+        if buf:
+            body = "\n".join(buf).strip()
+            if body:
+                out.append(("text", body))
+            buf.clear()
+
+    while i < len(lines):
+        line = lines[i]
+        if _RE_MD_TABLE_LINE.match(line):
+            # 收集连续的表格行
+            j = i
+            block = []
+            while j < len(lines) and _RE_MD_TABLE_LINE.match(lines[j]):
+                block.append(lines[j])
+                j += 1
+            # 至少要有 表头 + 分隔行（+ 可选数据行）
+            if len(block) >= 2 and "|" in block[1]:
+                sep_idx = [k for k, ln in enumerate(block) if _RE_MD_TABLE_SEP.match(ln)]
+                if len(sep_idx) == 1:
+                    sep = sep_idx[0]
+                    header_cells = _md_cells(block[sep - 1]) if sep >= 1 else []
+                    body_rows = [_md_cells(ln) for ln in block[sep + 1 :]]
+                    if header_cells:
+                        _flush()
+                        out.append(
+                            (
+                                "table",
+                                {
+                                    "headers": header_cells,
+                                    "rows": body_rows,
+                                    "markdown": "\n".join(block),
+                                },
+                            )
+                        )
+                        i = j
+                        continue
+            # 不是表格 → 当作普通行
+            buf.extend(block)
+            i = j
+            continue
+
+        buf.append(line)
+        i += 1
+
+    _flush()
+    return out
+
+
+def _md_cells(line: str) -> list:
+    """`| a | b |` → `["a", "b"]`（`\\|` 是转义竖线，不切）"""
+    s = line.strip()
+    if s.startswith("|"):
+        s = s[1:]
+    if s.endswith("|"):
+        s = s[:-1]
+    return [c.replace("\\|", "|").strip() for c in re.split(r"(?<!\\)\|", s)]
+
+
 class _BlockBuilder:
     """按出现顺序收集 text / image 块，并同步维护 `textContent` 与 `images`
 
@@ -330,10 +420,85 @@ class _BlockBuilder:
         text = (text or "").strip()
         if not text:
             return
+
+        # ── 2026-10-26 v3：整段文字里若有 Markdown 表格，拆成 text/table 块 ──
+        #
+        # 为什么在这里做：`parse_file` 处理 **.txt / .md** 输入时，
+        # 走的是"整段 `add_text`"，从来不经 `_emit_table`（那是 docx 专用路径）。
+        # 于是纯文本里的 `| X | 0 | 1 |` 依然是普通文字，导出时竖线原样印出。
+        #
+        # 只处理**含 `|` 且跨行**的情况，普通正文零额外开销。
+        if "|" in text and "\n" in text:
+            pieces = _split_markdown_tables(text)
+            if len(pieces) > 1 or (pieces and pieces[0][0] == "table"):
+                for kind, payload in pieces:
+                    if kind == "table":
+                        self.add_table(
+                            payload["headers"],
+                            payload["rows"],
+                            markdown=payload.get("markdown", ""),
+                        )
+                    else:
+                        body = str(payload).strip()
+                        if body:
+                            self.blocks.append(
+                                {"type": "text", "content": body, "orderIndex": len(self.blocks)}
+                            )
+                            self._text_parts.append(body)
+                return
+
         self.blocks.append(
             {"type": "text", "content": text, "orderIndex": len(self.blocks)}
         )
         self._text_parts.append(text)
+
+    def add_table(
+        self,
+        headers: list,
+        rows: list,
+        *,
+        markdown: str = "",
+    ) -> None:
+        """
+        加入一个**表格块**（2026-10-26 v3 新增）
+
+        在这之前，Word 表格被 `_emit_table` 压成一段 Markdown 文本塞进 `text` 块，
+        下游（导出 Word/PDF）**完全不知道"这里原本是一张表"**，
+        于是竖线原样印在纸上（实测题库 432 第 33 题）。
+
+        现在同时产出两种表示：
+
+        · `blocks` 里的 `{"type":"table", ...}` —— **结构化数据**，供导出层渲染真表格
+        · `textContent` / 紧随其后的纯文本 —— **Markdown 表示**，供
+          `knowledge_ingest` / `chat_engine` / 前端 marked 这些老调用方使用
+
+        这样 6 个 `parse_file` 调用点**一行都不用改**（向后兼容），
+        而导出层拿到的就是能直接渲染成 Word/PDF 原生表格的数据。
+        """
+        rows = [list(r) for r in (rows or [])]
+        headers = list(headers or [])
+        if not headers and not rows:
+            return
+
+        ncol = max([len(headers)] + [len(r) for r in rows]) if (headers or rows) else 0
+        if ncol <= 0:
+            return
+        headers = headers + [""] * (ncol - len(headers))
+        rows = [r + [""] * (ncol - len(r)) for r in rows]
+
+        index = len(self.blocks)
+        self.blocks.append(
+            {
+                "type": "table",
+                "content": markdown or "",
+                "orderIndex": index,
+                "headers": headers,
+                "rows": rows,
+            }
+        )
+        # 老调用方靠 textContent 取正文 → 表格仍以 Markdown 形式进纯文本
+        if markdown:
+            self._text_parts.append(markdown)
 
     def add_image(self, blob: bytes, content_type: str = "") -> bool:
         """加入一张**未归一化**的图片（docx 的 rel blob 走这里）"""
@@ -714,7 +879,17 @@ def _emit_table(builder: _BlockBuilder, tbl_elem, image_blobs: dict) -> None:
             # 表头分隔行：让 Markdown 识别为表格（首行会被当成表头）
             lines.append("| " + " | ".join(["---"] * ncol) + " |")
 
-    builder.add_text("\n".join(lines))
+    markdown = "\n".join(lines)
+
+    # ── 2026-10-26 v3：除 Markdown 外，**再产出一个结构化 table 块** ──
+    #
+    # 只给 Markdown 是不够的：导出 Word/PDF 时它会被当普通文字，竖线原样印出
+    # （实测题库 432 第 33 题，`| X | 0 | 1 | 2 | 3 |` 整行印在 PDF 上）。
+    # table 块让导出层能渲染成**原生表格**，同时 markdown 仍进 textContent，
+    # 老调用方（知识库入库 / 前端 marked）行为完全不变。
+    headers = [c for c in table_rows[0]["cells"]]
+    body_rows = [[c for c in r["cells"]] for r in table_rows[1:]]
+    builder.add_table(headers, body_rows, markdown=markdown)
 
     # 表格各行的插图仍按原顺序补发（放在表格块之后）
     for r in table_rows:

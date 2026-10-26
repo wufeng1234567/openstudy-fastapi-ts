@@ -1196,12 +1196,21 @@ const startPractice = async () => {
         if (matched.length) {
             words = [...matched]
             if (playOrder.value === 'random') words = shuffleArray(words)
+            /*
+             * ⚠️ 这里**不要**再弹「本轮只练 N 个错词」（2026-10-26 删除）
+             *
+             * 用户反馈：这条提示会连着弹好几次，而且每弹一次都盖住上面的词库选择区。
+             * 根因不在这一行，在「种子被重复消费」——见 URL 分支里 `urlSeedSignature`
+             * 的说明。但即使根因修好，这条提示也是纯冗余：
+             * 页面上「总单词 20 / 1 / 20」已经把轮次信息写在明面上了。
+             *
+             * 只保留「有词被跳过」这一种**异常**提示：那意味着用户选的东西少了，
+             * 属于必须告知的信息，不能静默。
+             */
             if (matched.length < seed.length) {
                 ElMessage.warning(
                     `本轮练 ${matched.length} 个错词；另外 ${seed.length - matched.length} 个已从词库里删掉了，跳过`
                 )
-            } else {
-                ElMessage.info(`本轮只练 ${matched.length} 个错词`)
             }
             // 种子已接管本轮题目，直接进入练习，不再走下面的范围筛选
             return beginPractice(words)
@@ -1856,6 +1865,49 @@ let seedTimer: number | null = null
 let seedConsumed = false
 
 /**
+ * 已消费过的 URL 种子「内容签名」（2026-10-26 新增，修重复消费/重复提示）
+ * ============================================================================
+ *
+ * **为什么 `seedConsumed` 不够**
+ *
+ * `consumeSeedWords()` 有四个入口：onMounted(1811)、`startSeedWatcher()` 的同步调用
+ * (1998)、400ms 轮询 (2001)、以及 URL watch (2055)。而 `beginPractice()` 会在
+ * 1257 行调 `resetSeedFlag()` 把 `seedConsumed` **复位成 false** —— 它的本意是
+ * 「允许下一批种子进来」。
+ *
+ * 于是就有这条时间线：
+ *
+ *   t0  onMounted → consumeSeedWords() 读到 URL 上的 auto/words，设 seedConsumed=true
+ *   t1  router.replace 清 URL（**异步**，且 keep-alive 复用同路由时可能不生效）
+ *   t2  开练 → beginPractice() → resetSeedFlag() → seedConsumed = false
+ *   t3  400ms 轮询再次触发 → seedConsumed 是 false → 重新进入
+ *   t4  route.query 若还留着旧值 → **用同一批种子再消费、再弹一次提示**
+ *
+ * 这就是用户说的「老是弹好多次」——不是提示写错了，是**同一批种子被反复当成新的**。
+ *
+ * **修法**：不再依赖会被复位的布尔量，改记「这批种子的内容长什么样」。
+ * 同一份 `auto/words/bookId/scope` 组合只消费一次；URL 真的换成另一批词
+ * （内容签名变了）时才放行。这样即使 `seedConsumed` 被复位、轮询再多跑几轮，
+ * 也不会重复消费。
+ */
+let urlSeedSignature: string | null = null
+
+/**
+ * 由当前 URL 种子参数算一个「内容签名」
+ *
+ * 只纳入**决定种子内容**的字段：`words` / `scope` / `bookId` / `mode`。
+ * `auto` 只是"是否自动开练"的开关，不参与签名（同一批词 auto 与否是同一批词）。
+ */
+function buildUrlSeedSignature(q: Record<string, any>): string {
+    return [
+        String(q.words || ''),
+        String(q.scope || ''),
+        String(q.bookId || ''),
+        String(q.mode || '')
+    ].join('|')
+}
+
+/**
  * 消费「预置题目」—— 两种来源
  * ============================================================================
  *
@@ -1881,6 +1933,18 @@ async function consumeSeedWords() {
     // ---------- ① URL 参数 ----------
     const q = route.query || {}
     if (q.auto === '1' || q.words) {
+        /*
+         * 同一批种子只消费一次（2026-10-26 修重复消费）
+         *
+         * `seedConsumed` 会被 `beginPractice() → resetSeedFlag()` 复位，
+         * 而 400ms 轮询会一直跑 —— 光靠它挡不住"同一批种子被反复消费"。
+         * 这里用内容签名兜住：URL 还是那批词就直接返回，绝不二次消费。
+         * （背景与完整时间线见 `urlSeedSignature` 的注释。）
+         */
+        const signature = buildUrlSeedSignature(q)
+        if (urlSeedSignature === signature) return
+        urlSeedSignature = signature
+
         seedConsumed = true
 
         const rawWords = String(q.words || '').trim()
@@ -1948,7 +2012,21 @@ async function consumeSeedWords() {
         if (list.length) {
             seedWords.value = list
             seedFromUrl.value = true
-            ElMessage.success(`已为你准备好 ${list.length} 个词的练习`)
+            /*
+             * ⚠️ 这里**不再弹**「已为你准备好 N 个词的练习」（2026-10-26 删除）
+             *
+             * 用户反馈：这条提示会连着弹 2~3 次，专门盖住词库选择下拉框，
+             * 而且"很难复现/很难修"。
+             *
+             * 根因不在这一行：`beginPractice()` 会把 `seedConsumed` 复位，
+             * 而 400ms 轮询与 watch 都可能再次进入本函数；只要 `router.replace`
+             * 没能及时把 URL 上的 `auto/words` 清掉，就会**用同一批种子再弹一次**。
+             * 真正的修复见下面 `urlSeedSignature` —— 用"内容签名"去重，
+             * 不再依赖 `seedConsumed` 这个会被复位的布尔量。
+             *
+             * 提示本身也是冗余的：种子进到页面后，词库下拉框与「总单词 N」
+             * 已经把这个事实显示出来了，用户不需要再被一个浮层告知一次。
+             */
         }
 
         /*
@@ -2019,6 +2097,14 @@ function startSeedWatcher() {
  */
 function resetForNewUrlRun() {
     seedConsumed = false
+    /*
+     * 同时清掉内容签名（2026-10-26）
+     *
+     * `resetForNewUrlRun` 是**真的换了一批词**（watch 到 URL 变了）才会走到，
+     * 所以必须放行；但若不清签名，`consumeSeedWords()` 里的签名比对会把
+     * 「新的一批」误判成「老的重复」，于是第二次跳转过来什么都不练。
+     */
+    urlSeedSignature = null
     seedWords.value = []
     seedFromUrl.value = false
     pendingBookId.value = null

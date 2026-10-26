@@ -78,8 +78,8 @@ async def export_bank(
     反过来，看不到的题库也不能借导出接口绕过限制。
     """
     fmt = (format or "docx").lower().strip()
-    if fmt not in ("docx", "pdf"):
-        return error("不支持的导出格式（仅支持 docx / pdf）", code=400)
+    if fmt not in ("docx", "pdf", "pdf_docx"):
+        return error("不支持的导出格式（仅支持 docx / pdf / pdf_docx）", code=400)
 
     bank = (
         await db.execute(select(QuestionBank).where(QuestionBank.id == bank_id))
@@ -123,6 +123,32 @@ async def export_bank(
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
             filename = f"{base_name}{suffix}.docx"
+        elif fmt == "pdf_docx":
+            # ── v3（2026-10-26）：DOCX → LibreOffice → PDF ──
+            #
+            # 为什么先出 DOCX 再转：reportlab 没有 TeX 引擎，复杂公式只能
+            # Unicode 近似（`\dfrac{a}{b}` 印成 `a⁄b`，积分限挤在符号右侧）。
+            # 而 Word 侧已经用 OMML 做对了 —— 让 PDF **复用同一份产物**
+            # 是唯一能保证「Word 与 PDF 逐像素一致」的做法。
+            #
+            # ⚠️ 失败必须回落 reportlab：kit 在某些部署里可能找不到，
+            #    演示当天只允许降级，不允许导不出来。
+            from loguru import logger
+
+            from app.services import pdf_docx_service
+
+            data = pdf_docx_service.export_bank_pdf_via_docx(
+                bank_dict, questions, with_answers=with_answers
+            )
+            if data:
+                logger.info("[export] 题库 {} 走 DOCX→PDF 导出（{} 字节）", bank_id, len(data))
+            else:
+                logger.warning("[export] 题库 {} DOCX→PDF 不可用，回落 reportlab", bank_id)
+                from app.services.bank_export_service import export_bank_pdf
+
+                data = export_bank_pdf(bank_dict, questions, with_answers=with_answers)
+            media_type = "application/pdf"
+            filename = f"{base_name}{suffix}.pdf"
         else:
             from app.services.bank_export_service import export_bank_pdf
 

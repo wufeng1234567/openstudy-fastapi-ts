@@ -115,3 +115,8 @@ openstudy-fastapi/data-gym-cache/
 
 # jieba 分词运行时缓存（RAG tokenize 生成）
 openstudy-fastapi/jieba.cache
+
+# v3 迭代期间的实测证据与一次性验证脚本（截图 / 样本 docx / CDP 测试）
+# 它们是排查时的物证，但不属于产品代码，不入库。
+# 2026-10-26 起忽略。
+_scratch_v3/

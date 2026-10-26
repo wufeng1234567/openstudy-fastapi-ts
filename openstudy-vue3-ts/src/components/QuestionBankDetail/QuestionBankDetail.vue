@@ -521,11 +521,19 @@ const exporting = ref(false)
  *
  * command 形如 `docx:answers` / `pdf:blank` —— 前半是格式，后半是版本。
  * 用户 2026-10-19 要求「无论 word 还是 pdf 都要支持有答案和无答案两种」。
+ *
+ * ── 2026-10-26：PDF 改走 `pdf_docx` ──────────────────────────────
+ * UI 上仍然只显示一个「PDF」选项（用户不需要知道实现方式），
+ * 但实际请求 `format=pdf_docx`：先出 DOCX 再转 PDF，这样公式与表格
+ * 和 Word 版完全一致。旧的 `pdf`（reportlab 直出）保留在后端，
+ * 作为 kit 不可用时的自动兜底。
  */
 async function handleExport(command: string) {
   if (exporting.value) return
-  const [format, variant] = String(command || '').split(':')
-  if (format !== 'docx' && format !== 'pdf') return
+  const [rawFormat, variant] = String(command || '').split(':')
+  if (rawFormat !== 'docx' && rawFormat !== 'pdf') return
+  // UI 的 `pdf` → 前端的 `pdf_docx`（高质量路线）
+  const format: 'docx' | 'pdf_docx' = rawFormat === 'pdf' ? 'pdf_docx' : 'docx'
   const withAnswers = variant !== 'blank'
 
   if (!(await ensureLogin('导出题库'))) return
@@ -534,7 +542,7 @@ async function handleExport(command: string) {
   try {
     const { blob, filename, error } = await exportQuestionBank(
       props.bank.bankId,
-      format as 'docx' | 'pdf',
+      format,
       withAnswers
     )
     if (error || !blob) {
@@ -545,13 +553,15 @@ async function handleExport(command: string) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = filename || `题库-${props.bank.bankId}${withAnswers ? '' : '-无答案'}.${format}`
+    // 兜底文件名用**真实扩展名**：`pdf_docx` 是内部格式名，不能当后缀
+    const ext = format === 'docx' ? 'docx' : 'pdf'
+    a.download = filename || `题库-${props.bank.bankId}${withAnswers ? '' : '-无答案'}.${ext}`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     // 立刻 revoke 在部分浏览器（Safari）会打断下载，延后一点
     setTimeout(() => URL.revokeObjectURL(url), 5000)
-    const label = `${format === 'docx' ? 'Word' : 'PDF'}${withAnswers ? '' : '（无答案）'}`
+    const label = `${rawFormat === 'docx' ? 'Word' : 'PDF'}${withAnswers ? '' : '（无答案）'}`
     proxy.$modal.msgSuccess(`已导出为 ${label} 文件`)
   } catch (e: any) {
     // 后端业务错误（403 无权 / 500 生成失败）走 axios 的 reject

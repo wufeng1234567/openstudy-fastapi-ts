@@ -329,17 +329,42 @@ def _convert_node(node: ET.Element) -> Optional[object]:
 
         # 求和 / 积分这类"上下限"：OMML 用 m:nary
         base_text = _collect_text(base).strip() if base is not None else ""
-        if base_text in ("∑", "∏", "∐", "∫", "∬", "∭", "∮", "⋃", "⋂"):
+        if base_text in ("∑", "∏", "∐", "∫", "∬", "∭", "∮", "⋃", "⋂", "⋁", "⋀"):
             nary = _el("nary")
             pr = _sub(nary, "naryPr")
             chr_el = ET.SubElement(pr, _m("chr"))
             chr_el.set(_m("val"), base_text)
+            # 积分号习惯把上下限放在右侧（subSup），求和/连乘习惯放正上下（undOvr）。
+            # Word 自己的行为也是这样：∫ 的限在右边，∑ 的限在上下。
             lim_loc = ET.SubElement(pr, _m("limLoc"))
-            lim_loc.set(_m("val"), "undOvr")
-            _sub(nary, "sub")
-            _sub(nary, "sup")
-            e = _sub(nary, "e")
-            # base 本身是符号，不重复输出；这里把被积/求和内容当作 e（MathML 里通常在 mrow 后面）
+            if base_text in ("∑", "∏", "∐", "⋃", "⋂", "⋁", "⋀"):
+                lim_loc.set(_m("val"), "undOvr")
+            else:
+                lim_loc.set(_m("val"), "subSup")
+
+            # ⚠️ 2026-10-26 修复：原实现创建了空的 sub/sup/e 就直接返回，
+            #    导致 `∫_{0}^{10} 2Adx` 印出来只剩一个光秃秃的积分号，
+            #    下限 0、上限 10、被积式 2Adx **全部丢失**。
+            #    实测证据：`e^{-λ}` 的 λ 也被吞掉（走的是同一个空壳分支）。
+            sub_el = _sub(nary, "sub")
+            sup_el = _sub(nary, "sup")
+            # m:e 故意**留空**：取积分/求和的内容是 `msubsup` 的后续兄弟节点，
+            # 由外层 `_convert_children` 自然跟在 nary 后面输出。
+            # 若在这里把兄弟节点也填进 m:e，内容会重复出现两遍。
+            _sub(nary, "e")
+
+            # 上下限：munderover/munder/mover 的第 2、3 个孩子
+            lower = kids[1] if len(kids) > 1 and name in ("munder", "munderover") else None
+            upper = (
+                kids[2] if len(kids) > 2 and name == "munderover"
+                else (kids[1] if len(kids) > 1 and name == "mover" else None)
+            )
+            if lower is not None:
+                for c in _convert_one_or_many(lower):
+                    sub_el.append(c)
+            if upper is not None:
+                for c in _convert_one_or_many(upper):
+                    sup_el.append(c)
             return nary
 
         # 其它上标结构：退化成 sSup/sSub，避免丢内容

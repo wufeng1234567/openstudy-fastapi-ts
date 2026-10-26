@@ -169,6 +169,15 @@
                 </div>
             </section>
 
+            <!-- ============ 学情诊断（2026-10-26 v3 新增） ============ -->
+            <!--
+              数据来自 `GET /userStats/diagnose`（`study_diagnosis_service.diagnose`）。
+              放在"错题诊断"下面：上面那张卡是 SQL 聚合（错了几次、难度分布），
+              这张卡是逐题状态（哪道题该复习了、哪道题反复失守），
+              两者信息互补，不重复。
+            -->
+            <DiagnosisPanel @practice="goPractice" @open-question="onOpenDiagnosisItem" />
+
             <!-- ============ 我的积累 + 里程碑（原来底部重复的成长记录） ============ -->
             <section class="panel accum-panel">
                 <div class="accum-left">
@@ -218,6 +227,8 @@ import * as echarts from 'echarts'
 import { TrendCharts, ArrowRight } from '@element-plus/icons-vue'
 import SegmentedTabs from '@/components/SegmentedTabs/index.vue'
 import EnglishStatistics from '@/views/front/english/statistics/index.vue'
+// 学情诊断面板（2026-10-26 v3）：把后端逐题诊断画成页内图表，而不是下载 PDF
+import DiagnosisPanel from './components/DiagnosisPanel.vue'
 import {
     getOverview,
     getBySubject,
@@ -693,6 +704,21 @@ const goWrongQuestion = (item: { questionId: number | string }) => {
     router.push({
         path: '/front/myQuestion/wrongQuestion',
         query: { questionId: String(item.questionId), from: 'stats' }
+    })
+}
+
+/**
+ * 点击「学情诊断」里需要关注的题 → 跳到错题本定位
+ *
+ * 与 `goWrongQuestion` 走同一个落点，但带上诊断来源标记：
+ * 这样错题页可以据此决定"要不要自动展开练习区"
+ * （从诊断点进去的意图是"现在就想练这道"，不是"随便看看"）。
+ */
+const onOpenDiagnosisItem = (item: { questionId: number | string }) => {
+    if (!item?.questionId) return
+    router.push({
+        path: '/front/myQuestion/wrongQuestion',
+        query: { questionId: String(item.questionId), from: 'diagnosis' }
     })
 }
 

@@ -73,3 +73,115 @@ export function getErrorAnalysis(): Promise<ApiResult<ErrorAnalysis>> {
 export function getGrowth(): Promise<ApiResult<GrowthRecord>> {
   return request({ url: '/userStats/growth', method: 'get' }) as unknown as Promise<ApiResult<GrowthRecord>>
 }
+
+/* ============================================================================
+ * 逐题学情诊断（2026-10-26 v3 新增）
+ * ----------------------------------------------------------------------------
+ * 数据来自后端 `study_diagnosis_service.diagnose()`，是**算出来的、不是 LLM 生成的**。
+ *
+ * 在此之前它只挂在 AI 工具链上（要跟 AI 对话一句才看得到），而且默认产物是
+ * 一份 PDF 下载。这个接口把它变成普通 REST，前端可以直接画成页内图表。
+ *
+ * 七档掌握度（按"该先处理谁"排序）：
+ *   repeated_failure 反复做错 → 概念没通
+ *   lapsing          曾经会、现在又错 → 记忆衰减
+ *   overdue          过了复习窗口没练 → 该复习了
+ *   due_soon         即将到期
+ *   on_track         节奏正常
+ *   mastered         已掌握
+ *   fresh            新题，还没到复习期
+ * ========================================================================== */
+
+export type MasteryLevel =
+  | 'repeated_failure'
+  | 'lapsing'
+  | 'overdue'
+  | 'due_soon'
+  | 'on_track'
+  | 'mastered'
+  | 'fresh'
+
+export interface DiagnosisItem {
+  questionId: number
+  bankName: string
+  subject: string
+  questionText: string
+  questionType: number
+  difficulty: number
+  attempts: number
+  correctCount: number
+  /** 0~1 */
+  accuracy: number
+  /** 连续答对次数 */
+  streak: number
+  level: MasteryLevel
+  /** 中文档位名，如「反复失守」 */
+  levelText: string
+  /** 已过期天数（0=没过期） */
+  overdueDays: number
+  /** 距下次复习天数 */
+  dueInDays: number
+  recommendedIntervalDays: number
+  lastPracticeTime?: string | null
+  lastWrongTime?: string | null
+  inErrorBook: boolean
+  /** 累计做错次数（可能 > attempts，因为同一题多次错） */
+  errorCount: number
+  /** 后端算好的、可直接展示的建议句 */
+  advice: string
+}
+
+export interface DiagnosisLevelInfo {
+  count: number
+  text: string
+}
+
+export interface DiagnosisSubjectRow {
+  subject: string
+  questions: number
+  attempts: number
+  /** 0~100 */
+  accuracy: number
+}
+
+export interface DiagnosisDailyRow {
+  date: string
+  practiceCount: number
+  correctCount: number
+}
+
+export interface DiagnosisActivity {
+  daily: DiagnosisDailyRow[]
+  windowDays: number
+  activeDays: number
+  peakDayCount: number
+  /** 是否"突击式"学习（少数几天做了大部分题） */
+  looksLikeBurst: boolean
+  totalPractice: number
+  averagePerActiveDay: number
+}
+
+export interface DiagnosisResult {
+  hasData: boolean
+  generatedAt: string
+  summary: {
+    questionsSeen: number
+    totalAttempts: number
+    overallAccuracy: number
+    needsAttention: number
+    canArchive: number
+    overdueCount: number
+  }
+  items: DiagnosisItem[]
+  byLevel: Record<string, DiagnosisLevelInfo>
+  bySubject: DiagnosisSubjectRow[]
+  activity: DiagnosisActivity
+  headline: string
+  suggestions: string[]
+}
+
+export function getDiagnose(limit: number = 30): Promise<ApiResult<DiagnosisResult>> {
+  return request({ url: '/userStats/diagnose', method: 'get', params: { limit } }) as unknown as Promise<
+    ApiResult<DiagnosisResult>
+  >
+}

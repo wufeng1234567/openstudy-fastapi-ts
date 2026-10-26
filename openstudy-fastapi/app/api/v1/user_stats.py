@@ -517,3 +517,38 @@ async def get_growth(
         "totalNotes": total_notes or 0,
         "milestones": milestones,
     })
+
+
+@router.get("/diagnose")
+async def get_diagnose(
+    limit: int = Query(30, ge=1, le=200, description="最多返回多少道需要关注的题"),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    逐题学情诊断（2026-10-26 v3 新增）
+
+    ── 为什么单独开一个接口 ─────────────────────────────────────
+    `study_diagnosis_service.diagnose()` 早就写好了，数据质量也很高：
+
+      · 每道题有 `masteryLevel`（repeated_failure / lapsing / overdue /
+        due_soon / on_track / mastered / fresh 七档）
+      · 有 `byLevel` / `bySubject` / `activity` 三组可直接画图的聚合
+      · 有 `headline`（一句人话结论）与 `suggestions`（下一步建议）
+
+    但它**只挂在 AI 工具链上**（`learning_stats` 的 `diagnose` action），
+    用户必须去对话里问一句才看得到，而且默认输出是一份 PDF 下载。
+
+    前端 `myStats` 页面完全没有这个数据 —— 那里只有"总览/趋势/科目/错题"
+    四张基于 SQL 聚合的图，缺的正是"每道题现在什么状态、什么时候该复习"。
+
+    所以这个接口的作用是：**把已有的诊断能力暴露成普通 REST**，
+    让前端可以直接画成页内图表（而不是让用户下载 PDF 才有信息）。
+
+    返回结构与 `diagnose()` 完全一致，前端不需要再做一层映射。
+    """
+    from app.services.study_diagnosis_service import diagnose
+
+    user_id = current_user.get("user_id")
+    data = await diagnose(db, user_id=user_id, limit=limit)
+    return success(data)
