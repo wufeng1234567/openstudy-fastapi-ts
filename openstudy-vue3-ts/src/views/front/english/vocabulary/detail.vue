@@ -36,6 +36,41 @@
           <OsIcon name="sparkles" :size="14" />
           <span>拍照识词</span>
         </button>
+        <!--
+          导出（2026-10-26）
+          ---------------------------------------------------------------
+          用户反馈：「能手写、能从图片/文档导入，但导不出去，想打印或换设备就卡住了」。
+
+          三种格式各自解决不同场景：
+            · Anki  —— 导入记忆卡软件，带标签/间隔重复
+            · Excel —— 打印、二次编辑、给同事
+            · Word  —— 打印成纸质单词表
+
+          全部在**纯前端**生成（Blob 下载），不占后端带宽、也不依赖网络 ——
+          Anki 是纯文本格式、Excel 用 SpreadsheetML（一个 XML 就能表达）、
+          Word 用 HTML 加 `.doc` 扩展名（Word 能直接打开，排版比纯文本好得多）。
+          这样连装包都不用，也避免为三种格式各写一个后端接口。
+        -->
+        <el-dropdown trigger="click" @command="handleExport">
+          <button type="button" class="wd-btn" :disabled="exporting || !words.length">
+            <OsIcon name="download" :size="14" />
+            <span>{{ exporting ? '导出中…' : '导出' }}</span>
+            <OsIcon name="chevron-down" :size="12" />
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="anki">
+                Anki 卡片（.txt）
+              </el-dropdown-item>
+              <el-dropdown-item command="excel">
+                Excel 表格（.xls）
+              </el-dropdown-item>
+              <el-dropdown-item command="word">
+                Word 文档（.doc）
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <button type="button" class="wd-btn is-primary" @click="openCreate">
           <OsIcon name="plus" :size="14" />
           <span>添加单词</span>
@@ -210,6 +245,8 @@ import { listAllWords, addWords, updateWords, delWords } from '@/api/words/words
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
 import { speak as speakText, isSpeechSupported, speakReasonText, warmUpVoices } from '@/utils/speech'
 import OcrRecognizer from '@/components/OcrRecognizer/index.vue'
+// 词库导出（2026-10-26）：Anki / Excel / Word，纯前端生成
+import { exportWordBook, type ExportFormat } from '@/utils/wordbook-export'
 
 const router = useRouter()
 const route = useRoute()
@@ -236,6 +273,8 @@ const dialogVisible = ref(false)
 const saving = ref(false)
 /** 批量删除进行中（防止重复点击） */
 const batchDeleting = ref(false)
+/** 导出中（防止重复点击） */
+const exporting = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref<any>(null)
 const form = ref({ word: '', translation: '', phonetic: '', example: '' })
@@ -463,6 +502,42 @@ async function removeChecked() {
     await load()
   } finally {
     batchDeleting.value = false
+  }
+}
+
+/* ============================================================================
+ * 导出（2026-10-26）
+ *
+ * 导出的是**这本书的全部单词**（`words`），不是当前搜索过滤后的结果 ——
+ * 用户点「导出」时想的是"把这本词库导出去"，而不是"导出我现在筛出来的这几条"。
+ * 如果确实想导筛选结果，先清空搜索框再看会更符合直觉。
+ * ========================================================================== */
+const EXPORT_LABEL: Record<ExportFormat, string> = {
+  anki: 'Anki 卡片',
+  excel: 'Excel 表格',
+  word: 'Word 文档'
+}
+
+async function handleExport(format: ExportFormat) {
+  if (!words.value.length) {
+    ElMessage.warning('这个词库还没有单词')
+    return
+  }
+  exporting.value = true
+  try {
+    exportWordBook(format, words.value, {
+      bookName: bookInfo.value.bookName || '词库',
+      description: bookInfo.value.bookDescription || ''
+    })
+    ElMessage.success(`已导出 ${words.value.length} 个单词为 ${EXPORT_LABEL[format]}`)
+  } catch (e: any) {
+    console.error('导出失败:', e)
+    ElMessage.error('导出失败：' + (e?.message || e))
+  } finally {
+    // 下载是同步触发的，给一点缓冲让用户看到"导出中"再复位
+    setTimeout(() => {
+      exporting.value = false
+    }, 600)
   }
 }
 
