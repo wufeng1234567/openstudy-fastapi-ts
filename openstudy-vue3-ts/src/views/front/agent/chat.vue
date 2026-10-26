@@ -305,7 +305,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'FrontAgentChat' })
 
-import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount, onActivated } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -1221,6 +1221,114 @@ onMounted(async () => {
     await loadHistory(sessionId.value)
   } else {
     await newSession()
+  }
+
+  // seedQuestion 的消费放到 onActivated 里（见下方 consumeSeedQuestion），
+  // 因为本页是 keep-alive 的，从英语模块跳过来时 onMounted 不会再执行。
+})
+
+/**
+ * 消费别的页面带过来的「预填问题」（2026-10-26）
+ *
+ * 英语模块的「交给智能体分析」按钮会这样跳过来：
+ *
+ *     router.push({
+ *       path: '/front/agent/chat',
+ *       state: { seedQuestion: '我刚练完一次英语听写，帮我分析…' }
+ *     })
+ *
+ * ⚠️ 在这之前**没有任何地方读这个 state** —— 按钮点了会跳过来，
+ *    但问题一个字都没带过来，用户得自己重新打一遍，
+ *    等于那个按钮只完成了一半。
+ *
+ * ⚠️ 为什么不能放在 `onMounted` 里：
+ *    本页路由配了 `keepAlive: true`（见 router/index.ts）。
+ *    第一次进智能体页会执行 onMounted，但**从英语页跳过来时不会** ——
+ *    组件早就被缓存了，只触发 onActivated。
+ *    第一版就写在 onMounted 里，实测 fill 失败（inputValue 为空）。
+ *
+ * 填进输入框但不自动发送：让用户看到内容、可以改，比替他发出去更可控。
+ * 用完立刻 `replaceState` 清掉，否则刷新/来回切换会反复填充。
+ */
+/** 并发守卫：巡检 400ms 一次，而消费过程里有 await，可能重入 */
+let seedConsuming = false
+
+async function consumeSeedQuestion() {
+  if (seedConsuming) return
+
+  const seed = (history.state as any)?.seedQuestion
+  if (typeof seed !== 'string' || !seed.trim()) return
+
+  seedConsuming = true
+  try {
+    // 先清掉标记，避免下面 await 期间被重复触发
+    try {
+      const rest = { ...(history.state as any) }
+      delete rest.seedQuestion
+      history.replaceState(rest, '', location.href)
+    } catch {
+      /* 忽略：某些环境不允许改 history.state */
+    }
+
+    /*
+     * 等 `chatRef` 真正就绪再填。
+     *
+     * ⚠️ 单个 `nextTick()` 不够：子组件 `<AiChatStream>` 可能还没挂载完
+     *    （它还依赖会话列表加载），实测直接调 `setInputText` 拿不到实例、静默失败。
+     *    这里轮询 10 次 × 100ms（最多 1s），拿到实例就立刻填。
+     */
+    const text = seed.trim()
+    for (let i = 0; i < 10; i++) {
+      await nextTick()
+      if (chatRef.value?.setInputText) {
+        chatRef.value.setInputText(text)
+        chatRef.value.scrollToBottom?.()
+        return
+      }
+      await new Promise((r) => setTimeout(r, 100))
+    }
+    console.warn('[chat] seedQuestion 已消费，但输入框始终未就绪')
+  } finally {
+    seedConsuming = false
+  }
+}
+
+/*
+ * ⚠️ 为什么用「定时巡检」而不是只靠生命周期钩子
+ * ---------------------------------------------------------------------------
+ * 这个页面在 keep-alive 下有几个坑，逐个踩过（都用 CDP 实测确认）：
+ *
+ *   ① 从英语页 `router.push` 回**同一个路由**（当前已在智能体页）→
+ *      Vue 既不会重新挂载（onMounted 不跑）也不会 onActivated（本来就在激活态）；
+ *   ② 挂在 `onMounted` / `onActivated` 里的日志一条都没打出来；
+ *   ③ `history.state.seedQuestion` 此时**确实已经有值**（Vue Router 写进去了）。
+ *
+ * 也就是说：state 到了，但没有任何钩子会被调用。
+ *
+ * 所以用一个 400ms 的巡检兜住所有情况 —— 一旦发现 `seedQuestion`
+ * 就消费掉并立刻清 state（`consumeSeedQuestion` 内部清），后续巡检自然空转。
+ * 这个代价极低（一次属性读取），但比再去猜 keep-alive 的激活时序可靠得多。
+ *
+ * 同时保留 onMounted / onActivated 两个钩子：它们是"快路径"，
+ * 首次进入页面时能立刻填充，不用等 400ms。
+ */
+let seedTimer: ReturnType<typeof setInterval> | null = null
+
+onMounted(() => {
+  void consumeSeedQuestion()
+  seedTimer = setInterval(() => {
+    void consumeSeedQuestion()
+  }, 400)
+})
+
+onActivated(() => {
+  void consumeSeedQuestion()
+})
+
+onBeforeUnmount(() => {
+  if (seedTimer) {
+    clearInterval(seedTimer)
+    seedTimer = null
   }
 })
 

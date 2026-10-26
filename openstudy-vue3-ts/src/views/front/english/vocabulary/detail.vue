@@ -58,6 +58,26 @@
       </span>
     </div>
 
+    <!--
+      批量操作工具栏（2026-10-26）
+      ---------------------------------------------------------------
+      改前只能一条一条删，几十上百个词时想清理几乎不可能。
+      现在：勾选任意一条就浮出这条工具栏，支持全选当前页 / 反选 / 批量删除。
+      没勾选时不占位置（不挤压上面的搜索区）。
+    -->
+    <div class="wd-bulk" v-if="checkedIds.size > 0">
+      <span class="wd-bulk__info">
+        已选 <b>{{ checkedIds.size }}</b> 条
+      </span>
+      <div class="wd-bulk__ops">
+        <button type="button" class="wd-btn" @click="selectAllOnPage">全选本页</button>
+        <button type="button" class="wd-btn" @click="clearChecked">取消选择</button>
+        <button type="button" class="wd-btn is-danger" @click="removeChecked" :disabled="batchDeleting">
+          {{ batchDeleting ? '删除中…' : `删除所选（${checkedIds.size}）` }}
+        </button>
+      </div>
+    </div>
+
     <!-- 列表 -->
     <div v-loading="loading" class="wd-body">
       <div v-if="!loading && !filtered.length" class="wd-empty">
@@ -85,7 +105,19 @@
       </div>
 
       <div v-else class="wd-list">
-        <div v-for="w in pagedWords" :key="w.wordId" class="wd-item">
+        <div v-for="w in pagedWords" :key="w.wordId" class="wd-item" :class="{ 'is-checked': checkedIds.has(w.wordId) }">
+          <!--
+            批量选择（2026-10-26）
+            改前只能一条一条删 —— 词库里有几十上百个词时，
+            想清掉一批几乎不可能。这里加复选框，配合顶部工具栏的批量删除。
+          -->
+          <label class="wd-item__check" :title="'选择 ' + w.word">
+            <input
+              type="checkbox"
+              :checked="checkedIds.has(w.wordId)"
+              @change="toggleCheck(w.wordId)"
+            />
+          </label>
           <div class="wd-item__main">
             <div class="wd-item__word-row">
               <span class="wd-item__word">{{ w.word }}</span>
@@ -202,6 +234,8 @@ const ocrVisible = ref(false)
 
 const dialogVisible = ref(false)
 const saving = ref(false)
+/** 批量删除进行中（防止重复点击） */
+const batchDeleting = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref<any>(null)
 const form = ref({ word: '', translation: '', phonetic: '', example: '' })
@@ -350,6 +384,88 @@ async function removeWord(w: any) {
   }
 }
 
+/* ============================================================================
+ * 批量操作（2026-10-26）
+ *
+ * 改前只能一条一条删 —— 词库有几十上百个词时想清理一批几乎不可能。
+ * 现在勾选后浮出工具栏，支持全选本页 / 取消 / 批量删除。
+ *
+ * ⚠️ 为什么用 `Set` 而不是数组：勾选/取消是高频操作，
+ *    `Array.includes` 是 O(n)，词库几百条时每帧都要扫一遍；
+ *    `Set.has` 是 O(1)。模板里 `checkedIds.has(w.wordId)` 直接查。
+ * ========================================================================== */
+
+const checkedIds = ref<Set<number>>(new Set())
+
+/** 勾选/取消一条 */
+function toggleCheck(wordId: number) {
+  const next = new Set(checkedIds.value)
+  if (next.has(wordId)) next.delete(wordId)
+  else next.add(wordId)
+  checkedIds.value = next
+}
+
+/** 全选当前页（不是整个词库 —— 用户看到的才是他想要的） */
+function selectAllOnPage() {
+  const next = new Set(checkedIds.value)
+  pagedWords.value.forEach((w: any) => next.add(w.wordId))
+  checkedIds.value = next
+}
+
+/** 取消全部选择 */
+function clearChecked() {
+  checkedIds.value = new Set()
+}
+
+/**
+ * 批量删除所选单词
+ *
+ * ⚠️ 逐条调用 `delWords`：后端 `/words/words/{id}` 是单删接口，没有批量端点。
+ *    串行发（不是 `Promise.all`）是有意的 —— 词库可能有几百条，
+ *    并发几百个 DELETE 会把连接池打满、也容易被限流中间件拦。
+ *    串行慢一点，但结果可预期；进度条会告诉用户还剩多少。
+ */
+async function removeChecked() {
+  const ids = Array.from(checkedIds.value)
+  if (!ids.length) return
+
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${ids.length} 个单词吗？删除后不可恢复。`,
+      '批量删除',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return
+  }
+
+  batchDeleting.value = true
+  let ok = 0
+  let failed = 0
+  try {
+    for (const id of ids) {
+      try {
+        const res: any = await delWords(id)
+        if (res.code === 200) ok++
+        else failed++
+      } catch {
+        failed++
+      }
+    }
+
+    if (failed === 0) {
+      ElMessage.success(`已删除 ${ok} 个单词`)
+    } else {
+      ElMessage.warning(`删除完成：成功 ${ok} 个，失败 ${failed} 个`)
+    }
+
+    clearChecked()
+    await load()
+  } finally {
+    batchDeleting.value = false
+  }
+}
+
 /**
  * 朗读单词
  *
@@ -358,8 +474,7 @@ async function removeWord(w: any) {
  *    会**静默不响**（onerror 没人接）；
  *  · `cancel()` 之后立刻 `speak()`，Chrome 下这一发有概率被直接丢弃。
  * 现在统一走 @/utils/speech，失败会明确告诉用户原因，而不是点了没反应。
- */
-async function speak(text: string) {
+ */async function speak(text: string) {
   if (!text) return
   if (!isSpeechSupported()) {
     ElMessage.warning(speakReasonText('unsupported', 'en-US'))
@@ -523,6 +638,56 @@ watch(() => route.params.id, (nv, ov) => {
   b {
     color: var(--os-text, #111827);
     font-weight: 600;
+  }
+}
+
+/* ---------- 批量操作工具栏（2026-10-26） ---------- */
+.wd-bulk {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+
+  .wd-bulk__info {
+    font-size: 13px;
+    color: #1e40af;
+
+    b {
+      font-weight: 600;
+    }
+  }
+
+  .wd-bulk__ops {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+}
+
+/* 勾选行的视觉反馈：一眼看出哪几条被选中 */
+.wd-item.is-checked {
+  background: #f0f7ff;
+  border-color: #bfdbfe;
+}
+
+.wd-item__check {
+  display: flex;
+  align-items: center;
+  padding-top: 2px;
+  flex: none;
+  cursor: pointer;
+
+  input {
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+    accent-color: #3b82f6;
   }
 }
 
