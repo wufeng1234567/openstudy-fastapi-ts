@@ -354,6 +354,80 @@ async def get_document_content(
         return _fail(e)
 
 
+@router.get("/document/outline/{doc_id}")
+async def get_document_outline(
+    doc_id: int,
+    max_nodes: int = Query(120, ge=10, le=400, description="树上最多多少节点"),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    资料结构树（2026-10-26 v3 新增）
+
+    ── 为什么需要这个接口 ───────────────────────────────────────
+    知识库把文档读进来之后（`raw_content` + 分块 + 向量），
+    用户能看到的只有「一串分块」或「AI 零散聊几句」。
+
+    一份 30 页的资料被切成 13 个 chunk 后，
+    **它讲了哪几个主题、层级怎么分**这个信息就丢了 ——
+    而这恰好是复习时最需要先看到的骨架。
+
+    这个接口把原文标题还原成树，前端用 echarts `tree` 画出来。
+
+    ── 返回 ─────────────────────────────────────────────────────
+        {
+          "name": "文档名",
+          "children": [...],          # 树结构，直接喂 echarts
+          "count": 15,                # 上树的节点数
+          "totalHeadings": 15,        # 原文里识别到的标题总数
+          "truncated": false          # 是否因为 max_nodes 截断
+        }
+
+    解析不出章节时返回 `hasOutline=false` + `reason`，
+    让前端能如实提示"这份资料没有可提取的章节结构"，
+    而不是画一张只有根节点的空图。
+    """
+    from app.services.outline_tree_service import build_outline_tree
+
+    try:
+        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+    except Exception as e:
+        return _fail(e)
+
+    tree = build_outline_tree(
+        doc.raw_content or "",
+        root_name=doc.file_name or "资料结构",
+        max_nodes=max_nodes,
+    )
+
+    if not tree:
+        # 题库型文档（纯题目列表）和未排版的纯文本都会走到这里。
+        # 这不是错误，是"这份资料本身没有章节结构"。
+        return success(
+            {
+                "docId": doc.id,
+                "fileName": doc.file_name,
+                "hasOutline": False,
+                "reason": (
+                    "这份资料里没有可识别的章节标题（Markdown 标题、"
+                    "「一、」或「1.」序号），因此画不出结构树。"
+                    "题库类文档（纯题目列表）通常就是这种情况。"
+                ),
+                "chunkCount": getattr(doc, "chunk_count", 0) or 0,
+            }
+        )
+
+    return success(
+        {
+            "docId": doc.id,
+            "fileName": doc.file_name,
+            "hasOutline": True,
+            "tree": tree,
+            "chunkCount": getattr(doc, "chunk_count", 0) or 0,
+        }
+    )
+
+
 @router.get("/document/chunks/{doc_id}")
 async def get_document_chunks(
     doc_id: int,

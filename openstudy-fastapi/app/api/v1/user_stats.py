@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.core.security import get_current_user
-from app.core.response import success
+from app.core.response import success, error
 from app.models.question import (
     QuestionBank,
     QuestionMain,
@@ -552,3 +552,122 @@ async def get_diagnose(
     user_id = current_user.get("user_id")
     data = await diagnose(db, user_id=user_id, limit=limit)
     return success(data)
+
+
+@router.get("/reviewSheet")
+async def get_review_sheet(
+    limit: int = Query(
+        20, ge=1, le=100, description="复习卷最多收录多少道题（按优先级取前 N）"
+    ),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    按薄弱点生成复习卷 Word（2026-10-26 v3 新增）
+
+    ── 这个接口串起了三件已经存在的东西 ─────────────────────────
+      1. `diagnose()` 算出的「该先复习谁」优先级
+      2. `bank_export_service` 的公式 / 表格渲染能力（v3 刚修好的）
+      3. 用户手上现成的错题数据
+
+    做成一份可直接打印的 Word：
+
+        卷首  掌握度分档表 + 学科情况表     ← 真表格
+        正文  按优先级排的题目（含作答空间）
+        卷尾  未来七天复习计划表           ← 真表格
+        附页  答案与解析（单独起页，方便裁掉）
+
+    ── 为什么不让 AI 生成 ───────────────────────────────────────
+    复习卷的内容是**确定的**：哪些题、什么档位、哪天复习，
+    全部来自 `diagnose()` 的确定性算法。让 AI 再"创作"一遍只会引入
+    不一致（同一个用户两次生成结果不同）和额外延迟。
+
+    所以这条路径**完全不经过大模型**，3 秒内出文件。
+
+    ── 返回 ─────────────────────────────────────────────────────
+    直接返回 .docx 二进制流（`StreamingResponse`），与题库导出接口一致 ——
+    前端已有的下载逻辑可以直接复用，不需要先拿 URL 再拉一次。
+    """
+    import io
+    import re as _re
+    from urllib.parse import quote
+
+    from fastapi.responses import StreamingResponse
+    from sqlalchemy.orm import selectinload
+
+    from app.services.review_sheet_service import build_review_sheet
+    from app.services.study_diagnosis_service import diagnose
+
+    user_id = current_user.get("user_id")
+
+    # ① 先诊断（这一步决定"复习哪几道"）
+    #
+    # ⚠️ `diagnose(limit=N)` 的 N 是「**每一档**最多几道」，不是总数 ——
+    #    七档乘起来能到好几十题（实测 user1 传 30 拿到 71 题）。
+    #    复习卷需要的是"总数可控"，所以在下面取完题后再按总数截断一次。
+    diag = await diagnose(db, user_id=user_id, limit=limit)
+    items = diag.get("items") or []
+    if not items:
+        return error(
+            "还没有足够的练习记录来生成复习卷。先做几道题，诊断才有依据。",
+            code=400,
+        )
+
+    # 先按总数截断（诊断已按「该先处理谁」排好序，取前 N 就是最该做的 N 道）
+    items = items[:limit]
+
+    # ② 按诊断给出的顺序取完整题目
+    #
+    # ⚠️ 不能直接用 `diag["items"][i]["questionText"]`：那是**截断到 120 字**的
+    #    预览文本，只够列表展示。复习卷要完整题干、选项、答案。
+    qids = [int(it["questionId"]) for it in items if it.get("questionId")]
+    stmt = (
+        select(QuestionMain)
+        .where(QuestionMain.id.in_(qids), QuestionMain.status == "0")
+        .options(selectinload(QuestionMain.sub_questions))
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+
+    from app.api.v1.questions import format_question
+
+    by_id = {q.id: format_question(q) for q in rows}
+
+    # 保持诊断的优先级顺序（IN 查询不保证顺序）
+    level_text_of = {int(it["questionId"]): it.get("levelText") for it in items if it.get("questionId")}
+    ordered = []
+    for qid in qids:
+        q = by_id.get(qid)
+        if not q:
+            continue
+        # 把分档标签挂在题目上，复习卷正文要用它标"这题为什么被选进来"
+        q["_levelText"] = level_text_of.get(qid)
+        ordered.append(q)
+
+    if not ordered:
+        return error(
+            "诊断出的题目都已被删除或停用，暂时无法生成复习卷。",
+            code=400,
+        )
+
+    # ③ 出文件
+    data = build_review_sheet(diag, ordered)
+
+    stamp = datetime.now().strftime("%Y%m%d")
+    filename = f"薄弱点复习卷_{stamp}.docx"
+    ascii_fallback = _re.sub(r"[^A-Za-z0-9._-]", "_", filename) or "review.docx"
+
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ),
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{ascii_fallback}"; '
+                f"filename*=UTF-8''{quote(filename, safe='')}"
+            ),
+            # 让前端能读到实际收录了多少题（CORS 下默认不暴露自定义头）
+            "X-Review-Count": str(len(ordered)),
+            "Access-Control-Expose-Headers": "X-Review-Count, Content-Disposition",
+        },
+    )

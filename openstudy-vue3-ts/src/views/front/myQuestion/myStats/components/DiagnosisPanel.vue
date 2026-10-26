@@ -30,6 +30,16 @@
         <div class="panel-head">
             <h3 class="panel-title">学情诊断</h3>
             <span class="panel-sub">逐题掌握度 · 复习节奏 · 学科短板</span>
+            <!-- ============ 导出复习卷（2026-10-26 v3） ============
+                 诊断结果此前只能"看"，看完就没了。
+                 这个按钮把它变成一份可打印的 Word：
+                   卷首 分档表 + 学科表 ｜ 正文 题目 ｜ 卷尾 7 天计划表 ｜ 附页 答案
+                 只在有数据时出现（无数据时生成出来是空卷，没意义）。 -->
+            <el-button v-if="data?.hasData" class="dp-export" size="small" type="primary" plain
+                :loading="exporting" @click="exportReviewSheet">
+                <el-icon v-if="!exporting"><Download /></el-icon>
+                生成复习卷
+            </el-button>
         </div>
 
         <!-- 加载中 -->
@@ -130,11 +140,18 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { Loading, InfoFilled, ArrowRight } from '@element-plus/icons-vue'
+import { Loading, InfoFilled, ArrowRight, Download } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 // 与项目其他地方保持一致：整体引入 `echarts`（myStats 主页面也是这么写的）。
 // 不用 `echarts/core` 按需引入 —— 混用两套容易在打包后出现 "series type not exists"。
 import * as echarts from 'echarts'
-import { getDiagnose, type DiagnosisResult, type DiagnosisItem, type MasteryLevel } from '@/api/userStats/userStats'
+import {
+    getDiagnose,
+    buildReviewSheet,
+    type DiagnosisResult,
+    type DiagnosisItem,
+    type MasteryLevel,
+} from '@/api/userStats/userStats'
 
 defineOptions({ name: 'DiagnosisPanel' })
 
@@ -145,6 +162,61 @@ const emit = defineEmits<{
 
 const loading = ref(true)
 const data = ref<DiagnosisResult | null>(null)
+
+/**
+ * 复习卷导出状态（2026-10-26 v3）
+ *
+ * 单独一个 ref 而不是复用 `loading`：
+ * 导出的 loading 只该转那个按钮，不能把整个面板变成骨架屏 ——
+ * 用户点了"生成复习卷"却看不见自己的诊断结果，会以为页面刷没了。
+ */
+const exporting = ref(false)
+
+/**
+ * 生成并下载复习卷
+ *
+ * 后端返回的是 .docx 二进制流（不是 URL），所以这里走 blob 下载 ——
+ * 与题库导出保持同一套做法，避免"先存服务器再取"的一次多余往返。
+ */
+async function exportReviewSheet() {
+    if (exporting.value) return
+    exporting.value = true
+    try {
+        // 题量按诊断出的需关注题目数自适应，但不低于 10、不超过 40：
+        //   · < 10 道不成一份复习卷
+        //   · > 40 道用户一次做不完，反而失去"按优先级"的意义
+        const attention = data.value?.summary?.needsAttention || 0
+        const limit = Math.min(40, Math.max(10, attention))
+
+        const blob = await buildReviewSheet(limit)
+
+        // 文件名带日期：用户可能一天生成多次，也可能隔天再生成，不覆盖
+        const d = new Date()
+        const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `薄弱点复习卷_${stamp}.docx`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        // 立刻 revoke 会让部分浏览器下载失败，延后释放
+        setTimeout(() => URL.revokeObjectURL(url), 4000)
+
+        ElMessage.success('复习卷已生成，请查看下载文件')
+    } catch (e: any) {
+        // 后端在"没有练习记录"时返回 code=400 + 人话 msg，
+        // 这里要把它透出来，而不是显示一个笼统的"导出失败"
+        const msg =
+            e?.response?.data?.msg ||
+            e?.msg ||
+            e?.message ||
+            '生成失败，请稍后再试'
+        ElMessage.warning(msg)
+    } finally {
+        exporting.value = false
+    }
+}
 
 const levelChartRef = ref<HTMLDivElement>()
 const subjectChartRef = ref<HTMLDivElement>()

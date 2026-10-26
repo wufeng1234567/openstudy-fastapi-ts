@@ -368,6 +368,80 @@ function normalizeTabTables(text: string): string {
  * 只认「命令 + 至少一个 `{}` 组」：裸的 `\n`、`\t`、`&` 之类不碰，
  * 避免把转义字符或普通文本误当公式。
  */
+/**
+ * Unicode 数学「大运算符」——这些字符后面紧跟 `_{...}` / `^{...}` 就是公式
+ *
+ * 与后端 `bank_export_service._UNICODE_BIG_OPS` 保持**完全一致**，
+ * 这样"页面上看到的"与"导出到 Word/PDF 的"才是同一批公式。
+ */
+const UNICODE_BIG_OPS = '∫∬∭∮∑∏∐⋃⋂√'
+
+/**
+ * 裸上标/下标的匹配正则
+ *
+ * ⚠️ **不要复用这个带 `g` 的实例** —— JS 的正则对象带 `lastIndex` 状态，
+ * 跨调用复用时第二次会从上次结束位置继续，导致**前面的匹配被跳过**。
+ * （2026-10-26 实测：`C_7^3` 在第一次调用里被找到，同一个页面里
+ *   第二次渲染同一段文本时就找不到了 —— 表现为"某些题有公式、某些没有"。）
+ *
+ * 所以 `findBareScripts` 内部每次都用 `makeBareScriptRe()` 造新实例。
+ */
+const BARE_SCRIPT_SOURCE =
+  `(?:[${UNICODE_BIG_OPS}]|[A-Za-z\\u0391-\\u03A9\\u03B1-\\u03C9](?![A-Za-z])|[0-9](?![0-9]))` +
+  '(?:[_^](?:\\{[^{}]{0,40}\\}|[A-Za-z0-9]))+'
+
+/** 每次调用返回一个**全新的**正则实例（避免 `lastIndex` 状态污染） */
+function makeBareScriptRe(): RegExp {
+  return new RegExp(BARE_SCRIPT_SOURCE, 'g')
+}
+
+/**
+ * 找出「裸上标/下标」形态的公式区间
+ *
+ * ── 为什么需要这个函数（2026-10-26）────────────────────────────────
+ * 后端 `bank_export_service` 早在 v3 里就支持了裸写法识别，但**前端没有**。
+ * 后果是同一个 `C_7^3=35`：
+ *
+ *   页面上看到  → `C_7^3=35`（下划线、花括号原样呈现）
+ *   导出的 Word → 正确的组合数排版
+ *
+ * 用户会发现"屏幕上和下载的不一样"，这比两边都错更让人困惑。
+ * 所以这里把识别规则**与后端对齐**，保证两端行为一致。
+ *
+ * @param text 已把 `$...$` 公式替换成占位符之后的文本
+ * @param occupied 已被反斜杠命令占用的区间（避免重复圈选）
+ */
+function findBareScripts(
+  text: string,
+  occupied: Array<{ start: number; end: number }> = [],
+): Array<{ start: number; end: number; latex: string }> {
+  if (!text) return []
+  const out: Array<{ start: number; end: number; latex: string }> = []
+  const isFree = (s: number, e: number) =>
+    !occupied.some((o) => s < o.end && e > o.start)
+
+  const re = makeBareScriptRe()
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    const s = m.index
+    const e = s + m[0].length
+    if (!isFree(s, e)) continue
+    // 前面若紧贴 **ASCII 字母/数字/下划线**，说明是更长单词的一部分
+    // （`value_1`、`abc^2`），不当作公式。
+    //
+    // ⚠️ 这里**不能**用 JS 的 `\w` 或 `[A-Za-z0-9_]` 之外的宽松判断：
+    //    中文紧邻公式是常态（`由∫_{-∞}^{+∞}f(x)dx=1`），
+    //    若把汉字也算作"单词的一部分"就会漏掉整条积分式
+    //    （后端踩过这个坑，用的是 `isascii() and isalnum()`）。
+    if (s > 0) {
+      const prev = text[s - 1]
+      if (/[A-Za-z0-9_]/.test(prev) || prev === '^' || prev === '_') continue
+    }
+    out.push({ start: s, end: e, latex: text.substring(s, e) })
+  }
+  return out
+}
+
 function findBareLatexCommands(text: string): Array<{ start: number; end: number; latex: string }> {
   const found: Array<{ start: number; end: number; latex: string }> = []
   const cmdRegex = /\\([a-zA-Z]+)/g
@@ -463,9 +537,26 @@ export function renderMarkdownWithLatex(text: string): string {
 
   // ①-c 裸 LaTeX（无 `$` 包裹）→ 占位符。放在 Markdown 之前，避免 `_`/`|` 被误解析。
   //      ⚠️ 必须**倒序**替换，否则前面的偏移量会被后面的替换句柄搞乱。
-  const bareCmds = findBareLatexCommands(src)
-  for (let i = bareCmds.length - 1; i >= 0; i--) {
-    const { start, end, latex } = bareCmds[i]
+  let bareCmds = findBareLatexCommands(src)
+
+  // ①-d 裸上标/下标（`e^{-x}` / `C_7^3` / `∫_{0}^{10}` / `2^k`）→ 占位符
+  //
+  // ⚠️ 优先级（2026-10-26 与后端对齐）：**裸上标压过它内部的反斜杠命令**。
+  //    典型失败案例 `e^{-\lambda}`：
+  //      · 反斜杠逻辑先把 `\lambda` 圈走
+  //      · 上标逻辑再找 `e^{-\lambda}` 时被"已占用"挡掉
+  //      · 结果页面印成 `e^{-}`，公式只剩一个孤零零的 λ
+  //    所以先跑上标，再把「被上标完整包含」的反斜杠片段剔掉。
+  const scriptHits = findBareScripts(src, [])
+  if (scriptHits.length) {
+    bareCmds = bareCmds.filter(
+      (c) => !scriptHits.some((s) => s.start <= c.start && c.end <= s.end),
+    )
+  }
+  const allBare = [...bareCmds, ...scriptHits].sort((a, b) => a.start - b.start)
+
+  for (let i = allBare.length - 1; i >= 0; i--) {
+    const { start, end, latex } = allBare[i]
     let html: string
     try {
       // WPS 旧版别名先归一（\overbar → \overline，与 renderQuestionContent 同口径）

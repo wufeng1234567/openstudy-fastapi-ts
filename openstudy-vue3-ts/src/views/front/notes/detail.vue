@@ -126,6 +126,30 @@
         <!-- 图片预览模态框 -->
         <ImageViewer v-model:visible="imageViewerVisible" :src="imageViewerSrc" />
 
+        <!-- ============ 思维导图（2026-10-26 v3） ============
+             放在正文下方、评论区上方：读完正文顺手看一张结构图，
+             是最自然的动线。
+
+             默认**收起**：笔记的主要用途是阅读，导图是辅助，
+             不能一进来就把正文挤下去。
+             只在笔记有 markdownContent 时才显示折叠条
+             （纯富文本笔记没有层级来源，画不出有意义的导图）。 -->
+        <el-collapse v-if="noteData.noteId && noteData.markdownContent" v-model="mindmapCollapse"
+          class="mindmap-collapse">
+          <el-collapse-item name="mindmap">
+            <template #title>
+              <span class="mindmap-collapse-title">
+                <el-icon><Share /></el-icon>
+                思维导图
+                <span class="mindmap-hint">按标题与列表层级自动生成</span>
+              </span>
+            </template>
+            <!-- 懒渲染：展开后才挂载，避免没看的时候白画一遍 -->
+            <MindMap v-if="mindmapCollapse.includes('mindmap')" :markdown="noteData.markdownContent"
+              :title="noteData.title || '本文结构'" />
+          </el-collapse-item>
+        </el-collapse>
+
         <!-- 评论区 -->
         <CommentSection v-if="noteData.noteId" :note-id="noteData.noteId" />
 
@@ -152,7 +176,7 @@ defineOptions({ name: 'FrontNotesDetail' })
 import { ref, computed, onMounted, onActivated, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElIcon } from 'element-plus'
-import { ArrowLeft, ArrowRight, ArrowUp, Close, Collection, Edit, Download, DocumentCopy } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, ArrowUp, Close, Collection, Edit, Download, DocumentCopy, Share } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import { getPublicNote, listPublicNotes, recordClick } from '@/api/notes/public'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
@@ -164,6 +188,9 @@ import CommentSection from '@/components/CommentSection/CommentSection.vue'
 import FavoriteButton from '@/components/FavoriteButton/FavoriteButton.vue'
 import ScrollButton from '@/components/ScrollButton/ScrollButton.vue'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
+// 思维导图（2026-10-26 v3）：把笔记的标题/列表层级画成结构图。
+// 用 echarts tree（项目已有依赖），不引 markmap/mermaid。
+import MindMap from '@/components/MindMap/index.vue'
 import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 
@@ -194,6 +221,15 @@ const goNewNote = () => {
 const prevNote = ref({ noteId: '', title: '' })
 const nextNote = ref({ noteId: '', title: '' })
 const imageViewerVisible = ref(false)
+
+/**
+ * 思维导图的折叠状态（2026-10-26 v3）
+ *
+ * 默认 `[]`（收起）。理由：笔记的第一用途是阅读正文，
+ * 导图是辅助视图，不该一进页面就把正文挤到下面。
+ * 用户想看时点一下展开，展开后才挂载组件（懒渲染）。
+ */
+const mindmapCollapse = ref<string[]>([])
 const imageViewerSrc = ref('')
 const isFetching = ref(false)  // 防重复请求锁
 
@@ -523,6 +559,44 @@ onActivated(async () => {
 <style lang="scss">
 .notes-detail-container {
   padding: 24px;
+
+  /* ===== 思维导图折叠面板（2026-10-26 v3） ===== */
+  .mindmap-collapse {
+    margin-top: 20px;
+    background: #fff;
+    border: 1px solid #eef0f3;
+    border-radius: 10px;
+    overflow: hidden;
+
+    :deep(.el-collapse-item__header) {
+      padding: 0 16px;
+      height: 46px;
+      border-bottom: none;
+      font-size: 13.5px;
+      font-weight: 600;
+      color: #2f3946;
+    }
+
+    :deep(.el-collapse-item__wrap) {
+      border-bottom: none;
+    }
+
+    :deep(.el-collapse-item__content) {
+      padding: 0 16px 16px;
+    }
+  }
+
+  .mindmap-collapse-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .mindmap-hint {
+    font-weight: 400;
+    font-size: 11.5px;
+    color: #9aa4b2;
+  }
 
   .header {
     display: grid;

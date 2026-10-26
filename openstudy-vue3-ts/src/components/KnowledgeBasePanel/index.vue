@@ -281,6 +281,14 @@
                   @click="showChunks(doc)">
                   <el-icon><View /></el-icon>
                 </span>
+                <!-- 结构树：把原文标题还原成层级图（2026-10-26 v3）
+                     与"分块预览"是同一份文档的两个视角：
+                       分块 = 机器怎么切的（工程视角）
+                       结构 = 这份资料讲了什么（学习视角） -->
+                <span v-if="isDocumentSearchable(doc.status)" class="kb-op" title="这份资料的章节结构"
+                  @click="showOutline(doc)">
+                  <el-icon><Share /></el-icon>
+                </span>
                 <span v-if="canReprocessDocument(doc.status)" class="kb-op" title="重新解析并向量化"
                   @click="reprocess(doc)">
                   <el-icon><RefreshRight /></el-icon>
@@ -299,6 +307,22 @@
         </div>
       </div>
     </div>
+
+  <!-- ============ 资料结构树（2026-10-26 v3）============
+       把原文的标题层级还原成一张图，解决一个问题：
+       一份 30 页的资料被切成 13 个 chunk 之后，
+       "它讲了哪几个主题、层级怎么分"这个信息就丢了。
+       而这恰好是复习时最该先看的骨架。 -->
+  <el-dialog v-model="outlineVisible" :title="`资料结构 · ${outlineDocName}`" width="920px" append-to-body
+    class="kb-outline-dialog">
+    <div v-loading="outlineLoading" class="kb-outline-body">
+      <MindMap v-if="outlineTree" :tree-data="outlineTree" :title="outlineDocName || '资料结构'"
+        default-layout="tree" />
+      <div v-else-if="!outlineLoading" class="kb-doc-empty kb-outline-empty">
+        <p>{{ outlineReason || '这份资料没有可提取的章节结构。' }}</p>
+      </div>
+    </div>
+  </el-dialog>
 
   <!-- 分块预览 -->
   <el-dialog v-model="chunksVisible" :title="`分块预览 · ${chunkDocName}`" width="680px" append-to-body>
@@ -364,7 +388,7 @@ defineOptions({ name: 'KnowledgeBasePanel' })
 
 import { ref, computed, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, Delete, Document, DocumentCopy, EditPen, FolderOpened, Plus, RefreshRight, Search, UploadFilled, View, Warning } from '@element-plus/icons-vue'
+import { Close, Delete, Document, DocumentCopy, EditPen, FolderOpened, Plus, RefreshRight, Search, Share, UploadFilled, View, Warning } from '@element-plus/icons-vue'
 import {
   DOC_FAILED,
   DOC_PARSED,
@@ -376,6 +400,7 @@ import {
   deleteKnowledgeBase,
   documentTagType,
   getDocumentChunks,
+  getDocumentOutline,
   getDocumentStatus,
   importDocumentText,
   isDocumentProcessing,
@@ -403,6 +428,11 @@ const POLL_MAX_ROUNDS = 90
  *   · 悬浮助手 tab 里 → false（tab 由外层 tab 栏切换，不需要一个多余的叉）
  */
 withDefaults(defineProps<{ closable?: boolean }>(), { closable: false })
+
+// 资料结构树（2026-10-26 v3）：复用图组件，输入是后端解析好的树而不是 Markdown。
+// 同一个组件服务两个场景（笔记的思维导图 / 资料的结构树），
+// 差异只在数据来源，没必要写两份画图代码。
+import MindMap from '@/components/MindMap/index.vue'
 
 /** 只有 closable 时才会 emit：调用方据此收起自己的容器（抽屉 / 切走 tab） */
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -451,6 +481,18 @@ const chunksVisible = ref(false)
 const chunksLoading = ref(false)
 const chunks = ref<RagChunk[]>([])
 const chunkDocName = ref('')
+
+/* ===== 资料结构树（2026-10-26 v3）=====
+   与「分块预览」是同一份文档的两个视角：
+     分块 = 机器怎么切的（工程视角，验证切得对不对）
+     结构 = 这份资料讲了什么（学习视角，先看骨架） */
+const outlineVisible = ref(false)
+const outlineLoading = ref(false)
+const outlineDocName = ref('')
+/** 后端返回的树（直接喂 echarts，前端不再解析一遍，避免两端规则分歧） */
+const outlineTree = ref<{ name: string; children?: any[] } | null>(null)
+/** 没有章节时的说明文案（如实告知，不画空图） */
+const outlineReason = ref('')
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
@@ -1177,6 +1219,37 @@ const showChunks = async (doc: RagDocument) => {
 }
 
 onBeforeUnmount(clearPollTimers)
+
+/**
+ * 打开「资料结构」对话框（2026-10-26 v3）
+ *
+ * 每次打开都重新请求，不做缓存：
+ * 文档可能被重新解析过（reprocess），章节结构会变，
+ * 缓存住旧结构反而会让用户看到过时的信息。
+ */
+const showOutline = async (doc: RagDocument) => {
+  outlineDocName.value = doc.fileName
+  outlineVisible.value = true
+  outlineLoading.value = true
+  outlineTree.value = null
+  outlineReason.value = ''
+  try {
+    const res: any = await getDocumentOutline(doc.docId)
+    if (res?.code === 200 && res.data) {
+      if (res.data.hasOutline && res.data.tree) {
+        outlineTree.value = res.data.tree
+      } else {
+        // 题库型文档（纯题目列表）会走到这里 —— 这是正常情况，如实说明
+        outlineReason.value = res.data.reason || '这份资料没有可提取的章节结构。'
+      }
+    }
+  } catch (e) {
+    console.warn('[kb] 加载资料结构失败', e)
+    outlineReason.value = '加载失败，请稍后重试。'
+  } finally {
+    outlineLoading.value = false
+  }
+}
 
 /**
  * ⚠️ 本组件**故意不在 onMounted 里自动加载**。
@@ -1956,6 +2029,25 @@ defineExpose({ activate, refreshList, getKbCount })
   text-align: center;
   font-size: 12.5px;
   color: #b6bdc9;
+}
+
+/* ========== 资料结构树（2026-10-26 v3）========== */
+.kb-outline-body {
+  /* 给一个确定的最小高度，避免加载时对话框高度跳动 */
+  min-height: 200px;
+}
+
+.kb-outline-empty {
+  padding: 40px 24px;
+  line-height: 1.8;
+}
+
+.kb-outline-empty p {
+  margin: 0;
+  max-width: 520px;
+  display: inline-block;
+  text-align: left;
+  color: #8b95a5;
 }
 
 /* ========== 试检索 ========== */

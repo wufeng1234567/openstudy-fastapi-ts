@@ -238,6 +238,30 @@ export function getDocumentChunks(docId: number, limit = 200) {
   })
 }
 
+/**
+ * 资料结构树（2026-10-26 v3 新增）
+ *
+ * 后端把原文标题（Markdown `#` / 「一、」 / 「1.」）还原成层级树，
+ * 前端用 echarts tree 画出来。
+ *
+ * @param docId 文档 id
+ * @param maxNodes 树上最多多少节点（默认 120，超过会截断并标记 `truncated`）
+ *
+ * 返回：
+ *   `{ hasOutline: true, tree: {name, children, count, totalHeadings, truncated} }`
+ *   或 `{ hasOutline: false, reason: "...为什么画不出来..." }`
+ *
+ * ⚠️ `hasOutline=false` 不是错误：题库型文档（纯题目列表）天然没有章节结构，
+ *    前端要如实提示，而不是画一张只有根节点的空图。
+ */
+export function getDocumentOutline(docId: number, maxNodes = 120) {
+  return request({
+    url: `/rag/document/outline/${docId}`,
+    method: 'get',
+    params: { maxNodes }
+  })
+}
+
 /** 处理进度（上传后轮询这个，直到 `done`） */
 export function getDocumentStatus(docId: number) {
   return request({

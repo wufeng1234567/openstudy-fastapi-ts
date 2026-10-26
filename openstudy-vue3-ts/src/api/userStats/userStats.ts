@@ -185,3 +185,29 @@ export function getDiagnose(limit: number = 30): Promise<ApiResult<DiagnosisResu
     ApiResult<DiagnosisResult>
   >
 }
+
+/**
+ * 生成「薄弱点复习卷」Word（2026-10-26 v3 新增）
+ *
+ * @param limit 最多收录多少道题（后端按诊断优先级取前 N）
+ * @returns .docx 的二进制 Blob，调用方负责触发下载
+ *
+ * ── 为什么单独一个函数、刻意不走 `ApiResult` ──────────────────
+ * 这个接口返回的是**文件流**，不是 `{code,msg,data}` 信封。
+ * 若套用统一的 `request` + 拦截器，拦截器会尝试 `JSON.parse` 二进制内容
+ * 从而报错（题库导出接口当初也踩过同样的坑）。
+ *
+ * `responseType: 'blob'` 告诉 axios 不要尝试解析，原样给回 Blob。
+ * `timeout` 放宽到 120s：诊断要扫该用户的全部作答记录，
+ * 数据量大的账号（实测 84 题 / 333 条记录）需要几秒，
+ * 默认 10s 超时偶尔会掐断。
+ */
+export function buildReviewSheet(limit: number = 20): Promise<Blob> {
+  return request({
+    url: '/userStats/reviewSheet',
+    method: 'get',
+    params: { limit },
+    responseType: 'blob',
+    timeout: 120000
+  }) as unknown as Promise<Blob>
+}
