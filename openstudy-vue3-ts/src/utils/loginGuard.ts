@@ -60,6 +60,14 @@ export function goLogin(redirect?: string) {
   const target = redirect || router.currentRoute.value.fullPath || '/front/agent/chat'
   // 已经在登录页就不再重复跳转（避免自己跳自己导致路由抖动）
   if (router.currentRoute.value.path !== '/login') {
+    /*
+     * ⚠️ 2026-10-26：这里用 `router.push` 是**对的**，因为本项目是 hash 路由
+     *    （`createWebHashHistory`），router 会自动把目标拼到 `#` 之后。
+     *
+     *    对比 `utils/request.ts` 的 401 分支：那里原本用
+     *    `window.location.href = '/login?...'` 整页跳转，路径不在 hash 里，
+     *    结果是原地刷新、根本没进登录页 —— 已一并修正。
+     */
     router.push(`/login?redirect=${encodeURIComponent(target)}`).finally(() => {
       // 给守卫/跳转留出时间窗口，之后再恢复
       window.setTimeout(() => {

@@ -1,7 +1,7 @@
 import router from './router'
 import NProgress from 'nprogress'
 import 'nprogress/nprogress.css'
-import { getToken } from '@/utils/auth'
+import { getToken, removeToken } from '@/utils/auth'
 import { isHttp } from '@/utils/validate'
 import { isRelogin } from '@/utils/request'
 import useUserStore from '@/store/modules/user'
@@ -118,7 +118,24 @@ router.beforeEach((to, from, next) => {
     to.meta.title && useSettingsStore().setTitle(to.meta.title)
 
     if (to.path === '/login') {
-      // 游客允许进入登录页切换为正式账号；普通已登录用户仍跳首页
+      /*
+       * ⚠️ 2026-10-26 修「点重新登录后不跳转，仍留在智能体页面」。
+       *
+       *    用户报的现象：token 过期 → 点「重新登录」→ **没有**进登录页，
+       *    而是停在智能体页面又弹一次登录框。
+       *
+       *    根因就在这一段：只要本地**还有 token**（哪怕已经彻底失效），
+       *    `/login` 就会被重定向走。其中：
+       *
+       *      · `getInfo()` 成功（token 仍有效）→ 跳首页，这是对的；
+       *      · `getInfo()` **失败**（token 已过期）→ 原来也跳首页 `next({path:'/'})`，
+       *        于是页面弹回智能体，`isRelogin` 又因为随后接口 401 再次置位，
+       *        用户看到的就是「点了重新登录，结果还在原地弹窗」——
+       *        一个死循环，永远进不去登录页。
+       *
+       *    正确行为：`getInfo()` 失败 = 会话确实失效，此时**应该放行到登录页**
+       *    （并顺手清掉失效 token，免得后面每个请求都再撞一次 401）。
+       */
       if (userStore.isGuest) {
         next()
         NProgress.done()
@@ -131,7 +148,12 @@ router.beforeEach((to, from, next) => {
           }
           NProgress.done()
         }).catch(() => {
-          next({ path: '/' })
+          // 取不到用户信息 = token 已失效。放行到登录页，并清掉脏 token。
+          removeToken()
+          userStore.token = ''
+          userStore.name = ''
+          userStore.roles = []
+          next()
           NProgress.done()
         })
       } else {

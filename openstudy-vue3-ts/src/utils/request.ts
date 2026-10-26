@@ -156,10 +156,30 @@ service.interceptors.response.use(
           type: 'warning'
         }).then(() => {
           isRelogin.show = false
-          const redirect = encodeURIComponent(window.location.hash.replace(/^#/, '') || '/front/agent/chat')
+          /*
+           * ⚠️ 2026-10-26 修「点重新登录后不跳转，仍留在智能体页面」：
+           *
+           *    本项目用的是 **hash 路由**（`createWebHashHistory`），
+           *    真实地址形如 `http://host:3167/#/front/agent/chat`。
+           *
+           *    原来这里写的是整页跳转：
+           *        window.location.href = `/login?redirect=${redirect}`
+           *    它访问的是 `http://host/login?redirect=...` ——
+           *    也就是**路径部分** `/login`，而 hash 路由只认 `#` 之后的内容。
+           *    此时 hash 为空，路由被重定向回默认页（智能体），
+           *    页面看起来"没跳走"，只是白屏刷新了一下。
+           *
+           *    正确做法：把跳转目标放进 hash：
+           *        /#/login?redirect=%2Ffront%2Fxxx
+           *
+           *    用 `location.replace` 而不是 router.push，是为了顺带
+           *    丢掉历史记录里的旧页面（过期状态下按浏览器后退又会回到
+           *    一堆 401 页面，体验很差）。
+           */
+          const redirect = window.location.hash.replace(/^#/, '') || '/front/agent/chat'
+          // 先清掉本地登录态（失败也不阻塞跳转）
           useUserStore().logOut().finally(() => {
-            // 进站即智能体：过期后回登录页（带 redirect），不再跳旧后台首页
-            window.location.href = `/login?redirect=${redirect}`
+            window.location.replace(`/#/login?redirect=${encodeURIComponent(redirect)}`)
           })
         }).catch(() => {
           isRelogin.show = false
