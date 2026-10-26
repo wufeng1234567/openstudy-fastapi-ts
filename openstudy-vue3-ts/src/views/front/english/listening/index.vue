@@ -264,6 +264,86 @@
                 <el-progress :percentage="progressPercent" :stroke-width="8" :show-text="false" />
             </div>
 
+            <!--
+              练习中的实时设置（2026-10-26 新增）
+              -----------------------------------------------------------------
+              用户要求：「设置也要可以在听力播放的练习页面实时调整」。
+
+              改前：设置只在开始前能改，练到一半觉得"太快了/太慢了/想多听一遍"
+                    只能退出重来 —— 而退出会丢掉本轮进度。
+
+              改后：练习页顶部一个可折叠的「实时设置」条，展开即可调：
+                播放速度 / 播放遍数 / 遍间隔（/ 自动下一题，仅自动听写模式）。
+              所有参数都是 `ref`，改完**立即对下一次播放生效**，不必重启练习。
+              默认折叠，不打扰正在答题的人。
+            -->
+            <div class="live-settings">
+                <button type="button" class="live-settings__toggle" @click="showLiveSettings = !showLiveSettings">
+                    <el-icon class="live-settings__icon" :class="{ 'is-open': showLiveSettings }">
+                        <ArrowRight />
+                    </el-icon>
+                    <span>实时设置</span>
+                    <span class="live-settings__summary">
+                        {{ speechRate.toFixed(1) }}× 速度
+                        · {{ practiceMode === 'input' ? 1 : repeatCount }} 遍
+                        <template v-if="practiceMode !== 'input' && repeatCount > 1"> · 间隔 {{ playInterval }}s</template>
+                        <template v-if="practiceMode === 'dictation'"> · 自动跳 {{ autoNextInterval }}s</template>
+                    </span>
+                </button>
+
+                <div class="live-settings__body" v-show="showLiveSettings">
+                    <div class="live-row">
+                        <span class="live-row__label">播放速度</span>
+                        <el-slider v-model="speechRate" :min="0.5" :max="1.5" :step="0.1" show-stops
+                            :format-tooltip="(v) => v.toFixed(1) + '×'" />
+                        <span class="live-row__value">{{ speechRate.toFixed(1) }}×</span>
+                    </div>
+
+                    <div class="live-row" v-if="practiceMode !== 'input'">
+                        <span class="live-row__label">播放遍数</span>
+                        <el-radio-group v-model="repeatCount" size="small">
+                            <el-radio-button :value="1">1</el-radio-button>
+                            <el-radio-button :value="2">2</el-radio-button>
+                            <el-radio-button :value="3">3</el-radio-button>
+                        </el-radio-group>
+                        <span class="live-row__value">{{ repeatCount }} 遍</span>
+                    </div>
+
+                    <div class="live-row" v-if="practiceMode !== 'input' && repeatCount > 1">
+                        <span class="live-row__label">遍间隔</span>
+                        <el-slider v-model="playInterval" :min="0.5" :max="5" :step="0.5" show-stops
+                            :format-tooltip="(v) => v + ' 秒'" />
+                        <span class="live-row__value">{{ playInterval }}s</span>
+                    </div>
+
+                    <div class="live-row" v-if="practiceMode === 'dictation'">
+                        <span class="live-row__label">自动下一题</span>
+                        <el-slider v-model="autoNextInterval" :min="1" :max="10" :step="0.5" show-stops
+                            :format-tooltip="(v) => v + ' 秒'" />
+                        <span class="live-row__value">{{ autoNextInterval }}s</span>
+                    </div>
+
+                    <!--
+                      切换模式也是「实时」的一部分：
+                      练着练着发现「纯听力跟不上」，可以直接切到打字输入，
+                      本轮进度不丢（`practiceWords` / `currentIndex` 都不重置）。
+                    -->
+                    <div class="live-row live-row--mode">
+                        <span class="live-row__label">练习模式</span>
+                        <el-radio-group v-model="practiceMode" size="small">
+                            <el-radio-button value="listen">纯听力</el-radio-button>
+                            <el-radio-button value="input">打字输入</el-radio-button>
+                            <el-radio-button value="dictation">自动听写</el-radio-button>
+                        </el-radio-group>
+                        <span class="live-row__value"></span>
+                    </div>
+
+                    <p class="live-settings__hint">
+                        改完立即对下一次播放生效，不用退出练习；切模式也不会丢本轮进度。
+                    </p>
+                </div>
+            </div>
+
             <!-- 当前单词卡片 -->
             <div class="word-card">
                 <!--
@@ -476,6 +556,15 @@ const playInterval = ref(2)
 
 /** 自动下一题间隔（秒）—— 只有 dictation 模式用 */
 const autoNextInterval = ref(3)
+
+/**
+ * 练习中的「实时设置」面板是否展开（2026-10-26）
+ *
+ * 默认收起：正在答题的人不需要每次都看到一堆滑块。
+ * 但它必须存在 —— 否则练到一半觉得"太快了"只能退出重来，
+ * 而退出会丢掉本轮进度。
+ */
+const showLiveSettings = ref(false)
 
 // 自动下一题定时器
 let autoNextTimer = null
@@ -692,6 +781,12 @@ const playRound = async ({ autoNext = false } = {}) => {
 
     // input 模式只播一遍（用户是看着中文打字，重复播放没意义）
     const times = practiceMode.value === 'input' ? 1 : repeatCount.value
+    /*
+     * ⚠️ 本轮遍数在**循环开始前**就固定（`times`），而不是每轮重新读 `repeatCount`。
+     *    否则用户在播放中途把「2 遍」改成「3 遍」，这一轮会突然多播一遍 ——
+     *    听感上是"话没说完又重复了一次"。
+     *    改动从**下一次播放**起生效，实时设置面板底部的提示也这么写。
+     */
 
     isPlaying.value = true
     currentPlayCount.value = 0
@@ -1658,6 +1753,117 @@ watch(() => isPracticing.value, (val) => {
             }
         }
 
+
+            /*
+             * 练习中的实时设置（2026-10-26）
+             * -----------------------------------------------------------------
+             * 默认折叠成一条细栏，展开后是一组可实时调的参数。
+             * 放在进度条下方、题卡上方 —— 调完抬头就能看到题目。
+             *
+             * ⚠️ 这段样式必须写在 `.practice-section` **下面、`.word-card` 外面**。
+             *    第一版误放在 `.word-card` 里面，编译成
+             *    `.practice-section .word-card .live-settings { ... }`，
+             *    而 DOM 里它是 `.word-card` 的**兄弟**节点，选择器匹配不到 ——
+             *    于是 `display: grid` 全都没生效，标签和滑块挤成一团（实测如此）。
+             */
+            .live-settings {
+                margin-bottom: 16px;
+                border: 1px solid #eef1f5;
+                border-radius: 12px;
+                background: #fff;
+                overflow: hidden;
+            }
+
+            .live-settings__toggle {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                width: 100%;
+                padding: 10px 14px;
+                border: none;
+                background: transparent;
+                font-family: inherit;
+                font-size: 13px;
+                color: #4b5563;
+                cursor: pointer;
+                text-align: left;
+
+                &:hover {
+                    background: #f8fafc;
+                }
+            }
+
+            .live-settings__icon {
+                flex: none;
+                color: #9ca3af;
+                transition: transform .18s;
+
+                &.is-open {
+                    transform: rotate(90deg);
+                }
+            }
+
+            .live-settings__summary {
+                margin-left: auto;
+                font-size: 12px;
+                color: #9ca3af;
+            }
+
+            .live-settings__body {
+                padding: 4px 14px 12px;
+                border-top: 1px solid #f1f5f9;
+            }
+
+            .live-row {
+                display: grid;
+                grid-template-columns: 76px minmax(0, 1fr) 52px;
+                align-items: center;
+                gap: 12px;
+                padding: 6px 0;
+
+                .live-row__label {
+                    font-size: 12.5px;
+                    color: #6b7280;
+                    white-space: nowrap;
+                }
+
+                .live-row__value {
+                    font-size: 12.5px;
+                    font-variant-numeric: tabular-nums;
+                    color: #111827;
+                    text-align: right;
+                }
+
+                :deep(.el-slider) {
+                    padding: 0 6px;
+                }
+            }
+
+            /*
+             * 模式切换行：三个按钮比滑块宽，让它们可以换行、并把右侧的
+             * 数值占位去掉（那一列对按钮没意义）。
+             */
+            .live-row--mode {
+                grid-template-columns: 76px minmax(0, 1fr);
+
+                :deep(.el-radio-group) {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 6px;
+                }
+
+                :deep(.el-radio-button__inner) {
+                    padding: 5px 12px;
+                    font-size: 12.5px;
+                }
+            }
+
+            .live-settings__hint {
+                margin: 6px 0 0;
+                font-size: 12px;
+                color: #9ca3af;
+            }
+
         .word-card {
             flex: 1;
             background: #fff;
@@ -1704,6 +1910,7 @@ watch(() => isPracticing.value, (val) => {
                     color: #6b7280;
                 }
             }
+
 
             /*
              * 纯听力的题面（2026-10-26）
