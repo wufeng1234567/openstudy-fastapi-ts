@@ -287,6 +287,17 @@ export const constantRoutes: AppRouteRecordRaw[] = [
             hidden: true
           },
           {
+            // 2026-10-27 文档编排：独立编辑器（左侧写、右侧实时预览）
+            //
+            // ⚠️ 必须 keepAlive：这个页面上是用户**手写的内容**，
+            //    从别的页面切回来时丢了就是数据损失。
+            path: 'docCompose',
+            name: 'FrontToolsDocCompose',
+            component: () => import('@/views/front/tools/docCompose.vue'),
+            meta: { title: '文档编排', layout: 'front', keepAlive: true },
+            hidden: true
+          },
+          {
             path: 'image',
             name: 'FrontToolsImage',
             component: () => import('@/views/front/tools/image.vue'),

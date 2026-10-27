@@ -72,12 +72,55 @@
         <span class="at-artifact-name">{{ artifact.fileName }}</span>
         <span class="at-artifact-meta">{{ artifact.meta }}</span>
       </span>
+      <!--
+        预览按钮（2026-10-27 新增）
+
+        用户原话：「还要提供一个实时预览功能 比如智能体完成了输出一份 word
+                  或者 pdf 可以点击实时预览」
+
+        在此之前只能下载下来用 Word 打开看 —— 想确认"排得对不对"，
+        就得下载 → 打开 → 发现不对 → 回对话重说一遍，循环。
+
+        只在**能预览的格式**上出现（docx 可以，pdf 走另一个入口）。
+      -->
+      <button
+        v-if="canPreview"
+        type="button"
+        class="at-artifact-btn"
+        @click="showPreview = true"
+      >
+        <OsIcon name="eye" :size="13" />
+        <span>预览</span>
+      </button>
       <button type="button" class="at-artifact-btn" :disabled="downloading" @click="downloadArtifact">
         <span v-if="downloading" class="at-artifact-spinner" aria-hidden="true"></span>
         <OsIcon v-else name="download" :size="13" />
         <span>{{ downloading ? '下载中…' : '下载' }}</span>
       </button>
     </div>
+
+    <!-- 预览弹窗：docx 直接渲染成 HTML（docx-preview），不下载也能看 -->
+    <el-dialog
+      v-if="canPreview"
+      v-model="showPreview"
+      :title="artifact ? artifact.fileName : '文档预览'"
+      width="900px"
+      top="4vh"
+      append-to-body
+      destroy-on-close
+      class="at-preview-dialog"
+    >
+      <DocxPreview :url="previewUrl" :title="artifact?.fileName || ''" :height="previewHeight" />
+      <template #footer>
+        <span class="at-preview-foot">
+          <span class="at-preview-hint">预览不显示公式（渲染库限制），下载后用 Word / WPS 查看正常。</span>
+          <button type="button" class="at-artifact-btn" @click="downloadArtifact">
+            <OsIcon name="download" :size="13" />
+            <span>下载原文件</span>
+          </button>
+        </span>
+      </template>
+    </el-dialog>
 
     <!-- ③ 跳转卡片：建库/导题完成后，一步直达题库 -->
     <div v-if="bankJump" class="at-jump">
@@ -202,6 +245,7 @@ import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import AgentToolDetail from '@/components/AgentToolDetail/index.vue'
+import DocxPreview from '@/components/DocxPreview/index.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import { getToken } from '@/utils/auth'
 
@@ -868,6 +912,37 @@ const spaceScan = computed(() => {
 
 const downloading = ref(false)
 
+/* ============================================================
+ * 预览（2026-10-27）
+ * ============================================================ */
+
+/** 预览弹窗开关 */
+const showPreview = ref(false)
+
+/** 预览区高度：跟视口走，弹窗里太高会顶出屏幕 */
+const previewHeight = computed(() =>
+  Math.max(420, Math.min(760, window.innerHeight - 200)),
+)
+
+/**
+ * 能否预览
+ *
+ * 只对 **docx** 开放：`docx-preview` 是唯一接进来的渲染器。
+ * PDF 不在这里预览 —— 浏览器的内置 PDF 阅读器已经够好，
+ * 用 iframe 嵌反而受限（跨域、打印、滚动都会别扭）。
+ */
+const canPreview = computed(() => {
+  const a = artifact.value
+  if (!a || !a.url) return false
+  return a.format === 'docx' || /\.docx(\?|$)/i.test(a.url)
+})
+
+/** 去掉 URL 上的缓存破坏参数，交给预览组件自己处理 */
+const previewUrl = computed(() => {
+  const u = artifact.value?.url || ''
+  return u
+})
+
 /**
  * 下载产物
  *
@@ -1472,4 +1547,29 @@ const downloadArtifact = async () => {
  * 断行、`AgentToolDetail` 的键值行自己换行。所以窄到多窄都不会出现「同一行互相挤」。
  * 唯一的宽度自适应是收紧内边距，那点收益换来整张卡片塌掉，不划算。
  */
+
+/* ============================================================
+ * 预览弹窗
+ * ============================================================ */
+
+.at-preview-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.at-preview-hint {
+  font-size: 11.5px;
+  color: var(--os-text-3, #8b95a5);
+  text-align: left;
+}
+
+/*
+ * 弹窗内部留白收紧：预览图本身自带白边，
+ * 再套一层 dialog 的默认 padding 会显得很空。
+ */
+:deep(.at-preview-dialog .el-dialog__body) {
+  padding: 10px 14px;
+}
 </style>

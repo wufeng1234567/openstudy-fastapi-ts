@@ -19,6 +19,7 @@ from app.services.ai.agent.tools.bank_manage import BankManageTool
 from app.services.ai.agent.tools.bank_share_manage import BankShareManageTool
 from app.services.ai.agent.tools.delegate import DelegateTaskTool
 from app.services.ai.agent.tools.document_compose import DocumentComposeTool
+from app.services.ai.agent.tools.document_compare import DocumentCompareTool
 from app.services.ai.agent.tools.english_practice import EnglishPracticeTool
 from app.services.ai.agent.tools.english_wordbook import EnglishWordbookTool
 from app.services.ai.agent.tools.knowledge_base_manage import KnowledgeBaseManageTool
@@ -99,6 +100,11 @@ registry.register(ReviewSheetTool())
 #    它解决的场景是「用户给一段文字或一个混乱的 Word，我们重新排版」——
 #    在此之前这件事只能靠模型自己拼 Markdown 然后什么都干不了。
 registry.register(DocumentComposeTool())
+# —— 2026-10-27 文档对比：让用户能问"这两份文件有什么区别"。
+#    ⚠️ 差异必须由**确定性引擎**算（doc_compare_service），不能让模型自己读两份
+#       长文档去比：漏一行、看错一个数字，用户几乎发现不了。
+#    模型负责解释结论，不负责找差异。
+registry.register(DocumentCompareTool())
 
 __all__ = [
     "AgentManageTool",
@@ -107,6 +113,7 @@ __all__ = [
     "BankShareManageTool",
     "DelegateTaskTool",
     "DocumentComposeTool",
+    "DocumentCompareTool",
     "EnglishPracticeTool",
     "EnglishWordbookTool",
     "KnowledgeBaseManageTool",

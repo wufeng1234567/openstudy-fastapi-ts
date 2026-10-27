@@ -35,7 +35,12 @@
         <div class="mindmap-toolbar">
             <span class="mm-title">{{ title }}</span>
             <div class="mm-actions">
-                <el-radio-group v-model="layoutMode" size="small">
+                <!--
+                  布局切换
+                  ⚠️ 用 @change 打标记：用户手动选过之后，
+                     `auto` 就不再把布局改回去（否则内容一变就跳，很莫名）。
+                -->
+                <el-radio-group v-model="layoutMode" size="small" @change="onLayoutChange">
                     <el-radio-button value="radial">径向</el-radio-button>
                     <el-radio-button value="tree">树形</el-radio-button>
                 </el-radio-group>
@@ -78,15 +83,37 @@ const props = withDefaults(
         title?: string
         /** 没有可解析内容时的提示 */
         emptyText?: string
-        /** 初始布局 */
-        defaultLayout?: 'radial' | 'tree'
+        /**
+         * 初始布局
+         *
+         * ⚠️ 默认值从 `radial` 改成 `tree`（2026-10-27 实测决定）
+         *
+         * 原因是**实测出来的真实缺陷**，不是审美偏好：
+         * 改用卡片样式后，卡片比原来的小圆点宽很多（一个 18 字标签
+         * 展开约 150px）。径向布局把同层节点排在同心圆上，
+         * 一个分支有 6 个子节点时它们挤在同一个扇区里，
+         * 长标签会**横向伸出去压住父节点卡片**
+         * （截图确认：「使用 keep-alive 缓存路由组件」压住了「性能优化清单」）。
+         *
+         * 试过的三种修法都不理想：
+         *   · `position:'inside'` → 卡片压节点本身
+         *   · `width:150 + truncate` → 把「核心框架」切成「心框架」，更糟
+         *   · 加大 edgeLength → 只是把重叠推远，节点更多时还会撞
+         *
+         * 正交树形布局天然不会重叠：每一层固定占一列，纵向按需撑开。
+         * 卡片样式配上从左到右的层级关系，可读性明显更好。
+         *
+         * 径向仍然保留（用户点按钮即可切换），
+         * 节点少（<12）时环形更紧凑好看，所以少量节点时仍默认径向。
+         */
+        defaultLayout?: 'radial' | 'tree' | 'auto'
     }>(),
     {
         markdown: '',
         treeData: null,
         title: '思维导图',
         emptyText: '这段内容里还没有可提取的层级（标题或列表），写几条要点就会出现导图。',
-        defaultLayout: 'radial',
+        defaultLayout: 'auto',
     },
 )
 
@@ -100,7 +127,18 @@ interface TreeNode {
 }
 
 const chartRef = ref<HTMLDivElement>()
-const layoutMode = ref<'radial' | 'tree'>(props.defaultLayout)
+
+/**
+ * 当前生效的布局（只有两种，`auto` 会在算完节点数后落到其中之一）
+ *
+ * 初始给 'tree'，等树算出来之后由 `autoResolvedMode` 决定要不要换径向。
+ * 不能直接写 `ref(props.defaultLayout)`：那会把 'auto' 当成合法值传下去。
+ */
+const layoutMode = ref<'radial' | 'tree'>(props.defaultLayout === 'radial' ? 'radial' : 'tree')
+
+/** 用户是否手动点过布局按钮（点过之后就不再自动切） */
+const layoutTouched = ref(false)
+
 let chart: echarts.ECharts | null = null
 
 /* ────────────────────────────────────────────────────────────
@@ -162,6 +200,28 @@ function parseMarkdownToTree(md: string, rootName: string): TreeNode | null {
     /** 每个层级最近一次出现的节点，用于挂载下一层 */
     const stack: Array<{ level: number; node: TreeNode }> = [{ level: 0, node: root }]
     let nodeCount = 0
+
+    /**
+     * 去掉与根节点同名的首个标题
+     *
+     * ⚠️ 实测缺陷（2026-10-27）：传入 title="Vue3 深度实战笔记"，
+     *    而 Markdown 第一行恰好是 `# Vue3 深度实战笔记` ——
+     *    于是图上出现「Vue3 深度实战笔记 → Vue3 深度实战笔记」的重复，
+     *    中间那个节点毫无意义，还占一层布局。
+     *
+     *    笔记页的 title 通常就来自文档的一级标题，重复是常态而非个例。
+     */
+    const rootText = (rootName || '').trim()
+    if (rootText) {
+        for (let i = 0; i < lines.length; i++) {
+            const h = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(lines[i])
+            if (!h) continue
+            if (h[1].length === 1 && stripInline(h[2]).trim() === rootText) {
+                lines.splice(i, 1)
+            }
+            break // 只看第一个标题
+        }
+    }
 
     const push = (level: number, text: string) => {
         if (!text) return
@@ -233,102 +293,265 @@ const nodeCount = computed(() => {
     return count(treeData.value ?? undefined)
 })
 
+/**
+ * `auto` 布局的判定阈值
+ *
+ * 实测规律：节点少时环形好看（结构一眼看全、留白多）；
+ * 节点多（尤其某个分支有 5+ 子节点）时环形一定会挤，
+ * 因为卡片宽度是固定的，同心圆周长跟不上。
+ */
+const AUTO_RADIAL_MAX_NODES = 12
+
+/**
+ * 按内容规模自动选布局
+ *
+ * 只在用户**没手动点过**布局按钮时生效 ——
+ * 用户点了「树形」以后如果内容变化又自动切回径向，会让人莫名其妙。
+ */
+const autoResolvedMode = computed<'radial' | 'tree'>(() => {
+    if (props.defaultLayout !== 'auto') {
+        return props.defaultLayout === 'radial' ? 'radial' : 'tree'
+    }
+    return nodeCount.value <= AUTO_RADIAL_MAX_NODES ? 'radial' : 'tree'
+})
+
+watch(
+    autoResolvedMode,
+    (m) => {
+        if (layoutTouched.value) return
+        if (layoutMode.value !== m) layoutMode.value = m
+    },
+    { immediate: true },
+)
+
 /* ────────────────────────────────────────────────────────────
  * 渲染
  * ──────────────────────────────────────────────────────────── */
 
 /**
- * 节点配色：按**深度**分配
+ * 节点配色：按**一级分支**染色（2026-10-27 重做）
  *
- * 用一组低饱和度的色，避免导图变成彩虹（那样反而看不出结构）。
- * 一级分支用区分度最高的几个色，二三级统一用浅灰蓝。
+ * 关键变化：以前按 depth 染色，导致所有二级节点同色、所有三级节点同色 ——
+ * 视觉上分不出"这些节点属于同一个分支"。
+ *
+ * 现在按**所属一级分支**分配颜色（同一分支下的所有子节点同色系），
+ * 用户一眼能看出"这一簇是讲技术栈的、那一簇是讲性能的"。
+ * 这正是思维导图要表达的东西。
  */
-const DEPTH_COLORS = ['#4c8fd6', '#e8833a', '#3fa06a', '#9b6fd6', '#e5a33a', '#4ca8a0']
-function branchColor(depth: number): string {
-    if (depth <= 1) return DEPTH_COLORS[0]
-    return DEPTH_COLORS[(depth - 1) % DEPTH_COLORS.length]
+const BRANCH_PALETTE = [
+    { main: '#3b82f6', light: '#eff6ff', border: '#bfdbfe', text: '#1e40af' }, // 蓝
+    { main: '#f59e0b', light: '#fffbeb', border: '#fde68a', text: '#92400e' }, // 琥珀
+    { main: '#10b981', light: '#f0fdf4', border: '#bbf7d0', text: '#065f46' }, // 绿
+    { main: '#8b5cf6', light: '#f5f3ff', border: '#ddd6fe', text: '#5b21b6' }, // 紫
+    { main: '#ec4899', light: '#fdf2f8', border: '#fbcfe8', text: '#9d174d' }, // 粉
+    { main: '#06b6d4', light: '#ecfeff', border: '#a5f3fc', text: '#155e75' }, // 青
+    { main: '#ef4444', light: '#fef2f2', border: '#fecaca', text: '#991b1b' }, // 红
+    { main: '#84cc16', light: '#f7fee7', border: '#d9f99d', text: '#3f6212' }, // 青柠
+]
+
+/** 根节点配色（中性深色，压得住整张图） */
+const ROOT_STYLE = { main: '#1f2937', light: '#f3f4f6', border: '#9ca3af', text: '#111827' }
+
+/**
+ * 按"一级分支序号"取色
+ *
+ * `branchIndex` 从 0 开始；根节点传 -1 走 ROOT_STYLE。
+ */
+function branchStyle(branchIndex: number) {
+    if (branchIndex < 0) return ROOT_STYLE
+    return BRANCH_PALETTE[branchIndex % BRANCH_PALETTE.length]
 }
+
+/**
+ * 标签最大字数（按节点层级给不同上限）
+ *
+ * ⚠️ 实测缺陷：原来叶子统一 14 字，截图里出现大量
+ *    `组件库: Vue...`、`UI 框架: @vueuse/c...` ——
+ *    关键的区分信息（是 Vue 还是 React）正好被截掉了。
+ *
+ * 现在：一级分支 30 字，叶子 26 字。
+ * 卡片本身有底色和边框，长一点也不会造成"文字浮在空中"的错觉；
+ * 真的放不下时用户可以 roam 放大、或 hover 看 tooltip 全文。
+ */
+const MAX_LABEL_BRANCH = 30
+const MAX_LABEL_LEAF = 26
 
 function buildOption() {
     const data = treeData.value
     if (!data) return {}
 
-    // 递归给节点打上颜色/大小（echarts tree 支持在 data 上挂 itemStyle）
-    const decorate = (node: TreeNode, depth: number): any => {
+    /**
+     * 递归装饰节点 —— **卡片样式**
+     *
+     * 视觉目标（用户原话「思维导图是否卡片样式 是否可以优化的更美观」）：
+     *   · 每个节点是一个**圆角卡片**，而不是一个小圆点
+     *   · 一级分支实心色块（重），更深层是浅底+同色字（轻）
+     *   · 根节点深色实心，最大
+     *
+     * 实现：echarts 的 `label` 支持 `backgroundColor` / `padding` /
+     * `borderRadius`，把 label 本身做成卡片，再把 symbol 缩小成一个小点
+     * 充当"连接锚点"（完全不要 symbol 的话连线起点会飘）。
+     */
+    const decorate = (node: TreeNode, depth: number, branchIdx: number): any => {
         const isRoot = depth === 0
-        const isBranch = depth <= 1
+        const isBranch = depth === 1
+        const style = branchStyle(isRoot ? -1 : branchIdx)
+
+        // 卡片样式：根/一级实心（重），更深层浅底（轻）
+        const cardBg = isRoot || isBranch ? style.main : style.light
+        const cardText = isRoot || isBranch ? '#ffffff' : style.text
+        const cardBorder = isRoot || isBranch ? style.main : style.border
+
+        const fontSize = isRoot ? 15 : isBranch ? 13 : 12
+        const padding: [number, number] = isRoot ? [9, 14] : isBranch ? [7, 11] : [5, 9]
+        const maxLen = isBranch ? MAX_LABEL_BRANCH : MAX_LABEL_LEAF
+
         return {
             name: node.name,
-            // 根节点显示大一点，叶子小一点
-            symbolSize: isRoot ? 14 : isBranch ? 9 : 6,
+            // symbol 缩到很小：它的作用是给连线提供锚点，不承担视觉重量
+            symbolSize: isRoot ? 8 : 5,
             itemStyle: {
-                color: isRoot ? '#2f3946' : branchColor(depth),
+                color: isRoot || isBranch ? style.main : style.border,
+                borderWidth: 0,
             },
             label: {
                 show: true,
-                // 叶子节点名可能长，缩到 12px；分支名更重要，给 13px
-                fontSize: isBranch ? 13 : 12,
-                color: isRoot ? '#2f3946' : '#3a4452',
-                fontWeight: isRoot || isBranch ? 500 : 400,
-                // 叶子节点截更狠（14 字）：它们是标签重叠的主要来源
-                formatter: (p: any) => clipName(p.name, isBranch ? 20 : 14),
+                formatter: () => clipName(node.name, isRoot ? 28 : maxLen),
+                fontSize,
+                fontWeight: isRoot ? 700 : isBranch ? 600 : 400,
+                color: cardText,
+                backgroundColor: cardBg,
+                borderColor: cardBorder,
+                borderWidth: isRoot || isBranch ? 0 : 1,
+                borderRadius: 6,
+                padding,
+                // 卡片之间靠阴影拉开层次（echarts label 支持 shadow）
+                shadowBlur: isRoot ? 10 : isBranch ? 6 : 0,
+                shadowColor: isRoot ? 'rgba(17,24,39,0.22)' : 'rgba(15,23,42,0.10)',
+                shadowOffsetY: isRoot ? 2 : isBranch ? 1 : 0,
             },
-            children: (node.children || []).map((c) => decorate(c, depth + 1)),
+            children: (node.children || []).map((c, i) =>
+                // 一级节点的每个孩子开一个新分支色；更深层继承该分支色
+                decorate(c, depth + 1, isBranch ? i : branchIdx),
+            ),
         }
     }
 
-    const decorated = decorate(data, 0)
+    const decorated = decorate(data, 0, -1)
     const isRadial = layoutMode.value === 'radial'
 
     // 节点多时只展开前几层；节点少就全展开（一眼看全更爽）
     const manyNodes = nodeCount.value > MANY_NODES_THRESHOLD
     const initDepth = manyNodes ? EXPAND_DEPTH_LIMIT : -1
 
+    /**
+     * 布局参数（2026-10-27 重做）
+     *
+     * ⚠️ 实测缺陷：原来树形布局 `right: '32%'` 让画布右半边空着，
+     *    而标签全挤在左半边互相重叠。径向布局又没有给足半径，
+     *    叶子标签在密集区叠成一团（截图里右侧那一坨完全看不清）。
+     *
+     * 现在：
+     *   · 树形：左右各留 20%，标签有地方展开
+     *   · 径向：用 `edgeLength` 拉开层间距（这是 echarts tree radial 的关键参数）
+     */
+    const seriesBase: any = {
+        type: 'tree',
+        data: [decorated],
+        layout: isRadial ? 'radial' : 'orthogonal',
+        orient: 'LR',
+        symbol: 'circle',
+        edgeShape: 'curve',
+        edgeForkPosition: '50%',
+        initialTreeDepth: initDepth,
+        roam: true,
+        expandAndCollapse: true,
+        animationDuration: 420,
+        animationDurationUpdate: 320,
+        lineStyle: {
+            // 连线用浅灰，不抢卡片的视觉重量
+            color: '#dbe2ea',
+            width: 1.4,
+            curveness: isRadial ? 0.5 : 0,
+        },
+        // 标签位置（按布局分别处理）
+        //
+        // ⚠️ 三次调整的教训（2026-10-27 实测）：
+        //
+        // ① `left` + `align:'right'`：在 0×0 容器里退化成竖排 ——
+        //    但那是容器问题（已由 ResizeObserver 修掉），不是 position 的锅。
+        //
+        // ② `inside`：卡片压在节点上，径向布局的子节点间距按"圆点"算，
+        //    左侧子节点的卡片会**盖住父节点卡片**
+        //    （截图：`使用 keep-alive...` 压在「性能优化清单」上）。
+        //
+        // ③ 现在按布局分开：
+        //    · 雷达/径向 → `outside`：卡片在**远离圆心的一侧**，
+        //      子节点向外展开不会回撞父节点
+        //    · 树形（正交）→ `right`：卡片挂右侧，符合从左到右的阅读顺序
+        label: {
+            position: isRadial ? 'outside' : 'right',
+            align: isRadial ? 'center' : 'left',
+            verticalAlign: 'middle',
+            rotate: 0,
+            distance: isRadial ? 10 : 6,
+        },
+        leaves: {
+            label: {
+                position: 'outside',
+                align: isRadial ? 'center' : 'left',
+                verticalAlign: 'middle',
+                rotate: 0,
+                distance: isRadial ? 10 : 6,
+            },
+        },
+    }
+
+    if (isRadial) {
+        // edgeLength 控制每层半径间距；nodePadding 控制同层节点间距
+        //
+        // ⚠️ 实测：这两个值偏小时，叶子卡片会互相压住
+        //    （截图里「性能优化清单」和它的子节点重叠）。
+        //    卡片样式比圆点占地方大得多，间距要比"点线图"时代给得更足。
+        Object.assign(seriesBase, {
+            edgeLength: manyNodes ? 140 : 170,
+            nodePadding: 18,
+            top: '8%',
+            bottom: '8%',
+            left: '10%',
+            right: '10%',
+        })
+    } else {
+        // 树形（正交）布局的留白
+        //
+        // ⚠️ 卡片比圆点宽得多，左右留白必须给足：
+        //    右侧是"叶子卡片伸出去"的方向，留 26% 才不会被容器裁掉。
+        //    原来各 20% 时，最右一列长标签会被切掉尾巴。
+        Object.assign(seriesBase, {
+            top: '5%',
+            bottom: '5%',
+            left: '22%',
+            right: '26%',
+        })
+    }
+
     return {
         tooltip: {
             trigger: 'item',
             triggerOn: 'mousemove',
-            formatter: (p: any) => `${p.name}`,
-        },
-        series: [
-            {
-                type: 'tree',
-                data: [decorated],
-                // 径向布局是思维导图形态；tree 是传统组织架构形态
-                layout: isRadial ? 'radial' : 'orthogonal',
-                orient: 'LR',
-                // 根节点放中间（径向布局）
-                ...(isRadial ? {} : { top: '4%', bottom: '4%', left: '6%', right: '32%' }),
-                symbol: 'circle',
-                // 连线：曲线更柔，直线更"教科书"；导图用曲线
-                edgeShape: 'curve',
-                edgeForkPosition: '50%',
-                // ⚠️ 节点多时必须限制初始深度（见 EXPAND_DEPTH_LIMIT 的说明）
-                initialTreeDepth: initDepth,
-                // 允许收起/展开：用户想深看时点节点即可
-                roam: true,
-                expandAndCollapse: true,
-                animationDuration: 420,
-                animationDurationUpdate: 320,
-                lineStyle: {
-                    color: '#d6dbe3',
-                    width: 1.2,
-                    curveness: isRadial ? 0.5 : 0,
-                },
-                label: {
-                    position: isRadial ? 'outside' : 'left',
-                    verticalAlign: 'middle',
-                    align: isRadial ? 'center' : 'right',
-                    distance: 6,
-                },
-                leaves: {
-                    label: {
-                        position: isRadial ? 'outside' : 'right',
-                        align: isRadial ? 'center' : 'left',
-                    },
-                },
+            confine: true,
+            // tooltip 里给**完整名称**：卡片上截断的字在这里能看全
+            formatter: (p: any) => {
+                const n = String(p.name || '')
+                const clipped = n.length > 20
+                return clipped ? `<div style="max-width:320px;white-space:normal;line-height:1.5">${n}</div>` : n
             },
-        ],
+            backgroundColor: 'rgba(17,24,39,0.92)',
+            borderWidth: 0,
+            textStyle: { color: '#fff', fontSize: 12 },
+            padding: [7, 10],
+        },
+        series: [seriesBase],
     }
 }
 
@@ -339,6 +562,17 @@ function render() {
     }
     nextTick(() => {
         if (!chartRef.value) return
+
+        // ⚠️ 容器尺寸为 0 时**不初始化**（2026-10-27 修）
+        //    在 el-collapse 里展开动画未结束时，offsetWidth 是 0。
+        //    此时 echarts.init 会得到一个退化布局（标签竖排、节点叠成一条线），
+        //    而且之后不会自愈。交给 ResizeObserver 等尺寸出现再画。
+        const w = chartRef.value.offsetWidth
+        const h = chartRef.value.offsetHeight
+        if (w < 40 || h < 40) {
+            return
+        }
+
         if (!chart) {
             chart = echarts.init(chartRef.value)
         }
@@ -365,13 +599,64 @@ watch(
 )
 watch(layoutMode, () => render())
 
+/** 用户手动切布局：打上标记，`auto` 之后不再干预 */
+function onLayoutChange() {
+    layoutTouched.value = true
+}
+
+/**
+ * 容器尺寸监听（2026-10-27 修）
+ *
+ * ── 修的什么问题 ──────────────────────────────────────────────
+ * 实测：笔记页里思维导图放在 `el-collapse` 里，用户点开折叠条时，
+ * `render()` 在**展开动画还没结束**时就执行了 ——
+ * 那一刻 `.mm-chart` 的 `offsetWidth/offsetHeight` 都是 **0**。
+ *
+ * echarts 在 0×0 的容器里初始化，会退化成一个极端布局：
+ * 根节点标签被**旋转 90° 竖排**、所有卡片挤在一条竖线上
+ * （截图里那两个竖着的黑块就是这么来的）。
+ *
+ * 原来只监听 `window.resize`，容器从 0 变成 909px 这种变化它感知不到，
+ * 图就一直停在坏掉的布局上。
+ *
+ * ResizeObserver 能捕捉"容器从 0 变成有尺寸"这个瞬间，
+ * 此时再 resize + 重算布局就正常了。
+ */
+let ro: ResizeObserver | null = null
+
 onMounted(() => {
     render()
     window.addEventListener('resize', handleResize)
+
+    if (typeof ResizeObserver !== 'undefined' && chartRef.value) {
+        let lastW = 0
+        let lastH = 0
+        ro = new ResizeObserver((entries) => {
+            for (const e of entries) {
+                const w = Math.round(e.contentRect.width)
+                const h = Math.round(e.contentRect.height)
+                // 只在**有意义的变化**时重排：忽略 1px 抖动，
+                // 也忽略"从有尺寸变 0"（收起动画中间态）
+                if (w === lastW && h === lastH) continue
+                lastW = w
+                lastH = h
+                if (w < 40 || h < 40) continue
+                // 尺寸回来了：重新 init（若之前是 0×0 初始化的）并重设布局
+                if (!chart && chartRef.value) {
+                    chart = echarts.init(chartRef.value)
+                }
+                chart?.resize()
+                chart?.setOption(buildOption(), true)
+            }
+        })
+        ro.observe(chartRef.value)
+    }
 })
 
 onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
+    ro?.disconnect()
+    ro = null
     chart?.dispose()
     chart = null
 })

@@ -195,6 +195,9 @@ from app.api.v1 import (
     noteQuestionBank, noteQuestion, user_stats,
     common, catch_all, ai_config, bankShare, notification, systemComment,
     rag, rate_limit_admin, bank_export, tts, english_practice,
+    # 2026-10-27 文档编排：把「内容 → 排版好的 Word/PDF」暴露成 REST，
+    # 供独立编辑器页面用（聊天侧走 document_compose 工具，共用同一渲染引擎）。
+    doc_compose,
 )
 
 app.include_router(auth.router, tags=["认证"])
@@ -205,6 +208,7 @@ app.include_router(notices.router, tags=["通知公告"])  # ⚠️ 先注册，
 #    但 `/questionBank/questionBank/export` 这类同段数路径会被当成 bank_id 解析 → 422。
 #    导出端点路径更具体，先注册更稳。
 app.include_router(bank_export.router, tags=["题库导出"])
+app.include_router(doc_compose.router, tags=["文档编排"])
 app.include_router(questions.router, tags=["题库题目"])
 app.include_router(ai.router, tags=["AI功能"])
 app.include_router(dashboard.router, tags=["仪表盘"])

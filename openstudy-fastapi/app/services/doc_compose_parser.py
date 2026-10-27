@@ -396,6 +396,20 @@ def _consume_pseudo_table(lines: List[str], start: int) -> Tuple[Optional[Dict[s
        · 至少 2 行
        · 每行的列数必须一致
        · 每列内容长度不能过长（表格单元格不会是一整句话）
+
+    ⚠️ 空单元格不能丢（2026-10-27 实测踩过）：
+       从 Word 复制出来的表经常有「合并单元格残留」——首列为空：
+
+           名称    数量    备注
+           甲      10      正常
+                   20      同上      ← 首列空（其实是"甲"）
+                   30      同上
+
+       最初这里用 `if c.strip()` 过滤，于是这一行只剩 2 列，
+       「列数一致」判定失败 → **整张表被当成段落**，
+       用户在 Word 里看到的是一堆用 Tab 隔开的乱文字。
+
+       正确做法：**保留空单元格**（split 后不丢），只去掉"整行都空"的尾部。
     """
     i = start
     rows: List[List[str]] = []
@@ -406,7 +420,18 @@ def _consume_pseudo_table(lines: List[str], start: int) -> Tuple[Optional[Dict[s
             break
         if not _RE_TAB_ROW.search(raw):
             break
-        cells = [c.strip() for c in re.split(r"\t+| {3,}", raw.strip()) if c.strip()]
+
+        # ⚠️ 只 rstrip 不能 strip：行首那个 Tab 是**空首列的边界标记**，
+        #    `"\t20\t同上".strip()` 会变成 `"20\t同上"`，
+        #    于是这行只剩 2 列、数据整体左移一位（实测踩过：
+        #    结果里出现 `['20', '同上', '']` —— 20 跑到第 1 列去了）。
+        #
+        # 同样，不做 `if c.strip()` 过滤：那会让空首列彻底消失。
+        cells = [c.strip() for c in re.split(r"\t+| {3,}", raw.rstrip())]
+        # 砍掉行尾连续的空单元格（排版噪音）；行首的空要留（合并单元格语义）
+        while cells and not cells[-1]:
+            cells.pop()
+
         if len(cells) < 2:
             break
         rows.append(cells)
@@ -415,10 +440,13 @@ def _consume_pseudo_table(lines: List[str], start: int) -> Tuple[Optional[Dict[s
     if len(rows) < 2:
         return None, start
 
-    # 列数一致性
-    widths = {len(r) for r in rows}
-    if len(widths) != 1:
+    # 列数一致性：缺列的补空（真实数据里常见），多列的拒绝（不像表格）
+    width = max(len(r) for r in rows)
+    if width < 2:
         return None, start
+    if any(len(r) > width for r in rows):
+        return None, start
+    rows = [r + [""] * (width - len(r)) for r in rows]
 
     # 单元格不能太长（超过 24 字基本就是句子，不是表格）
     if any(len(c) > 24 for r in rows for c in r):

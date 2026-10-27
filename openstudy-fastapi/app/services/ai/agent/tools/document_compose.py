@@ -50,7 +50,7 @@ import os
 from typing import Any, Dict, Optional
 
 from app.services.ai.agent.base import AgentTool, ToolContext, fail, ok
-from app.services.ai.agent.tools.bank_export import save_export_file
+from app.services.ai.agent.tools.bank_export import save_export_file, _human_size
 
 #: 可用主题（与 doc_compose_model.THEMES 一致，这里列出来是为了给模型看）
 THEME_ALIASES = {
@@ -243,16 +243,16 @@ class DocumentComposeTool(AgentTool):
 
         try:
             rel, name = save_export_file(result["docx"], f"{base_name}.docx")
-            files.append({"path": rel, "name": name, "type": "docx",
-                          "size": len(result["docx"])})
+            files.append({"path": rel, "url": f"/profile/{rel}", "name": name,
+                          "type": "docx", "size": len(result["docx"])})
         except OSError as e:
             return fail(f"Word 文件已生成但保存失败：{e}")
 
         if want_pdf and result.get("pdf"):
             try:
                 rel2, name2 = save_export_file(result["pdf"], f"{base_name}.pdf")
-                files.append({"path": rel2, "name": name2, "type": "pdf",
-                              "size": len(result["pdf"])})
+                files.append({"path": rel2, "url": f"/profile/{rel2}", "name": name2,
+                              "type": "pdf", "size": len(result["pdf"])})
             except OSError as e:
                 note += f"（PDF 保存失败：{e}）"
 
@@ -270,10 +270,35 @@ class DocumentComposeTool(AgentTool):
         if want_pdf and not result.get("pdf"):
             summary_bits.append(f"PDF 未生成（{result.get('pdfError') or '未知原因'}）")
 
+        # ⚠️ 补齐前端产物卡片所需的字段（2026-10-27 修）
+        #
+        # 前端 `AgentToolResult` 的产物卡片只认 `downloadUrl` / `fileName` /
+        # `fileSizeText` / `format` 这几个**顶层**字段
+        # （那是 `bank_export` 工具定的契约）。
+        #
+        # 最初这里只返回 `files: [{path, name, type, size}]`，
+        # 结果对话里生成的 Word **根本没有下载卡片** —— 模型嘴上说"已生成"，
+        # 用户手里什么都没有。这是实测发现的真缺陷。
+        #
+        # 现在两者都给：
+        #   · 顶层 downloadUrl 等 → 前端卡片直接可用
+        #   · files 数组        → 保留给需要多文件（docx+pdf）的场景
+        primary = files[0] if files else None
+        pdf_file = next((f for f in files if f["type"] == "pdf"), None)
+
         return ok(
             message="；".join(summary_bits) + note,
             data={
                 "files": files,
+                "downloadUrl": primary["url"] if primary else "",
+                "fileName": primary["name"] if primary else "",
+                "format": "docx",
+                "fileSize": primary["size"] if primary else 0,
+                "fileSizeText": _human_size(primary["size"]) if primary else "",
+                # PDF 单独给一份，前端可以再放一个按钮
+                "pdfDownloadUrl": pdf_file["url"] if pdf_file else "",
+                "pdfFileName": pdf_file["name"] if pdf_file else "",
+                "pdfFileSizeText": _human_size(pdf_file["size"]) if pdf_file else "",
                 "blockCount": result["blockCount"],
                 "headingLevels": result["headingLevels"],
                 "theme": result["theme"],

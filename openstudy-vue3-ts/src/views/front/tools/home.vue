@@ -4,6 +4,20 @@
     <p class="page-desc">一站式文件处理与转换工具，全部在浏览器本地完成。</p>
 
     <div class="tool-grid">
+      <!-- 2026-10-27 文档编排：放在第一位（"内容 → 排版好的文档"的主入口） -->
+      <button type="button" class="tool-card tool-card--feature" @click="goTo('docCompose')">
+        <span class="tool-icon">
+          <el-icon :size="20"><EditPen /></el-icon>
+        </span>
+        <span class="tool-content">
+          <span class="tool-title">文档编排</span>
+          <span class="tool-desc">左边写内容、右边实时看排版，一键导出 Word / PDF，支持 AI 优化结构</span>
+        </span>
+        <span class="tool-arrow">
+          <el-icon><ArrowRight /></el-icon>
+        </span>
+      </button>
+
       <button type="button" class="tool-card" @click="goTo('watermark')">
         <span class="tool-icon">
           <el-icon :size="20"><Picture /></el-icon>
@@ -62,7 +76,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'FrontToolsHome' })
 import { useRouter } from 'vue-router'
-import { Picture, Document, MagicStick, DataLine, ArrowRight } from '@element-plus/icons-vue'
+import { Picture, Document, MagicStick, DataLine, ArrowRight, EditPen } from '@element-plus/icons-vue'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
 
 const router = useRouter()
@@ -162,5 +176,23 @@ const goTo = (path) => {
   .tool-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/*
+ * 主推卡片（文档编排）
+ *
+ * 用户 2026-10-27 要的"独立文档编排页面"是新能力的主入口，
+ * 和其他工具平铺在一起容易被当成"又一个转换小工具"。
+ * 用左侧色条 + 浅底把它和普通工具区分开，但不做夸张动效 ——
+ * 这个项目的视觉基调是克制的。
+ */
+.tool-card--feature {
+  border-left: 3px solid #409eff;
+  background: linear-gradient(90deg, #f7fbff 0%, #fff 46%);
+}
+
+.tool-card--feature .tool-icon {
+  color: #409eff;
+  background: #e8f3ff;
 }
 </style>

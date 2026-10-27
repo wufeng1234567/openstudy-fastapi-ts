@@ -369,7 +369,7 @@ def _render_paragraph(doc, block: Block, theme: Dict[str, Any]) -> None:
         pf.first_line_indent = Pt(theme["bodySizePt"] * theme["firstLineIndentEm"])
     # 用 _add_segments 而不是 add_run：它会把文字里的 LaTeX 公式转成 OMML，
     # 和题库导出走同一条公式链路，不会出现"Word 里公式是反斜杠"
-    _add_segments(p, block.text, size=theme["bodySizePt"])
+    _add_inline(p, block.text, theme, size=theme["bodySizePt"])
 
 
 def _render_list(doc, block: Block, theme: Dict[str, Any]) -> None:
@@ -393,7 +393,7 @@ def _render_list(doc, block: Block, theme: Dict[str, Any]) -> None:
         _docx_set_cjk_font(mrun, theme["bodyFont"], size=theme["bodySizePt"])
         mrun.font.color.rgb = RGBColor.from_string("444444")
 
-        _add_segments(p, str(text), size=theme["bodySizePt"])
+        _add_inline(p, str(text), theme, size=theme["bodySizePt"])
 
 
 def _render_table(doc, block: Block, theme: Dict[str, Any]) -> None:
@@ -468,7 +468,7 @@ def _fill_table_row(row, cells: List[str], theme: Dict[str, Any], align: List[st
         }.get(a, WD_ALIGN_PARAGRAPH.LEFT)
 
         size = theme["bodySizePt"] - 0.5
-        _add_segments(p, str(text), size=size, bold=bold)
+        _add_inline(p, str(text), theme, size=size, base_bold=bold)
 
         if header:
             _docx_set_cell_shading(cell, theme["tableHeaderFill"])
@@ -829,6 +829,86 @@ def _set_font(run, name: str, *, size=None, bold=None, italic=None, color: Optio
         run.font.italic = italic
     if color:
         run.font.color.rgb = RGBColor.from_string(color)
+
+
+#: 行内 Markdown 标记（2026-10-27 加）
+#:
+#: 之前**完全没处理行内语法**，用户写 `**重要**` 会在 Word 里
+#: 原样看到星号（实测确认）。
+#:
+#: 顺序很重要：`**` 必须排在 `*` 之前匹配，
+#: 否则 `**bold**` 会被切成「*」+「*bold*」+「*」，渲染出一堆零散星号。
+_RE_INLINE = re.compile(
+    r"(\*\*.+?\*\*)"          # **粗体**
+    r"|(`[^`]+`)"              # `行内代码`
+    r"|(\*[^*]+?\*)"           # *斜体*
+    r"|(~~.+?~~)"              # ~~删除线~~
+    r"|(\[[^\]]+\]\([^)]+\))"  # [文字](链接)
+)
+
+
+def _add_inline(paragraph, text: str, theme: Dict[str, Any], *,
+                size: float, base_bold: bool = False) -> None:
+    """把带行内 Markdown 标记的文字加进段落
+
+    支持：`**粗体**`、`*斜体*`、`` `代码` ``、`~~删除线~~`、`[文字](链接)`
+
+    思路：用正则切出"带标记的片段"，标记内的内容单独加样式，
+    标记外的文字交给 `_add_segments` —— 它负责把 LaTeX 转成 OMML。
+
+    ⚠️ 为什么不自己 add_run：`_add_segments` 内部处理了
+       「文字 + 裸 LaTeX」的切分与 OMML 转换。
+       公式链路不能断 —— 加粗内容里的公式在 Word 里也必须是真公式。
+    """
+    if not text:
+        return
+
+    pos = 0
+    for m in _RE_INLINE.finditer(text):
+        start, end = m.span()
+
+        if start > pos:
+            _add_segments(paragraph, text[pos:start], size=size, bold=base_bold or None)
+
+        token = m.group(0)
+        if token.startswith("**"):
+            _add_segments(paragraph, token[2:-2], size=size, bold=True)
+        elif token.startswith("`"):
+            run = paragraph.add_run(token[1:-1])
+            run.font.name = "Consolas"
+            run.font.size = Pt(size - 0.5)
+            _set_run_shading(run, "F0F2F5")
+        elif token.startswith("~~"):
+            run = paragraph.add_run(token[2:-2])
+            _set_font(run, theme["bodyFont"], size=size)
+            run.font.strike = True
+        elif token.startswith("["):
+            mm = re.match(r"\[([^\]]+)\]\(([^)]+)\)", token)
+            label = mm.group(1) if mm else token
+            run = paragraph.add_run(label)
+            _set_font(run, theme["bodyFont"], size=size, color="2563EB")
+            run.font.underline = True
+        elif token.startswith("*"):
+            # ⚠️ 不能传给 `_add_segments(italic=...)`：它只认
+            #    size/bold/color，传 italic 会 TypeError（实测踩过）。
+            #    这里自己建 run 并加斜体。
+            run = paragraph.add_run(token[1:-1])
+            _set_font(run, theme["bodyFont"], size=size, italic=True)
+
+        pos = end
+
+    if pos < len(text):
+        _add_segments(paragraph, text[pos:], size=size, bold=base_bold or None)
+
+
+def _set_run_shading(run, fill_hex: str) -> None:
+    """给 run 加底纹（行内代码的浅灰底）"""
+    rpr = run._element.get_or_add_rPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), fill_hex)
+    rpr.append(shd)
 
 
 def _text_length(spec: DocumentSpec) -> int:
