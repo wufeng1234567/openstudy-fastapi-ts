@@ -388,8 +388,23 @@ function onInput() {
  * 对外接口
  * ──────────────────────────────────────────────────────────── */
 
-function open(initial?: string) {
+/** 本次编辑是否要包 `$`（调用方可覆盖 props 的默认值） */
+const wrapOverride = ref<boolean | null>(null)
+
+/**
+ * 打开面板
+ *
+ * @param initial      初始内容（**纯 LaTeX，不含 `$`**）
+ * @param wrapDollar   本次是否包 `$`。不传则用 props 默认值。
+ *
+ * ⚠️ 为什么要能运行时覆盖：
+ *    编辑**已有公式**时，原公式的定界符已经在正文里了，
+ *    这里再包一层就会变成 `$$...$$`（实测踩过）。
+ *    所以编辑场景要传 false，只回传纯 LaTeX 让调用方替换。
+ */
+function open(initial?: string, wrapDollar?: boolean) {
     draft.value = initial ?? props.initial ?? ''
+    wrapOverride.value = typeof wrapDollar === 'boolean' ? wrapDollar : null
     previewError.value = ''
     visible.value = true
 }
@@ -405,11 +420,13 @@ function confirm() {
         emit('confirm', '')
         return
     }
-    // 是否包 `$`：正文里需要（否则不会被识别为公式），
-    // 但若用户已经在编辑纯源码（如笔记 Markdown 的公式块）则不需要
-    const text = props.wrapDollar ? `$${body}$` : body
+    // 是否包 `$`：正文里需要（否则不会被识别为公式）；
+    // 但编辑**已有**公式时不能包 —— 原公式的定界符在正文里，再包就成 `$$...$$`
+    const shouldWrap = wrapOverride.value === null ? props.wrapDollar : wrapOverride.value
+    const text = shouldWrap ? `$${body}$` : body
     emit('confirm', text)
     visible.value = false
+    wrapOverride.value = null
 }
 
 /** 父组件可以通过 ref 调用 `open()` */

@@ -466,6 +466,138 @@ function findBareScripts(
   return out
 }
 
+/**
+ * 一段「文字 / 公式」片段
+ *
+ * 用于把渲染结果拆成可单独点击的单元 —— 用户点哪个公式就改哪个。
+ */
+export interface MathSpan {
+  /** text = 普通文字；inline = 行内公式；block = 块级公式 */
+  type: 'text' | 'inline' | 'block'
+  /** 公式的 LaTeX 正文（不含定界符）；文字段为空串 */
+  latex: string
+  /** 在原文里的起始位置 */
+  start: number
+  /** 在原文里的结束位置（含定界符） */
+  end: number
+  /** 原文片段（公式段含定界符，如 `$x^2$`） */
+  raw: string
+  /** 仅文字段有：纯文字内容 */
+  text?: string
+}
+
+/**
+ * 把一段文本切成「普通文字 / 公式」交替的片段
+ *
+ * ── 为什么需要（2026-10-27）──────────────────────────────────
+ * 用户在确认卡片里要改一个具体公式（比如把 `\xi` 改成 `\eta`），
+ * 但屏幕上看到的是一整段渲染结果，不知道"点哪里才能改那一个"。
+ *
+ * 有了这个函数，渲染层就能把**每个公式单独包一层可点元素**，
+ * 用户点哪个就改哪个 —— 不用打开整段源码找位置。
+ *
+ * ## 覆盖的写法（与渲染管线完全同源）
+ *
+ *   · `$$...$$` / `\[...\]`   → block 公式
+ *   · `$...$`  /  `\(...\)`   → inline 公式
+ *   · 裸命令 `\frac{a}{b}`、裸上下标 `C_7^3`、`∫_{0}^{10}` → inline
+ *
+ * ⚠️ 顺序很重要：**先认定界符，再认裸写法**。
+ *    否则 `$e^{-x}$` 会先被裸上下标规则切走 `e^{-x}`，
+ *    剩下两个孤零零的 `$` 变成普通文字。
+ *
+ * 返回的 `text` 片段保留原文（含被删掉的定界符外的空格），
+ * 调用方可以原样拼接回去。
+ */
+export function splitMathSpans(raw: string): MathSpan[] {
+  if (!raw) return []
+
+  // ① 先圈出所有带定界符的公式（含区间，用于后续剔除）
+  const delimited: MathSpan[] = []
+
+  const collect = (re: RegExp, display: boolean) => {
+    // 每次都新建正则，避免 lastIndex 状态污染（踩过坑）
+    const rx = new RegExp(re.source, re.flags)
+    let m: RegExpExecArray | null
+    while ((m = rx.exec(raw)) !== null) {
+      const body = (m[1] || '').trim()
+      if (!body) continue
+      delimited.push({
+        type: display ? 'block' : 'inline',
+        latex: body,
+        start: m.index,
+        end: m.index + m[0].length,
+        raw: m[0],
+      })
+    }
+  }
+
+  // 块级先收（`$$` 比 `$` 优先，否则 `$$x$$` 会被当成两个空行内）
+  collect(BLOCK_MATH_RE, true)
+  collect(BLOCK_PAREN_MATH_RE, true)
+  collect(INLINE_MATH_RE, false)
+  collect(INLINE_PAREN_MATH_RE, false)
+
+  delimited.sort((a, b) => a.start - b.start)
+
+  // ② 在定界符之外的空隙里找裸写法
+  const bare: MathSpan[] = []
+  const gaps: Array<{ from: number; to: number }> = []
+  let cursor = 0
+  for (const d of delimited) {
+    if (d.start > cursor) gaps.push({ from: cursor, to: d.start })
+    cursor = Math.max(cursor, d.end)
+  }
+  if (cursor < raw.length) gaps.push({ from: cursor, to: raw.length })
+
+  for (const g of gaps) {
+    const piece = raw.slice(g.from, g.to)
+    if (!piece) continue
+
+    // 裸上下标与裸命令都用现成的检测器，但要换成带偏移的区间
+    const scriptHits = findBareScripts(piece, [])
+    let cmdHits = findBareLatexCommands(piece)
+    if (scriptHits.length) {
+      // 裸上标压过它内部的反斜杠命令（`e^{-\lambda}` 整个算一个公式）
+      cmdHits = cmdHits.filter(
+        (c) => !scriptHits.some((s) => s.start <= c.start && c.end <= s.end),
+      )
+    }
+
+    for (const hit of [...cmdHits, ...scriptHits]) {
+      bare.push({
+        type: 'inline',
+        latex: hit.latex.trim(),
+        start: g.from + hit.start,
+        end: g.from + hit.end,
+        raw: raw.slice(g.from + hit.start, g.from + hit.end),
+      })
+    }
+  }
+
+  // ③ 合并、排序、填文字段
+  const all = [...delimited, ...bare]
+    .filter((s) => s.latex)
+    .sort((a, b) => a.start - b.start)
+
+  const out: MathSpan[] = []
+  let pos = 0
+  for (const span of all) {
+    if (span.start < pos) continue // 嵌套重叠，跳过
+    if (span.start > pos) {
+      const text = raw.slice(pos, span.start)
+      if (text) out.push({ type: 'text', text, start: pos, end: span.start, latex: '', raw: text })
+    }
+    out.push(span)
+    pos = span.end
+  }
+  if (pos < raw.length) {
+    const text = raw.slice(pos)
+    if (text) out.push({ type: 'text', text, start: pos, end: raw.length, latex: '', raw: text })
+  }
+  return out
+}
+
 function findBareLatexCommands(text: string): Array<{ start: number; end: number; latex: string }> {
   const found: Array<{ start: number; end: number; latex: string }> = []
   const cmdRegex = /\\([a-zA-Z]+)/g
@@ -545,6 +677,66 @@ function findBareLatexCommands(text: string): Array<{ start: number; end: number
  *   ③ 最后把占位符**回填**成 KaTeX 生成的 HTML。
  * 若先做 Markdown 再做公式，公式里的下划线会被当成斜体、`|` 会被当成表格分隔。
  */
+/**
+ * 把文本渲染成「文字 + 可点击公式」的 HTML
+ *
+ * ── 解决什么问题（2026-10-27）────────────────────────────────
+ * 用户在一段长公式里要改一个字符（`\xi` → `\eta`），
+ * 但整段是渲染好的一张图，点不进去，只能打开整段源码自己找。
+ *
+ * 这个函数把**每个公式单独包一层 `<span class="math-hit" data-idx="N">`**，
+ * 前端据此做到"点哪个公式就改哪个"：
+ *
+ *     存在 <span class="math-hit" data-idx="0">ξ ∈ (a,b)</span>，
+ *     使 <span class="math-hit" data-idx="1">f(b) − f(a) = f′(ξ)(b−a)</span>
+ *
+ * `data-idx` 是公式在 `splitMathSpans()` 结果里的序号，调用方用它反查 latex。
+ *
+ * ⚠️ 只做**行内**渲染，不调 `marked.parse`：
+ *    这里的目标是"段落里哪几个字是公式"，不是渲染 Markdown 结构
+ *    （标题/列表/表格由外层管线负责）。掺进来会让文本顺序错乱。
+ *
+ * @param raw 原始文本（可含多个公式）
+ * @param onText 文字段的处理（默认转义后原样输出；调用方可传 marked 渲染）
+ */
+export function renderClickableMath(
+  raw: string,
+  onText?: (text: string) => string,
+): string {
+  if (!raw) return ''
+
+  const spans = splitMathSpans(raw)
+  if (!spans.length) return escapeHtmlText(raw)
+
+  let html = ''
+  let idx = 0
+  for (const s of spans) {
+    if (s.type === 'text') {
+      const t = s.text || ''
+      // 默认：转义 + 换行变 <br>（保持原文的段落感）
+      html += onText ? onText(t) : escapeHtmlText(t).replace(/\n/g, '<br>')
+      continue
+    }
+    let inner: string
+    try {
+      inner = katex.renderToString(s.latex, {
+        throwOnError: false,
+        displayMode: s.type === 'block',
+      })
+    } catch {
+      inner = escapeHtmlText(s.raw)
+    }
+    html += `<span class="math-hit" data-idx="${idx}" title="点击编辑这个公式">${inner}</span>`
+    idx++
+  }
+  return html
+}
+
+/** 最小化 HTML 转义（只转会破坏结构的三个字符） */
+function escapeHtmlText(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
 export function renderMarkdownWithLatex(text: string): string {
   if (!text) return ''
 
