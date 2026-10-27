@@ -165,9 +165,7 @@ onMounted(async () => {
     const el = fieldRef.value
     if (!el) return
 
-    // 关掉 MathLive 自带的虚拟键盘：
-    // 我们用项目自己的符号面板（只放需要的符号，且不会盖住整屏）
-    el.mathVirtualKeyboardPolicy = 'manual'
+    killVirtualKeyboard(el)
 
     // 回填初始值
     if (props.modelValue) el.value = props.modelValue
@@ -176,6 +174,54 @@ onMounted(async () => {
     // 占位符：MathLive 通过 placeholder 属性显示空态提示
     if (props.placeholder) el.setAttribute('placeholder', props.placeholder)
 })
+
+/**
+ * 彻底关掉 MathLive 自带的虚拟键盘
+ *
+ * ── 为什么不能只设策略（2026-10-27 用户反馈）──────────────────
+ * 用户截图：编辑公式时底部弹出全宽数学键盘，**点空白处不关闭、也不自动收**。
+ *
+ * 翻 MathLive 源码（mathlive.mjs:29054 / 29061）看清了机制：
+ *
+ *     focusin  → 仅当 policy==='auto'   才自动弹
+ *     focusout → 仅当 policy!=='manual' 才在 300ms 后自动收
+ *
+ * 所以设成 `'manual'` 的结果是：**既不会自动弹、也不会自动收**。
+ * 而键盘本身还有个**独立的打开入口** ——
+ * 编辑器工具栏上的 ⌨ 图标（shadow DOM 里 `part="virtual-keyboard-toggle"`）。
+ * 用户一旦点开它，就再也关不掉了，正是遇到的情况。
+ *
+ * ⚠️ 试过但**没用**的两条路（实测）：
+ *    · `el.menuItems` 过滤 —— 键盘开关**不在** menuItems 里，
+ *      它是 widget 上的一个独立 part，改菜单动不到它
+ *    · `import('mathlive')` 取 `mathVirtualKeyboard` —— 模块没导出这个对象，
+ *      它挂在 `window.mathVirtualKeyboard` 上
+ *
+ * 真正有效的三条（本函数 + 样式里各一条）：
+ *    ① policy = 'manual'           禁掉自动弹出
+ *    ② CSS 隐藏 virtual-keyboard-toggle part  去掉手动入口
+ *    ③ 万一已被别处打开，主动 hide 一次
+ *
+ * 我们有自己的符号面板（MathSymbolPalette），
+ * 不需要 MathLive 那套两百多个键、还盖住整屏的键盘。
+ */
+function killVirtualKeyboard(el: any) {
+    // ① 禁止自动弹出
+    el.mathVirtualKeyboardPolicy = 'manual'
+
+    // ② 兜底：若全局键盘已被打开（比如用户在别的组件点过），关掉它
+    const kb = (window as any).mathVirtualKeyboard
+    if (kb) {
+        try {
+            if (kb.visible) {
+                kb.hide?.()
+                kb.visible = false
+            }
+        } catch {
+            /* 忽略：老版本可能没有 hide() */
+        }
+    }
+}
 
 /**
  * 外部改动 → 同步进编辑器
@@ -268,8 +314,34 @@ function onFocus() {
     focused.value = true
 }
 
+/**
+ * 失焦
+ *
+ * ── 为什么这里要主动关键盘（2026-10-27 用户反馈）──────────────
+ * 用户原话：「出现的那个键盘 没法很好的关闭 用户点击空白地方没反应
+ *            不会自动关闭」
+ *
+ * 根因：policy 是 `'manual'` 时，MathLive 的 `focusout` 处理
+ * （mathlive.mjs:29061）会**整个跳过**自动收起逻辑 ——
+ * 它的设计假设是"manual 模式由调用方自己管键盘"。
+ *
+ * 我们既然不要那个键盘，就在失焦时主动收掉：
+ * 用户点空白处 → 编辑器 blur → 键盘关闭。这符合直觉。
+ *
+ * 加上 CSS 隐藏了打开入口，正常情况下键盘根本不会出现；
+ * 这里是第二道保险（比如用户在别处打开过全局键盘）。
+ */
 function onBlur() {
     focused.value = false
+    const kb = (window as any).mathVirtualKeyboard
+    if (kb?.visible) {
+        try {
+            kb.hide?.()
+            kb.visible = false
+        } catch {
+            /* 忽略 */
+        }
+    }
 }
 
 /**
@@ -372,6 +444,33 @@ defineExpose({
 .mi-field:focus-within {
     border-color: #409eff;
     box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.12);
+}
+
+/*
+ * 隐藏 MathLive 工具栏上的「虚拟键盘」按钮
+ *
+ * ── 为什么必须这么做（2026-10-27 用户反馈）────────────────────
+ * 用户截图：点开公式编辑器后底部弹出全宽数学键盘，
+ *          **点空白处不关闭、也不会自动收**，把题目盖住了。
+ *
+ * 那个键盘不是自动弹的（policy 已设 manual），
+ * 而是用户（或误触）点了工具栏上这个 ⌨ 图标打开的。
+ * 一旦打开，因为 policy 是 manual，`focusout` 的自动收起逻辑
+ * 被跳过（看 mathlive.mjs:29061），于是再也关不掉。
+ *
+ * 实测过：这个按钮**不在** `menuItems` 里（改菜单动不到它），
+ * 它是 widget 上的一个独立 part。只能从 CSS 下手。
+ *
+ * 我们有自己的符号面板，不需要它。
+ */
+.mi-field::part(virtual-keyboard-toggle) {
+    display: none;
+}
+
+/* 顺手把菜单按钮也收掉：里面的功能（改颜色/加粗/矩阵编辑）
+   是给独立编辑器用的，嵌在题目字段里没有意义，反而误触 */
+.mi-field::part(menu-toggle) {
+    display: none;
 }
 
 /* 单行模式（选项/答案）：字号略小、内边距更紧 */
