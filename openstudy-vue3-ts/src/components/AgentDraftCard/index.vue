@@ -251,6 +251,11 @@
         </div>
 
         <!-- 题干：编辑态由头部的「编辑」统一控制（不再各自带按钮） -->
+        <!-- 题干：编辑态由头部的「编辑」统一控制
+             ⚠️ `show-symbol-button` 必须为 true（也可省略，默认就是 true）：
+                AI 导出的题目常需**补插**符号（比如题目里漏了求和号、
+                或用户想给某个式子加根号）。若把符号入口一起关掉，
+                用户就只能改现有数字，没法新增数学符号。 -->
         <MathInput
           :ref="(el) => setQRef(qi, el)"
           v-model="q.questionText"
@@ -260,6 +265,7 @@
           :disabled="readonly"
           :editable="editingSet.has(qi)"
           :show-edit-button="false"
+          :show-symbol-button="true"
         />
 
         <!-- 选项（单选 / 多选） -->
@@ -667,13 +673,30 @@ const isEditing = (i: number) => editingSet.value.has(i)
  */
 function toggleEdit(i: number) {
   const next = new Set(editingSet.value)
-  if (next.has(i)) next.delete(i)
+  const wasEditing = next.has(i)
+  if (wasEditing) next.delete(i)
   else next.add(i)
   editingSet.value = next
+
   // 直接驱动子组件，避免只靠 prop 变化（prop 变化在 MathInput 里
   // 走的是 watch，而 watch 只在值**变化**时触发；连续两次点同一个
   // 按钮时 prop 没变，子组件不会响应）
   qRefs.get(i)?.setEditing?.(next.has(i))
+
+  // 退出编辑时让该题的字段做一次收尾：
+  // MathLive 会把混排文字里的 `$` 定界符吃掉，必须在编辑结束时补回来，
+  // 否则提交给后端的是裸公式，导出/再渲染都会出错。
+  if (wasEditing) {
+    const qEl = qRefs.get(i)?.$el as HTMLElement | undefined
+    const root = qEl?.closest('.ad-q') as HTMLElement | null | undefined
+    const fields = root ? root.querySelectorAll('.math-input') : []
+    for (const f of fields) {
+      // 通过 __vueParentComponent 找到 MathInput 实例并调 finalize
+      const inst = (f as any).__vueParentComponent
+      const exposed = inst?.exposed || inst?.exposeProxy
+      exposed?.finalize?.()
+    }
+  }
 }
 
 /** 删除题目后重排编辑状态的下标 */

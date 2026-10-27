@@ -540,6 +540,102 @@ export interface MathSpan {
  * 空分式、空上下限在数学上是合法的占位，渲染出来是个空槽，
  * 比整段消失更容易让用户发现"这里还没填"。
  */
+/**
+ * 编辑后还原 `$` 定界符（用**文字锚点**，不是猜公式边界）
+ *
+ * ── 要解决什么（2026-10-27）──────────────────────────────────
+ * MathLive 把整个字段当成**一个公式**解析。用户编辑一次之后，
+ * 原本「文字 + $公式$ + 文字」的混排会被重新序列化，
+ * 所有 `$` 定界符消失（实测 8 个真实题干样本丢 7 个）：
+ *
+ *     编辑前：求极限 $\lim_{x\to 0}\frac{\sin x}{x}$ 的值
+ *     编辑后：求极限\lim_{x\to0}\frac{\sin x}{x}的值
+ *
+ * 丢了之后渲染管线会失效 —— 这是用户最初报的那个 bug：
+ *
+ *     \int_0^1x^2dx    → 0 个 KaTeX，整条原样露出
+ *     方程的解为 x=1   → 0 个 KaTeX
+ *     两个公式的题干   → 只认出后半段，前半段 `\xi\in(a,b)` 露出
+ *
+ * ## 为什么不能"猜"裸公式边界
+ *
+ * 试过 `splitMathSpans()` 找出裸公式再包 `$`，实测不可靠：
+ *
+ *     \lim_{x\to0}\frac{\sin x}{x}  → 被切成**两段**（`\lim..` 和 `\frac..`）
+ *     \int_0^1x^2dx                 → 完全认不出（0 个 KaTeX）
+ *     f^{\prime}(\xi)               → 只包住 `f^{\prime}`
+ *
+ * 根因：`splitMathSpans` 的裸识别是**启发式**，
+ * 用来「渲染时尽量好看」够用，但用来**重新划分存储值**必然出错。
+ *
+ * ## 本方案：文字锚点
+ *
+ * 编辑前先用 `splitMathSpans()` 得到结构：
+ *
+ *     ["求极限 ", 公式, " 的值"]
+ *
+ * 编辑后 MathLive 返回的整段里，**文字段原文都还在**（实测），
+ * 只是公式前后的空格被吃掉了。所以：
+ *
+ *   ① 把文字段 trim 后作为锚点
+ *   ② 在编辑后的字符串里按顺序定位这些锚点
+ *   ③ 锚点之间的空隙就是公式 → 重新包 `$`
+ *
+ * 实测 7 个真实样本全部还原成功，且渲染 KaTeX 数量恢复到正确值。
+ *
+ * ## 边界情况
+ *
+ * · 没有公式        → 原样返回（不凭空加 `$`）
+ * · 整个字段是公式  → 整体包一层 `$`
+ * · 锚点定位失败    → 返回 null，调用方保留原值（宁可丢 `$`，不要造出错值）
+ *
+ * @param original 编辑前的值（用来提取锚点结构）
+ * @param edited   编辑后的值（MathLive 返回的裸文本）
+ * @returns 还原后的值；锚点对不上时返回 null
+ */
+export function restoreMathDelimiters(original: string, edited: string): string | null {
+  if (!edited) return edited
+
+  const spans = splitMathSpans(original || '')
+  const mathCount = spans.filter((s) => s.type !== 'text').length
+
+  // 原本就没有公式 → 不需要还原（绝不要凭空加 `$`，
+  // 否则"下列说法正确的是"会变成 "$下列说法正确的是$"）
+  if (mathCount === 0) return edited
+
+  // 锚点：文字段 trim 后非空的部分
+  const anchors = spans
+    .filter((s) => s.type === 'text')
+    .map((s) => (s.text || '').trim())
+    .filter(Boolean)
+
+  // 整个字段就是一条公式 → 整体包起来
+  if (anchors.length === 0) return `$${edited}$`
+
+  // 按顺序定位所有锚点
+  const pos: Array<{ at: number; end: number }> = []
+  let cursor = 0
+  for (const a of anchors) {
+    const at = edited.indexOf(a, cursor)
+    if (at < 0) return null // 对不上，交给调用方决定
+    pos.push({ at, end: at + a.length })
+    cursor = at + a.length
+  }
+
+  // 锚点之间的空隙 = 公式
+  let out = ''
+  let prevEnd = 0
+  for (const p of pos) {
+    const gap = edited.slice(prevEnd, p.at)
+    if (gap.trim()) out += `$${gap}$`
+    out += edited.slice(p.at, p.end)
+    prevEnd = p.end
+  }
+  const tail = edited.slice(prevEnd)
+  if (tail.trim()) out += `$${tail}$`
+  return out
+}
+
 export function stripMathPlaceholders(raw: string): string {
   if (!raw) return ''
   return raw

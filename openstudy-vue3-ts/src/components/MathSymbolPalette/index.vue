@@ -35,12 +35,15 @@
     <div class="msp-wrap">
         <div class="msp-tabs">
             <button v-for="g in GROUPS" :key="g.key" type="button" class="msp-tab"
-                :class="{ 'is-active': active === g.key }" @click="active = g.key">
+                :class="{ 'is-active': active === g.key }"
+                @mousedown.prevent
+                @click="active = g.key">
                 {{ g.label }}
             </button>
         </div>
         <div class="msp-symbols">
             <button v-for="s in activeGroup.items" :key="s.latex" type="button" class="msp-sym" :title="s.tip"
+                @mousedown.prevent
                 @click="emit('pick', s.latex)">
                 <span v-if="s.preview" class="msp-icon" v-html="renderPreview(s.preview)"></span>
                 <span v-else class="msp-text">{{ s.label }}</span>

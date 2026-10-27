@@ -50,22 +50,33 @@
 -->
 <template>
     <div class="math-input" :class="{ 'is-single': !isTextarea }">
-        <!-- 顶栏：标签 + 可选的符号面板开关 -->
-        <div v-if="label || showEditButton" class="mi-head">
-            <span v-if="label" class="mi-label">{{ label }}</span>
-            <button v-if="showEditButton" type="button" class="mi-edit-btn" :disabled="disabled"
-                :title="paletteOpen ? '收起符号面板' : '展开符号面板'"
-                :class="{ 'is-active': paletteOpen }" @click="paletteOpen = !paletteOpen">
-                {{ paletteOpen ? '收起符号' : '符号' }}
-            </button>
+        <!-- 顶栏：只放标签（「符号」按钮挪到字段右侧，见下） -->
+        <div v-if="label" class="mi-head">
+            <span class="mi-label">{{ label }}</span>
         </div>
 
         <!--
-          真正的编辑器：MathLive 的 <math-field>
-          所见即所得，点结构内部即可编辑。
+          编辑区：字段 + 右侧符号按钮
+          ⚠️ 符号按钮**内联在字段右边**而不是单独占一行 ——
+             选项/答案这类字段没有 label，若按钮独占一行，
+             选项 A~D 就会多出四行按钮，把卡片撑得很乱。
         -->
-        <math-field ref="fieldRef" class="mi-field" :style="{ minHeight: `${fieldMinHeight}px` }"
-            @input="onInput" @focus="onFocus" @blur="onBlur"></math-field>
+        <div class="mi-body">
+            <!--
+              真正的编辑器：MathLive 的 <math-field>
+              所见即所得，点结构内部即可编辑。
+            -->
+            <math-field ref="fieldRef" class="mi-field" :style="{ minHeight: `${fieldMinHeight}px` }"
+                @input="onInput" @focus="onFocus" @blur="onBlur"></math-field>
+
+            <button v-if="showSymbolButton" type="button" class="mi-sym-btn" :disabled="disabled || !editable"
+                :title="paletteOpen ? '收起符号面板' : '插入数学符号（求和/根号/积分等）'"
+                :class="{ 'is-active': paletteOpen }"
+                @mousedown.prevent="onSymBtnMouseDown"
+                @click="togglePalette">
+                ƒx
+            </button>
+        </div>
 
         <!-- 符号面板：插到当前光标所在槽位 -->
         <MathSymbolPalette v-if="paletteOpen" :visible="paletteOpen" @pick="insertLatex" />
@@ -78,7 +89,7 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import 'mathlive'
 import 'mathlive/fonts.css'
 import MathSymbolPalette from '@/components/MathSymbolPalette/index.vue'
-import { stripMathPlaceholders } from '@/utils/latex'
+import { stripMathPlaceholders, restoreMathDelimiters } from '@/utils/latex'
 
 defineOptions({ name: 'MathInput' })
 
@@ -93,8 +104,24 @@ const props = withDefaults(
         rows?: number
         disabled?: boolean
         size?: 'small' | 'default' | 'large'
-        /** 是否显示自身的按钮（确认卡片里由头部统一控制时传 false） */
+        /**
+         * 是否显示「编辑」按钮
+         *
+         * 确认卡片里一道题有题干/选项/答案/解析四个字段，
+         * 但「编辑」按钮只有一个（在题目头部），所以传 false。
+         */
         showEditButton?: boolean
+        /**
+         * 是否显示「符号」按钮（打开符号面板插入求和/根号/积分）
+         *
+         * ⚠️ 与 `showEditButton` **必须分开**（2026-10-27 踩过）：
+         *    最初两者共用一个开关，卡片传 `show-edit-button=false`
+         *    就把符号入口一起关掉了，用户在卡片里只能改现有数字、
+         *    无法插入新的数学符号 —— 这是功能缺失，不是设计选择。
+         *
+         * 默认 true：任何可编辑的公式字段都应该能插符号。
+         */
+        showSymbolButton?: boolean
         /**
          * 是否可编辑（默认 true）
          *
@@ -120,6 +147,7 @@ const props = withDefaults(
         disabled: false,
         size: 'small',
         showEditButton: true,
+        showSymbolButton: true,
         startEditing: false,
         editable: true,
     },
@@ -130,6 +158,30 @@ const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
 const fieldRef = ref<any>(null)
 const paletteOpen = ref(false)
 const focused = ref(false)
+
+/**
+ * 失焦瞬间记住的光标位置
+ *
+ * ── 为什么需要（2026-10-27）──────────────────────────────────
+ * 用户想「点进根号里 → 点符号面板 → 插入一个分式」。
+ *
+ * 但点面板按钮会让编辑器失焦，MathLive 的 `focus()` 会把光标
+ * 重置到**末尾**，于是分式插到了整条公式最后面，而不是根号里。
+ *
+ * 解决：失焦时用 `el.position` 记下当前位置，重新聚焦后还原。
+ * 配合符号按钮上的 `@mousedown.prevent`（阻止焦点转移），
+ * 大多数情况光标根本不会丢；这里是第二道保险。
+ */
+const savedOffset = ref<number | null>(null)
+
+/**
+ * 编辑开始时的**原始值**（还原 `$` 定界符的锚点来源）
+ *
+ * MathLive 编辑后会丢掉混排文字里的 `$`，还原时要靠
+ * 「编辑前文字段」做锚点。所以聚焦那一刻就要把原值记下来
+ * （详见 `restoreMathDelimiters`）。
+ */
+const originalForRestore = ref('')
 
 const isTextarea = computed(() => props.type === 'textarea')
 
@@ -265,6 +317,8 @@ watch(
         syncing = true
         el.value = next
         syncing = false
+        // 锚点基准也要跟着换，否则还原时会用旧题目的文字段去匹配
+        originalForRestore.value = next
     },
 )
 
@@ -302,6 +356,10 @@ watch(
  * ⚠️ 回传前先 `stripMathPlaceholders`：MathLive 未填的槽是 `\placeholder{}`，
  *    而 KaTeX **不认识**这个命令（实测报 Undefined control sequence）。
  *    不清理的话，用户没填完就提交 → 脏数据入库 → 导出时公式崩掉。
+ *
+ * ⚠️ 这里**不**做 `wrapBareMath`（补回 `$`）：
+ *    打字过程中每敲一个字符都重新包一遍会干扰输入法、
+ *    也让光标位置不稳定。补 `$` 放在编辑结束时（失焦/完成）做。
  */
 function onInput() {
     if (syncing) return
@@ -312,6 +370,76 @@ function onInput() {
 
 function onFocus() {
     focused.value = true
+    // 记下编辑前的原始值 —— 它是还原 `$` 定界符的锚点来源
+    if (!originalForRestore.value) {
+        originalForRestore.value = props.modelValue || ''
+    }
+}
+
+/**
+ * 编辑结束时的收尾：还原被 MathLive 吃掉的 `$` 定界符
+ *
+ * ── 问题（2026-10-27 实测）──────────────────────────────────
+ * MathLive 把整段当成**一个公式**解析。用户编辑一次后，
+ * 「文字 + $公式$ + 文字」会被重新序列化，`$` 全部消失：
+ *
+ *     编辑前：求极限 $\lim_{x\to 0}\frac{\sin x}{x}$ 的值
+ *     编辑后：求极限\lim_{x\to0}\frac{\sin x}{x}的值
+ *
+ * 实测 8 个真实题干样本里 7 个会丢。丢了之后渲染管线失效：
+ *
+ *     \int_0^1x^2dx   → 0 个 KaTeX（整条原样露出 —— 用户最初报的 bug）
+ *     方程的解为 x=1  → 0 个 KaTeX
+ *
+ * ## 怎么还原
+ *
+ * 不能用"猜裸公式边界"（实测会把 `\lim..\frac..` 切成两段、
+ * 也认不出 `\int_0^1x^2dx`）。改用**文字锚点**：
+ * 取编辑前文字段的 trim 版本来定位，锚点之间的就是公式。
+ * 详见 `utils/latex.ts: restoreMathDelimiters`。
+ *
+ * 所以这里必须记住**编辑前的原始值**（`originalForRestore`），
+ * 它就是锚点的来源。`onFocus` 时记录。
+ *
+ * ⚠️ 只在失焦 / 点「完成」时调用，不在每次 input 时调用 ——
+ *    打字过程中重新包 `$` 会打断输入法、也让光标乱跳。
+ */
+function finalizeValue() {
+    const el = fieldRef.value
+    if (!el) return
+
+    const raw = stripMathPlaceholders(el.value || '')
+    const original = originalForRestore.value
+
+    // 用编辑前的结构做锚点还原
+    let restored: string | null = null
+    if (original) {
+        restored = restoreMathDelimiters(original, raw)
+    }
+    // 锚点对不上（用户大改了文字）→ 退化：直接返回清理后的值。
+    // 宁可少还原，也不要把结构造错。
+    if (restored === null) restored = raw
+
+    if (restored !== (props.modelValue || '')) {
+        syncing = true
+        emit('update:modelValue', restored)
+        syncing = false
+    }
+
+    // 把还原后的值写回编辑器，
+    // 这样用户再点进来看到的就是带定界符的完整内容
+    if (restored !== raw) {
+        try {
+            syncing = true
+            el.value = restored
+            syncing = false
+        } catch {
+            /* 忽略 */
+        }
+    }
+
+    // 更新锚点基准：下次编辑以这次的结果为原始结构
+    originalForRestore.value = restored
 }
 
 /**
@@ -333,6 +461,20 @@ function onFocus() {
  */
 function onBlur() {
     focused.value = false
+
+    // 记下失焦瞬间的光标位置（插入符号时要还原，否则会插到末尾）
+    const el = fieldRef.value
+    if (el) {
+        try {
+            const pos = el.position
+            if (typeof pos === 'number') savedOffset.value = pos
+        } catch {
+            /* 忽略 */
+        }
+    }
+
+    // 失焦 = 一次编辑结束 → 把被 MathLive 吃掉的 `$` 定界符补回来
+    finalizeValue()
     const kb = (window as any).mathVirtualKeyboard
     if (kb?.visible) {
         try {
@@ -355,9 +497,58 @@ function onBlur() {
  */
 function insertLatex(latex: string) {
     const el = fieldRef.value
-    if (!el || props.disabled) return
+    if (!el || props.disabled || !props.editable) return
+
+    // ⚠️ 关键：如果刚才因为点面板按钮而失焦，这里要先把光标恢复回
+    //    用户原本停留的槽位，否则 focus() 会把光标放到末尾，
+    //    符号就插错地方了（用户点进根号里、插进去却跑到末尾）。
+    //
+    //    `savedOffset` 是失焦瞬间记下的位置（见 onBlur）。
     el.focus()
+    if (savedOffset.value !== null) {
+        try {
+            el.position = savedOffset.value
+        } catch {
+            /* 老版本没有 position setter，退化为末尾插入 */
+        }
+        savedOffset.value = null
+    }
     el.insert(latex)
+}
+
+/* ────────────────────────────────────────────────────────────
+ * 符号面板开合（要点：不能弄丢光标）
+ * ──────────────────────────────────────────────────────────── */
+
+/**
+ * 符号按钮按下时**阻止默认行为**
+ *
+ * 浏览器在 `mousedown` 时就会把焦点从编辑器移到按钮上，
+ * 等到 `click` 触发时 MathLive 的光标已经没了。
+ * `preventDefault()` 能阻止这个焦点转移 —— 编辑器保持聚焦，
+ * 光标留在原来那个槽里，面板展开后点符号就能插对位置。
+ */
+function onSymBtnMouseDown(e: MouseEvent) {
+    e.preventDefault()
+}
+
+function togglePalette() {
+    paletteOpen.value = !paletteOpen.value
+    // 面板展开后把焦点还给编辑器：用户可以继续在公式里移动光标，
+    // 也可以直接点面板里的符号
+    if (paletteOpen.value) {
+        requestAnimationFrame(() => {
+            const el = fieldRef.value
+            if (!el) return
+            el.focus()
+            if (savedOffset.value !== null) {
+                try {
+                    el.position = savedOffset.value
+                } catch { /* 忽略 */ }
+                savedOffset.value = null
+            }
+        })
+    }
 }
 
 defineExpose({
@@ -365,6 +556,13 @@ defineExpose({
     focus: () => fieldRef.value?.focus(),
     /** 插入一段 LaTeX（供外部按钮调用） */
     insert: (latex: string) => insertLatex(latex),
+    /**
+     * 收尾：补回被 MathLive 吃掉的 `$` 定界符
+     *
+     * 外部（确认卡片的「完成」按钮 / 提交前）应调用一次，
+     * 确保提交的值带定界符。失焦时也会自动调用。
+     */
+    finalize: () => finalizeValue(),
     /** 兼容 v3 接口：外部统一控制时无实际作用 */
     setEditing: (_v: boolean) => {},
     isEditing: () => focused.value,
@@ -394,6 +592,59 @@ defineExpose({
     color: #6b7280;
 }
 
+/* 编辑区：字段 + 右侧符号按钮 */
+.mi-body {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    min-width: 0;
+}
+
+.mi-body .mi-field {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/*
+ * 符号按钮
+ *
+ * 内联在字段右侧（不占整行）：选项 A~D 若各自多一行按钮会很乱。
+ * 用 `align-self: flex-start` 让它贴顶，字段变高时按钮不会跟着往下跑。
+ */
+.mi-sym-btn {
+    flex: none;
+    align-self: flex-start;
+    padding: 5px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    font-style: italic;
+    line-height: 1;
+    color: #409eff;
+    background: #f2f8ff;
+    border: 1px solid #cfe3fb;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.12s;
+}
+
+.mi-sym-btn:hover:not(:disabled) {
+    background: #e4f1ff;
+    border-color: #409eff;
+}
+
+.mi-sym-btn.is-active {
+    color: #fff;
+    background: #409eff;
+    border-color: #409eff;
+}
+
+.mi-sym-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* 旧的「编辑」按钮样式保留（其他页面仍在用） */
 .mi-edit-btn {
     margin-left: auto;
     padding: 1px 9px;
