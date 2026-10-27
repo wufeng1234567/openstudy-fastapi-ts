@@ -33,6 +33,8 @@ from app.services.ai.agent.tools.question_manage import QuestionManageTool
 from app.services.ai.agent.tools.question_mark_manage import QuestionFlagManageTool
 from app.services.ai.agent.tools.review_sheet import ReviewSheetTool
 from app.services.ai.agent.tools.workspace_search import WorkspaceSearchTool
+# 2026-10-27 对话文件：取用用户在聊天里传过的文件与图片（含之前轮次）
+from app.services.ai.agent.tools.chat_file_manage import ChatFileManageTool
 
 # 幂等注册：重复 import 不会重复覆盖（registry.register 按 name 覆盖，行为一致）
 registry.register(AgentManageTool())
@@ -44,6 +46,11 @@ registry.register(KnowledgeSearchTool())
 #    与 knowledge_search 分工：这个找**文件**（返回 docId），那个找**正文片段**。
 #    用户说「用那份概率论的资料出题」时，先用这个定位文件，再用 knowledge_search 读内容。
 registry.register(WorkspaceSearchTool())
+# —— 2026-10-27 对话文件：用户「这次对话里传给我的」文件和图。
+#    ⚠️ 与 workspace_search 的分工：那个找**空间/知识库**里的文档（可语义检索），
+#       这个找**聊天窗口传的附件**（保真、按文件与图片粒度）。
+#       两者数据源不同，不能互相替代。
+registry.register(ChatFileManageTool())
 registry.register(MemorySearchTool())
 # —— 2026-09-22 补齐的五组能力（记忆管理 / 学习统计 / 题目标记 / 知识库管理 / 分享复制）= 5 个工具
 #    ⚠️ 错题本 / 收藏 / 斩题是**一个**工具（`question_flag_manage`，用 flag_type 区分）——
@@ -127,4 +134,5 @@ __all__ = [
     "QuestionManageTool",
     "ReviewSheetTool",
     "WorkspaceSearchTool",
+    "ChatFileManageTool",
 ]

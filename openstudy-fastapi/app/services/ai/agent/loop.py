@@ -1319,6 +1319,85 @@ async def run_agent_stream(
         file_text, doc_images, warnings, attachments = await asyncio.to_thread(
             _collect_attachments, req
         )
+
+    # ---- ②-b 附件持久化（2026-10-27 新增）----
+    #
+    # ⚠️ 修的是用户实测反馈的核心问题：
+    #
+    #     「文件类数据持久化也没有做到。比如用户第一次询问，
+    #       然后第二次让他插入图片，他也没办法获取到用户之前上传过的图片」
+    #
+    # 在此之前 `AssistantAttachment` 是纯内存态（docstring 明确写「不落存储」）：
+    # 附件解析成文本塞进当轮 prompt，请求结束全部丢弃。于是：
+    #   · 第二轮说「把刚才那张图插到第 4 题」→ 图已经不在了，只能说"你再发一次"；
+    #   · Word 里的插图虽然被解析出来了，但排版时没用上（见 `compose_from_file`）。
+    #
+    # 现在：把字节落盘 + 元信息入库（含逐张拆出的内嵌图片），
+    # 之后任何一轮都能通过 `chat_file_manage` 工具按 id 取用。
+    #
+    # ⚠️ 失败必须**静默降级**：持久化是"锦上添花"的能力，
+    #    不能因为它出错就让整轮对话失败（用户此刻要的是那份 Word，不是报错）。
+    #
+    # ⚠️⚠️ 必须用**独立的 session**，不能复用 `db`（2026-10-27 实测踩坑）
+    #
+    #    `get_db()` 的事务边界是：
+    #
+    #        async with async_session_factory() as session:
+    #            yield session          # ← 路由处理期间
+    #            await session.commit() # ← yield 返回后立刻提交
+    #
+    #    而 `run_agent_stream` 是**流式生成器**，它在 `StreamingResponse`
+    #    里被迭代 —— 那时 `get_db` 的 `yield` 早就返回、`commit()` 也早就跑完了。
+    #
+    #    所以在这里往 `db` 里写东西（哪怕自己 commit）**永远进不了库**：
+    #    实测现象是「进度事件说'已保存 1 个附件'，但表里 0 条记录」。
+    #    （它自己的 commit 会被后续的 session 生命周期覆盖/丢弃。）
+    #
+    #    用独立 session 才能保证「写入即落库」，与流式响应解耦。
+    if file_count or (req.images or []):
+        try:
+            from app.database import async_session_factory as _session_factory
+            from app.services import chat_upload_service as _upload_svc
+
+            async with _session_factory() as _upload_db:
+                persisted = await _upload_svc.persist_attachments(
+                    _upload_db,
+                    user_id=user_id,
+                    session_id=session_id,
+                    attachments=list(req.files or []),
+                    images=list(req.images or []),
+                )
+            if persisted:
+                _n_img = sum(p.get("imageCount") or 0 for p in persisted)
+                yield _event(
+                    {
+                        "type": "progress",
+                        "id": "doc_persist",
+                        "icon": "💾",
+                        "state": "done",
+                        "message": (
+                            f"已保存 {len(persisted)} 个附件到本次对话"
+                            + (f"（含 {_n_img} 张图片，后续可以直接引用）" if _n_img else "")
+                        ),
+                    }
+                )
+        except Exception as e:  # noqa: BLE001
+            # 不中断对话，但**把原因带出来**：
+            # 只记一条笼统的 warning 会让"为什么没存上"变成黑盒
+            # （实测第一版就是这样：事件说"已保存"，库里 0 条，查不出原因）。
+            import traceback as _tb
+
+            _detail = f"{type(e).__name__}: {e}"
+            logger.warning(
+                f"[upload] 附件持久化失败（不影响本轮对话）: {_detail}\n"
+                f"{_tb.format_exc()[:1200]}"
+            )
+            yield _event(
+                {
+                    "type": "warning",
+                    "message": f"附件已解析但未能保存到对话记录（{_detail}），下一轮可能无法再次引用",
+                }
+            )
     if file_count and not _to_bridge:
         # 解析完成：汇报真实产出（文本长度 + 图片张数），失败/无正文也如实说。
         text_len = len(file_text or "")

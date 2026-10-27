@@ -655,13 +655,33 @@ def parse_parsed_file(
                 )
 
         elif btype == "image":
-            src = raw.get("src") or raw.get("url") or ""
+            # ⚠️ 键名必须认全（2026-10-27 修，这是「Word 里的图片全丢」的直接原因）
+            #
+            # `file_parser.parse_file()` 产出的图片块长这样：
+            #     {"type": "image", "imageUrl": "data:image/png;base64,...",
+            #      "imageName": "image1.png", "orderIndex": 2}
+            #
+            # 而这里原来只认 `src` / `url` —— **两个都不存在**，
+            # 于是 `src` 恒为空字符串，渲染层拿到空 src 就画一个空白占位。
+            # 用户看到的现象就是「重新排版后的文档里图片全没了」，
+            # 而且因为不报错，模型也以为排版成功了。
+            src = (
+                raw.get("src")
+                or raw.get("url")
+                or raw.get("imageUrl")      # ← file_parser 实际用的键
+                or raw.get("image_url")
+                or raw.get("dataUrl")
+                or ""
+            )
+            name = (raw.get("imageName") or raw.get("image_name") or "").strip()
             blocks.append(
                 Block(
                     type="image",
                     image={
                         "src": src,
-                        "caption": (raw.get("caption") or "").strip(),
+                        # 没有 caption 时用原始文件名兜底，
+                        # 至少让用户知道这儿本来有张图（比空白占位好）
+                        "caption": (raw.get("caption") or "").strip() or (name if name else ""),
                         "widthCm": raw.get("widthCm") or raw.get("width_cm"),
                     },
                 )

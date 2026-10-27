@@ -73,6 +73,8 @@ def register_all_models() -> None:
         ai_config,
         ai_rate_limit_log,
         bank_share,
+        # 2026-10-27 聊天上传文件的持久化（chat_upload_file / chat_upload_image）
+        chat_upload,
         config,
         courses,
         menu,

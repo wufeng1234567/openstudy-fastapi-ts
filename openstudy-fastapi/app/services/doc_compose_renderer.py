@@ -580,7 +580,16 @@ def _read_image_bytes(src: str) -> Optional[bytes]:
     # ② 剥掉域名 / 前端前缀，得到相对路径
     from app.config import settings
 
-    rel = re.sub(r"^(?:https?://[^/]+)?(?:/dev-api)?/", "", s, flags=re.I)
+    # ⚠️ `/profile` 必须剥（2026-10-27 修，这是「图片插不进文档」的直接原因）
+    #
+    #   `/profile` 是 `UPLOAD_DIR` 的静态挂载点（见 main.py 的 app.mount）。
+    #   `chat_file_manage` / 题库 / 笔记返回的图片地址都是
+    #   `/profile/chat-images/2026/10/xxx.png` 这种形态。
+    #
+    #   原来这里只剥 `/dev-api`，于是得到相对路径 `profile/chat-images/...`，
+    #   拼到 UPLOAD_DIR 下变成 `UPLOAD_DIR/profile/chat-images/...` —— 文件不存在，
+    #   图片被静默丢弃（渲染层读不到就跳过），用户看到的就是"图没插进去"。
+    rel = re.sub(r"^(?:https?://[^/]+)?(?:/dev-api)?(?:/profile)?/", "", s, flags=re.I)
     rel = re.split(r"[?#]", rel, 1)[0]
 
     base = os.path.abspath(settings.UPLOAD_DIR)

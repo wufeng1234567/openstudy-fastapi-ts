@@ -474,10 +474,21 @@
 
                   2026-10-26：三种模式共用同一个按钮，
                   只有 dictation 才走「播 N 遍后自动跳」，其余都是纯播放。
+
+                  ⚠️⚠️ 2026-10-27 修「暂停没反应，要等播完才停」：
+                      原来的 click 处理是
+                          practiceMode === 'dictation' ? startDictationRound() : playCurrentWord()
+                      —— **没有"暂停"这个分支**。按钮图标虽然在
+                      isPlaying 时变成了 VideoPause（看起来像暂停），
+                      但点下去仍然是"再播一遍"，声音根本不会停。
+                      用户点暂停 → 没反应 → 只能干等整段播完。
+
+                      现在：正在播时点击 = 暂停（调 stopSpeak 立即打断），
+                      没在播时点击 = 播放。
                 -->
                 <div class="play-section">
                     <el-button type="primary" circle size="large"
-                        @click="practiceMode === 'dictation' ? startDictationRound() : playCurrentWord()"
+                        @click="isPlaying ? pausePlayback() : (practiceMode === 'dictation' ? startDictationRound() : playCurrentWord())"
                         class="play-btn" :disabled="isWaitingAutoNext">
                         <el-icon :size="28">
                             <VideoPlay v-if="!isPlaying" />
@@ -1282,19 +1293,75 @@ function beginPractice(words: any[]) {
     // 清除之前的定时器
     clearAutoNextTimer()
 
-    // 自动播放第一个单词
-    nextTick(() => {
-        if (practiceMode.value === 'dictation') {
-            // 听写模式：自动开始播放
-            startDictationRound()
-        } else {
-            // 输入模式：手动点击播放
-            playCurrentWord()
-        }
-    })
+    /*
+     * ⚠️ 这里**刻意不自动播放**（2026-10-27 修）
+     *
+     * 用户反馈：
+     *   「我点击开始听写 进入听写页面后 就立即播放了 听力 对用户体验不友好
+     *     要让用户自己手动开始播放」
+     *
+     * 原来的行为：点「开始听写」→ 练习区出现 → 第一个词**立刻开始念**。
+     * 两个问题：
+     *   ① 用户还没准备好（可能在调音量、戴耳机），声音突然冒出来；
+     *   ② 浏览器可能拦掉这次自动播放（没有用户手势上下文），
+     *      表现为"点了开始但没声音"，用户以为坏了。
+     *
+     * 现在：进入练习后停在第一个词，`isPlaying` 保持 false →
+     * 练习区的大按钮显示「播放」，由用户自己点第一下。
+     *
+     * 注意「答完一题自动跳下一题」那处（本文件后段 `nextQuestion`）**不改**：
+     * 那时用户已经在练习流程里，连续播才顺手。
+     */
 }
 
 // ==================== 播放（三种模式共用） ====================
+/**
+ * 播放会话令牌（2026-10-27 新增）
+ *
+ * 用途：让"暂停"能真正打断**整个播放循环**，而不只是当前那一段语音。
+ *
+ * 每次开始播放 / 暂停都自增。`playRound` 在每一段、每一遍之前比对一次，
+ * 发现令牌变了就整体退出 —— 不再产生新的 `speak()` 调用。
+ *
+ * 为什么需要它：`stopSpeak()` 只能 cancel 掉"当前 utterance"，
+ * 而 `playRound` 是个 `await` 循环，被 cancel 后 `await` 会带着
+ * `reason='canceled'` 返回，循环继续往下走 —— 用户听到的就是
+ * "点了暂停，停一下又接着念"。
+ */
+let playSession = 0
+
+/**
+ * 暂停播放（2026-10-27 新增）
+ *
+ * 修的是用户实测的这条：
+ *   「英语听力的播放 不能做到实时暂停实时打开
+ *     刚开始进入听写页面就立马播放声音 然后我赶紧点了下暂停 没反应
+ *     他要等彻底播放完完整的一遍声音后才可以暂停」
+ *
+ * 根因不是 `stopSpeak()` 有问题（它内部 `speakToken++` + `cancel()` +
+ * `stopServerAudio()`，链路是通的），而是**播放按钮压根没有暂停分支** ——
+ * 图标在 `isPlaying` 时会变成暂停样式，但点下去执行的是"再播一遍"。
+ *
+ * 这里做五件事，缺一不可：
+ *   ① `playSession++` —— 让正在跑的播放循环立刻退出（不再念下一段）
+ *   ② `stopSpeak()`   —— 真正打断当前语音（浏览器 TTS 与服务端音频两条路都断）
+ *   ③ 清自动下一题定时器 —— 否则播完停住后过几秒又蹦到下一题
+ *   ④ `isPlaying = false` —— 让按钮立刻变回「播放」样式，用户能看到"已暂停"
+ *   ⑤ `currentPlayCount = 0` —— 下次点播放从头数（而不是接着"第 2/3 遍"）
+ *
+ * ⚠️ 为什么不重置 `currentIndex`：暂停的语义是"停在这一题"，
+ *    用户回到播放时要继续听同一个词，不是跳到别处。
+ */
+const pausePlayback = () => {
+    playSession++
+    stopSpeak()
+    clearAutoNextTimer()
+    isWaitingAutoNext.value = false
+    autoNextCountdown.value = 0
+    isPlaying.value = false
+    currentPlayCount.value = 0
+}
+
 /**
  * 播放当前单词 N 遍
  *
@@ -1310,6 +1377,9 @@ function beginPractice(words: any[]) {
  */
 const playRound = async ({ autoNext = false } = {}) => {
     if (!currentWord.value) return
+
+    //: 本次播放的会话号（`finally` 里要用，所以在 try 外声明）
+    let mySession = 0
 
     clearAutoNextTimer()
     isWaitingAutoNext.value = false
@@ -1357,12 +1427,35 @@ const playRound = async ({ autoNext = false } = {}) => {
     }
 
     try {
+        /*
+         * ⚠️ 每一轮播放拿一个会话令牌（2026-10-27 修「暂停后还在念」）
+         *
+         * 只靠 `speakWithLang` 返回 `canceled` 是**不够**的：
+         * `stopSpeak()` 打断的是"当前那一段"，而 `await` 返回后
+         * 循环还会继续走下一段 / 下一遍 —— 用户听到的是
+         * "点了暂停，声音停了一下又接着念"。
+         *
+         * 实测：暂停后 __speakCalls 又涨了 2 次，正是队列里剩下的段。
+         *
+         * 令牌方案：`playSession` 每次开始播放/暂停都自增，
+         * 循环每轮比对一次；发现令牌变了立刻整体退出，
+         * 不再产生任何新的 speak 调用。
+         */
+        mySession = ++playSession
+
         for (let i = 0; i < times; i++) {
+            if (mySession !== playSession) return
             currentPlayCount.value = i + 1
 
             for (let s = 0; s < segments.length; s++) {
+                if (mySession !== playSession) return
+
                 const seg = segments[s]
                 const res = await speakWithLang(seg.text, seg.lang)
+
+                // await 期间可能被暂停：先查令牌，再判结果
+                if (mySession !== playSession) return
+
                 if (res && res.ok === false) {
                     if (res.reason !== 'interrupted' && res.reason !== 'canceled') {
                         ElMessage.warning(speakReasonText(res.reason, seg.lang))
@@ -1379,11 +1472,24 @@ const playRound = async ({ autoNext = false } = {}) => {
             }
         }
 
+        if (mySession !== playSession) return
+
         // 只有 dictation 模式才自动进入下一题
         if (autoNext) startAutoNextCountdown()
     } finally {
-        isPlaying.value = false
-        currentPlayCount.value = 0
+        /*
+         * ⚠️ 只由"当前会话"负责复位状态
+         *
+         * 如果暂停后又立刻点了播放，新会话已经设置 isPlaying=true；
+         * 此时旧的（被取消的）循环退出，若无条件复位就会把新播放的状态抹掉 ——
+         * 表现为"刚点播放，图标立刻跳回播放态"。
+         *
+         * 令牌是**最后一次**进入本函数的会话号，只有它还活着时才复位。
+         */
+        if (mySession === playSession) {
+            isPlaying.value = false
+            currentPlayCount.value = 0
+        }
     }
 }
 
