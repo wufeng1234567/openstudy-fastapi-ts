@@ -60,16 +60,31 @@
           ⚠️ 符号按钮**内联在字段右边**而不是单独占一行 ——
              选项/答案这类字段没有 label，若按钮独占一行，
              选项 A~D 就会多出四行按钮，把卡片撑得很乱。
+
+          ⚠️ 2026-10-27 性能修复（用户报"刷新后要等十几秒"）
+             纯展示时（disabled 且不可编辑）**不实例化 MathLive**，
+             改用 KaTeX 渲染。
+
+             实测：一条历史消息里的「导入预览」草稿卡有 15 道题、
+             每道题 4~5 个字段 → 单条消息 81 个 <math-field>。
+             36 条历史消息 = 数百个 MathLive 实例，
+             每个都要建 shadow DOM + 载入数学字体，
+             主线程被阻塞 3133ms，页面总耗时 7000ms。
+
+             历史消息里的卡片已经确认/取消，用户**不需要再编辑**，
+             没必要为它付出 MathLive 的代价。
         -->
         <div class="mi-body">
-            <!--
-              真正的编辑器：MathLive 的 <math-field>
-              所见即所得，点结构内部即可编辑。
-            -->
-            <math-field ref="fieldRef" class="mi-field" :style="{ minHeight: `${fieldMinHeight}px` }"
+            <!-- 纯展示：KaTeX 静态渲染，零组件实例 -->
+            <div v-if="isReadonlyView" class="mi-static" :style="{ minHeight: `${fieldMinHeight}px` }"
+                v-html="staticHtml"></div>
+
+            <!-- 可编辑：MathLive 的 <math-field>，所见即所得 -->
+            <math-field v-else ref="fieldRef" class="mi-field" :style="{ minHeight: `${fieldMinHeight}px` }"
                 @input="onInput" @focus="onFocus" @blur="onBlur"></math-field>
 
-            <button v-if="showSymbolButton" type="button" class="mi-sym-btn" :disabled="disabled || !editable"
+            <button v-if="showSymbolButton && !isReadonlyView" type="button" class="mi-sym-btn"
+                :disabled="disabled || !editable"
                 :title="paletteOpen ? '收起符号面板' : '插入数学符号（求和/根号/积分等）'"
                 :class="{ 'is-active': paletteOpen }"
                 @mousedown.prevent="onSymBtnMouseDown"
@@ -89,7 +104,7 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import 'mathlive'
 import 'mathlive/fonts.css'
 import MathSymbolPalette from '@/components/MathSymbolPalette/index.vue'
-import { stripMathPlaceholders, restoreMathDelimiters } from '@/utils/latex'
+import { stripMathPlaceholders, restoreMathDelimiters, renderMarkdownWithLatex } from '@/utils/latex'
 
 defineOptions({ name: 'MathInput' })
 
@@ -206,6 +221,45 @@ let syncing = false
 
 /** 是否只读：卡片 disabled 或 当前题未进入编辑态 */
 const isReadOnly = computed(() => props.disabled || !props.editable)
+
+/**
+ * 是否走「纯展示」路径（不实例化 MathLive）
+ *
+ * ── 为什么要这个分支（2026-10-27 性能修复）────────────────────
+ * 用户报：「刷新后要等待起码十几秒钟才能刷新出来」。
+ *
+ * 实测数据（打开一个有 36 条历史消息的会话）：
+ *
+ *     后端接口   全部 < 90ms，总计 554ms
+ *     前端耗时   总 7058ms，其中 Long Task 累计 6711ms
+ *     单次最长   3133ms
+ *
+ * 罪魁：DOM 里 **270 个 KaTeX + 数百个 <math-field>**。
+ * 一条「导入预览」草稿卡含 15 道题 × 4~5 字段 =
+ * 单条消息 81 个 MathLive 实例；36 条消息就是几千个级别的开销。
+ * 每个 MathLive 实例都要建 shadow DOM、载入数学字体、初始化光标引擎。
+ *
+ * 但历史消息里的卡片已经确认/取消了，**用户不需要再编辑**。
+ * 所以：
+ *   · `disabled && !editable`（已确认 / 已取消 / 只读展示）→ KaTeX 静态渲染
+ *   · 其他情况（正在编辑、或本就要可编辑）→ 才建 MathLive
+ *
+ * 这样既保住了编辑体验，又把历史消息的渲染成本从
+ * "数百个富组件"降到"纯 HTML"。
+ */
+const isReadonlyView = computed(() => props.disabled && !props.editable)
+
+/** 纯展示模式下的 HTML（用 KaTeX 渲完直接铺进去） */
+const staticHtml = computed(() => {
+    const text = props.modelValue || ''
+    if (!text) return `<span class="mi-static-empty">${escapeText(props.placeholder || '')}</span>`
+    return renderMarkdownWithLatex(text)
+})
+
+/** 最小转义（只处理会破坏结构的字符） */
+function escapeText(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
 
 onMounted(async () => {
     // 等自定义元素注册完成（MathLive 的 import 是异步注册的）
@@ -671,6 +725,46 @@ defineExpose({
 .mi-edit-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+/*
+ * 纯展示模式（历史消息里的已确认卡片）
+ *
+ * 用 KaTeX 静态渲染替代 MathLive 实例 —— 外观与编辑器保持一致，
+ * 但没有 shadow DOM、没有字体加载、没有光标引擎。
+ */
+.mi-static {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 7px 11px;
+    border: 1px solid #eef0f3;
+    border-radius: 6px;
+    background: #fafbfc;
+    font-size: 15px;
+    line-height: 1.7;
+    color: #374151;
+    box-sizing: border-box;
+    word-break: break-word;
+    overflow-x: auto;
+}
+
+.is-single .mi-static {
+    padding: 4px 9px;
+    font-size: 14px;
+}
+
+.mi-static-empty {
+    color: #b6bdc9;
+    font-size: 13px;
+}
+
+/* ⚠️ 必须 :deep()：v-html 注入的 KaTeX 节点拿不到 scoped 属性 */
+.mi-static :deep(.katex) {
+    font-size: 1.02em;
+}
+
+.mi-static :deep(.katex-display) {
+    margin: 4px 0;
 }
 
 /*

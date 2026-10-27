@@ -376,13 +376,10 @@ import MathInput from '@/components/MathInput/index.vue'
  * 阈值取 6：一张卡里 6 道题以上就值得给折叠条。
  * 实测一个「导入预览」典型是 10~20 题，卡片高度 1500~3000px，远超一屏；
  * 而 1~5 题的卡通常一屏能看完（或者只多一点点），加折叠条反而多一层干扰。
+ *
+ * ⚠️ 真正的 `useCollapseBar` 调用放在 `defineProps` **之后**（见下方），
+ *    因为"默认是否折叠"要读 `status`。
  */
-const { collapsed, setContentLines, shouldOfferCollapse, toggle } = useCollapseBar({
-  threshold: 6
-})
-
-/** 模板里用（避免把 composable 的返回整体解构进模板） */
-const toggleCollapse = toggle
 
 const props = defineProps({
   /** 后端草稿：`{ kind:'question_bank_import', bank, questions }` */
@@ -392,6 +389,35 @@ const props = defineProps({
   /** 外部强制禁用（例如整轮已在跑别的） */
   disabled: { type: Boolean, default: false }
 })
+
+/*
+ * 吸顶折叠条调用点（放在 defineProps 之后，因为默认折叠要读 status）
+ * ──────────────────────────────────────────────────────────────────
+ * `defaultCollapsed` 由 status 决定（2026-10-27 性能修复）。
+ *
+ * 用户报「刷新后要等十几秒」，实测根因就在这里：
+ * 历史消息里的「导入预览」草稿卡含 15 道题、每道 4~5 个公式字段，
+ * 一张卡展开就是 81 个 <math-field>；
+ * 36 条历史里有 5 张这样的卡，**全部以展开态**渲染 →
+ * 主线程被阻塞 3133ms，页面总耗时 7000ms。
+ *
+ * 但这几张卡早就确认/取消了（status !== 'running'），
+ * 用户刷回来看的是"我当时导入了什么"，
+ * 不需要一进来就铺开 15 道可编辑题。
+ *
+ *   · running（待确认）→ 展开（用户正是来处理它的）
+ *   · ok / fail        → 收起（点一下才展开）
+ *
+ * 配合模板里的 `v-if="!collapsed"`，收起时内容**完全不在 DOM 里**，
+ * 省掉的不只是渲染时间，还有内存。
+ */
+const { collapsed, setContentLines, shouldOfferCollapse, toggle } = useCollapseBar({
+  threshold: 6,
+  defaultCollapsed: props.status !== 'running',
+})
+
+/** 模板里用（避免把 composable 的返回整体解构进模板） */
+const toggleCollapse = toggle
 
 const emit = defineEmits(['resolve'])
 

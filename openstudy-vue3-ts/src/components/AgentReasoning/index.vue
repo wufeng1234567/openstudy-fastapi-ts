@@ -65,8 +65,18 @@
               3. 它是灰色小字、行高更紧，样式不能照搬正文。
 
             所以用 `renderStreamingMath()`：会把末尾未闭合的定界符
-            整段当原文输出，等写完了自然变成公式。 -->
-    <div v-show="expanded" ref="bodyRef" class="rs-body">
+            整段当原文输出，等写完了自然变成公式。
+
+            ⚠️ 2026-10-27 性能修复：原来用 `v-show`，收起后 DOM 还在、
+                `renderedContent` 这个 computed 也照样执行全部 KaTeX 渲染。
+                一条 201 秒的思考记录里有 83 个公式 →
+                单条消息 10 万字符 HTML、2807 个子节点，
+                光这一条就占了主线程 100ms+。
+
+                历史会话里思考区默认是收起的，用户刷回来根本不看。
+                改成 `v-if`：收起时既不渲染也不占 DOM。
+                运行中仍然要渲染 —— 那时它本来就是展开的（默认 true）。 -->
+    <div v-if="expanded" ref="bodyRef" class="rs-body">
       <span v-if="content" class="rs-md" v-html="renderedContent"></span>
       <span v-else class="rs-empty">正在思考…</span>
       <!-- 运行中的光标，暗示"还在往下写" -->
@@ -101,17 +111,32 @@ const props = withDefaults(
  * 不做 Markdown 渲染（标题/列表/表格）：
  * 推理正文里出现 Markdown 结构的概率很低，而多一层解析会拖慢
  * 流式刷新的流畅度（每次 chunk 都要重跑一遍 AST）。
+ *
+ * ⚠️ 具体实现放在 `expanded` 定义之后（见下方）——
+ *    收起时不渲染，连 KaTeX 都不跑。
  */
-const renderedContent = computed(() =>
-  props.content ? renderStreamingMath(props.content) : '',
-)
 
 /** `secs` 有值 = 已收口 */
 const running = computed(() => props.secs == null)
 
 // ---- 折叠状态 ----
-// 运行中默认展开（用户要看到实时思考）；用户手动切换后尊重其选择。
-const expanded = ref(true)
+/*
+ * 运行中默认展开（用户要看到实时思考）；用户手动切换后尊重其选择。
+ *
+ * ⚠️ 2026-10-27 性能修复：**已收口的历史思考块默认收起**。
+ *
+ *    原因：一条 201 秒的思考记录里能有 83 个公式，
+ *    渲染出来是 10 万字符 HTML、2807 个子节点。
+ *    一个会话里几十条历史，全展开会让刷新卡到十几秒
+ *    （用户报「刷新后要等待起码十几秒钟才能刷新出来」）。
+ *
+ *    而历史思考是**过程信息**，用户刷回来看的是最终答案，
+ *    要看推理过程点一下就能展开，成本很低。
+ *
+ *    所以：running（正在思考）→ 展开；已收口 → 收起。
+ *    `userToggled` 保证用户手动点过之后不再被自动改变。
+ */
+const expanded = ref(props.secs == null)
 /** 用户是否手动点过折叠/展开——点过之后就不再"运行中自动展开/收口自动折"地打扰他 */
 let userToggled = false
 const toggle = () => {
@@ -119,6 +144,23 @@ const toggle = () => {
   expanded.value = !expanded.value
   if (expanded.value) nextTick(scrollToBottom)
 }
+
+/**
+ * 渲染后的推理正文（含公式）
+ *
+ * ⚠️ 依赖 `expanded`（2026-10-27 性能修复）：
+ *    收起时直接返回空串，**连 KaTeX 都不跑**。
+ *
+ *    一条 201 秒的思考记录含 83 个公式，全量渲染约 10 万字符 HTML、
+ *    2807 个子节点。历史会话里思考区默认收起、用户根本不看，
+ *    但它作为 computed 仍会在每次依赖变化时执行。
+ *
+ *    加上 `expanded` 之后，收起态 = 零成本。
+ *    运行中仍会渲染 —— 那时它本来就是展开的。
+ */
+const renderedContent = computed(() =>
+  expanded.value && props.content ? renderStreamingMath(props.content) : '',
+)
 
 // ---- 自动跟随滚动（运行中内容增长时滚到底）----
 // ⚠️ 用 useSmoothAutoScroll 而非无条件 `scrollTop = scrollHeight`：

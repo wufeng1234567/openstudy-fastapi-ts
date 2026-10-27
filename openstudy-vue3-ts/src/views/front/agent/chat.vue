@@ -106,6 +106,7 @@
           否则运行中那个按钮会点了没反应、用户停不下来。
         -->
         <AiChatStream ref="chatRef" :messages="messages" :is-generating="isGenerating" :is-paused="false"
+          :is-restoring="isRestoring"
           :has-attachment="attachmentCount > 0" placeholder="告诉我你想做什么…（Enter 发送，Ctrl+Enter 换行）"
           :show-mode-switch="false" :rollback-states="rollbackStates" @send="handleSend" @stop="stop"
           @toggle-pause="stop" @rollback-turn="onRollbackTurn" @window-change="onChatWindowChange">
@@ -499,6 +500,17 @@ const agentForm = reactive<AgentConfigInput>({
 /** 工具项（全量，含中文 label 与启用状态），来自 `/ai/agent/tools` —— 「我的智能体」管理页的工具多选用 */
 const toolOptions = ref<Array<{ name: string; label: string; disabled: number }>>([])
 /** 正在读工具清单（含「重试」那一次） */
+/**
+ * 是否正在恢复历史（刷新后拉会话内容的那段时间）
+ *
+ * 用来让 AiChatStream 显示骨架屏而不是空态欢迎页 ——
+ * 否则刷新瞬间会闪一下「把不会的，问到会」，
+ * 用户以为会话丢了（2026-10-27 用户报）。
+ *
+ * 生命周期：onMounted 进入时 true，finally 里复位 false。
+ */
+const isRestoring = ref(true)
+
 const toolLoading = ref(false)
 /** 工具清单**没取到**（网络错 / 结构异常）—— 与「取到了但一条都没有」分开表达 */
 const toolLoadFailed = ref(false)
@@ -1184,13 +1196,28 @@ const handleInjectHistory = async (): Promise<void> => {
 
 /* ===================== 生命周期 ===================== */
 onMounted(async () => {
-  // 智能体清单（官方角色 + 我的智能体）：不阻塞会话加载，失败静默降级
-  loadAgents()
-  // ⚡ 进页面即**预取**专家清单：不管用户先点哪个 tab（设置 / 知识库 / 历史），
-  //   进设置时都已在手，彻底消除"刷新后先点别的 tab 再进设置，列表不加载"这类顺序敏感问题
-  //   （用户 2026-10-10 报）。飞行锁保证与后续 openPanel 的调用不重复请求。
-  loadExperts()
-  await loadSessions()
+  /*
+   * 恢复态（2026-10-27 修复"刷新后先闪空态"）
+   *
+   * 用户报「刚进入的时候 显示的就是什么都没有的初始界面
+   *        左侧是已经选中有会话的 但右侧显示什么都没有的新会话界面
+   *        等待一会后 才能刷新出来」
+   *
+   * 原因：拉会话列表 → 拉时间线是异步的，这期间 messages 为空，
+   *      空态插槽立刻渲染出「把不会的，问到会」欢迎页。
+   *
+   * 用一个标记把这段窗口标记出来，让 AiChatStream 显示骨架屏而不是空态。
+   * 放在 try/finally 里，任何分支结束都要复位，否则会一直卡在骨架屏。
+   */
+  isRestoring.value = true
+  try {
+    // 智能体清单（官方角色 + 我的智能体）：不阻塞会话加载，失败静默降级
+    loadAgents()
+    // ⚡ 进页面即**预取**专家清单：不管用户先点哪个 tab（设置 / 知识库 / 历史），
+    //   进设置时都已在手，彻底消除"刷新后先点别的 tab 再进设置，列表不加载"这类顺序敏感问题
+    //   （用户 2026-10-10 报）。飞行锁保证与后续 openPanel 的调用不重复请求。
+    loadExperts()
+    await loadSessions()
 
   /*
    * 恢复「上次打开的那个会话」（用户 2026-10-18 报：
@@ -1225,6 +1252,10 @@ onMounted(async () => {
 
   // seedQuestion 的消费放到 onActivated 里（见下方 consumeSeedQuestion），
   // 因为本页是 keep-alive 的，从英语模块跳过来时 onMounted 不会再执行。
+  } finally {
+    // 无论成功失败都要退出恢复态，否则会一直卡在骨架屏
+    isRestoring.value = false
+  }
 })
 
 /**

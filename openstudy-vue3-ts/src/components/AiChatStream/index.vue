@@ -2,8 +2,28 @@
   <div class="ai-chat-stream">
     <!-- 消息列表 -->
     <div class="chat-messages" ref="messagesRef">
-      <!-- 空状态插槽 -->
-      <slot name="empty" v-if="messages.length === 0 && !isGenerating"></slot>
+      <!--
+        空状态插槽
+        ⚠️ 2026-10-27 修复「刷新后先闪一下空态」：
+        用户报「刚进入的时候 显示的就是什么都没有的初始界面
+                左侧是已经选中有会话的 但是右侧显示什么都没有的新会话界面
+                等待一会后 才能刷新出来」
+
+        原因：会话恢复是异步的（先拉会话列表、再拉时间线），
+        这期间 `messages` 还是空的 → 空态插槽立刻渲染出欢迎页。
+        数据回来后切走，用户就先看到一秒钟的"错误画面"。
+
+        加 `!isRestoring`：恢复期间不显示空态，改为骨架屏。
+        -->
+      <slot name="empty" v-if="messages.length === 0 && !isGenerating && !isRestoring"></slot>
+
+      <!-- 恢复中的骨架屏：把"正在加载"和"真的没有消息"区分开 -->
+      <div v-if="isRestoring && messages.length === 0" class="chat-restoring">
+        <div class="cr-row cr-row--wide"></div>
+        <div class="cr-row"></div>
+        <div class="cr-row cr-row--short"></div>
+        <div class="cr-hint">正在恢复上次的对话…</div>
+      </div>
 
       <!-- 更早的历史（默认不渲染，点按钮逐段回溯，避免超长历史把 DOM 撑爆导致卡顿） -->
       <div v-if="hasEarlier" class="load-earlier">
@@ -285,6 +305,17 @@ import ChatInputArea from '@/components/ChatInputArea/index.vue'
 const props = defineProps({
   messages: { type: Array, default: () => [] },
   isGenerating: { type: Boolean, default: false },
+  /**
+   * 是否正在**恢复历史**（刷新页面后拉会话内容的那段时间）
+   *
+   * 用来区分「真的没有消息」和「还在加载」：
+   *   · true  → 显示骨架屏，不显示欢迎页
+   *   · false → 正常渲染空态
+   *
+   * 不加这个状态的话，刷新后会先闪一下"把不会的，问到会"那个欢迎页，
+   * 用户会以为会话丢了（2026-10-27 用户报）。
+   */
+  isRestoring: { type: Boolean, default: false },
   isPaused: { type: Boolean, default: false },
   /**
    * 外部强制禁用输入区（与 `isGenerating` 是「或」的关系）。
@@ -952,6 +983,45 @@ defineExpose({
 </script>
 
 <style scoped lang="scss">
+/* ============ 恢复中的骨架屏（2026-10-27）============
+   刷新页面后拉历史的那一小段时间用这个占位，
+   而不是直接显示欢迎页 —— 否则用户会以为会话丢了。 */
+.chat-restoring {
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cr-row {
+  height: 16px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #f2f4f7 25%, #e9edf2 37%, #f2f4f7 63%);
+  background-size: 400% 100%;
+  animation: cr-shimmer 1.3s ease-in-out infinite;
+  max-width: 620px;
+}
+
+.cr-row--wide {
+  height: 20px;
+  width: 72%;
+}
+
+.cr-row--short {
+  width: 44%;
+}
+
+.cr-hint {
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: #9aa4b2;
+}
+
+@keyframes cr-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
 .ai-chat-stream {
   display: flex;
   flex-direction: column;
