@@ -200,6 +200,20 @@
     <!-- 题目清单 -->
     <div class="ad-questions">
       <div v-for="(q, qi) in questions" :key="qi" class="ad-q">
+        <!--
+          题目头部（2026-10-27 重做）
+          ────────────────────────────────────────────────────────
+          用户截图反馈：「确认卡片的删除编辑按钮 需要优化 这样不好看
+                          需要同一个层级 并且清晰 让用户知道自己再操作哪一个题目」
+
+          原来的问题：三个操作散在两层——
+              · 第 N 题 / 题型下拉 / [删除]   ← 题型那一行
+              · 题干 / [编辑]                ← MathInput 自己那行
+          用户看不出「删除」和「编辑」是同一道题的两个操作。
+
+          现在：头部一条横栏放「第 N 题 · 题型 · 编辑 · 删除」，
+          操作全部收在右上角，且带题号前缀，明确"我在动第几题"。
+        -->
         <div class="ad-q-head">
           <span class="ad-q-no">第 {{ qi + 1 }} 题</span>
           <el-select
@@ -211,21 +225,49 @@
           >
             <el-option v-for="t in QUESTION_TYPES" :key="t.value" :value="t.value" :label="t.label" />
           </el-select>
-          <button type="button" class="ad-del" :disabled="readonly" @click="removeQuestion(qi)">删除</button>
+
+          <!-- 操作区：编辑 + 删除，同一层级 -->
+          <div class="ad-q-ops">
+            <button
+              v-if="!readonly"
+              type="button"
+              class="ad-op ad-op--edit"
+              :class="{ 'is-active': isEditing(qi) }"
+              :title="isEditing(qi) ? '收起源码，回到排版预览' : '展开源码编辑这道题'"
+              @click="toggleEdit(qi)"
+            >
+              {{ isEditing(qi) ? '完成' : '编辑' }}
+            </button>
+            <button
+              v-if="!readonly"
+              type="button"
+              class="ad-op ad-op--del"
+              :title="`删除第 ${qi + 1} 题`"
+              @click="removeQuestion(qi)"
+            >
+              删除
+            </button>
+          </div>
         </div>
 
-        <!-- 题干：用 MathInput 而不是 el-input ——
-             高等数学题的题干含 `\frac{\partial f}{\partial x}` 这类内容，
-             原来的纯文本框只能显示源码，用户没法编辑公式。
-             MathInput 在旁边挂了「ƒx」按钮，点开是符号面板（全鼠标操作）。 -->
-        <MathInput v-model="q.questionText" label="题干" :rows="2" placeholder="题干" :disabled="readonly" />
+        <!-- 题干：编辑态由头部的「编辑」统一控制（不再各自带按钮） -->
+        <MathInput
+          :ref="(el) => setQRef(qi, el)"
+          v-model="q.questionText"
+          label="题干"
+          :rows="2"
+          placeholder="题干"
+          :disabled="readonly"
+          :start-editing="editingSet.has(qi)"
+          :show-edit-button="false"
+        />
 
         <!-- 选项（单选 / 多选） -->
         <div v-if="showOptions(q)" class="ad-options">
           <div v-for="(opt, oi) in q.options" :key="oi" class="ad-opt">
             <span class="ad-opt-no">{{ optionLabel(oi) }}</span>
             <MathInput v-model="q.options[oi]" type="text" placeholder="选项内容" :disabled="readonly"
-              class="ad-opt-input" />
+              :start-editing="editingSet.has(qi)" :show-edit-button="false" class="ad-opt-input" />
             <button type="button" class="ad-opt-del" :disabled="readonly" @click="removeOption(q, oi)">×</button>
           </div>
           <button type="button" class="ad-add-opt" :disabled="readonly" @click="addOption(q)">＋ 选项</button>
@@ -233,12 +275,13 @@
 
         <div class="ad-answer">
           <label class="ad-label">答案</label>
-          <MathInput v-model="q.answer" type="text" placeholder="答案" :disabled="readonly" class="ad-answer-input" />
+          <MathInput v-model="q.answer" type="text" placeholder="答案" :disabled="readonly"
+            :start-editing="editingSet.has(qi)" :show-edit-button="false" class="ad-answer-input" />
         </div>
 
-        <!-- 解析里也常有公式（推导过程），同样给公式按钮 -->
+        <!-- 解析里也常有公式（推导过程），同样跟随头部的编辑状态 -->
         <MathInput v-model="q.analysis" label="解析（可选）" :rows="1" placeholder="解析（可选）"
-          :disabled="readonly" />
+          :disabled="readonly" :start-editing="editingSet.has(qi)" :show-edit-button="false" />
 
         <!-- 组合题：子题清单 -->
         <div v-if="isComposite(q)" class="ad-subs">
@@ -587,6 +630,68 @@ function addQuestion() {
 
 function removeQuestion(i: number) {
   questions.value.splice(i, 1)
+  // 删除后题号整体前移，编辑状态也要跟着重排，否则"第 3 题在编辑"
+  // 会串到别的题上（比如删掉第 1 题后，原来的第 3 题变成第 2 题）
+  reindexEditing(i)
+}
+
+/* ===== 每道题的编辑态（2026-10-27）=====
+   为什么要在这里统一管：
+     一道题里有题干 / 选项 / 答案 / 解析四个 MathInput，
+     「编辑」按钮只有一个（在题目头部）。
+     点一次应该让这**四个都切到编辑态**，而不是各点各的。
+
+   用 Set 存下标而不是给每道题加 `isEditing` 字段：
+     题目的数据结构要求原样提交给后端（多一个字段会被当真值带上），
+     编辑态纯属 UI，不该污染数据。 */
+const editingSet = ref<Set<number>>(new Set())
+
+/** 每个下标对应的 MathInput 组件实例（用于直接调 setEditing） */
+const qRefs = new Map<number, any>()
+
+function setQRef(i: number, el: any) {
+  if (el) qRefs.set(i, el)
+  else qRefs.delete(i)
+}
+
+const isEditing = (i: number) => editingSet.value.has(i)
+
+/**
+ * 切换某道题的编辑态
+ *
+ * ⚠️ 要手动改 Set 的副本再赋值：
+ *    Vue 3 的响应式对 Set 的 add/delete 有拦截，但**模板里读的是
+ *    `editingSet.has(qi)`**，若只原地改而不触发依赖更新，
+ *    部分边界情况（同一 tick 内多次切换）会不重渲染。
+ *    用新 Set 最稳。
+ */
+function toggleEdit(i: number) {
+  const next = new Set(editingSet.value)
+  if (next.has(i)) next.delete(i)
+  else next.add(i)
+  editingSet.value = next
+  // 直接驱动子组件，避免只靠 prop 变化（prop 变化在 MathInput 里
+  // 走的是 watch，而 watch 只在值**变化**时触发；连续两次点同一个
+  // 按钮时 prop 没变，子组件不会响应）
+  qRefs.get(i)?.setEditing?.(next.has(i))
+}
+
+/** 删除题目后重排编辑状态的下标 */
+function reindexEditing(removedAt: number) {
+  const next = new Set<number>()
+  for (const i of editingSet.value) {
+    if (i < removedAt) next.add(i)
+    else if (i > removedAt) next.add(i - 1)
+    // i === removedAt 的那道题被删了，状态丢弃
+  }
+  editingSet.value = next
+  // refs 是按下标存的，同样要重排（否则会指向错位的组件实例）
+  const entries = [...qRefs.entries()].sort((a, b) => a[0] - b[0])
+  qRefs.clear()
+  for (const [oldIdx, el] of entries) {
+    if (oldIdx < removedAt) qRefs.set(oldIdx, el)
+    else if (oldIdx > removedAt) qRefs.set(oldIdx - 1, el)
+  }
 }
 
 function addSub(q: any) {
@@ -1056,17 +1161,81 @@ function onRegenerate() {
   min-width: 0;
 }
 
-.ad-del {
+/* ===== 题目操作区（2026-10-27）=====
+   编辑 + 删除放同一组，等宽等高、同一视觉重量。
+   原来「删除」是红描边实心按钮、「编辑」是蓝色小胶囊，
+   一个在题型行一个在题干行，看着像两个不相干的东西。 */
+.ad-q-ops {
   flex: none;
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ad-op {
   font-size: 12px;
+  line-height: 1;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+/* 编辑：中性蓝，主操作 */
+.ad-op--edit {
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+}
+
+.ad-op--edit:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+/* 编辑中：实心，明确"当前处于编辑状态" */
+.ad-op--edit.is-active {
+  color: #fff;
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.ad-op--edit.is-active:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+/* 删除：危险操作，但和编辑同样的形状，只是颜色区分 */
+.ad-op--del {
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.ad-op--del:hover {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+.ad-op:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 子题行的删除（与 ↑↓ 排在一条窄行里，所以更紧凑）
+   形状与题目头部的「删除」保持一致，只是内边距小一点。 */
+.ad-del {
+  flex: none;
+  font-size: 12px;
+  line-height: 1;
+  padding: 3px 8px;
   color: #b91c1c;
   background: #fff;
   border: 1px solid #fecaca;
   border-radius: 6px;
-  padding: 2px 8px;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .ad-del:hover:not(:disabled) {

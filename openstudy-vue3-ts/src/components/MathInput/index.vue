@@ -45,10 +45,12 @@
 -->
 <template>
     <div class="math-input" :class="{ 'is-single': !isTextarea }">
-        <!-- 顶栏：标签 + 唯一入口「编辑」 -->
-        <div class="mi-head">
+        <!-- 顶栏：标签 + 唯一入口「编辑」
+             `showEditButton=false` 时不渲染按钮，由外部（如确认卡片头部）统一控制。
+             仍然保留标签行，否则字段名会消失、用户不知道这行是什么。 -->
+        <div v-if="label || showEditButton" class="mi-head">
             <span v-if="label" class="mi-label">{{ label }}</span>
-            <button type="button" class="mi-edit-btn" :disabled="disabled"
+            <button v-if="showEditButton" type="button" class="mi-edit-btn" :disabled="disabled"
                 :title="editing ? '收起源码，回到排版预览' : '展开源码，修改文字或公式'" @click="toggleEditing">
                 {{ editing ? '完成' : '编辑' }}
             </button>
@@ -104,6 +106,16 @@ const props = withDefaults(
         size?: 'small' | 'default' | 'large'
         /** 强制初始为编辑态（新建表单里用户马上要打字时可以传 true） */
         startEditing?: boolean
+        /**
+         * 是否显示自身的「编辑」按钮
+         *
+         * 确认卡片里一道题有题干/选项/答案/解析四个 MathInput，
+         * 而「编辑」按钮只有一个（在题目头部）—— 若每个字段都带一个，
+         * 用户会看到密密麻麻一堆「编辑」，不知道点哪个、也不知道它们是不是同一个。
+         *
+         * 传 false 时由外部统一控制（配合 `setEditing()` 或 `startEditing`）。
+         */
+        showEditButton?: boolean
     }>(),
     {
         modelValue: '',
@@ -114,6 +126,7 @@ const props = withDefaults(
         disabled: false,
         size: 'small',
         startEditing: false,
+        showEditButton: true,
     },
 )
 
