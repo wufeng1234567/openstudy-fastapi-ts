@@ -278,6 +278,41 @@ const TIMELINE_DATA_LIMIT = 20000
 const TIMELINE_REASONING_LIMIT = 4000
 
 /**
+ * 截断推理正文，但**不切断公式**
+ *
+ * ── 为什么不能直接 slice（2026-10-27）────────────────────────
+ * 推理正文里常有 LaTeX（`$\lim_{x\to 0}\frac{\sin 3x}{x}$`）。
+ * 直接 `slice(0, 4000)` 有可能正好切在 `$\frac{\sin 3x}` 中间，
+ * 于是页面上出现半截公式 —— 要么原样露出反斜杠，要么 KaTeX 报错。
+ *
+ * 处理：若切断点落在某个成对定界符内部，就把切断点**后退到该公式的开头**。
+ * 宁可少显示一个公式，也不要在末尾留一坨坏掉的 LaTeX。
+ */
+function truncateReasoning(text: string, limit: number): string {
+  const SUFFIX = '…（推理较长，已截断）'
+  let cut = limit
+
+  // 找出 [0, limit] 区间内最后一个未闭合的 `$`（或 `$$`）
+  // 简单做法：从 limit 往前找最近的 `$`，看它前面有几个 `$`
+  const head = text.slice(0, cut)
+  const ddCount = head.split('$$').length - 1
+  const singleCount = head.replace(/\$\$/g, '').split('$').length - 1
+
+  // `$$` 必须是偶数对；奇数说明切在了块级公式内部
+  if (ddCount % 2 === 1) {
+    const i = head.lastIndexOf('$$')
+    if (i > 0) cut = i
+  } else if (singleCount % 2 === 1) {
+    // 行内公式：同理，奇数说明切在公式内部
+    const stripped = head.replace(/\$\$/g, '\u0000\u0000')
+    const i = stripped.lastIndexOf('$')
+    if (i > 0) cut = i
+  }
+
+  return text.slice(0, cut) + SUFFIX
+}
+
+/**
  * 每个专家行最多保留的**子代理步骤**条数（`subagent_event` 累积）。
  *
  * 一个子代理一轮可能跑几十次工具往返，事件量远超用户在卡片上想看的量。留最近若干条
@@ -305,7 +340,7 @@ function slimTimeline(msgs: AgentChatMessage[]): any[] {
     //    刷新后这团文本就变成一条普通正文了。
     if (m.type === 'reasoning') {
       if (out.content.length > TIMELINE_REASONING_LIMIT) {
-        out.content = out.content.slice(0, TIMELINE_REASONING_LIMIT) + '…（推理较长，已截断）'
+        out.content = truncateReasoning(out.content, TIMELINE_REASONING_LIMIT)
       }
       if (m.secs != null) out.secs = m.secs
       return out

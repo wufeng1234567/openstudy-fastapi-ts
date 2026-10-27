@@ -52,9 +52,22 @@
       </span>
     </div>
 
-    <!-- 正文：推理文本（可折叠；运行中实时增长） -->
+    <!-- 正文：推理文本（可折叠；运行中实时增长）
+         ⚠️ 2026-10-27：原来是 `{{ content }}` 纯文本插值，
+            于是思考过程里的 LaTeX 全部原样露出（用户截图那一大片
+            `$\lim_{x\to 0}\frac{\sin 3x}{x}$`）。
+            但推理正文有几个和聊天正文不同的约束，不能直接套同一套渲染：
+
+              1. 它是**流式**的 —— 半截公式是常态（`$\lim_{x\to` 时
+                 `$` 还没闭合），强行渲染会满屏 KaTeX 报错。
+              2. 它会被**截断**（TIMELINE_REASONING_LIMIT=4000），
+                 可能切在公式中间。
+              3. 它是灰色小字、行高更紧，样式不能照搬正文。
+
+            所以用 `renderStreamingMath()`：会把末尾未闭合的定界符
+            整段当原文输出，等写完了自然变成公式。 -->
     <div v-show="expanded" ref="bodyRef" class="rs-body">
-      <template v-if="content">{{ content }}</template>
+      <span v-if="content" class="rs-md" v-html="renderedContent"></span>
       <span v-else class="rs-empty">正在思考…</span>
       <!-- 运行中的光标，暗示"还在往下写" -->
       <span v-if="running" class="rs-cursor" aria-hidden="true"></span>
@@ -65,6 +78,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch, onBeforeUnmount } from 'vue'
 import { useSmoothAutoScroll } from '@/composables/useSmoothAutoScroll'
+import { renderStreamingMath } from '@/utils/latex'
 
 const props = withDefaults(
   defineProps<{
@@ -74,6 +88,22 @@ const props = withDefaults(
     secs?: number
   }>(),
   { content: '', secs: undefined }
+)
+
+/**
+ * 渲染后的推理正文（含公式）
+ *
+ * 用 `renderStreamingMath` 而不是普通的 `renderMarkdownWithLatex`：
+ * 推理正文是**流式**的，末尾经常有未闭合的 `$`（模型正写到一半），
+ * 普通渲染会把那半截当普通文字露出来、或者强行渲染成报错块。
+ * `renderStreamingMath` 会把未闭合的尾巴整段当原文，写完自然恢复。
+ *
+ * 不做 Markdown 渲染（标题/列表/表格）：
+ * 推理正文里出现 Markdown 结构的概率很低，而多一层解析会拖慢
+ * 流式刷新的流畅度（每次 chunk 都要重跑一遍 AST）。
+ */
+const renderedContent = computed(() =>
+  props.content ? renderStreamingMath(props.content) : '',
 )
 
 /** `secs` 有值 = 已收口 */
@@ -233,11 +263,42 @@ onBeforeUnmount(() => {
   font-size: 12.5px;
   line-height: 1.75;
   color: var(--os-text-3);
-  white-space: pre-wrap;
+  /*
+   * ⚠️ pre-wrap 会给**容器内所有文本节点**保留空白与换行。
+   *    纯文本时这是对的（保住模型输出的换行），
+   *    但 KaTeX 的 HTML 结构里塞满了用于对齐的空白 span，
+   *    在 pre-wrap 下会被全部保留 → 公式被撑开、字符间出现大间隔。
+   *    所以真正的文本放进 .rs-md，由它控制空白策略。
+   */
+  white-space: normal;
   word-break: break-word;
   max-height: 260px;
   overflow-y: auto;
   border-left: 1px solid var(--os-border-soft);
+}
+
+/* 推理正文（含公式）
+   换行已经由 renderStreamingMath 转成 <br>，这里不需要 pre-wrap；
+   但保留 pre-wrap 会让公式错乱，所以用 normal。 */
+.rs-md {
+  white-space: normal;
+}
+
+/* ⚠️ 必须 :deep()：v-html 注入的 KaTeX 节点拿不到 scoped 属性 */
+.rs-body :deep(.katex) {
+  /* 思考区字号是 12.5px，公式跟着略缩，避免比正文大一圈显得突兀 */
+  font-size: 1.02em;
+}
+
+.rs-body :deep(.katex-display) {
+  margin: 4px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* 公式下方的基线微调：KaTeX 的 strut 在小字号下会略显下沉 */
+.rs-body :deep(.katex-html) {
+  line-height: 1.2;
 }
 
 .rs-empty {

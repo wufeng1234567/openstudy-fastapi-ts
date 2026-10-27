@@ -699,6 +699,110 @@ function findBareLatexCommands(text: string): Array<{ start: number; end: number
  * @param raw 原始文本（可含多个公式）
  * @param onText 文字段的处理（默认转义后原样输出；调用方可传 marked 渲染）
  */
+/**
+ * 渲染**流式**文本里的公式（思考过程 / 推理正文专用）
+ *
+ * ── 与 `renderMarkdownWithLatex` 的区别（2026-10-27）──────────
+ * 流式输出有两个额外约束，普通渲染不管这些：
+ *
+ *  1. **半截公式是常态**
+ *     模型吐 `$\lim_{x\to 0}\frac{\sin 3x}{x}$` 时是逐字符到达的，
+ *     在 `$\lim_{x\to 0}\frac{\sin` 这一刻，`$` 只有半个（没有闭合）。
+ *     若按普通规则匹配，这段会被当成普通文字原样输出（`$\lim...` 露出来）；
+ *     更糟的是若强行渲染，KaTeX 报错 → 满屏红色错误块。
+ *
+ *     处理：**没有闭合定界符的尾部片段保持原文**，不尝试渲染。
+ *     等它写完了自然会变成合法公式。
+ *
+ *  2. **不能破坏正在增长的结构**
+ *     每次 chunk 都整体重渲染是对的（反正要重排），
+ *     但不能因为半截内容把已经渲染好的部分弄丢。
+ *
+ * 实现：复用 `splitMathSpans()`（它基于成对定界符，天然不会匹配半截），
+ * 对文字段做最小转义 + 保留换行。
+ *
+ * @param raw 当前累积的全文
+ */
+export function renderStreamingMath(raw: string): string {
+  if (!raw) return ''
+
+  // 找最后一个"未闭合"的定界符开头，把尾巴整段当普通文字
+  // （不然 `$\lim_{x\to` 这半截会被裸命令规则圈成 `\lim_{x\to`，
+  //   渲染出一个残缺公式）
+  const tailStart = findUnclosedDelimiterStart(raw)
+  const head = tailStart >= 0 ? raw.slice(0, tailStart) : raw
+  const tail = tailStart >= 0 ? raw.slice(tailStart) : ''
+
+  const spans = splitMathSpans(head)
+  let html = ''
+  for (const s of spans) {
+    if (s.type === 'text') {
+      html += escapeHtmlText(s.text || '').replace(/\n/g, '<br>')
+      continue
+    }
+    try {
+      html += katex.renderToString(s.latex, {
+        throwOnError: false,
+        displayMode: s.type === 'block',
+      })
+    } catch {
+      // 兜底：连 throwOnError:false 都失败时保留原文，别留空白
+      html += escapeHtmlText(s.raw)
+    }
+  }
+
+  // 未闭合的尾巴：原样（转义后）输出
+  if (tail) html += escapeHtmlText(tail).replace(/\n/g, '<br>')
+  return html
+}
+
+/**
+ * 找出末尾**未闭合**定界符的起始位置
+ *
+ * 扫描 `$`（含 `$$`）与 `\(` `\[`，用配对计数判断末尾是否漏了闭合。
+ * 返回那个开定界符的下标；全部闭合则返回 -1。
+ *
+ * 只关心**末尾**：中间出现孤立的 `$`（比如描述货币）不该影响整体渲染，
+ * 而末尾未闭合才是"正在流式写入"的真实信号。
+ */
+function findUnclosedDelimiterStart(text: string): number {
+  // `$$` 优先：先看 `$$` 是否成对
+  const dd = text.split('$$').length - 1
+  if (dd % 2 === 1) {
+    // 末尾有未闭合的 `$$`：找最后一个 `$$` 的位置
+    const i = text.lastIndexOf('$$')
+    // 但要确认它确实是"开"而不是"闭"——用前面的出现次数判断
+    if (i >= 0) {
+      const before = text.slice(0, i)
+      const cnt = before.split('$$').length - 1
+      if (cnt % 2 === 0) return i
+    }
+  }
+
+  // 单 `$`：排除 `$$` 的部分再数
+  const noDouble = text.replace(/\$\$/g, '\u0000\u0000')
+  const singles: number[] = []
+  for (let i = 0; i < noDouble.length; i++) {
+    if (noDouble[i] === '$' && noDouble[i - 1] !== '\\') singles.push(i)
+  }
+  if (singles.length % 2 === 1) return singles[singles.length - 1]
+
+  // `\(` ... `\)` 与 `\[` ... `\]`
+  for (const [open, close] of [
+    ['\\(', '\\)'],
+    ['\\[', '\\]'],
+  ] as const) {
+    const o = text.split(open).length - 1
+    const c = text.split(close).length - 1
+    if (o > c) {
+      const i = text.lastIndexOf(open)
+      if (i >= 0) return i
+    }
+  }
+
+  return -1
+}
+
 export function renderClickableMath(
   raw: string,
   onText?: (text: string) => string,
