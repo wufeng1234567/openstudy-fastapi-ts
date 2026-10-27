@@ -645,6 +645,19 @@ defineExpose({
   },
   getHTML: () => {
     return editor.value?.getHTML() || ''
+  },
+  /**
+   * 在光标处插入一段纯文本（2026-10-27）
+   *
+   * 用途：公式面板确定后，把 `$\frac{a}{b}$` 插到用户正在编辑的位置。
+   *
+   * ⚠️ 没有光标焦点时（用户先点了面板按钮，编辑区失焦），
+   *    `insertContent` 会插到文档末尾 —— 这是可接受的降级：
+   *    至少内容进去了，用户自己剪贴调整即可，比"插入失败"好。
+   */
+  insertText: (text) => {
+    if (!text) return
+    editor.value?.chain().focus().insertContent(text).run()
   }
 })
 </script>

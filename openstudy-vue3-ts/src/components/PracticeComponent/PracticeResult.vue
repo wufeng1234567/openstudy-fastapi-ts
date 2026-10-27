@@ -50,8 +50,12 @@
                 </span>
               </div>
 
-              <!-- 题干 -->
-              <div class="question-stem" v-html="q.questionText"></div>
+              <!-- 题干（2026-10-27：改走统一渲染管线）
+                   ⚠️ 原来是 `v-html="q.questionText"` —— 完全没有公式渲染，
+                      带 LaTeX 的题在这里会显示成 `$\frac{a}{b}$` 原文。
+                      而且它直接注入原始内容，也没有 DOMPurify 过滤。
+                      `renderMarkdownWithLatex` 两者都做（公式 + 消毒）。 -->
+              <div class="question-stem" v-html="renderStem(q.questionText)"></div>
 
               <!-- 选项 -->
               <div v-if="q.options && q.options.length" class="question-options">
@@ -139,6 +143,14 @@ import { InfoFilled, MagicStick, ArrowLeft } from '@element-plus/icons-vue'
 import { analyzeQuestionStream } from '@/api/ai/ai'
 import { splitAiSegments, renderAiMarkdown } from '@/utils/aiMarkdown'
 import { getPlainText, extractImageUrls } from '@/utils/questionUtils'
+// 题干渲染（2026-10-27）：与题库页/笔记页/聊天同一套公式识别规则。
+// 用统一管线而不是自己拼 <br>，否则同一道题在不同页面显示不一致。
+import { renderMarkdownWithLatex } from '@/utils/latex'
+
+/** 渲染题干（含公式与表格）；空值安全 */
+function renderStem(text?: string): string {
+  return text ? renderMarkdownWithLatex(text) : ''
+}
 
 interface ResultQuestion {
   id?: number | string

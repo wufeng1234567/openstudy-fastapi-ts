@@ -29,6 +29,7 @@ from app.services.ai.agent.tools.memory_search import MemorySearchTool
 from app.services.ai.agent.tools.note_manage import NoteManageTool
 from app.services.ai.agent.tools.question_manage import QuestionManageTool
 from app.services.ai.agent.tools.question_mark_manage import QuestionFlagManageTool
+from app.services.ai.agent.tools.review_sheet import ReviewSheetTool
 from app.services.ai.agent.tools.workspace_search import WorkspaceSearchTool
 
 # 幂等注册：重复 import 不会重复覆盖（registry.register 按 name 覆盖，行为一致）
@@ -79,6 +80,13 @@ registry.register(EnglishWordbookTool())
 #    （另一张表、另一个心智模型）挤进同一份描述，模型选错 action 的概率上升。
 #    这也与 `learning_stats` / `bank_manage` 的分工口径一致。
 registry.register(EnglishPracticeTool())
+# —— 2026-10-26 复习卷：把「按薄弱点生成复习卷」接进对话。
+#    ⚠️ 在此之前 REST 接口与页面按钮都有了，但**聊天里没有工具**。实测用户说
+#    「帮我按薄弱点生成一份复习卷」，模型找不到工具就自己想办法：委派给「题库专家」
+#    子代理去新建一个题库再把题复制进去 —— 跑了 180 秒还没完（实测直接超时），
+#    而且**凭空改了用户数据**。用户想要的只是一份能打印的文件。
+#    这个工具给模型一条正确的路，与 `bank_export` 同类（产物是文件，不是查询）。
+registry.register(ReviewSheetTool())
 
 __all__ = [
     "AgentManageTool",
@@ -97,5 +105,6 @@ __all__ = [
     "NoteManageTool",
     "QuestionFlagManageTool",
     "QuestionManageTool",
+    "ReviewSheetTool",
     "WorkspaceSearchTool",
 ]

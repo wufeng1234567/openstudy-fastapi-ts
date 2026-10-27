@@ -125,6 +125,9 @@ import {
 } from '@element-plus/icons-vue'
 import { computed } from 'vue'
 import type { PropType } from 'vue'
+// 题干渲染（2026-10-27）：卡片预览也要认公式，否则同一道题在列表和详情里
+// 显示不一样（列表露 LaTeX 源码、详情是排版好的公式）。
+import { renderMarkdownWithLatex } from '@/utils/latex'
 
 const props = defineProps({
   item: {
@@ -227,9 +230,21 @@ const getFavoriteStatusType = (status: any) => {
   return typeMap[status] || 'info'
 }
 
+/**
+ * 渲染题干（2026-10-27 改）
+ *
+ * 原来只做 `\n` → `<br>`，带 LaTeX 的题干会显示成 `$\frac{a}{b}$` 原文。
+ * 现在走统一管线（公式 + 表格 + 消毒都做）。
+ *
+ * ⚠️ 仍然截断到 200 字：这是**卡片预览**，不是详情页 ——
+ *    完整题干在点开后由 `QuestionDisplay` / `LatexRenderer` 渲染。
+ *    截断取的是纯文本长度而不是 HTML 长度，避免把标签切坏。
+ */
 const formatQuestionText = (text: string) => {
   if (!text) return ''
-  return text.replace(/\n/g, '<br>').substring(0, 200) + (text.length > 200 ? '...' : '')
+  // 先按纯文本截断，再渲染 —— 反过来截断 HTML 会把 `</span>` 切成半个标签
+  const plain = text.length > 200 ? text.substring(0, 200) + '...' : text
+  return renderMarkdownWithLatex(plain)
 }
 
 const truncateText = (text: string, length: number = 50) => {

@@ -134,7 +134,15 @@
 
           <el-form-item label="题干">
             <div class="question-tiptap-wrapper">
-              <TiptapEditor v-model="currentQuestion.title" placeholder="请输入题目内容，支持图片上传"
+              <!-- 公式按钮（2026-10-27）：Tiptap 是富文本，不能直接塞 MathInput，
+                   所以挂一个按钮，点开面板后把公式插到光标处。 -->
+              <div class="tiptap-math-bar">
+                <button type="button" class="tip-math-btn" title="插入公式（点击打开符号面板）" @click="openMathForStem">
+                  <span class="tip-fx">ƒx</span> 插入公式
+                </button>
+                <span class="tip-math-hint">数学符号不用手写，点开面板点符号即可</span>
+              </div>
+              <TiptapEditor ref="stemEditorRef" v-model="currentQuestion.title" placeholder="请输入题目内容，支持图片上传"
                 @preview-image="openImageViewer" />
             </div>
           </el-form-item>
@@ -1108,6 +1116,9 @@
     <QuestionFullEditor v-model="fullEditorVisible" :question-data="currentQuestion" @save="handleFullEditorSave" />
 
     <ImageViewer v-model:visible="viewerVisible" :src="viewerSrc" />
+
+    <!-- 公式符号面板（2026-10-27）：点「ƒx」打开，确定后插到题干光标处 -->
+    <MathEditor ref="mathEditorRef" title="插入公式" @confirm="onStemMathInsert" />
   </div>
 </template>
 
@@ -1129,6 +1140,9 @@ import QuestionFullEditor from './QuestionFullEditor.vue'
 import ScrollButton from '@/components/ScrollButton/ScrollButton.vue'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
 import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
+// 公式编辑（2026-10-27）：Tiptap 是富文本编辑器，不能直接塞输入框组件，
+// 所以挂一个「ƒx」按钮，点开符号面板后把公式插到 Tiptap 光标处。
+import MathEditor from '@/components/MathEditor/index.vue'
 import { textToHtml, getPlainText } from '@/utils/questionUtils'
 import useUserStore from '@/store/modules/user'
 
@@ -1411,6 +1425,22 @@ const viewerSrc = ref('')
 const openImageViewer = (src) => {
   viewerSrc.value = src
   viewerVisible.value = true
+}
+
+/* ===== 公式编辑（2026-10-27）=====
+   Tiptap 是富文本，公式以 `$...$` 源码形式存进 HTML（导出/练习时由统一管线渲染）。
+   点「ƒx」→ 符号面板（鼠标操作）→ 确定后插到 Tiptap 光标处。 */
+const stemEditorRef = ref<any>(null)
+const mathEditorRef = ref<any>(null)
+
+function openMathForStem() {
+  mathEditorRef.value?.open('')
+}
+
+/** 面板确定：插到 Tiptap 光标处（组件内部会 focus 编辑区） */
+function onStemMathInsert(latex: string) {
+  if (!latex) return
+  stemEditorRef.value?.insertText(latex)
 }
 
 // 当前题库ID（从父组件传入或路由获取）
@@ -4149,6 +4179,44 @@ defineExpose({ questions, openAiDialog })
 
     .question-tiptap-wrapper {
       width: 100%;
+
+      /* 公式按钮条（2026-10-27） */
+      .tiptap-math-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+        flex-wrap: wrap;
+      }
+
+      .tip-math-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 10px;
+        font-size: 12px;
+        color: #409eff;
+        background: #f2f8ff;
+        border: 1px solid #cfe3fb;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: all 0.12s;
+
+        &:hover {
+          background: #e4f1ff;
+          border-color: #409eff;
+        }
+      }
+
+      .tip-fx {
+        font-style: italic;
+        font-weight: 600;
+      }
+
+      .tip-math-hint {
+        font-size: 11px;
+        color: #9aa4b2;
+      }
 
       :deep(.tiptap-editor) {
         min-height: 120px;

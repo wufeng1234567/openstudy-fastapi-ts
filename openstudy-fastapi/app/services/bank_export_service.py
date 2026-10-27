@@ -750,30 +750,58 @@ def split_text_and_math(text: str) -> List[Segment]:
 _RE_DISPLAY_MATH = re.compile(r"\$\$(.+?)\$\$", re.S)
 _RE_INLINE_MATH = re.compile(r"(?<![\\$])\$(?!\s)([^$\n]{1,400}?)(?<!\s)\$(?!\d)")
 
+#: `\[...\]`（块级）与 `\(...\)`（行内）—— **LaTeX 原生定界符**
+#:
+#: 2026-10-26 补。实测：让 AI 出一道带公式的题，模型吐的是
+#: `概率为 \(P(X=1)=2p(1-p)\)`，而不是 `$...$`。
+#:
+#: 为什么会这样：`\(...\)` / `\[...\]` 是 MathJax / KaTeX 的**默认行内/块级语法**，
+#: 也是大量数学语料（arXiv、数学 StackExchange、LaTeX 文档）的写法。
+#: 按这些语料训练出的模型自然会这么写。
+#:
+#: 只认 `$...$` 的后果很具体：这些内容会被当**普通文本**原样印在 Word/PDF 上，
+#: 用户看到满页的 `\(` `\)`。实测题库 432 表 2 里就印出了 `\((1-p)^2\)`。
+#:
+#: 判定要点：
+#:   · 用非贪婪匹配，成对才算（`\(` 必须找到对应的 `\)`）
+#:   · 闭合符是**字面** `\)`，转义成 `\\)` 是因为在正则里 `)` 本身没特殊含义，
+#:     但 `\(` 的 `(` 有 —— 两者都转义保持对称，读起来不易错
+#:   · 内容不能为空（`\(\)` 是模型偶尔吐出的空壳，不该产出空公式）
+_RE_PAREN_DISPLAY_MATH = re.compile(r"\\\[(.+?)\\\]", re.S)
+_RE_PAREN_INLINE_MATH = re.compile(r"\\\((.+?)\\\)", re.S)
+
 
 def _split_delimited_math(text: str) -> List[Segment]:
-    """按 `$$...$$` / `$...$` 切成 text / math 交替的片段"""
-    if "$" not in text:
+    """按 `$$...$$` / `$...$` / `\\[...\\]` / `\\(...\\)` 切成 text / math 交替的片段"""
+    # ⚠️ 早退条件要同时看 `$` 和 `\`：
+    #    只看 `$` 的话，只有 `\(...\)` 的文本会直接返回，公式永远不会被识别。
+    if "$" not in text and "\\(" not in text and "\\[" not in text:
         return [("text", text)]
 
     out: List[Segment] = []
     pos = 0
     # 先把块级公式圈出来，再在剩下的空隙里找行内
     spans: List[Tuple[int, int, str]] = []
-    for m in _RE_DISPLAY_MATH.finditer(text):
-        body = m.group(1).strip()
-        if body:
-            spans.append((m.start(), m.end(), body))
+
+    # ① 块级：先 `$$...$$`，再 `\[...\]`
+    for rx in (_RE_DISPLAY_MATH, _RE_PAREN_DISPLAY_MATH):
+        for m in rx.finditer(text):
+            body = m.group(1).strip()
+            if body:
+                spans.append((m.start(), m.end(), body))
     covered = [(s, e) for s, e, _ in spans]
 
-    for m in _RE_INLINE_MATH.finditer(text):
-        s, e = m.start(), m.end()
-        if any(cs <= s < ce for cs, ce in covered):
-            continue
-        body = m.group(1).strip()
-        if not body:
-            continue
-        spans.append((s, e, body))
+    # ② 行内：先 `$...$`，再 `\(...\)`
+    for rx in (_RE_INLINE_MATH, _RE_PAREN_INLINE_MATH):
+        for m in rx.finditer(text):
+            s, e = m.start(), m.end()
+            if any(cs <= s < ce for cs, ce in covered):
+                continue
+            body = m.group(1).strip()
+            # 空壳 `\(\)` 跳过：产出空公式会在文档里留一个空白 OMML，比原样显示更怪
+            if not body:
+                continue
+            spans.append((s, e, body))
 
     if not spans:
         return [("text", text)]

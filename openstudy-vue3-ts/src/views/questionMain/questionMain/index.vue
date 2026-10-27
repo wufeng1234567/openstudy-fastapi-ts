@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="app-container">
     <el-form :model="queryParams" ref="queryRef" :inline="true" v-show="showSearch" label-width="88px">
       <el-form-item label="所属题库" prop="bankId">
@@ -145,8 +145,11 @@
           </el-col>
         </el-row>
 
+        <!-- 题干：带公式按钮（2026-10-27）
+             数学题的题干含 LaTeX，纯文本框只能看源码、没法编辑公式。
+             MathInput 在旁边挂「ƒx」按钮，点开是符号面板。 -->
         <el-form-item label="题干" prop="questionText">
-          <el-input v-model="form.questionText" type="textarea" :rows="3" placeholder="请输入题目内容" />
+          <MathInput v-model="form.questionText" :rows="3" placeholder="请输入题目内容" />
         </el-form-item>
 
         <template v-if="isChoiceType">
@@ -154,7 +157,7 @@
             <div class="options-visual-editor">
               <div v-for="(opt, idx) in form.options" :key="idx" class="option-row">
                 <span class="option-letter">{{ String.fromCharCode(65 + idx) }}.</span>
-                <el-input v-model="form.options[idx]" placeholder="请输入选项内容" size="small" style="flex: 1" />
+                <MathInput v-model="form.options[idx]" type="text" placeholder="请输入选项内容" class="opt-math-input" />
                 <el-button type="danger" text size="small" @click="removeOption(idx)" :disabled="form.options.length <= 2">
                   <el-icon><Delete /></el-icon>
                 </el-button>
@@ -185,7 +188,7 @@
 
         <template v-if="form.questionType === '4' || form.questionType === '5'">
           <el-form-item label="正确答案" prop="answer">
-            <el-input v-model="form.answer" placeholder="请输入正确答案" />
+            <MathInput v-model="form.answer" type="text" placeholder="请输入正确答案" />
           </el-form-item>
         </template>
 
@@ -216,7 +219,7 @@
                   </el-button>
                 </div>
                 <div class="sub-body">
-                  <el-input v-model="sub.questionText" type="textarea" :rows="2" placeholder="子题题干" size="small" />
+                  <MathInput v-model="sub.questionText" :rows="2" placeholder="子题题干" size="small" />
                   <template v-if="sub.questionType === '1' || sub.questionType === '2'">
                     <div class="sub-options-area">
                       <span class="sub-field-label">选项：</span>
@@ -251,7 +254,7 @@
                       </el-radio-group>
                     </template>
                     <template v-else>
-                      <el-input v-model="sub.answer" placeholder="答案" size="small" />
+                      <MathInput v-model="sub.answer" type="text" placeholder="答案" size="small" />
                     </template>
                   </div>
                   <div class="sub-analysis-area">
@@ -265,7 +268,7 @@
         </template>
 
         <el-form-item label="答案解析">
-          <el-input v-model="form.analysis" type="textarea" :rows="2" placeholder="请输入答案解析（选填）" />
+          <MathInput v-model="form.analysis" :rows="2" placeholder="请输入答案解析（选填）" />
         </el-form-item>
       </el-form>
 
@@ -368,6 +371,9 @@ import { getDicts } from '@/api/system/dict/data'
 import useDictStore from '@/store/modules/dict'
 import { parseTime } from '@/utils/ruoyi'
 import { Delete, Plus, Close, Setting } from '@element-plus/icons-vue'
+// 公式输入（2026-10-27）：数学题的题干/选项/答案/解析都含 LaTeX，
+// 纯文本框只能显示源码。MathInput 挂「ƒx」按钮，点开是符号面板。
+import MathInput from '@/components/MathInput/index.vue'
 
 const { proxy } = getCurrentInstance()
 const { common_status } = proxy.useDict('common_status')
@@ -981,9 +987,16 @@ getList()
 
 .option-row {
   display: flex;
-  align-items: center;
+  /* 选项里现在装 MathInput（标签行 + 输入框 + 预览行），用 center 会让字母浮在中间 */
+  align-items: flex-start;
   gap: 8px;
   margin-bottom: 8px;
+}
+
+/* MathInput 吃掉剩余宽度，别和删除按钮挤在一起 */
+.opt-math-input {
+  flex: 1;
+  min-width: 0;
 }
 
 .option-row:last-child {

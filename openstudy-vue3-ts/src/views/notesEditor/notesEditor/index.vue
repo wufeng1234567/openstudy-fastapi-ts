@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="notes-manager" style="display: flex; height: 100vh; width: 100%; position: relative;">
     <!-- 笔记本侧边栏 -->
     <div
@@ -122,7 +122,17 @@
           </el-form-item>
           <el-form-item label="内容" style="flex: 1; width: 100%; margin-bottom: 0;">
             <div style="height: 100%; width: 100%; min-height: 400px; border: 1px solid #e4e7ed; border-radius: 4px;">
+              <!-- 公式按钮（2026-10-27）：笔记正文里也会写公式（数学笔记），
+                   挂一个按钮把 LaTeX 插到光标处，不用手写命令。
+                   md-editor 的 `insert` 通过 ref 调用。 -->
+              <div class="note-math-bar">
+                <button type="button" class="note-math-btn" title="插入公式" @click="openMathForNote">
+                  <span class="note-fx">ƒx</span> 插入公式
+                </button>
+                <span class="note-math-hint">插入后用 $...$ 包裹，预览区会渲染成排版公式</span>
+              </div>
               <md-editor
+                ref="mdEditorRef"
                 v-model="currentNote.markdownContent"
                 style="height: 100%; width: 100%;"
                 preview-theme="github"
@@ -251,6 +261,9 @@
       <div class="menu-item" @click="onEditItem">修改</div>
       <div class="menu-item" @click="onDeleteItem">删除</div>
     </div>
+
+    <!-- 公式符号面板（2026-10-27）：点「ƒx」打开，确定后插到 Markdown 光标处 -->
+    <MathEditor ref="mathEditorRef" title="插入公式" @confirm="onNoteMathInsert" />
   </div>
 </template>
 
@@ -260,6 +273,11 @@ import { ref, reactive, getCurrentInstance, computed, watch, nextTick } from 'vu
 import { MdEditor, MdPreview } from 'md-editor-v3';
 import 'md-editor-v3/lib/style.css';
 import { Document, ArrowRight } from '@element-plus/icons-vue';
+// 公式编辑（2026-10-27）：笔记正文写数学公式时，用符号面板代替手打 LaTeX。
+// md-editor-v3 默认**不渲染公式**，必须显式喂 katex 才能让 `$...$` 变成排版。
+import MathEditor from '@/components/MathEditor/index.vue';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
 
 // API
 import { addNoteCategory, getAllNoteCategory, updateNoteCategory, delNoteCategory } from "@/api/noteCategory/noteCategory";
@@ -270,6 +288,23 @@ import useUserStore from "@/store/modules/user";
 const { proxy } = getCurrentInstance();
 const userStore = useUserStore();
 const userId = computed(() => userStore.id);
+
+/**
+ * md-editor-v3 的公式配置（2026-10-27）
+ *
+ * ⚠️ 这个库**默认不渲染公式** —— 不喂 `config()` 的话，笔记里写
+ *    `$\frac{a}{b}$` 在预览区就是原样文字。项目里 katex 已有，
+ *    直接接上即可（零新增依赖）。
+ */
+MdEditor.config({
+  editorExtensions: {
+    katex: {
+      katexInstance: katex,
+      // 用 katex 自带的 CSS，避免公式字号/字体与其它页面不一致
+      katexCSS: '',
+    },
+  },
+});
 
 // ====== 原有逻辑（完全保留）======
 const isEditingMode = ref(false);
@@ -605,6 +640,29 @@ const filterNotes = () => {
   notebooks.value = filtered;
 };
 
+/* ===== 公式编辑（2026-10-27）=====
+   笔记正文里常写数学公式。之前只能手打 LaTeX，
+   现在点「ƒx」→ 符号面板（纯鼠标）→ 确定后插到光标处。 */
+const mdEditorRef = ref<any>(null)
+const mathEditorRef = ref<any>(null)
+
+function openMathForNote() {
+  mathEditorRef.value?.open('')
+}
+
+/** 面板确定：插到 md-editor 的光标处 */
+function onNoteMathInsert(latex: string) {
+  if (!latex) return
+  // md-editor-v3 的实例方法：insert(cfg) 在光标处插入
+  const inst = mdEditorRef.value
+  if (inst && typeof inst.insert === 'function') {
+    inst.insert(() => ({ targetValue: latex }))
+  } else {
+    // 兜底：拿不到实例就追加到末尾（至少内容进去了）
+    currentNote.markdownContent = (currentNote.markdownContent || '') + latex
+  }
+}
+
 const handleUploadImg = (files, callback) => {
   Promise.all(
     files.map(file => {
@@ -855,6 +913,46 @@ const batchDeleteSelected = () => {
 </script>
 
 <style scoped>
+/* ===== 公式按钮条（2026-10-27）===== */
+.note-math-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-bottom: 1px solid #eef0f3;
+  background: #fcfdfe;
+  flex-wrap: wrap;
+}
+
+.note-math-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  font-size: 12px;
+  color: #409eff;
+  background: #f2f8ff;
+  border: 1px solid #cfe3fb;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.note-math-btn:hover {
+  background: #e4f1ff;
+  border-color: #409eff;
+}
+
+.note-fx {
+  font-style: italic;
+  font-weight: 600;
+}
+
+.note-math-hint {
+  font-size: 11px;
+  color: #9aa4b2;
+}
+
 .notes-manager {
   background-color: #f5f7fa;
   position: relative;

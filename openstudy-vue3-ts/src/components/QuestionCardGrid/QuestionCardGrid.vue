@@ -280,6 +280,8 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, toRefs } from 'vue'
 import { parseTime } from '@/utils/ruoyi'
+// 题干渲染（2026-10-27）：卡片预览也要认公式
+import { renderMarkdownWithLatex } from '@/utils/latex'
 import {
   Search, Refresh, Star, StarFilled, View, Delete,
   Collection, Check, Close, RefreshRight, Clock,
@@ -692,9 +694,17 @@ const getFavoriteStatusType = (status) => {
   return favoriteStatusMap[status]?.type || 'info'
 }
 
+/**
+ * 渲染题干（2026-10-27 改）
+ *
+ * 原来只做 `\n` → `<br>`，带 LaTeX 的题干会显示成 `$\frac{a}{b}$` 原文。
+ * 与 `MyQuestion/QuestionCard.vue` 的同名函数保持一致 —— 两处是不同组件里的
+ * 独立实现（历史上各写一份），行为必须一样，否则同一道题在两种视图里显示不同。
+ */
 const formatQuestionText = (text) => {
   if (!text) return ''
-  return text.replace(/\n/g, '<br>').substring(0, 200) + (text.length > 200 ? '...' : '')
+  const plain = text.length > 200 ? text.substring(0, 200) + '...' : text
+  return renderMarkdownWithLatex(plain)
 }
 
 const truncateText = (text, length = 50) => {

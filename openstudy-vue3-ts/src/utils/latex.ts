@@ -181,6 +181,29 @@ const INLINE_MATH_RE = /\$(?!\s)([^\$\n]+?)(?<!\s)\$/g
 const BLOCK_MATH_RE = /\$\$(?!\s)([\s\S]+?)(?<!\s)\$\$/g
 
 /**
+ * LaTeX 原生定界符：行内 `\(...\)`、块级 `\[...\]`
+ *
+ * ── 为什么必须支持（2026-10-26 实测）──────────────────────────
+ * 让 AI 出一道带公式的题，模型吐的是：
+ *
+ *     概率为 \(P(X=1)=2p(1-p)\)
+ *
+ * 而不是 `$...$`。因为 `\(...\)` / `\[...\]` 是 MathJax / KaTeX 的
+ * **默认行内/块级语法**，也是 arXiv、数学 StackExchange 等数学语料的写法。
+ *
+ * 只认 `$...$` 的后果很具体：这些内容被当普通文本原样显示，
+ * 用户看到满屏 `\(` `\)`。而且**导出侧已经修好了**（后端
+ * `bank_export_service._split_delimited_math`），若前端不修就会出现
+ * "下载的 Word 公式是对的、屏幕上却是乱码" —— 比两边都错更让人困惑。
+ *
+ * 边界与 `$...$` 保持一致：成对、非空。空壳 `\(\)` 由调用方跳过。
+ */
+const INLINE_PAREN_MATH_RE = /\\\(([\s\S]+?)\\\)/g
+
+/** 块级 `\[...\]`（可跨行） */
+const BLOCK_PAREN_MATH_RE = /\\\[([\s\S]+?)\\\]/g
+
+/**
  * 渲染文本中的 LaTeX 公式（`$...$` 行内 与 `$$...$$` 块级）
  *
  * ⚠️ 公式标记的边界约定：**成对、非空、不含空格边界**（见 `INLINE_MATH_RE`/`BLOCK_MATH_RE`）。
@@ -189,23 +212,24 @@ const BLOCK_MATH_RE = /\$\$(?!\s)([\s\S]+?)(?<!\s)\$\$/g
 export function renderLatex(text: string): string {
   if (!text) return ''
 
-  // 先处理 $$...$$ 块级公式
-  let result = text.replace(BLOCK_MATH_RE, (_, formula) => {
+  const render = (formula: string, display: boolean): string => {
+    const body = formula.trim()
+    // 空壳 `\(\)` / `$$$$` 原样返回，不产出空公式
+    if (!body) return ''
     try {
-      return katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false })
+      return katex.renderToString(body, { displayMode: display, throwOnError: false })
     } catch {
-      return `<span class="latex-error">${formula}</span>`
+      return `<span class="latex-error">${body}</span>`
     }
-  })
+  }
 
-  // 再处理 $...$ 行内公式
-  result = result.replace(INLINE_MATH_RE, (_, formula) => {
-    try {
-      return katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false })
-    } catch {
-      return `<span class="latex-error">${formula}</span>`
-    }
-  })
+  // 块级：先 `$$...$$`，再 `\[...\]`
+  let result = text.replace(BLOCK_MATH_RE, (_, f) => render(f, true))
+  result = result.replace(BLOCK_PAREN_MATH_RE, (_, f) => render(f, true))
+
+  // 行内：先 `$...$`，再 `\(...\)`
+  result = result.replace(INLINE_MATH_RE, (_, f) => render(f, false))
+  result = result.replace(INLINE_PAREN_MATH_RE, (_, f) => render(f, false))
 
   return result
 }
@@ -458,12 +482,27 @@ function findBareLatexCommands(text: string): Array<{ start: number; end: number
     while (pos < text.length && text[pos] === ' ') pos++
 
     // 收集连续的 `{...}` 组（支持嵌套），如 \frac{A}{k(k+1)}
+    //
+    // ⚠️ 还要吃掉紧贴在花括号前的 `_` / `^` 标记（2026-10-27 修）：
+    //    大运算符的上下限写法是 `\sum_{i=1}^{n}` / `\int_{0}^{1}`，
+    //    命令和花括号之间夹着 `_`。
+    //    原来的实现只找"紧跟着就是 `{`"，于是 `\sum_{i=1}^{n}i` 里的
+    //    `\sum` 找不到任何花括号组 → 整条被当成普通文本漏掉，
+    //    用户看到的是 `\sum_{i=1}^{n}i` 原文。
     const braceGroups: string[] = []
     let scanPos = pos
-    while (scanPos < text.length && text[scanPos] === '{') {
+    while (scanPos < text.length) {
+      // 允许一个可选的下标/上标标记
+      let cursor = scanPos
+      if (text[cursor] === '_' || text[cursor] === '^') {
+        cursor++
+        while (cursor < text.length && text[cursor] === ' ') cursor++
+      }
+      if (text[cursor] !== '{') break
+
       let depth = 0
       let end = -1
-      for (let i = scanPos; i < text.length; i++) {
+      for (let i = cursor; i < text.length; i++) {
         if (text[i] === '{') depth++
         else if (text[i] === '}') {
           depth--
@@ -474,6 +513,7 @@ function findBareLatexCommands(text: string): Array<{ start: number; end: number
         }
       }
       if (end > 0) {
+        // 把可能存在的 `_` / `^` 一起纳入（保留 LaTeX 语义）
         braceGroups.push(text.substring(scanPos, end))
         scanPos = end
         while (scanPos < text.length && text[scanPos] === ' ') scanPos++
@@ -511,29 +551,27 @@ export function renderMarkdownWithLatex(text: string): string {
   const stash: string[] = []
   const PH = (i: number) => `\u0000MATH${i}\u0000`
 
+  /** 渲染一段公式并塞进 stash，返回占位符；空公式返回空串 */
+  const stashMath = (formula: string, display: boolean): string => {
+    const body = formula.trim()
+    if (!body) return ''
+    let html: string
+    try {
+      html = katex.renderToString(body, { displayMode: display, throwOnError: false })
+    } catch {
+      html = `<span class="latex-error">${body}</span>`
+    }
+    stash.push(html)
+    return PH(stash.length - 1)
+  }
+
   let src = text
-    // ①-a 块级公式 → 占位符
-    .replace(BLOCK_MATH_RE, (_, formula) => {
-      let html: string
-      try {
-        html = katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false })
-      } catch {
-        html = `<span class="latex-error">${formula}</span>`
-      }
-      stash.push(html)
-      return PH(stash.length - 1)
-    })
-    // ①-b 行内公式 → 占位符
-    .replace(INLINE_MATH_RE, (_, formula) => {
-      let html: string
-      try {
-        html = katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false })
-      } catch {
-        html = `<span class="latex-error">${formula}</span>`
-      }
-      stash.push(html)
-      return PH(stash.length - 1)
-    })
+    // ①-a 块级公式 → 占位符（`$$...$$` 与 `\[...\]` 两种写法都认）
+    .replace(BLOCK_MATH_RE, (_, formula) => stashMath(formula, true))
+    .replace(BLOCK_PAREN_MATH_RE, (_, formula) => stashMath(formula, true))
+    // ①-b 行内公式 → 占位符（`$...$` 与 `\(...\)` 两种写法都认）
+    .replace(INLINE_MATH_RE, (_, formula) => stashMath(formula, false))
+    .replace(INLINE_PAREN_MATH_RE, (_, formula) => stashMath(formula, false))
 
   // ①-c 裸 LaTeX（无 `$` 包裹）→ 占位符。放在 Markdown 之前，避免 `_`/`|` 被误解析。
   //      ⚠️ 必须**倒序**替换，否则前面的偏移量会被后面的替换句柄搞乱。

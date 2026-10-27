@@ -214,20 +214,18 @@
           <button type="button" class="ad-del" :disabled="readonly" @click="removeQuestion(qi)">删除</button>
         </div>
 
-        <el-input
-          v-model="q.questionText"
-          :disabled="readonly"
-          type="textarea"
-          :rows="2"
-          size="small"
-          placeholder="题干"
-        />
+        <!-- 题干：用 MathInput 而不是 el-input ——
+             高等数学题的题干含 `\frac{\partial f}{\partial x}` 这类内容，
+             原来的纯文本框只能显示源码，用户没法编辑公式。
+             MathInput 在旁边挂了「ƒx」按钮，点开是符号面板（全鼠标操作）。 -->
+        <MathInput v-model="q.questionText" label="题干" :rows="2" placeholder="题干" :disabled="readonly" />
 
         <!-- 选项（单选 / 多选） -->
         <div v-if="showOptions(q)" class="ad-options">
           <div v-for="(opt, oi) in q.options" :key="oi" class="ad-opt">
             <span class="ad-opt-no">{{ optionLabel(oi) }}</span>
-            <el-input v-model="q.options[oi]" :disabled="readonly" size="small" />
+            <MathInput v-model="q.options[oi]" type="text" placeholder="选项内容" :disabled="readonly"
+              class="ad-opt-input" />
             <button type="button" class="ad-opt-del" :disabled="readonly" @click="removeOption(q, oi)">×</button>
           </div>
           <button type="button" class="ad-add-opt" :disabled="readonly" @click="addOption(q)">＋ 选项</button>
@@ -235,17 +233,12 @@
 
         <div class="ad-answer">
           <label class="ad-label">答案</label>
-          <el-input v-model="q.answer" :disabled="readonly" size="small" placeholder="答案" />
+          <MathInput v-model="q.answer" type="text" placeholder="答案" :disabled="readonly" class="ad-answer-input" />
         </div>
 
-        <el-input
-          v-model="q.analysis"
-          :disabled="readonly"
-          type="textarea"
-          :rows="1"
-          size="small"
-          placeholder="解析（可选）"
-        />
+        <!-- 解析里也常有公式（推导过程），同样给公式按钮 -->
+        <MathInput v-model="q.analysis" label="解析（可选）" :rows="1" placeholder="解析（可选）"
+          :disabled="readonly" />
 
         <!-- 组合题：子题清单 -->
         <div v-if="isComposite(q)" class="ad-subs">
@@ -323,6 +316,10 @@
 import { reactive, ref, computed, watch } from 'vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import { useCollapseBar, COLLAPSE_BAR_STYLE } from '@/composables/useCollapseBar'
+// 公式编辑（2026-10-27）：题干/选项/答案/解析四处都换成 MathInput ——
+// 它在输入框旁挂「ƒx」按钮，点开是纯鼠标操作的符号面板。
+// 之前只加了"只读预览"，用户能看不能改，等于没解决编辑问题。
+import MathInput from '@/components/MathInput/index.vue'
 
 /*
  * 吸顶折叠条（2026-10-22）
@@ -981,6 +978,44 @@ function onRegenerate() {
   min-width: 0;
 }
 
+/* ===== 公式预览（2026-10-27）=====
+   ⚠️ 必须用 `:deep()` 把样式打进 v-html 生成的节点 ——
+      scoped 的 `[data-v-xxx]` 属性不会加到 innerHTML 注入的子节点上，
+      不加 :deep 的话公式会以"裸 KaTeX 结构"显示（字号/间距全乱）。 */
+.ad-math-preview {
+  margin: -4px 0 6px;
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: #f8f9fb;
+  border: 1px dashed #e3e7ee;
+  font-size: 13px;
+  line-height: 1.9;
+  color: #1f2329;
+  /* 长公式换行，不撑破卡片 */
+  overflow-x: auto;
+  word-break: break-word;
+}
+
+.ad-math-preview :deep(.katex) {
+  font-size: 1.02em;
+}
+
+.ad-math-preview :deep(.katex-display) {
+  margin: 4px 0;
+}
+
+/* 选项预览：四个选项用 `；` 连在一行，可能比较长 */
+.ad-math-options {
+  margin-top: 2px;
+}
+
+/* 答案预览：绿色，与题目页的"答案"配色一致，便于一眼区分 */
+.ad-math-answer {
+  border-color: #cfe9d8;
+  background: #f4fbf6;
+  color: #0f7a3d;
+}
+
 .ad-questions {
   display: flex;
   flex-direction: column;
@@ -1052,7 +1087,9 @@ function onRegenerate() {
 
 .ad-opt {
   display: flex;
-  align-items: center;
+  /* 选项行现在装的是 MathInput（内部有"标签行 + 输入框 + 预览行"三层），
+     用 center 会让字母序号浮在中间，改成顶部对齐 */
+  align-items: flex-start;
   gap: 6px;
   min-width: 0;
 }
@@ -1112,8 +1149,15 @@ function onRegenerate() {
 
 .ad-answer {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
+  min-width: 0;
+}
+
+/* 选项/答案里的 MathInput：让它吃掉剩余宽度，别挤在一起 */
+.ad-opt-input,
+.ad-answer-input {
+  flex: 1;
   min-width: 0;
 }
 

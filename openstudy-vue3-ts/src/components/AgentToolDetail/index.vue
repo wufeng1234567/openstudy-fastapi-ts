@@ -80,7 +80,12 @@
     <div v-for="row in rows" :key="row.key" class="td-row">
       <span class="td-key">{{ row.label }}</span>
       <div class="td-val">
-        <span v-if="row.kind === 'scalar'" class="td-text">{{ row.text }}</span>
+        <!-- 含公式的标量值单独渲染（2026-10-27）：
+             题目详情里的题干/选项/解析常带 LaTeX，用插值表达式只能看到源码。
+             只有"确实含公式"时才走 v-html，纯文本仍走插值（更快、无注入面）。 -->
+        <span v-if="row.kind === 'scalar' && mayContainMath(row.text)" class="td-text td-math"
+          v-html="renderMath(row.text)" />
+        <span v-else-if="row.kind === 'scalar'" class="td-text">{{ row.text }}</span>
         <span v-else-if="row.kind === 'chips'" class="td-chips">
           <span v-for="(c, i) in row.chips" :key="i" class="td-chip">{{ c }}</span>
         </span>
@@ -89,11 +94,34 @@
     </div>
   </div>
 
+  <span v-else-if="mayContainMath(scalarText(data))" class="td-text td-math" v-html="renderMath(scalarText(data))" />
   <span v-else class="td-text">{{ scalarText(data) }}</span>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+// 公式渲染（2026-10-27）：题目详情里的题干/选项/解析常带 LaTeX，
+// 用插值表达式只能显示源码。这里在"确实含公式"时改走统一渲染管线。
+import { renderMarkdownWithLatex } from '@/utils/latex'
+
+/**
+ * 这段文本是否可能含公式
+ *
+ * 与 `utils/markdown.ts:mayContainMath` 同一套判据（含 `\(...\)` 原生定界符）。
+ * 刻意放宽：误判只会多渲染一次，漏判会让用户看到满屏 `\frac{a}{b}` 原文。
+ */
+function mayContainMath(text: any): boolean {
+  const s = String(text ?? '')
+  if (!s) return false
+  if (s.indexOf('$') !== -1) return true
+  if (s.indexOf('\\(') !== -1 || s.indexOf('\\[') !== -1) return true
+  return /\\[a-zA-Z]{2,}/.test(s)
+}
+
+/** 渲染含公式的文本（与题目页/聊天/草稿卡同一套规则） */
+function renderMath(text: any): string {
+  return text ? renderMarkdownWithLatex(String(text)) : ''
+}
 
 // 递归要用自己的名字引用自己
 defineOptions({ name: 'AgentToolDetail' })
@@ -827,6 +855,25 @@ function restOf(item: any): any {
   color: #33415c;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* ===== 含公式的文本（2026-10-27）=====
+   ⚠️ 必须覆盖 `white-space: pre-wrap`：
+      KaTeX 的 HTML 结构里塞满了用于对齐的空格与换行文本节点，
+      pre-wrap 会把它们全部保留 → 公式被撑开、字符间出现大间隔。
+    ⚠️ 必须用 `:deep()`：v-html 注入的节点拿不到 scoped 的 data 属性。 */
+.td-text.td-math {
+  white-space: normal;
+  line-height: 1.9;
+}
+
+.td-text.td-math :deep(.katex) {
+  font-size: 1.02em;
+}
+
+.td-text.td-math :deep(.katex-display) {
+  margin: 6px 0;
+  overflow-x: auto;
 }
 
 .td-chips {
