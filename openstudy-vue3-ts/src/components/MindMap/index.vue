@@ -50,10 +50,50 @@
             </div>
         </div>
 
-        <!-- 空态：说人话，不画空图 -->
+        <!--
+          空态（2026-10-27 重做）
+
+          用户原话：「还要提供思维导图优化功能 比如**什么场景用户会提问需要思维导图**」
+
+          原来只说一句「这段内容里还没有可提取的层级」——
+          用户看完仍然不知道该写什么。
+
+          现在给三件事：
+            ① 什么样的内容适合出导图（场景）
+            ② 一个可直接照抄的最小示例
+            ③ 为什么这篇内容出不来图（如果有内容但没层级）
+        -->
         <div v-if="!hasTree" class="mm-empty">
             <el-icon :size="22"><Share /></el-icon>
-            <p>{{ emptyText }}</p>
+            <p class="mm-empty-title">{{ emptyText }}</p>
+
+            <!-- 有内容但没层级：说清原因，比单纯"没有层级"有用 -->
+            <p v-if="hasContentButNoStructure" class="mm-empty-reason">
+                这篇内容是一整段连续文字，没有标题或列表，
+                所以提取不出层级。加上 <code>## 小标题</code> 或 <code>- 要点</code> 就会出图。
+            </p>
+
+            <!-- 场景引导 -->
+            <div class="mm-empty-scenes">
+                <p class="mm-empty-scenes-title">这些内容适合做成导图</p>
+                <ul>
+                    <li><strong>知识梳理</strong> —— 一章笔记、一份资料的主干与分支</li>
+                    <li><strong>方案对比</strong> —— 几种做法的优缺点、适用条件</li>
+                    <li><strong>复习提纲</strong> —— 考点分类、每个考点下的要点</li>
+                    <li><strong>项目拆解</strong> —— 目标 → 模块 → 具体任务</li>
+                </ul>
+            </div>
+
+            <details class="mm-empty-sample">
+                <summary>看一个能出图的最小写法</summary>
+                <pre>## 技术栈
+- 框架：Vue 3
+- 状态管理：Pinia
+
+## 核心概念
+- 响应式系统
+- 组合式函数</pre>
+            </details>
         </div>
 
         <div v-show="hasTree" ref="chartRef" class="mm-chart"></div>
@@ -286,6 +326,26 @@ const treeData = computed<TreeNode | null>(() => {
 })
 const hasTree = computed(() => treeData.value !== null)
 
+/**
+ * 有内容、但提取不出层级
+ *
+ * 用途：空态里区分两种完全不同的情况
+ *   ① 内容就是空的 → 说"写点东西"
+ *   ② 内容不少、但没有标题/列表 → 说清**为什么出不来**，
+ *      并告诉用户加什么就能出图
+ *
+ * 不区分的话，用户写了一大段话却看到"还没有可提取的层级"，
+ * 会以为功能坏了。
+ */
+const hasContentButNoStructure = computed(() => {
+    if (hasTree.value) return false
+    const md = props.markdown || ''
+    const meaningful = md.replace(/\s/g, '')
+    if (meaningful.length < 30) return false
+    // 有内容但没有任何标题或列表标记
+    return !/^\s*(#{1,6}\s|[-*+]\s|\d+[.)]\s)/m.test(md)
+})
+
 /** 节点数（用于 tooltip 里报告规模） */
 const nodeCount = computed(() => {
     const count = (n: TreeNode | undefined): number =>
@@ -296,11 +356,23 @@ const nodeCount = computed(() => {
 /**
  * `auto` 布局的判定阈值
  *
- * 实测规律：节点少时环形好看（结构一眼看全、留白多）；
- * 节点多（尤其某个分支有 5+ 子节点）时环形一定会挤，
- * 因为卡片宽度是固定的，同心圆周长跟不上。
+ * ⚠️ 这个值最终定为 0，也就是**默认一律用树形**。
+ *
+ * 原因是实测出来的：径向布局在"节点很少"时反而更容易重叠 ——
+ * 一级节点的环半径被 echarts 压到刚好放得下，而根节点卡片是
+ * 居中于圆心的，宽度向左右各伸一半，于是直接盖住两侧的一级卡片
+ * （截图确认：「纯文本测试」压住「核心概念」「技术栈」）。
+ *
+ * 试过的修法：
+ *   · 根卡片 `position:'top'` → 径向布局下**整张图画不出来**
+ *     （canvas 空白，实测确认），echarts 在 radial 下不支持这个组合
+ *   · 加大 edgeLength/nodePadding → 减轻但没消除
+ *   · 缩短根标签 → 只缓解
+ *
+ * 树形布局没有这个问题：每层固定占一列，纵向自动撑开。
+ * 所以默认树形，径向保留给用户手动切换（那时他会自己 roam/缩放）。
  */
-const AUTO_RADIAL_MAX_NODES = 12
+const AUTO_RADIAL_MAX_NODES = 0
 
 /**
  * 按内容规模自动选布局
@@ -416,7 +488,7 @@ function buildOption() {
             },
             label: {
                 show: true,
-                formatter: () => clipName(node.name, isRoot ? 28 : maxLen),
+                formatter: () => clipName(node.name, isRoot ? (isRadial ? 14 : 28) : maxLen),
                 fontSize,
                 fontWeight: isRoot ? 700 : isBranch ? 600 : 400,
                 color: cardText,
@@ -510,12 +582,17 @@ function buildOption() {
     if (isRadial) {
         // edgeLength 控制每层半径间距；nodePadding 控制同层节点间距
         //
-        // ⚠️ 实测：这两个值偏小时，叶子卡片会互相压住
-        //    （截图里「性能优化清单」和它的子节点重叠）。
-        //    卡片样式比圆点占地方大得多，间距要比"点线图"时代给得更足。
+        // ⚠️ 实测两个坑：
+        //   ① 值偏小时叶子卡片互相压住（卡片比圆点占地方大得多）
+        //   ② **节点很少时反而更挤** —— 只有 6 个节点时 echarts 会把
+        //      半径缩到刚好放得下，于是根卡片和一级卡片直接叠在一起
+        //      （截图确认：「纯文本测试」压住「核心概念」和「技术栈」）。
+        //
+        //      所以不能按"节点少就缩小间距"来给值，反而要给一个
+        //      **最小间距下限**，让内容少时也有呼吸空间。
         Object.assign(seriesBase, {
-            edgeLength: manyNodes ? 140 : 170,
-            nodePadding: 18,
+            edgeLength: manyNodes ? 140 : 175,
+            nodePadding: manyNodes ? 18 : 26,
             top: '8%',
             bottom: '8%',
             left: '10%',
@@ -708,16 +785,109 @@ defineExpose({ fitView, nodeCount })
 .mm-empty {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
+    /*
+     * 原来 align-items: center + justify-content: center —— 适合一句话。
+     * 现在里面有场景列表和示例代码，居中会让整块歪着，改成左对齐、
+     * 顶部对齐，只把图标和标题那一行居中。
+     */
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 10px;
     min-height: 180px;
-    padding: 24px;
+    padding: 20px 24px;
     color: #9aa4b2;
     font-size: 12.5px;
     background: #fcfdfe;
     border: 1px dashed #e6e9ee;
     border-radius: 8px;
+    text-align: left;
+}
+
+.mm-empty > .el-icon {
+    align-self: center;
+    color: #c3cbd6;
+}
+
+.mm-empty-title {
+    align-self: center;
+    margin: 0;
+    text-align: center;
+    color: #6b7280;
+    font-size: 13px;
+}
+
+/* 有内容但没层级时的原因说明 */
+.mm-empty-reason {
+    margin: 0;
+    padding: 8px 11px;
+    color: #92400e;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 6px;
+    line-height: 1.65;
+}
+
+.mm-empty-reason code {
+    padding: 1px 5px;
+    font-family: 'Consolas', monospace;
+    font-size: 11.5px;
+    color: #92400e;
+    background: #fef3c7;
+    border-radius: 4px;
+}
+
+/* 场景引导 */
+.mm-empty-scenes {
+    padding-top: 2px;
+}
+
+.mm-empty-scenes-title {
+    margin: 0 0 5px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7280;
+}
+
+.mm-empty-scenes ul {
+    margin: 0;
+    padding-left: 17px;
+    line-height: 1.9;
+    color: #8b95a5;
+}
+
+.mm-empty-scenes strong {
+    color: #4b5563;
+    font-weight: 600;
+}
+
+/* 示例（默认折叠：不想看细节的人不用被代码块挡着） */
+.mm-empty-sample {
+    font-size: 12px;
+    color: #8b95a5;
+}
+
+.mm-empty-sample summary {
+    cursor: pointer;
+    color: #4b8fd6;
+    user-select: none;
+}
+
+.mm-empty-sample summary:hover {
+    text-decoration: underline;
+}
+
+.mm-empty-sample pre {
+    margin: 7px 0 0;
+    padding: 9px 11px;
+    font-family: 'Consolas', monospace;
+    font-size: 11.5px;
+    line-height: 1.7;
+    color: #4b5563;
+    background: #f5f7fa;
+    border: 1px solid #e8ecf1;
+    border-radius: 6px;
+    overflow-x: auto;
+    white-space: pre;
 }
 
 .mm-empty p {

@@ -99,28 +99,53 @@
       </button>
     </div>
 
-    <!-- 预览弹窗：docx 直接渲染成 HTML（docx-preview），不下载也能看 -->
-    <el-dialog
-      v-if="canPreview"
-      v-model="showPreview"
-      :title="artifact ? artifact.fileName : '文档预览'"
-      width="900px"
-      top="4vh"
-      append-to-body
-      destroy-on-close
-      class="at-preview-dialog"
-    >
-      <DocxPreview :url="previewUrl" :title="artifact?.fileName || ''" :height="previewHeight" />
-      <template #footer>
-        <span class="at-preview-foot">
-          <span class="at-preview-hint">预览不显示公式（渲染库限制），下载后用 Word / WPS 查看正常。</span>
-          <button type="button" class="at-artifact-btn" @click="downloadArtifact">
-            <OsIcon name="download" :size="13" />
-            <span>下载原文件</span>
-          </button>
-        </span>
-      </template>
-    </el-dialog>
+      <!-- 预览弹窗：docx 渲染成 HTML，pdf 用浏览器原生阅读器 -->
+      <el-dialog
+        v-if="canPreview"
+        v-model="showPreview"
+        :title="previewTitle"
+        width="900px"
+        top="4vh"
+        append-to-body
+        destroy-on-close
+        class="at-preview-dialog"
+      >
+        <!--
+          PDF 直接用 <iframe> 交给浏览器内置阅读器
+
+          ⚠️ 不引 pdf.js：那会多 33MB 依赖，而浏览器本来就能渲染 PDF，
+             且自带缩放/翻页/打印/搜索，比自己搭一套阅读器好用。
+
+             注意 PDF 的 `src` 不能带 Authorization 头（iframe 发不了自定义头），
+             靠的是 `/profile/**` 静态挂载 + Cookie 鉴权。
+        -->
+        <iframe
+          v-if="previewKind === 'pdf'"
+          :src="previewUrl"
+          class="at-preview-frame"
+          :style="{ height: previewHeight + 'px' }"
+          title="PDF 预览"
+        />
+        <DocxPreview
+          v-else
+          :url="previewUrl"
+          :title="artifact?.fileName || ''"
+          :height="previewHeight"
+        />
+        <template #footer>
+          <span class="at-preview-foot">
+            <span class="at-preview-hint">
+              {{ previewKind === 'pdf'
+                ? 'PDF 由浏览器直接渲染，和下载后一致。'
+                : '预览不显示公式（渲染库限制），下载后用 Word / WPS 查看正常。' }}
+            </span>
+            <button type="button" class="at-artifact-btn" @click="downloadArtifact">
+              <OsIcon name="download" :size="13" />
+              <span>下载原文件</span>
+            </button>
+          </span>
+        </template>
+      </el-dialog>
 
     <!-- ③ 跳转卡片：建库/导题完成后，一步直达题库 -->
     <div v-if="bankJump" class="at-jump">
@@ -495,7 +520,9 @@ const summary = computed(() => {
   const raw = (props.status === 'running' ? props.detail || props.content : props.detail).trim()
   if (raw && !FILLER_MESSAGES.has(raw.toLowerCase())) return raw
 
-  const derived = summarizeData(props.data)
+  // 传**解包后**的数据：summarizeData 里读的是 business 字段
+  // （questionCount / bankName / patients…），而这些都在内层 data 里
+  const derived = summarizeData(unwrapToolData(props.data))
   if (derived) return derived
 
   // 实在推不出来：退回「动作 + 状态」，至少能看出它在干什么、跑完没有
@@ -542,9 +569,49 @@ const hasData = computed(() => nonEmpty(props.data))
  * 将来任何工具（学情报告 PDF、笔记导出、错题本导出）只要回执里给 `downloadUrl`，
  * 就自动获得这张卡片，不必回来改这里。工具的**输出契约**比工具名稳定。
  */
+/**
+ * 工具业务数据（自动剥掉框架信封）
+ *
+ * ⚠️ 2026-10-27 修的真缺陷：
+ *
+ * `tool_result` 事件的 `data` 是**两层**结构：
+ *
+ *     event = {
+ *       tool: 'document_compose',
+ *       success: true,
+ *       data: {                       ← 框架信封（`ok()` 的返回）
+ *         success: true,
+ *         message: '已生成 …',
+ *         data: {                     ← 业务数据（工具真正返回的东西）
+ *           downloadUrl: '/profile/export/…docx',
+ *           fileName: '报告.docx',
+ *           fileSizeText: '37.5 KB',
+ *         }
+ *       }
+ *     }
+ *
+ * 而 `useAgentChat.fillTool` 里 `m.data = event.data` 存的是**信封那层**。
+ *
+ * 组件里直接读 `props.data.downloadUrl` 永远拿不到 →
+ * **产物卡片（下载/预览按钮）根本不显示**。实测现象：模型说"文档已生成，
+ * 可直接下载"，但界面上只有一行文字 +「查看详情」，没有下载入口。
+ *
+ * 这里统一解包：有内层 `data` 且是对象时用它，否则用外层
+ * （有些工具确实直接返回扁平数据，不能强行只认内层）。
+ */
+function unwrapToolData(raw: any): Record<string, any> | null {
+  if (!raw || typeof raw !== 'object') return null
+  const inner = raw.data
+  if (inner && typeof inner === 'object' && !Array.isArray(inner)) {
+    // 内层还要带上外层的 message（有些卡片用 message 做简述）
+    return inner
+  }
+  return raw
+}
+
 const artifact = computed(() => {
   if (props.status !== 'ok') return null
-  const d = props.data
+  const d = unwrapToolData(props.data)
   if (!d || typeof d !== 'object') return null
   const url = typeof d.downloadUrl === 'string' ? d.downloadUrl.trim() : ''
   if (!url) return null
@@ -618,7 +685,7 @@ const bankJump = computed(() => {
   // 加工具白名单：下面的 `pickBankPayload` 会兜底读顶层 `id`，
   // 若不限定工具，别的工具回执里恰好有个 `id` 也会被误当成题库。
   if (props.tool && !BANK_TOOLS.has(props.tool)) return null
-  const d = props.data
+  const d = unwrapToolData(props.data)
   if (!d || typeof d !== 'object') return null
 
   const payload = pickBankPayload(d)
@@ -689,7 +756,7 @@ const NOTE_ACTIONS = new Set(['create', 'update'])
 const noteJump = computed(() => {
   if (props.tool !== 'note_manage') return null
   if (props.status !== 'ok') return null
-  const d = props.data
+  const d = unwrapToolData(props.data)
   if (!d || typeof d !== 'object') return null
 
   const action = String(d.action || '').toLowerCase()
@@ -785,7 +852,7 @@ const LINK_UI: Record<string, { badge: string; buttonText: string; icon: string 
 const linkJump = computed(() => {
   if (props.status !== 'ok') return null
 
-  const d = props.data
+  const d = unwrapToolData(props.data)
   if (!d || typeof d !== 'object') return null
 
   const raw = d.jumpUrl
@@ -889,7 +956,7 @@ function goToLink() {
  */
 const spaceScan = computed(() => {
   if (props.tool !== 'workspace_search') return null
-  const d = props.data
+  const d = unwrapToolData(props.data)
   const running = props.status === 'running'
 
   // 运行中还没有 data（工具没跑完），只显示「正在翻」
@@ -927,20 +994,53 @@ const previewHeight = computed(() =>
 /**
  * 能否预览
  *
- * 只对 **docx** 开放：`docx-preview` 是唯一接进来的渲染器。
- * PDF 不在这里预览 —— 浏览器的内置 PDF 阅读器已经够好，
- * 用 iframe 嵌反而受限（跨域、打印、滚动都会别扭）。
+ * docx → `docx-preview` 渲染成 HTML
+ * pdf  → 浏览器原生阅读器（iframe），不需要额外依赖
+ *
+ * 两种都支持，因为用户可能只要 PDF（比如定稿后发给别人）。
  */
 const canPreview = computed(() => {
   const a = artifact.value
   if (!a || !a.url) return false
-  return a.format === 'docx' || /\.docx(\?|$)/i.test(a.url)
+  return a.format === 'docx' || /\.docx(\?|$)/i.test(a.url) ||
+    a.format === 'pdf' || /\.pdf(\?|$)/i.test(a.url)
 })
 
-/** 去掉 URL 上的缓存破坏参数，交给预览组件自己处理 */
+/** 预览类型：决定用 docx 渲染器还是 iframe */
+const previewKind = computed<'docx' | 'pdf'>(() => {
+  const a = artifact.value
+  if (!a) return 'docx'
+  if (a.format === 'pdf' || /\.pdf(\?|$)/i.test(a.url || '')) return 'pdf'
+  return 'docx'
+})
+
+/**
+ * 预览地址
+ *
+ * ⚠️ 用户可能生成了 docx + pdf 两份（`format = 'both'`）。
+ *    产物卡片的主文件是 docx，但如果它只想要 PDF 预览呢？
+ *    这里让 PDF 优先：能看到"最终排版"更接近真实交付物，
+ *    而 docx 预览有公式不显示的已知限制。
+ */
 const previewUrl = computed(() => {
-  const u = artifact.value?.url || ''
-  return u
+  const a = artifact.value
+  if (!a) return ''
+  const d = unwrapToolData(props.data) as any
+  if (previewKind.value === 'pdf') {
+    return String(d?.pdfDownloadUrl || a.url || '')
+  }
+  return a.url || ''
+})
+
+/** 预览弹窗标题 */
+const previewTitle = computed(() => {
+  const a = artifact.value
+  if (!a) return '文档预览'
+  const d = unwrapToolData(props.data) as any
+  if (previewKind.value === 'pdf' && d?.pdfFileName) {
+    return String(d.pdfFileName)
+  }
+  return a.fileName
 })
 
 /**
@@ -1563,6 +1663,14 @@ const downloadArtifact = async () => {
   font-size: 11.5px;
   color: var(--os-text-3, #8b95a5);
   text-align: left;
+}
+
+/* PDF iframe：撑满弹窗宽度，高度由行内 style 控制 */
+.at-preview-frame {
+  width: 100%;
+  border: 1px solid var(--os-border-soft, #e8ecf1);
+  border-radius: 8px;
+  background: #f5f7fa;
 }
 
 /*
