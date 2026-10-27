@@ -1248,16 +1248,21 @@ const downloadArtifact = async () => {
 }
 
 /*
- * 摘要改成 v-html 后，渲染器会产出 <p> / <div>，
- * 默认带块级外边距，会把卡片撑高、行距变松。
- * 这里压平：只保留行内节奏。
+ * v-html 产生的 <p> 交给父级流处理（2026-10-27 修）
+ *
+ * ⚠️ 摘要是 `v-html` 渲染的，`renderMarkdownWithLatex` 产出的根节点是
+ *    **块级 <p>**。而 `.at-head` 是 flex 容器、`.at-summary` 是它的 flex item ——
+ *    `<p>` 会在 item 内部再套一层块级盒，与旁边的状态图标对不齐、行高会跳，
+ *    卡片也被撑高。
+ *
+ * `display: contents` 让这层盒子不参与布局，内容直接并入 `.at-summary`。
  */
 .at-summary :deep(p) {
-  margin: 0;
+  display: contents;
 }
 
-.at-summary :deep(p + p) {
-  margin-top: 4px;
+.at-summary :deep(p + p)::before {
+  content: ' ';
 }
 
 /* 公式在摘要里行高要压一点，否则卡片被撑开 */

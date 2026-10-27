@@ -52,6 +52,26 @@
                 <span v-if="renderMs">渲染 {{ renderMs }}ms</span>
             </span>
             <div class="dp-actions">
+                <!--
+                  缩放档位（2026-10-27 加）
+
+                  ⚠️ 为什么需要：窄面板里必须把 A4 整页缩小才能看全版式
+                     （1100px 视口下缩到 48%），但缩到这个比例**字看不清**。
+                     用户想读某一句时必须能切回原始大小横向滚动查看。
+
+                  两档够用：
+                    · 适应宽度 —— 看整体版式（默认）
+                    · 实际大小 —— 看具体文字，允许横向滚动
+                -->
+                <button
+                    type="button"
+                    class="dp-btn"
+                    :disabled="!url"
+                    :title="fitMode === 'width' ? '切换到实际大小（可横向滚动）' : '切换到适应宽度'"
+                    @click="toggleFitMode"
+                >
+                    {{ fitMode === 'width' ? '适应宽度' : '实际大小' }}
+                </button>
                 <button type="button" class="dp-btn" :disabled="!url" @click="rerender" title="重新渲染">
                     刷新
                 </button>
@@ -79,7 +99,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, watch, onBeforeUnmount, onMounted, nextTick } from 'vue'
 
 defineOptions({ name: 'DocxPreview' })
 
@@ -106,6 +126,23 @@ const renderMs = ref(0)
 const hasFormulaWarning = ref(false)
 
 const heightPx = computed(() => `${props.height}px`)
+
+/**
+ * 缩放档位（2026-10-27 加）
+ *
+ * `width` —— 适应宽度（默认）：整页缩到面板宽，看整体版式
+ * `actual` —— 实际大小（100%）：字清楚，允许横向滚动
+ *
+ * ⚠️ 两档都必要：1100px 视口下文档编排的预览面板只有 407px，
+ *    适应宽度得缩到 48% —— 版式看得全，但**字看不清**。
+ *    用户想读正文时必须能切回 100%。
+ */
+const fitMode = ref<'width' | 'actual'>('width')
+
+function toggleFitMode() {
+    fitMode.value = fitMode.value === 'width' ? 'actual' : 'width'
+    applyFitScale()
+}
 
 /* ────────────────────────────────────────────────────────────
  * 渲染
@@ -166,6 +203,10 @@ async function render() {
         await nextTick()
         renderMs.value = Math.round(performance.now() - t0)
         pageCount.value = host.querySelectorAll('.docx-wrapper > section, .docx-wrapper > .docx').length
+
+        // 页面渲染完立刻按可用宽度缩放（窄面板里必须缩，否则左半边被切掉）
+        applyFitScale()
+
         emit('rendered', { pages: pageCount.value, ms: renderMs.value })
     } catch (e: any) {
         err.value = `预览失败：${e?.message || e}`
@@ -174,6 +215,61 @@ async function render() {
     }
 }
 
+/**
+ * 按可用宽度缩放页面（2026-10-27 加）
+ *
+ * ⚠️ 修的问题：docx-preview 渲染的页面是 **A4 固定宽（21cm ≈ 794px）**。
+ *    文档编排页左右分栏后，预览面板在 1100px 视口下只有 407px 宽 ——
+ *    页面被切掉左半边（截图里标题只剩「档」字、小节标题全丢），
+ *    下方还有横向滚动条。用户看到的是"排版坏了"。
+ *
+ * 做法：用 CSS transform 把整页等比缩小。
+ *   · 先读第一页的真实宽度（docx-preview 输出的是 px）
+ *   · 算 scale = 可用宽度 / 页面宽度，上限 1（不放大小文档）
+ *   · 把 transform-origin 设成左上，再按缩放后的高度补下方留白
+ *     （否则 transform 不改变布局盒，下面会空出一大块或被裁）
+ *
+ * ⚠️ 为什么用 transform 而不是 zoom：
+ *     zoom 是非标准属性，Firefox 长期不支持；transform 全平台一致。
+ */
+function applyFitScale() {
+    const host = hostRef.value
+    if (!host) return
+
+    const pages = host.querySelectorAll('.docx-wrapper > section, .docx-wrapper > .docx')
+    if (!pages.length) return
+
+    const first = pages[0] as HTMLElement
+    const pageW = first.offsetWidth
+    if (!pageW) return
+
+    // 可用宽度：扣掉 dp-body 的左右 padding（14*2）
+    const avail = host.clientWidth - 28
+    // "实际大小"档位强制 1，允许横向滚动
+    const scale = fitMode.value === 'actual' ? 1 : Math.min(1, avail / pageW)
+
+    host.style.setProperty('--fit-scale', String(scale))
+
+    for (const p of Array.from(pages) as HTMLElement[]) {
+        if (scale >= 0.999) {
+            // 不需要缩放：清掉内联样式
+            p.style.transform = ''
+            p.style.transformOrigin = ''
+            p.style.marginBottom = ''
+            continue
+        }
+        p.style.transformOrigin = 'top left'
+        p.style.transform = `scale(${scale})`
+        /*
+         * transform 不改变布局盒 → 页面还是占原始高度，
+         * 下面会空出一大块。用负 margin 把空白收掉：
+         *
+         *     实际视觉高度 = 原高 * scale
+         *     需要收掉的 = 原高 * (1 - scale)
+         */
+        p.style.marginBottom = `${-p.offsetHeight * (1 - scale)}px`
+    }
+}
 /**
  * 探测 docx 里是否含 OMML 公式
  *
@@ -215,7 +311,28 @@ watch(() => props.url, () => { render() }, { immediate: false })
 // 首次挂载：等容器真正在 DOM 里再渲染
 nextTick(() => { if (props.url) render() })
 
+/**
+ * 面板宽度变化时重算缩放
+ *
+ * 典型场景：文档编排页左右分栏，用户拖动窗口宽度、
+ * 或从宽屏切到半屏 —— 缩放比例必须跟着变，否则又会切掉一半。
+ */
+let ro: ResizeObserver | null = null
+onMounted(() => {
+    if (typeof ResizeObserver === 'undefined' || !hostRef.value) return
+    let lastW = 0
+    ro = new ResizeObserver(() => {
+        const w = hostRef.value?.clientWidth || 0
+        if (w === lastW || w < 40) return
+        lastW = w
+        applyFitScale()
+    })
+    ro.observe(hostRef.value)
+})
+
 onBeforeUnmount(() => {
+    ro?.disconnect()
+    ro = null
     if (hostRef.value) hostRef.value.innerHTML = ''
 })
 
@@ -305,6 +422,18 @@ defineExpose({ render })
     overflow: auto;
     background: #f0f2f5;
     padding: 14px;
+    /*
+     * 缩放由 JS 算好写进 CSS 变量（见 `applyFitScale`）
+     *
+     * ⚠️ 不能用 `overflow:auto` 凑合（2026-10-27 实测）：
+     *    docx-preview 渲染出的是 **A4 固定宽（21cm ≈ 794px）** 的页面。
+     *    在 1100px 视口下文档编排的预览面板只有 407px 宽 ——
+     *    实测截图里页面被切掉左半边（标题只剩「档」字、小节标题全丢），
+     *    底部还挂一条横向滚动条，用户以为"排版坏了"。
+     *
+     *    正确处理是按可用宽度整体缩小，让用户一眼看到完整版式。
+     */
+    --fit-scale: 1;
 }
 
 .dp-loading,

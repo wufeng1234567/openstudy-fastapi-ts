@@ -119,7 +119,7 @@
           </el-button>
         </div>
         <el-row :gutter="20">
-          <el-col :xs="12" :sm="12" :md="6" :lg="6" :xl="6">
+          <el-col :xs="24" :sm="12" :md="12" :lg="6" :xl="6">
             <el-card shadow="hover" class="learning-card"
               :class="{ 'compact-mode': isCompactMode, 'empty-card': myMistakesCount === 0 }" @click="goToMyMistakes">
               <div class="card-content" :class="{ 'compact': isCompactMode }">
@@ -143,7 +143,7 @@
               </div>
             </el-card>
           </el-col>
-          <el-col :xs="12" :sm="12" :md="6" :lg="6" :xl="6">
+          <el-col :xs="24" :sm="12" :md="12" :lg="6" :xl="6">
             <el-card shadow="hover" class="learning-card"
               :class="{ 'compact-mode': isCompactMode, 'empty-card': myFavoriteCount === 0 }"
               @click="goToMyFavoriteQuestion">
@@ -168,7 +168,7 @@
               </div>
             </el-card>
           </el-col>
-          <el-col :xs="12" :sm="12" :md="6" :lg="6" :xl="6">
+          <el-col :xs="24" :sm="12" :md="12" :lg="6" :xl="6">
             <el-card shadow="hover" class="learning-card"
               :class="{ 'compact-mode': isCompactMode, 'empty-card': myMarkedCount === 0 }" @click="goToMyMarked">
               <div class="card-content" :class="{ 'compact': isCompactMode }">
@@ -192,7 +192,7 @@
               </div>
             </el-card>
           </el-col>
-          <el-col :xs="12" :sm="12" :md="6" :lg="6" :xl="6">
+          <el-col :xs="24" :sm="12" :md="12" :lg="6" :xl="6">
             <el-card shadow="hover" class="learning-card"
               :class="{ 'compact-mode': isCompactMode, 'empty-card': myNotesCount === 0 }" @click="goToNotesEditor">
               <div class="card-content" :class="{ 'compact': isCompactMode }">
@@ -234,7 +234,7 @@
           <!-- ✅ 这里删除了刷题设置按钮 -->
         </div>
         <el-row :gutter="20">
-          <el-col :xs="12" :sm="12" :md="6" :lg="6" :xl="6">
+          <el-col :xs="24" :sm="12" :md="12" :lg="6" :xl="6">
             <el-card shadow="hover" class="practice-card" :class="{ 'compact-mode': isCompactMode }"
               @click="startPractice('sequential')">
               <div class="practice-icon-wrapper">
@@ -249,7 +249,7 @@
               </div>
             </el-card>
           </el-col>
-          <el-col :xs="12" :sm="12" :md="6" :lg="6" :xl="6">
+          <el-col :xs="24" :sm="12" :md="12" :lg="6" :xl="6">
             <el-card shadow="hover" class="practice-card" :class="{ 'compact-mode': isCompactMode }"
               @click="startPractice('random')">
               <div class="practice-icon-wrapper">
@@ -264,7 +264,7 @@
               </div>
             </el-card>
           </el-col>
-          <el-col :xs="12" :sm="12" :md="6" :lg="6" :xl="6">
+          <el-col :xs="24" :sm="12" :md="12" :lg="6" :xl="6">
             <el-card shadow="hover" class="practice-card" :class="{ 'compact-mode': isCompactMode }"
               @click="startPractice('custom')">
               <div class="practice-icon-wrapper">
@@ -282,7 +282,7 @@
               </div>
             </el-card>
           </el-col>
-          <el-col :xs="12" :sm="12" :md="6" :lg="6" :xl="6">
+          <el-col :xs="24" :sm="12" :md="12" :lg="6" :xl="6">
             <el-card shadow="hover" class="practice-card" :class="{ 'compact-mode': isCompactMode }"
               @click="startPractice('mock')">
               <div class="practice-icon-wrapper">
@@ -1396,5 +1396,25 @@ function goBack() {
 .el-dropdown-menu__item.export-group-label.is-disabled {
   color: #9ca3af;
   opacity: 1;
+}
+
+/*
+ * 抵消 el-row 的 gutter 负外边距（2026-10-27 修）
+ *
+ * ⚠️ 实测：`<el-row :gutter="20">` 会给自身加 `margin: 0 -10px`，
+ *    而这两个区块的父容器没有对应内边距抵消 ——
+ *    于是内容比容器宽 **10px**，`scrollWidth > clientWidth`，
+ *    浏览器给内容区挂一条横向滚动条。
+ *
+ *    四种视口下都恒定多 10px（与视口宽度无关），
+ *    这正是"负边距没被抵消"的典型特征。
+ *
+ * 修法：给区块加与 gutter 等量的左右内边距（10px = gutter/2），
+ *      这样 row 的负外边距正好落进内边距里，不再撑破容器。
+ */
+.my-learning,
+.special-practice {
+  padding-left: 10px;
+  padding-right: 10px;
 }
 </style>

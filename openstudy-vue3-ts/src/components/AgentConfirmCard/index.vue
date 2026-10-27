@@ -1009,6 +1009,37 @@ const previewSummary = computed(() => {
   overflow-wrap: anywhere;
 }
 
+/*
+ * v-html 产生的 <p> 必须"透明"（2026-10-27 修）
+ *
+ * ⚠️ 实测问题（确认卡片截图）：
+ *
+ *   `renderMarkdownWithLatex` 产出的根节点是**块级 <p>**。放进：
+ *     · 列表项「· <span v-html>」 → 圆点独占一行，题干掉下一行，
+ *       items 区出现一串悬空的「·」
+ *     · 键值行（flex 布局）→ <p> 成为 flex item，把「标签 值」挤散
+ *
+ *   这是用户点「确认执行」前最后看到的界面，排版坏了影响很直接。
+ *
+ * 修法：用 `display: contents` 让 <p> 这个盒子**不参与布局**，
+ *      它里面的内容直接并入父级流。
+ *
+ *      ⚠️ 为什么不用 `display: inline`：
+ *         在 flex 容器（`.ac-preview-row`）里，inline 子元素会生成
+ *         一个匿名 flex item，间距行为仍然不对；
+ *         `contents` 才是"这个标签不存在"的正确语义。
+ */
+.ac-preview-item :deep(p),
+.ac-preview-val :deep(p) {
+  display: contents;
+}
+
+/* contents 之后段间距要显式补，否则多段会粘在一起 */
+.ac-preview-item :deep(p + p)::before,
+.ac-preview-val :deep(p + p)::before {
+  content: ' ';
+}
+
 .ac-actions {
   display: flex;
   gap: 10px;
