@@ -82,8 +82,36 @@ def _clean_char(s: str) -> str:
 
 
 def _make_run(text: str) -> ET.Element:
-    """生成一个 m:r（公式里的文本片段）"""
+    """生成一个 m:r（公式里的文本片段）
+
+    ── 为什么要显式指定 Cambria Math（2026-10-27）────────────────
+    原来这里不设字体，于是 Word/LibreOffice 用**正文字体**渲染公式。
+    正文字体（宋体、微软雅黑）**没有数学符号字形**，遇到
+    `→` `∞` `∫` `∈` `′` 这些字符时：
+
+      · Word 里：通常还能回退到别的字体，勉强能看
+      · LibreOffice 转 PDF 时：直接画成 `¿` 和 `˙`（实测）
+
+    在一份高等数学提纲里，这就表现为
+
+        lim ˙_{x→x_0} f(x)=A¿        ← 本该是 lim_{x→x₀} f(x)=A
+
+    用户拿到的 PDF 满屏乱码 —— 而**同一个 docx 用 Word 打开是正常的**，
+    所以这个问题只在"导出 PDF"时才暴露出来。
+
+    Cambria Math 是 Windows 自带的数学字体（`cambria.ttc`），
+    覆盖绝大多数数学符号，也是 Word 公式编辑器的默认字体。
+    """
     r = _el("r")
+
+    # 显式指定数学字体：西文走 Cambria Math，中文回退宋体
+    rpr = ET.SubElement(r, _w("rPr"))
+    rfonts = ET.SubElement(rpr, _w("rFonts"))
+    rfonts.set(_w("ascii"), "Cambria Math")
+    rfonts.set(_w("hAnsi"), "Cambria Math")
+    rfonts.set(_w("cs"), "Cambria Math")
+    rfonts.set(_w("eastAsia"), "宋体")
+
     t = _sub(r, "t")
     # xml:space="preserve" 保证前后空格不被吃掉（\overline{A} \overline{B} 之间的空格）
     t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
@@ -262,8 +290,80 @@ def _convert_node(node: ET.Element) -> Optional[object]:
             sup.append(c)
         return s
 
+    if name == "munder":
+        # `\lim_{x \to 0}`、`\max_{...}` 这类"下方带条件"的结构
+        #
+        # ── 为什么不能走 m:sSub（2026-10-27 实测）────────────────
+        # 之前 `munder` 落到了下方的通用 `msub` 分支，生成
+        # `m:sSub`（「变量 lim 带下标」）。Word 能勉强显示，但
+        # **LibreOffice 转 PDF 时直接画出 `¿`**：
+        #
+        #     lim ¿x →x0 f ( x)=A        ← 本该是 lim_{x→x₀} f(x)=A
+        #
+        # 原因是 `m:sSub` 的语义是"上下标"，而 `lim` 是**函数名**，
+        # 带下标的函数名在 OMML 里必须是 `m:limLow`（限位函数）。
+        #
+        # 判定：底数是纯字母形式的函数名（lim / max / min / sup / inf /
+        # lim sup / lim inf / det / gcd / log / ln / exp）才用 limLow；
+        # 其它 `munder` 保持 sSub —— 别把真正的下标也改了。
+        kids = list(node)
+        base_text = _collect_text(kids[0]).strip() if kids else ""
+        limit_funcs = {
+            "lim", "max", "min", "sup", "inf", "det", "gcd", "log", "ln", "exp",
+            "limsup", "liminf", "arg", "deg", "dim", "ker", "hom",
+        }
+        normalized = base_text.replace(" ", "").lower()
+
+        if normalized in limit_funcs:
+            ll = _el("limLow")
+            e = _sub(ll, "e")
+            for c in (_convert_one_or_many(kids[0]) if kids else []):
+                e.append(c)
+            lim = _sub(ll, "lim")
+            for c in (_convert_one_or_many(kids[1]) if len(kids) > 1 else []):
+                lim.append(c)
+            return ll
+
+        # 非函数名 → 退化成普通下标（保持原行为）
+        s = _el("sSub")
+        e = _sub(s, "e")
+        for c in (_convert_one_or_many(kids[0]) if kids else []):
+            e.append(c)
+        sub = _sub(s, "sub")
+        for c in (_convert_one_or_many(kids[1]) if len(kids) > 1 else []):
+            sub.append(c)
+        return s
+
     if name == "msub":
         kids = list(node)
+
+        # ── `\lim_{x \to 0}` 这类"限位函数"必须用 m:limLow（2026-10-27）──
+        #
+        # `latex2mathml` 把 `\lim_{...}` 输出成 `<msub><mo>lim</mo><...>`，
+        # 如果照搬成 `m:sSub`（"变量 lim 带下标"），LibreOffice 转 PDF
+        # 时会画出 `¿`：
+        #
+        #     lim ¿x →x0 f ( x)=A       ← 本该是 lim_{x→x₀} f(x)=A
+        #
+        # Word 打开是正常的，所以这个问题**只在导出 PDF 时暴露**。
+        #
+        # OMML 规范里，带下标的函数名是 `m:limLow`（e=函数名，lim=下标）。
+        # 判定：底数是纯字母、且属于已知限位函数名。
+        base_text = _collect_text(kids[0]).strip() if kids else ""
+        limit_funcs = {
+            "lim", "max", "min", "sup", "inf", "det", "gcd", "log", "ln", "exp",
+            "limsup", "liminf", "arg", "deg", "dim", "ker", "hom", "Pr",
+        }
+        if base_text.replace(" ", "").lower() in {f.lower() for f in limit_funcs}:
+            ll = _el("limLow")
+            e = _sub(ll, "e")
+            for c in (_convert_one_or_many(kids[0]) if kids else []):
+                e.append(c)
+            lim = _sub(ll, "lim")
+            for c in (_convert_one_or_many(kids[1]) if len(kids) > 1 else []):
+                lim.append(c)
+            return ll
+
         s = _el("sSub")
         e = _sub(s, "e")
         for c in (_convert_one_or_many(kids[0]) if kids else []):

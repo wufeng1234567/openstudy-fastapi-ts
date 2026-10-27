@@ -18,6 +18,7 @@ from app.services.ai.agent.tools.bank_export import BankExportTool
 from app.services.ai.agent.tools.bank_manage import BankManageTool
 from app.services.ai.agent.tools.bank_share_manage import BankShareManageTool
 from app.services.ai.agent.tools.delegate import DelegateTaskTool
+from app.services.ai.agent.tools.document_compose import DocumentComposeTool
 from app.services.ai.agent.tools.english_practice import EnglishPracticeTool
 from app.services.ai.agent.tools.english_wordbook import EnglishWordbookTool
 from app.services.ai.agent.tools.knowledge_base_manage import KnowledgeBaseManageTool
@@ -87,6 +88,17 @@ registry.register(EnglishPracticeTool())
 #    而且**凭空改了用户数据**。用户想要的只是一份能打印的文件。
 #    这个工具给模型一条正确的路，与 `bank_export` 同类（产物是文件，不是查询）。
 registry.register(ReviewSheetTool())
+# —— 2026-10-27 文档编排：让用户通过对话产出排版好的 Word / PDF。
+#    ⚠️ 它与 `bank_export` 是**两个工具**，不能合并成 action：
+#      · `bank_export` 的数据源是**数据库里的题库**（参数是 `bank_id`）；
+#      · `document_compose` 的数据源是**用户给的任意内容**
+#        （口述文字 / AI 生成的结构 / 已上传的文件），产物是通用文档。
+#    混在一起的后果：模型在"用户想要一份通用文档"时去传 `bank_id`，
+#    然后报错重试，白烧一轮 token。
+#
+#    它解决的场景是「用户给一段文字或一个混乱的 Word，我们重新排版」——
+#    在此之前这件事只能靠模型自己拼 Markdown 然后什么都干不了。
+registry.register(DocumentComposeTool())
 
 __all__ = [
     "AgentManageTool",
@@ -94,6 +106,7 @@ __all__ = [
     "BankManageTool",
     "BankShareManageTool",
     "DelegateTaskTool",
+    "DocumentComposeTool",
     "EnglishPracticeTool",
     "EnglishWordbookTool",
     "KnowledgeBaseManageTool",
