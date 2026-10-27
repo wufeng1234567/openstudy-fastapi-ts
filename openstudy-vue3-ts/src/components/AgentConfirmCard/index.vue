@@ -89,7 +89,8 @@
       <span v-if="toolLabel" class="ac-name" :title="toolPath">{{ toolLabel }}</span>
     </div>
 
-    <div class="ac-desc">{{ content }}</div>
+    <!-- 描述也渲染公式：删除/导入题的说明里常带题干摘要 -->
+    <div class="ac-desc" v-html="renderMath(content)"></div>
     <div v-if="destructive" class="ac-warn">此操作不可撤销，请确认后再执行</div>
 
     <!-- 将影响什么：键值行 + 列表逐条，不是把 JSON 拼成一行 -->
@@ -105,11 +106,18 @@
         :class="{ 'ac-preview-row--block': row.block }"
       >
         <span class="ac-preview-key">{{ row.label }}</span>
-        <span class="ac-preview-val" :class="{ 'ac-preview-val--block': row.block }">{{ row.text }}</span>
+        <!--
+          ⚠️ 这里可能是**题干原文**（questionText），必须渲染公式
+          （详见 `renderMath` 的注释）。
+        -->
+        <span class="ac-preview-val" :class="{ 'ac-preview-val--block': row.block }"
+          v-html="renderMath(row.text)"></span>
       </div>
       <template v-for="list in previewLists" :key="list.key">
         <div class="ac-preview-key ac-preview-key--list">{{ list.heading }}</div>
-        <div v-for="(item, i) in list.items" :key="i" class="ac-preview-item">· {{ item }}</div>
+        <div v-for="(item, i) in list.items" :key="i" class="ac-preview-item">
+          · <span v-html="renderMath(item)"></span>
+        </div>
       </template>
     </div>
 
@@ -146,6 +154,25 @@ import { computed, watch } from 'vue'
 import AgentDraftCard from '@/components/AgentDraftCard/index.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import { useCollapseBar, COLLAPSE_BAR_STYLE } from '@/composables/useCollapseBar'
+import { renderMarkdownWithLatex } from '@/utils/latex'
+
+/**
+ * 把可能含 LaTeX 的文本渲染成 HTML（2026-10-27 加）
+ *
+ * ⚠️ 修的问题：导入题库的确认卡片里，`preview.questionText` 是**题干原文**
+ *    （后端 `question_manage.py` 里 `preview["questionText"] = …[:80]`）。
+ *    题干常带 `$P(A|B)=\frac{P(AB)}{P(B)}$` 这种公式，
+ *    用插值显示出来就是一屏反斜杠。
+ *
+ *    用户原话：「不要有任何数学代码给用户看到 要多是渲染过的」。
+ *
+ * 安全性：`renderMarkdownWithLatex` 对所有非公式文本走 `escapeHtmlText`，
+ * 公式由 KaTeX 生成（`throwOnError:false`），不产出任意 HTML。
+ */
+function renderMath(text: unknown): string {
+  const s = String(text ?? '')
+  return s ? renderMarkdownWithLatex(s) : ''
+}
 
 /*
  * 吸顶折叠条（2026-10-22）
@@ -912,6 +939,37 @@ const previewSummary = computed(() => {
   min-width: 0;
   color: #374151;
   overflow-wrap: anywhere;
+}
+
+/*
+ * v-html 渲染的公式块样式（2026-10-27）
+ *
+ * ⚠️ `renderMarkdownWithLatex` 会产出 <p> / <div>，默认带块级外边距，
+ *    会把确认卡片的键值行撑高、行距变松。
+ *    这里压平，只保留最基本的行内节奏。
+ */
+.ac-desc :deep(p),
+.ac-preview-val :deep(p),
+.ac-preview-item :deep(p) {
+  margin: 0;
+}
+
+.ac-desc :deep(p + p),
+.ac-preview-val :deep(p + p) {
+  margin-top: 4px;
+}
+
+/* 公式字号与正文字号对齐：KaTeX 默认比 13px 正文略大，会显得突兀 */
+.ac-desc :deep(.katex),
+.ac-preview-val :deep(.katex),
+.ac-preview-item :deep(.katex) {
+  font-size: 1.02em;
+}
+
+/* 行内公式在长题干里不应换行断开 */
+.ac-preview-val :deep(.katex),
+.ac-preview-item :deep(.katex) {
+  white-space: nowrap;
 }
 
 /* 长值行：`column` 让「标签」与「值」自然上下排（标签不再占那 60px 定宽） */

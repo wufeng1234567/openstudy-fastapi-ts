@@ -175,10 +175,23 @@
           type="button"
           class="sb-conv__item"
           :class="{ 'is-active': isSessionActive(s) }"
-          :title="sessionStore.title(s)"
+          :title="plainTitle(sessionStore.title(s))"
           @click="openSession(s)"
         >
-          <span class="sb-conv__name">{{ sessionStore.title(s) }}</span>
+          <!--
+            会话标题去掉 LaTeX 记号（2026-10-27 修）
+
+            ⚠️ 实测问题：会话标题取自用户第一句话，
+               用户问「求极限 $\lim_{x\to 0}\frac{\sin x}{x}$」时
+               侧栏显示成 `把这道题排成好看的 Word：求极限 $\lim_{x\to`，
+               **一屏反斜杠**。用户原话：「不要有任何数学代码给用户看到」。
+
+            ⚠️ 这里**刻意不渲染公式**（与聊天正文不同）：
+               侧栏宽度只有 ~200px，一个分式 KaTeX 就能撑破布局或压掉时间戳。
+               标题是"用来认出这是哪次对话"的，纯文字足够。
+               所以做法是**剥掉 LaTeX 记号只留可读文字**。
+          -->
+          <span class="sb-conv__name">{{ plainTitle(sessionStore.title(s)) }}</span>
           <span class="sb-conv__meta">{{ formatSessionTime(s.updatedAt) }}</span>
           <!-- 删除只在 hover / 当前项出现，避免每条都挂一个叉 -->
           <span
@@ -256,6 +269,47 @@ import OsIcon from '@/components/OsIcon/index.vue'
 import OsLogo from '@/components/OsLogo/index.vue'
 
 defineOptions({ name: 'FrontSidebar' })
+
+/**
+ * 会话标题去 LaTeX 记号（2026-10-27 加）
+ *
+ * ⚠️ 实测问题：会话标题是用户第一句话的前缀。
+ *    用户问「把这道题排成好看的 Word：求极限 $\lim_{x\to 0}\frac{\sin x}{x}$」时，
+ *    侧栏显示成 `把这道题排成好看的 Word：求极限 $\lim_{x\to` —— 一屏反斜杠。
+ *    用户原话：「不要有任何数学代码给用户看到」。
+ *
+ * 处理策略（与聊天正文不同，**刻意不渲染公式**）：
+ *   侧栏宽约 200px，一个分式 KaTeX 就能撑破布局或压掉时间戳。
+ *   标题的用途是"认出这是哪次对话"，纯文字足够。
+ *   所以**剥掉记号、只留可读文字**：
+ *
+ *     `$\lim_{x\to 0}\frac{\sin x}{x}$`  →  `lim x→0`
+ *
+ * ⚠️ 只做展示，不改存储的标题 —— 用户回到对话里仍能看到完整原文。
+ */
+function plainTitle(raw: string): string {
+  if (!raw) return ''
+  return raw
+    // 块级/行内定界符先去掉
+    .replace(/\$\$?/g, '')
+    .replace(/\\[()[\]]/g, '')
+    // 常见数学命令 → 可读写法（顺序重要：长的先匹配）
+    .replace(/\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, '$1/$2')
+    .replace(/\\sqrt\s*\{([^{}]*)\}/g, '√$1')
+    .replace(/\\lim\b/g, 'lim')
+    .replace(/\\(sin|cos|tan|log|ln|exp|max|min|int|sum)\b/g, '$1')
+    .replace(/\\to\b/g, '→')
+    .replace(/\\times\b/g, '×')
+    .replace(/\\cdot\b/g, '·')
+    .replace(/\\(le|leq)\b/g, '≤')
+    .replace(/\\(ge|geq)\b/g, '≥')
+    .replace(/\\infty\b/g, '∞')
+    .replace(/\\[a-zA-Z]{2,15}/g, '')   // 其余命令直接去掉
+    .replace(/[\^_]\{?([^{}]*)\}?/g, '$1')  // 上下标只留内容
+    .replace(/[{}\\]/g, '')             // 残余结构符号
+    .replace(/\s+/g, ' ')
+    .trim()
+}
 
 const props = defineProps<{
   collapsed: boolean
@@ -650,7 +704,7 @@ async function openSession(s: any) {
 
 async function removeSession(s: any) {
   try {
-    await ElMessageBox.confirm(`确定删除「${sessionStore.title(s)}」吗？`, '删除会话', {
+    await ElMessageBox.confirm(`确定删除「${plainTitle(sessionStore.title(s))}」吗？`, '删除会话', {
       confirmButtonText: '删除',
       cancelButtonText: '取消',
       type: 'warning'

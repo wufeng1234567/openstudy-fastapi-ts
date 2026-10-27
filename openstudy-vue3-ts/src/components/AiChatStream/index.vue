@@ -221,7 +221,23 @@
         <div class="message-content" v-else>
           <!-- 已发送的附件（图片可点击放大，文档显示扩展名） -->
           <ChatAttachmentList v-if="msg.attachments && msg.attachments.length" :items="msg.attachments" compact />
-          <div v-if="msg.content" class="message-text">{{ msg.content }}</div>
+          <!--
+            用户气泡也渲染公式（2026-10-27 修）
+
+            ⚠️ 原来是 `{{ msg.content }}` 插值，用户自己打的
+               `$P(A)=0.4$` / `\frac{P(AB)}{P(B)}` 会**原样显示源码**。
+
+               用户原话：「不要有任何数学代码给用户看到」。
+
+               虽然这是用户自己输入的内容，但用户发出来之后看到的就是
+               "我自己写的东西变成了乱码" —— 观感上等同于系统坏了。
+               而且用户经常是**从别处复制**一段带 LaTeX 的题目进来。
+
+            复用 AI 侧同一个 `renderAgentMarkdown`（含 DOMPurify 白名单），
+            保证两边渲染结果一致：同一段公式在提问气泡和回答正文里长得一样。
+          -->
+          <div v-if="msg.content" class="message-text rendered-md"
+            v-html="renderAgentMarkdown(msg.content)"></div>
           <!--
             用户消息的复制按钮（用户 2026-09-23 要求：LLM 那边和用户那边都要有复制按钮）。
             复制的是**这一条用户消息的 `content`**（不是整轮、也不是附件）；
@@ -1222,6 +1238,32 @@ defineExpose({
   font-size: 14.5px;
   word-wrap: break-word;
   overflow-wrap: break-word;
+}
+
+/*
+ * 用户气泡保留原始空白（2026-10-27 修）
+ *
+ * ⚠️ 实测问题（S2 截图确认）：
+ *
+ * 用户粘贴一段 **Tab 分隔的表格** 进对话：
+ *
+ *     名称<TAB>数量<TAB>单价
+ *     苹果<TAB>10<TAB>5.0
+ *
+ * 在气泡里被显示成竖排散开的几行「名称 数量 单价 / 苹果 10 5.0 / 20 5.5」——
+ * **表格结构完全丢失**，看起来像用户自己输入错了。
+ *
+ * 原因是 HTML 默认把 Tab 折叠成单个空格、把连续空格压成一个。
+ * 用户明明贴的是对齐好的表，看到自己发的消息变了样，会觉得"系统坏了"。
+ *
+ * 用 `pre-wrap`：保留换行与 Tab，同时仍然自动折行（长文本不会溢出）。
+ *
+ * ⚠️ 只加在**用户气泡**（`.message-content` 无 `.is-plain`），
+ *    不加在 AI 正文（`.is-plain`）：AI 正文走 Markdown 渲染，
+ *    表格已经是真 <table>，在那里开 pre-wrap 反而会把 Markdown 源码缩进显示出来。
+ */
+.message-content:not(.is-plain) .message-text.rendered-md {
+  white-space: pre-wrap;
 }
 
 .msg-copy-btn {

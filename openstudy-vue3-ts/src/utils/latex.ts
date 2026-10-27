@@ -977,8 +977,77 @@ function escapeHtmlText(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+/**
+ * 去掉"未闭合公式尾巴"，避免半截 LaTeX 源码印到页面上
+ *
+ * ⚠️ 实测问题（2026-10-27，S4 场景截图确认）：
+ *
+ * 模型输出被截断成 `三、根式化简: $\sqrt` —— 有个**未闭合的 `$`**
+ * 加半截命令。渲染后页面上就印出 `$\sqrt`，用户看到的就是"数学代码"。
+ *
+ * 触发场景很常见：流式被中断、token 耗尽、用户点了停止。
+ *
+ * 处理原则：**宁可少渲染一个未完成的公式，也不要把它当源码印出来。**
+ * 做法是把未闭合定界符之后的尾巴整段当普通文字，并去掉那个孤立定界符。
+ *
+ * 复用 `findUnclosedDelimiterStart()`（它已经正确区分了 `$$` / `$` / `\(`）。
+ */
+function _dropUnclosedMathTail(text: string): string {
+  const start = findUnclosedDelimiterStart(text)
+  if (start < 0) return text
+
+  const head = text.slice(0, start)
+  const tail = text.slice(start)
+
+  // 尾巴里可能还夹着裸命令（`\sqrt` / `\lim`），一并清掉，
+  // 只保留可读的文字部分。
+  const cleanedTail = tail
+    // 去掉开头的定界符（`$` / `$$` / `\(` / `\[`）
+    .replace(/^(\$\$?|\\\(|\\\[)/, '')
+    // 去掉反斜杠命令本身
+    .replace(/\\[a-zA-Z]{2,15}\s*/g, '')
+    // 去掉裸露的上下标标记
+    .replace(/[\^_]\{?/g, '')
+
+  /*
+   * 公式结构已破，残余的花括号/括号/上下标标记没有阅读价值。
+   *
+   * ⚠️ 实测：`$\frac{a}{b` 清掉命令后剩 `{a}{b`，
+   *    页面上出现 `{a}{b` 这种乱码，比原样显示 `$\frac{a}{b` 更糟 ——
+   *    用户完全看不出那是什么。
+   *
+   * 所以：去掉这些结构符号后，若剩下的只是碎片（无中文/无完整单词），
+   *      整段丢弃。宁可少显示，也不要显示垃圾。
+   */
+  const structural = cleanedTail.replace(/[{}\[\]()^_\s]/g, '')
+  if (structural.length < 2) {
+    return head
+  }
+
+  // 还剩一点内容：清掉结构符号后保留可读部分
+  const readable = cleanedTail.replace(/[{}\[\]()^_]/g, '').trim()
+  return readable ? head + readable : head
+}
+
 export function renderMarkdownWithLatex(text: string): string {
-  if (!text) return ''
+  /*
+   * 半截公式的兜底（2026-10-27 修）
+   *
+   * ⚠️ 实测问题（S4 场景截图确认）：
+   *
+   * 模型输出的最后一段被截断成 `三、根式化简: $\sqrt` ——
+   * 有一个**未闭合的 `$`** 和半截命令。渲染结果是页面上直接印出
+   * `$\sqrt`，用户看到的就是"数学代码"。
+   *
+   * 这种情况在真实对话里很常见：流式输出被中断、模型 token 耗尽、
+   * 用户点了停止。`renderStreamingMath` 早就处理了（它本来就是为半截设计的），
+   * 但**最终态渲染**这条路径没处理。
+   *
+   * 做法：把最后一个未闭合定界符之后的尾巴整段当普通文字，
+   *      并把那个孤立的 `$` / `\(` 去掉 —— 宁可少渲染一个未完成的公式，
+   *      也不要把它当源码印出来。
+   */
+  const cleaned = _dropUnclosedMathTail(text)
 
   const stash: string[] = []
   const PH = (i: number) => `\u0000MATH${i}\u0000`
@@ -997,7 +1066,7 @@ export function renderMarkdownWithLatex(text: string): string {
     return PH(stash.length - 1)
   }
 
-  let src = text
+  let src = cleaned
     // ①-a 块级公式 → 占位符（`$$...$$` 与 `\[...\]` 两种写法都认）
     .replace(BLOCK_MATH_RE, (_, formula) => stashMath(formula, true))
     .replace(BLOCK_PAREN_MATH_RE, (_, formula) => stashMath(formula, true))
