@@ -522,6 +522,43 @@ export function useAgentChat() {
   const messages = ref<AgentChatMessage[]>([])
   const isGenerating = ref(false)
 
+  /*
+   * ── 运行阶段状态（2026-10-27 新增，供 `AgentRunStatus` 展示）──────
+   *
+   * 设计要点：**常驻 + 实时计时 + 分阶段**。
+   *
+   * 实测动机：真实 3000 字任务里，思考块在 8.1 秒收口折叠后，
+   * 屏幕内容从 1612 字骤降到 86 字，直到 30.5 秒才出现下一段文字 ——
+   * 中间 **21.3 秒界面完全静止**，这就是用户说的"黑箱"。
+   *
+   * 既有提示为什么不解决问题：`waiting` 一闪即逝（真实内容一到就被替换）、
+   * `progress` 只在文档解析等少数环节发、推理块收口后默认折叠、
+   * 工具卡片只有真调工具才有 —— 各管一段，没有一条是常驻的。
+   */
+  /** 本轮开始时间（ms），算耗时用 */
+  const runStartedAt = ref(0)
+  /** 最近一次"有内容在动"的时间（ms），用来判断是否进入停滞等待 */
+  const runLastActivityAt = ref(0)
+  /** 当前阶段 */
+  const runPhase = ref<'connecting' | 'understanding' | 'thinking' | 'composing' | 'tool' | 'done' | 'error'>('connecting')
+  /** 当前正在执行的工具名 */
+  const runTool = ref('')
+  /**
+   * 本轮是否**已经调用过工具**
+   *
+   * 用途：区分"中间说明"和"真正的正文"。
+   * 模型常先吐一句"我来帮你排版"，再去调工具 —— 那句也是 `text` 事件。
+   * 只有调过工具之后的 text 才算正文阶段，否则状态条会过早显示"写正文"。
+   */
+  const runToolSeen = ref(false)
+  /** 本轮是否以失败结束 */
+  const runFailed = ref(false)
+
+  /** 记录一次"有进展"。状态条据此判断是否停滞（超过 2.5 秒没动静就切动效） */
+  const touchActivity = () => {
+    runLastActivityAt.value = Date.now()
+  }
+
   /**
    * 本轮的轮次 id（**发给后端的那个**）
    *
@@ -1279,12 +1316,41 @@ export function useAgentChat() {
         break
 
       case 'text':
+        /*
+         * 正文在流。
+         *
+         * ⚠️ 阶段不能只看"有没有 text 事件"（2026-10-27 实测踩坑）：
+         *    模型经常先吐一句中间说明（比如"我来把这份指南整理成 Word 文档"），
+         *    **再**去调工具。那句话也是 `text` 事件，如果直接判成"正在写正文"，
+         *    状态条会在工具还没开始时就显示"写正文完毕"的语义 —— 误导用户。
+         *
+         * 判据：本轮**已经调用过工具**之后的 text 才算真正在写正文；
+         *       之前那些 text 仍算"思考/说明"阶段。
+         *
+         * 实测依据：截图里 14 秒时显示"正在写正文"，但屏幕上只有
+         *          「我来把这份指南整理成…」这一句说明，正文根本没开始。
+         */
+        if (runToolSeen.value) {
+          runPhase.value = 'composing'
+        } else if (runPhase.value === 'connecting' || runPhase.value === 'understanding') {
+          // 还没调工具就先说话了：这是思考/说明阶段，不是写正文
+          runPhase.value = 'thinking'
+        }
+        touchActivity()
         appendText(event.content || '')
         break
 
       case 'waiting':
         // 每一轮「模型思考」开始时都会发（首轮 + 每次工具执行之后）→ 显示等待占位；
         // 真实内容（正文 / 工具卡 / 提示）一到就被 clearPlaceholder 摘掉。
+        //
+        // ⚠️ 阶段只在"还没进入思考/正文"时设为 understanding：
+        //    每次工具执行完都会再发一条 waiting，那时如果把阶段打回 understanding，
+        //    状态条会在"写正文"和"理解需求"之间来回跳，用户看着很乱。
+        if (runPhase.value === 'connecting') {
+          runPhase.value = 'understanding'
+        }
+        touchActivity()
         closeText()
         showPlaceholder(event.message || '')
         break
@@ -1331,15 +1397,35 @@ export function useAgentChat() {
         //    那套语义**从来没人发过**（后端 loop.py / chat_engine.py 都不发 thinking 事件），
         //    是死代码。真正承担「中间说明」的是 `waiting`（走占位气泡）和
         //    `warning`（走 agent_note），所以这里改成推理块不会抢它们的位置。
+        //
+        // ⚠️ 阶段：推理增量是"还在思考"，但**不要**把已经从 tool 回来的状态打回去。
+        //    一次提问里模型可能"思考 → 调工具 → 再思考 → 写正文"，
+        //    状态条应该体现**当前**在干什么。
+        if (runPhase.value !== 'tool') {
+          runPhase.value = 'thinking'
+        }
+        // 这是最容易让用户以为卡死的阶段：推理可能连续滚几十秒都没有正文。
+        // 每次增量都刷新活动时间，状态条据此知道"其实一直在动"。
+        touchActivity()
         appendReasoning(event.content || '')
         break
 
       case 'tool_start':
+        runPhase.value = 'tool'
+        runTool.value = event.tool || ''
+        // 记住"本轮调过工具"：之后的文本才算正文（见 `case 'text'` 的注释）
+        runToolSeen.value = true
+        touchActivity()
         // `delegate_task` 是内部机制，不建工具卡片（见 DELEGATE_TOOL_NAME 注释）
         if ((event.tool || '') !== DELEGATE_TOOL_NAME) pushTool(event)
         break
 
       case 'tool_result':
+        // 工具跑完 ≠ 任务结束：模型还要再想一轮。这里回到 thinking，
+        // 让状态条显示「正在深度思考…」而不是停在「正在调用 XX」上（那会显得卡住）。
+        runPhase.value = 'thinking'
+        runTool.value = ''
+        touchActivity()
         if ((event.tool || '') !== DELEGATE_TOOL_NAME) fillTool(event)
         break
 
@@ -1399,11 +1485,17 @@ export function useAgentChat() {
         break
 
       case 'error':
+        runFailed.value = true
+        runPhase.value = 'error'
+        touchActivity()
         errors.value.push(String(event.message || 'Agent 执行失败'))
         pushNote('error', event.message || 'Agent 执行失败')
         break
 
       case 'done':
+        // 终态：状态条从"跑动"切成"完成"，不再走表
+        runPhase.value = 'done'
+        touchActivity()
         clearPlaceholder()
         if (typeof event.answer === 'string' && event.answer) {
           // done.answer 是最终全文：若正文气泡已有内容就整体替换，避免重复
@@ -1467,6 +1559,30 @@ export function useAgentChat() {
 
     isGenerating.value = true
     controller = new AbortController()
+
+    /*
+     * ── 运行阶段推断（2026-10-27 新增）──────────────────────────────
+     *
+     * 目的：给「运行状态条」(`AgentRunStatus`) 提供阶段信息。
+     *
+     * ⚠️ 为什么在前端推断，而不是让后端加事件：
+     *    后端已发的 `waiting` / `thinking` / `tool_start` / `tool_result` / `text`
+     *    已经足够拼出阶段。加新事件要同步改双链路（还有 ds-free 那条），
+     *    成本高且容易漂移；前端推断只有一个真值来源：**最近发生了什么事件**。
+     *
+     * 实测动机（真实 3000 字任务，31 秒采样）：
+     *    8116ms  思考块收口折叠，屏幕内容从 1612 字骤降到 86 字
+     *    30474ms 才出现下一段文字 → **连续 21.3 秒界面完全静止**
+     *    既有提示（waiting / progress / 推理块）都不常驻，各管一段，
+     *    中间那段"模型在长时间输出但没有正文"的时期就成了黑箱。
+     */
+    runStartedAt.value = Date.now()
+    runLastActivityAt.value = Date.now()
+    runPhase.value = 'connecting'
+    runTool.value = ''
+    runToolSeen.value = false
+    runFailed.value = false
+
     // ⚠️ 新的一次提问：后端那边计数从 0 重新开始 → 本轮快照也必须归零。
     //    不归零的话，新一轮的增量会算成负数（本轮小值 − 上轮大值），
     //    把会话累计往回拉 —— 那正是「状态条被刷新掉」的另一种表现。
@@ -1523,6 +1639,24 @@ export function useAgentChat() {
     } finally {
       isGenerating.value = false
       controller = null
+      /*
+       * 状态条收尾（2026-10-27）
+       *
+       * ⚠️ 必须在这里兜底，不能只靠 `done` 事件：
+       *    · 用户主动停止（`stop()`）不会走 `done`；
+       *    · 网络失败也可能不发 `done`。
+       *    `finally` 是成功/报错/中断**都必然经过**的那一个点（同下方 turn_end 的理由）。
+       *
+       * ⚠️ 不把"没收到 done"一律当失败：
+       *    用户主动点停止是**正常操作**，标成失败会在界面上留一条红色状态条，
+       *    像是出了故障。所以只有"确实出错"（`error` 事件已置位）才算失败，
+       *    其余未收口的情况按"中断"处理 —— 状态条会显示「任务中断」但用中性色。
+       */
+      if (runPhase.value !== 'done' && runPhase.value !== 'error') {
+        runPhase.value = 'error'
+        // `runFailed` 保持不变：真的报过错才为 true，用户主动停止时为 false
+      }
+      touchActivity()
       clearPlaceholder()
       closeText()
       // 收口思考块：跑完（成功/报错/中断）它都该折起来，否则会一直停在「正在思考…」
@@ -1794,6 +1928,17 @@ export function useAgentChat() {
     // 状态
     messages,
     isGenerating,
+    /*
+     * 运行阶段（2026-10-27 新增）—— 供「运行状态条」展示
+     *
+     * 这四个一起读才有意义：阶段说明"在干什么"，
+     * 开始时间 + 最后活动时间让状态条能显示"等了多久"和"是否停滞"。
+     */
+    runPhase,
+    runTool,
+    runStartedAt,
+    runLastActivityAt,
+    runFailed,
     tools,
     activeModel,
     metaWarnings,

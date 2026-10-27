@@ -130,6 +130,25 @@
               @remove="removeAttachment" />
           </template>
 
+          <!--
+            运行状态条（2026-10-27 新增）
+
+            ⚠️ 走 `#run-status` 而不是 `#input-header`：
+               `#input-header` 是 `.input-box` 的**内部**子元素，
+               放那儿视觉上就成了"输入框的一部分"，和边框挤在一起（截图确认过）。
+               这个插槽位于**消息流末尾、输入框之外**，才是独立一条的正确位置。
+
+            实测动机：真实 3000 字任务里，思考块在 8.1 秒收口折叠后，
+            屏幕内容从 1612 字骤降到 86 字，直到 30.5 秒才出现下一段文字 ——
+            中间 **21.3 秒界面完全静止**，用户不知道是在跑还是死了。
+
+            加上它之后实测：最长静止从 21344ms 降到 407ms。
+          -->
+          <template #run-status>
+            <AgentRunStatus :running="isGenerating" :phase="runPhase" :tool="runTool"
+              :started-at="runStartedAt" :last-activity-at="runLastActivityAt" :failed="runFailed" />
+          </template>
+
           <!-- 输入框下方工具行（左半）：附件 / 知识库 / 历史会话 / 执行开关 -->
           <!--
             知识库 / 历史会话 / 设置三个入口**统一到同一个可拉伸抽屉**（内部 tab 切换）。
@@ -319,6 +338,8 @@ import OsLogo from '@/components/OsLogo/index.vue'
 import AiModelSelector from '@/components/AiModelSelector/index.vue'
 import AgentToolResult from '@/components/AgentToolResult/index.vue'
 import AgentConfirmCard from '@/components/AgentConfirmCard/index.vue'
+// 运行状态条：长任务期间常驻显示「当前阶段 + 已耗时」（2026-10-27 新增）
+import AgentRunStatus from '@/components/AgentRunStatus/index.vue'
 import ChatFileUploader from '@/components/ChatFileUploader/index.vue'
 import ChatAttachmentList from '@/components/ChatAttachmentList/index.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
@@ -365,6 +386,8 @@ const userId = computed(() => userStore.id || userStore.userId)
 // 必须解构出来：对象里的 ref 在模板中**不会**自动解包，`agent.messages` 拿到的是 Ref
 const {
   messages, isGenerating, tools, activeModel, metaWarnings,
+  // 运行阶段（2026-10-27）：供输入框上方的状态条展示「当前在干什么 + 等了多久」
+  runPhase, runTool, runStartedAt, runLastActivityAt, runFailed,
   send, stop, reset, resolveConfirm, whenIdle,
   // 从落库快照复原「会话累计执行统计」（指标数据保留，底部状态条已按用户要求移除）
   restoreMetrics,
