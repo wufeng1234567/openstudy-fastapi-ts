@@ -204,26 +204,48 @@ class DocumentComposeTool(AgentTool):
             note = f"（内容超过 {MAX_CONTENT_CHARS} 字，已截取前 {MAX_CONTENT_CHARS} 字）"
 
         # ── 按来源产出 ──
+        #
+        # ⚠️ `svc` 必须在这里导入：后面 outline / text / 重排三条分支都用它。
+        #    原来写在 elif 内部，导致前面先用的分支 UnboundLocalError。
+        from app.services import doc_compose_service as svc
+
         try:
             if source == "file":
                 result = _compose_from_file(file_path, title=title, theme=theme,
                                             cover=cover, toc=toc, want_pdf=want_pdf)
             elif source == "outline":
-                import json
-                try:
-                    spec_dict = json.loads(str(content))
-                except json.JSONDecodeError as e:
-                    return fail(
-                        f"content 不是合法 JSON：{e}。"
-                        "source='outline' 时 content 必须是 JSON 对象字符串；"
-                        "若你想直接排版一段文字，请把 source 改成 'text'。"
+                # ⚠️ 兼容 dict / JSON 字符串 / 被模型写坏的 JSON（2026-10-27 修）
+                #
+                # 用户反馈：「然后他反复报错 重试」
+                #
+                # 根因：`source='outline'` 要求 content 是**JSON 字符串**，
+                # 但工具参数本身已经是 JSON 了，模型很自然地直接传一个**对象**
+                # 或 Markdown 代码块包裹的字符串，于是 `json.loads(str(dict))`
+                # 得到 `"{'title': …}"`（单引号）→ 必定 JSONDecodeError → 重试 → 又错。
+                #
+                # 实测那段对话里连续自我纠正了 2 次才成功，用户全程看着报错。
+                #
+                # 现在三条路都认：
+                #   ① 已经是 dict / list → 直接用
+                #   ② 字符串 → 先剥 ```json 围栏，再解析
+                #   ③ 仍失败但看起来像 Markdown → 自动降级按 text 排（不是报错）
+                spec_dict = _coerce_spec_content(content)
+                if spec_dict is None:
+                    # ③ 降级：把这段内容当成 Markdown 排
+                    #
+                    #    ⚠️ 不报错。用户要的是"一份好看的文档"，
+                    #       outline 与 text 的区别对用户毫无意义，
+                    #       能排出结果就比让他看着报错重试强。
+                    result = svc.compose_from_markdown(
+                        str(content), title=title, theme=theme,
+                        cover=cover, toc=toc, want_pdf=want_pdf,
                     )
-                from app.services import doc_compose_service as svc
-                if author and not spec_dict.get("author"):
-                    spec_dict["author"] = author
-                result = svc.compose_from_spec(spec_dict, want_pdf=want_pdf)
+                    note += "（内容被当作 Markdown 排版；如需精确控制结构，可用 JSON 结构描述）"
+                else:
+                    if author and isinstance(spec_dict, dict) and not spec_dict.get("author"):
+                        spec_dict["author"] = author
+                    result = svc.compose_from_spec(spec_dict, want_pdf=want_pdf)
             else:
-                from app.services import doc_compose_service as svc
                 result = svc.compose_from_markdown(
                     str(content), title=title, theme=theme,
                     cover=cover, toc=toc, want_pdf=want_pdf,
@@ -283,8 +305,29 @@ class DocumentComposeTool(AgentTool):
         # 现在两者都给：
         #   · 顶层 downloadUrl 等 → 前端卡片直接可用
         #   · files 数组        → 保留给需要多文件（docx+pdf）的场景
-        primary = files[0] if files else None
+        #
+        # ⚠️ 主文件必须**按用户要的格式**选（2026-10-27 修的真缺陷）
+        #
+        # 用户原话：「然后他说有一个pdf下载入口 我没看到有」
+        #
+        # 根因：`files` 里 docx 总是先 append、pdf 后 append，
+        # 而这里取 `files[0]` —— 于是 `format='pdf'` 时
+        # `downloadUrl` 指向 **.docx**、`format` 还硬写成 `"docx"`。
+        # 前端产物卡片据此渲染，用户点下载拿到的是 Word，
+        # 而模型在回复里说的是"PDF 已生成"。
+        #
+        # 现在：用户要 pdf 就把 pdf 当主文件；pdf 生成失败则回退 docx
+        # 并把原因带出去（不能假装 PDF 有）。
         pdf_file = next((f for f in files if f["type"] == "pdf"), None)
+        docx_file = next((f for f in files if f["type"] == "docx"), None)
+
+        if fmt == "pdf" and pdf_file:
+            primary, primary_fmt = pdf_file, "pdf"
+        elif fmt == "both" and pdf_file:
+            # both：主文件给 pdf（那是"最终交付物"形态），docx 仍可另取
+            primary, primary_fmt = pdf_file, "pdf"
+        else:
+            primary, primary_fmt = docx_file or (files[0] if files else None), "docx"
 
         return ok(
             message="；".join(summary_bits) + note,
@@ -292,10 +335,14 @@ class DocumentComposeTool(AgentTool):
                 "files": files,
                 "downloadUrl": primary["url"] if primary else "",
                 "fileName": primary["name"] if primary else "",
-                "format": "docx",
+                "format": primary_fmt,
                 "fileSize": primary["size"] if primary else 0,
                 "fileSizeText": _human_size(primary["size"]) if primary else "",
-                # PDF 单独给一份，前端可以再放一个按钮
+                # docx 单独给一份：用户想继续编辑时要用
+                "docxDownloadUrl": docx_file["url"] if docx_file else "",
+                "docxFileName": docx_file["name"] if docx_file else "",
+                "docxFileSizeText": _human_size(docx_file["size"]) if docx_file else "",
+                # PDF 单独给一份（主文件可能就是它；重复给便于前端统一读）
                 "pdfDownloadUrl": pdf_file["url"] if pdf_file else "",
                 "pdfFileName": pdf_file["name"] if pdf_file else "",
                 "pdfFileSizeText": _human_size(pdf_file["size"]) if pdf_file else "",
@@ -319,6 +366,64 @@ def _normalize_theme(raw: Any) -> str:
     if not s:
         return "clean"
     return THEME_ALIASES.get(s, "clean")
+
+
+def _coerce_spec_content(content: Any) -> Optional[Dict[str, Any]]:
+    """把 `content` 归一成 DocumentSpec 字典；实在不是结构化内容则返回 None
+
+    这是为了消掉一类**反复失败重试**（2026-10-27 实测）：
+
+        模型传 content = {title: "...", blocks: [...]}   ← 对象
+        → `json.loads(str(content))` 得到 "{'title': ...}"（单引号，非 JSON）
+        → JSONDecodeError → 重试 → 又传对象 → 又错
+
+    工具参数**本身就是 JSON**，要求再套一层 JSON 字符串是反直觉的，
+    模型写错几乎是必然而不是偶然。
+
+    支持四种形态：
+      ① dict / list          → 直接接受
+      ② 纯 JSON 字符串        → json.loads
+      ③ ```json 围栏包裹       → 剥围栏后 json.loads
+      ④ 其他（像是 Markdown）  → 返回 None，调用方降级按 text 排
+    """
+    import json
+    import re
+
+    if isinstance(content, (dict, list)):
+        return content if isinstance(content, dict) else {"blocks": content}
+
+    if not isinstance(content, str):
+        return None
+
+    text = content.strip()
+    if not text:
+        return None
+
+    # 剥 ```json / ``` 围栏（模型很爱包一层）
+    m = re.match(r"^```(?:json|JSON)?\s*\n(.*?)\n?```\s*$", text, re.S)
+    if m:
+        text = m.group(1).strip()
+
+    if not (text.startswith("{") or text.startswith("[")):
+        return None
+
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        # 第五种情况：单引号 / 尾逗号这类"近似 JSON"，
+        # 用 ast 兜一次（它对 Python 字面量容错更好）。
+        try:
+            import ast
+
+            parsed = ast.literal_eval(text)
+        except (ValueError, SyntaxError):
+            return None
+
+    if isinstance(parsed, dict):
+        return parsed
+    if isinstance(parsed, list):
+        return {"blocks": parsed}
+    return None
 
 
 def _as_bool(v: Any) -> bool:

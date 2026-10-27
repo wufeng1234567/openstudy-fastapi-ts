@@ -36,7 +36,23 @@
         <OsIcon v-else-if="status === 'cancelled'" name="minus" :size="13" />
         <OsIcon v-else name="alert" :size="13" />
       </span>
-      <span class="at-summary">{{ summary }}</span>
+      <!--
+        摘要渲染公式（2026-10-27 修）
+
+        ⚠️ 用户反馈：「输出的还是带代码的文字 而不是被渲染成对应数学符号的文字」
+
+        根因：这里原来是 `{{ summary }}` 插值，只输出纯文本。
+        而摘要内容经常带题目原文（`P(AB)=P(\overline{A}\overline{B})`），
+        于是用户看到的是带反斜杠的 LaTeX 源码。
+
+        `AgentToolDetail` 早就用 `renderMarkdownWithLatex` 渲染了，
+        但**摘要是另一个位置**，漏了。
+
+        ⚠️ 用 v-html 的安全前提：`renderMarkdownWithLatex` 内部对
+        `<` `>` `&` 做了转义（它自己产出的只有 <p>/<strong>/<span class="katex">），
+        内容也来自我们自己的工具返回值，不是任意用户 HTML。
+      -->
+      <span class="at-summary" v-html="summaryHtml"></span>
     </div>
 
     <!-- ② 工具 · 动作（原始标识符只在 title 里，不占视线） -->
@@ -272,6 +288,7 @@ import { ElMessage } from 'element-plus'
 import AgentToolDetail from '@/components/AgentToolDetail/index.vue'
 import DocxPreview from '@/components/DocxPreview/index.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
+import { renderMarkdownWithLatex } from '@/utils/latex'
 import { getToken } from '@/utils/auth'
 
 const props = defineProps({
@@ -530,6 +547,22 @@ const summary = computed(() => {
   const statusWord = STATUS_WORDS[props.status] || ''
   return `${actionWord}${statusWord}` || statusWord || '执行中'
 })
+
+/**
+ * 摘要的 HTML 版（渲染 Markdown 与公式）
+ *
+ * ⚠️ 用户反馈：「输出的还是带代码的文字 而不是被渲染成对应数学符号的文字」。
+ *
+ * 摘要里经常直接带题目原文，例如：
+ *   「1. 设 $A$、$B$ 为随机事件，$P(A)=0.4$，且 $P(AB)=P(\overline{A}\overline{B})$…」
+ *
+ * 用 `{{ summary }}` 插值就原样显示这串 LaTeX 源码，用户看到一屏反斜杠。
+ * 走 `renderMarkdownWithLatex` 后变成真正的数学符号。
+ *
+ * 安全性：该函数对所有非公式文本走 `escapeHtmlText`，
+ * 公式部分由 KaTeX 生成（`throwOnError:false`），不产生任意 HTML。
+ */
+const summaryHtml = computed(() => renderMarkdownWithLatex(summary.value))
 
 /* ============================================================
  * 第二层：工具 · 动作
@@ -1212,6 +1245,28 @@ const downloadArtifact = async () => {
   color: #1f2d3d;
   word-break: break-word;
   overflow-wrap: anywhere;
+}
+
+/*
+ * 摘要改成 v-html 后，渲染器会产出 <p> / <div>，
+ * 默认带块级外边距，会把卡片撑高、行距变松。
+ * 这里压平：只保留行内节奏。
+ */
+.at-summary :deep(p) {
+  margin: 0;
+}
+
+.at-summary :deep(p + p) {
+  margin-top: 4px;
+}
+
+/* 公式在摘要里行高要压一点，否则卡片被撑开 */
+.at-summary :deep(.katex) {
+  font-size: 1.02em;
+}
+
+.at-summary :deep(.katex-display) {
+  margin: 4px 0;
 }
 
 /* ===================== 第二层：工具 · 动作 ===================== */

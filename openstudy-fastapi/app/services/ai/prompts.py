@@ -669,6 +669,35 @@ AGENT_WORKFLOW_RULES = """## Workflow Rules (MUST FOLLOW STRICTLY)
       `question_manage` if you already have enough text.
     - **Never invent a filename.** If `workspace_search` returns nothing, there is no file.
     - Do NOT use `workspace_search` for question-bank lookups — those are `bank_manage`.
+13. **An attachment does NOT imply "import into a bank". Decide the intent from the VERB.**
+    A document attached to the chat carries NO intent. The user's verbs decide the action, and the
+    same file can legitimately lead to very different jobs:
+
+    | user says (with the same attached file) | the job | the tool |
+    |---|---|---|
+    | "整理一下" / "整理成一份文档" / "排版一下" / "美化一下" | RE-FORMAT the content | `document_compose` |
+    | "做成 PDF" / "导出成 Word" / "给我一份能打印的" | produce a deliverable file | `document_compose` |
+    | "导入题库" / "录到题库里" / "把这些题存起来" / "建个题库" | IMPORT questions | `bank_manage` + `question_manage` |
+    | "这题怎么做" / "第 3 题的答案" | explain / solve | answer directly |
+    | "这两份有什么区别" | compare | `document_compare` |
+
+    - **"整理"/"organize"/"tidy up" alone means RE-FORMAT, not import.** It is about making the
+      content look right (headings, tables, formulas, layout) — NOT about putting it into a
+      database. Importing a bank is a WRITE operation the user did not ask for; it pollutes their
+      bank list and they have to delete it afterwards.
+    - **When the verb is genuinely ambiguous AND the side effect is a write, ask ONE question.**
+      Example: the user sends a question sheet and only says "整理一下" — the two plausible
+      readings are "make it look nice" and "import it", and one of them writes data. Reply with
+      ONE short sentence offering both ("要排版成文档，还是导入题库？") and take NO action.
+      If you already know the platform can do the harmless thing first, prefer doing it and
+      mentioning the other option — but never import silently.
+    - **Never auto-create a bank "to hold" the attachment.** A bank named after the file
+      (`题库测试`) appearing in the user's list without them asking is the exact failure this
+      rule exists to prevent.
+    - **Cleaning content ≠ rewriting it.** Re-formatting must preserve the original numbers,
+      formulas and wording. Repair obvious OCR damage (e.g. `P(AB)=P(AB)`) only when the
+      surrounding context or the given answer makes the intended formula unambiguous, and SAY
+      that you repaired it.
 
 ## Available Tools
 {{TOOLS}}"""
@@ -956,19 +985,82 @@ _DOC_WORKFLOW_KEYWORDS = (
 )
 
 
+#: 带附件时，**否掉建库意图**的措辞（2026-10-27 加）
+#:
+#: 这些词都指向"把内容弄好看/导出/看看"，与"入库"是两件事。
+#: 命中即不注入建库重型规则 —— 否则模型会把「整理一下」读成「导入题库」，
+#: 擅自建一个题库（用户实测报过）。
+#:
+#: ⚠️ 只用来**否掉**建库意图，不单独触发任何行为。
+#:    真正要导题时用户会同时说出"导入/题库"等词，那时 `_DOC_WORKFLOW_KEYWORDS`
+#:    已经先命中、直接返回 True 了（顺序上先判导入词，避免误否）。
+_NON_IMPORT_INTENT_KEYWORDS = (
+    "排版", "整理", "美化", "格式", "版式", "编排",
+    "导出", "转成", "转换", "生成文档", "做成文档", "word", "pdf",
+    "好看", "不好看", "打印", "对比", "区别", "差异", "看看",
+    "format", "layout", "pretty", "tidy", "organize", "convert", "compare",
+)
+
+
+#: 强导入动词（2026-10-27 加）
+#:
+#: 与 `_DOC_WORKFLOW_KEYWORDS` 的区别：那边有「题目」「题库」这类**名词**，
+#: 名词不能决定意图 —— 题目当然也可以被"排版"。
+#:
+#: 这里只放**动作词**。"整理这些题目，排版成文档"不含强动词 → 判为排版；
+#: "把这些题目导入题库"含「导入」→ 判为导题。
+_STRONG_IMPORT_VERBS = (
+    "导入", "导题", "录题", "录入", "建库", "建题库", "存到题库", "入库",
+    "批量导入", "导入题库", "添加到题库", "放进题库",
+    "import", "ingest",
+)
+
+
 def needs_doc_workflow(message: str = "", has_attachments: bool = False) -> bool:
     """判断本轮是否需要注入「建库重型规则」
 
     判据（命中其一即 True）：
-      · 带了文档/图片附件 —— 附件最常见用途就是导题/建库；
-      · 用户消息命中建库/导题关键词（见 `_DOC_WORKFLOW_KEYWORDS`，宽进）。
+      · 用户消息命中建库/导题关键词（见 `_DOC_WORKFLOW_KEYWORDS`，宽进）；
+      · 带了附件 **且** 消息里没有任何"排版/整理/导出"这类非建库意图。
+
+    ⚠️ 「带附件就建库」是错的（2026-10-27 修，用户实测踩到）
+
+    原来 `has_attachments` 直接返回 True，于是用户传一份题目文档、
+    只说一句「整理一下」，系统就注入了整套「建库/导题/题型编码」重型规则。
+    模型顺着这堆规则读，自然把「整理」理解成「导入题库」——
+    结果**自动建了一个题库**（用户根本没要求，还得自己去删）。
+
+    附件只是"有素材"，不代表"要入库"。所以现在要再看一眼措辞：
+    如果用户说的明显是排版/整理/转换/查看，就不注入建库规则。
     """
-    if has_attachments:
-        return True
     text = (message or "").strip().lower()
-    if not text:
-        return False
-    return any(kw.lower() in text for kw in _DOC_WORKFLOW_KEYWORDS)
+
+    hit_import = bool(text) and any(kw.lower() in text for kw in _DOC_WORKFLOW_KEYWORDS)
+    hit_non_import = bool(text) and any(kw.lower() in text for kw in _NON_IMPORT_INTENT_KEYWORDS)
+
+    # ① 明确要入库 → 注入（哪怕是"整理这些题目，导入题库"，导入词才是主意图）
+    if hit_import and not hit_non_import:
+        return True
+
+    # ② 明确是排版/整理/导出/对比 → 不注入
+    #
+    #    「整理这些题目，排版成文档」同时命中「题目」和「整理/排版」。
+    #    关键判断：**有没有真正的入库动词**（导入/录题/建库/导题）。
+    #    "题目"只是一个名词 —— 题目当然可以被排版。所以这里要看动词。
+    if hit_non_import:
+        return any(kw.lower() in text for kw in _STRONG_IMPORT_VERBS)
+
+    # ③ 只有导入词
+    if hit_import:
+        return True
+
+    # ④ 没有任何文字，只传了附件
+    #
+    #    ⚠️ 这种情况**要注入**：用户发一份文档却不说话，
+    #       说明他期待我们从文件里读出意图并处理。注入了建库规则，
+    #       模型至少知道"题目该怎么编码"，不会瞎猜。
+    #       但如果他后续只说"整理一下"，②③ 会自动否掉。
+    return bool(has_attachments)
 
 
 __all__ = [
