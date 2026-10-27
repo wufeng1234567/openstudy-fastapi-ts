@@ -509,6 +509,46 @@ export interface MathSpan {
  * 返回的 `text` 片段保留原文（含被删掉的定界符外的空格），
  * 调用方可以原样拼接回去。
  */
+/**
+ * 清理 MathLive 留下的空占位符
+ *
+ * ── 为什么必须清理（2026-10-27 实测）──────────────────────────
+ * MathLive 插入 `\frac{#0}{#1}` 后，未填的槽是 `\placeholder{}`。
+ * 用户没填完就点「确认导入」时，这个值会原样进库：
+ *
+ *     \frac{\placeholder{}}{\placeholder{}}
+ *
+ * 而 **KaTeX 不认识 `\placeholder`**，实测报：
+ *
+ *     KaTeX parse error: Undefined control sequence: \placeholder
+ *
+ * 后果：脏数据入库 → 导出 Word/PDF 时公式崩掉，或者页面上显示红色错误块。
+ * MathLive 本身**没有**提供清理 API（试过 `getValue({placeholder:''})`
+ * 和 `removePlaceholder()`，都不生效），所以只能在这里自己清。
+ *
+ * ## 清理策略
+ *
+ * 空槽 `\placeholder{}` 直接删除。但它常常连着结构符号一起出现：
+ *
+ *     \int_{\placeholder{}}^{\placeholder{}}\placeholder{}\,dx
+ *     → \int_{}^{}\,dx        （上下限空了，但积分号还在 —— 这是合法的）
+ *
+ *     \frac{\placeholder{}}{\placeholder{}}
+ *     → \frac{}{}             （空分式，KaTeX 能渲染成"空框"）
+ *
+ * 所以只删 `\placeholder{}` 本身，**不动周围的结构** ——
+ * 空分式、空上下限在数学上是合法的占位，渲染出来是个空槽，
+ * 比整段消失更容易让用户发现"这里还没填"。
+ */
+export function stripMathPlaceholders(raw: string): string {
+  if (!raw) return ''
+  return raw
+    // 空占位符（MathLive 的未填槽）
+    .replace(/\\placeholder\{\}/g, '')
+    // 可选参数里剩下的空括号，如 `\sqrt[]{}` 这类残形
+    .replace(/\\sqrt\[\]\{/g, '\\sqrt{')
+}
+
 export function splitMathSpans(raw: string): MathSpan[] {
   if (!raw) return []
 

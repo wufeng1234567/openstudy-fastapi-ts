@@ -258,7 +258,7 @@
           :rows="2"
           placeholder="题干"
           :disabled="readonly"
-          :start-editing="editingSet.has(qi)"
+          :editable="editingSet.has(qi)"
           :show-edit-button="false"
         />
 
@@ -267,7 +267,7 @@
           <div v-for="(opt, oi) in q.options" :key="oi" class="ad-opt">
             <span class="ad-opt-no">{{ optionLabel(oi) }}</span>
             <MathInput v-model="q.options[oi]" type="text" placeholder="选项内容" :disabled="readonly"
-              :start-editing="editingSet.has(qi)" :show-edit-button="false" class="ad-opt-input" />
+              :editable="editingSet.has(qi)" :show-edit-button="false" class="ad-opt-input" />
             <button type="button" class="ad-opt-del" :disabled="readonly" @click="removeOption(q, oi)">×</button>
           </div>
           <button type="button" class="ad-add-opt" :disabled="readonly" @click="addOption(q)">＋ 选项</button>
@@ -276,12 +276,12 @@
         <div class="ad-answer">
           <label class="ad-label">答案</label>
           <MathInput v-model="q.answer" type="text" placeholder="答案" :disabled="readonly"
-            :start-editing="editingSet.has(qi)" :show-edit-button="false" class="ad-answer-input" />
+            :editable="editingSet.has(qi)" :show-edit-button="false" class="ad-answer-input" />
         </div>
 
         <!-- 解析里也常有公式（推导过程），同样跟随头部的编辑状态 -->
         <MathInput v-model="q.analysis" label="解析（可选）" :rows="1" placeholder="解析（可选）"
-          :disabled="readonly" :start-editing="editingSet.has(qi)" :show-edit-button="false" />
+          :disabled="readonly" :editable="editingSet.has(qi)" :show-edit-button="false" />
 
         <!-- 组合题：子题清单 -->
         <div v-if="isComposite(q)" class="ad-subs">

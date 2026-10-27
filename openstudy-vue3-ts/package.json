@@ -75,6 +75,7 @@
     "katex": "^0.18.1",
     "lowlight": "^3.3.0",
     "marked": "^18.0.3",
+    "mathlive": "^0.111.1",
     "md-editor-v3": "^4.0.0",
     "nprogress": "0.2.0",
     "pinia": "2.1.7",

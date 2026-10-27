@@ -1,97 +1,84 @@
 <!--
   ============================================================================
-  公式输入框（2026-10-27，v3：单一「编辑」入口 + 点公式直接改）
+  公式输入框（2026-10-27，v4：MathLive 直接编辑符号）
   ============================================================================
 
-  ## 演进过程（两次被用户推翻，记下来避免再走回头路）
+  ## 用户最终的要求（原话）
 
-  v1：文本框 + 下方预览
-      问题：源码和预览两坨同时亮着，`\frac{-b\pm\sqrt{b^2-4ac}}{2a}`
-            这串天书一直占着屏幕。
+    「只保留一个编辑按钮 用户点击后 生成前面的fx编辑框 可以插入各种符号
+      同时要支持编辑当前这个题目
+      ... 我们要支持的是高等数学符号直接编辑 针对这个符号而言
+      而不是针对他们的代码编辑 像word那样好编辑
+      比如一个根号 用户可以直接编辑根号下面的数字
+      比如一个积分上下限 可以直接编辑 上下限
+      而不是编辑一个 sqrt 代码」
 
-  v2：源码默认折叠 + 一个「ƒx 公式」按钮和一个「编辑」按钮
-      问题（用户原话）：
-        「第二个需要编辑按钮 直接和当前 fx 公式融合掉
-          fx 公式你拿来干嘛用？用户根本看不懂 这两个按钮的区别
-          ... 总之只给用户一个编辑按钮」
+  ## 前三版为什么都不对
 
-      说得对：两个按钮都在做"打开编辑"，职责完全重叠。
-      而用户面对的是这个场景 ——
-        存在 $\xi\in(a,b)$，使 $f(b)-f(a)=f'(\xi)(b-a)$
-      一整段里有两个公式，他想改的是**其中一个字符**，
-      点「编辑」看到的是整段源码，还得自己找 `\xi` 在哪。
+    v1 文本框 + 预览        —— 同时看到源码和结果，源码是"天书"
+    v2 源码默认折叠         —— 折叠了还是要展开才有法改，改的还是代码
+    v3 点公式 → 面板改源码   —— 定位更准了，但仍然是**在改代码**
 
-  v3（本版）：
-    · **只有一个「编辑」按钮**，删除 ƒx
-    · 预览态里**每个公式都单独可点**，点哪个改哪个
-    · 打开的面板只含那一个公式，改完精确替换回去
+  三版的共同错误：把"编辑公式"理解成"编辑 LaTeX 字符串"。
+  用户要的是编辑**符号结构**：点根号里面、点积分下限，
+  光标就进到那个槽位，直接打字。
 
-  ## 交互
+  ## v4 = MathLive
 
-  预览态（默认）：
+  `<math-field>` 是真正的 WYSIWYG 公式编辑器：
 
-      题干                              [编辑]
-      ┌────────────────────────────────────────┐
-      │ 存在 ⟨ξ ∈ (a,b)⟩，使 ⟨f(b)−f(a)=f′(ξ)(b−a)⟩ │  ← 两个公式都可点
-      └────────────────────────────────────────┘
+      · 屏幕上就是排版好的公式（跟 Word 公式编辑器一样）
+      · 点根号内部 → 光标进根号，直接打数字
+      · 点积分下限 → 光标进下限槽
+      · 上下键可以在分子/分母/上下限之间跳
+      · Tab 跳到下一个槽位
+      · 内部维持 LaTeX 语义 → `.value` 直接拿到 `\frac{a}{b}`
 
-  点第一个公式 → 面板打开，里面只有 `\xi\in(a,b)`，右侧实时预览
-  点右上角「编辑」→ 切到整段源码编辑（要改非公式文字时用）
+  **存储格式不变**：v-model 仍是 LaTeX 字符串。
+  所以父组件、后端、导出链路全都不用改 —— 只换编辑体验。
 
-  ## 初始态
+  ## 不再是"预览 / 编辑"两态
 
-    · 含公式 → 预览态（用户是来核对结果的）
-    · 空 / 纯文字 → 直接可编辑（不需要折叠）
+  MathLive 本身就是所见即所得，不存在"看的时候是排版、改的时候是代码"。
+  所以 v2/v3 的折叠切换逻辑全部删掉。
+
+  ## 仍然保留的能力
+
+    · `showEditButton`：外部（确认卡片头部）统一控制时隐藏自身按钮 —— 保留
+    · 符号面板：点一下插到**当前光标所在的槽位** —— 保留，比 MathLive
+      自带的虚拟键盘更贴合我们只需要的那批符号（且不会盖住整屏）
 -->
 <template>
     <div class="math-input" :class="{ 'is-single': !isTextarea }">
-        <!-- 顶栏：标签 + 唯一入口「编辑」
-             `showEditButton=false` 时不渲染按钮，由外部（如确认卡片头部）统一控制。
-             仍然保留标签行，否则字段名会消失、用户不知道这行是什么。 -->
+        <!-- 顶栏：标签 + 可选的符号面板开关 -->
         <div v-if="label || showEditButton" class="mi-head">
             <span v-if="label" class="mi-label">{{ label }}</span>
             <button v-if="showEditButton" type="button" class="mi-edit-btn" :disabled="disabled"
-                :title="editing ? '收起源码，回到排版预览' : '展开源码，修改文字或公式'" @click="toggleEditing">
-                {{ editing ? '完成' : '编辑' }}
+                :title="paletteOpen ? '收起符号面板' : '展开符号面板'"
+                :class="{ 'is-active': paletteOpen }" @click="paletteOpen = !paletteOpen">
+                {{ paletteOpen ? '收起符号' : '符号' }}
             </button>
         </div>
 
-        <!-- ════════ 预览态：公式单独可点 ════════ -->
-        <div v-if="!editing" class="mi-render" :class="{ 'is-empty': !hasContent }">
-            <span v-if="!hasContent" class="mi-placeholder" @click="startEditing">
-                {{ placeholder || '点击编辑内容' }}
-            </span>
-            <!--
-              ⚠️ 这里是整个 v3 的核心：
-                 不渲染成一整块，而是每段文字 / 每个公式单独成节点。
-                 公式节点带 data-idx，点击时用它反查 latex 并只打开那一个。
-            -->
-            <span v-else v-html="clickableHtml" @click="onRenderClick"></span>
-        </div>
+        <!--
+          真正的编辑器：MathLive 的 <math-field>
+          所见即所得，点结构内部即可编辑。
+        -->
+        <math-field ref="fieldRef" class="mi-field" :style="{ minHeight: `${fieldMinHeight}px` }"
+            @input="onInput" @focus="onFocus" @blur="onBlur"></math-field>
 
-        <!-- ════════ 编辑态：整段源码 ════════ -->
-        <template v-else>
-            <!-- ⚠️ `resize` 只有 textarea 能接受 -->
-            <el-input ref="inputRef" :model-value="modelValue" :type="type" :rows="isTextarea ? rows : undefined"
-                :disabled="disabled" :placeholder="placeholder" :size="size"
-                :resize="isTextarea ? 'vertical' : undefined" @update:model-value="onInput" />
-            <div v-if="hasMath" class="mi-preview" v-html="previewHtml" />
-        </template>
-
-        <!-- 公式面板：只编辑**一个**公式 -->
-        <MathEditor ref="mathEditorRef" title="编辑公式" @confirm="onReplaceOne" />
+        <!-- 符号面板：插到当前光标所在槽位 -->
+        <MathSymbolPalette v-if="paletteOpen" :visible="paletteOpen" @pick="insertLatex" />
     </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
-import MathEditor from '@/components/MathEditor/index.vue'
-import {
-    renderMarkdownWithLatex,
-    renderClickableMath,
-    splitMathSpans,
-    type MathSpan,
-} from '@/utils/latex'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
+// MathLive：注册 <math-field> 自定义元素 + 字体
+import 'mathlive'
+import 'mathlive/fonts.css'
+import MathSymbolPalette from '@/components/MathSymbolPalette/index.vue'
+import { stripMathPlaceholders } from '@/utils/latex'
 
 defineOptions({ name: 'MathInput' })
 
@@ -100,22 +87,29 @@ const props = withDefaults(
         modelValue?: string
         label?: string
         placeholder?: string
+        /** textarea 用 'textarea'（多行高度），单行用 'text' */
         type?: 'text' | 'textarea'
+        /** 多行模式的最小高度（px）；单行模式忽略 */
         rows?: number
         disabled?: boolean
         size?: 'small' | 'default' | 'large'
-        /** 强制初始为编辑态（新建表单里用户马上要打字时可以传 true） */
-        startEditing?: boolean
-        /**
-         * 是否显示自身的「编辑」按钮
-         *
-         * 确认卡片里一道题有题干/选项/答案/解析四个 MathInput，
-         * 而「编辑」按钮只有一个（在题目头部）—— 若每个字段都带一个，
-         * 用户会看到密密麻麻一堆「编辑」，不知道点哪个、也不知道它们是不是同一个。
-         *
-         * 传 false 时由外部统一控制（配合 `setEditing()` 或 `startEditing`）。
-         */
+        /** 是否显示自身的按钮（确认卡片里由头部统一控制时传 false） */
         showEditButton?: boolean
+        /**
+         * 是否可编辑（默认 true）
+         *
+         * ── 为什么需要"锁定"这个状态（2026-10-27）────────────────
+         * 确认卡片里的「编辑」按钮要有**实际作用**，否则它只是个文字开关。
+         *
+         * 设计：卡片里所有 MathInput 默认 `editable=false`（只读、能看排版），
+         * 点某题的「编辑」才把那一题的字段设为 `editable=true`。
+         * 这样按钮的意义是"解除这一题的锁定"，用户不会误改别的题。
+         *
+         * ⚠️ 与 `disabled` 的区别：
+         *    `disabled` = 整个卡片只读（已确认/已取消，永久不可改）
+         *    `editable` = 当前是否处于"这道题正在被编辑"的状态
+         */
+        editable?: boolean
     }>(),
     {
         modelValue: '',
@@ -125,211 +119,184 @@ const props = withDefaults(
         rows: 2,
         disabled: false,
         size: 'small',
-        startEditing: false,
         showEditButton: true,
+        startEditing: false,
+        editable: true,
     },
 )
 
 const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
 
-const inputRef = ref<any>()
-const mathEditorRef = ref<InstanceType<typeof MathEditor> | null>(null)
-
-/** 是否处于源码编辑态 */
-const editing = ref(false)
+const fieldRef = ref<any>(null)
+const paletteOpen = ref(false)
+const focused = ref(false)
 
 const isTextarea = computed(() => props.type === 'textarea')
-const hasContent = computed(() => !!(props.modelValue || '').trim())
-
-/** 这段内容是否含公式 */
-function mayContainMath(text: string | undefined): boolean {
-    const s = text || ''
-    if (!s) return false
-    if (s.indexOf('$') !== -1) return true
-    if (s.indexOf('\\(') !== -1 || s.indexOf('\\[') !== -1) return true
-    return /\\[a-zA-Z]{2,}/.test(s)
-}
-const hasMath = computed(() => mayContainMath(props.modelValue))
-
-/** 整段预览（编辑态下方对照用） */
-const previewHtml = computed(() =>
-    props.modelValue ? renderMarkdownWithLatex(props.modelValue) : '',
-)
-
-/** 预览态：每个公式单独可点 */
-const clickableHtml = computed(() =>
-    props.modelValue ? renderClickableMath(props.modelValue) : '',
-)
 
 /**
- * 预览态下当前可点的公式列表
+ * 编辑器最小高度
  *
- * 与 `splitMathSpans()` 的公式顺序一一对应（`data-idx` 就是这个数组的下标）。
- * 每次渲染重新算：`modelValue` 变了公式位置就会变，缓存反而出错。
+ * `rows` 是"行数"（el-input 的语义），这里换算成像素：
+ * 每行约 26px（含行间距），最小 40px（单行模式）。
  */
-const spans = computed<MathSpan[]>(() =>
-    (splitMathSpans(props.modelValue || '') || []).filter((s) => s.type !== 'text'),
-)
+const fieldMinHeight = computed(() => {
+    if (!isTextarea.value) return 40
+    const lines = Math.max(1, props.rows || 2)
+    return Math.max(52, lines * 26 + 12)
+})
+
+/** 防止 input → emit → watch → setValue 的循环 */
+let syncing = false
+
+/* ────────────────────────────────────────────────────────────
+ * 与 MathLive 实例同步
+ * ──────────────────────────────────────────────────────────── */
+
+/** 是否只读：卡片 disabled 或 当前题未进入编辑态 */
+const isReadOnly = computed(() => props.disabled || !props.editable)
+
+onMounted(async () => {
+    // 等自定义元素注册完成（MathLive 的 import 是异步注册的）
+    try {
+        await customElements.whenDefined('math-field')
+    } catch {
+        /* 老浏览器没有 whenDefined，直接继续 */
+    }
+    const el = fieldRef.value
+    if (!el) return
+
+    // 关掉 MathLive 自带的虚拟键盘：
+    // 我们用项目自己的符号面板（只放需要的符号，且不会盖住整屏）
+    el.mathVirtualKeyboardPolicy = 'manual'
+
+    // 回填初始值
+    if (props.modelValue) el.value = props.modelValue
+    el.readOnly = isReadOnly.value
+
+    // 占位符：MathLive 通过 placeholder 属性显示空态提示
+    if (props.placeholder) el.setAttribute('placeholder', props.placeholder)
+})
 
 /**
- * 区分"用户在本组件里打字"和"外部整体换了内容"
+ * 外部改动 → 同步进编辑器
  *
- * 后者（后台切换题目）应该按新内容重新决定初始态。
+ * ── 这里有个会导致"输入跑错位置"的坑（2026-10-27 实测）────────
+ * MathLive 的 `el.value = xxx` 会**把光标重置到末尾**。
+ *
+ * 于是会出现这种情况：用户插了一个 `\int_{#0}^{#1}`，光标本该在下限槽里，
+ * 但因为我们把"清理过占位符的值"回写给了 `el.value`，光标被踢到末尾，
+ * 用户接着输入 `0` 就跑到积分号后面去了：
+ *
+ *     \int_{\placeholder{}}^{\placeholder{}}   （原本光标在这里）
+ *     \int_{}^{}\,dx0                          （0 跑到了末尾 —— 错）
+ *
+ * ## 修法
+ *
+ * ① **回写前先比对"未清理"的原始值**。
+ *    编辑器里的原始值含 `\placeholder{}`，而 modelValue 是清理过的；
+ *    两者永远不相等 → 每次都回写 → 每次都丢光标。
+ *    所以要把 modelValue 还原成"带占位符"的形态再比，或者干脆
+ *    只在**外部确实换了内容**（长度/结构明显不同）时才回写。
+ *
+ * ② 判断依据用"当前编辑器内容的**清理版**是否等于 modelValue"。
+ *    相等 → 说明这次变化就是用户自己打字引起的，不回写（保住光标）。
  */
-let selfEmitted = false
-
 watch(
     () => props.modelValue,
     (val) => {
-        if (selfEmitted) {
-            selfEmitted = false
-            return
-        }
-        editing.value = props.startEditing || !mayContainMath(val)
+        const el = fieldRef.value
+        if (!el || syncing) return
+
+        const current = el.value || ''
+        const currentStripped = stripMathPlaceholders(current)
+        const next = val || ''
+
+        // 编辑器里的值（清理后）已经等于外部值 → 是用户自己打字引起的
+        // 变化，绝不能回写（回写会丢光标）
+        if (currentStripped === next) return
+
+        // 外部确实改了内容（切换题目 / 后端回填）→ 同步
+        syncing = true
+        el.value = next
+        syncing = false
     },
 )
 
-onMounted(() => {
-    editing.value = props.startEditing || !mayContainMath(props.modelValue)
-})
+watch(
+    () => props.disabled,
+    (v) => {
+        if (fieldRef.value) fieldRef.value.readOnly = v || !props.editable
+    },
+)
 
-/* ────────────────────────────────────────────────────────────
- * 点击渲染出来的公式 → 只编辑那一个
- * ──────────────────────────────────────────────────────────── */
-
-function onRenderClick(e: MouseEvent) {
-    if (props.disabled) return
-    const target = e.target as HTMLElement | null
-    if (!target) return
-
-    // 事件可能落在公式内部的深层节点（KaTeX 生成一堆 span），用 closest 往上找
-    const hit = target.closest('.math-hit') as HTMLElement | null
-    if (hit) {
-        const idx = Number(hit.getAttribute('data-idx'))
-        const span = spans.value[idx]
-        if (span) {
-            e.stopPropagation()
-            openEditorFor(span)
-            return
-        }
-    }
-    // 点的是普通文字 → 进整段编辑（符合"点哪都能改"的直觉）
-    startEditing()
-}
-
-/**
- * 打开面板，只含指定的那一个公式
- *
- * ⚠️ 两个关键点：
- *  1. 传**纯 LaTeX**（不含 `$`）：MathEditor 把内容直接交给 KaTeX，
- *     带 `$` 会渲染报错。
- *  2. `wrapDollar=false`：原公式的定界符已经存在于正文里，
- *     面板若再包一层就成 `$$...$$`（实测踩过）。
- *     回传纯 LaTeX，由下面 `onReplaceOne` 精确替换原区间。
- */
-function openEditorFor(span: MathSpan) {
-    pendingSpan.value = span
-    mathEditorRef.value?.open(span.latex, false)
-}
-
-/** 当前正在编辑哪个公式（null = 新建） */
-const pendingSpan = ref<MathSpan | null>(null)
-
-/**
- * 面板确认：替换那一个公式 / 或在光标处插入新公式
- *
- * 两种入参形态要分开处理：
- *   · 编辑已有公式（pendingSpan 非空）→ MathEditor 收到 wrapDollar=false，
- *     回传的是**纯 LaTeX**，需要按 span 原本的定界符重新包裹
- *   · 新建公式（pendingSpan 为空）→ 回传的**已带 `$`**，直接用
- */
-function onReplaceOne(latex: string) {
-    const text = props.modelValue || ''
-    const span = pendingSpan.value
-    pendingSpan.value = null
-    const body = (latex || '').trim()
-
-    // ① 修改已有公式
-    if (span) {
-        selfEmitted = true
-        if (!body) {
-            // 清空面板 = 删掉这个公式（连同它周围的定界符一起删）
-            emit('update:modelValue', text.slice(0, span.start) + text.slice(span.end))
-            return
-        }
-        // 按原定界符重新包裹：span.raw 形如 `$x^2$` 或 `$$x^2$$`
-        const delim = span.raw.startsWith('$$')
-            ? '$$'
-            : span.raw.startsWith('\\[')
-              ? ['\\[', '\\]']
-              : span.raw.startsWith('\\(')
-                ? ['\\(', '\\)']
-                : '$'
-        const wrapped = Array.isArray(delim) ? `${delim[0]}${body}${delim[1]}` : `${delim}${body}${delim}`
-        emit('update:modelValue', text.slice(0, span.start) + wrapped + text.slice(span.end))
-        return
-    }
-
-    // ② 新建公式 → 插到光标处（MathEditor 已包好 `$`）
-    if (!body) return
-    const el = innerEl()
-    if (!el) {
-        selfEmitted = true
-        emit('update:modelValue', text + latex)
-        return
-    }
-    const start = el.selectionStart ?? text.length
-    const end = el.selectionEnd ?? start
-    selfEmitted = true
-    emit('update:modelValue', text.slice(0, start) + latex + text.slice(end))
-    requestAnimationFrame(() => {
-        const node = innerEl()
-        if (!node) return
-        const pos = start + latex.length
-        node.focus()
-        node.setSelectionRange(pos, pos)
-    })
-}
-
-/* ────────────────────────────────────────────────────────────
- * 整段编辑
- * ──────────────────────────────────────────────────────────── */
-
-function toggleEditing() {
-    editing.value = !editing.value
-    if (editing.value) focusEnd()
-}
-
-function startEditing() {
-    if (props.disabled || editing.value) return
-    editing.value = true
-    focusEnd()
-}
-
-function focusEnd() {
-    requestAnimationFrame(() => {
-        const el = innerEl()
+// 编辑态切换（卡片头部点「编辑」/「完成」时生效）
+watch(
+    () => props.editable,
+    (v) => {
+        const el = fieldRef.value
         if (!el) return
-        el.focus()
-        const n = (props.modelValue || '').length
-        el.setSelectionRange(n, n)
-    })
+        el.readOnly = props.disabled || !v
+        // 解锁时自动聚焦，用户可以立刻改
+        if (v && !props.disabled) {
+            nextTick(() => el.focus())
+        }
+    },
+)
+
+watch(
+    () => props.placeholder,
+    (v) => {
+        if (fieldRef.value && v) fieldRef.value.setAttribute('placeholder', v)
+    },
+)
+
+/**
+ * 编辑内容变化 → 回传 LaTeX
+ *
+ * ⚠️ 回传前先 `stripMathPlaceholders`：MathLive 未填的槽是 `\placeholder{}`，
+ *    而 KaTeX **不认识**这个命令（实测报 Undefined control sequence）。
+ *    不清理的话，用户没填完就提交 → 脏数据入库 → 导出时公式崩掉。
+ */
+function onInput() {
+    if (syncing) return
+    syncing = true
+    emit('update:modelValue', stripMathPlaceholders(fieldRef.value?.value ?? ''))
+    syncing = false
 }
 
-function onInput(v: string) {
-    selfEmitted = true
-    emit('update:modelValue', v)
+function onFocus() {
+    focused.value = true
 }
 
-/** 取内层真实输入元素（el-input 的 ref 不是 DOM） */
-function innerEl(): HTMLInputElement | HTMLTextAreaElement | null {
-    const root = inputRef.value?.$el as HTMLElement | undefined
-    return (root?.querySelector('textarea, input') as HTMLTextAreaElement) || null
+function onBlur() {
+    focused.value = false
+}
+
+/**
+ * 从符号面板插入
+ *
+ * `insert()` 插到**当前光标所在的槽位** —— 这正是"点根号就进根号里"的关键。
+ * 若光标不在编辑器内，MathLive 会追加到末尾并把光标放进新结构的第一个槽。
+ *
+ * ⚠️ 先 `focus()`：从面板按钮点过来时焦点在按钮上，
+ *    不先聚焦编辑器，`insert` 的落点会不确定。
+ */
+function insertLatex(latex: string) {
+    const el = fieldRef.value
+    if (!el || props.disabled) return
+    el.focus()
+    el.insert(latex)
 }
 
 defineExpose({
-    isEditing: () => editing.value,
-    setEditing: (v: boolean) => { editing.value = v },
+    /** 聚焦编辑器 */
+    focus: () => fieldRef.value?.focus(),
+    /** 插入一段 LaTeX（供外部按钮调用） */
+    insert: (latex: string) => insertLatex(latex),
+    /** 兼容 v3 接口：外部统一控制时无实际作用 */
+    setEditing: (_v: boolean) => {},
+    isEditing: () => focused.value,
+    togglePalette: () => { paletteOpen.value = !paletteOpen.value },
 })
 </script>
 
@@ -355,7 +322,6 @@ defineExpose({
     color: #6b7280;
 }
 
-/* 唯一按钮：编辑 / 完成 */
 .mi-edit-btn {
     margin-left: auto;
     padding: 1px 9px;
@@ -373,84 +339,44 @@ defineExpose({
     border-color: #409eff;
 }
 
+.mi-edit-btn.is-active {
+    color: #fff;
+    background: #409eff;
+    border-color: #409eff;
+}
+
 .mi-edit-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
 
-/* ══════ 预览态 ══════ */
-.mi-render {
-    min-height: 32px;
-    padding: 6px 10px;
-    border: 1px solid #e6e9ee;
+/*
+ * <math-field> 是 MathLive 的自定义元素。
+ *
+ * ⚠️ 它内部是 shadow DOM，普通 scoped 样式打不进去；
+ *    这里只控制宿主元素的外观（边框/内边距/字号），
+ *    内部排版由 MathLive 自己负责（它用的是自己的字体与 CSS）。
+ */
+.mi-field {
+    display: block;
+    width: 100%;
+    padding: 7px 11px;
+    border: 1px solid #d8dde5;
     border-radius: 6px;
     background: #fff;
-    font-size: 13px;
-    line-height: 2;
-    color: #1f2329;
-    cursor: text;
-    overflow-x: auto;
-    word-break: break-word;
-    transition: border-color 0.12s;
+    font-size: 17px;
+    box-sizing: border-box;
+    transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.mi-render:hover {
-    border-color: #b9d8fb;
+.mi-field:focus-within {
+    border-color: #409eff;
+    box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.12);
 }
 
-.mi-render.is-empty {
-    color: #b6bdc9;
-    cursor: pointer;
-}
-
-.mi-placeholder {
-    font-size: 12.5px;
-}
-
-/*
- * 可点的公式：默认不加任何视觉噪音（保持"就是在看题目"的感觉），
- * 悬停时给淡蓝底 + 虚线下划线，提示"这里能点"。
- */
-.mi-render :deep(.math-hit) {
-    padding: 0 1px;
-    border-radius: 3px;
-    cursor: pointer;
-    transition: background 0.1s, box-shadow 0.1s;
-}
-
-.mi-render :deep(.math-hit:hover) {
-    background: #eef6ff;
-    box-shadow: 0 0 0 1px #b9d8fb inset;
-}
-
-/* ══════ 编辑态预览 ══════ */
-.mi-preview {
-    padding: 5px 9px;
-    border: 1px dashed #e3e7ee;
-    border-radius: 6px;
-    background: #f8f9fb;
-    font-size: 12.5px;
-    line-height: 1.85;
-    color: #1f2329;
-    overflow-x: auto;
-    word-break: break-word;
-}
-
-/* ⚠️ 必须 :deep()：v-html 注入的 KaTeX 节点拿不到 scoped 属性 */
-.mi-render :deep(.katex),
-.mi-preview :deep(.katex) {
-    font-size: 1em;
-}
-
-.mi-render :deep(.katex-display),
-.mi-preview :deep(.katex-display) {
-    margin: 4px 0;
-}
-
-/* 单行模式（选项/答案）：压缩内边距 */
-.is-single .mi-render {
-    min-height: 30px;
+/* 单行模式（选项/答案）：字号略小、内边距更紧 */
+.is-single .mi-field {
+    font-size: 16px;
     padding: 4px 9px;
-    font-size: 12.5px;
 }
 </style>
