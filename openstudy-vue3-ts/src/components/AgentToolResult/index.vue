@@ -80,6 +80,29 @@
         那是一条 `/profile/export/2026/10/20/<uuid>_题库名.docx`。让人复制粘贴这种
         路径是给开发者用的，不是给学习者用的。点按钮下载才是正常的交互。
     -->
+    <!--
+      思维导图（2026-10-27 新增）
+
+      用户原话：
+        「没有思维导图 看不到 他生成的 根本就不是思维导图」
+        「word思维导图显示效果如图（纯文字大纲） 都是文字形式
+          我要的思维导图是真正的思维导图 带卡片连线那种的效果」
+
+      根因：`mind_map` 工具上线前，模型只能走 `document_compose` 出 Word，
+      而 Word 里能放的只有缩进列表 —— 无论叫什么名字都是文字。
+
+      现在 `mind_map` 返回结构化树，这里用**项目里早就存在的** `MindMap` 组件
+      渲染（echarts tree，卡片 + 曲线连线 + 径向布局 + 全屏），
+      不重复实现绘图逻辑。
+
+      ⚠️ 判据是「有没有 tree」，不是「tool === 'mind_map'」——
+         与上面 artifact 卡片同一个口径：工具的**输出契约**比工具名稳定，
+         将来任何工具只要吐出 tree 就自动获得这张图。
+    -->
+    <div v-if="mindTree" class="at-mindmap">
+      <MindMap :tree-data="mindTree" :title="mindTitle" :default-layout="mindLayout" :height="mindHeight" />
+    </div>
+
     <div v-if="artifact" class="at-artifact">
       <span class="at-artifact-icon" aria-hidden="true">
         <OsIcon name="file-text" :size="15" />
@@ -286,6 +309,8 @@ import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import AgentToolDetail from '@/components/AgentToolDetail/index.vue'
+// 思维导图：`mind_map` 工具吐出结构化树，用现成组件画成卡片+连线（2026-10-27）
+import MindMap from '@/components/MindMap/index.vue'
 import DocxPreview from '@/components/DocxPreview/index.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import { renderMarkdownWithLatex } from '@/utils/latex'
@@ -641,6 +666,75 @@ function unwrapToolData(raw: any): Record<string, any> | null {
   }
   return raw
 }
+
+/**
+ * 思维导图数据（2026-10-27 新增）
+ *
+ * 判据：工具回执里有 `tree` 且形如 `{name, children}`。
+ * 与 `artifact` 同一口径 —— 认输出契约，不认工具名。
+ *
+ * ⚠️ 必须校验 `name` 非空：`MindMap` 组件拿到空 name 会渲染出一个空图，
+ *    比不显示更糟（用户以为"生成了但是空的"）。
+ */
+const mindTree = computed<{ name: string; children?: any[] } | null>(() => {
+  const d = unwrapToolData(props.data)
+  if (!d || typeof d !== 'object') return null
+  const t = (d as any).tree
+  if (!t || typeof t !== 'object') return null
+  if (!String((t as any).name || '').trim()) return null
+  return t
+})
+
+/** 导图标题（根节点名；组件拿它做空态与导出文件名） */
+const mindTitle = computed(() => {
+  const d = unwrapToolData(props.data)
+  return String((d as any)?.title || mindTree.value?.name || '思维导图')
+})
+
+/**
+ * 布局：优先用后端算好的（它按节点数选了 radial / tree），
+ * 拿不到就让组件自己按 `auto` 决定。
+ */
+const mindLayout = computed<'tree' | 'radial' | 'auto'>(() => {
+  const d = unwrapToolData(props.data)
+  const l = String((d as any)?.layout || '').toLowerCase()
+  return l === 'tree' || l === 'radial' ? (l as 'tree' | 'radial') : 'auto'
+})
+
+/**
+ * 导图高度：按**叶子节点数**自适应（2026-10-27 二次修）
+ *
+ * ⚠️ 第一版按"总节点数"算，实测仍然重叠（截图确认）：
+ *    40 个叶子的导图挤在 900px 里，卡片互相压住。
+ *
+ * 根因不是容器高度算小了，而是**只有高度不够时 echarts 才会压缩行距**：
+ *    树形布局里，纵向空间只由**同一列最多的节点数**（≈叶子数）决定，
+ *    它与总节点数是两个量。用总节点数会算得偏大或偏小，都不准。
+ *
+ * 更关键的是给组件补上了 `nodePadding`（见 MindMap 里的注释）——
+ * 那个参数才是防重叠的真正开关；高度只是给它留出空间。
+ *
+ * 现在按叶子数 × 每叶最小行距（26px）+ 上下留白 40px 估算：
+ *    8 个叶子 → 248px  → 抬到下限 360（太矮看着局促）
+ *    40 个叶子 → 1040px → 封顶 1400（再高用户滚不完，宁可去点放大）
+ *
+ * ⚠️ 仍然封顶：一张图 3000px 高在聊天流里没法看。
+ *    叶子特别多时，靠"放大 + 拖动"看细节才是对的交互。
+ */
+const mindHeight = computed(() => {
+  const t = mindTree.value
+  if (!t) return 360
+  /** 数叶子（= 树形布局需要的纵向行数） */
+  const countLeaves = (n: any): number => {
+    const kids = Array.isArray(n?.children) ? n.children : []
+    if (!kids.length) return 1
+    return kids.reduce((s: number, c: any) => s + countLeaves(c), 0)
+  }
+  const leaves = countLeaves(t)
+  // 每叶 26px（卡片高度 + 呼吸）+ 上下各 20px 留白
+  const need = leaves * 26 + 40
+  return Math.max(360, Math.min(1400, Math.round(need)))
+})
 
 const artifact = computed(() => {
   if (props.status !== 'ok') return null
@@ -1336,6 +1430,29 @@ const downloadArtifact = async () => {
  * 刻意**不加**底色与描边（与工具卡片本身同一条原则：Agent 输出不套白框）。
  * 分隔靠「与上一行的间距 + 文件名加粗」，不靠画一个盒子。
  */
+/*
+ * 思维导图容器（2026-10-27）
+ *
+ * ⚠️ 用负边距**突破卡片内边距**，多抢一点横向空间（2026-10-27 截图后改）
+ *
+ *    树形布局是**横着长**的：根在左、叶子在右，每多一层就多占一列。
+ *    对话气泡的内容宽只有 ~430px，三层卡片加上连线就挤不下 ——
+ *    实测截图里中间层卡片（「五、全栈」这些）右半边被叶子节点压住了。
+ *
+ *    这里左右各外扩 10px（不会超出卡片边框，只是吃掉卡片的内边距），
+ *    配合组件内部 `left/right: 10%` 的边距设置，能明显缓解释压。
+ *
+ *    ⚠️ 不改成一屏铺满：导图是消息流里的一条内容，
+ *       占满整屏会打断"聊天"的阅读节奏。要看清结构用户点「全屏」即可
+ *       （组件自带那个按钮）。
+ */
+.at-mindmap {
+  margin-top: 8px;
+  margin-left: -10px;
+  margin-right: -10px;
+  max-width: calc(100% + 20px);
+}
+
 .at-artifact {
   display: flex;
   align-items: center;

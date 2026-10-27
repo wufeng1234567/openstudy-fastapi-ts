@@ -132,8 +132,26 @@
              而两格的组件都还在）。L81 断的就是这个。
         -->
         <div v-else-if="msg.type === 'turn_end'" class="turn-end-slot">
+          <!--
+            运行状态流（2026-10-27 重做）
+
+            ⚠️ 放在 `turn_end` 这一格里、回退按钮**之前**，而不是追加在消息列表末尾。
+
+            原因（第一版截图发现）：追加在列表末尾时，它会排到「回退 / 复制」
+            按钮的**下面**，看起来像是"这一轮之外的东西"。
+            而它描述的正是"这一轮是怎么跑完的"，语义上属于轮末总结，
+            顺序应该是「过程 → 完成后可做的操作」。
+
+            只在**最后一轮**渲染（`idx === visibleMessages.length - 1`）：
+            历史轮次的过程已经结束，把它们全列出来会让滚动的消息流变得很长。
+          -->
+          <div v-if="$slots['run-status'] && idx === visibleMessages.length - 1" class="run-status-row">
+            <slot name="run-status"></slot>
+          </div>
+
           <AgentTurnRollback :turn-id="msg.turnId" :state="rollbackStates[msg.turnId] || null"
             :answer-text="turnAnswerText(msg.turnId)" :disabled="isGenerating"
+            :duration-ms="msg.durationMs || 0" :total-duration-ms="msg.totalDurationMs || 0"
             @rollback="$emit('rollback-turn', msg.turnId)" @copy="copyText($event)" />
         </div>
         <!--
@@ -252,6 +270,37 @@
           </el-button>
         </div>
       </div>
+
+      <!--
+        运行状态流（2026-10-27 重做）
+
+        ⚠️ 位置在 `.chat-messages` **内部末尾**，不是外面。
+
+        第一版挂在管理页注入的 `#run-status` 插槽（列表之外），
+        用户看截图后指出「不对齐」—— 因为列表的左右 padding 是 20px，
+        列表外那条用的是自己的边距，两套边距必然错位。
+
+        放在列表里就自动继承 `.message-row` 的排版基准，
+        和其他消息（含推理块）左边缘完全一致。
+
+        组件本身无边框、无底色，只有一行行灰字 —— 与 `AgentReasoning` 同一套视觉语言，
+        不会抢眼。
+      -->
+      <div v-if="$slots['run-status']" class="message run-status-row">
+        <slot name="run-status"></slot>
+      </div>
+
+      <!--
+        对话总计（2026-10-27 三次修后**移除**）
+
+        用户最终裁决：「不需要 结尾的 本次对话共 2分8秒  保留每轮的时间就行」
+
+        演进：每轮显示两个数 → 看不懂；每轮显示累计 → 把上一轮也算进来；
+        末尾单独一行总计 → 还是不要。结论：**只保留每轮自己的耗时**就好。
+
+        这段注释留着是为了让后来者知道"这里曾经有过、以及为什么拿掉"，
+        不要再加回来。
+      -->
     </div>
 
     <!--
@@ -262,22 +311,6 @@
     -->
     <AgentRollbackNotice v-if="rollbackNotices.length && !noticeClosed" :entries="rollbackNotices"
       @close="noticeClosed = true" />
-
-    <!--
-      运行状态条插槽（2026-10-27 新增）
-      ==================================================================
-      位置刻意选在**消息流末尾、输入框之外**：
-
-        · 放进 `#input-header` 的话，它是 `.input-box` 的**内部**子元素，
-          视觉上会变成"输入框的一部分"，和输入框边框挤在一起；
-        · 放在这里才是独立的一条，与输入框之间有自然间距。
-
-      内容由页面注入（当前阶段 / 已耗时 / 已完成步骤），
-      本组件不关心具体实现 —— 状态条是页面级关注点。
-    -->
-    <div v-if="$slots['run-status']" class="run-status-slot">
-      <slot name="run-status"></slot>
-    </div>
 
     <!--
       滚动按钮
@@ -1066,25 +1099,8 @@ defineExpose({
   background: #fff;
 }
 
-/*
- * 运行状态条容器（2026-10-27）
- *
- * 位置：消息流末尾、输入框上方，**独立成一条**。
- * 左右内边距与消息列表（20px）对齐，看起来像聊天流的一部分而不是输入框附件。
- * `flex: 0 0 auto` 保证它不参与消息区的高度争夺（消息区是 flex:1）。
- *
- * ⚠️ 不加 `position: fixed`：固定定位会遮住消息内容，
- *    而且聊天页的滚动发生在 `.chat-messages` 里，固定元素会与滚动脱节。
- */
-.run-status-slot {
-  flex: 0 0 auto;
-  padding: 0 20px;
-  background-color: #fff;
-}
-
 .chat-messages {
-  flex: 1;
-  /*
+  flex: 1;  /*
    * ⚠️ `min-height: 0` 这行不能删（少了它就是「输入框被挤出视线」那个 bug）。
    * flex item 的 `min-height` 默认是 `auto` = 内容高度，于是 `flex: 1` 形同虚设：
    * 消息一多，这一块会**跟着内容长高**、`overflow-y` 永远不触发（clientHeight ===
@@ -1155,6 +1171,17 @@ defineExpose({
 
 .message.assistant {
   justify-content: flex-start;
+}
+
+/*
+ * 运行状态流（2026-10-27）
+ *
+ * 复用 `.message` 的宽度与居中（`max-width: 820px; margin: 0 auto`），
+ * 所以左边缘与正文、推理块**自动对齐** —— 不用另写一套边距。
+ * 只把下间距压小：它是"进行中的信息"，不该占满一整条消息的 18px。
+ */
+.message.run-status-row {
+  margin-bottom: 10px;
 }
 
 /*

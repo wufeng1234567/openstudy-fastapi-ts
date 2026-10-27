@@ -35,6 +35,8 @@ from app.services.ai.agent.tools.review_sheet import ReviewSheetTool
 from app.services.ai.agent.tools.workspace_search import WorkspaceSearchTool
 # 2026-10-27 对话文件：取用用户在聊天里传过的文件与图片（含之前轮次）
 from app.services.ai.agent.tools.chat_file_manage import ChatFileManageTool
+# 2026-10-27 思维导图：产出结构化树，前端用现成 `MindMap` 组件渲染成卡片+连线图
+from app.services.ai.agent.tools.mind_map import MindMapTool
 
 # 幂等注册：重复 import 不会重复覆盖（registry.register 按 name 覆盖，行为一致）
 registry.register(AgentManageTool())
@@ -51,6 +53,9 @@ registry.register(WorkspaceSearchTool())
 #       这个找**聊天窗口传的附件**（保真、按文件与图片粒度）。
 #       两者数据源不同，不能互相替代。
 registry.register(ChatFileManageTool())
+# —— 2026-10-27 思维导图：用户要「带卡片连线那种效果」，而此前只能输出文本大纲。
+#    本工具吐结构化树，前端 `MindMap` 组件（echarts tree，项目里早就有）负责画。
+registry.register(MindMapTool())
 registry.register(MemorySearchTool())
 # —— 2026-09-22 补齐的五组能力（记忆管理 / 学习统计 / 题目标记 / 知识库管理 / 分享复制）= 5 个工具
 #    ⚠️ 错题本 / 收藏 / 斩题是**一个**工具（`question_flag_manage`，用 flag_type 区分）——
@@ -135,4 +140,5 @@ __all__ = [
     "ReviewSheetTool",
     "WorkspaceSearchTool",
     "ChatFileManageTool",
+    "MindMapTool",
 ]

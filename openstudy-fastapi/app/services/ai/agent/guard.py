@@ -142,9 +142,17 @@ class ExecutionGuard:
     Args:
         same_call_limit: 同一 `tool:args` 连续出现多少次算「原地打转」
         same_tool_limit: 同一工具在一次运行里最多调用多少次（防长尾）
+
+            ⚠️ 别把这个值调小（2026-10-27 实测教训）：
+               `question_flag_manage` / `bank_manage` 这类工具用 `action`
+               区分十来种操作，一次正常的整理流程（收藏、斩题、错题、
+               查三类列表、标记已掌握、取消…）轻易就 9~15 次，
+               而每一次的参数都不同 —— 那是正常干活，不是打转。
+               真正的死循环由 `repeat_streak`（参数完全相同）拦，
+               比"调了几次"精准得多。
     """
 
-    def __init__(self, same_call_limit: int = 2, same_tool_limit: int = 8) -> None:
+    def __init__(self, same_call_limit: int = 2, same_tool_limit: int = 24) -> None:
         self.same_call_limit = same_call_limit
         self.same_tool_limit = same_tool_limit
 
@@ -372,6 +380,28 @@ class ExecutionGuard:
         两种情况判定为打转：
         - 同一个 `tool:args` 连续重复到 `same_call_limit` 次；
         - 同一工具累计调用超过 `same_tool_limit` 次。
+
+        ⚠️ 第二个判据只该拦「真的在打转」，不能拦「一个工具干很多件不同的事」
+        （2026-10-27 修：用户实测被误杀）
+
+        实测场景：用户让 AI 依次做「收藏 → 斩题 → 错题本 → 查三类列表 →
+        标记已掌握 → 取消收藏」共 9 步，全部是**参数不同的正常操作**，
+        但都落在 `question_flag_manage` 这一个工具上，
+        于是第 9 次被拦下，回了一句「被调用了 9 次，超出上限，已停止」——
+        用户看不懂，而且这一步真的没执行。
+
+        这类"多功能工具"（`question_flag_manage` / `bank_manage` /
+        `question_manage` / `note_manage`）用 `action` 区分十来种操作，
+        一次完整的整理流程本来就该调很多次。所以：
+
+          · `same_tool_limit` 默认从 8 提到 24
+            （正常操作流程很少超过 24 步；真死循环会先被上面的
+             `repeat_streak` 抓住 —— 那条判据看的是"参数完全相同"，更准）；
+          · 真正的兜底仍然在：`MAX_AGENT_LOOPS = 12` 轮硬上限，
+            每轮里工具的调用总量不可能无限增长。
+
+        换句话说：**防死循环靠 `repeat_streak`（参数相同）+ 轮数上限，
+        不靠"单个工具被调了几次"** —— 后者误伤正常的长流程。
         """
         key = self.call_key(tool_name, params)
         if key == state.last_call_key:

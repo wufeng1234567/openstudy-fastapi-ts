@@ -47,6 +47,45 @@
                 <el-button size="small" text @click="fitView">
                     <el-icon><FullScreen /></el-icon> 自适应
                 </el-button>
+                <!--
+                  一键还原（2026-10-27 新增）
+
+                  用户要求：「也支持一键回归原本模样」
+
+                  拖动/缩放之后想回到"刚生成的样子"时用。
+                  与「自适应」的区别：自适应是"按当前容器重新排版"（内容变了才需要），
+                  还原是"把我拖动缩放的结果清掉"。这里是两个动作、两种情况，
+                  所以给两个按钮 —— 合并成一个会让用户猜"它到底会重置什么"。
+                -->
+                <el-button size="small" text @click="resetView">
+                    <el-icon><RefreshLeft /></el-icon> 还原
+                </el-button>
+                <!--
+                  一键放大（2026-10-27 新增）
+
+                  用户反馈：「最有效的办法是给个一键放大按钮 放大给用户观看 并且支持导出」
+
+                  背景：导图嵌在对话气泡里时内容宽只有 ~430px，
+                  树形布局横着长、三四层就挤不下（实测截图里中间层卡片被叶子压住）。
+                  与其在窄容器里拼命调间距，不如让用户**一键放大**到整屏看。
+
+                  ⚠️ 用弹窗而不是 `requestFullscreen()`：
+                     浏览器全屏 API 需要用户手势且会隐藏浏览器 UI，
+                     用户想同时看聊天记录就不方便；弹窗只占视口、随时能关。
+                -->
+                <el-button size="small" text @click="openZoom">
+                    <el-icon><ZoomIn /></el-icon> 放大
+                </el-button>
+                <!--
+                  导出图片（2026-10-27 新增）
+
+                  导图最常见的用途是贴进 PPT / 文档 / 群里分享，
+                  所以必须能导出成图片。用 canvas 的 toDataURL 拿到 PNG，
+                  不引任何新依赖。
+                -->
+                <el-button size="small" text :disabled="!hasTree" @click="exportPng">
+                    <el-icon><Download /></el-icon> 导出
+                </el-button>
             </div>
         </div>
 
@@ -96,13 +135,38 @@
             </details>
         </div>
 
-        <div v-show="hasTree" ref="chartRef" class="mm-chart"></div>
+        <div v-show="hasTree" ref="chartRef" class="mm-chart" :style="{ height: height + 'px' }"></div>
     </div>
+
+    <!--
+      放大查看弹窗（2026-10-27 新增）
+
+      ⚠️ 与主视图**共用同一份数据、同一个 buildOption()**，但各自独立的 echarts 实例。
+         不复用主实例：把一个已经初始化在 430px 容器里的实例挪进弹窗，
+         需要 `dispose` + 重新 init，反而更容易出"尺寸错乱"的问题。
+
+      ⚠️ 关闭时**必须 dispose** 弹窗里那个实例：
+         否则每开一次就多留一份 canvas 与事件监听，连开几次内存会一直涨。
+    -->
+    <el-dialog v-model="zoomVisible" :title="title" width="92%" top="3vh" append-to-body
+        class="mm-zoom-dialog" destroy-on-close @closed="disposeZoom">
+        <div ref="zoomChartRef" class="mm-chart mm-chart-zoom"></div>
+        <template #footer>
+            <div class="mm-zoom-foot">
+                <span class="mm-zoom-hint">可拖动平移、滚轮缩放；导出会保留你调整后的样子</span>
+                <div>
+                    <el-button size="small" @click="zoomFit">自适应</el-button>
+                    <el-button size="small" @click="resetView">还原</el-button>
+                    <el-button size="small" type="primary" @click="exportPng(true)">导出图片</el-button>
+                </div>
+            </div>
+        </template>
+    </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { FullScreen, Share } from '@element-plus/icons-vue'
+import { FullScreen, Share, ZoomIn, Download, RefreshLeft } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 
 defineOptions({ name: 'MindMap' })
@@ -147,6 +211,17 @@ const props = withDefaults(
          * 节点少（<12）时环形更紧凑好看，所以少量节点时仍默认径向。
          */
         defaultLayout?: 'radial' | 'tree' | 'auto'
+        /**
+         * 画布高度（px）—— 2026-10-27 新增
+         *
+         * ⚠️ 之前高度是写死在 `.mm-chart` 上的 560px，调用方无从调整。
+         *    把导图嵌进对话气泡（宽度只有 ~430px）时，叶子多的图会
+         *    在垂直方向挤成一团（实测 40 个叶子全叠在一起、文字互相压住）。
+         *
+         *    现在由调用方按**叶子节点数**算一个合适的高度传进来：
+         *    叶子多就给高些，叶子少就矮些。默认 560 保持原有观感。
+         */
+        height?: number
     }>(),
     {
         markdown: '',
@@ -154,6 +229,7 @@ const props = withDefaults(
         title: '思维导图',
         emptyText: '这段内容里还没有可提取的层级（标题或列表），写几条要点就会出现导图。',
         defaultLayout: 'auto',
+        height: 560,
     },
 )
 
@@ -604,11 +680,51 @@ function buildOption() {
         // ⚠️ 卡片比圆点宽得多，左右留白必须给足：
         //    右侧是"叶子卡片伸出去"的方向，留 26% 才不会被容器裁掉。
         //    原来各 20% 时，最右一列长标签会被切掉尾巴。
+        //
+        // ⚠️⚠️ 必须显式给 `nodePadding`（2026-10-27 修「放大了还是重叠」）
+        //
+        //    这是本轮最关键的修复。echarts 的 tree 在**没给 nodePadding** 时，
+        //    会把节点沿纵向均匀铺满容器高度 —— 也就是说：
+        //    容器高度不变而叶子数量增加时，它不会撑开，而是**压缩行距**，
+        //    直到卡片互相压住。
+        //
+        //    实测证据：同一份 40 个叶子的导图，内嵌视图（高度 900）和
+        //    放大弹窗（高度 724）都出现卡片重叠 —— 因为 40 个叶子 × 每张卡
+        //    28px 起步需要 1100px 以上，容器再宽也没用，**缺的是纵向空间**。
+        //
+        //    给了 nodePadding 之后，echarts 会按这个最小行距排布，
+        //    放不下就出现滚动/缩放（`roam: true` 本来就支持），
+        //    而不是把卡片叠在一起骗人。
+        //
+        //    值取 26（比卡片高度略大）：卡片约 24~28px，加上行间呼吸刚好。
+        //    节点特别多时（>60）略降到 22，避免整张图高得离谱。
         Object.assign(seriesBase, {
             top: '5%',
             bottom: '5%',
             left: '22%',
             right: '26%',
+            // 同层节点的**最小纵向间距**：这是防重叠的关键
+            nodePadding: manyNodes ? 22 : 26,
+            /*
+             * 层间横向间距（2026-10-27 同一轮补）
+             *
+             * ⚠️ `nodePadding` 只管**纵向**。横向重叠是另一个问题：
+             *    树形布局里父节点卡片挂在右侧、子节点再往右一列，
+             *    而 echarts 默认按"圆点"算列宽 —— 卡片（约 150px）比圆点宽得多，
+             *    于是**子节点卡片会盖住父节点卡片**。
+             *
+             *    截图证据：「Web 框架 → Axum」那张卡被第三层的
+             *    「路由与提取器」压住右半边。
+             *
+             *   `edgeLength` 是 tree 布局的**每层间距**（横向）。
+             *    默认值约 100，不够放一张卡片 + 连线距离。
+             *    180 能让"卡片宽 150 + 30 留白"正好排开。
+             *
+             * ⚠️ 不设更大：每层 180 意味着 4 层就要 720px 横向空间，
+             *    在 430px 宽的对话气泡里只能靠放大/拖动看 ——
+             *    但那是对的，总比卡片互相压住好。
+             */
+            edgeLength: manyNodes ? 160 : 180,
         })
     }
 
@@ -659,11 +775,147 @@ function render() {
 }
 
 /** 自适应：把整张图缩放到可见范围内 */
+/**
+ * 一键还原（2026-10-27 新增）
+ *
+ * 用户要求：「也支持一键回归原本模样」
+ *
+ * `roam: true` 让用户能拖动平移、滚轮缩放，但那个状态**保存在 echarts 实例内部**，
+ * 一旦拖远了就回不去。这里重设 option 就能回到"按当前容器重新排布"的初始状态。
+ *
+ * ⚠️ 为什么不用 `dispatchAction({type:'restore'})`：
+ *    那是 toolbox 的 restore，在 tree 系列下会把 option 也一并重置，
+ *    连带清掉布局模式与展开状态 —— 用户只想"把视图摆正"，不想"重置一切"。
+ *
+ * ⚠️ 主视图和弹窗视图是**两个独立实例**，各自还原：
+ *    弹窗没打开时 `zoomChart` 是 null，这行自然是空操作。
+ */
+function resetView() {
+    if (chart) {
+        chart.setOption(buildOption(), true)
+        chart.resize()
+    }
+    if (zoomChart) {
+        zoomChart.setOption(buildOption(), true)
+        zoomChart.resize()
+    }
+}
+
 function fitView() {
     if (!chart) return
     // echarts tree 没有直接的 "fit" API，重设 option + resize 即可回到初始比例
     chart.setOption(buildOption(), true)
     chart.resize()
+}
+
+/* ────────────────────────────────────────────────────────────
+ * 放大查看 + 导出图片（2026-10-27 新增）
+ *
+ * 用户要求：「最有效的办法是给个一键放大按钮 放大给用户观看 并且支持导出」
+ *
+ * 为什么放大比"在窄容器里调间距"更有效：
+ *   树形布局是横着长的（根在左、叶子在右），每多一层就多占一列。
+ *   对话气泡里内容宽只有 ~430px，三层卡片加连线必然挤。
+ *   与其在 430px 里优化到极致，不如给用户一个"一键看全"的出口 ——
+ *   放大后视口有 1300px+，同样一张图立刻舒展。
+ * ──────────────────────────────────────────────────────────── */
+
+/** 放大弹窗是否可见 */
+const zoomVisible = ref(false)
+/** 弹窗里的图表容器 */
+const zoomChartRef = ref<HTMLDivElement>()
+/** 弹窗里的 echarts 实例（独立于主视图，关闭时必须 dispose） */
+let zoomChart: echarts.ECharts | null = null
+
+/**
+ * 打开放大视图
+ *
+ * ⚠️ 必须等弹窗**渲染完成**（`nextTick`）再初始化图表：
+ *    弹窗刚打开时容器还没进 DOM，`offsetWidth` 为 0 ——
+ *    在 0×0 容器里 init 会让 echarts 退化成极端布局
+ *    （正是本组件注释里记过的"标签竖排、卡片挤成一条线"那个坑）。
+ */
+async function openZoom() {
+    if (!hasTree.value) return
+    zoomVisible.value = true
+    await nextTick()
+    // 再等一帧：el-dialog 有入场动画，容器尺寸在动画结束前可能还不稳定
+    requestAnimationFrame(() => {
+        const el = zoomChartRef.value
+        if (!el) return
+        if (!zoomChart) {
+            zoomChart = echarts.init(el)
+        } else {
+            zoomChart.dispose()
+            zoomChart = echarts.init(el)
+        }
+        zoomChart.setOption(buildOption(), true)
+        zoomChart.resize()
+    })
+}
+
+/** 弹窗内自适应 */
+function zoomFit() {
+    if (!zoomChart) return
+    zoomChart.setOption(buildOption(), true)
+    zoomChart.resize()
+}
+
+/**
+ * 关闭弹窗后销毁实例
+ *
+ * ⚠️ 不 dispose 会泄漏：每次打开都新建一个 canvas + 若干事件监听，
+ *    连开几次内存一直涨，而且旧实例还可能持有已卸载 DOM 的引用。
+ */
+function disposeZoom() {
+    if (zoomChart) {
+        zoomChart.dispose()
+        zoomChart = null
+    }
+}
+
+/**
+ * 导出 PNG
+ *
+ * 优先导出**放大视图**（`useZoom === true` 且它在打开状态），
+ * 否则导出主视图 —— 用户点了放大后再点导出，期望得到的就是他看到的那张大图。
+ *
+ * ⚠️ echarts 的 `getDataURL` 会返回 `data:image/png;base64,...`，
+ *    用 `pixelRatio: 2` 拿两倍图（贴进文档/PPT 才清晰，不会一放大就糊）。
+ * ⚠️ 背景色必须显式给白：默认透明，贴到深色背景的文档里会变黑底。
+ */
+function exportPng(useZoom = false) {
+    const target = useZoom && zoomChart ? zoomChart : chart
+    if (!target) return
+
+    let url = ''
+    try {
+        url = target.getDataURL({
+            type: 'png',
+            pixelRatio: 2,
+            backgroundColor: '#ffffff',
+        })
+    } catch (e) {
+        console.warn('[mindmap] 导出失败', e)
+        return
+    }
+    if (!url) return
+
+    // 用 <a download> 触发下载：不需要后端、不需要新依赖
+    const safe = String(props.title || '思维导图')
+        .replace(/[\\/:*?"<>|\r\n\t]+/g, '_')
+        .slice(0, 60)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${safe}.png`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+}
+
+/** 弹窗打开时若窗口尺寸变化，让弹窗里的图跟着重排 */
+function onZoomResize() {
+    zoomChart?.resize()
 }
 
 function handleResize() {
@@ -736,9 +988,11 @@ onUnmounted(() => {
     ro = null
     chart?.dispose()
     chart = null
+    // 弹窗里的实例也要销毁（2026-10-27）：否则组件卸载后它仍占着 canvas 与监听
+    disposeZoom()
 })
 
-defineExpose({ fitView, nodeCount })
+defineExpose({ fitView, nodeCount, openZoom, exportPng })
 </script>
 
 <style scoped>
@@ -772,14 +1026,40 @@ defineExpose({ fitView, nodeCount })
 .mm-chart {
     width: 100%;
     /*
-     * 高度不用 460px 而是 560px：
-     * 径向布局的标签是沿圆周向外排的，垂直空间不够时上下两侧的标签会互相压住
-     * （实测 460px 时中间几层节点名叠在一起）。560px 是"能看清且不占满屏"的折中。
+     * ⚠️ 高度**不在这里写死**（2026-10-27 改）：
+     *    原来这里有 `height: 560px`，导致调用方传的 `height` prop 永远不生效
+     *    （组件之前根本没读那个 prop）。
+     *
+     *    现在由模板上的 `:style="{ height: height + 'px' }"` 控制，
+     *    默认值在 props 里（560）。嵌入对话气泡等窄容器时，
+     *    调用方可以按叶子节点数传一个更合适的高度，避免节点挤在一起。
      */
-    height: 560px;
     background: #fcfdfe;
     border: 1px solid #eef0f3;
     border-radius: 8px;
+}
+
+/*
+ * 放大弹窗里的图表（2026-10-27）
+ *
+ * 高度按视口算：弹窗 top 3vh + 标题栏 + footer，剩下都给图。
+ * `calc(92vh - 150px)` 比写死 800px 更能适配不同屏幕。
+ */
+.mm-chart-zoom {
+    height: calc(92vh - 150px);
+    min-height: 420px;
+}
+
+.mm-zoom-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.mm-zoom-hint {
+    font-size: 12px;
+    color: #9aa4b2;
 }
 
 .mm-empty {
@@ -904,8 +1184,16 @@ defineExpose({ fitView, nodeCount })
  * 导图的价值是"看得清结构"，宁可让用户多滚一点。
  */
 @media (max-width: 900px) {
+    /*
+     * ⚠️ 这里**只给最小高度**，不写死 height（2026-10-27 改）：
+     *    写 `height: 480px` 会和调用方传的行内 style 打架
+     *    （虽然行内 style 优先级更高，但两个地方管同一个属性迟早出错）。
+     *
+     *    窄屏真正的问题是**横向**空间不足（卡片会被裁），
+     *    所以更该限制的是宽度而不是高度 —— 高度交给调用方按叶子数决定。
+     */
     .mm-chart {
-        height: 480px;
+        min-height: 320px;
     }
 }
 </style>

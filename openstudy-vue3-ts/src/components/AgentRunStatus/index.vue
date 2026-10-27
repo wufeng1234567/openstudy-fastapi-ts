@@ -1,143 +1,84 @@
 <!--
-  运行状态条（2026-10-27 新增）
+  运行状态行（2026-10-27 第三版）
 
   ============================================================================
-  它解决什么
+  两版都做错了，这里记下来避免再走回头路
   ============================================================================
 
-  用户实测反馈：
+  **第一版**：浮在输入框上方的胶囊卡片（淡蓝底 + 圆角边框 + 滚动进度条 + 「已完成 N 步」按钮）
+  用户反馈：「状态样式不好看…不能抢眼…而且不对齐」
 
-      「AI 在执行长任务（如生成 3000 字文档）时，从提交到输出结果的整个过程中，
-        前端界面缺乏有效的过程状态反馈。目前仅输入框右下角有一个微弱的
-        "等待/生成中"符号，用户无法感知 AI 当前处于"思考中""调用工具中"
-        还是"正在输出文字"等具体阶段，导致长任务等待体验近似"黑箱"。」
+    → 错在：消息流里所有元素都是无边框透明底（`AgentReasoning` 的注释明确写着
+      "要更贴合思考的图形 + 低调"），一张带底色带边框的卡片成了全屏最显眼的东西。
 
-  实测证据（真实长任务，31 秒采样，500ms 一次）：
+  **第二版**：改成对话流内的阶段清单（连接 / 理解需求 / 深度思考 / 调用工具 / 写正文 / 完成）
+  用户反馈：「效果太乱 不需要四个时间表述 只需要一个类似 DSH 那样的
+            正在xxx，耗时多少 就行」
 
-      4559ms   思考块开始流式输出（用户能看到字在滚）
-      8116ms   思考收口折叠 → 屏幕内容长度从 1612 骤降到 86
-      ...
-      30474ms  才出现下一段文字
-      → **连续 21.3 秒屏幕上没有任何变化**
-
-  也就是说：问题不是"完全没有反馈"，而是**反馈在 8 秒后就消失了**。
-  既有机制各管一段、且都不常驻：
-
-      · `waiting`   一闪而过，真实内容一到就被替换掉
-      · `progress`  只在文档解析等少数环节发
-      · 推理块      收口后默认折叠成一行「已深度思考 N 秒」
-      · 工具卡片    只有真的调了工具才有
-
-  中间那段"模型在长输出/长思考但没有正文"的时期，界面上什么都不动。
+    → 错在：把"过程"当成"要展示的数据"。用户等待时只想确认两件事 ——
+      **现在在干什么、已经等了多久**。六行带各自耗时是审计报告，不是状态提示。
 
   ============================================================================
-  设计
+  这一版
   ============================================================================
 
-  ① **常驻**：只要本轮在跑就一直在，不因为某个事件到了就消失
-  ② **实时计时**：每秒走一次，用户任何时候都能知道"已经等了多久"
-  ③ **分阶段**：从事件流推断当前处于哪一步，而不是只说"处理中"
-  ④ **不打断**：纯展示层，不发请求、不改消息流、不抢焦点
-  ⑤ **可见的"在动"**：等待期有一条来回走的细条，
-     即使正文还没出来，用户也能看出"系统没死"
+  一行字 + 我们的 logo + 流光：
 
-  ⚠️ 为什么阶段要在**前端推断**而不是让后端多发明事件：
-     后端已经发了 `waiting` / `thinking` / `tool_start` / `tool_result` / `text`，
-     足够拼出阶段。加新事件要改双链路（还有 ds-free），成本高且容易漂移。
-     前端推断只有一个真值来源：**最近发生了什么事件**。
+       🅾 正在深度求索中，用时 4 秒…
+
+  运行中：整行有一道流光从左往右扫过（表达"活着、在动"）；
+  结束后：流光消失，留下静态的一行「用时 12 秒」，低调地作为记录。
+
+  为什么用流光而不是转圈：
+    转圈是"加载中"的通用符号，反复出现会让界面显得焦躁；
+    流光贴着文字走，视觉上更像"文字本身在呼吸"，安静但确实是活的。
 -->
 <template>
-  <div v-if="visible" :class="['ars', `ars-${tone}`]" role="status" aria-live="polite">
-    <!-- 左侧：状态图标（跑动时转圈，完成/失败时换成对错号） -->
-    <span class="ars-mark" aria-hidden="true">
-      <span v-if="running" class="ars-spinner"></span>
-      <OsIcon v-else-if="tone === 'ok'" name="check" :size="12" />
-      <OsIcon v-else name="close" :size="12" />
+  <div v-if="visible" :class="['rline', { 'is-running': running, 'is-failed': failed }]" role="status"
+    aria-live="polite">
+    <!-- 品牌标：与侧栏、hero 同一枚（OsLogo），尺寸压到 14px 融入文字行 -->
+    <span class="rline-logo" aria-hidden="true">
+      <OsLogo :size="14" bg="#1f2430" fg="#fff" />
     </span>
 
-    <!-- 中间：当前阶段 + 计时 -->
-    <div class="ars-main">
-      <div class="ars-line">
-        <span class="ars-phase">{{ phaseLabel }}</span>
-        <span v-if="running" class="ars-elapsed">{{ elapsedText }}</span>
-        <span v-else class="ars-elapsed ars-elapsed-done">用时 {{ elapsedText }}</span>
-      </div>
+    <!--
+      单行文案
 
-      <!--
-        细进度条
-        · `stalled`（正在等模型，没有正文在流）→ 来回走的"不确定进度"动画
-        · 正文正在流 → 从左到右缓慢推进的确定感动画
-        两者都不显示具体百分比：我们确实不知道还要多久，显示假百分比是骗用户。
-      -->
-      <div v-if="running" :class="['ars-bar', stalled ? 'ars-bar-wait' : 'ars-bar-live']" aria-hidden="true">
-        <span class="ars-bar-fill"></span>
-      </div>
-    </div>
-
-    <!-- 右侧：已完成步骤（默认收起，点开看明细） -->
-    <button
-      v-if="steps.length"
-      type="button"
-      class="ars-toggle"
-      @click="showSteps = !showSteps"
-    >
-      {{ showSteps ? '收起' : `已完成 ${doneCount} 步` }}
-      <span class="ars-caret" :class="{ 'ars-caret-open': showSteps }" aria-hidden="true"></span>
-    </button>
+      ⚠️ 三个 span 必须**紧贴书写**、中间不留换行/缩进（2026-10-27 实测）：
+         Vue 会把模板里的换行+缩进压成一个空格，于是渲染出
+         「正在连接中 ，用时 2秒」—— 逗号前多出空格，很难看。
+         写成同一行才对。
+    -->
+    <span class="rline-text"><span class="rline-label">{{ label }}</span><span v-if="timeText" class="rline-time">，用时 {{ timeText }}</span><span v-if="running" class="rline-dots" aria-hidden="true">…</span></span>
   </div>
-
-  <!-- 步骤明细（放在外层，避免被 flex 挤压） -->
-  <ul v-if="visible && showSteps && steps.length" class="ars-steps">
-    <li v-for="(s, i) in steps" :key="i" :class="['ars-step', `is-${s.state}`]">
-      <span class="ars-step-dot" aria-hidden="true"></span>
-      <span class="ars-step-text">{{ s.label }}</span>
-      <span v-if="s.detail" class="ars-step-detail">{{ s.detail }}</span>
-    </li>
-  </ul>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import OsLogo from '@/components/OsLogo/index.vue'
 
-/**
- * 阶段键
- *
- * 顺序即"正常流程的先后"，用于判断"某阶段是否已经过了"。
- * `done` / `error` 是终态。
- */
 export type RunPhase =
-  | 'connecting'   // 已发出请求，还没收到任何事件
-  | 'understanding'// 收到 waiting（模型开始处理）
-  | 'thinking'     // 有 reasoning 增量在流（深度思考）
-  | 'composing'    // 有正文增量在流
-  | 'tool'         // 工具执行中
+  | 'connecting'
+  | 'understanding'
+  | 'thinking'
+  | 'composing'
+  | 'tool'
   | 'done'
   | 'error'
 
-interface StepItem {
-  label: string
-  detail?: string
-  state: 'done' | 'running' | 'failed'
-}
-
 const props = withDefaults(
   defineProps<{
-    /** 本轮是否在跑（由父级 `isGenerating` 驱动） */
+    /** 本轮是否在跑 */
     running?: boolean
-    /**
-     * 当前阶段。父级从事件流推断后传进来。
-     *
-     * ⚠️ 这里**不在组件内自己听事件**：状态条是纯展示组件，
-     *    把"事件 → 阶段"的推断留在页面层，组件才能被单测和复用。
-     */
+    /** 当前阶段 */
     phase?: RunPhase
-    /** 当前正在执行的工具名（`tool` 阶段显示「正在调用 XX」） */
+    /** 当前执行的工具名（`tool` 阶段用） */
     tool?: string
-    /** 本轮开始时间戳（ms）。用于算耗时；父级只记一次 */
+    /** 本轮开始时间（ms） */
     startedAt?: number
-    /** 最近一次"有内容在动"的时间戳（ms）——用来判断是否进入"停滞等待" */
+    /** 最近一次活动时间（ms）；结束后用它封口，避免继续走表 */
     lastActivityAt?: number
-    /** 本轮是否以失败结束 */
+    /** 是否失败收场 */
     failed?: boolean
   }>(),
   {
@@ -150,126 +91,55 @@ const props = withDefaults(
   }
 )
 
-const emit = defineEmits<{ (e: 'toggle-steps', open: boolean): void }>()
-
-/** 用户是否展开了步骤明细 */
-const showSteps = ref(false)
-
-/** 计时用的"现在"，每秒刷新一次 */
+/** 每秒走动的"现在"（运行中才启用定时器） */
 const now = ref(Date.now())
 let timer: ReturnType<typeof setInterval> | null = null
 
-/** 是否可见：跑着，或刚结束但失败（让用户看到失败原因的存在感） */
+/** 可见性：在跑，或失败时留一行说明（成功且结束就不显示了，只留 turn_end 里的耗时记录） */
 const visible = computed(() => props.running || props.failed)
 
 /**
- * 视觉基调
- * 跑动中 → 中性；结束且失败 → 失败色；正常结束 → 成功色
+ * 文案（用户指定格式：「正在xxx，用时 N 秒」）
+ *
+ * ⚠️ 措辞都用「正在…」句式，与 DSH 一致。
+ *    特别地，长思考阶段说「深度求索中」而不是「深度思考中」——
+ *    "求索"更贴合这个产品（学习场景），也避免和推理块的「深度思考」重复。
  */
-const tone = computed(() => {
-  if (props.running) return 'run'
-  return props.failed ? 'fail' : 'ok'
-})
-
-/** 已耗时（ms） */
-const elapsedMs = computed(() => {
-  if (!props.startedAt) return 0
-  // 结束后不再走表：用"最后一次活动"封口，避免显示成越等越久
-  const end = props.running ? now.value : (props.lastActivityAt || now.value)
-  return Math.max(0, end - props.startedAt)
+const label = computed(() => {
+  if (!props.running) return props.failed ? '已中断' : '已完成'
+  switch (props.phase) {
+    case 'connecting':
+      return '正在连接中'
+    case 'understanding':
+      return '正在理解需求'
+    case 'thinking':
+      return '正在深度求索中'
+    case 'composing':
+      return '正在撰写内容'
+    case 'tool':
+      return props.tool ? `正在执行「${props.tool}」` : '正在执行操作'
+    default:
+      return '正在处理'
+  }
 })
 
 /**
  * 耗时文案
  *
- * 一分钟以内显示 `12 秒`（精确到秒，用户对前 60 秒最敏感）；
- * 超过一分钟显示 `1 分 23 秒`（此时秒数已不重要，但保留能体现"在动"）。
+ * 用户给的样子是「用时 4秒」—— **数字与"秒"紧贴**，中间不留空格。
+ * 中文排版里"4秒"比"4 秒"更紧凑，也更接近用户手写的样式。
+ *
+ * ⚠️ 不做「1 分 23 秒」这种复合表述：用户要的是"大致多久"，
+ *    复合格式要在脑子里换算，超过 60 秒就显示「75秒」一眼可比。
  */
-const elapsedText = computed(() => {
-  const s = Math.floor(elapsedMs.value / 1000)
-  if (s < 60) return `${s} 秒`
-  const m = Math.floor(s / 60)
-  const rest = s % 60
-  return `${m} 分 ${rest} 秒`
+const timeText = computed(() => {
+  if (!props.startedAt) return ''
+  const end = props.running ? now.value : (props.lastActivityAt || now.value)
+  const s = Math.max(0, Math.round((end - props.startedAt) / 1000))
+  return `${s}秒`
 })
 
-/**
- * 是否处于"停滞等待"
- *
- * 判据：正在跑，且距上次活动超过 2.5 秒。
- *
- * 为什么是 2.5 秒：实测正常流式输出时事件间隔多在 1 秒内；
- * 超过 2.5 秒还没动静，用户就会开始觉得"卡住了"。
- * 这个阈值只影响进度条动画风格，不影响功能，宁可早一点切过去。
- */
-const stalled = computed(() => {
-  if (!props.running) return false
-  const last = props.lastActivityAt || props.startedAt
-  if (!last) return false
-  return now.value - last > 2500
-})
-
-/**
- * 阶段文案
- *
- * ⚠️ 措辞原则：说"我现在在做什么"，而不是"正在处理"。
- *    「正在写正文」比「处理中」有信息量得多 —— 用户能据此判断还要不要等。
- */
-const phaseLabel = computed(() => {
-  if (!props.running) {
-    return props.failed ? '任务中断' : '任务完成'
-  }
-  switch (props.phase) {
-    case 'connecting':
-      return '正在连接…'
-    case 'understanding':
-      return '正在理解你的需求…'
-    case 'thinking':
-      // 长思考最容易让人以为卡死 → 明确说"在推演"
-      return stalled.value ? '正在深入推演（内容较长，请稍候）…' : '正在深度思考…'
-    case 'composing':
-      return '正在写正文…'
-    case 'tool':
-      return props.tool ? `正在调用「${props.tool}」…` : '正在执行工具…'
-    default:
-      return '正在处理…'
-  }
-})
-
-/**
- * 步骤清单
- *
- * 只在**已经过去**的阶段上生成，让用户看到"前面做了什么"。
- * 当前阶段不列进来 —— 它已经占着 `ars-phase` 那一行，重复显示是噪声。
- */
-const steps = computed<StepItem[]>(() => {
-  const out: StepItem[] = []
-  const p = props.phase
-
-  // 阶段顺序（用于判断"是否已过"）
-  const order: RunPhase[] = ['connecting', 'understanding', 'thinking', 'tool', 'composing']
-  const idx = order.indexOf(p)
-
-  if (idx > 0 || !props.running) out.push({ label: '理解需求', state: 'done' })
-  if (idx > 2 || (idx === -1 && !props.running && !props.failed)) {
-    out.push({ label: '深度思考', state: 'done' })
-  }
-  if (idx > 3 || (idx === -1 && !props.running && !props.failed)) {
-    out.push({ label: '调用工具', state: 'done' })
-  }
-  if (!props.running && !props.failed) {
-    out.push({ label: '生成正文', state: 'done' })
-  }
-  if (props.failed) {
-    out.push({ label: '任务中断', state: 'failed' })
-  }
-  return out
-})
-
-/** 已完成步骤数（用于「已完成 N 步」按钮文案） */
-const doneCount = computed(() => steps.value.filter((s) => s.state === 'done').length)
-
-/** 计时器：跑动时每秒刷新；停下来立刻清掉，别让定时器空转 */
+/** 定时器：只在运行中启用；停下立刻清掉，别空转 */
 watch(
   () => props.running,
   (running) => {
@@ -284,9 +154,6 @@ watch(
   { immediate: true }
 )
 
-/** 步骤展开状态变化时通知父级（父级可能需要滚动跟随） */
-watch(showSteps, (open) => emit('toggle-steps', open))
-
 onBeforeUnmount(() => {
   if (timer) {
     clearInterval(timer)
@@ -296,248 +163,236 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.ars {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  /* 与消息内容区同宽但不撑满（太长会显得笨重），居中偏左 */
-  width: fit-content;
-  min-width: 260px;
-  max-width: min(560px, 100%);
-  padding: 7px 12px;
-  margin: 0 0 8px;
-  border-radius: 10px;
-  font-size: 12.5px;
-  line-height: 1.4;
-  color: #475569;
-  background: #f5f7fa;
-  border: 1px solid #e6ebf2;
-}
-
-/* 跑动中：淡蓝背景，暗示"正在进行" */
-.ars-run {
-  background: #f2f7fd;
-  border-color: #dbe8f7;
-  color: #2c4a6b;
-}
-
-/* 成功：浅绿，短暂停留 */
-.ars-ok {
-  background: #f2faf4;
-  border-color: #d8ecdd;
-  color: #2b6339;
-}
-
-/* 失败：浅红 */
-.ars-fail {
-  background: #fdf4f4;
-  border-color: #f3dcdc;
-  color: #8c3030;
-}
-
-.ars-mark {
+/*
+ * 视觉基准：与 `.rs-head`（推理块头部）同级 —— 12.5px、灰字、无边框无底色。
+ *
+ * ⚠️ 不要加 background / border / box-shadow（前两版都栽在这）：
+ *    这一行的角色是"安静地说明状态"，一旦有底色就会变成整屏最显眼的东西。
+ */
+.rline {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  flex: 0 0 14px;
+  gap: 6px;
+  padding: 1px 2px;
+  margin: 1px 0 7px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  /*
+   * 基础文字色。运行中会被 `.is-running .rline-text` 的渐变覆盖
+   * （那里用 background-clip: text 把字当遮罩），结束后自动回到这个纯色。
+   */
+  color: var(--rline-base, #5b6577);
+  border-radius: 4px;
 }
 
-/* 转圈：12px 细环，比大 spinner 轻 */
-.ars-spinner {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 1.6px solid currentColor;
-  border-top-color: transparent;
-  opacity: 0.75;
-  animation: ars-spin 0.8s linear infinite;
+.rline.is-failed {
+  color: #c0504d;
 }
 
-@keyframes ars-spin {
-  to { transform: rotate(360deg); }
-}
-
-.ars-main {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.ars-line {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.ars-phase {
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* 计时用等宽数字，走动时不会左右抖 */
-.ars-elapsed {
+.rline-logo {
+  display: inline-flex;
+  align-items: center;
   flex: 0 0 auto;
+  /* 运行中轻微呼吸，呼应"在跑"；结束后静止 */
+  opacity: 0.82;
+}
+
+.rline.is-running .rline-logo {
+  animation: rline-logo-breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes rline-logo-breathe {
+  0%, 100% { opacity: 0.82; }
+  50%      { opacity: 1; }
+}
+
+/*
+ * 文案容器
+ *
+ * ⚠️ 必须是 `inline`（不是 inline-flex）：
+ *    用 inline-flex 时，子 span 会各成一个 flex item，
+ *    浏览器在它们之间渲染出**可感知的间隙** —— 实测出来就是
+ *    「正在连接中 ，用时 2秒」里逗号前那个多余空格。
+ *    普通行内布局下，相邻 span 是紧贴的，标点才能正确前贴。
+ *
+ *    流光是 `position: absolute` 的子层，不需要 flex 也能量满整行。
+ */
+/*
+ * 单行文案 —— 字体流光（2026-10-27 二次修）
+ *
+ * ============================================================================
+ * 用户明确指出第一版做错了
+ * ============================================================================
+ *
+ *   「流光效果不是周围出现一个流光的框 而是字体流光 能理解什么叫做字体流光嘛？
+ *     文字本身保持基础亮度，但有一道高光带（渐变光斑）从文字左侧匀速滑动
+ *     到右侧并循环往复。」
+ *
+ * 第一版是在整行外面盖了一层 `linear-gradient` 光带（`inset: 0` + 宽 300% 平移），
+ * 那是**外框光带** —— 像给文字套了个发光的塑料袋，而不是字在发光。
+ *
+ * ============================================================================
+ * 字体流光的正确做法
+ * ============================================================================
+ *
+ * 靠 `background-clip: text` 把**文字本身**当遮罩，然后让渐变背景在里面平移：
+ *
+ *   ① 文字颜色设为 `transparent`（否则纯色字会盖住背景，看不到渐变）
+ *   ② `background-image` = 一段"暗-亮-暗"的渐变（基础亮度 + 高光带）
+ *   ③ `background-size` 设得比文字宽（300%），这样才能有"扫过"的过程
+ *   ④ `animation` 平移 `background-position-x` 从 0 到 100%
+ *
+ * 效果：字保持可读的基础灰，一道更亮的光斑从左边滑到右边，循环。
+ * 这才是"字体在流动"，而不是"外面有个框在动"。
+ *
+ * ⚠️ 运行结束后必须回到纯色文字：
+ *    `-webkit-text-fill-color: transparent` 一旦留着而动画停了，
+ *    文字会变成"渐变卡的某一帧"，看起来像渲染坏了。
+ *    所以流光样式只挂在 `.is-running` 上，结束后自动回到 `.rline` 的纯色。
+ */
+.rline-text {
+  position: relative;
+  display: inline;
+  white-space: nowrap;
+}
+
+/* 运行中：文字变"透明"，由背景渐变透出来 */
+.rline.is-running .rline-text {
+  /*
+   * 基础亮度 = var(--rline-base)，高光 = var(--rline-hi)。
+   *
+   * 渐变按"3 段等宽"排：暗 / 亮 / 暗。
+   * `background-size: 300% 100%` 让这三段正好铺满 3 倍文字宽，
+   * 于是任一时刻文字上只显示其中一段 —— 平移时就是光斑扫过。
+   */
+  background-image: linear-gradient(
+    100deg,
+    var(--rline-base) 0%,
+    var(--rline-base) 35%,
+    var(--rline-hi) 50%,
+    var(--rline-base) 65%,
+    var(--rline-base) 100%
+  );
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  /* 文字的"墨"是背景渐变，而不是纯色 */
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: rline-text-sweep 2.8s linear infinite;
+}
+
+/*
+ * 高光从左扫到右
+ *
+ * `background-position-x` 从 `100%` 走到 `0%` 时，渐变整体向左移 ——
+ * 视觉上就是亮段从左侧进入、向右侧离开。
+ * 用 `100% → 0%` 而不是 `0% → 100%`，方向才是"从左往右"（与阅读方向一致）。
+ */
+@keyframes rline-text-sweep {
+  0%   { background-position-x: 100%; }
+  100% { background-position-x: 0%; }
+}
+
+/* 基础色与高光色：定义在容器上，子 span 继承不到渐变，但 keyframes 里要用 */
+.rline {
+  --rline-base: #5b6577;
+  --rline-hi: #1c2430;
+}
+
+/*
+ * 耗时与省略号也要参与流光，否则它们会是"死的纯色"，视觉上割裂。
+ *
+ * ⚠️ 但它们各自是独立元素，`background-clip: text` 不会自动继承 ——
+ *    所以这里让它们也挂同一套渐变与动画（`background-size` 相同、相位相同，
+ *    看起来像同一道光扫过整行）。
+ */
+.rline.is-running .rline-time,
+.rline.is-running .rline-dots {
+  background-image: linear-gradient(
+    100deg,
+    var(--rline-base) 0%,
+    var(--rline-base) 35%,
+    var(--rline-hi) 50%,
+    var(--rline-base) 65%,
+    var(--rline-base) 100%
+  );
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: rline-text-sweep 2.8s linear infinite;
+}
+
+.rline-label {
+  position: relative;
+}
+
+/*
+ * 耗时：比正文淡，但**不用 opacity**
+ *
+ * ⚠️ 不能用 `opacity`（2026-10-27 实测）：运行中这一行是
+ *    `background-clip: text` + `-webkit-text-fill-color: transparent` 实现的，
+ *    而 `opacity` 作用在整个元素盒上，会把渐变的亮部一起压暗，
+ *    结果是"流光几乎看不见"。
+ *
+ *    想让它淡，就把**渐变的基色**调淡（已经是 --rline-base），
+ *    或者用 `color` 在非运行态区分 —— 不要用 opacity。
+ */
+.rline-time {
+  position: relative;
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum';
-  font-size: 11.5px;
-  opacity: 0.72;
 }
 
-.ars-elapsed-done {
-  opacity: 0.6;
-}
-
-/* ── 细进度条 ──
- *
- * ⚠️ 宽度必须收窄（2026-10-27 截图确认）：
- *    第一版让它撑满整条状态条，1440px 视口下是一根 900px 的长线，
- *    中间那段滚动的深色块像"进度条坏了"，很难看。
- *
- *    它不是真的进度指示（我们确实不知道还要多久），
- *    只是"系统在动"的信号 —— 那么短一点就够，长了反而抢注意力。
- *    收在文案下方 120px 内，视觉上是文案的附属标注。
- */
-.ars-bar {
-  position: relative;
-  height: 2px;
-  width: 120px;
-  max-width: 100%;
-  margin-top: 5px;
-  border-radius: 1px;
-  overflow: hidden;
-  background: rgba(0, 0, 0, 0.06);
-}
-
-.ars-bar-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  border-radius: 1px;
-  background: currentColor;
-  opacity: 0.5;
-}
-
-/* 等待期：来回走的"不确定"动画 —— 明确表达"在动但不知道还要多久" */
-.ars-bar-wait .ars-bar-fill {
-  width: 34%;
-  animation: ars-indeterminate 1.5s ease-in-out infinite;
-}
-
-@keyframes ars-indeterminate {
-  0%   { left: -34%; }
-  50%  { left: 50%; }
-  100% { left: 100%; }
-}
-
-/* 有内容在流：缓慢从短到长的确定感动画 */
-.ars-bar-live .ars-bar-fill {
-  width: 22%;
-  animation: ars-breathe 2.2s ease-in-out infinite;
-}
-
-@keyframes ars-breathe {
-  0%   { left: 0;    width: 18%; }
-  50%  { left: 40%;  width: 30%; }
-  100% { left: 82%;  width: 18%; }
-}
-
-/* ── 步骤折叠按钮 ── */
-.ars-toggle {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 2px 6px;
-  font-size: 11.5px;
-  color: inherit;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  cursor: pointer;
+/* 非运行态：耗时比主句更淡（此时是纯色，用 opacity 没问题） */
+.rline:not(.is-running) .rline-time {
   opacity: 0.75;
-  transition: opacity 0.15s, background 0.15s;
 }
 
-.ars-toggle:hover {
-  opacity: 1;
-  background: rgba(0, 0, 0, 0.04);
+/*
+ * 省略号
+ *
+ * 用 CSS 动画而不是 JS 改文本 —— 后者每秒触发布局，
+ * 而这条文字就在视口里，长任务跑几分钟会白费不少渲染。
+ */
+.rline-dots {
+  position: relative;
 }
 
-.ars-caret {
-  width: 0;
-  height: 0;
-  border-left: 3.5px solid transparent;
-  border-right: 3.5px solid transparent;
-  border-top: 4px solid currentColor;
-  transition: transform 0.18s;
+/* 非运行态不做闪烁（正常情况下运行结束这一行就没了，这里是兜底） */
+.rline:not(.is-running) .rline-dots {
+  opacity: 0.55;
 }
 
-.ars-caret-open {
-  transform: rotate(180deg);
-}
-
-/* ── 步骤明细 ── */
-.ars-steps {
-  margin: 0 0 8px;
-  padding: 6px 12px 6px 26px;
-  width: fit-content;
-  min-width: 260px;
-  max-width: min(560px, 100%);
-  list-style: none;
-  font-size: 12px;
-  color: #5a6b80;
-  background: #fafbfd;
-  border: 1px solid #eef1f6;
-  border-radius: 8px;
-}
-
-.ars-step {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 2.5px 0;
-}
-
-.ars-step-dot {
-  width: 5px;
-  height: 5px;
-  flex: 0 0 5px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.35;
-}
-
-.ars-step.is-done .ars-step-dot {
-  background: #3f9c56;
-  opacity: 0.9;
-}
-
-.ars-step.is-running .ars-step-dot {
-  background: #3b82c4;
-  opacity: 1;
-}
-
-.ars-step.is-failed .ars-step-dot {
-  background: #c0504d;
-  opacity: 1;
-}
-
-.ars-step-detail {
-  font-size: 11px;
-  opacity: 0.6;
-}
-
-/* 窄屏：计时与阶段换行，别挤成一坨 */
-@media (max-width: 640px) {
-  .ars {
-    flex-wrap: wrap;
-    gap: 4px 8px;
+/*
+ * 系统开启"减少动态效果"时关掉所有动画
+ *
+ * 流光和呼吸对光敏感的用不友好；`prefers-reduced-motion` 是标准做法。
+ *
+ * ⚠️ 关掉流光时必须**把文字恢复成纯色**：
+ *    光流的实现是 `-webkit-text-fill-color: transparent` + 渐变背景。
+ *    如果只是 `animation: none` 而透明填充还在，
+ *    文字会定格在渐变的某一帧上（可能整行都是最暗或最亮那一段），
+ *    看起来像渲染坏了。所以这里显式把填充色改回来。
+ */
+@media (prefers-reduced-motion: reduce) {
+  .rline-dots,
+  .rline.is-running .rline-logo {
+    animation: none;
   }
-  .ars-line {
-    flex-wrap: wrap;
-    gap: 2px 8px;
+
+  .rline.is-running .rline-text,
+  .rline.is-running .rline-time,
+  .rline.is-running .rline-dots {
+    animation: none;
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
+    color: inherit;
   }
 }
 </style>

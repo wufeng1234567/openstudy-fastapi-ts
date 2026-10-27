@@ -204,6 +204,23 @@ export interface AgentChatMessage {
    * 所以这个字段必须原样落库（`slimTimeline` 白名单）+ 原样传给 `rollbackTurn()`。
    */
   turnId?: string
+  /**
+   * `turn_end` 专用：**本轮耗时（毫秒）**（2026-10-27 新增）
+   *
+   * 用户要求「做一个记录，记录了本次对话共耗时多少时间，每轮聊天的底部都可以看到」。
+   *
+   * 用 `send()` 的 finally 里 `Date.now() - runStartedAt` 算出来落在这条标记上。
+   * 它必须随 `turn_end` 一起**落库**（`slimTimeline` 白名单），
+   * 否则刷新后历史轮次的耗时就丢了 —— 那正是用户说的"记录"要解决的问题。
+   */
+  durationMs?: number
+  /**
+   * `turn_end` 专用：**到这里为止的会话累计耗时（毫秒）**
+   *
+   * 单轮耗时只说明"这次等了多久"；用户更想要的是"这段对话一共花了多久"。
+   * 累计值在轮末由前面的累计 + 本轮耗时得出，同样落库。
+   */
+  totalDurationMs?: number
   /** agent_note 的子类型（决定图标与配色） */
   noteKind?: 'correct' | 'warning' | 'error'
   /** tool_result 专用 */
@@ -361,6 +378,14 @@ function slimTimeline(msgs: AgentChatMessage[]): any[] {
     if (m.preview) out.preview = m.preview
     if (m.attempt != null) out.attempt = m.attempt
     if (m.attachments?.length) out.attachments = m.attachments
+    /*
+     * 轮耗时（2026-10-27 新增，必须落库）
+     *
+     * 用户要的是「记录」—— 刷新页面后历史轮次的耗时还得在。
+     * 白名单语义是"不在名单里的字段刷新后就没了"，所以这两行不能省。
+     */
+    if (m.durationMs != null) out.durationMs = m.durationMs
+    if (m.totalDurationMs != null) out.totalDurationMs = m.totalDurationMs
     // 专家工作组卡片：整条 `experts` 数组落库，刷新后仍能看到「这轮请了哪些专家、结果如何」。
     // （行内容短、行数=专家数，无需像 data 那样截断。）
     if (m.type === 'experts' && Array.isArray(m.experts)) {
@@ -1678,7 +1703,37 @@ export function useAgentChat() {
       dropSoloExpertCard()
       // 进度清单收口：轮末若还有 running 步骤（如解析中途报错），标记完成，别让它一直转圈
       closeProgress()
-      messages.value.push({ role: 'assistant', type: 'turn_end', turnId, content: '' })
+
+      /*
+       * 轮耗时（2026-10-27 新增）
+       *
+       * 用户要求：「做一个记录，记录了本次对话共耗时多少时间，每轮聊天的底部都可以看到」
+       *
+       * 两个数都算出来落库：
+       *   · `durationMs`      —— 本轮耗时（从 send 开始到收尾）
+       *   · `totalDurationMs` —— 到此为止**整段对话**的累计耗时
+       *
+       * ⚠️ 累计值从 `messages` 里已有的 turn_end 求和，而不是另存一个全局变量：
+       *    刷新 / 切换会话后 `messages` 是从快照还原的，求和能自然复原；
+       *    而全局变量一刷新就归零，累计算出来会比实际小（用户看到的"共耗时"就错了）。
+       *
+       * ⚠️ 求和必须**用单轮值相加**（`durationMs`），不能加 `totalDurationMs`：
+       *    后者本身就是累计值，把它再加一遍等于平方级膨胀
+       *    （两轮各 10s，第二轮会算成 10+20=30s 而不是 20s）。
+       */
+      const _turnMs = runStartedAt.value ? Math.max(0, Date.now() - runStartedAt.value) : 0
+      const _prevTotal = messages.value.reduce(
+        (sum, m) => sum + (m.type === 'turn_end' ? (m.durationMs || 0) : 0),
+        0
+      )
+      messages.value.push({
+        role: 'assistant',
+        type: 'turn_end',
+        turnId,
+        content: '',
+        durationMs: _turnMs,
+        totalDurationMs: _prevTotal + _turnMs
+      })
       // 持久化「完整时间线」（含工具卡片）—— 刷新后才能复原卡片视图。
       // 放在 finally：成功 / 报错 / 主动停止都会存下当前这一版（含已跑过的过程卡片）。
       if (opts.sessionId) {

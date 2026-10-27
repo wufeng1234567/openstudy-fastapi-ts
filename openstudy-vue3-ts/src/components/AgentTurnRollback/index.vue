@@ -69,6 +69,21 @@
           <span>复制</span>
         </button>
       </div>
+
+      <!--
+        本轮耗时记录（2026-10-27 新增）
+
+        用户要求：「做一个记录，记录了本次对话共耗时多少时间，
+                   每轮聊天的底部都可以看到」
+
+        ⚠️ 放在按钮**右侧**、同一行：它是这一轮的元信息，不是操作，
+           单独占一行会凭空多出一段垂直空白（每轮都多一次）。
+        ⚠️ 只在有值时渲染：老数据（本次改动之前落库的轮次）没有这个字段，
+           显示 "，用时 0 秒" 是错的信息，不如不显示。
+      -->
+      <span v-if="durationMs > 0" class="atr-duration" :title="durationTitle">
+        {{ durationText }}
+      </span>
     </div>
 
     <!--
@@ -112,6 +127,19 @@ const props = defineProps({
    * 由消息流按轮拼好传进来（它手上才有整份 `messages`），本组件只负责交给剪贴板前的搬运。
    */
   answerText: { type: String, default: '' },
+  /**
+   * 本轮耗时（毫秒）—— 2026-10-27 新增
+   *
+   * 用户要求：「做一个记录，记录了本次对话共耗时多少时间，每轮聊天的底部都可以看到」
+   */
+  durationMs: { type: Number, default: 0 },
+  /**
+   * 到此为止整段对话的累计耗时（毫秒）—— 2026-10-27 新增
+   *
+   * 单轮耗时回答"这次等了多久"；累计值回答"这段对话一共花了多久"，
+   * 后者是用户说的"记录本次对话共耗时"。
+   */
+  totalDurationMs: { type: Number, default: 0 },
   /**
    * 外部禁用（目前只用于「正在生成」：这一轮还在跑，撤账本会跟它交叉）。
    * 与 `state.status === 'busy'` 是「或」的关系。
@@ -173,6 +201,42 @@ const buttonLabel = computed(() => {
 
 const canClick = computed(() => !props.disabled && canRollback.value)
 const canCopy = computed(() => !!props.answerText.trim())
+
+/**
+ * 耗时文案（2026-10-27 三次修）
+ *
+ * ⚠️ 这里**只显示本轮耗时**，绝不显示累计。
+ *
+ * 演进过程（每次都是用户实测打回）：
+ *    v1「用时 31 秒 · 共 54 秒」→ 用户：「没看懂…怎么又说用时31秒 然后又来个共54秒的？」
+ *    v2「本次对话共 54秒」      → 用户：「他把上一次的对话时间也统计进来了
+ *                                        每轮对话时间单独计算」
+ *
+ * 结论：轮末这一行是**本轮**的元信息，就该只放本轮的数字。
+ *       "本次对话共耗时"挪到整个对话的最末尾单独一行（见 `AiChatStream` 的
+ *       `conversationTotal`）—— 那里才是"会话级"的位置，不会和"轮级"混在一起。
+ */
+const fmtSec = (ms: number) => {
+  const s = Math.max(0, Math.round(ms / 1000))
+  if (s < 60) return `${s}秒`
+  const m = Math.floor(s / 60)
+  const rest = s % 60
+  return rest === 0 ? `${m}分` : `${m}分${rest}秒`
+}
+
+const durationText = computed(() => {
+  if (!props.durationMs) return ''
+  return `本轮 ${fmtSec(props.durationMs)}`
+})
+
+/** 悬停：说明这是"本轮"耗时（并给出对话累计，需要时才看） */
+const durationTitle = computed(() => {
+  const parts = [`本轮耗时 ${fmtSec(props.durationMs)}`]
+  if (props.totalDurationMs > 0) {
+    parts.push(`本对话累计 ${fmtSec(props.totalDurationMs)}（在对话末尾单独显示）`)
+  }
+  return parts.join('，')
+})
 
 const onRollback = () => {
   if (!canClick.value) return
@@ -265,6 +329,25 @@ const onCopy = () => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+/*
+ * 耗时记录（2026-10-27）
+ *
+ * 定位：这一行的**元信息**，不是操作按钮。
+ * 所以用纯文字、不加边框/底色/悬停态 —— 一眼能区分"能点的"和"只是显示的"。
+ * 字号比按钮文字小一档，颜色更淡，安静地待在右侧。
+ */
+.atr-duration {
+  margin-left: auto;
+  padding-left: 10px;
+  font-size: 11.5px;
+  color: var(--os-text-3, #8a94a6);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  white-space: nowrap;
+  flex: none;
+  cursor: default;
 }
 
 .atr-btn {
