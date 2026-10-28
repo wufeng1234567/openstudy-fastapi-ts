@@ -313,14 +313,17 @@ async def list_conversations(
         )
         unread_count = await db.scalar(unread_query) or 0
 
-    conversations.append({
-        "userId": other_id,
-        "nickname": user.nick_name or user.user_name,
-        "avatar": user.avatar,
-        "lastMessage": last_msg.content if last_msg else "",
-        "lastMessageTime": last_time.isoformat() if last_time else None,
-        "unreadCount": unread_count,
-    })
+        # 2026-10-28 修复：append 原来缩进在 for 之外 —— 循环 N 次只 append
+        # 最后一次的结果（会话列表永远只有 1 条），且 user/last_msg 残留循环
+        # 尾变量，最后一个用户查不到时直接 AttributeError。移回循环体内。
+        conversations.append({
+            "userId": other_id,
+            "nickname": user.nick_name or user.user_name,
+            "avatar": user.avatar,
+            "lastMessage": last_msg.content if last_msg else "",
+            "lastMessageTime": last_time.isoformat() if last_time else None,
+            "unreadCount": unread_count,
+        })
 
     return success(conversations)
 

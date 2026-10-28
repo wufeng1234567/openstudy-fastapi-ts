@@ -7,7 +7,7 @@ from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from app.database import get_db
-from app.core.security import get_current_user
+from app.core.security import require_admin
 from app.core.response import success, paginate, error
 from app.utils.excel_util import export_to_excel
 from datetime import datetime
@@ -46,7 +46,7 @@ async def list_sensitive_words(
     pageNum: int = Query(1, ge=1),
     pageSize: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     query = select(SensitiveWord)
     if word:
@@ -71,7 +71,7 @@ async def create_sensitive_word(
     word: str = Query(...),
     level: Optional[int] = Query(1),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     # 检查是否已存在
     check_query = select(SensitiveWord).where(SensitiveWord.word == word)
@@ -95,7 +95,7 @@ async def update_sensitive_word(
     level: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     query = select(SensitiveWord).where(SensitiveWord.id == id)
     result = await db.execute(query)
@@ -120,7 +120,7 @@ async def update_sensitive_word(
 async def delete_sensitive_words(
     ids: str,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     id_list = [int(id) for id in ids.split(",")]
     stmt = delete(SensitiveWord).where(SensitiveWord.id.in_(id_list))
@@ -134,7 +134,7 @@ async def delete_sensitive_words(
 @router.post("/export")
 async def export_sensitive_words(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """导出敏感词列表为 Excel"""
     query = select(SensitiveWord).order_by(SensitiveWord.create_time.desc())

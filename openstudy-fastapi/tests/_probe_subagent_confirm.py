@@ -101,7 +101,8 @@ async def run_probe() -> int:
         return p
 
     # 让「所有工具都需确认」，从而聚焦验证子代理侧的闸门接线（规则本身由草稿探针覆盖）
-    loop_mod.needs_user_confirmation = lambda t, p, ac: True
+    # 第 4 参 confirmed_writes（GuardState）：sub_agent.py 按 4 实参调用，lambda 必须收下
+    loop_mod.needs_user_confirmation = lambda t, p, ac, cw=None: True
     loop_mod._execute_tool = fake_exec
     loop_mod._apply_edited_params = fake_apply
 
@@ -188,7 +189,7 @@ async def run_probe() -> int:
         )
 
         # ---- T6：不需要确认 → 不弹卡、直接执行 ----
-        loop_mod.needs_user_confirmation = lambda t, p, ac: False
+        loop_mod.needs_user_confirmation = lambda t, p, ac, cw=None: False
         executed.clear()
         events6 = []
 

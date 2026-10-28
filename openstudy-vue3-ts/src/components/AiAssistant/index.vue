@@ -1239,7 +1239,16 @@ const onTogglePause = () => {
 
 /* ===================== 生命周期 ===================== */
 onMounted(async () => {
-  // Ctrl+V 粘贴图片：只绑定一次，避免重挂载造成重复监听
+  // Ctrl+V 粘贴图片：document 级监听，**同一个实例内只绑一次**
+  //
+  // ⚠️ 别再以为 `_pasteBound` 能挡住「重挂载重复监听」：`<script setup>` 的顶层变量是
+  //    **实例作用域**（每次挂载重新求值），它跨实例**活不下来**。
+  //    真正防止重复监听的是 `onUnmounted` 里的 `removeEventListener` ——
+  //    少了那一句，每经历一次「进智能体大屏（layout 用 v-if 卸掉本组件）再回来」，
+  //    document 上就会多留一条指向**已销毁实例**闭包的 paste 监听 ——
+  //    结果是旧实例闭包残留 / 同一份粘贴被多处处理 / 资源无法回收。
+  //    ⚠️ 这里只陈述「残留与泄漏」，**不**声称某个具体的用户可见症状
+  //    （新实例会自己绑一条 handler，会不会表现为某种界面现象未经证明）。
   if (!_pasteBound) {
     _pasteBound = true
     document.addEventListener('paste', handlePaste)
@@ -1264,6 +1273,28 @@ onUnmounted(() => {
   window.removeEventListener('mouseup', stopDrag)
   window.removeEventListener('resize', initPosition)
   document.removeEventListener('mousedown', onDocMousedown)
+  // Ctrl+V 粘贴监听是在 **document** 上挂的：必须在这里成对摘掉，
+  // 否则每次卸载都给 document 留一条指向已销毁实例的闭包（见 onMounted 里的注释）。
+  // 句柄用同一个 `handlePaste` 引用，否则 removeEventListener 认不出来、等于没删。
+  // （作用范围同上：消除旧实例闭包残留，不做未经验证的症状断言。）
+  document.removeEventListener('paste', handlePaste)
+  /*
+   * 卸载时把还在跑的生成流收掉。
+   *
+   * ⚠️ 本组件不是 keep-alive：`layout/front.vue` 用
+   *    `v-if="isLogin && !isGuest && !isAgentPage && !isMockExamPage"` 挂着，
+   *    用户一点「智能体」大屏（或进模拟考试）就真的卸载。
+   *    不断流的结果：请求还在烧 token、服务端还在写库，而界面已经不在了 ——
+   *    用户什么反馈都看不到。与 `views/front/agent/chat.vue` 的
+   *    `onBeforeUnmount(() => { if (isGenerating.value) stop() })` 保持同一口径。
+   */
+  try {
+    if (agentGenerating.value) agentStop()
+    if (stream.isGenerating.value) stream.abort()
+  } catch (e) {
+    // 卸载期的清理不允许抛出：组件已经死了，任何异常都只会变成噪音
+    console.warn('[assistant] 卸载时中断生成失败', e)
+  }
   stopDrawerResize()
 })
 </script>

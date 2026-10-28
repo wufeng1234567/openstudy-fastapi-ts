@@ -7,7 +7,7 @@ from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from app.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_admin
 from app.core.response import success, paginate, error
 from datetime import datetime
 
@@ -67,8 +67,9 @@ async def admin_list_messages(
     pageNum: int = Query(1, ge=1),
     pageSize: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
+    """管理端留言列表（2026-10-28：挂 require_admin，此前任意登录用户可读全站留言）"""
     query = select(LeaveMessage)
 
     count_query = select(func.count()).select_from(query.subquery())
@@ -100,7 +101,7 @@ async def add_message(
 async def admin_add_message(
     content: str = Query(...),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     message = LeaveMessage(content=content)
     db.add(message)
@@ -112,8 +113,10 @@ async def admin_add_message(
 async def delete_messages(
     ids: str,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
+    """删除留言（2026-10-28：挂 require_admin —— 前端删除入口只在管理页，
+    此前任意登录用户可删任意人的留言）"""
     id_list = [int(id) for id in ids.split(",")]
     stmt = delete(LeaveMessage).where(LeaveMessage.id.in_(id_list))
     await db.execute(stmt)

@@ -24,13 +24,21 @@ class QuestionBankRepository:
         page_num: int = 1,
         page_size: int = 10,
     ) -> Tuple[int, List[QuestionBank]]:
-        """查询题库列表（status='0' 为正常）"""
-        query = select(QuestionBank).where(QuestionBank.status == "0")
+        """查询题库列表（status='0' 为正常）
+
+        ⚠️ `status` 缺省（None / 空串）时才默认只查 `'0'`（正常）。
+        显式传 `status` 时**只用传入值**，绝不与硬编码 `'0'` 形成 AND 互斥
+        （否则 `status='1'` 会变成 `status='0' AND status='1'` → 恒空）。
+        """
+        query = select(QuestionBank)
+
+        if status:
+            query = query.where(QuestionBank.status == status)
+        else:
+            query = query.where(QuestionBank.status == "0")
 
         if bank_name:
             query = query.where(QuestionBank.bank_name.ilike(f"%{bank_name}%"))
-        if status:
-            query = query.where(QuestionBank.status == status)
         if subject:
             query = query.where(QuestionBank.subject == subject)
         if user_id:

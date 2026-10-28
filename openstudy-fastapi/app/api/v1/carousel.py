@@ -7,7 +7,7 @@ from sqlalchemy import select, func, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from app.database import get_db
-from app.core.security import get_current_user
+from app.core.security import require_admin
 from app.core.response import success, paginate, error
 from app.utils.excel_util import export_to_excel
 from datetime import datetime
@@ -49,7 +49,7 @@ async def list_carousel(
     pageNum: int = Query(1, ge=1),
     pageSize: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     query = select(Carousel).where(Carousel.status == "0")
 
@@ -95,7 +95,7 @@ async def create_carousel(
     linkUrl: Optional[str] = Query(None),
     sortOrder: Optional[int] = Query(0),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     item = Carousel(
         title=title,
@@ -117,7 +117,7 @@ async def update_carousel(
     sortOrder: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     query = select(Carousel).where(Carousel.id == id)
     result = await db.execute(query)
@@ -143,7 +143,7 @@ async def update_carousel(
 async def delete_carousel(
     ids: str,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     id_list = [int(id) for id in ids.split(",")]
     stmt = delete(Carousel).where(Carousel.id.in_(id_list))
@@ -154,7 +154,7 @@ async def delete_carousel(
 @router.post("/export")
 async def export_carousel(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """导出轮播图列表为 Excel"""
     query = select(Carousel).where(Carousel.status == "0").order_by(Carousel.sort_order.asc())

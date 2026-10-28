@@ -544,12 +544,21 @@ async def _run_sub_agent_inner(
                         # 只记非破坏性动作 —— 删除必须一次一问。
                         if approved and not tool.is_destructive(params):
                             _confirmed.mark_confirmed(name, str(params.get("action") or ""))
-                except Exception as e:  # noqa: BLE001 - 确认流程异常绝不拖垮子代理：退回原样执行
+                except Exception as e:  # noqa: BLE001 - 确认流程异常 → fail-closed：宁可失败，绝不未授权执行
+                    # ⚠️ 旧实现是 fail-open（run_tool=True「按原样执行」）：确认环节任何异常
+                    #    都会让工具**跳过用户确认**直接执行 —— 破坏性操作也一样，与
+                    #    confirm_ticket「无有效票据绝不执行」是同一条红线，不可接受。
+                    #    异常 ≠ 用户取消：cancelled=False，回带 hint 的失败信封让模型重试。
                     logger.warning(
-                        "[sub_agent:{}] 确认流程异常（按原样执行）: {}", role_spec.key, e
+                        "[sub_agent:{}] 确认流程异常（未执行）: {}", role_spec.key, e
                     )
                     cancelled = False
-                    run_tool = True
+                    run_tool = False
+                    result = fail(
+                        "确认流程异常，本次操作未执行",
+                        "这不是用户取消，而是确认环节出错。请重试同一操作；"
+                        "若再次失败，请换一种方式完成或直接告知用户",
+                    )
                 if run_tool:
                     steps.append(name)
                     result = await loop_mod._execute_tool(tool, params, ctx)

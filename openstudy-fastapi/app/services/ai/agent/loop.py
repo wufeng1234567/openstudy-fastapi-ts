@@ -696,6 +696,9 @@ async def _await_user_confirmation(
 
     返回 `(approved, edited)`：`approved=False` = 用户取消；`edited` = 用户在草稿里
     改过的内容（没有则为 None）。
+
+    无论从哪条出口离开（成功 / 超时 / 被取消），`confirmId` 都会从
+    `_pending_confirms` 与 `_pending_decisions` 两个字典里清掉。
     """
     # 极端竞态：前端可能比后端先到（决定已经在 `_pending_decisions` 里）→ 直接采用
     if confirm_id in _pending_decisions:
@@ -705,12 +708,18 @@ async def _await_user_confirmation(
     _pending_confirms[confirm_id] = event
     try:
         await asyncio.wait_for(event.wait(), timeout=CONFIRM_TIMEOUT_SECONDS)
+        # ⚠️ 读取决定必须在 finally **之前**：finally 会把两个字典都清掉（见下），
+        #   成功路径先 pop 决定再进 finally，后者对已 pop 的键是 no-op。
+        return _read_decision(_pending_decisions.pop(confirm_id, {}))
     except asyncio.TimeoutError:
         logger.warning("[agent] 等待用户确认超时: {}", confirm_id)
         return False, None
     finally:
+        # 三条退出路径（成功 / 超时 / 任务被取消）都不留 confirmId：
+        # 旧实现只清 `_pending_confirms`，超时或取消后「迟到的决定」会一直躺在
+        # `_pending_decisions` 里，直到 200 条防御性清理才被冲掉（纯垃圾内存）。
         _pending_confirms.pop(confirm_id, None)
-    return _read_decision(_pending_decisions.pop(confirm_id, {}))
+        _pending_decisions.pop(confirm_id, None)
 
 
 def _read_decision(decision: Any) -> Tuple[bool, Optional[Dict[str, Any]]]:

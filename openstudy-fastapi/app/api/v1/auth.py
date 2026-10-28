@@ -2,7 +2,7 @@
 认证相关 API
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
@@ -261,9 +261,21 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/logout")
-async def logout(current_user: dict = Depends(get_current_user)):
-    """退出登录"""
-    # 需要从请求中获取 token，这里简化处理
+async def logout(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    """退出登录
+
+    2026-10-28 修复：原来只回 success，**从不删除 Redis 里的登录 token** ——
+    前端删了本地 token，但旧 token 在服务端仍有效至过期（且每次访问还会被
+    `get_current_user` 的 `refresh_token` 续期）。这里从 Authorization 头
+    提取 Bearer token 并调用 `remove_token` 真正注销（单点 token 一并清除）。
+    """
+    auth_header = request.headers.get("authorization") or ""
+    token = auth_header[7:].strip() if auth_header.lower().startswith("bearer ") else ""
+    if token:
+        await remove_token(token)
     return success("退出成功")
 
 

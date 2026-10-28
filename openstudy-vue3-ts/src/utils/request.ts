@@ -125,7 +125,16 @@ service.interceptors.request.use(
   },
   (error) => {
     console.log(error)
-    Promise.reject(error)
+    /*
+     * ⚠️ 必须 `return` Promise.reject(error)
+     *
+     * 少了这个 return，这个 handler 会返回 `undefined` —— 在 axios 的拦截器链
+     * （`promise.then(fulfilled, rejected)` 两两消费）里，"返回 undefined" 等于
+     * **把 rejection 吞成一个 fulfilled(undefined)**，后面的 `dispatchRequest`
+     * 就会拿 `undefined` 当 config 继续走，最终抛出一个和业务无关的 TypeError。
+     * 无论当前是否真的有请求侧 rejection 到达这里，都要保持「转发原样 reason」的形状。
+     */
+    return Promise.reject(error)
   }
 )
 
@@ -146,7 +155,7 @@ service.interceptors.response.use(
       // 不该再弹「登录状态已过期」框（用户刚点了退出，弹这个很突兀）。
       // 判据：本地已无 token 或正处于登出中 → 静默拒绝，不弹框。
       if (!getToken() || logoutState.active) {
-        return Promise.reject('未登录')
+        return Promise.reject(new Error('未登录'))
       }
       if (!isRelogin.show) {
         isRelogin.show = true
@@ -185,7 +194,15 @@ service.interceptors.response.use(
           isRelogin.show = false
         })
       }
-      return Promise.reject('无效的会话，或者会话已过期，请重新登录。')
+      /*
+       * ⚠️ 必须 reject 成 **Error（带真实文案）**，不能是裸字符串：
+       *    axios 的拦截器链是 `promise.then(fulfilled, rejected)` 两两配对的，
+       *    **配对的 rejected 只接上游的 rejection**，接不住兄弟 fulfilled 返回的 rejection ——
+       *    也就是说这个 reason **原样直达调用方**。
+       *    裸字符串到了调用方那里没有 `.message`：`catch (e) { ElMessage.error(e?.message) }`
+       *    只能吐出 undefined / "undefined"，真实原因（如"题库不存在"）就丢了。
+       */
+      return Promise.reject(new Error('无效的会话，或者会话已过期，请重新登录。'))
     } else if (code === 500) {
       ElMessage({ message: msg, type: 'error' })
       return Promise.reject(new Error(msg))
@@ -194,7 +211,8 @@ service.interceptors.response.use(
       return Promise.reject(new Error(msg))
     } else if (code !== 200) {
       ElNotification.error({ title: msg })
-      return Promise.reject('error')
+      // 同上：必须带真实文案的 Error，见 401 分支的注释
+      return Promise.reject(new Error(msg))
     } else {
       return Promise.resolve(res.data)
     }
@@ -209,7 +227,18 @@ service.interceptors.response.use(
       return Promise.reject(error)
     }
     console.log('err' + error)
-    let { message } = error
+    /*
+     * ⚠️ 这里**不能**假设 error 一定是 axios 的错误对象。
+     *    本项目（以及自定义 adapter）可能 reject 出字符串 / undefined / 任意形状，
+     *    而 `let { message } = error` 对字符串取到的是 undefined、
+     *    对 undefined 会直接抛 TypeError —— 接下来 `message.includes(...)` 又会把
+     *    一个本该被吞掉的错误放大成 TypeError 抛给调用方（真实的失败原因就此丢失）。
+     *    所以先归一化成字符串再判：字符串本身当 message，对象取 `.message`，都没有则兜底。
+     */
+    let message =
+      typeof error === 'string'
+        ? error
+        : String((error && (error as any).message) || '') || '请求失败，请稍后再试'
     if (message == 'Network Error') {
       message = '后端接口连接异常'
     } else if (message.includes('timeout')) {
