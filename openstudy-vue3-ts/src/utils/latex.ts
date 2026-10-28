@@ -248,11 +248,11 @@ export function renderLatex(text: string): string {
  * 判据（**保守**，宁可不转也不误伤正文）：
  *   - 连续 **≥2 行**，每行含 **≥2 个 `|`**（至少 2 列）；
  *   - 这些行的**列数一致**；
- *   - 该组行里的**任意一行都不是**分隔行（`| --- |`）——已是 md 表格就**不动**；
+ *   - 该组里若出现分隔行（`| --- |`），说明已是合法 md 表格 → **原样放行**，绝不重复补；
  *   - 该组行**不紧跟在**一个已是"表格块"的上下文里（避免重复补）。
  * 满足则在该组第 1 行后插入一行 `| --- | ... |`。
  */
-function normalizePipeTables(text: string): string {
+export function normalizePipeTables(text: string): string {
   if (!text || !text.includes('|')) return text
 
   const isSeparatorRow = (s: string) => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(s)
@@ -264,7 +264,12 @@ function normalizePipeTables(text: string): string {
   const isPipeRow = (s: string) => {
     const t = s.trim()
     if (!t || !t.includes('|')) return false
-    if (isSeparatorRow(t)) return false
+    // ⚠️ 分隔行也必须算进连续表格块（2026-10-28 修）：
+    //    之前这里 return false，导致合法 md 表格在分隔行处被截断：
+    //    表头单独一组（不补分隔行）→ 分隔行原样输出 → 数据行又被当成
+    //    “无表头的裸表格”补了一行分隔行。最终 marked 看到两个分隔行，
+    //    第二个会渲染成一行 `---`，也就是用户截图里的“多出来的一行”。
+    //    把分隔行纳入分组后，hasSep=true，整个表格原样通过，不再二次补行。
     // 必须是"真表格形态"之一，避免误伤正文（用户 2026-10-11 折中判据）：
     //   · 以 `|` 开头或结尾（`| a | b |`）；或
     //   · `|` 两侧都带空格（`a | b`，常见的手写/解析表格分隔）。
@@ -298,6 +303,7 @@ function normalizePipeTables(text: string): string {
       while (j < lines.length && isPipeRow(lines[j])) j++
       const group = lines.slice(i, j)
       // 该组里若出现分隔行，说明已经是合法 md 表格 → 原样放行
+      // （分隔行现在会被 isPipeRow 收进 group，见上面的修复注释）
       const hasSep = group.some(isSeparatorRow)
       const cols = group.map(countCells)
       const consistent = cols.every((c) => c === cols[0]) && cols[0] >= 2
@@ -334,12 +340,17 @@ function normalizePipeTables(text: string): string {
  *   - 各行的**列数一致**（按 TAB 切分，列数 ≥2）；
  *   - 满足则整组转成 md 表格（首行当表头 + `| --- |` 分隔行）。
  */
-function normalizeTabTables(text: string): string {
+export function normalizeTabTables(text: string): string {
   if (!text || !text.includes('\t')) return text
 
   const isTabRow = (s: string) => {
     const t = s.replace(/\r$/, '')
     return t.includes('\t') && t.trim().length > 0 && t.split('\t').length >= 2
+  }
+  // TAB 表格也可能自带 `---\t---` 分隔行：识别出来，避免再补一行
+  const isTabSeparatorRow = (s: string) => {
+    const cells = s.replace(/\r$/, '').split('\t').map((c) => c.trim())
+    return cells.length >= 2 && cells.every((c) => /^:?-{2,}:?$/.test(c))
   }
   const cellCount = (s: string) => s.replace(/\r$/, '').split('\t').length
   // 单元格转义：内部 `|` 要转成 `\|`（否则会破坏生成的 md 表格）
@@ -359,8 +370,11 @@ function normalizeTabTables(text: string): string {
         const ncol = cols[0]
         const toMdRow = (row: string) =>
           '| ' + row.replace(/\r$/, '').split('\t').map(toCell).join(' | ') + ' |'
+        // 已有分隔行（`---\t---`）→ 原样保留，不要再补；
+        // 否则会在表格里多出一行 `---`（与 pipe 表格 2026-10-28 修的是同一类 bug）
+        const hasSep = group.slice(1).some(isTabSeparatorRow)
         out.push(toMdRow(group[0]))
-        out.push('| ' + Array(ncol).fill('---').join(' | ') + ' |')
+        if (!hasSep) out.push('| ' + Array(ncol).fill('---').join(' | ') + ' |')
         for (let k = 1; k < group.length; k++) out.push(toMdRow(group[k]))
       } else {
         for (const g of group) out.push(g)
