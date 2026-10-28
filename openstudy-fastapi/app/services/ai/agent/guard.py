@@ -335,7 +335,7 @@ class ExecutionGuard:
                 if action == "batch_import" and not params.get("questions"):
                     errors.append("batch_import 动作缺少 questions")
                     hints.append(
-                        "batch_import 必须给 questions（JSON 数组字符串，"
+                        "batch_import 必须给 questions（JSON 数组，"
                         '形如 [{"questionType":1,"questionText":"...","answer":"0"}]）'
                     )
             # 注意：`search` **不要求**题库 —— 「帮我找关于二次函数的题」这类请求

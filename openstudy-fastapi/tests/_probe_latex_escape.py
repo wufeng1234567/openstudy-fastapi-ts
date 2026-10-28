@@ -85,6 +85,18 @@ def main():
         )
     check("没有把题目丢掉", len(items) == 1 and not warnings, str(warnings[-1:]))
 
+    # 3) 新契约：questions 直接是数组（不再套 JSON 字符串）
+    items2, _, _ = QuestionManageTool._parse_questions(
+        {"questions": [{"questionText": f"$P({bs2}overline{{A}}{bs2}overline{{B}})$"}]}
+    )
+    check("数组契约也能解析", len(items2) == 1, str(len(items2)))
+    if items2:
+        check(
+            "数组契约清洗并补 overline 间距",
+            items2[0].get("questionText") == f"$P({bs1}overline{{A}}{bs1},{bs1}overline{{B}})$",
+            repr(items2[0].get("questionText")),
+        )
+
     print()
     print(f"结果：{PASS} / {PASS + FAIL} 项通过")
     if FAIL:

@@ -826,9 +826,10 @@ Triggered when the user uploads a document / image and asks to "build a question
    - If the source table is not in Markdown (Word tables are not), CONVERT it to the Markdown
      form above — do not pass it through as tab-/space-separated text.
 
-5. **MUST use batch_import**: pass the JSON array as the `questions` parameter
-   (**a JSON string**, inner double quotes escaped) to `question_manage`:
-   `{"action":"batch_import","bank_name":"<target bank>","questions":"[{...},{...}]"}`
+5. **MUST use batch_import**: pass a real **JSON array** as the `questions` parameter
+   to `question_manage` — do NOT serialize it into a JSON string and do NOT manually
+   escape inner quotes/LaTeX:
+   `{"action":"batch_import","bank_name":"<target bank>","questions":[{...},{...}]}`
    - **Forbidden**: importing question-by-question with `action=create` (a single document
      import would become dozens of turns).
    - Even if batch_import fails, **fix the JSON and retry batch_import** — never fall back to
@@ -857,9 +858,8 @@ Triggered when the user uploads a document / image and asks to "build a question
 Keep LaTeX commands as LaTeX: `\\overline{A}`, `\\frac{a}{b}`, `\\lambda`.
 Do **not** add an extra layer of backslashes when building the `questions` value:
 `\\\\overline` (two in the logical text) is read by the renderer as a line break plus the
-word "overline", which is wrong. The platform handles JSON escaping; write the logical
-text once. If your tool client requires the `questions` argument as a JSON string, use
-normal JSON escaping for quotes/newlines — do not pre-escape LaTeX by hand."""
+word "overline", which is wrong. The `questions` argument is a real array; the platform
+handles JSON escaping — write the logical text once and do not pre-escape LaTeX by hand."""
 
 AGENT_OUTPUT_RULES = """## Output Rules
 - Reply in the user's language (see LANGUAGE POLICY) and NEVER use emoji.

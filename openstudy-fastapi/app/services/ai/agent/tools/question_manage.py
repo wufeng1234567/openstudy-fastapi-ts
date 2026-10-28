@@ -88,7 +88,7 @@ def _replace_image_markers(text: str, image_urls: List[str]) -> tuple:
 def _normalize_question_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     """把题目入参里的「过度转义 LaTeX」收回一层
 
-    2026-10-28 实测：模型在 `questions` 的 JSON 字符串里把 `\\overline`
+    2026-10-28 实测：模型在 `questions` 的 JSON 值里把 `\\overline`
     写成了 `\\\\overline`，入库后前端 KaTeX 把 `\\\\` 当换行，页面显示成
     单独一行的 `overlineA`。这不是渲染层正则的问题，而是**数据本身多了一层
     反斜杠**；在工具入口统一清洗，预览与正式导入才能同时正确。
@@ -242,16 +242,21 @@ class QuestionManageTool(AgentTool):
                 "items": {"type": "object"},
             },
             "questions": {
-                "type": "string",
+                # ⚠️ 2026-10-28 改为真正的数组：旧契约要求模型把数组再序列化成
+                # JSON 字符串，模型经常在两层 JSON 之间多转义一次 LaTeX。
+                # 数组由 Function Calling 的 JSON 层统一处理转义，少一层就少一类 bug。
+                # 旧客户端传字符串仍兼容（`_parse_questions` 会解析）。
+                "type": "array",
                 "description": (
-                    "**Required for batch_import**: the question array as a JSON STRING. "
+                    "**Required for batch_import**: array of question objects. "
                     'Each item looks like {"questionType":1,"questionText":"...",'
                     '"options":["A","B"],"answer":"0","analysis":"..."}. '
-                    "NOTE: it is a string, not an array, and inner double quotes must be "
-                    "escaped. Keep LaTeX as LaTeX (`\\overline{A}`, not `\\\\overline{A}`); "
-                    "do not add an extra layer of backslashes. Max 15 questions per call; "
-                    "split larger sets into several calls."
+                    "Pass a real array, not a JSON string. Keep LaTeX as LaTeX "
+                    "(`\\overline{A}`, not `\\\\overline{A}`); do not add an extra layer "
+                    "of backslashes. Max 15 questions per call; split larger sets into "
+                    "several calls."
                 ),
+                "items": {"type": "object"},
             },
             "limit": {
                 "type": "integer",
@@ -811,7 +816,7 @@ class QuestionManageTool(AgentTool):
         if not raw:
             return fail(
                 "batch_import 缺少 questions",
-                'questions 必须是题目数组的 JSON 字符串，形如 [{"questionType":1,'
+                'questions 必须是题目数组，形如 [{"questionType":1,'
                 '"questionText":"...","answer":"0"}]',
             )
 
@@ -820,8 +825,7 @@ class QuestionManageTool(AgentTool):
             detail = "；".join(warnings[-2:]) if warnings else "内容不是合法的 JSON 数组"
             return fail(
                 f"题目 JSON 解析失败（已尝试多种修复策略）：{detail}",
-                "请重新输出 questions，确保是合法的 JSON 数组字符串，"
-                "且内部双引号使用 \\\" 转义",
+                "请重新输出 questions，确保是合法的题目数组（不要再套一层 JSON 字符串）",
             )
 
         image_urls = list((ctx.extra or {}).get("image_urls") or [])

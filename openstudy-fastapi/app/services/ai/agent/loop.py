@@ -1035,12 +1035,9 @@ async def _apply_edited_params(
     new_params = dict(params)
     questions = edited.get("questions")
     if isinstance(questions, list) and questions:
-        try:
-            # 工具侧 `_batch_import` 对 JSON 字符串有三级修复（json_repair），
-            # 这里只负责把编辑器给的数组序列化回去，校验仍交给工具。
-            new_params["questions"] = json.dumps(questions, ensure_ascii=False)
-        except Exception as e:  # noqa: BLE001 - 序列化失败就保留原参数
-            logger.warning("[agent] 草稿 questions 序列化失败，改用原参数: {}", e)
+        # `questions` 现在是真正的数组（2026-10-28）：编辑器回传的也是数组，
+        # 直接透传，不再 json.dumps 成第二层字符串。少一层序列化 = 少一类转义 bug。
+        new_params["questions"] = questions
 
     bank_edit = edited.get("bank")
     if isinstance(bank_edit, dict) and bank_edit:
