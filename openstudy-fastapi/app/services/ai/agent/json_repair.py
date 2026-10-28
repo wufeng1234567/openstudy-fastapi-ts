@@ -35,6 +35,78 @@ _VALID_ESCAPES = set('"\\/bfnrt')
 #: 字段名后误带空格的修复规则：`"key "` → `"key"`
 _TRAILING_SPACE_IN_KEY = re.compile(r'"([A-Za-z_][A-Za-z0-9_]*)\s+"\s*:')
 
+#: 常见 LaTeX 命令名（用于识别「多了一层反斜杠」的损坏）
+#:
+#: 典型损坏（2026-10-28 实测）：
+#:   模型在 JSON 里把 `\overline` 写成了 `\\overline`，入库后 KaTeX 把
+#:   `\\` 当换行、`overline` 当普通文字，页面上就成了单独一行的 "overlineA"。
+#:   这里只收「命令名」，不会碰 `\\` 换行（后接 `&` / 换行 / 空格等）。
+_LATEX_COMMANDS = frozenset({
+    "times", "frac", "dfrac", "tfrac", "sqrt", "sum", "prod", "int", "iint",
+    "theta", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta",
+    "lambda", "mu", "nu", "xi", "pi", "rho", "sigma", "tau", "phi", "chi",
+    "psi", "omega", "Gamma", "Delta", "Theta", "Lambda", "Pi", "Sigma",
+    "Phi", "Psi", "Omega",
+    "le", "ge", "ne", "lt", "gt", "leq", "geq", "neq", "approx", "equiv", "sim", "propto", "infty",
+    "cdot", "cdots", "ldots", "dots", "pm", "mp", "div", "ast",
+    "cup", "cap", "subset", "supset", "subseteq", "in", "notin", "forall",
+    "exists", "emptyset", "nabla", "partial",
+    "rightarrow", "leftarrow", "Rightarrow", "Leftarrow", "leftrightarrow",
+    "to", "mapsto", "implies",
+    "text", "mathrm", "mathbf", "mathit", "mathbb", "mathcal", "operatorname",
+    "overline", "underline", "bar", "hat", "vec", "tilde", "dot",
+    "begin", "end", "left", "right", "quad", "qquad",
+    "binom", "choose", "log", "ln", "exp", "lim", "max", "min", "sup", "inf",
+    "sin", "cos", "tan", "cot", "sec", "csc",
+    "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh",
+})
+
+#: 常用间距 / 转义标点（`\,` / `\;` / `\%` 等）；它们后面可以紧跟字母，
+#: 不能套用命令名的 `(?![A-Za-z])` 约束。
+_LATEX_PUNCT = ",;:!%"
+
+#: 两个反斜杠 + 已知命令名 / 标点 → 多了一层转义；只替换前两个反斜杠。
+_OVERESCAPED_LATEX_RE = re.compile(
+    r"\\\\(?=(?:(?:"
+    + "|".join(sorted((re.escape(c) for c in _LATEX_COMMANDS), key=len, reverse=True))
+    + r")(?![A-Za-z])|["
+    + re.escape(_LATEX_PUNCT)
+    + r"]))"
+)
+
+
+def normalize_latex_escapes(text: str) -> str:
+    """把「多了一层反斜杠」的 LaTeX 命令收回一层
+
+    例：``\\\\overline{A}``（实际两个反斜杠）→ ``\\overline{A}``（实际一个）
+
+    只在 ``\\\\`` 后面紧跟**已知 LaTeX 命令名**或常用标点（`,` `;` `:` `!` `%`）时动手：
+      · 不碰矩阵/换行用的 ``\\\\``（后面通常是 ``&``、空格或换行）；
+      · 支持连续多层过度转义（最多收 4 层，正常只会有一层）。
+
+    这不是「把双反斜杠全局替换成单反斜杠」——那会破坏矩阵换行。
+    """
+    if not text or "\\\\" not in text:
+        return text
+    current = text
+    for _ in range(4):
+        nxt = _OVERESCAPED_LATEX_RE.sub(r"\\", current)
+        if nxt == current:
+            break
+        current = nxt
+    return current
+
+
+def normalize_latex_value(value: Any) -> Any:
+    """递归清洗字符串 / 列表 / 字典里的过度转义 LaTeX（用于工具入参）"""
+    if isinstance(value, str):
+        return normalize_latex_escapes(value)
+    if isinstance(value, list):
+        return [normalize_latex_value(v) for v in value]
+    if isinstance(value, dict):
+        return {k: normalize_latex_value(v) for k, v in value.items()}
+    return value
+
 
 def clean(content: Optional[str]) -> str:
     """去掉 markdown 围栏、控制字符与**键名尾部空格**
@@ -286,6 +358,8 @@ def _coerce_items(data: Any) -> List[Dict[str, Any]]:
 __all__ = [
     "clean",
     "collapse_backslashes",
+    "normalize_latex_escapes",
+    "normalize_latex_value",
     "repair",
     "ensure_array",
     "ensure_object",

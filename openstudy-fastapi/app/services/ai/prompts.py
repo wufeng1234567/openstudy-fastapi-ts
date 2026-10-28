@@ -854,10 +854,12 @@ Triggered when the user uploads a document / image and asks to "build a question
    (e.g. "Imported 23 questions into the bank ...").
 
 ### LaTeX / Special Characters
-When question text contains backslash commands (e.g. `\\overline{A}`, `\\frac{a}{b}`,
-`\\lambda`), every backslash inside the JSON string MUST be **doubled**
-(`\\overline` → `\\\\overline`). The system auto-repairs common escaping errors, but writing it
-correctly saves a round."""
+Keep LaTeX commands as LaTeX: `\\overline{A}`, `\\frac{a}{b}`, `\\lambda`.
+Do **not** add an extra layer of backslashes when building the `questions` value:
+`\\\\overline` (two in the logical text) is read by the renderer as a line break plus the
+word "overline", which is wrong. The platform handles JSON escaping; write the logical
+text once. If your tool client requires the `questions` argument as a JSON string, use
+normal JSON escaping for quotes/newlines — do not pre-escape LaTeX by hand."""
 
 AGENT_OUTPUT_RULES = """## Output Rules
 - Reply in the user's language (see LANGUAGE POLICY) and NEVER use emoji.

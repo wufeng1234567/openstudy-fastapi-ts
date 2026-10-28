@@ -85,6 +85,36 @@ def _replace_image_markers(text: str, image_urls: List[str]) -> tuple:
     return _IMAGE_MARKER.sub(_sub, text), dropped
 
 
+def _normalize_question_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """把题目入参里的「过度转义 LaTeX」收回一层
+
+    2026-10-28 实测：模型在 `questions` 的 JSON 字符串里把 `\\overline`
+    写成了 `\\\\overline`，入库后前端 KaTeX 把 `\\\\` 当换行，页面显示成
+    单独一行的 `overlineA`。这不是渲染层正则的问题，而是**数据本身多了一层
+    反斜杠**；在工具入口统一清洗，预览与正式导入才能同时正确。
+
+    只处理题目文本字段、选项和子题，不改 action / bank_id 等控制字段。
+    """
+    if not isinstance(payload, dict):
+        return payload
+    out = dict(payload)
+    for key in ("questionText", "question_text", "analysis", "answer", "content", "passage"):
+        if isinstance(out.get(key), str):
+            out[key] = json_repair.normalize_latex_escapes(out[key])
+    if isinstance(out.get("options"), list):
+        out["options"] = [
+            json_repair.normalize_latex_escapes(v) if isinstance(v, str) else v
+            for v in out["options"]
+        ]
+    for key in ("sub_questions", "subQuestions"):
+        if isinstance(out.get(key), list):
+            out[key] = [
+                _normalize_question_payload(v) if isinstance(v, dict) else v
+                for v in out[key]
+            ]
+    return out
+
+
 class QuestionManageTool(AgentTool):
     name = "question_manage"
     #: ⚠️ 描述与参数说明一律英文 —— 同 `bank_manage`，它们会进系统提示词与
@@ -214,7 +244,9 @@ class QuestionManageTool(AgentTool):
                     'Each item looks like {"questionType":1,"questionText":"...",'
                     '"options":["A","B"],"answer":"0","analysis":"..."}. '
                     "NOTE: it is a string, not an array, and inner double quotes must be "
-                    "escaped. Max 15 questions per call; split larger sets into several calls."
+                    "escaped. Keep LaTeX as LaTeX (`\\overline{A}`, not `\\\\overline{A}`); "
+                    "do not add an extra layer of backslashes. Max 15 questions per call; "
+                    "split larger sets into several calls."
                 ),
             },
             "limit": {
@@ -660,6 +692,7 @@ class QuestionManageTool(AgentTool):
     # ------------------------------------------------------------------
 
     async def _create(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+        params = _normalize_question_payload(params)
         bank = await self._resolve_bank(params, ctx)
         if isinstance(bank, dict):
             return bank
@@ -710,6 +743,9 @@ class QuestionManageTool(AgentTool):
         if isinstance(raw, list):  # 模型偶尔直接给数组
             raw = _dumps(raw)
         items, warnings, strategy = json_repair.parse_json_array(str(raw or ""))
+        # ⚠️ 解析成功 ≠ 内容正确：模型可能多写了一层反斜杠。统一在这里清洗，
+        #    预览与正式导入共用同一份结果，避免「预览错、入库也错」。
+        items = [_normalize_question_payload(item) for item in items]
         if len(items) > MAX_BATCH_SIZE:
             items = items[:MAX_BATCH_SIZE]
             warnings.append(f"单批最多 {MAX_BATCH_SIZE} 题，超出部分已忽略")
@@ -876,6 +912,7 @@ class QuestionManageTool(AgentTool):
         )
 
     async def _update(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+        params = _normalize_question_payload(params)
         question = await self._resolve_question(params, ctx)
         if isinstance(question, dict):
             return question
