@@ -63,7 +63,7 @@ from typing import Any, Dict, List
 from sqlalchemy import select
 
 from app.services.ai.agent.base import AgentTool, ToolContext, fail, ok
-from app.models.chat_upload import ChatUploadFile
+from app.models.chat_upload import ChatUploadFile, ChatUploadImage
 
 
 class ChatFileManageTool(AgentTool):
@@ -202,6 +202,8 @@ class ChatFileManageTool(AgentTool):
                     "fileId": info["fileId"],
                     "fileName": info["fileName"],
                     "url": info["url"],
+                    # 文档编排 source=file 要的是上传目录相对路径；没有它模型只能猜
+                    "relPath": info.get("relPath", ""),
                     "size": info["size"],
                     "text": text[:20000],
                     "textTruncated": truncated,
@@ -262,6 +264,7 @@ class ChatFileManageTool(AgentTool):
                 data={
                     "fileId": fid,
                     "fileName": info["fileName"],
+                    "relPath": info.get("relPath", ""),
                     "blocks": blocks,
                     "blockCount": len(blocks),
                     "images": info.get("images") or [],
@@ -279,6 +282,11 @@ async def _load_blocks(db, *, user_id: int, file_id: int) -> List[Dict[str, Any]
 
     ⚠️ 不存在时返回空列表而不是报错：这份文件可能是纯图片（没有 blocks），
        或者当初解析失败了。空列表让模型能说"这个文件没有可提取的结构"。
+
+    ⚠️⚠️ 不能把 `parsed_json` 里的图片 data URL 原样回给模型（2026-10-28 实测）：
+       一份 96 块、13 张图的 docx，`parsed_json` 有 1.9MB，其中图片全是 base64；
+       模型请求因此达到 133 万 token，直接 400「maximum context length」。
+       图片在入库时已经逐张落盘了，这里按 `imageId` / `/profile/...` URL 回填即可。
     """
     stmt = select(ChatUploadFile).where(
         ChatUploadFile.id == file_id,
@@ -293,7 +301,41 @@ async def _load_blocks(db, *, user_id: int, file_id: int) -> List[Dict[str, Any]
     except (json.JSONDecodeError, TypeError):
         return []
     blocks = parsed.get("blocks")
-    return blocks if isinstance(blocks, list) else []
+    if not isinstance(blocks, list):
+        return []
+
+    # 按 seq 取回已落盘的图片（不把 data URL 塞回给模型）
+    img_rows = (
+        await db.execute(
+            select(ChatUploadImage)
+            .where(
+                ChatUploadImage.file_id == file_id,
+                ChatUploadImage.user_id == user_id,
+                ChatUploadImage.deleted == 0,
+            )
+            .order_by(ChatUploadImage.seq.asc(), ChatUploadImage.id.asc())
+        )
+    ).scalars().all()
+    images_by_seq = {int(i.seq): i for i in img_rows}
+
+    out: List[Dict[str, Any]] = []
+    image_index = 0
+    for raw_block in blocks:
+        if not isinstance(raw_block, dict):
+            continue
+        block = dict(raw_block)
+        if block.get("type") == "image":
+            img = images_by_seq.get(image_index)
+            image_index += 1
+            if img is not None:
+                block["imageId"] = img.id
+                block["imageUrl"] = img.url
+                block["imageName"] = block.get("imageName") or img.image_name
+            else:
+                # 解析出图但落盘失败 / 超过上限：宁可留空，也不回传 base64
+                block["imageUrl"] = ""
+        out.append(block)
+    return out
 
 
 def _human(size: int) -> str:
