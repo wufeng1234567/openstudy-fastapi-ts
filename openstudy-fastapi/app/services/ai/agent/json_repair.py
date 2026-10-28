@@ -97,10 +97,27 @@ def normalize_latex_escapes(text: str) -> str:
     return current
 
 
+def normalize_overline_spacing(text: str) -> str:
+    """把紧邻的 ``\\overline{A}\\overline{B}`` 之间补一个细空格
+
+    这不是数学语义变化（仍然是 A、B 各自的补），只是排版：两个 overline
+    紧贴时 KaTeX 会画成一条连续长横线，用户会误以为它覆盖的是 ``AB``。
+    只处理**两个完整的简单 overline 组紧邻**的情况；单个 ``\\overline{AB}``
+    不会被拆开。
+    """
+    if not text or "\\overline{" not in text:
+        return text
+    return re.sub(
+        r"(\\overline\{[^{}]*\})(?=\\overline\{)",
+        r"\1\\,",
+        text,
+    )
+
+
 def normalize_latex_value(value: Any) -> Any:
     """递归清洗字符串 / 列表 / 字典里的过度转义 LaTeX（用于工具入参）"""
     if isinstance(value, str):
-        return normalize_latex_escapes(value)
+        return normalize_overline_spacing(normalize_latex_escapes(value))
     if isinstance(value, list):
         return [normalize_latex_value(v) for v in value]
     if isinstance(value, dict):
@@ -359,6 +376,7 @@ __all__ = [
     "clean",
     "collapse_backslashes",
     "normalize_latex_escapes",
+    "normalize_overline_spacing",
     "normalize_latex_value",
     "repair",
     "ensure_array",

@@ -100,10 +100,14 @@ def _normalize_question_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     out = dict(payload)
     for key in ("questionText", "question_text", "analysis", "answer", "content", "passage"):
         if isinstance(out.get(key), str):
-            out[key] = json_repair.normalize_latex_escapes(out[key])
+            out[key] = json_repair.normalize_overline_spacing(
+                json_repair.normalize_latex_escapes(out[key])
+            )
     if isinstance(out.get("options"), list):
         out["options"] = [
-            json_repair.normalize_latex_escapes(v) if isinstance(v, str) else v
+            json_repair.normalize_overline_spacing(
+                json_repair.normalize_latex_escapes(v)
+            ) if isinstance(v, str) else v
             for v in out["options"]
         ]
     for key in ("sub_questions", "subQuestions"):

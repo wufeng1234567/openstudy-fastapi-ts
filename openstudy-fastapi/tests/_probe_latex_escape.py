@@ -48,6 +48,16 @@ def main():
     check("百分号收一层", normalize_latex_escapes(f"$4.8{bs2}%$") == f"$4.8{bs1}%$")
     check("矩阵换行 \\\\ 不被误伤", normalize_latex_escapes(f"$\\begin{{matrix}}a&b{bs2}c&d\\end{{matrix}}$") == f"$\\begin{{matrix}}a&b{bs2}c&d\\end{{matrix}}$")
     check("幂等：再洗一次不变", normalize_latex_escapes(normalize_latex_escapes(f"${bs2}frac{{a}}{{b}}$")) == f"${bs1}frac{{a}}{{b}}$")
+    from app.services.ai.agent.json_repair import normalize_overline_spacing
+    check(
+        "相邻 overline 自动补细空格",
+        normalize_overline_spacing(f"$P({bs1}overline{{A}}{bs1}overline{{B}})$")
+        == f"$P({bs1}overline{{A}}{bs1},{bs1}overline{{B}})$",
+    )
+    check(
+        "单个 overline{AB} 不被拆开",
+        normalize_overline_spacing(f"$P({bs1}overline{{AB}})$") == f"$P({bs1}overline{{AB}})$",
+    )
 
     # 2) 批量导入入口：模拟模型传进来的 4 个反斜杠（Python 字符串实际值）
     raw = (
