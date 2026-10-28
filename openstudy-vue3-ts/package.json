@@ -78,6 +78,7 @@
     "marked": "^18.0.3",
     "mathlive": "^0.111.1",
     "md-editor-v3": "^4.0.0",
+    "mind-elixir": "^5.8.3",
     "nprogress": "0.2.0",
     "pinia": "2.1.7",
     "turndown": "^7.2.4",
