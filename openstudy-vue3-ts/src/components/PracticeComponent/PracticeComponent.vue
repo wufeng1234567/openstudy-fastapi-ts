@@ -352,7 +352,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, getCurrentInstance, nextTick, onMounted, onUnmounted } from 'vue'
+import {
+	ref, reactive, computed, watch, getCurrentInstance, nextTick,
+	onMounted, onUnmounted, onActivated, onDeactivated
+} from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { InfoFilled, RefreshRight, MagicStick } from '@element-plus/icons-vue'
 import PracticeHeader from './PracticeHeader.vue'
@@ -391,6 +394,17 @@ import MockExamHistory from './MockExamHistory.vue'
 import type { MockExamConfig, MockExamRecord, MockExamItemDetail } from '@/types'
 // 模拟考试组卷要拉全量题目（见 loadMockAvailability / handleMockStart）
 import { listQuestionMainAll } from '@/api/questionMain/questionMain'
+/*
+ * 模拟考试的判分（2026-10-28 从本文件搬出去）
+ *
+ * ⚠️ 搬走的唯一目的：**让它能被单测直接 import**。
+ *    `judgeMockItem` 原来是本文件 `<script setup>` 里的局部函数，测试拿不到它，
+ *    只能在浏览器里点一遍 UI 才能验 —— 慢且脆；或者在测试里抄一份公式，
+ *    那验的是副本，改了实现测试照样绿（假测试）。
+ *    判分算错是用户当场就能发现的错，必须有参数化的纯函数级测试兜住。
+ *    实现与注释都在 `utils/mockExamJudge.ts`（逐字搬移 + F7 的漏选公式修正）。
+ */
+import { judgeMockItem, correctAnswerOf } from '@/utils/mockExamJudge'
 /*
  * 模拟考试「进行中会话」的持久化（2026-10-22）
  *
@@ -763,6 +777,14 @@ const EXAM_BANK_ID_KEY = 'openstudy_exam_bank_id'
 // 全局标志，防止多个弹窗
 let isTimeUpDialogShowing = false
 
+/**
+ * 是否曾经离场（deactivate）过
+ *
+ * 只服务 `onActivated`：KeepAlive 下它在首次挂载时也会触发，
+ * 需要靠这个标志把「首次挂载」和「离场后回场」区分开（见 `onActivated` 的注释）。
+ */
+let hasBeenDeactivated = false
+
 const formattedRemainingTime = computed(() => {
   const minutes = Math.floor(remainingTime.value / 60)
   const seconds = remainingTime.value % 60
@@ -875,6 +897,26 @@ function handleTimeUp() {
 }
 
 // 页面可见性变化处理
+/*
+ * ⚠️ `visibilitychange` 的绑定必须**幂等**（2026-10-28）。
+ *
+ * 组件在 `<KeepAlive>` 里时，Vue 在**首次挂载**时会依次触发 `onMounted` 和
+ * `onActivated`。两个钩子里都 `addEventListener` 的话，同一个 handler 会被注册
+ * 两次 —— 一次事件调两遍 `handleVisibilityChange`，而卸载时只 `remove` 掉一个，
+ * 另一个永久泄漏。所以统一走这两个函数，用 `visibilityBound` 记账。
+ */
+let visibilityBound = false
+function bindVisibility() {
+  if (visibilityBound) return
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  visibilityBound = true
+}
+function unbindVisibility() {
+  if (!visibilityBound) return
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  visibilityBound = false
+}
+
 function handleVisibilityChange() {
   if (document.hidden) {
     // 页面隐藏，停止定时器（但不清除结束时间）
@@ -1001,8 +1043,8 @@ onMounted(() => {
     startExamTimer()
   }
 
-  // 添加页面可见性变化监听
-  document.addEventListener('visibilitychange', handleVisibilityChange)
+  // 添加页面可见性变化监听（幂等，见 bindVisibility 的注释）
+  bindVisibility()
 
   /*
    * 绑定滚动宿主（答题卡里的「回到顶部 / 跳到底部」依赖它）
@@ -1039,11 +1081,78 @@ onUnmounted(() => {
 
   stopExamTimer()
 
-  // 移除页面可见性变化监听
-  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  // 移除页面可见性变化监听（幂等，见 bindVisibility 的注释）
+  unbindVisibility()
 
   // 解绑滚动宿主（含重试定时器）
   unbindPracticeScrollHost(true)
+})
+
+/*
+ * ⚠️⚠️ 路由离场（**keep-alive**）的收尾与恢复（2026-10-28 修，审核发现 F1）
+ * ============================================================================
+ * 刷题页被两层 keep-alive 包着：
+ *   · `views/questionPractice/questionPractice/index.vue` 里是裸 `<keep-alive>`；
+ *   · `layout/front.vue` 里是 `<keep-alive :include="cachedViews">`，而
+ *     `FrontQuestionPractice` 被显式注册进了 `cachedViews`。
+ *
+ * 于是「离开刷题页」**只会 deactivate，不会 unmount** —— 上面的 `onUnmounted`
+ * 一次都不会跑。修之前，模拟考试的倒计时（`setInterval`）会带着整场考试
+ * 继续在后台跑：走到 0 之后 `handleTimeUp()` 判断 `!document.hidden`
+ * （用户此时在别的页面，document 当然可见）→ 在**无关的页面上**弹出
+ * 「考试时间已到，系统将自动提交试卷！」→ 用户点确定就静默交卷并写进历史。
+ * `visibilitychange` 监听同样一直挂着，从不解绑。
+ *
+ * 所以这里补一对 deactivated / activated，与 `onUnmounted` 同口径收尾：
+ *   · 离场：停计时 + 摘监听 + 落一次暂存 + 解绑滚动宿主；
+ *   · 回场：重新绑监听 / 滚动宿主，模拟考试进行中则续跑倒计时。
+ *
+ * 倒计时**不需要**重新计时：`startExamTimer()` 读的是 localStorage 里的
+ * **绝对结束时间**（`openstudy_exam_end_time`），天然满足两个场景：
+ *   · 离场期间没超时 → 按剩余时间续跑（考试是绝对deadline，离场不该"暂停"）；
+ *   · 离场期间已超时 → `startExamTimer` 内部静默清存储并把 `remainingTime`
+ *     归 0，**不弹窗、不自动交卷**（用户没在看这场考试，不该被远程交卷）。
+ */
+onDeactivated(() => {
+  debugLeaveModule(props.moduleType, props.bankId)
+
+  // 离开页面时立即落一次暂存（不走节流），与 onUnmounted 同口径
+  try {
+    draftSaver.flush()
+  } catch {
+    /* 暂存失败不该影响离开页面 */
+  }
+  draftSaver.cancel()
+
+  stopExamTimer()
+
+  unbindVisibility()
+
+  unbindPracticeScrollHost(true)
+
+  hasBeenDeactivated = true
+})
+
+onActivated(() => {
+  /*
+   * ⚠️ KeepAlive 下 `onActivated` 在**首次挂载时也会触发**（紧随 `onMounted`），
+   *    不能在这里无条件再起一次倒计时 —— 那会和 `onMounted` 里的那次重复。
+   *    只有"真的离场过再回来"才需要续跑。
+   */
+  const isReentry = hasBeenDeactivated
+  hasBeenDeactivated = false
+
+  debugEnterModule(props.moduleType, props.bankId)
+
+  bindVisibility()
+
+  bindPracticeScrollHost()
+
+  // 离场后回场 + 模拟考试进行中 → 续跑
+  // （绝对结束时间还在就按剩余时间走；已过则 startExamTimer 内部静默清掉）
+  if (isReentry && props.moduleType === 'mock' && !showExamResult.value) {
+    startExamTimer()
+  }
 })
 
 const overviewMode = computed({
@@ -1919,54 +2028,11 @@ function buildMockPaper(cfg: MockExamConfig, pool: any[]): any[] {
   return picked
 }
 
-/** 取某题的标准答案（与原判分逻辑同口径，但只读不依赖 answers 数组位置） */
-function correctAnswerOf(q: any): any {
-  return q.correctAnswer ?? q.answer
-}
-
-/**
- * 判定一道题对错，并返回实得分
- *
- * 与原 `correctCount` 计算的差别只在多选题：
- *   · 原逻辑：必须完全一致才算对（0/1）；
- *   · 这里额外支持 `partial`（漏选按比例得分），且**错选一律 0 分** ——
- *     这是绝大多数真实考试的规则，也是用户截图里那个选项的语义。
+/*
+ * `correctAnswerOf` / `judgeMockItem` 已搬到 `@/utils/mockExamJudge`（见顶部 import 处的说明）。
+ * 本文件不要再就地定义同名函数 —— 一旦出现局部定义，import 会被静默遮蔽，
+ * 「改了 util 但页面行为不变」这种问题极难排查。
  */
-function judgeMockItem(q: any, userAnswer: any, cfg: MockExamConfig): { isCorrect: boolean; gotScore: number } {
-  const full = Number(q._mockScore) || 0
-  const type = String(q._mockType || q.type || 'unknown')
-  const correct = correctAnswerOf(q)
-
-  const empty = userAnswer === null || userAnswer === undefined ||
-    (Array.isArray(userAnswer) && userAnswer.length === 0) ||
-    (typeof userAnswer === 'string' && userAnswer.trim() === '')
-  if (empty) return { isCorrect: false, gotScore: 0 }
-
-  if (type === 'multiple') {
-    const user = (Array.isArray(userAnswer) ? userAnswer : [userAnswer]).map(String).sort()
-    const std = (Array.isArray(correct) ? correct : String(correct).split(/[,，]/)).map(String).sort()
-    const exact = user.length === std.length && user.every((v, i) => v === std[i])
-    if (exact) return { isCorrect: true, gotScore: full }
-
-    const noWrongPick = user.every((v) => std.includes(v))
-    if (cfg.multipleMode === 'partial' && noWrongPick && user.length > 0) {
-      // 漏选：按已选对的比例给分（比例可配），封顶不超过满分
-      const ratio = Math.min(1, Math.max(0, Number(cfg.partialRatio) || 0)) * user.length
-      const got = Math.min(full, Math.round(full * ratio * 10) / 10)
-      return { isCorrect: false, gotScore: got }
-    }
-    return { isCorrect: false, gotScore: 0 }
-  }
-
-  if (type === 'fillblank' || type === 'essay') {
-    const ok = String(userAnswer).trim().toLowerCase() === String(correct ?? '').trim().toLowerCase()
-    return { isCorrect: ok, gotScore: ok ? full : 0 }
-  }
-
-  // 单选 / 判断：严格相等
-  const ok = String(userAnswer) === String(correct)
-  return { isCorrect: ok, gotScore: ok ? full : 0 }
-}
 
 /** 取完整题干（不截断，用于错题回看） */
 function fullStem(q: any): string {
@@ -2137,13 +2203,25 @@ async function handleMockStart(cfg: MockExamConfig) {
      *    用户在别的模式刷到第 3 波再回来考试时它还是 20 —— 于是卷子从第 21 条
      *    开始取，前 20 条直接没了（表现为"交卷只有几道题"）。
      */
-    const prevOffset = questionOffset.value
+    /*
+     * 模拟考试是**整卷**场景：偏移量恒为 0。
+     *
+     * ⚠️ 这里原来在 `.then` 里把 `prevOffset` 还原回去，与上面那句
+     *    `updateQuestionOffset(0)`（以及它头顶"偏移量必须一起归零"的注释）
+     *    直接矛盾。虽然 `questions` 是直接赋值、显示上不受影响，但
+     *    `jumpToNextBatch` / `handlePrevBatch` 读的就是被还原的那个值 ——
+     *    整卷场景下它必须一直是 0，所以还原这一步直接删掉。
+     */
     updateQuestionOffset(0)
     updateQuestionCount(paper.length)
-    processQuestions(paper).then(() => {
-      // 卷子处理完把偏移量还回去，不影响用户在其它模式的分波进度
-      updateQuestionOffset(prevOffset)
-    })
+    /*
+     * ⚠️ 必须 `await`（2026-10-28 修，审核发现 F8）：
+     *    `processQuestions` 内部还有 `loadQuestionStatus()` 等网络请求，
+     *    不等它就往下走，会在题目还没渲染出来的时候就把 `mockPhase` 切成
+     *    `running` 并 `startExamTimer()` —— 慢网络/大题库下用户先看到一张空卷，
+     *    而考试时间已经在走了。
+     */
+    await processQuestions(paper)
   } catch (e) {
     console.error('[mock] 组卷失败', e)
     proxy.$modal.msgError('组卷失败，请重试')

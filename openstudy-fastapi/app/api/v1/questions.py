@@ -872,6 +872,8 @@ async def export_banks(
 ):
     """导出题库列表为 Excel"""
     query = select(QuestionBank).where(QuestionBank.status == "0")
+    # 可见性：与列表接口同口径，别人的私密题库不入导出
+    query = query.where(await _visibility_condition(db, current_user.get("user_id")))
     query = query.order_by(QuestionBank.create_time.desc())
     result = await db.execute(query)
     banks = list(result.scalars().all())
@@ -922,7 +924,11 @@ async def list_questions(
         if bank_obj and not await _can_view_bank(db, bank_obj, current_user.get("user_id")):
             return error("无权访问该题库的题目", code=403)
 
-    base = select(QuestionMain)
+    # JOIN 题库 + 可见性条件：无 bankId 的列表同样不得泄露私密题库的题目
+    # （公开 OR 自己的 OR 分享给我的，与 _can_view_bank 同一套口径）
+    base = select(QuestionMain).join(
+        QuestionBank, QuestionMain.bank_id == QuestionBank.id
+    ).where(await _visibility_condition(db, current_user.get("user_id")))
 
     if bankId:
         base = base.where(QuestionMain.bank_id == bankId)
@@ -970,7 +976,12 @@ async def list_all_questions(
         if bank_obj and not await _can_view_bank(db, bank_obj, current_user.get("user_id")):
             return error("无权访问该题库的题目", code=403)
 
-    base = select(QuestionMain).where(QuestionMain.status == "0")
+    # JOIN 题库 + 可见性条件：与分页列表同口径，私密题库题目不下发
+    base = select(QuestionMain).join(
+        QuestionBank, QuestionMain.bank_id == QuestionBank.id
+    ).where(QuestionMain.status == "0").where(
+        await _visibility_condition(db, current_user.get("user_id"))
+    )
 
     if bankId:
         base = base.where(QuestionMain.bank_id == bankId)
@@ -995,7 +1006,12 @@ async def search_questions(
     current_user: dict = Depends(get_current_user),
 ):
     """搜索题目"""
-    base = select(QuestionMain).where(QuestionMain.status == "0")
+    # JOIN 题库 + 可见性条件：关键词搜索同样不得命中私密题库的题目
+    base = select(QuestionMain).join(
+        QuestionBank, QuestionMain.bank_id == QuestionBank.id
+    ).where(QuestionMain.status == "0").where(
+        await _visibility_condition(db, current_user.get("user_id"))
+    )
 
     if keyword:
         base = base.where(QuestionMain.question_text.ilike(f"%{keyword}%"))
@@ -1028,6 +1044,13 @@ async def get_question(
 
     if not question:
         return error("题目不存在")
+
+    # 可见性：题目归属在题库上，私密题库的题目只对题库主/已领取分享者开放
+    bank = (await db.execute(
+        select(QuestionBank).where(QuestionBank.id == question.bank_id)
+    )).scalar_one_or_none()
+    if not await _can_view_bank(db, bank, current_user.get("user_id")):
+        return error("无权访问该题目（所属题库为私密题库）", code=403)
 
     return success(format_question(question))
 
@@ -1377,6 +1400,7 @@ async def delete_questions(
 async def check_question_exists(
     question_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     """检查题目是否存在（status='0' 为正常）
 
@@ -1392,9 +1416,14 @@ async def check_question_exists(
     if not question:
         return success({"exists": False, "questionId": question_id})
 
-    bank_name = (await db.execute(
-        select(QuestionBank.bank_name).where(QuestionBank.id == question.bank_id)
+    # 可见性：私密题库的题干不对不可见用户泄露（匿名请求已被 get_current_user 拦下）
+    bank = (await db.execute(
+        select(QuestionBank).where(QuestionBank.id == question.bank_id)
     )).scalar_one_or_none()
+    if not await _can_view_bank(db, bank, current_user.get("user_id")):
+        return error("无权访问该题目（所属题库为私密题库）", code=403)
+
+    bank_name = bank.bank_name if bank else None
 
     return success({
         "exists": True,
@@ -1410,11 +1439,13 @@ async def check_question_exists(
 async def check_user_exists(
     user_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     """检查用户是否存在（后台「添加错题记录」校验用户ID用）
 
     注意：该路由必须存在，否则会落到 catch_all 兜底返回 success(False)，
     前端会误判成「用户ID不存在」。
+    登录后才可调用（返回结构不变）：未鉴权时它是一个「用户名/昵称探测」接口。
     """
     from app.models.user import SysUser
     user = (await db.execute(
@@ -1439,6 +1470,7 @@ async def check_user_exists(
 async def get_question_simple_info(
     question_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     """获取题目简单信息"""
     query = select(QuestionMain).where(QuestionMain.id == question_id)
@@ -1448,10 +1480,14 @@ async def get_question_simple_info(
     if not question:
         return error("题目不存在")
 
-    # 获取题库名称
-    bank_query = select(QuestionBank.bank_name).where(QuestionBank.id == question.bank_id)
-    bank_result = await db.execute(bank_query)
-    bank_name = bank_result.scalar_one_or_none()
+    # 可见性：题干/解析属私密题库时不对外泄露
+    bank = (await db.execute(
+        select(QuestionBank).where(QuestionBank.id == question.bank_id)
+    )).scalar_one_or_none()
+    if not await _can_view_bank(db, bank, current_user.get("user_id")):
+        return error("无权访问该题目（所属题库为私密题库）", code=403)
+
+    bank_name = bank.bank_name if bank else None
 
     return success({
         "questionId": question.id,
@@ -1469,6 +1505,7 @@ async def check_question_and_user(
     question_id: int,
     user_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     """检查题目和用户是否存在（返回详情供后台表单自动填充）"""
     from app.models.user import SysUser
@@ -1481,6 +1518,14 @@ async def check_question_and_user(
         )
     )).scalar_one_or_none()
     question_exists = question is not None
+
+    # 可见性：私密题库的题目信息不对不可见用户回填
+    if question_exists:
+        bank = (await db.execute(
+            select(QuestionBank).where(QuestionBank.id == question.bank_id)
+        )).scalar_one_or_none()
+        if not await _can_view_bank(db, bank, current_user.get("user_id")):
+            return error("无权访问该题目（所属题库为私密题库）", code=403)
 
     # 检查用户
     user = (await db.execute(
@@ -1539,17 +1584,25 @@ async def batch_question_info(
     if not questions:
         return success([])
 
-    # 批量查询题库（避免 N+1）
+    # 可见性过滤：私密题库的题目对不可见用户直接过滤（不报错、不泄露）
     bank_ids = list({q.bank_id for q in questions})
-    bank_query = select(QuestionBank).where(QuestionBank.id.in_(bank_ids))
-    bank_result = await db.execute(bank_query)
-    bank_map = {b.id: b.bank_name for b in bank_result.scalars().all()}
+    bank_result = await db.execute(select(QuestionBank).where(QuestionBank.id.in_(bank_ids)))
+    bank_map = {b.id: b for b in bank_result.scalars().all()}
+    user_id = current_user.get("user_id")
+    shared_ids = await _shared_bank_ids(db, user_id)
+    visible_bank_ids = {
+        bid for bid, b in bank_map.items()
+        if (not b.is_public) or b.user_id == user_id or bid in shared_ids
+    }
+    questions = [q for q in questions if q.bank_id in visible_bank_ids]
+    if not questions:
+        return success([])
 
     # 组装结果
     rows = []
     for q in questions:
         row = format_question(q)
-        row["bankName"] = bank_map.get(q.bank_id)
+        row["bankName"] = bank_map.get(q.bank_id).bank_name
         rows.append(row)
 
     return success(rows)
@@ -1564,7 +1617,12 @@ async def export_questions(
     current_user: dict = Depends(get_current_user),
 ):
     """导出题目列表为 Excel"""
-    query = select(QuestionMain).where(QuestionMain.status == "0")
+    # JOIN 题库 + 可见性条件：导出内容与列表口径一致，私密题库题目不入 Excel
+    query = select(QuestionMain).join(
+        QuestionBank, QuestionMain.bank_id == QuestionBank.id
+    ).where(QuestionMain.status == "0").where(
+        await _visibility_condition(db, current_user.get("user_id"))
+    )
     if bankId:
         query = query.where(QuestionMain.bank_id == bankId)
     if beginTime:

@@ -150,7 +150,13 @@
               </button>
             </div>
             <div v-if="form.multipleMode === 'partial'" class="ratio-row">
-              <span class="ratio-label">每个正确选项得该题分值的</span>
+              <!--
+                2026-10-28：文案改成与 `utils/mockExamJudge.judgeMockItem` 的实现一致。
+                旧文案「每个正确选项得该题分值的 X%」对应的是
+                `ratio = 系数 × 已选数`（漏选 2/3 也能拿满分，审核发现 F7）；
+                现在的实现是「漏选得分 = 满分 × 系数 ×（已选 ÷ 应选）」。
+              -->
+              <span class="ratio-label">漏选得分 = 该题满分 × 系数 ×（已选 ÷ 应选），系数取</span>
               <el-select v-model="form.partialRatio" style="width: 96px" size="default">
                 <el-option :value="0.25" label="25%" />
                 <el-option :value="0.5" label="50%" />
