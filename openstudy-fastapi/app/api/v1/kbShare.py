@@ -32,6 +32,7 @@ from app.models.user import SysUser
 from app.services import kb_copy_service
 from app.services.notification_service import create_notification
 from app.services.rag import workspace_service
+from app.services.rag.document_pipeline import process_document
 
 router = APIRouter()
 
@@ -420,14 +421,17 @@ async def receive_kb_share(
     if source_doc:
         target_kb = await workspace_service.get_or_create_workspace(db, user_id)
         copied_doc = await kb_copy_service.copy_document_to_kb(
-            db, source_doc, target_kb, user_id
+            db, source_doc, target_kb, user_id, share_id=share.id
         )
+        background.add_task(process_document, copied_doc.id)
         new_kb = target_kb
         new_doc_id = int(copied_doc.id)
     else:
-        new_kb, _pending_ids = await kb_copy_service.copy_knowledge_base(
-            db, kb, user_id, new_name=f"{kb.name}（来自分享）"
+        new_kb, pending_ids = await kb_copy_service.copy_knowledge_base(
+            db, kb, user_id, new_name=f"{kb.name}（来自分享）", share_id=share.id
         )
+        for doc_id in pending_ids:
+            background.add_task(process_document, doc_id)
         new_doc_id = None
 
     if existed:

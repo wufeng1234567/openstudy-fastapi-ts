@@ -15,7 +15,7 @@
             <h2>{{ info.docName || info.kbName }}</h2>
             <div class="kb-share-tags">
               <el-tag size="small" type="info">{{ info.docName ? '1 份资料' : `${info.docCount || 0} 份资料` }}</el-tag>
-              <el-tag size="small" type="warning" effect="light">复用已有索引</el-tag>
+              <el-tag size="small" type="warning" effect="light">来自分享</el-tag>
             </div>
             <p>来自 <b>{{ info.ownerName || '匿名用户' }}</b> 的{{ info.docName ? '资料' : '知识库' }}分享</p>
             <p class="kb-share-expire">有效期：{{ info.expireTime ? formatTime(info.expireTime) : '永久有效' }}</p>
@@ -24,7 +24,7 @@
         </div>
 
         <el-alert class="kb-share-alert" type="info" :closable="false" show-icon
-          title="领取后会得到一份完整副本，直接复用原知识库已有的解析和向量索引，不会重新解析。" />
+          title="领取后会得到一份完整副本，系统会为副本重新解析和向量化，领取者可以继续编辑。" />
 
         <div class="kb-share-actions">
           <template v-if="info.isOwner">

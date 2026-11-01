@@ -4,12 +4,12 @@
     <div v-if="!shareResult" class="kb-share-form">
       <p class="kb-share-tip">
         <template v-if="doc">
-          分享这份资料给同学。对方领取后，会在自己的「我的资料」里得到一份<b>完整副本</b>，
-          直接复用原资料已有的解析结果和向量索引，不会重新解析。
+          分享这份资料给同学。对方领取后会得到一份<b>完整副本</b>，
+          系统会为副本重新解析和向量化，领取者可以继续修改，且不影响原资料。
         </template>
         <template v-else>
-          分享一个知识库给同学。对方领取后，会在自己的「我的资料」里得到一份<b>完整副本</b>，
-          直接复用原知识库已有解析结果与向量索引，不会重新解析；副本可以继续编辑和检索。
+          分享一个知识库给同学。对方领取后会得到一份<b>完整副本</b>，
+          系统会为副本重新解析和向量化，领取者可以继续编辑、检索和添加资料，且不影响原知识库。
         </template>
       </p>
       <el-form label-width="76px">
@@ -77,7 +77,7 @@
         有效期：{{ shareResult.expireTime ? formatDateTime(shareResult.expireTime) : '永久有效' }}
       </p>
       <el-alert type="info" :closable="false" show-icon
-        title="把链接或分享码发给同学：对方领取后会得到一份复制自有索引的完整副本，不需要重新解析。" />
+        title="把链接或分享码发给同学：对方领取后会得到一份完整副本，并为副本重新解析和向量化。" />
     </div>
 
     <template #footer>

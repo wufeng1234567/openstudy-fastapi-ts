@@ -879,14 +879,17 @@ def kb_disabled_flag(kb: RagKnowledgeBase) -> int:
 def _kb_brief(kb: RagKnowledgeBase) -> dict:
     return {
         "kbId": kb.id,
-        # 默认资料夹使用统一的用户侧名称；其余资料夹保留用户自定义名。
-        "name": "默认资料夹" if getattr(kb, "is_workspace", 0) == 1 else kb.name,
+        # 默认资料夹也允许用户改名，所以始终返回数据库里的 name。
+        "name": kb.name,
         "description": kb.description,
         "docCount": kb.doc_count,
         "chunkCount": kb.chunk_count,
         "disabled": kb_disabled_flag(kb),
         # 默认库标记：前端据此在列表里显示「默认」徽标，并禁止改名/删除
         "isDefault": 1 if getattr(kb, "is_workspace", 0) == 1 else 0,
+        "sourceType": getattr(kb, "source_type", "self") or "self",
+        "sourceKbId": getattr(kb, "source_kb_id", None),
+        "shareId": getattr(kb, "share_id", None),
         "embeddingModel": kb.embedding_model,
         "chunkSize": kb.chunk_size,
         "chunkOverlap": kb.chunk_overlap,
@@ -908,6 +911,9 @@ def _doc_brief(doc: RagDocument) -> dict:
         "status": doc.status,
         "statusText": DOC_STATUS_TEXT.get(doc.status, "未知"),
         "disabled": 1 if getattr(doc, "disabled", 0) else 0,
+        "sourceType": getattr(doc, "source_type", "self") or "self",
+        "sourceDocId": getattr(doc, "source_doc_id", None),
+        "shareId": getattr(doc, "share_id", None),
         "errorMsg": doc.error_msg,
         "createTime": doc.create_time.isoformat(sep=" ") if doc.create_time else None,
     }

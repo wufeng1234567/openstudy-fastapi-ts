@@ -1,7 +1,7 @@
 <template>
   <el-dialog v-model="visible" title="获取知识库分享" width="480px" :close-on-click-modal="false">
     <p class="kb-code-tip">
-      粘贴好友给你的<b>分享链接</b>，或直接输入 <b>分享码</b>。领取后会得到一份复用原有解析和向量索引的完整副本，不会重新解析。
+      粘贴好友给你的<b>分享链接</b>，或直接输入 <b>分享码</b>。领取后会得到一份完整副本，系统会为副本重新解析和向量化。
     </p>
     <el-input v-model="input" size="large" clearable class="kb-code-input" :disabled="receiving"
       placeholder="粘贴分享链接，或输入分享码（如 3XKD7N）" @keyup.enter="handleReceive" @input="onInput" />
@@ -126,7 +126,7 @@ async function runCheck(raw: string): Promise<CheckState | null> {
     return {
       kind: 'ok',
       title: `可以获取${name}`,
-      desc: `分享者：${d.ownerName || '匿名用户'}　${d.docName ? '1 份资料' : `${d.docCount || 0} 份资料`}　领取后生成复用已有索引的完整副本`,
+      desc: `分享者：${d.ownerName || '匿名用户'}　${d.docName ? '1 份资料' : `${d.docCount || 0} 份资料`}　领取后生成完整副本并重新建立索引`,
       kbId: d.kbId
     }
   } catch {

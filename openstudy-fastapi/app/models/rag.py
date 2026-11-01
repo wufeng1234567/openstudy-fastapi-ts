@@ -124,6 +124,13 @@ class RagKnowledgeBase(Base):
         SmallInteger, nullable=False, default=0, server_default="0"
     )
 
+    #: 来源标记：self = 用户自己的；share = 从分享领取的物理副本
+    source_type: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="self", server_default="self"
+    )
+    source_kb_id: Mapped[Optional[int]] = mapped_column(BigInteger)
+    share_id: Mapped[Optional[int]] = mapped_column(BigInteger)
+
     create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     update_time: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
@@ -186,6 +193,13 @@ class RagDocument(Base):
     #: 用户写一句人话说明，AI 找文件时就能对上。
     #: NULL = 没写（此时 AI 只能靠文件名 + 正文内容判断）。
     user_note: Mapped[Optional[str]] = mapped_column(String(200))
+
+    #: 来源标记：self = 用户自己的；share = 从分享领取的物理副本
+    source_type: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="self", server_default="self"
+    )
+    source_doc_id: Mapped[Optional[int]] = mapped_column(BigInteger)
+    share_id: Mapped[Optional[int]] = mapped_column(BigInteger)
 
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     #: 当前可检索的索引版本。正文更新/版本恢复时递增，旧 chunks 继续留在库里

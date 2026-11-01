@@ -177,6 +177,9 @@ async def _files_of_kb(db: AsyncSession, kb_id: int) -> List[Dict[str, Any]]:
             "status": d.status,
             "statusText": _status_text(d.status),
             "disabled": 1 if getattr(d, "disabled", 0) else 0,
+            "sourceType": getattr(d, "source_type", "self") or "self",
+            "sourceDocId": getattr(d, "source_doc_id", None),
+            "shareId": getattr(d, "share_id", None),
             "errorMsg": d.error_msg or "",
             # 资料卡 facet / 图片墙用：图片清单本身不大，随文档列表一起返回，
             # 避免前端点一次文档再发一次请求。
@@ -412,6 +415,9 @@ async def overview(db: AsyncSession, user_id: int) -> Dict[str, Any]:
                 "description": kb.description or "",
                 "isDefault": 1 if kb.is_workspace == 1 else 0,
                 "disabled": 1 if kb.disabled == 1 else 0,
+                "sourceType": getattr(kb, "source_type", "self") or "self",
+                "sourceKbId": getattr(kb, "source_kb_id", None),
+                "shareId": getattr(kb, "share_id", None),
                 "docCount": len(files),
                 "chunkCount": sum(int(f.get("chunkCount") or 0) for f in files),
                 "createTime": _format_display_time(kb.create_time)[:10] if kb.create_time else None,

@@ -1,9 +1,13 @@
 """知识库分享领取服务。
 
-分享的语义是「把源知识库的已有索引映射一份给领取者」：
-  · 文档正文、分块、向量、图片映射全部原样复制；
-  · **不重新解析、不重新向量化** —— 源库主已经处理过；
-  · 复制后的副本仍然属于领取者，可以继续编辑和检索。
+用户明确的分享语义（2026-11-01 修正）：
+  · 分享是“把物理文件本体复制给领取者”，领取者拿到后可以二次修改；
+  · 因此每个复制出的文档都必须**重新解析、分块、向量化**，不能复用原库
+    的索引（否则正文修改后旧向量会指向旧内容）；
+  · 原分享者的文件和索引完全不受影响。
+
+为了在产品上区分来源，复制出的知识库和文档都会带 `source_type='share'`、
+`source_kb_id` / `source_doc_id` / `share_id` 标记。
 """
 
 from __future__ import annotations
@@ -12,37 +16,10 @@ import copy as _copy
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.rag import RagDocument, RagKnowledgeBase
-
-
-async def _copy_chunks(
-    db: AsyncSession,
-    source_doc_id: int,
-    target_doc_id: int,
-    target_kb_id: int,
-) -> None:
-    """直接复制已有分块和向量，避免领取后重跑 embedding。"""
-    await db.execute(
-        text(
-            """
-            INSERT INTO rag_document_chunk
-              (kb_id, doc_id, chunk_index, index_version, content, content_length,
-               token_count, content_tokens, embedding, meta_data, create_time)
-            SELECT :target_kb_id, :target_doc_id, chunk_index, index_version, content,
-                   content_length, token_count, content_tokens, embedding, meta_data, now()
-            FROM rag_document_chunk
-            WHERE doc_id = :source_doc_id
-            """
-        ),
-        {
-            "target_kb_id": int(target_kb_id),
-            "target_doc_id": int(target_doc_id),
-            "source_doc_id": int(source_doc_id),
-        },
-    )
+from app.models.rag import DOC_PENDING, RagDocument, RagKnowledgeBase
 
 
 def copy_kb_name(source_name: str) -> str:
@@ -54,8 +31,9 @@ async def copy_knowledge_base(
     source_kb: RagKnowledgeBase,
     target_user_id: int,
     new_name: Optional[str] = None,
+    share_id: Optional[int] = None,
 ) -> tuple[RagKnowledgeBase, list[int]]:
-    """复制知识库 + 文档 + 已有分块/向量，返回新库（无需再处理的文档列表为空）。"""
+    """复制知识库 + 物理文档，返回新库和待重新解析/向量化的文档 ID。"""
     if not source_kb:
         raise ValueError("源知识库不存在")
 
@@ -73,6 +51,9 @@ async def copy_knowledge_base(
         del_flag="0",
         disabled=0,
         is_workspace=0,
+        source_type="share",
+        source_kb_id=int(source_kb.id),
+        share_id=share_id,
         create_time=datetime.now(),
     )
     db.add(new_kb)
@@ -104,22 +85,24 @@ async def copy_knowledge_base(
             image_map=_copy.deepcopy(doc.image_map),
             content_structure=_copy.deepcopy(doc.content_structure),
             user_note=doc.user_note,
-            chunk_count=int(doc.chunk_count or 0),
-            index_version=doc.index_version,
-            status=doc.status,
+            chunk_count=0,
+            index_version=1,
+            status=DOC_PENDING,
             disabled=0,
             error_msg=None,
+            source_type="share",
+            source_doc_id=int(doc.id),
+            share_id=share_id,
             create_time=datetime.now(),
         )
         db.add(copied)
         await db.flush()
-        await _copy_chunks(db, int(doc.id), int(copied.id), int(new_kb.id))
         pending_ids.append(int(copied.id))
 
     new_kb.doc_count = len(pending_ids)
-    new_kb.chunk_count = sum(int(doc.chunk_count or 0) for doc in docs)
+    new_kb.chunk_count = 0
     await db.flush()
-    return new_kb, []
+    return new_kb, pending_ids
 
 
 async def copy_document_to_kb(
@@ -127,8 +110,9 @@ async def copy_document_to_kb(
     source_doc: RagDocument,
     target_kb: RagKnowledgeBase,
     target_user_id: int,
+    share_id: Optional[int] = None,
 ) -> RagDocument:
-    """把单份文档复制到目标知识库（文档分享领取使用）。"""
+    """把单份物理文档复制到目标知识库，并交给后台重新解析/向量化。"""
     copied = RagDocument(
         kb_id=target_kb.id,
         user_id=target_user_id,
@@ -145,17 +129,18 @@ async def copy_document_to_kb(
         image_map=_copy.deepcopy(source_doc.image_map),
         content_structure=_copy.deepcopy(source_doc.content_structure),
         user_note=source_doc.user_note,
-        chunk_count=int(source_doc.chunk_count or 0),
-        index_version=source_doc.index_version,
-        status=source_doc.status,
+        chunk_count=0,
+        index_version=1,
+        status=DOC_PENDING,
         disabled=0,
         error_msg=None,
+        source_type="share",
+        source_doc_id=int(source_doc.id),
+        share_id=share_id,
         create_time=datetime.now(),
     )
     db.add(copied)
     await db.flush()
-    await _copy_chunks(db, int(source_doc.id), int(copied.id), int(target_kb.id))
     target_kb.doc_count = int(target_kb.doc_count or 0) + 1
-    target_kb.chunk_count = int(target_kb.chunk_count or 0) + int(source_doc.chunk_count or 0)
     await db.flush()
     return copied
