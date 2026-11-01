@@ -111,66 +111,35 @@
         </div>
 
         <div class="kbp-side__list" v-loading="loading">
-          <el-dropdown
+          <button
             v-for="kb in filteredKbs"
             :key="kb.kbId"
-            trigger="contextmenu"
-            class="kbp-kb-dropdown"
-            @command="(command: string) => handleKbCommand(command, kb)"
+            type="button"
+            class="kbp-kb"
+            :class="{ 'is-active': kb.kbId === activeKbId, 'is-blocked': kb.disabled === 1 }"
+            @click="selectKb(kb.kbId)"
+            @contextmenu.prevent.stop="openKbMenu($event, kb)"
           >
-            <button
-              type="button"
-              class="kbp-kb"
-              :class="{ 'is-active': kb.kbId === activeKbId, 'is-blocked': kb.disabled === 1 }"
-              @click="selectKb(kb.kbId)"
-            >
-              <span class="kbp-kb__icon">
-                <OsIcon :name="kb.isDefault ? 'folder' : 'database'" :size="16" />
+            <span class="kbp-kb__icon">
+              <OsIcon :name="kb.isDefault ? 'folder' : 'database'" :size="16" />
+            </span>
+            <span class="kbp-kb__main">
+              <span class="kbp-kb__name-row">
+                <span class="kbp-kb__name">{{ kb.name }}</span>
+                <span v-if="kb.isDefault" class="kbp-kb__tag">默认</span>
+                <span v-if="kb.disabled === 1" class="kbp-kb__tag is-blocked">已屏蔽</span>
               </span>
-              <span class="kbp-kb__main">
-                <span class="kbp-kb__name-row">
-                  <span class="kbp-kb__name">{{ kb.name }}</span>
-                  <span v-if="kb.isDefault" class="kbp-kb__tag">默认</span>
-                  <span v-if="kb.disabled === 1" class="kbp-kb__tag is-blocked">已屏蔽</span>
-                </span>
-                <span class="kbp-kb__meta">
-                  {{ kb.docCount }} 份资料<template v-if="kb.disabled !== 1"> · 可检索</template>
-                </span>
+              <span class="kbp-kb__meta">
+                {{ kb.docCount }} 份资料<template v-if="kb.disabled !== 1"> · 可检索</template>
               </span>
-              <!-- 操作只在 hover / 当前项出现，避免每个库都挂一排图标 -->
-              <span class="kbp-kb__ops">
-                <span class="kbp-kb__op" :class="{ 'is-blocked': kb.disabled === 1 }"
-                  :title="kb.disabled === 1 ? '已屏蔽，点击恢复资料夹检索' : '可检索，点击屏蔽这个资料夹'"
-                  @click.stop="toggleDisabled(kb)">
-                  <OsIcon :name="kb.disabled === 1 ? 'eye-off' : 'eye'" :size="13" />
-                </span>
-                <span class="kbp-kb__op" title="重命名" @click.stop="promptRename(kb)">
-                  <OsIcon name="pen-line" :size="13" />
-                </span>
-                <span v-if="!kb.isDefault" class="kbp-kb__op is-danger" title="删除资料夹"
-                  @click.stop="removeKb(kb)">
-                  <OsIcon name="trash" :size="13" />
-                </span>
+            </span>
+            <!-- 只保留一个「更多」按钮，具体动作统一进冒泡菜单，和文档行保持一致 -->
+            <span class="kbp-kb__ops">
+              <span class="kbp-kb__op" title="更多操作" @click.stop="openKbMenu($event, kb)">
+                <OsIcon name="more" :size="14" />
               </span>
-            </button>
-            <template #dropdown>
-              <el-dropdown-menu class="kbp-kb-menu">
-                <el-dropdown-item command="rename">
-                  <OsIcon name="pen-line" :size="14" /> 重命名
-                </el-dropdown-item>
-                <el-dropdown-item command="share">
-                  <el-icon><Share /></el-icon> 分享资料夹
-                </el-dropdown-item>
-                <el-dropdown-item command="toggle-disabled">
-                  <OsIcon :name="kb.disabled === 1 ? 'eye' : 'eye-off'" :size="14" />
-                  {{ kb.disabled === 1 ? '恢复检索' : '屏蔽检索' }}
-                </el-dropdown-item>
-                <el-dropdown-item v-if="!kb.isDefault" command="delete" divided>
-                  <OsIcon name="trash" :size="14" /> 删除资料夹
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+            </span>
+          </button>
 
           <div v-if="!loading && !filteredKbs.length" class="kbp-side__empty">
             <p>{{ folderKeyword ? '没有匹配的资料夹' : '还没有资料' }}</p>
@@ -179,6 +148,28 @@
               新建资料夹
             </el-button>
           </div>
+        </div>
+
+        <!-- 资料夹右键 / 更多操作：全局只保留一个冒泡菜单，打开新的会先关闭旧的 -->
+        <div v-if="kbMenu.visible" class="kbp-context-menu"
+          :style="{ left: `${kbMenu.x}px`, top: `${kbMenu.y}px` }" @click.stop>
+          <button type="button" class="kbp-context-item" @click="handleKbCommand('rename', kbMenu.kb)">
+            <OsIcon name="pen-line" :size="14" />
+            重命名
+          </button>
+          <button type="button" class="kbp-context-item" @click="handleKbCommand('share', kbMenu.kb)">
+            <el-icon><Share /></el-icon>
+            分享资料夹
+          </button>
+          <button type="button" class="kbp-context-item" @click="handleKbCommand('toggle-disabled', kbMenu.kb)">
+            <OsIcon :name="kbMenu.kb?.disabled === 1 ? 'eye' : 'eye-off'" :size="14" />
+            {{ kbMenu.kb?.disabled === 1 ? '恢复检索' : '屏蔽检索' }}
+          </button>
+          <button v-if="Number(kbMenu.kb?.isDefault || 0) !== 1" type="button" class="kbp-context-item is-danger"
+            @click="handleKbCommand('delete', kbMenu.kb)">
+            <OsIcon name="trash" :size="14" />
+            删除资料夹
+          </button>
         </div>
       </aside>
 
@@ -291,9 +282,6 @@
                   </span>
                   <span class="kbp-doc__op" title="资料解剖" @click="showAnatomy(doc)">
                     <OsIcon name="book-open" :size="14" />
-                  </span>
-                  <span class="kbp-doc__op" title="生成微课" @click="openMicroCourse(doc)">
-                    <OsIcon name="graduation-cap" :size="14" />
                   </span>
                   <span class="kbp-doc__op" title="分享资料" @click="openDocShare(doc)">
                     <el-icon><Share /></el-icon>
@@ -685,22 +673,31 @@
         <div class="kbp-question-picker__toolbar">
           <el-input v-model="questionKeyword" clearable placeholder="搜索题目题干"
             @keyup.enter="loadQuestionPicker(1)" />
+          <el-select v-model="questionBankFilter" clearable filterable placeholder="全部题库"
+            class="kbp-question-picker__bank" @change="loadQuestionPicker(1)">
+            <el-option v-for="bank in questionBanks" :key="bank.bankId" :label="bank.bankName" :value="bank.bankId" />
+          </el-select>
           <el-button type="primary" @click="loadQuestionPicker(1)">搜索</el-button>
           <span class="kbp-question-picker__image">
             当前图片：{{ questionPickerImage?.docName }} · 图 {{ questionPickerImage?.seq }}
           </span>
         </div>
-        <p class="kbp-question-picker__hint">只显示你创建题库中的题目，确保有编辑权限。</p>
+        <p class="kbp-question-picker__hint">只显示你创建的题库中的题目，可按题库筛选，确保有编辑权限。</p>
         <el-table :data="questionRows" v-loading="questionPickerLoading" max-height="420" size="small">
-          <el-table-column label="题目" min-width="420">
+          <el-table-column label="题目" min-width="360">
             <template #default="{ row }">
               <span class="kbp-question-picker__text">
                 {{ String(row.questionText || row.content || '未命名题目').slice(0, 100) }}
               </span>
             </template>
           </el-table-column>
+          <el-table-column label="所属题库" width="160">
+            <template #default="{ row }">
+              <span class="kbp-question-picker__bank-name">{{ row.bankName || '—' }}</span>
+            </template>
+          </el-table-column>
           <el-table-column label="题型" width="90">
-            <template #default="{ row }">{{ row.questionType ?? '-' }}</template>
+            <template #default="{ row }">{{ row.questionTypeText || row.questionType || '-' }}</template>
           </el-table-column>
           <el-table-column label="操作" width="120">
             <template #default="{ row }">
@@ -896,6 +893,7 @@ import DocumentAnatomyDialog from './components/DocumentAnatomyDialog.vue'
 import ShareKnowledgeDialog from './components/ShareKnowledgeDialog.vue'
 import ReceiveKnowledgeDialog from './components/ReceiveKnowledgeDialog.vue'
 import { listQuestionMain, getQuestionMain, updateQuestionMain } from '@/api/questionMain/questionMain'
+import { listMyQuestionBank } from '@/api/questionBank/questionBank'
 import { listNote, getNote, updateNote } from '@/api/notes/note'
 import useUserStore from '@/store/modules/user'
 import useTopbarStore from '@/store/modules/topbar'
@@ -949,6 +947,12 @@ const loadFailed = ref(false)
 const kbs = ref<any[]>([])
 const activeKbId = ref<number | null>(null)
 const folderKeyword = ref('')
+const kbMenu = reactive<{ visible: boolean; x: number; y: number; kb: any }>({
+  visible: false,
+  x: 0,
+  y: 0,
+  kb: null,
+})
 const shareDialogVisible = ref(false)
 const docShareDialogVisible = ref(false)
 const shareDoc = ref<{ docId: number; fileName: string } | null>(null)
@@ -1120,6 +1124,8 @@ const questionPickerVisible = ref(false)
 const questionPickerLoading = ref(false)
 const questionPickerImage = ref<any>(null)
 const questionKeyword = ref('')
+const questionBankFilter = ref<number | null>(null)
+const questionBanks = ref<any[]>([])
 const questionRows = ref<any[]>([])
 const questionTotal = ref(0)
 const questionPage = ref(1)
@@ -2013,9 +2019,20 @@ function facetText(facets: any): string {
 function openQuestionPicker(img: any) {
   questionPickerImage.value = img
   questionKeyword.value = ''
+  questionBankFilter.value = null
   questionPage.value = 1
   questionPickerVisible.value = true
+  void loadQuestionBanks()
   loadQuestionPicker(1)
+}
+
+async function loadQuestionBanks() {
+  try {
+    const res: any = await listMyQuestionBank()
+    questionBanks.value = res.code === 200 && Array.isArray(res.data) ? res.data : []
+  } catch {
+    questionBanks.value = []
+  }
 }
 
 async function loadQuestionPicker(page = 1) {
@@ -2023,7 +2040,8 @@ async function loadQuestionPicker(page = 1) {
   questionPickerLoading.value = true
   try {
     const params: any = { pageNum: page, pageSize: QUESTION_PAGE_SIZE, status: 0, ownedOnly: true }
-    if (questionKeyword.value.trim()) params.questionText = questionKeyword.value.trim()
+    if (questionKeyword.value.trim()) params.keyword = questionKeyword.value.trim()
+    if (questionBankFilter.value) params.bankId = questionBankFilter.value
     const res: any = await listQuestionMain(params)
     questionRows.value = res.rows || []
     questionTotal.value = Number(res.total || 0)
@@ -2155,9 +2173,42 @@ function selectKb(kbId: number) {
 }
 
 function openShare(kb: any) {
+  closeKbMenu()
   shareKbId.value = Number(kb?.kbId) || null
   shareDialogVisible.value = true
 }
+
+function openKbMenu(event: MouseEvent, kb: any) {
+  const target = event.currentTarget as HTMLElement
+  const rect = target.getBoundingClientRect()
+  const menuWidth = 188
+  const menuHeight = kb?.isDefault ? 150 : 188
+  const x = Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)
+  const y = Math.min(rect.bottom + 4, window.innerHeight - menuHeight - 8)
+  kbMenu.kb = kb
+  kbMenu.x = Math.max(8, x)
+  kbMenu.y = Math.max(8, y)
+  kbMenu.visible = true
+}
+
+function closeKbMenu() {
+  kbMenu.visible = false
+  kbMenu.kb = null
+}
+
+function onGlobalClick() {
+  closeKbMenu()
+}
+
+onMounted(() => {
+  document.addEventListener('click', onGlobalClick)
+  window.addEventListener('scroll', onGlobalClick, true)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onGlobalClick)
+  window.removeEventListener('scroll', onGlobalClick, true)
+})
 
 function openDocShare(doc: any) {
   shareDoc.value = { docId: Number(doc.docId), fileName: String(doc.fileName || '未命名文档') }
@@ -2165,6 +2216,8 @@ function openDocShare(doc: any) {
 }
 
 function handleKbCommand(command: string, kb: any) {
+  if (!kb) return
+  closeKbMenu()
   if (command === 'rename') return promptRename(kb)
   if (command === 'share') return openShare(kb)
   if (command === 'toggle-disabled') return toggleDisabled(kb)
@@ -3254,6 +3307,46 @@ onBeforeUnmount(() => {
 .kbp-kb-dropdown {
   display: block;
   width: 100%;
+}
+
+.kbp-context-menu {
+  position: fixed;
+  z-index: 3000;
+  width: 188px;
+  padding: 5px;
+  border: 1px solid var(--os-border, #e5e7eb);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14);
+}
+
+.kbp-context-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  border-radius: 7px;
+  padding: 8px 10px;
+  background: transparent;
+  color: var(--os-text-2, #4b5563);
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+
+.kbp-context-item:hover {
+  background: var(--os-bg-subtle, #f5f6f7);
+  color: var(--os-text, #0f1115);
+}
+
+.kbp-context-item.is-danger {
+  color: #c45656;
+}
+
+.kbp-context-item.is-danger:hover {
+  background: #fef0f0;
+  color: #c45656;
 }
 
 .kbp-side__list {
@@ -4432,6 +4525,16 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   font-size: 12px;
   color: var(--os-text-3, #6b7280);
+}
+
+.kbp-question-picker__bank {
+  width: 170px;
+  flex: none;
+}
+
+.kbp-question-picker__bank-name {
+  color: var(--os-text-2, #4b5563);
+  font-size: 12px;
 }
 
 .kbp-question-picker__text {

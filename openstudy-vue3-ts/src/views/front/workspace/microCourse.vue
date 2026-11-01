@@ -30,7 +30,7 @@
             <span>{{ result.slides }} 页课件</span>
             <span>{{ result.document.subject || '综合' }}</span>
             <span>{{ result.document.wordCount }} 字</span>
-            <span class="micro-meta-ai">AI 生成</span>
+            <span class="micro-meta-ai">{{ result.aiGenerated === false ? '资料结构生成' : 'AI 生成' }}</span>
           </div>
         </div>
         <div class="micro-actions">

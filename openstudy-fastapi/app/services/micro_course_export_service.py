@@ -12,8 +12,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import html as _html
 import io
+import json
+import logging
 import re
 from typing import Any, Dict, List
 
@@ -22,6 +25,90 @@ from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 
 from app.services.micro_course_service import build_micro_course
+
+logger = logging.getLogger(__name__)
+
+
+async def _ai_deck(db, user_id: int, doc, course: Dict[str, Any]) -> tuple[Dict[str, Any], bool]:
+    """让模型围绕资料生成教学课件结构。
+
+    模型只负责「怎么讲」：页面标题、要点、课堂提示；正文事实仍以原文为准。
+    模型不可用 / 返回格式不合法时，退回按原文结构生成的 deck，不阻塞页面。
+    """
+    raw = str(getattr(doc, "raw_content", "") or "")[:12000]
+    fallback = _deck_from_stations(course)
+    if not raw.strip():
+        return fallback, False
+    prompt = (
+        "你是一位擅长把资料改写成课堂教学课件的老师。请只依据下面的资料，"
+        "设计一套 5-10 页的教学课件。不要编造资料里没有的事实。\n"
+        "返回严格 JSON（不要 Markdown 代码围栏）：\n"
+        '{"title":"课件标题","subtitle":"副标题",'
+        '"slides":[{"eyebrow":"环节/知识点标签","title":"页标题",'
+        '"bullets":["要点1","要点2","要点3"],"note":"可选的课堂提示"}]}\n'
+        "第一页做课程导入，最后一页做课堂小结；每页 bullets 2-5 条，每条不超过 60 字。\n"
+        "资料文件名：" + str(getattr(doc, "file_name", "") or "") + "\n"
+        "资料正文：\n" + raw
+    )
+    try:
+        from app.services.ai import db_config
+        from app.services.ai.base_client import ChatMessage
+
+        messages = [
+            ChatMessage(role="system", content="你是教学课件设计师，只输出合法 JSON。"),
+            ChatMessage(role="user", content=prompt),
+        ]
+        response = await asyncio.wait_for(
+            db_config.chat_with_config(
+                db,
+                messages,
+                temperature=0.6,
+                max_tokens=5000,
+                user_id=user_id,
+            ),
+            timeout=35,
+        )
+        content = (response.content or "").strip()
+        content = re.sub(r"^```(?:json)?\s*", "", content, flags=re.I)
+        content = re.sub(r"\s*```$", "", content)
+        start, end = content.find("{"), content.rfind("}")
+        if start < 0 or end <= start:
+            return fallback, False
+        data = json.loads(content[start : end + 1])
+        slides = data.get("slides") if isinstance(data, dict) else None
+        if not isinstance(slides, list) or len(slides) < 2:
+            return fallback, False
+        cleaned = []
+        for slide in slides[:12]:
+            if not isinstance(slide, dict) or not str(slide.get("title") or "").strip():
+                continue
+            bullets = [
+                str(b).strip()[:100]
+                for b in (slide.get("bullets") or [])
+                if str(b).strip()
+            ][:6]
+            if not bullets:
+                continue
+            cleaned.append(
+                {
+                    "kind": "content",
+                    "eyebrow": str(slide.get("eyebrow") or "知识点")[:30],
+                    "title": str(slide.get("title") or "")[:100],
+                    "bullets": bullets,
+                    "note": str(slide.get("note") or "")[:160],
+                }
+            )
+        if len(cleaned) < 2:
+            return fallback, False
+        deck = {
+            "title": str(data.get("title") or getattr(doc, "file_name", "") or "教学课件")[:100],
+            "subtitle": str(data.get("subtitle") or getattr(doc, "subject", "") or "教学课件")[:100],
+            "slides": cleaned,
+        }
+        return deck, True
+    except Exception as e:  # noqa: BLE001 - AI 是增强项，失败必须可降级
+        logger.info("[micro-course] AI 生成失败，使用资料结构兜底: %s", e)
+        return fallback, False
 
 
 def _clean(text: str) -> str:
@@ -258,7 +345,7 @@ def build_pptx_bytes(deck: Dict[str, Any], html_text: str = "") -> bytes:
 
 async def build_micro_course_export(db, user_id: int, doc) -> Dict[str, Any]:
     course = await build_micro_course(db, user_id, doc)
-    deck = _deck_from_stations(course)
+    deck, ai_generated = await _ai_deck(db, user_id, doc, course)
     html = _render_html(deck)
     return {
         "document": course["document"],
@@ -266,6 +353,7 @@ async def build_micro_course_export(db, user_id: int, doc) -> Dict[str, Any]:
         "deck": deck,
         "html": html,
         "slides": len(deck["slides"]),
+        "aiGenerated": ai_generated,
     }
 
 

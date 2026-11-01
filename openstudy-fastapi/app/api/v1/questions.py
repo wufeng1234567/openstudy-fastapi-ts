@@ -965,8 +965,19 @@ async def list_questions(
 
     result = await db.execute(data_query)
     questions = list(result.scalars().all())
-
-    return paginate(total, [format_question(q) for q in questions])
+    bank_ids = {int(q.bank_id) for q in questions if q.bank_id}
+    bank_map = {}
+    if bank_ids:
+        bank_rows = (
+            await db.execute(select(QuestionBank.id, QuestionBank.bank_name).where(QuestionBank.id.in_(bank_ids)))
+        ).all()
+        bank_map = {int(bid): (bname or "") for bid, bname in bank_rows}
+    rows = []
+    for q in questions:
+        item = format_question(q)
+        item["bankName"] = bank_map.get(int(q.bank_id), "")
+        rows.append(item)
+    return paginate(total, rows)
 
 
 @router.get("/questionMain/questionMain/all")
@@ -1034,8 +1045,19 @@ async def search_questions(
 
     result = await db.execute(data_query)
     questions = list(result.scalars().all())
-
-    return paginate(total, [format_question(q) for q in questions])
+    bank_ids = {int(q.bank_id) for q in questions if q.bank_id}
+    bank_map = {}
+    if bank_ids:
+        bank_rows = (
+            await db.execute(select(QuestionBank.id, QuestionBank.bank_name).where(QuestionBank.id.in_(bank_ids)))
+        ).all()
+        bank_map = {int(bid): (bname or "") for bid, bname in bank_rows}
+    rows = []
+    for q in questions:
+        item = format_question(q)
+        item["bankName"] = bank_map.get(int(q.bank_id), "")
+        rows.append(item)
+    return paginate(total, rows)
 
 
 @router.get("/questionMain/questionMain/{question_id}")

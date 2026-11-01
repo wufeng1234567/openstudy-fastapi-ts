@@ -235,6 +235,7 @@ export interface MicroCourseHtmlResult {
   }
   html: string
   slides: number
+  aiGenerated?: boolean
 }
 
 /** 生成可在线演示的教学 HTML 课件 */
