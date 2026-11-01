@@ -27,9 +27,11 @@
 -->
 <template>
     <section class="panel diag-panel">
-        <div class="panel-head">
-            <h3 class="panel-title">学情诊断</h3>
-            <span class="panel-sub">逐题掌握度 · 复习节奏 · 学科短板</span>
+        <div class="panel-head diag-head">
+            <div class="diag-head-main">
+                <h3 class="panel-title">学情诊断</h3>
+                <span class="panel-sub">逐题掌握度 · 复习节奏 · 学科短板</span>
+            </div>
             <!-- ============ 导出复习卷（2026-10-26 v3） ============
                  诊断结果此前只能"看"，看完就没了。
                  这个按钮把它变成一份可打印的 Word：
@@ -468,6 +470,39 @@ defineExpose({ reload: load })
     display: flex;
     flex-direction: column;
     gap: 16px;
+}
+
+.diag-panel .diag-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 0;
+}
+
+.diag-head-main {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+    flex-wrap: wrap;
+}
+
+.dp-export {
+    flex: none;
+    margin-left: auto;
+}
+
+@media (max-width: 720px) {
+    .diag-panel .diag-head {
+        grid-template-columns: 1fr;
+        align-items: flex-start;
+    }
+
+    .dp-export {
+        margin-left: 0;
+    }
 }
 
 .diag-loading,

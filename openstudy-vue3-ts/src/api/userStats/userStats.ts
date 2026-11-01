@@ -413,9 +413,19 @@ export interface ExamPlanResult {
   exam: {
     name: string
     date: string
+    startDate: string
     daysLeft: number
-    subject: string
+    bankId?: number | null
+    bankName?: string
+    subjects: string[]
+    restDays: number[]
+    mode: 'balanced' | 'sprint'
     dailyMinutes: number
+  }
+  planProfile?: {
+    key: 'maintenance' | 'micro' | 'standard' | 'intensive'
+    label: string
+    description: string
   }
   overview?: {
     questionsSeen: number
@@ -432,8 +442,27 @@ export interface ExamPlanResult {
 export interface ExamPlanQuery {
   examName: string
   examDate: string
-  subject?: string
+  bankId?: number
+  bankName?: string
+  startDate?: string
+  subjects?: string[]
+  restDays?: number[]
+  mode?: 'balanced' | 'sprint'
   dailyMinutes?: number
+}
+
+export interface ExamBankOption {
+  bankId: number
+  bankName: string
+  subject: string
+  questionCount: number
+  attemptCount: number
+  errorCount: number
+  lastPracticeTime: string
+}
+
+export function getExamBanks(): Promise<ApiResult<ExamBankOption[]>> {
+  return request({ url: '/userStats/exam-banks', method: 'get' }) as unknown as Promise<ApiResult<ExamBankOption[]>>
 }
 
 export function getExamPlan(query: ExamPlanQuery): Promise<ApiResult<ExamPlanResult>> {
@@ -443,7 +472,12 @@ export function getExamPlan(query: ExamPlanQuery): Promise<ApiResult<ExamPlanRes
     params: {
       exam_name: query.examName,
       exam_date: query.examDate,
-      subject: query.subject || '',
+      bank_id: query.bankId || 0,
+      bank_name: query.bankName || '',
+      start_date: query.startDate || '',
+      subjects: (query.subjects || []).join(','),
+      rest_days: (query.restDays || []).join(','),
+      mode: query.mode || 'balanced',
       daily_minutes: query.dailyMinutes ?? 40
     }
   }) as unknown as Promise<ApiResult<ExamPlanResult>>

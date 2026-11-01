@@ -560,24 +560,122 @@ async def get_weekly_report(
         return error(f"生成学习周报失败：{e}")
 
 
+@router.get("/exam-banks")
+async def get_exam_banks(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """考前计划可选题库：只返回用户真正练过的题库。
+
+    考试计划必须绑定一个具体题库，而不是按「英语 / 数学」这种科目泛泛排题；
+    用户在这个题库里错过哪些题、反复错哪些题，才是计划的事实依据。
+    """
+    user_id = current_user.get("user_id")
+    rows = (
+        await db.execute(
+            select(
+                QuestionBank.id,
+                QuestionBank.bank_name,
+                QuestionBank.subject,
+                func.count(func.distinct(UserPracticeLog.question_id)).label("question_count"),
+                func.count(UserPracticeLog.log_id).label("attempt_count"),
+                func.max(UserPracticeLog.create_time).label("last_practice"),
+            )
+            .select_from(
+                UserPracticeLog.__table__.join(
+                    QuestionMain.__table__, UserPracticeLog.question_id == QuestionMain.id
+                ).join(
+                    QuestionBank.__table__, QuestionMain.bank_id == QuestionBank.id
+                )
+            )
+            .where(UserPracticeLog.user_id == user_id)
+            .group_by(QuestionBank.id, QuestionBank.bank_name, QuestionBank.subject)
+        )
+    ).all()
+
+    error_rows = (
+        await db.execute(
+            select(
+                QuestionBank.id,
+                func.count(UserQuestionError.error_id).label("error_count"),
+            )
+            .select_from(
+                UserQuestionError.__table__.join(
+                    QuestionBank.__table__, UserQuestionError.bank_id == QuestionBank.id
+                )
+            )
+            .where(
+                UserQuestionError.user_id == user_id,
+                UserQuestionError.status == 1,
+                UserQuestionError.is_mastered == 0,
+            )
+            .group_by(QuestionBank.id)
+        )
+    ).all()
+    error_map = {int(row.id): int(row.error_count or 0) for row in error_rows}
+
+    data = [
+        {
+            "bankId": int(row.id),
+            "bankName": row.bank_name or "",
+            "subject": row.subject or "",
+            "questionCount": int(row.question_count or 0),
+            "attemptCount": int(row.attempt_count or 0),
+            "errorCount": error_map.get(int(row.id), 0),
+            "lastPracticeTime": row.last_practice.isoformat(timespec="seconds")
+            if row.last_practice
+            else "",
+        }
+        for row in rows
+    ]
+    data.sort(key=lambda x: (-x["errorCount"], -x["attemptCount"], x["bankId"]))
+    return success(data)
+
+
 @router.get("/exam-plan")
 async def get_exam_plan(
     exam_name: str = Query("", description="考试名称"),
     exam_date: str = Query(..., description="考试日期 YYYY-MM-DD"),
-    subject: str = Query("", description="科目；留空表示全部"),
+    bank_id: int = Query(0, description="绑定题库 ID；0 表示未绑定"),
+    bank_name: str = Query("", description="题库名称（展示用）"),
+    subject: str = Query("", description="兼容旧参数：单个科目"),
+    subjects: str = Query("", description="科目，多个用逗号分隔；留空表示全部"),
+    start_date: str = Query("", description="开始复习日期 YYYY-MM-DD，默认今天"),
+    rest_days: str = Query("", description="每周休息日，逗号分隔 1-7（周一=1）"),
+    mode: str = Query("balanced", description="复习模式：balanced / sprint"),
     daily_minutes: int = Query(40, ge=10, le=240, description="每天可学习分钟数"),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     """考前倒计时路线图（确定性，不调用大模型）。
 
-    用户只填考试日期与每天可用时间；系统按逐题诊断结果倒排三个阶段：
-    补地基 → 还债 + 变式 → 全真模拟。
+    设置项：考试日期、开始复习日期、科目（可多选）、每周休息日、复习模式、
+    每天可用时间。系统按逐题诊断结果倒排三个阶段：
+    补地基 → 还债 + 巩固 → 全真模拟。
     """
     try:
         target = datetime.strptime(exam_date, "%Y-%m-%d").date()
     except ValueError:
         return error("考试日期格式应为 YYYY-MM-DD", code=400)
+
+    start = None
+    if start_date:
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        except ValueError:
+            return error("开始复习日期格式应为 YYYY-MM-DD", code=400)
+
+    subject_list = [s for s in (subjects or "").split(",") if s.strip()]
+    if not subject_list and subject:
+        subject_list = [subject]
+
+    rest_list: list[int] = []
+    if rest_days:
+        try:
+            rest_list = [int(x) for x in rest_days.split(",") if x.strip()]
+        except ValueError:
+            return error("rest_days 格式应为逗号分隔的 1-7", code=400)
+
     try:
         return success(
             await exam_plan_service.build_exam_plan(
@@ -585,7 +683,12 @@ async def get_exam_plan(
                 int(current_user.get("user_id") or 0),
                 exam_name=exam_name,
                 exam_date=target,
-                subject=subject,
+                bank_id=bank_id or None,
+                bank_name=bank_name,
+                subjects=subject_list,
+                start_date=start,
+                rest_days=rest_list,
+                mode=mode,
                 daily_minutes=daily_minutes,
             )
         )

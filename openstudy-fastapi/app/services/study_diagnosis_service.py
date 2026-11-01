@@ -460,6 +460,7 @@ async def load_question_meta(
         await db.execute(
             select(
                 QuestionMain.id,
+                QuestionMain.bank_id,
                 QuestionMain.question_text,
                 QuestionMain.question_type,
                 QuestionMain.difficulty,
@@ -473,6 +474,7 @@ async def load_question_meta(
     out: Dict[int, Dict[str, Any]] = {}
     for (
         qid,
+        bank_id,
         question_text,
         question_type,
         difficulty,
@@ -481,6 +483,7 @@ async def load_question_meta(
     ) in rows:
         out[int(qid)] = {
             "questionId": int(qid),
+            "bankId": int(bank_id) if bank_id is not None else None,
             "questionText": (question_text or "").strip(),
             "questionType": question_type,
             "difficulty": difficulty,
@@ -669,6 +672,7 @@ async def diagnose(
         items.append(
             {
                 "questionId": qid,
+                "bankId": info.get("bankId"),
                 "bankName": info.get("bankName") or "",
                 "subject": subject,
                 "questionText": text or "（题目内容已不可用，可能已被删除）",

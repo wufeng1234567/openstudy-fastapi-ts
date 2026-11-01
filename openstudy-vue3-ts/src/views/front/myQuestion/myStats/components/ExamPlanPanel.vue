@@ -3,7 +3,7 @@
     <div class="exam-layout">
       <aside class="exam-form">
         <h2 class="exam-form-title">设置考试信息</h2>
-        <p class="exam-form-desc">告诉系统哪天考、每天能学多久，剩下的交给它。</p>
+        <p class="exam-form-desc">告诉系统哪天考、怎么安排节奏，剩下的交给它。</p>
 
         <div class="form-item">
           <label>考试名称</label>
@@ -23,10 +23,54 @@
         </div>
 
         <div class="form-item">
-          <label>科目</label>
-          <el-select v-model="form.subject" clearable placeholder="全部科目（推荐）" style="width: 100%">
-            <el-option v-for="s in subjects" :key="s" :label="s" :value="s" />
+          <label>开始复习 <span class="form-hint">留出准备时间</span></label>
+          <el-date-picker
+            v-model="form.startDate"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="默认今天"
+            :disabled-date="disableStart"
+            style="width: 100%"
+          />
+        </div>
+
+        <div class="form-item">
+          <label>绑定题库 <span class="form-hint">计划只针对这个题库</span></label>
+          <el-select v-model="form.bankId" filterable placeholder="选择你要考的题库" style="width: 100%">
+            <el-option
+              v-for="bank in banks"
+              :key="bank.bankId"
+              :label="bank.bankName"
+              :value="bank.bankId"
+            >
+              <div class="bank-option">
+                <span class="bank-option-name">{{ bank.bankName }}</span>
+                <span class="bank-option-meta">
+                  {{ bank.subject || '未分类' }} · {{ bank.questionCount }} 题
+                  <template v-if="bank.errorCount"> · 错 {{ bank.errorCount }} 题</template>
+                </span>
+              </div>
+            </el-option>
           </el-select>
+          <p v-if="!banks.length" class="form-help">你还没有练过的题库，先去题库练习几道题。</p>
+        </div>
+
+        <div class="form-item">
+          <label>每周休息日 <span class="form-hint">跳过这些天</span></label>
+          <el-select v-model="form.restDays" multiple collapse-tags placeholder="不设休息日" style="width: 100%">
+            <el-option v-for="d in weekdayOptions" :key="d.value" :label="d.label" :value="d.value" />
+          </el-select>
+        </div>
+
+        <div class="form-item">
+          <label>复习模式</label>
+          <el-radio-group v-model="form.mode" size="small">
+            <el-radio-button label="balanced">稳扎稳打</el-radio-button>
+            <el-radio-button label="sprint">考前冲刺</el-radio-button>
+          </el-radio-group>
+          <p class="form-help">
+            {{ form.mode === 'sprint' ? '减少补基础，把更多时间留给错题和整套模拟。' : '补地基、还债和模拟均衡分配，适合还有一段时间。' }}
+          </p>
         </div>
 
         <div class="form-item">
@@ -84,7 +128,11 @@
             </div>
             <div class="summary-main">
               <h2>{{ plan.exam.name }}</h2>
-              <p>{{ plan.exam.date }} · 每天 {{ plan.exam.dailyMinutes }} 分钟 · {{ plan.exam.subject || '全部科目' }}</p>
+              <p>
+                {{ plan.exam.date }} 考试 · {{ plan.exam.startDate || '今天' }} 开始 ·
+                每天 {{ plan.exam.dailyMinutes }} 分钟 ·
+                {{ plan.exam.bankName || '未绑定题库' }}
+              </p>
             </div>
             <div class="summary-stats">
               <div><b>{{ plan.overview?.overallAccuracy }}%</b><span>当前正确率</span></div>
@@ -92,6 +140,11 @@
               <div><b>{{ plan.overview?.overdueCount }}</b><span>欠复习</span></div>
             </div>
           </section>
+
+          <div v-if="plan.planProfile" class="plan-profile">
+            <span class="plan-profile-label">{{ plan.planProfile.label }}</span>
+            <span>{{ plan.planProfile.description }}</span>
+          </div>
 
           <div v-if="planExpired" class="exam-expired">
             这份计划的日期已经走完。重新生成一次，系统会按你现在的掌握情况重新倒排。
@@ -114,7 +167,8 @@
               <div>
                 <h3>每天做什么</h3>
                 <div class="plan-meta">
-                  计划生成于 {{ formatPlanTime() }} · 题目任务由真实作答自动确认，模拟/概念任务手动勾选
+                  计划生成于 {{ formatPlanTime() }} · {{ planModeText }} · 休息日：{{ planRestText }} ·
+                  题目任务由真实作答自动确认，模拟/概念任务手动勾选
                 </div>
               </div>
               <div class="plan-progress">
@@ -198,9 +252,10 @@ import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import useUserStore from '@/store/modules/user'
 import {
+  getExamBanks,
   getExamPlan,
-  getLearningLoop,
   getPracticeProgress,
+  type ExamBankOption,
   type ExamPlanResult,
   type ExamPlanTask,
 } from '@/api/userStats/userStats'
@@ -217,7 +272,7 @@ const loading = ref(false)
 const progressLoading = ref(false)
 const plan = ref<ExamPlanResult | null>(null)
 const planCreatedAt = ref(0)
-const subjects = ref<string[]>([])
+const banks = ref<ExamBankOption[]>([])
 const visibleDays = ref(7)
 const progressMap = ref<Record<number, number>>({})
 const manualDone = ref<string[]>([])
@@ -259,6 +314,11 @@ const totalTasks = computed(() => allTasks.value.length)
 const progressPercent = computed(() =>
   totalTasks.value ? Math.round((completedTasks.value / totalTasks.value) * 100) : 0
 )
+const planModeText = computed(() => (plan.value?.exam?.mode === 'sprint' ? '考前冲刺' : '稳扎稳打'))
+const planRestText = computed(() => {
+  const names = ['一', '二', '三', '四', '五', '六', '日']
+  return (plan.value?.exam?.restDays || []).map((d) => `周${names[d - 1]}`).join('、') || '不设休息日'
+})
 const planExpired = computed(() => {
   if (!plan.value || !plan.value.days.length) return false
   return plan.value.days[plan.value.days.length - 1].date < today.value
@@ -284,10 +344,28 @@ function defaultExamDate() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+function defaultStartDate() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+const weekdayOptions = [
+  { value: 1, label: '周一' },
+  { value: 2, label: '周二' },
+  { value: 3, label: '周三' },
+  { value: 4, label: '周四' },
+  { value: 5, label: '周五' },
+  { value: 6, label: '周六' },
+  { value: 7, label: '周日' }
+]
+
 const form = reactive({
   examName: '期末考试',
   examDate: defaultExamDate(),
-  subject: '',
+  startDate: defaultStartDate(),
+  bankId: null as number | null,
+  restDays: [] as number[],
+  mode: 'balanced' as 'balanced' | 'sprint',
   dailyMinutes: 40,
 })
 
@@ -295,6 +373,15 @@ function disablePast(date: Date) {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   return date.getTime() < today.getTime()
+}
+
+function disableStart(date: Date) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  if (date.getTime() < today.getTime()) return true
+  if (!form.examDate) return false
+  const exam = new Date(`${form.examDate}T00:00:00`)
+  return date.getTime() >= exam.getTime()
 }
 
 const weekday = (value: string) => '日一二三四五六'[new Date(`${value}T00:00:00`).getDay()]
@@ -346,6 +433,11 @@ function loadPlanState() {
     const saved = JSON.parse(raw)
     if (!saved?.plan || !saved?.createdAt) return
     Object.assign(form, saved.form || {})
+    const savedForm = saved.form || {}
+    form.bankId = savedForm.bankId ? Number(savedForm.bankId) : null
+    form.restDays = Array.isArray(savedForm.restDays) ? savedForm.restDays : []
+    form.mode = savedForm.mode === 'sprint' ? 'sprint' : 'balanced'
+    form.startDate = savedForm.startDate || defaultStartDate()
     plan.value = saved.plan
     planCreatedAt.value = Number(saved.createdAt)
     manualDone.value = Array.isArray(saved.manualDone) ? saved.manualDone : []
@@ -382,14 +474,18 @@ async function refreshProgress() {
 
 defineExpose({ refreshProgress })
 
-async function loadSubjects() {
+async function loadBanks() {
   try {
-    const res: any = await getLearningLoop()
+    const res: any = await getExamBanks()
     if (res.code === 200) {
-      subjects.value = (res.data?.healthMap || []).map((n: any) => n.subject).filter(Boolean)
+      banks.value = Array.isArray(res.data) ? res.data : []
+      // 默认选中最近练过、错题最多的题库；没有保存过选择时才自动带一个
+      if (!form.bankId && banks.value.length) {
+        form.bankId = banks.value[0].bankId
+      }
     }
   } catch (e) {
-    // 科目下拉只是辅助，失败不影响主流程
+    // 题库下拉只是辅助，失败不影响主流程
   }
 }
 
@@ -398,12 +494,26 @@ async function generate() {
     ElMessage.warning('先选一个考试日期')
     return
   }
+  if (!form.startDate) form.startDate = defaultStartDate()
+  if (form.startDate >= form.examDate) {
+    ElMessage.warning('开始复习日期必须早于考试日期')
+    return
+  }
+  if (!form.bankId) {
+    ElMessage.warning('先绑定一个要练的题库')
+    return
+  }
+  const bank = banks.value.find((item) => item.bankId === form.bankId)
   loading.value = true
   try {
     const res: any = await getExamPlan({
       examName: form.examName || '我的考试',
       examDate: form.examDate,
-      subject: form.subject,
+      bankId: form.bankId,
+      bankName: bank?.bankName || '',
+      startDate: form.startDate,
+      restDays: form.restDays,
+      mode: form.mode,
       dailyMinutes: form.dailyMinutes,
     })
     if (res.code === 200) {
@@ -448,7 +558,7 @@ const goPractice = () => router.push('/front/questionPractice')
 onMounted(async () => {
   loadPlanState()
   visibleDays.value = initialVisibleDays(plan.value)
-  await loadSubjects()
+  await loadBanks()
   await refreshProgress()
 })
 </script>
@@ -468,6 +578,8 @@ onMounted(async () => {
 .exam-form {
   position: sticky;
   top: 16px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
   padding: 18px;
   border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
   border-radius: var(--os-radius, 12px);
@@ -505,6 +617,52 @@ onMounted(async () => {
   color: var(--os-text, #0f1115);
   font-size: 12px;
   font-weight: 600;
+}
+
+.form-hint {
+  color: var(--os-text-4, #adb2b8);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.form-help {
+  margin: 6px 0 0;
+  color: var(--os-text-4, #adb2b8);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.bank-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bank-option-name {
+  overflow: hidden;
+  color: var(--os-text, #0f1115);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bank-option-meta {
+  flex: none;
+  color: var(--os-text-4, #adb2b8);
+  font-size: 10px;
+}
+
+.exam-form :deep(.el-radio-group) {
+  width: 100%;
+}
+
+.exam-form :deep(.el-radio-button) {
+  flex: 1;
+}
+
+.exam-form :deep(.el-radio-button__inner) {
+  width: 100%;
 }
 
 .generate-btn {
@@ -706,6 +864,29 @@ onMounted(async () => {
   color: #ad6800;
   font-size: 11px;
   line-height: 1.6;
+}
+
+.plan-profile {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 9px 12px;
+  border-radius: var(--os-radius-sm, 8px);
+  background: #f8fafc;
+  color: var(--os-text-3, #81858c);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.plan-profile-label {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--os-accent-soft, #edf3fe);
+  color: var(--dsw-static-blue-800, #1e40af);
+  font-size: 10px;
+  font-weight: 600;
 }
 
 .phase-card {
