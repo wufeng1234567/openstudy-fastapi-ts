@@ -137,6 +137,14 @@
           </div>
         </div>
       </div>
+      <!-- 浏览模式同样要有「选项乱序」；此前只放在逐题模式的 stats 行里 -->
+      <div v-if="isPracticeMode && showShuffleToggle" class="shuffle-row shuffle-row--overview">
+        <span class="shuffle-label">
+          <el-icon><Sort /></el-icon>
+          乱序
+        </span>
+        <el-switch :model-value="shuffleOptions" size="small" @update:model-value="onShuffleChange" />
+      </div>
     </template>
 
     <!--
@@ -517,6 +525,11 @@ const getOverviewItemClass = (index: number) => {
     flex: none;
   }
 
+}
+
+.shuffle-row--overview {
+  margin-top: 8px;
+  padding-top: 8px;
 }
 
 /*
