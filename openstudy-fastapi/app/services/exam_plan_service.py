@@ -17,8 +17,11 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
+from app.models.question import QuestionBank, QuestionMain, QuestionSub
 from app.services import study_diagnosis_service as sds
 
 DELETED_PLACEHOLDER = "（题目内容已不可用，可能已被删除）"
@@ -90,6 +93,110 @@ def _fallback_subject(subjects: List[str], items: List[Dict[str, Any]]) -> str:
     if subjects:
         return subjects[0]
     return items[0].get("subject") if items else ""
+
+
+async def _create_plan_bank(
+    db: AsyncSession,
+    user_id: int,
+    exam_name: str,
+    source_bank_name: str,
+    question_ids: List[int],
+    subject: str,
+) -> tuple[Optional[int], str, Dict[int, int]]:
+    """把计划涉及的题复制成一个用户自己的刷题题库。
+
+    为什么要复制而不是直接复用源题库：
+    · 计划可能只涉及源题库的一部分题；
+    · 计划可能来自别人的公开题库，用户没有编辑/练习权限；
+    · 用户需要一个明确命名、属于自己、可以反复打开刷题的题库。
+    """
+    if not question_ids:
+        return None, "", {}
+
+    name = f"考前计划·{exam_name or '我的考试'}·{source_bank_name or '综合'}"[:100]
+    existing = (
+        await db.execute(
+            select(QuestionBank).where(
+                QuestionBank.user_id == int(user_id),
+                QuestionBank.bank_name == name,
+            )
+        )
+    ).scalar_one_or_none()
+
+    if existing:
+        bank = existing
+        existing_rows = (
+            await db.execute(select(QuestionMain).where(QuestionMain.bank_id == bank.id))
+        ).scalars().all()
+        by_text = {str(q.question_text or ""): int(q.id) for q in existing_rows}
+    else:
+        bank = QuestionBank(
+            bank_name=name,
+            subject=subject or "综合",
+            description=f"由考前计划自动生成；来源题库：{source_bank_name or '未知'}；计划生成时间：{datetime.now():%Y-%m-%d %H:%M}",
+            total_questions=0,
+            status="0",
+            user_id=int(user_id),
+            is_public=0,
+            allow_fork=0,
+        )
+        db.add(bank)
+        await db.flush()
+        by_text = {}
+
+    rows = (
+        await db.execute(
+            select(QuestionMain)
+            .where(QuestionMain.id.in_(question_ids))
+            .options(selectinload(QuestionMain.sub_questions))
+        )
+    ).scalars().all()
+    by_id = {int(q.id): q for q in rows}
+    id_map: Dict[int, int] = {}
+    for source_id in question_ids:
+        source = by_id.get(int(source_id))
+        if not source:
+            continue
+        text = str(source.question_text or "")
+        if text in by_text:
+            id_map[int(source_id)] = by_text[text]
+            continue
+        copied = QuestionMain(
+            bank_id=bank.id,
+            question_type=source.question_type,
+            difficulty=source.difficulty,
+            question_text=source.question_text,
+            content=source.content,
+            options=source.options,
+            answer=source.answer,
+            analysis=source.analysis,
+            has_sub_questions=source.has_sub_questions,
+            sort_order=len(by_text) + 1,
+            score=source.score,
+            status="0",
+            create_time=datetime.now(),
+        )
+        db.add(copied)
+        await db.flush()
+        for sub in source.sub_questions or []:
+            db.add(
+                QuestionSub(
+                    main_id=copied.id,
+                    question_text=sub.question_text,
+                    question_type=sub.question_type,
+                    options=sub.options,
+                    answer=str(sub.answer or "")[:500],
+                    analysis=sub.analysis,
+                    sort_order=sub.sort_order,
+                    score=sub.score,
+                )
+            )
+        by_text[text] = int(copied.id)
+        id_map[int(source_id)] = int(copied.id)
+
+    bank.total_questions = len(by_text)
+    await db.flush()
+    return int(bank.id), name, id_map
 
 
 def _build_days(
@@ -363,6 +470,27 @@ async def build_exam_plan(
         if it.get("level") in {"repeated_failure", "lapsing", "overdue", "due_soon"}
     )
 
+    scheduled_ids: List[int] = []
+    for day in built["days"]:
+        for task in day["tasks"]:
+            qid = int(task.get("questionId") or 0)
+            if qid and qid not in scheduled_ids:
+                scheduled_ids.append(qid)
+    practice_bank_id, practice_bank_name, id_map = await _create_plan_bank(
+        db,
+        user_id,
+        exam_name,
+        bank_name,
+        scheduled_ids,
+        _fallback_subject(selected_subjects, items),
+    )
+    if practice_bank_id:
+        for day in built["days"]:
+            for task in day["tasks"]:
+                old_id = int(task.get("questionId") or 0)
+                if old_id in id_map:
+                    task["questionId"] = id_map[old_id]
+
     weekday_names = ["一", "二", "三", "四", "五", "六", "日"]
     rest_text = "、".join(f"周{weekday_names[d - 1]}" for d in rest) or "无"
     return {
@@ -384,6 +512,10 @@ async def build_exam_plan(
             "label": profile_label,
             "description": profile_desc,
         },
+        "practiceBank": {
+            "id": practice_bank_id,
+            "name": practice_bank_name,
+        } if practice_bank_id else None,
         "overview": {
             "questionsSeen": len(items),
             "overallAccuracy": overall_accuracy,

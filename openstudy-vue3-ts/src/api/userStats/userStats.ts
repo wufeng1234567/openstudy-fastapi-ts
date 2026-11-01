@@ -427,6 +427,10 @@ export interface ExamPlanResult {
     label: string
     description: string
   }
+  practiceBank?: {
+    id: number
+    name: string
+  } | null
   overview?: {
     questionsSeen: number
     overallAccuracy: number

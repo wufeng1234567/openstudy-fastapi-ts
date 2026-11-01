@@ -39,7 +39,7 @@
 <template>
   <div class="question-manage-page">
     <!-- 分组切换（与「题库管理 / 笔记管理」共用一个组件，视觉只有一份定义） -->
-    <SegmentedTabs v-model="activeTab" :tabs="tabItems" @change="onTabChange" />
+    <SegmentedTabs v-model="activeTab" :tabs="tabItems" />
 
     <!-- 三个分组常驻（v-show：切换瞬时，不重新拉数据） -->
     <div v-show="activeTab === 'favorite'" class="tab-panel">
@@ -51,31 +51,26 @@
     <div v-show="activeTab === 'marked'" class="tab-panel">
       <MyMarked ref="markedRef" embedded @total-change="onTotalChange('marked', $event)" />
     </div>
-    <div v-show="activeTab === 'plan'" class="tab-panel">
-      <PlanQuestionList ref="planRef" @total-change="onTotalChange('plan', $event)" />
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 defineOptions({ name: 'FrontQuestionManage' })
 
-import { computed, nextTick, onActivated, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onActivated, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import MyFavoriteQuestion from '../myFavoriteQuestion/index.vue'
 import MyMistakes from '../myMistakes/index.vue'
 import MyMarked from '../myMarked/index.vue'
-import PlanQuestionList from '../components/PlanQuestionList.vue'
 import SegmentedTabs from '@/components/SegmentedTabs/index.vue'
 import useTopbarStore from '@/store/modules/topbar'
 
-type TabKey = 'favorite' | 'wrong' | 'marked' | 'plan'
+type TabKey = 'favorite' | 'wrong' | 'marked'
 
 const TAB_DEFS: Array<{ key: TabKey; label: string }> = [
   { key: 'favorite', label: '题目收藏' },
   { key: 'wrong', label: '我的错题' },
-  { key: 'marked', label: '我的斩题' },
-  { key: 'plan', label: '计划题目' }
+  { key: 'marked', label: '我的斩题' }
 ]
 
 const route = useRoute()
@@ -88,7 +83,7 @@ const route = useRoute()
  */
 const initTab = (): TabKey => {
   const t = String(route.query.tab || '')
-  return t === 'wrong' || t === 'marked' || t === 'plan' ? t : 'favorite'
+  return t === 'wrong' || t === 'marked' ? t : 'favorite'
 }
 const activeTab = ref<TabKey>(initTab())
 
@@ -108,8 +103,7 @@ watch(
      */
     if (!route.path.startsWith('/front/myQuestion/questions')) return
     const k = String(t || '')
-    if (k === 'wrong' || k === 'marked' || k === 'favorite' || k === 'plan') activeTab.value = k as TabKey
-    if (k === 'plan') nextTick(() => planRef.value?.refresh?.())
+    if (k === 'wrong' || k === 'marked' || k === 'favorite') activeTab.value = k as TabKey
   }
 )
 
@@ -117,7 +111,6 @@ watch(
 const favRef = ref<any>(null)
 const wrongRef = ref<any>(null)
 const markedRef = ref<any>(null)
-const planRef = ref<any>(null)
 const topbarStore = useTopbarStore()
 
 /**
@@ -139,8 +132,7 @@ interface CountState {
 const states = ref<Record<TabKey, CountState>>({
   favorite: { total: 0, ready: false },
   wrong: { total: 0, ready: false },
-  marked: { total: 0, ready: false },
-  plan: { total: 0, ready: false }
+  marked: { total: 0, ready: false }
 })
 
 /** 分组切换条的入参：标签 + 角标计数（只显示已就绪的分组） */
@@ -161,13 +153,9 @@ function onTotalChange(key: TabKey, payload: { total: number; loading: boolean }
   states.value = { ...states.value, [key]: { total: payload.total, ready: true } }
 }
 
-function onTabChange(key: string) {
-  if (key === 'plan') nextTick(() => planRef.value?.refresh?.())
-}
-
 /* 分组切换或任一状态变化 → 刷新顶栏 */
 watch(
-  [activeTab, () => states.value.favorite, () => states.value.wrong, () => states.value.marked, () => states.value.plan],
+  [activeTab, () => states.value.favorite, () => states.value.wrong, () => states.value.marked],
   () => {
     // keep-alive 下本页可能已不在前台：不要往顶栏推别人的计数
     if (!route.path.startsWith('/front/myQuestion/questions')) return
@@ -187,7 +175,6 @@ watch(
 onActivated(() => {
   const st = states.value[activeTab.value]
   topbarStore.setCount(st.ready ? `${st.total} 道题` : '')
-  if (activeTab.value === 'plan') nextTick(() => planRef.value?.refresh?.())
 })
 
 onBeforeUnmount(() => topbarStore.clear())

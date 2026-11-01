@@ -146,6 +146,10 @@
             <span>{{ plan.planProfile.description }}</span>
           </div>
 
+          <div v-if="plan.practiceBank" class="plan-bank-note">
+            已自动生成专属刷题题库：<b>{{ plan.practiceBank.name }}</b>
+          </div>
+
           <div v-if="planExpired" class="exam-expired">
             这份计划的日期已经走完。重新生成一次，系统会按你现在的掌握情况重新倒排。
           </div>
@@ -180,7 +184,9 @@
                   <el-icon><Refresh /></el-icon>
                   刷新进度
                 </el-button>
-                <el-button size="small" @click="openPlanQuestions">查看计划全部题目</el-button>
+                <el-button v-if="plan.practiceBank" type="primary" size="small" @click="openPracticeBank">
+                  开始刷题
+                </el-button>
               </div>
             </div>
             <div
@@ -535,16 +541,16 @@ async function generate() {
   }
 }
 
-function openTask(task: ExamPlanTask) {
-  if (!task?.questionId) return
-  router.push({
-    path: '/front/myQuestion/questions',
-    query: { tab: 'plan', questionId: String(task.questionId), from: 'examPlan' },
-  })
+function openTask(_task: ExamPlanTask) {
+  openPracticeBank()
 }
 
-function openPlanQuestions() {
-  router.push({ path: '/front/myQuestion/questions', query: { tab: 'plan', from: 'examPlan' } })
+function openPracticeBank() {
+  if (plan.value?.practiceBank?.id) {
+    router.push(`/front/questionPractice/${plan.value.practiceBank.id}`)
+    return
+  }
+  router.push('/front/questionPractice')
 }
 
 function initialVisibleDays(result: ExamPlanResult | null) {
@@ -886,6 +892,17 @@ onMounted(async () => {
   background: var(--os-accent-soft, #edf3fe);
   color: var(--dsw-static-blue-800, #1e40af);
   font-size: 10px;
+  font-weight: 600;
+}
+
+.plan-bank-note {
+  margin-top: 8px;
+  color: var(--os-text-3, #81858c);
+  font-size: 11px;
+}
+
+.plan-bank-note b {
+  color: var(--os-text, #0f1115);
   font-weight: 600;
 }
 
