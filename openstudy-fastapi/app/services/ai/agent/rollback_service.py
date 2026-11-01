@@ -92,7 +92,7 @@ REASON_TEXT: Dict[str, str] = {
     REASON_NO_BEFORE_STATE: "没有记录修改前的值，无法回退",
     REASON_MISSING_TARGET_ID: "回执里没有可定位的数据行 ID，无法回退",
     REASON_NOT_IN_V1: "这一类操作本轮暂不支持回退",
-    REASON_DOCUMENTS_DESTROYED: "知识库已恢复，但其中的文档与分块已被物理删除，无法恢复",
+    REASON_DOCUMENTS_DESTROYED: "资料夹已恢复，但其中的文档与分块已被物理删除，无法恢复",
     # ---- 2026-10-20 新增（题库/题目整树恢复的两条边界）----
     #: 整树重插时部分行失败（撞主键 / 快照缺行）→ 界面上标「部分回退」
     "partial_restored": "大部分内容已恢复，但有个别行没能插回来（详见失败清单）",

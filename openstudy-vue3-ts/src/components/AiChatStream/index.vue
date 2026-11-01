@@ -329,7 +329,7 @@
       :show-new-session="showNewSession" :generating="isGenerating" :paused="isPaused" :placeholder="placeholder"
       :has-attachment="hasAttachment" :disabled="isGenerating || disabled"
       @update:mode="$emit('update:mode', $event)" @send="handleSend" @toggle-pause="$emit('toggle-pause')"
-      @new-session="$emit('new-session')">
+      @new-session="$emit('new-session')" @files-pasted="$emit('files-pasted', $event)">
       <!-- 插槽名保持向后兼容：老调用方仍在用 `#input-header` / `#input-footer` -->
       <template v-if="$slots['input-header']" #attachments>
         <slot name="input-header"></slot>
@@ -557,6 +557,8 @@ const emit = defineEmits([
   'toggle-pause',
   'update:mode',
   'new-session',
+  /** 输入框粘贴文件（截图/复制的图片）时抛给页面，由页面的附件上传器处理 */
+  'files-pasted',
   /** 点「回退」时抛给调用方（载荷 = 那一轮的 `turnId`），由页面调 `rollbackTurn()` */
   'rollback-turn',
   /**

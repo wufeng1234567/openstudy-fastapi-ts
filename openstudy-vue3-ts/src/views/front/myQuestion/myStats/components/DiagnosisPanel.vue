@@ -120,7 +120,7 @@
                         <span class="lv-tag" :style="{ background: levelColor(item.level) }">
                             {{ item.levelText }}
                         </span>
-                        <span class="q-text">{{ item.questionText }}</span>
+                        <span class="q-text" v-html="renderQuestionContent(item.questionText)"></span>
                         <span class="q-meta">
                             {{ item.attempts }} 次 · 对 {{ item.correctCount }} 次
                             <template v-if="item.overdueDays > 0"> · 欠复习 {{ item.overdueDays }} 天</template>
@@ -145,6 +145,7 @@ import { ElMessage } from 'element-plus'
 // 与项目其他地方保持一致：整体引入 `echarts`（myStats 主页面也是这么写的）。
 // 不用 `echarts/core` 按需引入 —— 混用两套容易在打包后出现 "series type not exists"。
 import * as echarts from 'echarts'
+import { renderQuestionContent } from '@/utils/latex'
 import {
     getDiagnose,
     buildReviewSheet,
@@ -263,7 +264,12 @@ const ATTENTION_LEVELS = new Set<MasteryLevel>(['repeated_failure', 'lapsing', '
 
 const attentionItems = computed<DiagnosisItem[]>(() => {
     const items = data.value?.items || []
-    return items.filter((it) => ATTENTION_LEVELS.has(it.level)).slice(0, 8)
+    return items
+        .filter((it) => ATTENTION_LEVELS.has(it.level))
+        // 题目被物理删除后流水还在，后端会退化成占位文案；这种「幽灵题」
+        // 不能出现在「现在最该练」的列表里（点进去也没有题目）。
+        .filter((it) => (it.questionText || '').trim() !== '（题目内容已不可用，可能已被删除）')
+        .slice(0, 8)
 })
 
 function renderLevelChart() {

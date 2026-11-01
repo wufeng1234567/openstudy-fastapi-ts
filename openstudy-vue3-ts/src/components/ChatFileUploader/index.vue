@@ -4,7 +4,7 @@
     <input ref="fileInputRef" type="file" :accept="ACCEPT" multiple style="display: none"
       @change="handleChange" />
 
-    <el-tooltip content="上传图片或文件（Word / PDF / md / txt），也可以直接把文件拖进输入框" placement="top" :show-after="150">
+    <el-tooltip content="上传图片或文件（Word / PDF / md / txt），也可以 Ctrl+V 粘贴或直接拖进输入框" placement="top" :show-after="150">
       <button type="button" class="upload-btn" :disabled="disabled" @click="pick">
         <!-- 回形针图标，与 DS 网页端的附件按钮一致 -->
         <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="upload-icon">
@@ -67,12 +67,18 @@ const ACCEPT = [
 
 /** 后端 `KB_FILE_EXTENSIONS` 同源口径（不含图片 —— 图片走另一条通道） */
 const DOC_EXTS = ['pdf', 'doc', 'docx', 'txt', 'md', 'markdown']
+/** 剪贴板图片有时 type 为空，需要按扩展名兜底识别 */
+const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif']
+
+const fileExt = (file: File): string => {
+  const dot = file.name.lastIndexOf('.')
+  return dot < 0 ? '' : file.name.slice(dot + 1).toLowerCase()
+}
 
 const isSupportedDoc = (file: File): boolean => {
   if (file.type.startsWith('image/')) return true
-  const dot = file.name.lastIndexOf('.')
-  if (dot < 0) return false
-  return DOC_EXTS.includes(file.name.slice(dot + 1).toLowerCase())
+  const ext = fileExt(file)
+  return IMAGE_EXTS.includes(ext) || DOC_EXTS.includes(ext)
 }
 
 const MAX_IMAGE_COUNT = 6
@@ -150,7 +156,7 @@ const addFiles = async (files: File[]) => {
       continue
     }
 
-    const isImage = file.type.startsWith('image/')
+    const isImage = file.type.startsWith('image/') || IMAGE_EXTS.includes(fileExt(file))
     const list = isImage ? next.images : next.files
     const maxCount = isImage ? MAX_IMAGE_COUNT : MAX_FILE_COUNT
     const maxMb = isImage ? MAX_IMAGE_MB : MAX_FILE_MB

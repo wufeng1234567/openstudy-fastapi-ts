@@ -208,8 +208,39 @@ async def init_db():
                     "ALTER TABLE rag_document ADD COLUMN image_map JSON NULL"
                 ))
                 logger.info("rag_document.image_map 列已补齐（文档图片清单）")
+            # 2026-10-29：我的资料智能整理字段
+            for col, ddl in (
+                ("original_file_name", "VARCHAR(255) NULL"),
+                ("subject", "VARCHAR(50) NULL"),
+                ("material_type", "VARCHAR(30) NULL"),
+                ("facets", "JSON NULL"),
+                ("disabled", "SMALLINT NOT NULL DEFAULT 0"),
+                ("excluded_ranges", "JSON NULL"),
+                ("content_structure", "JSON NULL"),
+                ("index_version", "INTEGER NOT NULL DEFAULT 1"),
+            ):
+                if col not in columns:
+                    sync_conn.execute(text(f"ALTER TABLE rag_document ADD COLUMN {col} {ddl}"))
+                    logger.info(f"rag_document.{col} 列已补齐")
 
         await conn.run_sync(_ensure_rag_document_columns)
+
+        # 兼容历史库：rag_document_chunk 也需要索引版本列。旧 chunks 全部回填为 1，
+        # 与旧文档的默认 index_version=1 对齐；之后正文更新才会递增。
+        def _ensure_rag_chunk_columns(sync_conn):
+            from sqlalchemy import inspect, text
+            inspector = inspect(sync_conn)
+            if "rag_document_chunk" not in inspector.get_table_names():
+                return
+            columns = {c["name"] for c in inspector.get_columns("rag_document_chunk")}
+            if "index_version" not in columns:
+                sync_conn.execute(text(
+                    "ALTER TABLE rag_document_chunk "
+                    "ADD COLUMN index_version INTEGER NOT NULL DEFAULT 1"
+                ))
+                logger.info("rag_document_chunk.index_version 列已补齐（默认 1）")
+
+        await conn.run_sync(_ensure_rag_chunk_columns)
 
         # 兼容历史库：ai_agent_role_pref 新增「专家模型覆盖」列（用户给某专家挑的模型）。
         # ⚠️ 同理：`create_all` 只建缺失的表、不给已存在的表加列 —— 这张表上线已久，

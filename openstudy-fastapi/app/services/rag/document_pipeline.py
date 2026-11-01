@@ -15,10 +15,12 @@
 
 from __future__ import annotations
 
+import asyncio
+from datetime import datetime, timedelta
 from typing import Optional
 
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session_factory
@@ -30,6 +32,35 @@ from app.models.rag import (
     RagDocument,
 )
 from app.services.rag.chunker import chunk_text
+
+
+def apply_excluded_ranges(raw: str, ranges: list | None) -> str:
+    """按软剔除范围过滤检索文本；原始 raw_content 永远不动。"""
+    if not ranges:
+        return raw
+    spans = []
+    for item in ranges:
+        if not isinstance(item, dict):
+            continue
+        start = item.get("start")
+        end = item.get("end")
+        if start is None or end is None:
+            continue
+        spans.append((max(0, int(start)), min(len(raw), int(end))))
+    if not spans:
+        return raw
+    spans.sort()
+    out = []
+    pos = 0
+    for start, end in spans:
+        if end <= pos:
+            continue
+        if start > pos:
+            out.append(raw[pos:start])
+        out.append("\n")
+        pos = max(pos, end)
+    out.append(raw[pos:])
+    return "".join(out)
 from app.services.rag.embedding import embed_texts
 from app.services.rag.rag_write_service import (
     get_document,
@@ -38,27 +69,102 @@ from app.services.rag.rag_write_service import (
 )
 
 
+async def queue_reprocess_document(db: AsyncSession, user_id: int, doc_id: int) -> dict:
+    """只把文档置为待解析并立即返回，真正的解析/向量化交给 BackgroundTasks。
+
+    为什么单独拆出来：
+      · 旧接口 `reprocess_document` 会在请求里同步跑完 embedding，30~60 秒不返回，
+        用户点一下只能看到按钮"没反应"；前端请求超时后还会误以为失败。
+      · 现在先返回 queued，前端用 `/document/status/{docId}` 轮询 1→2→3→5，
+        按钮可以展示真实阶段和进度，而不是一个不确定的等待。
+    """
+    doc = await get_document(db, user_id, doc_id)
+    if not (doc.raw_content or "").strip():
+        raise ValueError(
+            "该文档没有可用的原始内容（raw_content 为空），无法重新处理，请重新上传"
+        )
+    if doc.status in (DOC_PENDING, DOC_PARSING):
+        raise ValueError("这份资料正在处理中，等它完成后再试")
+    doc.status = DOC_PENDING
+    doc.error_msg = None
+    doc.update_time = datetime.utcnow()
+    await db.commit()
+    return {
+        "docId": doc.id,
+        "fileName": doc.file_name,
+        "status": doc.status,
+        "statusText": "待解析",
+        "queued": True,
+    }
+
+
+#: 同一文档只允许一条在跑的流水线。上传、重解析、整理后重建索引
+#: 都可能从不同入口触发；没有这个锁时同一篇文档会被重复切分/向量化，
+#: 后完成的旧任务也可能覆盖新任务的状态。
+_PIPELINE_LOCKS: dict[int, asyncio.Lock] = {}
+
+
+def _pipeline_lock(doc_id: int) -> asyncio.Lock:
+    lock = _PIPELINE_LOCKS.get(doc_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _PIPELINE_LOCKS[doc_id] = lock
+    return lock
+
+
 async def process_document(doc_id: int) -> dict:
     """完整处理一篇文档（基于已落库的 `raw_content`）。
 
+    单文档单飞：如果已有同文档任务在跑，直接返回 duplicate，不重复消耗 embedding。
     自身开会话：调用方通常只把它丢进 BackgroundTasks，那时请求会话已经关了。
     """
-    async with async_session_factory() as db:
-        doc = (
-            await db.execute(select(RagDocument).where(RagDocument.id == doc_id))
-        ).scalar_one_or_none()
-        if doc is None:
-            logger.warning(f"[rag.pipeline] 文档不存在，跳过: id={doc_id}")
-            return {"docId": doc_id, "ok": False, "error": "文档不存在"}
+    lock = _pipeline_lock(doc_id)
+    if lock.locked():
+        logger.info(f"[rag.pipeline] id={doc_id} 已有任务在跑，跳过重复任务")
+        return {"docId": doc_id, "ok": True, "duplicate": True, "status": "running"}
+    async with lock:
+        async with async_session_factory() as db:
+            doc = (
+                await db.execute(select(RagDocument).where(RagDocument.id == doc_id))
+            ).scalar_one_or_none()
+            if doc is None:
+                logger.warning(f"[rag.pipeline] 文档不存在，跳过: id={doc_id}")
+                return {"docId": doc_id, "ok": False, "error": "文档不存在"}
 
-        try:
-            return await _run(db, doc)
-        except Exception as e:
-            logger.exception(f"[rag.pipeline] 文档处理失败 id={doc_id}")
-            await db.rollback()
-            # 失败必须落 status=4 并记原因，否则前端只会看到文档「卡住」没有任何线索
-            await mark_document_failed(db, doc, f"{type(e).__name__}: {e}")
-            return {"docId": doc_id, "ok": False, "error": str(e)}
+            try:
+                return await _run(db, doc)
+            except Exception as e:
+                logger.exception(f"[rag.pipeline] 文档处理失败 id={doc_id}")
+                await db.rollback()
+                # 失败必须落 status=4 并记原因，否则前端只会看到文档「卡住」没有任何线索
+                await mark_document_failed(db, doc, f"{type(e).__name__}: {e}")
+                return {"docId": doc_id, "ok": False, "error": str(e)}
+
+
+async def recover_stale_documents(max_age_minutes: int = 15) -> dict:
+    """启动时回收上次进程崩溃留下的「解析中」文档。
+
+    不自动重跑：embedding 可能仍不可用，自动重跑会把所有卡住文档重新打一遍。
+    先统一标记失败并给出明确原因，用户可从文档行手动重试。
+    """
+    cutoff = datetime.utcnow() - timedelta(minutes=max_age_minutes)
+    async with async_session_factory() as db:
+        rows = (
+            await db.execute(
+                select(RagDocument).where(
+                    RagDocument.status == DOC_PARSING,
+                    or_(RagDocument.update_time.is_(None), RagDocument.update_time < cutoff),
+                )
+            )
+        ).scalars().all()
+        for doc in rows:
+            doc.status = DOC_FAILED
+            doc.error_msg = "处理中断（服务重启或任务异常），请重新解析"
+            doc.update_time = datetime.utcnow()
+        if rows:
+            await db.commit()
+            logger.warning(f"[rag.pipeline] 回收 {len(rows)} 个卡在解析中的文档")
+    return {"recovered": len(rows)}
 
 
 async def _run(db: AsyncSession, doc: RagDocument) -> dict:
@@ -68,14 +174,17 @@ async def _run(db: AsyncSession, doc: RagDocument) -> dict:
 
     doc.status = DOC_PARSING
     doc.error_msg = None
+    doc.update_time = datetime.utcnow()
     await db.commit()
 
-    chunks = chunk_text(raw)
+    searchable = apply_excluded_ranges(raw, doc.excluded_ranges)
+    chunks = chunk_text(searchable)
     if not chunks:
         raise ValueError("分块结果为空（内容可能全是空白）")
     contents = [c.content for c in chunks]
 
     doc.status = DOC_PARSED
+    doc.update_time = datetime.utcnow()
     await db.commit()
 
     logger.info(f"[rag.pipeline] id={doc.id} 切出 {len(contents)} 块，开始向量化")
@@ -137,6 +246,7 @@ async def reprocess_document(db: AsyncSession, user_id: int, doc_id: int) -> dic
 
     doc.status = DOC_PENDING
     doc.error_msg = None
+    doc.update_time = datetime.utcnow()
     await db.commit()
 
     return await process_document(doc.id)
@@ -159,5 +269,6 @@ __all__ = [
     "process_document",
     "process_pending_documents",
     "reprocess_document",
+    "recover_stale_documents",
     "kb_has_vectorized_content",
 ]

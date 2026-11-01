@@ -50,7 +50,7 @@
            作为输入框内角标既不挤工具栏，又保留了长文本输入的便利。 -->
       <div class="input-text-layer">
         <textarea ref="textareaRef" v-model="text" class="chat-textarea" rows="2" :placeholder="placeholder"
-          :disabled="disabled" @keydown="onKeydown"></textarea>
+          :disabled="disabled" @keydown="onKeydown" @paste="onPaste"></textarea>
         <button type="button" class="expand-corner" title="放大输入（写长文本更舒服）"
           @click.stop="expandVisible = true">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
@@ -115,7 +115,7 @@
     <el-dialog v-model="expandVisible" title="输入内容" width="620px" append-to-body class="chat-input-expand"
       :close-on-click-modal="false">
       <textarea v-model="text" class="expand-textarea" rows="10" :placeholder="placeholder"
-        @keydown.enter.exact.prevent="onSendFromDialog"></textarea>
+        @keydown.enter.exact.prevent="onSendFromDialog" @paste="onPaste"></textarea>
       <template #footer>
         <el-button @click="expandVisible = false">取消</el-button>
         <el-button type="primary" :disabled="!canSend" @click="onSendFromDialog">发送</el-button>
@@ -165,6 +165,8 @@ const emit = defineEmits<{
   (e: 'send', payload: { content: string }): void
   (e: 'toggle-pause'): void
   (e: 'new-session'): void
+  /** 从剪贴板粘贴进来的文件（截图/复制的图片、文件对象） */
+  (e: 'files-pasted', files: File[]): void
 }>()
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -194,6 +196,30 @@ const onKeydown = (e: KeyboardEvent) => {
     e.preventDefault()
     onSend()
   }
+}
+
+/**
+ * 粘贴文件：截图（Ctrl/Cmd+V）通常出现在 clipboardData.items，
+ * 从资源管理器复制的文件则可能直接出现在 clipboardData.files。
+ * 有文件时阻止默认粘贴，避免把文件名/图片占位文本插进 textarea。
+ */
+const onPaste = (event: ClipboardEvent) => {
+  const clipboard = event.clipboardData
+  if (!clipboard) return
+  const files: File[] = []
+  if (clipboard.files?.length) {
+    files.push(...Array.from(clipboard.files))
+  }
+  if (!files.length && clipboard.items?.length) {
+    for (const item of Array.from(clipboard.items)) {
+      if (item.kind !== 'file') continue
+      const file = item.getAsFile()
+      if (file) files.push(file)
+    }
+  }
+  if (!files.length) return
+  event.preventDefault()
+  emit('files-pasted', files)
 }
 
 const onSend = () => {

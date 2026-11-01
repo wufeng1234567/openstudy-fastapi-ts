@@ -18,16 +18,20 @@ SpringBoot 版 `/rag/**` 是 permit-all + `userId` 参数默认 1 + 无归属校
 from __future__ import annotations
 
 import asyncio
+import json
+import re
+from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, UploadFile
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.response import error, success
 from app.core.security import get_current_user
-from app.database import get_db
+from app.database import async_session_factory, get_db
 from app.services.rag import (
     document_pipeline,
     rag_config_service,
@@ -39,13 +43,149 @@ from app.services.rag.rag_write_service import RagConflict, RagNotFound
 
 router = APIRouter(prefix="/rag")
 
-#: 单个上传文件上限（沿用全局配置）
-MAX_UPLOAD_BYTES = settings.MAX_FILE_SIZE
+#: 单次上传总大小上限：多文件合计也不能超过 5MB。
+MAX_BATCH_UPLOAD_BYTES = 5 * 1024 * 1024
+#: 单个文件上限同样收敛到 5MB（避免一个 8MB 文件绕过“总大小 5MB”的口径）。
+MAX_UPLOAD_BYTES = min(settings.MAX_FILE_SIZE, MAX_BATCH_UPLOAD_BYTES)
+#: 一次最多选择的文件数，避免一次请求创建过多流水线。
+MAX_UPLOAD_FILES = 20
+_IMAGE_FILE_EXTS = {"png", "jpg", "jpeg", "webp", "bmp", "gif"}
 
 
 def _uid(current_user: dict) -> int:
     """当前登录用户 id。**唯一可信来源**。"""
     return int((current_user or {}).get("user_id") or 0)
+
+
+async def _read_upload_files(files: List[UploadFile]) -> tuple[list[tuple[str, bytes]], str]:
+    """读取多文件并校验单文件/总大小；返回 (payloads, error)。"""
+    payloads: list[tuple[str, bytes]] = []
+    total = 0
+    if len(files or []) > MAX_UPLOAD_FILES:
+        return [], f"一次最多上传 {MAX_UPLOAD_FILES} 个文件"
+    for upload in files or []:
+        raw = await upload.read()
+        if not raw:
+            return [], f"文件为空：{upload.filename or '未命名文件'}"
+        if len(raw) > MAX_UPLOAD_BYTES:
+            return [], (
+                f"文件「{upload.filename or '未命名文件'}」过大"
+                f"（{len(raw) / 1024 / 1024:.1f}MB），单文件上限 5MB"
+            )
+        total += len(raw)
+        if total > MAX_BATCH_UPLOAD_BYTES:
+            return [], "本次上传总大小超过 5MB，请减少文件数量或压缩后再上传"
+        payloads.append((upload.filename or "未命名文档", raw))
+    return payloads, ""
+
+
+def _batch_image_assets(payloads: list[tuple[str, bytes]]) -> dict[str, bytes]:
+    """同一批上传的图片按文件名建索引，供 Markdown 相对图片引用使用。"""
+    assets: dict[str, bytes] = {}
+    for filename, raw in payloads:
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        if ext in _IMAGE_FILE_EXTS:
+            assets[Path(filename).name] = raw
+    return assets
+
+
+def _referenced_markdown_image_names(payloads: list[tuple[str, bytes]]) -> set[str]:
+    """本批 Markdown 实际引用到的图片文件名，用于避免把随文档上传的插图再建一份图片文档。"""
+    names: set[str] = set()
+    pattern = re.compile(r"!\[[^\]]*\]\(([^)\s]+)\)")
+    for filename, raw in payloads:
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        if ext not in {"md", "markdown", "txt", "doc"}:
+            continue
+        text = raw.decode("utf-8", errors="ignore")
+        for match in pattern.finditer(text):
+            names.add(Path(match.group(1)).name)
+    return names
+
+
+def _upload_doc_payload(
+    doc,
+    kb_id: int,
+    *,
+    image_count: int,
+    content_length: int,
+    note: str = "",
+    ocr_applied: bool = False,
+) -> dict:
+    return {
+        "docId": doc.id,
+        "kbId": kb_id,
+        "fileName": doc.file_name,
+        "note": note,
+        "contentLength": content_length,
+        "imageCount": image_count,
+        "ocrApplied": ocr_applied,
+        "status": doc.status,
+        "statusText": "待解析",
+    }
+
+
+async def _create_uploaded_document(
+    db: AsyncSession,
+    user_id: int,
+    kb_id: int,
+    filename: str,
+    raw: bytes,
+    note: str = "",
+    assets: dict[str, bytes] | None = None,
+):
+    """解析单个上传文件并落库；图片文件额外走手写 OCR 校对。"""
+    from app.services.file_parser import build_marked_document, parse_file
+    from app.services.handwriting_ocr import recognize_handwriting
+    from app.services.material_organizer import analyze as analyze_material
+
+    try:
+        parsed = await asyncio.to_thread(parse_file, filename, raw, assets)
+    except Exception as e:
+        raise ValueError(f"文档解析失败：{e}") from e
+
+    text = (parsed.get("textContent") or "").strip()
+    marked_text, image_data_urls = build_marked_document(parsed)
+    image_map = rag_write_service.persist_document_images(image_data_urls)
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+    # 只有用户直接上传的图片才做手写 OCR；文档里的插图走智能整理的多模态分析。
+    ocr_text = ""
+    if not text and image_data_urls and ext in _IMAGE_FILE_EXTS:
+        ocr_text = await recognize_handwriting(db, user_id, filename, raw)
+
+    if not text and not image_data_urls:
+        raise ValueError(
+            f"没能从「{filename}」中提取出文本：{parsed.get('error') or '内容为空'}"
+        )
+
+    if ocr_text:
+        body_text = (ocr_text + "\n\n" + marked_text).strip()
+        text_for_facets = ocr_text
+    else:
+        body_text = (marked_text or "").strip() or text
+        text_for_facets = text
+
+    organized = analyze_material(filename, text_for_facets, parsed, image_count=len(image_map))
+    doc = await rag_write_service.create_document(
+        db,
+        user_id,
+        kb_id,
+        file_name=organized["display_name"],
+        raw_content=body_text,
+        file_type=ext or None,
+        file_size=len(raw),
+        image_map=image_map,
+        content_structure=parsed.get("contentStructure") or [],
+        original_file_name=organized["original_file_name"],
+        subject=organized["subject"],
+        material_type=organized["material_type"],
+        facets=organized["facets"],
+    )
+    if note and note.strip():
+        doc.user_note = note.strip()[:200]
+        await db.flush()
+    return doc, image_map, len(body_text), (doc.user_note or ""), bool(ocr_text)
 
 
 def _fail(e: Exception) -> dict:
@@ -122,7 +262,7 @@ async def create_knowledge_base(
                 # 少一处，前端那一行就可能绑到 undefined（见 kb_disabled_flag 的说明）。
                 "disabled": rag_write_service.kb_disabled_flag(kb),
             },
-            "知识库创建成功",
+            "资料夹创建成功",
         )
     except Exception as e:
         return _fail(e)
@@ -197,7 +337,7 @@ async def delete_knowledge_base(
     """删知识库（逻辑删）+ 物理清掉它的文档与分块，避免残留向量被检索到。"""
     try:
         info = await rag_write_service.delete_knowledge_base(db, _uid(current_user), kb_id)
-        return success(info, "知识库已删除")
+        return success(info, "资料夹已删除")
     except Exception as e:
         return _fail(e)
 
@@ -214,80 +354,67 @@ class TextImport(BaseModel):
 async def upload_document(
     background: BackgroundTasks,
     kb_id: int = Query(..., alias="kbId"),
-    file: UploadFile = File(...),
+    file: List[UploadFile] = File(...),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """上传文档：同步解析（拿到全文落库）+ 异步向量化。
+    """上传一个或多个文档：同步解析落库 + 每个文档独立异步向量化。
 
-    解析放线程池 —— 它是同步的，老版 `.doc` 还会借 Word COM 转换，别冻住事件循环。
+    多文件一次请求合计不超过 5MB（单文件也不超过 5MB），避免一个大文件或
+    批量上传把解析/向量化队列打满。
     """
-    from app.services.file_parser import parse_file
-
+    uid = _uid(current_user)
     try:
         # 先确认知识库归属，避免替别人的库上传
-        await rag_write_service.get_knowledge_base(db, _uid(current_user), kb_id)
+        await rag_write_service.get_knowledge_base(db, uid, kb_id)
     except Exception as e:
         return _fail(e)
 
-    raw = await file.read()
-    if not raw:
-        return error("文件为空", code=400)
-    if len(raw) > MAX_UPLOAD_BYTES:
-        return error(
-            f"文件过大（{len(raw) // 1024 // 1024}MB），上限 {MAX_UPLOAD_BYTES // 1024 // 1024}MB",
-            code=400,
+    payloads, size_error = await _read_upload_files(file)
+    if size_error:
+        return error(size_error, code=400)
+
+    assets = _batch_image_assets(payloads)
+    referenced_images = _referenced_markdown_image_names(payloads)
+    documents: list[dict] = []
+    failed: list[dict] = []
+    for filename, raw in payloads:
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        if ext in _IMAGE_FILE_EXTS and Path(filename).name in referenced_images:
+            # 这张图是 Markdown 的随文插图，已进入 markdown 文档的 imageMap，
+            # 不再单独建一份“图片文档”。
+            continue
+        try:
+            doc, image_map, content_length, _, ocr_applied = await _create_uploaded_document(
+                db, uid, kb_id, filename, raw, assets=assets
+            )
+        except Exception as e:  # noqa: BLE001 - 多文件允许部分成功
+            failed.append({"fileName": filename, "error": str(e)[:300]})
+            continue
+        background.add_task(document_pipeline.process_document, doc.id)
+        documents.append(
+            _upload_doc_payload(
+                doc,
+                kb_id,
+                image_count=len(image_map),
+                content_length=content_length,
+                ocr_applied=ocr_applied,
+            )
         )
 
-    filename = file.filename or "未命名文档"
-    try:
-        parsed = await asyncio.to_thread(parse_file, filename, raw)
-    except Exception as e:
-        return error(f"文档解析失败：{e}", code=400)
-
-    text = (parsed.get("textContent") or "").strip()
-    if not text:
-        # 用户给的文件本身没法提取文本 → 属于输入问题，用 400 而不是 500
-        return error(
-            f"没能从「{filename}」中提取出文本：{parsed.get('error') or '内容为空'}", code=400
-        )
-
-    # 图片：解析器已抽出（`blocks` 里带 data URL），此前**被整条链路丢弃**。
-    # 现在落盘成 `/profile/upload/...` 建 `image_map`，并让正文带上 `【图N】` 位置标记 ——
-    # 这样分块时能把图归属到具体 chunk，检索命中时把图一起回给模型/前端。
-    # ⚠️ 无图文档：`build_marked_document` 返回的正文与 `textContent` 等价，行为不变。
-    from app.services.file_parser import build_marked_document
-
-    marked_text, image_data_urls = build_marked_document(parsed)
-    # 解析器给不出图文块（老数据/降级）时退回纯 textContent，避免正文变短
-    body_text = (marked_text or "").strip() or text
-    image_map = rag_write_service.persist_document_images(image_data_urls)
-
-    try:
-        doc = await rag_write_service.create_document(
-            db,
-            _uid(current_user),
-            kb_id,
-            file_name=filename,
-            raw_content=body_text,
-            file_type=(filename.rsplit(".", 1)[-1].lower() if "." in filename else None),
-            file_size=len(raw),
-            image_map=image_map,
-        )
-    except Exception as e:
-        return _fail(e)
-
-    background.add_task(document_pipeline.process_document, doc.id)
+    if not documents:
+        reason = failed[0]["error"] if failed else "没有可上传的文件"
+        return error(f"上传失败：{reason}", code=400)
+    if len(payloads) == 1 and not failed:
+        return success(documents[0], "上传成功，正在后台处理")
     return success(
         {
-            "docId": doc.id,
-            "fileName": doc.file_name,
-            "contentLength": len(body_text),
-            "imageCount": len(image_map),
-            "status": doc.status,
-            "statusText": "待解析",
+            "documents": documents,
+            "failed": failed,
+            "count": len(documents),
+            "totalSize": sum(len(raw) for _, raw in payloads),
         },
-        "上传成功，正在后台处理",
+        f"已上传 {len(documents)} 份" + (f"，{len(failed)} 份失败" if failed else ""),
     )
 
 
@@ -298,18 +425,35 @@ async def import_text(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """纯文本导入（不经过文件解析）。"""
+    """纯文本导入：走同一条解析链，代码/公式/表格结构一样落库。"""
     if not (data.content or "").strip():
         return error("内容不能为空", code=400)
+    if len(data.content.encode("utf-8")) > MAX_BATCH_UPLOAD_BYTES:
+        return error("粘贴内容超过 5MB，请拆分后再导入", code=400)
+    from app.services.file_parser import build_marked_document, parse_file
+    from app.services.material_organizer import analyze as analyze_material
+
+    txt_name = data.fileName or "未命名文档.txt"
+    parsed = await asyncio.to_thread(parse_file, txt_name, data.content.encode("utf-8"))
+    body_text, image_urls = build_marked_document(parsed)
+    body_text = (body_text or "").strip() or data.content
+    image_map = rag_write_service.persist_document_images(image_urls)
+    organized = analyze_material(txt_name, body_text, parsed, image_count=len(image_map))
     try:
         doc = await rag_write_service.create_document(
             db,
             _uid(current_user),
             data.kbId,
-            file_name=data.fileName or "未命名文档.txt",
-            raw_content=data.content,
+            file_name=organized["display_name"],
+            raw_content=body_text,
             file_type="txt",
             file_size=len(data.content.encode("utf-8")),
+            image_map=image_map,
+            content_structure=parsed.get("contentStructure") or [],
+            original_file_name=organized["original_file_name"],
+            subject=organized["subject"],
+            material_type=organized["material_type"],
+            facets=organized["facets"],
         )
     except Exception as e:
         return _fail(e)
@@ -330,6 +474,145 @@ async def list_documents(
         return _fail(e)
 
 
+class DocumentContentUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    content: str = Field(..., min_length=1)
+
+
+class DocumentExportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    format: str = Field(default="markdown", pattern="^(markdown|docx)$")
+    content: Optional[str] = None
+
+
+@router.put("/document/content/{doc_id}")
+async def update_document_content(
+    doc_id: int,
+    data: DocumentContentUpdate,
+    background: BackgroundTasks,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """保存二次编辑后的正文，并重新解析/向量化。"""
+    try:
+        result = await rag_write_service.update_document_content(
+            db, _uid(current_user), doc_id, data.content
+        )
+        background.add_task(document_pipeline.process_document, doc_id)
+        return success(result, "正文已保存，正在重新解析")
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/document/versions/{doc_id}")
+async def list_document_versions(
+    doc_id: int,
+    limit: int = Query(30, ge=1, le=100),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """历史版本列表（只读；版本快照复用整理日志表，不新增独立记录入口）。"""
+    try:
+        return success(
+            await rag_write_service.list_document_versions(
+                db, _uid(current_user), doc_id, limit
+            )
+        )
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/document/versions/{doc_id}/{version_id}")
+async def get_document_version(
+    doc_id: int,
+    version_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return success(
+            await rag_write_service.get_document_version(
+                db, _uid(current_user), doc_id, version_id
+            )
+        )
+    except Exception as e:
+        return _fail(e)
+
+
+@router.post("/document/versions/{doc_id}/{version_id}/restore")
+async def restore_document_version(
+    doc_id: int,
+    version_id: int,
+    background: BackgroundTasks,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """恢复历史版本；恢复前会自动保存当前内容，之后仍可再次恢复。"""
+    try:
+        result = await rag_write_service.restore_document_version(
+            db, _uid(current_user), doc_id, version_id
+        )
+        if result.get("needsReindex"):
+            background.add_task(document_pipeline.process_document, doc_id)
+        return success(result, "历史版本已恢复，正在重新解析")
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/document/export/{doc_id}")
+async def export_document(
+    doc_id: int,
+    format: str = Query("markdown", pattern="^(markdown|docx)$"),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """导出当前正文为 Markdown 或 Word。"""
+    try:
+        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        from app.services.document_export_service import content_disposition, export_document
+
+        body, filename, media_type = export_document(
+            doc.file_name or "资料",
+            doc.raw_content or "",
+            doc.image_map or {},
+            format,
+        )
+        return Response(
+            content=body,
+            media_type=media_type,
+            headers={"Content-Disposition": content_disposition(filename)},
+        )
+    except Exception as e:
+        return _fail(e)
+
+
+@router.post("/document/export/{doc_id}")
+async def export_document_with_content(
+    doc_id: int,
+    data: DocumentExportRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """导出编辑器里的当前内容（未保存也可以直接导出 Word/Markdown）。"""
+    try:
+        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        from app.services.document_export_service import content_disposition, export_document
+
+        body, filename, media_type = export_document(
+            doc.file_name or "资料",
+            data.content if data.content is not None else (doc.raw_content or ""),
+            doc.image_map or {},
+            data.format,
+        )
+        return Response(
+            content=body,
+            media_type=media_type,
+            headers={"Content-Disposition": content_disposition(filename)},
+        )
+    except Exception as e:
+        return _fail(e)
+
+
 @router.get("/document/content/{doc_id}")
 async def get_document_content(
     doc_id: int,
@@ -345,9 +628,11 @@ async def get_document_content(
                 "fileName": doc.file_name,
                 "content": doc.raw_content or "",
                 "contentLength": len(doc.raw_content or ""),
+                # 软剔除范围：展示时隐藏，不改 raw_content。
+                "excludedRanges": doc.excluded_ranges or [],
                 # 图片清单：{"0": "/profile/upload/...", ...}，键即正文里 `【图N】` 的 N。
                 # 前端据此把正文中的标记渲染成真实图片（否则只会看到「【图0】」文字）。
-                "imageMap": doc.image_map or {},
+                "imageMap": workspace_service.visible_image_map(doc),
             }
         )
     except Exception as e:
@@ -428,6 +713,26 @@ async def get_document_outline(
     )
 
 
+@router.get("/document/micro-course/{doc_id}")
+async def get_document_micro_course(
+    doc_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """资料变微课（2026-10-31 新增）。
+
+    把文档章节变成一串「站点」：每站有原文导读、要点清单、检查点。
+    全部由原文结构生成，不调用大模型，不编造资料里没有的内容。
+    """
+    from app.services.micro_course_service import build_micro_course
+
+    try:
+        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        return success(await build_micro_course(db, _uid(current_user), doc))
+    except Exception as e:
+        return _fail(e)
+
+
 @router.get("/document/chunks/{doc_id}")
 async def get_document_chunks(
     doc_id: int,
@@ -467,6 +772,29 @@ async def get_document_status(
         return _fail(e)
 
 
+class DocumentSearchableUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    disabled: bool
+
+
+@router.put("/document/{doc_id}/searchable")
+async def update_document_searchable(
+    doc_id: int,
+    data: DocumentSearchableUpdate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """单文档检索开关：屏蔽后不参与搜索/问答，但仍保留在资料夹里。"""
+    try:
+        return success(
+            await rag_write_service.set_document_disabled(
+                db, _uid(current_user), doc_id, data.disabled
+            )
+        )
+    except Exception as e:
+        return _fail(e)
+
+
 @router.delete("/document/{doc_id}")
 async def delete_document(
     doc_id: int,
@@ -482,15 +810,21 @@ async def delete_document(
 @router.post("/document/reprocess/{doc_id}")
 async def reprocess_document(
     doc_id: int,
+    background: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """重跑单篇（失败重试）。legacy 没有这个能力，失败文档只能干等。"""
+    """重新解析并向量化：立即返回 queued，解析/向量化在后台跑。
+
+    旧实现同步 await 整条 embedding 管线，用户点完按钮要等 30~60 秒，
+    没有阶段提示；现在返回 1（待解析），前端按 status 接口轮询。
+    """
     try:
-        result = await document_pipeline.reprocess_document(
+        result = await document_pipeline.queue_reprocess_document(
             db, _uid(current_user), doc_id
         )
-        return success(result, "已重新处理")
+        background.add_task(document_pipeline.process_document, doc_id)
+        return success(result, "已开始重新解析，完成后状态会更新")
     except Exception as e:
         return _fail(e)
 
@@ -686,7 +1020,7 @@ async def update_rag_config(
         status["needReindex"] = need_reindex
         status["reindexHint"] = (
             "向量化模型已变更。已有文档的向量是用旧模型算的，与新向量不在同一空间，"
-            "检索结果会不准。请到知识库页面点「重建索引」，或重新上传文档。"
+            "检索结果会不准。请到「我的资料」页面点「重建索引」，或重新上传文档。"
             if need_reindex
             else ""
         )
@@ -740,83 +1074,409 @@ async def get_workspace_overview(
 @router.post("/workspace/upload")
 async def upload_to_workspace(
     background: BackgroundTasks,
-    file: UploadFile = File(...),
+    file: List[UploadFile] = File(...),
     note: Optional[str] = Query(None, description="用户给这份资料写的一句话说明"),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """上传文件到工作空间。
+    """上传一个或多个文件到工作空间。
 
     与 `/rag/document/upload` 的差别只有两处：
       · 目标库自动取「该用户的工作空间」（没有就建），不需要传 kbId；
       · 可以顺手写一句 `note`（如「高二期末卷」），帮 AI 以后认出这份资料。
-    解析/落图/分块/向量化全部复用同一条流水线。
+    多文件一次请求合计不超过 5MB；每个文档独立进入同一条解析/向量化流水线。
     """
-    from app.services.file_parser import build_marked_document, parse_file
-
     uid = _uid(current_user)
     try:
         kb = await workspace_service.get_or_create_workspace(db, uid)
     except Exception as e:
         return _fail(e)
 
-    raw = await file.read()
-    if not raw:
-        return error("文件为空", code=400)
-    if len(raw) > MAX_UPLOAD_BYTES:
-        return error(
-            f"文件过大（{len(raw) // 1024 // 1024}MB），上限 {MAX_UPLOAD_BYTES // 1024 // 1024}MB",
-            code=400,
+    payloads, size_error = await _read_upload_files(file)
+    if size_error:
+        return error(size_error, code=400)
+
+    assets = _batch_image_assets(payloads)
+    referenced_images = _referenced_markdown_image_names(payloads)
+    documents: list[dict] = []
+    failed: list[dict] = []
+    for filename, raw in payloads:
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        if ext in _IMAGE_FILE_EXTS and Path(filename).name in referenced_images:
+            continue
+        try:
+            doc, image_map, content_length, note_text, ocr_applied = await _create_uploaded_document(
+                db, uid, kb.id, filename, raw, note or "", assets=assets
+            )
+        except Exception as e:  # noqa: BLE001 - 多文件允许部分成功
+            failed.append({"fileName": filename, "error": str(e)[:300]})
+            continue
+        background.add_task(document_pipeline.process_document, doc.id)
+        documents.append(
+            _upload_doc_payload(
+                doc,
+                kb.id,
+                image_count=len(image_map),
+                content_length=content_length,
+                note=note_text,
+                ocr_applied=ocr_applied,
+            )
         )
 
-    filename = file.filename or "未命名文档"
+    if not documents:
+        reason = failed[0]["error"] if failed else "没有可上传的文件"
+        return error(f"上传失败：{reason}", code=400)
+    if len(payloads) == 1 and not failed:
+        return success(documents[0], "已放进工作空间，正在后台解析")
+    return success(
+        {
+            "documents": documents,
+            "failed": failed,
+            "count": len(documents),
+            "totalSize": sum(len(raw) for _, raw in payloads),
+        },
+        f"已上传 {len(documents)} 份" + (f"，{len(failed)} 份失败" if failed else ""),
+    )
+
+
+@router.get("/workspace/standalone-images")
+async def list_workspace_standalone_images(
+    limit: int = 100,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """聊天里直接粘贴/上传的独立图片（fileId=0）。
+
+    这些图片已经在 `chat_upload_image` 落盘，不需要再复制一份；
+    「我的资料」的图片墙把它们作为“聊天图片”展示。
+    """
     try:
-        parsed = await asyncio.to_thread(parse_file, filename, raw)
-    except Exception as e:
-        return error(f"文档解析失败：{e}", code=400)
+        from app.services import chat_upload_service
 
-    text = (parsed.get("textContent") or "").strip()
-    if not text:
-        return error(
-            f"没能从「{filename}」中提取出文本：{parsed.get('error') or '内容为空'}", code=400
-        )
-
-    marked_text, image_data_urls = build_marked_document(parsed)
-    body_text = (marked_text or "").strip() or text
-    image_map = rag_write_service.persist_document_images(image_data_urls)
-
-    try:
-        doc = await rag_write_service.create_document(
+        rows = await chat_upload_service.list_images(
             db,
-            uid,
-            kb.id,
-            file_name=filename,
-            raw_content=body_text,
-            file_type=(filename.rsplit(".", 1)[-1].lower() if "." in filename else None),
-            file_size=len(raw),
-            image_map=image_map,
+            user_id=_uid(current_user),
+            limit=max(1, min(limit, 200)),
         )
-        # 用户备注（可选）
-        if note and note.strip():
-            doc.user_note = note.strip()[:200]
-            await db.flush()
+        return success([r for r in rows if int(r.get("fileId") or 0) == 0])
     except Exception as e:
         return _fail(e)
 
-    background.add_task(document_pipeline.process_document, doc.id)
-    return success(
-        {
-            "docId": doc.id,
-            "kbId": kb.id,
-            "fileName": doc.file_name,
-            "note": doc.user_note or "",
-            "contentLength": len(body_text),
-            "imageCount": len(image_map),
-            "status": doc.status,
-            "statusText": "待解析",
-        },
-        "已放进工作空间，正在后台解析",
+
+class AssetUsageRequest(BaseModel):
+    """记录一张图片资产被哪个题目/笔记使用。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    assetKey: str = Field(..., min_length=1, max_length=120)
+    assetUrl: Optional[str] = Field(None, max_length=500)
+    targetType: str = Field(..., pattern="^(question|note|document)$")
+    targetId: int
+
+
+class OrganizeRequest(BaseModel):
+    """智能整理：传 docIds（单个/多个）或 kbId（整资料夹）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    docIds: Optional[List[int]] = None
+    kbId: Optional[int] = None
+
+
+class OrganizePreviewRequest(BaseModel):
+    """单文档智能整理预览（仅深度/智能整理）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    docId: int = Field(..., gt=0)
+    mode: str = Field(default="deep", pattern="^deep$")
+    options: dict = Field(default_factory=dict)
+
+
+class OrganizeApplyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    planId: int = Field(..., gt=0)
+    changeIds: Optional[List[str]] = None
+    exclusionIds: Optional[List[str]] = None
+
+
+class OrganizeRollbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    batchId: str = Field(..., min_length=1, max_length=64)
+
+
+@router.post("/workspace/organize/preview")
+async def preview_workspace_organize(
+    data: OrganizePreviewRequest,
+    background: BackgroundTasks,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """单文档智能整理预览：后台执行并实时上报阶段。"""
+    try:
+        uid = _uid(current_user)
+        result = await workspace_service.create_deep_plan(
+            db, uid, data.docId, data.options or {}
+        )
+        background.add_task(workspace_service.process_deep_plan, result["planId"])
+        return success(result, "智能整理已开始")
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/workspace/organize/plans")
+async def list_workspace_organize_plans(
+    limit: int = Query(30, ge=1, le=100),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return success(await workspace_service.list_plans(db, _uid(current_user), limit))
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/workspace/organize/plans/{plan_id}")
+async def get_workspace_organize_plan(
+    plan_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        plan = await workspace_service.get_plan(db, _uid(current_user), plan_id)
+        return success(workspace_service._plan_payload(plan))
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/workspace/organize/plans/{plan_id}/events")
+async def stream_workspace_organize_plan(
+    plan_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    """SSE 实时整理事件：阶段变化和逐步出现的 diff。"""
+    uid = _uid(current_user)
+
+    async def event_stream():
+        last_stage = None
+        last_change_count = 0
+        while True:
+            async with async_session_factory() as session:
+                plan = await workspace_service.get_plan(session, uid, plan_id)
+                payload = workspace_service._plan_payload(plan)
+            stage_key = f"{payload['status']}:{payload['stage']}"
+            if stage_key != last_stage:
+                last_stage = stage_key
+                yield "event: stage\n"
+                yield "data: " + json.dumps(
+                    {
+                        "status": payload["status"],
+                        "stage": payload["stage"],
+                        "progress": payload["progress"],
+                        "summary": payload["summary"],
+                    },
+                    ensure_ascii=False,
+                ) + "\n\n"
+            changes = payload.get("changes") or []
+            if len(changes) > last_change_count:
+                for change in changes[last_change_count:]:
+                    yield "event: change\n"
+                    yield "data: " + json.dumps(change, ensure_ascii=False) + "\n\n"
+                last_change_count = len(changes)
+            if payload["status"] in {"ready", "applied", "rejected", "failed", "rolled_back"}:
+                yield "event: done\n"
+                yield "data: " + json.dumps(payload, ensure_ascii=False) + "\n\n"
+                return
+            await asyncio.sleep(0.35)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.post("/workspace/organize/apply")
+async def apply_workspace_organize(
+    data: OrganizeApplyRequest,
+    background: BackgroundTasks,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        result = await workspace_service.apply_plan(
+            db,
+            _uid(current_user),
+            data.planId,
+            data.changeIds,
+            data.exclusionIds,
+        )
+        if result.get("needsReindex"):
+            background.add_task(document_pipeline.process_document, result.get("docId") or 0)
+        return success(result, "整理已应用")
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/workspace/organize/records/{record_id}")
+async def get_workspace_organize_record(
+    record_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """读取一条整理记录；负数表示旧版日志。"""
+    try:
+        if record_id < 0:
+            return success(await workspace_service.get_legacy_record(db, _uid(current_user), record_id))
+        plan = await workspace_service.get_plan(db, _uid(current_user), record_id)
+        return success(workspace_service._plan_payload(plan))
+    except Exception as e:
+        return _fail(e)
+
+
+@router.delete("/workspace/organize/records/{record_id}")
+async def delete_workspace_organize_record(
+    record_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除一条整理记录；只删记录，不回退已应用的文档变更。"""
+    try:
+        result = await workspace_service.delete_plan_record(db, _uid(current_user), record_id)
+        return success(result, "整理记录已删除")
+    except Exception as e:
+        return _fail(e)
+
+
+@router.post("/workspace/organize/plans/{plan_id}/rollback")
+async def rollback_workspace_plan(
+    plan_id: int,
+    background: BackgroundTasks,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        result = await workspace_service.rollback_plan(db, _uid(current_user), plan_id)
+        if result.get("needsReindex"):
+            background.add_task(document_pipeline.process_document, result.get("docId") or 0)
+        return success(result, "已回退整理")
+    except Exception as e:
+        return _fail(e)
+
+
+@router.post("/workspace/organize")
+async def organize_workspace(
+    data: OrganizeRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """兼容旧调用：只允许单文档；新前端使用 /organize/preview。"""
+    if data.kbId is not None or not data.docIds or len(data.docIds) != 1:
+        return error("智能整理只支持单个文档，资料夹整理入口已移除", code=400)
+    try:
+        result = await workspace_service.organize_documents(
+            db,
+            _uid(current_user),
+            doc_ids=data.docIds,
+            kb_id=None,
+        )
+        return success(result)
+    except Exception as e:
+        return _fail(e)
+
+
+@router.post("/workspace/organize/rollback")
+async def rollback_workspace_organize(
+    data: OrganizeRollbackRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """按 batchId 整批回退智能整理。"""
+    try:
+        result = await workspace_service.rollback_organize(
+            db, _uid(current_user), data.batchId
+        )
+        return success(result)
+    except Exception as e:
+        return _fail(e)
+
+
+@router.post("/assets/usage")
+async def record_asset_usage(
+    data: AssetUsageRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """写入资料资产用途账本（幂等）。
+
+    用户把图片插入题目/笔记时调用；同一 asset + target 只记一次，
+    重复插入只恢复 `deleted=0`，不制造重复计数。
+    """
+    from sqlalchemy import select
+
+    from app.models.rag import MaterialAssetUsage
+
+    uid = _uid(current_user)
+    try:
+        row = (
+            await db.execute(
+                select(MaterialAssetUsage).where(
+                    MaterialAssetUsage.user_id == uid,
+                    MaterialAssetUsage.asset_key == data.assetKey,
+                    MaterialAssetUsage.target_type == data.targetType,
+                    MaterialAssetUsage.target_id == data.targetId,
+                )
+            )
+        ).scalars().first()
+        if row:
+            row.deleted = 0
+            if data.assetUrl:
+                row.asset_url = data.assetUrl
+        else:
+            db.add(
+                MaterialAssetUsage(
+                    user_id=uid,
+                    asset_key=data.assetKey,
+                    asset_url=data.assetUrl,
+                    target_type=data.targetType,
+                    target_id=data.targetId,
+                )
+            )
+        await db.commit()
+        return success({"assetKey": data.assetKey, "targetType": data.targetType, "targetId": data.targetId})
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/assets/usage-summary")
+async def asset_usage_summary(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """当前用户所有图片资产的用途计数：`{assetKey: count}`。"""
+    from sqlalchemy import func, select
+
+    from app.models.rag import MaterialAssetUsage
+
+    try:
+        rows = (
+            await db.execute(
+                select(
+                    MaterialAssetUsage.asset_key,
+                    func.count(MaterialAssetUsage.id).label("cnt"),
+                )
+                .where(
+                    MaterialAssetUsage.user_id == _uid(current_user),
+                    MaterialAssetUsage.deleted == 0,
+                )
+                .group_by(MaterialAssetUsage.asset_key)
+            )
+        ).all()
+        return success({str(r[0]): int(r[1]) for r in rows})
+    except Exception as e:
+        return _fail(e)
 
 
 @router.delete("/workspace/file/{doc_id}")

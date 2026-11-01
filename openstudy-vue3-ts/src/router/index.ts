@@ -94,11 +94,11 @@ export const constantRoutes: AppRouteRecordRaw[] = [
         meta: { title: 'AI配置', icon: 'ai' }
       },
       {
-        // 知识库向量化：本地 / 云端切换 + 环境检测 + 检索参数
+        // 资料索引配置：本地 / 云端切换 + 环境检测 + 检索参数
         path: 'rag',
         component: () => import('@/views/ai/rag-config/index.vue'),
         name: 'AiRagConfig',
-        meta: { title: '知识库向量化', icon: 'rag' }
+        meta: { title: '资料索引配置', icon: 'rag' }
       }
     ]
   },
@@ -396,14 +396,22 @@ export const constantRoutes: AppRouteRecordRaw[] = [
           {
             path: 'wrongQuestion',
             name: 'FrontWrongQuestion',
-            redirect: '/front/myQuestion/questions?tab=wrong',
+            // ⚠️ 用函数形式保留 query：用字符串 `'...?tab=wrong'` 会把外部带进来的
+            //    `questionId` 丢掉，导致「学习统计 → 点某道错题」只落到列表，不会定位。
+            redirect: (to) => ({
+              path: '/front/myQuestion/questions',
+              query: { ...to.query, tab: 'wrong' }
+            }),
             meta: { title: '我的错题', layout: 'front' },
             hidden: true
           },
           {
             path: 'masteredQuestion',
             name: 'FrontMasteredQuestion',
-            redirect: '/front/myQuestion/questions?tab=marked',
+            redirect: (to) => ({
+              path: '/front/myQuestion/questions',
+              query: { ...to.query, tab: 'marked' }
+            }),
             meta: { title: '我的斩题', layout: 'front' },
             hidden: true
           },
@@ -465,15 +473,37 @@ export const constantRoutes: AppRouteRecordRaw[] = [
             component: () => import('@/views/front/myQuestion/myStats/index.vue'),
             meta: { title: '学习统计', layout: 'front' },
             hidden: true
+          },
+          {
+            path: 'weeklyReport',
+            name: 'FrontWeeklyReport',
+            component: () => import('@/views/front/myQuestion/weeklyReport/index.vue'),
+            meta: { title: '学习周报', layout: 'front' },
+            hidden: true
+          },
+          {
+            path: 'examPlan',
+            name: 'FrontExamPlan',
+            component: () => import('@/views/front/myQuestion/examPlan/index.vue'),
+            meta: { title: '考前计划', layout: 'front' },
+            hidden: true
           }
         ]
       },
-      // 知识库（2026-10-22 由「我的空间」改名并升级为多库管理页）
+      // 我的资料（知识库能力升级并统一到用户侧名称）
       {
         path: 'workspace',
         name: 'FrontWorkspace',
         component: () => import('@/views/front/workspace/index.vue'),
-        meta: { title: '知识库', layout: 'front', requiresLogin: true },
+        meta: { title: '我的资料', layout: 'front', requiresLogin: true },
+        hidden: true
+      },
+      {
+        // 资料变微课：从「我的资料」某份文档进入，一条章节级学习路径
+        path: 'microCourse',
+        name: 'FrontMicroCourse',
+        component: () => import('@/views/front/workspace/microCourse.vue'),
+        meta: { title: '资料变微课', layout: 'front', requiresLogin: true },
         hidden: true
       },
       // studio 题库搭建模块（直接进入 create 页面）

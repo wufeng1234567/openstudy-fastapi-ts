@@ -12,7 +12,9 @@
   ⚠️ 「确认」要有意义，前提是**用户看得见将影响什么**。所以：
     · 头部显示人话的「题库管理 · 批量删除」，原始标识符只进 `title`；
     · `preview` 渲染成键值行 + 逐条样例，**不是**把 JSON 拼成一行
-      （旧实现会把 `batch_import` 的 `count` / `sample` 整段丢掉，见下方注释）。
+      （旧实现会把 `batch_import` 的 `count` / `sample` 整段丢掉，见下方注释）；
+    · 文档修改类（`update_document`）额外渲染 `AgentDocumentDiff` 行级 diff，
+      让用户在确认前看见新增 / 删除的正文。
 -->
 <template>
   <div class="agent-confirm" :class="[`is-${status}`, { 'is-destructive': destructive, 'is-draft': isDraft, 'has-sticky': shouldOfferCollapse && !isDraft }]">
@@ -121,10 +123,12 @@
       </template>
     </div>
 
+    <AgentDocumentDiff v-if="preview?.diff" :diff="preview.diff" />
+
     <div v-if="status === 'running'" class="ac-actions">
       <button class="ac-btn ac-cancel" @click="$emit('resolve', false)">取消</button>
       <button class="ac-btn ac-ok" @click="$emit('resolve', true)">
-        {{ destructive ? '确认删除' : '确认执行' }}
+        {{ confirmText }}
       </button>
     </div>
     <div v-else class="ac-result">{{ status === 'ok' ? '已确认' : '已取消' }}</div>
@@ -142,7 +146,7 @@
     <div v-if="collapsed && status === 'running'" class="ac-actions">
       <button class="ac-btn ac-cancel" @click="$emit('resolve', false)">取消</button>
       <button class="ac-btn ac-ok" @click="$emit('resolve', true)">
-        {{ destructive ? '确认删除' : '确认执行' }}
+        {{ confirmText }}
       </button>
     </div>
     </template>
@@ -152,6 +156,7 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 import AgentDraftCard from '@/components/AgentDraftCard/index.vue'
+import AgentDocumentDiff from '@/components/AgentDocumentDiff/index.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import { useCollapseBar, COLLAPSE_BAR_STYLE } from '@/composables/useCollapseBar'
 import { renderMarkdownWithLatex } from '@/utils/latex'
@@ -202,7 +207,19 @@ const props = defineProps({
 
 const emit = defineEmits(['resolve'])
 
-const title = computed(() => (props.destructive ? '需要确认：删除操作' : '需要确认：写操作'))
+const title = computed(() => {
+  if (props.destructive) return '需要确认：删除操作'
+  if (props.action === 'update_document') return '需要确认：修改正文'
+  if (props.action === 'restore_document_version') return '需要确认：恢复历史版本'
+  return '需要确认：写操作'
+})
+
+const confirmText = computed(() => {
+  if (props.destructive) return '确认删除'
+  if (props.action === 'update_document') return '确认修改'
+  if (props.action === 'restore_document_version') return '确认恢复'
+  return '确认执行'
+})
 
 /**
  * 是不是「建库导入」的可编辑草稿 —— 是就换 `AgentDraftCard`，不是就还是只读预览。
@@ -242,10 +259,10 @@ const TOOL_LABELS: Record<string, string> = {
   question_flag_manage: '题目标记',
   memory_manage: '记忆管理',
   learning_stats: '学习统计',
-  knowledge_base_manage: '知识库管理',
-  knowledge_ingest: '写入知识库',
+  knowledge_base_manage: '资料管理',
+  knowledge_ingest: '存入我的资料',
   bank_share_manage: '题库分享',
-  knowledge_search: '知识库检索',
+  knowledge_search: '资料检索',
   memory_search: '记忆检索',
   agent_manage: '智能体管理',
   delegate_task: '请专家帮忙'
@@ -283,10 +300,14 @@ const ACTION_LABELS: Record<string, string> = {
   growth: '成长记录',
   // knowledge_base_manage
   list_documents: '文档列表',
+  get_document: '读取正文',
+  list_document_versions: '历史版本',
   delete_document: '删除文档',
   // knowledge_ingest
   from_text: '文本入库',
   from_attachment: '附件入库',
+  update_document: '修改正文',
+  restore_document_version: '恢复历史版本',
   // bank_share_manage
   list_shares: '分享列表',
   share: '创建分享',
@@ -381,8 +402,8 @@ const PREVIEW_LABELS: Record<string, string> = {
   memoryTypeText: '记忆类型',
   // 记忆正文：只有 memory_manage.forget 的 preview 会带 `content`
   content: '记忆内容',
-  // ---- 知识库管理 knowledge_base_manage
-  kbId: '知识库 ID',
+  // ---- 资料管理 knowledge_base_manage
+  kbId: '资料夹 ID',
   name: '名称',
   description: '简介',
   disabledText: '启用状态',
@@ -390,10 +411,12 @@ const PREVIEW_LABELS: Record<string, string> = {
   chunks: '分块数',
   docId: '文档 ID',
   fileName: '文件名',
-  // ---- 写入知识库 knowledge_ingest（preview：反查的库名 + 切块/向量化估算）
-  kbName: '知识库名称',
+  // ---- 存入我的资料 knowledge_ingest（preview：反查的资料夹名 + 切块/向量化估算）
+  kbName: '资料夹名称',
   embedCalls: '向量化次数',
   charCount: '字符数',
+  beforeCharCount: '修改前字数',
+  versionId: '版本 ID',
   source: '来源',
   // ---- 题库分享 bank_share_manage
   shareId: '分享 ID',
@@ -420,7 +443,7 @@ const PREVIEW_LABELS: Record<string, string> = {
  * `draft` 是建库导入的可编辑草稿（交给 `AgentDraftCard`），在这里当对象行渲染成
  * `draft: [object Object]` 只会是噪音 —— 也一并跳过。
  */
-const PREVIEW_SKIP = new Set(['action', 'success', 'error', 'hint', 'draft'])
+const PREVIEW_SKIP = new Set(['action', 'success', 'error', 'hint', 'draft', 'diff'])
 
 /* ============================================================
  * 值的展示：把「机器码」换成人话（**只有这三条规则，不做通用框架**）

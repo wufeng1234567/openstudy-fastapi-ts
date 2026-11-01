@@ -109,11 +109,11 @@ export function canReprocessDocument(status: number): boolean {
 
 /* ===================== 上传 ===================== */
 
-/** 可上传的扩展名（后端 `file_parser.parse_file` 支持的文本类格式） */
-export const KB_FILE_EXTENSIONS = ['txt', 'md', 'pdf', 'docx', 'doc'] as const
+/** 可上传的扩展名（后端 `file_parser.parse_file` 支持的文本/图片格式） */
+export const KB_FILE_EXTENSIONS = ['txt', 'md', 'pdf', 'docx', 'doc', 'zip', 'png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'] as const
 
 /** `accept` 属性用 */
-export const KB_FILE_ACCEPT = '.txt,.md,.pdf,.docx,.doc'
+export const KB_FILE_ACCEPT = '.txt,.md,.pdf,.docx,.doc,.zip,.png,.jpg,.jpeg,.webp,.bmp,.gif'
 
 /**
  * 按扩展名判断能不能传
@@ -129,11 +129,14 @@ export function isSupportedKbFile(fileName: string): boolean {
   return (KB_FILE_EXTENSIONS as readonly string[]).includes(ext)
 }
 
-/** 拼上传表单。`kbId` 走 **query**（后端是 `Query(..., alias="kbId")`），不是表单字段 */
-export function buildUploadForm(file: File | Blob, fileName?: string): FormData {
+/** 拼上传表单。多个文件都用同一个 `file` 字段重复 append，后端按列表接收。 */
+export function buildUploadForm(file: File | Blob | Array<File | Blob>, fileName?: string): FormData {
   const form = new FormData()
-  // 第三个参数是文件名 —— 不给的话浏览器会用 Blob 的默认名，后端拿到的 file_name 就是错的
-  form.append('file', file, fileName || (file as File).name || '未命名文档')
+  const files = Array.isArray(file) ? file : [file]
+  for (const item of files) {
+    // 第三个参数是文件名 —— 不给的话浏览器会用 Blob 的默认名，后端拿到的 file_name 就是错的
+    form.append('file', item, fileName || (item as File).name || '未命名文档')
+  }
   return form
 }
 
@@ -203,7 +206,7 @@ export function listDocuments(kbId: number) {
 }
 
 /** 上传文档（后端同步解析 + 后台向量化，返回后要轮询状态） */
-export function uploadDocument(kbId: number, file: File, timeout = 600000) {
+export function uploadDocument(kbId: number, file: File | File[], timeout = 600000) {
   return request({
     url: '/rag/document/upload',
     method: 'post',
@@ -227,6 +230,29 @@ export function getDocumentContent(docId: number) {
   return request({
     url: `/rag/document/content/${docId}`,
     method: 'get'
+  })
+}
+
+/** 保存正文编辑；后端会更新 raw_content 并重新解析/向量化 */
+export function updateDocumentContent(docId: number, content: string) {
+  return request({
+    url: `/rag/document/content/${docId}`,
+    method: 'put',
+    data: { content }
+  })
+}
+
+/** 导出文档：format = markdown | docx；content 可导出编辑器里尚未保存的内容 */
+export function exportDocument(
+  docId: number,
+  format: 'markdown' | 'docx',
+  content?: string
+) {
+  return request({
+    url: `/rag/document/export/${docId}`,
+    method: 'post',
+    data: { format, content: content ?? undefined },
+    responseType: 'blob'
   })
 }
 

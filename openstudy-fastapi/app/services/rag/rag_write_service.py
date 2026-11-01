@@ -12,7 +12,9 @@ RAG 写服务（知识库 / 文档 / 分块）
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Sequence
+from uuid import uuid4
 
 from loguru import logger
 from sqlalchemy import delete, func, select, update
@@ -20,8 +22,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.rag import (
     DOC_FAILED,
+    DOC_PARSING,
     DOC_PENDING,
     DOC_VECTORIZED,
+    MaterialOrganizeLog,
+    MaterialOrganizePlan,
     RagDocument,
     RagDocumentChunk,
     RagKnowledgeBase,
@@ -32,6 +37,9 @@ KB_NAME_MAX = 255
 DOC_NAME_MAX = 255
 #: 单个知识库最多文档数（防止一次传太多把 embedding 额度打穿）
 MAX_DOCS_PER_KB = 200
+#: 手动编辑版本快照复用 material_organize_log，批次前缀与整理计划区分。
+VERSION_BATCH_PREFIX = "version:"
+MAX_VERSIONS_PER_DOC = 20
 
 _NUL_RE = re.compile("\x00")
 
@@ -110,7 +118,7 @@ async def get_knowledge_base(db: AsyncSession, user_id: int, kb_id: int) -> RagK
         )
     ).scalar_one_or_none()
     if kb is None or kb.user_id != user_id:
-        raise RagNotFound(f"知识库不存在或无权访问：{kb_id}")
+        raise RagNotFound(f"资料夹不存在或无权访问：{kb_id}")
     return kb
 
 
@@ -163,7 +171,7 @@ async def resolve_knowledge_bases(
     for kid in kb_ids:
         kb = found.get(int(kid))
         if kb is None or kb.user_id != user_id:
-            raise RagNotFound(f"知识库不存在或无权访问：{kid}")
+            raise RagNotFound(f"资料夹不存在或无权访问：{kid}")
         if kb.disabled:
             # 已屏蔽 → 静默丢弃（不抛错、也不告诉模型「它被屏蔽了」，见 docstring）
             continue
@@ -176,9 +184,9 @@ async def create_knowledge_base(
 ) -> RagKnowledgeBase:
     name = sanitize_text(name).strip()
     if not name:
-        raise RagConflict("知识库名称不能为空")
+        raise RagConflict("资料夹名称不能为空")
     if len(name) > KB_NAME_MAX:
-        raise RagConflict(f"知识库名称过长（最多 {KB_NAME_MAX} 字）")
+        raise RagConflict(f"资料夹名称过长（最多 {KB_NAME_MAX} 字）")
 
     dup = (
         await db.execute(
@@ -190,7 +198,7 @@ async def create_knowledge_base(
         )
     ).first()
     if dup:
-        raise RagConflict(f"已存在同名知识库「{name}」")
+        raise RagConflict(f"已存在同名资料夹「{name}」")
 
     kb = RagKnowledgeBase(
         user_id=user_id, name=name, description=sanitize_text(description)
@@ -220,7 +228,7 @@ async def update_knowledge_base(
     if name is not None:
         name = sanitize_text(name).strip()
         if not name:
-            raise RagConflict("知识库名称不能为空")
+            raise RagConflict("资料夹名称不能为空")
         kb.name = name
     if description is not None:
         kb.description = sanitize_text(description)
@@ -309,6 +317,248 @@ async def get_document(db: AsyncSession, user_id: int, doc_id: int) -> RagDocume
     return doc
 
 
+def _version_snapshot(doc: RagDocument) -> dict:
+    return {
+        "fileName": doc.file_name or "",
+        "originalFileName": doc.original_file_name or doc.file_name or "",
+        "subject": doc.subject or "",
+        "materialType": doc.material_type or "",
+        "facets": doc.facets or {},
+        "excludedRanges": doc.excluded_ranges or [],
+        "rawContent": doc.raw_content or "",
+        "imageMap": doc.image_map or {},
+        "contentStructure": doc.content_structure or [],
+    }
+
+
+def _version_summary(snapshot: dict) -> str:
+    text = re.sub(r"【图\d+】", " ", str(snapshot.get("rawContent") or ""))
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:80]
+
+
+def _version_time(value: Optional[datetime]) -> str:
+    if not value:
+        return ""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
+
+
+async def _add_version_log(
+    db: AsyncSession, doc: RagDocument, snapshot: dict, reason: str
+) -> MaterialOrganizeLog:
+    log = MaterialOrganizeLog(
+        user_id=doc.user_id,
+        batch_id=f"{VERSION_BATCH_PREFIX}{uuid4().hex}",
+        doc_id=doc.id,
+        before_json=snapshot,
+        after_json={"reason": reason, "docId": doc.id},
+    )
+    db.add(log)
+    await db.flush()
+    # 每个文档只保留最近 N 个版本，避免历史正文无限膨胀。
+    stale = (
+        await db.execute(
+            select(MaterialOrganizeLog.id)
+            .where(
+                MaterialOrganizeLog.user_id == doc.user_id,
+                MaterialOrganizeLog.doc_id == doc.id,
+                MaterialOrganizeLog.batch_id.like(f"{VERSION_BATCH_PREFIX}%"),
+            )
+            .order_by(MaterialOrganizeLog.create_time.desc(), MaterialOrganizeLog.id.desc())
+            .offset(MAX_VERSIONS_PER_DOC)
+        )
+    ).scalars().all()
+    if stale:
+        await db.execute(delete(MaterialOrganizeLog).where(MaterialOrganizeLog.id.in_(stale)))
+    return log
+
+
+async def _create_version_log(
+    db: AsyncSession, doc: RagDocument, reason: str = "保存前自动快照"
+) -> MaterialOrganizeLog:
+    return await _add_version_log(db, doc, _version_snapshot(doc), reason)
+
+
+async def list_document_versions(
+    db: AsyncSession, user_id: int, doc_id: int, limit: int = 30
+) -> list[dict]:
+    doc = await get_document(db, user_id, doc_id)
+    rows = (
+        await db.execute(
+            select(MaterialOrganizeLog)
+            .where(
+                MaterialOrganizeLog.user_id == user_id,
+                MaterialOrganizeLog.doc_id == doc.id,
+                MaterialOrganizeLog.batch_id.like(f"{VERSION_BATCH_PREFIX}%"),
+            )
+            .order_by(MaterialOrganizeLog.create_time.desc(), MaterialOrganizeLog.id.desc())
+            .limit(max(1, min(limit, 100)))
+        )
+    ).scalars().all()
+    out = []
+    for log in rows:
+        snapshot = log.before_json or {}
+        out.append(
+            {
+                "versionId": log.id,
+                "docId": doc.id,
+                "fileName": snapshot.get("fileName") or doc.file_name,
+                "reason": (log.after_json or {}).get("reason") or "保存前自动快照",
+                "summary": _version_summary(snapshot),
+                "contentLength": len(snapshot.get("rawContent") or ""),
+                "createTime": _version_time(log.create_time),
+            }
+        )
+    return out
+
+
+async def get_document_version(
+    db: AsyncSession, user_id: int, doc_id: int, version_id: int
+) -> dict:
+    doc = await get_document(db, user_id, doc_id)
+    log = (
+        await db.execute(
+            select(MaterialOrganizeLog).where(
+                MaterialOrganizeLog.id == version_id,
+                MaterialOrganizeLog.user_id == user_id,
+                MaterialOrganizeLog.doc_id == doc.id,
+                MaterialOrganizeLog.batch_id.like(f"{VERSION_BATCH_PREFIX}%"),
+            )
+        )
+    ).scalar_one_or_none()
+    if not log:
+        raise RagNotFound("历史版本不存在或无权访问")
+    snapshot = log.before_json or {}
+    return {
+        "versionId": log.id,
+        "docId": doc.id,
+        "fileName": snapshot.get("fileName") or doc.file_name,
+        "reason": (log.after_json or {}).get("reason") or "保存前自动快照",
+        "createTime": _version_time(log.create_time),
+        "content": snapshot.get("rawContent") or "",
+        "imageMap": snapshot.get("imageMap") or {},
+        "contentStructure": snapshot.get("contentStructure") or [],
+        "excludedRanges": snapshot.get("excludedRanges") or [],
+    }
+
+
+async def restore_document_version(
+    db: AsyncSession, user_id: int, doc_id: int, version_id: int
+) -> dict:
+    """恢复某个历史版本；恢复前先把当前内容也存成一个版本，操作可再次撤销。"""
+    doc = await get_document(db, user_id, doc_id)
+    if doc.status == DOC_PARSING:
+        raise ValueError("这份资料正在解析/向量化中，请等当前处理完成后再恢复版本")
+    log = (
+        await db.execute(
+            select(MaterialOrganizeLog).where(
+                MaterialOrganizeLog.id == version_id,
+                MaterialOrganizeLog.user_id == user_id,
+                MaterialOrganizeLog.doc_id == doc.id,
+                MaterialOrganizeLog.batch_id.like(f"{VERSION_BATCH_PREFIX}%"),
+            )
+        )
+    ).scalar_one_or_none()
+    if not log:
+        raise RagNotFound("历史版本不存在或无权访问")
+    snapshot = log.before_json or {}
+    if not (snapshot.get("rawContent") or "").strip():
+        raise ValueError("这个历史版本没有可恢复的正文")
+
+    await _create_version_log(db, doc, "恢复历史版本前的自动快照")
+    doc.raw_content = snapshot.get("rawContent") or ""
+    doc.file_name = snapshot.get("fileName") or doc.file_name
+    doc.original_file_name = snapshot.get("originalFileName") or doc.original_file_name
+    doc.subject = snapshot.get("subject") or None
+    doc.material_type = snapshot.get("materialType") or None
+    doc.facets = snapshot.get("facets") or None
+    doc.excluded_ranges = snapshot.get("excludedRanges") or []
+    doc.image_map = snapshot.get("imageMap") or None
+    doc.content_structure = snapshot.get("contentStructure") or []
+    doc.status = DOC_PENDING
+    doc.error_msg = None
+    doc.index_version = int(doc.index_version or 1) + 1
+    doc.update_time = datetime.utcnow()
+    await db.commit()
+    return {
+        "docId": doc.id,
+        "versionId": version_id,
+        "fileName": doc.file_name,
+        "status": doc.status,
+        "needsReindex": True,
+    }
+
+
+async def set_document_disabled(
+    db: AsyncSession, user_id: int, doc_id: int, disabled: bool
+) -> dict:
+    """单文档检索开关；只改 disabled，不动分块/向量。"""
+    doc = await get_document(db, user_id, doc_id)
+    doc.disabled = 1 if disabled else 0
+    await db.commit()
+    return {
+        "docId": doc.id,
+        "fileName": doc.file_name,
+        "disabled": doc.disabled,
+    }
+
+
+async def update_document_content(
+    db: AsyncSession,
+    user_id: int,
+    doc_id: int,
+    content: str,
+    file_name: Optional[str] = None,
+) -> dict:
+    """保存二次编辑后的正文，标记待重新解析。"""
+    doc = await get_document(db, user_id, doc_id)
+    if doc.status in (DOC_PENDING, DOC_PARSING):
+        raise ValueError("这份资料正在解析/向量化中，请等当前处理完成后再修改")
+    cleaned = sanitize_text(content or "").strip()
+    if not cleaned:
+        raise ValueError("正文不能为空")
+    before_snapshot = _version_snapshot(doc)
+    if file_name and str(file_name).strip():
+        doc.file_name = str(file_name).strip()[:255]
+    doc.raw_content = cleaned
+    # 旧剔除范围基于旧正文偏移，编辑后必须清空，避免错删新内容；
+    # 块结构同样要重建，否则智能整理会拿旧偏移误判代码/公式。
+    doc.excluded_ranges = []
+    try:
+        from app.services.file_parser import parse_file
+
+        parsed = parse_file("document.md", cleaned.encode("utf-8"))
+        doc.content_structure = parsed.get("contentStructure") or []
+    except Exception:  # noqa: BLE001 - 结构重建失败不应阻断保存
+        doc.content_structure = []
+    # 编辑器保存时可能删掉了某些图片标记；只保留正文里仍存在的图片资产。
+    if doc.image_map:
+        present = {int(match.group(1)) for match in re.finditer(r"【图(\d+)】", cleaned)}
+        doc.image_map = {
+            str(key): value
+            for key, value in (doc.image_map or {}).items()
+            if str(key).isdigit() and int(key) in present
+        } or None
+    version_log = None
+    if before_snapshot != _version_snapshot(doc):
+        version_log = await _add_version_log(db, doc, before_snapshot, "编辑保存前自动快照")
+    doc.status = DOC_PENDING
+    doc.error_msg = None
+    doc.index_version = int(doc.index_version or 1) + 1
+    await db.commit()
+    return {
+        "docId": doc.id,
+        "fileName": doc.file_name,
+        "status": doc.status,
+        "statusText": "待解析",
+        "contentLength": len(cleaned),
+        # 供 Agent 回执/前端做“恢复这次修改前的版本”入口。
+        "versionId": version_log.id if version_log else None,
+    }
+
+
 async def delete_document(db: AsyncSession, user_id: int, doc_id: int) -> dict:
     doc = await get_document(db, user_id, doc_id)
     chunks = (
@@ -319,6 +569,14 @@ async def delete_document(db: AsyncSession, user_id: int, doc_id: int) -> dict:
         )
     ).scalar() or 0
     await db.execute(delete(RagDocumentChunk).where(RagDocumentChunk.doc_id == doc.id))
+    # 资料删除后，依附于它的整理计划和旧版整理日志一并清理；否则历史列表会出现
+    # 指向不存在资料的“幽灵记录”，用户也无法再回退或查看。
+    await db.execute(
+        delete(MaterialOrganizePlan).where(MaterialOrganizePlan.doc_id == doc.id)
+    )
+    await db.execute(
+        delete(MaterialOrganizeLog).where(MaterialOrganizeLog.doc_id == doc.id)
+    )
     await db.execute(delete(RagDocument).where(RagDocument.id == doc.id))
     await _refresh_kb_counts(db, doc.kb_id)
     await db.commit()
@@ -425,6 +683,7 @@ def build_chunk_rows(
     contents: Sequence[str],
     vectors: Optional[Sequence[list[float]]] = None,
     image_map: Optional[dict] = None,
+    index_version: int = 1,
 ) -> list[RagDocumentChunk]:
     """把分块文本（+ 可选向量）组装成 ORM 对象。
 
@@ -453,6 +712,7 @@ def build_chunk_rows(
                 kb_id=kb_id,
                 doc_id=doc_id,
                 chunk_index=i,
+                index_version=index_version,
                 content=content,
                 content_length=len(content),
                 token_count=len(content),
@@ -475,6 +735,11 @@ async def create_document(
     file_size: Optional[int] = None,
     file_path: Optional[str] = None,
     image_map: Optional[dict] = None,
+    content_structure: Optional[list] = None,
+    original_file_name: Optional[str] = None,
+    subject: Optional[str] = None,
+    material_type: Optional[str] = None,
+    facets: Optional[dict] = None,
     status: int = DOC_PENDING,
 ) -> RagDocument:
     kb = await get_knowledge_base(db, user_id, kb_id)
@@ -491,17 +756,22 @@ async def create_document(
         )
     ).scalar() or 0
     if existing >= MAX_DOCS_PER_KB:
-        raise RagConflict(f"单个知识库最多 {MAX_DOCS_PER_KB} 篇文档")
+        raise RagConflict(f"单个资料夹最多 {MAX_DOCS_PER_KB} 篇文档")
 
     doc = RagDocument(
         kb_id=kb.id,
         user_id=user_id,
         file_name=file_name,
+        original_file_name=original_file_name or file_name,
+        subject=subject,
+        material_type=material_type,
+        facets=facets,
         file_type=file_type,
         file_size=file_size if file_size is not None else len(raw_content or ""),
         file_path=file_path,
         raw_content=raw_content,
         image_map=image_map or None,
+        content_structure=content_structure or None,
         chunk_count=0,
         status=status,
     )
@@ -520,12 +790,18 @@ async def replace_chunks(
     """替换某文档的全部分块（先删后插，天然幂等，重向量化也走这里）。"""
     await db.execute(delete(RagDocumentChunk).where(RagDocumentChunk.doc_id == doc.id))
     rows = build_chunk_rows(
-        doc.kb_id, doc.id, contents, vectors, image_map=doc.image_map
+        doc.kb_id,
+        doc.id,
+        contents,
+        vectors,
+        image_map=doc.image_map,
+        index_version=int(doc.index_version or 1),
     )
     db.add_all(rows)
 
     doc.chunk_count = len(rows)
     doc.status = DOC_VECTORIZED if vectors else DOC_PENDING
+    doc.update_time = datetime.utcnow()
     if vectors:
         doc.error_msg = None
     await _refresh_kb_counts(db, doc.kb_id)
@@ -537,6 +813,7 @@ async def mark_document_failed(db: AsyncSession, doc: RagDocument, message: str)
     doc.status = DOC_FAILED
     # error_msg 是 varchar(500)，截断避免二次报错把真实原因盖掉
     doc.error_msg = (message or "")[:490]
+    doc.update_time = datetime.utcnow()
     await db.commit()
 
 
@@ -545,7 +822,10 @@ async def list_chunks(db: AsyncSession, user_id: int, doc_id: int, limit: int = 
     rows = (
         await db.execute(
             select(RagDocumentChunk)
-            .where(RagDocumentChunk.doc_id == doc.id)
+            .where(
+                RagDocumentChunk.doc_id == doc.id,
+                RagDocumentChunk.index_version == doc.index_version,
+            )
             .order_by(RagDocumentChunk.chunk_index)
             .limit(limit)
         )
@@ -599,7 +879,8 @@ def kb_disabled_flag(kb: RagKnowledgeBase) -> int:
 def _kb_brief(kb: RagKnowledgeBase) -> dict:
     return {
         "kbId": kb.id,
-        "name": kb.name,
+        # 默认资料夹使用统一的用户侧名称；其余资料夹保留用户自定义名。
+        "name": "默认资料夹" if getattr(kb, "is_workspace", 0) == 1 else kb.name,
         "description": kb.description,
         "docCount": kb.doc_count,
         "chunkCount": kb.chunk_count,
@@ -623,8 +904,10 @@ def _doc_brief(doc: RagDocument) -> dict:
         "fileType": doc.file_type,
         "fileSize": doc.file_size,
         "chunkCount": doc.chunk_count,
+        "indexVersion": doc.index_version,
         "status": doc.status,
         "statusText": DOC_STATUS_TEXT.get(doc.status, "未知"),
+        "disabled": 1 if getattr(doc, "disabled", 0) else 0,
         "errorMsg": doc.error_msg,
         "createTime": doc.create_time.isoformat(sep=" ") if doc.create_time else None,
     }

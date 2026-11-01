@@ -27,6 +27,7 @@
     <div class="mindmap-wrap">
         <div class="mindmap-toolbar">
             <span class="mm-title">{{ title }}</span>
+            <span class="mm-drag-hint">拖动平移 · 滚轮缩放</span>
             <div class="mm-actions">
                 <!-- 布局切换：双向（根居中左右分布）/ 右向（根在左，向右生长） -->
                 <el-radio-group v-model="layoutMode" size="small" @change="onLayoutChange">
@@ -92,13 +93,17 @@
 
         <!-- mind-elixir 渲染容器（真实 DOM 卡片，非 canvas） -->
         <div v-show="hasTree" ref="chartRef" class="mm-chart" :style="{ height: height + 'px' }"
-            @wheel.prevent.stop="onWheelZoom"></div>
+            @wheel.prevent.stop="onWheelZoom" @pointerdown.capture="onPanStart"
+            @pointermove.capture="onPanMove" @pointerup.capture="onPanEnd"
+            @pointercancel.capture="onPanEnd" @lostpointercapture="onPanEnd"></div>
     </div>
 
     <!-- 放大查看弹窗：独立 mind-elixir 实例，关闭时 dispose，防泄漏 -->
     <el-dialog v-model="zoomVisible" :title="title" width="92%" top="3vh" append-to-body
         class="mm-zoom-dialog" destroy-on-close @closed="disposeZoom">
-        <div ref="zoomChartRef" class="mm-chart mm-chart-zoom" @wheel.prevent.stop="onWheelZoom"></div>
+        <div ref="zoomChartRef" class="mm-chart mm-chart-zoom" @wheel.prevent.stop="onWheelZoom"
+            @pointerdown.capture="onPanStart" @pointermove.capture="onPanMove"
+            @pointerup.capture="onPanEnd" @pointercancel.capture="onPanEnd"></div>
         <template #footer>
             <div class="mm-zoom-foot">
                 <span class="mm-zoom-hint">可拖动平移、滚轮缩放；导出会保留你调整后的样子</span>
@@ -228,9 +233,10 @@ function buildTheme(): any {
  * 在指定容器上创建一个 mind-elixir 实例
  *
  * 选项说明：
- *   · editable:true 是节点拖拽的前提；
- *     `before.beginEdit: () => false` 拦掉所有进入文本编辑的入口 ——
- *     拖拽可用、误触不会改文本。
+ *   · editable:false：这是只读查看器，**不启用节点拖拽排序**；mind-elixir 在
+ *     非编辑模式下才会把左键拖动交给 panHelper（画布平移）。之前 editable:true
+ *     时左键被框选/节点拖拽占用，用户只能滚轮缩放，无法拖动改变视角。
+ *   · before.beginEdit 继续兜底拦截文本编辑（组件只读，不允许改节点）。
  *   · toolBar/contextMenu/keypress 全关：只读展示，不要编辑器 UI。
  *   · overflowHidden:true 超出容器裁剪（配合 scaleFit 使用）。
  */
@@ -238,7 +244,7 @@ function createInstance(el: HTMLElement, data: any) {
     const m = new MindElixir({
         el,
         direction: layoutMode.value === 'right' ? (MindElixir as any).RIGHT : (MindElixir as any).SIDE,
-        editable: true,
+        editable: false,
         before: { beginEdit: () => false },
         toolBar: false,
         contextMenu: false,
@@ -311,6 +317,64 @@ function zoomStep(delta: number, target: 'main' | 'zoom' = 'main') {
         : { x: 0, y: 0 }
     const next = Math.min(3, Math.max(0.1, inst.scaleVal + delta))
     inst.scale(next, center)
+}
+
+/**
+ * 自定义画布平移
+ *
+ * mind-elixir 各版本对「只读模式下左键平移」的行为不一致：即使把 editable 设成 false，
+ * 部分版本仍会把 pointerdown 交给节点选择/框选，导致用户只能滚轮缩放。这里在画布外层
+ * 用 capture 阶段接管左键拖动，直接调用实例的 `move(dx,dy)`，不再依赖内部 panHelper。
+ *
+ * 只在画布上生效（工具栏在画布外）；capture + stopPropagation 避免内部再走一套节点拖拽。
+ */
+const panState = {
+    active: false,
+    pointerId: -1,
+    x: 0,
+    y: 0
+}
+
+function panInstance(e: PointerEvent): MindElixirInstance | null {
+    const target = e.currentTarget as HTMLElement | null
+    if (!target) return null
+    return target === zoomChartRef.value ? zoomMind : mind
+}
+
+function onPanStart(e: PointerEvent) {
+    if (e.button !== 0) return
+    const inst = panInstance(e)
+    if (!inst) return
+    panState.active = true
+    panState.pointerId = e.pointerId
+    panState.x = e.clientX
+    panState.y = e.clientY
+    const target = e.currentTarget as HTMLElement
+    target.setPointerCapture?.(e.pointerId)
+    e.preventDefault()
+    e.stopPropagation()
+}
+
+function onPanMove(e: PointerEvent) {
+    if (!panState.active || e.pointerId !== panState.pointerId) return
+    const inst = panInstance(e)
+    if (!inst) return
+    const dx = e.clientX - panState.x
+    const dy = e.clientY - panState.y
+    panState.x = e.clientX
+    panState.y = e.clientY
+    inst.move(dx, dy)
+    e.preventDefault()
+    e.stopPropagation()
+}
+
+function onPanEnd(e: PointerEvent) {
+    if (!panState.active || e.pointerId !== panState.pointerId) return
+    panState.active = false
+    panState.pointerId = -1
+    const target = e.currentTarget as HTMLElement
+    target.releasePointerCapture?.(e.pointerId)
+    e.stopPropagation()
 }
 
 /**
@@ -512,6 +576,12 @@ defineExpose({ fitView, nodeCount, openZoom, exportPng })
     color: #2f3946;
 }
 
+.mm-drag-hint {
+    margin-left: 8px;
+    font-size: 11px;
+    color: #9aa4b2;
+}
+
 .mm-actions {
     display: flex;
     align-items: center;
@@ -528,10 +598,17 @@ defineExpose({ fitView, nodeCount, openZoom, exportPng })
     border: 1px solid #eef0f3;
     border-radius: 8px;
     overflow: hidden;
+    touch-action: none;
+    user-select: none;
 }
 
 .mm-chart :deep(.map-container) {
     background: transparent;
+    cursor: grab;
+}
+
+.mm-chart :deep(.map-container:active) {
+    cursor: grabbing;
 }
 
 /* 放大弹窗里的容器：高度按视口算，适配不同屏幕 */

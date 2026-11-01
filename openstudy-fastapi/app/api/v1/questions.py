@@ -912,6 +912,7 @@ async def list_questions(
     keyword: Optional[str] = Query(None),
     beginTime: Optional[str] = Query(None),
     endTime: Optional[str] = Query(None),
+    ownedOnly: bool = Query(False, description="只返回当前用户自己题库下的题目（可编辑）"),
     pageNum: int = Query(1, ge=1),
     pageSize: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -929,6 +930,12 @@ async def list_questions(
     base = select(QuestionMain).join(
         QuestionBank, QuestionMain.bank_id == QuestionBank.id
     ).where(await _visibility_condition(db, current_user.get("user_id")))
+
+    # 资料图片「插入题目」只展示当前用户自己的题目：公开/分享题库中的题目
+    # 虽然可见，但 update_question 只允许题库主修改，提前过滤避免用户点进去
+    # 才收到“没有权限”。
+    if ownedOnly:
+        base = base.where(QuestionBank.user_id == current_user.get("user_id"))
 
     if bankId:
         base = base.where(QuestionMain.bank_id == bankId)

@@ -145,6 +145,16 @@ class RagDocument(Base):
     )
 
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: 自动整理后保留上传时的原始文件名；file_name 可以是整理后的展示名
+    original_file_name: Mapped[Optional[str]] = mapped_column(String(255))
+    #: 规则化自动分类；只是建议，不是权限/检索范围
+    subject: Mapped[Optional[str]] = mapped_column(String(50))
+    material_type: Mapped[Optional[str]] = mapped_column(String(30))
+    #: facet 快照：公式数 / 图片数 / 表格数 / 置信度
+    facets: Mapped[Optional[dict]] = mapped_column(JSON)
+    #: 软剔除范围：只影响检索/展示，不物理删除原文。
+    #: [{"start": 1200, "end": 1280, "kind": "text", "reason": "...", "planId": "..."}]
+    excluded_ranges: Mapped[Optional[list]] = mapped_column(JSON)
     file_type: Mapped[Optional[str]] = mapped_column(String(50))
     file_size: Mapped[Optional[int]] = mapped_column(BigInteger)
     file_path: Mapped[Optional[str]] = mapped_column(String(500))
@@ -163,6 +173,12 @@ class RagDocument(Base):
     #: 空 / NULL = 该文档没有图。
     image_map: Mapped[Optional[dict]] = mapped_column(JSON)
 
+    #: 解析层产出的块结构提示（不给用户直接展示）：
+    #: [{"blockId":"B0001","start":0,"end":10,"kind":"code","language":"python",
+    #:   "confidence":0.9,"evidence":"..."}]
+    #: 智能整理用它区分代码/公式/表格/答案，避免只靠正文正则误判。
+    content_structure: Mapped[Optional[list]] = mapped_column(JSON)
+
     #: 用户给这份资料写的一句话说明（如「高二期末卷」「第四章课件」）。
     #:
     #: 为什么需要它：工作空间里的文件往往名字很随便（`新建文档(2).docx`、
@@ -172,7 +188,16 @@ class RagDocument(Base):
     user_note: Mapped[Optional[str]] = mapped_column(String(200))
 
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    #: 当前可检索的索引版本。正文更新/版本恢复时递增，旧 chunks 继续留在库里
+    #: 但版本号不匹配，检索会在 SQL 层直接排除，避免重向量化期间命中旧内容。
+    index_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
     status: Mapped[int] = mapped_column(Integer, nullable=False, default=DOC_PENDING)
+    #: 单文档检索开关：0=可检索，1=屏蔽（不参与搜索/问答；管理列表仍可见）
+    disabled: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=0, server_default="0"
+    )
     error_msg: Mapped[Optional[str]] = mapped_column(String(500))
 
     create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
@@ -214,6 +239,10 @@ class RagDocumentChunk(Base):
         BigInteger, ForeignKey("rag_document.id"), nullable=False
     )
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: 该 chunk 属于文档的哪一版索引；检索时与 rag_document.index_version 对齐。
+    index_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
 
     content: Mapped[str] = mapped_column(Text, nullable=False)
     content_length: Mapped[Optional[int]] = mapped_column(Integer)
@@ -233,6 +262,86 @@ class RagDocumentChunk(Base):
 
     meta_data: Mapped[Optional[dict]] = mapped_column(JSON)
     create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class MaterialAssetUsage(Base):
+    """资料资产用途账本：图片被哪些题目/笔记/文档使用过。
+
+    `asset_key` 是稳定键：文档图片用 `doc:{docId}:{imageIndex}`，
+    聊天独立图片用 `chat:{imageId}`。写入时记账，读取时聚合，
+    不在题目正文里做 LIKE 反查。
+    """
+
+    __tablename__ = "material_asset_usage"
+    __table_args__ = (
+        UniqueConstraint("user_id", "asset_key", "target_type", "target_id",
+                         name="uk_material_asset_usage_target"),
+        Index("idx_material_asset_usage_user", "user_id"),
+        Index("idx_material_asset_usage_asset", "asset_key"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("sys_user.user_id"), nullable=False
+    )
+    asset_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    asset_url: Mapped[Optional[str]] = mapped_column(String(500))
+    target_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    target_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    deleted: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
+    create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class MaterialOrganizeLog(Base):
+    """资料智能整理快照：一次整理的前后字段 + 可回退批次。
+
+    也用于文档历史版本快照：`batch_id` 以 `version:` 开头时，
+    `before_json` 是保存前的完整文档快照（复用现有表，不新增独立实体）。
+    """
+
+    __tablename__ = "material_organize_log"
+    __table_args__ = (
+        Index("idx_material_organize_user_batch", "user_id", "batch_id"),
+        Index("idx_material_organize_doc", "doc_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("sys_user.user_id"), nullable=False
+    )
+    batch_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    doc_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    before_json: Mapped[Optional[dict]] = mapped_column(JSON)
+    after_json: Mapped[Optional[dict]] = mapped_column(JSON)
+    undone_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class MaterialOrganizePlan(Base):
+    """智能整理计划：先预览、后应用，支持深度整理阶段和剔除建议。"""
+
+    __tablename__ = "material_organize_plan"
+    __table_args__ = (
+        Index("idx_material_organize_plan_user", "user_id"),
+        Index("idx_material_organize_plan_doc", "doc_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("sys_user.user_id"), nullable=False
+    )
+    doc_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    mode: Mapped[str] = mapped_column(String(20), nullable=False, default="deep")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="running")
+    stage: Mapped[Optional[str]] = mapped_column(String(30))
+    progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    base_revision: Mapped[Optional[str]] = mapped_column(String(64))
+    options_json: Mapped[Optional[dict]] = mapped_column(JSON)
+    plan_json: Mapped[Optional[dict]] = mapped_column(JSON)
+    summary_json: Mapped[Optional[dict]] = mapped_column(JSON)
+    error_msg: Mapped[Optional[str]] = mapped_column(String(500))
+    create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    update_time: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
 
 class RagQaRecord(Base):

@@ -401,7 +401,9 @@ const MY_LEARNING_SUB: Array<[string, string]> = [
   ['/front/myQuestion/noteManage', '笔记管理'],
   ['/front/myQuestion/myNotes', '笔记管理'],
   ['/front/myQuestion/favoriteNote', '笔记管理'],
-  ['/front/myQuestion/myStats', '学习统计']
+  ['/front/myQuestion/myStats', '学习统计'],
+  ['/front/myQuestion/weeklyReport', '学习周报'],
+  ['/front/myQuestion/examPlan', '考前计划']
 ]
 
 /**
@@ -446,7 +448,10 @@ const SECOND_LEVEL_HINT: Record<string, string> = {
   FrontEnglishOcr: '拍一张课本或笔记，自动认出上面的单词并整理成词库',
   FrontEnglishVocabulary: '把要背的单词整理成词库，之后可以听写、也可以让 AI 用它们出题',
   FrontEnglishListening: '听中文发音写英文单词，练的是拼写和反应',
-  FrontEnglishReading: '给一个主题，AI 生成短文和选择题，做完立刻看解析'
+  FrontEnglishReading: '给一个主题，AI 生成短文和选择题，做完立刻看解析',
+  FrontWeeklyReport: '最近 7 天的真实学习记录，可以保存成图片带走',
+  FrontExamPlan: '输入考试日期，按你的薄弱点倒排每天该做什么',
+  FrontMicroCourse: '按原文结构把一份资料拆成可以一站一站学的路径'
 }
 
 const pageTitle = computed(() => {

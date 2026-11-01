@@ -68,6 +68,16 @@ async def lifespan(app: FastAPI):
     await redis_client.connect()
     await init_db()
 
+    # 清理上一次进程异常退出时卡在「解析中」的文档；只标失败，不自动重跑。
+    try:
+        from app.services.rag.document_pipeline import recover_stale_documents
+
+        await recover_stale_documents()
+    except Exception as _e:  # noqa: BLE001
+        from loguru import logger as _logger
+
+        _logger.warning("[startup] 回收中断任务失败: {}", _e)
+
     # 创建上传目录
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 
@@ -129,11 +139,32 @@ async def lifespan(app: FastAPI):
     except Exception:  # noqa: BLE001
         warmup_task = None
 
+    async def _stale_task_monitor() -> None:
+        """周期性回收进程存活期间卡住的解析任务。"""
+        while True:
+            await asyncio.sleep(300)
+            try:
+                from app.services.rag.document_pipeline import recover_stale_documents
+
+                await recover_stale_documents()
+            except Exception as _e:  # noqa: BLE001
+                from loguru import logger as _logger
+
+                _logger.warning("[rag.pipeline] 周期回收失败: {}", _e)
+
+    stale_task = None
+    try:
+        stale_task = asyncio.create_task(_stale_task_monitor())
+    except Exception:  # noqa: BLE001
+        stale_task = None
+
     yield
 
     # Shutdown
     if warmup_task and not warmup_task.done():
         warmup_task.cancel()
+    if stale_task and not stale_task.done():
+        stale_task.cancel()
     await redis_client.disconnect()
     await close_db()
 

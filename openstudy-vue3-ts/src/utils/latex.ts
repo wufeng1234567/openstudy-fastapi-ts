@@ -464,6 +464,8 @@ function findBareScripts(
     const s = m.index
     const e = s + m[0].length
     if (!isFree(s, e)) continue
+    // 不要把已替换的公式占位符再包进裸上标公式里，否则 KaTeX 会吞掉 MATHn。
+    if (m[0].includes('\u0000')) continue
     // 前面若紧贴 **ASCII 字母/数字/下划线**，说明是更长单词的一部分
     // （`value_1`、`abc^2`），不当作公式。
     //
@@ -473,7 +475,10 @@ function findBareScripts(
     //    （后端踩过这个坑，用的是 `isascii() and isalnum()`）。
     if (s > 0) {
       const prev = text[s - 1]
-      if (/[A-Za-z0-9_]/.test(prev) || prev === '^' || prev === '_') continue
+      // `2e^{-1}` 里的 e 是自然常数，不是 `value_1` 这类标识符的一部分；
+      // 允许“数字直接跟 e 的指数”这一种常见数学写法。
+      const scientificE = text[s] === 'e' && /[0-9]/.test(prev)
+      if ((/[A-Za-z0-9_]/.test(prev) || prev === '^' || prev === '_') && !scientificE) continue
     }
     out.push({ start: s, end: e, latex: text.substring(s, e) })
   }
@@ -1061,7 +1066,23 @@ export function renderMarkdownWithLatex(text: string): string {
    *      并把那个孤立的 `$` / `\(` 去掉 —— 宁可少渲染一个未完成的公式，
    *      也不要把它当源码印出来。
    */
-  const cleaned = _dropUnclosedMathTail(text)
+  let cleaned = _dropUnclosedMathTail(text)
+  /*
+   * Word/OMML 常见输出：两个独立行内公式紧挨着，拼成 `$A$$B$`。
+   *
+   * `$$` 会被块级公式正则误判成 display delimiter，随后整段公式被吞掉，
+   * 页面上就出现 `MATH0` 这种占位符残渣。这里先把相邻行内公式拆成
+   * `$A$ $B$`（只加一个空格，不改变公式内容），再进入统一管线。
+   */
+  for (let i = 0; i < 5; i++) {
+    const next = cleaned.replace(/\$([^$\n]+?)\$\$([^$\n]+?)\$/g, (_, a, b) => `$${a}$ $${b}$`)
+    if (next === cleaned) break
+    cleaned = next
+  }
+  // 有些 Word 公式把行内公式塞在上下标花括号里：`e^{-$λ$}`。
+  // 先把花括号里的 `$...$` 降级成普通公式体，避免先被 `$...$` 占位、
+  // 再被裸上标规则圈走，最后出现 `e^{-MATH15}`。
+  cleaned = cleaned.replace(/\{(-?)\$([^$\n]+?)\$\}/g, (_, sign, body) => `{${sign}${body}}`)
 
   const stash: string[] = []
   const PH = (i: number) => `\u0000MATH${i}\u0000`
@@ -1128,6 +1149,13 @@ export function renderMarkdownWithLatex(text: string): string {
   src = normalizePipeTables(src)
   // ②-b 制表符表格容错：把"TAB 分隔的表格文本"（模型可能自己重写出的形态）转成 md 表格（第三重保险）
   src = normalizeTabTables(src)
+
+  // ②-c Markdown 图片先转成显式 <img>：部分内容源（编辑器保存、导入）给出的
+  // 图片语法会被 marked 留在段落里，统一交给 DOMPurify 的 img 白名单渲染。
+  src = src.replace(
+    /!\[([^\]]*)\]\(([^)\s]+)\)/g,
+    (_all, alt, url) => `<img src="${String(url).replace(/"/g, '&quot;')}" alt="${String(alt).replace(/"/g, '&quot;')}" />`,
+  )
 
   // ③ Markdown（gfm 启表格；breaks 让单个 \n 也换行，贴合题目文本习惯）
   src = marked.parse(src, { gfm: true, breaks: true }) as string

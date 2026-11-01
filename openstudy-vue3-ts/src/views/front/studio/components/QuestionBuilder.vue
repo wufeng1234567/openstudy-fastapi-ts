@@ -515,7 +515,7 @@
               <div class="material-block">
                 <!-- 来源一：知识库 -->
                 <div class="material-field">
-                  <div class="material-field__label">从知识库取材</div>
+                  <div class="material-field__label">从我的资料取材</div>
                   <div class="material-row">
                     <!--
                       ⚠️⚠️ 字段名必须用后端 `_kb_brief` 的真实输出（2026-10-20 修 422）
@@ -529,7 +529,7 @@
                       教训：跨端字段名不能想当然，要对着 service 的 `_brief()` 抄。
                     -->
                     <el-select v-model="aiForm.kbIds" multiple filterable clearable collapse-tags
-                      collapse-tags-tooltip placeholder="选择一个或多个知识库（可不选）"
+                      collapse-tags-tooltip placeholder="选择一个或多个资料夹（可不选）"
                       style="flex: 1" :disabled="aiGenerating" :loading="kbLoading">
                       <el-option v-for="kb in kbList" :key="kb.kbId" :label="kb.name"
                         :value="kb.kbId">
@@ -546,12 +546,12 @@
                     </el-button>
                   </div>
                   <div class="form-hint" v-if="kbList.length === 0 && !kbLoading">
-                    还没有知识库。<router-link to="/front/agent/chat" class="material-link">
+                    还没有资料。<router-link to="/front/agent/chat" class="material-link">
                       在对话里让助手帮你建一个
                     </router-link>，或直接用下面的文档上传。
                   </div>
                   <div class="form-hint" v-else-if="aiForm.kbIds.length">
-                    已选 {{ aiForm.kbIds.length }} 个知识库，出题时会检索其中的相关内容并把出处标在解析里。
+                    已选 {{ aiForm.kbIds.length }} 个资料夹，出题时会检索其中的相关内容并把出处标在解析里。
                   </div>
                 </div>
 
@@ -582,7 +582,7 @@
                         拖入 <em>Word / PDF / Markdown / TXT</em> 或 <em>图片</em>，或点击选择
                       </div>
                       <div class="material-upload__hint">
-                        自动识别类型；文件只在本次生成时作为素材，不会存进知识库
+                        自动识别类型；文件只在本次生成时作为素材，不会存进我的资料
                       </div>
                     </div>
                   </el-upload>
@@ -2010,7 +2010,7 @@ const hasMaterial = () =>
  */
 const materialSummaryText = computed(() => {
   const parts: string[] = []
-  if (aiForm.value.kbIds.length) parts.push(`${aiForm.value.kbIds.length} 个知识库`)
+  if (aiForm.value.kbIds.length) parts.push(`${aiForm.value.kbIds.length} 个资料夹`)
   const docCount = materialItems.value.filter((it) => it.kind === 'doc').length
   const imgCount = materialItems.value.filter((it) => it.kind === 'image').length
   if (docCount) parts.push(`${docCount} 份文档`)
@@ -2037,7 +2037,7 @@ const loadKnowledgeBases = async (opts: { silent?: boolean } = {}) => {
     const data = res?.data ?? res?.rows ?? res ?? []
     kbList.value = Array.isArray(data) ? data : (data.rows || [])
   } catch (e) {
-    console.warn('[material] 加载知识库失败：', e)
+    console.warn('[material] 加载资料失败：', e)
     /*
      * `silent` 用于"预加载"：弹窗刚打开就弹一条失败提示会很吵，
      * 而且用户此刻可能根本不想用知识库。失败时下拉里会显示
@@ -2045,7 +2045,7 @@ const loadKnowledgeBases = async (opts: { silent?: boolean } = {}) => {
      * 手动点「刷新」才提示 —— 那说明用户确实在找这个功能。
      */
     if (!opts.silent) {
-      ElMessage.warning('知识库列表加载失败，可改用上传文档')
+      ElMessage.warning('资料列表加载失败，可改用上传文档')
     }
   } finally {
     kbLoading.value = false

@@ -37,9 +37,9 @@ MAX_CONTEXT_CHARS = 6000
 #: 默认检索条数
 DEFAULT_TOP_K = 5
 
-NO_HIT_ANSWER = "在当前知识库中没有找到与这个问题相关的内容。可以换个说法，或先往知识库里补充相关文档。"
+NO_HIT_ANSWER = "在当前资料中没有找到与这个问题相关的内容。可以换个说法，或先往我的资料里补充相关文档。"
 
-SYSTEM_PROMPT_TEMPLATE = """你是 OpenStudy 的知识库问答助手，当前基于用户的知识库「{kb_names}」回答问题。
+SYSTEM_PROMPT_TEMPLATE = """你是 OpenStudy 的资料问答助手，当前基于用户的资料夹「{kb_names}」回答问题。
 
 【背景知识】
 {context}
@@ -47,8 +47,8 @@ SYSTEM_PROMPT_TEMPLATE = """你是 OpenStudy 的知识库问答助手，当前�
 【要求】
 1. 优先依据上面的背景知识回答，不要凭自己的知识编造背景里没有的内容
 2. 引用背景知识时用 【编号】 标出来源，例如「……是 O(log n)【1】」
-3. 如果背景知识只有部分相关，就基于已有内容回答，并说明哪部分来自知识库
-4. **如果背景知识完全没有相关信息，直接说「在当前知识库中没有找到相关内容」**，不要硬答
+3. 如果背景知识只有部分相关，就基于已有内容回答，并说明哪部分来自我的资料
+4. **如果背景知识完全没有相关信息，直接说「在当前资料中没有找到相关内容」**，不要硬答
 5. 用清晰的结构（标题、列表）组织回答
 """
 
@@ -105,7 +105,7 @@ async def search(
             "query": query,
             "hits": [],
             "knowledgeBases": [],
-            "reason": "没有可检索的知识库",
+            "reason": "没有可检索的资料",
             "lowConfidence": False,
         }
 
@@ -116,7 +116,7 @@ async def search(
     return {
         "query": query,
         "hits": [h.to_dict() for h in hits],
-        "knowledgeBases": [{"kbId": kb.id, "name": kb.name} for kb in kbs],
+        "knowledgeBases": [{"kbId": kb.id, "name": ("默认资料夹" if getattr(kb, "is_workspace", 0) == 1 else kb.name)} for kb in kbs],
         # 有结果但两路都没关键词命中 = 可能是换词提问，也可能是跑题 —— 标出来让界面提示
         "lowConfidence": bool(hits) and not has_keyword_agreement(hits),
     }
@@ -143,11 +143,13 @@ async def answer(
         raise ValueError("问题不能为空")
 
     kbs = await resolve_knowledge_bases(db, user_id, kb_ids)
-    kb_names = "、".join(kb.name for kb in kbs) if kbs else "（无）"
+    kb_names = "、".join(
+        ("默认资料夹" if getattr(kb, "is_workspace", 0) == 1 else kb.name) for kb in kbs
+    ) if kbs else "（无）"
 
     if not kbs:
         return await _no_hit_result(
-            db, user_id, query, None, kbs, reason="没有可检索的知识库"
+            db, user_id, query, None, kbs, reason="没有可检索的资料"
         )
 
     query_vector = await embed_query(query)
@@ -251,7 +253,7 @@ async def answer(
         "found": True,
         "lowConfidence": low_confidence,
         "usedKnowledgeBase": True,
-        "knowledgeBases": [{"kbId": kb.id, "name": kb.name} for kb in kbs],
+        "knowledgeBases": [{"kbId": kb.id, "name": ("默认资料夹" if getattr(kb, "is_workspace", 0) == 1 else kb.name)} for kb in kbs],
         "citations": citations,
         "qaId": record.id,
     }
@@ -285,7 +287,7 @@ async def _no_hit_result(
         "answer": NO_HIT_ANSWER,
         "found": False,
         "usedKnowledgeBase": False,
-        "knowledgeBases": [{"kbId": kb.id, "name": kb.name} for kb in kbs],
+        "knowledgeBases": [{"kbId": kb.id, "name": ("默认资料夹" if getattr(kb, "is_workspace", 0) == 1 else kb.name)} for kb in kbs],
         "citations": [],
         "qaId": record.id,
         "reason": reason,

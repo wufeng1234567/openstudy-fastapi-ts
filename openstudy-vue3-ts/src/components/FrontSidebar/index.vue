@@ -464,7 +464,9 @@ const featureItems: NavItem[] = [
        * 收藏是笔记管理的第二个分组，不该在侧栏再占一行。
        */
       { label: '笔记管理', to: '/front/myQuestion/noteManage?tab=own', cacheKey: 'noteManage' },
-      { label: '学习统计', to: '/front/myQuestion/myStats', cacheKey: 'myStats' }
+      { label: '学习统计', to: '/front/myQuestion/myStats', cacheKey: 'myStats' },
+      { label: '学习周报', to: '/front/myQuestion/weeklyReport', cacheKey: 'weeklyReport' },
+      { label: '考前计划', to: '/front/myQuestion/examPlan', cacheKey: 'examPlan' }
     ]
   },
   {
@@ -503,7 +505,7 @@ const featureItems: NavItem[] = [
    */
   {
     key: 'workspace',
-    label: '知识库',
+    label: '我的资料',
     icon: 'folder',
     to: '/front/workspace',
     match: '/front/workspace',

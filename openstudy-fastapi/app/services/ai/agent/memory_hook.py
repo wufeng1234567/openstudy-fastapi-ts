@@ -43,7 +43,7 @@ _TOOL_LABELS = {
     # 错题本 / 收藏 / 斩题是同一个工具（`flag_type` 区分）——兜底描述只能给一个中性名，
     # 正常路径用的是工具自己的 `message`（里面写清了是哪个列表）
     "question_flag_manage": "题目标记",
-    "knowledge_base_manage": "知识库",
+    "knowledge_base_manage": "资料管理",
     "bank_share_manage": "题库分享",
 }
 

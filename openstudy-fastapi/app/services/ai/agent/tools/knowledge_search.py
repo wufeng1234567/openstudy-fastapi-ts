@@ -95,7 +95,7 @@ class KnowledgeSearchTool(AgentTool):
     label = "资料检索"
     description_zh = (
         "在我自己上传的资料里找出相关段落并标出来源："
-        "search=按关键词检索正文、list=列出有哪些知识库。"
+        "search=按关键词检索正文、list=列出有哪些资料夹。"
     )
     parameters = {
         "type": "object",
@@ -151,15 +151,15 @@ class KnowledgeSearchTool(AgentTool):
         #    是另一回事，它必须照列 —— 否则用户自己的开关就关不掉了。
         kbs = await rws.list_knowledge_bases(ctx.db, ctx.user_id, include_disabled=False)
         if kbs:
-            message = f"你有 {len(kbs)} 个知识库"
+            message = f"你有 {len(kbs)} 个资料夹"
         else:
             # 「一个都没有」与「有但全被屏蔽了」必须分开说：后者是用户的主动设置，
             # 说成「你还没有知识库」会让他以为自己的资料丢了。
             all_cnt, enabled_cnt = await _kb_counts(ctx)
             message = (
-                f"你名下有 {all_cnt} 个知识库，但都被屏蔽了，暂时不能检索"
+                f"你名下有 {all_cnt} 个资料夹，但都被屏蔽了，暂时不能检索"
                 if all_cnt and not enabled_cnt
-                else "你还没有知识库，可以先在知识库页面上传资料"
+                else "你还没有资料，可以先在「我的资料」页面上传"
             )
         return ok(
             action="list",
@@ -196,9 +196,9 @@ class KnowledgeSearchTool(AgentTool):
         except EmbeddingError as e:
             # 检索不到不是业务错误，但 embedding 挂了模型自己重试也没用 ——
             # 给一句能看懂的说明，别让它把上游 500 原样倒给用户
-            return fail(f"知识库检索暂时不可用：{e}", "请稍后再试，或先不用知识库直接回答")
+            return fail(f"资料检索暂时不可用：{e}", "请稍后再试，或先不用资料直接回答")
         except RagNotFound as e:
-            return fail(str(e), "请先用 action=list 确认这些知识库是否属于你")
+            return fail(str(e), "请先用 action=list 确认这些资料夹是否属于你")
         except ValueError as e:
             return fail(str(e), "请提供非空的 query")
 
@@ -246,17 +246,17 @@ class KnowledgeSearchTool(AgentTool):
             all_cnt, enabled_cnt = await _kb_counts(ctx)
             if all_cnt and not enabled_cnt:
                 note = (
-                    f"用户名下的 {all_cnt} 个知识库都被屏蔽了，本次检索范围为空。"
-                    "请如实说明「这些知识库已被屏蔽」，不要凭空回答。"
+                    f"用户名下的 {all_cnt} 个资料夹都被屏蔽了，本次检索范围为空。"
+                    "请如实说明「这些资料夹已被屏蔽」，不要凭空回答。"
                 )
             elif all_cnt:
                 note = (
-                    "用户这次点名的知识库已被屏蔽，本次检索范围为空"
+                    "用户这次点名的资料夹已被屏蔽，本次检索范围为空"
                     "（他名下还有未屏蔽的库，但不在这次范围内）。"
-                    "请如实说明「这个知识库已被屏蔽」，不要凭空回答。"
+                    "请如实说明「这个资料夹已被屏蔽」，不要凭空回答。"
                 )
             else:
-                note = "用户还没有任何知识库，无法检索；请如实告知，不要凭空回答。"
+                note = "用户还没有任何资料，无法检索；请如实告知，不要凭空回答。"
             return ok(
                 action="search",
                 query=query,
@@ -274,7 +274,7 @@ class KnowledgeSearchTool(AgentTool):
                 hits=[],
                 knowledgeBases=knowledge_bases,
                 note=(
-                    "在这些知识库中没有检索到相关内容（不是没查，是确实没有）。"
+                    "在这些资料中没有检索到相关内容（不是没查，是确实没有）。"
                     "请如实说明没找到，不要编造；可以换个说法再试一次。"
                 ),
             )

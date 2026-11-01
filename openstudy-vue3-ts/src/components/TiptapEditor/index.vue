@@ -150,6 +150,7 @@
 
 <script setup lang="ts">
 import { useEditor, EditorContent } from '@tiptap/vue-3'
+import { Node, mergeAttributes } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import Image from '@tiptap/extension-image'
@@ -398,6 +399,45 @@ const CustomCodeBlockLowlight = CodeBlockLowlight.extend({
   }
 })
 
+const MathNode = Node.create({
+  name: 'osMath',
+  group: 'inline',
+  inline: true,
+  atom: true,
+  selectable: true,
+  addAttributes() {
+    return {
+      latex: { default: '' }
+    }
+  },
+  parseHTML() {
+    return [
+      {
+        tag: 'span[data-os-math]',
+        getAttrs: (element: HTMLElement) => {
+          const raw = element.getAttribute('data-os-math') || ''
+          try {
+            return { latex: decodeURIComponent(raw) }
+          } catch {
+            return { latex: raw }
+          }
+        }
+      }
+    ]
+  },
+  renderHTML({ HTMLAttributes }) {
+    const latex = String(HTMLAttributes.latex || '')
+    return [
+      'span',
+      mergeAttributes(HTMLAttributes, {
+        'data-os-math': encodeURIComponent(latex),
+        class: 'os-math-inline'
+      }),
+      latex
+    ]
+  }
+})
+
 const editor = useEditor({
   content: props.modelValue,
   editable: !props.disabled,
@@ -409,6 +449,7 @@ const editor = useEditor({
       codeBlock: false,
       table: false
     }),
+    MathNode,
     Underline,
     Link.configure({
       openOnClick: true,
@@ -610,8 +651,9 @@ const handleFileSelected = async (event) => {
     const formData = new FormData()
     formData.append('file', file)
     const res = await uploadImage(formData)
-    if (res.code === 200 && res.url) {
-      let url = res.url
+    const uploadedUrl = res?.fileName || res?.url || res?.data?.fileName || res?.data?.url
+    if (res.code === 200 && uploadedUrl) {
+      let url = uploadedUrl
       const baseUrl = import.meta.env.VITE_APP_BASE_API || ''
       if (!url.startsWith('http')) {
         url = baseUrl + url
@@ -619,7 +661,7 @@ const handleFileSelected = async (event) => {
       editor.value.chain().focus().setImage({ src: url.replace(/ /g, '%20') }).run()
       ElMessage.success('图片插入成功')
     } else {
-      ElMessage.error('图片上传失败')
+      ElMessage.error(res.msg || '图片上传失败')
     }
   } catch (error) {
     ElMessage.error('图片上传失败')

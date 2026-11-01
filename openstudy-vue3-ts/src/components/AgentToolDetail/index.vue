@@ -342,7 +342,7 @@ const FIELD_LABELS: Record<string, string> = {
   // 知识库管理 knowledge_base_manage
   //   （`rag_write_service._kb_brief` / `_doc_brief` + 工具的 preview）
   // ============================================================
-  kbId: '知识库 ID',
+  kbId: '资料夹 ID',
   docCount: '文档数',
   chunkCount: '分块数',
   disabled: '屏蔽',
@@ -353,7 +353,7 @@ const FIELD_LABELS: Record<string, string> = {
   fileType: '文件类型',
   fileSize: '文件大小',
   chunks: '分块',
-  knowledgeBases: '知识库',
+  knowledgeBases: '资料夹',
   // `_kb_brief` 还带这三个（认不出来的话就是英文标识符 + 一堆数字）
   embeddingModel: '向量模型',
   chunkSize: '分块大小',
@@ -426,7 +426,7 @@ const FIELD_LABELS: Record<string, string> = {
   // 写入知识库 knowledge_ingest
   //   （回执 / 确认预览都会出现的 `kbName`；`kbId` 已在上面那节）
   // ============================================================
-  kbName: '知识库名称',
+  kbName: '资料夹名称',
   estimatedChunks: '预计分块数',
   embedCalls: '向量化次数',
   charCount: '字符数',
@@ -564,7 +564,7 @@ const REDUNDANT_KEYS: Array<[string, (obj: any) => boolean]> = [
 ]
 
 /** 对用户没有意义的键：要么恒为真，要么已经在卡片别处显示过了 */
-const HIDDEN_KEYS = new Set(['success', 'action', 'message', 'error', 'hint'])
+const HIDDEN_KEYS = new Set(['success', 'action', 'message', 'error', 'hint', 'chart'])
 const isHidden = (key: string) => HIDDEN_KEYS.has(key) || key.startsWith('_')
 
 /**

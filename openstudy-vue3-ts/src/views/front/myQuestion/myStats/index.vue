@@ -58,6 +58,29 @@
             </div>
 
         <template v-else>
+            <!-- ============ 两个「下一步」入口：周报 / 考前路线 ============ -->
+            <div class="quick-entry-row">
+                <button type="button" class="quick-entry" @click="router.push('/front/myQuestion/weeklyReport')">
+                    <span class="quick-entry-mark is-weekly">周</span>
+                    <span class="quick-entry-copy">
+                        <b>学习周报</b>
+                        <small>把这一周变成一张可保存的成长卡片</small>
+                    </span>
+                    <el-icon><ArrowRight /></el-icon>
+                </button>
+                <button type="button" class="quick-entry" @click="router.push('/front/myQuestion/examPlan')">
+                    <span class="quick-entry-mark is-exam">考</span>
+                    <span class="quick-entry-copy">
+                        <b>考前倒计时路线图</b>
+                        <small>输入考试日期，系统按薄弱点倒排每天任务</small>
+                    </span>
+                    <el-icon><ArrowRight /></el-icon>
+                </button>
+            </div>
+
+            <!-- ============ 学习闭环：今日处方 / 知识体检 / 错题歼灭战 ============ -->
+            <LearningLoopPanel @practice="goPractice" @open-question="onOpenDiagnosisItem" />
+
             <!-- ============ 学习总览 ============ -->
             <section class="panel overview-panel">
                 <div class="panel-head">
@@ -159,7 +182,7 @@
                                 class="error-item" role="button" tabindex="0"
                                 @click="goWrongQuestion(item)" @keyup.enter="goWrongQuestion(item)">
                                 <span class="error-rank">{{ idx + 1 }}</span>
-                                <span class="error-text">{{ item.questionText }}</span>
+                                <span class="error-text" v-html="renderQuestionContent(item.questionText)"></span>
                                 <span class="error-count">错 {{ item.errorCount }} 次</span>
                                 <el-icon class="error-go"><ArrowRight /></el-icon>
                             </div>
@@ -202,6 +225,38 @@
             </template>
         </div>
 
+        <!-- ==================== 趋势图下钻：某一天做了什么 ==================== -->
+        <el-dialog
+            v-model="dayDetailVisible"
+            :title="dayDetail ? `${dayDetail.date} 学习明细` : '学习明细'"
+            width="680px"
+        >
+            <div v-loading="dayDetailLoading" class="day-detail">
+                <div v-if="dayDetail" class="day-summary">
+                    <div><b>{{ dayDetail.practiceCount }}</b><span>次作答</span></div>
+                    <div><b class="is-correct">{{ dayDetail.correctCount }}</b><span>答对</span></div>
+                    <div><b class="is-error">{{ dayDetail.errorCount }}</b><span>答错</span></div>
+                    <div><b>{{ dayDetail.markedCount }}</b><span>斩题</span></div>
+                </div>
+                <div v-if="dayDetail?.items.length" class="day-list">
+                    <div v-for="(item, idx) in dayDetail.items" :key="idx" class="day-item">
+                        <span class="day-dot" :class="item.isCorrect ? 'is-correct' : 'is-error'"></span>
+                        <div class="day-main">
+                            <div class="day-text" v-html="renderQuestionContent(item.questionText)"></div>
+                            <div class="day-meta">{{ item.time }} · {{ item.bankName || item.subject || '未分类' }}</div>
+                        </div>
+                        <span class="day-status" :class="item.isCorrect ? 'is-correct' : 'is-error'">
+                            {{ item.isCorrect ? '答对' : '答错' }}
+                        </span>
+                    </div>
+                </div>
+                <el-empty v-else-if="!dayDetailLoading" description="这一天没有可展示的作答记录" :image-size="80" />
+                <div v-if="dayDetail?.unavailableCount" class="day-unavailable">
+                    另有 {{ dayDetail.unavailableCount }} 条记录对应的题目已被删除，无法展示。
+                </div>
+            </div>
+        </el-dialog>
+
         <!-- ==================== Tab 2：英语练习 ==================== -->
         <!--
           `v-if="tabSeen.english"` 而不是 v-show：见顶部注释里关于
@@ -229,20 +284,24 @@ import SegmentedTabs from '@/components/SegmentedTabs/index.vue'
 import EnglishStatistics from '@/views/front/english/statistics/index.vue'
 // 学情诊断面板（2026-10-26 v3）：把后端逐题诊断画成页内图表，而不是下载 PDF
 import DiagnosisPanel from './components/DiagnosisPanel.vue'
+import LearningLoopPanel from './components/LearningLoopPanel.vue'
 import {
     getOverview,
     getBySubject,
     getTrend,
     getErrorAnalysis,
-    getGrowth
+    getGrowth,
+    getDayDetail
 } from '@/api/userStats/userStats'
 import type {
     OverviewStats,
     SubjectStat,
     TrendItem,
     ErrorAnalysis,
-    GrowthRecord
+    GrowthRecord,
+    DayDetailResult
 } from '@/api/userStats/userStats'
+import { renderQuestionContent } from '@/utils/latex'
 
 const router = useRouter()
 
@@ -387,6 +446,25 @@ const overview = ref<OverviewStats>({
 const subjectStats = ref<SubjectStat[]>([])
 // 趋势数据
 const trendData = ref<TrendItem[]>([])
+// 趋势图下钻：某一天的学习明细
+const dayDetailVisible = ref(false)
+const dayDetailLoading = ref(false)
+const dayDetail = ref<DayDetailResult | null>(null)
+
+async function openDayDetail(date: string) {
+    if (!date) return
+    dayDetailVisible.value = true
+    dayDetailLoading.value = true
+    dayDetail.value = null
+    try {
+        const res: any = await getDayDetail(date)
+        if (res.code === 200 && res.data) dayDetail.value = res.data
+    } catch (e: any) {
+        console.warn('[学习统计] 读取当天明细失败', e)
+    } finally {
+        dayDetailLoading.value = false
+    }
+}
 // 错题分析
 const errorAnalysis = ref<ErrorAnalysis>({
     totalErrors: 0,
@@ -560,6 +638,12 @@ function initTrendChart(data: TrendItem[]) {
             line('答错次数', '#f56c6c', data.map(d => d.errorCount)),
             line('斩题', '#e6a23c', data.map(d => d.markedCount))
         ]
+    })
+    // 点击某一天 → 打开当天学习明细。图表从「装饰」变成「入口」。
+    trendChart.on('click', (params: any) => {
+        const index = Number(params?.dataIndex ?? -1)
+        const day = data[index]
+        if (day?.date) openDayDetail(day.date)
     })
 }
 
@@ -780,6 +864,74 @@ onUnmounted(() => {
     .tab-pane {
         /* 两个 tab 的内容宽度一致，切换时不会跳 */
         width: 100%;
+    }
+
+    /* ===== 周报 / 考前路线快捷入口 ===== */
+    .quick-entry-row {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 14px;
+
+        @media (max-width: 768px) {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .quick-entry {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 12px 16px;
+        border: 1px solid #e8edf5;
+        border-radius: 12px;
+        background: #fff;
+        text-align: left;
+        cursor: pointer;
+        transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+
+        &:hover {
+            border-color: #93c5fd;
+            box-shadow: 0 8px 24px rgba(37, 99, 235, 0.08);
+            transform: translateY(-1px);
+        }
+
+        .el-icon {
+            margin-left: auto;
+            color: #cbd5e1;
+        }
+    }
+
+    .quick-entry-mark {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        flex: none;
+        place-items: center;
+        border-radius: 10px;
+        font-size: 13px;
+        font-weight: 700;
+
+        &.is-weekly { background: #eff6ff; color: #2563eb; }
+        &.is-exam { background: #fff7e6; color: #d97706; }
+    }
+
+    .quick-entry-copy {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        gap: 2px;
+
+        b {
+            color: #1f2937;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        small {
+            color: #94a3b8;
+            font-size: 11px;
+        }
     }
 
     .page-header {
@@ -1281,6 +1433,105 @@ onUnmounted(() => {
     .accum-hint {
         font-size: 12px;
         color: #9ca3af;
+    }
+
+    /* ===== 趋势图下钻：某一天学习明细 ===== */
+    .day-detail {
+        min-height: 180px;
+    }
+
+    .day-summary {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+        margin-bottom: 14px;
+
+        > div {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px;
+            border-radius: 10px;
+            background: #f9fafb;
+        }
+
+        b {
+            color: #1f2937;
+            font-size: 20px;
+            line-height: 1.2;
+
+            &.is-correct { color: #67c23a; }
+            &.is-error { color: #f56c6c; }
+        }
+
+        span {
+            margin-top: 3px;
+            color: #9ca3af;
+            font-size: 11px;
+        }
+    }
+
+    .day-list {
+        max-height: 420px;
+        overflow-y: auto;
+    }
+
+    .day-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 9px;
+        padding: 9px 2px;
+        border-top: 1px solid #f3f4f6;
+    }
+
+    .day-dot {
+        width: 7px;
+        height: 7px;
+        flex: none;
+        margin-top: 6px;
+        border-radius: 50%;
+
+        &.is-correct { background: #67c23a; }
+        &.is-error { background: #f56c6c; }
+    }
+
+    .day-main {
+        min-width: 0;
+        flex: 1;
+    }
+
+    .day-text {
+        color: #374151;
+        font-size: 12px;
+        line-height: 1.55;
+
+        :deep(.katex) {
+            font-size: 1em;
+        }
+    }
+
+    .day-meta {
+        margin-top: 3px;
+        color: #9ca3af;
+        font-size: 10px;
+    }
+
+    .day-status {
+        flex: none;
+        font-size: 11px;
+
+        &.is-correct { color: #67c23a; }
+        &.is-error { color: #f56c6c; }
+    }
+
+    .day-unavailable {
+        margin-top: 10px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: #f9fafb;
+        color: #9ca3af;
+        font-size: 11px;
+        text-align: center;
     }
 }
 </style>

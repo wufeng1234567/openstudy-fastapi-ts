@@ -32,7 +32,7 @@ from loguru import logger
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.rag import RagDocument, RagDocumentChunk
+from app.models.rag import DOC_VECTORIZED, RagDocument, RagDocumentChunk
 from app.services.rag.tokenizer import query_tokens
 
 #: RRF 平滑常数（原论文建议 60）
@@ -141,7 +141,12 @@ async def vector_search(
     stmt = (
         select(RagDocumentChunk, RagDocument.file_name, distance.label("distance"))
         .join(RagDocument, RagDocument.id == RagDocumentChunk.doc_id)
-        .where(RagDocumentChunk.embedding.isnot(None))
+        .where(
+            RagDocumentChunk.embedding.isnot(None),
+            RagDocumentChunk.index_version == RagDocument.index_version,
+            RagDocument.status == DOC_VECTORIZED,
+            RagDocument.disabled == 0,
+        )
         .order_by(distance)
         .limit(top_k)
     )
@@ -188,7 +193,12 @@ async def keyword_search(
     stmt = (
         select(RagDocumentChunk, RagDocument.file_name, rank.label("rank"))
         .join(RagDocument, RagDocument.id == RagDocumentChunk.doc_id)
-        .where(RagDocumentChunk.search_vec.op("@@")(tsquery))
+        .where(
+            RagDocumentChunk.search_vec.op("@@")(tsquery),
+            RagDocumentChunk.index_version == RagDocument.index_version,
+            RagDocument.status == DOC_VECTORIZED,
+            RagDocument.disabled == 0,
+        )
         .order_by(rank.desc())
         .limit(top_k)
     )

@@ -20,7 +20,7 @@
       <!-- ── 头部 ── -->
       <div class="kb-head">
         <div class="kb-head-left">
-          <span class="kb-title">知识库</span>
+          <span class="kb-title">我的资料</span>
           <span class="kb-sub">传进来的资料，智能体会自己检索后回答</span>
         </div>
         <div class="kb-head-right">
@@ -36,7 +36,7 @@
              静默跳过的话下面 `.kb-empty` 会退化成「还没有知识库，新建一个…」——
              一个有十几个库的用户会被告知他一个库都没有。 -->
         <div v-if="!loading && kbLoadFailed" class="kb-load-failed">
-          <span>知识库列表这次没取到，下面显示的可能不是最新的。</span>
+          <span>资料列表这次没取到，下面显示的可能不是最新的。</span>
           <el-button size="small" text type="primary" @click="loadKbs()">重试</el-button>
         </div>
 
@@ -63,8 +63,8 @@
         <!-- 作用域提示：让「回车会搜哪儿」永远可见，避免用户误读检索范围 -->
         <div v-if='query && !resultsMode' class='kb-scope'>
           <span class='kb-scope-hint'>
-            <template v-if='selectedKbIds.length'>在勾选的 {{ selectedKbIds.length }} 个知识库里搜资料</template>
-            <template v-else>在全部 {{ enabledKbCount }} 个知识库里搜资料（不只名字带这个词的库）</template>
+            <template v-if='selectedKbIds.length'>在勾选的 {{ selectedKbIds.length }} 个资料夹里搜资料</template>
+            <template v-else>在全部 {{ enabledKbCount }} 个资料夹里搜资料（不只名字带这个词的库）</template>
           </span>
           
         </div>
@@ -85,15 +85,15 @@
               </template>
               <span class='kb-results-scope'>{{ searchedScopeLabel }}</span>
             </div>
-            <el-button size='small' text @click='exitResults'>返回知识库</el-button>
+            <el-button size='small' text @click='exitResults'>返回我的资料</el-button>
           </div>
 
           <!-- 低置信提示：说清"这是模型凑出来的最像的结果"，而不是假装搜到了 -->
           <div v-if='searchLowConfidence && searchHits.length' class='kb-lowconf'>
             <el-icon><Warning /></el-icon>
             <span>
-              你的问题和这些资料可能对不上 —— 这个知识库里也许没有相关内容。
-              换个说法试试，或确认勾选的知识库是否正确。
+              你的问题和这些资料可能对不上 —— 这些资料里也许没有相关内容。
+              换个说法试试，或确认勾选的资料夹是否正确。
             </span>
           </div>
 
@@ -119,7 +119,7 @@
                     <span>{{ g.hits.length }} 段命中</span>
                   </div>
                 </div>
-                <span v-if='g.kbId' class='kb-group-open' title='打开这个知识库' @click='gotoKb(g.kbId)'>
+                <span v-if='g.kbId' class='kb-group-open' title='打开这个资料夹' @click='gotoKb(g.kbId)'>
                   <el-icon><FolderOpened /></el-icon>
                 </span>
               </div>
@@ -144,7 +144,7 @@
                   <span class='kb-op' title='复制这段原文' @click.stop='copyHit(h)'>
                     <el-icon><DocumentCopy /></el-icon>
                   </span>
-                  <span class='kb-op' title='查看该文档全部分块' @click.stop='openChunksOf(h)'>
+                  <span class='kb-op' title='资料解剖' @click.stop='openAnatomyOf(h)'>
                     <el-icon><View /></el-icon>
                   </span>
                   <span class='kb-hit-more' @click.stop='toggleExpand(h.chunkId)'>
@@ -163,7 +163,7 @@
                   不用先「全选」再一个个取消。 -->
           <div class="kb-pick-bar">
             <span class="kb-pick-hint" :class="{ on: selectedKbIds.length > 0 }">
-              {{ selectedKbIds.length ? `已选 ${selectedKbIds.length} 个：搜索只查这些` : '未勾选 = 搜索全部知识库' }}
+              {{ selectedKbIds.length ? `已选 ${selectedKbIds.length} 个：搜索只查这些` : '未勾选 = 搜索全部资料' }}
             </span>
             <el-button v-if="selectedKbIds.length" size="small" text type="primary" @click="clearKbSelection">取消勾选</el-button>
             <el-button v-else size="small" text @click="selectAllKbs">全部勾上</el-button>
@@ -175,7 +175,7 @@
                  所以必须 stop —— 否则每勾一次都会连带切换下面的文档区。 -->
             <el-checkbox class="kb-pick" :model-value="selectedKbIds.includes(kb.kbId)"
               :disabled="kb.disabled === 1"
-              :title="kb.disabled === 1 ? '已屏蔽的库不参与检索，勾不了' : '勾上它：搜索资料时只查勾选的知识库'"
+              :title="kb.disabled === 1 ? '已屏蔽的库不参与检索，勾不了' : '勾上它：搜索资料时只查勾选的资料夹'"
               @click.stop @change="toggleKbPick(kb)" />
             <div class="kb-item-main">
               <div class="kb-item-name" :title="kb.name">{{ kb.name }}</div>
@@ -199,7 +199,7 @@
                     `:active-value` / `:inactive-value` —— 见 `kbEnabled` 的注释：绑定值一旦不在
                     `[activeValue, inactiveValue]` 里，el-switch 会在挂载期**无用户操作地** emit 一次。 -->
             <span class="kb-block" @click.stop
-              :title="kbEnabled(kb) ? '智能体提问与试检索都会查这个库；关掉它就不再查' : '已屏蔽：智能体提问与试检索都不会再查这个库'">
+              :title="kbEnabled(kb) ? '智能体提问与试检索都会查这个资料夹；关掉它就不再查' : '已屏蔽：智能体提问与试检索都不会再查这个资料夹'">
               <el-switch :model-value="kbEnabled(kb)" size="small" :loading="togglingKbId === kb.kbId"
                 @update:model-value="toggleKbDisabled(kb, $event)" />
             </span>
@@ -208,19 +208,19 @@
               <span class="kb-op" title="重命名" @click.stop="promptRename(kb)">
                 <el-icon><EditPen /></el-icon>
               </span>
-              <span class="kb-op danger" title="删除知识库" @click.stop="removeKb(kb)">
+              <span class="kb-op danger" title="删除资料夹" @click.stop="removeKb(kb)">
                 <el-icon><Delete /></el-icon>
               </span>
             </div>
           </div>
 
           <div v-if="!loading && !kbLoadFailed && !kbs.length" class="kb-empty">
-            <div class="kb-empty-title">还没有知识库</div>
+            <div class="kb-empty-title">还没有资料</div>
             <div class="kb-empty-desc">
-              新建一个，把课件 / 讲义 / 笔记传进去，之后直接提问就行 ——
+              新建一个资料夹，把课件 / 讲义 / 笔记传进去，之后直接提问就行 ——
               智能体会先在资料里找，再回答你，并告诉你答案出自哪一段。
             </div>
-            <el-button type="primary" size="small" :icon="Plus" @click="promptCreate">新建知识库</el-button>
+            <el-button type="primary" size="small" :icon="Plus" @click="promptCreate">新建资料夹</el-button>
           </div>
 
         </div>
@@ -230,24 +230,33 @@
           <div class="kb-docs-head">
             <span class="kb-docs-title">{{ activeKb?.name }}</span>
             <span class="kb-docs-hint">支持 {{ KB_FILE_EXTENSIONS.join(' / ') }}</span>
-            <label class="kb-upload-btn" :class="{ disabled: busy }">
-              <input ref="fileInputRef" type="file" :accept="KB_FILE_ACCEPT" multiple :disabled="busy"
-                @change="onFilesPicked" />
-              <el-icon>
-                <UploadFilled />
-              </el-icon>
-              <span>{{ uploading ? '上传中…' : '上传文档' }}</span>
-            </label>
-            <!-- 粘贴文本：用户自己敲/粘的文字直接入库，**不经过文件解析**。
-                 与「上传文档」共用 busy 互斥 —— 两个入口往同一个库里写文档，
-                 同时跑起来的话进度提示与轮询会互相覆盖。 -->
-            <button type="button" class="kb-import-btn" :class="{ disabled: busy }" :disabled="busy"
-              :title="busy ? '有导入正在进行，等它跑完' : '把文字直接粘进来，不用先存成文件'" @click="openTextImport">
-              <el-icon>
-                <DocumentCopy />
-              </el-icon>
-              <span>{{ importing ? '导入中…' : '粘贴文本' }}</span>
-            </button>
+            <el-button v-if="selectedDocCount" class="kb-batch-delete" size="small" plain type="danger"
+              :disabled="busy" @click="removeSelectedDocs">删除（{{ selectedDocCount }}）</el-button>
+            <input ref="fileInputRef" type="file" :accept="KB_FILE_ACCEPT" multiple :disabled="busy"
+              style="display: none" @change="onFilesPicked" />
+            <!-- 上传入口：点开后再选「文件上传 / 粘贴文本」，把两个导入动作收进一个按钮 -->
+            <el-dropdown class="kb-upload-dropdown" trigger="click" :disabled="busy" @command="onUploadCommand">
+              <button type="button" class="kb-upload-btn" :class="{ disabled: busy }" :disabled="busy"
+                title="上传文档：可在文件选择窗口按住 Ctrl 多选 Markdown、图片等文件">
+                <el-icon>
+                  <UploadFilled />
+                </el-icon>
+                <span>{{ uploading ? '上传中…' : '上传文档' }}</span>
+                <el-icon class="kb-upload-caret"><ArrowDown /></el-icon>
+              </button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="file">
+                    <el-icon><UploadFilled /></el-icon>
+                    文件上传
+                  </el-dropdown-item>
+                  <el-dropdown-item command="text" :disabled="importing">
+                    <el-icon><DocumentCopy /></el-icon>
+                    {{ importing ? '导入中…' : '粘贴文本' }}
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
 
           <!-- 上传进度提示（后端是同步解析 + 后台向量化，所以这里说明清楚） -->
@@ -255,6 +264,10 @@
 
           <div class="kb-doc-list" v-loading="docsLoading">
             <div v-for="doc in documents" :key="doc.docId" class="kb-doc">
+              <div class="kb-doc-check">
+                <el-checkbox :model-value="selectedDocIds.includes(Number(doc.docId))"
+                  @change="toggleDocSelected(Number(doc.docId))" />
+              </div>
               <div class="kb-doc-main">
                 <div class="kb-doc-name" :title="doc.fileName">{{ doc.fileName }}</div>
                 <div class="kb-doc-meta">
@@ -277,17 +290,10 @@
               </div>
 
               <div class="kb-doc-ops">
-                <span v-if="isDocumentSearchable(doc.status)" class="kb-op" title="看看分块切得对不对"
-                  @click="showChunks(doc)">
-                  <el-icon><View /></el-icon>
-                </span>
-                <!-- 结构树：把原文标题还原成层级图（2026-10-26 v3）
-                     与"分块预览"是同一份文档的两个视角：
-                       分块 = 机器怎么切的（工程视角）
-                       结构 = 这份资料讲了什么（学习视角） -->
-                <span v-if="isDocumentSearchable(doc.status)" class="kb-op" title="这份资料的章节结构"
-                  @click="showOutline(doc)">
-                  <el-icon><Share /></el-icon>
+                <!-- 资料解剖：章节结构 / 正文 / 图片资产统一看（复用我的资料页的查看器） -->
+                <span v-if="isDocumentSearchable(doc.status)" class="kb-op" title="资料解剖"
+                  @click="showAnatomy(doc)">
+                  <el-icon><Document /></el-icon>
                 </span>
                 <span v-if="canReprocessDocument(doc.status)" class="kb-op" title="重新解析并向量化"
                   @click="reprocess(doc)">
@@ -300,7 +306,7 @@
             </div>
 
             <div v-if="!docsLoading && !documents.length" class="kb-doc-empty">
-              这个知识库还没有文档，点右上角「上传文档」
+              这个资料夹还没有文档，点右上角「上传文档」
             </div>
           </div>
 
@@ -308,56 +314,8 @@
       </div>
     </div>
 
-  <!-- ============ 资料结构树（2026-10-26 v3）============
-       把原文的标题层级还原成一张图，解决一个问题：
-       一份 30 页的资料被切成 13 个 chunk 之后，
-       "它讲了哪几个主题、层级怎么分"这个信息就丢了。
-       而这恰好是复习时最该先看的骨架。 -->
-  <el-dialog v-model="outlineVisible" :title="`资料结构 · ${outlineDocName}`" width="920px" append-to-body
-    class="kb-outline-dialog">
-    <div v-loading="outlineLoading" class="kb-outline-body">
-      <MindMap v-if="outlineTree" :tree-data="outlineTree" :title="outlineDocName || '资料结构'"
-        default-layout="tree" />
-      <div v-else-if="!outlineLoading" class="kb-doc-empty kb-outline-empty">
-        <p>{{ outlineReason || '这份资料没有可提取的章节结构。' }}</p>
-      </div>
-    </div>
-  </el-dialog>
-
-  <!-- 分块预览 -->
-  <el-dialog v-model="chunksVisible" :title="`分块预览 · ${chunkDocName}`" width="680px" append-to-body>
-    <div class="kb-chunks" v-loading="chunksLoading">
-      <div v-for="c in chunks" :key="c.chunkId" class="kb-chunk">
-        <div class="kb-chunk-head">
-          <span class="kb-chunk-idx">第 {{ c.chunkIndex + 1 }} 段</span>
-          <span class="kb-chunk-len">{{ c.contentLength || c.content.length }} 字</span>
-          <el-tag v-if="c.images && c.images.length" type="warning" size="small" effect="light">
-            {{ c.images.length }} 张图
-          </el-tag>
-          <el-tag v-if="c.vectorized === false" type="warning" size="small" effect="light">无向量</el-tag>
-        </div>
-        <!-- 图文混排：正文里的【图N】渲染成真实图片，其余按纯文本显示（不 v-html 用户内容，防注入） -->
-        <div class="kb-chunk-text">
-          <template v-for="(seg, si) in splitChunkSegments(c)" :key="si">
-            <el-image
-              v-if="seg.type === 'image'"
-              :src="kbImageUrl(seg.url)"
-              fit="contain"
-              class="kb-chunk-img"
-              :preview-src-list="[kbImageUrl(seg.url)]"
-              preview-teleported
-            >
-              <template #error>
-                <div class="kb-chunk-img-err">图片加载失败</div>
-              </template>
-            </el-image>
-            <span v-else class="kb-chunk-txt">{{ seg.text }}</span>
-          </template>
-        </div>
-      </div>
-      <div v-if="!chunksLoading && !chunks.length" class="kb-doc-empty">没有分块</div>
-    </div>
-  </el-dialog>
+  <!-- 资料解剖：与「我的资料」页共用 DocumentAnatomyDialog -->
+  <DocumentAnatomyDialog ref="anatomyRef" />
 
   <!-- 粘贴文本导入：把用户自己输入的正文直接收进知识库（后端 `/document/uploadText`，不走文件解析） -->
   <el-dialog v-model="textImportVisible" title="粘贴文本" width="640px" append-to-body @closed="resetTextImport">
@@ -371,7 +329,7 @@
       </el-input>
       <el-input v-model="textImportContent" class="kb-import-text" type="textarea"
         :autosize="{ minRows: 10, maxRows: 18 }" resize="vertical"
-        placeholder="把要收进知识库的正文粘在这里，例如课件文字、笔记、错题解析…" />
+        placeholder="把要收进我的资料的正文粘在这里，例如课件文字、笔记、错题解析…" />
       <div class="kb-import-count">{{ textImportContent.trim().length }} 字</div>
     </div>
     <template #footer>
@@ -388,7 +346,7 @@ defineOptions({ name: 'KnowledgeBasePanel' })
 
 import { ref, computed, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, Delete, Document, DocumentCopy, EditPen, FolderOpened, Plus, RefreshRight, Search, Share, UploadFilled, View, Warning } from '@element-plus/icons-vue'
+import { ArrowDown, Close, Delete, Document, DocumentCopy, EditPen, FolderOpened, Plus, RefreshRight, Search, UploadFilled, View, Warning } from '@element-plus/icons-vue'
 import {
   DOC_FAILED,
   DOC_PARSED,
@@ -399,8 +357,6 @@ import {
   deleteDocument,
   deleteKnowledgeBase,
   documentTagType,
-  getDocumentChunks,
-  getDocumentOutline,
   getDocumentStatus,
   importDocumentText,
   isDocumentProcessing,
@@ -412,7 +368,6 @@ import {
   searchKnowledge,
   updateKnowledgeBase,
   uploadDocument,
-  type RagChunk,
   type RagDocument,
   type RagKnowledgeBase,
   type RagSearchHit
@@ -429,10 +384,9 @@ const POLL_MAX_ROUNDS = 90
  */
 withDefaults(defineProps<{ closable?: boolean }>(), { closable: false })
 
-// 资料结构树（2026-10-26 v3）：复用图组件，输入是后端解析好的树而不是 Markdown。
-// 同一个组件服务两个场景（笔记的思维导图 / 资料的结构树），
-// 差异只在数据来源，没必要写两份画图代码。
-import MindMap from '@/components/MindMap/index.vue'
+// 资料解剖：与「我的资料」页复用同一个查看器（章节结构、正文、图片资产）。
+import DocumentAnatomyDialog from '@/views/front/workspace/components/DocumentAnatomyDialog.vue'
+import { ensureMarkdownImageFiles } from '@/utils/markdownUpload'
 
 /** 只有 closable 时才会 emit：调用方据此收起自己的容器（抽屉 / 切走 tab） */
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -451,6 +405,8 @@ const kbs = ref<RagKnowledgeBase[]>([])
 const activeKbId = ref<number | null>(null)
 const documents = ref<RagDocument[]>([])
 const docsLoading = ref(false)
+const selectedDocIds = ref<number[]>([])
+const selectedDocCount = computed(() => selectedDocIds.value.length)
 
 /* ===== 统一搜索 ===== */
 /**
@@ -477,22 +433,14 @@ const query = ref('')
  */
 const kbLoadFailed = ref(false)
 
-const chunksVisible = ref(false)
-const chunksLoading = ref(false)
-const chunks = ref<RagChunk[]>([])
-const chunkDocName = ref('')
 
-/* ===== 资料结构树（2026-10-26 v3）=====
-   与「分块预览」是同一份文档的两个视角：
-     分块 = 机器怎么切的（工程视角，验证切得对不对）
-     结构 = 这份资料讲了什么（学习视角，先看骨架） */
-const outlineVisible = ref(false)
-const outlineLoading = ref(false)
-const outlineDocName = ref('')
-/** 后端返回的树（直接喂 echarts，前端不再解析一遍，避免两端规则分歧） */
-const outlineTree = ref<{ name: string; children?: any[] } | null>(null)
-/** 没有章节时的说明文案（如实告知，不画空图） */
-const outlineReason = ref('')
+/* ===== 资料解剖 =====
+   从文档列表或搜索结果进入，复用「我的资料」页的完整解剖查看器：
+   章节结构、正文与图片、图片资产都在同一个页面里，不再单独画一张结构图。 */
+const anatomyRef = ref<InstanceType<typeof DocumentAnatomyDialog> | null>(null)
+const showAnatomy = (doc: RagDocument) => {
+  anatomyRef.value?.open(doc)
+}
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
@@ -549,7 +497,7 @@ const enabledKbCount = computed(() => enabledKbs.value.length)
 const searchPlaceholder = computed(() =>
   activeKbId.value
     ? `在「${activeKb.value?.name || ''}」里搜资料，回车检索`
-    : '搜知识库名字，或直接搜资料内容（回车）'
+    : '搜资料名字，或直接搜资料内容（回车）'
 )
 
 /**
@@ -699,11 +647,11 @@ const loadKbs = async (autoSelect = true) => {
     } else {
       // **不静默通过**：这不是「零个知识库」，这是「没取到列表」（见 kbLoadFailed 的注释）
       kbLoadFailed.value = true
-      console.warn('[kb] 知识库列表响应不是数组', res)
+      console.warn('[kb] 资料列表响应不是数组', res)
     }
   } catch (e) {
     kbLoadFailed.value = true
-    console.warn('[kb] 加载知识库失败', e)
+    console.warn('[kb] 加载资料失败', e)
   } finally {
     loading.value = false
   }
@@ -715,6 +663,8 @@ const loadDocs = async (kbId: number) => {
     const res: any = await listDocuments(kbId)
     if (res?.code === 200 && Array.isArray(res.data)) {
       documents.value = res.data
+      const aliveIds = new Set(documents.value.map((d) => Number(d.docId)))
+      selectedDocIds.value = selectedDocIds.value.filter((id) => aliveIds.has(id))
       // 有文档还在处理 → 继续轮询（覆盖「上次没看完就关了抽屉」的情况）
       documents.value.filter((d) => isDocumentProcessing(d.status)).forEach((d) => pollDocument(d.docId))
     }
@@ -727,6 +677,7 @@ const loadDocs = async (kbId: number) => {
 
 const selectKb = async (kb: RagKnowledgeBase) => {
   activeKbId.value = kb.kbId
+  selectedDocIds.value = []
   uploadTip.value = ''
   await loadDocs(kb.kbId)
 }
@@ -755,7 +706,7 @@ const clearSearch = () => {
  * 这是原来那个「试检索」的升级版，区别在于：
  *   · 范围不再锁死当前库 —— 没选库就搜全部未屏蔽库（后端默认分支）；
  *   · 结果就地铺开，带来源库 / 文档名 / 段落号 / 排序分；
- *   · 命中片段可展开全文、复制、跳分块预览、跳到所属库。
+ *   · 命中片段可展开全文、复制、看章节结构、跳到所属库。
  */
 const runSearch = async () => {
   const q = query.value.trim()
@@ -769,7 +720,7 @@ const runSearch = async () => {
       searchLowConfidence.value = !!res.data?.lowConfidence
       const names: string[] = (res.data?.knowledgeBases || []).map((k: any) => k.name)
       searchedScopeLabel.value = names.length
-        ? (names.length === 1 ? `来自「${names[0]}」` : `来自 ${names.length} 个知识库`)
+        ? (names.length === 1 ? `来自「${names[0]}」` : `来自 ${names.length} 个资料夹`)
         : ''
       searchedQuery.value = q
       expandedIds.value = []
@@ -840,8 +791,8 @@ const gotoKb = async (kbId?: number) => {
 }
 
 /** 从结果里直接看该片段所在文档的全部分块（复用文档列表那套预览） */
-const openChunksOf = (h: RagSearchHit) => {
-  showChunks({ docId: h.docId, fileName: h.docName || `文档#${h.docId}` } as RagDocument)
+const openAnatomyOf = (h: RagSearchHit) => {
+  showAnatomy({ docId: h.docId, fileName: h.docName || `文档#${h.docId}` } as RagDocument)
 }
 
 /**
@@ -871,7 +822,7 @@ const activate = async () => {
 const promptCreate = async () => {
   let name = ''
   try {
-    const r: any = await ElMessageBox.prompt('给知识库起个名字', '新建知识库', {
+    const r: any = await ElMessageBox.prompt('给资料夹起个名字', '新建资料夹', {
       confirmButtonText: '创建',
       cancelButtonText: '取消',
       inputPlaceholder: '例如：数据结构期末复习',
@@ -887,7 +838,7 @@ const promptCreate = async () => {
   try {
     const res: any = await createKnowledgeBase({ name })
     if (res?.code === 200) {
-      ElMessage.success('知识库已创建')
+      ElMessage.success('资料夹已创建')
       await loadKbs()
       const created = kbs.value.find((k) => k.kbId === res.data?.kbId)
       if (created) await selectKb(created)
@@ -904,7 +855,7 @@ const promptCreate = async () => {
 const promptRename = async (kb: RagKnowledgeBase) => {
   let name = ''
   try {
-    const r: any = await ElMessageBox.prompt('改成什么名字？', '重命名知识库', {
+    const r: any = await ElMessageBox.prompt('改成什么名字？', '重命名资料夹', {
       confirmButtonText: '保存',
       cancelButtonText: '取消',
       inputValue: kb.name,
@@ -932,7 +883,7 @@ const promptRename = async (kb: RagKnowledgeBase) => {
 const removeKb = async (kb: RagKnowledgeBase) => {
   try {
     await ElMessageBox.confirm(
-      `删除「${kb.name}」？库里的 ${kb.docCount || 0} 篇文档与分块会一并清掉，不可撤销。`,
+      `删除「${kb.name}」？资料夹里的 ${kb.docCount || 0} 篇文档与分块会一并清掉，不可撤销。`,
       '删除确认',
       { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
     )
@@ -942,7 +893,7 @@ const removeKb = async (kb: RagKnowledgeBase) => {
   try {
     const res: any = await deleteKnowledgeBase(kb.kbId)
     if (res?.code === 200) {
-      ElMessage.success('知识库已删除')
+      ElMessage.success('资料夹已删除')
       if (activeKbId.value === kb.kbId) {
         activeKbId.value = null
         documents.value = []
@@ -1017,7 +968,7 @@ const toggleKbDisabled = async (kb: RagKnowledgeBase, on: boolean) => {
       await loadKbs()
       ElMessage.success(
         want === 1
-          ? `已屏蔽「${kb.name}」—— 智能体提问与试检索都不会再查这个库`
+          ? `已屏蔽「${kb.name}」—— 智能体提问与试检索都不会再查这个资料夹`
           : `已恢复「${kb.name}」—— 智能体提问与试检索都会正常查它`
       )
     } else {
@@ -1032,6 +983,15 @@ const toggleKbDisabled = async (kb: RagKnowledgeBase, on: boolean) => {
 
 /* ===================== 文档 ===================== */
 
+const onUploadCommand = (command: string) => {
+  if (busy.value) return
+  if (command === 'file') {
+    fileInputRef.value?.click()
+  } else if (command === 'text') {
+    openTextImport()
+  }
+}
+
 const onFilesPicked = async (evt: Event) => {
   const input = evt.target as HTMLInputElement
   const files = Array.from(input.files || [])
@@ -1039,6 +999,7 @@ const onFilesPicked = async (evt: Event) => {
   input.value = ''
   // busy 里含「粘贴导入正在进行」—— 输入框那时是 disabled 的，这里是第二道
   if (!files.length || !activeKbId.value || busy.value) return
+  if (!(await ensureMarkdownImageFiles(files))) return
 
   const bad = files.filter((f) => !isSupportedKbFile(f.name))
   if (bad.length) {
@@ -1046,27 +1007,49 @@ const onFilesPicked = async (evt: Event) => {
   }
   const ok = files.filter((f) => isSupportedKbFile(f.name))
   if (!ok.length) return
+  if (ok.length > 20) {
+    ElMessage.warning('一次最多上传 20 个文件，请分批上传')
+    return
+  }
+  const totalBytes = ok.reduce((sum, file) => sum + Number(file.size || 0), 0)
+  if (totalBytes > 5 * 1024 * 1024) {
+    ElMessage.warning(
+      `本次选择 ${(totalBytes / 1024 / 1024).toFixed(1)}MB，单次上传总大小不能超过 5MB，请减少文件数量或压缩后再上传`
+    )
+    return
+  }
 
   uploading.value = true
   const kbId = activeKbId.value
   try {
-    for (const file of ok) {
-      uploadTip.value = `正在上传并解析「${file.name}」…`
-      try {
-        const res: any = await uploadDocument(kbId, file)
-        if (res?.code === 200 && res.data?.docId) {
-          uploadTip.value = `「${file.name}」已上传，正在向量化…`
-          await loadDocs(kbId)
-          pollDocument(res.data.docId)
-        } else {
-          uploadTip.value = ''
-          ElMessage.error(res?.msg || `「${file.name}」上传失败`)
-        }
-      } catch (e: any) {
-        uploadTip.value = ''
-        ElMessage.error(e?.message || `「${file.name}」上传失败`)
+    uploadTip.value = ok.length > 1 ? `正在上传并解析 ${ok.length} 个文件…` : `正在上传并解析「${ok[0].name}」…`
+    const res: any = await uploadDocument(kbId, ok)
+    if (res?.code === 200) {
+      const documents = Array.isArray(res.data?.documents)
+        ? res.data.documents
+        : (res.data?.docId ? [res.data] : [])
+      const failed = Array.isArray(res.data?.failed) ? res.data.failed : []
+      for (const item of failed) {
+        ElMessage.error(`${item.fileName || '文件'}：${item.error || '上传失败'}`)
       }
+      if (documents.length) {
+        uploadTip.value = `已上传 ${documents.length} 份，正在向量化…`
+        await loadDocs(kbId)
+        for (const item of documents) {
+          const docId = Number(item.docId || 0)
+          if (docId) pollDocument(docId)
+        }
+      } else {
+        uploadTip.value = ''
+        ElMessage.error(res?.msg || '上传失败')
+      }
+    } else {
+      uploadTip.value = ''
+      ElMessage.error(res?.msg || '上传失败')
     }
+  } catch (e: any) {
+    uploadTip.value = ''
+    ElMessage.error(e?.message || '上传失败')
   } finally {
     uploading.value = false
   }
@@ -1117,6 +1100,44 @@ const submitTextImport = async () => {
   } finally {
     importing.value = false
   }
+}
+
+const toggleDocSelected = (docId: number) => {
+  const id = Number(docId)
+  if (!id) return
+  const idx = selectedDocIds.value.indexOf(id)
+  if (idx >= 0) selectedDocIds.value.splice(idx, 1)
+  else selectedDocIds.value.push(id)
+}
+
+const removeSelectedDocs = async () => {
+  const ids = [...selectedDocIds.value]
+  if (!ids.length) return
+  try {
+    await ElMessageBox.confirm(`确定删除选中的 ${ids.length} 份资料吗？删除后不可恢复。`, '批量删除资料', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+  } catch {
+    return
+  }
+  let ok = 0
+  let fail = 0
+  for (const id of ids) {
+    try {
+      const res: any = await deleteDocument(id)
+      if (res?.code === 200) ok += 1
+      else fail += 1
+    } catch {
+      fail += 1
+    }
+  }
+  selectedDocIds.value = []
+  if (activeKbId.value) await loadDocs(activeKbId.value)
+  await loadKbs()
+  if (ok) ElMessage.success(`已删除 ${ok} 份资料${fail ? `，${fail} 份失败` : ''}`)
+  else ElMessage.error('批量删除失败，请稍后重试')
 }
 
 const removeDoc = async (doc: RagDocument) => {
@@ -1172,84 +1193,7 @@ const kbImageUrl = (url: string): string => {
   return base + (v.startsWith('/') ? v : '/' + v)
 }
 
-/**
- * 把一个分块拆成「文本段 / 图片段」交错数组，供模板图文混排渲染。
- *
- * 正文里的 `【图N】` 是**位置标记**（后端 `build_marked_document` 生成），N 对应
- * 该分块 `images[N]`（后端已按标记归属）。这里把标记替换成图片段；
- * 标记指向的图不存在时，退化为原样文本（不丢信息）。
- *
- * 返回：`[{type:'text',text} | {type:'image',url}]`
- */
-const splitChunkSegments = (c: any): any[] => {
-  const text = String(c?.content || '')
-  const imgs: string[] = Array.isArray(c?.images) ? c.images : []
-  if (!text || !/【图\d+】/.test(text)) {
-    return text ? [{ type: 'text', text }] : []
-  }
-  const segs: any[] = []
-  const re = /【图(\d+)】/g
-  let last = 0
-  let m: RegExpExecArray | null
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > last) segs.push({ type: 'text', text: text.slice(last, m.index) })
-    const n = parseInt(m[1], 10)
-    const url = n >= 0 && n < imgs.length ? imgs[n] : ''
-    if (url) segs.push({ type: 'image', url })
-    else segs.push({ type: 'text', text: m[0] }) // 图缺失 → 保留标记原文
-    last = m.index + m[0].length
-  }
-  if (last < text.length) segs.push({ type: 'text', text: text.slice(last) })
-  return segs
-}
-
-const showChunks = async (doc: RagDocument) => {
-  chunkDocName.value = doc.fileName
-  chunksVisible.value = true
-  chunksLoading.value = true
-  chunks.value = []
-  try {
-    const res: any = await getDocumentChunks(doc.docId)
-    if (res?.code === 200 && Array.isArray(res.data)) chunks.value = res.data
-  } catch (e) {
-    console.warn('[kb] 加载分块失败', e)
-  } finally {
-    chunksLoading.value = false
-  }
-}
-
 onBeforeUnmount(clearPollTimers)
-
-/**
- * 打开「资料结构」对话框（2026-10-26 v3）
- *
- * 每次打开都重新请求，不做缓存：
- * 文档可能被重新解析过（reprocess），章节结构会变，
- * 缓存住旧结构反而会让用户看到过时的信息。
- */
-const showOutline = async (doc: RagDocument) => {
-  outlineDocName.value = doc.fileName
-  outlineVisible.value = true
-  outlineLoading.value = true
-  outlineTree.value = null
-  outlineReason.value = ''
-  try {
-    const res: any = await getDocumentOutline(doc.docId)
-    if (res?.code === 200 && res.data) {
-      if (res.data.hasOutline && res.data.tree) {
-        outlineTree.value = res.data.tree
-      } else {
-        // 题库型文档（纯题目列表）会走到这里 —— 这是正常情况，如实说明
-        outlineReason.value = res.data.reason || '这份资料没有可提取的章节结构。'
-      }
-    }
-  } catch (e) {
-    console.warn('[kb] 加载资料结构失败', e)
-    outlineReason.value = '加载失败，请稍后重试。'
-  } finally {
-    outlineLoading.value = false
-  }
-}
 
 /**
  * ⚠️ 本组件**故意不在 onMounted 里自动加载**。
@@ -1900,16 +1844,21 @@ defineExpose({ activate, refreshList, getKbCount })
   color: #b6bdc9;
 }
 
-.kb-upload-btn {
+.kb-upload-dropdown {
   margin-left: auto;
+}
+
+.kb-upload-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 4px 12px;
+  border: none;
   border-radius: 8px;
   background: #4f6ef7;
   color: #fff;
   font-size: 12.5px;
+  font-family: inherit;
   cursor: pointer;
   flex-shrink: 0;
   transition: background 0.15s;
@@ -1926,6 +1875,11 @@ defineExpose({ activate, refreshList, getKbCount })
 
 .kb-upload-btn input {
   display: none;
+}
+
+.kb-upload-caret {
+  margin-left: 2px;
+  font-size: 11px;
 }
 
 /* 「粘贴文本」入口：.kb-upload-btn 的平级姊妹按钮（次级观感）。
@@ -1985,6 +1939,20 @@ defineExpose({ activate, refreshList, getKbCount })
   padding: 8px 10px;
   border: 1px solid #eef2f7;
   border-radius: 9px;
+}
+
+.kb-doc-check {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+
+.kb-doc-check :deep(.el-checkbox) {
+  margin-right: 0;
+}
+
+.kb-batch-delete {
+  flex: none;
 }
 
 .kb-doc-main {
@@ -2051,62 +2019,6 @@ defineExpose({ activate, refreshList, getKbCount })
 }
 
 /* ========== 试检索 ========== */
-
-/* ========== 分块预览 ========== */
-.kb-chunks {
-  max-height: 56vh;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.kb-chunk {
-  border: 1px solid #eef2f7;
-  border-radius: 9px;
-  padding: 9px 11px;
-  background: #fbfcfe;
-}
-
-.kb-chunk-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 5px;
-  font-size: 11.5px;
-  color: #9aa5b5;
-}
-
-.kb-chunk-idx {
-  font-weight: 600;
-  color: #4a5a72;
-}
-
-.kb-chunk-text {
-  font-size: 12.5px;
-  line-height: 1.75;
-  color: #33415c;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-/* 分块里的图片段（`【图N】` 渲染而来） */
-.kb-chunk-img {
-  display: block;
-  max-width: 100%;
-  max-height: 320px;
-  margin: 8px 0;
-  border-radius: 6px;
-  border: 1px solid #eef2f7;
-  background: #fafbfc;
-}
-
-.kb-chunk-img-err {
-  padding: 12px;
-  font-size: 12px;
-  color: #c0c4cc;
-  text-align: center;
-}
 
 /* ========== 粘贴文本 ========== */
 .kb-import {

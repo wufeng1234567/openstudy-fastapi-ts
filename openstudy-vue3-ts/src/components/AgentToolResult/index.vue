@@ -103,6 +103,8 @@
       <MindMap :tree-data="mindTree" :title="mindTitle" :default-layout="mindLayout" :height="mindHeight" />
     </div>
 
+    <LearningChart v-if="learningChart" :chart="learningChart" />
+
     <div v-if="artifact" class="at-artifact">
       <span class="at-artifact-icon" aria-hidden="true">
         <OsIcon name="file-text" :size="15" />
@@ -311,6 +313,7 @@ import { ElMessage } from 'element-plus'
 import AgentToolDetail from '@/components/AgentToolDetail/index.vue'
 // 思维导图：`mind_map` 工具吐出结构化树，用现成组件画成卡片+连线（2026-10-27）
 import MindMap from '@/components/MindMap/index.vue'
+import LearningChart from '@/components/LearningChart/index.vue'
 import DocxPreview from '@/components/DocxPreview/index.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import { renderMarkdownWithLatex } from '@/utils/latex'
@@ -390,14 +393,14 @@ const TOOL_LABELS: Record<string, string> = {
   question_flag_manage: '题目标记',
   memory_manage: '记忆管理',
   learning_stats: '学习统计',
-  knowledge_base_manage: '知识库管理',
-  // 内容入库（knowledge_ingest.py）：与管理知识库的 knowledge_base_manage 分工
-  knowledge_ingest: '写入知识库',
+  knowledge_base_manage: '资料管理',
+  // 内容入库（knowledge_ingest.py）：与管理资料夹的 knowledge_base_manage 分工
+  knowledge_ingest: '存入我的资料',
   bank_share_manage: '题库分享',
   // 题库导出（bank_export.py）：产出文件，卡片上有独立的「产物行 + 下载按钮」
   bank_export: '题库导出',
   // 只读检索类：它们没有 action 参数，卡片上只有工具名这一层
-  knowledge_search: '知识库检索',
+  knowledge_search: '资料检索',
   memory_search: '记忆检索',
   // 工作空间找文件（workspace_search.py）——2026-10-22
   workspace_search: '找资料',
@@ -448,10 +451,14 @@ const ACTION_LABELS: Record<string, string> = {
   diagnose_report: '学情报告',
   // knowledge_base_manage
   list_documents: '文档列表',
+  get_document: '读取正文',
+  list_document_versions: '历史版本',
   delete_document: '删除文档',
   // knowledge_ingest
   from_text: '文本入库',
   from_attachment: '附件入库',
+  update_document: '修改正文',
+  restore_document_version: '恢复历史版本',
   // bank_share_manage
   list_shares: '分享列表',
   share: '创建分享',
@@ -683,6 +690,19 @@ const mindTree = computed<{ name: string; children?: any[] } | null>(() => {
   if (!t || typeof t !== 'object') return null
   if (!String((t as any).name || '').trim()) return null
   return t
+})
+
+/**
+ * 学习统计图表（2026-10-31 新增）
+ * 后端 `learning_stats` 的聚合结果会附带 chart spec；前端只负责渲染，
+ * 不根据文字猜数据，也不让模型手写 ECharts option。
+ */
+const learningChart = computed<Record<string, any> | null>(() => {
+  const d = unwrapToolData(props.data)
+  const chart = (d as any)?.chart
+  if (!chart || typeof chart !== 'object') return null
+  if (!Array.isArray(chart.xAxis) || !Array.isArray(chart.series) || !chart.series.length) return null
+  return chart
 })
 
 /** 导图标题（根节点名；组件拿它做空态与导出文件名） */
@@ -942,9 +962,11 @@ const LINK_WRITE_ACTIONS = new Set([
   // 题库 / 题目（2026-10-26 补）
   'create',
   'batch_import',
-  // 知识库入库（2026-10-26 补）
+  // 知识库入库 / 修改（2026-10-26 补）
   'from_text',
   'from_attachment',
+  'update_document',
+  'restore_document_version',
   /*
    * 「生成练习」（2026-10-26 补）
    *
@@ -997,6 +1019,11 @@ const linkJump = computed(() => {
     buttonText: '去看看',
     icon: 'arrow-right'
   }
+  const badge = action === 'update_document'
+    ? '资料已更新'
+    : action === 'restore_document_version'
+      ? '版本已恢复'
+      : ui.badge
 
   /*
    * 卡片标题：从回执里挑一个像"名字"的字段。
@@ -1006,7 +1033,7 @@ const linkJump = computed(() => {
    */
   const nested = d.book && typeof d.book === 'object' ? d.book : null
   const name = String(
-    d.bookName || nested?.bookName || d.noteTitle || d.title || ''
+    d.fileName || d.bookName || nested?.bookName || d.noteTitle || d.title || ''
   )
 
   /*
@@ -1043,7 +1070,7 @@ const linkJump = computed(() => {
 
   return {
     url: raw.trim(),
-    badge: ui.badge,
+    badge,
     buttonText: ui.buttonText,
     icon: ui.icon,
     name,

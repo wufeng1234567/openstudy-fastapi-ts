@@ -25,6 +25,7 @@ from app.models.question import (
 )
 from app.models.note import Note, UserNoteFavorite
 from app.models.user import SysUser
+from app.services import exam_plan_service, learning_loop_service, learning_report_service
 
 router = APIRouter(prefix="/userStats")
 
@@ -517,6 +518,172 @@ async def get_growth(
         "totalNotes": total_notes or 0,
         "milestones": milestones,
     })
+
+
+@router.get("/learning-loop")
+async def get_learning_loop(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """今日学习处方 + 知识体检 + 错题歼灭战。
+
+    三者共用同一份逐题诊断结果（`study_diagnosis_service.diagnose`），
+    不在这里重新计算掌握度，也不调用 LLM；前端只负责展示和跳转。
+    """
+    try:
+        return success(
+            await learning_loop_service.build_learning_loop(
+                db, int(current_user.get("user_id") or 0)
+            )
+        )
+    except Exception as e:  # noqa: BLE001
+        return error(f"读取学习闭环失败：{e}")
+
+
+@router.get("/weekly-report")
+async def get_weekly_report(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """学习周报（最近 7 天）。
+
+    数据全部来自真实作答流水，不含 LLM 生成内容；前端把它渲染成一张
+    可保存为图片的成长卡片（计划页 / 分享用）。
+    """
+    try:
+        return success(
+            await learning_report_service.build_weekly_report(
+                db, int(current_user.get("user_id") or 0)
+            )
+        )
+    except Exception as e:  # noqa: BLE001
+        return error(f"生成学习周报失败：{e}")
+
+
+@router.get("/exam-plan")
+async def get_exam_plan(
+    exam_name: str = Query("", description="考试名称"),
+    exam_date: str = Query(..., description="考试日期 YYYY-MM-DD"),
+    subject: str = Query("", description="科目；留空表示全部"),
+    daily_minutes: int = Query(40, ge=10, le=240, description="每天可学习分钟数"),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """考前倒计时路线图（确定性，不调用大模型）。
+
+    用户只填考试日期与每天可用时间；系统按逐题诊断结果倒排三个阶段：
+    补地基 → 还债 + 变式 → 全真模拟。
+    """
+    try:
+        target = datetime.strptime(exam_date, "%Y-%m-%d").date()
+    except ValueError:
+        return error("考试日期格式应为 YYYY-MM-DD", code=400)
+    try:
+        return success(
+            await exam_plan_service.build_exam_plan(
+                db,
+                int(current_user.get("user_id") or 0),
+                exam_name=exam_name,
+                exam_date=target,
+                subject=subject,
+                daily_minutes=daily_minutes,
+            )
+        )
+    except ValueError as e:
+        return error(str(e), code=400)
+    except Exception as e:  # noqa: BLE001
+        return error(f"生成考前路线图失败：{e}")
+
+
+@router.get("/day-detail")
+async def get_day_detail(
+    date: str = Query(..., description="日期 YYYY-MM-DD"),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """某一天到底做了什么（点击趋势图某一天时打开）。
+
+    返回当天每一条作答流水（题目、题库、对错、时间），以及当天斩题数。
+    这是「图表 → 明细」的最后一公里：图表不再只是装饰。
+    """
+    from datetime import timedelta
+
+    from app.models.question import QuestionMain
+
+    user_id = current_user.get("user_id")
+    try:
+        day = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        return error("日期格式应为 YYYY-MM-DD", code=400)
+    start = datetime.combine(day, datetime.min.time())
+    end = start + timedelta(days=1)
+
+    rows = (
+        await db.execute(
+            select(
+                QuestionMain.id.label("qid"),
+                UserPracticeLog.question_id,
+                UserPracticeLog.is_correct,
+                UserPracticeLog.create_time,
+                QuestionMain.question_text,
+                QuestionBank.bank_name,
+                QuestionBank.subject,
+            )
+            .select_from(
+                UserPracticeLog.__table__.outerjoin(
+                    QuestionMain.__table__, UserPracticeLog.question_id == QuestionMain.id
+                ).outerjoin(
+                    QuestionBank.__table__, UserPracticeLog.bank_id == QuestionBank.id
+                )
+            )
+            .where(
+                UserPracticeLog.user_id == user_id,
+                UserPracticeLog.create_time >= start,
+                UserPracticeLog.create_time < end,
+            )
+            .order_by(UserPracticeLog.create_time.asc())
+        )
+    ).all()
+
+    items = []
+    unavailable = 0
+    for row in rows:
+        # 题目被物理删除：流水还在，但这条记录对用户没有可点击的内容
+        if row.qid is None:
+            unavailable += 1
+            continue
+        items.append(
+            {
+                "questionId": int(row.question_id),
+                "questionText": (row.question_text or "").strip()
+                or "（题目内容已不可用，可能已被删除）",
+                "bankName": row.bank_name or "",
+                "subject": row.subject or "",
+                "isCorrect": bool(row.is_correct),
+                "time": row.create_time.strftime("%H:%M"),
+            }
+        )
+
+    marked = await db.scalar(
+        select(func.count()).where(
+            UserQuestionMarked.user_id == user_id,
+            UserQuestionMarked.marked_status == 1,
+            UserQuestionMarked.create_time >= start,
+            UserQuestionMarked.create_time < end,
+        )
+    )
+    correct = sum(1 for row in rows if int(row.is_correct or 0) == 1)
+    return success(
+        {
+            "date": day.isoformat(),
+            "practiceCount": len(rows),
+            "correctCount": correct,
+            "errorCount": len(rows) - correct,
+            "markedCount": int(marked or 0),
+            "unavailableCount": unavailable,
+            "items": items,
+        }
+    )
 
 
 @router.get("/diagnose")

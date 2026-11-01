@@ -186,6 +186,244 @@ export function getDiagnose(limit: number = 30): Promise<ApiResult<DiagnosisResu
   >
 }
 
+/* ============================================================================
+ * 学习闭环（2026-10-31）
+ * 今日处方 / 知识体检 / 错题歼灭战共用一份逐题诊断结果。
+ * ========================================================================== */
+
+export interface LearningLoopTask {
+  id: string
+  type: 'question'
+  questionId: number
+  bankName: string
+  subject: string
+  questionText: string
+  title: string
+  reason: string
+  advice: string
+  level: string
+  levelText: string
+  estimatedMinutes: number
+}
+
+export interface LearningLoopWeakQuestion {
+  questionId: number
+  questionText: string
+  level: string
+  levelText: string
+  accuracy: number
+}
+
+export interface LearningLoopHealthNode {
+  subject: string
+  accuracy: number
+  questions: number
+  weakCount: number
+  status: 'strong' | 'watch' | 'weak'
+  statusText: string
+  color: string
+  size: number
+  weakQuestions?: LearningLoopWeakQuestion[]
+}
+
+export interface LearningLoopTarget {
+  questionId: number
+  bankName: string
+  subject: string
+  questionText: string
+  level: string
+  levelText: string
+  errorCount: number
+  streak: number
+  stage: 'active' | 'observing'
+  advice: string
+}
+
+export interface LearningLoopResult {
+  hasData: boolean
+  generatedAt: string
+  headline: string
+  todayPlan: LearningLoopTask[]
+  healthMap: LearningLoopHealthNode[]
+  errorBattle: {
+    total: number
+    mastered: number
+    cleared: number
+    observing: number
+    active: number
+    progress: number
+    targets: LearningLoopTarget[]
+  }
+}
+
+export function getLearningLoop(): Promise<ApiResult<LearningLoopResult>> {
+  return request({ url: '/userStats/learning-loop', method: 'get' }) as unknown as Promise<
+    ApiResult<LearningLoopResult>
+  >
+}
+
+/* ============================================================================
+ * 学习周报（2026-10-31）
+ * 数据来自最近 7 天真实作答流水（若最近两周没学，则回退到最近一次学习的 7 天）。
+ * ========================================================================== */
+
+export interface WeeklyReportDaily {
+  date: string
+  weekday: string
+  practiceCount: number
+}
+
+export interface WeeklyReportSubject {
+  subject: string
+  attempts: number
+  accuracy: number
+}
+
+export interface WeeklyReportHighlight {
+  type: string
+  title: string
+  detail: string
+}
+
+export interface WeeklyReportNext {
+  title: string
+  detail: string
+}
+
+export interface WeeklyReportResult {
+  hasData: boolean
+  generatedAt: string
+  range: { start: string; end: string; label: string; isCurrent: boolean }
+  headline: string
+  stats: {
+    practiceCount: number
+    correctCount: number
+    accuracy: number
+    activeDays: number
+    longestStreak: number
+    markedCount: number
+    deltaPractice: number | null
+    deltaAccuracy: number | null
+    prevPracticeCount: number
+    prevAccuracy: number
+  }
+  daily: WeeklyReportDaily[]
+  subjects: WeeklyReportSubject[]
+  peakHour: number | null
+  highlights: WeeklyReportHighlight[]
+  nextWeek: WeeklyReportNext[]
+}
+
+export function getWeeklyReport(): Promise<ApiResult<WeeklyReportResult>> {
+  return request({ url: '/userStats/weekly-report', method: 'get' }) as unknown as Promise<
+    ApiResult<WeeklyReportResult>
+  >
+}
+
+/* ============================================================================
+ * 趋势图下钻：某一天做了什么（2026-10-31）
+ * ========================================================================== */
+
+export interface DayDetailItem {
+  questionId: number
+  questionText: string
+  bankName: string
+  subject: string
+  isCorrect: boolean
+  time: string
+}
+
+export interface DayDetailResult {
+  date: string
+  practiceCount: number
+  correctCount: number
+  errorCount: number
+  markedCount: number
+  unavailableCount: number
+  items: DayDetailItem[]
+}
+
+export function getDayDetail(date: string): Promise<ApiResult<DayDetailResult>> {
+  return request({
+    url: '/userStats/day-detail',
+    method: 'get',
+    params: { date }
+  }) as unknown as Promise<ApiResult<DayDetailResult>>
+}
+
+/* ============================================================================
+ * 考前倒计时路线图（2026-10-31）
+ * ========================================================================== */
+
+export interface ExamPlanPhase {
+  key: string
+  title: string
+  goal: string
+  start: string
+  end: string
+  days: number
+  color: string
+}
+
+export interface ExamPlanTask {
+  type: string
+  questionId: number
+  subject: string
+  title: string
+  detail: string
+  minutes: number
+}
+
+export interface ExamPlanDay {
+  date: string
+  phase: string
+  theme: string
+  tasks: ExamPlanTask[]
+  minutes: number
+}
+
+export interface ExamPlanResult {
+  hasData: boolean
+  message?: string
+  exam: {
+    name: string
+    date: string
+    daysLeft: number
+    subject: string
+    dailyMinutes: number
+  }
+  overview?: {
+    questionsSeen: number
+    overallAccuracy: number
+    needsAttention: number
+    overdueCount: number
+    repeatedFailure: number
+  }
+  phases: ExamPlanPhase[]
+  days: ExamPlanDay[]
+  advice: string[]
+}
+
+export interface ExamPlanQuery {
+  examName: string
+  examDate: string
+  subject?: string
+  dailyMinutes?: number
+}
+
+export function getExamPlan(query: ExamPlanQuery): Promise<ApiResult<ExamPlanResult>> {
+  return request({
+    url: '/userStats/exam-plan',
+    method: 'get',
+    params: {
+      exam_name: query.examName,
+      exam_date: query.examDate,
+      subject: query.subject || '',
+      daily_minutes: query.dailyMinutes ?? 40
+    }
+  }) as unknown as Promise<ApiResult<ExamPlanResult>>
+}
+
 /**
  * 生成「薄弱点复习卷」Word（2026-10-26 v3 新增）
  *

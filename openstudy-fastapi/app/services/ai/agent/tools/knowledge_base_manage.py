@@ -37,7 +37,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import func, select
 
-from app.models.rag import RagDocument, RagDocumentChunk, RagKnowledgeBase
+from app.models.rag import DOC_STATUS_TEXT, RagDocument, RagDocumentChunk, RagKnowledgeBase
 from app.services.ai.agent.base import (
     OP_RESTORE,
     OP_SOFT_DELETE,
@@ -101,8 +101,12 @@ class KnowledgeBaseManageTool(AgentTool):
         "delete_many=delete SEVERAL knowledge bases at once (pass `kb_ids`). "
         "ALWAYS use this instead of calling delete repeatedly: the user gets ONE "
         "confirmation card where they can untick items they want to keep, "
-        "list_documents=list the documents inside one knowledge base (pass `kb_id`, paged "
-        "via `limit`/`offset`), "
+        "list_documents=list documents (pass `kb_id` to narrow; omit it to search all user "
+        "libraries, optional `query` matches file names; paged via `limit`/`offset`), "
+        "get_document=read ONE document's full raw content by `doc_id`, or resolve it by "
+        "`doc_name` (partial name allowed; if several match, an ambiguous result with "
+        "candidate doc IDs/names is returned and you must ask the user which one), "
+        "list_document_versions=list a document's saved versions (pass `doc_id`; latest first), "
         "delete_document=delete one document and its chunks (pass `doc_id`; irreversible). "
         "IMPORTANT: `disabled=1` means the knowledge base is EXCLUDED from retrieval — "
         "`knowledge_search` and your own context will not see its contents. Use "
@@ -112,11 +116,13 @@ class KnowledgeBaseManageTool(AgentTool):
         "To read the contents, use `knowledge_search` instead."
     )
     #: 界面专用（只给前端看；不进 definitions() / describe()）
-    label = "知识库管理"
+    label = "资料管理"
     description_zh = (
-        "管理知识库（我上传的文档集合）：list=列库（含文档数、是否已被屏蔽）、"
-        "create=新建空库、update=改名 / 改描述 / 启用或屏蔽、delete=删库、"
-        "list_documents=列某个库里的文档、delete_document=删文档。"
+        "管理我的资料（我上传的文档集合）：list=列资料夹（含文档数、是否已被屏蔽）、"
+        "create=新建空资料夹、update=改名 / 改描述 / 启用或屏蔽、delete=删除资料夹、"
+        "list_documents=列文档（可按资料夹或文件名搜索）、get_document=按 ID 或名称读取"
+        "一篇文档完整正文（重名时返回候选让人选）、list_document_versions=列文档历史版本、"
+        "delete_document=删文档。"
     )
     parameters = {
         "type": "object",
@@ -131,6 +137,8 @@ class KnowledgeBaseManageTool(AgentTool):
                     "delete",
                     "delete_many",
                     "list_documents",
+                    "get_document",
+                    "list_document_versions",
                     "delete_document",
                 ],
             },
@@ -168,15 +176,30 @@ class KnowledgeBaseManageTool(AgentTool):
             "doc_id": {
                 "type": "integer",
                 "description": (
-                    "Document ID (used by delete_document). Take it from "
-                    "action=list_documents."
+                    "Document ID (used by get_document / list_document_versions / "
+                    "delete_document). Optional when get_document is resolving by doc_name."
+                ),
+            },
+            "doc_name": {
+                "type": "string",
+                "description": (
+                    "Document display name for get_document when the user did not provide an "
+                    "ID. Partial names are supported; duplicates return candidates."
+                ),
+            },
+            "query": {
+                "type": "string",
+                "description": (
+                    "Optional file-name filter for list_documents. Case-insensitive partial "
+                    "match; exact matches are listed first."
                 ),
             },
             "limit": {
                 "type": "integer",
                 "description": (
-                    f"Max documents per page (used by list_documents; default "
-                    f"{DEFAULT_DOCS_PAGE}, max {MAX_DOCS_PAGE})."
+                    f"Max results per page (used by list_documents / "
+                    f"list_document_versions; default {DEFAULT_DOCS_PAGE}, "
+                    f"max {MAX_DOCS_PAGE})."
                 ),
             },
             "offset": {
@@ -275,8 +298,8 @@ class KnowledgeBaseManageTool(AgentTool):
         if action == "update":
             return {
                 "undoable": False,
-                "reason": "知识库的名称 / 描述修改不会自动撤销"
-                "（改前值写在知识库服务自己的会话里，工具层拿不到；再改一次即可）",
+                "reason": "资料夹的名称 / 描述修改不会自动撤销"
+                "（改前值写在资料服务自己的会话里，工具层拿不到；再改一次即可）",
             }
         return None
 
@@ -432,7 +455,7 @@ class KnowledgeBaseManageTool(AgentTool):
             "draft": {
                 "kind": "batch_delete",
                 "entity": "knowledge_base",
-                "entityLabel": "知识库",
+                "entityLabel": "资料夹",
                 "items": items,
             },
         }
@@ -456,7 +479,7 @@ class KnowledgeBaseManageTool(AgentTool):
         if not ids:
             return fail(
                 "delete_many 缺少 kb_ids",
-                "请传要删除的知识库 ID 列表（kb_ids），或用 action=list 先查 ID",
+                "请传要删除的资料夹 ID 列表（kb_ids），或用 action=list 先查 ID",
             )
 
         from app.database import async_session_factory
@@ -478,7 +501,7 @@ class KnowledgeBaseManageTool(AgentTool):
             except Exception as e:  # noqa: BLE001 - 单个失败不牵连整批
                 failed.append({"id": kid, "error": str(e)})
 
-        parts = [f"已删除 {len(deleted)} 个知识库"]
+        parts = [f"已删除 {len(deleted)} 个资料夹"]
         if deleted:
             parts.append("、".join(f"「{d['name']}」" for d in deleted))
         if failed:
@@ -498,11 +521,11 @@ class KnowledgeBaseManageTool(AgentTool):
         """按 id **只读反查**知识库（`get_knowledge_base` 自带归属校验）"""
         kid = _to_int(kb_id)
         if kid is None:
-            return {"name": "（没有指定知识库 ID）"}
+            return {"name": "（没有指定资料夹 ID）"}
         try:
             return await rws.get_knowledge_base(ctx.db, ctx.user_id, kid)
         except RagNotFound:
-            return {"name": f"（没有找到属于你的知识库：kbId={kid}）"}
+            return {"name": f"（没有找到属于你的资料夹：kbId={kid}）"}
 
     async def _load_doc(self, ctx: ToolContext, doc_id: int):
         try:
@@ -531,11 +554,11 @@ class KnowledgeBaseManageTool(AgentTool):
     def _fail_from(e: Exception) -> Dict[str, Any]:
         """把 rag 服务的异常翻成给模型的 `fail()`（`hint` 必填）"""
         if isinstance(e, RagNotFound):
-            return fail(str(e), "请先用 action=list 确认知识库/文档的 ID 是不是你的")
+            return fail(str(e), "请先用 action=list 确认资料夹/文档的 ID 是不是你的")
         if isinstance(e, RagConflict):
-            return fail(str(e), "请换一个名称，或先用 action=list 看看已有的知识库")
+            return fail(str(e), "请换一个名称，或先用 action=list 看看已有的资料夹")
         return fail(
-            f"知识库操作失败：{type(e).__name__}: {e}",
+            f"资料操作失败：{type(e).__name__}: {e}",
             "请检查参数是否符合要求；如果是数据本身的问题，请改用 action=list 重新确认",
         )
 
@@ -550,13 +573,15 @@ class KnowledgeBaseManageTool(AgentTool):
             "delete": self._delete,
             "delete_many": self._delete_many,
             "list_documents": self._list_documents,
+            "get_document": self._get_document,
+            "list_document_versions": self._list_document_versions,
             "delete_document": self._delete_document,
         }.get(action)
         if handler is None:
             return fail(
                 f"未知操作: {action}",
                 "action 只能是 list / create / update / delete / list_documents / "
-                "delete_document",
+                "get_document / list_document_versions / delete_document",
             )
         return await handler(params, ctx)
 
@@ -570,9 +595,9 @@ class KnowledgeBaseManageTool(AgentTool):
         items = [{**kb, "disabledText": _disabled_text(kb.get("disabled"))} for kb in kbs]
         blocked = sum(1 for kb in items if int(kb.get("disabled") or 0))
         if not items:
-            message = "这个用户还没有知识库；资料需要他本人先上传，你可以引导他去知识库页面"
+            message = "这个用户还没有资料；资料需要他本人先上传，你可以引导他去「我的资料」页面"
         else:
-            message = f"共 {len(items)} 个知识库"
+            message = f"共 {len(items)} 个资料夹"
             if blocked:
                 message += f"，其中 {blocked} 个已屏蔽（不参与检索）"
         return ok(
@@ -587,7 +612,7 @@ class KnowledgeBaseManageTool(AgentTool):
     async def _create(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
         name = (params.get("name") or "").strip()
         if not name:
-            return fail("创建知识库需要名称", "请提供 name")
+            return fail("创建资料夹需要名称", "请提供 name")
 
         from app.database import async_session_factory
 
@@ -613,7 +638,7 @@ class KnowledgeBaseManageTool(AgentTool):
                 "disabled": 0,
                 "disabledText": _disabled_text(0),
                 "message": (
-                    f"知识库「{info['name']}」已创建（kbId={info['kbId']}），"
+                    f"资料夹「{info['name']}」已创建（kbId={info['kbId']}），"
                     "接下来需要用户自己上传文档"
                 ),
             }
@@ -622,7 +647,7 @@ class KnowledgeBaseManageTool(AgentTool):
     async def _update(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
         kb_id = _to_int(params.get("kb_id"))
         if kb_id is None:
-            return fail("修改知识库需要 kb_id", "请先用 action=list 拿到 kbId")
+            return fail("修改资料夹需要 kb_id", "请先用 action=list 拿到 kbId")
 
         name = params.get("name")
         description = params.get("description")
@@ -661,14 +686,14 @@ class KnowledgeBaseManageTool(AgentTool):
                 **info,
                 "disabledText": _disabled_text(info["disabled"]),
                 "changed": changed,
-                "message": f"知识库「{info['name']}」已更新（{'、'.join(changed)}）{note}",
+                "message": f"资料夹「{info['name']}」已更新（{'、'.join(changed)}）{note}",
             }
         )
 
     async def _delete(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
         kb_id = _to_int(params.get("kb_id"))
         if kb_id is None:
-            return fail("删除知识库需要 kb_id", "请先用 action=list 拿到 kbId")
+            return fail("删除资料夹需要 kb_id", "请先用 action=list 拿到 kbId")
 
         from app.database import async_session_factory
 
@@ -684,7 +709,7 @@ class KnowledgeBaseManageTool(AgentTool):
                 "deleted": 1,
                 **info,
                 "message": (
-                    f"已删除知识库「{info['name']}」及其 "
+                    f"已删除资料夹「{info['name']}」及其 "
                     f"{info['documents']} 篇文档、{info['chunks']} 个分块"
                 ),
             }
@@ -694,15 +719,38 @@ class KnowledgeBaseManageTool(AgentTool):
         self, params: Dict[str, Any], ctx: ToolContext
     ) -> Dict[str, Any]:
         kb_id = _to_int(params.get("kb_id"))
-        if kb_id is None:
-            return fail("列出文档需要 kb_id", "请先用 action=list 拿到 kbId")
+        query = str(params.get("query") or "").strip().lower()
 
         try:
-            docs: List[Dict[str, Any]] = await rws.list_documents(
-                ctx.db, ctx.user_id, kb_id
-            )
+            if kb_id is not None:
+                docs: List[Dict[str, Any]] = await rws.list_documents(
+                    ctx.db, ctx.user_id, kb_id
+                )
+            else:
+                # 用户经常只记得文档名、不记得在哪个资料夹；默认跨该用户的全部资料夹搜。
+                kb_briefs = await rws.list_knowledge_bases(ctx.db, ctx.user_id)
+                docs = []
+                for kb in kb_briefs:
+                    for doc in await rws.list_documents(ctx.db, ctx.user_id, int(kb["kbId"])):
+                        doc["kbName"] = kb["name"]
+                        docs.append(doc)
         except Exception as e:  # noqa: BLE001
             return self._fail_from(e)
+
+        if query:
+            # 精确同名优先，其次是前缀匹配，最后是包含匹配；重名时保留所有候选。
+            docs = [
+                doc
+                for doc in docs
+                if query in str(doc.get("fileName") or "").lower()
+            ]
+            docs.sort(
+                key=lambda doc: (
+                    0 if str(doc.get("fileName") or "").lower() == query else
+                    1 if str(doc.get("fileName") or "").lower().startswith(query) else 2,
+                    -int(doc.get("docId") or 0),
+                )
+            )
 
         limit = _to_int(params.get("limit")) or DEFAULT_DOCS_PAGE
         limit = max(1, min(MAX_DOCS_PAGE, limit))
@@ -712,21 +760,131 @@ class KnowledgeBaseManageTool(AgentTool):
 
         if total == 0:
             message = (
-                "这个知识库里还没有文档 —— 需要用户自己在知识库页面上传，"
-                "你没法替他上传"
+                f"没有找到名称包含「{query}」的文档" if query else "没有找到任何文档"
             )
         else:
-            message = f"这个知识库里有 {total} 篇文档，本次返回 {len(page)} 篇"
+            message = f"共找到 {total} 篇文档，本次返回 {len(page)} 篇"
         return ok(
             **{
                 "action": "list_documents",
                 "kbId": kb_id,
+                "query": query or None,
                 "offset": offset,
                 "count": len(page),
                 "total": total,
                 "hasMore": offset + len(page) < total,
                 "documents": page,
                 "message": message,
+            }
+        )
+
+    async def _find_document_candidates(
+        self, ctx: ToolContext, name: str, kb_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        safe_name = str(name or "").replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        stmt = (
+            select(RagDocument, RagKnowledgeBase.name.label("kb_name"))
+            .join(RagKnowledgeBase, RagKnowledgeBase.id == RagDocument.kb_id)
+            .where(
+                RagDocument.user_id == ctx.user_id,
+                RagKnowledgeBase.user_id == ctx.user_id,
+                RagKnowledgeBase.del_flag == "0",
+                RagDocument.file_name.ilike(f"%{safe_name}%", escape="\\"),
+            )
+        )
+        if kb_id is not None:
+            stmt = stmt.where(RagDocument.kb_id == kb_id)
+        stmt = stmt.order_by(RagDocument.file_name, RagDocument.id.desc())
+        rows = (await ctx.db.execute(stmt)).all()
+        return [
+            {
+                "docId": row[0].id,
+                "kbId": row[0].kb_id,
+                "kbName": row[1],
+                "fileName": row[0].file_name,
+                "status": row[0].status,
+                "statusText": DOC_STATUS_TEXT.get(row[0].status, "未知"),
+            }
+            for row in rows
+        ]
+
+    async def _get_document(
+        self, params: Dict[str, Any], ctx: ToolContext
+    ) -> Dict[str, Any]:
+        """读取一篇文档的完整正文；支持按 ID 或按名称解析。"""
+        doc_id = _to_int(params.get("doc_id"))
+        doc_name = str(params.get("doc_name") or "").strip()
+        if doc_id is None and not doc_name:
+            return fail(
+                "读取文档需要 doc_id 或 doc_name",
+                "请让用户提供文档名，或先用 action=list_documents 搜索候选",
+            )
+
+        try:
+            if doc_id is None:
+                candidates = await self._find_document_candidates(
+                    ctx, doc_name, _to_int(params.get("kb_id"))
+                )
+                if not candidates:
+                    return fail(
+                        f"没有找到名称包含「{doc_name}」的文档",
+                        "请让用户确认文档名，或先用 action=list_documents 查看可用文档",
+                    )
+                if len(candidates) > 1:
+                    return ok(
+                        **{
+                            "action": "get_document",
+                            "ambiguous": True,
+                            "query": doc_name,
+                            "count": len(candidates),
+                            "candidates": candidates,
+                            "message": (
+                                f"找到 {len(candidates)} 篇名称匹配的文档，请让用户根据文件名和"
+                                "资料夹选择具体一篇，再传 doc_id。"
+                            ),
+                        }
+                    )
+                doc_id = int(candidates[0]["docId"])
+            doc = await rws.get_document(ctx.db, ctx.user_id, doc_id)
+        except Exception as e:  # noqa: BLE001
+            return self._fail_from(e)
+
+        return ok(
+            **{
+                "action": "get_document",
+                "docId": doc.id,
+                "kbId": doc.kb_id,
+                "fileName": doc.file_name,
+                "content": doc.raw_content or "",
+                "contentLength": len(doc.raw_content or ""),
+                "status": doc.status,
+                "statusText": DOC_STATUS_TEXT.get(doc.status, "未知"),
+                "message": f"已读取文档「{doc.file_name}」的完整正文（{len(doc.raw_content or '')} 字）",
+            }
+        )
+
+    async def _list_document_versions(
+        self, params: Dict[str, Any], ctx: ToolContext
+    ) -> Dict[str, Any]:
+        doc_id = _to_int(params.get("doc_id"))
+        if doc_id is None:
+            return fail("查看历史版本需要 doc_id", "请先用 action=list_documents 拿到 docId")
+        try:
+            versions = await rws.list_document_versions(
+                ctx.db,
+                ctx.user_id,
+                doc_id,
+                limit=_to_int(params.get("limit")) or 30,
+            )
+        except Exception as e:  # noqa: BLE001
+            return self._fail_from(e)
+        return ok(
+            **{
+                "action": "list_document_versions",
+                "docId": doc_id,
+                "count": len(versions),
+                "versions": versions,
+                "message": f"这篇文档共有 {len(versions)} 个历史版本",
             }
         )
 

@@ -59,7 +59,7 @@
         </div>
         <div :class="['gs-tab', { active: tab === 'kb' }]" @click="switchTab('kb')">
           <OsIcon name="folder" :size="14" />
-          <span>知识库</span>
+          <span>我的资料</span>
         </div>
       </div>
 

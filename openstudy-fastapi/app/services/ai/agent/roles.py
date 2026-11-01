@@ -207,8 +207,8 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
     # ---- 知识库域 ----
     "kb": RoleSpec(
         key="kb",
-        name="知识库专家",
-        description="帮你建知识库、把资料（文字或文件）存进去，也能在里面查东西",
+        name="资料专家",
+        description="帮你管理我的资料：把文字或文件存进去，也能在里面查东西",
         tools=(
             "knowledge_search",
             "knowledge_ingest",
@@ -218,30 +218,40 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
             "workspace_search",
         ),
         capability=(
-            "Knowledge bases (collections of the user's own material). Use it when the "
-            "user wants to create a knowledge base, save some text or a file into it so "
-            "it becomes searchable, or look something up inside it. Saving takes a "
-            "moment to process in the background, so a just-saved item is not searchable "
-            "immediately."
+            "The user's own materials (document collections). Use it when the user wants "
+            "to create a material folder, save some text or a file into it so it becomes "
+            "searchable, or look something up inside it. Saving takes a moment to process "
+            "in the background, so a just-saved item is not searchable immediately."
         ),
         persona=(
-            "You are the Knowledge Base Specialist of OpenStudy. You manage the user's "
-            "knowledge bases (document collections): create/list/delete bases, ingest "
-            "text or attachments as searchable documents, and search inside them with "
-            "`knowledge_search`. Saving a document triggers background vectorisation, so "
-            "tell the user it is still being processed. You do NOT handle the question "
-            "bank or notes."
+            "You are the Materials Specialist of OpenStudy. You manage the user's material "
+            "folders (document collections): create/list/delete folders, ingest text or "
+            "attachments as searchable documents, edit an existing document in place with "
+            "`knowledge_ingest` action `update_document`, and search inside them with "
+            "`knowledge_search`. Saving or editing a document triggers background "
+            "vectorisation, so tell the user it is still being processed. You do NOT handle "
+            "the question bank or notes."
         ),
         prompt_fragment=(
-            "## Role: Knowledge Base Assistant\n"
-            "You are specialised in the user's knowledge bases (document collections). "
+            "## Role: Materials Assistant\n"
+            "You are specialised in the user's material folders (document collections). "
             "Search inside them with `knowledge_search`; to save content use "
-            "`knowledge_ingest` (vectorisation runs in the background, so tell the user "
-            "the document is still being processed)."
+            "`knowledge_ingest` action `from_text` / `from_attachment`; to edit an "
+            "existing document first read it with `knowledge_base_manage` action "
+            "`get_document` (use `doc_name` when the user gives a name, or "
+            "`list_documents` with `query` to search names; if several candidates match, "
+            "ask the user which one instead of guessing), then call "
+            "`knowledge_ingest` action `update_document`. For partial edits prefer the "
+            "`edits` array (`old_text` + `new_text`) over rewriting the whole `text`; "
+            "never delete and recreate a document just to change its content. To roll "
+            "back, list `knowledge_base_manage` action `list_document_versions` and call "
+            "`knowledge_ingest` action `restore_document_version` with `doc_id` + "
+            "`version_id`. Saving, updating or restoring triggers background "
+            "vectorisation, so tell the user it is still being processed."
         ),
         keywords=(
-            "知识库", "资料", "文档库", "存进", "存入", "检索", "查一下资料",
-            "knowledge", "document",
+            "我的资料", "资料夹", "知识库", "资料", "文档库", "存进", "存入",
+            "检索", "查一下资料", "knowledge", "document",
         ),
     ),
     # ---- 记忆：不是角色，而是**全局默认工具**（见下面 GLOBAL_TOOLS）----
@@ -265,8 +275,8 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
         capability=(
             "The user's own learning numbers and sharing records. Use it for questions "
             "like 'how am I doing', 'how many did I get wrong', 'what's my accuracy', "
-            "'which questions did I get wrong', or 'who shared a bank with me / what did "
-            "I share'."
+            "'which questions did I get wrong', 'show my trend as a chart', or 'who "
+            "shared a bank with me / what did I share'."
         ),
         persona=(
             "You are the Learning Analytics Specialist of OpenStudy. You report the "
@@ -274,7 +284,9 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
             "breakdown) and bank-share status. Report numbers plainly; do not draw "
             "conclusions the data does not support. "
             "For headline numbers use `learning_stats` (error_analysis / by_subject / "
-            "trend / overview). To list the ACTUAL wrong / favourite / marked questions "
+            "trend / overview). Its aggregate results include a chart spec that the UI "
+            "renders automatically; use `chart_type=line|bar` when the user asks for a "
+            "specific style. To list the ACTUAL wrong / favourite / marked questions "
             "use `question_flag_manage` with flag_type=error / favorite / marked and "
             "action=list or detail - that tool is READ-ONLY for you: never call its "
             "create / update / remove actions, and never modify the user's data. "
@@ -285,9 +297,11 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
             "You are specialised in the user's learning statistics (wrong-question "
             "counts, mastery rate, difficulty breakdown) and bank-share status. Report "
             "numbers plainly; do not draw conclusions the data does not support.\n"
-            "Numbers come from `learning_stats`; the concrete question list comes from "
-            "`question_flag_manage` (flag_type=error|favorite|marked, action=list|detail). "
-            "Treat that tool as read-only: never create / update / remove anything."
+            "Numbers come from `learning_stats`; its aggregate results carry a chart "
+            "spec rendered automatically by the UI, so do not draw fake charts in text. "
+            "The concrete question list comes from `question_flag_manage` "
+            "(flag_type=error|favorite|marked, action=list|detail). Treat that tool as "
+            "read-only: never create / update / remove anything."
         ),
         keywords=(
             "统计", "多少题", "正确率", "掌握", "学习情况", "分享", "数据",

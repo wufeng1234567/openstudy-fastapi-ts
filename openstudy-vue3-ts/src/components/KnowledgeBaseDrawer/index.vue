@@ -47,7 +47,7 @@ const panelRef = ref<InstanceType<typeof KnowledgeBasePanel> | null>(null)
 
 /** 入口徽标上的数字 */
 const kbCount = ref(0)
-const kbTitle = ref('知识库 —— 传资料，让智能体检索后回答')
+const kbTitle = ref('我的资料 —— 传资料，让智能体检索后回答')
 
 /** 打开抽屉：让面板载入（每次都回到库列表） */
 const onOpen = async () => {
@@ -64,7 +64,7 @@ const open = () => {
 const syncBadge = () => {
   const n = panelRef.value?.getKbCount() ?? 0
   kbCount.value = n
-  kbTitle.value = n ? `知识库（${n} 个）—— 传资料、让智能体自己检索` : '知识库 —— 传资料，让智能体检索后回答'
+  kbTitle.value = n ? `我的资料（${n} 个资料夹）—— 传资料、让智能体自己检索` : '我的资料 —— 传资料，让智能体检索后回答'
 }
 
 onMounted(async () => {
@@ -73,8 +73,8 @@ onMounted(async () => {
     if (res?.code === 200 && Array.isArray(res.data)) {
       kbCount.value = res.data.length
       kbTitle.value = res.data.length
-        ? `知识库（${res.data.length} 个）—— 传资料、让智能体自己检索`
-        : '知识库 —— 传资料，让智能体检索后回答'
+        ? `我的资料（${res.data.length} 个资料夹）—— 传资料、让智能体自己检索`
+        : '我的资料 —— 传资料，让智能体检索后回答'
     }
   } catch (e) {
     console.warn('[kb] 入口徽标取数失败', e)

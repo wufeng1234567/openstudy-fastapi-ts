@@ -87,7 +87,7 @@
             <el-icon>
               <Collection />
             </el-icon>
-            <span>我的知识库</span>
+            <span>我的资料</span>
           </div>
           <!-- 自检 tab 已移除（用户 2026-10-10：该功能不再需要，隐藏掉） -->
         </div>

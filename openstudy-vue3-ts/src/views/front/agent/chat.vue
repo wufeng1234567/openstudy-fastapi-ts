@@ -109,7 +109,8 @@
           :is-restoring="isRestoring"
           :has-attachment="attachmentCount > 0" placeholder="告诉我你想做什么…（Enter 发送，Ctrl+Enter 换行）"
           :show-mode-switch="false" :rollback-states="rollbackStates" @send="handleSend" @stop="stop"
-          @toggle-pause="stop" @rollback-turn="onRollbackTurn" @window-change="onChatWindowChange">
+          @toggle-pause="stop" @rollback-turn="onRollbackTurn" @window-change="onChatWindowChange"
+          @files-pasted="onPasteFiles">
           <!-- 工具调用卡片 -->
           <template #tool-result="{ message }">
             <AgentToolResult :tool="message.tool" :action="message.action" :content="message.content"
@@ -166,7 +167,7 @@
                  这里只是「请求切到 kb tab」，避免出现第二个抽屉实例
                  （用户 2026-10-18 报的"左右两个面板同时出现"就是两个实例造成的）。
             -->
-            <button type="button" class="tb-btn" title="知识库 —— 传资料、让智能体检索后回答"
+            <button type="button" class="tb-btn" title="我的资料 —— 传资料、让智能体检索后回答"
               @click="agentUiStore.requestPanel('kb')">
               <el-icon>
                 <FolderOpened />
@@ -349,6 +350,7 @@ import OsIcon from '@/components/OsIcon/index.vue'
 import { fetchAgentToolsForUi } from '@/api/ai/agentDsFree'
 import { useAgentChat, normalizeRestoredMessages } from '@/composables/useAgentChat'
 import { listSessions, createSession, deleteSession, getConversationHistory, saveConversationMessages, getAgentTimeline, attachmentPlaceholder, fillAttachmentMetas } from '@/api/ai/ai'
+import { uploadToWorkspace } from '@/api/ai/workspace'
 import {
   listAgentConfigs,
   createAgentConfig,
@@ -876,6 +878,16 @@ async function onDropFiles(e: DragEvent) {
   await attachRef.value?.addFiles?.(files)
 }
 
+/** Ctrl/Cmd+V 粘贴进来的截图/图片文件，走与拖拽、回形针相同的附件入口。 */
+async function onPasteFiles(files: File[]) {
+  if (!files.length) return
+  if (isGenerating.value) {
+    ElMessage.warning('正在生成回答，等这一轮结束再传')
+    return
+  }
+  await attachRef.value?.addFiles?.(files)
+}
+
 /* ===================== 会话历史 =====================
  * ⚠️ 2026-10-17：会话列表已提到 `store/modules/agentSession.ts`，
  *    因为现在它显示在**左侧导航栏**（对齐 DSH），而消息流仍在本页。
@@ -1095,6 +1107,35 @@ watch(attachmentCount, (n, prev) => {
   }
 })
 
+/**
+ * 智能体页附件自动收集（文档）
+ *
+ * 只处理文档；图片仍走对话多模态，不强行塞进知识库。
+ * 采用 fire-and-forget：收集失败不能影响本轮对话，失败只留 console 诊断。
+ * 这样用户不需要先打开「我的资料」页，聊天里传过的 Word/PDF 也会出现在默认资料夹。
+ */
+function autoCollectChatDocs(docs: Array<{ name: string; type: string; base64: string }>) {
+  for (const doc of docs) {
+    try {
+      const raw = String(doc.base64 || '')
+      const comma = raw.indexOf(',')
+      if (!raw.startsWith('data:') || comma < 0) continue
+      const meta = raw.slice(5, comma)
+      const mime = meta.split(';')[0] || doc.type || 'application/octet-stream'
+      const bin = atob(raw.slice(comma + 1))
+      const bytes = new Uint8Array(bin.length)
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+      const file = new File([bytes], doc.name || '聊天附件', { type: doc.type || mime })
+      // 不 await：解析在服务端进行，不能拖慢用户发送消息
+      uploadToWorkspace(file, '智能体对话自动收集').catch((e: any) => {
+        console.warn('[我的资料] 聊天附件自动收集失败：', doc.name, e?.message || e)
+      })
+    } catch (e: any) {
+      console.warn('[我的资料] 聊天附件无法转为文件：', doc.name, e?.message || e)
+    }
+  }
+}
+
 const handleSend = async ({ content, injectHistory = false }: { content: string; injectHistory?: boolean }) => {
   if (isGenerating.value) return
   const text = (content || '').trim()
@@ -1113,6 +1154,9 @@ const handleSend = async ({ content, injectHistory = false }: { content: string;
 
   // 附件一次性快照，随后立刻清空输入区预览，避免重复发送
   attachments.value = { images: [], files: [] }
+
+  // 智能体页入口的文档自动收集：不阻塞本轮对话，后台进入「我的资料」
+  autoCollectChatDocs(docs)
 
   // 附件元信息：先用「只有名字 / 类型」的占位立即入流，别让文档解析拖住发送；
   // 缩略图与文档预览块随后异步补齐（reactive 代理，补齐后气泡里的附件才能点开预览）。

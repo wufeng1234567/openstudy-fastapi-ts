@@ -48,13 +48,22 @@
         </div>
       </div>
 
-      <div class="stats">
-        <!-- 刷题模式：显示进度（文案收紧，2026-10-22） -->
+      <div class="stats" :class="{ 'stats--practice': isPracticeMode }">
+        <!-- 刷题模式：左侧进度，右侧乱序开关对齐到同一行（2026-10-31） -->
         <template v-if="isPracticeMode">
-          <div class="progress-text">
-            已答 <b>{{ answeredCount }}</b> / {{ totalCount }}
+          <div class="progress-info">
+            <div class="progress-text">
+              已答 <b>{{ answeredCount }}</b> / {{ totalCount }}
+            </div>
+            <div class="progress-hint" v-if="remainingCount > 0">剩 {{ remainingCount }} 题</div>
           </div>
-          <div class="progress-hint" v-if="remainingCount > 0">剩 {{ remainingCount }} 题</div>
+          <div v-if="showShuffleToggle" class="shuffle-inline">
+            <span class="shuffle-label">
+              <el-icon><Sort /></el-icon>
+              乱序
+            </span>
+            <el-switch :model-value="shuffleOptions" size="small" @update:model-value="onShuffleChange" />
+          </div>
         </template>
 
         <!-- 考试模式：显示总分 -->
@@ -161,20 +170,12 @@
         它不是"操作按钮"，而是"显示偏好"，跟着答题卡走更符合语义；
         放 footer 里会和「交卷」混成一排，看不出它属于"显示设置"。
     -->
-    <div v-if="showShuffleToggle" class="shuffle-row">
+    <div v-if="showShuffleToggle && !isPracticeMode" class="shuffle-row">
       <span class="shuffle-label">
         <el-icon><Sort /></el-icon>
         乱序
       </span>
       <el-switch :model-value="shuffleOptions" size="small" @update:model-value="onShuffleChange" />
-      <!--
-        提示语收紧（2026-10-22）
-        原：「已打乱，避免凭位置记答案」/「按题库原始顺序」—— 两句都太长，
-        在 25% 宽的卡片里会把开关挤出可用区。
-        现在只留 4 个字的状态本身：开 =「已打乱」，关 =「原顺序」。
-        "为什么要打乱"属于解释性文案，不该常驻在一个控制面板里。
-      -->
-      <span class="shuffle-hint">{{ shuffleOptions ? '已打乱' : '原顺序' }}</span>
     </div>
 
     <!--
@@ -516,14 +517,6 @@ const getOverviewItemClass = (index: number) => {
     flex: none;
   }
 
-  .shuffle-hint {
-    font-size: 11.5px;
-    color: var(--os-text-4, #9ca3af);
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 }
 
 /*
@@ -661,6 +654,35 @@ const getOverviewItemClass = (index: number) => {
 
 .stats {
   margin-bottom: 16px;
+}
+
+/* 刷题模式：进度与乱序开关同一行，左进度、右开关（2026-10-31） */
+.stats--practice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.progress-info {
+  min-width: 0;
+}
+
+.shuffle-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.shuffle-inline .shuffle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--os-text-2, #4b5563);
+  flex: none;
 }
 
 /*

@@ -136,12 +136,15 @@ const visible = ref(false)
 
 /** 锚点元素的底边距视口底部的高度（决定了按钮"浮在锚点上方"的位置） */
 const anchorBottom = ref(0)
+/** 锚点元素右侧距视口右侧的距离（让按钮和输入框右边缘对齐，而不是贴浏览器边） */
+const anchorRight = ref(0)
 
 const posStyle = computed(() => {
-  // 有锚点（如聊天输入框）→ 贴在它上方；否则贴视口底部
+  // 有锚点（如聊天输入框）→ 贴在它上方，并和输入框右边缘对齐；否则贴视口底部
   const bottom = props.anchorSelector ? anchorBottom.value + props.bottom : props.bottom
+  const right = props.anchorSelector ? anchorRight.value + props.right : props.right
   return {
-    right: `${props.right}px`,
+    right: `${right}px`,
     bottom: `${bottom}px`
   }
 })
@@ -150,15 +153,20 @@ const posStyle = computed(() => {
 function measureAnchor() {
   if (!props.anchorSelector) {
     anchorBottom.value = 0
+    anchorRight.value = 0
     return
   }
-  const el = document.querySelector<HTMLElement>(props.anchorSelector)
+  // 优先在本聊天组件内找锚点，避免页面同时挂载多个 ChatInputArea 时量到别的输入框。
+  const scope = hostEl?.closest('.ai-chat-stream') || document
+  const el = scope.querySelector<HTMLElement>(props.anchorSelector)
   if (!el) {
     anchorBottom.value = 0
+    anchorRight.value = 0
     return
   }
   const rect = el.getBoundingClientRect()
   anchorBottom.value = Math.max(0, window.innerHeight - rect.top)
+  anchorRight.value = Math.max(0, window.innerWidth - rect.right)
 }
 
 /** @type {HTMLElement | Window | null} 真正在滚的东西 */

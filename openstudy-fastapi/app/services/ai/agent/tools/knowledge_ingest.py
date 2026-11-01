@@ -3,7 +3,8 @@
 
 与 `knowledge_base_manage`（**管理**知识库/文档：建库、改名、删库、删文档）分工：
 本工具负责**内容入库**，即把一段文本（模型的总结 / 笔记 / 生成内容）或用户
-**本轮上传的附件正文**变成知识库里一篇会走「解析 → 分块 → 向量化」的文档。
+**本轮上传的附件正文**变成知识库里一篇会走「解析 → 分块 → 向量化」的文档；
+`update_document` 则在原文档上替换正文，不删除、不新建，并自动重建 chunks。
 
 放行说明（回应当初的封禁注释）
 =============================
@@ -58,6 +59,7 @@ embedding，谁要加先拿放行」。本工具就是那次**放行**的落地 
 from __future__ import annotations
 
 import asyncio
+import difflib
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
@@ -106,6 +108,98 @@ def _estimate_chunks(text: str) -> int:
         return 0
 
 
+_DIFF_CONTEXT_LINES = 3
+_DIFF_MAX_LINES = 240
+
+
+def _build_text_diff(old_text: str, new_text: str, path: str) -> dict:
+    """生成确认卡用的行级 diff（与 DSH 的 data-diff 展示同口径）。
+
+    · 3 行上下文 + 相邻修改合并成 hunk；
+    · 每个 hunk 之间放 `gap` 行，前端折叠时只展示头尾；
+    · 最多 240 行，避免长文档把确认卡撑爆。
+    """
+    old_lines = old_text.splitlines()
+    new_lines = new_text.splitlines()
+    matcher = difflib.SequenceMatcher(None, old_lines, new_lines, autojunk=False)
+    rows: list[dict[str, Any]] = []
+    added = 0
+    removed = 0
+
+    for group_index, group in enumerate(matcher.get_grouped_opcodes(_DIFF_CONTEXT_LINES)):
+        if group_index:
+            rows.append({"kind": "gap", "text": "⋯", "oldLine": None, "newLine": None})
+        for tag, old_start, old_end, new_start, new_end in group:
+            if tag == "equal":
+                for offset, value in enumerate(old_lines[old_start:old_end]):
+                    rows.append({
+                        "kind": "context",
+                        "text": value,
+                        "oldLine": old_start + offset + 1,
+                        "newLine": new_start + offset + 1,
+                    })
+                continue
+            if tag in ("replace", "delete"):
+                for offset, value in enumerate(old_lines[old_start:old_end]):
+                    rows.append({
+                        "kind": "del",
+                        "text": value,
+                        "oldLine": old_start + offset + 1,
+                        "newLine": None,
+                    })
+                    removed += 1
+            if tag in ("replace", "insert"):
+                for offset, value in enumerate(new_lines[new_start:new_end]):
+                    rows.append({
+                        "kind": "add",
+                        "text": value,
+                        "oldLine": None,
+                        "newLine": new_start + offset + 1,
+                    })
+                    added += 1
+
+    truncated = len(rows) > _DIFF_MAX_LINES
+    if truncated:
+        rows = rows[:_DIFF_MAX_LINES]
+    return {
+        "path": path,
+        "added": added,
+        "removed": removed,
+        "changed": bool(added or removed),
+        "truncated": truncated,
+        "lines": rows,
+    }
+
+
+def _apply_document_edits(base_text: str, edits: Any) -> Any:
+    """把模型给出的精确文本补丁应用到当前正文；返回 str 或 fail() 信封。"""
+    if not isinstance(edits, list) or not edits:
+        return fail("update_document 没有提供 edits", "请提供至少一条 old_text/new_text 替换")
+    current = base_text or ""
+    for index, raw_edit in enumerate(edits, start=1):
+        if not isinstance(raw_edit, dict):
+            return fail(f"第 {index} 条 edit 不是对象", "每条 edit 需要 old_text 和 new_text")
+        old_text = str(raw_edit.get("old_text") or "")
+        new_text = str(raw_edit.get("new_text") or "")
+        if not old_text:
+            return fail(f"第 {index} 条 edit 的 old_text 为空", "请提供要替换的原文片段")
+        occurrences = current.count(old_text)
+        if occurrences == 0:
+            return fail(
+                f"第 {index} 条 edit 在当前文档中找不到 old_text",
+                "请先用 knowledge_base_manage action=get_document 读取完整正文，"
+                "并复制其中一段原文作为 old_text（必须逐字匹配）",
+            )
+        replace_all = bool(raw_edit.get("replace_all"))
+        if occurrences > 1 and not replace_all:
+            return fail(
+                f"第 {index} 条 edit 的 old_text 出现了 {occurrences} 次，无法确定替换哪一处",
+                "请把 old_text 扩展到前后文使其唯一，或显式传 replace_all=true",
+            )
+        current = current.replace(old_text, new_text, -1 if replace_all else 1)
+    return current
+
+
 class KnowledgeIngestTool(AgentTool):
     name = "knowledge_ingest"
     #: ⚠️ 描述与参数说明一律英文（进系统提示词 `{{TOOLS}}` 与 Function Calling）
@@ -118,7 +212,12 @@ class KnowledgeIngestTool(AgentTool):
         "(requires `kb_id` and `text`, optional `file_name`), "
         "from_attachment=store the plain text of a file the USER attached in THIS "
         "message as a document (requires `kb_id`; optional `index` to pick which "
-        "attachment when several were sent, 0-based). "
+        "attachment when several were sent, 0-based), "
+        "update_document=replace/update an EXISTING document in place (requires `doc_id` "
+        "and either `text` or `edits`; optional `file_name` to rename). Use this for "
+        "edits instead of deleting and recreating a document. "
+        "restore_document_version=restore one saved version of an existing document "
+        "(requires `doc_id` and `version_id`). "
         "IMPORTANT: this WRITES into the user's knowledge base and costs embedding "
         "calls, so the user must confirm first and you should use it only when the "
         "user clearly wants to save the content. Vectorization runs in the background "
@@ -128,11 +227,12 @@ class KnowledgeIngestTool(AgentTool):
         "`kb_id`."
     )
     #: 界面专用（只给前端看；不进 definitions() / describe()）
-    label = "写入知识库"
+    label = "存入我的资料"
     description_zh = (
-        "把内容写进知识库并生成可检索文档：from_text=把一段文本（总结/笔记/生成内容）"
-        "存入、from_attachment=把用户本轮上传的附件正文存入。会消耗 embedding 额度，"
-        "需用户确认；向量化在后台进行，文档稍后才可检索。"
+        "把内容存入我的资料并生成可检索文档：from_text=把一段文本（总结/笔记/生成内容）"
+        "存入、from_attachment=把用户本轮上传的附件正文存入、update_document=修改已有"
+        "文档正文（支持精确补丁，不删除重建）、restore_document_version=恢复历史版本。"
+        "会消耗 embedding 额度，需用户确认；向量化在后台进行，文档稍后才可检索。"
     )
     parameters = {
         "type": "object",
@@ -140,27 +240,75 @@ class KnowledgeIngestTool(AgentTool):
             "action": {
                 "type": "string",
                 "description": "Operation to perform",
-                "enum": ["from_text", "from_attachment"],
+                "enum": [
+                    "from_text",
+                    "from_attachment",
+                    "update_document",
+                    "restore_document_version",
+                ],
             },
             "kb_id": {
                 "type": "integer",
                 "description": (
-                    "Target knowledge base ID (required for both actions). Take it from "
+                    "Target knowledge base ID (required for from_text/from_attachment; "
+                    "for update_document it is derived from doc_id). Take it from "
                     "`knowledge_base_manage` action=list."
+                ),
+            },
+            "doc_id": {
+                "type": "integer",
+                "description": (
+                    "Existing document ID to update (required for action=update_document). "
+                    "Take it from `knowledge_base_manage` action=list_documents or a "
+                    "knowledge_search result."
+                ),
+            },
+            "version_id": {
+                "type": "integer",
+                "description": (
+                    "Saved version ID to restore (required for action=restore_document_version; "
+                    "get it from knowledge_base_manage action=list_document_versions)."
                 ),
             },
             "text": {
                 "type": "string",
                 "description": (
-                    "The text to store (required for action=from_text). Strip it to the "
+                    "The full text to store (required for from_text) or the full replacement "
+                    "content (update_document alternative to `edits`). Strip it to the "
                     "essential content; very long text is rejected."
                 ),
+            },
+            "edits": {
+                "type": "array",
+                "description": (
+                    "Preferred for update_document: apply one or more exact text replacements "
+                    "instead of rewriting the whole document. Each old_text must match the "
+                    "current document exactly once unless replace_all=true."
+                ),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "old_text": {
+                            "type": "string",
+                            "description": "Exact existing text to find in the document.",
+                        },
+                        "new_text": {
+                            "type": "string",
+                            "description": "Replacement text; empty string deletes old_text.",
+                        },
+                        "replace_all": {
+                            "type": "boolean",
+                            "description": "Allow replacing every occurrence (default false).",
+                        },
+                    },
+                    "required": ["old_text", "new_text"],
+                },
             },
             "file_name": {
                 "type": "string",
                 "description": (
-                    "Optional display name for the new document (used by from_text); "
-                    "defaults to something derived from the content."
+                    "Optional display name for the new document (from_text) or the new "
+                    "name when update_document renames it."
                 ),
             },
             "index": {
@@ -171,7 +319,7 @@ class KnowledgeIngestTool(AgentTool):
                 ),
             },
         },
-        "required": ["action", "kb_id"],
+        "required": ["action"],
     }
     write_operation = True
 
@@ -199,12 +347,15 @@ class KnowledgeIngestTool(AgentTool):
                 return len(text) >= 3000 or _estimate_chunks(text) >= 8
             if action == "from_attachment":
                 return True
+            if action in ("update_document", "restore_document_version"):
+                return True
             return False
         except Exception:  # noqa: BLE001
             return False
 
     def is_destructive(self, params: Dict[str, Any]) -> bool:
-        # 新建文档不破坏用户现有数据
+        # 这里只表示“删除类”语义；修改/恢复正文都会先保存当前版本，
+        # 仍通过 confirm_policy 强制确认，但不能让确认卡误显示成“删除操作”。
         return False
 
     def undo_plan(
@@ -219,6 +370,10 @@ class KnowledgeIngestTool(AgentTool):
         但分块重建要重算 embedding（花钱），reason 用 `content_destroyed` 提示部分语义。
         走 `OP_DELETE_RECORD`（物理删一行，与 `rag` 的删除语义一致）。
         """
+        if str(params.get("action") or "") in ("update_document", "restore_document_version"):
+            # 正文修改/版本恢复会在 rag_write_service 里生成历史版本，但本工具的
+            # 通用回退还没有 rag_document 的字段恢复执行器；不要错误地声明“删文档”回退。
+            return None
         doc_id = _to_int(result.get("docId"))
         if doc_id is None:
             return {"undoable": False, "reason": REASON_MISSING_TARGET_ID}
@@ -242,20 +397,65 @@ class KnowledgeIngestTool(AgentTool):
         try:
             action = str(params.get("action") or "")
             out: Dict[str, Any] = {}
+            before_text = ""
+            restore_version: Optional[dict] = None
 
-            # 1) 反查知识库名（只读）
-            kid = _to_int(params.get("kb_id"))
-            if kid is None:
-                return {"hint": "（没有指定知识库 ID）"}
-            try:
-                kb = await rws.get_knowledge_base(ctx.db, ctx.user_id, kid)
-                out["kbId"] = kb.id
-                out["kbName"] = kb.name
-            except RagNotFound:
-                return {"hint": f"（没有找到属于你的知识库：kbId={kid}）"}
+            # 1) 反查目标（update/restore 用 doc_id，其他 action 用 kb_id）
+            if action == "restore_document_version":
+                doc_id = _to_int(params.get("doc_id"))
+                version_id = _to_int(params.get("version_id"))
+                if doc_id is None or version_id is None:
+                    return {"hint": "（恢复历史版本需要 doc_id 和 version_id）"}
+                try:
+                    doc = await rws.get_document(ctx.db, ctx.user_id, doc_id)
+                    restore_version = await rws.get_document_version(
+                        ctx.db, ctx.user_id, doc_id, version_id
+                    )
+                except RagNotFound:
+                    return {"hint": f"（没有找到属于你的文档或版本：docId={doc_id}）"}
+                out["docId"] = doc.id
+                out["versionId"] = version_id
+                out["fileName"] = restore_version.get("fileName") or doc.file_name
+                before_text = doc.raw_content or ""
+                try:
+                    kb = await rws.get_knowledge_base(ctx.db, ctx.user_id, doc.kb_id)
+                    out["kbId"] = kb.id
+                    out["kbName"] = kb.name
+                except RagNotFound:
+                    out["kbId"] = doc.kb_id
+            elif action == "update_document":
+                doc_id = _to_int(params.get("doc_id"))
+                if doc_id is None:
+                    return {"hint": "（没有指定文档 ID）"}
+                try:
+                    doc = await rws.get_document(ctx.db, ctx.user_id, doc_id)
+                except RagNotFound:
+                    return {"hint": f"（没有找到属于你的文档：docId={doc_id}）"}
+                out["docId"] = doc.id
+                out["fileName"] = doc.file_name
+                before_text = doc.raw_content or ""
+                try:
+                    kb = await rws.get_knowledge_base(ctx.db, ctx.user_id, doc.kb_id)
+                    out["kbId"] = kb.id
+                    out["kbName"] = kb.name
+                except RagNotFound:
+                    out["kbId"] = doc.kb_id
+            else:
+                kid = _to_int(params.get("kb_id"))
+                if kid is None:
+                    return {"hint": "（没有指定资料夹 ID）"}
+                try:
+                    kb = await rws.get_knowledge_base(ctx.db, ctx.user_id, kid)
+                    out["kbId"] = kb.id
+                    out["kbName"] = kb.name
+                except RagNotFound:
+                    return {"hint": f"（没有找到属于你的资料夹：kbId={kid}）"}
 
-            # 2) 取正文（只读）+ 估算块数
-            text = await self._resolve_text(params, ctx)
+            # 2) 取正文（只读）+ 估算块数；update_document 的补丁要基于当前正文应用
+            if action == "restore_document_version":
+                text = str((restore_version or {}).get("content") or "")
+            else:
+                text = await self._resolve_text(params, ctx, base_text=before_text)
             if isinstance(text, dict):  # 正文取用失败（envelope），直接透出提示
                 out.update(text)
                 return out
@@ -265,6 +465,9 @@ class KnowledgeIngestTool(AgentTool):
             out["chunks"] = chunks
             out["embedCalls"] = (chunks + _EMBED_BATCH - 1) // _EMBED_BATCH if chunks else 0
             out["charCount"] = len(text)
+            if action in ("update_document", "restore_document_version"):
+                out["beforeCharCount"] = len(before_text)
+                out["diff"] = _build_text_diff(before_text, text, str(out.get("fileName") or ""))
             if action == "from_attachment":
                 out["source"] = (params.get("file_name") or "").strip() or "本轮上传的附件"
             return out
@@ -275,16 +478,21 @@ class KnowledgeIngestTool(AgentTool):
 
     async def execute(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
         action = str(params.get("action") or "")
+        if action == "update_document":
+            return await self._execute_update(params, ctx)
+        if action == "restore_document_version":
+            return await self._execute_restore_version(params, ctx)
         if action not in ("from_text", "from_attachment"):
             return fail(
                 f"未知操作: {action}",
-                "action 只能是 from_text / from_attachment",
+                "action 只能是 from_text / from_attachment / update_document / "
+                "restore_document_version",
             )
 
         kb_id = _to_int(params.get("kb_id"))
         if kb_id is None:
             return fail(
-                "写入知识库需要 kb_id",
+                "存入我的资料需要 kb_id",
                 "请先用 knowledge_base_manage 的 action=list 拿到 kbId",
             )
 
@@ -345,14 +553,134 @@ class KnowledgeIngestTool(AgentTool):
                 "statusText": "处理中",
                 "estimatedChunks": chunk_hint,
                 "message": (
-                    f"已把「{file_name}」写入知识库"
+                    f"已把「{file_name}」存入我的资料"
                     f"{('「' + kb_name + '」') if kb_name else ''}（docId={doc_id}），"
                     "正在后台分块并向量化，稍后即可用 knowledge_search 检索到"
                 ),
                 # 2026-10-26：导入后能直接跳到知识库看处理进度。
                 # 「上传完了却没地方确认它好了没」是资料入库这条链路最容易断的地方 ——
                 # 用户看到"处理中"却不知道去哪里看，只能等。
-                "jumpUrl": "/front/workspace",
+                "jumpUrl": f"/front/workspace?kbId={kb_id}&docId={doc_id}&open=1",
+            }
+        )
+
+    async def _execute_update(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+        """原地修改已有文档正文，不删除、不新建。"""
+        doc_id = _to_int(params.get("doc_id"))
+        if doc_id is None:
+            return fail(
+                "修改文档需要 doc_id",
+                "请先用 knowledge_base_manage 的 action=list_documents 拿到文档 ID",
+            )
+
+        from app.database import async_session_factory
+
+        try:
+            async with async_session_factory() as db:
+                doc = await rws.get_document(db, ctx.user_id, doc_id)
+                # update_document 支持两种写法：完整 text，或精确 edits 补丁。
+                # 补丁必须基于当前库里的正文应用，避免模型在上下文里重建全文。
+                text = await self._resolve_text(params, ctx, base_text=doc.raw_content or "")
+                if isinstance(text, dict):
+                    return text
+                if not text.strip():
+                    return fail(
+                        "没有可写入的正文内容",
+                        "请提供完整的 text，或提供非空的 edits 作为修改后的正文",
+                    )
+                if len(text) > MAX_RAW_LENGTH:
+                    return fail(
+                        f"正文过长（{len(text)} 字，上限 {MAX_RAW_LENGTH} 字）",
+                        "请精简内容后再修改，或拆成多篇文档分次写入",
+                    )
+                kb_id = doc.kb_id
+                old_file_name = doc.file_name
+                new_file_name = (params.get("file_name") or "").strip() or None
+                updated = await rws.update_document_content(
+                    db,
+                    ctx.user_id,
+                    doc_id,
+                    text,
+                    file_name=new_file_name,
+                )
+                kb_name = None
+                try:
+                    kb_name = (await rws.get_knowledge_base(db, ctx.user_id, kb_id)).name
+                except Exception:  # noqa: BLE001
+                    pass
+        except Exception as e:  # noqa: BLE001
+            return self._fail_from(e)
+
+        # update_document_content 只把状态置为待解析；这里必须显式重跑流水线，
+        # 否则旧 chunks/向量还留在库里，检索会继续命中旧内容。
+        self._schedule_processing(doc_id)
+        file_name = updated.get("fileName") or new_file_name or old_file_name
+        chunk_hint = _estimate_chunks(text)
+        return ok(
+            **{
+                "action": "update_document",
+                "docId": doc_id,
+                "kbId": kb_id,
+                "kbName": kb_name,
+                "fileName": file_name,
+                "status": DOC_PENDING,
+                "statusText": "待重新解析",
+                "estimatedChunks": chunk_hint,
+                "versionId": updated.get("versionId"),
+                "message": (
+                    f"已原地更新「{file_name}」的正文（docId={doc_id}），"
+                    "旧内容不会留下重复文档；正在后台重新分块并向量化，"
+                    "完成后即可用 knowledge_search 检索到新内容"
+                ),
+                "jumpUrl": f"/front/workspace?kbId={kb_id}&docId={doc_id}&open=1",
+            }
+        )
+
+    async def _execute_restore_version(
+        self, params: Dict[str, Any], ctx: ToolContext
+    ) -> Dict[str, Any]:
+        """把文档恢复到一个已保存的历史版本，并自动重建索引。"""
+        doc_id = _to_int(params.get("doc_id"))
+        version_id = _to_int(params.get("version_id"))
+        if doc_id is None or version_id is None:
+            return fail(
+                "恢复历史版本需要 doc_id 和 version_id",
+                "请先用 knowledge_base_manage action=list_document_versions 列出可恢复版本",
+            )
+
+        from app.database import async_session_factory
+
+        try:
+            async with async_session_factory() as db:
+                doc = await rws.get_document(db, ctx.user_id, doc_id)
+                kb_id = doc.kb_id
+                result = await rws.restore_document_version(
+                    db, ctx.user_id, doc_id, version_id
+                )
+                kb_name = None
+                try:
+                    kb_name = (await rws.get_knowledge_base(db, ctx.user_id, kb_id)).name
+                except Exception:  # noqa: BLE001
+                    pass
+        except Exception as e:  # noqa: BLE001
+            return self._fail_from(e)
+
+        self._schedule_processing(doc_id)
+        return ok(
+            **{
+                "action": "restore_document_version",
+                "docId": doc_id,
+                "versionId": version_id,
+                "kbId": kb_id,
+                "kbName": kb_name,
+                "fileName": result.get("fileName") or doc.file_name,
+                "status": DOC_PENDING,
+                "statusText": "待重新解析",
+                "message": (
+                    f"已把「{result.get('fileName') or doc.file_name}」恢复到历史版本 "
+                    f"versionId={version_id}；正在后台重新分块并向量化，完成后检索到的是恢复后的内容"
+                ),
+                "jumpUrl": f"/front/workspace?kbId={kb_id}&docId={doc_id}&open=1",
             }
         )
 
@@ -391,16 +719,34 @@ class KnowledgeIngestTool(AgentTool):
         )
 
     async def _resolve_text(
-        self, params: Dict[str, Any], ctx: ToolContext
+        self, params: Dict[str, Any], ctx: ToolContext, base_text: Optional[str] = None
     ) -> Any:
         """取待写入的正文；返回 `str` 成功，返回 `dict` 则是 `fail()` 信封。
 
         · from_text：直接取 `text` 参数
+        · update_document：优先用 `edits` 补丁应用到当前正文；否则取完整 `text`
         · from_attachment：从 `ctx.extra["attachments"]` 里取本轮附件的**已解析正文**
         """
         action = str(params.get("action") or "")
         if action == "from_text":
             return str(params.get("text") or "")
+
+        if action == "update_document":
+            edits = params.get("edits")
+            raw_text = str(params.get("text") or "")
+            if edits:
+                if raw_text.strip():
+                    return fail(
+                        "update_document 不能同时提供 text 和 edits",
+                        "二选一：整篇替换用 text；局部修改用 edits 补丁",
+                    )
+                if base_text is None:
+                    return fail(
+                        "无法应用 edits：没有读取到当前文档正文",
+                        "请先读取文档，再基于原文提交补丁",
+                    )
+                return _apply_document_edits(base_text, edits)
+            return raw_text
 
         if action == "from_attachment":
             attachments: List[Dict[str, Any]] = list(ctx.extra.get("attachments") or [])
@@ -425,7 +771,10 @@ class KnowledgeIngestTool(AgentTool):
                 )
             return text
 
-        return fail(f"未知操作: {action}", "action 只能是 from_text / from_attachment")
+        return fail(
+            f"未知操作: {action}",
+            "action 只能是 from_text / from_attachment / update_document",
+        )
 
     @staticmethod
     def _resolve_file_name(params: Dict[str, Any], action: str) -> str:
@@ -441,12 +790,22 @@ class KnowledgeIngestTool(AgentTool):
     def _fail_from(e: Exception) -> Dict[str, Any]:
         """把 rag 服务的异常翻成给模型的 `fail()`（`hint` 必填）"""
         if isinstance(e, RagNotFound):
-            return fail(str(e), "请先用 knowledge_base_manage 的 action=list 确认 kb_id 是不是你的")
+            return fail(
+                str(e),
+                "请先用 knowledge_base_manage 的 action=list / list_documents "
+                "确认 kb_id 或 doc_id 是不是你的",
+            )
         if isinstance(e, RagConflict):
-            return fail(str(e), "该知识库文档数已达上限，请先删除一些文档或换一个知识库")
+            return fail(str(e), "该资料夹文档数已达上限，请先删除一些文档或换一个资料夹")
+        if isinstance(e, ValueError):
+            return fail(
+                str(e),
+                "如果是文档正在处理中，请等当前解析/向量化完成后再修改或恢复版本",
+            )
         return fail(
-            f"写入知识库失败：{type(e).__name__}: {e}",
-            "请检查 kb_id 与正文是否符合要求；若反复失败，请改用 knowledge_base_manage 的 action=list 重新确认",
+            f"写入我的资料失败：{type(e).__name__}: {e}",
+            "请检查 doc_id / kb_id 与正文是否符合要求；若反复失败，请先用 "
+            "knowledge_base_manage 的 action=list 或 list_documents 重新确认目标",
         )
 
 

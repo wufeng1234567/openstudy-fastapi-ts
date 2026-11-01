@@ -42,6 +42,13 @@ from app.services import study_diagnosis_service as sds
 from app.services import user_stats_service as stats
 from app.services.ai.agent.base import AgentTool, ToolContext, fail, ok
 from app.services.ai.agent.tools.bank_export import _human_size
+from app.services.ai.agent.tools.learning_chart import (
+    build_diagnose_chart,
+    build_error_chart,
+    build_overview_chart,
+    build_subject_chart,
+    build_trend_chart,
+)
 
 #: 一次趋势最多看多少天（与路由签名上的 `le=90` 一致）
 MAX_TREND_DAYS = stats.TREND_MAX_DAYS
@@ -80,6 +87,10 @@ class LearningStatsTool(AgentTool):
         "The reply carries a `downloadUrl`; tell the user the report is ready instead of "
         "pasting the URL. "
         "These are the SAME numbers the user sees on their statistics page. "
+        "Every aggregate result also carries a `chart` spec that the frontend renders "
+        "automatically as a line/bar chart; do NOT draw charts in markdown and do NOT "
+        "invent data. Pass `chart_type=line|bar` when the user explicitly asks for a "
+        "specific chart style; default auto chooses the most readable type. "
         "NOTES: overview/by_subject/trend/error_analysis/growth are read-only aggregates; "
         "diagnose/plan_review are per-question analysis. "
         "For the actual LIST of wrong / favourite / marked questions use "
@@ -91,7 +102,7 @@ class LearningStatsTool(AgentTool):
         "读学习数据：overview=总览、by_subject=按科目、trend=趋势、"
         "error_analysis=错题分析、growth=成长情况；"
         "diagnose=学情诊断（逐题分析：哪几道反复失守 / 哪几道其实会了 / 哪几道欠复习）；"
-        "plan_review=把复习计划写进错题本。"
+        "plan_review=把复习计划写进错题本。聚合结果会自动附带折线/柱状图数据，前端直接渲染。"
     )
     parameters = {
         "type": "object",
@@ -109,6 +120,14 @@ class LearningStatsTool(AgentTool):
                     "plan_review",
                     "diagnose_report",
                 ],
+            },
+            "chart_type": {
+                "type": "string",
+                "description": (
+                    "Optional visualization style for the returned chart: line or bar. "
+                    "Omit/auto to let the tool choose (trend=line, subject/error=bar)."
+                ),
+                "enum": ["auto", "line", "bar"],
             },
             "days": {
                 "type": "integer",
@@ -211,7 +230,14 @@ class LearningStatsTool(AgentTool):
                 f"错题 {data.get('totalErrors') or 0} 道、"
                 f"斩题 {data.get('totalMarked') or 0} 道"
             )
-        return ok(**{**data, "action": "overview", "message": message})
+        return ok(
+            **{
+                **data,
+                "action": "overview",
+                "message": message,
+                "chart": build_overview_chart(data, params.get("chart_type")),
+            }
+        )
 
     async def _by_subject(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
         rows: List[Dict[str, Any]] = await stats.by_subject(ctx.db, ctx.user_id)
@@ -227,6 +253,7 @@ class LearningStatsTool(AgentTool):
             action="by_subject",
             count=len(rows),
             bySubject=rows,
+            chart=build_subject_chart(rows, params.get("chart_type")),
             message=(
                 f"共 {len(rows)} 个科目有记录"
                 + (
@@ -248,6 +275,7 @@ class LearningStatsTool(AgentTool):
             days=len(rows),
             count=len(rows),
             trend=rows,
+            chart=build_trend_chart(rows, params.get("chart_type")),
             message=(
                 f"最近 {len(rows)} 天共作答 {total} 次，答对 {correct} 次"
                 + ("（这段时间没有作答记录）" if total == 0 else "")
@@ -266,7 +294,14 @@ class LearningStatsTool(AgentTool):
                 f"错题共 {total} 道，其中待消灭 {data.get('activeErrors') or 0} 道、"
                 f"已掌握 {data.get('mastered') or 0} 道（掌握率 {data.get('masterRate')}%）"
             )
-        return ok(**{**data, "action": "error_analysis", "message": message})
+        return ok(
+            **{
+                **data,
+                "action": "error_analysis",
+                "message": message,
+                "chart": build_error_chart(data, params.get("chart_type")),
+            }
+        )
 
     async def _growth(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
         data = await stats.growth(ctx.db, ctx.user_id)
@@ -343,6 +378,7 @@ class LearningStatsTool(AgentTool):
             activity=diag["activity"],
             items=diag["items"],
             suggestions=diag["suggestions"],
+            chart=build_diagnose_chart(diag, params.get("chart_type")),
             message=message,
         )
 

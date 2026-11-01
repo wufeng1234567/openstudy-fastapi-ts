@@ -28,10 +28,13 @@ export function getWorkspace() {
   })
 }
 
-/** 上传文件到默认知识库（可带一句说明，帮 AI 以后认出这份资料） */
-export function uploadToWorkspace(file: File, note?: string, timeout = 600000) {
+/** 上传一个或多个文件到默认知识库（可带一句说明，帮 AI 以后认出这份资料） */
+export function uploadToWorkspace(file: File | File[], note?: string, timeout = 600000) {
   const form = new FormData()
-  form.append('file', file, file.name)
+  const files = Array.isArray(file) ? file : [file]
+  for (const item of files) {
+    form.append('file', item, item.name)
+  }
   return request({
     url: '/rag/workspace/upload',
     method: 'post',
@@ -42,11 +45,201 @@ export function uploadToWorkspace(file: File, note?: string, timeout = 600000) {
   })
 }
 
+/** 聊天中直接粘贴/上传的独立图片（我的资料图片墙用） */
+export function listWorkspaceStandaloneImages(limit = 100) {
+  return request({
+    url: '/rag/workspace/standalone-images',
+    method: 'get',
+    params: { limit }
+  })
+}
+
+/** 图片资产用途计数：{assetKey: count} */
+export function getAssetUsageSummary() {
+  return request({
+    url: '/rag/assets/usage-summary',
+    method: 'get'
+  })
+}
+
+/** 单文档可检索开关 */
+export function setDocumentSearchable(docId: number, disabled: boolean) {
+  return request({
+    url: `/rag/document/${docId}/searchable`,
+    method: 'put',
+    data: { disabled }
+  })
+}
+
+/** 智能整理：单文档预览（快速/深度） */
+export function previewWorkspaceOrganize(data: {
+  docId: number
+  mode: 'deep'
+  options?: Record<string, boolean>
+}) {
+  return request({
+    url: '/rag/workspace/organize/preview',
+    method: 'post',
+    data
+  })
+}
+
+/** 整理历史记录 */
+export function listWorkspaceOrganizePlans(limit = 30) {
+  return request({
+    url: '/rag/workspace/organize/plans',
+    method: 'get',
+    params: { limit }
+  })
+}
+
+/** 刷新整理计划状态 */
+export function getWorkspaceOrganizePlan(planId: number) {
+  return request({
+    url: `/rag/workspace/organize/plans/${planId}`,
+    method: 'get'
+  })
+}
+
+/** 应用整理计划（只应用用户勾选的变更） */
+export function applyWorkspaceOrganize(data: {
+  planId: number
+  changeIds?: string[]
+  exclusionIds?: string[]
+}) {
+  return request({
+    url: '/rag/workspace/organize/apply',
+    method: 'post',
+    data
+  })
+}
+
+/** 读取一条整理记录；legacy 记录传负 planId */
+export function getWorkspaceOrganizeRecord(recordId: number) {
+  return request({
+    url: `/rag/workspace/organize/records/${recordId}`,
+    method: 'get'
+  })
+}
+
+/** 删除一条整理记录；只删记录，不回退文档变更 */
+export function deleteWorkspaceOrganizeRecord(recordId: number) {
+  return request({
+    url: `/rag/workspace/organize/records/${recordId}`,
+    method: 'delete'
+  })
+}
+
+/** 回退某次整理计划 */
+export function rollbackWorkspacePlan(planId: number) {
+  return request({
+    url: `/rag/workspace/organize/plans/${planId}/rollback`,
+    method: 'post'
+  })
+}
+
+/** 兼容旧页面：整批回退智能整理 */
+export function rollbackWorkspaceOrganize(batchId: string) {
+  return request({
+    url: '/rag/workspace/organize/rollback',
+    method: 'post',
+    data: { batchId }
+  })
+}
+
+/** 记录一张图片资产被题目/笔记使用 */
+export function recordAssetUsage(data: {
+  assetKey: string
+  assetUrl?: string
+  targetType: 'question' | 'note' | 'document'
+  targetId: number
+}) {
+  return request({
+    url: '/rag/assets/usage',
+    method: 'post',
+    data
+  })
+}
+
 /** 从默认知识库移除文件 */
 export function deleteWorkspaceFile(docId: number | string) {
   return request({
     url: `/rag/workspace/file/${docId}`,
     method: 'delete'
+  })
+}
+
+/* ============================================================================
+ * 资料变微课（2026-10-31）
+ * 后端按原文标题生成站点，不调用模型；前端负责展示与本地学习进度。
+ * ========================================================================== */
+
+export interface MicroCourseStation {
+  id: string
+  index: number
+  title: string
+  summary: string
+  points: string[]
+  minutes: number
+  checkpoint: string
+}
+
+export interface MicroCourseBank {
+  id: number
+  name: string
+  subject: string
+  score: number
+}
+
+export interface MicroCourseResult {
+  document: {
+    id: number
+    fileName: string
+    subject: string
+    materialType: string
+    wordCount: number
+    chunkCount: number
+    hasOutline: boolean
+    truncated: boolean
+  }
+  overview: {
+    stationCount: number
+    totalMinutes: number
+    estimatedSessions: number
+  }
+  stations: MicroCourseStation[]
+  relatedBanks: MicroCourseBank[]
+}
+
+export function getMicroCourse(docId: number | string) {
+  return request({
+    url: `/rag/document/micro-course/${docId}`,
+    method: 'get'
+  }) as unknown as Promise<{ code: number; msg?: string; data: MicroCourseResult }>
+}
+
+/** 文档历史版本列表（编辑器内使用，不新增页面入口） */
+export function listDocumentVersions(docId: number, limit = 30) {
+  return request({
+    url: `/rag/document/versions/${docId}`,
+    method: 'get',
+    params: { limit }
+  })
+}
+
+/** 读取某个历史版本 */
+export function getDocumentVersion(docId: number, versionId: number) {
+  return request({
+    url: `/rag/document/versions/${docId}/${versionId}`,
+    method: 'get'
+  })
+}
+
+/** 恢复历史版本（恢复前会自动保存当前版本） */
+export function restoreDocumentVersion(docId: number, versionId: number) {
+  return request({
+    url: `/rag/document/versions/${docId}/${versionId}/restore`,
+    method: 'post'
   })
 }
 

@@ -635,6 +635,12 @@ async def diagnose(
         return _empty_diagnosis(moment)
 
     meta = await load_question_meta(db, list(histories.keys()))
+    # 题目被物理删除后流水还在（刻意不加外键）。这些孤儿流水既不能点开、
+    # 也不能复习，如果继续参与诊断，会把「做过的题 / 正确率 / 需要关注」
+    # 全部抬高，还会在列表里显示「题目内容已不可用」。这里直接剔除。
+    histories = {qid: hist for qid, hist in histories.items() if qid in meta}
+    if not histories:
+        return _empty_diagnosis(moment)
     flags = await load_error_flags(db, user_id)
 
     items: List[Dict[str, Any]] = []
