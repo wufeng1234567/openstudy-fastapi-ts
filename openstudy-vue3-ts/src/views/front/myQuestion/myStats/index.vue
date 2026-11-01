@@ -425,6 +425,10 @@ function applyTabFromQuery() {
     } else if (t === 'weekly' || t === 'exam') {
         activeTab.value = t
         tabSeen[t] = true
+        nextTick(() => {
+            if (t === 'weekly') weeklyReportRef.value?.refresh?.()
+            else examPlanRef.value?.refreshProgress?.()
+        })
     }
     // 副标题跟着一起变，否则会显示题库那句说明
     syncTopbarSubtitle()

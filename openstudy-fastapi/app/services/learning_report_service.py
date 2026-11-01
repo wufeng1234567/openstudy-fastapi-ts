@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.question import (
     QuestionBank,
+    QuestionMain,
     UserPracticeLog,
     UserQuestionMarked,
 )
@@ -104,10 +105,16 @@ async def build_weekly_report(
 
     # 如果用户最近两周都没打开过，仍然给他看「最近一次学习的那 7 天」——
     # 周报的意义是复盘，而不是用「本周空白」惩罚一个暂时停下来的用户。
+    # 只统计题目仍存在的流水：题目被物理删除后的孤儿流水无法复盘，
+    # 也不该把「这周做了 70 题」说成真实可回看的练习量。
     latest = await db.scalar(
-        select(func.max(UserPracticeLog.create_time)).where(
-            UserPracticeLog.user_id == int(user_id)
+        select(func.max(UserPracticeLog.create_time))
+        .select_from(
+            UserPracticeLog.__table__.join(
+                QuestionMain.__table__, UserPracticeLog.question_id == QuestionMain.id
+            )
         )
+        .where(UserPracticeLog.user_id == int(user_id))
     )
     if latest is None:
         return _empty(moment)
@@ -125,6 +132,11 @@ async def build_weekly_report(
                 UserPracticeLog.is_correct,
                 UserPracticeLog.question_id,
                 UserPracticeLog.bank_id,
+            )
+            .select_from(
+                UserPracticeLog.__table__.join(
+                    QuestionMain.__table__, UserPracticeLog.question_id == QuestionMain.id
+                )
             )
             .where(
                 UserPracticeLog.user_id == int(user_id),
