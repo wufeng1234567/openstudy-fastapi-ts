@@ -1,13 +1,9 @@
-"""知识库深拷贝服务。
+"""知识库分享领取服务。
 
-知识库分享领取时使用：把源知识库及其文档复制到领取者名下，生成一个
-真正属于对方、可以继续编辑 / 检索的副本。
-
-不复制：
-  · 向量分块（目标库的文档会重新走解析/向量化，避免跨 embedding 配置漂移）；
-  · 任何个人状态（笔记、错题、收藏等，知识库没有这些概念）。
-
-调用方负责 commit；复制出的文档会由接口放进 BackgroundTasks 重新处理。
+分享的语义是「把源知识库的已有索引映射一份给领取者」：
+  · 文档正文、分块、向量、图片映射全部原样复制；
+  · **不重新解析、不重新向量化** —— 源库主已经处理过；
+  · 复制后的副本仍然属于领取者，可以继续编辑和检索。
 """
 
 from __future__ import annotations
@@ -16,10 +12,37 @@ import copy as _copy
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.rag import DOC_PENDING, RagDocument, RagKnowledgeBase
+from app.models.rag import RagDocument, RagKnowledgeBase
+
+
+async def _copy_chunks(
+    db: AsyncSession,
+    source_doc_id: int,
+    target_doc_id: int,
+    target_kb_id: int,
+) -> None:
+    """直接复制已有分块和向量，避免领取后重跑 embedding。"""
+    await db.execute(
+        text(
+            """
+            INSERT INTO rag_document_chunk
+              (kb_id, doc_id, chunk_index, index_version, content, content_length,
+               token_count, content_tokens, embedding, meta_data, create_time)
+            SELECT :target_kb_id, :target_doc_id, chunk_index, index_version, content,
+                   content_length, token_count, content_tokens, embedding, meta_data, now()
+            FROM rag_document_chunk
+            WHERE doc_id = :source_doc_id
+            """
+        ),
+        {
+            "target_kb_id": int(target_kb_id),
+            "target_doc_id": int(target_doc_id),
+            "source_doc_id": int(source_doc_id),
+        },
+    )
 
 
 def copy_kb_name(source_name: str) -> str:
@@ -32,7 +55,7 @@ async def copy_knowledge_base(
     target_user_id: int,
     new_name: Optional[str] = None,
 ) -> tuple[RagKnowledgeBase, list[int]]:
-    """复制知识库 + 文档，返回新库和待重新处理的文档 ID。"""
+    """复制知识库 + 文档 + 已有分块/向量，返回新库（无需再处理的文档列表为空）。"""
     if not source_kb:
         raise ValueError("源知识库不存在")
 
@@ -81,21 +104,22 @@ async def copy_knowledge_base(
             image_map=_copy.deepcopy(doc.image_map),
             content_structure=_copy.deepcopy(doc.content_structure),
             user_note=doc.user_note,
-            chunk_count=0,
-            index_version=1,
-            status=DOC_PENDING,
+            chunk_count=int(doc.chunk_count or 0),
+            index_version=doc.index_version,
+            status=doc.status,
             disabled=0,
             error_msg=None,
             create_time=datetime.now(),
         )
         db.add(copied)
         await db.flush()
+        await _copy_chunks(db, int(doc.id), int(copied.id), int(new_kb.id))
         pending_ids.append(int(copied.id))
 
     new_kb.doc_count = len(pending_ids)
-    new_kb.chunk_count = 0
+    new_kb.chunk_count = sum(int(doc.chunk_count or 0) for doc in docs)
     await db.flush()
-    return new_kb, pending_ids
+    return new_kb, []
 
 
 async def copy_document_to_kb(
@@ -121,15 +145,17 @@ async def copy_document_to_kb(
         image_map=_copy.deepcopy(source_doc.image_map),
         content_structure=_copy.deepcopy(source_doc.content_structure),
         user_note=source_doc.user_note,
-        chunk_count=0,
-        index_version=1,
-        status=DOC_PENDING,
+        chunk_count=int(source_doc.chunk_count or 0),
+        index_version=source_doc.index_version,
+        status=source_doc.status,
         disabled=0,
         error_msg=None,
         create_time=datetime.now(),
     )
     db.add(copied)
     await db.flush()
+    await _copy_chunks(db, int(source_doc.id), int(copied.id), int(target_kb.id))
     target_kb.doc_count = int(target_kb.doc_count or 0) + 1
+    target_kb.chunk_count = int(target_kb.chunk_count or 0) + int(source_doc.chunk_count or 0)
     await db.flush()
     return copied
