@@ -259,8 +259,6 @@
                     </el-tag>
                   </div>
                   <div class="kbp-doc__meta">
-                    <span v-if="doc.subject" class="kbp-doc__facet">{{ doc.subject }}</span>
-                    <span v-if="doc.materialType" class="kbp-doc__facet">{{ doc.materialType }}</span>
                     <span>{{ doc.sizeText }}</span>
                     <span v-if="doc.chunkCount">· {{ doc.chunkCount }} 个片段</span>
                     <span v-if="doc.imageCount">· {{ doc.imageCount }} 张图</span>
@@ -463,8 +461,6 @@
           </div>
           <div class="kbp-shelf-card__name" :title="doc.fileName">{{ doc.fileName }}</div>
           <div class="kbp-shelf-card__facets">
-            <span v-if="doc.subject">{{ doc.subject }}</span>
-            <span v-if="doc.materialType">{{ doc.materialType }}</span>
             <span v-if="doc.imageCount">{{ doc.imageCount }} 图</span>
             <span v-if="doc.chunkCount">{{ doc.chunkCount }} 分块</span>
           </div>
