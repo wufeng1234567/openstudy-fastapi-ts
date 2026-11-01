@@ -1,12 +1,19 @@
 <template>
-  <el-dialog v-model="visible" title="分享知识库" width="520px" append-to-body :close-on-click-modal="false">
+  <el-dialog v-model="visible" :title="doc ? '分享资料' : '分享知识库'" width="520px" append-to-body
+    :close-on-click-modal="false">
     <div v-if="!shareResult" class="kb-share-form">
       <p class="kb-share-tip">
-        分享一个知识库给同学。对方领取后，会在自己的「我的资料」里得到一份<b>完整副本</b>，
-        可以继续编辑、检索和添加资料；原知识库后续变化不会影响副本。
+        <template v-if="doc">
+          分享这份资料给同学。对方领取后，会在自己的「我的资料」里得到一份<b>完整副本</b>，
+          可以继续编辑、检索和整理。
+        </template>
+        <template v-else>
+          分享一个知识库给同学。对方领取后，会在自己的「我的资料」里得到一份<b>完整副本</b>，
+          可以继续编辑、检索和添加资料；原知识库后续变化不会影响副本。
+        </template>
       </p>
       <el-form label-width="76px">
-        <el-form-item label="知识库">
+        <el-form-item v-if="!doc" label="知识库">
           <el-select v-model="form.kbId" placeholder="请选择要分享的知识库" filterable class="kb-share-select"
             :loading="kbLoading">
             <el-option v-for="kb in myKbs" :key="kb.kbId" :value="kb.kbId" :label="kb.name"
@@ -15,6 +22,9 @@
               <span class="opt-meta">{{ kb.docCount || 0 }} 份资料</span>
             </el-option>
           </el-select>
+        </el-form-item>
+        <el-form-item v-else label="资料">
+          <span class="kb-share-file">{{ doc.fileName }}</span>
         </el-form-item>
         <el-form-item label="有效期">
           <el-radio-group v-model="form.expireDays">
@@ -37,7 +47,7 @@
         <div v-if="!myShares.length" class="my-share-empty">还没有分享记录</div>
         <div v-for="item in myShares" :key="item.shareId" class="my-share-item">
           <div class="my-share-main">
-            <span class="my-share-name">{{ item.kbName || '知识库' }}</span>
+            <span class="my-share-name">{{ item.docName || item.kbName || '知识库' }}</span>
             <span class="my-share-meta">
               {{ item.shareCode }} · {{ item.receiveCount || 0 }} 人领取 ·
               <em :class="item.effective ? 'is-valid' : 'is-invalid'">{{ item.effective ? '有效' : '已失效' }}</em>
@@ -50,8 +60,8 @@
 
     <div v-else class="kb-share-result">
       <div class="share-row">
-        <span class="share-label">知识库</span>
-        <span class="share-kb">{{ shareResult.kbName }}</span>
+        <span class="share-label">{{ doc ? '资料' : '知识库' }}</span>
+        <span class="share-kb">{{ shareResult.docName || shareResult.kbName }}</span>
       </div>
       <div class="share-row">
         <span class="share-label">分享码</span>
@@ -88,6 +98,7 @@ import { buildKnowledgeShareUrl, formatDateTime } from '@/utils/share'
 const props = defineProps<{
   modelValue: boolean
   defaultKbId?: number | string | null
+  doc?: { docId: number; fileName: string } | null
 }>()
 
 const emit = defineEmits<{
@@ -163,25 +174,28 @@ function resetResult() {
 
 async function doCreate() {
   if (creating.value) return
-  if (!form.kbId) {
+  if (!props.doc && !form.kbId) {
     ElMessage.warning('请选择要分享的知识库')
     return
   }
-  if (!Number(selectedKb.value?.docCount || 0)) {
+  if (!props.doc && !Number(selectedKb.value?.docCount || 0)) {
     ElMessage.warning('空知识库无法分享，请先添加资料')
     return
   }
   creating.value = true
   try {
-    const res: any = await createKbShare({
-      kbId: form.kbId,
+    const payload: any = {
       expireDays: form.expireDays || null,
       message: form.message || undefined
-    })
+    }
+    if (props.doc) payload.docId = props.doc.docId
+    else payload.kbId = form.kbId
+    const res: any = await createKbShare(payload)
     if (res.code === 200 && res.data) {
       shareResult.value = {
         ...res.data,
         kbName: res.data.kbName || selectedKb.value?.name || '知识库',
+        docName: res.data.docName || props.doc?.fileName || '',
         shareUrl: buildKnowledgeShareUrl(res.data.shareToken)
       }
       emit('created', shareResult.value)
@@ -235,6 +249,16 @@ function copyText(text: string, label: string) {
 
 .kb-share-select {
   width: 100%;
+}
+
+.kb-share-file {
+  display: block;
+  overflow: hidden;
+  color: #1f2937;
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .opt-name {

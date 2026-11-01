@@ -12,12 +12,12 @@
         <div class="kb-share-head">
           <div class="kb-share-icon">AI</div>
           <div class="kb-share-meta">
-            <h2>{{ info.kbName }}</h2>
+            <h2>{{ info.docName || info.kbName }}</h2>
             <div class="kb-share-tags">
-              <el-tag size="small" type="info">{{ info.docCount || 0 }} 份资料</el-tag>
+              <el-tag size="small" type="info">{{ info.docName ? '1 份资料' : `${info.docCount || 0} 份资料` }}</el-tag>
               <el-tag size="small" type="warning" effect="light">完整副本</el-tag>
             </div>
-            <p>来自 <b>{{ info.ownerName || '匿名用户' }}</b> 的知识库分享</p>
+            <p>来自 <b>{{ info.ownerName || '匿名用户' }}</b> 的{{ info.docName ? '资料' : '知识库' }}分享</p>
             <p class="kb-share-expire">有效期：{{ info.expireTime ? formatTime(info.expireTime) : '永久有效' }}</p>
             <p v-if="info.message" class="kb-share-message">「{{ info.message }}」</p>
           </div>
@@ -100,7 +100,7 @@ async function doReceive() {
     const res: any = await receiveKbShare({ token: String(route.params.token || '') })
     if (res.code === 200 && res.data?.kbId) {
       ElMessage.success('已复制到你的「我的资料」')
-      goKb(res.data.kbId)
+      goKb(res.data.kbId, res.data.docId)
     } else {
       ElMessage.error(res.msg || '领取失败，请稍后重试')
     }
@@ -111,11 +111,12 @@ async function doReceive() {
   }
 }
 
-function goKb(kbId: number) {
-  router.push(`/front/workspace?kbId=${kbId}`)
+function goKb(kbId: number, docId?: number) {
+  const query = docId ? `?kbId=${kbId}&docId=${docId}&open=1` : `?kbId=${kbId}`
+  router.push(`/front/workspace${query}`)
 }
 function goReceived() {
-  if (info.value?.newKbId) goKb(info.value.newKbId)
+  if (info.value?.newKbId) goKb(info.value.newKbId, info.value.newDocId)
   else goWorkspace()
 }
 function goOrigin() {

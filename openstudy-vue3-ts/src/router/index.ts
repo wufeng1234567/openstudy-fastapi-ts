@@ -517,10 +517,11 @@ export const constantRoutes: AppRouteRecordRaw[] = [
       },
       {
         // 资料变微课：从「我的资料」某份文档进入，一条章节级学习路径
+        // 教学微课：围绕一份资料生成可直接演示的教学 HTML，并可转 PPT
         path: 'microCourse',
         name: 'FrontMicroCourse',
         component: () => import('@/views/front/workspace/microCourse.vue'),
-        meta: { title: '资料变微课', layout: 'front', requiresLogin: true },
+        meta: { title: '教学微课', layout: 'front', requiresLogin: true },
         hidden: true
       },
       // studio 题库搭建模块（直接进入 create 页面）

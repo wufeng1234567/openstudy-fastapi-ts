@@ -60,6 +60,7 @@ interface CheckState {
   title: string
   desc?: string
   kbId?: number
+  docId?: number
 }
 
 const input = ref('')
@@ -105,26 +106,27 @@ async function runCheck(raw: string): Promise<CheckState | null> {
       return { kind: 'blocked', title: res.msg || '分享不存在或已失效' }
     }
     const d = res.data
-    const name = d.kbName ? `《${d.kbName}》` : '这个知识库'
+    const name = d.docName ? `《${d.docName}》` : d.kbName ? `《${d.kbName}》` : '这个资料'
     if (d.isOwner) {
       return {
         kind: 'blocked',
-        title: '这是你自己分享的知识库',
+        title: '这是你自己分享的资料',
         desc: '不需要领取 —— 它已经在你的「我的资料」里了。'
       }
     }
-    if (d.received && d.newKbId) {
+    if (d.received && (d.newKbId || d.newDocId)) {
       return {
         kind: 'received',
         title: `${name}已领取过`,
         desc: '不用重复领取，直接去你的资料夹查看即可。',
-        kbId: d.newKbId
+        kbId: d.newKbId,
+        docId: d.newDocId
       }
     }
     return {
       kind: 'ok',
       title: `可以获取${name}`,
-      desc: `分享者：${d.ownerName || '匿名用户'}　${d.docCount || 0} 份资料　领取后生成完整副本`,
+      desc: `分享者：${d.ownerName || '匿名用户'}　${d.docName ? '1 份资料' : `${d.docCount || 0} 份资料`}　领取后生成完整副本`,
       kbId: d.kbId
     }
   } catch {
@@ -155,14 +157,14 @@ async function handleReceive() {
     }
     if (checked?.kind === 'received' && checked.kbId) {
       receiving.value = false
-      goKb(checked.kbId)
+      goKb(checked.kbId, checked.docId)
       return
     }
     const res: any = await receiveKbShare({ token, code })
     if (res.code === 200 && res.data?.kbId) {
       ElMessage.success('已复制到你的「我的资料」')
       emit('received', res.data)
-      goKb(res.data.kbId)
+      goKb(res.data.kbId, res.data.docId)
     } else {
       ElMessage.error(res.msg || '领取失败，请稍后重试')
     }
@@ -173,13 +175,14 @@ async function handleReceive() {
   }
 }
 
-function goKb(kbId: number) {
+function goKb(kbId: number, docId?: number) {
   visible.value = false
-  router.push(`/front/workspace?kbId=${kbId}`)
+  const query = docId ? `?kbId=${kbId}&docId=${docId}&open=1` : `?kbId=${kbId}`
+  router.push(`/front/workspace${query}`)
 }
 
 function goReceived() {
-  if (checkState.value?.kbId) goKb(checkState.value.kbId)
+  if (checkState.value?.kbId) goKb(checkState.value.kbId, checkState.value.docId)
 }
 </script>
 

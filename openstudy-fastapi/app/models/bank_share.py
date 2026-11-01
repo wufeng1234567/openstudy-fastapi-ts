@@ -65,6 +65,8 @@ class KbShare(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     kb_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    #: 为空 = 分享整个知识库；非空 = 只分享这个知识库里的单份文档
+    doc_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, index=True)
     owner_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     share_token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     share_code: Mapped[str] = mapped_column(String(12), nullable=False, index=True)
@@ -91,6 +93,7 @@ class KbShareReceive(Base):
     owner_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     receiver_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     new_kb_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    new_doc_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     source: Mapped[str] = mapped_column(String(16), default="share")
     status: Mapped[str] = mapped_column(String(1), default="0")
     create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

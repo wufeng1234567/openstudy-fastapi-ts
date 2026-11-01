@@ -3,7 +3,8 @@ import type { ApiResult } from '@/types'
 
 /** 生成知识库分享（仅知识库主） */
 export function createKbShare(data: {
-  kbId: number | string
+  kbId?: number | string
+  docId?: number | string
   expireDays?: number | null
   message?: string
 }): Promise<ApiResult<any>> {

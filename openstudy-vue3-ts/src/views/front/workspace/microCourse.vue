@@ -5,252 +5,153 @@
         <el-icon><ArrowLeft /></el-icon>
         我的资料
       </el-button>
+      <span v-if="result" class="micro-topbar-name">{{ result.document.fileName }}</span>
     </div>
 
-    <div v-if="loading" class="micro-loading" v-loading="true"></div>
+    <div v-if="loading" class="micro-loading">
+      <div class="micro-loading-mark">AI</div>
+      <h2>正在围绕这份资料生成教学课件</h2>
+      <p>整理章节、提炼要点、生成可直接演示的 HTML…</p>
+      <div class="micro-loading-bar"><span></span></div>
+    </div>
 
-    <div v-else-if="!data" class="micro-empty">
+    <div v-else-if="!result" class="micro-empty">
       <h3>这份资料暂时打不开</h3>
-      <p>它可能已被删除，或者你还没有阅读权限。</p>
+      <p>{{ errorMsg || '它可能已被删除，或者你还没有阅读权限。' }}</p>
       <el-button type="primary" @click="goWorkspace">回到我的资料</el-button>
     </div>
 
     <template v-else>
       <section class="micro-head">
         <div class="micro-head-main">
-          <div class="micro-eyebrow">资料变微课</div>
-          <h1>{{ data.document.fileName }}</h1>
+          <div class="micro-eyebrow">资料 · 教学微课</div>
+          <h1>{{ result.document.fileName }}</h1>
           <div class="micro-meta">
-            <span>{{ data.overview.stationCount }} 站</span>
-            <span>约 {{ data.overview.totalMinutes }} 分钟</span>
-            <span>{{ data.document.wordCount }} 字</span>
-            <span v-if="data.document.chunkCount">{{ data.document.chunkCount }} 个片段</span>
-            <span v-if="data.document.subject">{{ data.document.subject }}</span>
+            <span>{{ result.slides }} 页课件</span>
+            <span>{{ result.document.subject || '综合' }}</span>
+            <span>{{ result.document.wordCount }} 字</span>
+            <span class="micro-meta-ai">AI 生成</span>
           </div>
         </div>
-        <div class="micro-progress-card">
-          <div class="micro-progress-num">{{ completedCount }}<i>/{{ data.overview.stationCount }}</i></div>
-          <div class="micro-progress-label">已走完的站</div>
-          <div class="micro-progress-track">
-            <div class="micro-progress-fill" :style="{ width: `${progressPct}%` }"></div>
-          </div>
+        <div class="micro-actions">
+          <el-button :loading="generating" @click="generateHtml">重新生成</el-button>
+          <el-button type="primary" :loading="downloading" @click="downloadPpt">
+            <el-icon><Download /></el-icon>
+            下载 PPT
+          </el-button>
         </div>
       </section>
 
-      <div v-if="!data.document.hasOutline" class="micro-fallback-note">
-        这份资料没有可识别的章节标题，系统按段落切成了 {{ data.overview.stationCount }} 站。
+      <div class="micro-tip">
+        <span class="micro-tip-dot"></span>
+        HTML 课件可以直接全屏演示；下载 PPT 时会把当前 HTML 的页面结构转成幻灯片。
       </div>
 
-      <div class="micro-layout">
-        <aside class="station-rail">
-          <div
-            v-for="station in data.stations"
-            :key="station.id"
-            class="station-item"
-            :class="{
-              'is-active': currentIndex === station.index - 1,
-              'is-done': isDone(station.id),
-            }"
-            role="button"
-            tabindex="0"
-            @click="currentIndex = station.index - 1"
-            @keyup.enter="currentIndex = station.index - 1"
-          >
-            <span class="station-dot">
-              <el-icon v-if="isDone(station.id)"><Check /></el-icon>
-              <template v-else>{{ station.index }}</template>
-            </span>
-            <span class="station-line"></span>
-            <div class="station-copy">
-              <div class="station-title">{{ station.title }}</div>
-              <div class="station-sub">{{ station.minutes }} 分钟 · 检查点</div>
-            </div>
-          </div>
-        </aside>
+      <section class="micro-stage">
+        <div ref="stageRef" class="micro-frame-wrap">
+          <iframe
+            :key="frameKey"
+            :srcdoc="result.html"
+            class="micro-frame"
+            title="教学课件"
+            sandbox="allow-scripts allow-same-origin allow-presentation"
+          ></iframe>
+          <button type="button" class="micro-fullscreen" title="全屏演示" @click="enterFullscreen">
+            <el-icon><FullScreen /></el-icon>
+            全屏演示
+          </button>
+        </div>
+      </section>
 
-        <main v-if="currentStation" class="station-main">
-          <div class="station-card">
-            <div class="station-card-head">
-              <span class="station-eyebrow">STATION {{ String(currentStation.index).padStart(2, '0') }} / {{ String(data.overview.stationCount).padStart(2, '0') }}</span>
-              <span v-if="isDone(currentStation.id)" class="station-done-tag">已完成</span>
-            </div>
-            <h2>{{ currentStation.title }}</h2>
-            <div class="station-card-meta">约 {{ currentStation.minutes }} 分钟 · 先读原文，再合上资料复述</div>
-
-            <div class="station-section">
-              <div class="station-section-title">
-                <span>01</span> 原文导读
-              </div>
-              <p class="station-summary">{{ currentStation.summary }}</p>
-            </div>
-
-            <div v-if="currentStation.points.length" class="station-section">
-              <div class="station-section-title">
-                <span>02</span> 这一节讲了哪些点
-              </div>
-              <ul class="station-points">
-                <li v-for="(point, i) in currentStation.points" :key="i">{{ point }}</li>
-              </ul>
-            </div>
-
-            <div class="station-section station-checkpoint">
-              <div class="station-section-title">
-                <span>03</span> 检查点：用自己的话讲一遍
-              </div>
-              <p class="checkpoint-question">{{ currentStation.checkpoint }}</p>
-              <el-input
-                v-model="notes[currentStation.id]"
-                type="textarea"
-                :rows="3"
-                maxlength="500"
-                show-word-limit
-                placeholder="写下你的复述。不用写得漂亮，能讲清楚就行。"
-                @input="saveNotes"
-              />
-              <div class="checkpoint-actions">
-                <el-button
-                  :type="isDone(currentStation.id) ? 'success' : 'primary'"
-                  plain
-                  @click="toggleDone(currentStation.id)"
-                >
-                  <el-icon><Check /></el-icon>
-                  {{ isDone(currentStation.id) ? '已标记完成，点击取消' : '我讲完了，标记完成' }}
-                </el-button>
-                <el-button v-if="currentIndex < data.stations.length - 1" @click="nextStation">
-                  下一站 <el-icon><ArrowRight /></el-icon>
-                </el-button>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="data.relatedBanks.length" class="related-card">
-            <div>
-              <h3>学完这一份，去做几道相关的题</h3>
-              <p>系统按资料科目/名称匹配的题库，不是自动生成的假题。</p>
-            </div>
-            <div class="related-list">
-              <el-button
-                v-for="bank in data.relatedBanks"
-                :key="bank.id"
-                plain
-                @click="goBank(bank.id)"
-              >
-                {{ bank.name }}<span v-if="bank.subject" class="related-subject">{{ bank.subject }}</span>
-              </el-button>
-            </div>
-          </div>
-
-          <div v-if="allDone" class="micro-finish">
-            <div class="micro-finish-mark"><el-icon><Trophy /></el-icon></div>
-            <div>
-              <h3>这份资料，你走完了。</h3>
-              <p>共 {{ data.overview.stationCount }} 站、约 {{ data.overview.totalMinutes }} 分钟。接下来用练习题确认一下。</p>
-            </div>
-            <el-button type="primary" @click="goBank(data.relatedBanks[0]?.id)">去练相关题</el-button>
-          </div>
-        </main>
-      </div>
+      <section class="micro-foot">
+        <div>
+          <h3>这份课件从哪里来？</h3>
+          <p>系统读取资料原文的章节和正文，生成教学课件；不编造资料里没有的内容。</p>
+        </div>
+        <span class="micro-foot-meta">共 {{ result.slides }} 页 · 可直接投屏</span>
+      </section>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, ArrowRight, Check, Trophy } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { getMicroCourse, type MicroCourseResult } from '@/api/ai/workspace'
+import { ArrowLeft, Download, FullScreen } from '@element-plus/icons-vue'
+import { saveAs } from 'file-saver'
+import { downloadMicroCoursePptx, getMicroCourseHtml, type MicroCourseHtmlResult } from '@/api/ai/workspace'
 
 defineOptions({ name: 'MicroCourse' })
 
 const route = useRoute()
 const router = useRouter()
 const loading = ref(true)
-const data = ref<MicroCourseResult | null>(null)
-const currentIndex = ref(0)
-const doneIds = ref<string[]>([])
-const notes = reactive<Record<string, string>>({})
+const generating = ref(false)
+const downloading = ref(false)
+const errorMsg = ref('')
+const result = ref<MicroCourseHtmlResult | null>(null)
+const frameKey = ref(0)
+const stageRef = ref<HTMLElement | null>(null)
 
 const docId = computed(() => String(route.query.docId || ''))
-const currentStation = computed(() => data.value?.stations?.[currentIndex.value] || null)
-const completedCount = computed(() => doneIds.value.length)
-const progressPct = computed(() => {
-  const total = data.value?.overview.stationCount || 0
-  return total ? Math.round((completedCount.value / total) * 100) : 0
-})
-const allDone = computed(() => !!data.value && completedCount.value >= (data.value.overview.stationCount || 0))
 
-const progressKey = computed(() => `os_micro_progress_${docId.value}`)
-const notesKey = computed(() => `os_micro_notes_${docId.value}`)
-
-function loadLocal() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(progressKey.value) || '[]')
-    if (Array.isArray(saved)) doneIds.value = saved.map(String)
-    const savedNotes = JSON.parse(localStorage.getItem(notesKey.value) || '{}')
-    if (savedNotes && typeof savedNotes === 'object') {
-      Object.keys(savedNotes).forEach((key) => (notes[key] = String(savedNotes[key] ?? '')))
-    }
-  } catch {
-    doneIds.value = []
+async function generateHtml() {
+  if (!docId.value) {
+    loading.value = false
+    return
   }
-}
-
-function saveDone() {
-  localStorage.setItem(progressKey.value, JSON.stringify(doneIds.value))
-}
-function saveNotes() {
-  localStorage.setItem(notesKey.value, JSON.stringify(notes))
-}
-function isDone(id: string) {
-  return doneIds.value.includes(id)
-}
-function toggleDone(id: string) {
-  if (isDone(id)) {
-    doneIds.value = doneIds.value.filter((x) => x !== id)
-  } else {
-    doneIds.value = [...doneIds.value, id]
-    ElMessage.success('已记录这一站，继续下一站吧')
-  }
-  saveDone()
-}
-function nextStation() {
-  if (currentIndex.value < (data.value?.stations.length || 0) - 1) currentIndex.value += 1
-}
-
-async function load() {
-  loading.value = true
+  generating.value = true
+  errorMsg.value = ''
   try {
-    if (!docId.value) {
-      data.value = null
-      return
-    }
-    const res: any = await getMicroCourse(docId.value)
+    const res: any = await getMicroCourseHtml(docId.value)
     if (res.code === 200 && res.data) {
-      data.value = res.data
-      loadLocal()
-      const firstUndone = res.data.stations.findIndex((s: any) => !doneIds.value.includes(s.id))
-      currentIndex.value = firstUndone >= 0 ? firstUndone : 0
+      result.value = res.data
+      frameKey.value += 1
+    } else {
+      errorMsg.value = res.msg || '生成失败，请稍后重试'
+      result.value = null
     }
   } catch (e: any) {
-    console.warn('[资料变微课] 加载失败', e)
+    errorMsg.value = e?.message || '生成失败，请稍后重试'
+    result.value = null
   } finally {
     loading.value = false
+    generating.value = false
   }
 }
 
-const goWorkspace = () => router.push('/front/workspace')
-function goBank(bankId?: number) {
-  if (!bankId) return
-  router.push(`/front/questionPractice/${bankId}`)
+async function downloadPpt() {
+  if (!result.value || downloading.value) return
+  downloading.value = true
+  try {
+    const blob: any = await downloadMicroCoursePptx(docId.value, result.value.html)
+    const stem = String(result.value.document.fileName || '教学课件').replace(/\.[^.]+$/, '')
+    saveAs(new Blob([blob]), `${stem}.pptx`)
+    ElMessage.success('PPT 已开始下载')
+  } catch {
+    ElMessage.error('PPT 生成失败，请稍后重试')
+  } finally {
+    downloading.value = false
+  }
 }
 
-onMounted(load)
+function enterFullscreen() {
+  const node = stageRef.value
+  if (!node) return
+  if (node.requestFullscreen) node.requestFullscreen()
+}
+
+function goWorkspace() {
+  router.push('/front/workspace')
+}
+
+onMounted(generateHtml)
 </script>
 
 <style scoped>
 .micro-page {
-  max-width: 1180px;
+  max-width: 1220px;
   margin: 0 auto;
   padding: 0 20px 56px;
 }
@@ -258,448 +159,236 @@ onMounted(load)
 .micro-topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
+  gap: 12px;
+  min-height: 48px;
 }
 
 .back-btn {
-  height: 30px;
+  color: var(--os-text-3, #81858c);
+}
+
+.micro-topbar-name {
+  overflow: hidden;
+  color: var(--os-text-3, #81858c);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.micro-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 520px;
+  text-align: center;
+}
+
+.micro-loading-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: var(--os-accent-soft, #edf3fe);
+  color: var(--os-accent, #4176e6);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.micro-loading h2 {
+  margin: 20px 0 8px;
+  color: var(--os-text, #0f1115);
+  font-size: 20px;
+}
+
+.micro-loading p {
+  margin: 0;
   color: var(--os-text-3, #81858c);
   font-size: 12px;
 }
 
-.micro-topbar-hint {
-  color: var(--os-text-4, #adb2b8);
-  font-size: 11px;
+.micro-loading-bar {
+  width: 220px;
+  height: 3px;
+  margin-top: 22px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf0f4;
 }
 
-.micro-loading {
-  height: 480px;
-  border-radius: var(--os-radius, 12px);
-  background: #fff;
+.micro-loading-bar span {
+  display: block;
+  width: 45%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--os-accent, #4176e6);
+  animation: micro-loading 1.2s ease-in-out infinite;
+}
+
+@keyframes micro-loading {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(250%); }
 }
 
 .micro-empty {
-  padding: 60px 24px;
-  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
-  border-radius: var(--os-radius, 12px);
-  background: #fff;
+  padding: 80px 20px;
   text-align: center;
 }
 
 .micro-empty h3 {
-  margin: 0 0 6px;
+  margin: 0 0 8px;
   color: var(--os-text, #0f1115);
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 20px;
 }
 
 .micro-empty p {
-  margin: 0 0 16px;
+  margin: 0 0 18px;
   color: var(--os-text-3, #81858c);
   font-size: 12px;
 }
 
 .micro-head {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 24px;
-  padding: 18px 20px;
-  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
-  border-radius: var(--os-radius, 12px);
-  background: #fff;
+  padding: 30px 2px 22px;
 }
 
 .micro-eyebrow {
-  color: var(--os-text-4, #adb2b8);
-  font-size: 10px;
-  font-weight: 500;
+  margin-bottom: 10px;
+  color: var(--os-accent, #4176e6);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
 }
 
 .micro-head h1 {
-  margin: 6px 0 5px;
+  margin: 0 0 12px;
   color: var(--os-text, #0f1115);
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-size: clamp(24px, 3.2vw, 36px);
+  line-height: 1.2;
+  letter-spacing: -0.5px;
 }
 
 .micro-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 8px 16px;
   color: var(--os-text-3, #81858c);
-  font-size: 11px;
-}
-
-.micro-meta span + span::before {
-  content: '·';
-  margin-right: 8px;
-  color: var(--os-text-4, #adb2b8);
-}
-
-.micro-progress-card {
-  display: flex;
-  width: 150px;
-  flex: none;
-  flex-direction: column;
-  justify-content: center;
-  padding-left: 20px;
-  border-left: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
-}
-
-.micro-progress-num {
-  color: var(--os-text, #0f1115);
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 1;
-}
-
-.micro-progress-num i {
-  color: var(--os-text-4, #adb2b8);
   font-size: 12px;
-  font-style: normal;
-  font-weight: 400;
 }
 
-.micro-progress-label {
-  margin-top: 4px;
-  color: var(--os-text-3, #81858c);
-  font-size: 10px;
+.micro-meta-ai {
+  color: var(--os-accent, #4176e6);
+  font-weight: 600;
 }
 
-.micro-progress-track {
-  height: 4px;
-  margin-top: 8px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: #f1f3f5;
+.micro-actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
 }
 
-.micro-progress-fill {
-  height: 100%;
-  border-radius: inherit;
-  background: var(--os-accent, #4176e6);
-  transition: width 0.35s ease;
-}
-
-.micro-fallback-note {
-  margin-top: 10px;
+.micro-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
   padding: 9px 12px;
   border-radius: 8px;
-  background: #fff7e6;
-  color: #d46b08;
+  background: var(--os-bg-subtle, #f5f6f7);
+  color: var(--os-text-3, #81858c);
   font-size: 11px;
 }
 
-.micro-layout {
-  display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
-  margin-top: 16px;
-}
-
-.station-rail {
-  position: sticky;
-  top: 16px;
-  padding: 10px;
-  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
-  border-radius: var(--os-radius, 12px);
-  background: #fff;
-}
-
-.station-item {
-  position: relative;
-  display: flex;
-  gap: 10px;
-  padding: 10px 8px;
-  border-radius: 10px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.station-item:hover {
-  background: #f9fafb;
-}
-
-.station-item.is-active {
-  background: #eff6ff;
-}
-
-.station-dot {
-  display: grid;
-  width: 24px;
-  height: 24px;
+.micro-tip-dot {
+  width: 6px;
+  height: 6px;
   flex: none;
-  place-items: center;
-  border: 1px solid #dbe2ea;
   border-radius: 50%;
-  background: #fff;
-  color: #64748b;
-  font-size: 10px;
-  font-weight: 700;
-  z-index: 1;
-}
-
-.station-item.is-active .station-dot {
-  border-color: var(--os-accent, #4176e6);
   background: var(--os-accent, #4176e6);
-  color: #fff;
 }
 
-.station-item.is-done .station-dot {
-  border-color: #10b981;
-  background: #ecfdf5;
-  color: #059669;
-}
-
-.station-line {
-  position: absolute;
-  top: 34px;
-  left: 19px;
-  width: 1px;
-  height: calc(100% - 24px);
+.micro-stage {
+  padding: 12px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.05));
+  border-radius: 16px;
   background: #eef2f7;
 }
 
-.station-item:last-child .station-line {
-  display: none;
-}
-
-.station-copy {
-  min-width: 0;
-  flex: 1;
-}
-
-.station-title {
-  display: -webkit-box;
+.micro-frame-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
   overflow: hidden;
-  color: #334155;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.45;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.station-item.is-active .station-title {
-  color: #1d4ed8;
-}
-
-.station-sub {
-  margin-top: 3px;
-  color: #94a3b8;
-  font-size: 9px;
-}
-
-.station-main {
-  min-width: 0;
-}
-
-.station-card {
-  padding: 20px 22px;
-  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
-  border-radius: var(--os-radius, 12px);
-  background: #fff;
-  
-}
-
-.station-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.station-eyebrow {
-  color: var(--os-accent, #4176e6);
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-}
-
-.station-done-tag {
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: #ecfdf5;
-  color: #059669;
-  font-size: 10px;
-  font-weight: 600;
-}
-
-.station-card h2 {
-  margin: 12px 0 6px;
-  color: #0f172a;
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-}
-
-.station-card-meta {
-  color: #94a3b8;
-  font-size: 11px;
-}
-
-.station-section {
-  margin-top: 24px;
-  padding-top: 18px;
-  border-top: 1px solid #eef2f7;
-}
-
-.station-section-title {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-bottom: 10px;
-  color: #1f2937;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.station-section-title span {
-  color: var(--os-accent, #4176e6);
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-}
-
-.station-summary {
-  margin: 0;
-  max-height: 260px;
-  overflow-y: auto;
-  padding: 14px 16px;
   border-radius: 10px;
-  background: #f9fafb;
-  color: #475569;
-  font-size: 12px;
-  line-height: 1.85;
-  white-space: pre-wrap;
+  background: #fff;
 }
 
-.station-points {
+.micro-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.micro-fullscreen {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  border-radius: 999px;
+  padding: 7px 12px;
+  background: rgba(17, 24, 39, 0.78);
+  color: #fff;
+  cursor: pointer;
+  font-size: 11px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.micro-frame-wrap:hover .micro-fullscreen {
+  opacity: 1;
+}
+
+.micro-foot {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 2px 0;
+}
+
+.micro-foot h3 {
+  margin: 0 0 6px;
+  color: var(--os-text, #0f1115);
+  font-size: 13px;
+}
+
+.micro-foot p,
+.micro-foot-meta {
   margin: 0;
-  padding-left: 18px;
-  color: #475569;
-  font-size: 12px;
-  line-height: 1.9;
-}
-
-.station-points li::marker {
-  color: #93c5fd;
-}
-
-.station-checkpoint {
-  padding: 18px;
-  border: 1px dashed #dbeafe;
-  border-radius: 14px;
-  background: #f8fbff;
-}
-
-.checkpoint-question {
-  margin: 0 0 10px;
-  color: #334155;
-  font-size: 12px;
+  color: var(--os-text-3, #81858c);
+  font-size: 11px;
   line-height: 1.7;
 }
 
-.checkpoint-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.related-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  margin-top: 14px;
-  padding: 16px 20px;
-  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
-  border-radius: 14px;
-  background: #fff;
-}
-
-.related-card h3 {
-  margin: 0 0 4px;
-  color: #1f2937;
-  font-size: 13px;
-}
-
-.related-card p {
-  margin: 0;
-  color: #94a3b8;
-  font-size: 10px;
-}
-
-.related-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.related-subject {
-  margin-left: 5px;
-  color: #94a3b8;
-  font-size: 9px;
-}
-
-.micro-finish {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-top: 14px;
-  padding: 18px 20px;
-  border-radius: 14px;
-  background: #e6faed;
-  border: 1px solid #d1fae5;
-}
-
-.micro-finish-mark {
-  display: grid;
-  width: 42px;
-  height: 42px;
-  flex: none;
-  place-items: center;
-  border-radius: 12px;
-  background: #10b981;
-  color: #fff;
-  font-size: 20px;
-}
-
-.micro-finish h3 {
-  margin: 0 0 3px;
-  color: #065f46;
-  font-size: 14px;
-}
-
-.micro-finish p {
-  margin: 0;
-  color: #047857;
-  font-size: 11px;
-}
-
-.micro-finish .el-button {
-  margin-left: auto;
-}
-
-@media (max-width: 900px) {
-  .micro-layout {
-    grid-template-columns: 1fr;
-  }
-  .station-rail {
-    position: static;
-  }
+@media (max-width: 720px) {
   .micro-head {
-    flex-wrap: wrap;
-  }
-  .related-card {
-    flex-direction: column;
     align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .micro-stage {
+    padding: 6px;
   }
 }
 </style>
-
-

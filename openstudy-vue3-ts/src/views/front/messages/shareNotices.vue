@@ -1,11 +1,11 @@
 <!-- ==================== 分享通知 ==================== -->
-<!-- 题库分享相关的定向通知：有人领取了你的分享 / 你收藏的分享已失效 -->
+<!-- 知识库 / 资料分享相关的定向通知：有人领取了你的分享 / 分享已失效 -->
 <template>
   <div class="share-notice-page">
     <div class="page-header">
       <div class="page-title-wrap">
         <h3 class="page-title">分享通知</h3>
-        <span class="page-desc">有人领取了你的分享，或你收藏的分享已失效</span>
+        <span class="page-desc">有人领取了你分享的知识库或资料，或你收到的分享已失效</span>
       </div>
       <div class="header-actions">
         <el-button v-if="noticeList.length > 0" class="delete-all-btn" size="small" @click="handleClearAll">
@@ -227,14 +227,14 @@ onMounted(fetchNotices)
 }
 
 .notice-card.unread {
-  border-left: 3px solid #409EFF;
+  border-left: 3px solid var(--os-accent, #4176e6);
 }
 
 .unread-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #409EFF;
+  background: var(--os-accent, #4176e6);
   flex-shrink: 0;
   margin-top: 6px;
 }

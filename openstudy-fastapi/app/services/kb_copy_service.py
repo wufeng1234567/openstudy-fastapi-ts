@@ -96,3 +96,40 @@ async def copy_knowledge_base(
     new_kb.chunk_count = 0
     await db.flush()
     return new_kb, pending_ids
+
+
+async def copy_document_to_kb(
+    db: AsyncSession,
+    source_doc: RagDocument,
+    target_kb: RagKnowledgeBase,
+    target_user_id: int,
+) -> RagDocument:
+    """把单份文档复制到目标知识库（文档分享领取使用）。"""
+    copied = RagDocument(
+        kb_id=target_kb.id,
+        user_id=target_user_id,
+        file_name=source_doc.file_name,
+        original_file_name=source_doc.original_file_name,
+        subject=source_doc.subject,
+        material_type=source_doc.material_type,
+        facets=_copy.deepcopy(source_doc.facets),
+        excluded_ranges=_copy.deepcopy(source_doc.excluded_ranges),
+        file_type=source_doc.file_type,
+        file_size=source_doc.file_size,
+        file_path=source_doc.file_path,
+        raw_content=source_doc.raw_content,
+        image_map=_copy.deepcopy(source_doc.image_map),
+        content_structure=_copy.deepcopy(source_doc.content_structure),
+        user_note=source_doc.user_note,
+        chunk_count=0,
+        index_version=1,
+        status=DOC_PENDING,
+        disabled=0,
+        error_msg=None,
+        create_time=datetime.now(),
+    )
+    db.add(copied)
+    await db.flush()
+    target_kb.doc_count = int(target_kb.doc_count or 0) + 1
+    await db.flush()
+    return copied

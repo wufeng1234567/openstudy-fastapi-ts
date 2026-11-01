@@ -218,6 +218,43 @@ export function getMicroCourse(docId: number | string) {
   }) as unknown as Promise<{ code: number; msg?: string; data: MicroCourseResult }>
 }
 
+export interface MicroCourseHtmlResult {
+  document: MicroCourseResult['document']
+  overview: MicroCourseResult['overview']
+  deck: {
+    title: string
+    subtitle: string
+    slides: Array<{
+      kind: string
+      eyebrow?: string
+      title: string
+      subtitle?: string
+      bullets?: string[]
+      note?: string
+    }>
+  }
+  html: string
+  slides: number
+}
+
+/** 生成可在线演示的教学 HTML 课件 */
+export function getMicroCourseHtml(docId: number | string) {
+  return request({
+    url: `/rag/document/micro-course/${docId}/html`,
+    method: 'get'
+  }) as unknown as Promise<{ code: number; msg?: string; data: MicroCourseHtmlResult }>
+}
+
+/** 把教学 HTML 转成 PPT（传 html 时按 HTML 的 slide 结构转换） */
+export function downloadMicroCoursePptx(docId: number | string, html?: string) {
+  return request({
+    url: `/rag/document/micro-course/${docId}/pptx`,
+    method: 'post',
+    data: { html: html || undefined },
+    responseType: 'blob'
+  })
+}
+
 /** 文档历史版本列表（编辑器内使用，不新增页面入口） */
 export function listDocumentVersions(docId: number, limit = 30) {
   return request({

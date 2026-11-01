@@ -187,6 +187,9 @@ watch(() => route.path, () => {
 
     .el-menu-item {
       position: relative;
+      display: flex;
+      align-items: center;
+      width: 100%;
       height: 36px;
       line-height: 36px;
       border-radius: var(--os-radius-sm);
@@ -213,20 +216,33 @@ watch(() => route.path, () => {
         margin-right: 8px;
       }
 
-      span {
+      > span:not(.el-badge) {
+        flex: 1;
+        min-width: 0;
         font-size: 13.5px;
       }
     }
 
     .menu-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex: none;
       margin-left: auto;
+      padding-left: 8px;
 
       :deep(.el-badge__content) {
-        font-size: 11px;
+        min-width: 18px;
         height: 18px;
-        line-height: 18px;
         padding: 0 5px;
-        border: none;
+        border: 2px solid #fff;
+        border-radius: 999px;
+        background: var(--os-accent);
+        color: #fff;
+        font-size: 10px;
+        font-weight: 600;
+        line-height: 14px;
+        box-shadow: 0 1px 3px rgba(65, 118, 230, 0.22);
       }
     }
   }

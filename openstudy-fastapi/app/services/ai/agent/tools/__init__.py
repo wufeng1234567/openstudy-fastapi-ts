@@ -28,6 +28,7 @@ from app.services.ai.agent.tools.knowledge_search import KnowledgeSearchTool
 from app.services.ai.agent.tools.learning_stats import LearningStatsTool
 from app.services.ai.agent.tools.memory_manage import MemoryManageTool
 from app.services.ai.agent.tools.memory_search import MemorySearchTool
+from app.services.ai.agent.tools.micro_course_manage import MicroCourseTool
 from app.services.ai.agent.tools.note_manage import NoteManageTool
 from app.services.ai.agent.tools.question_manage import QuestionManageTool
 from app.services.ai.agent.tools.question_mark_manage import QuestionFlagManageTool
@@ -117,6 +118,8 @@ registry.register(DocumentComposeTool())
 #       长文档去比：漏一行、看错一个数字，用户几乎发现不了。
 #    模型负责解释结论，不负责找差异。
 registry.register(DocumentCompareTool())
+# —— 2026-11-01 教学微课：手动页面「生成微课」与对话共用同一份 HTML/PPT 导出能力。
+registry.register(MicroCourseTool())
 
 __all__ = [
     "AgentManageTool",
@@ -134,6 +137,7 @@ __all__ = [
     "LearningStatsTool",
     "MemoryManageTool",
     "MemorySearchTool",
+    "MicroCourseTool",
     "NoteManageTool",
     "QuestionFlagManageTool",
     "QuestionManageTool",

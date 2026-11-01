@@ -447,7 +447,7 @@ const SECOND_LEVEL_HINT: Record<string, string> = {
   FrontEnglishVocabulary: '把要背的单词整理成词库，之后可以听写、也可以让 AI 用它们出题',
   FrontEnglishListening: '听中文发音写英文单词，练的是拼写和反应',
   FrontEnglishReading: '给一个主题，AI 生成短文和选择题，做完立刻看解析',
-  FrontMicroCourse: '按原文结构把一份资料拆成可以一站一站学的路径'
+  FrontMicroCourse: '围绕资料生成可直接演示的教学 HTML，并可一键转成 PPT'
 }
 
 const pageTitle = computed(() => {

@@ -22,6 +22,7 @@ import json
 import re
 from pathlib import Path
 from typing import List, Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, UploadFile
 from fastapi.responses import Response, StreamingResponse
@@ -729,6 +730,55 @@ async def get_document_micro_course(
     try:
         doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
         return success(await build_micro_course(db, _uid(current_user), doc))
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/document/micro-course/{doc_id}/html")
+async def get_document_micro_course_html(
+    doc_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """生成可在线演示的教学 HTML 课件。"""
+    from app.services.micro_course_export_service import build_micro_course_export
+
+    try:
+        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        return success(await build_micro_course_export(db, _uid(current_user), doc))
+    except Exception as e:
+        return _fail(e)
+
+
+class MicroCoursePptxRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    html: Optional[str] = None
+
+
+@router.post("/document/micro-course/{doc_id}/pptx")
+async def download_micro_course_pptx(
+    doc_id: int,
+    data: MicroCoursePptxRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """把教学 HTML（或服务器生成的结构）转成 .pptx 下载。"""
+    from app.services.micro_course_export_service import (
+        build_micro_course_export,
+        build_pptx_bytes,
+    )
+
+    try:
+        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        export = await build_micro_course_export(db, _uid(current_user), doc)
+        content = build_pptx_bytes(export["deck"], data.html or export["html"])
+        name = re.sub(r"[\\/:*?\"<>|]", "_", doc.file_name or "教学课件")
+        name = re.sub(r"\.[A-Za-z0-9]{1,6}$", "", name) + ".pptx"
+        return Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"},
+        )
     except Exception as e:
         return _fail(e)
 

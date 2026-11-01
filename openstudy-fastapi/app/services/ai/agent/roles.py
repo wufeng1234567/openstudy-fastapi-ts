@@ -213,6 +213,9 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
             "knowledge_search",
             "knowledge_ingest",
             "knowledge_base_manage",
+            # 2026-11-01 教学微课：用户说「把这份资料做成课件 / PPT」时，
+            # 资料专家需要能直接调用同一套生成能力。
+            "micro_course_generate",
             # 2026-10-22：知识库专家也要能「先找文件再处理」——
             # 用户说「把我空间里那份资料存进知识库」时用得上
             "workspace_search",
@@ -221,7 +224,9 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
             "The user's own materials (document collections). Use it when the user wants "
             "to create a material folder, save some text or a file into it so it becomes "
             "searchable, or look something up inside it. Saving takes a moment to process "
-            "in the background, so a just-saved item is not searchable immediately."
+            "in the background, so a just-saved item is not searchable immediately. "
+            "ALSO use it when the user asks to turn one of their documents into a "
+            "teaching HTML / micro-course / PPT — call `micro_course_generate`."
         ),
         persona=(
             "You are the Materials Specialist of OpenStudy. You manage the user's material "
@@ -251,7 +256,7 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
         ),
         keywords=(
             "我的资料", "资料夹", "知识库", "资料", "文档库", "存进", "存入",
-            "检索", "查一下资料", "knowledge", "document",
+            "检索", "查一下资料", "knowledge", "document", "微课", "课件", "教学html", "ppt",
         ),
     ),
     # ---- 记忆：不是角色，而是**全局默认工具**（见下面 GLOBAL_TOOLS）----

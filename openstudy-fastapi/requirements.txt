@@ -89,3 +89,6 @@ edge-tts>=6.1.0
 #   映射成 Word 原生公式（OMML）—— Word 与 WPS 都认的格式
 reportlab==4.2.5
 latex2mathml==3.81.1
+
+# 教学微课 PPT 导出（2026-11-01）
+python-pptx>=1.0.0

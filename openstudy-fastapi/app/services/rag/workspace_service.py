@@ -53,7 +53,7 @@ from app.services.material_organizer import (
 )
 from app.services.material_structure import apply_layouts, build_structure_plan, layout_ranges
 
-#: 默认资料夹在界面上显示的名字（用户不可改）
+#: 默认资料夹首次创建时使用的名字（之后允许用户改名）
 #: 与普通资料夹并列展示，所以名字要像"一个资料夹"，而不是"一个特殊区域"
 WORKSPACE_NAME = "默认资料夹"
 WORKSPACE_DESC = "新传的资料先放这里，AI 会自己找"
@@ -406,7 +406,9 @@ async def overview(db: AsyncSession, user_id: int) -> Dict[str, Any]:
         kbs.append(
             {
                 "kbId": kb.id,
-                "name": WORKSPACE_NAME if kb.is_workspace == 1 else kb.name,
+                # 默认资料夹允许重命名，所以始终返回数据库里的 name；
+                # 是否是默认库由 isDefault 表达，不能再用固定名称覆盖用户设置。
+                "name": kb.name,
                 "description": kb.description or "",
                 "isDefault": 1 if kb.is_workspace == 1 else 0,
                 "disabled": 1 if kb.disabled == 1 else 0,

@@ -27,10 +27,11 @@ from app.core.response import error, success
 from app.core.security import get_current_user
 from app.database import get_db
 from app.models.bank_share import KbShare, KbShareReceive
-from app.models.rag import RagKnowledgeBase
+from app.models.rag import RagDocument, RagKnowledgeBase
 from app.models.user import SysUser
 from app.services import kb_copy_service
 from app.services.notification_service import create_notification
+from app.services.rag import workspace_service
 from app.services.rag.document_pipeline import process_document
 
 router = APIRouter()
@@ -72,10 +73,12 @@ def _effective(share: KbShare) -> bool:
     return True
 
 
-def _format(share: KbShare, kb: Optional[RagKnowledgeBase] = None, owner_name: str = "") -> dict:
+def _format(share: KbShare, kb: Optional[RagKnowledgeBase] = None, owner_name: str = "", doc=None) -> dict:
     row = {
         "shareId": share.id,
         "kbId": share.kb_id,
+        "docId": share.doc_id,
+        "targetType": "document" if share.doc_id else "knowledge_base",
         "ownerId": share.owner_id,
         "shareToken": share.share_token,
         "shareCode": share.share_code,
@@ -97,6 +100,9 @@ def _format(share: KbShare, kb: Optional[RagKnowledgeBase] = None, owner_name: s
                 "isDefault": 1 if kb.is_workspace == 1 else 0,
             }
         )
+    if doc is not None:
+        row["docName"] = doc.file_name
+        row["docCount"] = 1
     if owner_name:
         row["ownerName"] = owner_name
     return row
@@ -126,12 +132,27 @@ async def create_kb_share(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """生成知识库分享（仅知识库主）。body: {kbId, expireDays?, message?}"""
+    """生成知识库分享（仅知识库主）。body: {kbId, docId?, expireDays?, message?}"""
     body = await _get_body(request)
     kb_id = body.get("kbId") or body.get("kb_id")
+    doc_id = body.get("docId") or body.get("doc_id")
+    user_id = int(current_user.get("user_id") or 0)
+    doc = None
+    if doc_id:
+        doc = (
+            await db.execute(
+                select(RagDocument).where(
+                    RagDocument.id == int(doc_id),
+                    RagDocument.user_id == user_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if not doc:
+            return error("文档不存在或无权分享", code=404)
+        kb_id = doc.kb_id
+
     if not kb_id:
         return error("kbId 不能为空")
-    user_id = int(current_user.get("user_id") or 0)
 
     kb = (
         await db.execute(
@@ -145,7 +166,7 @@ async def create_kb_share(
         return error("知识库不存在")
     if int(kb.user_id) != user_id:
         return error("只有知识库主才能分享", code=403)
-    if not kb.doc_count:
+    if not doc_id and not kb.doc_count:
         return error("空知识库无法分享，请先添加资料")
 
     expire_days = body.get("expireDays")
@@ -164,6 +185,7 @@ async def create_kb_share(
 
     share = KbShare(
         kb_id=int(kb_id),
+        doc_id=int(doc_id) if doc_id else None,
         owner_id=user_id,
         share_token=_gen_token(),
         share_code=code,
@@ -175,7 +197,7 @@ async def create_kb_share(
     db.add(share)
     await db.flush()
     await db.refresh(share)
-    return success(_format(share, kb, await _owner_name(db, user_id)))
+    return success(_format(share, kb, await _owner_name(db, user_id), doc))
 
 
 @router.get("/kbShare/kbShare/my")
@@ -196,7 +218,21 @@ async def my_kb_shares(
         await db.execute(select(RagKnowledgeBase).where(RagKnowledgeBase.id.in_(kb_ids)))
     ).scalars().all()
     kb_map = {int(k.id): k for k in kbs}
-    return success([_format(s, kb_map.get(int(s.kb_id))) for s in shares])
+    doc_ids = [int(s.doc_id) for s in shares if s.doc_id]
+    docs = (
+        await db.execute(select(RagDocument).where(RagDocument.id.in_(doc_ids)))
+    ).scalars().all() if doc_ids else []
+    doc_map = {int(d.id): d for d in docs}
+    return success(
+        [
+            _format(
+                s,
+                kb_map.get(int(s.kb_id)),
+                doc=doc_map.get(int(s.doc_id)) if s.doc_id else None,
+            )
+            for s in shares
+        ]
+    )
 
 
 @router.post("/kbShare/kbShare/revoke/{share_id}")
@@ -220,6 +256,12 @@ async def revoke_kb_share(
     kb_name = await db.scalar(
         select(RagKnowledgeBase.name).where(RagKnowledgeBase.id == share.kb_id)
     ) or "知识库"
+    doc_name = (
+        await db.scalar(select(RagDocument.file_name).where(RagDocument.id == share.doc_id))
+        if share.doc_id
+        else None
+    )
+    shared_name = f"文档《{doc_name}》" if doc_name else f"知识库《{kb_name}》"
     for rec in receives:
         if rec.status == "0":
             rec.status = "1"
@@ -228,8 +270,8 @@ async def revoke_kb_share(
                 db,
                 user_id=int(rec.receiver_id),
                 notify_type="share_invalid",
-                title="你收到的知识库分享已撤销",
-                content=f"《{kb_name}》的分享已被撤销；你之前保存的副本仍然保留，可以继续使用。",
+                title="你收到的分享已撤销",
+                content=f"{shared_name}的分享已被撤销；你之前保存的副本仍然保留，可以继续使用。",
                 link="/front/workspace",
             )
     await db.flush()
@@ -261,6 +303,19 @@ async def _share_info(
     if not kb:
         return error("原知识库已被删除", code=404)
 
+    doc = None
+    if share.doc_id:
+        doc = (
+            await db.execute(
+                select(RagDocument).where(
+                    RagDocument.id == share.doc_id,
+                    RagDocument.kb_id == share.kb_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if not doc:
+            return error("原文档已被删除", code=404)
+
     user_id = int(current_user.get("user_id") or 0)
     received = (
         await db.execute(
@@ -271,9 +326,10 @@ async def _share_info(
         )
     ).scalar_one_or_none()
 
-    data = _format(share, kb, await _owner_name(db, int(share.owner_id)))
+    data = _format(share, kb, await _owner_name(db, int(share.owner_id)), doc)
     data["received"] = received is not None
     data["newKbId"] = int(received.new_kb_id) if received and received.new_kb_id else None
+    data["newDocId"] = int(received.new_doc_id) if received and received.new_doc_id else None
     data["isOwner"] = user_id == int(share.owner_id)
     return success(data)
 
@@ -326,7 +382,20 @@ async def receive_kb_share(
 
     user_id = int(current_user.get("user_id") or 0)
     if int(share.owner_id) == user_id:
-        return error("这是你自己分享的知识库，无需领取")
+        return error("这是你自己分享的资料，无需领取")
+
+    source_doc = None
+    if share.doc_id:
+        source_doc = (
+            await db.execute(
+                select(RagDocument).where(
+                    RagDocument.id == share.doc_id,
+                    RagDocument.kb_id == share.kb_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if not source_doc:
+            return error("原文档已被删除", code=404)
 
     existed = (
         await db.execute(
@@ -336,25 +405,40 @@ async def receive_kb_share(
             )
         )
     ).scalar_one_or_none()
-    if existed and existed.new_kb_id:
+    already_target = (existed.new_doc_id if share.doc_id else existed.new_kb_id) if existed else None
+    if existed and already_target:
         return success(
             {
-                "kbId": int(existed.new_kb_id),
+                "kbId": int(existed.new_kb_id) if existed.new_kb_id else None,
+                "docId": int(existed.new_doc_id) if existed.new_doc_id else None,
                 "kbName": kb.name,
+                "docName": source_doc.file_name if source_doc else None,
                 "alreadyReceived": True,
                 "resultStatus": "exists",
             }
         )
 
-    new_kb, pending_ids = await kb_copy_service.copy_knowledge_base(
-        db, kb, user_id, new_name=f"{kb.name}（来自分享）"
-    )
-    for doc_id in pending_ids:
-        background.add_task(process_document, doc_id)
+    if source_doc:
+        target_kb = await workspace_service.get_or_create_workspace(db, user_id)
+        copied_doc = await kb_copy_service.copy_document_to_kb(
+            db, source_doc, target_kb, user_id
+        )
+        background.add_task(process_document, copied_doc.id)
+        new_kb = target_kb
+        new_doc_id = int(copied_doc.id)
+        pending_ids = []
+    else:
+        new_kb, pending_ids = await kb_copy_service.copy_knowledge_base(
+            db, kb, user_id, new_name=f"{kb.name}（来自分享）"
+        )
+        for doc_id in pending_ids:
+            background.add_task(process_document, doc_id)
+        new_doc_id = None
 
     if existed:
         existed.status = "0"
         existed.new_kb_id = int(new_kb.id)
+        existed.new_doc_id = new_doc_id
         existed.update_time = _now()
     else:
         db.add(
@@ -364,18 +448,20 @@ async def receive_kb_share(
                 owner_id=int(share.owner_id),
                 receiver_id=user_id,
                 new_kb_id=int(new_kb.id),
+                new_doc_id=new_doc_id,
                 source="share",
                 status="0",
             )
         )
         share.receive_count = (share.receive_count or 0) + 1
         receiver_name = await _owner_name(db, user_id)
+        shared_name = f"文档《{source_doc.file_name}》" if source_doc else f"知识库《{kb.name}》"
         await create_notification(
             db,
             user_id=int(share.owner_id),
             notify_type="share_receive",
-            title="有人领取了你分享的知识库",
-            content=f"用户「{receiver_name}」领取了知识库《{kb.name}》，系统已为对方生成副本。",
+            title="有人领取了你的分享",
+            content=f"用户「{receiver_name}」领取了你分享的{shared_name}，系统已为对方生成副本。",
             link="/front/workspace",
         )
 
@@ -383,8 +469,10 @@ async def receive_kb_share(
     return success(
         {
             "kbId": int(new_kb.id),
+            "docId": new_doc_id,
             "kbName": new_kb.name,
-            "docCount": int(new_kb.doc_count or 0),
+            "docName": source_doc.file_name if source_doc else None,
+            "docCount": int(new_kb.doc_count or 0) if not source_doc else 1,
             "alreadyReceived": False,
             "resultStatus": "created",
         }

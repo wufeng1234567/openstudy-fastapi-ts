@@ -21,8 +21,8 @@
   · 对话页抽屉 = **选范围**（这次提问让 AI 查哪些库）。
   两者读同一套后端数据，所以任何一边的改动另一边立刻能看到。
 
-  ⚠️ 默认库（`isDefault=1`）不能改名、不能删除 —— 它是系统给每个人自动建的落脚点，
-     删了下次上传又会重建，不如干脆锁住。
+  ⚠️ 默认库（`isDefault=1`）可以改名，但不能删除 —— 它是系统给每个人
+     自动建的落脚点；改名只改变展示名称，`is_workspace=1` 的默认标识保持不变。
 -->
 <template>
   <div class="kb-page">
@@ -106,50 +106,76 @@
           </el-button>
         </div>
 
+        <div class="kbp-side__search">
+          <el-input v-model="folderKeyword" size="small" clearable placeholder="搜索资料夹" :prefix-icon="Search" />
+        </div>
+
         <div class="kbp-side__list" v-loading="loading">
-          <button
-            v-for="kb in kbs"
+          <el-dropdown
+            v-for="kb in filteredKbs"
             :key="kb.kbId"
-            type="button"
-            class="kbp-kb"
-            :class="{ 'is-active': kb.kbId === activeKbId, 'is-blocked': kb.disabled === 1 }"
-            @click="selectKb(kb.kbId)"
+            trigger="contextmenu"
+            class="kbp-kb-dropdown"
+            @command="(command: string) => handleKbCommand(command, kb)"
           >
-            <span class="kbp-kb__icon">
-              <OsIcon :name="kb.isDefault ? 'folder' : 'database'" :size="16" />
-            </span>
-            <span class="kbp-kb__main">
-              <span class="kbp-kb__name-row">
-                <span class="kbp-kb__name">{{ kb.name }}</span>
-                <span v-if="kb.isDefault" class="kbp-kb__tag">默认</span>
-                <span v-if="kb.disabled === 1" class="kbp-kb__tag is-blocked">已屏蔽</span>
+            <button
+              type="button"
+              class="kbp-kb"
+              :class="{ 'is-active': kb.kbId === activeKbId, 'is-blocked': kb.disabled === 1 }"
+              @click="selectKb(kb.kbId)"
+            >
+              <span class="kbp-kb__icon">
+                <OsIcon :name="kb.isDefault ? 'folder' : 'database'" :size="16" />
               </span>
-              <span class="kbp-kb__meta">
-                {{ kb.docCount }} 份资料<template v-if="kb.disabled !== 1"> · 可检索</template>
+              <span class="kbp-kb__main">
+                <span class="kbp-kb__name-row">
+                  <span class="kbp-kb__name">{{ kb.name }}</span>
+                  <span v-if="kb.isDefault" class="kbp-kb__tag">默认</span>
+                  <span v-if="kb.disabled === 1" class="kbp-kb__tag is-blocked">已屏蔽</span>
+                </span>
+                <span class="kbp-kb__meta">
+                  {{ kb.docCount }} 份资料<template v-if="kb.disabled !== 1"> · 可检索</template>
+                </span>
               </span>
-            </span>
-            <!-- 操作只在 hover / 当前项出现，避免每个库都挂一排图标 -->
-            <span class="kbp-kb__ops">
-              <span class="kbp-kb__op" :class="{ 'is-blocked': kb.disabled === 1 }"
-                :title="kb.disabled === 1 ? '已屏蔽，点击恢复资料夹检索' : '可检索，点击屏蔽这个资料夹'"
-                @click.stop="toggleDisabled(kb)">
-                <OsIcon :name="kb.disabled === 1 ? 'eye-off' : 'eye'" :size="13" />
-              </span>
-              <template v-if="!kb.isDefault">
+              <!-- 操作只在 hover / 当前项出现，避免每个库都挂一排图标 -->
+              <span class="kbp-kb__ops">
+                <span class="kbp-kb__op" :class="{ 'is-blocked': kb.disabled === 1 }"
+                  :title="kb.disabled === 1 ? '已屏蔽，点击恢复资料夹检索' : '可检索，点击屏蔽这个资料夹'"
+                  @click.stop="toggleDisabled(kb)">
+                  <OsIcon :name="kb.disabled === 1 ? 'eye-off' : 'eye'" :size="13" />
+                </span>
                 <span class="kbp-kb__op" title="重命名" @click.stop="promptRename(kb)">
                   <OsIcon name="pen-line" :size="13" />
                 </span>
-                <span class="kbp-kb__op is-danger" title="删除资料夹" @click.stop="removeKb(kb)">
+                <span v-if="!kb.isDefault" class="kbp-kb__op is-danger" title="删除资料夹"
+                  @click.stop="removeKb(kb)">
                   <OsIcon name="trash" :size="13" />
                 </span>
-              </template>
-            </span>
-          </button>
+              </span>
+            </button>
+            <template #dropdown>
+              <el-dropdown-menu class="kbp-kb-menu">
+                <el-dropdown-item command="rename">
+                  <OsIcon name="pen-line" :size="14" /> 重命名
+                </el-dropdown-item>
+                <el-dropdown-item command="share">
+                  <el-icon><Share /></el-icon> 分享资料夹
+                </el-dropdown-item>
+                <el-dropdown-item command="toggle-disabled">
+                  <OsIcon :name="kb.disabled === 1 ? 'eye' : 'eye-off'" :size="14" />
+                  {{ kb.disabled === 1 ? '恢复检索' : '屏蔽检索' }}
+                </el-dropdown-item>
+                <el-dropdown-item v-if="!kb.isDefault" command="delete" divided>
+                  <OsIcon name="trash" :size="14" /> 删除资料夹
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
 
-          <div v-if="!loading && !kbs.length" class="kbp-side__empty">
-            <p>还没有资料</p>
-            <span>建一个资料夹来放课件和真题</span>
-            <el-button size="small" type="primary" :icon="Plus" @click="promptCreate">
+          <div v-if="!loading && !filteredKbs.length" class="kbp-side__empty">
+            <p>{{ folderKeyword ? '没有匹配的资料夹' : '还没有资料' }}</p>
+            <span>{{ folderKeyword ? '换个关键词试试' : '建一个资料夹来放课件和真题' }}</span>
+            <el-button v-if="!folderKeyword" size="small" type="primary" :icon="Plus" @click="promptCreate">
               新建资料夹
             </el-button>
           </div>
@@ -269,6 +295,9 @@
                   <span class="kbp-doc__op" title="生成微课" @click="openMicroCourse(doc)">
                     <OsIcon name="graduation-cap" :size="14" />
                   </span>
+                  <span class="kbp-doc__op" title="分享资料" @click="openDocShare(doc)">
+                    <el-icon><Share /></el-icon>
+                  </span>
                   <span class="kbp-doc__op" title="智能整理" @click="startOrganize(doc)">
                     <OsIcon name="sparkles" :size="14" />
                   </span>
@@ -279,6 +308,7 @@
                     <template #dropdown>
                       <el-dropdown-menu>
                         <el-dropdown-item command="micro">生成微课</el-dropdown-item>
+                        <el-dropdown-item command="share">分享资料</el-dropdown-item>
                         <el-dropdown-item command="markdown">导出 Markdown</el-dropdown-item>
                         <el-dropdown-item command="docx">导出 Word</el-dropdown-item>
                         <el-dropdown-item command="reprocess">重新解析并向量化</el-dropdown-item>
@@ -646,6 +676,7 @@
 
     <!-- 知识库分享 / 领取（参考题库分享） -->
     <ShareKnowledgeDialog v-model="shareDialogVisible" :default-kb-id="shareKbId" />
+    <ShareKnowledgeDialog v-model="docShareDialogVisible" :doc="shareDoc" />
     <ReceiveKnowledgeDialog v-model="receiveDialogVisible" />
 
     <!-- 图片资产 → 插入题目解析 -->
@@ -884,7 +915,7 @@ import {
   uploadDocument
 } from '@/api/ai/rag'
 import { Plus } from '@element-plus/icons-vue'
-import { Download, Share } from '@element-plus/icons-vue'
+import { Download, Search, Share } from '@element-plus/icons-vue'
 import { saveAs } from 'file-saver'
 import {
   ensureMarkdownImageFiles,
@@ -917,7 +948,10 @@ const loadFailed = ref(false)
 
 const kbs = ref<any[]>([])
 const activeKbId = ref<number | null>(null)
+const folderKeyword = ref('')
 const shareDialogVisible = ref(false)
+const docShareDialogVisible = ref(false)
+const shareDoc = ref<{ docId: number; fileName: string } | null>(null)
 const receiveDialogVisible = ref(false)
 const shareKbId = ref<number | null>(null)
 /** 从聊天「查看处理进度」跳转过来时，临时高亮并滚动到目标文档。 */
@@ -935,6 +969,13 @@ watch(
 )
 
 const activeKb = computed(() => kbs.value.find((k) => k.kbId === activeKbId.value) || null)
+
+/** 左侧资料夹搜索：只过滤展示，不影响当前选中的库。 */
+const filteredKbs = computed(() => {
+  const keyword = folderKeyword.value.trim().toLowerCase()
+  if (!keyword) return kbs.value
+  return kbs.value.filter((kb) => String(kb.name || '').toLowerCase().includes(keyword))
+})
 
 /** 批量删除：只保存当前库的文档 id，换库/刷新文档列表时清空 */
 const selectedDocIds = ref<number[]>([])
@@ -1720,6 +1761,7 @@ function handleDocMore(doc: any, command: string) {
     openMicroCourse(doc)
     return
   }
+  if (command === 'share') return openDocShare(doc)
   if (command === 'markdown' || command === 'docx') return exportDoc(doc, command)
   if (command === 'reprocess') return reprocess(doc)
   if (command === 'delete') return removeDoc(doc)
@@ -2115,6 +2157,18 @@ function selectKb(kbId: number) {
 function openShare(kb: any) {
   shareKbId.value = Number(kb?.kbId) || null
   shareDialogVisible.value = true
+}
+
+function openDocShare(doc: any) {
+  shareDoc.value = { docId: Number(doc.docId), fileName: String(doc.fileName || '未命名文档') }
+  docShareDialogVisible.value = true
+}
+
+function handleKbCommand(command: string, kb: any) {
+  if (command === 'rename') return promptRename(kb)
+  if (command === 'share') return openShare(kb)
+  if (command === 'toggle-disabled') return toggleDisabled(kb)
+  if (command === 'delete' && !kb.isDefault) return removeKb(kb)
 }
 
 /* ===================== 知识库增删改 ===================== */
@@ -3187,6 +3241,21 @@ onBeforeUnmount(() => {
   color: var(--os-text-2, #4b5563);
 }
 
+.kbp-side__search {
+  flex: none;
+  padding: 8px 12px 4px;
+}
+
+.kbp-side__search :deep(.el-input__wrapper) {
+  border-radius: 7px;
+  box-shadow: 0 0 0 1px var(--os-border-soft, rgba(0, 0, 0, 0.06)) inset;
+}
+
+.kbp-kb-dropdown {
+  display: block;
+  width: 100%;
+}
+
 .kbp-side__list {
   flex: 1;
   min-height: 0;
@@ -3268,10 +3337,13 @@ onBeforeUnmount(() => {
 .kbp-kb__name-row {
   display: flex;
   align-items: center;
+  min-width: 0;
   gap: 5px;
 }
 
 .kbp-kb__name {
+  flex: 1;
+  min-width: 0;
   font-size: 13.5px;
   font-weight: 500;
   color: var(--os-text, #111827);
