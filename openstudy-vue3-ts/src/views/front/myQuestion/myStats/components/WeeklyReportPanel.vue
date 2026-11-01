@@ -1,18 +1,5 @@
 <template>
-  <div class="weekly-page">
-    <div class="weekly-toolbar">
-      <el-button text class="back-btn" @click="goBack">
-        <el-icon><ArrowLeft /></el-icon>
-        学习统计
-      </el-button>
-      <div class="weekly-toolbar-right">
-        <el-button size="small" :loading="exporting" @click="downloadImage">
-          <el-icon><Download /></el-icon>
-          保存为图片
-        </el-button>
-      </div>
-    </div>
-
+  <div class="weekly-panel">
     <div v-if="loading" class="weekly-loading" v-loading="true"></div>
 
     <div v-else-if="!data || !data.hasData" class="weekly-empty">
@@ -31,7 +18,13 @@
             <span v-if="!data.range.isCurrent" class="report-range-tag">最近一次学习</span>
           </div>
         </div>
-        <span class="report-generated">生成于 {{ data.generatedAt.slice(0, 10) }}</span>
+        <div class="report-head-right">
+          <span class="report-generated">生成于 {{ data.generatedAt.slice(0, 10) }}</span>
+          <el-button size="small" :loading="exporting" @click="downloadImage">
+            <el-icon><Download /></el-icon>
+            保存为图片
+          </el-button>
+        </div>
       </header>
 
       <p class="report-headline">{{ data.headline }}</p>
@@ -157,7 +150,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowLeft, Download } from '@element-plus/icons-vue'
+import { Download } from '@element-plus/icons-vue'
 import html2canvas from 'html2canvas'
 import { ElMessage } from 'element-plus'
 import { getWeeklyReport, type WeeklyReportResult } from '@/api/userStats/userStats'
@@ -177,7 +170,6 @@ function barHeight(value: number) {
   return Math.max(6, Math.round((value / maxDaily.value) * 100))
 }
 
-const goBack = () => router.push('/front/myQuestion/myStats')
 const goPractice = () => router.push('/front/questionPractice')
 
 async function load() {
@@ -219,34 +211,8 @@ onMounted(load)
 </script>
 
 <style scoped>
-.weekly-page {
-  max-width: 980px;
-  margin: 0 auto;
-  padding: 0 16px 48px;
-}
-
-.weekly-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.weekly-toolbar-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.weekly-toolbar-hint {
-  color: var(--os-text-4, #adb2b8);
-  font-size: 11px;
-}
-
-.back-btn {
-  height: 30px;
-  color: var(--os-text-3, #81858c);
-  font-size: 12px;
+.weekly-panel {
+  width: 100%;
 }
 
 .weekly-loading {
@@ -305,6 +271,13 @@ onMounted(load)
   gap: 16px;
   padding-bottom: 14px;
   border-bottom: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+}
+
+.report-head-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
 }
 
 .report-title-row {

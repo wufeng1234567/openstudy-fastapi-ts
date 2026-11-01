@@ -1,12 +1,5 @@
 <template>
-  <div class="exam-page">
-    <div class="exam-toolbar">
-      <el-button text class="back-btn" @click="goStats">
-        <el-icon><ArrowLeft /></el-icon>
-        学习统计
-      </el-button>
-    </div>
-
+  <div class="exam-panel">
     <div class="exam-layout">
       <aside class="exam-form">
         <h2 class="exam-form-title">设置考试信息</h2>
@@ -169,7 +162,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowLeft } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getExamPlan, getLearningLoop, type ExamPlanResult, type ExamPlanTask } from '@/api/userStats/userStats'
 import { renderQuestionContent } from '@/utils/latex'
@@ -260,35 +252,14 @@ function openTask(task: ExamPlanTask) {
   })
 }
 
-const goStats = () => router.push('/front/myQuestion/myStats')
 const goPractice = () => router.push('/front/questionPractice')
 
 onMounted(loadSubjects)
 </script>
 
 <style scoped>
-.exam-page {
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 0 20px 56px;
-}
-
-.exam-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.back-btn {
-  height: 30px;
-  color: var(--os-text-3, #81858c);
-  font-size: 12px;
-}
-
-.exam-toolbar-hint {
-  color: var(--os-text-4, #adb2b8);
-  font-size: 11px;
+.exam-panel {
+  width: 100%;
 }
 
 .exam-layout {

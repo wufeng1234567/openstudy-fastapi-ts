@@ -27,16 +27,6 @@
         -->
         <div class="stats-tabs">
             <SegmentedTabs v-model="activeTab" :tabs="tabList" @change="onTabChange" />
-            <div class="stats-tabs-actions">
-                <el-button text size="small" @click="router.push('/front/myQuestion/weeklyReport')">
-                    <el-icon><Document /></el-icon>
-                    学习周报
-                </el-button>
-                <el-button text size="small" @click="router.push('/front/myQuestion/examPlan')">
-                    <el-icon><Calendar /></el-icon>
-                    考前计划
-                </el-button>
-            </div>
         </div>
 
         <!-- ==================== Tab 1：题库练习 ==================== -->
@@ -260,6 +250,16 @@
                 @loaded="onEnglishLoaded"
             />
         </div>
+
+        <!-- ==================== Tab 3：学习周报 ==================== -->
+        <div v-show="activeTab === 'weekly'" class="tab-pane">
+            <WeeklyReportPanel v-if="tabSeen.weekly" />
+        </div>
+
+        <!-- ==================== Tab 4：考前计划 ==================== -->
+        <div v-show="activeTab === 'exam'" class="tab-pane">
+            <ExamPlanPanel v-if="tabSeen.exam" />
+        </div>
     </div>
 </template>
 
@@ -269,9 +269,11 @@ import { ref, computed, reactive, watch, onMounted, onUnmounted, nextTick } from
 import useTopbarStore from '@/store/modules/topbar'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
-import { TrendCharts, ArrowRight, Document, Calendar } from '@element-plus/icons-vue'
+import { TrendCharts, ArrowRight } from '@element-plus/icons-vue'
 import SegmentedTabs from '@/components/SegmentedTabs/index.vue'
 import EnglishStatistics from '@/views/front/english/statistics/index.vue'
+import WeeklyReportPanel from './components/WeeklyReportPanel.vue'
+import ExamPlanPanel from './components/ExamPlanPanel.vue'
 // 学情诊断面板（2026-10-26 v3）：把后端逐题诊断画成页内图表，而不是下载 PDF
 import DiagnosisPanel from './components/DiagnosisPanel.vue'
 import LearningLoopPanel from './components/LearningLoopPanel.vue'
@@ -304,12 +306,12 @@ const router = useRouter()
  *
  * 所以切换时不需要互相同步，只要保证英语那边**第一次切过去才加载**。
  * ========================================================================== */
-type StatsTab = 'bank' | 'english'
+type StatsTab = 'bank' | 'english' | 'weekly' | 'exam'
 
 const activeTab = ref<StatsTab>('bank')
 
-/** 各 tab 是否已挂载过（英语 tab 懒挂载的关键） */
-const tabSeen = reactive({ bank: true, english: false })
+/** 各 tab 是否已挂载过（图表/重组件懒挂载的关键） */
+const tabSeen = reactive({ bank: true, english: false, weekly: false, exam: false })
 
 /** 题库数据是否已经拉过（决定切回 tab 时要不要补拉） */
 const bankLoaded = ref(false)
@@ -318,7 +320,9 @@ const englishStatsRef = ref<any>(null)
 
 const tabList = [
     { key: 'bank', label: '题库练习' },
-    { key: 'english', label: '英语练习' }
+    { key: 'english', label: '英语练习' },
+    { key: 'weekly', label: '学习周报' },
+    { key: 'exam', label: '考前计划' }
 ]
 
 /*
@@ -329,11 +333,13 @@ const tabList = [
  * 副标题还写着"刷题/斩题"，就文不对题了。
  */
 function syncTopbarSubtitle() {
-    topbarStore.setCount(
-        activeTab.value === 'english'
-            ? '数据来自你的单词听写与阅读练习'
-            : '数据来自你的刷题、错题、斩题与收藏记录'
-    )
+    const subtitleMap: Record<StatsTab, string> = {
+        bank: '数据来自你的刷题、错题、斩题与收藏记录',
+        english: '数据来自你的单词听写与阅读练习',
+        weekly: '最近 7 天的真实学习记录，可以保存成图片',
+        exam: '输入考试日期，按你的薄弱点倒排每天该做什么'
+    }
+    topbarStore.setCount(subtitleMap[activeTab.value])
 }
 
 function onTabChange(key: string) {
@@ -361,6 +367,12 @@ function onTabChange(key: string) {
             // 已经挂载过：回来时刷新一次，避免看到过期数据
             nextTick(() => englishStatsRef.value?.refresh?.())
         }
+        return
+    }
+
+    // 周报 / 考前计划是懒挂载的独立面板，不依赖题库图表
+    if (k === 'weekly' || k === 'exam') {
+        tabSeen[k] = true
         return
     }
 
@@ -404,6 +416,9 @@ function applyTabFromQuery() {
         }
     } else if (t === 'bank') {
         activeTab.value = 'bank'
+    } else if (t === 'weekly' || t === 'exam') {
+        activeTab.value = t
+        tabSeen[t] = true
     }
     // 副标题跟着一起变，否则会显示题库那句说明
     syncTopbarSubtitle()
@@ -413,7 +428,7 @@ function applyTabFromQuery() {
 watch(
     () => router.currentRoute.value.query.tab,
     (t) => {
-        if (t === 'english' || t === 'bank') applyTabFromQuery()
+        if (t === 'english' || t === 'bank' || t === 'weekly' || t === 'exam') applyTabFromQuery()
     }
 )
 
@@ -846,34 +861,9 @@ onUnmounted(() => {
      * 保持一致（都是 SegmentedTabs）—— 用户在同一批页面间切换时不需要重新认。
      */
     .stats-tabs {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
         margin-bottom: 16px;
         border-bottom: 1px solid var(--os-border, #eef0f3);
         padding-bottom: 2px;
-    }
-
-    .stats-tabs-actions {
-        display: flex;
-        align-items: center;
-        gap: 2px;
-        flex: none;
-
-        .el-button {
-            height: 30px;
-            color: var(--os-text-3, #81858c);
-            font-size: 12px;
-
-            &:hover {
-                color: var(--os-text, #0f1115);
-            }
-
-            .el-icon {
-                margin-right: 4px;
-            }
-        }
     }
 
     .tab-pane {

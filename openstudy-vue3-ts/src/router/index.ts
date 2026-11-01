@@ -475,16 +475,24 @@ export const constantRoutes: AppRouteRecordRaw[] = [
             hidden: true
           },
           {
+            /* 旧的独立周报页已并入「学习统计」的第三个 tab；保留路径只做兼容跳转 */
             path: 'weeklyReport',
             name: 'FrontWeeklyReport',
-            component: () => import('@/views/front/myQuestion/weeklyReport/index.vue'),
+            redirect: (to) => ({
+              path: '/front/myQuestion/myStats',
+              query: { ...to.query, tab: 'weekly' }
+            }),
             meta: { title: '学习周报', layout: 'front' },
             hidden: true
           },
           {
+            /* 旧的独立考前计划页已并入「学习统计」的第四个 tab */
             path: 'examPlan',
             name: 'FrontExamPlan',
-            component: () => import('@/views/front/myQuestion/examPlan/index.vue'),
+            redirect: (to) => ({
+              path: '/front/myQuestion/myStats',
+              query: { ...to.query, tab: 'exam' }
+            }),
             meta: { title: '考前计划', layout: 'front' },
             hidden: true
           }
