@@ -283,9 +283,6 @@
                   <span class="kbp-doc__op" title="资料解剖" @click="showAnatomy(doc)">
                     <OsIcon name="book-open" :size="14" />
                   </span>
-                  <span class="kbp-doc__op" title="分享资料" @click="openDocShare(doc)">
-                    <el-icon><Share /></el-icon>
-                  </span>
                   <span class="kbp-doc__op" title="智能整理" @click="startOrganize(doc)">
                     <OsIcon name="sparkles" :size="14" />
                   </span>
