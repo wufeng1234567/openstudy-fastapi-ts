@@ -253,19 +253,19 @@
 
         <!-- ==================== Tab 3：学习周报 ==================== -->
         <div v-show="activeTab === 'weekly'" class="tab-pane">
-            <WeeklyReportPanel v-if="tabSeen.weekly" />
+            <WeeklyReportPanel v-if="tabSeen.weekly" ref="weeklyReportRef" @open-bank="onTabChange('bank')" />
         </div>
 
         <!-- ==================== Tab 4：考前计划 ==================== -->
         <div v-show="activeTab === 'exam'" class="tab-pane">
-            <ExamPlanPanel v-if="tabSeen.exam" />
+            <ExamPlanPanel v-if="tabSeen.exam" ref="examPlanRef" />
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
 defineOptions({ name: 'MyStats' })
-import { ref, computed, reactive, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, reactive, watch, onMounted, onActivated, onUnmounted, nextTick } from 'vue'
 import useTopbarStore from '@/store/modules/topbar'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
@@ -317,6 +317,8 @@ const tabSeen = reactive({ bank: true, english: false, weekly: false, exam: fals
 const bankLoaded = ref(false)
 
 const englishStatsRef = ref<any>(null)
+const weeklyReportRef = ref<any>(null)
+const examPlanRef = ref<any>(null)
 
 const tabList = [
     { key: 'bank', label: '题库练习' },
@@ -373,6 +375,10 @@ function onTabChange(key: string) {
     // 周报 / 考前计划是懒挂载的独立面板，不依赖题库图表
     if (k === 'weekly' || k === 'exam') {
         tabSeen[k] = true
+        nextTick(() => {
+            if (k === 'weekly') weeklyReportRef.value?.refresh?.()
+            else examPlanRef.value?.refreshProgress?.()
+        })
         return
     }
 
@@ -843,6 +849,12 @@ onMounted(async () => {
     }
 })
 
+onActivated(() => {
+    // 从题目页/其他路由返回时，刷新当前 tab 的实时数据
+    if (activeTab.value === 'weekly') weeklyReportRef.value?.refresh?.()
+    else if (activeTab.value === 'exam') examPlanRef.value?.refreshProgress?.()
+})
+
 onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
     disposeCharts()
@@ -867,7 +879,7 @@ onUnmounted(() => {
     }
 
     .tab-pane {
-        /* 两个 tab 的内容宽度一致，切换时不会跳 */
+        /* 各 tab 的内容宽度一致，切换时不会跳 */
         width: 100%;
     }
 

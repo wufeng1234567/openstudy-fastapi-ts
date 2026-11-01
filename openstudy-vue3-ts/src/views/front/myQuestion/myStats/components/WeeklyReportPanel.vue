@@ -19,7 +19,11 @@
           </div>
         </div>
         <div class="report-head-right">
-          <span class="report-generated">生成于 {{ data.generatedAt.slice(0, 10) }}</span>
+          <span class="report-generated">更新于 {{ data.generatedAt.slice(5, 16).replace('T', ' ') }}</span>
+          <el-button size="small" :loading="refreshing" @click="load(true)">
+            <el-icon><Refresh /></el-icon>
+            刷新
+          </el-button>
           <el-button size="small" :loading="exporting" @click="downloadImage">
             <el-icon><Download /></el-icon>
             保存为图片
@@ -137,6 +141,10 @@
           </div>
           <div v-if="!data.nextWeek.length" class="report-empty">下周保持现在的节奏就好。</div>
         </div>
+        <div class="report-actions">
+          <el-button size="small" @click="emit('openBank')">回到今日处方</el-button>
+          <el-button size="small" @click="goPractice">去题库练习</el-button>
+        </div>
       </section>
 
       <footer class="report-foot">
@@ -150,15 +158,18 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Download } from '@element-plus/icons-vue'
+import { Download, Refresh } from '@element-plus/icons-vue'
 import html2canvas from 'html2canvas'
 import { ElMessage } from 'element-plus'
 import { getWeeklyReport, type WeeklyReportResult } from '@/api/userStats/userStats'
 
 defineOptions({ name: 'WeeklyReport' })
 
+const emit = defineEmits<{ (e: 'openBank'): void }>()
+
 const router = useRouter()
 const loading = ref(true)
+const refreshing = ref(false)
 const exporting = ref(false)
 const data = ref<WeeklyReportResult | null>(null)
 const reportRef = ref<HTMLElement | null>(null)
@@ -172,8 +183,9 @@ function barHeight(value: number) {
 
 const goPractice = () => router.push('/front/questionPractice')
 
-async function load() {
-  loading.value = true
+async function load(silent = false) {
+  if (silent) refreshing.value = true
+  else loading.value = true
   try {
     const res: any = await getWeeklyReport()
     if (res.code === 200) data.value = res.data
@@ -181,8 +193,11 @@ async function load() {
     console.warn('[学习周报] 加载失败', e)
   } finally {
     loading.value = false
+    refreshing.value = false
   }
 }
+
+defineExpose({ refresh: () => load(true) })
 
 async function downloadImage() {
   if (!reportRef.value) return
@@ -581,6 +596,14 @@ onMounted(load)
   border-top: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
   color: var(--os-text-4, #adb2b8);
   font-size: 10px;
+}
+
+.report-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
 }
 
 @media (max-width: 720px) {

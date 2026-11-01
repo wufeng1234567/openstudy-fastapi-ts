@@ -262,6 +262,31 @@ export function getLearningLoop(): Promise<ApiResult<LearningLoopResult>> {
   >
 }
 
+export interface PracticeProgressItem {
+  questionId: number
+  lastPracticeTime: string
+  attempts: number
+}
+
+export interface PracticeProgressResult {
+  since: string
+  latest: PracticeProgressItem[]
+}
+
+export function getPracticeProgress(
+  sinceMs: number,
+  questionIds: number[]
+): Promise<ApiResult<PracticeProgressResult>> {
+  return request({
+    url: '/userStats/practice-progress',
+    method: 'get',
+    params: {
+      since_ms: sinceMs,
+      question_ids: questionIds.length ? questionIds.join(',') : ''
+    }
+  }) as unknown as Promise<ApiResult<PracticeProgressResult>>
+}
+
 /* ============================================================================
  * 学习周报（2026-10-31）
  * 数据来自最近 7 天真实作答流水（若最近两周没学，则回退到最近一次学习的 7 天）。

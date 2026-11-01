@@ -595,6 +595,62 @@ async def get_exam_plan(
         return error(f"生成考前路线图失败：{e}")
 
 
+@router.get("/practice-progress")
+async def get_practice_progress(
+    since_ms: int = Query(..., description="计划创建时间，Unix 毫秒"),
+    question_ids: str = Query("", description="逗号分隔的题目 ID，留空表示全部"),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """查询「计划创建之后」每道题最近一次作答时间。
+
+    考前计划需要一个诚实的完成判定：
+    · 题目型任务：只要计划生成后真的做过这道题，就算完成（系统自动确认）；
+    · 概念/模拟卷类任务无法从流水推断，由用户手动勾选，不能假装系统知道。
+    """
+    from datetime import datetime
+
+    user_id = current_user.get("user_id")
+    since = datetime.fromtimestamp(since_ms / 1000)
+    qids = []
+    if question_ids:
+        try:
+            qids = [int(x) for x in question_ids.split(",") if x.strip()]
+        except ValueError:
+            return error("question_ids 格式应为逗号分隔的整数", code=400)
+
+    stmt = (
+        select(
+            UserPracticeLog.question_id,
+            func.max(UserPracticeLog.create_time).label("last_time"),
+            func.count(UserPracticeLog.log_id).label("attempts"),
+        )
+        .where(
+            UserPracticeLog.user_id == user_id,
+            UserPracticeLog.create_time >= since,
+        )
+        .group_by(UserPracticeLog.question_id)
+    )
+    if qids:
+        stmt = stmt.where(UserPracticeLog.question_id.in_(qids))
+    rows = (await db.execute(stmt)).all()
+    return success(
+        {
+            "since": since.isoformat(timespec="seconds"),
+            "latest": [
+                {
+                    "questionId": int(row.question_id),
+                    "lastPracticeTime": row.last_time.isoformat(timespec="seconds")
+                    if row.last_time
+                    else "",
+                    "attempts": int(row.attempts or 0),
+                }
+                for row in rows
+            ],
+        }
+    )
+
+
 @router.get("/day-detail")
 async def get_day_detail(
     date: str = Query(..., description="日期 YYYY-MM-DD"),

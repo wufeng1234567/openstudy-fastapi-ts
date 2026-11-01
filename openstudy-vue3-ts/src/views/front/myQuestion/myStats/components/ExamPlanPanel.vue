@@ -79,7 +79,7 @@
         <template v-else>
           <section class="exam-summary">
             <div class="countdown">
-              <span class="countdown-num">{{ plan.exam.daysLeft }}</span>
+              <span class="countdown-num">{{ daysLeft }}</span>
               <span class="countdown-label">天后考试</span>
             </div>
             <div class="summary-main">
@@ -92,6 +92,10 @@
               <div><b>{{ plan.overview?.overdueCount }}</b><span>欠复习</span></div>
             </div>
           </section>
+
+          <div v-if="planExpired" class="exam-expired">
+            这份计划的日期已经走完。重新生成一次，系统会按你现在的掌握情况重新倒排。
+          </div>
 
           <section class="phase-track">
             <div v-for="(phase, index) in plan.phases" :key="phase.key" class="phase-card" :style="{ '--phase-color': phase.color }">
@@ -107,24 +111,43 @@
 
           <section class="plan-days">
             <div class="plan-days-head">
-              <h3>每天做什么</h3>
-              <span>{{ plan.days.length }} 天 · 点击题目直接开练</span>
+              <div>
+                <h3>每天做什么</h3>
+                <div class="plan-meta">
+                  计划生成于 {{ formatPlanTime() }} · 题目任务由真实作答自动确认，模拟/概念任务手动勾选
+                </div>
+              </div>
+              <div class="plan-progress">
+                <span>已完成 <b>{{ completedTasks }}</b> / {{ totalTasks }}</span>
+                <div class="plan-progress-track">
+                  <i :style="{ width: `${progressPercent}%` }"></i>
+                </div>
+                <el-button text size="small" :loading="progressLoading" @click="refreshProgress">
+                  <el-icon><Refresh /></el-icon>
+                  刷新进度
+                </el-button>
+              </div>
             </div>
-            <div v-for="day in plan.days.slice(0, visibleDays)" :key="day.date" class="day-row">
+            <div
+              v-for="day in plan.days.slice(0, visibleDays)"
+              :key="day.date"
+              class="day-row"
+              :class="{ 'is-today': day.date === today, 'is-past': day.date < today }"
+            >
               <div class="day-date">
                 <b>{{ day.date.slice(5) }}</b>
-                <span>{{ weekday(day.date) }}</span>
+                <span>{{ day.date === today ? '今天' : weekday(day.date) }}</span>
               </div>
               <div class="day-body">
                 <div class="day-theme">
                   {{ day.theme }}
-                  <span class="day-minutes">{{ day.minutes }} 分钟</span>
+                  <span class="day-minutes">{{ dayCompleted(day) }}/{{ day.tasks.length }} 完成 · {{ day.minutes }} 分钟</span>
                 </div>
                 <div
                   v-for="(task, ti) in day.tasks"
                   :key="ti"
                   class="task-row"
-                  :class="{ 'is-clickable': task.questionId > 0 }"
+                  :class="{ 'is-clickable': task.questionId > 0, 'is-done': isTaskDone(day, task, ti) }"
                   role="button"
                   :tabindex="task.questionId > 0 ? 0 : -1"
                   @click="openTask(task)"
@@ -135,6 +158,14 @@
                     <div class="task-title" v-html="renderQuestionContent(task.title)"></div>
                     <div class="task-detail">{{ task.detail }}</div>
                   </div>
+                  <el-checkbox
+                    v-if="task.questionId === 0"
+                    class="task-check"
+                    :model-value="isTaskDone(day, task, ti)"
+                    @click.stop
+                    @change="() => toggleManual(day, ti)"
+                  />
+                  <span v-else-if="isTaskDone(day, task, ti)" class="task-state is-done">已完成</span>
                   <span class="task-minutes">{{ task.minutes }}′</span>
                 </div>
               </div>
@@ -160,19 +191,92 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { getExamPlan, getLearningLoop, type ExamPlanResult, type ExamPlanTask } from '@/api/userStats/userStats'
+import { Refresh } from '@element-plus/icons-vue'
+import useUserStore from '@/store/modules/user'
+import {
+  getExamPlan,
+  getLearningLoop,
+  getPracticeProgress,
+  type ExamPlanResult,
+  type ExamPlanTask,
+} from '@/api/userStats/userStats'
 import { renderQuestionContent } from '@/utils/latex'
 
 defineOptions({ name: 'ExamPlan' })
 
+const STORAGE_KEY = 'os_exam_plan_v1'
+
 const router = useRouter()
+const userStore = useUserStore()
+const storageKey = computed(() => `${STORAGE_KEY}_${userStore.id || 'anon'}`)
 const loading = ref(false)
+const progressLoading = ref(false)
 const plan = ref<ExamPlanResult | null>(null)
+const planCreatedAt = ref(0)
 const subjects = ref<string[]>([])
 const visibleDays = ref(7)
+const progressMap = ref<Record<number, number>>({})
+const manualDone = ref<string[]>([])
+
+const today = computed(() => localDateString(new Date()))
+
+const daysLeft = computed(() => {
+  if (!plan.value) return 0
+  const exam = new Date(`${plan.value.exam.date}T00:00:00`)
+  const current = new Date(`${today.value}T00:00:00`)
+  return Math.max(0, Math.ceil((exam.getTime() - current.getTime()) / 86400000))
+})
+
+const allTasks = computed(() =>
+  (plan.value?.days || []).flatMap((day) => day.tasks.map((task, index) => ({ day, task, index })))
+)
+
+function isTaskDone(day: any, task: ExamPlanTask, index: number) {
+  if (task.questionId > 0) {
+    // 同一道题可能在计划里出现多次（间隔复习）。第 N 次出现要求计划生成后
+    // 至少有 N 次作答，不能「答一次把后面几天的复习全点亮」。
+    let count = 0
+    for (const item of allTasks.value) {
+      if (item.task.questionId !== task.questionId) continue
+      count += 1
+      if (item.day.date === day.date && item.index === index) {
+        return (progressMap.value[task.questionId] || 0) >= count
+      }
+    }
+    return false
+  }
+  return manualDone.value.includes(`${day.date}|${index}`)
+}
+
+const completedTasks = computed(() =>
+  allTasks.value.filter((item) => isTaskDone(item.day, item.task, item.index)).length
+)
+const totalTasks = computed(() => allTasks.value.length)
+const progressPercent = computed(() =>
+  totalTasks.value ? Math.round((completedTasks.value / totalTasks.value) * 100) : 0
+)
+const planExpired = computed(() => {
+  if (!plan.value || !plan.value.days.length) return false
+  return plan.value.days[plan.value.days.length - 1].date < today.value
+})
+
+function localDateString(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function formatPlanTime() {
+  if (!planCreatedAt.value) return '—'
+  return new Date(planCreatedAt.value).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 
 function defaultExamDate() {
   const d = new Date(Date.now() + 30 * 24 * 3600 * 1000)
@@ -206,6 +310,77 @@ function taskTypeLabel(type: string) {
   return map[type] || '任务'
 }
 
+function dayCompleted(day: any) {
+  return (day.tasks || []).filter((task: ExamPlanTask, index: number) => isTaskDone(day, task, index)).length
+}
+
+function toggleManual(day: any, index: number) {
+  const key = `${day.date}|${index}`
+  if (manualDone.value.includes(key)) {
+    manualDone.value = manualDone.value.filter((x) => x !== key)
+  } else {
+    manualDone.value = [...manualDone.value, key]
+  }
+  savePlanState()
+}
+
+function savePlanState() {
+  if (!plan.value || !planCreatedAt.value) return
+  localStorage.setItem(
+    storageKey.value,
+    JSON.stringify({
+      form: { ...form },
+      plan: plan.value,
+      createdAt: planCreatedAt.value,
+      manualDone: manualDone.value,
+      visibleDays: visibleDays.value,
+    })
+  )
+}
+
+function loadPlanState() {
+  try {
+    const raw = localStorage.getItem(storageKey.value)
+    if (!raw) return
+    const saved = JSON.parse(raw)
+    if (!saved?.plan || !saved?.createdAt) return
+    Object.assign(form, saved.form || {})
+    plan.value = saved.plan
+    planCreatedAt.value = Number(saved.createdAt)
+    manualDone.value = Array.isArray(saved.manualDone) ? saved.manualDone : []
+    visibleDays.value = Number(saved.visibleDays) || 7
+  } catch {
+    // 本地缓存损坏就当没有计划，不影响重新生成
+  }
+}
+
+async function refreshProgress() {
+  if (!plan.value || !planCreatedAt.value) return
+  const ids = [
+    ...new Set(
+      plan.value.days
+        .flatMap((day) => day.tasks.map((task) => Number(task.questionId || 0)))
+        .filter((id) => id > 0)
+    ),
+  ]
+  if (!ids.length) return
+  progressLoading.value = true
+  try {
+    const res: any = await getPracticeProgress(planCreatedAt.value, ids)
+    if (res.code === 200 && res.data) {
+      const latest: Record<number, number> = {}
+      for (const item of res.data.latest || []) latest[Number(item.questionId)] = Number(item.attempts || 0)
+      progressMap.value = latest
+    }
+  } catch (e: any) {
+    console.warn('[考前路线图] 刷新进度失败', e)
+  } finally {
+    progressLoading.value = false
+  }
+}
+
+defineExpose({ refreshProgress })
+
 async function loadSubjects() {
   try {
     const res: any = await getLearningLoop()
@@ -232,7 +407,12 @@ async function generate() {
     })
     if (res.code === 200) {
       plan.value = res.data
-      visibleDays.value = 7
+      planCreatedAt.value = Date.now()
+      progressMap.value = {}
+      manualDone.value = []
+      visibleDays.value = initialVisibleDays(res.data)
+      savePlanState()
+      if (res.data?.hasData) await refreshProgress()
     } else {
       ElMessage.error(res.msg || '生成失败')
     }
@@ -252,9 +432,20 @@ function openTask(task: ExamPlanTask) {
   })
 }
 
+function initialVisibleDays(result: ExamPlanResult | null) {
+  if (!result?.days?.length) return 7
+  const index = result.days.findIndex((day) => day.date >= today.value)
+  return Math.max(7, index >= 0 ? index + 1 : result.days.length)
+}
+
 const goPractice = () => router.push('/front/questionPractice')
 
-onMounted(loadSubjects)
+onMounted(async () => {
+  loadPlanState()
+  visibleDays.value = initialVisibleDays(plan.value)
+  await loadSubjects()
+  await refreshProgress()
+})
 </script>
 
 <style scoped>
@@ -502,6 +693,16 @@ onMounted(loadSubjects)
   margin-top: 10px;
 }
 
+.exam-expired {
+  margin-top: 10px;
+  padding: 9px 12px;
+  border-radius: var(--os-radius-sm, 8px);
+  background: #fff7e6;
+  color: #ad6800;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 .phase-card {
   padding: 14px;
   border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
@@ -569,8 +770,9 @@ onMounted(loadSubjects)
 
 .plan-days-head {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 16px;
   margin-bottom: 8px;
 }
 
@@ -581,8 +783,44 @@ onMounted(loadSubjects)
   font-weight: 600;
 }
 
-.plan-days-head span {
+.plan-meta {
+  margin-top: 4px;
   color: var(--os-text-4, #adb2b8);
+  font-size: 10px;
+}
+
+.plan-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  color: var(--os-text-3, #81858c);
+  font-size: 10px;
+}
+
+.plan-progress b {
+  color: var(--os-text, #0f1115);
+  font-weight: 600;
+}
+
+.plan-progress-track {
+  width: 72px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #f1f3f5;
+}
+
+.plan-progress-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--os-accent, #4176e6);
+  transition: width 0.3s ease;
+}
+
+.plan-progress .el-button {
+  color: var(--os-text-3, #81858c);
   font-size: 10px;
 }
 
@@ -591,6 +829,21 @@ onMounted(loadSubjects)
   gap: 12px;
   padding: 10px 0;
   border-top: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+}
+
+.day-row.is-past {
+  opacity: 0.58;
+}
+
+.day-row.is-today {
+  margin: 0 -8px;
+  padding: 10px 8px;
+  border-radius: var(--os-radius-sm, 8px);
+  background: #f9fbff;
+}
+
+.day-row.is-today .day-date b {
+  color: var(--os-accent, #4176e6);
 }
 
 .day-date {
@@ -654,6 +907,30 @@ onMounted(loadSubjects)
 
 .task-row.is-clickable:hover {
   background: var(--os-accent-soft, #edf3fe);
+}
+
+.task-row.is-done {
+  background: #f3faf6;
+}
+
+.task-state {
+  flex: none;
+  color: var(--os-text-4, #adb2b8);
+  font-size: 9px;
+
+  &.is-done {
+    color: #059669;
+  }
+}
+
+.task-check {
+  flex: none;
+  height: 16px;
+  margin-top: 1px;
+}
+
+.task-check :deep(.el-checkbox__label) {
+  display: none;
 }
 
 .task-type {
