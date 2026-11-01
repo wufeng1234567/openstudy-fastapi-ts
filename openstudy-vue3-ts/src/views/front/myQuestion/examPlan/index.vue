@@ -1,20 +1,16 @@
 <template>
   <div class="exam-page">
-    <div class="exam-topbar">
+    <div class="exam-toolbar">
       <el-button text class="back-btn" @click="goStats">
         <el-icon><ArrowLeft /></el-icon>
         学习统计
       </el-button>
-      <span class="exam-topbar-hint">按你的真实薄弱点倒排，不是模板</span>
     </div>
 
     <div class="exam-layout">
       <aside class="exam-form">
-        <div class="exam-form-title">
-          <span class="exam-form-mark">EXAM</span>
-          <h2>你的考试，<br />倒着排。</h2>
-          <p>告诉系统哪天考、每天能学多久，剩下的交给它。</p>
-        </div>
+        <h2 class="exam-form-title">设置考试信息</h2>
+        <p class="exam-form-desc">告诉系统哪天考、每天能学多久，剩下的交给它。</p>
 
         <div class="form-item">
           <label>考试名称</label>
@@ -46,31 +42,36 @@
         </div>
 
         <el-button type="primary" class="generate-btn" :loading="loading" @click="generate">
-          生成倒计时路线图
+          生成路线图
         </el-button>
         <p class="form-note">系统会读取你的逐题诊断结果，题不够时会自动收缩任务，不凑数。</p>
       </aside>
 
       <main class="exam-main">
         <div v-if="!plan" class="exam-intro">
-          <div class="intro-eyebrow">BEFORE YOU START</div>
-          <h1>别再从「明天开始」开始。</h1>
+          <h1>复习从「知道先做什么」开始</h1>
           <p>输入考试日期，系统把剩下的日子拆成三个阶段，每天告诉你先做哪几道题。</p>
           <div class="intro-phases">
-            <div class="intro-phase is-red">
-              <span>01</span>
-              <h3>补地基</h3>
-              <p>反复失守的题，先补前置概念，而不是继续刷。</p>
+            <div class="intro-phase">
+              <span class="intro-phase-index">01</span>
+              <div>
+                <h3>补地基</h3>
+                <p>反复失守的题，先补前置概念，而不是继续刷。</p>
+              </div>
             </div>
-            <div class="intro-phase is-amber">
-              <span>02</span>
-              <h3>还债 + 巩固</h3>
-              <p>把过了复习窗口的题补上，再用同科目题确认迁移。</p>
+            <div class="intro-phase">
+              <span class="intro-phase-index">02</span>
+              <div>
+                <h3>还债 + 巩固</h3>
+                <p>把过了复习窗口的题补上，再用同科目题确认迁移。</p>
+              </div>
             </div>
-            <div class="intro-phase is-blue">
-              <span>03</span>
-              <h3>全真模拟</h3>
-              <p>按考试节奏做整套，练取舍，不再开新题。</p>
+            <div class="intro-phase">
+              <span class="intro-phase-index">03</span>
+              <div>
+                <h3>全真模拟</h3>
+                <p>按考试节奏做整套，练取舍，不再开新题。</p>
+              </div>
             </div>
           </div>
         </div>
@@ -116,7 +117,7 @@
               <h3>每天做什么</h3>
               <span>{{ plan.days.length }} 天 · 点击题目直接开练</span>
             </div>
-            <div v-for="day in plan.days" :key="day.date" class="day-row" :class="`is-${day.phase}`">
+            <div v-for="day in plan.days.slice(0, visibleDays)" :key="day.date" class="day-row">
               <div class="day-date">
                 <b>{{ day.date.slice(5) }}</b>
                 <span>{{ weekday(day.date) }}</span>
@@ -144,6 +145,11 @@
                   <span class="task-minutes">{{ task.minutes }}′</span>
                 </div>
               </div>
+            </div>
+            <div v-if="plan.days.length > 7" class="plan-more">
+              <el-button text size="small" @click="visibleDays = visibleDays === 7 ? plan.days.length : 7">
+                {{ visibleDays === 7 ? `展开全部 ${plan.days.length} 天` : '收起，只看前 7 天' }}
+              </el-button>
             </div>
           </section>
 
@@ -174,6 +180,7 @@ const router = useRouter()
 const loading = ref(false)
 const plan = ref<ExamPlanResult | null>(null)
 const subjects = ref<string[]>([])
+const visibleDays = ref(7)
 
 function defaultExamDate() {
   const d = new Date(Date.now() + 30 * 24 * 3600 * 1000)
@@ -233,6 +240,7 @@ async function generate() {
     })
     if (res.code === 200) {
       plan.value = res.data
+      visibleDays.value = 7
     } else {
       ElMessage.error(res.msg || '生成失败')
     }
@@ -260,97 +268,87 @@ onMounted(loadSubjects)
 
 <style scoped>
 .exam-page {
-  max-width: 1240px;
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 0 20px 60px;
+  padding: 0 20px 56px;
 }
 
-.exam-topbar {
+.exam-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .back-btn {
-  color: #64748b;
-  font-size: 13px;
+  height: 30px;
+  color: var(--os-text-3, #81858c);
+  font-size: 12px;
 }
 
-.exam-topbar-hint {
-  color: #9ca3af;
+.exam-toolbar-hint {
+  color: var(--os-text-4, #adb2b8);
   font-size: 11px;
 }
 
 .exam-layout {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
-  gap: 22px;
+  grid-template-columns: 292px minmax(0, 1fr);
+  gap: 18px;
   align-items: start;
 }
 
 .exam-form {
   position: sticky;
   top: 16px;
-  padding: 24px 22px;
-  border: 1px solid #e8edf5;
-  border-radius: 18px;
+  padding: 18px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+  border-radius: var(--os-radius, 12px);
   background: #fff;
-  box-shadow: 0 10px 36px rgba(15, 23, 42, 0.05);
 }
 
-.exam-form-mark {
-  color: #2563eb;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
+.exam-form-title {
+  margin: 0;
+  color: var(--os-text, #0f1115);
+  font-size: 15px;
+  font-weight: 600;
 }
 
-.exam-form-title h2 {
-  margin: 10px 0 8px;
-  color: #0f172a;
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1.3;
-}
-
-.exam-form-title p {
-  margin: 0 0 20px;
-  color: #94a3b8;
+.exam-form-desc {
+  margin: 5px 0 18px;
+  color: var(--os-text-3, #81858c);
   font-size: 11px;
-  line-height: 1.65;
+  line-height: 1.6;
 }
 
 .form-item {
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .form-item label {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 7px;
-  color: #475569;
-  font-size: 11px;
-  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--os-text-2, #353638);
+  font-size: 12px;
 }
 
 .form-item label b {
-  color: #2563eb;
-  font-size: 11px;
+  color: var(--os-text, #0f1115);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .generate-btn {
   width: 100%;
-  height: 40px;
-  margin-top: 6px;
-  border-radius: 10px;
+  height: 36px;
+  margin-top: 4px;
 }
 
 .form-note {
-  margin: 12px 0 0;
-  color: #b0b7c3;
+  margin: 10px 0 0;
+  color: var(--os-text-4, #adb2b8);
   font-size: 10px;
   line-height: 1.6;
 }
@@ -359,106 +357,94 @@ onMounted(loadSubjects)
   min-width: 0;
 }
 
-.exam-intro {
-  padding: 48px 44px;
-  border: 1px solid #e8edf5;
-  border-radius: 20px;
-  background:
-    radial-gradient(circle at 92% 0%, rgba(59, 130, 246, 0.1), transparent 34%),
-    #fff;
-}
-
-.intro-eyebrow {
-  color: #2563eb;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.18em;
+.exam-intro,
+.exam-empty {
+  padding: 28px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+  border-radius: var(--os-radius, 12px);
+  background: #fff;
 }
 
 .exam-intro h1 {
-  margin: 12px 0 10px;
-  color: #0f172a;
-  font-size: 30px;
-  font-weight: 700;
-  letter-spacing: -0.04em;
+  margin: 0 0 6px;
+  color: var(--os-text, #0f1115);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .exam-intro > p {
   max-width: 520px;
   margin: 0;
-  color: #64748b;
-  font-size: 13px;
-  line-height: 1.75;
+  color: var(--os-text-3, #81858c);
+  font-size: 12px;
+  line-height: 1.7;
 }
 
 .intro-phases {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-top: 30px;
+  gap: 8px;
+  margin-top: 20px;
 }
 
 .intro-phase {
-  padding: 16px;
-  border-radius: 12px;
-  background: #f8fafc;
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--os-radius-sm, 8px);
+  background: #f9fafb;
 }
 
-.intro-phase span {
-  color: #94a3b8;
+.intro-phase-index {
+  flex: none;
+  color: var(--os-text-4, #adb2b8);
   font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
+  font-weight: 600;
 }
 
 .intro-phase h3 {
-  margin: 8px 0 6px;
-  color: #1f2937;
-  font-size: 13px;
+  margin: 0 0 4px;
+  color: var(--os-text, #0f1115);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .intro-phase p {
   margin: 0;
-  color: #64748b;
+  color: var(--os-text-3, #81858c);
   font-size: 10px;
-  line-height: 1.6;
+  line-height: 1.55;
 }
 
-.intro-phase.is-red { border-top: 3px solid #dc2626; }
-.intro-phase.is-amber { border-top: 3px solid #d97706; }
-.intro-phase.is-blue { border-top: 3px solid #2563eb; }
-
 .exam-empty {
-  padding: 60px 30px;
-  border: 1px solid #e8edf5;
-  border-radius: 20px;
-  background: #fff;
   text-align: center;
 }
 
 .exam-empty-mark {
   display: inline-grid;
-  width: 48px;
-  height: 48px;
-  margin-bottom: 14px;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 12px;
   place-items: center;
-  border-radius: 14px;
-  background: #fff7e6;
-  color: #d97706;
-  font-size: 20px;
-  font-weight: 800;
+  border-radius: var(--os-radius-sm, 8px);
+  background: var(--os-bg-subtle, #f5f6f7);
+  color: var(--os-text-3, #81858c);
+  font-size: 18px;
+  font-weight: 600;
 }
 
 .exam-empty h3 {
-  margin: 0 0 8px;
-  color: #1f2937;
-  font-size: 17px;
+  margin: 0 0 6px;
+  color: var(--os-text, #0f1115);
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .exam-empty p {
-  margin: 0 auto 18px;
-  max-width: 440px;
-  color: #64748b;
+  margin: 0 auto 16px;
+  max-width: 400px;
+  color: var(--os-text-3, #81858c);
   font-size: 12px;
   line-height: 1.7;
 }
@@ -466,13 +452,11 @@ onMounted(loadSubjects)
 .exam-summary {
   display: flex;
   align-items: center;
-  gap: 22px;
-  padding: 24px 26px;
-  border-radius: 18px;
-  background:
-    radial-gradient(circle at 92% 12%, rgba(96, 165, 250, 0.3), transparent 30%),
-    linear-gradient(135deg, #111827, #1e3a5f 65%, #1d4ed8);
-  color: #fff;
+  gap: 20px;
+  padding: 18px 20px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+  border-radius: var(--os-radius, 12px);
+  background: #fff;
 }
 
 .countdown {
@@ -480,21 +464,22 @@ onMounted(loadSubjects)
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-width: 106px;
-  padding-right: 22px;
-  border-right: 1px solid rgba(255, 255, 255, 0.18);
+  min-width: 86px;
+  padding-right: 18px;
+  border-right: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
 }
 
 .countdown-num {
-  font-size: 44px;
-  font-weight: 800;
-  letter-spacing: -0.05em;
+  color: var(--os-text, #0f1115);
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
   line-height: 1;
 }
 
 .countdown-label {
-  margin-top: 5px;
-  color: #93c5fd;
+  margin-top: 4px;
+  color: var(--os-text-3, #81858c);
   font-size: 11px;
 }
 
@@ -504,21 +489,21 @@ onMounted(loadSubjects)
 }
 
 .summary-main h2 {
-  margin: 0 0 6px;
-  color: #fff;
-  font-size: 22px;
-  font-weight: 700;
+  margin: 0 0 4px;
+  color: var(--os-text, #0f1115);
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .summary-main p {
   margin: 0;
-  color: rgba(255, 255, 255, 0.68);
+  color: var(--os-text-3, #81858c);
   font-size: 11px;
 }
 
 .summary-stats {
   display: flex;
-  gap: 20px;
+  gap: 18px;
 }
 
 .summary-stats div {
@@ -528,28 +513,29 @@ onMounted(loadSubjects)
 }
 
 .summary-stats b {
-  font-size: 20px;
-  font-weight: 700;
+  color: var(--os-text, #0f1115);
+  font-size: 18px;
+  font-weight: 600;
 }
 
 .summary-stats span {
-  margin-top: 4px;
-  color: rgba(255, 255, 255, 0.6);
+  margin-top: 3px;
+  color: var(--os-text-3, #81858c);
   font-size: 10px;
 }
 
 .phase-track {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-top: 14px;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 .phase-card {
-  padding: 16px;
-  border: 1px solid #eef2f7;
-  border-top: 3px solid var(--phase-color);
-  border-radius: 12px;
+  padding: 14px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+  border-top: 2px solid var(--phase-color);
+  border-radius: var(--os-radius-sm, 8px);
   background: #fff;
 }
 
@@ -560,86 +546,100 @@ onMounted(loadSubjects)
 }
 
 .phase-index {
-  color: var(--phase-color);
+  color: var(--os-text-4, #adb2b8);
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .phase-days {
-  color: #94a3b8;
+  color: var(--os-text-3, #81858c);
   font-size: 10px;
 }
 
 .phase-card h3 {
-  margin: 9px 0 5px;
-  color: #1f2937;
-  font-size: 14px;
+  margin: 7px 0 4px;
+  color: var(--os-text, #0f1115);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .phase-card p {
   margin: 0;
-  color: #64748b;
+  color: var(--os-text-3, #81858c);
   font-size: 10px;
   line-height: 1.55;
 }
 
 .phase-range {
-  margin-top: 10px;
-  color: #94a3b8;
+  margin-top: 8px;
+  color: var(--os-text-4, #adb2b8);
   font-size: 9px;
 }
 
 .plan-days {
-  margin-top: 20px;
-  padding: 18px;
-  border: 1px solid #eef2f7;
-  border-radius: 16px;
+  margin-top: 10px;
+  padding: 16px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+  border-radius: var(--os-radius, 12px);
   background: #fff;
+}
+
+.plan-more {
+  display: flex;
+  justify-content: center;
+  padding-top: 8px;
+  border-top: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+
+  .el-button {
+    color: var(--os-text-3, #81858c);
+    font-size: 11px;
+  }
 }
 
 .plan-days-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .plan-days-head h3 {
   margin: 0;
-  color: #1f2937;
-  font-size: 14px;
+  color: var(--os-text, #0f1115);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .plan-days-head span {
-  color: #94a3b8;
+  color: var(--os-text-4, #adb2b8);
   font-size: 10px;
 }
 
 .day-row {
   display: flex;
-  gap: 14px;
-  padding: 12px 0;
-  border-top: 1px solid #f1f5f9;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
 }
 
 .day-date {
   display: flex;
-  width: 52px;
+  width: 48px;
   flex: none;
   flex-direction: column;
   align-items: flex-start;
 }
 
 .day-date b {
-  color: #1f2937;
-  font-size: 13px;
-  font-weight: 700;
+  color: var(--os-text, #0f1115);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .day-date span {
-  margin-top: 2px;
-  color: #94a3b8;
-  font-size: 10px;
+  margin-top: 1px;
+  color: var(--os-text-4, #adb2b8);
+  font-size: 9px;
 }
 
 .day-body {
@@ -651,14 +651,14 @@ onMounted(loadSubjects)
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 7px;
-  color: #334155;
+  margin-bottom: 6px;
+  color: var(--os-text-2, #353638);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .day-minutes {
-  color: #94a3b8;
+  color: var(--os-text-4, #adb2b8);
   font-size: 9px;
   font-weight: 400;
 }
@@ -668,13 +668,13 @@ onMounted(loadSubjects)
   align-items: flex-start;
   gap: 8px;
   padding: 7px 9px;
-  border-radius: 8px;
-  background: #fbfcfe;
-  transition: background 0.15s;
+  border-radius: 6px;
+  background: #f9fafb;
+  transition: background-color 0.15s ease;
 }
 
 .task-row + .task-row {
-  margin-top: 5px;
+  margin-top: 4px;
 }
 
 .task-row.is-clickable {
@@ -682,11 +682,7 @@ onMounted(loadSubjects)
 }
 
 .task-row.is-clickable:hover {
-  background: #eff6ff;
-}
-
-.task-row.is-clickable:hover .task-title {
-  color: #2563eb;
+  background: var(--os-accent-soft, #edf3fe);
 }
 
 .task-type {
@@ -694,8 +690,8 @@ onMounted(loadSubjects)
   margin-top: 1px;
   padding: 1px 5px;
   border-radius: 3px;
-  background: #eff6ff;
-  color: #2563eb;
+  background: var(--os-bg-subtle, #f5f6f7);
+  color: var(--os-text-3, #81858c);
   font-size: 9px;
 }
 
@@ -707,9 +703,8 @@ onMounted(loadSubjects)
 .task-title {
   display: -webkit-box;
   overflow: hidden;
-  color: #334155;
+  color: var(--os-text-2, #353638);
   font-size: 11px;
-  font-weight: 500;
   line-height: 1.5;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -720,55 +715,55 @@ onMounted(loadSubjects)
 }
 
 .task-detail {
-  margin-top: 2px;
-  color: #94a3b8;
+  margin-top: 1px;
+  color: var(--os-text-4, #adb2b8);
   font-size: 9px;
   line-height: 1.5;
 }
 
 .task-minutes {
   flex: none;
-  color: #94a3b8;
+  color: var(--os-text-4, #adb2b8);
   font-size: 9px;
 }
 
 .exam-advice {
-  margin-top: 18px;
-  padding: 18px 20px;
-  border: 1px dashed #dbeafe;
-  border-radius: 14px;
-  background: #f8fbff;
+  margin-top: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+  border-radius: var(--os-radius, 12px);
+  background: #f9fafb;
 }
 
 .exam-advice h3 {
-  margin: 0 0 10px;
-  color: #1e40af;
+  margin: 0 0 8px;
+  color: var(--os-text, #0f1115);
   font-size: 12px;
+  font-weight: 600;
 }
 
 .advice-row {
   display: flex;
   gap: 8px;
-  color: #475569;
+  color: var(--os-text-3, #81858c);
   font-size: 10px;
   line-height: 1.6;
 }
 
 .advice-row + .advice-row {
-  margin-top: 5px;
+  margin-top: 4px;
 }
 
 .advice-row span {
   display: grid;
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   flex: none;
   place-items: center;
   border-radius: 50%;
-  background: #dbeafe;
-  color: #2563eb;
+  background: #fff;
+  color: var(--os-text-3, #81858c);
   font-size: 8px;
-  font-weight: 700;
 }
 
 .advice-row p {

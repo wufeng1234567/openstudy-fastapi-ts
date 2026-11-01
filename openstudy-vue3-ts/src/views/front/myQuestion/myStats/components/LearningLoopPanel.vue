@@ -17,16 +17,18 @@
     </div>
 
     <template v-else>
-      <div class="loop-hero">
-        <div class="loop-hero-main">
-          <span class="loop-eyebrow">TODAY'S PRESCRIPTION · 学习闭环</span>
-          <h2>今天，先做这三件事</h2>
+      <div class="loop-head">
+        <div class="loop-head-main">
+          <div class="loop-head-title">
+            <h2>今日学习处方</h2>
+            <span class="loop-head-chip">今日</span>
+          </div>
           <p>{{ data.headline }}</p>
         </div>
-        <div class="loop-hero-badge">
-          <span class="loop-badge-num">{{ data.todayPlan.length }}</span>
-          <span class="loop-badge-label">个今日动作</span>
-          <span class="loop-badge-sub">预计 {{ todayMinutes }} 分钟</span>
+        <div class="loop-head-meta">
+          <span><b>{{ data.todayPlan.length }}</b> 个动作</span>
+          <span class="loop-head-divider"></span>
+          <span>预计 {{ todayMinutes }} 分钟</span>
         </div>
       </div>
 
@@ -248,9 +250,6 @@ onMounted(load)
 .loop-panel {
   position: relative;
   overflow: hidden;
-  padding: 0;
-  border: 0;
-  background: transparent;
 }
 
 .loop-loading,
@@ -260,10 +259,10 @@ onMounted(load)
   gap: 12px;
   min-height: 120px;
   padding: 22px;
-  border: 1px solid var(--os-border, #e5e7eb);
-  border-radius: 14px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+  border-radius: var(--os-radius, 12px);
   background: #fff;
-  color: var(--os-text-4, #909399);
+  color: var(--os-text-4, #adb2b8);
 }
 
 .loop-empty-mark {
@@ -272,13 +271,13 @@ onMounted(load)
   height: 44px;
   flex: none;
   place-items: center;
-  border-radius: 12px;
-  background: #f1f5f9;
-  color: #64748b;
+  border-radius: var(--os-radius-sm, 8px);
+  background: var(--os-bg-subtle, #f5f6f7);
+  color: var(--os-text-3, #81858c);
 }
 
 .loop-empty-title {
-  color: var(--os-text, #111827);
+  color: var(--os-text, #0f1115);
   font-weight: 600;
 }
 
@@ -291,69 +290,69 @@ onMounted(load)
   margin-left: auto;
 }
 
-.loop-hero {
+.loop-head {
   display: flex;
-  align-items: stretch;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 24px;
-  padding: 24px 26px;
-  border-radius: 16px;
-  background:
-    radial-gradient(circle at 88% 12%, rgba(96, 165, 250, 0.28), transparent 28%),
-    linear-gradient(135deg, #111827 0%, #1e3a5f 62%, #1d4ed8 100%);
-  color: #fff;
+  gap: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
 }
 
-.loop-eyebrow {
-  color: #93c5fd;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
+.loop-head-main {
+  min-width: 0;
 }
 
-.loop-hero h2 {
-  margin: 8px 0 7px;
-  color: #fff;
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-.loop-hero p {
-  max-width: 650px;
-  margin: 0;
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 13px;
-  line-height: 1.65;
-}
-
-.loop-hero-badge {
+.loop-head-title {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: center;
-  min-width: 118px;
-  padding-left: 20px;
-  border-left: 1px solid rgba(255, 255, 255, 0.18);
+  align-items: center;
+  gap: 8px;
 }
 
-.loop-badge-num {
-  color: #fff;
-  font-size: 34px;
-  font-weight: 700;
-  line-height: 1;
+.loop-head-title h2 {
+  margin: 0;
+  color: var(--os-text, #0f1115);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
-.loop-badge-label {
-  margin-top: 3px;
-  color: rgba(255, 255, 255, 0.82);
+.loop-head-chip {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--os-accent-soft, #edf3fe);
+  color: var(--dsw-static-blue-800, #1e40af);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.loop-head-main p {
+  margin: 6px 0 0;
+  color: var(--os-text-3, #81858c);
   font-size: 12px;
+  line-height: 1.6;
 }
 
-.loop-badge-sub {
-  margin-top: 8px;
-  color: #93c5fd;
-  font-size: 11px;
+.loop-head-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  color: var(--os-text-3, #81858c);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.loop-head-meta b {
+  color: var(--os-text, #0f1115);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.loop-head-divider {
+  width: 1px;
+  height: 12px;
+  background: var(--os-border-strong, rgba(0, 0, 0, 0.1));
 }
 
 .loop-plan {
@@ -366,27 +365,26 @@ onMounted(load)
 .loop-task {
   display: flex;
   align-items: flex-start;
-  gap: 11px;
-  min-height: 122px;
-  padding: 16px;
-  border: 1px solid var(--os-border, #e5e7eb);
-  border-radius: 12px;
+  gap: 10px;
+  min-height: 108px;
+  padding: 14px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+  border-radius: var(--os-radius-sm, 8px);
   background: #fff;
   cursor: pointer;
-  transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+  transition: border-color var(--ds-duration-fast, 0.15s) ease, background-color var(--ds-duration-fast, 0.15s) ease;
 }
 
 .loop-task:hover {
-  border-color: #93c5fd;
-  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.08);
-  transform: translateY(-2px);
+  border-color: var(--os-border-strong, rgba(0, 0, 0, 0.1));
+  background: var(--os-bg-subtle, #f9fafb);
 }
 
 .loop-task-index {
-  color: #2563eb;
+  color: var(--os-text-4, #adb2b8);
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
 .loop-task-body {
@@ -454,9 +452,9 @@ onMounted(load)
 .loop-no-task {
   grid-column: 1 / -1;
   padding: 20px;
-  border: 1px dashed var(--os-border, #e5e7eb);
-  border-radius: 12px;
-  color: #94a3b8;
+  border: 1px dashed var(--os-border-strong, rgba(0, 0, 0, 0.1));
+  border-radius: var(--os-radius-sm, 8px);
+  color: var(--os-text-4, #adb2b8);
   font-size: 12px;
   text-align: center;
 }
@@ -465,13 +463,13 @@ onMounted(load)
   display: grid;
   grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
   gap: 12px;
-  margin-top: 14px;
+  margin-top: 12px;
 }
 
 .loop-card {
-  padding: 18px;
-  border: 1px solid var(--os-border, #e5e7eb);
-  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+  border-radius: var(--os-radius-sm, 8px);
   background: #fff;
 }
 
@@ -484,7 +482,7 @@ onMounted(load)
 
 .loop-card-head h3 {
   margin: 0;
-  color: var(--os-text, #111827);
+  color: var(--os-text, #0f1115);
   font-size: 14px;
   font-weight: 600;
 }
@@ -492,45 +490,43 @@ onMounted(load)
 .loop-card-head span {
   display: block;
   margin-top: 3px;
-  color: #94a3b8;
+  color: var(--os-text-4, #adb2b8);
   font-size: 11px;
 }
 
 .loop-card-meta {
   margin-top: 0 !important;
-  color: #64748b !important;
+  color: var(--os-text-3, #81858c) !important;
   white-space: nowrap;
 }
 
 .health-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 10px;
-  margin-top: 14px;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 .health-node {
   display: block;
   width: 100%;
-  padding: 12px;
-  border: 1px solid #eef2f7;
-  border-radius: 12px;
-  background: #fbfdff;
+  padding: 10px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+  border-radius: var(--os-radius-sm, 8px);
+  background: #fff;
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  transition: border-color var(--ds-duration-fast, 0.15s) ease, background-color var(--ds-duration-fast, 0.15s) ease;
 }
 
 .health-node:hover {
-  transform: translateY(-1px);
-  border-color: #bfdbfe;
-  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.07);
+  border-color: var(--os-border-strong, rgba(0, 0, 0, 0.1));
+  background: var(--os-bg-subtle, #f9fafb);
 }
 
 .health-node.is-active {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
-  background: #fff;
+  border-color: var(--os-accent, #4176e6);
+  background: var(--os-accent-soft, #edf3fe);
 }
 
 .health-node-head {
@@ -743,28 +739,28 @@ onMounted(load)
   min-height: 150px;
   align-items: center;
   justify-content: center;
-  color: #94a3b8;
+  color: var(--os-text-4, #adb2b8);
   font-size: 12px;
 }
 
 .battle-progress-text {
-  color: #2563eb !important;
-  font-size: 18px !important;
-  font-weight: 700;
+  color: var(--os-text, #0f1115) !important;
+  font-size: 16px !important;
+  font-weight: 600;
 }
 
 .battle-progress {
-  height: 8px;
-  margin-top: 18px;
+  height: 6px;
+  margin-top: 16px;
   overflow: hidden;
   border-radius: 999px;
-  background: #eef2f7;
+  background: var(--os-border-soft, #f1f3f5);
 }
 
 .battle-progress-fill {
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #60a5fa, #2563eb);
+  background: var(--os-accent, #4176e6);
   transition: width 0.4s ease;
 }
 
@@ -772,7 +768,7 @@ onMounted(load)
   display: flex;
   justify-content: space-between;
   margin-top: 8px;
-  color: #64748b;
+  color: var(--os-text-3, #81858c);
   font-size: 11px;
 }
 

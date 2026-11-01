@@ -5,7 +5,6 @@
         <el-icon><ArrowLeft /></el-icon>
         我的资料
       </el-button>
-      <span class="micro-topbar-hint">按原文结构生成 · 不编造资料里没有的内容</span>
     </div>
 
     <div v-if="loading" class="micro-loading" v-loading="true"></div>
@@ -19,7 +18,7 @@
     <template v-else>
       <section class="micro-head">
         <div class="micro-head-main">
-          <div class="micro-eyebrow">MATERIAL TO MICRO-COURSE · 资料变微课</div>
+          <div class="micro-eyebrow">资料变微课</div>
           <h1>{{ data.document.fileName }}</h1>
           <div class="micro-meta">
             <span>{{ data.overview.stationCount }} 站</span>
@@ -253,92 +252,91 @@ onMounted(load)
 .micro-page {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 0 20px 60px;
+  padding: 0 20px 56px;
 }
 
 .micro-topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .back-btn {
-  color: #64748b;
-  font-size: 13px;
+  height: 30px;
+  color: var(--os-text-3, #81858c);
+  font-size: 12px;
 }
 
 .micro-topbar-hint {
-  color: #9ca3af;
+  color: var(--os-text-4, #adb2b8);
   font-size: 11px;
 }
 
 .micro-loading {
   height: 480px;
-  border-radius: 18px;
+  border-radius: var(--os-radius, 12px);
   background: #fff;
 }
 
 .micro-empty {
-  padding: 70px 24px;
-  border: 1px solid #eef2f7;
-  border-radius: 18px;
+  padding: 60px 24px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+  border-radius: var(--os-radius, 12px);
   background: #fff;
   text-align: center;
 }
 
 .micro-empty h3 {
-  margin: 0 0 8px;
-  color: #1f2937;
-  font-size: 18px;
+  margin: 0 0 6px;
+  color: var(--os-text, #0f1115);
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .micro-empty p {
-  margin: 0 0 18px;
-  color: #64748b;
+  margin: 0 0 16px;
+  color: var(--os-text-3, #81858c);
   font-size: 12px;
 }
 
 .micro-head {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 26px 28px;
-  border-radius: 20px;
-  background:
-    radial-gradient(circle at 92% 10%, rgba(96, 165, 250, 0.24), transparent 30%),
-    linear-gradient(135deg, #0f172a, #1e3a5f 65%, #1d4ed8);
-  color: #fff;
+  padding: 18px 20px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+  border-radius: var(--os-radius, 12px);
+  background: #fff;
 }
 
 .micro-eyebrow {
-  color: #93c5fd;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
+  color: var(--os-text-4, #adb2b8);
+  font-size: 10px;
+  font-weight: 500;
 }
 
 .micro-head h1 {
-  margin: 10px 0 8px;
-  color: #fff;
-  font-size: 25px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
+  margin: 6px 0 5px;
+  color: var(--os-text, #0f1115);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .micro-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  color: rgba(255, 255, 255, 0.66);
+  color: var(--os-text-3, #81858c);
   font-size: 11px;
 }
 
 .micro-meta span + span::before {
   content: '·';
   margin-right: 8px;
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--os-text-4, #adb2b8);
 }
 
 .micro-progress-card {
@@ -347,41 +345,42 @@ onMounted(load)
   flex: none;
   flex-direction: column;
   justify-content: center;
-  padding-left: 22px;
-  border-left: 1px solid rgba(255, 255, 255, 0.18);
+  padding-left: 20px;
+  border-left: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
 }
 
 .micro-progress-num {
-  font-size: 32px;
-  font-weight: 800;
+  color: var(--os-text, #0f1115);
+  font-size: 18px;
+  font-weight: 600;
   line-height: 1;
 }
 
 .micro-progress-num i {
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 14px;
+  color: var(--os-text-4, #adb2b8);
+  font-size: 12px;
   font-style: normal;
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .micro-progress-label {
-  margin-top: 5px;
-  color: #93c5fd;
+  margin-top: 4px;
+  color: var(--os-text-3, #81858c);
   font-size: 10px;
 }
 
 .micro-progress-track {
-  height: 5px;
-  margin-top: 10px;
+  height: 4px;
+  margin-top: 8px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.16);
+  background: #f1f3f5;
 }
 
 .micro-progress-fill {
   height: 100%;
   border-radius: inherit;
-  background: #60a5fa;
+  background: var(--os-accent, #4176e6);
   transition: width 0.35s ease;
 }
 
@@ -406,8 +405,8 @@ onMounted(load)
   position: sticky;
   top: 16px;
   padding: 10px;
-  border: 1px solid #e8edf5;
-  border-radius: 16px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+  border-radius: var(--os-radius, 12px);
   background: #fff;
 }
 
@@ -422,7 +421,7 @@ onMounted(load)
 }
 
 .station-item:hover {
-  background: #f8fafc;
+  background: #f9fafb;
 }
 
 .station-item.is-active {
@@ -445,8 +444,8 @@ onMounted(load)
 }
 
 .station-item.is-active .station-dot {
-  border-color: #2563eb;
-  background: #2563eb;
+  border-color: var(--os-accent, #4176e6);
+  background: var(--os-accent, #4176e6);
   color: #fff;
 }
 
@@ -500,11 +499,11 @@ onMounted(load)
 }
 
 .station-card {
-  padding: 28px 30px;
-  border: 1px solid #e8edf5;
-  border-radius: 20px;
+  padding: 20px 22px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+  border-radius: var(--os-radius, 12px);
   background: #fff;
-  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.05);
+  
 }
 
 .station-card-head {
@@ -514,7 +513,7 @@ onMounted(load)
 }
 
 .station-eyebrow {
-  color: #2563eb;
+  color: var(--os-accent, #4176e6);
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.14em;
@@ -532,7 +531,7 @@ onMounted(load)
 .station-card h2 {
   margin: 12px 0 6px;
   color: #0f172a;
-  font-size: 24px;
+  font-size: 18px;
   font-weight: 700;
   letter-spacing: -0.03em;
 }
@@ -559,7 +558,7 @@ onMounted(load)
 }
 
 .station-section-title span {
-  color: #2563eb;
+  color: var(--os-accent, #4176e6);
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.06em;
@@ -571,7 +570,7 @@ onMounted(load)
   overflow-y: auto;
   padding: 14px 16px;
   border-radius: 10px;
-  background: #f8fafc;
+  background: #f9fafb;
   color: #475569;
   font-size: 12px;
   line-height: 1.85;
@@ -618,7 +617,7 @@ onMounted(load)
   gap: 18px;
   margin-top: 14px;
   padding: 16px 20px;
-  border: 1px solid #e8edf5;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
   border-radius: 14px;
   background: #fff;
 }
@@ -654,7 +653,7 @@ onMounted(load)
   margin-top: 14px;
   padding: 18px 20px;
   border-radius: 14px;
-  background: linear-gradient(135deg, #ecfdf5, #f0fdf4);
+  background: #e6faed;
   border: 1px solid #d1fae5;
 }
 
@@ -702,3 +701,5 @@ onMounted(load)
   }
 }
 </style>
+
+

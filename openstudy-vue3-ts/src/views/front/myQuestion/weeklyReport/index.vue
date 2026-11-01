@@ -6,8 +6,7 @@
         学习统计
       </el-button>
       <div class="weekly-toolbar-right">
-        <span class="weekly-toolbar-hint">所有数字来自真实作答记录</span>
-        <el-button type="primary" plain :loading="exporting" @click="downloadImage">
+        <el-button size="small" :loading="exporting" @click="downloadImage">
           <el-icon><Download /></el-icon>
           保存为图片
         </el-button>
@@ -19,60 +18,52 @@
     <div v-else-if="!data || !data.hasData" class="weekly-empty">
       <div class="weekly-empty-mark">周</div>
       <h3>这周的周报还没生成</h3>
-      <p>先去做几道题，系统会用真实作答记录生成你的成长故事。</p>
+      <p>先去做几道题，系统会用真实作答记录生成你的成长记录。</p>
       <el-button type="primary" @click="goPractice">去题库练习</el-button>
     </div>
 
-    <div v-else ref="reportRef" class="weekly-card">
-      <div class="report-glow"></div>
-
+    <div v-else ref="reportRef" class="report">
       <header class="report-head">
         <div>
-          <div class="report-brand">OPENSTUDY · 学习周报</div>
-          <div class="report-range">
-            {{ data.range.label }}
+          <div class="report-title-row">
+            <h2>学习周报</h2>
+            <span class="report-range">{{ data.range.label }}</span>
             <span v-if="!data.range.isCurrent" class="report-range-tag">最近一次学习</span>
           </div>
         </div>
-        <div class="report-mark">W</div>
+        <span class="report-generated">生成于 {{ data.generatedAt.slice(0, 10) }}</span>
       </header>
 
-      <h1 class="report-headline">{{ data.headline }}</h1>
+      <p class="report-headline">{{ data.headline }}</p>
       <p v-if="!data.range.isCurrent" class="report-note">
         你最近两周没有新的练习记录，这一页展示的是 {{ data.range.start }} 之后那 7 天的复盘。
       </p>
 
       <div class="report-stats">
-        <div class="report-stat is-hero">
-          <span class="report-stat-num">{{ data.stats.practiceCount }}</span>
-          <span class="report-stat-label">道题</span>
-          <span class="report-stat-sub" :class="{ 'is-down': (data.stats.deltaPractice ?? 0) < 0 }">
-            <template v-if="data.stats.deltaPractice === null">
-              上一周期 {{ data.stats.prevPracticeCount }} 道
-            </template>
-            <template v-else>
-              {{ data.stats.deltaPractice >= 0 ? '↑' : '↓' }} {{ Math.abs(data.stats.deltaPractice) }}% 较上期
-            </template>
+        <div class="report-stat">
+          <span class="report-stat-label">完成题量</span>
+          <div class="report-stat-value">{{ data.stats.practiceCount }} <i>道</i></div>
+          <span class="report-stat-sub">
+            <template v-if="data.stats.deltaPractice === null">上一周期 {{ data.stats.prevPracticeCount }} 道</template>
+            <template v-else>{{ data.stats.deltaPractice >= 0 ? '↑' : '↓' }} {{ Math.abs(data.stats.deltaPractice) }}% 较上期</template>
           </span>
         </div>
         <div class="report-stat">
-          <span class="report-stat-num">{{ data.stats.accuracy }}<i>%</i></span>
           <span class="report-stat-label">正确率</span>
-          <span class="report-stat-sub" :class="{ 'is-down': (data.stats.deltaAccuracy ?? 0) < 0 }">
+          <div class="report-stat-value">{{ data.stats.accuracy }}<i>%</i></div>
+          <span class="report-stat-sub">
             <template v-if="data.stats.deltaAccuracy === null">样本还不够比较</template>
-            <template v-else>
-              {{ data.stats.deltaAccuracy >= 0 ? '↑' : '↓' }} {{ Math.abs(data.stats.deltaAccuracy) }} 个百分点
-            </template>
+            <template v-else>{{ data.stats.deltaAccuracy >= 0 ? '↑' : '↓' }} {{ Math.abs(data.stats.deltaAccuracy) }} 个百分点</template>
           </span>
         </div>
         <div class="report-stat">
-          <span class="report-stat-num">{{ data.stats.activeDays }}<i>天</i></span>
-          <span class="report-stat-label">有学习</span>
+          <span class="report-stat-label">有学习的天数</span>
+          <div class="report-stat-value">{{ data.stats.activeDays }} <i>天</i></div>
           <span class="report-stat-sub">最长连续 {{ data.stats.longestStreak }} 天</span>
         </div>
         <div class="report-stat">
-          <span class="report-stat-num">{{ data.stats.markedCount }}<i>道</i></span>
           <span class="report-stat-label">主动斩题</span>
+          <div class="report-stat-value">{{ data.stats.markedCount }} <i>道</i></div>
           <span class="report-stat-sub">标记「已经会了」</span>
         </div>
       </div>
@@ -80,20 +71,21 @@
       <section class="report-section">
         <div class="report-section-head">
           <h3>每日节奏</h3>
-          <span>每一天的作答量</span>
+          <span>每天完成了多少道题</span>
         </div>
         <div class="report-bars">
           <div v-for="day in data.daily" :key="day.date" class="report-bar-col">
-            <span class="report-bar-value">{{ day.practiceCount || '' }}</span>
             <div class="report-bar-track">
               <div
                 class="report-bar-fill"
                 :class="{ 'is-peak': day.practiceCount === maxDaily }"
                 :style="{ height: `${barHeight(day.practiceCount)}%` }"
-              ></div>
+              >
+                <span v-if="day.practiceCount" class="report-bar-value">{{ day.practiceCount }}</span>
+              </div>
             </div>
             <span class="report-bar-day">{{ day.weekday }}</span>
-            <span class="report-bar-date">{{ day.date.slice(8) }}</span>
+            <span class="report-bar-date">{{ day.date.slice(5) }}</span>
           </div>
         </div>
       </section>
@@ -106,14 +98,14 @@
           </div>
           <div v-if="data.highlights.length" class="highlight-list">
             <div v-for="(h, i) in data.highlights" :key="i" class="highlight-item">
-              <span class="highlight-index">0{{ i + 1 }}</span>
+              <span class="highlight-index">{{ String(i + 1).padStart(2, '0') }}</span>
               <div>
                 <div class="highlight-title">{{ h.title }}</div>
                 <div class="highlight-detail">{{ h.detail }}</div>
               </div>
             </div>
           </div>
-          <div v-else class="highlight-empty">这一周比较安静，下一周留一点记录给未来的自己。</div>
+          <div v-else class="report-empty">这一周比较安静，下一周留一点记录给未来的自己。</div>
         </section>
 
         <section class="report-section report-subjects">
@@ -133,13 +125,13 @@
               <div class="subject-meta">{{ subject.attempts }} 次作答</div>
             </div>
           </div>
-          <div v-else class="highlight-empty">本周没有可归属到科目的练习记录。</div>
+          <div v-else class="report-empty">本周没有可归属到科目的练习记录。</div>
         </section>
       </div>
 
-      <section class="report-section report-next">
+      <section class="report-section">
         <div class="report-section-head">
-          <h3>下周，先做这三件事</h3>
+          <h3>下周，先做这几件事</h3>
           <span>按优先级排好</span>
         </div>
         <div class="next-list">
@@ -150,13 +142,13 @@
               <div class="next-detail">{{ n.detail }}</div>
             </div>
           </div>
-          <div v-if="!data.nextWeek.length" class="highlight-empty">下周保持现在的节奏就好。</div>
+          <div v-if="!data.nextWeek.length" class="report-empty">下周保持现在的节奏就好。</div>
         </div>
       </section>
 
       <footer class="report-foot">
-        <span>OpenStudy · 把「学过」变成「学会」</span>
-        <span class="report-foot-date">生成于 {{ data.generatedAt.slice(0, 10) }}</span>
+        <span>OpenStudy · 学习周报</span>
+        <span>{{ data.range.start }} - {{ data.range.end }}</span>
       </footer>
     </div>
   </div>
@@ -205,7 +197,7 @@ async function downloadImage() {
   exporting.value = true
   try {
     const canvas = await html2canvas(reportRef.value, {
-      backgroundColor: '#f6f7fb',
+      backgroundColor: '#ffffff',
       scale: 2,
       useCORS: true,
       logging: false,
@@ -228,7 +220,7 @@ onMounted(load)
 
 <style scoped>
 .weekly-page {
-  max-width: 860px;
+  max-width: 980px;
   margin: 0 auto;
   padding: 0 16px 48px;
 }
@@ -243,236 +235,206 @@ onMounted(load)
 .weekly-toolbar-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .weekly-toolbar-hint {
-  color: #9ca3af;
+  color: var(--os-text-4, #adb2b8);
   font-size: 11px;
 }
 
 .back-btn {
-  color: #64748b;
-  font-size: 13px;
+  height: 30px;
+  color: var(--os-text-3, #81858c);
+  font-size: 12px;
 }
 
 .weekly-loading {
-  height: 520px;
-  border-radius: 20px;
+  height: 480px;
+  border-radius: var(--os-radius, 12px);
   background: #fff;
 }
 
 .weekly-empty {
-  padding: 72px 24px;
-  border: 1px solid #eef2f7;
-  border-radius: 20px;
+  padding: 64px 24px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+  border-radius: var(--os-radius, 12px);
   background: #fff;
   text-align: center;
 }
 
 .weekly-empty-mark {
   display: inline-grid;
-  width: 56px;
-  height: 56px;
+  width: 44px;
+  height: 44px;
   margin-bottom: 14px;
   place-items: center;
-  border-radius: 16px;
-  background: #eff6ff;
-  color: #2563eb;
-  font-size: 22px;
-  font-weight: 700;
+  border-radius: var(--os-radius-sm, 8px);
+  background: var(--os-bg-subtle, #f5f6f7);
+  color: var(--os-text-3, #81858c);
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .weekly-empty h3 {
-  margin: 0 0 8px;
-  color: #1f2937;
-  font-size: 18px;
+  margin: 0 0 6px;
+  color: var(--os-text, #0f1115);
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .weekly-empty p {
-  margin: 0 auto 20px;
-  max-width: 420px;
-  color: #6b7280;
-  font-size: 13px;
+  margin: 0 auto 18px;
+  max-width: 400px;
+  color: var(--os-text-3, #81858c);
+  font-size: 12px;
   line-height: 1.7;
 }
 
-.weekly-card {
-  position: relative;
-  overflow: hidden;
-  padding: 34px 38px 26px;
-  border: 1px solid #e8edf5;
-  border-radius: 22px;
-  background:
-    radial-gradient(circle at 100% 0%, rgba(59, 130, 246, 0.09), transparent 32%),
-    linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
-  box-shadow: 0 18px 60px rgba(15, 23, 42, 0.08);
-}
-
-.report-glow {
-  position: absolute;
-  top: -90px;
-  right: -70px;
-  width: 240px;
-  height: 240px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(96, 165, 250, 0.22), transparent 65%);
-  pointer-events: none;
+.report {
+  padding: 22px 26px 18px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+  border-radius: var(--os-radius, 12px);
+  background: #fff;
 }
 
 .report-head {
-  position: relative;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
 }
 
-.report-brand {
-  color: #2563eb;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
+.report-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.report-title-row h2 {
+  margin: 0;
+  color: var(--os-text, #0f1115);
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .report-range {
-  margin-top: 6px;
-  color: #64748b;
+  color: var(--os-text-3, #81858c);
   font-size: 12px;
 }
 
 .report-range-tag {
-  margin-left: 8px;
-  padding: 1px 7px;
+  padding: 2px 7px;
   border-radius: 999px;
-  background: #eff6ff;
-  color: #2563eb;
+  background: var(--os-bg-subtle, #f5f6f7);
+  color: var(--os-text-3, #81858c);
   font-size: 10px;
 }
 
-.report-mark {
-  display: grid;
-  width: 44px;
-  height: 44px;
-  place-items: center;
-  border-radius: 14px;
-  background: #111827;
-  color: #fff;
-  font-size: 17px;
-  font-weight: 800;
+.report-sub {
+  margin: 5px 0 0;
+  color: var(--os-text-4, #adb2b8);
+  font-size: 11px;
+}
+
+.report-generated {
+  flex: none;
+  color: var(--os-text-4, #adb2b8);
+  font-size: 11px;
 }
 
 .report-headline {
-  max-width: 640px;
-  margin: 22px 0 8px;
-  color: #0f172a;
-  font-size: 27px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1.35;
+  margin: 16px 0 4px;
+  color: var(--os-text, #0f1115);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
 }
 
 .report-note {
   margin: 0 0 6px;
-  color: #94a3b8;
+  color: var(--os-text-4, #adb2b8);
   font-size: 11px;
 }
 
 .report-stats {
   display: grid;
-  grid-template-columns: 1.25fr 1fr 1fr 1fr;
-  gap: 10px;
-  margin-top: 22px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
 }
 
 .report-stat {
-  display: flex;
-  flex-direction: column;
-  padding: 14px 16px;
-  border: 1px solid #eef2f7;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.82);
-}
-
-.report-stat.is-hero {
-  background: linear-gradient(135deg, #111827, #1e3a8a);
-  border-color: transparent;
-}
-
-.report-stat-num {
-  color: #111827;
-  font-size: 30px;
-  font-weight: 700;
-  letter-spacing: -0.04em;
-  line-height: 1;
-}
-
-.report-stat-num i {
-  margin-left: 2px;
-  color: #94a3b8;
-  font-size: 12px;
-  font-style: normal;
-  font-weight: 500;
-}
-
-.report-stat.is-hero .report-stat-num {
-  color: #fff;
+  padding: 12px 14px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+  border-radius: var(--os-radius-sm, 8px);
+  background: #f9fafb;
 }
 
 .report-stat-label {
-  margin-top: 7px;
-  color: #64748b;
+  display: block;
+  color: var(--os-text-3, #81858c);
   font-size: 11px;
 }
 
-.report-stat.is-hero .report-stat-label {
-  color: rgba(255, 255, 255, 0.75);
+.report-stat-value {
+  margin-top: 4px;
+  color: var(--os-text, #0f1115);
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.report-stat-value i {
+  margin-left: 2px;
+  color: var(--os-text-4, #adb2b8);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 400;
 }
 
 .report-stat-sub {
-  margin-top: 8px;
-  color: #059669;
+  display: block;
+  margin-top: 3px;
+  color: var(--os-text-3, #81858c);
   font-size: 10px;
 }
 
-.report-stat.is-hero .report-stat-sub {
-  color: #93c5fd;
-}
-
-.report-stat-sub.is-down {
-  color: #dc2626;
-}
-
 .report-section {
-  margin-top: 22px;
-  padding-top: 18px;
-  border-top: 1px solid #eef2f7;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
 }
 
 .report-section-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .report-section-head h3 {
   margin: 0;
-  color: #1f2937;
-  font-size: 14px;
-  font-weight: 700;
+  color: var(--os-text, #0f1115);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .report-section-head span {
-  color: #94a3b8;
+  color: var(--os-text-4, #adb2b8);
   font-size: 10px;
 }
 
 .report-bars {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 8px;
+  gap: 6px;
   align-items: end;
-  height: 128px;
+  height: 116px;
 }
 
 .report-bar-col {
@@ -485,177 +447,172 @@ onMounted(load)
 }
 
 .report-bar-value {
-  min-height: 12px;
-  color: #64748b;
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  margin-bottom: 3px;
+  transform: translateX(-50%);
+  color: var(--os-text-3, #81858c);
   font-size: 9px;
+  white-space: nowrap;
 }
 
 .report-bar-track {
   display: flex;
   width: 100%;
-  height: 82px;
+  height: 72px;
   align-items: flex-end;
   justify-content: center;
 }
 
 .report-bar-fill {
-  width: 24px;
-  max-width: 70%;
-  border-radius: 5px 5px 2px 2px;
-  background: #bfdbfe;
-  transition: height 0.5s ease;
+  position: relative;
+  width: 18px;
+  max-width: 60%;
+  border-radius: 3px 3px 1px 1px;
+  background: #cbd5e1;
+  transition: height 0.4s ease;
 }
 
 .report-bar-fill.is-peak {
-  background: linear-gradient(180deg, #3b82f6, #2563eb);
+  background: var(--os-accent, #4176e6);
 }
 
 .report-bar-day {
-  color: #64748b;
+  color: var(--os-text-3, #81858c);
   font-size: 10px;
 }
 
 .report-bar-date {
-  color: #cbd5e1;
+  color: var(--os-text-4, #adb2b8);
   font-size: 9px;
 }
 
 .report-columns {
   display: grid;
   grid-template-columns: 1.05fr 0.95fr;
-  gap: 26px;
+  gap: 24px;
 }
 
 .highlight-list,
 .next-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .highlight-item {
   display: flex;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: #f8fafc;
+  gap: 9px;
+  padding: 9px 10px;
+  border-radius: var(--os-radius-sm, 8px);
+  background: #f9fafb;
 }
 
 .highlight-index {
   flex: none;
-  color: #2563eb;
+  color: var(--os-text-4, #adb2b8);
   font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
+  font-weight: 600;
 }
 
 .highlight-title,
 .next-title {
-  color: #1f2937;
+  color: var(--os-text, #0f1115);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .highlight-detail,
 .next-detail {
-  margin-top: 3px;
-  color: #64748b;
+  margin-top: 2px;
+  color: var(--os-text-3, #81858c);
   font-size: 11px;
   line-height: 1.55;
 }
 
-.highlight-empty {
-  padding: 14px 0;
-  color: #94a3b8;
+.report-empty {
+  padding: 12px 0;
+  color: var(--os-text-4, #adb2b8);
   font-size: 11px;
 }
 
 .subject-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .subject-row-head {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 5px;
+  margin-bottom: 4px;
 }
 
 .subject-name {
-  color: #334155;
+  color: var(--os-text-2, #353638);
+  font-size: 12px;
+}
+
+.subject-value {
+  color: var(--os-text, #0f1115);
   font-size: 12px;
   font-weight: 600;
 }
 
-.subject-value {
-  color: #1f2937;
-  font-size: 12px;
-  font-weight: 700;
-}
-
 .subject-track {
-  height: 5px;
+  height: 4px;
   overflow: hidden;
   border-radius: 999px;
-  background: #eef2f7;
+  background: #f1f3f5;
 }
 
 .subject-fill {
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #60a5fa, #2563eb);
+  background: var(--os-accent, #4176e6);
 }
 
 .subject-meta {
-  margin-top: 4px;
-  color: #94a3b8;
+  margin-top: 3px;
+  color: var(--os-text-4, #adb2b8);
   font-size: 9px;
-}
-
-.report-next {
-  margin-top: 22px;
 }
 
 .next-item {
   display: flex;
-  gap: 12px;
-  padding: 11px 14px;
-  border: 1px solid #eef2f7;
-  border-radius: 10px;
-  background: #fff;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+  border-radius: var(--os-radius-sm, 8px);
 }
 
 .next-index {
   display: grid;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   flex: none;
   place-items: center;
   border-radius: 50%;
-  background: #eff6ff;
-  color: #2563eb;
-  font-size: 10px;
-  font-weight: 700;
+  background: var(--os-bg-subtle, #f5f6f7);
+  color: var(--os-text-3, #81858c);
+  font-size: 9px;
+  font-weight: 600;
 }
 
 .report-foot {
   display: flex;
   justify-content: space-between;
-  margin-top: 26px;
-  padding-top: 14px;
-  border-top: 1px dashed #e2e8f0;
-  color: #94a3b8;
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
+  color: var(--os-text-4, #adb2b8);
   font-size: 10px;
 }
 
-.report-foot-date {
-  color: #cbd5e1;
-}
-
 @media (max-width: 720px) {
-  .weekly-card {
-    padding: 24px 20px 20px;
+  .report {
+    padding: 18px 16px 14px;
   }
   .report-stats {
     grid-template-columns: repeat(2, 1fr);
@@ -664,8 +621,6 @@ onMounted(load)
     grid-template-columns: 1fr;
     gap: 0;
   }
-  .report-headline {
-    font-size: 22px;
-  }
 }
 </style>
+

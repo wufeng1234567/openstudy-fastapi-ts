@@ -27,6 +27,16 @@
         -->
         <div class="stats-tabs">
             <SegmentedTabs v-model="activeTab" :tabs="tabList" @change="onTabChange" />
+            <div class="stats-tabs-actions">
+                <el-button text size="small" @click="router.push('/front/myQuestion/weeklyReport')">
+                    <el-icon><Document /></el-icon>
+                    学习周报
+                </el-button>
+                <el-button text size="small" @click="router.push('/front/myQuestion/examPlan')">
+                    <el-icon><Calendar /></el-icon>
+                    考前计划
+                </el-button>
+            </div>
         </div>
 
         <!-- ==================== Tab 1：题库练习 ==================== -->
@@ -58,26 +68,6 @@
             </div>
 
         <template v-else>
-            <!-- ============ 两个「下一步」入口：周报 / 考前路线 ============ -->
-            <div class="quick-entry-row">
-                <button type="button" class="quick-entry" @click="router.push('/front/myQuestion/weeklyReport')">
-                    <span class="quick-entry-mark is-weekly">周</span>
-                    <span class="quick-entry-copy">
-                        <b>学习周报</b>
-                        <small>把这一周变成一张可保存的成长卡片</small>
-                    </span>
-                    <el-icon><ArrowRight /></el-icon>
-                </button>
-                <button type="button" class="quick-entry" @click="router.push('/front/myQuestion/examPlan')">
-                    <span class="quick-entry-mark is-exam">考</span>
-                    <span class="quick-entry-copy">
-                        <b>考前倒计时路线图</b>
-                        <small>输入考试日期，系统按薄弱点倒排每天任务</small>
-                    </span>
-                    <el-icon><ArrowRight /></el-icon>
-                </button>
-            </div>
-
             <!-- ============ 学习闭环：今日处方 / 知识体检 / 错题歼灭战 ============ -->
             <LearningLoopPanel @practice="goPractice" @open-question="onOpenDiagnosisItem" />
 
@@ -279,7 +269,7 @@ import { ref, computed, reactive, watch, onMounted, onUnmounted, nextTick } from
 import useTopbarStore from '@/store/modules/topbar'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
-import { TrendCharts, ArrowRight } from '@element-plus/icons-vue'
+import { TrendCharts, ArrowRight, Document, Calendar } from '@element-plus/icons-vue'
 import SegmentedTabs from '@/components/SegmentedTabs/index.vue'
 import EnglishStatistics from '@/views/front/english/statistics/index.vue'
 // 学情诊断面板（2026-10-26 v3）：把后端逐题诊断画成页内图表，而不是下载 PDF
@@ -856,82 +846,39 @@ onUnmounted(() => {
      * 保持一致（都是 SegmentedTabs）—— 用户在同一批页面间切换时不需要重新认。
      */
     .stats-tabs {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
         margin-bottom: 16px;
         border-bottom: 1px solid var(--os-border, #eef0f3);
         padding-bottom: 2px;
     }
 
+    .stats-tabs-actions {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        flex: none;
+
+        .el-button {
+            height: 30px;
+            color: var(--os-text-3, #81858c);
+            font-size: 12px;
+
+            &:hover {
+                color: var(--os-text, #0f1115);
+            }
+
+            .el-icon {
+                margin-right: 4px;
+            }
+        }
+    }
+
     .tab-pane {
         /* 两个 tab 的内容宽度一致，切换时不会跳 */
         width: 100%;
-    }
-
-    /* ===== 周报 / 考前路线快捷入口 ===== */
-    .quick-entry-row {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 12px;
-        margin-bottom: 14px;
-
-        @media (max-width: 768px) {
-            grid-template-columns: 1fr;
-        }
-    }
-
-    .quick-entry {
-        display: flex;
-        align-items: center;
-        gap: 11px;
-        padding: 12px 16px;
-        border: 1px solid #e8edf5;
-        border-radius: 12px;
-        background: #fff;
-        text-align: left;
-        cursor: pointer;
-        transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
-
-        &:hover {
-            border-color: #93c5fd;
-            box-shadow: 0 8px 24px rgba(37, 99, 235, 0.08);
-            transform: translateY(-1px);
-        }
-
-        .el-icon {
-            margin-left: auto;
-            color: #cbd5e1;
-        }
-    }
-
-    .quick-entry-mark {
-        display: grid;
-        width: 34px;
-        height: 34px;
-        flex: none;
-        place-items: center;
-        border-radius: 10px;
-        font-size: 13px;
-        font-weight: 700;
-
-        &.is-weekly { background: #eff6ff; color: #2563eb; }
-        &.is-exam { background: #fff7e6; color: #d97706; }
-    }
-
-    .quick-entry-copy {
-        display: flex;
-        min-width: 0;
-        flex-direction: column;
-        gap: 2px;
-
-        b {
-            color: #1f2937;
-            font-size: 13px;
-            font-weight: 600;
-        }
-
-        small {
-            color: #94a3b8;
-            font-size: 11px;
-        }
     }
 
     .page-header {
