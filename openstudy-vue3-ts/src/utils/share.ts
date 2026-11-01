@@ -9,14 +9,22 @@
  * 之前拼成 `...#/front/share/xxx`，对方打开会落到首页而看不到领取页 —— 已修正。
  *
  * @param token 分享令牌
- * @returns 形如 http://host/front/share/<token> 的完整地址
+ * @returns 形如 http://host/#/front/share/<token> 的完整地址
  */
 export function buildBankShareUrl(token: string): string {
   if (!token) return ''
-  // BASE_URL 默认为 '/'，部署在子路径下也能正确拼接
+  // 本项目路由是 hash 模式（createWebHashHistory），必须保留 #/，否则会落到首页
   const base = import.meta.env.BASE_URL || '/'
   const prefix = base.endsWith('/') ? base : `${base}/`
-  return `${window.location.origin}${prefix}front/share/${encodeURIComponent(token)}`
+  return `${window.location.origin}${prefix}#/front/share/${encodeURIComponent(token)}`
+}
+
+/** 由分享令牌构建知识库分享落地页地址 */
+export function buildKnowledgeShareUrl(token: string): string {
+  if (!token) return ''
+  const base = import.meta.env.BASE_URL || '/'
+  const prefix = base.endsWith('/') ? base : `${base}/`
+  return `${window.location.origin}${prefix}#/front/knowledgeShare/${encodeURIComponent(token)}`
 }
 
 /** 复制文本到剪贴板 */

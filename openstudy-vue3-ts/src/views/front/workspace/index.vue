@@ -44,11 +44,17 @@
         <span class="kbp-head__dot">·</span>
         <span>{{ stats.totalSizeText || '0 B' }}</span>
       </div>
-      <el-radio-group v-model="viewMode" size="small" class="kbp-view-switch">
-        <el-radio-button value="list">资料夹</el-radio-button>
-        <el-radio-button value="shelf">书架</el-radio-button>
-        <el-radio-button value="images">图片墙</el-radio-button>
-      </el-radio-group>
+      <div class="kbp-head__actions">
+        <el-button size="small" text class="kbp-receive-share" @click="receiveDialogVisible = true">
+          <el-icon><Download /></el-icon>
+          获取资料分享
+        </el-button>
+        <el-radio-group v-model="viewMode" size="small" class="kbp-view-switch">
+          <el-radio-button value="list">资料夹</el-radio-button>
+          <el-radio-button value="shelf">书架</el-radio-button>
+          <el-radio-button value="images">图片墙</el-radio-button>
+        </el-radio-group>
+      </div>
     </header>
 
     <!-- 智能整理：即使关闭预览弹窗，后台进度也要可见、可再次打开 -->
@@ -162,6 +168,10 @@
               </el-tag>
             </div>
             <div class="kbp-main__actions">
+              <el-button size="small" text @click="openShare(activeKb)">
+                <el-icon><Share /></el-icon>
+                分享资料夹
+              </el-button>
               <el-button v-if="selectedDocCount" size="small" plain type="danger" :disabled="busy"
                 @click="removeSelectedDocs">
                 <OsIcon name="trash" :size="14" />
@@ -634,6 +644,10 @@
     <!-- 共享资料解剖：我的资料页与设置面板复用同一个查看器 -->
     <DocumentAnatomyDialog ref="anatomyRef" :show-edit="true" @edit="openEditor" />
 
+    <!-- 知识库分享 / 领取（参考题库分享） -->
+    <ShareKnowledgeDialog v-model="shareDialogVisible" :default-kb-id="shareKbId" />
+    <ReceiveKnowledgeDialog v-model="receiveDialogVisible" />
+
     <!-- 图片资产 → 插入题目解析 -->
     <el-dialog v-model="questionPickerVisible" title="插入题目解析" width="820px" append-to-body>
       <div class="kbp-question-picker">
@@ -848,6 +862,8 @@ import TurndownService from 'turndown'
 import { getWorkspaceOverview, uploadToWorkspace, searchWorkspace, listWorkspaceStandaloneImages, getAssetUsageSummary, recordAssetUsage, previewWorkspaceOrganize, getWorkspaceOrganizePlan, getWorkspaceOrganizeRecord, listWorkspaceOrganizePlans, applyWorkspaceOrganize, deleteWorkspaceOrganizeRecord, rollbackWorkspacePlan, setDocumentSearchable, listDocumentVersions, restoreDocumentVersion } from '@/api/ai/workspace'
 import OrganizeDiffDialog from './components/OrganizeDiffDialog.vue'
 import DocumentAnatomyDialog from './components/DocumentAnatomyDialog.vue'
+import ShareKnowledgeDialog from './components/ShareKnowledgeDialog.vue'
+import ReceiveKnowledgeDialog from './components/ReceiveKnowledgeDialog.vue'
 import { listQuestionMain, getQuestionMain, updateQuestionMain } from '@/api/questionMain/questionMain'
 import { listNote, getNote, updateNote } from '@/api/notes/note'
 import useUserStore from '@/store/modules/user'
@@ -868,6 +884,7 @@ import {
   uploadDocument
 } from '@/api/ai/rag'
 import { Plus } from '@element-plus/icons-vue'
+import { Download, Share } from '@element-plus/icons-vue'
 import { saveAs } from 'file-saver'
 import {
   ensureMarkdownImageFiles,
@@ -900,6 +917,9 @@ const loadFailed = ref(false)
 
 const kbs = ref<any[]>([])
 const activeKbId = ref<number | null>(null)
+const shareDialogVisible = ref(false)
+const receiveDialogVisible = ref(false)
+const shareKbId = ref<number | null>(null)
 /** 从聊天「查看处理进度」跳转过来时，临时高亮并滚动到目标文档。 */
 const jumpTargetDocId = ref<number | null>(null)
 const jumpQueryApplied = ref(false)
@@ -2092,6 +2112,11 @@ function selectKb(kbId: number) {
   tryQuery.value = ''
 }
 
+function openShare(kb: any) {
+  shareKbId.value = Number(kb?.kbId) || null
+  shareDialogVisible.value = true
+}
+
 /* ===================== 知识库增删改 ===================== */
 
 async function promptCreate() {
@@ -2866,6 +2891,22 @@ onBeforeUnmount(() => {
   color: #d1d5db;
 }
 
+.kbp-head__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+.kbp-receive-share {
+  color: var(--os-text-3, #6b7280);
+  font-size: 12px;
+}
+
+.kbp-receive-share:hover {
+  color: var(--os-accent, #4176e6);
+}
+
 .kbp-view-empty {
   width: 100%;
   min-height: 360px;
@@ -2999,6 +3040,10 @@ onBeforeUnmount(() => {
 }
 
 .kbp-view-switch {
+  flex: none;
+}
+
+.kbp-head__actions .kbp-view-switch {
   flex: none;
 }
 

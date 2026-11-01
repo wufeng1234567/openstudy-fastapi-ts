@@ -53,3 +53,45 @@ class BankShareReceive(Base):
     status: Mapped[str] = mapped_column(String(1), default="0")
     create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     update_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+class KbShare(Base):
+    """知识库分享记录（参考题库分享实现）。
+
+    知识库由多个文档组成，领取时会把整个知识库深拷贝到领取者名下，
+    对方得到一份可自由编辑的副本；原知识库后续更新不会影响副本。
+    """
+
+    __tablename__ = "kb_share"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    kb_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    owner_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    share_token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    share_code: Mapped[str] = mapped_column(String(12), nullable=False, index=True)
+    permission: Mapped[str] = mapped_column(String(16), default="copy")
+    message: Mapped[Optional[str]] = mapped_column(String(200))
+    expire_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    receive_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(1), default="0")
+    create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    update_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class KbShareReceive(Base):
+    """知识库分享领取记录；new_kb_id 指向领取者名下的副本。"""
+
+    __tablename__ = "kb_share_receive"
+    __table_args__ = (
+        UniqueConstraint("share_id", "receiver_id", name="uk_kb_share_receiver"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    share_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    kb_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    owner_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    receiver_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    new_kb_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    source: Mapped[str] = mapped_column(String(16), default="share")
+    status: Mapped[str] = mapped_column(String(1), default="0")
+    create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    update_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

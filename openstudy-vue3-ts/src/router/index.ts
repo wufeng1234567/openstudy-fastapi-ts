@@ -330,6 +330,15 @@ export const constantRoutes: AppRouteRecordRaw[] = [
         hidden: true
       },
 
+      // ✅ 知识库分享落地页（B 打开链接后领取副本）
+      {
+        path: 'knowledgeShare/:token',
+        name: 'FrontKnowledgeShare',
+        component: () => import('@/views/front/share/knowledge.vue'),
+        meta: { title: '知识库分享', layout: 'front' },
+        hidden: true
+      },
+
       // ✅ 消息中心
       {
         path: 'messages',

@@ -224,7 +224,7 @@ from app.api.v1 import (
     carousel, courses, words, notes, system, leave_message,
     sensitive_word, chat, ocr, document, notice_front, user_front,
     noteQuestionBank, noteQuestion, user_stats,
-    common, catch_all, ai_config, bankShare, notification, systemComment,
+    common, catch_all, ai_config, bankShare, kbShare, notification, systemComment,
     rag, rate_limit_admin, bank_export, tts, english_practice,
     # 2026-10-27 文档编排：把「内容 → 排版好的 Word/PDF」暴露成 REST，
     # 供独立编辑器页面用（聊天侧走 document_compose 工具，共用同一渲染引擎）。
@@ -266,6 +266,7 @@ app.include_router(user_stats.router, tags=["用户统计"])
 app.include_router(common.router, tags=["通用接口"])
 app.include_router(ai_config.router, tags=["AI模型配置"])
 app.include_router(bankShare.router, tags=["题库分享"])
+app.include_router(kbShare.router, tags=["知识库分享"])
 app.include_router(notification.router, tags=["站内通知"])
 app.include_router(systemComment.router, tags=["评论管理"])  # 后台 /system/comment/*（此前缺失，落到 catch_all 假成功）
 app.include_router(rag.router, tags=["RAG知识库"])
