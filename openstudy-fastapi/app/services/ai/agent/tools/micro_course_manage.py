@@ -58,6 +58,10 @@ class MicroCourseTool(AgentTool):
                 "type": "string",
                 "description": "Document file name or keyword when doc_id is unknown.",
             },
+            "prompt": {
+                "type": "string",
+                "description": "Optional natural-language instruction for how to revise the deck, e.g. 'add a chart slide and use the architecture image'.",
+            },
             "format": {
                 "type": "string",
                 "enum": ["html", "pptx", "both"],
@@ -129,7 +133,12 @@ class MicroCourseTool(AgentTool):
         if fmt not in ("html", "pptx", "both"):
             fmt = "both"
         try:
-            export = await get_or_create_micro_course_record(ctx.db, ctx.user_id, doc)
+            export = await get_or_create_micro_course_record(
+                ctx.db,
+                ctx.user_id,
+                doc,
+                prompt=str(params.get("prompt") or "").strip(),
+            )
             payload: Dict[str, Any] = {
                 "docId": int(doc.id),
                 "recordId": export.get("recordId"),
