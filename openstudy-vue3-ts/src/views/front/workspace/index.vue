@@ -2212,7 +2212,7 @@ function closeKbMenu() {
 function onGlobalClick(event: Event) {
   closeKbMenu()
   const target = event.target as Node | null
-  if (tryPanelRef.value && target && !tryPanelRef.value.contains(target)) {
+  if (tryPanelRef.value && target && target instanceof Node && !tryPanelRef.value.contains(target)) {
     clearTryResults()
   }
 }
