@@ -349,7 +349,7 @@
               · 每条结果展示一个命中片段，只保留「定位原文」一个动作：
                 进资料解剖后自动滚动并用黄色标记标出用户搜索词所在位置。
           -->
-          <section v-if="activeKb.files.length" class="kbp-try">
+          <section v-if="activeKb.files.length" ref="tryPanelRef" class="kbp-try">
             <div class="kbp-try__head">
               <span class="kbp-try__title">试试 AI 会怎么找</span>
               <span class="kbp-try__hint">
@@ -362,6 +362,7 @@
                 placeholder="例如：随机事件、二叉树的时间复杂度"
                 clearable
                 @keyup.enter="doTry"
+                @input="onTryInput"
               />
               <el-button type="primary" :loading="trying" @click="doTry">找找看</el-button>
             </div>
@@ -1142,6 +1143,7 @@ const noteInsertingId = ref<number | null>(null)
 
 /* 试试 AI 怎么找 */
 const tryQuery = ref('')
+const tryPanelRef = ref<HTMLElement | null>(null)
 const trying = ref(false)
 const tried = ref(false)
 const tryHits = ref<any[]>([])
@@ -1169,6 +1171,20 @@ const lowConfidence = ref(false)
  * 用户一改输入框，已有结果的高亮就乱跳。
  */
 const trySearchedQuery = ref('')
+
+/** 清空 AI 检索的结果区域：点击面板外、清空输入时都应调用。 */
+function clearTryResults() {
+  tryHits.value = []
+  tryPage.value = 1
+  tried.value = false
+  tryReason.value = ''
+  lowConfidence.value = false
+  trySearchedQuery.value = ''
+}
+
+function onTryInput() {
+  if (!tryQuery.value.trim()) clearTryResults()
+}
 
 /* 分块 */
 
@@ -2193,8 +2209,12 @@ function closeKbMenu() {
   kbMenu.kb = null
 }
 
-function onGlobalClick() {
+function onGlobalClick(event: Event) {
   closeKbMenu()
+  const target = event.target as Node | null
+  if (tryPanelRef.value && target && !tryPanelRef.value.contains(target)) {
+    clearTryResults()
+  }
 }
 
 onMounted(() => {

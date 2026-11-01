@@ -238,6 +238,7 @@ export interface MicroCourseHtmlResult {
   aiGenerated?: boolean
   recordId?: number
   version?: number
+  changeSummary?: string
   createdAt?: string
   fromHistory?: boolean
 }
@@ -247,6 +248,7 @@ export interface MicroCourseHistoryItem {
   docId: number
   version: number
   title: string
+  changeSummary?: string
   slides: number
   aiGenerated: boolean
   createdAt: string

@@ -74,6 +74,7 @@ async def _ai_deck(
         "设计一套 5-12 页的教学课件。不要编造资料里没有的事实。\n"
         "返回严格 JSON（不要 Markdown 代码围栏）：\n"
         '{"title":"课件标题","subtitle":"副标题",'
+        '"changeSummary":"这一版相对上一版改了什么（首次生成写：首次生成，围绕资料建立完整教学框架）",'
         '"slides":[{"layout":"content","eyebrow":"环节/知识点标签","title":"页标题",'
         '"bullets":["要点1","要点2"],"note":"可选的课堂提示",'
         '"image":{"url":"可选，只能使用下面提供的图片 URL","caption":"图片说明"},'
@@ -149,6 +150,7 @@ async def _ai_deck(
         deck = {
             "title": str(data.get("title") or getattr(doc, "file_name", "") or "教学课件")[:100],
             "subtitle": str(data.get("subtitle") or getattr(doc, "subject", "") or "教学课件")[:100],
+            "changeSummary": str(data.get("changeSummary") or "").strip()[:300],
             "slides": cleaned,
         }
         return deck, True
@@ -282,7 +284,41 @@ def _table_html(table: Dict[str, Any]) -> str:
     return f'<div class="table-wrap"><table class="data-table"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>'
 
 
+def _design_from_prompt(prompt: str) -> Dict[str, Any]:
+    """把用户对演示效果的要求转成渲染参数。
+
+    这是提示词能真正影响 HTML 的关键：以前 prompt 只影响 deck JSON，
+    CSS 动画时长写死在模板里，用户说“延长到 4s”当然不会变化。
+    """
+    text = (prompt or "").strip().lower()
+    design: Dict[str, Any] = {
+        "enabled": True,
+        "duration_ms": 420,
+        "stagger_ms": 55,
+    }
+    if not text:
+        return design
+    if re.search(r"(不要|关闭|取消).{0,8}(动画|动效|过渡)|no\s+animation|disable\s+animation", text):
+        design["enabled"] = False
+        return design
+    match = re.search(r"(\d+(?:\.\d+)?)\s*(毫秒|ms|秒|s)\b", text, flags=re.I)
+    if match:
+        value = float(match.group(1))
+        unit = match.group(2).lower()
+        duration = value if unit in ("毫秒", "ms") else value * 1000
+        design["duration_ms"] = max(200, min(10000, int(duration)))
+    elif any(word in text for word in ("延长", "慢一点", "更慢", "slow")):
+        design["duration_ms"] = 900
+    elif any(word in text for word in ("快一点", "更快", "fast")):
+        design["duration_ms"] = 260
+    return design
+
+
 def _render_html(deck: Dict[str, Any]) -> str:
+    design = deck.get("design") if isinstance(deck.get("design"), dict) else {}
+    duration = max(200, min(10000, int(design.get("duration_ms") or 420)))
+    stagger = max(0, min(500, int(design.get("stagger_ms") or 55)))
+    motion_off = "" if design.get("enabled", True) else " motion-off"
     slides_html = []
     for i, slide in enumerate(deck["slides"]):
         layout = str(slide.get("layout") or ("cover" if i == 0 else "content"))
@@ -329,17 +365,20 @@ def _render_html(deck: Dict[str, Any]) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{_html.escape(deck['title'])} · 教学课件</title>
 <style>
-  :root {{ --ink:#111827; --muted:#6b7280; --accent:#2563eb; --line:#e5e7eb; --soft:#f8fafc; }}
+  :root {{ --ink:#111827; --muted:#6b7280; --accent:#2563eb; --line:#e5e7eb; --soft:#f8fafc; --motion-duration:{duration}ms; --motion-stagger:{stagger}ms; }}
   * {{ box-sizing:border-box; }}
   body {{ margin:0; background:radial-gradient(circle at 12% 8%, #f3f7ff 0, #eef2f7 42%, #e9eef6 100%); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif; overflow:hidden; overscroll-behavior:none; }}
   .deck {{ width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }}
   .slide {{ display:none; width:min(1180px,100%); aspect-ratio:16/9; max-height:calc(100vh - 48px); background:#fff; border-radius:20px; box-shadow:0 20px 60px rgba(15,23,42,.14); padding:clamp(28px,5vw,70px); position:relative; }}
-  .slide.active {{ display:flex; flex-direction:column; animation:micro-slide-in .42s cubic-bezier(.22,.8,.3,1) both; }}
-  .slide.active .eyebrow {{ animation:micro-rise .42s .02s both; }}
-  .slide.active h1 {{ animation:micro-rise .46s .07s both; }}
-  .slide.active ul {{ animation:micro-rise .46s .12s both; }}
-  .slide.active .visual-image, .slide.active .chart, .slide.active .table-wrap, .slide.active .quote-box {{ animation:micro-fade .5s .16s both; }}
-  .slide.active .note {{ animation:micro-fade .45s .22s both; }}
+  .slide.active {{ display:flex; flex-direction:column; animation:micro-slide-in var(--motion-duration) cubic-bezier(.22,.8,.3,1) both; }}
+  .slide.active .eyebrow {{ animation:micro-rise var(--motion-duration) .02s both; }}
+  .slide.active h1 {{ animation:micro-rise var(--motion-duration) .07s both; }}
+  .slide.active ul {{ animation:micro-rise var(--motion-duration) .12s both; }}
+  .slide.active .visual-image, .slide.active .chart, .slide.active .table-wrap, .slide.active .quote-box {{ animation:micro-fade var(--motion-duration) .16s both; }}
+  .slide.active .note {{ animation:micro-fade var(--motion-duration) .22s both; }}
+  .motion-off .slide.active, .motion-off .slide.active .eyebrow, .motion-off .slide.active h1,
+  .motion-off .slide.active ul, .motion-off .slide.active .visual-image, .motion-off .slide.active .chart,
+  .motion-off .slide.active .table-wrap, .motion-off .slide.active .quote-box, .motion-off .slide.active .note {{ animation:none; }}
   .slide-inner {{ flex:1; min-height:0; overflow:auto; }}
   .eyebrow {{ color:var(--accent); font-size:13px; font-weight:700; letter-spacing:2px; text-transform:uppercase; margin-bottom:20px; }}
   h1 {{ font-size:clamp(26px,4.2vw,52px); line-height:1.15; letter-spacing:-1px; margin:0 0 26px; max-width:950px; }}
@@ -387,7 +426,7 @@ def _render_html(deck: Dict[str, Any]) -> str:
   }}
 </style>
 </head>
-<body>
+<body class="motion{motion_off}">
 <div class="progress" id="progress"></div>
 <div class="deck">{''.join(slides_html)}</div>
 <div class="controls">
@@ -584,6 +623,13 @@ async def build_micro_course_export(
     deck, ai_generated = await _ai_deck(
         db, user_id, doc, course, prompt_text=prompt, base_deck=base_deck
     )
+    deck["design"] = _design_from_prompt(prompt)
+    if not str(deck.get("changeSummary") or "").strip():
+        deck["changeSummary"] = (
+            f"按提示词修改：{prompt.strip()[:120]}"
+            if prompt.strip()
+            else "首次生成：围绕资料建立完整教学框架"
+        )
     html = _render_html(deck)
     return {
         "document": course["document"],
@@ -602,6 +648,7 @@ def _record_payload(record, include_html: bool = True) -> Dict[str, Any]:
         "docId": int(record.doc_id),
         "version": int(record.version),
         "title": record.title,
+        "changeSummary": record.change_summary or "",
         "slides": len((record.deck_json or {}).get("slides") or []),
         "aiGenerated": bool(record.ai_generated),
         "createdAt": record.create_time.isoformat() if record.create_time else "",
@@ -664,6 +711,7 @@ async def get_or_create_micro_course_record(
         doc_id=int(doc.id),
         version=version,
         title=str((export.get("deck") or {}).get("title") or doc.file_name or "教学课件")[:255],
+        change_summary=str((export.get("deck") or {}).get("changeSummary") or "")[:300],
         html=export["html"],
         deck_json=export["deck"],
         meta_json={
@@ -804,6 +852,7 @@ async def import_micro_course_html(db, user_id: int, doc, html_text: str, title:
         doc_id=int(doc.id),
         version=version,
         title=str(deck.get("title") or title or doc.file_name or "导入课件")[:255],
+        change_summary=f"导入 HTML：{title or doc.file_name or '外部课件'}"[:300],
         html=raw,
         deck_json=deck,
         meta_json={"document": course.get("document") or {}, "overview": course.get("overview") or {}},

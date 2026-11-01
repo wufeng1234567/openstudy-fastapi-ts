@@ -387,6 +387,7 @@ class RagMicroCourse(Base):
     doc_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     title: Mapped[str] = mapped_column(String(255), nullable=False, default="教学课件")
+    change_summary: Mapped[Optional[str]] = mapped_column(String(300))
     html: Mapped[str] = mapped_column(Text, nullable=False)
     deck_json: Mapped[Optional[dict]] = mapped_column(JSON)
     meta_json: Mapped[Optional[dict]] = mapped_column(JSON)

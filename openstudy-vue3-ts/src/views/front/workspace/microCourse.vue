@@ -32,6 +32,9 @@
             <span>{{ result.document.wordCount }} 字</span>
             <span class="micro-meta-ai">{{ result.aiGenerated === false ? '资料结构生成' : 'AI 生成' }}</span>
           </div>
+          <div v-if="result.changeSummary" class="micro-change-summary">
+            本版特点：{{ result.changeSummary }}
+          </div>
         </div>
         <div class="micro-actions">
           <el-button @click="historyVisible = true">
@@ -111,6 +114,7 @@
                 <span class="micro-history-item__badge">{{ item.aiGenerated ? 'AI 生成' : '结构生成' }}</span>
               </div>
               <div class="micro-history-item__title-text">{{ item.title }}</div>
+              <div v-if="item.changeSummary" class="micro-history-item__change">{{ item.changeSummary }}</div>
               <div class="micro-history-item__meta">{{ formatTime(item.createdAt) }} · {{ item.slides }} 页</div>
             </div>
             <el-icon class="micro-history-item__arrow"><ArrowRight /></el-icon>
@@ -459,6 +463,17 @@ onMounted(() => {
   font-weight: 600;
 }
 
+.micro-change-summary {
+  max-width: 820px;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  background: var(--os-accent-soft, #edf3fe);
+  color: var(--os-text-3, #64748b);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
 .micro-actions {
   display: flex;
   flex: none;
@@ -528,6 +543,16 @@ onMounted(() => {
   margin-top: 4px;
   color: var(--os-text-2, #4b5563);
   font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.micro-history-item__change {
+  overflow: hidden;
+  margin-top: 3px;
+  color: var(--os-text-3, #81858c);
+  font-size: 10.5px;
+  line-height: 1.45;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
