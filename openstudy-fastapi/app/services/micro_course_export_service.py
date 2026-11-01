@@ -331,10 +331,15 @@ def _render_html(deck: Dict[str, Any]) -> str:
 <style>
   :root {{ --ink:#111827; --muted:#6b7280; --accent:#2563eb; --line:#e5e7eb; --soft:#f8fafc; }}
   * {{ box-sizing:border-box; }}
-  body {{ margin:0; background:#eef2f7; color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif; overflow:hidden; overscroll-behavior:none; }}
+  body {{ margin:0; background:radial-gradient(circle at 12% 8%, #f3f7ff 0, #eef2f7 42%, #e9eef6 100%); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif; overflow:hidden; overscroll-behavior:none; }}
   .deck {{ width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }}
   .slide {{ display:none; width:min(1180px,100%); aspect-ratio:16/9; max-height:calc(100vh - 48px); background:#fff; border-radius:20px; box-shadow:0 20px 60px rgba(15,23,42,.14); padding:clamp(28px,5vw,70px); position:relative; }}
-  .slide.active {{ display:flex; flex-direction:column; }}
+  .slide.active {{ display:flex; flex-direction:column; animation:micro-slide-in .42s cubic-bezier(.22,.8,.3,1) both; }}
+  .slide.active .eyebrow {{ animation:micro-rise .42s .02s both; }}
+  .slide.active h1 {{ animation:micro-rise .46s .07s both; }}
+  .slide.active ul {{ animation:micro-rise .46s .12s both; }}
+  .slide.active .visual-image, .slide.active .chart, .slide.active .table-wrap, .slide.active .quote-box {{ animation:micro-fade .5s .16s both; }}
+  .slide.active .note {{ animation:micro-fade .45s .22s both; }}
   .slide-inner {{ flex:1; min-height:0; overflow:auto; }}
   .eyebrow {{ color:var(--accent); font-size:13px; font-weight:700; letter-spacing:2px; text-transform:uppercase; margin-bottom:20px; }}
   h1 {{ font-size:clamp(26px,4.2vw,52px); line-height:1.15; letter-spacing:-1px; margin:0 0 26px; max-width:950px; }}
@@ -363,6 +368,23 @@ def _render_html(deck: Dict[str, Any]) -> str:
   .controls button:hover {{ background:rgba(255,255,255,.14); }}
   .controls .counter {{ color:#d1d5db; font-size:12px; padding:0 8px; }}
   .progress {{ position:fixed; left:0; top:0; height:3px; background:var(--accent); transition:width .2s; z-index:2; }}
+  @keyframes micro-slide-in {{
+    from {{ opacity:0; transform:translateY(10px) scale(.994); }}
+    to {{ opacity:1; transform:translateY(0) scale(1); }}
+  }}
+  @keyframes micro-rise {{
+    from {{ opacity:0; transform:translateY(8px); }}
+    to {{ opacity:1; transform:translateY(0); }}
+  }}
+  @keyframes micro-fade {{
+    from {{ opacity:0; }}
+    to {{ opacity:1; }}
+  }}
+  @media (prefers-reduced-motion: reduce) {{
+    .slide.active, .slide.active .eyebrow, .slide.active h1, .slide.active ul,
+    .slide.active .visual-image, .slide.active .chart, .slide.active .table-wrap,
+    .slide.active .quote-box, .slide.active .note {{ animation:none; }}
+  }}
 </style>
 </head>
 <body>
