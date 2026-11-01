@@ -219,6 +219,7 @@ export function getMicroCourse(docId: number | string) {
 }
 
 export interface MicroCourseHtmlResult {
+  title?: string
   document: MicroCourseResult['document']
   overview: MicroCourseResult['overview']
   deck: {

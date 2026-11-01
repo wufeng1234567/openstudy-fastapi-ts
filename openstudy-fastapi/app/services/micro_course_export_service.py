@@ -25,6 +25,8 @@ from typing import Any, Dict, List
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE
+from pptx.oxml.ns import qn
+from pptx.oxml.xmlchemy import OxmlElement
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 
@@ -319,6 +321,7 @@ def _render_html(deck: Dict[str, Any]) -> str:
     duration = max(200, min(10000, int(design.get("duration_ms") or 420)))
     stagger = max(0, min(500, int(design.get("stagger_ms") or 55)))
     motion_off = "" if design.get("enabled", True) else " motion-off"
+    version_label = f" · 第{deck.get('version')}版" if deck.get("version") else ""
     slides_html = []
     for i, slide in enumerate(deck["slides"]):
         layout = str(slide.get("layout") or ("cover" if i == 0 else "content"))
@@ -355,7 +358,7 @@ def _render_html(deck: Dict[str, Any]) -> str:
                 {extras}
                 {note}
               </div>
-              <div class="slide-footer"><span>{_html.escape(deck['title'])}</span><span>{i + 1} / {len(deck['slides'])}</span></div>
+              <div class="slide-footer"><span>{_html.escape(deck['title'])}{version_label}</span><span>{i + 1} / {len(deck['slides'])}</span></div>
             </section>"""
         )
     return f"""<!doctype html>
@@ -363,7 +366,7 @@ def _render_html(deck: Dict[str, Any]) -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{_html.escape(deck['title'])} · 教学课件</title>
+<title>{_html.escape(deck['title'])}{version_label} · 教学课件</title>
 <style>
   :root {{ --ink:#111827; --muted:#6b7280; --accent:#2563eb; --line:#e5e7eb; --soft:#f8fafc; --motion-duration:{duration}ms; --motion-stagger:{stagger}ms; }}
   * {{ box-sizing:border-box; }}
@@ -507,6 +510,34 @@ def _image_file(url: str) -> str | None:
     return None
 
 
+def _add_fade_transition(slide, duration_ms: int = 700) -> None:
+    """给单页 PPT 加淡入切换（PowerPoint 的 Fade transition）。
+
+    python-pptx 没有动画 API，这里直接写 OOXML。它不会改变内容，
+    只让用户在放映时看到页与页之间的淡入效果。
+    """
+    try:
+        sld = slide.element
+        for old in sld.findall(qn("p:transition")):
+            sld.remove(old)
+        transition = OxmlElement("p:transition")
+        transition.set("spd", "med")
+        transition.set("advClick", "1")
+        fade = OxmlElement("p:fade")
+        transition.append(fade)
+        # p14:dur 是 PowerPoint 2010+ 的毫秒时长；老版本忽略它也不会坏。
+        try:
+            transition.set(
+                "{http://schemas.microsoft.com/office/powerpoint/2010/main}dur",
+                str(max(200, int(duration_ms))),
+            )
+        except Exception:
+            pass
+        sld.append(transition)
+    except Exception:
+        pass
+
+
 def build_pptx_bytes(deck: Dict[str, Any], html_text: str = "") -> bytes:
     """生成 16:9 PPT，支持文字、图片、柱状图、表格与引用。"""
     slides = deck.get("slides") or _slides_from_html(html_text, deck)
@@ -607,6 +638,7 @@ def build_pptx_bytes(deck: Dict[str, Any], html_text: str = "") -> bytes:
             add_text(slide, 1.0, min(y, 6.0), 11.2, 0.8, str(quote), 18, muted)
         add_text(slide, 0.8, 6.75, 9.0, 0.3, deck.get("title") or "", 9, muted)
         add_text(slide, 11.3, 6.75, 1.2, 0.3, f"{idx + 1} / {len(slides)}", 9, muted)
+        _add_fade_transition(slide, int((deck.get("design") or {}).get("duration_ms") or 700))
     out = io.BytesIO()
     prs.save(out)
     return out.getvalue()
@@ -618,12 +650,15 @@ async def build_micro_course_export(
     doc,
     prompt: str = "",
     base_deck: Dict[str, Any] | None = None,
+    version: int = 0,
 ) -> Dict[str, Any]:
     course = await build_micro_course(db, user_id, doc)
     deck, ai_generated = await _ai_deck(
         db, user_id, doc, course, prompt_text=prompt, base_deck=base_deck
     )
     deck["design"] = _design_from_prompt(prompt)
+    if version:
+        deck["version"] = int(version)
     if not str(deck.get("changeSummary") or "").strip():
         deck["changeSummary"] = (
             f"按提示词修改：{prompt.strip()[:120]}"
@@ -696,16 +731,16 @@ async def get_or_create_micro_course_record(
         payload["fromHistory"] = True
         return payload
 
+    next_version = int(latest.version or 0) + 1 if latest else 1
     export = await build_micro_course_export(
         db,
         user_id,
         doc,
         prompt=prompt,
         base_deck=(latest.deck_json or {}) if latest else None,
+        version=next_version,
     )
-    version = 1
-    if latest:
-        version = int(latest.version or 0) + 1
+    version = next_version
     record = RagMicroCourse(
         user_id=int(user_id),
         doc_id=int(doc.id),
@@ -847,6 +882,7 @@ async def import_micro_course_html(db, user_id: int, doc, html_text: str, title:
     course = await build_micro_course(db, user_id, doc)
     latest = await get_latest_micro_course_record(db, user_id, doc.id)
     version = int(latest.version or 0) + 1 if latest else 1
+    deck["version"] = version
     record = RagMicroCourse(
         user_id=int(user_id),
         doc_id=int(doc.id),

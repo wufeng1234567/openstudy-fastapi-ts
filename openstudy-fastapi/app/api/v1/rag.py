@@ -861,8 +861,17 @@ async def download_micro_course_pptx(
             deck = export["deck"]
             html = data.html or export["html"]
         content = build_pptx_bytes(deck, html)
-        name = re.sub(r"[\\/:*?\"<>|]", "_", doc.file_name or "教学课件")
-        name = re.sub(r"\.[A-Za-z0-9]{1,6}$", "", name) + ".pptx"
+        version = 1
+        display_title = doc.file_name or "教学课件"
+        if record_payload:
+            version = int(record_payload.get("version") or 1)
+            display_title = str(record_payload.get("title") or display_title)
+        elif record:
+            version = int(record.version or 1)
+            display_title = str(record.title or display_title)
+        stem = re.sub(r"[\\/:*?\"<>|]", "_", display_title or "教学课件")
+        stem = re.sub(r"\.[A-Za-z0-9]{1,6}$", "", stem)
+        name = f"{stem}_第{version}版.pptx"
         return Response(
             content=content,
             media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",

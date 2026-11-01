@@ -277,10 +277,16 @@ function handleExport(command: string) {
   if (command === 'pptx') return exportPpt()
 }
 
+function exportStem() {
+  const raw = String(result.value?.title || result.value?.document.fileName || '教学课件')
+  const stem = raw.replace(/[\\/:*?"<>|]/g, '_').replace(/\.[A-Za-z0-9]{1,6}$/, '')
+  const version = result.value?.version ? `_第${result.value.version}版` : ''
+  return `${stem}${version}`
+}
+
 function exportHtml() {
   if (!result.value) return
-  const stem = String(result.value.document.fileName || '教学课件').replace(/\.[^.]+$/, '')
-  saveAs(new Blob([result.value.html], { type: 'text/html;charset=utf-8' }), `${stem}.html`)
+  saveAs(new Blob([result.value.html], { type: 'text/html;charset=utf-8' }), `${exportStem()}.html`)
   ElMessage.success('HTML 已开始下载')
 }
 
@@ -289,8 +295,7 @@ async function exportPpt() {
   exporting.value = true
   try {
     const blob: any = await downloadMicroCoursePptx(docId.value, result.value.html, result.value.recordId)
-    const stem = String(result.value.document.fileName || '教学课件').replace(/\.[^.]+$/, '')
-    saveAs(new Blob([blob]), `${stem}.pptx`)
+    saveAs(new Blob([blob]), `${exportStem()}.pptx`)
     ElMessage.success('PPT 已开始下载')
   } catch {
     ElMessage.error('PPT 生成失败，请稍后重试')
