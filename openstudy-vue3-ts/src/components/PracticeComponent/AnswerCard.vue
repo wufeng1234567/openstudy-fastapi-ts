@@ -137,13 +137,21 @@
           </div>
         </div>
       </div>
-      <!-- 浏览模式同样要有「选项乱序」；此前只放在逐题模式的 stats 行里 -->
-      <div v-if="isPracticeMode && showShuffleToggle" class="shuffle-row shuffle-row--overview">
-        <span class="shuffle-label">
-          <el-icon><Sort /></el-icon>
-          乱序
-        </span>
-        <el-switch :model-value="shuffleOptions" size="small" @update:model-value="onShuffleChange" />
+      <!-- 浏览模式同样显示进度和乱序，布局与逐题模式保持一致 -->
+      <div v-if="isPracticeMode" class="stats stats--practice stats--overview">
+        <div class="progress-info">
+          <div class="progress-text">
+            已答 <b>{{ answeredCount }}</b> / {{ totalCount }}
+          </div>
+          <div class="progress-hint" v-if="remainingCount > 0">剩 {{ remainingCount }} 题</div>
+        </div>
+        <div v-if="showShuffleToggle" class="shuffle-inline">
+          <span class="shuffle-label">
+            <el-icon><Sort /></el-icon>
+            乱序
+          </span>
+          <el-switch :model-value="shuffleOptions" size="small" @update:model-value="onShuffleChange" />
+        </div>
       </div>
     </template>
 
@@ -675,6 +683,13 @@ const getOverviewItemClass = (index: number) => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.stats--overview {
+  margin-top: 10px;
+  margin-bottom: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.04));
 }
 
 .progress-info {
