@@ -34,11 +34,30 @@
           </div>
         </div>
         <div class="micro-actions">
-          <el-button :loading="generating" @click="generateHtml">重新生成</el-button>
-          <el-button type="primary" :loading="downloading" @click="downloadPpt">
-            <el-icon><Download /></el-icon>
-            下载 PPT
+          <el-button @click="historyVisible = true">
+            <el-icon><Clock /></el-icon>
+            历史版本
           </el-button>
+          <el-button :loading="generating" @click="generateHtml(true)">重新生成</el-button>
+          <el-dropdown trigger="click" @command="handleExport">
+            <el-button type="primary" :loading="exporting">
+              <el-icon><Download /></el-icon>
+              导出
+              <el-icon class="micro-export-caret"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="html">
+                  <el-icon><Document /></el-icon>
+                  导出 HTML
+                </el-dropdown-item>
+                <el-dropdown-item command="pptx">
+                  <el-icon><Download /></el-icon>
+                  导出 PPT
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
       </section>
 
@@ -68,8 +87,26 @@
           <h3>这份课件从哪里来？</h3>
           <p>系统读取资料原文的章节和正文，生成教学课件；不编造资料里没有的内容。</p>
         </div>
-        <span class="micro-foot-meta">共 {{ result.slides }} 页 · 可直接投屏</span>
+        <span class="micro-foot-meta">共 {{ result.slides }} 页 · {{ result.version ? `第 ${result.version} 版` : '当前版本' }} · 可直接投屏</span>
       </section>
+
+      <el-drawer v-model="historyVisible" title="微课历史版本" size="420px" append-to-body>
+        <div v-if="!historyItems.length" class="micro-history-empty">还没有历史版本</div>
+        <div v-else class="micro-history-list">
+          <div v-for="item in historyItems" :key="item.recordId" class="micro-history-item"
+            :class="{ 'is-current': result.recordId === item.recordId }" @click="loadRecord(item)">
+            <div class="micro-history-item__main">
+              <div class="micro-history-item__title">
+                <span>第 {{ item.version }} 版</span>
+                <span class="micro-history-item__badge">{{ item.aiGenerated ? 'AI 生成' : '结构生成' }}</span>
+              </div>
+              <div class="micro-history-item__title-text">{{ item.title }}</div>
+              <div class="micro-history-item__meta">{{ formatTime(item.createdAt) }} · {{ item.slides }} 页</div>
+            </div>
+            <el-icon class="micro-history-item__arrow"><ArrowRight /></el-icon>
+          </div>
+        </div>
+      </el-drawer>
     </template>
   </div>
 </template>
@@ -78,9 +115,16 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Download, FullScreen } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowLeft, ArrowRight, Clock, Document, Download, FullScreen } from '@element-plus/icons-vue'
 import { saveAs } from 'file-saver'
-import { downloadMicroCoursePptx, getMicroCourseHtml, type MicroCourseHtmlResult } from '@/api/ai/workspace'
+import {
+  downloadMicroCoursePptx,
+  getMicroCourseHtml,
+  getMicroCourseRecord,
+  listMicroCourseHistory,
+  type MicroCourseHistoryItem,
+  type MicroCourseHtmlResult,
+} from '@/api/ai/workspace'
 
 defineOptions({ name: 'MicroCourse' })
 
@@ -88,15 +132,17 @@ const route = useRoute()
 const router = useRouter()
 const loading = ref(true)
 const generating = ref(false)
-const downloading = ref(false)
+const exporting = ref(false)
 const errorMsg = ref('')
 const result = ref<MicroCourseHtmlResult | null>(null)
 const frameKey = ref(0)
 const stageRef = ref<HTMLElement | null>(null)
+const historyVisible = ref(false)
+const historyItems = ref<MicroCourseHistoryItem[]>([])
 
 const docId = computed(() => String(route.query.docId || ''))
 
-async function generateHtml() {
+async function generateHtml(refresh = false) {
   if (!docId.value) {
     loading.value = false
     return
@@ -104,10 +150,11 @@ async function generateHtml() {
   generating.value = true
   errorMsg.value = ''
   try {
-    const res: any = await getMicroCourseHtml(docId.value)
+    const res: any = await getMicroCourseHtml(docId.value, refresh)
     if (res.code === 200 && res.data) {
       result.value = res.data
       frameKey.value += 1
+      await loadHistory()
     } else {
       errorMsg.value = res.msg || '生成失败，请稍后重试'
       result.value = null
@@ -121,19 +168,65 @@ async function generateHtml() {
   }
 }
 
-async function downloadPpt() {
-  if (!result.value || downloading.value) return
-  downloading.value = true
+async function loadHistory() {
+  if (!docId.value) return
   try {
-    const blob: any = await downloadMicroCoursePptx(docId.value, result.value.html)
+    const res: any = await listMicroCourseHistory(docId.value)
+    historyItems.value = res.code === 200 && Array.isArray(res.data) ? res.data : []
+  } catch {
+    historyItems.value = []
+  }
+}
+
+async function loadRecord(item: MicroCourseHistoryItem) {
+  try {
+    const res: any = await getMicroCourseRecord(item.recordId)
+    if (res.code === 200 && res.data) {
+      result.value = res.data
+      frameKey.value += 1
+      historyVisible.value = false
+      ElMessage.success(`已切换到第 ${item.version} 版`)
+    } else {
+      ElMessage.error(res.msg || '历史版本加载失败')
+    }
+  } catch {
+    ElMessage.error('历史版本加载失败')
+  }
+}
+
+function handleExport(command: string) {
+  if (command === 'html') return exportHtml()
+  if (command === 'pptx') return exportPpt()
+}
+
+function exportHtml() {
+  if (!result.value) return
+  const stem = String(result.value.document.fileName || '教学课件').replace(/\.[^.]+$/, '')
+  saveAs(new Blob([result.value.html], { type: 'text/html;charset=utf-8' }), `${stem}.html`)
+  ElMessage.success('HTML 已开始下载')
+}
+
+async function exportPpt() {
+  if (!result.value || exporting.value) return
+  exporting.value = true
+  try {
+    const blob: any = await downloadMicroCoursePptx(docId.value, result.value.html, result.value.recordId)
     const stem = String(result.value.document.fileName || '教学课件').replace(/\.[^.]+$/, '')
     saveAs(new Blob([blob]), `${stem}.pptx`)
     ElMessage.success('PPT 已开始下载')
   } catch {
     ElMessage.error('PPT 生成失败，请稍后重试')
   } finally {
-    downloading.value = false
+    exporting.value = false
   }
+}
+
+function formatTime(value?: string) {
+  if (!value) return '—'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 function enterFullscreen() {
@@ -146,7 +239,11 @@ function goWorkspace() {
   router.push('/front/workspace')
 }
 
-onMounted(generateHtml)
+onMounted(() => {
+  void generateHtml(false)
+  void loadHistory()
+})
+
 </script>
 
 <style scoped>
@@ -292,6 +389,84 @@ onMounted(generateHtml)
   display: flex;
   flex: none;
   gap: 8px;
+}
+
+.micro-export-caret {
+  margin-left: 2px;
+  font-size: 11px;
+}
+
+.micro-history-empty {
+  padding: 40px 12px;
+  color: var(--os-text-3, #81858c);
+  font-size: 12px;
+  text-align: center;
+}
+
+.micro-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.micro-history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.05));
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.micro-history-item:hover,
+.micro-history-item.is-current {
+  border-color: var(--os-accent-soft, #dbe7ff);
+  background: var(--os-accent-soft, #edf3fe);
+}
+
+.micro-history-item__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.micro-history-item__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--os-text, #0f1115);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.micro-history-item__badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--os-accent, #4176e6);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.micro-history-item__title-text {
+  overflow: hidden;
+  margin-top: 4px;
+  color: var(--os-text-2, #4b5563);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.micro-history-item__meta {
+  margin-top: 4px;
+  color: var(--os-text-4, #adb2b8);
+  font-size: 10px;
+}
+
+.micro-history-item__arrow {
+  flex: none;
+  color: var(--os-text-4, #adb2b8);
 }
 
 .micro-tip {

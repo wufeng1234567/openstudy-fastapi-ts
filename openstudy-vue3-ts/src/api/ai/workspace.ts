@@ -236,22 +236,54 @@ export interface MicroCourseHtmlResult {
   html: string
   slides: number
   aiGenerated?: boolean
+  recordId?: number
+  version?: number
+  createdAt?: string
+  fromHistory?: boolean
 }
 
-/** 生成可在线演示的教学 HTML 课件 */
-export function getMicroCourseHtml(docId: number | string) {
+export interface MicroCourseHistoryItem {
+  recordId: number
+  docId: number
+  version: number
+  title: string
+  slides: number
+  aiGenerated: boolean
+  createdAt: string
+  fileName: string
+}
+
+/** 生成可在线演示的教学 HTML 课件（已有历史版本时直接读取） */
+export function getMicroCourseHtml(docId: number | string, refresh = false) {
   return request({
     url: `/rag/document/micro-course/${docId}/html`,
+    method: 'get',
+    params: refresh ? { refresh: true } : undefined
+  }) as unknown as Promise<{ code: number; msg?: string; data: MicroCourseHtmlResult }>
+}
+
+/** 微课历史版本列表 */
+export function listMicroCourseHistory(docId: number | string) {
+  return request({
+    url: `/rag/document/micro-course/${docId}/history`,
+    method: 'get'
+  }) as unknown as Promise<{ code: number; msg?: string; data: MicroCourseHistoryItem[] }>
+}
+
+/** 读取某个历史版本 */
+export function getMicroCourseRecord(recordId: number | string) {
+  return request({
+    url: `/rag/document/micro-course/record/${recordId}`,
     method: 'get'
   }) as unknown as Promise<{ code: number; msg?: string; data: MicroCourseHtmlResult }>
 }
 
 /** 把教学 HTML 转成 PPT（传 html 时按 HTML 的 slide 结构转换） */
-export function downloadMicroCoursePptx(docId: number | string, html?: string) {
+export function downloadMicroCoursePptx(docId: number | string, html?: string, recordId?: number) {
   return request({
     url: `/rag/document/micro-course/${docId}/pptx`,
     method: 'post',
-    data: { html: html || undefined },
+    data: { html: html || undefined, recordId: recordId || undefined },
     responseType: 'blob'
   })
 }

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>走进智能体 · 教学课件</title>
+<style>
+  :root { --ink:#0f1115; --muted:#6b7280; --line:#e5e7eb; --accent:#4176e6; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#eef2f7; color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif; overflow:hidden; }
+  .deck { width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .slide { display:none; width:min(1180px,100%); aspect-ratio:16/9; max-height:calc(100vh - 48px); background:#fff; border-radius:20px; box-shadow:0 20px 60px rgba(15,23,42,.14); padding:clamp(28px,5vw,70px); position:relative; flex-direction:column; }
+  .slide.active { display:flex; }
+  .eyebrow { color:var(--accent); font-size:13px; font-weight:700; letter-spacing:2px; text-transform:uppercase; margin-bottom:20px; }
+  h1 { font-size:clamp(28px,4.2vw,52px); line-height:1.15; letter-spacing:-1px; margin:0 0 30px; max-width:900px; }
+  ul { margin:0; padding-left:26px; }
+  li { font-size:clamp(16px,2vw,24px); line-height:1.7; margin:12px 0; color:#374151; }
+  .note { margin-top:26px; padding:14px 18px; border-left:3px solid var(--accent); background:#f8fafc; color:var(--muted); font-size:14px; line-height:1.6; border-radius:0 8px 8px 0; }
+  .footer { display:flex; justify-content:space-between; gap:12px; color:#9ca3af; font-size:12px; padding-top:18px; border-top:1px solid var(--line); margin-top:auto; }
+  .progress { position:fixed; left:0; top:0; height:3px; background:var(--accent); transition:width .2s; z-index:2; }
+  .controls { position:fixed; left:50%; bottom:20px; transform:translateX(-50%); display:flex; gap:8px; align-items:center; padding:8px; background:rgba(17,24,39,.86); border-radius:999px; box-shadow:0 8px 24px rgba(0,0,0,.2); }
+  .controls button { border:0; background:transparent; color:#fff; cursor:pointer; padding:8px 14px; border-radius:999px; font-size:13px; }
+  .controls button:hover { background:rgba(255,255,255,.14); }
+  .controls .counter { color:#d1d5db; font-size:12px; padding:0 8px; }
+  .cover-tag { display:inline-flex; padding:6px 10px; border-radius:999px; background:#edf3fe; color:var(--accent); font-size:12px; font-weight:600; width:fit-content; }
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="deck">
+  <section class="slide active">
+    <div class="cover-tag">AI 教学课件</div>
+    <h1>走进智能体</h1>
+    <ul>
+      <li>智能体能够感知环境并自主采取行动</li>
+      <li>本课围绕定义、组成、类型与评估展开</li>
+      <li>先建立整体框架，再理解关键概念</li>
+    </ul>
+    <div class="note">可以提问：你身边有哪些系统可以被称为智能体？</div>
+    <div class="footer"><span>人工智能基础</span><span>1 / 5</span></div>
+  </section>
+  <section class="slide">
+    <div class="eyebrow">核心概念</div>
+    <h1>什么是智能体</h1>
+    <ul>
+      <li>能够感知环境：读取文字、语音、图像或系统状态</li>
+      <li>能够自主决策：根据目标选择下一步行动</li>
+      <li>能够执行行动：调用工具、发消息、操作软件</li>
+    </ul>
+    <div class="note">关键词：感知、决策、行动、目标。</div>
+    <div class="footer"><span>人工智能基础</span><span>2 / 5</span></div>
+  </section>
+  <section class="slide">
+    <div class="eyebrow">展开讲解</div>
+    <h1>智能体与普通程序的区别</h1>
+    <ul>
+      <li>普通程序按固定规则执行，输入输出相对确定</li>
+      <li>智能体会根据观察结果调整下一步计划</li>
+      <li>它可以调用外部工具，把“想法”变成“动作”</li>
+    </ul>
+    <div class="footer"><span>人工智能基础</span><span>3 / 5</span></div>
+  </section>
+  <section class="slide">
+    <div class="eyebrow">易错点</div>
+    <h1>不要把所有聊天机器人都叫智能体</h1>
+    <ul>
+      <li>只会生成文字，不等于会感知和执行</li>
+      <li>没有目标与行动闭环，通常只是对话模型</li>
+      <li>判断标准：能否根据环境反馈调整行为</li>
+    </ul>
+    <div class="note">可以让学生各举一个“是智能体”和“不是智能体”的例子。</div>
+    <div class="footer"><span>人工智能基础</span><span>4 / 5</span></div>
+  </section>
+  <section class="slide">
+    <div class="eyebrow">课堂小结</div>
+    <h1>把今天的内容串起来</h1>
+    <ul>
+      <li>智能体 = 感知 + 决策 + 行动，围绕目标工作</li>
+      <li>与普通程序的区别在于反馈与调整</li>
+      <li>课后动作：复习本课件，再完成 5 道相关题目</li>
+    </ul>
+    <div class="footer"><span>人工智能基础</span><span>5 / 5</span></div>
+  </section>
+</div>
+<div class="controls">
+  <button type="button" onclick="show(current-1)">← 上一页</button>
+  <span class="counter" id="counter">1 / 5</span>
+  <button type="button" onclick="show(current+1)">下一页 →</button>
+  <button type="button" onclick="fullscreen()">全屏</button>
+</div>
+<script>
+  var current = 0;
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  function show(next) {
+    current = Math.max(0, Math.min(slides.length - 1, next));
+    slides.forEach(function (s, i) { s.classList.toggle('active', i === current); });
+    document.getElementById('counter').textContent = (current + 1) + ' / ' + slides.length;
+    document.getElementById('progress').style.width = ((current + 1) / slides.length * 100) + '%';
+  }
+  function fullscreen() {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+    else document.exitFullscreen && document.exitFullscreen();
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); show(current + 1); }
+    if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); show(current - 1); }
+  });
+  show(0);
+</script>
+</body>
+</html>

@@ -737,15 +737,52 @@ async def get_document_micro_course(
 @router.get("/document/micro-course/{doc_id}/html")
 async def get_document_micro_course_html(
     doc_id: int,
+    refresh: bool = Query(False, description="true 表示重新生成一个新版本"),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """生成可在线演示的教学 HTML 课件。"""
-    from app.services.micro_course_export_service import build_micro_course_export
+    """获取教学 HTML 课件：已有历史版本直接返回，refresh=true 才生成新版本。"""
+    from app.services.micro_course_export_service import get_or_create_micro_course_record
 
     try:
         doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
-        return success(await build_micro_course_export(db, _uid(current_user), doc))
+        return success(
+            await get_or_create_micro_course_record(
+                db, _uid(current_user), doc, refresh=bool(refresh)
+            )
+        )
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/document/micro-course/{doc_id}/history")
+async def list_micro_course_history(
+    doc_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """列出某份资料的历史微课版本（只返回摘要，不返回 HTML）。"""
+    from app.services.micro_course_export_service import list_micro_course_history
+
+    try:
+        # 先校验文档归属，避免通过 doc_id 探测别人的历史
+        await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        return success(await list_micro_course_history(db, _uid(current_user), doc_id))
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/document/micro-course/record/{record_id}")
+async def get_micro_course_record(
+    record_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """读取某一个历史微课版本的完整 HTML。"""
+    from app.services.micro_course_export_service import get_micro_course_record
+
+    try:
+        return success(await get_micro_course_record(db, _uid(current_user), record_id))
     except Exception as e:
         return _fail(e)
 
@@ -753,6 +790,7 @@ async def get_document_micro_course_html(
 class MicroCoursePptxRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     html: Optional[str] = None
+    recordId: Optional[int] = None
 
 
 @router.post("/document/micro-course/{doc_id}/pptx")
@@ -766,12 +804,29 @@ async def download_micro_course_pptx(
     from app.services.micro_course_export_service import (
         build_micro_course_export,
         build_pptx_bytes,
+        get_latest_micro_course_record,
+        get_micro_course_record,
     )
 
     try:
         doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
-        export = await build_micro_course_export(db, _uid(current_user), doc)
-        content = build_pptx_bytes(export["deck"], data.html or export["html"])
+        record = None
+        record_payload = None
+        if data.recordId:
+            record_payload = await get_micro_course_record(db, _uid(current_user), data.recordId)
+        if not record_payload:
+            record = await get_latest_micro_course_record(db, _uid(current_user), doc_id)
+        if record_payload:
+            deck = record_payload.get("deck") or {}
+            html = data.html or record_payload.get("html") or ""
+        elif record:
+            deck = record.deck_json or {}
+            html = data.html or record.html
+        else:
+            export = await build_micro_course_export(db, _uid(current_user), doc)
+            deck = export["deck"]
+            html = data.html or export["html"]
+        content = build_pptx_bytes(deck, html)
         name = re.sub(r"[\\/:*?\"<>|]", "_", doc.file_name or "教学课件")
         name = re.sub(r"\.[A-Za-z0-9]{1,6}$", "", name) + ".pptx"
         return Response(

@@ -17,7 +17,7 @@ from sqlalchemy import select
 from app.models.rag import RagDocument, RagKnowledgeBase
 from app.services.ai.agent.base import AgentTool, ToolContext, fail, ok
 from app.services.ai.agent.tools.bank_export import save_export_file
-from app.services.micro_course_export_service import build_micro_course_export, build_pptx_bytes
+from app.services.micro_course_export_service import build_pptx_bytes, get_or_create_micro_course_record
 
 
 def _int(value: Any) -> Optional[int]:
@@ -129,9 +129,11 @@ class MicroCourseTool(AgentTool):
         if fmt not in ("html", "pptx", "both"):
             fmt = "both"
         try:
-            export = await build_micro_course_export(ctx.db, ctx.user_id, doc)
+            export = await get_or_create_micro_course_record(ctx.db, ctx.user_id, doc)
             payload: Dict[str, Any] = {
                 "docId": int(doc.id),
+                "recordId": export.get("recordId"),
+                "version": export.get("version"),
                 "fileName": doc.file_name,
                 "slideCount": export["slides"],
                 "jumpUrl": f"/front/microCourse?docId={int(doc.id)}",

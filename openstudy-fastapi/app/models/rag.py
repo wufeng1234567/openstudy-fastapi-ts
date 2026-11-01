@@ -366,3 +366,30 @@ class RagQaRecord(Base):
     duration_ms: Mapped[Optional[int]] = mapped_column(Integer)
     feedback: Mapped[Optional[int]] = mapped_column(Integer)
     create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+class RagMicroCourse(Base):
+    """教学微课历史记录（每次生成保存一个版本）。
+
+    用户再次打开同一文档时直接读取最新版本，不重复调用模型；
+    用户点「重新生成」才创建新版本。HTML 与结构化 deck 都保存，
+    这样既能在线演示，也能随时导出 PPT。
+    """
+
+    __tablename__ = "rag_micro_course"
+    __table_args__ = (
+        Index("idx_rag_micro_course_user_doc", "user_id", "doc_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("sys_user.user_id"), nullable=False
+    )
+    doc_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    title: Mapped[str] = mapped_column(String(255), nullable=False, default="教学课件")
+    html: Mapped[str] = mapped_column(Text, nullable=False)
+    deck_json: Mapped[Optional[dict]] = mapped_column(JSON)
+    meta_json: Mapped[Optional[dict]] = mapped_column(JSON)
+    ai_generated: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    source_file_name: Mapped[Optional[str]] = mapped_column(String(255))
+    create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

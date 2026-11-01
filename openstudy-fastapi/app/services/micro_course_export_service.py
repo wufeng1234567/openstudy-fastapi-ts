@@ -18,6 +18,7 @@ import io
 import json
 import logging
 import re
+from pathlib import Path
 from typing import Any, Dict, List
 
 from pptx import Presentation
@@ -27,6 +28,15 @@ from pptx.dml.color import RGBColor
 from app.services.micro_course_service import build_micro_course
 
 logger = logging.getLogger(__name__)
+
+_SKILL_PATH = Path(__file__).resolve().parent.parent / "resources" / "micro_course_skill.md"
+
+
+def _load_skill() -> str:
+    try:
+        return _SKILL_PATH.read_text(encoding="utf-8")[:12000]
+    except Exception:
+        return ""
 
 
 async def _ai_deck(db, user_id: int, doc, course: Dict[str, Any]) -> tuple[Dict[str, Any], bool]:
@@ -55,7 +65,13 @@ async def _ai_deck(db, user_id: int, doc, course: Dict[str, Any]) -> tuple[Dict[
         from app.services.ai.base_client import ChatMessage
 
         messages = [
-            ChatMessage(role="system", content="你是教学课件设计师，只输出合法 JSON。"),
+            ChatMessage(
+                role="system",
+                content=(
+                    "你是教学课件设计师，只输出合法 JSON。必须遵守下面的教学微课 Skill：\n"
+                    + _load_skill()
+                ),
+            ),
             ChatMessage(role="user", content=prompt),
         ]
         response = await asyncio.wait_for(
@@ -357,4 +373,144 @@ async def build_micro_course_export(db, user_id: int, doc) -> Dict[str, Any]:
     }
 
 
-__all__ = ["build_micro_course_export", "build_pptx_bytes", "build_micro_course"]
+def _record_payload(record, include_html: bool = True) -> Dict[str, Any]:
+    meta = record.meta_json or {}
+    payload = {
+        "recordId": int(record.id),
+        "docId": int(record.doc_id),
+        "version": int(record.version),
+        "title": record.title,
+        "slides": len((record.deck_json or {}).get("slides") or []),
+        "aiGenerated": bool(record.ai_generated),
+        "createdAt": record.create_time.isoformat() if record.create_time else "",
+        "fileName": record.source_file_name or "",
+    }
+    if include_html:
+        payload["deck"] = record.deck_json or {}
+        payload["html"] = record.html or ""
+        payload["document"] = meta.get("document") or {
+            "id": int(record.doc_id),
+            "fileName": record.source_file_name or record.title,
+        }
+        payload["overview"] = meta.get("overview") or {
+            "stationCount": payload["slides"],
+            "totalMinutes": 0,
+            "estimatedSessions": 1,
+        }
+    return payload
+
+
+async def get_or_create_micro_course_record(
+    db,
+    user_id: int,
+    doc,
+    refresh: bool = False,
+) -> Dict[str, Any]:
+    """返回最新微课版本；只有 refresh=True 才重新调用 AI 生成新版本。"""
+    from sqlalchemy import select
+    from app.models.rag import RagMicroCourse
+
+    latest = (
+        await db.execute(
+            select(RagMicroCourse)
+            .where(
+                RagMicroCourse.user_id == int(user_id),
+                RagMicroCourse.doc_id == int(doc.id),
+            )
+            .order_by(RagMicroCourse.version.desc(), RagMicroCourse.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if latest and not refresh:
+        payload = _record_payload(latest, include_html=True)
+        payload["fromHistory"] = True
+        return payload
+
+    export = await build_micro_course_export(db, user_id, doc)
+    version = 1
+    if latest:
+        version = int(latest.version or 0) + 1
+    record = RagMicroCourse(
+        user_id=int(user_id),
+        doc_id=int(doc.id),
+        version=version,
+        title=str((export.get("deck") or {}).get("title") or doc.file_name or "教学课件")[:255],
+        html=export["html"],
+        deck_json=export["deck"],
+        meta_json={
+            "document": export.get("document") or {},
+            "overview": export.get("overview") or {},
+        },
+        ai_generated=1 if export.get("aiGenerated") else 0,
+        source_file_name=doc.file_name,
+    )
+    db.add(record)
+    await db.flush()
+    await db.refresh(record)
+    payload = _record_payload(record, include_html=True)
+    payload["fromHistory"] = False
+    return payload
+
+
+async def list_micro_course_history(db, user_id: int, doc_id: int) -> List[Dict[str, Any]]:
+    from sqlalchemy import select
+    from app.models.rag import RagMicroCourse
+
+    rows = (
+        await db.execute(
+            select(RagMicroCourse)
+            .where(
+                RagMicroCourse.user_id == int(user_id),
+                RagMicroCourse.doc_id == int(doc_id),
+            )
+            .order_by(RagMicroCourse.version.desc(), RagMicroCourse.id.desc())
+        )
+    ).scalars().all()
+    return [_record_payload(r, include_html=False) for r in rows]
+
+
+async def get_micro_course_record(db, user_id: int, record_id: int) -> Dict[str, Any]:
+    from sqlalchemy import select
+    from app.models.rag import RagMicroCourse
+
+    record = (
+        await db.execute(
+            select(RagMicroCourse).where(
+                RagMicroCourse.id == int(record_id),
+                RagMicroCourse.user_id == int(user_id),
+            )
+        )
+    ).scalar_one_or_none()
+    if not record:
+        raise ValueError("微课历史版本不存在或无权访问")
+    payload = _record_payload(record, include_html=True)
+    payload["fromHistory"] = True
+    return payload
+
+
+async def get_latest_micro_course_record(db, user_id: int, doc_id: int):
+    from sqlalchemy import select
+    from app.models.rag import RagMicroCourse
+
+    return (
+        await db.execute(
+            select(RagMicroCourse)
+            .where(
+                RagMicroCourse.user_id == int(user_id),
+                RagMicroCourse.doc_id == int(doc_id),
+            )
+            .order_by(RagMicroCourse.version.desc(), RagMicroCourse.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+__all__ = [
+    "build_micro_course_export",
+    "build_pptx_bytes",
+    "build_micro_course",
+    "get_or_create_micro_course_record",
+    "list_micro_course_history",
+    "get_micro_course_record",
+    "get_latest_micro_course_record",
+]
