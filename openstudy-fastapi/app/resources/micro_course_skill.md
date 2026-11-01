@@ -26,12 +26,20 @@
 
 每页包含：
 
+- `layout`：`cover` / `content` / `image` / `chart` / `table` / `quote` / `summary`
 - `eyebrow`：环节标签，例如「课程导入」「核心概念」「易错点」「课堂小结」
 - `title`：不超过 20 个汉字
 - `bullets`：2–5 条，每条不超过 60 个汉字
 - `note`：可选的课堂提示，例如「可以提问：你身边有哪些系统属于智能体？」
 
 不要在一页里塞超过 5 条要点；不要用长段落。
+
+### 图表、表格和图片
+
+- 资料有图片 URL 时，优先用 `layout: "image"`，`image.url` 只能使用资料提供的 URL
+- 至少设计 1 页 `chart` 或 `table`，不要整套课件全是文字
+- 图表用 `chart: {type:"bar", title, labels, values, unit}`；表格用 `table: {headers, rows}`
+- 图片要有说明文字 `image.caption`，并和相邻知识点对应
 
 ## 4. 视觉与排版要求（生成 HTML 时）
 
@@ -54,10 +62,24 @@
   "subtitle": "副标题",
   "slides": [
     {
+      "layout": "content",
       "eyebrow": "课程导入",
       "title": "走进智能体",
       "bullets": ["智能体能感知环境", "它能自主采取行动", "本课学习定义、组成与评估"],
       "note": "可以提问：你身边有哪些系统属于智能体？"
+    },
+    {
+      "layout": "image",
+      "eyebrow": "结构图",
+      "title": "智能体的核心闭环",
+      "bullets": ["感知、决策、行动、反馈"],
+      "image": {"url": "资料里的图片 URL", "caption": "智能体架构图"}
+    },
+    {
+      "layout": "chart",
+      "eyebrow": "能力对比",
+      "title": "四种能力的重要度",
+      "chart": {"type": "bar", "title": "能力重要度", "labels": ["感知", "规划", "行动", "记忆"], "values": [80, 95, 90, 70], "unit": "%"}
     }
   ]
 }
@@ -78,3 +100,6 @@
 ## 7. 参考 HTML 模板
 
 `micro_course_template.html` 是本项目使用的视觉基准：16:9、浅色、蓝强调、底部翻页控件。生成 HTML 时优先复用它的布局和 CSS 变量，只替换标题、要点与页码。
+
+`micro_course_sample.html` 是一份真实生成的教学课件样例（含图片、表格、图表和 AI 讲解），可以作为完整的参考实现。
+

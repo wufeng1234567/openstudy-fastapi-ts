@@ -38,7 +38,11 @@
             <el-icon><Clock /></el-icon>
             历史版本
           </el-button>
-          <el-button :loading="generating" @click="generateHtml(true)">重新生成</el-button>
+          <el-button @click="importVisible = true">
+            <el-icon><Document /></el-icon>
+            导入 HTML
+          </el-button>
+          <el-button :loading="generating" @click="generateHtml(true, promptText)">重新生成</el-button>
           <el-dropdown trigger="click" @command="handleExport">
             <el-button type="primary" :loading="exporting">
               <el-icon><Download /></el-icon>
@@ -63,7 +67,13 @@
 
       <div class="micro-tip">
         <span class="micro-tip-dot"></span>
-        HTML 课件可以直接全屏演示；下载 PPT 时会把当前 HTML 的页面结构转成幻灯片。
+        HTML 课件可以直接全屏演示；鼠标滚轮也可以翻页。下载 PPT 时会把当前 HTML 的页面结构转成幻灯片。
+      </div>
+
+      <div class="micro-prompt">
+        <el-input v-model="promptText" type="textarea" :rows="2" maxlength="500" show-word-limit
+          placeholder="告诉 AI 怎么改：例如「加入一张架构图」「把第 3 页改成表格」「减少文字，增加图表」" />
+        <el-button type="primary" plain :loading="generating" @click="applyPrompt">按提示词修改</el-button>
       </div>
 
       <section class="micro-stage">
@@ -107,6 +117,19 @@
           </div>
         </div>
       </el-drawer>
+
+      <el-dialog v-model="importVisible" title="导入 HTML 课件" width="760px" append-to-body :close-on-click-modal="false">
+        <p class="micro-import-tip">可以粘贴 HTML 代码，或直接选择本地 .html 文件。导入后会保存为一个新的历史版本，不会覆盖原有版本。</p>
+        <el-upload :auto-upload="false" :show-file-list="false" accept=".html,.htm,text/html" action="#"
+          :before-upload="readHtmlFile">
+          <el-button plain>选择 HTML 文件</el-button>
+        </el-upload>
+        <el-input v-model="importHtml" type="textarea" :rows="14" placeholder="在这里粘贴 HTML 代码..." />
+        <template #footer>
+          <el-button @click="importVisible = false">取消</el-button>
+          <el-button type="primary" :loading="importing" @click="doImport">导入为新版本</el-button>
+        </template>
+      </el-dialog>
     </template>
   </div>
 </template>
@@ -121,6 +144,7 @@ import {
   downloadMicroCoursePptx,
   getMicroCourseHtml,
   getMicroCourseRecord,
+  importMicroCourseHtml,
   listMicroCourseHistory,
   type MicroCourseHistoryItem,
   type MicroCourseHtmlResult,
@@ -139,10 +163,14 @@ const frameKey = ref(0)
 const stageRef = ref<HTMLElement | null>(null)
 const historyVisible = ref(false)
 const historyItems = ref<MicroCourseHistoryItem[]>([])
+const promptText = ref('')
+const importVisible = ref(false)
+const importing = ref(false)
+const importHtml = ref('')
 
 const docId = computed(() => String(route.query.docId || ''))
 
-async function generateHtml(refresh = false) {
+async function generateHtml(refresh = false, prompt = '') {
   if (!docId.value) {
     loading.value = false
     return
@@ -150,7 +178,7 @@ async function generateHtml(refresh = false) {
   generating.value = true
   errorMsg.value = ''
   try {
-    const res: any = await getMicroCourseHtml(docId.value, refresh)
+    const res: any = await getMicroCourseHtml(docId.value, refresh, prompt)
     if (res.code === 200 && res.data) {
       result.value = res.data
       frameKey.value += 1
@@ -165,6 +193,52 @@ async function generateHtml(refresh = false) {
   } finally {
     loading.value = false
     generating.value = false
+  }
+}
+
+function applyPrompt() {
+  if (!promptText.value.trim()) {
+    ElMessage.warning('先写一句修改要求，例如：加入图表、减少文字、增加图片')
+    return
+  }
+  void generateHtml(true, promptText.value.trim())
+}
+
+function readHtmlFile(file: any) {
+  const raw = file?.raw || file
+  if (!raw) return false
+  const reader = new FileReader()
+  reader.onload = () => {
+    importHtml.value = String(reader.result || '')
+    ElMessage.success('已读取 HTML，可检查后导入')
+  }
+  reader.onerror = () => ElMessage.error('读取 HTML 文件失败')
+  reader.readAsText(raw, 'utf-8')
+  return false
+}
+
+async function doImport() {
+  if (!importHtml.value.trim()) {
+    ElMessage.warning('请先粘贴或选择 HTML')
+    return
+  }
+  if (importing.value) return
+  importing.value = true
+  try {
+    const res: any = await importMicroCourseHtml(docId.value, importHtml.value.trim(), result.value?.document.fileName)
+    if (res.code === 200 && res.data) {
+      result.value = res.data
+      frameKey.value += 1
+      await loadHistory()
+      importVisible.value = false
+      ElMessage.success('HTML 已导入为新版本')
+    } else {
+      ElMessage.error(res.msg || '导入失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '导入失败，请检查 HTML 内容')
+  } finally {
+    importing.value = false
   }
 }
 
@@ -467,6 +541,34 @@ onMounted(() => {
 .micro-history-item__arrow {
   flex: none;
   color: var(--os-text-4, #adb2b8);
+}
+
+.micro-prompt {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 12px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.05));
+  border-radius: 10px;
+  background: #fff;
+}
+
+.micro-prompt .el-textarea {
+  flex: 1;
+}
+
+.micro-prompt :deep(.el-textarea__inner) {
+  border: 0;
+  box-shadow: none;
+  resize: none;
+}
+
+.micro-import-tip {
+  margin: 0 0 12px;
+  color: var(--os-text-3, #81858c);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .micro-tip {

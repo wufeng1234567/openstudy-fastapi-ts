@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>智能体：从会聊天到能做事 · 教学课件</title>
+<style>
+  :root { --ink:#111827; --muted:#6b7280; --accent:#2563eb; --line:#e5e7eb; --soft:#f8fafc; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#eef2f7; color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif; overflow:hidden; overscroll-behavior:none; }
+  .deck { width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .slide { display:none; width:min(1180px,100%); aspect-ratio:16/9; max-height:calc(100vh - 48px); background:#fff; border-radius:20px; box-shadow:0 20px 60px rgba(15,23,42,.14); padding:clamp(28px,5vw,70px); position:relative; }
+  .slide.active { display:flex; flex-direction:column; }
+  .slide-inner { flex:1; min-height:0; overflow:auto; }
+  .eyebrow { color:var(--accent); font-size:13px; font-weight:700; letter-spacing:2px; text-transform:uppercase; margin-bottom:20px; }
+  h1 { font-size:clamp(26px,4.2vw,52px); line-height:1.15; letter-spacing:-1px; margin:0 0 26px; max-width:950px; }
+  ul { margin:0; padding-left:26px; }
+  li { font-size:clamp(15px,1.8vw,22px); line-height:1.7; margin:10px 0; color:#374151; }
+  .note { margin-top:22px; padding:12px 16px; border-left:3px solid var(--accent); background:var(--soft); color:var(--muted); font-size:14px; line-height:1.6; border-radius:0 8px 8px 0; }
+  .visual-image { display:flex; align-items:center; justify-content:center; margin:22px auto 8px; max-width:900px; border-radius:12px; overflow:hidden; background:var(--soft); }
+  .visual-image img { display:block; max-width:100%; max-height:390px; object-fit:contain; }
+  .visual-image figcaption { padding:7px 12px; color:var(--muted); font-size:12px; text-align:center; }
+  .chart { margin:22px auto 0; max-width:880px; padding:18px 22px; border:1px solid var(--line); border-radius:12px; background:#fff; }
+  .chart h3 { margin:0 0 12px; font-size:15px; color:#374151; }
+  .bar-row { display:flex; align-items:center; gap:10px; margin:9px 0; font-size:12px; color:#4b5563; }
+  .bar-row > span { width:125px; flex:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bar-track { flex:1; height:10px; overflow:hidden; border-radius:999px; background:#eef2f7; }
+  .bar-track i { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg,#93b4ff,#4176e6); }
+  .bar-row b { width:58px; flex:none; text-align:right; color:#111827; }
+  .table-wrap { margin:20px auto 0; max-width:980px; overflow:auto; border:1px solid var(--line); border-radius:10px; }
+  .data-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .data-table th, .data-table td { padding:9px 12px; border-bottom:1px solid #f0f2f5; text-align:left; }
+  .data-table th { background:#f8fafc; color:#4b5563; font-weight:600; }
+  .data-table tr:last-child td { border-bottom:0; }
+  .quote-box { margin:26px auto; padding:22px 28px; max-width:900px; border-left:4px solid var(--accent); background:var(--soft); font-size:22px; line-height:1.6; color:#374151; border-radius:0 10px 10px 0; }
+  .slide-footer { display:flex; justify-content:space-between; gap:12px; color:#9ca3af; font-size:12px; padding-top:16px; border-top:1px solid var(--line); }
+  .controls { position:fixed; left:50%; bottom:20px; transform:translateX(-50%); display:flex; gap:8px; align-items:center; padding:8px; background:rgba(17,24,39,.86); border-radius:999px; box-shadow:0 8px 24px rgba(0,0,0,.2); z-index:10; }
+  .controls button { border:0; background:transparent; color:#fff; cursor:pointer; padding:8px 14px; border-radius:999px; font-size:13px; }
+  .controls button:hover { background:rgba(255,255,255,.14); }
+  .controls .counter { color:#d1d5db; font-size:12px; padding:0 8px; }
+  .progress { position:fixed; left:0; top:0; height:3px; background:var(--accent); transition:width .2s; z-index:2; }
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="deck">
+            <section class="slide active layout-cover" data-index="0">
+              <div class="slide-inner">
+                <div class="eyebrow">课程导入</div>
+                <h1>智能体：从会聊天到能做事</h1>
+                <ul><li>本课解决一个问题：智能体和聊天模型差在哪</li><li>学完能说出智能体的四个核心能力</li><li>学完能判断一个系统算不算智能体</li></ul>
+                
+                <div class="note">开场可以提问：你觉得会写作文的聊天机器人算智能体吗？先不揭晓答案。</div>
+              </div>
+              <div class="slide-footer"><span>智能体：从会聊天到能做事</span><span>1 / 11</span></div>
+            </section>
+            <section class="slide layout-content" data-index="1">
+              <div class="slide-inner">
+                <div class="eyebrow">核心概念</div>
+                <h1>什么是智能体</h1>
+                <ul><li>智能体不是“会聊天的模型”</li><li>它能感知环境、围绕目标做出决策</li><li>它会调用工具采取行动，并根据反馈调整下一步</li><li>一句话理解：感知 + 决策 + 行动 + 反馈</li></ul>
+                
+                <div class="note">强调“一句话理解”，请学生跟读一遍，记住四个词。</div>
+              </div>
+              <div class="slide-footer"><span>智能体：从会聊天到能做事</span><span>2 / 11</span></div>
+            </section>
+            <section class="slide layout-image" data-index="2">
+              <div class="slide-inner">
+                <div class="eyebrow">结构图</div>
+                <h1>智能体的核心闭环</h1>
+                <ul><li>感知环境，围绕目标做决策</li><li>调用工具行动，再根据反馈修正</li><li>闭环缺一环，就只是对话模型</li></ul>
+                <figure class="visual-image"><img src="/profile/upload/2026/11/01/agent_architecture.png" alt="智能体核心闭环：感知、决策、行动、反馈"><figcaption>智能体核心闭环：感知、决策、行动、反馈</figcaption></figure>
+                <div class="note">看图提问：这个闭环里，哪一步最容易被忽略？</div>
+              </div>
+              <div class="slide-footer"><span>智能体：从会聊天到能做事</span><span>3 / 11</span></div>
+            </section>
+            <section class="slide layout-content" data-index="3">
+              <div class="slide-inner">
+                <div class="eyebrow">关键特征</div>
+                <h1>智能体的四个关键特征</h1>
+                <ul><li>目标驱动：围绕一个目标持续推进任务</li><li>环境感知：读取文字、表格、网页或系统状态</li><li>工具行动：调用搜索、数据库、代码执行器、业务 API</li><li>反馈修正：观察结果，判断是否完成，必要时改计划</li></ul>
+                
+                <div class="note">可以让学生任选一个特征，说一个身边的例子。</div>
+              </div>
+              <div class="slide-footer"><span>智能体：从会聊天到能做事</span><span>4 / 11</span></div>
+            </section>
+            <section class="slide layout-table" data-index="4">
+              <div class="slide-inner">
+                <div class="eyebrow">核心能力</div>
+                <h1>四个核心能力对照看</h1>
+                <ul><li>感知、规划、行动、记忆各有分工</li><li>只生成文字不等于智能体</li></ul>
+                <div class="table-wrap"><table class="data-table"><thead><tr><th>能力</th><th>说明</th><th>典型例子</th></tr></thead><tbody><tr><td>感知</td><td>理解当前输入与环境状态</td><td>读取用户需求、检索资料</td></tr><tr><td>规划</td><td>把目标拆成可执行步骤</td><td>先查资料，再列提纲，最后生成课件</td></tr><tr><td>行动</td><td>调用工具执行具体操作</td><td>搜索、计算、发邮件、写文件</td></tr><tr><td>记忆</td><td>保存上下文和历史结果</td><td>记住用户偏好、上次做到哪一步</td></tr></tbody></table></div>
+                <div class="note">提醒：没有目标、行动和反馈闭环，通常只是对话模型。</div>
+              </div>
+              <div class="slide-footer"><span>智能体：从会聊天到能做事</span><span>5 / 11</span></div>
+            </section>
+            <section class="slide layout-content" data-index="5">
+              <div class="slide-inner">
+                <div class="eyebrow">任务流程</div>
+                <h1>智能体怎样完成任务</h1>
+                <ul><li>理解目标：确认真正想要的结果和约束</li><li>制定计划：拆成多个可验证的小步骤</li><li>调用工具：按每步需要选择搜索、代码或业务工具</li><li>观察结果并调整计划：失败时重试、换工具或澄清</li><li>交付结果：文档、课件、表格或可执行的下一步</li></ul>
+                
+                <div class="note">可以让学生把“写一份课件”按这六步复述一遍。</div>
+              </div>
+              <div class="slide-footer"><span>智能体：从会聊天到能做事</span><span>6 / 11</span></div>
+            </section>
+            <section class="slide layout-image" data-index="6">
+              <div class="slide-inner">
+                <div class="eyebrow">应用场景</div>
+                <h1>智能体用在哪里</h1>
+                <ul><li>学习助手：按错题规划复习顺序</li><li>企业知识库：先检索再回答，答案带来源</li><li>自动化办公：多步工具调用完成重复流程</li><li>智能客服：调用订单、物流、售后工具解决问题</li></ul>
+                <figure class="visual-image"><img src="/profile/upload/2026/11/01/agent_scenarios.png" alt="智能体典型应用场景：学习、知识库、办公、客服"><figcaption>智能体典型应用场景：学习、知识库、办公、客服</figcaption></figure>
+                <div class="note">提问：这四个场景里，哪个最需要“权限”意识？</div>
+              </div>
+              <div class="slide-footer"><span>智能体：从会聊天到能做事</span><span>7 / 11</span></div>
+            </section>
+            <section class="slide layout-table" data-index="7">
+              <div class="slide-inner">
+                <div class="eyebrow">对比辨析</div>
+                <h1>智能体和普通程序差在哪</h1>
+                <ul><li>执行方式与输入范围不同</li><li>失败处理与输出形态不同</li><li>关键风险也不同</li></ul>
+                <div class="table-wrap"><table class="data-table"><thead><tr><th>维度</th><th>普通程序</th><th>智能体</th></tr></thead><tbody><tr><td>执行方式</td><td>固定规则与流程</td><td>根据环境反馈动态规划</td></tr><tr><td>输入范围</td><td>结构化参数为主</td><td>文本、文件、网页、系统状态</td></tr><tr><td>失败处理</td><td>报错或终止</td><td>重试、换策略、请求澄清</td></tr><tr><td>输出</td><td>确定结果</td><td>行动、文件或多步结果</td></tr><tr><td>关键风险</td><td>逻辑错误</td><td>幻觉、越权、工具误用</td></tr></tbody></table></div>
+                <div class="note">易错点：智能体不是“更聪明的程序”，风险类型也变了。</div>
+              </div>
+              <div class="slide-footer"><span>智能体：从会聊天到能做事</span><span>8 / 11</span></div>
+            </section>
+            <section class="slide layout-chart" data-index="8">
+              <div class="slide-inner">
+                <div class="eyebrow">评测与安全</div>
+                <h1>评测智能体看什么</h1>
+                <ul><li>不能只看“回答像不像”，要看任务是否真正完成</li><li>安全边界关注是否越权读取、修改或外发数据</li><li>成本与延迟也要计入完成任务的代价</li></ul>
+                <div class="chart"><h3>评测智能体的关注维度（示意）</h3><div class="bar-row"><span>任务完成率</span><div class="bar-track"><i style="width:100.0%"></i></div><b>95分</b></div><div class="bar-row"><span>步骤正确率</span><div class="bar-track"><i style="width:89.5%"></i></div><b>85分</b></div><div class="bar-row"><span>引用可靠性</span><div class="bar-track"><i style="width:84.2%"></i></div><b>80分</b></div><div class="bar-row"><span>安全边界</span><div class="bar-track"><i style="width:94.7%"></i></div><b>90分</b></div><div class="bar-row"><span>成本与延迟</span><div class="bar-track"><i style="width:73.7%"></i></div><b>70分</b></div></div>
+                <div class="note">说明：数值为课堂示意，重点是五个维度都要看。</div>
+              </div>
+              <div class="slide-footer"><span>智能体：从会聊天到能做事</span><span>9 / 11</span></div>
+            </section>
+            <section class="slide layout-content" data-index="9">
+              <div class="slide-inner">
+                <div class="eyebrow">安全原则</div>
+                <h1>用智能体的四条安全底线</h1>
+                <ul><li>最小权限：只给完成任务必需的权限</li><li>敏感操作二次确认</li><li>工具调用可审计</li><li>失败时明确告知用户</li></ul>
+                
+                <div class="note">结合订机票例子：它需要哪些工具和权限？</div>
+              </div>
+              <div class="slide-footer"><span>智能体：从会聊天到能做事</span><span>10 / 11</span></div>
+            </section>
+            <section class="slide layout-summary" data-index="10">
+              <div class="slide-inner">
+                <div class="eyebrow">课堂小结</div>
+                <h1>三句话记住本课</h1>
+                <ul><li>智能体 = 感知 + 决策 + 行动 + 反馈，缺闭环只是对话模型</li><li>四个核心能力：感知、规划、行动、记忆</li><li>评测看任务是否完成，安全守住最小权限与可审计</li></ul>
+                
+                <div class="note">课后动作：复习第 2、5、8 页；完成资料第七部分的四个讨论题，并各写一句理由。</div>
+              </div>
+              <div class="slide-footer"><span>智能体：从会聊天到能做事</span><span>11 / 11</span></div>
+            </section></div>
+<div class="controls">
+  <button type="button" onclick="show(current-1)">← 上一页</button>
+  <span class="counter" id="counter">1 / 11</span>
+  <button type="button" onclick="show(current+1)">下一页 →</button>
+  <button type="button" onclick="fullscreen()">全屏</button>
+</div>
+<script>
+  var current = 0;
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var wheelLock = false;
+  function show(next) {
+    current = Math.max(0, Math.min(slides.length - 1, next));
+    slides.forEach(function (s, i) { s.classList.toggle('active', i === current); });
+    document.getElementById('counter').textContent = (current + 1) + ' / ' + slides.length;
+    document.getElementById('progress').style.width = ((current + 1) / slides.length * 100) + '%';
+  }
+  function fullscreen() {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+    else document.exitFullscreen && document.exitFullscreen();
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); show(current + 1); }
+    if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); show(current - 1); }
+  });
+  window.addEventListener('wheel', function (e) {
+    if (Math.abs(e.deltaY) < 24) return;
+    e.preventDefault();
+    if (wheelLock) return;
+    wheelLock = true;
+    show(current + (e.deltaY > 0 ? 1 : -1));
+    setTimeout(function () { wheelLock = false; }, 420);
+  }, { passive: false });
+  show(0);
+</script>
+</body>
+</html>

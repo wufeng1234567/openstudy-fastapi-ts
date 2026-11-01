@@ -738,17 +738,22 @@ async def get_document_micro_course(
 async def get_document_micro_course_html(
     doc_id: int,
     refresh: bool = Query(False, description="true 表示重新生成一个新版本"),
+    prompt: str = Query("", description="用户对本次生成/修改的自然语言要求"),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """获取教学 HTML 课件：已有历史版本直接返回，refresh=true 才生成新版本。"""
+    """获取教学 HTML 课件：已有历史版本直接返回，refresh=true 或 prompt 非空才生成新版本。"""
     from app.services.micro_course_export_service import get_or_create_micro_course_record
 
     try:
         doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
         return success(
             await get_or_create_micro_course_record(
-                db, _uid(current_user), doc, refresh=bool(refresh)
+                db,
+                _uid(current_user),
+                doc,
+                refresh=bool(refresh),
+                prompt=prompt,
             )
         )
     except Exception as e:
@@ -791,6 +796,35 @@ class MicroCoursePptxRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     html: Optional[str] = None
     recordId: Optional[int] = None
+
+
+class MicroCourseImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    html: str = Field(..., min_length=1, max_length=2_000_000)
+    title: Optional[str] = Field(None, max_length=200)
+
+
+@router.post("/document/micro-course/{doc_id}/import")
+async def import_micro_course_html(
+    doc_id: int,
+    data: MicroCourseImportRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """导入用户自己的 HTML 文件/代码作为微课新版本。"""
+    from app.services.micro_course_export_service import import_micro_course_html
+
+    try:
+        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        return success(
+            await import_micro_course_html(
+                db, _uid(current_user), doc, data.html, title=data.title or ""
+            )
+        )
+    except ValueError as e:
+        return error(str(e), code=400)
+    except Exception as e:
+        return _fail(e)
 
 
 @router.post("/document/micro-course/{doc_id}/pptx")

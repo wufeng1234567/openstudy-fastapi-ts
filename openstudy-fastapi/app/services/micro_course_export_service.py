@@ -17,14 +17,18 @@ import html as _html
 import io
 import json
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List
 
 from pptx import Presentation
+from pptx.chart.data import CategoryChartData
+from pptx.enum.chart import XL_CHART_TYPE
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 
+from app.config import settings
 from app.services.micro_course_service import build_micro_course
 
 logger = logging.getLogger(__name__)
@@ -39,24 +43,47 @@ def _load_skill() -> str:
         return ""
 
 
-async def _ai_deck(db, user_id: int, doc, course: Dict[str, Any]) -> tuple[Dict[str, Any], bool]:
+async def _ai_deck(
+    db,
+    user_id: int,
+    doc,
+    course: Dict[str, Any],
+    prompt_text: str = "",
+    base_deck: Dict[str, Any] | None = None,
+) -> tuple[Dict[str, Any], bool]:
     """让模型围绕资料生成教学课件结构。
 
     模型只负责「怎么讲」：页面标题、要点、课堂提示；正文事实仍以原文为准。
     模型不可用 / 返回格式不合法时，退回按原文结构生成的 deck，不阻塞页面。
     """
     raw = str(getattr(doc, "raw_content", "") or "")[:12000]
-    fallback = _deck_from_stations(course)
+    fallback = _deck_from_stations(course, getattr(doc, "image_map", None))
     if not raw.strip():
         return fallback, False
+    image_map = getattr(doc, "image_map", None) or {}
+    image_urls = [v for v in image_map.values() if isinstance(v, str)][:8]
+    image_lines = "\n".join(f"- 图{i + 1}: {url}" for i, url in enumerate(image_urls))
+    base_text = ""
+    if base_deck:
+        base_text = "\n当前版本的结构（请在此基础上按修改要求重写，不要丢掉正确内容）：\n" + json.dumps(
+            base_deck, ensure_ascii=False
+        )[:6000]
+    user_change = f"\n用户本次的修改要求（必须优先满足）：{prompt_text.strip()[:1000]}" if prompt_text.strip() else ""
     prompt = (
         "你是一位擅长把资料改写成课堂教学课件的老师。请只依据下面的资料，"
-        "设计一套 5-10 页的教学课件。不要编造资料里没有的事实。\n"
+        "设计一套 5-12 页的教学课件。不要编造资料里没有的事实。\n"
         "返回严格 JSON（不要 Markdown 代码围栏）：\n"
         '{"title":"课件标题","subtitle":"副标题",'
-        '"slides":[{"eyebrow":"环节/知识点标签","title":"页标题",'
-        '"bullets":["要点1","要点2","要点3"],"note":"可选的课堂提示"}]}\n'
+        '"slides":[{"layout":"content","eyebrow":"环节/知识点标签","title":"页标题",'
+        '"bullets":["要点1","要点2"],"note":"可选的课堂提示",'
+        '"image":{"url":"可选，只能使用下面提供的图片 URL","caption":"图片说明"},'
+        '"chart":{"type":"bar","title":"图表标题","labels":["A","B"],"values":[80,60],"unit":"%"},'
+        '"table":{"headers":["列1","列2"],"rows":[["值1","值2"]]}}]}\n'
+        "layout 可选：cover / content / image / chart / table / quote / summary。"
+        "至少使用 1 页图表或表格，资料有图片时使用 1–2 页图片；不要每页只有文字。"
         "第一页做课程导入，最后一页做课堂小结；每页 bullets 2-5 条，每条不超过 60 字。\n"
+        "可用图片（只能从这里选择，不能编造 URL）：\n" + (image_lines or "（这份资料没有可用图片）") + "\n"
+        + user_change + base_text + "\n"
         "资料文件名：" + str(getattr(doc, "file_name", "") or "") + "\n"
         "资料正文：\n" + raw
     )
@@ -103,17 +130,20 @@ async def _ai_deck(db, user_id: int, doc, course: Dict[str, Any]) -> tuple[Dict[
                 for b in (slide.get("bullets") or [])
                 if str(b).strip()
             ][:6]
-            if not bullets:
+            if not bullets and not any(slide.get(k) for k in ("image", "chart", "table", "quote")):
                 continue
-            cleaned.append(
-                {
-                    "kind": "content",
-                    "eyebrow": str(slide.get("eyebrow") or "知识点")[:30],
-                    "title": str(slide.get("title") or "")[:100],
-                    "bullets": bullets,
-                    "note": str(slide.get("note") or "")[:160],
-                }
-            )
+            item = {
+                "kind": "content",
+                "layout": str(slide.get("layout") or "content")[:20],
+                "eyebrow": str(slide.get("eyebrow") or "知识点")[:30],
+                "title": str(slide.get("title") or "")[:100],
+                "bullets": bullets,
+                "note": str(slide.get("note") or "")[:160],
+            }
+            for key in ("image", "chart", "table", "quote"):
+                if isinstance(slide.get(key), (dict, list, str)):
+                    item[key] = slide[key]
+            cleaned.append(item)
         if len(cleaned) < 2:
             return fallback, False
         deck = {
@@ -152,7 +182,7 @@ def _bullets(text: str, limit: int = 4) -> List[str]:
     return out or [text[:74] + ("…" if len(text) > 74 else "")]
 
 
-def _deck_from_stations(course: Dict[str, Any]) -> Dict[str, Any]:
+def _deck_from_stations(course: Dict[str, Any], image_map: Dict[str, Any] | None = None) -> Dict[str, Any]:
     doc = course.get("document") or {}
     stations = course.get("stations") or []
     title = doc.get("fileName") or "教学微课"
@@ -160,6 +190,7 @@ def _deck_from_stations(course: Dict[str, Any]) -> Dict[str, Any]:
     slides: List[Dict[str, Any]] = [
         {
             "kind": "cover",
+            "layout": "cover",
             "eyebrow": "AI 教学课件",
             "title": title,
             "subtitle": f"{subject} · 约 {course.get('overview', {}).get('stationCount', len(stations))} 个知识点",
@@ -169,6 +200,18 @@ def _deck_from_stations(course: Dict[str, Any]) -> Dict[str, Any]:
             ],
         }
     ]
+    image_urls = [v for v in (image_map or {}).values() if isinstance(v, str)]
+    if image_urls:
+        slides.append(
+            {
+                "kind": "content",
+                "layout": "image",
+                "eyebrow": "先看一张图",
+                "title": "把知识放进一张图里",
+                "bullets": ["先观察结构，再进入具体知识点"],
+                "image": {"url": image_urls[0], "caption": "资料配图"},
+            }
+        )
     for idx, station in enumerate(stations):
         bullets = _bullets(station.get("summary") or "", 3)
         if station.get("points"):
@@ -206,22 +249,74 @@ def _deck_from_stations(course: Dict[str, Any]) -> Dict[str, Any]:
     return {"title": title, "subtitle": subject, "slides": slides}
 
 
+def _chart_html(chart: Dict[str, Any]) -> str:
+    labels = [str(x) for x in (chart.get("labels") or [])][:8]
+    values = []
+    for x in (chart.get("values") or [])[:8]:
+        try:
+            values.append(float(x))
+        except (TypeError, ValueError):
+            values.append(0.0)
+    unit = _html.escape(str(chart.get("unit") or ""))
+    top = max(values or [1.0])
+    rows = []
+    for label, value in zip(labels, values):
+        width = max(2, round(value / top * 100, 1)) if top else 2
+        rows.append(
+            f'<div class="bar-row"><span>{_html.escape(label)}</span>'
+            f'<div class="bar-track"><i style="width:{width}%"></i></div>'
+            f'<b>{value:g}{unit}</b></div>'
+        )
+    title = _html.escape(str(chart.get("title") or ""))
+    return f'<div class="chart">{f"<h3>{title}</h3>" if title else ""}{"".join(rows)}</div>'
+
+
+def _table_html(table: Dict[str, Any]) -> str:
+    headers = [str(x) for x in (table.get("headers") or [])]
+    rows = table.get("rows") or []
+    head = "".join(f"<th>{_html.escape(h)}</th>" for h in headers)
+    body = "".join(
+        "<tr>" + "".join(f"<td>{_html.escape(str(c))}</td>" for c in row) + "</tr>"
+        for row in rows[:8]
+    )
+    return f'<div class="table-wrap"><table class="data-table"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>'
+
+
 def _render_html(deck: Dict[str, Any]) -> str:
     slides_html = []
     for i, slide in enumerate(deck["slides"]):
+        layout = str(slide.get("layout") or ("cover" if i == 0 else "content"))
         bullets = "".join(f"<li>{_html.escape(str(b))}</li>" for b in slide.get("bullets") or [])
         note = (
             f'<div class="note">{_html.escape(str(slide.get("note") or ""))}</div>'
             if slide.get("note")
             else ""
         )
+        extras = ""
+        image = slide.get("image")
+        if isinstance(image, dict) and image.get("url"):
+            caption = _html.escape(str(image.get("caption") or ""))
+            extras += (
+                f'<figure class="visual-image"><img src="{_html.escape(str(image["url"]))}" alt="{caption}">'
+                f'{f"<figcaption>{caption}</figcaption>" if caption else ""}</figure>'
+            )
+        chart = slide.get("chart")
+        if isinstance(chart, dict):
+            extras += _chart_html(chart)
+        table = slide.get("table")
+        if isinstance(table, dict):
+            extras += _table_html(table)
+        quote = slide.get("quote")
+        if quote:
+            extras += f'<blockquote class="quote-box">{_html.escape(str(quote))}</blockquote>'
         slides_html.append(
             f"""
-            <section class="slide{' active' if i == 0 else ''}" data-index="{i}">
+            <section class="slide{' active' if i == 0 else ''} layout-{_html.escape(layout)}" data-index="{i}">
               <div class="slide-inner">
                 <div class="eyebrow">{_html.escape(str(slide.get('eyebrow') or ''))}</div>
                 <h1>{_html.escape(str(slide.get('title') or ''))}</h1>
                 <ul>{bullets}</ul>
+                {extras}
                 {note}
               </div>
               <div class="slide-footer"><span>{_html.escape(deck['title'])}</span><span>{i + 1} / {len(deck['slides'])}</span></div>
@@ -234,20 +329,36 @@ def _render_html(deck: Dict[str, Any]) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{_html.escape(deck['title'])} · 教学课件</title>
 <style>
-  :root {{ --ink:#111827; --muted:#6b7280; --accent:#2563eb; --line:#e5e7eb; }}
+  :root {{ --ink:#111827; --muted:#6b7280; --accent:#2563eb; --line:#e5e7eb; --soft:#f8fafc; }}
   * {{ box-sizing:border-box; }}
-  body {{ margin:0; background:#eef2f7; color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif; overflow:hidden; }}
+  body {{ margin:0; background:#eef2f7; color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif; overflow:hidden; overscroll-behavior:none; }}
   .deck {{ width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }}
   .slide {{ display:none; width:min(1180px,100%); aspect-ratio:16/9; max-height:calc(100vh - 48px); background:#fff; border-radius:20px; box-shadow:0 20px 60px rgba(15,23,42,.14); padding:clamp(28px,5vw,70px); position:relative; }}
   .slide.active {{ display:flex; flex-direction:column; }}
   .slide-inner {{ flex:1; min-height:0; overflow:auto; }}
   .eyebrow {{ color:var(--accent); font-size:13px; font-weight:700; letter-spacing:2px; text-transform:uppercase; margin-bottom:20px; }}
-  h1 {{ font-size:clamp(26px,4.2vw,52px); line-height:1.15; letter-spacing:-1px; margin:0 0 30px; max-width:900px; }}
+  h1 {{ font-size:clamp(26px,4.2vw,52px); line-height:1.15; letter-spacing:-1px; margin:0 0 26px; max-width:950px; }}
   ul {{ margin:0; padding-left:26px; }}
-  li {{ font-size:clamp(16px,2vw,24px); line-height:1.7; margin:12px 0; color:#374151; }}
-  .note {{ margin-top:26px; padding:14px 18px; border-left:3px solid var(--accent); background:#f8fafc; color:var(--muted); font-size:14px; line-height:1.6; border-radius:0 8px 8px 0; }}
-  .slide-footer {{ display:flex; justify-content:space-between; gap:12px; color:#9ca3af; font-size:12px; padding-top:18px; border-top:1px solid var(--line); }}
-  .controls {{ position:fixed; left:50%; bottom:20px; transform:translateX(-50%); display:flex; gap:8px; align-items:center; padding:8px; background:rgba(17,24,39,.86); border-radius:999px; box-shadow:0 8px 24px rgba(0,0,0,.2); }}
+  li {{ font-size:clamp(15px,1.8vw,22px); line-height:1.7; margin:10px 0; color:#374151; }}
+  .note {{ margin-top:22px; padding:12px 16px; border-left:3px solid var(--accent); background:var(--soft); color:var(--muted); font-size:14px; line-height:1.6; border-radius:0 8px 8px 0; }}
+  .visual-image {{ display:flex; align-items:center; justify-content:center; margin:22px auto 8px; max-width:900px; border-radius:12px; overflow:hidden; background:var(--soft); }}
+  .visual-image img {{ display:block; max-width:100%; max-height:390px; object-fit:contain; }}
+  .visual-image figcaption {{ padding:7px 12px; color:var(--muted); font-size:12px; text-align:center; }}
+  .chart {{ margin:22px auto 0; max-width:880px; padding:18px 22px; border:1px solid var(--line); border-radius:12px; background:#fff; }}
+  .chart h3 {{ margin:0 0 12px; font-size:15px; color:#374151; }}
+  .bar-row {{ display:flex; align-items:center; gap:10px; margin:9px 0; font-size:12px; color:#4b5563; }}
+  .bar-row > span {{ width:125px; flex:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
+  .bar-track {{ flex:1; height:10px; overflow:hidden; border-radius:999px; background:#eef2f7; }}
+  .bar-track i {{ display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg,#93b4ff,#4176e6); }}
+  .bar-row b {{ width:58px; flex:none; text-align:right; color:#111827; }}
+  .table-wrap {{ margin:20px auto 0; max-width:980px; overflow:auto; border:1px solid var(--line); border-radius:10px; }}
+  .data-table {{ width:100%; border-collapse:collapse; font-size:13px; }}
+  .data-table th, .data-table td {{ padding:9px 12px; border-bottom:1px solid #f0f2f5; text-align:left; }}
+  .data-table th {{ background:#f8fafc; color:#4b5563; font-weight:600; }}
+  .data-table tr:last-child td {{ border-bottom:0; }}
+  .quote-box {{ margin:26px auto; padding:22px 28px; max-width:900px; border-left:4px solid var(--accent); background:var(--soft); font-size:22px; line-height:1.6; color:#374151; border-radius:0 10px 10px 0; }}
+  .slide-footer {{ display:flex; justify-content:space-between; gap:12px; color:#9ca3af; font-size:12px; padding-top:16px; border-top:1px solid var(--line); }}
+  .controls {{ position:fixed; left:50%; bottom:20px; transform:translateX(-50%); display:flex; gap:8px; align-items:center; padding:8px; background:rgba(17,24,39,.86); border-radius:999px; box-shadow:0 8px 24px rgba(0,0,0,.2); z-index:10; }}
   .controls button {{ border:0; background:transparent; color:#fff; cursor:pointer; padding:8px 14px; border-radius:999px; font-size:13px; }}
   .controls button:hover {{ background:rgba(255,255,255,.14); }}
   .controls .counter {{ color:#d1d5db; font-size:12px; padding:0 8px; }}
@@ -266,6 +377,7 @@ def _render_html(deck: Dict[str, Any]) -> str:
 <script>
   var current = 0;
   var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var wheelLock = false;
   function show(next) {{
     current = Math.max(0, Math.min(slides.length - 1, next));
     slides.forEach(function (s, i) {{ s.classList.toggle('active', i === current); }});
@@ -280,6 +392,14 @@ def _render_html(deck: Dict[str, Any]) -> str:
     if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {{ e.preventDefault(); show(current + 1); }}
     if (e.key === 'ArrowLeft' || e.key === 'PageUp') {{ e.preventDefault(); show(current - 1); }}
   }});
+  window.addEventListener('wheel', function (e) {{
+    if (Math.abs(e.deltaY) < 24) return;
+    e.preventDefault();
+    if (wheelLock) return;
+    wheelLock = true;
+    show(current + (e.deltaY > 0 ? 1 : -1));
+    setTimeout(function () {{ wheelLock = false; }}, 420);
+  }}, {{ passive: false }});
   show(0);
 </script>
 </body>
@@ -312,9 +432,23 @@ def _slides_from_html(html_text: str, fallback: Dict[str, Any]) -> List[Dict[str
     return slides or fallback["slides"]
 
 
+def _image_file(url: str) -> str | None:
+    """把 /profile/... URL 映射到本地文件；外部 URL 暂不下载。"""
+    url = str(url or "").strip()
+    if not url:
+        return None
+    if url.startswith("/profile/"):
+        path = os.path.join(settings.UPLOAD_DIR, url[len("/profile/"):])
+        return path if os.path.isfile(path) else None
+    if url.startswith("file://"):
+        path = url[7:]
+        return path if os.path.isfile(path) else None
+    return None
+
+
 def build_pptx_bytes(deck: Dict[str, Any], html_text: str = "") -> bytes:
-    """生成 16:9 PPT。html_text 有值时先尝试按 HTML 的 slide 结构转换。"""
-    slides = _slides_from_html(html_text, deck)
+    """生成 16:9 PPT，支持文字、图片、柱状图、表格与引用。"""
+    slides = deck.get("slides") or _slides_from_html(html_text, deck)
     prs = Presentation()
     prs.slide_width = Inches(13.333)
     prs.slide_height = Inches(7.5)
@@ -340,18 +474,76 @@ def build_pptx_bytes(deck: Dict[str, Any], html_text: str = "") -> bytes:
         bg = slide.background.fill
         bg.solid()
         bg.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-        # 顶部细色条
         bar = slide.shapes.add_shape(1, Inches(0), Inches(0), prs.slide_width, Inches(0.08))
         bar.fill.solid()
         bar.fill.fore_color.rgb = accent
         bar.line.fill.background()
         add_text(slide, 0.8, 0.55, 11.7, 0.4, (s.get("eyebrow") or ("知识点" if idx else "AI 教学课件")), 12, accent, True)
         add_text(slide, 0.8, 1.05, 11.7, 1.2, s.get("title") or "", 28, ink, True)
+
+        layout = str(s.get("layout") or "content")
+        text_top = 2.65
+        image = s.get("image") if isinstance(s.get("image"), dict) else None
+        if image and _image_file(image.get("url")):
+            try:
+                slide.shapes.add_picture(
+                    _image_file(image.get("url")),
+                    Inches(0.85), Inches(2.35), width=Inches(10.6),
+                )
+                text_top = 6.15
+            except Exception:
+                image = None
+
+        chart = s.get("chart") if isinstance(s.get("chart"), dict) else None
+        if chart and (chart.get("labels") or []):
+            try:
+                labels = [str(x) for x in chart.get("labels") or []][:8]
+                values = []
+                for value in (chart.get("values") or [])[:8]:
+                    try:
+                        values.append(float(value))
+                    except (TypeError, ValueError):
+                        values.append(0)
+                chart_data = CategoryChartData()
+                chart_data.categories = labels
+                chart_data.add_series("系列 1", values)
+                chart_type = XL_CHART_TYPE.PIE if str(chart.get("type")).lower() == "pie" else XL_CHART_TYPE.COLUMN_CLUSTERED
+                slide.shapes.add_chart(
+                    chart_type, Inches(0.8), Inches(2.35), Inches(11.7), Inches(3.8), chart_data
+                )
+                text_top = 6.2
+            except Exception:
+                pass
+
+        table = s.get("table") if isinstance(s.get("table"), dict) else None
+        if table and (table.get("headers") or table.get("rows")):
+            headers = [str(x) for x in table.get("headers") or []]
+            rows = [list(map(str, row)) for row in (table.get("rows") or [])][:8]
+            if headers:
+                rows = [headers] + rows
+            if rows:
+                try:
+                    shape = slide.shapes.add_table(
+                        len(rows), max(len(r) for r in rows),
+                        Inches(0.8), Inches(2.35), Inches(11.7), Inches(0.5 + 0.42 * len(rows))
+                    )
+                    for r, row in enumerate(rows):
+                        for c, value in enumerate(row):
+                            shape.table.cell(r, c).text = value
+                    text_top = 6.1
+                except Exception:
+                    pass
+
         bullets = s.get("bullets") or []
-        y = 2.65
+        y = text_top
         for b in bullets[:6]:
+            if y > 6.45:
+                break
             add_text(slide, 0.95, y, 11.5, 0.55, "• " + str(b), 16, RGBColor(0x37, 0x41, 0x51))
-            y += 0.62
+            y += 0.55
+        quote = s.get("quote")
+        if quote:
+            add_text(slide, 1.0, min(y, 6.0), 11.2, 0.8, str(quote), 18, muted)
         add_text(slide, 0.8, 6.75, 9.0, 0.3, deck.get("title") or "", 9, muted)
         add_text(slide, 11.3, 6.75, 1.2, 0.3, f"{idx + 1} / {len(slides)}", 9, muted)
     out = io.BytesIO()
@@ -359,9 +551,17 @@ def build_pptx_bytes(deck: Dict[str, Any], html_text: str = "") -> bytes:
     return out.getvalue()
 
 
-async def build_micro_course_export(db, user_id: int, doc) -> Dict[str, Any]:
+async def build_micro_course_export(
+    db,
+    user_id: int,
+    doc,
+    prompt: str = "",
+    base_deck: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
     course = await build_micro_course(db, user_id, doc)
-    deck, ai_generated = await _ai_deck(db, user_id, doc, course)
+    deck, ai_generated = await _ai_deck(
+        db, user_id, doc, course, prompt_text=prompt, base_deck=base_deck
+    )
     html = _render_html(deck)
     return {
         "document": course["document"],
@@ -405,8 +605,9 @@ async def get_or_create_micro_course_record(
     user_id: int,
     doc,
     refresh: bool = False,
+    prompt: str = "",
 ) -> Dict[str, Any]:
-    """返回最新微课版本；只有 refresh=True 才重新调用 AI 生成新版本。"""
+    """返回最新微课版本；refresh=True 或 prompt 非空时生成新版本。"""
     from sqlalchemy import select
     from app.models.rag import RagMicroCourse
 
@@ -421,12 +622,18 @@ async def get_or_create_micro_course_record(
             .limit(1)
         )
     ).scalar_one_or_none()
-    if latest and not refresh:
+    if latest and not refresh and not prompt.strip():
         payload = _record_payload(latest, include_html=True)
         payload["fromHistory"] = True
         return payload
 
-    export = await build_micro_course_export(db, user_id, doc)
+    export = await build_micro_course_export(
+        db,
+        user_id,
+        doc,
+        prompt=prompt,
+        base_deck=(latest.deck_json or {}) if latest else None,
+    )
     version = 1
     if latest:
         version = int(latest.version or 0) + 1
@@ -505,6 +712,91 @@ async def get_latest_micro_course_record(db, user_id: int, doc_id: int):
     ).scalar_one_or_none()
 
 
+def _deck_from_imported_html(html_text: str, title: str = "") -> Dict[str, Any]:
+    """把用户导入的 HTML 粗略拆成 deck，用于导出 PPT；原 HTML 仍保留给在线演示。"""
+    text = html_text or ""
+    # 优先识别我们约定的 <section class="slide"> 结构
+    sections = re.findall(r'<section[^>]*class="[^"]*slide[^"]*"[^>]*>(.*?)</section>', text, flags=re.S | re.I)
+    slides: List[Dict[str, Any]] = []
+    if sections:
+        for sec in sections:
+            h = re.search(r"<h[12][^>]*>(.*?)</h[12]>", sec, flags=re.S | re.I)
+            if not h:
+                continue
+            bullets = [
+                _clean(re.sub("<[^>]+>", " ", x))
+                for x in re.findall(r"<li[^>]*>(.*?)</li>", sec, flags=re.S | re.I)
+            ]
+            slides.append(
+                {
+                    "kind": "content",
+                    "layout": "content",
+                    "eyebrow": "导入课件",
+                    "title": _clean(re.sub("<[^>]+>", " ", h.group(1)))[:100],
+                    "bullets": [b for b in bullets if b][:6],
+                }
+            )
+    if not slides:
+        # 普通网页：按 h1/h2 切页，取紧随其后的段落和列表
+        matches = list(re.finditer(r"<h[12][^>]*>(.*?)</h[12]>", text, flags=re.S | re.I))
+        for idx, match in enumerate(matches[:12]):
+            end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
+            body = re.sub(r"<[^>]+>", " ", text[match.end():end])
+            body = _clean(body)
+            bullets = [b.strip() for b in re.split(r"[。；;]\s*", body) if len(b.strip()) >= 6][:3]
+            slides.append(
+                {
+                    "kind": "content",
+                    "layout": "content",
+                    "eyebrow": "导入课件",
+                    "title": _clean(re.sub("<[^>]+>", " ", match.group(1)))[:100] or f"第 {idx + 1} 页",
+                    "bullets": bullets,
+                }
+            )
+    plain = _clean(re.sub(r"<[^>]+>", " ", text))
+    if not slides and plain:
+        slides = [{"kind": "content", "layout": "content", "eyebrow": "导入内容", "title": title or "导入的课件", "bullets": [plain[:120]]}]
+    if not slides:
+        raise ValueError("HTML 里没有可识别的内容")
+    return {"title": title or slides[0]["title"] or "导入的课件", "subtitle": "用户导入", "slides": slides}
+
+
+async def import_micro_course_html(db, user_id: int, doc, html_text: str, title: str = "") -> Dict[str, Any]:
+    """保存一份用户导入的 HTML 作为新版本。"""
+    from sqlalchemy import select
+    from app.models.rag import RagMicroCourse
+
+    raw = (html_text or "").strip()
+    if not raw:
+        raise ValueError("导入的 HTML 不能为空")
+    if len(raw) > 2_000_000:
+        raise ValueError("HTML 文件过大，请控制在 2MB 以内")
+    if "<" not in raw:
+        raise ValueError("这不像 HTML，请检查文件内容")
+    deck = _deck_from_imported_html(raw, title=title)
+    course = await build_micro_course(db, user_id, doc)
+    latest = await get_latest_micro_course_record(db, user_id, doc.id)
+    version = int(latest.version or 0) + 1 if latest else 1
+    record = RagMicroCourse(
+        user_id=int(user_id),
+        doc_id=int(doc.id),
+        version=version,
+        title=str(deck.get("title") or title or doc.file_name or "导入课件")[:255],
+        html=raw,
+        deck_json=deck,
+        meta_json={"document": course.get("document") or {}, "overview": course.get("overview") or {}},
+        ai_generated=0,
+        source_file_name=doc.file_name,
+    )
+    db.add(record)
+    await db.flush()
+    await db.refresh(record)
+    payload = _record_payload(record, include_html=True)
+    payload["fromHistory"] = False
+    payload["imported"] = True
+    return payload
+
+
 __all__ = [
     "build_micro_course_export",
     "build_pptx_bytes",
@@ -513,4 +805,5 @@ __all__ = [
     "list_micro_course_history",
     "get_micro_course_record",
     "get_latest_micro_course_record",
+    "import_micro_course_html",
 ]
