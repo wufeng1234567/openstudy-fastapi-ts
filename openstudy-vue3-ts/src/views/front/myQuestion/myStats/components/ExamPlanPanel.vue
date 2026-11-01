@@ -126,6 +126,7 @@
                   <el-icon><Refresh /></el-icon>
                   刷新进度
                 </el-button>
+                <el-button size="small" @click="openPlanQuestions">查看计划全部题目</el-button>
               </div>
             </div>
             <div
@@ -427,9 +428,13 @@ async function generate() {
 function openTask(task: ExamPlanTask) {
   if (!task?.questionId) return
   router.push({
-    path: '/front/myQuestion/wrongQuestion',
-    query: { questionId: String(task.questionId), from: 'examPlan' },
+    path: '/front/myQuestion/questions',
+    query: { tab: 'plan', questionId: String(task.questionId), from: 'examPlan' },
   })
+}
+
+function openPlanQuestions() {
+  router.push({ path: '/front/myQuestion/questions', query: { tab: 'plan', from: 'examPlan' } })
 }
 
 function initialVisibleDays(result: ExamPlanResult | null) {

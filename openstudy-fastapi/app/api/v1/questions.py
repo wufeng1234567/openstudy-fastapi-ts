@@ -969,6 +969,53 @@ async def list_questions(
     return paginate(total, [format_question(q) for q in questions])
 
 
+@router.get("/questionMain/questionMain/planQuestions")
+async def list_plan_questions(
+    ids: str = Query(..., description="逗号分隔的题目 ID"),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """按题目 ID 批量取「计划内题目」的完整展示信息。
+
+    考前计划是用户自己的学习安排，题目可能跨多个题库；这个接口把计划涉及的
+    题一次性取回来，前端才能展示「整个计划的题目列表」，而不是点一道取一道。
+    """
+    try:
+        qids = [int(x) for x in ids.split(",") if x.strip()]
+    except ValueError:
+        return error("ids 格式应为逗号分隔的整数", code=400)
+    if not qids:
+        return success([])
+
+    rows = (
+        await db.execute(
+            select(
+                QuestionMain,
+                QuestionBank.bank_name,
+                QuestionBank.subject,
+            )
+            .join(QuestionBank, QuestionMain.bank_id == QuestionBank.id)
+            .where(
+                QuestionMain.id.in_(qids),
+                QuestionMain.status == "0",
+                await _visibility_condition(db, current_user.get("user_id")),
+            )
+            .options(selectinload(QuestionMain.sub_questions))
+            .order_by(QuestionMain.sort_order, QuestionMain.id)
+        )
+    ).all()
+
+    data = []
+    for question, bank_name, subject in rows:
+        item = format_question(question)
+        item["bankName"] = bank_name or ""
+        item["subject"] = subject or ""
+        data.append(item)
+    # 保持调用方传入的 ID 顺序（计划里的顺序更有意义）
+    by_id = {int(item["questionId"]): item for item in data}
+    return success([by_id[qid] for qid in qids if qid in by_id])
+
+
 @router.get("/questionMain/questionMain/all")
 async def list_all_questions(
     bankId: Optional[int] = Query(None),

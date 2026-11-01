@@ -19,6 +19,15 @@ export function listQuestionMainAll(query?: any): Promise<ApiResult<QuestionMain
   }) as unknown as Promise<ApiResult<QuestionMain[]>>
 }
 
+/** 按题目 ID 批量取「计划内题目」——考前计划需要一次展示整套题 */
+export function listPlanQuestions(ids: number[]): Promise<ApiResult<QuestionMain[]>> {
+  return request({
+    url: '/questionMain/questionMain/planQuestions',
+    method: 'get',
+    params: { ids: ids.join(',') }
+  }) as unknown as Promise<ApiResult<QuestionMain[]>>
+}
+
 // 查询一级题目详细
 export function getQuestionMain(id: number | string): Promise<ApiResult<QuestionMain>> {
   return request({
