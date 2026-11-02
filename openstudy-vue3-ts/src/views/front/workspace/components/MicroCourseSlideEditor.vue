@@ -63,14 +63,13 @@
           </el-form-item>
 
           <template v-if="form.layout === 'image'">
-            <div class="slide-editor__grid">
-              <el-form-item label="图片 URL">
-                <el-input v-model="form.imageUrl" placeholder="/profile/upload/..." />
-              </el-form-item>
-              <el-form-item label="图片说明">
-                <el-input v-model="form.imageCaption" />
-              </el-form-item>
-            </div>
+            <el-form-item label="图片">
+              <MicroCourseImagePicker
+                v-model="form.imageUrl"
+                v-model:caption="form.imageCaption"
+                :doc-id="result?.docId"
+              />
+            </el-form-item>
           </template>
 
           <template v-if="form.layout === 'chart'">
@@ -139,6 +138,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import MicroCourseImagePicker from './MicroCourseImagePicker.vue'
 import {
   editMicroCourseSlide,
   insertMicroCourseSlide,
