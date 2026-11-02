@@ -262,7 +262,13 @@ async function generateHtml(refresh = false, prompt = '') {
   generationStage.value = Boolean(refresh || prompt || !result.value)
   errorMsg.value = ''
   try {
-    const res: any = await getMicroCourseHtml(docId.value, refresh, prompt)
+    const currentRecordId = result.value?.recordId
+    const res: any = await getMicroCourseHtml(
+      docId.value,
+      refresh,
+      prompt,
+      refresh || prompt ? currentRecordId : undefined
+    )
     if (res.code === 200 && res.data) {
       result.value = res.data
       generationStarting.value = false

@@ -740,6 +740,7 @@ async def get_document_micro_course_html(
     background: BackgroundTasks,
     refresh: bool = Query(False, description="true 表示重新生成一个新版本"),
     prompt: str = Query("", description="用户对本次生成/修改的自然语言要求"),
+    recordId: Optional[int] = Query(None, description="基于当前选中的历史版本生成；不传则用最新版本"),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -747,6 +748,7 @@ async def get_document_micro_course_html(
     from app.services.micro_course_export_service import (
         get_latest_micro_course_record,
         get_micro_course_generation_status,
+        get_micro_course_record,
         run_micro_course_generation,
         start_micro_course_generation,
     )
@@ -755,11 +757,19 @@ async def get_document_micro_course_html(
         user_id = _uid(current_user)
         doc = await rag_write_service.get_document(db, user_id, doc_id)
         latest = await get_latest_micro_course_record(db, user_id, doc_id)
-        if latest and (latest.generation_status or "ready") == "generating" and not refresh and not prompt.strip():
+        selected_payload = None
+        if recordId:
+            selected_payload = await get_micro_course_record(db, user_id, int(recordId))
+        if latest and (latest.generation_status or "ready") == "generating" and not refresh and not prompt.strip() and not recordId:
             return success(await get_micro_course_generation_status(db, user_id, doc_id))
-        base_deck = (latest.deck_json or {}) if latest and prompt.strip() else None
+        if selected_payload:
+            base_deck = selected_payload.get("deck") or {}
+            base_html = selected_payload.get("html") or ""
+        else:
+            base_deck = (latest.deck_json or {}) if latest and (prompt.strip() or recordId) else None
+            base_html = (latest.html or "") if latest and (prompt.strip() or recordId) else ""
         payload = await start_micro_course_generation(
-            db, user_id, doc, prompt=prompt, refresh=bool(refresh)
+            db, user_id, doc, prompt=prompt, refresh=bool(refresh), record_id=recordId
         )
         if payload.get("status") == "generating":
             background.add_task(
@@ -769,6 +779,7 @@ async def get_document_micro_course_html(
                 int(doc.id),
                 prompt,
                 base_deck,
+                base_html,
             )
         return success(payload)
     except Exception as e:

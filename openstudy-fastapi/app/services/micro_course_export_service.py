@@ -52,6 +52,7 @@ async def _ai_deck(
     course: Dict[str, Any],
     prompt_text: str = "",
     base_deck: Dict[str, Any] | None = None,
+    base_html: str = "",
 ) -> tuple[Dict[str, Any], bool]:
     """让模型围绕资料生成教学课件结构。
 
@@ -70,6 +71,12 @@ async def _ai_deck(
         base_text = "\n当前版本的结构（请在此基础上按修改要求重写，不要丢掉正确内容）：\n" + json.dumps(
             base_deck, ensure_ascii=False
         )[:6000]
+    if base_html:
+        base_text += (
+            "\n当前版本 HTML（这是用户当前正在看的版本，必须在此基础上修改；"
+            "保留页序、页面结构和有效内容，只按用户要求改动）：\n"
+            + str(base_html)[:12000]
+        )
     user_change = f"\n用户本次的修改要求（必须优先满足）：{prompt_text.strip()[:1000]}" if prompt_text.strip() else ""
     prompt = (
         "你是一位擅长把资料改写成课堂教学课件的老师。请只依据下面的资料，"
@@ -789,11 +796,12 @@ async def build_micro_course_export(
     doc,
     prompt: str = "",
     base_deck: Dict[str, Any] | None = None,
+    base_html: str = "",
     version: int = 0,
 ) -> Dict[str, Any]:
     course = await build_micro_course(db, user_id, doc)
     deck, ai_generated = await _ai_deck(
-        db, user_id, doc, course, prompt_text=prompt, base_deck=base_deck
+        db, user_id, doc, course, prompt_text=prompt, base_deck=base_deck, base_html=base_html
     )
     deck["design"] = _design_from_prompt(prompt)
     if version:
@@ -913,6 +921,7 @@ async def start_micro_course_generation(
     doc,
     prompt: str = "",
     refresh: bool = False,
+    record_id: int | None = None,
 ) -> Dict[str, Any]:
     """创建一次渐进式生成任务，立即返回一个可预览的初始版本。
 
@@ -932,15 +941,31 @@ async def start_micro_course_generation(
             .limit(1)
         )
     ).scalar_one_or_none()
+    selected = None
+    if record_id:
+        selected = (
+            await db.execute(
+                select(RagMicroCourse).where(
+                    RagMicroCourse.id == int(record_id),
+                    RagMicroCourse.user_id == int(user_id),
+                    RagMicroCourse.doc_id == int(doc.id),
+                )
+            )
+        ).scalar_one_or_none()
+        if not selected:
+            raise ValueError("当前选中的微课版本不存在或无权访问")
+    if selected and not refresh and not prompt.strip():
+        return _record_payload(selected, include_html=True)
     if latest and not refresh and not prompt.strip():
         if (latest.generation_status or "ready") == "generating":
             return _record_payload(latest, include_html=True)
         return _record_payload(latest, include_html=True)
 
+    base_record = selected or latest
     version = int(latest.version or 0) + 1 if latest else 1
     course = await build_micro_course(db, int(user_id), doc)
-    if latest and prompt.strip() and isinstance(latest.deck_json, dict):
-        initial_deck = json.loads(json.dumps(latest.deck_json, ensure_ascii=False))
+    if base_record and isinstance(base_record.deck_json, dict):
+        initial_deck = json.loads(json.dumps(base_record.deck_json, ensure_ascii=False))
     else:
         initial_deck = _deck_from_stations(course, doc.image_map or {})
     initial_deck["design"] = _design_from_prompt(prompt)
@@ -976,6 +1001,7 @@ async def run_micro_course_generation(
     doc_id: int,
     prompt: str = "",
     base_deck: Dict[str, Any] | None = None,
+    base_html: str = "",
 ) -> None:
     """后台逐页更新生成结果；每页都是局部刷新。"""
     from sqlalchemy import select
@@ -999,6 +1025,7 @@ async def run_micro_course_generation(
                 doc,
                 prompt=prompt,
                 base_deck=base_deck,
+                base_html=base_html,
                 version=int(record.version),
             )
             deck = export["deck"]
@@ -1215,6 +1242,7 @@ async def regenerate_micro_course_slide(
         doc,
         prompt=(prompt or "只重写这一页，保持其他页面不变")[:1000],
         base_deck=base.deck_json or {},
+        base_html=base.html or "",
     )
     new_slides = (export.get("deck") or {}).get("slides") or []
     if not new_slides:

@@ -260,13 +260,14 @@ export interface MicroCourseHistoryItem {
 }
 
 /** 生成可在线演示的教学 HTML 课件（已有历史版本时直接读取） */
-export function getMicroCourseHtml(docId: number | string, refresh = false, prompt = '') {
+export function getMicroCourseHtml(docId: number | string, refresh = false, prompt = '', recordId?: number) {
   return request({
     url: `/rag/document/micro-course/${docId}/html`,
     method: 'get',
     params: {
       ...(refresh ? { refresh: true } : {}),
-      ...(prompt ? { prompt } : {})
+      ...(prompt ? { prompt } : {}),
+      ...(recordId ? { recordId } : {})
     }
   }) as unknown as Promise<{ code: number; msg?: string; data: MicroCourseHtmlResult }>
 }
