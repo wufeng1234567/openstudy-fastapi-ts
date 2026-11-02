@@ -13,13 +13,81 @@
 from __future__ import annotations
 
 import copy as _copy
+import os
+import shutil
+import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.rag import DOC_PENDING, RagDocument, RagKnowledgeBase
+from app.utils.file_util import get_upload_path
+
+
+def _copy_physical_file(source_path: Optional[str]) -> tuple[Optional[str], int]:
+    """复制真实文件到新的上传目录，返回相对路径和字节数。"""
+    if not source_path:
+        return source_path, 0
+    raw = str(source_path).replace("\\", "/")
+    if raw.startswith("/profile/"):
+        raw = raw[len("/profile/"):]
+    if raw.startswith("uploadPath/"):
+        raw = raw[len("uploadPath/"):]
+    src = raw if os.path.isabs(raw) else os.path.join(settings.UPLOAD_DIR, raw)
+    if not os.path.isfile(src):
+        return source_path, 0
+    target_dir = get_upload_path("upload")
+    target = os.path.join(
+        target_dir, f"{uuid.uuid4().hex}{Path(source_path).suffix.lower()}"
+    )
+    shutil.copy2(src, target)
+    rel = os.path.relpath(target, settings.UPLOAD_DIR).replace("\\", "/")
+    return rel, os.path.getsize(target)
+
+
+def _copy_image_map(image_map: Optional[dict]) -> tuple[Optional[dict], dict]:
+    """图片也复制物理文件，并返回旧 URL -> 新 URL 的映射。"""
+    if not image_map:
+        return image_map, {}
+    copied: dict = {}
+    url_map: dict = {}
+    for key, url in (image_map or {}).items():
+        if not isinstance(url, str) or url.startswith(("http://", "https://")):
+            copied[key] = url
+            continue
+        rel, _ = _copy_physical_file(url)
+        if rel:
+            new_url = f"/profile/{rel}"
+            copied[key] = new_url
+            url_map[url] = new_url
+        else:
+            copied[key] = url
+    return copied, url_map
+
+
+def _copy_doc_files(doc: RagDocument) -> tuple[Optional[str], int, Optional[dict], Optional[str]]:
+    file_path, file_size = _copy_physical_file(doc.file_path)
+    raw_content = doc.raw_content
+    # 老资料/演示资料可能只有 raw_content，没有原始物理文件；落一份正文文件，
+    # 保证领取者拿到的是可独立存在、可再次编辑的副本。
+    if not file_path and raw_content:
+        target_dir = get_upload_path("upload")
+        ext = Path(doc.file_name or "document.md").suffix.lower() or ".md"
+        target = os.path.join(target_dir, f"{uuid.uuid4().hex}{ext}")
+        data = raw_content.encode("utf-8")
+        with open(target, "wb") as f:
+            f.write(data)
+        file_path = os.path.relpath(target, settings.UPLOAD_DIR).replace("\\", "/")
+        file_size = len(data)
+    image_map, url_map = _copy_image_map(doc.image_map)
+    for old_url, new_url in url_map.items():
+        if raw_content:
+            raw_content = raw_content.replace(old_url, new_url)
+    return file_path, (file_size or int(doc.file_size or 0)), image_map, raw_content
 
 
 def copy_kb_name(source_name: str) -> str:
@@ -69,6 +137,7 @@ async def copy_knowledge_base(
 
     pending_ids: list[int] = []
     for doc in docs:
+        copied_path, copied_size, copied_image_map, copied_raw = _copy_doc_files(doc)
         copied = RagDocument(
             kb_id=new_kb.id,
             user_id=target_user_id,
@@ -79,10 +148,10 @@ async def copy_knowledge_base(
             facets=_copy.deepcopy(doc.facets),
             excluded_ranges=_copy.deepcopy(doc.excluded_ranges),
             file_type=doc.file_type,
-            file_size=doc.file_size,
-            file_path=doc.file_path,
-            raw_content=doc.raw_content,
-            image_map=_copy.deepcopy(doc.image_map),
+            file_size=copied_size,
+            file_path=copied_path,
+            raw_content=copied_raw,
+            image_map=copied_image_map,
             content_structure=_copy.deepcopy(doc.content_structure),
             user_note=doc.user_note,
             chunk_count=0,
@@ -113,6 +182,7 @@ async def copy_document_to_kb(
     share_id: Optional[int] = None,
 ) -> RagDocument:
     """把单份物理文档复制到目标知识库，并交给后台重新解析/向量化。"""
+    copied_path, copied_size, copied_image_map, copied_raw = _copy_doc_files(source_doc)
     copied = RagDocument(
         kb_id=target_kb.id,
         user_id=target_user_id,
@@ -123,10 +193,10 @@ async def copy_document_to_kb(
         facets=_copy.deepcopy(source_doc.facets),
         excluded_ranges=_copy.deepcopy(source_doc.excluded_ranges),
         file_type=source_doc.file_type,
-        file_size=source_doc.file_size,
-        file_path=source_doc.file_path,
-        raw_content=source_doc.raw_content,
-        image_map=_copy.deepcopy(source_doc.image_map),
+        file_size=copied_size,
+        file_path=copied_path,
+        raw_content=copied_raw,
+        image_map=copied_image_map,
         content_structure=_copy.deepcopy(source_doc.content_structure),
         user_note=source_doc.user_note,
         chunk_count=0,

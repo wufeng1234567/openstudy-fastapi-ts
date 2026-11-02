@@ -46,7 +46,7 @@
           </div>
         </div>
         <div class="micro-actions">
-          <el-button @click="editorVisible = true">
+          <el-button :disabled="result.status === 'generating'" @click="editorVisible = true">
             <el-icon><EditPen /></el-icon>
             编辑页面
           </el-button>
@@ -60,7 +60,7 @@
           </el-button>
           <el-button v-if="result.status !== 'generating'" :loading="generating" @click="generateHtml(true, promptText)">重新生成</el-button>
           <el-dropdown trigger="click" @command="handleExport">
-            <el-button type="primary" :loading="exporting">
+            <el-button type="primary" :loading="exporting" :disabled="result.status === 'generating'">
               <el-icon><Download /></el-icon>
               导出
               <el-icon class="micro-export-caret"><ArrowDown /></el-icon>
@@ -244,8 +244,9 @@ function startGenerationPoll() {
       const res: any = await getMicroCourseStatus(docId.value)
       if (res.code !== 200 || !res.data) return
       const next = res.data
+      const previousHtml = result.value?.html
       result.value = next
-      frameKey.value += 1
+      if (next.html !== previousHtml) frameKey.value += 1
       if (next.status === 'ready') {
         stopGenerationPoll()
         await loadHistory()
