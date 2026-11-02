@@ -77,7 +77,11 @@ async def _ai_deck(
         "返回严格 JSON（不要 Markdown 代码围栏）：\n"
         '{"title":"课件标题","subtitle":"副标题",'
         '"changeSummary":"这一版相对上一版改了什么（首次生成写：首次生成，围绕资料建立完整教学框架）",'
+        '"theme":{"accent":"#2563eb","background":"#ffffff","text":"#111827","muted":"#6b7280",'
+        '"soft":"#f8fafc","customCss":"可选：允许写少量自定义 CSS，用来自定义动画和视觉；不要写 script"},'
         '"slides":[{"layout":"content","eyebrow":"环节/知识点标签","title":"页标题",'
+        '"accent":"可选：本页强调色，例如 #dc2626","background":"可选：本页背景色，例如 #fff1f2",'
+        '"text":"可选：本页正文色",'
         '"bullets":["要点1","要点2"],"note":"可选的课堂提示",'
         '"image":{"url":"可选，只能使用下面提供的图片 URL","caption":"图片说明"},'
         '"chart":{"type":"bar","title":"图表标题","labels":["A","B"],"values":[80,60],"unit":"%"},'
@@ -85,6 +89,9 @@ async def _ai_deck(
         "layout 可选：cover / content / image / chart / table / quote / summary。"
         "至少使用 1 页图表或表格，资料有图片时使用 1–2 页图片；不要每页只有文字。"
         "第一页做课程导入，最后一页做课堂小结；每页 bullets 2-5 条，每条不超过 60 字。\n"
+        "用户对颜色、主题、某页视觉有要求时，必须真正体现在 theme 和对应 slide 的 accent/background/text 中；"
+        "例如「第一页改红色」→ slides[0].accent 使用红色、slides[0].background 使用浅红色。"
+        "theme.customCss 可以写少量 CSS 来实现用户要求的低调动效，但不要写 script、@import 或外链。\n"
         "可用图片（只能从这里选择，不能编造 URL）：\n" + (image_lines or "（这份资料没有可用图片）") + "\n"
         + user_change + base_text + "\n"
         "资料文件名：" + str(getattr(doc, "file_name", "") or "") + "\n"
@@ -146,13 +153,18 @@ async def _ai_deck(
             for key in ("image", "chart", "table", "quote"):
                 if isinstance(slide.get(key), (dict, list, str)):
                     item[key] = slide[key]
+            for key in ("accent", "background", "text"):
+                if str(slide.get(key) or "").strip():
+                    item[key] = str(slide.get(key)).strip()[:40]
             cleaned.append(item)
         if len(cleaned) < 2:
             return fallback, False
+        theme = data.get("theme") if isinstance(data.get("theme"), dict) else {}
         deck = {
             "title": str(data.get("title") or getattr(doc, "file_name", "") or "教学课件")[:100],
             "subtitle": str(data.get("subtitle") or getattr(doc, "subject", "") or "教学课件")[:100],
             "changeSummary": str(data.get("changeSummary") or "").strip()[:300],
+            "theme": theme,
             "slides": cleaned,
         }
         return deck, True
@@ -286,6 +298,67 @@ def _table_html(table: Dict[str, Any]) -> str:
     return f'<div class="table-wrap"><table class="data-table"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>'
 
 
+def _prompt_style_overrides(deck: Dict[str, Any], prompt: str) -> Dict[str, Any]:
+    """保证用户明确说出的颜色/深色主题一定落到 deck，而不是只靠模型自觉。"""
+    text = (prompt or "").strip().lower()
+    if not text:
+        return deck
+    color_map = {
+        "红": "#dc2626", "红色": "#dc2626", "蓝色": "#2563eb", "蓝": "#2563eb",
+        "绿色": "#16a34a", "绿": "#16a34a", "紫色": "#7c3aed", "紫": "#7c3aed",
+        "橙色": "#ea580c", "橙": "#ea580c", "黄色": "#ca8a04", "黄": "#ca8a04",
+        "黑色": "#111827", "黑": "#111827", "白色": "#ffffff", "白": "#ffffff",
+        "粉色": "#db2777", "粉": "#db2777", "青色": "#0891b2", "青": "#0891b2",
+    }
+    chosen_color = ""
+    for name, hex_value in color_map.items():
+        if name in text:
+            chosen_color = hex_value
+            break
+    if not chosen_color and "深色" not in text and "dark" not in text:
+        return deck
+    theme = deck.setdefault("theme", {})
+    if not isinstance(theme, dict):
+        theme = {}
+        deck["theme"] = theme
+    page_match = re.search(r"第\s*(\d+)\s*页|第\s*([一二三四五六七八九十]+)\s*页|封面", text)
+    page_index = None
+    if page_match:
+        if "封面" in page_match.group(0):
+            page_index = 0
+        elif page_match.group(1):
+            page_index = max(0, int(page_match.group(1)) - 1)
+        else:
+            numerals = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+            page_index = max(0, numerals.get(page_match.group(2), 1) - 1)
+    slides = deck.get("slides") or []
+    page_only = page_index is not None and any(k in text for k in ("这页", "本页", "第一页", "第1页", "封面")) or page_index is not None
+    if page_only and page_index is not None and page_index < len(slides):
+        slide = slides[page_index]
+        if chosen_color:
+            slide["accent"] = chosen_color
+            slide["background"] = chosen_color if "背景" in text else {
+                "#dc2626": "#fff1f2", "#2563eb": "#eff6ff", "#16a34a": "#f0fdf4",
+                "#7c3aed": "#f5f3ff", "#ea580c": "#fff7ed", "#ca8a04": "#fefce8",
+                "#111827": "#f3f4f6", "#ffffff": "#ffffff", "#db2777": "#fdf2f8",
+                "#0891b2": "#ecfeff",
+            }.get(chosen_color, "#f8fafc")
+        if "深色" in text or "dark" in text:
+            slide["background"] = "#111827"
+            slide["text"] = "#f8fafc"
+    if any(k in text for k in ("整体", "全部", "全局", "主题", "整套", "整个")):
+        if chosen_color:
+            theme["accent"] = chosen_color
+            if "背景" in text:
+                theme["background"] = chosen_color
+        if "深色" in text or "dark" in text:
+            theme["background"] = "#111827"
+            theme["text"] = "#f8fafc"
+            theme["muted"] = "#cbd5e1"
+            theme["soft"] = "#1f2937"
+    return deck
+
+
 def _design_from_prompt(prompt: str) -> Dict[str, Any]:
     """把用户对演示效果的要求转成渲染参数。
 
@@ -316,15 +389,55 @@ def _design_from_prompt(prompt: str) -> Dict[str, Any]:
     return design
 
 
+def _safe_color(value: Any, fallback: str) -> str:
+    """只接受本地可渲染的 CSS 颜色，避免把任意 CSS 注入页面。"""
+    if not isinstance(value, str):
+        return fallback
+    text = value.strip()
+    if not text or len(text) > 40:
+        return fallback
+    if not re.match(r"^[#a-zA-Z0-9(),.%\s-]+$", text):
+        return fallback
+    if any(bad in text.lower() for bad in ("url", "expression", "javascript", "var(")):
+        return fallback
+    return text
+
+
+def _safe_custom_css(value: Any) -> str:
+    """允许模型写少量主题 CSS，但不接受脚本/外链/样式逃逸。"""
+    if not isinstance(value, str):
+        return ""
+    css = value.strip()
+    if not css or len(css) > 8000:
+        return ""
+    if re.search(r"</?style|@import|javascript\s*:|expression\s*\(|<script", css, flags=re.I):
+        return ""
+    return css
+
+
 def _render_html(deck: Dict[str, Any]) -> str:
     design = deck.get("design") if isinstance(deck.get("design"), dict) else {}
+    theme = deck.get("theme") if isinstance(deck.get("theme"), dict) else {}
     duration = max(200, min(10000, int(design.get("duration_ms") or 420)))
     stagger = max(0, min(500, int(design.get("stagger_ms") or 55)))
     motion_off = "" if design.get("enabled", True) else " motion-off"
     version_label = f" · 第{deck.get('version')}版" if deck.get("version") else ""
+    theme_accent = _safe_color(theme.get("accent") or theme.get("primary"), "#2563eb")
+    theme_bg = _safe_color(theme.get("background"), "#eef2f7")
+    theme_text = _safe_color(theme.get("text"), "#111827")
+    theme_muted = _safe_color(theme.get("muted"), "#6b7280")
+    theme_soft = _safe_color(theme.get("soft"), "#f8fafc")
+    theme_line = _safe_color(theme.get("line"), "#e5e7eb")
+    custom_css = _safe_custom_css(theme.get("customCss"))
     slides_html = []
     for i, slide in enumerate(deck["slides"]):
         layout = str(slide.get("layout") or ("cover" if i == 0 else "content"))
+        slide_style_parts = []
+        for field, css_var in (("accent", "--slide-accent"), ("background", "--slide-bg"), ("text", "--slide-text")):
+            color = _safe_color(slide.get(field), "")
+            if color:
+                slide_style_parts.append(f"{css_var}:{color}")
+        slide_style = f' style="{";".join(slide_style_parts)}"' if slide_style_parts else ""
         bullets = "".join(f"<li>{_html.escape(str(b))}</li>" for b in slide.get("bullets") or [])
         note = (
             f'<div class="note">{_html.escape(str(slide.get("note") or ""))}</div>'
@@ -352,7 +465,7 @@ def _render_html(deck: Dict[str, Any]) -> str:
             f"""
             <section class="slide{' active' if i == 0 else ''} layout-{_html.escape(layout)}"
               data-index="{i}" data-page-index="{i + 1}"
-              data-page-title="{_html.escape(str(slide.get('title') or ''), quote=True)}">
+              data-page-title="{_html.escape(str(slide.get('title') or ''), quote=True)}"{slide_style}>
               <!-- page:{i + 1} -->
               <div class="slide-inner">
                 <div class="eyebrow">{_html.escape(str(slide.get('eyebrow') or ''))}</div>
@@ -371,11 +484,11 @@ def _render_html(deck: Dict[str, Any]) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{_html.escape(deck['title'])}{version_label} · 教学课件</title>
 <style>
-  :root {{ --ink:#111827; --muted:#6b7280; --accent:#2563eb; --line:#e5e7eb; --soft:#f8fafc; --motion-duration:{duration}ms; --motion-stagger:{stagger}ms; }}
+  :root {{ --ink:{theme_text}; --muted:{theme_muted}; --accent:{theme_accent}; --line:{theme_line}; --soft:{theme_soft}; --page-bg:{theme_bg}; --motion-duration:{duration}ms; --motion-stagger:{stagger}ms; }}
   * {{ box-sizing:border-box; }}
-  body {{ margin:0; background:radial-gradient(circle at 12% 8%, #f3f7ff 0, #eef2f7 42%, #e9eef6 100%); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif; overflow:hidden; overscroll-behavior:none; }}
+  body {{ margin:0; background:var(--page-bg,#eef2f7); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif; overflow:hidden; overscroll-behavior:none; }}
   .deck {{ width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }}
-  .slide {{ display:none; width:min(1180px,100%); aspect-ratio:16/9; max-height:calc(100vh - 48px); background:#fff; border-radius:20px; box-shadow:0 20px 60px rgba(15,23,42,.14); padding:clamp(28px,5vw,70px); position:relative; }}
+  .slide {{ display:none; width:min(1180px,100%); aspect-ratio:16/9; max-height:calc(100vh - 48px); background:var(--slide-bg,#fff); color:var(--slide-text,var(--ink)); border-radius:20px; box-shadow:0 20px 60px rgba(15,23,42,.14); padding:clamp(28px,5vw,70px); position:relative; }}
   .slide.active {{ display:flex; flex-direction:column; animation:micro-slide-in var(--motion-duration) cubic-bezier(.22,.8,.3,1) both; }}
   .slide.active .eyebrow {{ animation:micro-rise var(--motion-duration) .02s both; }}
   .slide.active h1 {{ animation:micro-rise var(--motion-duration) .07s both; }}
@@ -386,11 +499,11 @@ def _render_html(deck: Dict[str, Any]) -> str:
   .motion-off .slide.active ul, .motion-off .slide.active .visual-image, .motion-off .slide.active .chart,
   .motion-off .slide.active .table-wrap, .motion-off .slide.active .quote-box, .motion-off .slide.active .note {{ animation:none; }}
   .slide-inner {{ flex:1; min-height:0; overflow:auto; }}
-  .eyebrow {{ color:var(--accent); font-size:13px; font-weight:700; letter-spacing:2px; text-transform:uppercase; margin-bottom:20px; }}
+  .eyebrow {{ color:var(--slide-accent,var(--accent)); font-size:13px; font-weight:700; letter-spacing:2px; text-transform:uppercase; margin-bottom:20px; }}
   h1 {{ font-size:clamp(26px,4.2vw,52px); line-height:1.15; letter-spacing:-1px; margin:0 0 26px; max-width:950px; }}
   ul {{ margin:0; padding-left:26px; }}
-  li {{ font-size:clamp(15px,1.8vw,22px); line-height:1.7; margin:10px 0; color:#374151; }}
-  .note {{ margin-top:22px; padding:12px 16px; border-left:3px solid var(--accent); background:var(--soft); color:var(--muted); font-size:14px; line-height:1.6; border-radius:0 8px 8px 0; }}
+  li {{ font-size:clamp(15px,1.8vw,22px); line-height:1.7; margin:10px 0; color:var(--slide-text,#374151); }}
+  .note {{ margin-top:22px; padding:12px 16px; border-left:3px solid var(--slide-accent,var(--accent)); background:var(--soft); color:var(--muted); font-size:14px; line-height:1.6; border-radius:0 8px 8px 0; }}
   .visual-image {{ display:flex; align-items:center; justify-content:center; margin:22px auto 8px; max-width:900px; border-radius:12px; overflow:hidden; background:var(--soft); }}
   .visual-image img {{ display:block; max-width:100%; max-height:390px; object-fit:contain; }}
   .visual-image figcaption {{ padding:7px 12px; color:var(--muted); font-size:12px; text-align:center; }}
@@ -399,14 +512,14 @@ def _render_html(deck: Dict[str, Any]) -> str:
   .bar-row {{ display:flex; align-items:center; gap:10px; margin:9px 0; font-size:12px; color:#4b5563; }}
   .bar-row > span {{ width:125px; flex:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
   .bar-track {{ flex:1; height:10px; overflow:hidden; border-radius:999px; background:#eef2f7; }}
-  .bar-track i {{ display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg,#93b4ff,#4176e6); }}
-  .bar-row b {{ width:58px; flex:none; text-align:right; color:#111827; }}
+  .bar-track i {{ display:block; height:100%; border-radius:inherit; background:var(--slide-accent,var(--accent)); }}
+  .bar-row b {{ width:58px; flex:none; text-align:right; color:var(--slide-text,#111827); }}
   .table-wrap {{ margin:20px auto 0; max-width:980px; overflow:auto; border:1px solid var(--line); border-radius:10px; }}
   .data-table {{ width:100%; border-collapse:collapse; font-size:13px; }}
   .data-table th, .data-table td {{ padding:9px 12px; border-bottom:1px solid #f0f2f5; text-align:left; }}
-  .data-table th {{ background:#f8fafc; color:#4b5563; font-weight:600; }}
+  .data-table th {{ background:var(--soft); color:var(--muted); font-weight:600; }}
   .data-table tr:last-child td {{ border-bottom:0; }}
-  .quote-box {{ margin:26px auto; padding:22px 28px; max-width:900px; border-left:4px solid var(--accent); background:var(--soft); font-size:22px; line-height:1.6; color:#374151; border-radius:0 10px 10px 0; }}
+  .quote-box {{ margin:26px auto; padding:22px 28px; max-width:900px; border-left:4px solid var(--slide-accent,var(--accent)); background:var(--soft); font-size:22px; line-height:1.6; color:var(--slide-text,#374151); border-radius:0 10px 10px 0; }}
   .slide-footer {{ display:flex; justify-content:space-between; gap:12px; color:#9ca3af; font-size:12px; padding-top:16px; border-top:1px solid var(--line); }}
   .controls {{ position:fixed; left:50%; bottom:20px; transform:translateX(-50%); display:flex; gap:8px; align-items:center; padding:8px; background:rgba(17,24,39,.86); border-radius:999px; box-shadow:0 8px 24px rgba(0,0,0,.2); z-index:10; }}
   .controls button {{ border:0; background:transparent; color:#fff; cursor:pointer; padding:8px 14px; border-radius:999px; font-size:13px; }}
@@ -431,6 +544,7 @@ def _render_html(deck: Dict[str, Any]) -> str:
     .slide.active .quote-box, .slide.active .note {{ animation:none; }}
   }}
 </style>
+{custom_css and f'<style>{custom_css}</style>' or ''}
 </head>
 <body class="motion{motion_off}">
 <div class="progress" id="progress"></div>
@@ -541,6 +655,23 @@ def _add_fade_transition(slide, duration_ms: int = 700) -> None:
         pass
 
 
+def _rgb_from_css(value: Any, fallback: RGBColor) -> RGBColor:
+    text = str(value or "").strip()
+    m = re.fullmatch(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})", text)
+    if m:
+        raw = m.group(1)
+        if len(raw) == 3:
+            raw = "".join(ch * 2 for ch in raw)
+        return RGBColor(int(raw[0:2], 16), int(raw[2:4], 16), int(raw[4:6], 16))
+    m = re.fullmatch(r"rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})", text, flags=re.I)
+    if m:
+        try:
+            return RGBColor(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except Exception:
+            pass
+    return fallback
+
+
 def build_pptx_bytes(deck: Dict[str, Any], html_text: str = "") -> bytes:
     """生成 16:9 PPT，支持文字、图片、柱状图、表格与引用。"""
     slides = deck.get("slides") or _slides_from_html(html_text, deck)
@@ -548,9 +679,11 @@ def build_pptx_bytes(deck: Dict[str, Any], html_text: str = "") -> bytes:
     prs.slide_width = Inches(13.333)
     prs.slide_height = Inches(7.5)
     blank = prs.slide_layouts[6]
-    accent = RGBColor(0x25, 0x63, 0xEB)
-    ink = RGBColor(0x11, 0x18, 0x27)
-    muted = RGBColor(0x6B, 0x72, 0x80)
+    theme = deck.get("theme") if isinstance(deck.get("theme"), dict) else {}
+    accent = _rgb_from_css(theme.get("accent"), RGBColor(0x25, 0x63, 0xEB))
+    ink = _rgb_from_css(theme.get("text"), RGBColor(0x11, 0x18, 0x27))
+    muted = _rgb_from_css(theme.get("muted"), RGBColor(0x6B, 0x72, 0x80))
+    page_bg = _rgb_from_css(theme.get("background"), RGBColor(0xFF, 0xFF, 0xFF))
 
     def add_text(slide, left, top, width, height, text, size, color=ink, bold=False):
         box = slide.shapes.add_textbox(Inches(left), Inches(top), Inches(width), Inches(height))
@@ -566,15 +699,18 @@ def build_pptx_bytes(deck: Dict[str, Any], html_text: str = "") -> bytes:
 
     for idx, s in enumerate(slides):
         slide = prs.slides.add_slide(blank)
+        slide_accent = _rgb_from_css(s.get("accent"), accent)
+        slide_ink = _rgb_from_css(s.get("text"), ink)
+        slide_bg = _rgb_from_css(s.get("background"), page_bg)
         bg = slide.background.fill
         bg.solid()
-        bg.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+        bg.fore_color.rgb = slide_bg
         bar = slide.shapes.add_shape(1, Inches(0), Inches(0), prs.slide_width, Inches(0.08))
         bar.fill.solid()
-        bar.fill.fore_color.rgb = accent
+        bar.fill.fore_color.rgb = slide_accent
         bar.line.fill.background()
-        add_text(slide, 0.8, 0.55, 11.7, 0.4, (s.get("eyebrow") or ("知识点" if idx else "AI 教学课件")), 12, accent, True)
-        add_text(slide, 0.8, 1.05, 11.7, 1.2, s.get("title") or "", 28, ink, True)
+        add_text(slide, 0.8, 0.55, 11.7, 0.4, (s.get("eyebrow") or ("知识点" if idx else "AI 教学课件")), 12, slide_accent, True)
+        add_text(slide, 0.8, 1.05, 11.7, 1.2, s.get("title") or "", 28, slide_ink, True)
 
         layout = str(s.get("layout") or "content")
         text_top = 2.65
@@ -634,7 +770,7 @@ def build_pptx_bytes(deck: Dict[str, Any], html_text: str = "") -> bytes:
         for b in bullets[:6]:
             if y > 6.45:
                 break
-            add_text(slide, 0.95, y, 11.5, 0.55, "• " + str(b), 16, RGBColor(0x37, 0x41, 0x51))
+            add_text(slide, 0.95, y, 11.5, 0.55, "• " + str(b), 16, slide_ink)
             y += 0.55
         quote = s.get("quote")
         if quote:
@@ -662,6 +798,7 @@ async def build_micro_course_export(
     deck["design"] = _design_from_prompt(prompt)
     if version:
         deck["version"] = int(version)
+    deck = _prompt_style_overrides(deck, prompt)
     if not str(deck.get("changeSummary") or "").strip():
         deck["changeSummary"] = (
             f"按提示词修改：{prompt.strip()[:120]}"

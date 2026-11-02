@@ -80,7 +80,7 @@
       <div class="micro-prompt">
         <el-input v-model="promptText" type="textarea" :rows="2" maxlength="500" show-word-limit
           placeholder="告诉 AI 怎么改：例如「加入一张架构图」「把第 3 页改成表格」「减少文字，增加图表」" />
-        <el-button type="primary" plain :loading="generating" @click="applyPrompt">按提示词修改</el-button>
+        <el-button type="primary" plain :loading="generating" :disabled="result.status === 'generating'" @click="applyPrompt">按提示词修改</el-button>
       </div>
 
       <section class="micro-stage">
@@ -465,9 +465,9 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .micro-page {
-  max-width: 1220px;
+  max-width: 1680px;
   margin: 0 auto;
-  padding: 0 20px 56px;
+  padding: 0 24px 56px;
 }
 
 .micro-generating {
@@ -819,6 +819,11 @@ onBeforeUnmount(() => {
   font-size: clamp(24px, 3.2vw, 36px);
   line-height: 1.2;
   letter-spacing: -0.5px;
+  overflow-wrap: anywhere;
+}
+
+.micro-head-main {
+  min-width: 0;
 }
 
 .micro-meta {
