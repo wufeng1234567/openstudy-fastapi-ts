@@ -12,6 +12,9 @@
           系统会为副本重新解析和向量化，领取者可以继续编辑、检索和添加资料，且不影响原知识库。
         </template>
       </p>
+      <p class="kb-share-mode">
+        {{ doc ? '领取方会将它「复制到我的资料」，得到可独立编辑的副本。' : '领取方会「领取资料夹副本」，得到可独立编辑的完整资料夹。' }}
+      </p>
       <el-form label-width="76px">
         <el-form-item v-if="!doc" label="知识库">
           <el-select v-model="form.kbId" placeholder="请选择要分享的知识库" filterable class="kb-share-select"
@@ -51,6 +54,14 @@
             <span class="my-share-meta">
               {{ item.shareCode }} · {{ item.receiveCount || 0 }} 人领取 ·
               <em :class="item.effective ? 'is-valid' : 'is-invalid'">{{ item.effective ? '有效' : '已失效' }}</em>
+            </span>
+            <span class="my-share-stats">
+              已领取 {{ item.stats?.receivedCount || 0 }} · 失效 {{ item.stats?.invalidCount || 0 }} · 副本 {{ item.stats?.copyCount || 0 }}
+            </span>
+            <span v-for="rec in item.receives || []" :key="rec.receiveId" class="my-share-receiver">
+              {{ rec.receiverName }} · {{ formatDateTime(rec.receiveTime) }} ·
+              {{ rec.copyStatus === 'available' ? '副本可用' : '副本缺失' }}
+              <em :class="rec.status === 'valid' ? 'is-valid' : 'is-invalid'">{{ rec.status === 'valid' ? '有效' : '分享已失效' }}</em>
             </span>
           </div>
           <el-button v-if="item.effective" text type="danger" size="small" @click="revoke(item)">撤销</el-button>
@@ -212,9 +223,11 @@ async function doCreate() {
 
 async function revoke(item: any) {
   try {
-    await ElMessageBox.confirm(`撤销「${item.kbName || '知识库'}」的分享？已领取的副本仍然保留。`, '撤销分享', {
-      type: 'warning'
-    })
+    await ElMessageBox.confirm(
+      `撤销「${item.kbName || '知识库'}」的分享？已领取的副本仍可编辑，但不再跟随原分享。`,
+      '撤销分享',
+      { type: 'warning' }
+    )
     const res: any = await revokeKbShare(item.shareId)
     if (res.code === 200) {
       ElMessage.success('已撤销分享')
@@ -245,6 +258,16 @@ function copyText(text: string, label: string) {
 
 .kb-share-tip b {
   color: #1f2937;
+}
+
+.kb-share-mode {
+  margin: -4px 0 12px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: #f5f8ff;
+  color: #6b7280;
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .kb-share-select {
@@ -334,6 +357,33 @@ function copyText(text: string, label: string) {
 }
 
 .my-share-meta .is-invalid {
+  color: #f56c6c;
+}
+
+.my-share-stats {
+  display: block;
+  margin-top: 3px;
+  color: #9ca3af;
+  font-size: 10px;
+}
+
+.my-share-receiver {
+  display: block;
+  margin-top: 3px;
+  color: #9ca3af;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.my-share-receiver em {
+  font-style: normal;
+}
+
+.my-share-receiver .is-valid {
+  color: #67c23a;
+}
+
+.my-share-receiver .is-invalid {
   color: #f56c6c;
 }
 

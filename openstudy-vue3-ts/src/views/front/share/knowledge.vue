@@ -37,7 +37,7 @@
           <template v-else>
             <el-button type="primary" size="large" :loading="receiving" @click="doReceive">
               <el-icon><Download /></el-icon>
-              领取并保存副本
+              {{ info.docName ? '复制到我的资料' : '领取资料夹副本' }}
             </el-button>
           </template>
         </div>

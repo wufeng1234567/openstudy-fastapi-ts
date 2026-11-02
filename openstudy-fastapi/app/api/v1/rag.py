@@ -737,25 +737,57 @@ async def get_document_micro_course(
 @router.get("/document/micro-course/{doc_id}/html")
 async def get_document_micro_course_html(
     doc_id: int,
+    background: BackgroundTasks,
     refresh: bool = Query(False, description="true 表示重新生成一个新版本"),
     prompt: str = Query("", description="用户对本次生成/修改的自然语言要求"),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """获取教学 HTML 课件：已有历史版本直接返回，refresh=true 或 prompt 非空才生成新版本。"""
-    from app.services.micro_course_export_service import get_or_create_micro_course_record
+    """获取教学 HTML 课件；生成时立即返回初始页，后台继续逐页更新。"""
+    from app.services.micro_course_export_service import (
+        get_latest_micro_course_record,
+        get_micro_course_generation_status,
+        run_micro_course_generation,
+        start_micro_course_generation,
+    )
 
     try:
-        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
-        return success(
-            await get_or_create_micro_course_record(
-                db,
-                _uid(current_user),
-                doc,
-                refresh=bool(refresh),
-                prompt=prompt,
-            )
+        user_id = _uid(current_user)
+        doc = await rag_write_service.get_document(db, user_id, doc_id)
+        latest = await get_latest_micro_course_record(db, user_id, doc_id)
+        if latest and (latest.generation_status or "ready") == "generating" and not refresh and not prompt.strip():
+            return success(await get_micro_course_generation_status(db, user_id, doc_id))
+        base_deck = (latest.deck_json or {}) if latest and prompt.strip() else None
+        payload = await start_micro_course_generation(
+            db, user_id, doc, prompt=prompt, refresh=bool(refresh)
         )
+        if payload.get("status") == "generating":
+            background.add_task(
+                run_micro_course_generation,
+                int(payload["recordId"]),
+                user_id,
+                int(doc.id),
+                prompt,
+                base_deck,
+            )
+        return success(payload)
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/document/micro-course/{doc_id}/status")
+async def get_micro_course_status(
+    doc_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.micro_course_export_service import get_micro_course_generation_status
+
+    try:
+        user_id = _uid(current_user)
+        await rag_write_service.get_document(db, user_id, doc_id)
+        data = await get_micro_course_generation_status(db, user_id, doc_id)
+        return success(data)
     except Exception as e:
         return _fail(e)
 
@@ -788,6 +820,119 @@ async def get_micro_course_record(
 
     try:
         return success(await get_micro_course_record(db, _uid(current_user), record_id))
+    except Exception as e:
+        return _fail(e)
+
+
+class MicroCourseSlidePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    layout: Optional[str] = None
+    eyebrow: Optional[str] = None
+    title: Optional[str] = None
+    bullets: Optional[List[str]] = None
+    note: Optional[str] = None
+    image: Optional[dict] = None
+    chart: Optional[dict] = None
+    table: Optional[dict] = None
+    quote: Optional[str] = None
+
+
+class MicroCourseReorderRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    fromIndex: int = Field(..., ge=0)
+    toIndex: int = Field(..., ge=0)
+
+
+class MicroCourseSlideRegenerateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    prompt: str = Field("", max_length=1000)
+
+
+class MicroCourseSlideInsertRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    index: int = Field(0, ge=0)
+    slide: dict
+
+
+@router.post("/document/micro-course/record/{record_id}/slide/{slide_index}")
+async def edit_micro_course_slide(
+    record_id: int,
+    slide_index: int,
+    data: MicroCourseSlidePatch,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.micro_course_export_service import edit_micro_course_slide
+
+    try:
+        patch = data.model_dump(exclude_none=True)
+        return success(await edit_micro_course_slide(db, _uid(current_user), record_id, slide_index, patch))
+    except ValueError as e:
+        return error(str(e), code=400)
+    except Exception as e:
+        return _fail(e)
+
+
+@router.post("/document/micro-course/record/{record_id}/reorder")
+async def reorder_micro_course_slides(
+    record_id: int,
+    data: MicroCourseReorderRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.micro_course_export_service import reorder_micro_course_slides
+
+    try:
+        return success(
+            await reorder_micro_course_slides(
+                db, _uid(current_user), record_id, data.fromIndex, data.toIndex
+            )
+        )
+    except ValueError as e:
+        return error(str(e), code=400)
+    except Exception as e:
+        return _fail(e)
+
+
+@router.post("/document/micro-course/record/{record_id}/slides/{slide_index}/regenerate")
+async def regenerate_micro_course_slide(
+    record_id: int,
+    slide_index: int,
+    data: MicroCourseSlideRegenerateRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.micro_course_export_service import regenerate_micro_course_slide
+
+    try:
+        return success(
+            await regenerate_micro_course_slide(
+                db, _uid(current_user), record_id, slide_index, data.prompt
+            )
+        )
+    except ValueError as e:
+        return error(str(e), code=400)
+    except Exception as e:
+        return _fail(e)
+
+
+@router.post("/document/micro-course/record/{record_id}/insert")
+async def insert_micro_course_slide(
+    record_id: int,
+    data: MicroCourseSlideInsertRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.micro_course_export_service import insert_micro_course_slide
+
+    try:
+        return success(
+            await insert_micro_course_slide(
+                db, _uid(current_user), record_id, data.index, data.slide
+            )
+        )
+    except ValueError as e:
+        return error(str(e), code=400)
     except Exception as e:
         return _fail(e)
 

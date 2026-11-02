@@ -242,6 +242,9 @@ export interface MicroCourseHtmlResult {
   changeSummary?: string
   createdAt?: string
   fromHistory?: boolean
+  status?: 'generating' | 'ready' | 'failed'
+  progress?: { current?: number; total?: number; phase?: string }
+  errorMsg?: string
 }
 
 export interface MicroCourseHistoryItem {
@@ -268,6 +271,14 @@ export function getMicroCourseHtml(docId: number | string, refresh = false, prom
   }) as unknown as Promise<{ code: number; msg?: string; data: MicroCourseHtmlResult }>
 }
 
+/** 获取渐进式生成状态（包含当前已生成的 HTML） */
+export function getMicroCourseStatus(docId: number | string) {
+  return request({
+    url: `/rag/document/micro-course/${docId}/status`,
+    method: 'get'
+  }) as unknown as Promise<{ code: number; msg?: string; data: MicroCourseHtmlResult | null }>
+}
+
 /** 导入外部 HTML 作为新版本 */
 export function importMicroCourseHtml(docId: number | string, html: string, title?: string) {
   return request({
@@ -290,6 +301,42 @@ export function getMicroCourseRecord(recordId: number | string) {
   return request({
     url: `/rag/document/micro-course/record/${recordId}`,
     method: 'get'
+  }) as unknown as Promise<{ code: number; msg?: string; data: MicroCourseHtmlResult }>
+}
+
+/** 编辑单页 */
+export function editMicroCourseSlide(recordId: number | string, slideIndex: number, patch: any) {
+  return request({
+    url: `/rag/document/micro-course/record/${recordId}/slide/${slideIndex}`,
+    method: 'post',
+    data: patch
+  }) as unknown as Promise<{ code: number; msg?: string; data: MicroCourseHtmlResult & { before?: any; after?: any } }>
+}
+
+/** 调整页面顺序 */
+export function reorderMicroCourseSlides(recordId: number | string, fromIndex: number, toIndex: number) {
+  return request({
+    url: `/rag/document/micro-course/record/${recordId}/reorder`,
+    method: 'post',
+    data: { fromIndex, toIndex }
+  }) as unknown as Promise<{ code: number; msg?: string; data: MicroCourseHtmlResult }>
+}
+
+/** 重新生成单页 */
+export function regenerateMicroCourseSlide(recordId: number | string, slideIndex: number, prompt = '') {
+  return request({
+    url: `/rag/document/micro-course/record/${recordId}/slides/${slideIndex}/regenerate`,
+    method: 'post',
+    data: { prompt }
+  }) as unknown as Promise<{ code: number; msg?: string; data: MicroCourseHtmlResult & { before?: any; after?: any } }>
+}
+
+/** 插入新页面 */
+export function insertMicroCourseSlide(recordId: number | string, index: number, slide: any) {
+  return request({
+    url: `/rag/document/micro-course/record/${recordId}/insert`,
+    method: 'post',
+    data: { index, slide }
   }) as unknown as Promise<{ code: number; msg?: string; data: MicroCourseHtmlResult }>
 }
 

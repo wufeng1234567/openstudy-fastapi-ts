@@ -24,7 +24,7 @@
       <el-button v-if="checkState?.kind === 'received'" type="primary" @click="goReceived">去看看</el-button>
       <el-button v-else type="primary" :loading="receiving" :disabled="checkState?.kind === 'blocked'"
         @click="handleReceive">
-        {{ checkState?.kind === 'blocked' ? '无法获取' : '获取知识库' }}
+        {{ checkState?.kind === 'blocked' ? '无法获取' : (checkState?.isDoc ? '复制到我的资料' : '领取资料夹副本') }}
       </el-button>
     </template>
   </el-dialog>
@@ -61,6 +61,7 @@ interface CheckState {
   desc?: string
   kbId?: number
   docId?: number
+  isDoc?: boolean
 }
 
 const input = ref('')
@@ -120,14 +121,16 @@ async function runCheck(raw: string): Promise<CheckState | null> {
         title: `${name}已领取过`,
         desc: '不用重复领取，直接去你的资料夹查看即可。',
         kbId: d.newKbId,
-        docId: d.newDocId
+        docId: d.newDocId,
+        isDoc: !!d.docName
       }
     }
     return {
       kind: 'ok',
       title: `可以获取${name}`,
       desc: `分享者：${d.ownerName || '匿名用户'}　${d.docName ? '1 份资料' : `${d.docCount || 0} 份资料`}　领取后生成完整副本并重新建立索引`,
-      kbId: d.kbId
+      kbId: d.kbId,
+      isDoc: !!d.docName
     }
   } catch {
     return null

@@ -688,6 +688,9 @@ def _record_payload(record, include_html: bool = True) -> Dict[str, Any]:
         "aiGenerated": bool(record.ai_generated),
         "createdAt": record.create_time.isoformat() if record.create_time else "",
         "fileName": record.source_file_name or "",
+        "status": getattr(record, "generation_status", "ready") or "ready",
+        "progress": getattr(record, "progress_json", None) or {},
+        "errorMsg": getattr(record, "error_msg", None) or "",
     }
     if include_html:
         payload["deck"] = record.deck_json or {}
@@ -764,6 +767,155 @@ async def get_or_create_micro_course_record(
     return payload
 
 
+async def start_micro_course_generation(
+    db,
+    user_id: int,
+    doc,
+    prompt: str = "",
+    refresh: bool = False,
+) -> Dict[str, Any]:
+    """创建一次渐进式生成任务，立即返回一个可预览的初始版本。
+
+    前端拿到 recordId 后轮询 `/status`，后台每生成一页就更新一次 HTML。
+    """
+    from sqlalchemy import select
+    from app.models.rag import RagMicroCourse
+
+    latest = (
+        await db.execute(
+            select(RagMicroCourse)
+            .where(
+                RagMicroCourse.user_id == int(user_id),
+                RagMicroCourse.doc_id == int(doc.id),
+            )
+            .order_by(RagMicroCourse.version.desc(), RagMicroCourse.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if latest and not refresh and not prompt.strip():
+        if (latest.generation_status or "ready") == "generating":
+            return _record_payload(latest, include_html=True)
+        return _record_payload(latest, include_html=True)
+
+    version = int(latest.version or 0) + 1 if latest else 1
+    course = await build_micro_course(db, int(user_id), doc)
+    if latest and prompt.strip() and isinstance(latest.deck_json, dict):
+        initial_deck = json.loads(json.dumps(latest.deck_json, ensure_ascii=False))
+    else:
+        initial_deck = _deck_from_stations(course, doc.image_map or {})
+    initial_deck["design"] = _design_from_prompt(prompt)
+    initial_deck["version"] = version
+    initial_deck["changeSummary"] = (
+        f"正在按提示词更新：{prompt.strip()[:120]}" if prompt.strip() else "正在生成教学页面..."
+    )
+    record = RagMicroCourse(
+        user_id=int(user_id),
+        doc_id=int(doc.id),
+        version=version,
+        title=str(initial_deck.get("title") or doc.file_name or "教学课件")[:255],
+        change_summary=initial_deck["changeSummary"][:300],
+        html=_render_html(initial_deck),
+        deck_json=initial_deck,
+        meta_json={"document": {"id": int(doc.id), "fileName": doc.file_name}},
+        ai_generated=1,
+        source_file_name=doc.file_name,
+        generation_status="generating",
+        progress_json={"current": 1, "total": len(initial_deck.get("slides") or []) or 1, "phase": "正在生成页面"},
+    )
+    db.add(record)
+    await db.flush()
+    await db.refresh(record)
+    payload = _record_payload(record, include_html=True)
+    payload["fromHistory"] = False
+    return payload
+
+
+async def run_micro_course_generation(
+    record_id: int,
+    user_id: int,
+    doc_id: int,
+    prompt: str = "",
+    base_deck: Dict[str, Any] | None = None,
+) -> None:
+    """后台逐页更新生成结果；每页都是局部刷新。"""
+    from sqlalchemy import select
+    from app.database import async_session_factory
+    from app.models.rag import RagDocument, RagMicroCourse
+
+    async with async_session_factory() as db:
+        record = await db.scalar(select(RagMicroCourse).where(RagMicroCourse.id == int(record_id)))
+        if not record:
+            return
+        doc = await db.scalar(select(RagDocument).where(RagDocument.id == int(doc_id)))
+        if not doc:
+            record.generation_status = "failed"
+            record.error_msg = "原资料不存在"
+            await db.commit()
+            return
+        try:
+            export = await build_micro_course_export(
+                db,
+                int(user_id),
+                doc,
+                prompt=prompt,
+                base_deck=base_deck,
+                version=int(record.version),
+            )
+            deck = export["deck"]
+            slides = deck.get("slides") or []
+            for i in range(1, len(slides) + 1):
+                partial = json.loads(json.dumps(deck, ensure_ascii=False))
+                partial["slides"] = slides[:i]
+                partial["version"] = int(record.version)
+                partial["changeSummary"] = deck.get("changeSummary") or "正在生成教学页面..."
+                record.html = _render_html(partial)
+                record.deck_json = partial
+                record.title = str(partial.get("title") or record.title)[:255]
+                record.progress_json = {
+                    "current": i,
+                    "total": len(slides),
+                    "phase": f"正在生成第 {i} 页 / 共 {len(slides)} 页",
+                }
+                record.generation_status = "generating"
+                await db.commit()
+                await asyncio.sleep(0.12)
+            record.html = export["html"]
+            record.deck_json = deck
+            record.title = str(deck.get("title") or record.title)[:255]
+            record.change_summary = str(deck.get("changeSummary") or "")[:300]
+            record.generation_status = "ready"
+            record.error_msg = None
+            record.progress_json = {"current": len(slides), "total": len(slides), "phase": "生成完成"}
+            await db.commit()
+        except Exception as exc:
+            await db.rollback()
+            record = await db.scalar(select(RagMicroCourse).where(RagMicroCourse.id == int(record_id)))
+            if record:
+                record.generation_status = "failed"
+                record.error_msg = str(exc)[:300]
+                record.progress_json = {"phase": "生成失败"}
+                await db.commit()
+            logger.exception("micro course progressive generation failed: %s", exc)
+
+
+async def get_micro_course_generation_status(db, user_id: int, doc_id: int) -> Dict[str, Any] | None:
+    from sqlalchemy import select
+    from app.models.rag import RagMicroCourse
+
+    record = (
+        await db.execute(
+            select(RagMicroCourse)
+            .where(
+                RagMicroCourse.user_id == int(user_id),
+                RagMicroCourse.doc_id == int(doc_id),
+            )
+            .order_by(RagMicroCourse.version.desc(), RagMicroCourse.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return _record_payload(record, include_html=True) if record else None
+
+
 async def list_micro_course_history(db, user_id: int, doc_id: int) -> List[Dict[str, Any]]:
     from sqlalchemy import select
     from app.models.rag import RagMicroCourse
@@ -798,6 +950,172 @@ async def get_micro_course_record(db, user_id: int, record_id: int) -> Dict[str,
     payload = _record_payload(record, include_html=True)
     payload["fromHistory"] = True
     return payload
+
+
+async def _save_slide_version(db, user_id: int, base, deck: Dict[str, Any], summary: str) -> Dict[str, Any]:
+    """把修改后的 deck 保存为新版本，保留当前版本作为对比基线。"""
+    from sqlalchemy import func, select
+    from app.models.rag import RagMicroCourse
+
+    latest_version = await db.scalar(
+        select(func.max(RagMicroCourse.version)).where(
+            RagMicroCourse.user_id == int(user_id),
+            RagMicroCourse.doc_id == int(base.doc_id),
+        )
+    )
+    version = int(latest_version or 0) + 1
+    deck = json.loads(json.dumps(deck, ensure_ascii=False))
+    deck["version"] = version
+    record = RagMicroCourse(
+        user_id=int(user_id),
+        doc_id=int(base.doc_id),
+        version=version,
+        title=str(deck.get("title") or base.title or "教学课件")[:255],
+        change_summary=summary[:300],
+        html=_render_html(deck),
+        deck_json=deck,
+        meta_json=base.meta_json or {},
+        ai_generated=int(base.ai_generated or 0),
+        source_file_name=base.source_file_name,
+    )
+    db.add(record)
+    await db.flush()
+    await db.refresh(record)
+    payload = _record_payload(record, include_html=True)
+    payload["fromHistory"] = False
+    return payload
+
+
+async def edit_micro_course_slide(
+    db, user_id: int, record_id: int, slide_index: int, patch: Dict[str, Any]
+) -> Dict[str, Any]:
+    from sqlalchemy import select
+    from app.models.rag import RagMicroCourse
+
+    base = (
+        await db.execute(
+            select(RagMicroCourse).where(
+                RagMicroCourse.id == int(record_id),
+                RagMicroCourse.user_id == int(user_id),
+            )
+        )
+    ).scalar_one_or_none()
+    if not base:
+        raise ValueError("微课版本不存在或无权编辑")
+    deck = json.loads(json.dumps(base.deck_json or {}, ensure_ascii=False))
+    slides = deck.get("slides") or []
+    index = int(slide_index)
+    if index < 0 or index >= len(slides):
+        raise ValueError("页码超出范围")
+    before = slides[index]
+    after = dict(before)
+    for key in ("layout", "eyebrow", "title", "bullets", "note", "image", "chart", "table", "quote"):
+        if key in patch:
+            after[key] = patch[key]
+    if not str(after.get("title") or "").strip():
+        raise ValueError("页面标题不能为空")
+    slides[index] = after
+    deck["slides"] = slides
+    summary = f"单页编辑：第 {index + 1} 页「{after.get('title', '')}」"
+    payload = await _save_slide_version(db, user_id, base, deck, summary)
+    payload["before"] = before
+    payload["after"] = after
+    return payload
+
+
+async def reorder_micro_course_slides(
+    db, user_id: int, record_id: int, from_index: int, to_index: int
+) -> Dict[str, Any]:
+    from sqlalchemy import select
+    from app.models.rag import RagMicroCourse
+
+    base = (
+        await db.execute(
+            select(RagMicroCourse).where(
+                RagMicroCourse.id == int(record_id),
+                RagMicroCourse.user_id == int(user_id),
+            )
+        )
+    ).scalar_one_or_none()
+    if not base:
+        raise ValueError("微课版本不存在或无权编辑")
+    deck = json.loads(json.dumps(base.deck_json or {}, ensure_ascii=False))
+    slides = deck.get("slides") or []
+    if not (0 <= int(from_index) < len(slides) and 0 <= int(to_index) < len(slides)):
+        raise ValueError("拖动位置超出范围")
+    moved = slides.pop(int(from_index))
+    slides.insert(int(to_index), moved)
+    deck["slides"] = slides
+    summary = f"调整页面顺序：第 {int(from_index) + 1} 页移动到第 {int(to_index) + 1} 页"
+    return await _save_slide_version(db, user_id, base, deck, summary)
+
+
+async def regenerate_micro_course_slide(
+    db, user_id: int, record_id: int, slide_index: int, prompt: str = ""
+) -> Dict[str, Any]:
+    from sqlalchemy import select
+    from app.models.rag import RagDocument, RagMicroCourse
+
+    base = (
+        await db.execute(
+            select(RagMicroCourse).where(
+                RagMicroCourse.id == int(record_id),
+                RagMicroCourse.user_id == int(user_id),
+            )
+        )
+    ).scalar_one_or_none()
+    if not base:
+        raise ValueError("微课版本不存在或无权编辑")
+    doc = await db.scalar(select(RagDocument).where(RagDocument.id == int(base.doc_id)))
+    if not doc:
+        raise ValueError("原资料不存在")
+    export = await build_micro_course_export(
+        db,
+        user_id,
+        doc,
+        prompt=(prompt or "只重写这一页，保持其他页面不变")[:1000],
+        base_deck=base.deck_json or {},
+    )
+    new_slides = (export.get("deck") or {}).get("slides") or []
+    if not new_slides:
+        raise ValueError("AI 没有生成有效页面")
+    deck = json.loads(json.dumps(base.deck_json or {}, ensure_ascii=False))
+    slides = deck.get("slides") or []
+    index = max(0, min(int(slide_index), len(slides) - 1))
+    # 保留原页面标题作为锚点；优先使用 AI 返回的同位置页，避免整份跑偏
+    slides[index] = new_slides[index] if index < len(new_slides) else new_slides[0]
+    deck["slides"] = slides
+    summary = f"单页重新生成：第 {index + 1} 页"
+    payload = await _save_slide_version(db, user_id, base, deck, summary)
+    payload["before"] = (base.deck_json or {}).get("slides", [])[index] if (base.deck_json or {}).get("slides") else {}
+    payload["after"] = slides[index]
+    return payload
+
+
+async def insert_micro_course_slide(
+    db, user_id: int, record_id: int, slide_index: int, slide: Dict[str, Any]
+) -> Dict[str, Any]:
+    from sqlalchemy import select
+    from app.models.rag import RagMicroCourse
+
+    base = (
+        await db.execute(
+            select(RagMicroCourse).where(
+                RagMicroCourse.id == int(record_id),
+                RagMicroCourse.user_id == int(user_id),
+            )
+        )
+    ).scalar_one_or_none()
+    if not base:
+        raise ValueError("微课版本不存在或无权编辑")
+    deck = json.loads(json.dumps(base.deck_json or {}, ensure_ascii=False))
+    slides = deck.get("slides") or []
+    index = max(0, min(int(slide_index), len(slides)))
+    slides.insert(index, slide)
+    deck["slides"] = slides
+    summary = f"插入新页面：第 {index + 1} 页「{slide.get('title', '')}」"
+    return await _save_slide_version(db, user_id, base, deck, summary)
+
 
 
 async def get_latest_micro_course_record(db, user_id: int, doc_id: int):

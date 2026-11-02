@@ -223,16 +223,55 @@ async def my_kb_shares(
         await db.execute(select(RagDocument).where(RagDocument.id.in_(doc_ids)))
     ).scalars().all() if doc_ids else []
     doc_map = {int(d.id): d for d in docs}
-    return success(
-        [
-            _format(
-                s,
-                kb_map.get(int(s.kb_id)),
-                doc=doc_map.get(int(s.doc_id)) if s.doc_id else None,
+
+    share_ids = [int(s.id) for s in shares]
+    receives = (
+        await db.execute(
+            select(KbShareReceive)
+            .where(KbShareReceive.share_id.in_(share_ids))
+            .order_by(KbShareReceive.create_time.desc())
+        )
+    ).scalars().all()
+    receiver_ids = list({int(r.receiver_id) for r in receives})
+    receiver_names: dict[int, str] = {}
+    if receiver_ids:
+        user_rows = (
+            await db.execute(
+                select(SysUser.user_id, SysUser.nick_name).where(SysUser.user_id.in_(receiver_ids))
             )
-            for s in shares
-        ]
-    )
+        ).all()
+        receiver_names = {int(uid): (name or f"用户{uid}") for uid, name in user_rows}
+    receives_by_share: dict[int, list] = {}
+    for rec in receives:
+        receives_by_share.setdefault(int(rec.share_id), []).append(
+            {
+                "receiveId": int(rec.id),
+                "receiverId": int(rec.receiver_id),
+                "receiverName": receiver_names.get(int(rec.receiver_id), f"用户{rec.receiver_id}"),
+                "receiveTime": rec.create_time.isoformat(sep=" ") if rec.create_time else "",
+                "copyKbId": int(rec.new_kb_id) if rec.new_kb_id else None,
+                "copyDocId": int(rec.new_doc_id) if rec.new_doc_id else None,
+                "copyStatus": "available" if (rec.new_kb_id or rec.new_doc_id) else "missing",
+                "status": "valid" if rec.status == "0" else "invalid",
+            }
+        )
+
+    rows = []
+    for s in shares:
+        item = _format(
+            s,
+            kb_map.get(int(s.kb_id)),
+            doc=doc_map.get(int(s.doc_id)) if s.doc_id else None,
+        )
+        recs = receives_by_share.get(int(s.id), [])
+        item["receives"] = recs
+        item["stats"] = {
+            "receivedCount": sum(1 for r in recs if r["status"] == "valid"),
+            "invalidCount": sum(1 for r in recs if r["status"] == "invalid"),
+            "copyCount": sum(1 for r in recs if r["copyStatus"] == "available"),
+        }
+        rows.append(item)
+    return success(rows)
 
 
 @router.post("/kbShare/kbShare/revoke/{share_id}")
@@ -271,7 +310,7 @@ async def revoke_kb_share(
                 user_id=int(rec.receiver_id),
                 notify_type="share_invalid",
                 title="你收到的分享已撤销",
-                content=f"{shared_name}的分享已被撤销；你之前保存的副本仍然保留，可以继续使用。",
+                content=f"{shared_name}的分享已被撤销；你之前保存的副本仍可继续编辑，但不再跟随原分享更新。",
                 link="/front/workspace",
             )
     await db.flush()

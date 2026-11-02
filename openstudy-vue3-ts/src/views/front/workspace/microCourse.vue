@@ -22,6 +22,15 @@
     </div>
 
     <template v-else>
+      <div v-if="result.status === 'generating'" class="micro-generating">
+        <div class="micro-generating__head">
+          <span class="micro-generating__pulse"></span>
+          <span>{{ result.progress?.phase || 'AI 正在生成教学页面' }}</span>
+          <b>{{ generationProgress }}%</b>
+        </div>
+        <div class="micro-generating__bar"><span :style="{ width: generationProgress + '%' }"></span></div>
+        <div class="micro-generating__hint">页面已可预览，AI 每完成一页会在当前区域局部刷新；可以先编辑已生成的页面。</div>
+      </div>
       <section class="micro-head">
         <div class="micro-head-main">
           <div class="micro-eyebrow">资料 · 教学微课</div>
@@ -37,6 +46,10 @@
           </div>
         </div>
         <div class="micro-actions">
+          <el-button @click="editorVisible = true">
+            <el-icon><EditPen /></el-icon>
+            编辑页面
+          </el-button>
           <el-button @click="historyVisible = true">
             <el-icon><Clock /></el-icon>
             历史版本
@@ -45,7 +58,7 @@
             <el-icon><Document /></el-icon>
             导入 HTML
           </el-button>
-          <el-button :loading="generating" @click="generateHtml(true, promptText)">重新生成</el-button>
+          <el-button v-if="result.status !== 'generating'" :loading="generating" @click="generateHtml(true, promptText)">重新生成</el-button>
           <el-dropdown trigger="click" @command="handleExport">
             <el-button type="primary" :loading="exporting">
               <el-icon><Download /></el-icon>
@@ -122,6 +135,8 @@
         </div>
       </el-drawer>
 
+      <MicroCourseSlideEditor v-model="editorVisible" :result="result" @updated="onEditorUpdated" />
+
       <el-dialog v-model="importVisible" title="导入 HTML 课件" width="760px" append-to-body :close-on-click-modal="false">
         <p class="micro-import-tip">可以粘贴 HTML 代码，或直接选择本地 .html 文件。导入后会保存为一个新的历史版本，不会覆盖原有版本。</p>
         <el-upload :auto-upload="false" :show-file-list="false" accept=".html,.htm,text/html" action="#"
@@ -139,11 +154,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowDown, ArrowLeft, ArrowRight, Clock, Document, Download, FullScreen } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowLeft, ArrowRight, Clock, Document, Download, EditPen, FullScreen } from '@element-plus/icons-vue'
 import { saveAs } from 'file-saver'
+import MicroCourseSlideEditor from './components/MicroCourseSlideEditor.vue'
 import {
   downloadMicroCoursePptx,
   getMicroCourseHtml,
@@ -152,6 +168,7 @@ import {
   listMicroCourseHistory,
   type MicroCourseHistoryItem,
   type MicroCourseHtmlResult,
+  getMicroCourseStatus,
 } from '@/api/ai/workspace'
 
 defineOptions({ name: 'MicroCourse' })
@@ -166,11 +183,20 @@ const result = ref<MicroCourseHtmlResult | null>(null)
 const frameKey = ref(0)
 const stageRef = ref<HTMLElement | null>(null)
 const historyVisible = ref(false)
+const editorVisible = ref(false)
 const historyItems = ref<MicroCourseHistoryItem[]>([])
 const promptText = ref('')
 const importVisible = ref(false)
 const importing = ref(false)
 const importHtml = ref('')
+const generationPollTimer = ref<number | null>(null)
+
+const generationProgress = computed(() => {
+  const current = Number(result.value?.progress?.current || 0)
+  const total = Number(result.value?.progress?.total || 0)
+  if (!total) return 8
+  return Math.max(8, Math.min(96, Math.round((current / total) * 100)))
+})
 
 const docId = computed(() => String(route.query.docId || ''))
 
@@ -179,6 +205,7 @@ async function generateHtml(refresh = false, prompt = '') {
     loading.value = false
     return
   }
+  stopGenerationPoll()
   generating.value = true
   errorMsg.value = ''
   try {
@@ -187,6 +214,9 @@ async function generateHtml(refresh = false, prompt = '') {
       result.value = res.data
       frameKey.value += 1
       await loadHistory()
+      if (res.data.status === 'generating') {
+        startGenerationPoll()
+      }
     } else {
       errorMsg.value = res.msg || '生成失败，请稍后重试'
       result.value = null
@@ -198,6 +228,36 @@ async function generateHtml(refresh = false, prompt = '') {
     loading.value = false
     generating.value = false
   }
+}
+
+function stopGenerationPoll() {
+  if (generationPollTimer.value !== null) {
+    window.clearInterval(generationPollTimer.value)
+    generationPollTimer.value = null
+  }
+}
+
+function startGenerationPoll() {
+  stopGenerationPoll()
+  generationPollTimer.value = window.setInterval(async () => {
+    try {
+      const res: any = await getMicroCourseStatus(docId.value)
+      if (res.code !== 200 || !res.data) return
+      const next = res.data
+      result.value = next
+      frameKey.value += 1
+      if (next.status === 'ready') {
+        stopGenerationPoll()
+        await loadHistory()
+        ElMessage.success('微课页面生成完成')
+      } else if (next.status === 'failed') {
+        stopGenerationPoll()
+        ElMessage.error(next.errorMsg || '生成失败，已保留可编辑的初始页面')
+      }
+    } catch {
+      // 单次轮询失败不打断；下一次继续
+    }
+  }, 650)
 }
 
 function applyPrompt() {
@@ -312,6 +372,12 @@ function formatTime(value?: string) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+function onEditorUpdated(data: MicroCourseHtmlResult) {
+  result.value = data
+  frameKey.value += 1
+  void loadHistory()
+}
+
 function enterFullscreen() {
   const node = stageRef.value
   if (!node) return
@@ -327,6 +393,10 @@ onMounted(() => {
   void loadHistory()
 })
 
+onBeforeUnmount(() => {
+  stopGenerationPoll()
+})
+
 </script>
 
 <style scoped>
@@ -334,6 +404,65 @@ onMounted(() => {
   max-width: 1220px;
   margin: 0 auto;
   padding: 0 20px 56px;
+}
+
+.micro-generating {
+  margin: 2px 0 14px;
+  padding: 11px 14px;
+  border: 1px solid #dbe7ff;
+  border-radius: 10px;
+  background: linear-gradient(90deg, #f4f8ff 0%, #edf3fe 100%);
+}
+
+.micro-generating__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--os-text-2, #4b5563);
+  font-size: 12px;
+}
+
+.micro-generating__head b {
+  margin-left: auto;
+  color: var(--os-accent, #4176e6);
+  font-size: 12px;
+}
+
+.micro-generating__pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--os-accent, #4176e6);
+  box-shadow: 0 0 0 0 rgba(65, 118, 230, 0.35);
+  animation: micro-pulse 1.4s ease-out infinite;
+}
+
+.micro-generating__bar {
+  height: 3px;
+  margin-top: 9px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #dce8fb;
+}
+
+.micro-generating__bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--os-accent, #4176e6);
+  transition: width 0.35s ease;
+}
+
+.micro-generating__hint {
+  margin-top: 7px;
+  color: var(--os-text-4, #9ca3af);
+  font-size: 10px;
+}
+
+@keyframes micro-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(65, 118, 230, 0.35); }
+  70% { box-shadow: 0 0 0 7px rgba(65, 118, 230, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(65, 118, 230, 0); }
 }
 
 .micro-topbar {

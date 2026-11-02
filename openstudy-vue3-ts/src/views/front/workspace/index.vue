@@ -258,7 +258,7 @@
                     <el-tag :type="doc.disabled === 1 ? 'warning' : docTagType(doc.status)" size="small" effect="plain">
                       {{ doc.disabled === 1 ? '已屏蔽' : doc.statusText }}
                     </el-tag>
-                    <span v-if="doc.sourceType === 'share'" class="kbp-doc__share-mark">来自分享</span>
+                    <span v-if="doc.sourceType === 'share'" class="kbp-kb__tag is-share">来自分享</span>
                   </div>
                   <div class="kbp-doc__meta">
                     <span>{{ doc.sizeText }}</span>
@@ -463,7 +463,7 @@
           </div>
           <div class="kbp-shelf-card__name" :title="doc.fileName">{{ doc.fileName }}</div>
           <div class="kbp-shelf-card__facets">
-            <span v-if="doc.sourceType === 'share'">来自分享</span>
+            <span v-if="doc.sourceType === 'share'" class="kbp-kb__tag is-share">来自分享</span>
             <span v-if="doc.imageCount">{{ doc.imageCount }} 图</span>
             <span v-if="doc.chunkCount">{{ doc.chunkCount }} 分块</span>
           </div>
@@ -3479,17 +3479,6 @@ onBeforeUnmount(() => {
     background: #eef2ff;
     color: #4f46e5;
   }
-}
-
-.kbp-doc__share-mark {
-  flex: none;
-  padding: 0 5px;
-  border-radius: 4px;
-  background: #eef2ff;
-  color: #4f46e5;
-  font-size: 10px;
-  line-height: 16px;
-  font-weight: 500;
 }
 
 .kbp-kb__meta {

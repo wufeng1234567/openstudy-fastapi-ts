@@ -407,4 +407,9 @@ class RagMicroCourse(Base):
     meta_json: Mapped[Optional[dict]] = mapped_column(JSON)
     ai_generated: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     source_file_name: Mapped[Optional[str]] = mapped_column(String(255))
+    generation_status: Mapped[str] = mapped_column(
+        "status", String(16), nullable=False, default="ready", server_default="ready"
+    )
+    progress_json: Mapped[Optional[dict]] = mapped_column(JSON)
+    error_msg: Mapped[Optional[str]] = mapped_column(String(300))
     create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
