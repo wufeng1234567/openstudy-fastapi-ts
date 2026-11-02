@@ -22,15 +22,6 @@
     </div>
 
     <template v-else>
-      <div v-if="result.status === 'generating'" class="micro-generating">
-        <div class="micro-generating__head">
-          <span class="micro-generating__pulse"></span>
-          <span>{{ result.progress?.phase || 'AI 正在生成教学页面' }}</span>
-          <b>{{ generationProgress }}%</b>
-        </div>
-        <div class="micro-generating__bar"><span :style="{ width: generationProgress + '%' }"></span></div>
-        <div class="micro-generating__hint">页面已可预览，AI 每完成一页会在当前区域局部刷新；可以先编辑已生成的页面。</div>
-      </div>
       <section class="micro-head">
         <div class="micro-head-main">
           <div class="micro-eyebrow">资料 · 教学微课</div>
@@ -93,7 +84,39 @@
       </div>
 
       <section class="micro-stage">
-        <div ref="stageRef" class="micro-frame-wrap">
+        <div v-if="generationStage" class="micro-generation-stage">
+          <div class="micro-generation-stage__head">
+            <div>
+              <div class="micro-generation-stage__title">
+                <span class="micro-generation-stage__pulse"></span>
+                {{ generationStarting ? '正在准备课件页面' : (result.progress?.phase || '正在生成教学页面') }}
+              </div>
+              <div class="micro-generation-stage__sub">
+                AI 正在逐页生成，页面会按顺序出现在下方；全部完成后自动切换为正式课件。
+              </div>
+            </div>
+            <div class="micro-generation-stage__percent">{{ generationProgress }}%</div>
+          </div>
+          <div class="micro-generation-stage__bar"><span :style="{ width: generationProgress + '%' }"></span></div>
+          <TransitionGroup name="micro-page-in" tag="div" class="micro-generation-grid">
+            <div v-for="(page, index) in generationPages" :key="index" class="micro-generation-page"
+              :class="{ 'is-ready': !!page }">
+              <div class="micro-generation-paper">
+                <div class="micro-generation-paper__eyebrow">{{ page?.eyebrow || 'AI 课件' }}</div>
+                <div v-if="page" class="micro-generation-paper__title">{{ page.title || '未命名页面' }}</div>
+                <div v-else class="micro-generation-paper__placeholder">
+                  <i></i><i></i><i></i>
+                </div>
+                <ul v-if="page?.bullets?.length">
+                  <li v-for="(bullet, bi) in page.bullets.slice(0, 3)" :key="bi">{{ bullet }}</li>
+                </ul>
+                <div v-else-if="!page" class="micro-generation-paper__shimmer"></div>
+              </div>
+              <span class="micro-generation-page__number">第 {{ index + 1 }} 页</span>
+            </div>
+          </TransitionGroup>
+        </div>
+        <div v-else ref="stageRef" class="micro-frame-wrap">
           <iframe
             :key="frameKey"
             :srcdoc="result.html"
@@ -190,12 +213,40 @@ const importVisible = ref(false)
 const importing = ref(false)
 const importHtml = ref('')
 const generationPollTimer = ref<number | null>(null)
+const generationStage = ref(false)
+const generationStarting = ref(false)
 
 const generationProgress = computed(() => {
+  if (generationStarting.value) return 8
   const current = Number(result.value?.progress?.current || 0)
   const total = Number(result.value?.progress?.total || 0)
   if (!total) return 8
   return Math.max(8, Math.min(96, Math.round((current / total) * 100)))
+})
+
+const generationPages = computed<any[]>(() => {
+  const slides = ((result.value?.deck as any)?.slides || []) as any[]
+  let parsed = slides
+  // 兼容只有 HTML、没有 deck 的导入版本：优先解析每一页的 data-page-* 标记。
+  if (!parsed.length && result.value?.html) {
+    parsed = []
+    const sectionRe = /<section[^>]*class="[^"]*slide[^"]*"[^>]*>([\s\S]*?)<\/section>/gi
+    let match: RegExpExecArray | null
+    while ((match = sectionRe.exec(result.value.html))) {
+      const tag = match[0].slice(0, match[0].indexOf('>') + 1)
+      const titleMatch = tag.match(/data-page-title="([^"]*)"/i) || match[1].match(/<h[1-2][^>]*>([\s\S]*?)<\/h[1-2]>/i)
+      const plain = (value: string) => value.replace(/<[^>]+>/g, '').trim()
+      const bullets = Array.from(match[1].matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)).map((m) => plain(m[1]))
+      parsed.push({
+        title: plain(titleMatch?.[1] || ''),
+        bullets,
+        eyebrow: 'AI 课件',
+      })
+    }
+  }
+  const total = Number(result.value?.progress?.total || parsed.length || 0)
+  const length = Math.max(generationStarting.value ? 6 : 0, total, parsed.length, 1)
+  return Array.from({ length }, (_, index) => (generationStarting.value ? null : parsed[index] || null))
 })
 
 const docId = computed(() => String(route.query.docId || ''))
@@ -207,21 +258,29 @@ async function generateHtml(refresh = false, prompt = '') {
   }
   stopGenerationPoll()
   generating.value = true
+  generationStarting.value = true
+  generationStage.value = Boolean(refresh || prompt || !result.value)
   errorMsg.value = ''
   try {
     const res: any = await getMicroCourseHtml(docId.value, refresh, prompt)
     if (res.code === 200 && res.data) {
       result.value = res.data
+      generationStarting.value = false
+      generationStage.value = res.data.status === 'generating'
       frameKey.value += 1
       await loadHistory()
       if (res.data.status === 'generating') {
         startGenerationPoll()
       }
     } else {
+      generationStarting.value = false
+      generationStage.value = false
       errorMsg.value = res.msg || '生成失败，请稍后重试'
       result.value = null
     }
   } catch (e: any) {
+    generationStarting.value = false
+    generationStage.value = false
     errorMsg.value = e?.message || '生成失败，请稍后重试'
     result.value = null
   } finally {
@@ -248,10 +307,14 @@ function startGenerationPoll() {
       result.value = next
       if (next.html !== previousHtml) frameKey.value += 1
       if (next.status === 'ready') {
+        generationStage.value = false
+        generationStarting.value = false
         stopGenerationPoll()
         await loadHistory()
         ElMessage.success('微课页面生成完成')
       } else if (next.status === 'failed') {
+        generationStage.value = false
+        generationStarting.value = false
         stopGenerationPoll()
         ElMessage.error(next.errorMsg || '生成失败，已保留可编辑的初始页面')
       }
@@ -458,6 +521,179 @@ onBeforeUnmount(() => {
   margin-top: 7px;
   color: var(--os-text-4, #9ca3af);
   font-size: 10px;
+}
+
+.micro-generation-stage {
+  min-height: 460px;
+  padding: 26px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.05));
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 86% 8%, #eef5ff 0, transparent 34%),
+    #f8fafc;
+}
+
+.micro-generation-stage__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.micro-generation-stage__title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--os-text, #111827);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.micro-generation-stage__pulse {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--os-accent, #4176e6);
+  animation: micro-pulse 1.4s ease-out infinite;
+}
+
+.micro-generation-stage__sub {
+  margin-top: 7px;
+  color: var(--os-text-3, #81858c);
+  font-size: 12px;
+}
+
+.micro-generation-stage__percent {
+  color: var(--os-accent, #4176e6);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -1px;
+}
+
+.micro-generation-stage__bar {
+  height: 4px;
+  margin-top: 18px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #dce8fb;
+}
+
+.micro-generation-stage__bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6c9bf0, #4176e6);
+  transition: width 0.4s ease;
+}
+
+.micro-generation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(205px, 1fr));
+  gap: 16px;
+  max-height: 510px;
+  margin-top: 24px;
+  padding: 2px;
+  overflow: auto;
+}
+
+.micro-generation-page {
+  min-width: 0;
+  opacity: 0.58;
+  transform: translateY(8px);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.micro-generation-page.is-ready {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.micro-generation-paper {
+  aspect-ratio: 16 / 9;
+  padding: 17px;
+  overflow: hidden;
+  border: 1px solid #e4eaf3;
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(31, 64, 122, 0.08);
+}
+
+.micro-generation-paper__eyebrow {
+  color: var(--os-accent, #4176e6);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+.micro-generation-paper__title {
+  margin-top: 16px;
+  color: #1f2937;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.micro-generation-paper ul {
+  margin: 11px 0 0;
+  padding-left: 14px;
+}
+
+.micro-generation-paper li {
+  margin: 4px 0;
+  color: #6b7280;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.micro-generation-paper__placeholder {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 22px;
+}
+
+.micro-generation-paper__placeholder i {
+  display: block;
+  width: 86%;
+  height: 7px;
+  border-radius: 4px;
+  background: #edf1f6;
+}
+
+.micro-generation-paper__placeholder i:nth-child(2) { width: 64%; }
+.micro-generation-paper__placeholder i:nth-child(3) { width: 74%; }
+
+.micro-generation-paper__shimmer {
+  width: 68%;
+  height: 45px;
+  margin-top: 10px;
+  border-radius: 7px;
+  background: linear-gradient(100deg, #f1f5fb 20%, #e5edf9 40%, #f1f5fb 60%);
+  background-size: 200% 100%;
+  animation: micro-shimmer 1.3s ease-in-out infinite;
+}
+
+.micro-generation-page__number {
+  display: block;
+  margin-top: 7px;
+  color: var(--os-text-4, #9ca3af);
+  font-size: 10px;
+}
+
+.micro-page-in-enter-active {
+  transition: opacity 0.45s ease, transform 0.45s ease;
+}
+
+.micro-page-in-enter-from {
+  opacity: 0;
+  transform: translateY(12px) scale(0.985);
+}
+
+@keyframes micro-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
 }
 
 @keyframes micro-pulse {

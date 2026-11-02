@@ -46,6 +46,8 @@
 - 16:9 横屏，浅色背景，深色正文，蓝色作为强调色
 - 封面页留白充足；内容页标题大、正文留行距
 - 使用 `.slide` 作为每一页，只有当前页有 `.active`
+- 每个 `<section>` 必须带 `data-page-index="页码"` 和 `data-page-title="页标题"`，便于前端逐页解析和渐进式动画
+- 页面结构固定为 `<section class="slide" data-page-index="1" data-page-title="标题">...</section>`
 - 页面底部显示页码与课件名
 - 提供「上一页 / 下一页 / 全屏」控制
 - 禁止依赖外部 CDN；CSS 与 JS 全部内联，离线也能演示

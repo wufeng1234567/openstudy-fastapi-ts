@@ -350,7 +350,10 @@ def _render_html(deck: Dict[str, Any]) -> str:
             extras += f'<blockquote class="quote-box">{_html.escape(str(quote))}</blockquote>'
         slides_html.append(
             f"""
-            <section class="slide{' active' if i == 0 else ''} layout-{_html.escape(layout)}" data-index="{i}">
+            <section class="slide{' active' if i == 0 else ''} layout-{_html.escape(layout)}"
+              data-index="{i}" data-page-index="{i + 1}"
+              data-page-title="{_html.escape(str(slide.get('title') or ''), quote=True)}">
+              <!-- page:{i + 1} -->
               <div class="slide-inner">
                 <div class="eyebrow">{_html.escape(str(slide.get('eyebrow') or ''))}</div>
                 <h1>{_html.escape(str(slide.get('title') or ''))}</h1>
