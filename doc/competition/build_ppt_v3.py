@@ -36,6 +36,33 @@ M_L = 0.85
 CW = W - 2 * M_L
 
 
+def fs(size):
+    """统一放大字号：小字放大更多，标题小幅放大。"""
+    if size <= 8.5:
+        return 11
+    if size <= 9.5:
+        return 12
+    if size <= 10.5:
+        return 12.5
+    if size <= 11.5:
+        return 13.5
+    if size <= 12.5:
+        return 14.5
+    if size <= 13.5:
+        return 15.5
+    if size <= 15:
+        return 17
+    if size <= 17:
+        return 18.5
+    if size <= 20:
+        return 21
+    if size <= 27:
+        return 29
+    if size <= 32:
+        return 34
+    return size
+
+
 def _no_shadow(shp):
     try:
         shp.shadow.inherit = False
@@ -80,7 +107,7 @@ def text(slide, x, y, w, h, s, size=14, bold=False, color=INK, align=PP_ALIGN.LE
         if line_spacing:
             p.line_spacing = line_spacing
         r = p.add_run(); r.text = ln
-        r.font.name = font; r.font.size = Pt(size); r.font.bold = bold
+        r.font.name = font; r.font.size = Pt(fs(size)); r.font.bold = bold
         r.font.color.rgb = color
         if spc:
             rPr = r._r.get_or_add_rPr(); rPr.set("spc", str(int(spc)))
@@ -101,7 +128,7 @@ def fill_text(shape, parts, align=PP_ALIGN.LEFT, anchor=MSO_ANCHOR.TOP, margins=
         if spacing:
             p.space_before = Pt(spacing)
         r = p.add_run(); r.text = txt
-        r.font.name = FONT; r.font.size = Pt(size); r.font.bold = bold
+        r.font.name = FONT; r.font.size = Pt(fs(size)); r.font.bold = bold
         r.font.color.rgb = color
 
 
@@ -322,7 +349,7 @@ def p5():
     bands = [
         ("前端  Vue 3 + TS", "对话页 / 题库 / 知识库抽屉 / 学习统计 · 单一设计令牌体系"),
         ("流式网关", "纯 ASGI 中间件 · SSE 逐字下发（修掉「攒批」造成的假流式）"),
-        ("Agent Runtime", "Orchestrator（关键词路由，零 LLM）→ 5 类专家子代理 → 20+ 工具"),
+        ("Agent Runtime", "Orchestrator（关键词路由，零 LLM）→ 5 类专家 → 20+ 工具"),
         ("RAG 检索", "解析 → jieba 分块 → bge-m3（1024 维）→ HNSW + tsvector → RRF（k=60）"),
         ("数据层", "PostgreSQL + pgvector · Redis · 本地/对象存储"),
     ]
@@ -366,7 +393,7 @@ def p6():
     nodes = [
         ("①", "需求", "用户目标 · 一句话"),
         ("②", "接入", "git status · 分支"),
-        ("③", "读码", "CodeSemanticSearch"),
+        ("③", "读码", "语义检索"),
         ("④", "写测", "developer-test-agent"),
         ("⑤", "审查", "diff · security_audit"),
         ("⑥", "修复", "/bugfix 修复专家"),
@@ -443,7 +470,7 @@ def p8():
            "html_sanitize 的降级正则漏检 data: 协议——AI 自己写测试、自己发现问题、自己修、自己验证。")
     nodes = [
         ("08:40", "提需求", "给 html_sanitize 补测试，覆盖两条清洗路径"),
-        ("08:55", "读码", "定位 html_sanitize.py:79-95"),
+        ("08:55", "读码", "定位 html_sanitize.py"),
         ("09:10", "写测", "57 passed, 1 xfailed"),
         ("09:20", "审查", "P1：data: 协议漏检"),
         ("09:35", "修复", "/bugfix 改协议分支"),
@@ -582,7 +609,7 @@ def p2b():
          size=13, bold=True, color=INK, line_spacing=1.2)
     outs = [("资料即资产", "上传就拆成标题、公式、表格、图片，每份都有来源"),
             ("一份资料多种产出", "题库、讲义、资料微课、教学微课，全都复用同一份资料"),
-            ("对话即入口", "聊天里传过的资料，自动进「我的资料」，后面还能用")]
+            ("对话即入口", "聊天里传过的资料，自动进「我的资料」，还能再用")]
     x = M_L; ow = (CW - 2 * 0.2) / 3
     for t, d in outs:
         line(s, x, 6.02, x + ow - 0.2, 6.02, color=MINT, width=1.2)
