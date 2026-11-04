@@ -206,6 +206,9 @@ S4 = os.path.join(SHOTS, "07-rag-config.png")
 S5 = os.path.join(SHOTS, "04-bank-detail.png")
 S6 = os.path.join(SHOTS, "18-workspace-folder-search.png")
 S7 = os.path.join(SHOTS, "20-micro-course-html.png")
+S8 = os.path.join(SHOTS, "02-agent-session.png")
+S9 = os.path.join(SHOTS, "23-word-source.png")
+S10 = os.path.join(SHOTS, "24-question-formula-image.png")
 
 
 # ============ P1 封面 ============
@@ -221,15 +224,11 @@ def p1():
     text(s, M_L, 3.16, 6.2, 0.95, "会读你资料的 AI 学习平台\n从一份 Word，到一套能刷的题、能讲的课、能打印的讲义",
          size=14, color=GRAY, line_spacing=1.5)
 
-    stats = [("33", "份资料"), ("12", "个资料夹"), ("31", "个题库"), ("3,248", "次码道调用")]
-    x = M_L
-    for num, lab in stats:
-        text(s, x, 4.58, 1.66, 0.52, num, size=25, bold=True, color=INK, font=FONT_L)
-        text(s, x, 5.10, 1.66, 0.22, lab, size=9, color=GRAY2)
-        x += 1.66
-    line(s, M_L, 5.66, 6.9, 5.66, color=LINE, width=0.5)
-    text(s, M_L, 5.82, 6.6, 0.24, "华为云码道 CodeArts 开发  ·  GitCode 开源  ·  FastAPI + Vue 3", size=9, color=GRAY2)
-    text(s, M_L, 6.72, 6.6, 0.24, "gitcode.com/qi142410131/openstudy-fastapi-ts", size=8.5, color=MINT_D)
+    text(s, M_L, 4.18, 6.0, 0.46, "对话即入口，结果即数据。", size=23, bold=True, color=INK)
+    text(s, M_L, 4.76, 6.2, 0.30, "一句话完成：建题库 / 做讲义 / 生成微课 / 导出复习卷", size=12.5, color=GRAY2)
+    line(s, M_L, 5.50, 6.9, 5.50, color=LINE, width=0.5)
+    text(s, M_L, 5.66, 6.6, 0.24, "华为云码道 CodeArts 开发  ·  GitCode 开源  ·  FastAPI + Vue 3", size=9, color=GRAY2)
+    text(s, M_L, 6.18, 6.6, 0.24, "gitcode.com/qi142410131/openstudy-fastapi-ts", size=8.5, color=MINT_D)
     # 截图
     sh = pic_card(s, S1, 7.42, 1.12, 5.05, 3.16, caption="真实运行界面  ·  对话即入口")
     anim(s, "p1_shot", sh)
@@ -246,7 +245,7 @@ def p2():
            "面向高校学生与自学者：手里有课件、真题、教材，却没有一条把资料变成练习的路。")
     cards = [
         ("01", "资料在硬盘里，题在纸上", "Word / PDF / 扫描件占大多数；手动录 20 道题约 1 小时，公式和图还会丢。", "耗时"),
-        ("02", "错题越积越多，掌握率起不来", "演示账号真实数据：累计作答 299 次、正确率 49.5%、待消灭错题 40 道、已掌握 0 道。", "无效"),
+        ("02", "错题越积越多，掌握率起不来", "演示账号里：错题越积越多、正确率上不去、已掌握长期为 0——不是不练，是练完没有闭环。", "无效"),
         ("03", "通用 AI 只会聊，不会「办事」", "能解释知识点，却不能建题库、不能出卷、不能改错题本——聊完还得自己动手。", "断层"),
     ]
     x = M_L; cw = (CW - 2 * 0.24) / 3
@@ -421,15 +420,15 @@ def p6():
          size=11.5, bold=True, color=MINT_D)
     # 说明
     text(s, M_L, 5.02, 6.2, 0.26, "审查无 P0/P1 直接提交；有则修复并回归。任一步失败即停下说明。", size=9.5, color=GRAY)
-    # 数据卡
-    stats = [("3,248", "次工具调用"), ("186", "个文件被改写"), ("17", "个项目会话"), ("5", "天连续开发")]
-    x = M_L
-    for idx_stat, (num, lab) in enumerate(stats):
-        b = rect(s, x, 5.46, 2.74, 0.98, fill=WHITE, line=LINE, lw=0.75, radius=0.06)
-        anim(s, f"p6_stat_{idx_stat+1}", b)
-        text(s, x + 0.22, 5.58, 2.2, 0.38, num, size=21, bold=True, color=INK, font=FONT_L)
-        text(s, x + 0.22, 6.00, 2.2, 0.2, lab, size=8.6, color=GRAY2)
-        x += 2.88
+    # 过程说明
+    band = rect(s, M_L, 5.52, CW, 0.86, fill=MINT_L2, line=None, radius=0.08)
+    text(s, M_L + 0.32, 5.70, CW - 0.6, 0.28,
+         "开发过程可核对：会话可导出  ·  技能可复用  ·  提交可追溯",
+         size=13, bold=True, color=MINT_D)
+    text(s, M_L + 0.32, 6.04, CW - 0.6, 0.22,
+         "过程记录统一放在 doc/dev-process/，可现场按会话 ID 抽查。",
+         size=9.5, color=GRAY)
+    text(s, M_L, 6.52, CW, 0.24, "码道把 AI 编码从「补全」变成「可核对的过程」。", size=12, bold=True, color=MINT_D)
     footer(s, 6)
 
 
@@ -441,7 +440,7 @@ def p7():
     cards = [
         ("子代理 · 测试", "题库与考试链路", "developer-test-agent 生成 58 条单测，覆盖两条清洗路径。", "→ 58 passed"),
         ("修复专家", "智能体工具链", "/bugfix 按 bug 单定位并修复降级正则，回归通过后才提交。", "→ P1 修复"),
-        ("语义检索 · 索引", "Agent Runtime / RAG", "CodeSemanticSearch + 代码库索引，先读后写，跨 200+ 文件定位。", "→ file:line"),
+        ("语义检索 · 索引", "Agent Runtime / RAG", "CodeSemanticSearch + 代码库索引，先读后写，跨全库定位调用点。", "→ file:line"),
         ("规则 · 技能", "团队协作规范", "AGENTS.md 写规则、SKILL.md 写流程，随仓库分发，换人也能照着做。", "→ 8 步流程"),
         ("会话", "长任务调试", "/fork 从任意消息分叉，/timeline 回跳，/export 导出。", "→ 可追溯"),
         ("GitCode · git", "提交与交付", "分支开发、中文提交、推送远端，一次完成。", "→ 596959b"),
@@ -500,7 +499,7 @@ def p8():
         text(s, x, 5.14, 2.6, 0.24, lab, size=8.8, color=GRAY2)
         x += 2.86
     text(s, M_L, 6.15, CW, 0.5,
-         "过程产物：test_html_sanitize.py（315 行） · 修复 diff · 58 passed · commit 596959b——每一步都可核对。",
+         "过程产物：test_html_sanitize.py · 修复 diff · 58 passed · commit 596959b——每一步都可核对。",
          size=9.5, color=GRAY)
     footer(s, 8)
 
@@ -636,16 +635,11 @@ def p3b():
         text(s, M_L + 0.70, y + 0.12, 4.8, 0.26, t, size=13, bold=True, color=INK)
         text(s, M_L + 0.70, y + 0.44, 4.75, 0.56, d, size=8.8, color=GRAY, line_spacing=1.35)
         y += 1.20
-    pic_card(s, S6, 6.95, 1.94, 5.52, 3.45, caption="我的资料：33 份资料 · 12 个资料夹 · AI 语义找资料")
-    strip = rect(s, M_L, 5.78, CW, 0.80, fill=MINT_L2, line=None, radius=0.06)
+    pic_card(s, S6, 6.95, 1.94, 5.52, 3.45, caption="我的资料：资料夹、AI 找资料、对话自动收集")
+    strip = rect(s, M_L, 5.82, CW, 0.86, fill=MINT_L2, line=None, radius=0.08)
     anim(s, "p3b_stats", strip)
-    stats = [("33", "份资料"), ("12", "个资料夹"), ("5.1 MB", "总体积"), ("33", "份可检索")]
-    x = M_L + 0.30
-    for num, lab in stats:
-        text(s, x, 5.92, 2.5, 0.30, num, size=17, bold=True, color=INK, font=FONT_L)
-        text(s, x, 6.24, 2.5, 0.20, lab, size=8.2, color=GRAY2)
-        x += 2.86
-    text(s, M_L, 6.72, CW, 0.20, "对话里传过的资料，后面还能用——这是「资料空间」和「聊天附件」最大的区别。", size=8.8, color=GRAY)
+    text(s, M_L + 0.32, 5.98, CW - 0.6, 0.28, "对话里传过的资料，后面还能用。", size=15, bold=True, color=MINT_D)
+    text(s, M_L + 0.32, 6.30, CW - 0.6, 0.24, "这是「资料空间」和「聊天附件」最大的区别。", size=10.5, color=GRAY)
     footer(s, 3)
 
 
@@ -696,7 +690,7 @@ def p9b():
         line(s, x + 0.22, 3.44, x + cw - 0.22, 3.44, color=LINE, width=0.5)
         text(s, x + 0.22, 3.54, cw - 0.44, 0.72, res, size=8.7, color=GRAY, line_spacing=1.45)
     text(s, M_L, 4.68, 6.0, 0.24, "演示稳定性：把「万一」提前处理掉", size=9.5, bold=True, color=GRAY2, spc=40)
-    guards = [("预置数据", "演示账号预置 33 份资料 / 31 个题库 / 299 条作答，开场即有内容"),
+    guards = [("预置数据", "演示账号预置资料、题库与作答记录，开场即有内容"),
               ("提前热身", "演示前 2 小时跑 daily-start.sh，预热模型与检索（首字 45s → 2.8s）"),
               ("双保险", "网络异常切本地录屏；关键链路探针，演示前 10 分钟全跑一遍")]
     x = M_L; gw = (CW - 2 * 0.18) / 3
@@ -749,9 +743,51 @@ def p10b():
     footer(s, 10)
 
 
-for fn in (p1, p2b, p3b, p4b, p5, p6, p7, p8, p9b, p10b):
+def p4c():
+    s = prs.slides.add_slide(BLANK); bg(s)
+    header(s, "03  /  一切皆对话", "一句话，四种产出",
+           "不用找菜单：把资料交给对话，剩下的它自己做。")
+    pic_card(s, S8, M_L, 1.95, 5.55, 3.47, caption="真实对话：一句话建题库，AI 自动读资料、出题、落库")
+    rows = [
+        ("用这份资料建个题库，出 20 道题", "题库练习"),
+        ("把这份资料做成讲义，导出 Word", "讲义文档"),
+        ("按这份资料生成 7 站微课", "资料微课"),
+        ("把这份资料做成 11 页课件，导出 PPT", "教学微课"),
+    ]
+    x = 6.80; w = 5.65; y = 1.95
+    for i, (q, out) in enumerate(rows):
+        card = rect(s, x, y, w, 1.00, fill=WHITE, line=LINE, lw=0.75, radius=0.05)
+        text(s, x + 0.20, y + 0.14, 0.42, 0.24, f"{i+1:02d}", size=9, bold=True, color=MINT, spc=30)
+        text(s, x + 0.64, y + 0.10, w - 1.80, 0.26, q, size=11.5, bold=True, color=INK)
+        chip(s, x + w - 1.12, y + 0.34, 0.94, 0.28, out, MINT_L, MINT_D, 8.5)
+        y += 1.08
+    strip = rect(s, M_L, 6.32, CW, 0.44, fill=MINT_L2, line=None, radius=0.08)
+    text(s, M_L + 0.24, 6.41, CW - 0.48, 0.24,
+         "多专家并行  ·  写操作先确认  ·  改错能回退  ·  跨会话记忆", size=10.5, bold=True, color=MINT_D)
+    footer(s, 4)
+
+
+def p5b():
+    s = prs.slides.add_slide(BLANK); bg(s)
+    header(s, "04  /  题库导入", "Word 题库导入：图、公式、解析都不丢",
+           "最常见的一份资料：Word 题库，题干里有复杂公式，后面还跟着图。")
+    text(s, M_L, 1.80, 3.3, 0.22, "Word 原文", size=10.5, bold=True, color=GRAY2, spc=40)
+    text(s, 4.42, 1.80, 7.0, 0.22, "导入后的题目详情", size=10.5, bold=True, color=GRAY2, spc=40)
+    pic_card(s, S9, M_L, 2.04, 3.30, 3.82, border=True)
+    pic_card(s, S10, 4.42, 2.04, 6.98, 4.78, border=True)
+    bullets = ["题干 / 选项 / 答案自动拆开", "图片按原位置归属到题目", "复杂公式渲染成 LaTeX / KaTeX"]
+    y = 6.04
+    for b in bullets:
+        text(s, M_L, y, 3.5, 0.22, "· " + b, size=8.2, color=GRAY)
+        y += 0.24
+    footer(s, 5)
+
+
+for fn in (p1, p2b, p3b, p4c, p5b, p6, p7, p8, p9b, p10b):
     fn()
 
 out = os.path.join(HERE, "OpenStudy-10页-V3-码道版.pptx")
 prs.save(out)
 print("saved:", out, os.path.getsize(out))
+
+

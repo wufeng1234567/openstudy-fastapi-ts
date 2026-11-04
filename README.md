@@ -86,6 +86,13 @@ Python 版按 `api / models / repositories / services` 重新组织，业务规�
 > 传统方案在这一步就断了：扫描件抽不出正文、图片和文字对不上、公式变成乱码。
 > 我们做的是**图文一起进**，所以后面出的题才带图、带公式。
 
+<p align="center">
+  <img src="doc/screenshots/23-word-source.png" width="330" alt="Word 原文：复杂公式与图">
+  <img src="doc/screenshots/24-question-formula-image.png" width="620" alt="导入后：公式与图片落在题目里">
+</p>
+
+一份带复杂公式和图的 Word，导入后公式按 LaTeX 渲染、图片落在原题位置，不需要二次排版。
+
 ### ② 导入系统 → 变成能检索的知识
 
 解析完的文档进知识库，走完整流水线：
