@@ -1,0 +1,73 @@
+<mxGraphModel dx="1200" dy="800" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="650" math="0" shadow="0" adaptiveColors="auto">
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+    <mxCell id="title" value="码道开发流程" style="text;html=1;align=left;verticalAlign=middle;fontSize=26;fontStyle=1;fontColor=#065F46;" vertex="1" parent="1">
+      <mxGeometry x="40" y="14" width="600" height="38" as="geometry"/>
+    </mxCell>
+    <mxCell id="sub" value="从需求到沉淀的 AI 编码全流程" style="text;html=1;align=left;verticalAlign=middle;fontSize=13;fontColor=#6B7280;" vertex="1" parent="1">
+      <mxGeometry x="40" y="52" width="600" height="24" as="geometry"/>
+    </mxCell>
+    <mxCell id="entry" value="入口：自然语言需求 · 现有仓库 · GitCode" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0FDF9;strokeColor=#A7F3D0;fontColor=#065F46;fontSize=13;align=center;" vertex="1" parent="1">
+      <mxGeometry x="40" y="92" width="1100" height="46" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="n1" value="&lt;b&gt;需求&lt;/b&gt;&lt;br&gt;用户目标 · 一句话" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#10B981;strokeWidth=2;fontColor=#065F46;fontSize=14;align=center;" vertex="1" parent="1">
+      <mxGeometry x="40" y="190" width="140" height="100" as="geometry"/>
+    </mxCell>
+    <mxCell id="n2" value="&lt;b&gt;接入&lt;/b&gt;&lt;br&gt;git status · 分支确认" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#10B981;strokeWidth=2;fontColor=#065F46;fontSize=14;align=center;" vertex="1" parent="1">
+      <mxGeometry x="200" y="190" width="140" height="100" as="geometry"/>
+    </mxCell>
+    <mxCell id="n3" value="&lt;b&gt;读码&lt;/b&gt;&lt;br&gt;CodeSemanticSearch / grep" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#10B981;strokeWidth=2;fontColor=#065F46;fontSize=14;align=center;" vertex="1" parent="1">
+      <mxGeometry x="360" y="190" width="140" height="100" as="geometry"/>
+    </mxCell>
+    <mxCell id="n4" value="&lt;b&gt;写测&lt;/b&gt;&lt;br&gt;developer-test-agent" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#10B981;strokeWidth=2;fontColor=#065F46;fontSize=14;align=center;" vertex="1" parent="1">
+      <mxGeometry x="520" y="190" width="140" height="100" as="geometry"/>
+    </mxCell>
+    <mxCell id="n5" value="&lt;b&gt;审查&lt;/b&gt;&lt;br&gt;git diff · security_audit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFBEB;strokeColor=#F59E0B;strokeWidth=2;fontColor=#92400E;fontSize=14;align=center;" vertex="1" parent="1">
+      <mxGeometry x="680" y="190" width="140" height="100" as="geometry"/>
+    </mxCell>
+    <mxCell id="n6" value="&lt;b&gt;提交&lt;/b&gt;&lt;br&gt;git commit / push" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#10B981;strokeWidth=2;fontColor=#065F46;fontSize=14;align=center;" vertex="1" parent="1">
+      <mxGeometry x="840" y="190" width="140" height="100" as="geometry"/>
+    </mxCell>
+    <mxCell id="n7" value="&lt;b&gt;沉淀&lt;/b&gt;&lt;br&gt;experience / export" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#10B981;strokeWidth=2;fontColor=#065F46;fontSize=14;align=center;" vertex="1" parent="1">
+      <mxGeometry x="1000" y="190" width="140" height="100" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="n5b" value="&lt;b&gt;修复&lt;/b&gt;&lt;br&gt;/bugfix · bug-fix-agent" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFBEB;strokeColor=#F59E0B;strokeWidth=2;fontColor=#92400E;fontSize=14;align=center;" vertex="1" parent="1">
+      <mxGeometry x="680" y="350" width="140" height="86" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#10B981;strokeWidth=2;" edge="1" parent="1" source="n1" target="n2">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#10B981;strokeWidth=2;" edge="1" parent="1" source="n2" target="n3">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#10B981;strokeWidth=2;" edge="1" parent="1" source="n3" target="n4">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#10B981;strokeWidth=2;" edge="1" parent="1" source="n4" target="n5">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e5" value="无 P0/P1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#10B981;strokeWidth=2;fontSize=11;fontColor=#047857;" edge="1" parent="1" source="n5" target="n6">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e6" value="有 P0/P1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#F59E0B;strokeWidth=2;fontSize=11;fontColor=#B45309;" edge="1" parent="1" source="n5" target="n5b">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e7" value="修完回归" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;strokeColor=#F59E0B;strokeWidth=2;fontSize=11;fontColor=#B45309;" edge="1" parent="1" source="n5b" target="n4">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#10B981;strokeWidth=2;" edge="1" parent="1" source="n6" target="n7">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="support" value="支撑能力：规则 AGENTS.md · 技能 SKILL.md · 经验 experience · 沙箱 / 权限 · checkpoint / undo" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#A7F3D0;fontColor=#065F46;fontSize=13;align=center;" vertex="1" parent="1">
+      <mxGeometry x="40" y="500" width="1100" height="54" as="geometry"/>
+    </mxCell>
+    <mxCell id="note" value="任一步失败即停下说明，不绕过、不造假" style="text;html=1;align=left;verticalAlign=middle;fontSize=12;fontColor=#9CA3AF;" vertex="1" parent="1">
+      <mxGeometry x="40" y="570" width="600" height="24" as="geometry"/>
+    </mxCell>
+  </root>
+</mxGraphModel>
