@@ -96,10 +96,10 @@ p = doc.add_paragraph(); r = p.add_run('（3）计算二重积分：'); r.font.n
 formula(r'\iint_{D}\left(x^2+y^2\right)\,dx\,dy')
 p = doc.add_paragraph(); r = p.add_run('其中 D 由 y = x² 与 y = 2 − x² 围成（如图）。'); r.font.name = '宋体'; r.font.size = Pt(10.5)
 p = doc.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-table = doc.add_table(rows=1, cols=2)
+table = doc.add_table(rows=1, cols=1)
 table.alignment = WD_TABLE_ALIGNMENT.CENTER
 table.autofit = False
-for i, img in enumerate([region, surface]):
+for i, img in enumerate([region]):
     cell = table.cell(0, i)
     par = cell.paragraphs[0]; par.alignment = WD_ALIGN_PARAGRAPH.CENTER
     par.add_run().add_picture(img, width=Cm(7.0))
@@ -107,3 +107,4 @@ for i, img in enumerate([region, surface]):
 docx = os.path.join(OUT, 'word-source-math-v2.docx')
 doc.save(docx)
 print('docx', docx, os.path.getsize(docx))
+

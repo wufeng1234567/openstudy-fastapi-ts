@@ -812,7 +812,7 @@ def p4c():
         y += 1.08
     strip = rect(s, M_L, 6.32, CW, 0.44, fill=MINT_L2, line=None, radius=0.08)
     text(s, M_L + 0.24, 6.41, CW - 0.48, 0.24,
-         "多专家并行  ·  写操作先确认  ·  改错能回退  ·  跨会话记忆", size=10.5, bold=True, color=MINT_D)
+         "对话能做的事：建题库 · 出讲义 · 做微课 · 排计划 · 找资料 · 插图片 · 导出 · 分享", size=10.0, bold=True, color=MINT_D)
     footer(s, 4)
 
 
@@ -832,7 +832,109 @@ def p5b():
     footer(s, 5)
 
 
-for fn in (p1, p2b, p3d, p4c, p5b, p6, p7, p8, p9b, p10b):
+def p7arch():
+    s = prs.slides.add_slide(BLANK); bg(s)
+    header(s, "06  /  智能体系统", "Agent 系统架构：一个会话，多个专家",
+           "路由不花 LLM，写操作可确认，文件和图片只上传一次——这是我们的 Agent 设计。")
+
+    def layer_label(y, label):
+        text(s, M_L, y + 0.28, 0.82, 0.24, label, size=9.5, bold=True, color=MINT_D, spc=30)
+
+    # 入口层
+    layer_label(1.62, "入口层")
+    entries = ["对话", "附件 / 图片", "我的资料", "题库", "微课", "分享"]
+    x = 1.72
+    for e in entries:
+        chip(s, x, 1.84, 1.55, 0.38, e, MINT_L, MINT_D, 9)
+        x += 1.63
+
+    # 编排层
+    layer_label(2.40, "编排层")
+    b = rect(s, 1.72, 2.60, 2.95, 0.95, fill=WHITE, line=LINE, lw=1.0, radius=0.06)
+    fill_text(b, [("Orchestrator", 12, True, INK), ("关键词路由 · 零 LLM", 9.2, False, GRAY)],
+              margins=(0.18, 0.12, 0.12, 0.08), spacing=2)
+    text(s, 4.72, 2.88, 0.32, 0.30, "→", size=18, bold=True, color=MINT)
+    b2 = rect(s, 5.05, 2.60, 4.10, 0.95, fill=WHITE, line=LINE, lw=1.0, radius=0.06)
+    fill_text(b2, [("5 类子代理", 11.5, True, INK),
+                   ("题库 · 资料 · 笔记 · 统计 · 智能体（可并行）", 9.0, False, GRAY)],
+              margins=(0.18, 0.12, 0.12, 0.08), spacing=2)
+    text(s, 9.17, 2.88, 0.32, 0.30, "→", size=18, bold=True, color=MINT)
+    b3 = rect(s, 9.50, 2.60, 2.55, 0.95, fill=MINT_L2, line=None, radius=0.06)
+    fill_text(b3, [("20+ 工具", 11.5, True, MINT_D), ("统一回执 · 可确认 · 可 undo", 8.8, False, GRAY)],
+              margins=(0.16, 0.10, 0.10, 0.06), spacing=2)
+
+    # 支撑层
+    layer_label(3.55, "支撑层")
+    supports = [
+        ("记忆与文件复用", "会话记忆 / 资料记忆 / 长期记忆"),
+        ("确认与回退", "confirm_ticket / 四域整树快照"),
+        ("流式与结果卡", "SSE 逐字 / 工具结果落地"),
+        ("RAG 与数据", "解析 / 向量 / 混合检索"),
+    ]
+    x = 1.72
+    for t, d in supports:
+        box = rect(s, x, 3.75, 2.60, 0.88, fill=WHITE, line=LINE, lw=0.9, radius=0.05)
+        fill_text(box, [(t, 10.5, True, INK), (d, 8.2, False, GRAY)], margins=(0.14, 0.10, 0.10, 0.06), spacing=2)
+        x += 2.74
+
+    # 真实对话：文件复用
+    flow = rect(s, M_L, 4.88, CW, 1.88, fill=MINT_L2, line=None, radius=0.07)
+    text(s, M_L + 0.28, 5.02, 6.0, 0.24, "一次真实对话：同一张图，只上传一次", size=11, bold=True, color=MINT_D)
+    steps = [
+        ("01", "用户上传图片", "附件进入会话"),
+        ("02", "会话记住 fileId", "持久化，不丢图"),
+        ("03", "下一轮说", "“把刚才那张图插到第 4 题”"),
+        ("04", "chat_file_manage", "按 fileId 取回原图"),
+        ("05", "question_manage", "写入解析，结果卡确认"),
+    ]
+    x = M_L + 0.28
+    for n, t, d in steps:
+        box = rect(s, x, 5.36, 2.08, 1.10, fill=WHITE, line=LINE, lw=0.8, radius=0.05)
+        text(s, x + 0.12, 5.44, 0.32, 0.20, n, size=8.2, bold=True, color=MINT)
+        text(s, x + 0.42, 5.42, 1.52, 0.24, t, size=9.5, bold=True, color=INK)
+        text(s, x + 0.12, 5.75, 1.84, 0.60, d, size=7.8, color=GRAY, line_spacing=1.25)
+        x += 2.20
+    text(s, 10.6, 5.10, 2.2, 0.24, "不用重复上传", size=10.5, bold=True, color=AMBER)
+    footer(s, 7)
+
+
+def p8b():
+    s = prs.slides.add_slide(BLANK); bg(s)
+    header(s, "07  /  一个真实案例", "一个安全缺陷，从测试到提交",
+           "html_sanitize 的降级正则漏检 data: 协议——AI 自己写测试、自己发现问题、自己修、自己验证。")
+    steps = [
+        ("1", "提需求", "给 html_sanitize 补测试，覆盖两条清洗路径"),
+        ("2", "读码", "定位降级正则与测试断言"),
+        ("3", "写测", "测试跑出 xfailed：真实缺陷"),
+        ("4", "审查", "发现 data: 协议漏检"),
+        ("5", "修复", "扩展协议分支"),
+        ("6", "提交", "回归通过后提交"),
+    ]
+    y = 1.95
+    for n, t, d in steps:
+        circle = rect(s, M_L, y + 0.08, 0.34, 0.34, fill=AMBER if n == "4" else MINT, line=None, radius=0.5)
+        text(s, M_L, y + 0.13, 0.34, 0.20, n, size=9, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
+        text(s, M_L + 0.50, y + 0.04, 5.4, 0.24, t, size=11.5, bold=True, color=INK)
+        text(s, M_L + 0.50, y + 0.32, 5.5, 0.34, d, size=9.0, color=GRAY)
+        y += 0.72
+    # 右侧审查报告
+    report = rect(s, 6.45, 1.92, 6.05, 2.55, fill=WHITE, line=LINE, lw=0.9, radius=0.05)
+    text(s, 6.70, 2.06, 4.6, 0.26, "审查报告", size=11.5, bold=True, color=INK)
+    text(s, 6.70, 2.40, 5.55, 0.26, "发现：降级路径未覆盖 data: 协议", size=9.8, color=AMBER, bold=True)
+    text(s, 6.70, 2.70, 5.55, 0.52, "建议：扩展 javascript / vbscript / data 三种协议分支，保持替换为 # 的行为不变。",
+         size=8.8, color=GRAY, line_spacing=1.35)
+    text(s, 6.70, 3.30, 5.55, 0.24, "代码变更", size=9.2, bold=True, color=GRAY2)
+    code = rect(s, 6.70, 3.56, 5.55, 0.72, fill=RGBColor(0x0B, 0x2B, 0x22), line=None, radius=0.04)
+    text(s, 6.84, 3.64, 5.3, 0.26, "- (?:javascript|vbscript|data:text/html)\\s*:", size=8.2, color=RGBColor(0xFB, 0xBF, 0xBF), font="Consolas")
+    text(s, 6.84, 3.94, 5.3, 0.26, "+ (?:javascript|vbscript|data)\\s*:", size=8.2, color=RGBColor(0xA7, 0xF3, 0xD0), font="Consolas")
+    # 底部结果
+    res = rect(s, M_L, 6.28, CW, 0.40, fill=MINT_L, line=None, radius=0.08)
+    text(s, M_L + 0.20, 6.36, CW - 0.4, 0.24, "回归通过  ·  已提交  ·  过程产物：test_html_sanitize.py / 修复 diff / commit",
+         size=8.8, bold=True, color=MINT_D)
+    footer(s, 8)
+
+
+for fn in (p1, p2b, p3d, p4c, p5b, p6, p7arch, p8b, p9b, p10b):
     fn()
 
 out = os.path.join(HERE, "OpenStudy-10页-V3-码道版.pptx")
