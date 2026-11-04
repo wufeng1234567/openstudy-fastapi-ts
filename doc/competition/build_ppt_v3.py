@@ -743,11 +743,60 @@ def p10b():
     footer(s, 10)
 
 
+def p3c():
+    s = prs.slides.add_slide(BLANK); bg(s)
+    header(s, "02  /  我的资料空间", "我的资料：把每份资料，变成可复用的资产",
+           "不是文件管理器，也不是 RAG 问答框——先看懂一份资料，再让它被反复使用。")
+    text(s, M_L, 1.78, 6.3, 0.22, "01  上传后：自动解析，状态变成「可检索」", size=10.5, bold=True, color=MINT_D, spc=20)
+    pic_card(s, os.path.join(os.path.dirname(HERE), 'competition', '码道架构图', 'p3-upload.png'),
+             M_L, 2.05, 6.30, 0.60, border=True)
+    text(s, M_L, 2.86, 6.3, 0.22, "02  点开「资料解剖」：结构、正文、图片三栏", size=10.5, bold=True, color=MINT_D, spc=20)
+    pic_card(s, os.path.join(os.path.dirname(HERE), 'competition', '码道架构图', 'p3-anatomy.png'),
+             M_L, 3.13, 6.30, 0.78, border=True)
+    text(s, M_L, 4.10, 6.3, 0.22, "03  拆出来的资产：结构 / 公式 / 图片，都能复用", size=10.5, bold=True, color=MINT_D, spc=20)
+    card = rect(s, M_L, 4.38, 6.30, 1.92, fill=MINT_L2, line=None, radius=0.06)
+    fill_text(card, [
+        ("资料结构：按标题还原章节树", 10.5, True, INK),
+        ("正文与图片：公式、图片归到原文位置", 10.5, False, GRAY),
+        ("图片资产：每张图有来源，可复制、可插题", 10.5, False, GRAY),
+        ("用途账本：被哪道题、哪篇笔记用过，随时可查", 10.5, False, GRAY),
+    ], margins=(0.26, 0.20, 0.18, 0.14), spacing=6)
+    pic_card(s, os.path.join(os.path.dirname(HERE), 'competition', '码道架构图', 'p3-assets.png'),
+             7.55, 1.95, 2.15, 2.75, border=True)
+    text(s, 7.55, 4.78, 2.2, 0.22, "图片资产：有来源、可复制、可插题", size=8.6, color=GRAY2)
+    note = rect(s, 7.55, 5.15, 2.15, 1.15, fill=WHITE, line=LINE, lw=0.75, radius=0.06)
+    fill_text(note, [("图片不是附件，", 10.5, True, MINT_D), ("是能再次使用的资产。", 10.5, True, MINT_D)],
+              margins=(0.18, 0.12, 0.14, 0.10))
+    footer(s, 3)
+
+
+def p3d():
+    s = prs.slides.add_slide(BLANK); bg(s)
+    header(s, "02  /  我的资料空间", "我的资料：把每份资料，变成可复用的资产",
+           "不是文件管理器，也不是 RAG 问答框——先看懂一份资料，再让它被反复使用。")
+    text(s, M_L, 1.76, 8.4, 0.22, "01  上传后：自动解析、自动归位，状态变成「可检索」", size=10.5, bold=True, color=MINT_D, spc=20)
+    pic_card(s, os.path.join(os.path.dirname(HERE), 'competition', '码道架构图', 'p3-upload.png'),
+             M_L, 2.02, 8.40, 0.80, border=True)
+    text(s, M_L, 3.02, 8.6, 0.22, "02  点开「资料解剖」：左侧结构、中间正文、右侧图片", size=10.5, bold=True, color=MINT_D, spc=20)
+    pic_card(s, os.path.join(os.path.dirname(HERE), 'competition', '码道架构图', 'p3-anatomy-composite.png'),
+             M_L, 3.28, 8.60, 3.63, border=True)
+    card = rect(s, 9.78, 3.28, 2.70, 3.63, fill=MINT_L2, line=None, radius=0.06)
+    fill_text(card, [
+        ("这一步解决什么", 11.5, True, MINT_D),
+        ("左侧：先看清章节结构", 10.0, False, INK),
+        ("中间：原文与图片不拆散", 10.0, False, INK),
+        ("右侧：图片资产可复用", 10.0, False, INK),
+        ("以后找图不用再翻原文", 9.5, False, GRAY),
+    ], margins=(0.24, 0.18, 0.20, 0.14), spacing=7)
+    footer(s, 3)
+
+
 def p4c():
     s = prs.slides.add_slide(BLANK); bg(s)
     header(s, "03  /  一切皆对话", "一句话，四种产出",
            "不用找菜单：把资料交给对话，剩下的它自己做。")
-    pic_card(s, S8, M_L, 1.95, 5.55, 3.47, caption="真实对话：一句话建题库，AI 自动读资料、出题、落库")
+    pic_card(s, os.path.join(os.path.dirname(HERE), 'competition', '码道架构图', 'p4-chat-core4.png'),
+             M_L, 1.95, 5.90, 3.74, caption="真实对话：一句话建题库，AI 自动读资料、出题、落库")
     rows = [
         ("用这份资料建个题库，出 20 道题", "题库练习"),
         ("把这份资料做成讲义，导出 Word", "讲义文档"),
@@ -771,23 +820,26 @@ def p5b():
     s = prs.slides.add_slide(BLANK); bg(s)
     header(s, "04  /  题库导入", "Word 题库导入：图、公式、解析都不丢",
            "最常见的一份资料：Word 题库，题干里有复杂公式，后面还跟着图。")
-    text(s, M_L, 1.80, 3.3, 0.22, "Word 原文", size=10.5, bold=True, color=GRAY2, spc=40)
-    text(s, 4.42, 1.80, 7.0, 0.22, "导入后的题目详情", size=10.5, bold=True, color=GRAY2, spc=40)
-    pic_card(s, S9, M_L, 2.04, 3.30, 3.82, border=True)
-    pic_card(s, S10, 4.42, 2.04, 6.98, 4.78, border=True)
+    text(s, M_L, 1.80, 3.8, 0.22, "Word 原文", size=10.5, bold=True, color=GRAY2, spc=40)
+    text(s, 5.05, 1.80, 7.0, 0.22, "导入后的题目详情", size=10.5, bold=True, color=GRAY2, spc=40)
+    pic_card(s, S9, M_L, 2.04, 3.95, 3.47, border=True)
+    pic_card(s, S10, 5.05, 2.04, 6.95, 4.83, border=True)
     bullets = ["题干 / 选项 / 答案自动拆开", "图片按原位置归属到题目", "复杂公式渲染成 LaTeX / KaTeX"]
-    y = 6.04
+    y = 5.66
     for b in bullets:
-        text(s, M_L, y, 3.5, 0.22, "· " + b, size=8.2, color=GRAY)
-        y += 0.24
+        text(s, M_L, y, 3.95, 0.22, "· " + b, size=9.0, color=GRAY)
+        y += 0.28
     footer(s, 5)
 
 
-for fn in (p1, p2b, p3b, p4c, p5b, p6, p7, p8, p9b, p10b):
+for fn in (p1, p2b, p3d, p4c, p5b, p6, p7, p8, p9b, p10b):
     fn()
 
 out = os.path.join(HERE, "OpenStudy-10页-V3-码道版.pptx")
 prs.save(out)
 print("saved:", out, os.path.getsize(out))
+
+
+
 
 
