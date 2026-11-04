@@ -162,10 +162,9 @@ import ScrollButton from '@/components/ScrollButton/ScrollButton.vue'
 import {
   getQuestionBank,
   listMyQuestionBank,
-  updateQuestionBank,
-  createQuestionBankWithReturn
+  saveQuestionBankWithQuestions
 } from '@/api/questionBank/questionBank'
-import { listQuestionMainAll, addQuestionMain, updateQuestionMain, delQuestionMain } from '@/api/questionMain/questionMain'
+import { listQuestionMainAll } from '@/api/questionMain/questionMain'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
 
 const route = useRoute()
@@ -181,6 +180,7 @@ const saving = ref(false)
 const basicFormRef = ref(null)
 const builderRef = ref(null)
 const questionsLoading = ref(false)
+const editLoadError = ref(false)
 const myBanks = ref([])
 const selectedBankId = ref(null)
 
@@ -238,7 +238,8 @@ const onBankChange = async (bankId) => {
     coverImage: '',
     description: ''
   })
-  if (builderRef.value) builderRef.value.questions = []
+  // 不在请求前清空题目：loadEditData 成功后才整体替换；失败时保留旧题并
+  // 由 editLoadError 阻止保存，避免“切换题库失败 → 题目列表空 → 保存删旧题”。
   await loadEditData()
 }
 
@@ -279,7 +280,7 @@ watch(() => route.query.bankId, async (newBankId) => {
     // 关键：先同步 selectedBankId，否则 loadEditData 里的「selectedBankId || bankId」
     // 会继续读到上一个题库，导致从悬浮助手/外部跳转第二个题库时不刷新
     selectedBankId.value = bankId.value
-    if (builderRef.value) builderRef.value.questions = []
+    // 同上：由 loadEditData 成功后替换题目，失败保留旧列表并由 editLoadError 阻止保存。
     await loadEditData()
   } else {
     basicForm.bankName = ''
@@ -396,67 +397,70 @@ const parseAnswer = (answerStr, typeNum) => {
 const loadEditData = async () => {
   const currentBankId = selectedBankId.value || bankId.value
   if (!currentBankId) return
-  if (builderRef.value) builderRef.value.questions = []
+  // 不要在请求前清空题目：请求失败时保留旧数据，并由 editLoadError 阻止保存，
+  // 避免「加载失败 → 题目列表空 → 用户点保存 → 旧题被当成删除」的数据丢失。
   questionsLoading.value = true
+  editLoadError.value = false
   try {
     const bankRes = await getQuestionBank(currentBankId)
-    if (bankRes.code === 200 && bankRes.data) {
-      const bank = bankRes.data
-      basicForm.bankName = bank.bankName
-      basicForm.subject = bank.subject
-      basicForm.coverImage = bank.coverImage || bank.cover_image || ''
-      basicForm.description = bank.description || ''
-      publishForm.visibility = bank.isPublic === 0 ? 'public' : 'private'
-      publishForm.allowFork = bank.allowFork !== 0
-    } else {
-      ElMessage.error('加载题库信息失败')
+    if (bankRes.code !== 200 || !bankRes.data) {
+      throw new Error(bankRes.msg || '加载题库信息失败')
     }
+    const bank = bankRes.data
+    basicForm.bankName = bank.bankName
+    basicForm.subject = bank.subject
+    basicForm.coverImage = bank.coverImage || bank.cover_image || ''
+    basicForm.description = bank.description || ''
+    publishForm.visibility = bank.isPublic === 0 ? 'public' : 'private'
+    publishForm.allowFork = bank.allowFork !== 0
 
-    const questionRes = await listQuestionMainAll({ bankId: currentBankId })
-    if (questionRes.code === 200 && questionRes.data) {
-      // 后端 list_all_questions 已通过 selectinload 一次性返回所有题目（含子题）
-      // 直接使用列表数据，避免对每个题目再调 getQuestionMain 导致 N+1 请求
-      const questions = questionRes.data.map(fullQ => {
-        const base = {
-          id: fullQ.id,
-          backendId: fullQ.id,
-          type: mapBackendType(fullQ.questionType),
-          title: fullQ.questionText || '',
-          content: fullQ.content || '',
-          analysis: fullQ.analysis || '',
-          score: fullQ.score || 5
-        }
-        const isComposite = fullQ.questionType === 6 || fullQ.hasSubQuestions === 1
-        if (isComposite) {
-          base.type = 'composite'
-          base.content = fullQ.content || ''
-          // 后端 format_question 返回字段名为 subQuestions（非 questionSubList）
-          const subList = fullQ.subQuestions || []
-          base.subQuestions = subList.map(sub => ({
-            id: sub.id,
-            type: mapBackendType(sub.questionType),
-            question: sub.questionText || '',
-            optionsJson: sub.options,
-            options: parseOptions(sub.options),
-            answer: parseAnswer(sub.answer, sub.questionType),
-            score: sub.score || 2,
-            sortOrder: sub.sortOrder !== undefined ? sub.sortOrder : 0,
-            analysis: sub.analysis || ''
-          }))
-        } else if (['single', 'multiple', 'judge'].includes(base.type)) {
-          base.options = parseOptions(fullQ.options)
-          base.optionsJson = JSON.stringify(base.options)
-          base.answer = parseAnswer(fullQ.answer, fullQ.questionType)
-        } else if (base.type === 'fill' || base.type === 'essay') {
-          base.answer = fullQ.answer || ''
-        }
-        return base
-      })
-      if (builderRef.value) builderRef.value.questions = questions
+    const questionRes = await listQuestionMainAll({ bankId: currentBankId, withAnswer: true })
+    if (questionRes.code !== 200 || !Array.isArray(questionRes.data)) {
+      throw new Error(questionRes.msg || '加载题目失败')
     }
+    // 后端 list_all_questions 已通过 selectinload 一次性返回所有题目（含子题）
+    // 直接使用列表数据，避免对每个题目再调 getQuestionMain 导致 N+1 请求
+    const questions = questionRes.data.map(fullQ => {
+      const base = {
+        id: fullQ.id,
+        backendId: fullQ.id,
+        type: mapBackendType(fullQ.questionType),
+        title: fullQ.questionText || '',
+        content: fullQ.content || '',
+        analysis: fullQ.analysis || '',
+        score: fullQ.score || 5
+      }
+      const isComposite = fullQ.questionType === 6 || fullQ.hasSubQuestions === 1
+      if (isComposite) {
+        base.type = 'composite'
+        base.content = fullQ.content || ''
+        // 后端 format_question 返回字段名为 subQuestions（非 questionSubList）
+        const subList = fullQ.subQuestions || []
+        base.subQuestions = subList.map(sub => ({
+          id: sub.id,
+          type: mapBackendType(sub.questionType),
+          question: sub.questionText || '',
+          optionsJson: sub.options,
+          options: parseOptions(sub.options),
+          answer: parseAnswer(sub.answer, sub.questionType),
+          score: sub.score || 2,
+          sortOrder: sub.sortOrder !== undefined ? sub.sortOrder : 0,
+          analysis: sub.analysis || ''
+        }))
+      } else if (['single', 'multiple', 'judge'].includes(base.type)) {
+        base.options = parseOptions(fullQ.options)
+        base.optionsJson = JSON.stringify(base.options)
+        base.answer = parseAnswer(fullQ.answer, fullQ.questionType)
+      } else if (base.type === 'fill' || base.type === 'essay') {
+        base.answer = fullQ.answer || ''
+      }
+      return base
+    })
+    if (builderRef.value) builderRef.value.questions = questions
   } catch (error) {
+    editLoadError.value = true
     console.error('加载编辑数据失败:', error)
-    ElMessage.error('加载数据失败，请刷新重试')
+    ElMessage.error('加载数据失败，请刷新重试；当前页面已禁止保存，避免覆盖原题库')
   } finally {
     questionsLoading.value = false
   }
@@ -475,6 +479,36 @@ const resetQuestions = async () => {
     builderRef.value.questions = []
     ElMessage.success('已恢复初始状态')
   }
+}
+
+const validateQuestionContent = (questions) => {
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i]
+    if (!String(q.title || '').trim()) {
+      ElMessage.error(`第${i + 1}题题干不能为空`)
+      return false
+    }
+    if (['single', 'multiple'].includes(q.type)) {
+      if (!Array.isArray(q.options) || q.options.length < 2 || q.options.some(o => !String(o ?? '').trim())) {
+        ElMessage.error(`第${i + 1}题至少需要两个非空选项`)
+        return false
+      }
+    }
+    if (q.type === 'composite' && q.subQuestions) {
+      for (let j = 0; j < q.subQuestions.length; j++) {
+        const sub = q.subQuestions[j]
+        if (!String(sub.question || '').trim()) {
+          ElMessage.error(`第${i + 1}题的第${j + 1}子题题干不能为空`)
+          return false
+        }
+        if (['single', 'multiple'].includes(sub.type) && (!Array.isArray(sub.options) || sub.options.length < 2)) {
+          ElMessage.error(`第${i + 1}题的第${j + 1}子题至少需要两个选项`)
+          return false
+        }
+      }
+    }
+  }
+  return true
 }
 
 const validateAnswers = (questions) => {
@@ -536,10 +570,17 @@ const handleSave = async () => {
     return
   }
 
-  await basicFormRef.value?.validate().catch(() => {
+  if (editLoadError.value) {
+    ElMessage.error('题库数据未加载成功，已禁止保存，避免覆盖原题库')
+    return
+  }
+
+  try {
+    await basicFormRef.value?.validate()
+  } catch {
     ElMessage.warning('请填写完整的题库基本信息')
     return
-  })
+  }
 
   const rawQuestions = builderRef.value?.questions || []
   const currentQuestions = JSON.parse(JSON.stringify(rawQuestions.map((q, index) => {
@@ -569,6 +610,7 @@ const handleSave = async () => {
 
   // 允许空题库发布（用户可以先创建题库占位，后续再添加题目）
   if (currentQuestions.length > 0) {
+    if (!validateQuestionContent(currentQuestions)) return
     if (!validateAnswers(currentQuestions)) return
   } else {
     try {
@@ -598,85 +640,57 @@ const handleSave = async () => {
     let targetBankId = selectedBankId.value || bankId.value
     const effectiveBankId = targetBankId
 
+    // 单次请求提交整份题库：后端在一个事务里完成题库信息 + 全部题目 + 子题，
+    // 失败整体回滚，不再出现「新增成功一半 / 删除已执行」的半成品。
+    const questionPayload = currentQuestions.map((q, index) => ({
+      id: q.backendId || undefined,
+      questionType: mapTypeToNumber(q.type),
+      difficulty: 2,
+      questionText: q.title || '',
+      content: q.content || '',
+      options: formatOptions(q.options),
+      answer: q.type === 'composite' ? '' : formatAnswer(q.answer, q.type),
+      questionAnalysis: q.analysis || '',
+      hasSubQuestions: (q.type === 'composite' && q.subQuestions?.length) ? 1 : 0,
+      sortOrder: index,
+      score: q.score || 5,
+      status: '0',
+      questionSubList: (q.type === 'composite' && q.subQuestions) ? q.subQuestions.map((sub: any, idx: number) => ({
+        questionText: sub.question,
+        questionType: mapTypeToNumber(sub.type),
+        options: formatOptions(sub.options),
+        answer: formatAnswer(sub.answer, sub.type),
+        analysis: sub.analysis || '',
+        sortOrder: sub.sortOrder !== undefined ? sub.sortOrder : idx,
+        score: sub.score || 2
+      })) : []
+    }))
+
+    let deleteQuestionIds: number[] = []
     if (effectiveBankId) {
-      bankData.bankId = effectiveBankId
-      const updateRes = await updateQuestionBank(bankData)
-      if (updateRes.code !== 200) throw new Error(updateRes.msg || '更新题库失败')
-      targetBankId = effectiveBankId
-
-      const existingRes = await listQuestionMainAll({ bankId: effectiveBankId })
-      const existingQuestions = existingRes.code === 200 ? existingRes.data : []
-      const existingMap = new Map(existingQuestions.map(q => [q.id, q]))
-
-      const toAdd = [], toUpdate = [], frontendIds = new Set()
-      for (const q of currentQuestions) {
-        if (q.backendId && existingMap.has(q.backendId)) {
-          toUpdate.push(q)
-          frontendIds.add(q.backendId)
-        } else {
-          toAdd.push(q)
-        }
+      // 仅用于计算「用户已移除的旧题」；最终删除与更新在同一保存事务里执行。
+      const existingRes = await listQuestionMainAll({ bankId: effectiveBankId, withAnswer: true })
+      if (existingRes.code !== 200 || !Array.isArray(existingRes.data)) {
+        throw new Error(existingRes.msg || '读取题库原有题目失败，已取消保存')
       }
-      const toDelete = existingQuestions.filter(q => !frontendIds.has(q.id)).map(q => q.id)
-      if (toDelete.length) await delQuestionMain(toDelete.join(','))
-
-      for (const q of toUpdate) {
-        await updateQuestionMain(JSON.parse(JSON.stringify({
-          id: q.backendId, bankId: targetBankId, questionType: mapTypeToNumber(q.type), difficulty: 2,
-          questionText: q.title || '', content: q.content || '',
-          options: formatOptions(q.options),
-          answer: q.type === 'composite' ? '' : formatAnswer(q.answer, q.type),
-          questionAnalysis: q.analysis || '',
-          hasSubQuestions: (q.type === 'composite' && q.subQuestions?.length) ? 1 : 0,
-          sortOrder: currentQuestions.indexOf(q), score: q.score || 5, status: '0',
-          questionSubList: (q.type === 'composite' && q.subQuestions) ? q.subQuestions.map((sub, idx) => ({
-            id: sub.id, questionText: sub.question, questionType: mapTypeToNumber(sub.type),
-            options: formatOptions(sub.options), answer: formatAnswer(sub.answer, sub.type),
-            analysis: sub.analysis || '', sortOrder: sub.sortOrder !== undefined ? sub.sortOrder : idx, score: sub.score || 2
-          })) : []
-        })))
-      }
-      for (const q of toAdd) {
-        await addQuestionMain(JSON.parse(JSON.stringify({
-          bankId: targetBankId, questionType: mapTypeToNumber(q.type), difficulty: 2,
-          questionText: q.title || '', content: q.content || '',
-          options: formatOptions(q.options),
-          answer: q.type === 'composite' ? '' : formatAnswer(q.answer, q.type),
-          questionAnalysis: q.analysis || '',
-          hasSubQuestions: (q.type === 'composite' && q.subQuestions?.length) ? 1 : 0,
-          sortOrder: currentQuestions.indexOf(q), score: q.score || 5, status: '0',
-          questionSubList: (q.type === 'composite' && q.subQuestions) ? q.subQuestions.map((sub, idx) => ({
-            questionText: sub.question, questionType: mapTypeToNumber(sub.type),
-            options: formatOptions(sub.options), answer: formatAnswer(sub.answer, sub.type),
-            analysis: sub.analysis || '', sortOrder: sub.sortOrder !== undefined ? sub.sortOrder : idx, score: sub.score || 2
-          })) : []
-        })))
-      }
-      ElMessage.success('保存成功')
-    } else {
-      const createRes = await createQuestionBankWithReturn(bankData)
-      if (createRes.code !== 200) throw new Error(createRes.msg || '创建题库失败')
-      targetBankId = createRes.data?.id
-      if (!targetBankId) throw new Error('创建题库成功但未返回ID')
-      for (let i = 0; i < currentQuestions.length; i++) {
-        const q = currentQuestions[i]
-        await addQuestionMain(JSON.parse(JSON.stringify({
-          bankId: targetBankId, questionType: mapTypeToNumber(q.type), difficulty: 2,
-          questionText: q.title || '', content: q.content || '',
-          options: formatOptions(q.options),
-          answer: q.type === 'composite' ? '' : formatAnswer(q.answer, q.type),
-          questionAnalysis: q.analysis || '',
-          hasSubQuestions: (q.type === 'composite' && q.subQuestions?.length) ? 1 : 0,
-          sortOrder: i, score: q.score || 5, status: '0',
-          questionSubList: (q.type === 'composite' && q.subQuestions) ? q.subQuestions.map((sub, idx) => ({
-            questionText: sub.question, questionType: mapTypeToNumber(sub.type),
-            options: formatOptions(sub.options), answer: formatAnswer(sub.answer, sub.type),
-            analysis: sub.analysis || '', sortOrder: sub.sortOrder !== undefined ? sub.sortOrder : idx, score: sub.score || 2
-          })) : []
-        })))
-      }
-      ElMessage.success('发布成功')
+      const keptBackendIds = new Set(
+        currentQuestions.map((q: any) => Number(q.backendId)).filter((id: number) => Number.isFinite(id) && id > 0)
+      )
+      deleteQuestionIds = existingRes.data
+        .filter((q: any) => !keptBackendIds.has(Number(q.id)))
+        .map((q: any) => Number(q.id))
     }
+
+    const saveRes = await saveQuestionBankWithQuestions({
+      bankId: effectiveBankId || undefined,
+      ...bankData,
+      questions: questionPayload,
+      deleteQuestionIds
+    })
+    if (saveRes.code !== 200) throw new Error(saveRes.msg || '保存题库失败')
+    targetBankId = saveRes.data?.id || effectiveBankId
+    if (!targetBankId) throw new Error('保存成功但未返回题库ID')
+    ElMessage.success(effectiveBankId ? '保存成功' : '发布成功')
 
     cacheStore.clearCachedForm('studioCreateForm')
 
@@ -891,6 +905,44 @@ const handleSave = async () => {
   }
 }
 
+/* 390px 实测：两列 el-col-12 各只有 ~190px，题库描述/封面被右边缘裁掉；
+   底部 .step-footer 的负 margin 也把内容推出屏幕。这里统一改单列。 */
+@media (max-width: 720px) {
+  .create-studio {
+    padding: 4px 0 32px;
+  }
+
+  .basic-form {
+    :deep(.el-row) {
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+    }
+
+    :deep(.el-col-12) {
+      flex: 0 0 100%;
+      max-width: 100%;
+      width: 100%;
+    }
+  }
+
+  .publish-grid {
+    gap: 16px;
+
+    .pg-main,
+    .pg-side {
+      flex: 1 1 100%;
+      width: 100%;
+    }
+  }
+
+  .step-footer {
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
 /* ==================== 表单 ==================== */
 .basic-form,
 .publish-form {
@@ -1050,6 +1102,16 @@ const handleSave = async () => {
     .sf-hint {
       display: none;
     }
+  }
+}
+
+/* 覆盖文件末尾 `.step-footer` 的 `margin: 8px -16px 0`（390px 实测会左右各溢出 16px） */
+@media (max-width: 720px) {
+  .step-footer {
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 16px;
+    padding-right: 16px;
   }
 }
 /*

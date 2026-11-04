@@ -1,6 +1,14 @@
 import { ref, computed, nextTick } from 'vue'
 import type { Ref, ComputedRef } from 'vue'
-import { listQuestionMainAll, getQuestionMain, recordStudyTime, reportPractice } from '@/api/questionMain/questionMain'
+import {
+  listQuestionMainAll,
+  getQuestionMain,
+  recordStudyTime,
+  reportPractice,
+  startPracticeSession,
+  answerPracticeSession,
+  submitPracticeSession
+} from '@/api/questionMain/questionMain'
 import { parseOptions } from '@/utils/questionUtils'
 // 修改导入，添加新的API方法
 import { listQuestionErrorAll, batchCheckError } from '@/api/questionError/questionError'
@@ -68,6 +76,12 @@ export function useQuestionPractice(
   const loading = ref<boolean>(true)
   const submissionLock = ref<boolean>(false)
   /**
+   * 服务端练习会话（判分/成绩的权威来源）。
+   * 每次题目批次变化时新建；同一批题反复作答不会重复建会话。
+   */
+  const practiceSessionId = ref<string>('')
+  const practiceSessionSignature = ref<string>('')
+  /**
    * 「只刷错题」模式下、当前题库没有可练错题时的说明文案
    *
    * ⚠️ 为什么要单独一个状态（而不是只弹一次 `msgInfo`）：
@@ -110,6 +124,68 @@ export function useQuestionPractice(
   const markedQuestions = ref<Set<number>>(new Set())
   // 错题状态
   const errorQuestions = ref<Set<number>>(new Set())
+
+  /**
+   * 为当前页面的题目批次创建服务端会话。
+   *
+   * 为什么不把整库所有题都塞进一个会话：练习页按「每次 N 题 / 只刷错题」切片，
+   * 若会话包含全库，交卷时未展示的题会被算成未答，成绩失真。
+   * 因此以 `questions.value`（当前实际展示的题单）为准，题单变化即重建会话。
+   */
+  async function ensurePracticeSession(): Promise<boolean> {
+    const ids = (questions.value || [])
+      .map((q: any) => Number(q?.id))
+      .filter((id) => Number.isFinite(id) && id > 0)
+    if (!ids.length || !props.bankId) return false
+    // 模拟考试会话由 PracticeComponent 带着分值快照创建，绝不能被这里的
+    // 「顺序练习」默认会话覆盖（否则 _mockScore 丢失、交卷满分错误）。
+    if (props.moduleType === 'mock' && practiceSessionId.value) return true
+    const signature = `${props.bankId}:${ids.join(',')}`
+    if (practiceSessionId.value && practiceSessionSignature.value === signature) return true
+    try {
+      const res: any = await startPracticeSession({
+        bankId: Number(props.bankId),
+        moduleType: props.moduleType || 'sequential',
+        questionIds: ids
+      })
+      if (res?.code === 200 && res?.data?.sessionId) {
+        practiceSessionId.value = String(res.data.sessionId)
+        practiceSessionSignature.value = signature
+        return true
+      }
+      console.warn('[practice] 创建服务端会话失败', res?.msg || res)
+    } catch (e) {
+      console.warn('[practice] 创建服务端会话异常', e)
+    }
+    return false
+  }
+
+  /** 把服务端判分结果写回题目对象，供解析区/答题卡/结算页共用 */
+  function applyServerGrade(q: any, data: any): void {
+    if (!q || !data) return
+    if (data.correctAnswer !== undefined && data.correctAnswer !== null) {
+      q.correctAnswer = data.correctAnswer
+    }
+    if (data.analysis !== undefined && data.analysis !== null) {
+      q.analysis = data.analysis
+    }
+    if (Array.isArray(data.subResults) && data.subResults.length) {
+      data.subResults.forEach((item: any) => {
+        const sub = q.subQuestions?.[Number(item.subIndex)]
+        if (!sub) return
+        if (item.correctAnswer !== undefined && item.correctAnswer !== null) {
+          sub.correctAnswer = item.correctAnswer
+        }
+        if (item.analysis !== undefined && item.analysis !== null) {
+          sub.analysis = item.analysis
+        }
+      })
+    }
+    q.correct = data.isCorrect === true
+    q.pending = data.pending === true
+    q.answered = true
+    q.showAnalysis = true
+  }
 
   // ✅ 答题上报：答对 / 答错都要上报（学习统计的唯一数据源）
   // 说明：原先只在答错时上报，导致后端 user_question_favorite.correct_times / error_times
@@ -542,6 +618,7 @@ export function useQuestionPractice(
       debugProcessComplete(props.moduleType, questions.value, allQuestionsData.value)
 
       resetAnswers()
+      await ensurePracticeSession()
       await loadQuestionStatus()
       loading.value = false
     } else {
@@ -611,6 +688,7 @@ export function useQuestionPractice(
       })
 
       resetAnswers()
+      await ensurePracticeSession()
       await loadQuestionStatus()
       loading.value = false
     }
@@ -689,6 +767,7 @@ export function useQuestionPractice(
       // ⚠️ resetOffset: true —— 数组已经从「全库」换成「错题集」，旧偏移量失效。
       //    不归零就是 bug1：offset 越界 → 被判成「已刷完所有题目」→ 空白页。
       applyQuestionLimits({ resetOffset: true })
+      await ensurePracticeSession()
       // 批量加载收藏/斩题状态（错题状态已通过 errorQuestionIds 确定）
       await loadQuestionStatus()
       return true
@@ -1684,7 +1763,9 @@ export function useQuestionPractice(
       // response 兼容 { data: [] } 与 { result: [] } 两种返回结构，故用 any
       const response: any = await listQuestionMainAll({
         bankId: props.bankId,
-        status: "0"
+        status: "0",
+        // 练习入口不拿答案/解析；判分与参考答析由服务端会话在作答后返回
+        withAnswer: false
       })
       let data: any[] = []
       if (Array.isArray(response.data)) {
@@ -1703,7 +1784,7 @@ export function useQuestionPractice(
         return
       }
 
-      processQuestions(data)
+      await processQuestions(data)
       subFillBlankAnswers.value = {}
       subEssayAnswers.value = {}
       await nextTick()
@@ -1739,7 +1820,8 @@ export function useQuestionPractice(
       // response 兼容 { data: [] } 与 { result: [] } 两种返回结构，故用 any
       const response: any = await listQuestionMainAll({
         bankId: props.bankId,
-        status: "0"
+        status: "0",
+        withAnswer: false
       })
       let data: any[] = []
       if (Array.isArray(response.data)) {
@@ -1755,7 +1837,7 @@ export function useQuestionPractice(
         return
       }
 
-      processQuestions(data)
+      await processQuestions(data)
       subFillBlankAnswers.value = {}
       subEssayAnswers.value = {}
       await nextTick()
@@ -2003,110 +2085,56 @@ export function useQuestionPractice(
   }
 
   // ✅ 修复：handleAnswerSubmission 函数 - 完整版
-  function handleAnswerSubmission(qIndex: number): void {
+  /**
+   * 作答提交：只把用户答案发给服务端，判分/参考答案/解析全部由服务端返回。
+   *
+   * 旧实现直接拿 `q.correctAnswer` 在前端比对，题目接口又明文下发答案，
+   * 等于「答案在客户端、判分也在客户端」。现在答案不在初始题目里，
+   * 只有本题作答后服务端才会返回 `correctAnswer/analysis`。
+   */
+  async function handleAnswerSubmission(qIndex: number): Promise<void> {
     if (submissionLock.value) return
     const q = questions.value[qIndex]
     if (!q) return
 
+    const composite = ['readingComprehension', 'cloze'].includes(q.type)
+    const answer = composite ? answers.value[qIndex] : (answers.value[qIndex] ?? selectedAnswer.value)
+    if (!hasAnswerValue(answer)) return
+
     submissionLock.value = true
-    setTimeout(() => { submissionLock.value = false }, 100)
-
-    let isCorrect = false
-    let userAnswer: any = null
-
-    if (['readingComprehension', 'cloze'].includes(q.type)) {
-      // 阅读理解/完形填空处理逻辑
-      const subAns = answers.value[qIndex] || {}
-
-      // ✅ 修复：检查是否有填空题或问答题的答案
-      const hasAnyAnswer = Object.keys(subAns).length > 0 &&
-        (Object.keys(subAns).some(key => key !== 'fillblank' && key !== 'essay') ||
-          (subAns.fillblank && Object.keys(subAns.fillblank).length > 0) ||
-          (subAns.essay && Object.keys(subAns.essay).length > 0))
-
-      if (hasAnyAnswer) {
-        const allAnswered = q.subQuestions.every((subQ: any, i: number) => {
-          if (subQ.type === 'fillblank') {
-            const hasAnswer = subAns.fillblank && subAns.fillblank[i] !== undefined && subAns.fillblank[i] !== ''
-            return hasAnswer
-          } else if (subQ.type === 'essay') {
-            const hasAnswer = subAns.essay && subAns.essay[i] !== undefined && subAns.essay[i] !== ''
-            return hasAnswer
-          } else {
-            const hasAnswer = subAns[i] !== undefined
-            return hasAnswer
-          }
-        })
-
-        q.answered = allAnswered
-
-        if (allAnswered) {
-          let allCorrect = true
-          for (let i = 0; i < q.subQuestions.length; i++) {
-            const subQ = q.subQuestions[i]
-
-            if (subQ.type === 'fillblank') {
-              const userAns = subAns.fillblank && subAns.fillblank[i]
-
-              if (!userAns || userAns.trim().toLowerCase() !== String(subQ.correctAnswer).trim().toLowerCase()) {
-                allCorrect = false
-                break
-              }
-            } else if (subQ.type === 'essay') {
-              continue
-            } else if (subQ.type === 'multiple') {
-              const userAns = Array.isArray(subAns[i]) ? subAns[i].slice().sort() : []
-              const correctAnswer = Array.isArray(subQ.correctAnswer) ? subQ.correctAnswer.slice().sort() : []
-              if (JSON.stringify(userAns) !== JSON.stringify(correctAnswer)) {
-                allCorrect = false
-                break
-              }
-            } else {
-              if (subAns[i] !== subQ.correctAnswer) {
-                allCorrect = false
-                break
-              }
-            }
-          }
-
-          q.correct = allAnswered && allCorrect
-          q.showAnalysis = true
-
-          const currentUserId = userStore.id || (userStore as any).userId
-          if (currentUserId) {
-            reportQuestionPractice(q, subAns, !!q.correct)
-          }
+    try {
+      if (!practiceSessionId.value) {
+        const ok = await ensurePracticeSession()
+        if (!ok) {
+          proxy.$modal.msgError('练习会话创建失败，请刷新后重试')
+          return
         }
       }
-      return
-    }
-
-    // 普通题目处理
-    const ans = selectedAnswer.value
-    if (ans !== null) {
-      userAnswer = ans
-      answers.value[qIndex] = ans
-      q.answered = true
-
-      const ca = q.correctAnswer
-
-      if (q.type === 'single' || q.type === 'truefalse') {
-        isCorrect = ans === ca
-      } else if (q.type === 'multiple') {
-        isCorrect = Array.isArray(ans) && Array.isArray(ca) &&
-          ans.length === ca.length && ans.every((v: any) => ca.includes(v))
-      } else if (['fillblank', 'essay'].includes(q.type)) {
-        isCorrect = String(ans).trim().toLowerCase() === String(ca).trim().toLowerCase()
+      const res: any = await answerPracticeSession(practiceSessionId.value, q.id, answer)
+      if (res?.code !== 200) {
+        proxy.$modal.msgError(res?.msg || '服务端判分失败，请重试')
+        return
       }
-
-      q.correct = isCorrect
-      q.showAnalysis = true
-
-      const currentUserId = userStore.id || (userStore as any).userId
-      if (currentUserId) {
-        reportQuestionPractice(q, userAnswer, isCorrect)
+      answers.value[qIndex] = answer
+      applyServerGrade(q, res.data || {})
+      if (!composite) selectedAnswer.value = answer
+      if ((q as any).pending) {
+        proxy.$modal.msgInfo('简答题已保存，参考答案待你自评')
       }
+    } catch (e: any) {
+      console.warn('[practice] 服务端判分异常', e)
+      proxy.$modal.msgError('服务端判分失败，请检查网络后重试')
+    } finally {
+      setTimeout(() => { submissionLock.value = false }, 100)
     }
+  }
+
+  function hasAnswerValue(value: any): boolean {
+    if (value === null || value === undefined) return false
+    if (typeof value === 'string') return value.trim().length > 0
+    if (Array.isArray(value)) return value.length > 0
+    if (typeof value === 'object') return Object.keys(value).some((k) => hasAnswerValue(value[k]))
+    return true
   }
 
   /**
@@ -2124,6 +2152,8 @@ export function useQuestionPractice(
   function resetPractice(): void {
     // 丢掉随机题单 + 会话内的乱序缓存，让下次加载重新生成
     clearRandomPlan()
+    practiceSessionId.value = ''
+    practiceSessionSignature.value = ''
     shuffledCache.delete(`${props.bankId}_${props.moduleType}`)
     questionOffset.value = 0
     resetAnswers()
@@ -2226,82 +2256,16 @@ export function useQuestionPractice(
   // 计算属性
   const currentQuestion = computed<TransformedQuestion>(() => questions.value[currentQuestionIndex.value])
   const totalQuestions = computed<number>(() => questions.value.length)
-  const correctCount = computed<number>(() =>
-    answers.value.filter((a, i) => {
-      const q = questions.value[i]
-      if (!q || a === null) return false
-      if (['readingComprehension', 'cloze'].includes(q.type)) {
-        const subAns = a
-        if (!subAns || Object.keys(subAns).length === 0) return false
-        return q.subQuestions.every((sq: any, idx: number) => {
-          if (sq.type === 'fillblank') {
-            const userAnswer = subAns.fillblank && subAns.fillblank[idx]
-            return userAnswer !== undefined &&
-              userAnswer.trim().toLowerCase() === String(sq.correctAnswer).trim().toLowerCase()
-          } else if (sq.type === 'essay') {
-            return true
-          } else if (sq.type === 'multiple') {
-            const userAnswer = Array.isArray(subAns[idx]) ? subAns[idx].slice().sort() : []
-            const correctAnswer = Array.isArray(sq.correctAnswer) ? sq.correctAnswer.slice().sort() : []
-            return JSON.stringify(userAnswer) === JSON.stringify(correctAnswer)
-          } else {
-            return subAns[idx] === sq.correctAnswer
-          }
-        })
-      }
-      if (q.type === 'multiple') {
-        return Array.isArray(a) &&
-          Array.isArray(q.correctAnswer) &&
-          a.length === q.correctAnswer.length &&
-          a.every((v: any) => q.correctAnswer.includes(v))
-      }
-      if (['fillblank', 'essay'].includes(q.type)) {
-        return String(a).trim().toLowerCase() === String(q.correctAnswer).trim().toLowerCase()
-      }
-      return a === q.correctAnswer
-    }).length
+  const gradedQuestions = computed(() =>
+    questions.value.filter((q: any) => q.answered && !q.pending)
   )
-  const wrongCount = computed<number>(() =>
-    answers.value.filter((a, i) => {
-      const q = questions.value[i]
-      if (!q || a === null || !q.answered) return false
-
-      if (['readingComprehension', 'cloze'].includes(q.type)) {
-        const subAns = a
-        if (!subAns || Object.keys(subAns).length === 0) return false
-        return !q.subQuestions.every((sq: any, idx: number) => {
-          if (sq.type === 'fillblank') {
-            const userAnswer = subAns.fillblank && subAns.fillblank[idx]
-            return userAnswer !== undefined &&
-              userAnswer.trim().toLowerCase() === String(sq.correctAnswer).trim().toLowerCase()
-          } else if (sq.type === 'essay') {
-            return true
-          } else if (sq.type === 'multiple') {
-            const userAnswer = Array.isArray(subAns[idx]) ? subAns[idx].slice().sort() : []
-            const correctAnswer = Array.isArray(sq.correctAnswer) ? sq.correctAnswer.slice().sort() : []
-            return JSON.stringify(userAnswer) === JSON.stringify(correctAnswer)
-          } else {
-            return subAns[idx] === sq.correctAnswer
-          }
-        })
-      }
-
-      if (q.type === 'multiple') {
-        return !(Array.isArray(a) &&
-          Array.isArray(q.correctAnswer) &&
-          a.length === q.correctAnswer.length &&
-          a.every((v: any) => q.correctAnswer.includes(v)))
-      }
-
-      if (['fillblank', 'essay'].includes(q.type)) {
-        return String(a).trim().toLowerCase() !== String(q.correctAnswer).trim().toLowerCase()
-      }
-
-      return a !== q.correctAnswer
-    }).length
-  )
+  const correctCount = computed<number>(() => gradedQuestions.value.filter((q: any) => q.correct === true).length)
+  const wrongCount = computed<number>(() => gradedQuestions.value.filter((q: any) => q.correct !== true).length)
+  const pendingCount = computed<number>(() => questions.value.filter((q: any) => q.answered && q.pending).length)
   const accuracy = computed<number>(() =>
-    totalQuestions.value > 0 ? Math.round((correctCount.value / totalQuestions.value) * 100) : 0
+    gradedQuestions.value.length > 0
+      ? Math.round((correctCount.value / gradedQuestions.value.length) * 100)
+      : 0
   )
 
   /*
@@ -2346,6 +2310,11 @@ export function useQuestionPractice(
     favoritedQuestions,
     markedQuestions,
     errorQuestions,
+    // 服务端练习会话（结算时用它提交成绩）
+    practiceSessionId,
+    ensurePracticeSession,
+    applyServerGrade,
+    pendingCount,
 
     // 计算属性
     currentQuestion,

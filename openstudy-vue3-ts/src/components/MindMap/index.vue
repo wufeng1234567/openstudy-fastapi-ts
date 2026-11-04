@@ -588,6 +588,15 @@ defineExpose({ fitView, nodeCount, openZoom, exportPng })
     gap: 8px;
 }
 
+/* 390px 实测：动作按钮总宽 478px，超出屏幕 98px。窄屏改为单独占一行并允许换行。 */
+@media (max-width: 640px) {
+    .mm-actions {
+        width: 100%;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+}
+
 /*
  * mind-elixir 容器：高度由 props.height 控制（模板行内 style），
  * 宽度自适应父容器；overflowHidden 选项负责裁剪超出部分。

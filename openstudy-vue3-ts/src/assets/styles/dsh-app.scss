@@ -636,4 +636,23 @@ select,
     align-items: flex-start;
     gap: 12px;
   }
+
+  /* 移动端分页：隐藏「共 N 条 / 每页 N 条 / 跳至」这三块宽控件，只保留翻页。
+     390px 实测原先分页器宽 430~470px，左右各被裁掉一截。 */
+  .el-pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: 6px;
+  }
+
+  .el-pagination .el-pagination__sizes,
+  .el-pagination .el-pagination__jump {
+    display: none !important;
+  }
+
+  .el-pagination .el-pager li,
+  .el-pagination button {
+    margin: 0 1px;
+    min-width: 28px;
+  }
 }

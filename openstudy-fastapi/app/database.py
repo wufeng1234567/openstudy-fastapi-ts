@@ -77,7 +77,9 @@ def register_all_models() -> None:
         chat_upload,
         config,
         courses,
+        dict,
         menu,
+        monitor,
         note,
         note_question,
         note_question_bank,
@@ -139,6 +141,21 @@ async def init_db():
                 logger.info("question_bank.allow_fork 列已补齐")
 
         await conn.run_sync(_ensure_question_bank_columns)
+
+        # 兼容历史库：sys_notice.create_time 曾无默认值，评论/回复通知大量为 NULL。
+        # 这会让消息中心排序错乱、前端显示空白；启动时一次性回填（幂等）。
+        def _backfill_notice_create_time(sync_conn):
+            from sqlalchemy import inspect, text
+            inspector = inspect(sync_conn)
+            if "sys_notice" not in inspector.get_table_names():
+                return
+            sync_conn.execute(text(
+                "UPDATE sys_notice "
+                "SET create_time = COALESCE(update_time, NOW()) "
+                "WHERE create_time IS NULL"
+            ))
+
+        await conn.run_sync(_backfill_notice_create_time)
 
         # 兼容历史库：sys_ai_config 新增 DeepSeek 网页端反代凭据字段
         def _ensure_ai_config_columns(sync_conn):
@@ -218,6 +235,7 @@ async def init_db():
                 ("excluded_ranges", "JSON NULL"),
                 ("content_structure", "JSON NULL"),
                 ("index_version", "INTEGER NOT NULL DEFAULT 1"),
+                ("version", "INTEGER NOT NULL DEFAULT 1"),
             ):
                 if col not in columns:
                     sync_conn.execute(text(f"ALTER TABLE rag_document ADD COLUMN {col} {ddl}"))

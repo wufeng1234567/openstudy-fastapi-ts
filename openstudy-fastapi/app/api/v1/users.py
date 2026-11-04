@@ -8,10 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from datetime import datetime
 from app.database import get_db
-from app.core.security import get_current_user, hash_password, verify_password, require_admin
+from app.core.security import get_current_user, hash_password, verify_password, require_admin, invalidate_user_tokens
 from app.core.response import success, paginate, error
 from app.repositories.user_repo import UserRepository
-from app.schemas.user import UserCreate, UserUpdate, ResetPasswordRequest, UserStatusUpdate
+from app.schemas.user import UserCreate, UserUpdate, ResetPasswordRequest, UserStatusUpdate, ProfileUpdate, PasswordUpdate
 from app.models.user import SysUser, SysDept
 from app.models.role import SysRole
 
@@ -350,57 +350,59 @@ async def reset_password(
     user.update_by = current_user.get("user_name")
     user.update_time = datetime.now()
     await user_repo.update(user)
+    await invalidate_user_tokens(user.user_id)
 
     return success()
 
 
 @router.put("/profile/updatePwd")
 async def update_password(
-    oldPassword: str = Query(...),
-    newPassword: str = Query(...),
+    payload: PasswordUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """修改密码"""
+    """修改密码（JSON body，避免密码进入 URL/access log）"""
     user_repo = UserRepository(db)
     user = await user_repo.get_by_id(current_user.get("user_id"))
 
     if not user:
-        return error("用户不存在")
+        return error("用户不存在", code=404)
 
-    if not verify_password(oldPassword, user.password):
-        return error("旧密码错误")
+    if not verify_password(payload.old_password, user.password):
+        return error("旧密码错误", code=400)
 
-    user.password = hash_password(newPassword)
+    if verify_password(payload.new_password, user.password):
+        return error("新密码不能与旧密码相同", code=400)
+
+    user.password = hash_password(payload.new_password)
     await user_repo.update(user)
+    # 改密后踢掉该用户全部旧 token（含其它设备），旧密码会话不能继续访问
+    await invalidate_user_tokens(user.user_id)
 
     return success()
 
 
 @router.put("/profile")
 async def update_profile(
-    nickName: Optional[str] = Query(None),
-    email: Optional[str] = Query(None),
-    phonenumber: Optional[str] = Query(None),
-    sex: Optional[str] = Query(None),
+    payload: ProfileUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """修改个人信息"""
+    """修改个人信息（JSON body；字段可选，有值才更新）"""
     user_repo = UserRepository(db)
     user = await user_repo.get_by_id(current_user.get("user_id"))
 
     if not user:
-        return error("用户不存在")
+        return error("用户不存在", code=404)
 
-    if nickName is not None:
-        user.nick_name = nickName
-    if email is not None:
-        user.email = email
-    if phonenumber is not None:
-        user.phonenumber = phonenumber
-    if sex is not None:
-        user.sex = sex
+    if payload.nick_name is not None:
+        user.nick_name = payload.nick_name.strip()
+    if payload.email is not None:
+        user.email = payload.email.strip()
+    if payload.phonenumber is not None:
+        user.phonenumber = payload.phonenumber.strip()
+    if payload.sex is not None:
+        user.sex = payload.sex
 
     await user_repo.update(user)
 
@@ -413,18 +415,39 @@ async def update_avatar(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """修改头像"""
-    from app.utils.file_util import save_upload_file
+    """修改头像：只接受真实图片（按扩展名 + 文件头双重校验），并清理旧头像文件。"""
+    from pathlib import Path
+    from app.utils.file_util import save_bytes, delete_file
 
-    result = await save_upload_file(avatarfile, sub_dir="avatar")
+    raw = await avatarfile.read()
+    if not raw:
+        return error("头像文件为空", code=400)
+    if len(raw) > 5 * 1024 * 1024:
+        return error("头像不能超过 5MB", code=400)
+    ext = Path(avatarfile.filename or "").suffix.lower()
+    if ext not in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
+        return error("头像仅支持 PNG / JPG / WEBP / GIF", code=400)
+    is_valid = (
+        raw.startswith(b"\x89PNG\r\n\x1a\n")
+        or raw.startswith(b"\xff\xd8\xff")
+        or raw.startswith(b"GIF8")
+        or (raw.startswith(b"RIFF") and len(raw) >= 12 and raw[8:12] == b"WEBP")
+    )
+    if not is_valid:
+        return error("文件内容不是有效图片（扩展名与实际格式不符）", code=400)
 
+    result = save_bytes(raw, f"avatar{ext}", sub_dir="avatar")
     user_repo = UserRepository(db)
     user = await user_repo.get_by_id(current_user.get("user_id"))
+    if not user:
+        return error("用户不存在", code=404)
 
-    if user:
-        user.avatar = result["fileUrl"]
-        await user_repo.update(user)
-
+    old_avatar = user.avatar or ""
+    user.avatar = result["fileUrl"]
+    await user_repo.update(user)
+    # 只删除本地上传目录里的旧头像；外链头像不动
+    if old_avatar.startswith("/profile/"):
+        delete_file(old_avatar[len("/profile/"):])
     return success({"imgUrl": result["fileUrl"]})
 
 

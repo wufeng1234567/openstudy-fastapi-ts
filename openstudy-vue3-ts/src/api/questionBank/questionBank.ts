@@ -55,6 +55,26 @@ export function createQuestionBankWithReturn(data: Partial<QuestionBank>): Promi
   }) as unknown as Promise<ApiResult<QuestionBank>>
 }
 
+// 题库搭建一次性保存（题库 + 题目 + 子题，单事务）
+export function saveQuestionBankWithQuestions(data: {
+  bankId?: number | string | null
+  bankName: string
+  subject?: string
+  description?: string
+  coverImage?: string
+  status?: string
+  isPublic?: number
+  allowFork?: number
+  questions: any[]
+  deleteQuestionIds?: Array<number | string>
+}): Promise<ApiResult<QuestionBank>> {
+  return request({
+    url: '/questionBank/questionBank/saveWithQuestions',
+    method: 'post',
+    data
+  }) as unknown as Promise<ApiResult<QuestionBank>>
+}
+
 // 修改题库主
 export function updateQuestionBank(data: Partial<QuestionBank>): Promise<ApiResult> {
   return request({

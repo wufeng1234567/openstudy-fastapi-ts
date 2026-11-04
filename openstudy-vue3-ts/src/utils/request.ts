@@ -24,7 +24,10 @@ axios.defaults.headers['Content-Type'] = 'application/json;charset=utf-8'
 // 创建 axios 实例
 const service: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_APP_BASE_API,
-  timeout: 30000
+  timeout: 30000,
+  // 422 也交给响应拦截器按统一信封处理：既能保留 HTTP 语义，
+  // 又不会让前端只看到 axios 的“Request failed with status code 422”。
+  validateStatus: (status: number) => (status >= 200 && status < 300) || status === 422
 })
 
 // 登录/注册/退出本身不能被“游客只读”拦截

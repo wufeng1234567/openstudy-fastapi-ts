@@ -86,6 +86,19 @@ def new_session_id() -> str:
     return f"asst_{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}"
 
 
+def _ensure_session_owner(row: Optional[AiChatSession], uid: int) -> None:
+    """拒绝把别人的会话当成自己的写。
+
+    `user_id == 0` 是历史数据/系统会话的未知归属，按旧行为放行；只要行上已经有
+    明确用户，就必须与当前登录用户一致，否则抛 `PermissionError`（路由层转 403）。
+    """
+    if row is None:
+        return
+    owner = int(row.user_id or 0)
+    if owner and owner != int(uid or 0):
+        raise PermissionError("会话不存在或无权访问")
+
+
 def _ms(dt: Optional[datetime]) -> int:
     """datetime -> 毫秒时间戳（前端按毫秒处理）"""
     if not dt:
@@ -278,6 +291,10 @@ async def save_message(
 
     async with async_session_factory() as db:
         now = datetime.now()
+        # 先确认会话归属，再写消息；否则 user2 可以往 user1 的会话里插入消息。
+        row = await db.get(AiChatSession, session_id)
+        _ensure_session_owner(row, uid)
+
         db.add(
             AiChatMessage(
                 session_id=session_id,
@@ -298,7 +315,6 @@ async def save_message(
         if role == "user" and text.strip():
             title = text.strip().replace("\n", " ")
 
-        row = await db.get(AiChatSession, session_id)
         if row is None:
             db.add(
                 AiChatSession(
@@ -362,6 +378,10 @@ async def save_turn(
     async with async_session_factory() as db:
         now = datetime.now()
 
+        # 先确认会话归属，再写任何消息；否则 user2 可以往 user1 的会话里追加一轮。
+        row = await db.get(AiChatSession, session_id)
+        _ensure_session_owner(row, uid)
+
         title: Optional[str] = None
         if has_user:
             text = user_text if user_text.strip() else ATTACHMENT_PLACEHOLDER
@@ -399,7 +419,6 @@ async def save_turn(
         added = int(has_user) + int(has_assistant)
 
         # 同步维护会话索引：没有会话行就建（首条提问定标题），有就累加计数
-        row = await db.get(AiChatSession, session_id)
         if row is None:
             db.add(
                 AiChatSession(
@@ -700,8 +719,18 @@ async def save_agent_timeline(
         payload_obj["metrics"] = metrics
     payload = json.dumps(payload_obj, ensure_ascii=False)
     async with async_session_factory() as db:
+        # 先按会话索引校验归属：即使还没有 timeline 快照，也不允许 user2 用
+        # user1 的 session_id 新建一份自己的快照（否则前端刷新后会把两份数据混读）。
+        session_row = await db.get(AiChatSession, session_id)
+        _ensure_session_owner(session_row, uid)
+
         row = await db.get(AiAgentTimeline, session_id)
         now = datetime.now()
+        # 同一 session_id 已有别人的时间线：拒绝覆盖（详情见 get_agent_timeline）
+        if row is not None:
+            owner = int(row.user_id or 0)
+            if owner and owner != int(uid or 0):
+                raise PermissionError("会话不存在或无权访问")
         if row is None:
             db.add(
                 AiAgentTimeline(

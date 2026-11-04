@@ -86,6 +86,19 @@ class UserNoteFavorite(Base):
     create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+class UserNoteLike(Base):
+    """笔记点赞表（与收藏分开，点赞是一次轻量、可撤销的互动）"""
+    __tablename__ = "user_note_like"
+    __table_args__ = (
+        UniqueConstraint('user_id', 'note_id', name='uk_user_note_like'),
+    )
+
+    like_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("sys_user.user_id"), nullable=False)
+    note_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("note.note_id"), nullable=False)
+    create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class NotePublicSection(Base):
     """笔记公开分区表
 

@@ -559,8 +559,13 @@ function goBookDetail() {
 
 /** 直接开始听写（刚加的词就在这本词库里） */
 function goListeningNow() {
-    // 听写页当前不读 query 选词库，这里先跳过去，用户在那里选同一本即可
-    router.push('/front/english/listening')
+    // 听写页已支持 auto/bookId/mode 查询参数（见 listening/index.vue 的 seed 处理），
+    // 必须把刚导入的词书 id 带过去，否则用户跳到听写页还要自己再选一遍，且默认可能不是这本。
+    const id = donePanel.value?.bookId
+    router.push({
+        path: '/front/english/listening',
+        query: id ? { auto: '1', bookId: String(id), mode: 'dictation' } : { auto: '1', mode: 'dictation' }
+    })
 }
 
 /** 再识别一张：把页面恢复到初始态 */

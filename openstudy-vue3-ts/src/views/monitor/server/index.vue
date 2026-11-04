@@ -44,7 +44,7 @@
                 <tr>
                   <th class="el-table__cell is-leaf"><div class="cell">属性</div></th>
                   <th class="el-table__cell is-leaf"><div class="cell">内存</div></th>
-                  <th class="el-table__cell is-leaf"><div class="cell">JVM</div></th>
+                  <th class="el-table__cell is-leaf"><div class="cell">Python 进程</div></th>
                 </tr>
               </thead>
               <tbody>
@@ -100,14 +100,14 @@
 
       <el-col :span="24" class="card-box">
         <el-card>
-          <template #header><CoffeeCup style="width: 1em; height: 1em; vertical-align: middle;" /> <span style="vertical-align: middle;">Java虚拟机信息</span></template>
+          <template #header><CoffeeCup style="width: 1em; height: 1em; vertical-align: middle;" /> <span style="vertical-align: middle;">Python 运行时信息</span></template>
           <div class="el-table el-table--enable-row-hover el-table--medium">
             <table cellspacing="0" style="width: 100%;table-layout:fixed;">
               <tbody>
                 <tr>
-                  <td class="el-table__cell is-leaf"><div class="cell">Java名称</div></td>
+                  <td class="el-table__cell is-leaf"><div class="cell">Python 实现</div></td>
                   <td class="el-table__cell is-leaf"><div class="cell" v-if="server.jvm">{{ server.jvm.name }}</div></td>
-                  <td class="el-table__cell is-leaf"><div class="cell">Java版本</div></td>
+                  <td class="el-table__cell is-leaf"><div class="cell">Python 版本</div></td>
                   <td class="el-table__cell is-leaf"><div class="cell" v-if="server.jvm">{{ server.jvm.version }}</div></td>
                 </tr>
                 <tr>

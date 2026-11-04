@@ -92,3 +92,10 @@ latex2mathml==3.81.1
 
 # 教学微课 PPT 导出（2026-11-01）
 python-pptx>=1.0.0
+
+# 后台服务监控（app/api/v1/monitor.py：CPU/内存/磁盘，2026-11-03）
+psutil>=5.9.8
+
+# HTML 白名单清洗（app/utils/html_sanitize.py：笔记/分享正文防存储型 XSS，2026-11-04）
+# nh3 是 Rust ammonia 的 Python 绑定：HTML5 解析 + 白名单重序列化，替代原正则方案。
+nh3==0.3.7

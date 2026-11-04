@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.note import Note, NoteCategory
 from app.services.ai.agent.base import fail
+from app.utils.html_sanitize import sanitize_note_html
 
 #: 没分类时自动创建的分类名（见模块 docstring 的坑 1）
 DEFAULT_CATEGORY_NAME = "默认分类"
@@ -402,6 +403,8 @@ async def create_note(
         markdown_content = content
     elif markdown_content and not content:
         content = markdown_content
+    content = sanitize_note_html(content)
+    markdown_content = sanitize_note_html(markdown_content)
     note = Note(
         user_id=user_id,
         category_id=category.id,
@@ -414,7 +417,7 @@ async def create_note(
         cover_image=cover_image,
         # 坑 4：笔记 1=公开 / 0=私密（与题库相反）
         is_public=1 if _to_int(is_public) == 1 else 0,
-        status=normalize_status(status) or "draft",
+        status=normalize_status(status) or ("published" if _to_int(is_public) == 1 else "draft"),
     )
     db.add(note)
     await db.flush()
@@ -452,10 +455,10 @@ async def update_note(
         note.title = title.strip()
         changed.append("title")
     if content is not None:
-        note.content = content
+        note.content = sanitize_note_html(content)
         changed.append("content")
     if markdown_content is not None:
-        note.markdown_content = markdown_content
+        note.markdown_content = sanitize_note_html(markdown_content)
         changed.append("markdown_content")
     if tags is not None:
         note.tags = normalize_tags(tags)

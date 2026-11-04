@@ -137,6 +137,11 @@
         :is-warning="isTimeWarning" :is-danger="isTimeDanger" @close="$emit('close')"
         @open-settings="openSettings" />
 
+      <div v-if="recentSession && moduleType !== 'mock'" class="recent-practice">
+        <span>上次练习：<b>{{ recentSession.percentage }} 分</b> · 答对 {{ recentSession.correctCount }} / {{ recentSession.totalCount }}</span>
+        <button type="button" class="recent-practice__link" @click="openRecentSession">查看成绩</button>
+      </div>
+
       <!--
         ⚠️ 状态条在**浏览模式和逐题模式都要有**（2026-10-20）：
         原来只有逐题模式那一支有，用户一点「整体浏览」就看不到自己还在错题模式里，
@@ -237,6 +242,11 @@
       <PracticeHeader :mode="moduleTypeSafe" :bank-name="bankName" :formatted-time="formattedRemainingTime"
         :is-warning="isTimeWarning" :is-danger="isTimeDanger" @close="$emit('close')"
         @open-settings="openSettings" />
+
+      <div v-if="recentSession && moduleType !== 'mock'" class="recent-practice">
+        <span>上次练习：<b>{{ recentSession.percentage }} 分</b> · 答对 {{ recentSession.correctCount }} / {{ recentSession.totalCount }}</span>
+        <button type="button" class="recent-practice__link" @click="openRecentSession">查看成绩</button>
+      </div>
 
       <!--
         「只刷错题」状态条
@@ -393,7 +403,7 @@ import ExamSummary from './ExamSummary.vue'
 import MockExamHistory from './MockExamHistory.vue'
 import type { MockExamConfig, MockExamRecord, MockExamItemDetail } from '@/types'
 // 模拟考试组卷要拉全量题目（见 loadMockAvailability / handleMockStart）
-import { listQuestionMainAll } from '@/api/questionMain/questionMain'
+import { listQuestionMainAll, submitPracticeSession, startPracticeSession, listPracticeSessions, getPracticeSession } from '@/api/questionMain/questionMain'
 /*
  * 模拟考试的判分（2026-10-28 从本文件搬出去）
  *
@@ -404,7 +414,8 @@ import { listQuestionMainAll } from '@/api/questionMain/questionMain'
  *    判分算错是用户当场就能发现的错，必须有参数化的纯函数级测试兜住。
  *    实现与注释都在 `utils/mockExamJudge.ts`（逐字搬移 + F7 的漏选公式修正）。
  */
-import { judgeMockItem, correctAnswerOf } from '@/utils/mockExamJudge'
+// 服务端判分后不再在前端使用 judgeMockItem；保留该工具供独立单测，
+// PracticeComponent 只负责渲染服务端返回的逐题结果。
 /*
  * 模拟考试「进行中会话」的持久化（2026-10-22）
  *
@@ -466,6 +477,45 @@ const isPracticeMode = computed(() => moduleSettings.value.practiceMode === 'pra
 const showAnalysisImmediately = computed(() => !isExamMode.value || showExamResult.value)
 const canGoPrevBatch = computed(() => questionOffset.value > 0 && (isExamMode.value || isPracticeMode.value))
 const isLastQuestion = computed(() => currentQuestionIndex.value === totalQuestions.value - 1)
+/** 最近一次已交卷练习（用于刷新/重新进入后的成绩回看） */
+const recentSession = ref<any>(null)
+
+async function loadRecentSession() {
+  try {
+    const res: any = await listPracticeSessions(10)
+    const list: any[] = Array.isArray(res?.data) ? res.data : []
+    recentSession.value = list.find((s: any) =>
+      String(s.bankId) === String(props.bankId) &&
+      s.status === 'submitted' &&
+      (moduleTypeSafe.value === 'mock' ? s.moduleType === 'mock' : s.moduleType !== 'mock')
+    ) || null
+  } catch {
+    recentSession.value = null
+  }
+}
+
+async function openRecentSession() {
+  if (!recentSession.value?.sessionId) return
+  try {
+    const res: any = await getPracticeSession(recentSession.value.sessionId)
+    if (res?.code !== 200) {
+      proxy.$modal.msgError(res?.msg || '读取练习成绩失败')
+      return
+    }
+    const d = res.data || {}
+    const lines = (d.items || []).map((it: any, i: number) => {
+      const label = it.isCorrect === true ? '正确' : (it.pending ? '待自评' : (it.answered ? '错误' : '未答'))
+      return `${i + 1}. ${label}（${Number(it.scoreAwarded || 0)}/${Number(it.maxScore || 0)} 分）`
+    })
+    proxy.$modal.alert(
+      `上次练习成绩：${d.score}/${d.totalScore} 分（${d.percentage}%）\n` +
+      `答对 ${d.correctCount} · 答错 ${d.wrongCount} · 待自评 ${d.pendingCount}\n\n${lines.join('\n')}`,
+      '上次练习成绩'
+    )
+  } catch (e: any) {
+    proxy.$modal.msgError('读取练习成绩失败')
+  }
+}
 
 /**
  * 本波第一题在整个题库里的**序号偏移**
@@ -1042,6 +1092,8 @@ onMounted(() => {
   if (props.moduleType === 'mock' && !showExamResult.value) {
     startExamTimer()
   }
+  // 服务端成绩回看：刷新/换设备后仍能看到上一次已交卷成绩
+  loadRecentSession()
 
   // 添加页面可见性变化监听（幂等，见 bindVisibility 的注释）
   bindVisibility()
@@ -1325,7 +1377,13 @@ const questionGroups = computed(() => {
   return Object.values(groupMap)
 })
 
-const answeredCount = computed(() => answers.value.filter(a => a !== null).length)
+const answeredCount = computed(() => answers.value.filter((a: any) => {
+  if (a === null || a === undefined) return false
+  if (typeof a === 'string') return a.trim().length > 0
+  if (Array.isArray(a)) return a.length > 0
+  if (typeof a === 'object') return Object.keys(a).length > 0
+  return true
+}).length)
 const remainingCount = computed(() => totalQuestions.value - answeredCount.value)
 
 const toggleOverview = () => {
@@ -1845,6 +1903,10 @@ const {
   favoritedQuestions,
   markedQuestions: backendMarkedSet,
   errorQuestions,
+  practiceSessionId,
+  applyServerGrade,
+  ensurePracticeSession,
+  pendingCount,
   updateOnlyWrong,
   updateQuestionCount,
   // 模拟考试组卷要用：把整份卷子灌进题目流（见 handleMockStart 的注释）
@@ -1958,7 +2020,7 @@ function normalizeType(raw: any): string {
  */
 async function loadMockAvailability(): Promise<void> {
   try {
-    const res: any = await listQuestionMainAll({ bankId: props.bankId, status: '0' })
+    const res: any = await listQuestionMainAll({ bankId: props.bankId, status: '0', withAnswer: false })
     const data: any[] = Array.isArray(res?.data) ? res.data
       : Array.isArray(res?.result) ? res.result : []
     const counter: Record<string, number> = {}
@@ -2066,99 +2128,6 @@ function normalizeOptionList(opts: any): any[] {
   })
 }
 
-/**
- * 把一道「考过的题」转成可长期保存的判分明细
- *
- * ⚠️ 为什么不在 `handleMockSubmit` 里直接拼对象（2026-10-22 重构）：
- *    原来那段内联代码只取了 `plainStem(q)`（截断 160 字）和答案，
- *    选项 / 子题 / 阅读材料全部丢失 —— 于是错题明细里选择题只显示
- *    "你的答案 A / 正确答案 C"，看不到 A、C 到底是什么，无法复盘。
- *
- *    渲染需要什么，这里就存什么。组合题还要把每道子题的题干、
- *    选项、子答案都带上，否则回看时只看到一个笼统的对错。
- */
-function toMockItemDetail(
-  q: any,
-  userAnswer: any,
-  isCorrect: boolean,
-  gotScore: number,
-  index: number
-): MockExamItemDetail {
-  const type = String(q._mockType || q.type || 'unknown') as any
-  const isComposite = type === 'readingComprehension' || type === 'cloze'
-
-  const detail: MockExamItemDetail = {
-    questionId: q.id,
-    index,
-    type,
-    // 组合题的题干在 mainContent 里，用完整文本；其余用不截断的题干
-    stem: isComposite ? (plainText(q.mainContent) || fullStem(q)) : fullStem(q),
-    userAnswer,
-    correctAnswer: correctAnswerOf(q),
-    isCorrect,
-    gotScore,
-    fullScore: Number(q._mockScore) || 0,
-    analysis: String(q.analysis ?? '') || undefined
-  }
-
-  // 选项：单选 / 多选 / 判断都要带上，否则用户不知道 ABCD 是什么
-  if (Array.isArray(q.options) && q.options.length) {
-    detail.options = normalizeOptionList(q.options)
-  }
-
-  // 组合题：材料 + 逐子题明细
-  if (isComposite) {
-    const mainText = plainText(q.mainContent)
-    if (mainText) detail.mainContent = mainText
-
-    const subs = Array.isArray(q.subQuestions) ? q.subQuestions : []
-    if (subs.length) {
-      /*
-       * 子题的答案在 `answers[i]` 里是**按题型分桶**存的
-       * （见 `useQuestionPractice` 的 selectSubOption / updateSubFillBlankAnswer /
-       *  updateSubEssayAnswer）：
-       *
-       *   · 单选 / 多选 / 判断 → `answers[i][子题下标]` 直接是下标或下标数组
-       *   · 填空              → `answers[i].fillblank[子题下标]` 是字符串
-       *   · 问答              → `answers[i].essay[子题下标]` 是字符串
-       *
-       * 注意 `fillblank` 和 `essay` 这两个 key 同时也是**子题下标**冲突源：
-       * 若某题有 5 道子题，`answers[i][2]` 是第 3 题的选择答案，
-       * 而 `answers[i].fillblank[2]` 是第 3 题的填空答案，两者并存不冲突。
-       */
-      const pickSubAnswer = (si: number, sqType: string): any => {
-        const box = userAnswer
-        if (!box || typeof box !== 'object' || Array.isArray(box)) {
-          return undefined
-        }
-        if (sqType === 'fillblank') {
-          return box.fillblank ? box.fillblank[si] : undefined
-        }
-        if (sqType === 'essay') {
-          return box.essay ? box.essay[si] : undefined
-        }
-        return box[si]
-      }
-
-      detail.subItems = subs.map((sq: any, si: number) => {
-        const sqType = String(sq.type || 'single')
-        return {
-          index: si + 1,
-          type: sqType as any,
-          question: String(sq.question || `问题 ${si + 1}`),
-          options: Array.isArray(sq.options) && sq.options.length
-            ? normalizeOptionList(sq.options)
-            : undefined,
-          userAnswer: pickSubAnswer(si, sqType),
-          correctAnswer: sq.correctAnswer
-        }
-      })
-    }
-  }
-
-  return detail
-}
-
 /** 点击「开始考试」 */
 async function handleMockStart(cfg: MockExamConfig) {
   activeMockConfig.value = JSON.parse(JSON.stringify(cfg))
@@ -2177,7 +2146,7 @@ async function handleMockStart(cfg: MockExamConfig) {
 
   // 重新按配置组卷（不能复用配置页那次统计的结果，用户可能刚改过）
   try {
-    const res: any = await listQuestionMainAll({ bankId: props.bankId, status: '0' })
+    const res: any = await listQuestionMainAll({ bankId: props.bankId, status: '0', withAnswer: false })
     const pool: any[] = Array.isArray(res?.data) ? res.data
       : Array.isArray(res?.result) ? res.result : []
     if (!pool.length) {
@@ -2191,6 +2160,19 @@ async function handleMockStart(cfg: MockExamConfig) {
       mockPhase.value = 'setup'
       return
     }
+    // 模拟考试也走服务端会话：题目不带答案，交卷由后端按本场分值快照判分
+    const sessionRes: any = await startPracticeSession({
+      bankId: props.bankId,
+      moduleType: 'mock',
+      questionIds: paper.map((q: any) => q.id),
+      scores: Object.fromEntries(paper.map((q: any) => [String(q.id), Number(q._mockScore) || 0]))
+    })
+    if (sessionRes?.code !== 200 || !sessionRes?.data?.sessionId) {
+      proxy.$modal.msgError(sessionRes?.msg || '创建考试会话失败，请重试')
+      mockPhase.value = 'setup'
+      return
+    }
+    practiceSessionId.value = String(sessionRes.data.sessionId)
     /*
      * 把整份卷子一次性塞进 allQuestionsData，并让 questionOffset 归零。
      *
@@ -2235,31 +2217,75 @@ async function handleMockStart(cfg: MockExamConfig) {
   startExamTimer()
 }
 
-/** 交卷：判分 + 生成记录 + 切到总结页 */
-function handleMockSubmit() {
+/** 交卷：服务端判分 + 生成记录 + 切到总结页 */
+async function handleMockSubmit() {
   const cfg = activeMockConfig.value
   if (!cfg) return
+  if (!practiceSessionId.value) {
+    proxy.$modal.msgError('考试会话不存在，无法交卷，请刷新后重试')
+    return
+  }
 
-  const items: MockExamItemDetail[] = []
-  let gotScore = 0
-  let correct = 0
-  let wrong = 0
-
-  questions.value.forEach((q: any, i: number) => {
-    const userAnswer = answers.value[i]
-    const { isCorrect, gotScore: gs } = judgeMockItem(q, userAnswer, cfg)
-    gotScore += gs
-    if (isCorrect) correct += 1
-    else wrong += 1
-    // 选项 / 子题 / 完整题干都在 `toMockItemDetail` 里统一取，别在这里内联拼对象
-    items.push(toMockItemDetail(q, userAnswer, isCorrect, gs, i + 1))
-  })
-
-  const fullScore = items.reduce((s, it) => s + (Number(it.fullScore) || 0), 0)
   const durationSec = examStartAt.value
     ? Math.max(0, Math.round((Date.now() - examStartAt.value) / 1000))
     : 0
+  let serverData: any
+  try {
+    // 模拟考试同样没有逐题上报，交卷时整卷答案一次带上
+    const localAnswers = Object.fromEntries(
+      questions.value.map((q: any, i: number) => [String(q.id), answers.value[i]])
+    )
+    const res: any = await submitPracticeSession(practiceSessionId.value, durationSec, localAnswers)
+    if (res?.code !== 200) {
+      proxy.$modal.msgError(res?.msg || '交卷失败，请重试')
+      return
+    }
+    serverData = res.data || {}
+  } catch (e: any) {
+    console.error('[mock] 服务端交卷失败', e)
+    proxy.$modal.msgError('交卷失败，请检查网络后重试')
+    return
+  }
 
+  const serverItems: any[] = Array.isArray(serverData.items) ? serverData.items : []
+  const items: MockExamItemDetail[] = serverItems.map((item: any, i: number) => {
+    const q = item.question || {}
+    const type = normalizeType(q.questionType) as any
+    const subResults: any[] = Array.isArray(item.subResults) ? item.subResults : []
+    const detail: any = {
+      questionId: item.questionId,
+      index: i + 1,
+      type,
+      stem: fullStem(q),
+      userAnswer: item.userAnswer,
+      correctAnswer: item.correctAnswer,
+      isCorrect: item.isCorrect === true,
+      gotScore: Number(item.scoreAwarded) || 0,
+      fullScore: Number(item.maxScore) || 0,
+      analysis: String(item.analysis || '') || undefined
+    }
+    if (Array.isArray(q.options) && q.options.length) {
+      detail.options = normalizeOptionList(q.options)
+    }
+    const subs = Array.isArray(q.subQuestions) ? q.subQuestions : []
+    if (subs.length) {
+      detail.subItems = subs.map((sq: any, si: number) => {
+        const subResult = subResults.find((r: any) => Number(r.subIndex) === si)
+        return {
+          index: si + 1,
+          type: normalizeType(sq.questionType) as any,
+          question: String(sq.questionText || `问题 ${si + 1}`),
+          options: Array.isArray(sq.options) && sq.options.length ? normalizeOptionList(sq.options) : undefined,
+          userAnswer: undefined,
+          correctAnswer: subResult?.correctAnswer
+        }
+      })
+    }
+    return detail as MockExamItemDetail
+  })
+
+  const gotScore = Number(serverData.score) || 0
+  const fullScore = Number(serverData.totalScore) || 0
   const record: MockExamRecord = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     bankId: props.bankId,
@@ -2267,17 +2293,11 @@ function handleMockSubmit() {
     submittedAt: Date.now(),
     config: JSON.parse(JSON.stringify(cfg)),
     totalQuestions: items.length,
-    correctCount: correct,
-    wrongCount: wrong,
+    correctCount: Number(serverData.correctCount) || 0,
+    wrongCount: Number(serverData.wrongCount) || 0,
     gotScore: Math.round(gotScore * 10) / 10,
     fullScore,
-    /*
-     * ⚠️ `fullScore <= 0` 时**一律判不及格**（2026-10-22 修的 bug）。
-     *
-     * 旧写法直接比 `gotScore >= passScore`。一旦满分因为配置读错而算成 0，
-     * 而及格分也是 0，就成了"一题没做对也显示通过"—— 这是最不能出现的那种错。
-     * 满分拿不到说明这张卷子本身有问题，不应该给出"通过"的结论。
-     */
+    // 满分拿不到时不能给“通过”结论（历史 bug：0 >= 0 被判及格）
     passed: fullScore > 0 && gotScore >= (Number(cfg.passScore) || 0),
     durationSec,
     items
@@ -2289,23 +2309,16 @@ function handleMockSubmit() {
   // 收尾：停计时、清考试存储、清会话、展开解析
   stopExamTimer()
   clearExamStorage()
-  /*
-   * 交卷后**立即清掉会话**（2026-10-22）
-   *
-   * 会话的语义是"有一场正在进行的考试"。交卷后它就不成立了：
-   * 留着的话，下次进 mock 模块会被 `restoreMockSession` 恢复成
-   * "又在考试中"，而实际上这场已经出分并进了历史记录。
-   *
-   * 注意清会话与 `clearExamStorage()` 是**两件事**，不能只做一件：
-   *   · clearExamStorage 清的是倒计时的两个 key；
-   *   · clearMockSession 清的是整场考试（卷子+答案+配置）。
-   */
   clearMockSession(currentUserId(), props.bankId)
   mockSessionEndAt = 0
+  practiceSessionId.value = ''
   showAllAnalysis()
   totalScore.value = Math.round(record.gotScore)
   showExamResult.value = true
   mockPhase.value = 'summary'
+  if (Number(serverData.pendingCount || 0) > 0) {
+    proxy.$modal.msgInfo(`本场有 ${serverData.pendingCount} 道简答题待自评，不计入自动得分`)
+  }
 }
 
 /**
@@ -2566,6 +2579,7 @@ function persistMockSession() {
     answers: answersById,
     subFillBlank: fillById,
     subEssay: essayById,
+    practiceSessionId: practiceSessionId.value || undefined,
     currentQuestionId: curId,
     startedAt: examStartAt.value || Date.now(),
     endAt: mockSessionEndAt || (examStartAt.value + (Number(cfg.timeLimit) || 60) * 60000)
@@ -2598,7 +2612,7 @@ async function restoreMockSession(): Promise<boolean> {
   if (!session) return false
 
   try {
-    const res: any = await listQuestionMainAll({ bankId: props.bankId, status: '0' })
+    const res: any = await listQuestionMainAll({ bankId: props.bankId, status: '0', withAnswer: false })
     const pool: any[] = Array.isArray(res?.data) ? res.data
       : Array.isArray(res?.result) ? res.result : []
 
@@ -2637,6 +2651,33 @@ async function restoreMockSession(): Promise<boolean> {
       clearMockSession(currentUserId(), props.bankId)
       return false
     }
+
+    // 恢复时优先复用原来的服务端会话（答案已在本地快照里，交卷时会一并提交）；
+    // 只有会话确实失效/已交卷时才新建，避免每次刷新都堆一个孤儿 ongoing 会话。
+    let restoredSessionId = ''
+    if (session.practiceSessionId) {
+      try {
+        const oldSession: any = await getPracticeSession(session.practiceSessionId)
+        if (oldSession?.code === 200 && oldSession.data?.status === 'ongoing') {
+          restoredSessionId = String(session.practiceSessionId)
+        }
+      } catch {
+        // 旧会话不可用 → 下面新建
+      }
+    }
+    if (!restoredSessionId) {
+      const sessionRes: any = await startPracticeSession({
+        bankId: props.bankId,
+        moduleType: 'mock',
+        questionIds: rebuilt.map((q: any) => q.id),
+        scores: Object.fromEntries(rebuilt.map((q: any) => [String(q.id), Number(q._mockScore) || 0]))
+      })
+      if (sessionRes?.code !== 200 || !sessionRes?.data?.sessionId) {
+        throw new Error(sessionRes?.msg || '恢复考试会话失败')
+      }
+      restoredSessionId = String(sessionRes.data.sessionId)
+    }
+    practiceSessionId.value = restoredSessionId
 
     // 冻结本场配置（后续判分 / 重考都用它）
     activeMockConfig.value = JSON.parse(JSON.stringify(session.config))
@@ -3090,8 +3131,7 @@ function restoreDraftIfAny(retry = 0) {
 
   if (restoredCount > 0) {
     draftRestoredOnce = true
-    // 明确告诉用户"这是恢复的"，而不是让他以为自己已经答过
-    ElMessage.success(`已恢复上次练习进度（${restoredCount} 题）`)
+    // 进度恢复保持静默：不再弹「已恢复上次练习进度」提示，避免打扰用户。
     draftState.value = 'saved'
     draftSavedAt.value = draft.savedAt
   } else {
@@ -3169,7 +3209,7 @@ watch(
  *   而不是干巴巴一句"确定交卷吗"。
  */
 const handleSubmitExam = (options: { skipConfirm?: boolean } = {}) => {
-  const doSubmit = () => {
+  const doSubmit = async () => {
     /*
      * 模拟考试走独立的判分与结果页（2026-10-22）。
      *
@@ -3179,16 +3219,44 @@ const handleSubmitExam = (options: { skipConfirm?: boolean } = {}) => {
      * 所以 mock 交给 `handleMockSubmit`，其余模块保持原逻辑不变。
      */
     if (isMockFlow.value && activeMockConfig.value) {
-      handleMockSubmit()
+      await handleMockSubmit()
       return
     }
-    showAllAnalysis()
-    const score = Math.round((correctCount.value / totalQuestions.value) * 100)
-    totalScore.value = score
-    showExamResult.value = true
-    // 清除考试计时器存储
-    clearExamStorage()
-    stopExamTimer()
+    try {
+      if (!practiceSessionId.value) await ensurePracticeSession()
+      if (!practiceSessionId.value) {
+        proxy.$modal.msgError('练习会话不存在，无法交卷，请刷新后重试')
+        return
+      }
+      // 考试模式不做逐题上报：交卷时把本地答案按题目 id 一并交给服务端
+      const localAnswers = Object.fromEntries(
+        questions.value.map((q: any, i: number) => [String(q.id), answers.value[i]])
+      )
+      const res: any = await submitPracticeSession(practiceSessionId.value, undefined, localAnswers)
+      if (res?.code !== 200) {
+        proxy.$modal.msgError(res?.msg || '交卷失败，请重试')
+        return
+      }
+      // 用服务端返回的逐题判分刷新本地题目对象，结算页/答题卡都读同一份结果
+      const items: any[] = Array.isArray(res.data?.items) ? res.data.items : []
+      const byId = new Map<string, any>(questions.value.map((q: any) => [String(q.id), q]))
+      items.forEach((item: any) => {
+        const q = byId.get(String(item.questionId))
+        if (q) applyServerGrade(q, item)
+      })
+      totalScore.value = Math.round(Number(res.data?.percentage ?? 0))
+      showAllAnalysis()
+      showExamResult.value = true
+      loadRecentSession()
+      clearExamStorage()
+      stopExamTimer()
+      if (Number(res.data?.pendingCount || 0) > 0) {
+        proxy.$modal.msgInfo(`本次有 ${res.data.pendingCount} 道简答题待自评，不计入自动正确率`)
+      }
+    } catch (e: any) {
+      console.error('[practice] 交卷失败', e)
+      proxy.$modal.msgError('交卷失败，请检查网络后重试')
+    }
   }
 
   // 时间到 → 直接判分（用户没有选择权，见上面的注释）
@@ -3698,6 +3766,31 @@ defineExpose({})
   to {
     transform: rotate(360deg);
   }
+}
+
+.recent-practice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 0;
+  padding: 6px 12px;
+  border-radius: var(--os-radius-sm, 6px);
+  background: var(--os-surface-muted, #f6f8fb);
+  color: var(--os-text-secondary, #6b7280);
+  font-size: 12px;
+}
+
+.recent-practice b {
+  color: var(--os-primary, #2f6fed);
+}
+
+.recent-practice__link {
+  border: 0;
+  background: transparent;
+  color: var(--os-primary, #2f6fed);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
 }
 </style>
 

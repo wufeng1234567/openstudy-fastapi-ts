@@ -19,7 +19,8 @@ class SysNotice(Base):
     notice_content: Mapped[Optional[str]] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(1), default="0")
     create_by: Mapped[Optional[str]] = mapped_column(String(64), default="")
-    create_time: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # 历史库有大量 NULL；新写入必须由库端兜底，避免消息列表时间空白/排序错乱。
+    create_time: Mapped[Optional[datetime]] = mapped_column(DateTime, server_default=func.now())
     update_by: Mapped[Optional[str]] = mapped_column(String(64), default="")
     update_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     remark: Mapped[Optional[str]] = mapped_column(String(255))

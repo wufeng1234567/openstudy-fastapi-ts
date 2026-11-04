@@ -20,10 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List
 from loguru import logger
 from app.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_admin
 from app.core.response import success, paginate, error
 from app.models.notice import SysNotice, SysNoticeRead, SysNoticeDelete
 from app.models.user import SysUser
+from app.models.notification import UserNotification
 from datetime import datetime
 
 # 路由前缀：/system/notice
@@ -54,6 +55,11 @@ def parse_notice_remark(notice) -> dict:
 def is_system_notice(notice) -> bool:
     """系统公告：没有 remark，或 remark 不是用户通知类型"""
     return parse_notice_remark(notice).get("type") not in USER_NOTICE_TYPES
+
+
+def is_system_notice_by_remark(remark) -> bool:
+    """格式化后的行（remark 是字符串）用的同一判定。"""
+    return parse_remark_str(remark).get("type") not in USER_NOTICE_TYPES
 
 
 def is_notice_visible(notice, user_id) -> bool:
@@ -229,8 +235,11 @@ async def list_notices(
     count_query = select(func.count()).select_from(query.subquery())
     total = await db.scalar(count_query)
 
-    # 分页
-    query = query.order_by(SysNotice.create_time.desc())
+    # 分页（用 is_(None) 做跨 MySQL/PG 的 NULLS LAST）
+    query = query.order_by(
+        SysNotice.create_time.is_(None),
+        SysNotice.create_time.desc(),
+    )
     query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
 
     result = await db.execute(query)
@@ -249,6 +258,9 @@ async def list_notices(
 
 @router.get("/listAll")
 async def list_all_notices(
+    pageNum: Optional[int] = Query(None, ge=1),
+    pageSize: Optional[int] = Query(None, ge=1, le=100),
+    scope: Optional[str] = Query(None, pattern="^(system|user)$"),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -262,7 +274,10 @@ async def list_all_notices(
     """
     user_id = current_user.get("user_id")
 
-    query = select(SysNotice).where(SysNotice.status == "0").order_by(SysNotice.create_time.desc())
+    query = select(SysNotice).where(SysNotice.status == "0").order_by(
+        SysNotice.create_time.is_(None),
+        SysNotice.create_time.desc(),
+    )
     result = await db.execute(query)
     notices = list(result.scalars().all())
 
@@ -274,6 +289,11 @@ async def list_all_notices(
         for n in notices
         if is_notice_visible(n, user_id) and n.notice_id not in deleted_ids
     ]
+
+    if scope == "system":
+        rows = [r for r in rows if is_system_notice_by_remark(r.get("remark"))]
+    elif scope == "user":
+        rows = [r for r in rows if not is_system_notice_by_remark(r.get("remark"))]
 
     # 补发起人昵称（只读）：前端「回复与@」用它区分并显示「谁在回复你 / 谁在 @ 你」
     rows = await attach_from_nickname(db, rows)
@@ -288,6 +308,10 @@ async def list_all_notices(
                 f"commentId={remark_obj.get('commentId')}"
             )
 
+    # 传分页参数时返回分页结构；不传保持旧的全量数组（兼容顶栏/旧调用）
+    if pageNum and pageSize:
+        start = (pageNum - 1) * pageSize
+        return paginate(len(rows), rows[start:start + pageSize])
     return success(rows)
 
 
@@ -299,7 +323,10 @@ async def list_top_notices(
     """获取顶部系统公告（最多5条，不包含用户通知）"""
     user_id = current_user.get("user_id")
 
-    query = select(SysNotice).where(SysNotice.status == "0").order_by(SysNotice.create_time.desc())
+    query = select(SysNotice).where(SysNotice.status == "0").order_by(
+        SysNotice.create_time.is_(None),
+        SysNotice.create_time.desc(),
+    )
     result = await db.execute(query)
     notices = list(result.scalars().all())
 
@@ -341,6 +368,85 @@ async def get_unread_count(
     return success({"count": unread})
 
 
+@router.get("/totalUnread")
+async def total_unread_count(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """顶栏红点唯一口径：系统/用户通知 + 定向分享通知。"""
+    user_id = current_user.get("user_id")
+    notices = list(
+        (await db.execute(select(SysNotice).where(SysNotice.status == "0"))).scalars().all()
+    )
+    read_ids = await get_read_notice_ids(db, user_id)
+    deleted_ids = await get_deleted_notice_ids(db, user_id)
+    notice_unread = sum(
+        1
+        for n in notices
+        if is_notice_visible(n, user_id)
+        and n.notice_id not in read_ids
+        and n.notice_id not in deleted_ids
+    )
+    notification_unread = int(
+        await db.scalar(
+            select(func.count()).where(
+                UserNotification.user_id == user_id,
+                UserNotification.is_read == 0,
+            )
+        )
+        or 0
+    )
+    return success({
+        "count": int(notice_unread + notification_unread),
+        "notice": int(notice_unread),
+        "notification": notification_unread,
+    })
+
+
+@router.get("/unreadSummary")
+async def unread_summary(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """消息中心左侧红点：系统通知 / 用户通知 / 分享通知一次返回。
+
+    替代前端进入消息中心时调用 `listAll` 再把全部通知拉回来自己数——
+    列表可能很长，而红点只需要 3 个数字。
+    """
+    user_id = current_user.get("user_id")
+    notices = list(
+        (await db.execute(select(SysNotice).where(SysNotice.status == "0"))).scalars().all()
+    )
+    read_ids = await get_read_notice_ids(db, user_id)
+    deleted_ids = await get_deleted_notice_ids(db, user_id)
+    system_unread = 0
+    user_unread = 0
+    for n in notices:
+        if n.notice_id in read_ids or n.notice_id in deleted_ids:
+            continue
+        if not is_notice_visible(n, user_id):
+            continue
+        if is_system_notice(n):
+            system_unread += 1
+        else:
+            user_unread += 1
+    share_unread = int(
+        await db.scalar(
+            select(func.count()).where(
+                UserNotification.user_id == user_id,
+                UserNotification.is_read == 0,
+            )
+        )
+        or 0
+    )
+    return success({
+        "system": system_unread,
+        "user": user_unread,
+        "share": share_unread,
+        "total": system_unread + user_unread + share_unread,
+    })
+
+
 @router.get("/{notice_id}")
 async def get_notice(
     notice_id: int,
@@ -374,7 +480,7 @@ async def create_notice(
     notice_content: Optional[str] = Query(None),
     status: Optional[str] = Query("0"),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """创建公告"""
     notice = SysNotice(
@@ -383,6 +489,7 @@ async def create_notice(
         notice_content=notice_content,
         status=status,
         create_by=current_user.get("user_name"),
+        create_time=datetime.now(),
     )
     db.add(notice)
     await db.flush()
@@ -398,7 +505,7 @@ async def update_notice(
     notice_content: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """更新公告"""
     query = select(SysNotice).where(SysNotice.notice_id == notice_id)
@@ -424,7 +531,7 @@ async def update_notice(
 async def delete_notices(
     notice_ids: str,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """删除公告"""
     ids = [int(id) for id in notice_ids.split(",")]

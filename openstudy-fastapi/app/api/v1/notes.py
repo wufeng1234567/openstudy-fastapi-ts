@@ -10,8 +10,9 @@ from loguru import logger
 from app.database import get_db
 from app.core.security import get_current_user
 from app.core.response import success, paginate, error
-from app.models.note import Note, NoteCategory, NoteComment
+from app.models.note import Note, NoteCategory, NoteComment, UserNoteLike
 from app.utils.excel_util import export_to_excel
+from app.utils.html_sanitize import sanitize_note_html
 from datetime import datetime, timedelta, time
 
 router = APIRouter()
@@ -25,7 +26,7 @@ def _int_flag(value) -> int:
         return 0
 
 
-def format_note(note, linked_banks=None, author_name=None, author_avatar=None, is_favorited=False, hot_score=None):
+def format_note(note, linked_banks=None, author_name=None, author_avatar=None, is_favorited=False, hot_score=None, is_liked=False):
     """格式化笔记数据
 
     linked_banks: 关联题库列表，形如 [{"questionBankId": 1, "bankName": "..."}]
@@ -33,6 +34,7 @@ def format_note(note, linked_banks=None, author_name=None, author_avatar=None, i
     author_avatar: 作者头像
     is_favorited: 当前用户是否已收藏
     hot_score: 热榜综合热度分（仅排行榜场景传入）
+    is_liked: 当前用户是否已点赞（详情/列表按需传入）
     """
     return {
         "noteId": note.note_id,
@@ -42,6 +44,7 @@ def format_note(note, linked_banks=None, author_name=None, author_avatar=None, i
         "authorName": author_name or "",
         "avatar": author_avatar or "",
         "isFavorited": is_favorited,
+        "isLiked": bool(is_liked),
         "categoryId": note.category_id,
         "title": note.title,
         # ⚠️ content 与 markdownContent **互相兜底**（读侧，覆盖历史数据）：前端所有笔记展示
@@ -169,10 +172,10 @@ async def _get_note_checked(db: AsyncSession, note_id, current_user: dict, allow
         select(Note).where(Note.note_id == note_id, Note.del_flag == "0")
     )).scalar_one_or_none()
     if not note:
-        return None, error("笔记不存在")
+        return None, error("笔记不存在", code=404)
     if int(note.user_id or 0) == int(current_user.get("user_id") or 0):
         return note, None
-    if allow_public and _int_flag(note.is_public) == 1:
+    if allow_public and _int_flag(note.is_public) == 1 and str(note.status or "").lower() == "published":
         return note, None
     return None, error("无权访问该笔记", code=403)
 
@@ -293,7 +296,11 @@ async def list_public_notes(
     - 时间：timeRanges=today,7d,30d（并集）+ 自定义 startTime/endTime
     - 排序：create_time / click_count / content_length
     """
-    query = select(Note).where(Note.is_public == 1, Note.del_flag == "0")
+    query = select(Note).where(
+        Note.is_public == 1,
+        Note.del_flag == "0",
+        Note.status == "published",
+    )
 
     if title:
         query = query.where(Note.title.ilike(f"%{title}%"))
@@ -403,10 +410,11 @@ async def list_public_notes(
         for user in author_result.scalars().all():
             author_map[user.user_id] = user
 
-    # 批量查询当前用户的收藏状态(避免 N+1)
+    # 批量查询当前用户的收藏 / 点赞状态(避免 N+1)
     from app.models.note import UserNoteFavorite
     current_user_id = current_user.get("user_id")
     favorited_note_ids = set()
+    liked_note_ids = set()
     if current_user_id:
         note_ids = [n.note_id for n in notes]
         fav_query = select(UserNoteFavorite.note_id).where(
@@ -415,6 +423,13 @@ async def list_public_notes(
         )
         fav_result = await db.execute(fav_query)
         favorited_note_ids = {row[0] for row in fav_result.fetchall()}
+
+        like_query = select(UserNoteLike.note_id).where(
+            UserNoteLike.user_id == current_user_id,
+            UserNoteLike.note_id.in_(note_ids),
+        )
+        like_result = await db.execute(like_query)
+        liked_note_ids = {row[0] for row in like_result.fetchall()}
 
     return paginate(total, [
         format_note(
@@ -425,6 +440,7 @@ async def list_public_notes(
             author_name=author_map[n.user_id].nick_name if n.user_id in author_map else None,
             author_avatar=author_map[n.user_id].avatar if n.user_id in author_map else None,
             is_favorited=n.note_id in favorited_note_ids,
+            is_liked=n.note_id in liked_note_ids,
         )
         for n in notes
     ])
@@ -604,7 +620,7 @@ async def get_public_note(
     if err:
         return err
 
-    # 增加浏览次数
+    # 增加浏览次数（详情页只走这一处；前端不再额外 recordClick，避免 +2）
     note.view_count += 1
 
     # 关联题库属于作者的私人整理信息：只有作者本人能看到。
@@ -615,8 +631,13 @@ async def get_public_note(
     current_user_id = current_user.get("user_id") if current_user else None
     linked_banks = await _fetch_linked_banks(db, note.note_id) if _is_owner(note, current_user) else []
 
-    # 检查当前用户是否已收藏
+    # 作者信息（详情页此前恒显示“匿名用户”，原因是这里没有把 author_name 传给 format_note）
+    from app.models.user import SysUser
+    author = await db.get(SysUser, note.user_id)
+
+    # 检查当前用户是否已收藏 / 已点赞
     is_favorited = False
+    is_liked = False
     if current_user_id:
         from app.models.note import UserNoteFavorite
         fav_query = select(UserNoteFavorite).where(
@@ -626,7 +647,111 @@ async def get_public_note(
         fav_result = await db.execute(fav_query)
         is_favorited = fav_result.scalar_one_or_none() is not None
 
-    return success(format_note(note, linked_banks, is_favorited=is_favorited))
+        like_result = await db.execute(
+            select(UserNoteLike).where(
+                UserNoteLike.user_id == current_user_id,
+                UserNoteLike.note_id == note_id,
+            )
+        )
+        is_liked = like_result.scalar_one_or_none() is not None
+
+    return success(format_note(
+        note,
+        linked_banks,
+        author_name=author.nick_name if author else None,
+        author_avatar=author.avatar if author else None,
+        is_favorited=is_favorited,
+        is_liked=is_liked,
+    ))
+
+
+@router.get("/notes/note/public/like/status/{note_id}")
+async def get_note_like_status(
+    note_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """当前用户对某篇笔记的点赞状态（详情页刷新后恢复按钮）"""
+    note, err = await _get_note_checked(db, note_id, current_user, allow_public=True)
+    if err:
+        return err
+    uid = current_user.get("user_id")
+    liked = False
+    if uid:
+        row = (await db.execute(
+            select(UserNoteLike).where(
+                UserNoteLike.user_id == uid,
+                UserNoteLike.note_id == note_id,
+            )
+        )).scalar_one_or_none()
+        liked = row is not None
+    return success({"liked": liked, "likeCount": int(note.like_count or 0)})
+
+
+@router.post("/notes/note/public/like/{note_id}")
+async def like_note(
+    note_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """点赞笔记（幂等；重复点赞不会重复计数）"""
+    note, err = await _get_note_checked(db, note_id, current_user, allow_public=True)
+    if err:
+        return err
+    uid = current_user.get("user_id")
+    existing = (await db.execute(
+        select(UserNoteLike).where(
+            UserNoteLike.user_id == uid,
+            UserNoteLike.note_id == note_id,
+        )
+    )).scalar_one_or_none()
+    if existing is None:
+        db.add(UserNoteLike(user_id=uid, note_id=note_id))
+        try:
+            await db.flush()
+        except Exception as e:
+            await db.rollback()
+            if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+                return error("已点赞该笔记", code=400)
+            raise
+        # 原子 +1：多个用户同时点赞不会把 like_count 覆盖成同一个值
+        await db.execute(
+            update(Note)
+            .where(Note.note_id == note_id)
+            .values(like_count=func.coalesce(Note.like_count, 0) + 1)
+        )
+        await db.commit()
+        await db.refresh(note)
+    return success({"liked": True, "likeCount": int(note.like_count or 0)})
+
+
+@router.delete("/notes/note/public/like/{note_id}")
+async def unlike_note(
+    note_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """取消点赞（幂等）"""
+    note, err = await _get_note_checked(db, note_id, current_user, allow_public=True)
+    if err:
+        return err
+    uid = current_user.get("user_id")
+    result = await db.execute(
+        delete(UserNoteLike).where(
+            UserNoteLike.user_id == uid,
+            UserNoteLike.note_id == note_id,
+        )
+    )
+    if result.rowcount:
+        # 原子 -1，避免两个取消操作同时把计数减两次或覆盖
+        await db.execute(
+            update(Note)
+            .where(Note.note_id == note_id)
+            .values(like_count=func.greatest(func.coalesce(Note.like_count, 0) - 1, 0))
+        )
+        await db.commit()
+        await db.refresh(note)
+    return success({"liked": False, "likeCount": int(note.like_count or 0)})
 
 
 @router.post("/notes/note/public/click/{note_id}")
@@ -703,7 +828,12 @@ async def create_note(
     # isPublic 前端传的是数字 1/0，0 是合法值不能用 `or` 兜底
     raw_public = body.get("isPublic", body.get("is_public", isPublic))
     is_public = _int_flag(raw_public)
-    status = body.get("status") or status
+    explicit_status = body.get("status")
+    status = explicit_status or status
+    # 公开笔记在旧编辑器里只传 isPublic、不传 status；不能让它落成 draft
+    # 后从公开广场消失（历史数据已由 27_*.sql 回填）。
+    if is_public == 1 and not explicit_status and (status in (None, "", "draft")):
+        status = "published"
 
     if not title:
         return error("标题不能为空", code=400)
@@ -725,6 +855,8 @@ async def create_note(
 
     user_id = current_user.get("user_id")
 
+    content = sanitize_note_html(content)
+    markdown_content = sanitize_note_html(markdown_content)
     note = Note(
         user_id=user_id,
         title=title,
@@ -803,9 +935,9 @@ async def update_note(
     if title is not None:
         note.title = title
     if content is not None:
-        note.content = content
+        note.content = sanitize_note_html(content)
     if markdown_content is not None:
-        note.markdown_content = markdown_content
+        note.markdown_content = sanitize_note_html(markdown_content)
     if tags is not None:
         note.tags = tags
     if public_section_id is not None:
@@ -1135,16 +1267,15 @@ async def create_comment(
     """创建评论"""
     user_id = current_user.get("user_id")
 
-    # 笔记必须存在，否则评论表外键会直接抛 IntegrityError（500）
-    note_query = select(Note).where(Note.note_id == noteId, Note.del_flag == "0")
-    note = (await db.execute(note_query)).scalar_one_or_none()
-    if not note:
-        return error("笔记不存在", code=400)
+    # 笔记必须存在且对当前用户可见；私有笔记不能被非作者评论（否则会泄露/骚扰）
+    note, err = await _get_note_checked(db, noteId, current_user, allow_public=True)
+    if err:
+        return err
 
     comment = NoteComment(
         note_id=noteId,
         user_id=user_id,
-        content=content,
+        content=sanitize_note_html(content) or "",
         parent_id=parentId,
         reply_to_user_id=replyToUserId,
     )
@@ -1204,6 +1335,7 @@ async def _send_comment_notification(db: AsyncSession, comment, note, user_id: i
             notice_type="1",
             status="0",
             create_by="system",
+            create_time=datetime.now(),
             remark=json.dumps({
                 "type": ntype,
                 "fromUserId": user_id,
@@ -1438,6 +1570,21 @@ async def list_favorite_notes(
     result = await db.execute(query)
     favorites = list(result.scalars().all())
 
+    # 作者信息批量查询，收藏列表也显示真实作者而不是“匿名用户”
+    from app.models.user import SysUser
+    author_ids = list({fav.note_id for fav in favorites})
+    author_map = {}
+    if author_ids:
+        author_rows = (
+            await db.execute(
+                select(SysUser).join(Note, Note.user_id == SysUser.user_id).where(
+                    Note.note_id.in_(author_ids)
+                )
+            )
+        ).scalars().all()
+        # 下面按 note_id 再映射（这里先按用户 id 存，循环里查）
+        author_map = {u.user_id: u for u in author_rows}
+
     rows = []
     for fav in favorites:
         # 同一条口径再落一次：上面的 join 已经把已删的挡住了，这里是防「取到之后被删」
@@ -1448,7 +1595,13 @@ async def list_favorite_notes(
         note_result = await db.execute(note_query)
         note = note_result.scalar_one_or_none()
         if note:
-            row = format_note(note)
+            author = author_map.get(note.user_id)
+            row = format_note(
+                note,
+                author_name=author.nick_name if author else None,
+                author_avatar=author.avatar if author else None,
+                is_favorited=True,
+            )
             row["favoriteId"] = fav.favorite_id
             rows.append(row)
 
@@ -1464,6 +1617,10 @@ async def add_favorite_note(
     """收藏笔记"""
     from app.models.note import UserNoteFavorite
 
+    note, err = await _get_note_checked(db, noteId, current_user, allow_public=True)
+    if err:
+        return err
+
     user_id = current_user.get("user_id")
 
     check_query = select(UserNoteFavorite).where(
@@ -1476,6 +1633,13 @@ async def add_favorite_note(
 
     favorite = UserNoteFavorite(user_id=user_id, note_id=noteId)
     db.add(favorite)
+    try:
+        await db.flush()
+    except Exception as e:  # 并发/重复收藏由唯一键兜底，统一返回 400，不再 500
+        await db.rollback()
+        if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+            return error("已收藏该笔记", code=400)
+        raise
 
     return success()
 

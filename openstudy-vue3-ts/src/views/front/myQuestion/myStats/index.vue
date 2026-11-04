@@ -136,7 +136,7 @@
 
                 <div class="diag-grid">
                     <div class="diag-col">
-                        <div class="diag-label">掌握进度</div>
+                        <div class="diag-label">掌握进度 <span class="diag-label-hint">累计错题（含已掌握）</span></div>
                         <div class="diag-big">
                             <span class="diag-num">{{ errorAnalysis.mastered }}</span>
                             <span class="diag-total">/ {{ errorAnalysis.totalErrors }} 题</span>
@@ -144,7 +144,7 @@
                         <div class="bar-track">
                             <div class="bar-fill" :style="{ width: `${Math.min(errorAnalysis.masterRate, 100)}%` }"></div>
                         </div>
-                        <div class="diag-hint">已掌握 {{ formatRateOf(errorAnalysis.masterRate) }}%</div>
+                        <div class="diag-hint">已掌握 {{ formatRateOf(errorAnalysis.masterRate) }}%；当前仍需消灭 {{ errorAnalysis.activeErrors }} 题</div>
                     </div>
 
                     <div class="diag-col">
@@ -270,6 +270,7 @@ import useTopbarStore from '@/store/modules/topbar'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import { TrendCharts, ArrowRight } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import SegmentedTabs from '@/components/SegmentedTabs/index.vue'
 import EnglishStatistics from '@/views/front/english/statistics/index.vue'
 import WeeklyReportPanel from './components/WeeklyReportPanel.vue'
@@ -548,8 +549,8 @@ const miniMetrics = computed(() => [
     {
         label: '待消灭错题',
         value: overview.value.totalErrors,
-        // errorCount 现在统计的是「答错次数」（含重复做错），语义比原来的「新增错题数」更准
-        hint: trendSum.value.errorCount ? `近 7 天答错 ${trendSum.value.errorCount} 次` : '近 7 天无答错',
+        // 与错题诊断的“累计错题（含已掌握）”区分：这里是当前仍在错题本中的活跃题。
+        hint: `当前活跃（不含已掌握）${trendSum.value.errorCount ? ` · 近 7 天答错 ${trendSum.value.errorCount} 次` : ''}`,
         color: '#f56c6c'
     },
     {
@@ -765,19 +766,34 @@ function handleResize() {
 async function fetchAll() {
     loading.value = true
     try {
-        const [overviewRes, subjectRes, trendRes, errorRes, growthRes] = await Promise.all([
+        // 五个接口相互独立：用 allSettled 保留可用数据，不能因为其中一个 500 让整页空白。
+        const settled = await Promise.allSettled([
             getOverview(),
             getBySubject(),
             getTrend(7),
             getErrorAnalysis(),
             getGrowth()
         ])
+        const valueAt = (i: number) => {
+            const r = settled[i]
+            return r.status === 'fulfilled' ? r.value : null
+        }
+        const overviewRes: any = valueAt(0)
+        const subjectRes: any = valueAt(1)
+        const trendRes: any = valueAt(2)
+        const errorRes: any = valueAt(3)
+        const growthRes: any = valueAt(4)
+        const failed = settled.filter(r => r.status === 'rejected').length
 
-        if (overviewRes.code === 200 && overviewRes.data) overview.value = { ...overview.value, ...overviewRes.data }
-        if (subjectRes.code === 200 && subjectRes.data) subjectStats.value = subjectRes.data
-        if (trendRes.code === 200 && trendRes.data) trendData.value = trendRes.data
-        if (errorRes.code === 200 && errorRes.data) errorAnalysis.value = { ...errorAnalysis.value, ...errorRes.data }
-        if (growthRes.code === 200 && growthRes.data) growth.value = { ...growth.value, ...growthRes.data }
+        if (overviewRes?.code === 200 && overviewRes.data) overview.value = { ...overview.value, ...overviewRes.data }
+        if (subjectRes?.code === 200 && subjectRes.data) subjectStats.value = subjectRes.data
+        if (trendRes?.code === 200 && trendRes.data) trendData.value = trendRes.data
+        if (errorRes?.code === 200 && errorRes.data) errorAnalysis.value = { ...errorAnalysis.value, ...errorRes.data }
+        if (growthRes?.code === 200 && growthRes.data) growth.value = { ...growth.value, ...growthRes.data }
+
+        if (failed) {
+            ElMessage.warning(`部分学习统计加载失败（${failed}/5），已展示其余可用数据`)
+        }
 
         await nextTick()
         // 零数据不渲染空图表，避免整屏「0」
@@ -790,6 +806,7 @@ async function fetchAll() {
         bankLoaded.value = true
     } catch (e) {
         console.warn('用户统计接口异常:', e)
+        ElMessage.error('学习统计加载失败，请稍后重试')
     } finally {
         loading.value = false
     }

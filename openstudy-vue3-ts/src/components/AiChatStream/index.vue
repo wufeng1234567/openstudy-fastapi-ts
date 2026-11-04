@@ -1247,6 +1247,19 @@ defineExpose({
   border-radius: 14px;
   padding: 10px 14px;
   /*
+   * 关键：气泡不能跟着 `.message` 的整行宽度走。
+   * 之前这里是块级 div 的 `width: auto`，在 flex 行里会默认吃满
+   * `.message.user .message-content` 的 max-width（820px × 78%），
+   * 所以只发一句「你好」也会被撑成一条很宽的空蓝条。
+   * `fit-content` 让气泡由内容决定宽度，同时 `max-width` 仍然拦住长文本换行。
+   */
+  width: fit-content;
+  /*
+   * 复制按钮不再占用气泡内部的底部留白（见下面 `.message.user .msg-copy-btn`），
+   * 否则一行话下面会多出一条空白，看起来像多套了一个气泡框。
+   */
+  padding-bottom: 8px;
+  /*
    * ⚠️ 用户消息内容极短时（如只发「1」）气泡会被内容撑到只有一两个字符宽，
    *    而右下角的复制按钮是绝对定位、宽度固定（图标 + 「复制」两个字 ≈ 60px）——
    *    气泡比按钮还窄时按钮就**溢出到气泡外**（用户 2026-10-11 报）。
@@ -1254,6 +1267,7 @@ defineExpose({
    */
   min-width: 96px;
   max-width: 78%;
+  overflow: visible;
 }
 
 /* 工具卡片 / 过程提示属于「结构化内容」，比正文更需要横向空间 */
@@ -1324,7 +1338,21 @@ defineExpose({
  *    表格已经是真 <table>，在那里开 pre-wrap 反而会把 Markdown 源码缩进显示出来。
  */
 .message-content:not(.is-plain) .message-text.rendered-md {
+  white-space: normal;
+}
+
+/*
+ * 只让用户正文的段落保留原始换行/Tab；不要再让 rendered-md 容器整体 pre-wrap：
+ * renderAgentMarkdown 输出末尾有一个换行文本节点，容器 pre-wrap 会在气泡底部
+ * 多渲染出一整行空白（用户截图里的“一行字下面多一个空气泡”）。
+ */
+.message.user .message-text.rendered-md {
+  white-space: normal;
+}
+
+.message.user :deep(.message-text.rendered-md p) {
   white-space: pre-wrap;
+  margin: 0;
 }
 
 .msg-copy-btn {
@@ -1361,11 +1389,22 @@ defineExpose({
 }
 
 /*
- * 用户气泡也给右下角的复制按钮留位（LLM 那侧由 `.rendered-md` 的 `padding-bottom` 留）：
- * 不留的话，消息只有一两行时按钮会压在最后一行文字上。
+ * 用户气泡的复制按钮放在气泡外下方的留白里，不占气泡高度。
+ * 这样一行话的气泡只包住一行字，和 DSH 一样没有多余的内层空白。
  */
 .message.user .message-text {
-  padding-bottom: 18px;
+  padding-bottom: 0;
+}
+
+.message.user :deep(.message-text.rendered-md p:last-child) {
+  margin-bottom: 0;
+}
+
+.message.user .msg-copy-btn {
+  bottom: -18px;
+  right: 4px;
+  background-color: var(--dsw-specific-bubble);
+  padding: 2px 6px;
 }
 
 /* AI 加载动画（内联在消息内） */

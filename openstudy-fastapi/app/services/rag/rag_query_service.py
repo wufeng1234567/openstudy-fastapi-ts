@@ -113,12 +113,16 @@ async def search(
     hits = await hybrid_search(
         db, query, query_vector, [kb.id for kb in kbs], top_k=top_k
     )
+    low_confidence = bool(hits) and not has_keyword_agreement(hits)
+    # 低置信时不要把 5 条“相似度地板”噪声全铺给用户：只保留最靠前的一条，
+    # 由界面明确提示“可能不相关”。关键词真命中时仍返回完整 top_k。
+    visible_hits = hits[:1] if low_confidence else hits
     return {
         "query": query,
-        "hits": [h.to_dict() for h in hits],
+        "hits": [h.to_dict() for h in visible_hits],
         "knowledgeBases": [{"kbId": kb.id, "name": ("默认资料夹" if getattr(kb, "is_workspace", 0) == 1 else kb.name)} for kb in kbs],
         # 有结果但两路都没关键词命中 = 可能是换词提问，也可能是跑题 —— 标出来让界面提示
-        "lowConfidence": bool(hits) and not has_keyword_agreement(hits),
+        "lowConfidence": low_confidence,
     }
 
 

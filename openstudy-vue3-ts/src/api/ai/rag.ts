@@ -296,6 +296,15 @@ export function getDocumentStatus(docId: number) {
   })
 }
 
+/** 批量查询处理进度（上传多文件时一轮只发一个请求） */
+export function getDocumentStatusBatch(docIds: number[]) {
+  return request({
+    url: '/rag/document/status/batch',
+    method: 'post',
+    data: { docIds }
+  })
+}
+
 export function deleteDocument(docId: number) {
   return request({
     url: `/rag/document/${docId}`,

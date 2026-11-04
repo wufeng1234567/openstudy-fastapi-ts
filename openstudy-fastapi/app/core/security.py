@@ -119,6 +119,33 @@ async def remove_token(token: str) -> None:
         await redis_client.client.delete(f"{USER_TOKEN_PREFIX}{user_data['user_id']}")
 
 
+async def invalidate_user_tokens(user_id: int) -> int:
+    """改密/重置密码后强制该用户全部登录态失效。
+
+    登录 token 是 Redis 里的随机 UUID，用户维度没有索引；这里用 SCAN 遍历
+    `openstudy-py:login_tokens:*` 并删除 user_id 匹配的 key。数据量是登录会话级，
+    不是业务表，SCAN 的成本可接受。返回删除的 token 数。
+    """
+    removed = 0
+    try:
+        async for key in redis_client.client.scan_iter(match=f"{LOGIN_TOKEN_PREFIX}*"):
+            raw = await redis_client.client.get(key)
+            if not raw:
+                continue
+            try:
+                data = json.loads(raw)
+            except Exception:
+                continue
+            if int(data.get("user_id") or 0) == int(user_id):
+                await redis_client.client.delete(key)
+                removed += 1
+        await redis_client.client.delete(f"{USER_TOKEN_PREFIX}{user_id}")
+    except Exception:
+        # Redis 不可用时不让改密失败；下次请求自然因 token 过期/重启失效
+        pass
+    return removed
+
+
 def is_admin_user(current_user: Optional[dict]) -> bool:
     """当前用户是否管理员（`roles` 里含 `admin`）
 

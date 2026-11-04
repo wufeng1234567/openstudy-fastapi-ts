@@ -110,9 +110,9 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'FrontNotesEditor' })
-import { ref, onMounted, onActivated, onDeactivated, onBeforeUnmount, watch, nextTick } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ref, computed, onMounted, onActivated, onDeactivated, onBeforeUnmount, watch, nextTick } from 'vue'
+import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, DocumentCopy, Download, Setting } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import TurndownService from 'turndown'
@@ -166,6 +166,33 @@ const imageViewerSrc = ref('')
 
 let lastLoadedId = null
 let lastLoadedBankId = null
+
+/** 离开编辑页的脏检查：以「上次加载/保存成功」的快照为基准。 */
+const cleanSnapshot = ref('')
+const currentSnapshot = () => JSON.stringify({
+  title: noteTitle.value,
+  html: editorHtmlContent.value,
+  isPublic: isPublic.value,
+  categoryId: selectedCategoryId.value,
+  tags: [...selectedTags.value],
+  sectionId: selectedPublicSectionId.value
+})
+const isDirty = computed(() => !!cleanSnapshot.value && currentSnapshot() !== cleanSnapshot.value)
+
+onBeforeRouteLeave(async () => {
+  if (!isDirty.value) return true
+  try {
+    await ElMessageBox.confirm('当前笔记有未保存的修改，离开后修改会丢失。确定离开吗？', '未保存的修改', {
+      confirmButtonText: '离开',
+      cancelButtonText: '继续编辑',
+      type: 'warning',
+      closeOnClickModal: false
+    })
+    return true
+  } catch {
+    return false
+  }
+})
 
 const getBankName = (bankId) => {
   const bank = bankList.value.find(b => (b.bankId ?? b.id) === bankId)
@@ -624,6 +651,7 @@ onMounted(async () => {
     loadQuestionBanks()
   ])
   await syncEditorMode()
+  cleanSnapshot.value = currentSnapshot()
 
   document.addEventListener('keydown', handleGlobalKeydown)
 })
@@ -639,8 +667,9 @@ onBeforeUnmount(() => {
 })
 
 onActivated(() => {
-  nextTick(() => {
-    void syncEditorMode()
+  nextTick(async () => {
+    await syncEditorMode()
+    cleanSnapshot.value = currentSnapshot()
   })
 })
 
@@ -724,6 +753,7 @@ const handleSave = async () => {
 
     if (editingNoteId.value) {
       await updateNote({ id: editingNoteId.value, ...noteData })
+      cleanSnapshot.value = currentSnapshot()
       ElMessage.success('保存成功')
       if (editingNoteId.value && selectedBankIds.value.length > 0) {
         await saveNoteQuestionBanks(editingNoteId.value)
@@ -778,6 +808,9 @@ const handlePublish = async () => {
       title: noteTitle.value.trim(),
       markdownContent: md,
       isPublic: isPublic.value,
+      // 发布动作必须明确写 published；后端 create_note 默认 draft，不传就会
+      // 出现“提示发布成功但公开列表看不到”的假发布。
+      status: 'published',
       userId: userId,
       categoryId: selectedCategoryId.value || null,
       tags: selectedTags.value.join(','),
@@ -798,6 +831,7 @@ const handlePublish = async () => {
       ElMessage.success('发布成功')
     }
 
+    cleanSnapshot.value = currentSnapshot()
     if (savedNoteId && selectedBankIds.value.length > 0) {
       await saveNoteQuestionBanks(savedNoteId)
     }

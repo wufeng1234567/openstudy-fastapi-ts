@@ -841,7 +841,8 @@ export async function listAgentConfigs(includeDisabled = false): Promise<AgentCo
     const res = await fetch(url, { headers: _authHeaders() })
     if (!res.ok) return []
     const data = await res.json()
-    return Array.isArray(data?.agents) ? data.agents : []
+    const payload = data?.data ?? data
+    return Array.isArray(payload?.agents) ? payload.agents : []
   } catch {
     return []
   }

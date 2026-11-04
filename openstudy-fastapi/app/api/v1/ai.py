@@ -1107,11 +1107,12 @@ async def list_agent_configs(
     includeDisabled: bool = Query(False, description="是否包含已暂停的智能体"),
     current_user: dict = Depends(get_current_user),
 ):
-    """**列出我的智能体**（只返回当前登录用户的）。"""
+    """**列出我的智能体**（只返回当前登录用户的；统一标准信封）。"""
     from app.services.ai.agent import agent_config_service
 
     uid = int((current_user or {}).get("user_id") or 0)
-    return {"agents": await agent_config_service.list_agents(uid, include_disabled=includeDisabled)}
+    agents = await agent_config_service.list_agents(uid, include_disabled=includeDisabled)
+    return success({"agents": agents})
 
 
 @router.post("/agent/configs")
@@ -1524,6 +1525,7 @@ async def ds_bridge_show(
         return error("DS 桥未运行（请先启动 ds-free-nb 桥）")
 
 
+@router.get("/conversation/{session_id}")
 async def get_conversation(
     session_id: str,
     userId: Optional[int] = Query(None),
@@ -1591,6 +1593,8 @@ async def save_conversation_messages(
             attachments=body.attachments or None,
             turn_id=body.turnId or "",
         )
+    except PermissionError as e:
+        return error(str(e) or "会话不存在或无权访问", code=403)
     except Exception as e:
         # 之前这里是「静默失败」（前端 void 掉、后端 500 也没人看），
         # 于是「历史存不上」完全无线索。这里显式打全栈并回错。
@@ -1726,6 +1730,8 @@ async def save_agent_timeline_route(
         await conversation_service.save_agent_timeline(
             user_id, session_id, body.messages, body.metrics
         )
+    except PermissionError as e:
+        return error(str(e) or "会话不存在或无权访问", code=403)
     except Exception as e:  # noqa: BLE001
         logger.exception(f"智能体时间线落库失败 session={session_id}: {e}")
         return error(f"智能体时间线落库失败: {e}")

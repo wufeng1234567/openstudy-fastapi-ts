@@ -192,6 +192,47 @@ class UserQuestionMarked(Base):
     update_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
+class UserPracticeSession(Base):
+    """练习会话 / 成绩快照（服务端权威判分）
+
+    设计上刻意**只加这一张表**，不把每道题的作答拆成子表：
+    `question_ids` + `answers` 两个 JSON 已足够还原一次练习，
+    逐题明细在结算时由服务端重新判分生成。这样既能持久化成绩，
+    又不会与 `user_practice_log`（行为流水）重复造一份逐题数据。
+
+    - `answers`: {questionId: 原始作答}；组合题存对象（与前端 answers 结构一致）
+    - `status`: ongoing / submitted
+    - `score` / `total_score`: 本次得分与满分（按题目分值累计；默认每题 1 分）
+    - `pending_count`: 简答题等需要人工/自评的题数，不计入自动正确率
+    """
+    __tablename__ = "user_practice_session"
+    __table_args__ = (
+        Index("idx_practice_session_user_time", "user_id", "create_time"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    session_key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    bank_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    module_type: Mapped[str] = mapped_column(String(20), default="sequential")
+    question_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    answers: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # 模拟考试按题型配置的分值快照：{questionId: score}
+    score_config: Mapped[Optional[dict]] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(16), default="ongoing")
+    total_count: Mapped[int] = mapped_column(Integer, default=0)
+    answered_count: Mapped[int] = mapped_column(Integer, default=0)
+    correct_count: Mapped[int] = mapped_column(Integer, default=0)
+    wrong_count: Mapped[int] = mapped_column(Integer, default=0)
+    pending_count: Mapped[int] = mapped_column(Integer, default=0)
+    score: Mapped[Decimal] = mapped_column(Numeric(8, 2), default=Decimal("0.00"))
+    total_score: Mapped[Decimal] = mapped_column(Numeric(8, 2), default=Decimal("0.00"))
+    duration_sec: Mapped[Optional[int]] = mapped_column(Integer)
+    create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    submit_time: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    update_time: Mapped[Optional[datetime]] = mapped_column(DateTime, server_default=func.now())
+
+
 class UserPracticeLog(Base):
     """答题流水表（学习行为事件表）
 

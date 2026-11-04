@@ -40,7 +40,7 @@
 defineOptions({ name: 'FrontMessagesShareNotices' })
 import { ref, inject, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete } from '@element-plus/icons-vue'
 import {
   listMyNotifications,
@@ -86,9 +86,11 @@ const fetchNotices = async () => {
     if (res.code === 200) {
       noticeList.value = res.data?.rows || []
       syncUnread()
+    } else {
+      ElMessage.error(res.msg || '获取分享通知失败')
     }
   } catch (e) {
-    // 静默失败，避免打断页面
+    ElMessage.error('获取分享通知失败，请稍后重试')
   } finally {
     loading.value = false
   }
@@ -109,6 +111,15 @@ const handleClick = async (notice: any) => {
 
 const handleDelete = async (notice: any) => {
   try {
+    await ElMessageBox.confirm('确定删除这条分享通知吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+  } catch {
+    return
+  }
+  try {
     await deleteNotification(notice.notificationId)
     noticeList.value = noticeList.value.filter(n => n.notificationId !== notice.notificationId)
     syncUnread()
@@ -128,6 +139,16 @@ const handleMarkAllRead = async () => {
 }
 
 const handleClearAll = async () => {
+  if (!noticeList.value.length) return
+  try {
+    await ElMessageBox.confirm('确定清空全部分享通知吗？清空后不可恢复。', '提示', {
+      confirmButtonText: '确定清空',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+  } catch {
+    return
+  }
   try {
     await clearNotifications()
     noticeList.value = []

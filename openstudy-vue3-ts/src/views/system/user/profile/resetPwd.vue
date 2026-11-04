@@ -19,6 +19,11 @@
 <script setup lang="ts">
 import { updateUserPwd } from "@/api/system/user";
 import { getCurrentInstance } from "vue";
+import { useRouter } from "vue-router";
+import useUserStore from "@/store/modules/user";
+
+const router = useRouter();
+const userStore = useUserStore();
 
 const { proxy } = getCurrentInstance();
 const emit = defineEmits(['close', 'saved'])
@@ -46,9 +51,12 @@ const rules = ref({
 function submit() {
   proxy.$refs.pwdRef.validate(valid => {
     if (valid) {
-      updateUserPwd(user.oldPassword, user.newPassword).then(response => {
-        proxy.$modal.msgSuccess("修改成功");
+      updateUserPwd(user.oldPassword, user.newPassword).then(async () => {
+        proxy.$modal.msgSuccess("修改成功，请重新登录");
         emit('saved')
+        // 改密后服务端已注销全部 token；前端主动清登录态并回登录页，避免“成功即掉线”
+        try { await userStore.logOut() } catch { /* 忽略登出异常 */ }
+        router.push('/login')
       });
     }
   });

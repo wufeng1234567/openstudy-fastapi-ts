@@ -72,10 +72,30 @@ class PracticeSubmitRequest(BaseModel):
     correct: int = 0
     duration: int = 0
     detail: List[PracticeDetailItem] = Field(default_factory=list)
+    #: 阅读练习：短文与题目原样留一份，供成绩回看 / 智能体分析
+    passage: Optional[str] = None
+    questions: Optional[List[Dict[str, Any]]] = None
 
 
 def _uid(user: Dict[str, Any]) -> int:
     return int(user.get("user_id") or user.get("userId") or 0)
+
+
+async def _book_for_user(db: AsyncSession, book_id: int, uid: int) -> Optional[WordBook]:
+    """词书必须属于当前用户，或为系统预置（user_id IS NULL）。"""
+    book = (
+        await db.execute(
+            select(WordBook).where(
+                WordBook.book_id == int(book_id),
+                WordBook.del_flag == "0",
+            )
+        )
+    ).scalar_one_or_none()
+    if book is None:
+        return None
+    if book.user_id is not None and int(book.user_id) != int(uid):
+        return None
+    return book
 
 
 def _brief(row: EnglishPracticeLog) -> Dict[str, Any]:
@@ -295,6 +315,11 @@ async def submit_practice(
     if req.mode not in VALID_MODES:
         return error(f"mode 只能是 {' / '.join(sorted(VALID_MODES))}")
 
+    if req.bookId is not None:
+        book = await _book_for_user(db, req.bookId, _uid(current_user))
+        if book is None:
+            return error("词书不存在或无权练习", code=404)
+
     total = max(0, int(req.total or 0))
     correct = max(0, min(int(req.correct or 0), total))
     if total == 0:
@@ -302,6 +327,14 @@ async def submit_practice(
 
     # 明细可能多于题量（例如反复改答案），截断即可，不报错
     detail = [d.model_dump() for d in req.detail][:MAX_DETAIL_ITEMS]
+    # 阅读题不是单词维度；把短文/题目一起放进 detail 的一个保留项，
+    # 后续 /last?mode=reading 可完整回看（不新增表，避免重复实体）。
+    if req.mode == "reading" and (req.passage or req.questions):
+        detail.append({
+            "kind": "reading_set",
+            "passage": (req.passage or "")[:20000],
+            "questions": (req.questions or [])[:100],
+        })
 
     # 标题缺省时用词书名兜底，列表里不至于全是空白
     title = (req.title or "").strip()
@@ -620,6 +653,9 @@ async def new_words(
     用户点两次「练新词」看到的该是同一批词，而不是随机跳。
     """
     uid = _uid(current_user)
+    book = await _book_for_user(db, bookId, uid)
+    if book is None:
+        return error("词书不存在或无权查看", code=404)
 
     # ------------------------------------------------------------------
     # 「学过」的判定：练过至少一次，而不是 stage > 0（2026-10-26 修）
@@ -681,7 +717,11 @@ async def book_mastery(
 
     给词库列表/详情页显示「已掌握 8 / 学习中 12 / 新词 22」这类徽标用。
     """
-    m = await _book_mastery(db, user_id=_uid(current_user), book_id=int(bookId))
+    uid = _uid(current_user)
+    book = await _book_for_user(db, bookId, uid)
+    if book is None:
+        return error("词书不存在或无权查看", code=404)
+    m = await _book_mastery(db, user_id=uid, book_id=int(bookId))
     return success(m)
 
 
@@ -708,19 +748,26 @@ async def due_words(
     uid = _uid(current_user)
     today = date.today()
 
+    if bookId is not None:
+        book = await _book_for_user(db, bookId, uid)
+        if book is None:
+            return error("词书不存在或无权查看", code=404)
+
     cond = [
         WordLearningState.user_id == uid,
         WordLearningState.due_date.is_not(None),
         WordLearningState.due_date <= today,
     ]
+    if bookId is not None:
+        # count 与 items 必须共用同一个 bookId 条件；此前 count 漏了它，
+        # 导致「今天该复习 20 个」实际返回空列表。
+        cond.append(Word.book_id == int(bookId))
 
     stmt = (
         select(WordLearningState, Word)
         .join(Word, Word.word_id == WordLearningState.word_id)
         .where(*cond)
     )
-    if bookId:
-        stmt = stmt.where(Word.book_id == int(bookId))
 
     stmt = stmt.order_by(
         WordLearningState.due_date.asc(),

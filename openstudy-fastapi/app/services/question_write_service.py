@@ -31,6 +31,8 @@ from app.models.question import (
     UserQuestionError,
     UserQuestionFavorite,
     UserQuestionMarked,
+    UserPracticeLog,
+    UserPracticeSession,
 )
 
 #: 题库名关键词 → 科目（与后台创建题库的口径一致）
@@ -369,6 +371,11 @@ async def delete_banks(
             )
         ).all()
     ]
+
+    # 练习流水/会话属于历史学习数据，但题库被物理删除后其 question_id 已成为
+    # 孤儿；按题库清掉，避免统计继续把已删题库算进去（与题库删除语义一致）。
+    await db.execute(delete(UserPracticeLog).where(UserPracticeLog.bank_id.in_(own_ids)))
+    await db.execute(delete(UserPracticeSession).where(UserPracticeSession.bank_id.in_(own_ids)))
 
     if question_ids:
         # 2. 子题

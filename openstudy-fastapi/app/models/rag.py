@@ -154,6 +154,10 @@ class RagDocument(Base):
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     #: 自动整理后保留上传时的原始文件名；file_name 可以是整理后的展示名
     original_file_name: Mapped[Optional[str]] = mapped_column(String(255))
+    #: 资料版本号：同名资料再次上传时递增（旧正文快照进 MaterialOrganizeLog，可在历史版本里查看/恢复）。
+    version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
     #: 规则化自动分类；只是建议，不是权限/检索范围
     subject: Mapped[Optional[str]] = mapped_column(String(50))
     material_type: Mapped[Optional[str]] = mapped_column(String(30))

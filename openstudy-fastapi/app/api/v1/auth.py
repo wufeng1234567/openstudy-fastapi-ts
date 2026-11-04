@@ -18,6 +18,7 @@ from app.core.security import (
 )
 from app.core.response import success, error
 from app.repositories.user_repo import UserRepository
+from app.services.audit_log_service import record_login
 from app.utils.redis_util import get_cache, set_cache, delete_cache
 from app.models.config import SysConfig
 import uuid
@@ -133,8 +134,19 @@ class RegisterRequest(BaseModel):
 
 
 @router.post("/login")
-async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
-    """用户登录"""
+async def login(
+    data: LoginRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """用户登录（成功/失败都写 sys_logininfor）"""
+
+    async def fail(msg: str):
+        await record_login(
+            db, user_name=data.username, status=1, msg=msg, request=request
+        )
+        return error(msg)
+
     # 查询验证码开关配置
     config_query = select(SysConfig).where(SysConfig.config_key == "sys.account.captchaEnabled")
     config_result = await db.execute(config_query)
@@ -144,24 +156,24 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
     # 验证码校验（仅在开启时强制验证）
     if captcha_enabled:
         if not data.code or not data.uuid:
-            return error("请输入验证码")
+            return await fail("请输入验证码")
         cached_code = await get_cache(f"captcha:{data.uuid}")
         if not cached_code or cached_code.lower() != data.code.lower():
-            return error("验证码错误")
+            return await fail("验证码错误")
 
     # 查询用户
     user_repo = UserRepository(db)
     user = await user_repo.get_by_username(data.username)
 
     if not user:
-        return error("用户不存在")
+        return await fail("用户不存在")
 
     if user.status != "0":
-        return error("账号已被停用")
+        return await fail("账号已被停用")
 
     # 验证密码
     if not verify_password(data.password, user.password):
-        return error("密码错误")
+        return await fail("密码错误")
 
     # 获取用户角色和权限
     roles = await user_repo.get_user_roles(user.user_id)
@@ -174,6 +186,9 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
         nick_name=user.nick_name,
         roles=[r.role_key for r in roles],
         perms=perms,
+    )
+    await record_login(
+        db, user_name=user.user_name, status=0, msg="登录成功", request=request
     )
 
     return success({"token": token})
@@ -194,7 +209,11 @@ class QuickLoginRequest(BaseModel):
 
 
 @router.post("/quickLogin")
-async def quick_login(data: QuickLoginRequest, db: AsyncSession = Depends(get_db)):
+async def quick_login(
+    data: QuickLoginRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
     """演示用一键登录（白名单账号，免密码免验证码）
 
     :param account: user1 / user2 / guest
@@ -228,6 +247,9 @@ async def quick_login(data: QuickLoginRequest, db: AsyncSession = Depends(get_db
         nick_name=user.nick_name,
         roles=[r.role_key for r in roles],
         perms=perms,
+    )
+    await record_login(
+        db, user_name=user.user_name, status=0, msg="演示账号登录成功", request=request
     )
 
     return success({
@@ -264,6 +286,7 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
 async def logout(
     request: Request,
     current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """退出登录
 
@@ -276,6 +299,13 @@ async def logout(
     token = auth_header[7:].strip() if auth_header.lower().startswith("bearer ") else ""
     if token:
         await remove_token(token)
+    await record_login(
+        db,
+        user_name=str(current_user.get("user_name") or ""),
+        status=0,
+        msg="退出成功",
+        request=request,
+    )
     return success("退出成功")
 
 
@@ -309,70 +339,66 @@ async def get_info(current_user: dict = Depends(get_current_user), db: AsyncSess
 
 @router.get("/getRouters")
 async def get_routers(current_user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """获取路由菜单
+    """按 `sys_menu` 返回当前用户可见的后台路由。
 
-    ⚠️ 2026-10-22 修复：原来这里**硬编码返回 System / Monitor 两个后台菜单，
-    完全不看当前用户是谁**。结果是任何登录用户（包括演示用户 user1）
-    登录后侧边栏都能看到「系统管理」「系统监控」，点进去还能调用后台接口。
-
-    现在按角色返回：
-      · 管理员 → 后台菜单（系统管理 + 系统监控）
-      · 非管理员 → 空数组（前端不会渲染任何后台入口）
+    原实现硬编码只返回 3 个系统页 + 1 个限流页，导致数据库里已有的
+    角色/部门/菜单/监控等页面点击全部 404。现在管理员读取完整菜单表；
+    普通用户仍不返回任何后台入口（前台导航是前端静态路由）。
     """
     if not is_admin_user(current_user):
-        # 非管理员没有任何后台菜单。前台导航是前端静态路由，不依赖这里。
         return success([])
 
-    routers = [
-        {
-            "name": "System",
-            "path": "/system",
-            "hidden": False,
-            "redirect": "noRedirect",
-            "component": "Layout",
-            "alwaysShow": True,
-            "meta": {"title": "系统管理", "icon": "system", "noCache": False, "link": None},
-            "children": [
-                {
-                    "name": "User",
-                    "path": "user",
-                    "hidden": False,
-                    "component": "system/user/index",
-                    "meta": {"title": "用户管理", "icon": "user", "noCache": False, "link": None}
-                },
-                {
-                    "name": "Config",
-                    "path": "config",
-                    "hidden": False,
-                    "component": "system/config/index",
-                    "meta": {"title": "参数管理", "icon": "edit", "noCache": False, "link": None}
-                },
-                {
-                    "name": "Notice",
-                    "path": "notice",
-                    "hidden": False,
-                    "component": "system/notice/index",
-                    "meta": {"title": "通知公告", "icon": "message", "noCache": False, "link": None}
+    from app.models.menu import SysMenu
+    menus = list(
+        (
+            await db.execute(
+                select(SysMenu)
+                .where(SysMenu.status == "0", SysMenu.menu_type.in_(["M", "C"]))
+                .order_by(SysMenu.parent_id, SysMenu.order_num, SysMenu.menu_id)
+            )
+        ).scalars().all()
+    )
+    by_parent: dict = {}
+    for m in menus:
+        by_parent.setdefault(int(m.parent_id or 0), []).append(m)
+
+    def build(parent_id: int) -> list:
+        result = []
+        for m in by_parent.get(parent_id, []):
+            children = build(int(m.menu_id))
+            raw_path = m.path or f"menu{m.menu_id}"
+            if parent_id == 0 and not raw_path.startswith("/"):
+                raw_path = "/" + raw_path
+            if m.menu_type == "M":
+                item = {
+                    "name": f"Dir{m.menu_id}",
+                    "path": raw_path,
+                    "hidden": m.visible != "0",
+                    "redirect": "noRedirect",
+                    "component": "Layout",
+                    "alwaysShow": True,
+                    "meta": {"title": m.menu_name, "icon": m.icon or "system", "noCache": False, "link": None},
                 }
-            ]
-        },
-        {
-            "name": "Monitor",
-            "path": "/monitor",
-            "hidden": False,
-            "redirect": "noRedirect",
-            "component": "Layout",
-            "alwaysShow": True,
-            "meta": {"title": "系统监控", "icon": "monitor", "noCache": False, "link": None},
-            "children": [
-                {
-                    "name": "Ratelimit",
-                    "path": "ratelimit",
-                    "hidden": False,
-                    "component": "monitor/ratelimit/index",
-                    "meta": {"title": "AI 限流", "icon": "rate", "noCache": False, "link": None}
+                if children:
+                    item["children"] = children
+            else:
+                if not m.component:
+                    continue
+                item = {
+                    "name": f"Menu{m.menu_id}",
+                    "path": raw_path,
+                    "hidden": m.visible != "0",
+                    "component": m.component,
+                    "meta": {
+                        "title": m.menu_name,
+                        "icon": m.icon or "system",
+                        "noCache": m.is_cache != 1,
+                        "link": None,
+                    },
                 }
-            ]
-        },
-    ]
-    return success(routers)
+                if m.query:
+                    item["query"] = m.query
+            result.append(item)
+        return result
+
+    return success(build(0))

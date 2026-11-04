@@ -160,6 +160,10 @@ export interface PracticeSubmitPayload {
   duration?: number
   /** 逐题明细 */
   detail?: Array<{ word?: string; input?: string; ok: boolean }>
+  /** 阅读练习：短文正文（用于后端回看/智能体分析） */
+  passage?: string
+  /** 阅读练习：题目、选项、答案与解析 */
+  questions?: Array<Record<string, any>>
 }
 
 /** 提交练习结果（⚠️ accuracy 由后端算，前端不要自己再算一遍） */

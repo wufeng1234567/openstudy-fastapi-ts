@@ -233,6 +233,10 @@ async function generate() {
 
         questions.value = list.map((q: any) => ({
           ...q,
+          // 后端 reading 场景的字段名是 question / explanation（见 prompts._build_reading），
+          // 本页渲染用的是 questionText / analysis —— 这里统一归一，兼容旧字段。
+          questionText: q.questionText || q.question || q.title || '',
+          analysis: q.analysis || q.explanation || '',
           // 没有 passage 的题目就是普通题，短文留空即可
           title: q.title || ''
         }))
@@ -320,6 +324,14 @@ async function saveReadingRecord() {
         word: String(q.questionText || q.title || `第 ${qi + 1} 题`).slice(0, 120),
         input: picks.value[qi] !== undefined ? String.fromCharCode(65 + picks.value[qi]) : '',
         ok: isCorrect(qi, q)
+      })),
+      // 短文与题目原样留档：换设备后仍能回看，而不是只有正确率
+      passage: passage.value,
+      questions: questions.value.map((q: any) => ({
+        questionText: q.questionText || q.title || '',
+        options: q.options || [],
+        answer: q.answer ?? q.correctAnswer ?? '',
+        analysis: q.analysis || ''
       }))
     })
     savedToHistory.value = true

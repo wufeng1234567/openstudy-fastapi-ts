@@ -191,9 +191,7 @@ import useTagsViewStore from '@/store/modules/tagsView'
 import { ensureLogin } from '@/utils/loginGuard'
 import { checkRole } from '@/utils/permission'
 import { ElMessageBox } from 'element-plus'
-import { listAllNotice } from '@/api/system/notice'
-import { getNotificationUnreadCount } from '@/api/notification/notification'
-import { isSystemNotice, isUserNoticeFor } from '@/utils/notice'
+import { totalUnread, unreadSummary } from '@/api/system/notice'
 import { getToken } from '@/utils/auth'
 import FrontSidebar from '@/components/FrontSidebar/index.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
@@ -276,6 +274,9 @@ const unreadCount = ref(0)
 
 provide('refreshBadge', (type: string, count: number) => {
   if (type === 'sys') unreadCount.value = count
+  // 分享通知/用户通知已读或删除后，顶栏是聚合数，重新拉一次 totalUnread；
+  // 不能像 sys 一样直接赋值（count 只是分享这一路的未读数）。
+  else if (type === 'share' || type === 'user') void fetchUnread()
 })
 
 async function fetchUnread() {
@@ -284,20 +285,23 @@ async function fetchUnread() {
     return
   }
   try {
-    const res = await listAllNotice()
-    const all = res.data || []
-    const myId = userStore.id
-    unreadCount.value = all.filter(
-      (n) => !n.read && (isSystemNotice(n) || isUserNoticeFor(n, myId))
-    ).length
+    // 后端聚合口径：系统/用户通知 + 定向分享通知；避免两路分别请求时漏算。
+    const res: any = await totalUnread()
+    if (res.code === 200 && res.data) {
+      unreadCount.value = Number(res.data.count || 0)
+      return
+    }
   } catch (e) {
-    /* 静默：红点失败不影响页面 */
+    /* 回退到旧的两路相加 */
   }
   try {
-    const notifyRes = await getNotificationUnreadCount()
-    unreadCount.value = (unreadCount.value || 0) + (notifyRes.data || 0)
+    // 聚合接口失败时也只请求“计数”，不再把全量通知列表拉回来在前端过滤。
+    const res: any = await unreadSummary()
+    if (res.code === 200 && res.data) {
+      unreadCount.value = Number(res.data.total || 0)
+    }
   } catch (e) {
-    /* 未登录 / 失败忽略 */
+    /* 静默：红点失败不影响页面 */
   }
 }
 

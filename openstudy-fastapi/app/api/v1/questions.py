@@ -13,10 +13,11 @@
 import copy
 
 from fastapi import APIRouter, Depends, Query, Request
+from pydantic import BaseModel
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from typing import Optional, List
+from typing import Optional, List, Any, Dict
 from decimal import Decimal
 from app.database import get_db
 from app.core.security import get_current_user
@@ -24,7 +25,7 @@ from app.core.response import success, paginate, error
 from app.models.question import (
     QuestionBank, QuestionMain, QuestionSub,
     UserBankFavorite, UserQuestionFavorite, UserQuestionError, UserQuestionMarked,
-    UserPracticeLog,
+    UserPracticeLog, UserPracticeSession,
 )
 from app.models.bank_share import BankShare, BankShareReceive
 from app.models.user import SysUser
@@ -41,9 +42,30 @@ from app.schemas.question import (
 from app.utils.excel_util import export_to_excel
 from app.services.bank_copy_service import copy_bank_to_user
 from app.services import question_write_service
+from app.services.question_grading_service import grade_question
 from datetime import datetime
+import json
 
 router = APIRouter()
+
+
+class QuestionBankSaveRequest(BaseModel):
+    """题库搭建一次性保存（单事务）。
+
+    前端「保存/发布」不再逐题发多个 HTTP：题库基本信息、题目新增/更新、
+    子题全量替换、显式删除旧题全部在本请求里完成。任一步失败整体回滚，
+    不会留下「新题写了一半、旧题已删」的半成品。
+    """
+    bankId: Optional[int] = None
+    bankName: str
+    subject: Optional[str] = None
+    description: Optional[str] = None
+    coverImage: Optional[str] = None
+    status: Optional[str] = "0"
+    isPublic: Optional[int] = 0
+    allowFork: Optional[int] = 1
+    questions: List[Dict[str, Any]] = []
+    deleteQuestionIds: List[int] = []
 
 
 # ========== 辅助函数 ==========
@@ -632,7 +654,7 @@ async def get_bank(
     bank = result.scalar_one_or_none()
 
     if not bank:
-        return error("题库不存在")
+        return error("题库不存在", code=404)
 
     # 私密题库：仅题库主或已领取分享者可查看
     if not await _can_view_bank(db, bank, current_user.get("user_id")):
@@ -715,6 +737,133 @@ async def create_bank_with_return(
     await db.refresh(bank)
 
     return success(format_bank(bank))
+
+
+@router.post("/questionBank/questionBank/saveWithQuestions")
+async def save_bank_with_questions(
+    payload: QuestionBankSaveRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """题库搭建保存：题库 + 题目 + 子题一次事务完成。
+
+    兼容新建与编辑；`deleteQuestionIds` 只允许删除当前题库下的题。
+    任何校验/写入异常都会 rollback，返回明确错误，不留半成品。
+    """
+    uid = current_user.get("user_id")
+    if not (payload.bankName or "").strip():
+        return error("题库名称不能为空", code=400)
+    try:
+        if payload.bankId:
+            bank = (await db.execute(
+                select(QuestionBank).where(QuestionBank.id == payload.bankId)
+            )).scalar_one_or_none()
+            if not bank:
+                return error("题库不存在", code=404)
+            if int(bank.user_id) != int(uid):
+                return error("只有题库主才能保存该题库", code=403)
+            bank.bank_name = payload.bankName.strip()
+            if payload.subject is not None:
+                bank.subject = payload.subject
+            if payload.description is not None:
+                bank.description = payload.description
+            if payload.coverImage is not None:
+                bank.cover_image = payload.coverImage
+            if payload.status is not None:
+                bank.status = payload.status or "0"
+            if payload.isPublic is not None:
+                bank.is_public = int(payload.isPublic)
+            if payload.allowFork is not None:
+                bank.allow_fork = int(payload.allowFork)
+            await db.flush()
+        else:
+            bank = await question_write_service.create_bank(
+                db,
+                user_id=uid,
+                bank_name=payload.bankName.strip(),
+                subject=payload.subject,
+                description=payload.description,
+                cover_image=payload.coverImage,
+                is_public=payload.isPublic,
+                allow_fork=payload.allowFork,
+                status=payload.status or "0",
+            )
+
+        existing = list((await db.execute(
+            select(QuestionMain).where(QuestionMain.bank_id == bank.id)
+        )).scalars().all())
+        existing_map = {int(q.id): q for q in existing}
+
+        # 显式删除：必须先确认所有 id 都属于当前题库，避免借保存删别人的题
+        delete_ids = [int(x) for x in (payload.deleteQuestionIds or [])]
+        foreign = [x for x in delete_ids if x not in existing_map]
+        if foreign:
+            return error("只能删除当前题库下的题目", code=403)
+
+        kept_ids = set()
+        for idx, item in enumerate(payload.questions or []):
+            qid = item.get("id") or item.get("questionId") or item.get("backendId")
+            qtext = str(item.get("questionText") or item.get("title") or "").strip()
+            if not qtext:
+                raise ValueError(f"第 {idx + 1} 题题干不能为空")
+            qtype = int(item.get("questionType") or 1)
+            subs = item.get("questionSubList") or item.get("subQuestions") or []
+            if qid:
+                qid = int(qid)
+                question = existing_map.get(qid)
+                if not question:
+                    raise ValueError(f"题目 {qid} 不属于当前题库")
+                question.question_type = qtype
+                question.difficulty = int(item.get("difficulty") or 2)
+                question.question_text = qtext
+                question.content = item.get("content")
+                question.options = item.get("options")
+                question.answer = str(item.get("answer") or "")
+                question.analysis = item.get("questionAnalysis") or item.get("analysis")
+                question.has_sub_questions = 1 if subs else 0
+                question.sort_order = int(item.get("sortOrder") if item.get("sortOrder") is not None else idx)
+                question.score = item.get("score") or 0
+                question.status = str(item.get("status") or "0")
+                await db.execute(delete(QuestionSub).where(QuestionSub.main_id == qid))
+                if subs:
+                    await question_write_service.insert_sub_questions(db, qid, subs)
+                kept_ids.add(qid)
+            else:
+                question = await question_write_service.create_question(
+                    db,
+                    bank_id=bank.id,
+                    question_type=qtype,
+                    question_text=qtext,
+                    answer=str(item.get("answer") or ""),
+                    options=item.get("options"),
+                    analysis=item.get("questionAnalysis") or item.get("analysis"),
+                    content=item.get("content"),
+                    difficulty=int(item.get("difficulty") or 2),
+                    score=item.get("score") or 0,
+                    sort_order=int(item.get("sortOrder") if item.get("sortOrder") is not None else idx),
+                    sub_questions=subs,
+                    recalc_total=False,
+                )
+                kept_ids.add(int(question.id))
+
+        if delete_ids:
+            await db.execute(delete(QuestionSub).where(QuestionSub.main_id.in_(delete_ids)))
+            await db.execute(delete(UserQuestionFavorite).where(UserQuestionFavorite.question_id.in_(delete_ids)))
+            await db.execute(delete(UserQuestionError).where(UserQuestionError.question_id.in_(delete_ids)))
+            await db.execute(delete(UserQuestionMarked).where(UserQuestionMarked.question_id.in_(delete_ids)))
+            from app.models.note_question import NoteQuestion
+            await db.execute(delete(NoteQuestion).where(NoteQuestion.question_id.in_(delete_ids)))
+            await db.execute(delete(QuestionMain).where(
+                QuestionMain.id.in_(delete_ids), QuestionMain.bank_id == bank.id
+            ))
+        # 题库里原有的题如果既没出现在本次保存里、也没显式删除，视为保留
+        await question_write_service.recalc_bank_total(db, bank.id)
+        await db.flush()
+        await db.refresh(bank)
+        return success(format_bank(bank), "保存成功")
+    except Exception as e:  # noqa: BLE001 - 保存是事务边界，统一回滚并回显原因
+        await db.rollback()
+        return error(f"保存失败，已回滚：{str(e)[:300]}", code=400)
 
 
 @router.post("/questionBank/questionBank/copy/{bank_id}")
@@ -834,6 +983,10 @@ async def delete_banks(
     q_id_result = await db.execute(q_id_query)
     question_ids = [row[0] for row in q_id_result.all()]
 
+    # 题库删除后练习流水/成绩也一并清理，避免统计继续计入已删题库
+    await db.execute(delete(UserPracticeLog).where(UserPracticeLog.bank_id.in_(ids)))
+    await db.execute(delete(UserPracticeSession).where(UserPracticeSession.bank_id.in_(ids)))
+
     if question_ids:
         # 2. 物理删除子题
         await db.execute(delete(QuestionSub).where(QuestionSub.main_id.in_(question_ids)))
@@ -913,6 +1066,7 @@ async def list_questions(
     beginTime: Optional[str] = Query(None),
     endTime: Optional[str] = Query(None),
     ownedOnly: bool = Query(False, description="只返回当前用户自己题库下的题目（可编辑）"),
+    withAnswer: bool = Query(False, description="后台编辑页传 true；公开浏览默认脱敏"),
     pageNum: int = Query(1, ge=1),
     pageSize: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -969,13 +1123,18 @@ async def list_questions(
     bank_map = {}
     if bank_ids:
         bank_rows = (
-            await db.execute(select(QuestionBank.id, QuestionBank.bank_name).where(QuestionBank.id.in_(bank_ids)))
+            await db.execute(select(QuestionBank.id, QuestionBank.bank_name, QuestionBank.user_id).where(QuestionBank.id.in_(bank_ids)))
         ).all()
-        bank_map = {int(bid): (bname or "") for bid, bname in bank_rows}
+        bank_map = {int(bid): (bname or "", int(owner or 0)) for bid, bname, owner in bank_rows}
     rows = []
+    from app.services.question_grading_service import question_payload
+    can_reveal_any = _is_admin_user(current_user)
+    current_uid = int(current_user.get("user_id") or 0)
     for q in questions:
-        item = format_question(q)
-        item["bankName"] = bank_map.get(int(q.bank_id), "")
+        bank_name, bank_owner = bank_map.get(int(q.bank_id), ("", 0))
+        reveal = bool(withAnswer and (can_reveal_any or bank_owner == current_uid))
+        item = format_question(q) if reveal else question_payload(q, reveal=False)
+        item["bankName"] = bank_name
         rows.append(item)
     return paginate(total, rows)
 
@@ -984,10 +1143,15 @@ async def list_questions(
 async def list_all_questions(
     bankId: Optional[int] = Query(None),
     questionType: Optional[int] = Query(None),
+    withAnswer: bool = Query(False, description="后台编辑页传 true；练习/公开浏览默认脱敏"),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """查询所有题目（不分页）"""
+    """查询所有题目（不分页）
+
+    `withAnswer=false` 时只返回题干/选项/子题结构，答案与解析完全不下发，
+    供练习页在作答前安全加载；作答后由 `/questionPractice/session/*` 返回。
+    """
     if bankId:
         bank_row = await db.execute(select(QuestionBank).where(QuestionBank.id == bankId))
         bank_obj = bank_row.scalar_one_or_none()
@@ -1011,13 +1175,28 @@ async def list_all_questions(
     result = await db.execute(data_query)
     questions = list(result.scalars().all())
 
-    return success([format_question(q) for q in questions])
+    from app.services.question_grading_service import question_payload
+    bank_ids = {int(q.bank_id) for q in questions if q.bank_id}
+    owners = {}
+    if bank_ids:
+        rows = (await db.execute(
+            select(QuestionBank.id, QuestionBank.user_id).where(QuestionBank.id.in_(bank_ids))
+        )).all()
+        owners = {int(bid): int(uid or 0) for bid, uid in rows}
+    can_reveal_any = _is_admin_user(current_user)
+    current_uid = int(current_user.get("user_id") or 0)
+    out = []
+    for q in questions:
+        reveal = bool(withAnswer and (can_reveal_any or owners.get(int(q.bank_id), 0) == current_uid))
+        out.append(format_question(q) if reveal else question_payload(q, reveal=False))
+    return success(out)
 
 
 @router.get("/questionMain/questionMain/search")
 async def search_questions(
     keyword: Optional[str] = Query(None),
     bankId: Optional[int] = Query(None),
+    withAnswer: bool = Query(False),
     pageNum: int = Query(1, ge=1),
     pageSize: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -1049,13 +1228,18 @@ async def search_questions(
     bank_map = {}
     if bank_ids:
         bank_rows = (
-            await db.execute(select(QuestionBank.id, QuestionBank.bank_name).where(QuestionBank.id.in_(bank_ids)))
+            await db.execute(select(QuestionBank.id, QuestionBank.bank_name, QuestionBank.user_id).where(QuestionBank.id.in_(bank_ids)))
         ).all()
-        bank_map = {int(bid): (bname or "") for bid, bname in bank_rows}
+        bank_map = {int(bid): (bname or "", int(owner or 0)) for bid, bname, owner in bank_rows}
     rows = []
+    from app.services.question_grading_service import question_payload
+    can_reveal_any = _is_admin_user(current_user)
+    current_uid = int(current_user.get("user_id") or 0)
     for q in questions:
-        item = format_question(q)
-        item["bankName"] = bank_map.get(int(q.bank_id), "")
+        bank_name, bank_owner = bank_map.get(int(q.bank_id), ("", 0))
+        reveal = bool(withAnswer and (can_reveal_any or bank_owner == current_uid))
+        item = format_question(q) if reveal else question_payload(q, reveal=False)
+        item["bankName"] = bank_name
         rows.append(item)
     return paginate(total, rows)
 
@@ -1063,16 +1247,21 @@ async def search_questions(
 @router.get("/questionMain/questionMain/{question_id}")
 async def get_question(
     question_id: int,
+    withAnswer: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """查询题目详情（含子题）"""
+    """查询题目详情（含子题）
+
+    答案/解析只对「题目所属题库的 owner」或管理员下发；公开题库的普通浏览者
+    即使直接猜 question_id 也只能拿到题干/选项，不能提前看答案。
+    """
     query = select(QuestionMain).options(selectinload(QuestionMain.sub_questions)).where(QuestionMain.id == question_id)
     result = await db.execute(query)
     question = result.scalar_one_or_none()
 
     if not question:
-        return error("题目不存在")
+        return error("题目不存在", code=404)
 
     # 可见性：题目归属在题库上，私密题库的题目只对题库主/已领取分享者开放
     bank = (await db.execute(
@@ -1081,7 +1270,16 @@ async def get_question(
     if not await _can_view_bank(db, bank, current_user.get("user_id")):
         return error("无权访问该题目（所属题库为私密题库）", code=403)
 
-    return success(format_question(question))
+    can_reveal = bool(
+        bank and (
+            int(bank.user_id or 0) == int(current_user.get("user_id") or 0)
+            or _is_admin_user(current_user)
+        )
+    )
+    if withAnswer and can_reveal:
+        return success(format_question(question))
+    from app.services.question_grading_service import question_payload
+    return success(question_payload(question, reveal=False))
 
 
 @router.post("/questionMain/questionMain/recordStudyTime")
@@ -1109,17 +1307,8 @@ async def record_study_time(
             fav.last_study_time = now
             fav.study_count = (fav.study_count or 0) + 1
 
-    # 2. 更新题目收藏的复习时间
-    if question_ids:
-        q_fav_query = select(UserQuestionFavorite).where(
-            UserQuestionFavorite.user_id == user_id,
-            UserQuestionFavorite.question_id.in_(question_ids),
-            UserQuestionFavorite.favorite_status == 1,
-        )
-        q_fav_result = await db.execute(q_fav_query)
-        for q_fav in q_fav_result.scalars().all():
-            q_fav.last_review_time = now
-            q_fav.review_count = (q_fav.review_count or 0) + 1
+    # 2. 题目收藏的复习次数只在**真正作答**时累加（见 /questionPractice/report
+    #    与练习会话 submit），不能因为“进入题库”就按全库题目 id 批量 +1。
 
     await db.flush()
 
@@ -1135,32 +1324,49 @@ async def report_practice(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """答题上报（答对 / 答错都要调用）
+    """答题上报（兼容旧客户端；判分口径已改为服务端权威）
 
-    一次调用做三件事：
-    1. 写一条答题流水 user_practice_log —— 学习行为统计的唯一数据源
-    2. 若该题在「收藏题目」里，累加 correct_times / error_times / review_count（兼容旧字段）
-    3. 答错时 upsert 错题记录，并**强制把 status / is_mastered 重置为活跃**：
-       「标记已掌握后再做错」的题目必须能回到错题本，否则会永久消失
+    ⚠️ 2026-11 起不再采信请求体里的 `isCorrect`：
+       - 服务端按 `payload.answer` + 题库标准答案重新判分；
+       - 简答题返回 `pending=true`，不写错题本、不污染正确率；
+       - 新前端请优先使用 `/questionPractice/session/*`（有会话与成绩快照）。
     """
     user_id = current_user.get("user_id")
     question_id = payload.questionId
     now = datetime.now()
 
-    # 题目必须存在，避免脏数据污染统计
     question = (await db.execute(
-        select(QuestionMain).where(QuestionMain.id == question_id)
+        select(QuestionMain).options(selectinload(QuestionMain.sub_questions)).where(QuestionMain.id == question_id)
     )).scalar_one_or_none()
     if not question:
-        return error("题目不存在")
+        return error("题目不存在", code=404)
 
+    answer_value = payload.answer
+    if isinstance(answer_value, str) and answer_value.strip().startswith(("{", "[")):
+        try:
+            answer_value = json.loads(answer_value)
+        except Exception:
+            pass
+    if answer_value is None or answer_value == "":
+        return error("缺少作答内容，无法服务端判分", code=400)
+
+    grade = grade_question(question, answer_value)
+    if grade.get("pending"):
+        return success({
+            "isCorrect": None,
+            "pending": True,
+            "errorId": None,
+            "correctAnswer": grade.get("correctAnswer"),
+            "analysis": grade.get("analysis"),
+        })
+
+    is_correct = 1 if grade.get("isCorrect") else 0
     bank_id = payload.bankId if payload.bankId is not None else question.bank_id
-    is_correct = 1 if payload.isCorrect else 0
-
-    # 1) 写答题流水
     answer_text = payload.answer
-    if answer_text is not None and len(answer_text) > 2000:
-        answer_text = answer_text[:2000]
+    if isinstance(answer_text, (dict, list)):
+        answer_text = json.dumps(answer_text, ensure_ascii=False)
+    if answer_text is not None and len(str(answer_text)) > 2000:
+        answer_text = str(answer_text)[:2000]
     db.add(UserPracticeLog(
         user_id=user_id,
         question_id=question_id,
@@ -1170,7 +1376,6 @@ async def report_practice(
         create_time=now,
     ))
 
-    # 2) 收藏题目计数（老字段保持同步，供错题/收藏页复用）
     q_fav = (await db.execute(
         select(UserQuestionFavorite).where(
             UserQuestionFavorite.user_id == user_id,
@@ -1186,9 +1391,8 @@ async def report_practice(
         q_fav.last_review_time = now
         q_fav.review_count = (q_fav.review_count or 0) + 1
 
-    # 3) 答错 → 错题本 upsert
     error_id = None
-    if not payload.isCorrect:
+    if not is_correct:
         err = (await db.execute(
             select(UserQuestionError).where(
                 UserQuestionError.user_id == user_id,
@@ -1198,7 +1402,6 @@ async def report_practice(
         if err:
             err.error_count = (err.error_count or 0) + 1
             err.last_error_time = now
-            # 关键：重新激活（已掌握后再做错，要回到错题本）
             err.status = 1
             err.is_mastered = 0
             if payload.notes is not None:
@@ -1227,10 +1430,12 @@ async def report_practice(
             error_id = err.error_id
 
     await db.flush()
-
     return success({
-        "isCorrect": payload.isCorrect,
+        "isCorrect": bool(grade.get("isCorrect")),
+        "pending": False,
         "errorId": error_id,
+        "correctAnswer": grade.get("correctAnswer"),
+        "analysis": grade.get("analysis"),
     })
 
 
@@ -1359,11 +1564,13 @@ async def update_question(
         else:
             question.has_sub_questions = 0
 
-    # 题库变更时重算新旧题库总数
+    # 题库变更/上下架状态变化时重算总数（状态为 '1' 的题不计入 total_questions）
     new_bank_id = payload.bankId
     if new_bank_id is not None and old_bank_id is not None and new_bank_id != old_bank_id:
         await _recalc_bank_total(db, old_bank_id)
         await _recalc_bank_total(db, new_bank_id)
+    elif payload.status is not None and old_bank_id is not None:
+        await _recalc_bank_total(db, old_bank_id)
 
     return success()
 
@@ -1627,11 +1834,16 @@ async def batch_question_info(
     if not questions:
         return success([])
 
-    # 组装结果
+    # 组装结果：答案/解析只给题库主/管理员，普通用户批量查题也拿不到答案
     rows = []
+    from app.services.question_grading_service import question_payload
+    can_reveal_any = _is_admin_user(current_user)
+    uid = int(current_user.get("user_id") or 0)
     for q in questions:
-        row = format_question(q)
-        row["bankName"] = bank_map.get(q.bank_id).bank_name
+        bank = bank_map.get(q.bank_id)
+        reveal = bool(can_reveal_any or (bank and int(bank.user_id or 0) == uid))
+        row = format_question(q) if reveal else question_payload(q, reveal=False)
+        row["bankName"] = bank.bank_name if bank else ""
         rows.append(row)
 
     return success(rows)

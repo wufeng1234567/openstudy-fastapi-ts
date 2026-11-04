@@ -682,3 +682,62 @@
   color: #1f2937;
   transform: translateY(-2px);
 }
+
+/* ===== 窄屏（手机/分屏）练习布局 =====
+   原来的 75% 题目 + 25% 答题卡是桌面双栏；390px 下答题卡会被挤出屏幕、
+   题目文字被压成很窄一列。改为单列，答题卡放到题目下方。 */
+@media (max-width: 768px) {
+  .practice-container {
+    padding: 4px 10px 24px;
+  }
+
+  .practice-header {
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+
+  .practice-header .mode-title {
+    font-size: 15px;
+    line-height: 1.35;
+    white-space: normal;
+  }
+
+  .main-content,
+  .main-content.overview-content {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .main-content > .question-area,
+  .main-content.overview-content .overview-question-stream {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    padding: 14px;
+    box-sizing: border-box;
+  }
+
+  .answer-card,
+  .main-content.overview-content .overview-card {
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: none;
+    position: static;
+    padding: 14px;
+    box-sizing: border-box;
+  }
+
+  .overview-question-card {
+    padding: 14px;
+  }
+
+  .overview-card-header {
+    flex-wrap: wrap;
+  }
+
+  .overview-card-header .question-number,
+  .header-spacer {
+    min-width: 0;
+  }
+}

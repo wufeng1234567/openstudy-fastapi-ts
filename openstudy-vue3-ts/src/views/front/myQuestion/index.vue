@@ -31,12 +31,19 @@ const cacheStore = useFrontPageCacheStore()
 let isRedirecting = false
 
 const redirectToLastVisited = () => {
-  // 只有路径正好是 /front/myQuestion 时才需要重定向
-  if (route.path !== '/front/myQuestion') return false
+  // 只有路径正好是 /front/myQuestion（兼容尾部斜杠）时才需要重定向
+  if (route.path.replace(/\/$/, '') !== '/front/myQuestion') return false
   if (isRedirecting) return false
 
   isRedirecting = true
-  const lastVisited = cacheStore.getLastVisited('myQuestion', 'myBank')
+  const cached = cacheStore.getLastVisited('myQuestion', 'myBank')
+  // 缓存可能是旧版本留下的非法子路由（或空值）；回退 myBank，避免根路径落空。
+  const allowed = new Set([
+    'myBank', 'questions', 'noteManage', 'myStats', 'myShares', 'myNotes',
+    'bankCollect', 'wrongQuestion', 'masteredQuestion', 'questionCollect',
+    'favoriteNote', 'weeklyReport', 'examPlan'
+  ])
+  const lastVisited = allowed.has(String(cached)) ? String(cached) : 'myBank'
 
   router
     .push(`/front/myQuestion/${lastVisited}`)

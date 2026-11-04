@@ -2368,12 +2368,21 @@ const handleFullEditorSave = (updatedQuestion) => {
   ElMessage.success('题目已更新')
 }
 
-const removeQuestion = (id) => {
+const removeQuestion = async (id) => {
   const index = questions.value.findIndex(q => q.id === id)
-  if (index !== -1) {
-    questions.value.splice(index, 1)
-    if (currentId.value === id) currentId.value = questions.value[0]?.id || null
+  if (index === -1) return
+  const q = questions.value[index]
+  try {
+    await ElMessageBox.confirm(
+      `确定从当前题库移除「${q.title || '这道题'}」吗？保存后才会同步删除。`,
+      '删除题目',
+      { confirmButtonText: '确定移除', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return
   }
+  questions.value.splice(index, 1)
+  if (currentId.value === id) currentId.value = questions.value[0]?.id || null
 }
 
 const onTypeChange = () => {
@@ -4294,6 +4303,7 @@ defineExpose({ questions, openAiDialog })
       flex: 1 1 100%;
       width: 100%;
       min-width: 100%;
+      padding-right: 0;
     }
 
     .edit-panel {
@@ -4301,6 +4311,27 @@ defineExpose({ questions, openAiDialog })
       width: 100%;
       min-width: 100%;
       margin-top: 16px;
+    }
+
+    /* 390px 实测：panel-header 不换行时「搜索题目 / AI 生成」被右边缘裁掉 45px。 */
+    .question-panel .panel-header {
+      flex-wrap: wrap;
+    }
+
+    .question-panel .panel-header .panel-title {
+      flex: 1 1 100%;
+      text-align: left;
+    }
+
+    .question-panel .panel-header .panel-actions {
+      flex: 1 1 100%;
+      margin-left: 0;
+      flex-wrap: wrap;
+
+      .el-input {
+        flex: 1 1 150px;
+        width: auto;
+      }
     }
   }
 }

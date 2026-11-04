@@ -43,6 +43,8 @@
       </div>
       <el-empty v-if="!loading && noticeList.length === 0" description="暂无回复与@消息" />
     </div>
+    <el-pagination v-if="total > pageSize" class="notice-pager" background layout="prev, pager, next"
+      :current-page="page" :page-size="pageSize" :total="total" @current-change="handlePageChange" />
   </div>
 </template>
 
@@ -62,6 +64,9 @@ const userStore = useUserStore()
 const loading = ref(false)
 const noticeList = ref([])
 const unreadCount = ref(0)
+const page = ref(1)
+const pageSize = 20
+const total = ref(0)
 
 const refreshBadge = inject('refreshBadge', () => { })
 
@@ -94,11 +99,12 @@ const getActionText = (notice) =>
 const fetchUserNotices = async () => {
   loading.value = true
   try {
-    const res = await listAllNotice()
-    const all = res.data || []
+    const res: any = await listAllNotice({ pageNum: page.value, pageSize, scope: 'user' })
+    const all = Array.isArray(res.rows) ? res.rows : (res.data || [])
     const myId = userStore.id
     const mine = all.filter(n => isUserNoticeFor(n, myId))
     noticeList.value = mine
+    total.value = Number(res.total || mine.length)
     unreadCount.value = mine.filter(n => !n.read).length
   } catch (e) {
     ElMessage.error('获取「回复与@」消息失败')
@@ -107,7 +113,12 @@ const fetchUserNotices = async () => {
   }
 }
 
-const handleClick = (notice) => {
+function handlePageChange(p: number) {
+  page.value = p
+  fetchUserNotices()
+}
+
+const handleClick = async (notice) => {
   const id = notice.noticeId || notice.id
 
   if (id && !notice.read) {
@@ -115,7 +126,14 @@ const handleClick = (notice) => {
     notice.read = true
     unreadCount.value = Math.max(0, unreadCount.value - 1)
     refreshBadge('user', unreadCount.value)
-    markRead(id).catch(() => { })
+    try {
+      await markRead(id)
+    } catch {
+      notice.read = false
+      unreadCount.value += 1
+      refreshBadge('user', unreadCount.value)
+      ElMessage.error('标记已读失败，请重试')
+    }
   }
 
   // 跳转到对应笔记 / 评论
@@ -129,16 +147,22 @@ const handleClick = (notice) => {
   }
 }
 
-const handleReadAll = () => {
-  const ids = noticeList.value
-    .map(n => n.noticeId || n.id)
-    .filter(Boolean)
-    .join(',')
+const handleReadAll = async () => {
+  const unreadNotices = noticeList.value.filter(n => !n.read)
+  const ids = unreadNotices.map(n => n.noticeId || n.id).filter(Boolean).join(',')
   if (!ids) return
+  const previousUnread = unreadCount.value
   unreadCount.value = 0
   refreshBadge('user', 0)
-  ElMessage.success('已全部标记为已读')
-  markReadAll(ids).catch(() => { })
+  try {
+    await markReadAll(ids)
+    unreadNotices.forEach(n => { n.read = true })
+    ElMessage.success('已全部标记为已读')
+  } catch {
+    unreadCount.value = previousUnread
+    refreshBadge('user', previousUnread)
+    ElMessage.error('全部已读失败，请重试')
+  }
 }
 
 const handleDelete = async (notice) => {

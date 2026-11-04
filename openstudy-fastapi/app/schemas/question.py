@@ -349,7 +349,7 @@ class PracticeReportRequest(BaseModel):
     questionId: int
     bankId: Optional[int] = None
     isCorrect: bool
-    answer: Optional[str] = None
+    answer: Optional[Union[str, dict, list]] = None
     difficultyRating: Optional[int] = None
     # 答错时一并写入的错因备注/标签（前端已生成，可缺省）
     notes: Optional[str] = None

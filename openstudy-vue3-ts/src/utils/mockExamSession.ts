@@ -69,6 +69,8 @@ export interface MockExamSession {
   subEssay: Record<string, Record<string, any>>
   /** 当前题目 id（恢复时定位到"我刚才在做的那道"） */
   currentQuestionId?: number | string | null
+  /** 服务端练习会话 id：恢复时优先复用，避免每次刷新都新建孤儿会话 */
+  practiceSessionId?: string
   /** 考试开始时间（算用时用） */
   startedAt: number
   /**

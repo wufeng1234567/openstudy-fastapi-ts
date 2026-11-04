@@ -255,6 +255,9 @@
                 <div class="kbp-doc__main">
                   <div class="kbp-doc__name-row">
                     <span class="kbp-doc__name" :title="doc.fileName">{{ doc.fileName }}</span>
+                    <el-tag v-if="Number(doc.version || 1) > 1" type="success" size="small" effect="plain">
+                      v{{ doc.version }}
+                    </el-tag>
                     <el-tag :type="doc.disabled === 1 ? 'warning' : docTagType(doc.status)" size="small" effect="plain">
                       {{ doc.disabled === 1 ? '已屏蔽' : doc.statusText }}
                     </el-tag>
@@ -902,6 +905,7 @@ import {
   getDocumentContent,
   getDocumentOutline,
   getDocumentStatus,
+  getDocumentStatusBatch,
   updateDocumentContent,
   exportDocument,
   importDocumentText,
@@ -2429,6 +2433,16 @@ async function uploadFiles(list: File[]) {
       if (ocrCount) {
         ElMessage.success(`${ocrCount} 张手写图片已完成 OCR 校对`)
       }
+      // 同名资料默认生成新版本：把「已更新为第 N 版」明确告诉用户，
+      // 避免误以为又出现了一份重名文件。
+      const versioned = documents.filter((item: any) => item.versioned)
+      for (const item of versioned) {
+        ElMessage.success(`「${item.fileName}」已更新为第 ${item.version} 版，旧版本可在编辑器「历史版本」中恢复`)
+      }
+      const unchanged = documents.filter((item: any) => item.unchanged)
+      if (unchanged.length) {
+        ElMessage.info('同名资料内容未变化，未重复创建版本')
+      }
     } else {
       fail = uploadList.length
       ElMessage.error(res.msg || '上传失败')
@@ -2529,25 +2543,28 @@ function delay(ms: number) {
 }
 
 async function pollUploadedDocuments(docIds: number[]) {
-  const pending = new Set(docIds)
+  const pending = new Set(docIds.map(Number).filter(Boolean))
   let failed = 0
   try {
+    // 一轮只发一个批量请求（原来 N 份资料 = N 个请求/轮，9 份就是 9 个）
     for (let i = 0; i < 90 && pending.size; i++) {
       await delay(1200)
-      for (const docId of [...pending]) {
-        try {
-          const res: any = await getDocumentStatus(docId)
-          if (res.code !== 200 || !res.data) continue
-          const status = Number(res.data.status || 0)
-          if (status === 4) {
-            failed++
-            pending.delete(docId)
-          } else if (status === 5) {
-            pending.delete(docId)
+      try {
+        const res: any = await getDocumentStatusBatch([...pending])
+        if (res.code === 200 && Array.isArray(res.data)) {
+          for (const item of res.data) {
+            const docId = Number(item.docId)
+            const status = Number(item.status || 0)
+            if (status === 4) {
+              failed++
+              pending.delete(docId)
+            } else if (status === 5) {
+              pending.delete(docId)
+            }
           }
-        } catch {
-          // 单次轮询失败不打断其它文档，下一轮继续。
         }
+      } catch {
+        // 单轮失败不打断，下一轮继续；批量接口本身已按用户鉴权逐条校验
       }
       if (pending.size) await load()
     }

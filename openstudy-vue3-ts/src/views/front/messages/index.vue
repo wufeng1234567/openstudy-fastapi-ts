@@ -55,15 +55,11 @@
 import { ref, computed, onMounted, watch, provide } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ArrowLeft, Bell, ChatDotSquare, Message, Share } from '@element-plus/icons-vue'
-import useUserStore from '@/store/modules/user'
-import { listAllNotice } from '@/api/system/notice'
+import { unreadSummary } from '@/api/system/notice'
 import { getUnreadCount as getChatUnreadCount } from '@/api/system/chat'
-import { getNotificationUnreadCount } from '@/api/notification/notification'
-import { isSystemNotice, isUserNoticeFor } from '@/utils/notice'
 
 const router = useRouter()
 const route = useRoute()
-const userStore = useUserStore()
 
 // ==================== 未读数状态 ====================
 const sysUnreadCount = ref(0)      // 系统通知未读数（仅管理员公告）
@@ -88,27 +84,16 @@ const handleSelect = (index) => {
 }
 
 // ==================== 获取未读数 ====================
-// 一次性获取所有通知，按 remark.type 区分：
-//   系统通知 = 管理员公告（无 remark / 非用户通知类型）
-//   用户通知 = 评论 / 回复 / @我，且发给当前用户
+// 进入消息中心一次请求拿三个红点（服务端按同一可见性口径统计），
+// 不再把全部通知列表拉回来在前端过滤/计数。
 const fetchUnreadCounts = async () => {
   try {
-    const res = await listAllNotice()
-    const all = res.data || []
-    let sysCount = 0
-    let userCount = 0
-    const myId = userStore.id
-    for (const n of all) {
-      if (n.read) continue  // 跳过已读通知
-      if (isUserNoticeFor(n, myId)) {
-        userCount++         // 用户通知（评论 / 回复 / @我）
-      } else if (isSystemNotice(n)) {
-        sysCount++          // 系统通知（管理员公告）
-      }
-      // 发给其他用户的用户通知：不计入任何未读
+    const res = await unreadSummary()
+    if (res?.code === 200 && res.data) {
+      sysUnreadCount.value = Number(res.data.system || 0)
+      userUnreadCount.value = Number(res.data.user || 0)
+      shareUnreadCount.value = Number(res.data.share || 0)
     }
-    sysUnreadCount.value = sysCount
-    userUnreadCount.value = userCount
   } catch (e) { }
 
   // 获取私信未读数（单独接口，私信已隐藏，保留调用以便后续恢复）
@@ -117,11 +102,6 @@ const fetchUnreadCounts = async () => {
     chatUnreadCount.value = chatRes.data || 0
   } catch (e) { }
 
-  // 获取分享通知未读数（定向站内通知）
-  try {
-    const shareRes = await getNotificationUnreadCount()
-    shareUnreadCount.value = shareRes.data || 0
-  } catch (e) { }
 }
 
 // ==================== 红点刷新方法 ====================

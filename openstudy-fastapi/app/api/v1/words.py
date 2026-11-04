@@ -3,7 +3,7 @@
 """
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, update, delete
+from sqlalchemy import select, func, update, delete, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List
 from app.database import get_db
@@ -19,6 +19,19 @@ router = APIRouter()
 def _uid(current_user: dict) -> int:
     """从登录态取用户 id（与仓库其它模块同一口径）"""
     return int((current_user or {}).get("user_id") or 0)
+
+
+async def _allowed_book_ids(db: AsyncSession, uid: int) -> list[int]:
+    """当前用户可见的词书：自己的 + 系统预置（user_id IS NULL）。"""
+    rows = (
+        await db.execute(
+            select(WordBook.book_id).where(
+                WordBook.del_flag == "0",
+                or_(WordBook.user_id == uid, WordBook.user_id.is_(None)),
+            )
+        )
+    ).scalars().all()
+    return [int(x) for x in rows]
 
 
 def format_word_book(book):
@@ -52,14 +65,14 @@ async def _get_owned_book(db: AsyncSession, book_id: int, uid: int, *, for_write
     ).scalar_one_or_none()
 
     if book is None:
-        return None, error("词书不存在")
+        return None, error("词书不存在", code=404)
     if book.user_id is None:
         if for_write:
-            return None, error("系统预置词书不能修改")
+            return None, error("系统预置词书不能修改", code=403)
         return book, None
     if int(book.user_id) != int(uid):
         # 刻意不说"这是别人的" —— 避免被用来探测别人有哪些词书
-        return None, error("词书不存在")
+        return None, error("词书不存在", code=404)
     return book, None
 
 
@@ -272,7 +285,7 @@ async def list_words(
 
     if bookId:
         if int(bookId) not in allowed_ids:
-            return error("词书不存在")
+            return error("词书不存在", code=404)
         query = select(Word).where(Word.book_id == bookId)
     else:
         query = select(Word).where(Word.book_id.in_(allowed_ids))
@@ -481,10 +494,14 @@ async def export_words(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """导出单词列表为 Excel"""
-    query = select(Word)
+    """导出单词列表为 Excel（只导出自己的 + 系统预置词书）"""
+    allowed_ids = await _allowed_book_ids(db, _uid(current_user))
     if bookId:
-        query = query.where(Word.book_id == bookId)
+        if int(bookId) not in allowed_ids:
+            return error("词书不存在或无权导出", code=404)
+        query = select(Word).where(Word.book_id == int(bookId))
+    else:
+        query = select(Word).where(Word.book_id.in_(allowed_ids))
     query = query.order_by(Word.sort_order.asc())
 
     result = await db.execute(query)
@@ -520,8 +537,16 @@ async def export_word_books(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """导出词书列表为 Excel"""
-    query = select(WordBook).where(WordBook.del_flag == "0").order_by(WordBook.create_time.desc())
+    """导出词书列表为 Excel（只导出自己的 + 系统预置词书）"""
+    uid = _uid(current_user)
+    query = (
+        select(WordBook)
+        .where(
+            WordBook.del_flag == "0",
+            or_(WordBook.user_id == uid, WordBook.user_id.is_(None)),
+        )
+        .order_by(WordBook.create_time.desc())
+    )
     result = await db.execute(query)
     books = list(result.scalars().all())
 

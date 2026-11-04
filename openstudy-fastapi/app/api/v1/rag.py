@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.response import error, success
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_admin
 from app.database import async_session_factory, get_db
 from app.services.rag import (
     document_pipeline,
@@ -123,6 +123,10 @@ def _upload_doc_payload(
         "ocrApplied": ocr_applied,
         "status": doc.status,
         "statusText": "待解析",
+        # 同名上传的版本信息：前端可据此提示「已更新为第 N 版」或「内容相同，未重复创建」。
+        "version": int(getattr(doc, "version", 1) or 1),
+        "versioned": bool(getattr(doc, "_was_versioned", False)),
+        "unchanged": bool(getattr(doc, "_upload_unchanged", False)),
     }
 
 
@@ -134,6 +138,7 @@ async def _create_uploaded_document(
     raw: bytes,
     note: str = "",
     assets: dict[str, bytes] | None = None,
+    on_duplicate: str = "newVersion",
 ):
     """解析单个上传文件并落库；图片文件额外走手写 OCR 校对。"""
     from app.services.file_parser import build_marked_document, parse_file
@@ -182,6 +187,7 @@ async def _create_uploaded_document(
         subject=organized["subject"],
         material_type=organized["material_type"],
         facets=organized["facets"],
+        on_duplicate=on_duplicate,
     )
     if note and note.strip():
         doc.user_note = note.strip()[:200]
@@ -356,6 +362,10 @@ async def upload_document(
     background: BackgroundTasks,
     kb_id: int = Query(..., alias="kbId"),
     file: List[UploadFile] = File(...),
+    onDuplicate: str = Query(
+        "newVersion",
+        description="同名资料策略：newVersion=生成新版本（默认）/ reject=拒绝",
+    ),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -363,6 +373,9 @@ async def upload_document(
 
     多文件一次请求合计不超过 5MB（单文件也不超过 5MB），避免一个大文件或
     批量上传把解析/向量化队列打满。
+
+    同名策略：默认生成新版本（旧正文进历史版本，最多保留 20 个快照）；
+    传 `onDuplicate=reject` 可恢复旧的「同名即拒绝」行为。
     """
     uid = _uid(current_user)
     try:
@@ -387,7 +400,7 @@ async def upload_document(
             continue
         try:
             doc, image_map, content_length, _, ocr_applied = await _create_uploaded_document(
-                db, uid, kb_id, filename, raw, assets=assets
+                db, uid, kb_id, filename, raw, assets=assets, on_duplicate=onDuplicate
             )
         except Exception as e:  # noqa: BLE001 - 多文件允许部分成功
             failed.append({"fileName": filename, "error": str(e)[:300]})
@@ -1050,6 +1063,43 @@ async def get_document_chunks(
         return _fail(e)
 
 
+class DocumentStatusBatchRequest(BaseModel):
+    docIds: list[int] = Field(default_factory=list, max_length=50)
+
+
+@router.post("/document/status/batch")
+async def get_document_status_batch(
+    data: DocumentStatusBatchRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """批量查询文档处理状态：上传后轮询一次请求查完全部文档。
+
+    原来前端对每个文档各发一条 `/document/status/{id}`，一次上传 9 份就是
+    9 个请求/轮；统一成一个接口减少请求风暴，也便于页面只刷新一次。
+    """
+    from app.models.rag import DOC_STATUS_TEXT
+
+    result = []
+    for doc_id in list(dict.fromkeys(int(x) for x in data.docIds))[:50]:
+        try:
+            doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        except Exception:
+            continue
+        result.append(
+            {
+                "docId": doc.id,
+                "status": doc.status,
+                "statusText": DOC_STATUS_TEXT.get(doc.status, "未知"),
+                "chunkCount": doc.chunk_count,
+                "errorMsg": doc.error_msg,
+                "done": doc.status in (4, 5),
+                "ok": doc.status == 5,
+            }
+        )
+    return success(result)
+
+
 @router.get("/document/status/{doc_id}")
 async def get_document_status(
     doc_id: int,
@@ -1240,7 +1290,7 @@ class RagConfigUpdate(BaseModel):
 @router.get("/config")
 async def get_rag_config(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """读当前配置 + 本地/云端两条链路的可用性检测。
 
@@ -1259,7 +1309,7 @@ async def get_rag_config(
 async def update_rag_config(
     data: RagConfigUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """更新向量化配置（即时生效，无需重启）。
 

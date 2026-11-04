@@ -48,9 +48,9 @@ export function listTopNotice() {
   return request({ url: '/system/notice/listTop', method: 'get' })
 }
 
-// 获取全部公告列表（带已读标记，无 LIMIT，用于消息中心）
-export function listAllNotice() {
-  return request({ url: '/system/notice/listAll', method: 'get' })
+// 获取公告列表（带已读标记）；传 pageNum/pageSize 时分页，不传保持旧全量行为
+export function listAllNotice(query?: { pageNum?: number; pageSize?: number; scope?: 'system' | 'user' }) {
+  return request({ url: '/system/notice/listAll', method: 'get', params: query })
 }
 
 // 标记单条已读
@@ -76,6 +76,16 @@ export function markReadAll(ids: (number | string)[]) {
 // 获取未读总数
 export function unreadCount() {
   return request({ url: '/system/notice/unreadCount', method: 'get' })
+}
+
+// 顶栏红点：系统/用户通知 + 定向分享通知的聚合未读数
+export function totalUnread() {
+  return request({ url: '/system/notice/totalUnread', method: 'get' })
+}
+
+// 消息中心左侧红点：system / user / share 一次返回，替代拉全量列表自己数
+export function unreadSummary() {
+  return request({ url: '/system/notice/unreadSummary', method: 'get' })
 }
 
 // 前台删除单条通知

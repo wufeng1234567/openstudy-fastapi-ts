@@ -6,7 +6,7 @@ export function listQuestionMain(query: any): Promise<PageResult<QuestionMain>> 
   return request({
     url: '/questionMain/questionMain/list',
     method: 'get',
-    params: query
+    params: { ...query, withAnswer: query?.withAnswer ?? false }
   }) as unknown as Promise<PageResult<QuestionMain>>
 }
 
@@ -15,15 +15,16 @@ export function listQuestionMainAll(query?: any): Promise<ApiResult<QuestionMain
   return request({
     url: '/questionMain/questionMain/all',
     method: 'get',
-    params: query
+    params: { ...(query || {}), withAnswer: query?.withAnswer ?? false }
   }) as unknown as Promise<ApiResult<QuestionMain[]>>
 }
 
 // 查询一级题目详细
-export function getQuestionMain(id: number | string): Promise<ApiResult<QuestionMain>> {
+export function getQuestionMain(id: number | string, withAnswer = true): Promise<ApiResult<QuestionMain>> {
   return request({
     url: '/questionMain/questionMain/' + id,
-    method: 'get'
+    method: 'get',
+    params: { withAnswer }
   }) as unknown as Promise<ApiResult<QuestionMain>>
 }
 
@@ -101,6 +102,63 @@ export function recordStudyTime(data: { bankId: number; questionIds: number[] })
     method: 'post',
     data: data
   }) as unknown as Promise<ApiResult>
+}
+
+// ========== 服务端练习会话 / 判分 ==========
+
+export interface PracticeSessionStartPayload {
+  bankId: number | string
+  moduleType?: string
+  questionIds?: Array<number | string>
+  count?: number | null
+  scores?: Record<string, number>
+}
+
+export function startPracticeSession(data: PracticeSessionStartPayload): Promise<ApiResult<any>> {
+  return request({
+    url: '/questionPractice/session/start',
+    method: 'post',
+    data
+  }) as unknown as Promise<ApiResult<any>>
+}
+
+export function answerPracticeSession(
+  sessionId: string,
+  questionId: number | string,
+  answer: any
+): Promise<ApiResult<any>> {
+  return request({
+    url: `/questionPractice/session/${sessionId}/answer`,
+    method: 'post',
+    data: { questionId, answer }
+  }) as unknown as Promise<ApiResult<any>>
+}
+
+export function submitPracticeSession(
+  sessionId: string,
+  durationSec?: number,
+  answers?: Record<string, any>
+): Promise<ApiResult<any>> {
+  return request({
+    url: `/questionPractice/session/${sessionId}/submit`,
+    method: 'post',
+    data: { durationSec: durationSec ?? null, answers: answers ?? null }
+  }) as unknown as Promise<ApiResult<any>>
+}
+
+export function getPracticeSession(sessionId: string): Promise<ApiResult<any>> {
+  return request({
+    url: `/questionPractice/session/${sessionId}`,
+    method: 'get'
+  }) as unknown as Promise<ApiResult<any>>
+}
+
+export function listPracticeSessions(limit = 20): Promise<ApiResult<any>> {
+  return request({
+    url: '/questionPractice/sessions',
+    method: 'get',
+    params: { limit }
+  }) as unknown as Promise<ApiResult<any>>
 }
 
 /**

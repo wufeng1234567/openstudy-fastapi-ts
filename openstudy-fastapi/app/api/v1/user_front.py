@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from app.database import get_db
 from app.core.security import get_current_user
-from app.core.response import success, paginate
+from app.core.response import success, paginate, error
 from app.repositories.user_repo import UserRepository
 
 router = APIRouter(prefix="/system/user")
@@ -35,15 +35,14 @@ async def get_front_user_info(
     user = await user_repo.get_by_id(user_id)
 
     if not user:
-        return error("用户不存在")
+        return error("用户不存在", code=404)
 
+    # 前台公开资料：只返回昵称/头像等公共字段。
+    # email / phonenumber / status 属于账号隐私，不能因为知道自增 userId 就泄露。
     return success({
         "userId": user.user_id,
         "userName": user.user_name,
         "nickName": user.nick_name,
-        "email": user.email,
-        "phonenumber": user.phonenumber,
         "sex": user.sex,
         "avatar": user.avatar,
-        "status": user.status,
     })

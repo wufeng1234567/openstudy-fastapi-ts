@@ -252,12 +252,17 @@ async def delete_knowledge_base(db: AsyncSession, user_id: int, kb_id: int) -> d
     """
     kb = await get_knowledge_base(db, user_id, kb_id)
 
-    doc_ids = [
-        r[0]
-        for r in (
-            await db.execute(select(RagDocument.id).where(RagDocument.kb_id == kb.id))
-        ).all()
-    ]
+    docs = list(
+        (await db.execute(select(RagDocument).where(RagDocument.kb_id == kb.id))).scalars().all()
+    )
+    doc_ids = [d.id for d in docs]
+    physical_paths: list[str] = []
+    for d in docs:
+        if d.file_path:
+            physical_paths.append(str(d.file_path))
+        for value in (d.image_map or {}).values():
+            if isinstance(value, str) and value.startswith("/profile/"):
+                physical_paths.append(value)
     chunks = 0
     if doc_ids:
         chunks = (
@@ -274,6 +279,13 @@ async def delete_knowledge_base(db: AsyncSession, user_id: int, kb_id: int) -> d
     kb.chunk_count = 0
     kb.del_flag = "2"  # 与笔记一致：逻辑删用 '2'
     await db.commit()
+    from app.utils.file_util import delete_file
+    for item in physical_paths:
+        relative = item[len("/profile/"):] if item.startswith("/profile/") else item
+        try:
+            delete_file(relative)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[rag] 删除知识库物理文件失败 {relative}: {e}")
     logger.info(f"[rag] 删除知识库 id={kb.id} name={kb.name} 连带 {len(doc_ids)} 文档 / {chunks} 分块")
     return {"kbId": kb.id, "name": kb.name, "documents": len(doc_ids), "chunks": chunks}
 
@@ -328,6 +340,10 @@ def _version_snapshot(doc: RagDocument) -> dict:
         "rawContent": doc.raw_content or "",
         "imageMap": doc.image_map or {},
         "contentStructure": doc.content_structure or [],
+        # 同名覆盖/恢复时文件元信息也要跟着回滚，否则会出现「正文是旧版、扩展名是新版」。
+        "fileType": doc.file_type or "",
+        "fileSize": int(doc.file_size or 0),
+        "filePath": doc.file_path or "",
     }
 
 
@@ -477,8 +493,12 @@ async def restore_document_version(
     doc.excluded_ranges = snapshot.get("excludedRanges") or []
     doc.image_map = snapshot.get("imageMap") or None
     doc.content_structure = snapshot.get("contentStructure") or []
+    doc.file_type = snapshot.get("fileType") or doc.file_type
+    doc.file_size = int(snapshot.get("fileSize") or doc.file_size or 0)
+    doc.file_path = snapshot.get("filePath") or doc.file_path
     doc.status = DOC_PENDING
     doc.error_msg = None
+    doc.version = int(doc.version or 1) + 1
     doc.index_version = int(doc.index_version or 1) + 1
     doc.update_time = datetime.utcnow()
     await db.commit()
@@ -546,6 +566,7 @@ async def update_document_content(
         version_log = await _add_version_log(db, doc, before_snapshot, "编辑保存前自动快照")
     doc.status = DOC_PENDING
     doc.error_msg = None
+    doc.version = int(doc.version or 1) + 1
     doc.index_version = int(doc.index_version or 1) + 1
     await db.commit()
     return {
@@ -554,6 +575,7 @@ async def update_document_content(
         "status": doc.status,
         "statusText": "待解析",
         "contentLength": len(cleaned),
+        "version": int(doc.version or 1),
         # 供 Agent 回执/前端做“恢复这次修改前的版本”入口。
         "versionId": version_log.id if version_log else None,
     }
@@ -561,6 +583,13 @@ async def update_document_content(
 
 async def delete_document(db: AsyncSession, user_id: int, doc_id: int) -> dict:
     doc = await get_document(db, user_id, doc_id)
+    # 收集物理文件：原始文件 + 解析出的插图。先记路径，删库成功后统一清盘。
+    physical_paths: list[str] = []
+    if doc.file_path:
+        physical_paths.append(str(doc.file_path))
+    for value in (doc.image_map or {}).values():
+        if isinstance(value, str) and value.startswith("/profile/"):
+            physical_paths.append(value)
     chunks = (
         await db.execute(
             select(func.count()).select_from(RagDocumentChunk).where(
@@ -580,6 +609,14 @@ async def delete_document(db: AsyncSession, user_id: int, doc_id: int) -> dict:
     await db.execute(delete(RagDocument).where(RagDocument.id == doc.id))
     await _refresh_kb_counts(db, doc.kb_id)
     await db.commit()
+    # 数据库删除成功后再清盘，避免回滚后文件却先没了（无法恢复）
+    from app.utils.file_util import delete_file
+    for item in physical_paths:
+        relative = item[len("/profile/"):] if item.startswith("/profile/") else item
+        try:
+            delete_file(relative)
+        except Exception as e:  # noqa: BLE001 - 文件清理失败不阻断删除语义
+            logger.warning(f"[rag] 删除资料物理文件失败 {relative}: {e}")
     return {"docId": doc.id, "fileName": doc.file_name, "chunks": chunks}
 
 
@@ -741,6 +778,7 @@ async def create_document(
     material_type: Optional[str] = None,
     facets: Optional[dict] = None,
     status: int = DOC_PENDING,
+    on_duplicate: str = "newVersion",
 ) -> RagDocument:
     kb = await get_knowledge_base(db, user_id, kb_id)
 
@@ -757,6 +795,55 @@ async def create_document(
     ).scalar() or 0
     if existing >= MAX_DOCS_PER_KB:
         raise RagConflict(f"单个资料夹最多 {MAX_DOCS_PER_KB} 篇文档")
+
+    # 同名资料策略（2026-11-04 从「一律拒绝」改为「默认生成新版本」）：
+    #   · newVersion（默认）→ 同名但内容不同：旧正文快照进历史版本，当前文档升到 vN+1；
+    #   · reject            → 保留旧的「拒绝重复」行为，供明确不想覆盖的调用方使用。
+    # 同名且正文完全一致 → 直接复用原文档（防用户误点两次上传凭空多一版）。
+    dup = (
+        await db.execute(
+            select(RagDocument).where(
+                RagDocument.kb_id == kb.id,
+                (RagDocument.file_name == file_name)
+                | (RagDocument.original_file_name == (original_file_name or file_name)),
+            ).limit(1)
+        )
+    ).scalar_one_or_none()
+    if dup is not None:
+        strategy = (on_duplicate or "newVersion").strip().lower()
+        if strategy == "reject":
+            raise RagConflict(f"同名资料已存在：{file_name}，请先删除或改名后再上传")
+        if (dup.raw_content or "") == raw_content:
+            # 完全相同的正文不制造空版本；调用方从 _upload_unchanged 标记得到提示。
+            dup._upload_unchanged = True  # type: ignore[attr-defined]
+            return dup
+        await _create_version_log(db, dup, "上传新版本前自动快照")
+        dup.file_name = file_name
+        dup.original_file_name = original_file_name or file_name
+        dup.subject = subject
+        dup.material_type = material_type
+        dup.facets = facets
+        dup.file_type = file_type
+        dup.file_size = file_size if file_size is not None else len(raw_content or "")
+        dup.file_path = file_path
+        dup.raw_content = raw_content
+        dup.image_map = image_map or None
+        dup.content_structure = content_structure or None
+        dup.chunk_count = 0
+        dup.status = status
+        dup.error_msg = None
+        dup.version = int(dup.version or 1) + 1
+        # 旧 chunks 保留但在检索时按 index_version 排除，避免重向量化期间命中旧正文。
+        dup.index_version = int(dup.index_version or 1) + 1
+        dup.update_time = datetime.utcnow()
+        await _refresh_kb_counts(db, kb.id)
+        await db.commit()
+        await db.refresh(dup)
+        dup._was_versioned = True  # type: ignore[attr-defined]
+        logger.info(
+            f"[rag] 同名资料生成新版本 doc={dup.id} version={dup.version} name={file_name}"
+        )
+        return dup
 
     doc = RagDocument(
         kb_id=kb.id,
@@ -776,6 +863,9 @@ async def create_document(
         status=status,
     )
     db.add(doc)
+    await db.flush()
+    # 上传后立即刷新计数，列表/侧栏不用等向量化完成才看到「N 份资料」
+    await _refresh_kb_counts(db, kb.id)
     await db.commit()
     await db.refresh(doc)
     return doc
@@ -906,6 +996,7 @@ def _doc_brief(doc: RagDocument) -> dict:
         "fileName": doc.file_name,
         "fileType": doc.file_type,
         "fileSize": doc.file_size,
+        "version": int(getattr(doc, "version", 1) or 1),
         "chunkCount": doc.chunk_count,
         "indexVersion": doc.index_version,
         "status": doc.status,

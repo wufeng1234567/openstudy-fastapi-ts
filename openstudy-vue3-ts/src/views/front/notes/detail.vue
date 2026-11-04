@@ -9,6 +9,11 @@
       <h2 class="header-title">{{ noteData.title || '笔记详情' }}</h2>
       <div class="header-right">
         <FavoriteButton type="note" :target-id="noteData.noteId" :initial-collected="noteData.isFavorited" size="small" plain />
+        <el-button class="like-btn" :class="{ 'is-liked': noteData.isLiked }" size="small" plain
+          :loading="likeLoading" @click="toggleLike">
+          <el-icon><StarFilled v-if="noteData.isLiked" /><Star v-else /></el-icon>
+          {{ noteData.isLiked ? '已点赞' : '点赞' }} {{ noteData.likeCount || 0 }}
+        </el-button>
         <el-button v-if="noteData.userId === userStore.id" class="edit-btn" :icon="Edit" size="small"
           @click="goEditor(noteData.noteId)">
           编辑
@@ -176,9 +181,10 @@ defineOptions({ name: 'FrontNotesDetail' })
 import { ref, computed, onMounted, onActivated, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElIcon } from 'element-plus'
-import { ArrowLeft, ArrowRight, ArrowUp, Close, Collection, Edit, Download, DocumentCopy, Share } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, ArrowUp, Close, Collection, Edit, Download, DocumentCopy, Share, Star, StarFilled } from '@element-plus/icons-vue'
 import { marked } from 'marked'
-import { getPublicNote, listPublicNotes, recordClick } from '@/api/notes/public'
+import { getPublicNote, listPublicNotes, likeNote, unlikeNote } from '@/api/notes/public'
+import { ensureLogin } from '@/utils/loginGuard'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
 import useUserStore from '@/store/modules/user'
 import { getNoteQuestionBanksByNoteId, removeNoteQuestionBank } from '@/api/noteQuestionBank/noteQuestionBank'
@@ -202,6 +208,7 @@ const route = useRoute()
 const loading = ref(false)
 const noteData = ref({})
 const error = ref(false)
+const likeLoading = ref(false)
 
 /**
  * 是不是「刚发布完跳过来的」
@@ -470,6 +477,35 @@ const fetchNoteDetail = async () => {
   }
 }
 
+/**
+ * 点赞 / 取消点赞（详情页）
+ * 后端按登录用户 + noteId 做幂等，前端只负责把服务端回执写回本地。
+ */
+const toggleLike = async () => {
+  if (!noteData.value.noteId || likeLoading.value) return
+  if (!(await ensureLogin('点赞'))) return
+
+  likeLoading.value = true
+  try {
+    const wasLiked = !!noteData.value.isLiked
+    const res: any = wasLiked
+      ? await unlikeNote(noteData.value.noteId)
+      : await likeNote(noteData.value.noteId)
+    if (res.code !== 200) {
+      ElMessage.error(res.msg || '点赞失败')
+      return
+    }
+    noteData.value.isLiked = !!res.data?.liked
+    noteData.value.likeCount = Number(res.data?.likeCount ?? noteData.value.likeCount ?? 0)
+    ElMessage.success(noteData.value.isLiked ? '已点赞' : '已取消点赞')
+  } catch (e) {
+    console.error('[notes] 点赞失败', e)
+    ElMessage.error('点赞失败，请稍后重试')
+  } finally {
+    likeLoading.value = false
+  }
+}
+
 const fetchNavigationNotes = async (currentId) => {
   try {
     const res = await listPublicNotes({ pageSize: 100 })
@@ -517,19 +553,14 @@ onMounted(async () => {
   const noteId = route.params.id
   onMountedNoteId.value = noteId
   lastClickedNoteId = noteId
-  // 游客不需要记录点击次数
-  if (!userStore.isGuest) {
-    recordClick(noteId).catch(() => { })
-  }
+  // 浏览数由 getPublicNote 服务端自增；这里不再额外 recordClick，避免一次打开 +2。
   await fetchNoteDetail()
 })
 
-// 监听路由参数变化，记录点击
+// 监听路由参数变化，重新加载详情（浏览数由详情接口自增，不再重复 recordClick）
 watch(() => route.params.id, (newId, oldId) => {
-  // 游客不需要记录点击次数
-  if (!userStore.isGuest && newId && newId !== oldId) {
+  if (newId && newId !== oldId) {
     lastClickedNoteId = newId
-    recordClick(newId).catch(() => { })
   }
 })
 
@@ -544,14 +575,9 @@ onActivated(async () => {
     prevNote.value = { id: '', title: '' }
     nextNote.value = { id: '', title: '' }
     await fetchNoteDetail()
-    // 游客不需要记录点击次数
-    if (!userStore.isGuest && lastClickedNoteId !== newId) {
-      lastClickedNoteId = newId
-      recordClick(newId).catch(() => { })
-    }
-  } else if (!userStore.isGuest && lastClickedNoteId !== newId) {
     lastClickedNoteId = newId
-    recordClick(newId).catch(() => { })
+  } else if (lastClickedNoteId !== newId) {
+    lastClickedNoteId = newId
   }
 })
 </script>

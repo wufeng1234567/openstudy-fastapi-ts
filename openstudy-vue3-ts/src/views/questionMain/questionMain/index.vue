@@ -497,7 +497,7 @@ function loadBankOptions() {
 
 function getList() {
   loading.value = true
-  const params = { ...queryParams.value }
+  const params: any = { ...queryParams.value, withAnswer: true }
   if (dateRange.value && dateRange.value.length > 0) {
     params.beginTime = dateRange.value[0]
     params.endTime = dateRange.value[1]

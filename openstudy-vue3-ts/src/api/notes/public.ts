@@ -34,6 +34,30 @@ export function recordClick(noteId: number | string) {
   })
 }
 
+// —— 笔记点赞（详情页）——
+export function getNoteLikeStatus(noteId: number | string) {
+  return request({
+    url: `/notes/note/public/like/status/${noteId}`,
+    method: 'get'
+  })
+}
+
+export function likeNote(noteId: number | string) {
+  return request({
+    url: `/notes/note/public/like/${noteId}`,
+    method: 'post',
+    headers: { repeatSubmit: false }
+  })
+}
+
+export function unlikeNote(noteId: number | string) {
+  return request({
+    url: `/notes/note/public/like/${noteId}`,
+    method: 'delete',
+    headers: { repeatSubmit: false }
+  })
+}
+
 export function getRanking(type: string | number) {
   return request({
     url: '/notes/note/public/ranking',

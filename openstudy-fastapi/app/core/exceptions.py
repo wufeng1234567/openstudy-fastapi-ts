@@ -3,6 +3,7 @@
 """
 
 from fastapi import Request, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from app.core.response import error, unauthorized
 from loguru import logger
@@ -67,6 +68,25 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(
         status_code=exc.status_code,
         content=error(str(exc.detail)),
+    )
+
+
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """请求体/查询参数校验失败统一成项目信封。
+
+    FastAPI 默认返回 HTTP 422 + `{"detail":[...]}`，前端按 `body.code !== 200`
+    判断就会走到“未知错误”，页面只看到“操作失败”。这里转成
+    HTTP 200 + `{code:422,msg:"参数校验失败: ..."}`，既保留字段名线索，
+    也不破坏前端统一的业务码处理。
+    """
+    messages = []
+    for item in exc.errors()[:5]:
+        loc = ".".join(str(x) for x in item.get("loc", []) if x != "body")
+        msg = item.get("msg") or "参数不合法"
+        messages.append(f"{loc}: {msg}" if loc else msg)
+    return JSONResponse(
+        status_code=422,
+        content=error("参数校验失败：" + "；".join(messages), code=422),
     )
 
 

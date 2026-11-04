@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_admin
 from app.core.response import success
 from app.models.user import SysUser
 from app.models.question import QuestionBank, QuestionMain
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/system/dashboard")
 @router.get("/stats")
 async def get_stats(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """获取仪表盘统计数据"""
     user_count = await db.scalar(select(func.count()).where(SysUser.del_flag == "0"))
@@ -67,7 +67,7 @@ async def get_stats(
 @router.get("/recent")
 async def get_recent_activities(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     """获取最近活动
 

@@ -90,8 +90,8 @@ def format_config(cfg: SysAiConfig, mask_key: bool = False) -> dict:
         "thinkingMode": cfg.thinking_mode,
         "reasoningEffort": cfg.reasoning_effort,
         "contextLength": cfg.context_length,
-        # ds-free 专用：手机号可回传（便于确认账号），密码只回传是否已设置
-        "webPhone": cfg.web_phone,
+        # ds-free 专用：手机号只给管理员/配置所有者看；非管理员看系统配置时脱敏
+        "webPhone": "" if mask_key else cfg.web_phone,
         "webAreaCode": cfg.web_area_code or "+86",
         "webPasswordSet": bool(cfg.web_password),
         "webPasswordMasked": "******" if cfg.web_password else "",
@@ -435,9 +435,11 @@ async def delete_ai_config(
     rows = list(
         (await db.execute(select(SysAiConfig).where(SysAiConfig.config_id.in_(ids)))).scalars().all()
     )
+    if not rows:
+        return error("配置不存在", code=404)
     for cfg in rows:
         if not _can_manage(cfg, current_user):
-            return error(f"无权删除模型配置「{cfg.model}」，只能删除自己在「我的模型」里添加的模型")
+            return error(f"无权删除模型配置「{cfg.model}」，只能删除自己在「我的模型」里添加的模型", code=403)
 
     # 不允许删除当前生效的默认配置（按调用者视角计算）
     default_cfg = await db_config.get_default_config(db, _uid(current_user))

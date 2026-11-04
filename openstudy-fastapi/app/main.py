@@ -13,9 +13,12 @@ from app.core.exceptions import (
     ServiceException,
     service_exception_handler,
     http_exception_handler,
+    validation_exception_handler,
     general_exception_handler,
 )
+from fastapi.exceptions import RequestValidationError
 from app.core.middleware import RequestIdMiddleware, LogMiddleware
+from app.core.monitor_log import OperLogMiddleware
 from app.core.rate_limit import AiRateLimitMiddleware
 from fastapi.exceptions import HTTPException
 import asyncio
@@ -158,6 +161,17 @@ async def lifespan(app: FastAPI):
     except Exception:  # noqa: BLE001
         stale_task = None
 
+    # 定时任务调度器（sys_job 表为唯一事实源；见 app/services/job_scheduler.py）
+    job_task = None
+    try:
+        from app.services.job_scheduler import _loop as _job_loop
+
+        job_task = asyncio.create_task(_job_loop())
+    except Exception as _e:  # noqa: BLE001
+        from loguru import logger as _logger
+
+        _logger.warning("[startup] 定时任务调度器启动失败: {}", _e)
+
     yield
 
     # Shutdown
@@ -165,6 +179,8 @@ async def lifespan(app: FastAPI):
         warmup_task.cancel()
     if stale_task and not stale_task.done():
         stale_task.cancel()
+    if job_task and not job_task.done():
+        job_task.cancel()
     await redis_client.disconnect()
     await close_db()
 
@@ -198,10 +214,13 @@ app.add_middleware(
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(LogMiddleware)
 app.add_middleware(AiRateLimitMiddleware)
+# 后台写操作日志（只记 /system、/monitor 的 POST/PUT/DELETE，见 app/core/monitor_log.py）
+app.add_middleware(OperLogMiddleware)
 
 # Exception handlers
 app.add_exception_handler(ServiceException, service_exception_handler)
 app.add_exception_handler(HTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
 
 # Static files (with placeholder fallback)
@@ -226,6 +245,12 @@ from app.api.v1 import (
     noteQuestionBank, noteQuestion, user_stats,
     common, catch_all, ai_config, bankShare, kbShare, notification, systemComment,
     rag, rate_limit_admin, bank_export, tts, english_practice,
+    # 题库练习会话/服务端判分（与题库 CRUD 分开，见 practice.py 文件头）
+    practice,
+    # 后台监控（服务/Redis/在线会话真实数据，替换 catch_all 假空态）
+    monitor,
+    # 操作日志 / 登录日志 / 定时任务 / 调度日志（2026-11-04）
+    monitor_admin,
     # 2026-10-27 文档编排：把「内容 → 排版好的 Word/PDF」暴露成 REST，
     # 供独立编辑器页面用（聊天侧走 document_compose 工具，共用同一渲染引擎）。
     doc_compose,
@@ -241,6 +266,8 @@ app.include_router(notices.router, tags=["通知公告"])  # ⚠️ 先注册，
 app.include_router(bank_export.router, tags=["题库导出"])
 app.include_router(doc_compose.router, tags=["文档编排"])
 app.include_router(questions.router, tags=["题库题目"])
+# 练习会话必须早于 catch_all；与 questions 的 `/questionPractice/report` 不冲突
+app.include_router(practice.router, tags=["题库练习"])
 app.include_router(ai.router, tags=["AI功能"])
 app.include_router(dashboard.router, tags=["仪表盘"])
 app.include_router(carousel.router, tags=["轮播图"])
@@ -271,6 +298,8 @@ app.include_router(notification.router, tags=["站内通知"])
 app.include_router(systemComment.router, tags=["评论管理"])  # 后台 /system/comment/*（此前缺失，落到 catch_all 假成功）
 app.include_router(rag.router, tags=["RAG知识库"])
 app.include_router(rate_limit_admin.router, tags=["AI限流管理"])
+app.include_router(monitor.router, tags=["系统监控"])
+app.include_router(monitor_admin.router, tags=["系统监控-日志与任务"])
 # 服务端语音合成：浏览器 speechSynthesis 在部分环境会静默失效（详见 app/api/v1/tts.py）
 app.include_router(tts.router, tags=["语音合成"])
 # Catch-all 路由必须最后注册

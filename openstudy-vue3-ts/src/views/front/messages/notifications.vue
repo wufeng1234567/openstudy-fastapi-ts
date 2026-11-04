@@ -38,6 +38,8 @@
       </div>
       <el-empty v-if="!loading && noticeList.length === 0" description="暂无系统通知" />
     </div>
+    <el-pagination v-if="total > pageSize" class="notice-pager" background layout="prev, pager, next"
+      :current-page="page" :page-size="pageSize" :total="total" @current-change="handlePageChange" />
   </div>
 </template>
 
@@ -55,17 +57,20 @@ const loading = ref(false)
 const noticeList = ref([])
 const unreadCount = ref(0)
 const expandedId = ref(null)
+const page = ref(1)
+const pageSize = 20
+const total = ref(0)
 
 const refreshBadge = inject('refreshBadge', () => { })
 
 const fetchNotices = async () => {
   loading.value = true
   try {
-    const res = await listAllNotice()
-    const all = res.data || []
-    // 系统通知只保留管理员发布的公告；
-    // 评论 / 回复 / @我 属于用户通知，统一由「回复与@」页面管理
+    const res: any = await listAllNotice({ pageNum: page.value, pageSize, scope: 'system' })
+    const all = Array.isArray(res.rows) ? res.rows : (res.data || [])
+    // 服务端已按 scope=system 过滤，前端保留兜底过滤防旧接口返回全量
     noticeList.value = all.filter(isSystemNotice)
+    total.value = Number(res.total || noticeList.value.length)
     unreadCount.value = noticeList.value.filter(n => !n.read).length
   } catch (e) {
     ElMessage.error('获取系统通知失败')
@@ -74,14 +79,27 @@ const fetchNotices = async () => {
   }
 }
 
-const handleClick = (notice) => {
+function handlePageChange(p: number) {
+  page.value = p
+  fetchNotices()
+}
+
+const handleClick = async (notice) => {
   const id = notice.noticeId || notice.id
 
   if (id && !notice.read) {
     notice.read = true
     unreadCount.value = Math.max(0, unreadCount.value - 1)
     refreshBadge('sys', unreadCount.value)
-    markRead(id).catch(() => { })
+    try {
+      await markRead(id)
+    } catch {
+      // 服务端标记失败 → 回滚 UI，避免刷新后红点重新出现（假成功）
+      notice.read = false
+      unreadCount.value += 1
+      refreshBadge('sys', unreadCount.value)
+      ElMessage.error('标记已读失败，请重试')
+    }
   }
 
   // 兼容历史数据：若系统通知带 remark.noteId，则跳转到对应笔记
@@ -129,16 +147,22 @@ const displayContent = (notice) => {
   return content
 }
 
-const handleReadAll = () => {
-  const ids = noticeList.value
-    .map(n => n.noticeId || n.id)
-    .filter(Boolean)
-    .join(',')
+const handleReadAll = async () => {
+  const unreadNotices = noticeList.value.filter(n => !n.read)
+  const ids = unreadNotices.map(n => n.noticeId || n.id).filter(Boolean).join(',')
   if (!ids) return
+  const previousUnread = unreadCount.value
   unreadCount.value = 0
   refreshBadge('sys', 0)
-  ElMessage.success('已全部标记为已读')
-  markReadAll(ids).catch(() => { })
+  try {
+    await markReadAll(ids)
+    unreadNotices.forEach(n => { n.read = true })
+    ElMessage.success('已全部标记为已读')
+  } catch {
+    unreadCount.value = previousUnread
+    refreshBadge('sys', previousUnread)
+    ElMessage.error('全部已读失败，请重试')
+  }
 }
 
 const handleDelete = async (notice) => {
