@@ -934,7 +934,61 @@ def p8b():
     footer(s, 8)
 
 
-for fn in (p1, p2b, p3d, p4c, p5b, p6, p7arch, p8b, p9b, p10b):
+def p8c():
+    s = prs.slides.add_slide(BLANK); bg(s)
+    header(s, "07  /  一个真实案例", "一个安全缺陷，从测试到提交",
+           "html_sanitize 的降级正则漏检 data: 协议——AI 自己写测试、自己发现问题、自己修、自己验证。")
+    steps = [
+        ("1", "提需求", "给 html_sanitize 补测试，覆盖两条清洗路径"),
+        ("2", "读码", "定位降级正则与测试断言"),
+        ("3", "写测", "测试跑出 xfailed：真实缺陷"),
+        ("4", "审查", "发现 data: 协议漏检"),
+        ("5", "修复", "扩展协议分支"),
+        ("6", "提交", "回归通过后提交"),
+    ]
+    y = 1.95
+    for n, t, d in steps:
+        rect(s, M_L, y + 0.08, 0.34, 0.34, fill=AMBER if n == "4" else MINT, line=None, radius=0.5)
+        text(s, M_L, y + 0.13, 0.34, 0.20, n, size=9, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
+        text(s, M_L + 0.50, y + 0.04, 5.1, 0.24, t, size=11.5, bold=True, color=INK)
+        text(s, M_L + 0.50, y + 0.32, 5.1, 0.34, d, size=9.0, color=GRAY)
+        y += 0.72
+
+    # 审查报告
+    report = rect(s, 6.28, 1.92, 6.22, 2.55, fill=WHITE, line=LINE, lw=0.9, radius=0.05)
+    text(s, 6.50, 2.04, 4.5, 0.26, "审查报告", size=11.5, bold=True, color=INK)
+    text(s, 6.50, 2.34, 5.7, 0.22, "对象：app/utils/html_sanitize.py · 降级正则", size=9.0, color=GRAY)
+    text(s, 6.50, 2.58, 5.7, 0.22, "范围：本次提交（安全清洗 + 单测）", size=9.0, color=GRAY)
+    chip(s, 6.50, 2.86, 0.72, 0.26, "P0 无", MINT_L, MINT_D, 8)
+    chip(s, 7.30, 2.86, 1.25, 0.26, "P1 1 已修复", AMBER_L, AMBER, 8)
+    chip(s, 8.63, 2.86, 1.18, 0.26, "P2 3 记录", MINT_L2, GRAY, 8)
+    issues = [
+        ("P1", "降级路径漏检 data:text/html;base64 形式", "已修复", AMBER),
+        ("P2", "未加引号的 src=javascript: 未覆盖", "建议补测", GRAY),
+        ("P2", "缺大写 DATA: / 实体编码回归用例", "建议补测", GRAY),
+        ("P2", "data:image 与 nh3 处理形态不一致", "已确认", GRAY),
+    ]
+    y = 3.22
+    for lv, txt, status, col in issues:
+        chip(s, 6.50, y, 0.40, 0.24, lv, AMBER_L if lv == "P1" else MINT_L2, col, 7.5)
+        text(s, 7.02, y - 0.01, 3.65, 0.22, txt, size=8.0, color=INK2)
+        text(s, 10.62, y - 0.01, 1.20, 0.22, status, size=8.0, bold=True, color=MINT_D if status == "已修复" else GRAY2)
+        y += 0.32
+
+    # 修复 diff
+    diff = rect(s, 6.28, 4.60, 6.22, 1.58, fill=WHITE, line=LINE, lw=0.9, radius=0.05)
+    text(s, 6.50, 4.72, 4.5, 0.22, "修复 diff", size=9.5, bold=True, color=INK)
+    code = rect(s, 6.50, 4.96, 5.78, 0.72, fill=RGBColor(0x0B, 0x2B, 0x22), line=None, radius=0.04)
+    text(s, 6.64, 5.02, 5.5, 0.22, "- (?:javascript|vbscript|data:text/html)\\s*:", size=7.8, color=RGBColor(0xFB, 0xBF, 0xBF), font="Consolas")
+    text(s, 6.64, 5.32, 5.5, 0.22, "+ (?:javascript|vbscript|data)\\s*:", size=7.8, color=RGBColor(0xA7, 0xF3, 0xD0), font="Consolas")
+    text(s, 6.50, 5.76, 5.7, 0.22, "回归：pytest 通过 · 已提交", size=8.8, bold=True, color=MINT_D)
+
+    res = rect(s, M_L, 6.30, CW, 0.38, fill=MINT_L, line=None, radius=0.08)
+    text(s, M_L + 0.20, 6.37, CW - 0.4, 0.22, "过程产物：test_html_sanitize.py · 修复 diff · commit", size=8.6, bold=True, color=MINT_D)
+    footer(s, 8)
+
+
+for fn in (p1, p2b, p3d, p4c, p5b, p6, p7arch, p8c, p9b, p10b):
     fn()
 
 out = os.path.join(HERE, "OpenStudy-10页-V3-码道版.pptx")
