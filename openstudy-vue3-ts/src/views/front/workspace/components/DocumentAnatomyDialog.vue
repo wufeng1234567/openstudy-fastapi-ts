@@ -1,8 +1,8 @@
 <!--
-  单份资料的「资料解剖」查看器
+  单份资料的「资料刨析」查看器
   ----------------------------------------------------------------------------
   从 workspace/index.vue 抽出的共享组件：我的资料页、设置面板的「我的资料」
-  tab、以及资料夹面板里的「资料解剖」入口都复用这一份页面，避免两套结构树/
+  tab、以及资料夹面板里的「资料刨析」入口都复用这一份页面，避免两套结构树/
   正文/图片资产的展示逻辑逐渐分叉。
 
   入口行为：
@@ -11,11 +11,11 @@
     · `highlight` / `targetText` / `chunkIndex`：语义检索命中后定位并标黄。
 -->
 <template>
-  <el-dialog v-model="visible" :title="`资料解剖 · ${docName}`" width="1100px" append-to-body
+  <el-dialog v-model="visible" :title="`资料刨析 · ${docName}`" width="1100px" append-to-body
     class="kbp-anatomy-dialog">
     <template #header>
       <div class="kbp-anatomy__head">
-        <span>资料解剖 · {{ docName }}</span>
+        <span>资料刨析 · {{ docName }}</span>
         <el-button v-if="props.showEdit && doc" text type="primary" size="small" class="kbp-anatomy__edit"
           @click="emitEdit">编辑</el-button>
       </div>
@@ -445,7 +445,7 @@ async function load(docValue: AnatomyDoc, opts: AnatomyOptions = {}) {
       }
     }
   } catch (e: any) {
-    ElMessage.error('读取资料解剖失败：' + (e?.message || e))
+    ElMessage.error('读取资料刨析失败：' + (e?.message || e))
   } finally {
     loading.value = false
     await nextTick()

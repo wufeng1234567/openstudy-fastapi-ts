@@ -208,7 +208,10 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
     "kb": RoleSpec(
         key="kb",
         name="资料专家",
-        description="帮你管理我的资料：把文字或文件存进去，也能在里面查东西",
+        description=(
+            "帮你管理我的资料：把文字或文件存进去、在里面查东西，"
+            "也能用「资料诊疗室」做体检、刨析和装配"
+        ),
         tools=(
             "knowledge_search",
             "knowledge_ingest",
@@ -226,7 +229,11 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
             "searchable, or look something up inside it. Saving takes a moment to process "
             "in the background, so a just-saved item is not searchable immediately. "
             "ALSO use it when the user asks to turn one of their documents into a "
-            "teaching HTML / micro-course / PPT — call `micro_course_generate`."
+            "teaching HTML / micro-course / PPT — call `micro_course_generate`. "
+            "For questions about a document's health report, structure/content analysis, "
+            "or assembling its chapters into review cards / handouts / outlines, explain "
+            "the unified `资料诊疗室` workspace (tabs: `资料体检`, `资料刨析`, `资料装配`); "
+            "the old `资料解剖` name is retired."
         ),
         persona=(
             "You are the Materials Specialist of OpenStudy. You manage the user's material "
@@ -234,8 +241,10 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
             "attachments as searchable documents, edit an existing document in place with "
             "`knowledge_ingest` action `update_document`, and search inside them with "
             "`knowledge_search`. Saving or editing a document triggers background "
-            "vectorisation, so tell the user it is still being processed. You do NOT handle "
-            "the question bank or notes."
+            "vectorisation, so tell the user it is still being processed. For a document's "
+            "health, structure, images or study-asset assembly, point the user to the unified "
+            "`资料诊疗室` (tabs: `资料体检`, `资料刨析`, `资料装配`; never say `资料解剖`). "
+            "You do NOT handle the question bank or notes."
         ),
         prompt_fragment=(
             "## Role: Materials Assistant\n"
@@ -256,7 +265,8 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
         ),
         keywords=(
             "我的资料", "资料夹", "知识库", "资料", "文档库", "存进", "存入",
-            "检索", "查一下资料", "knowledge", "document", "微课", "课件", "教学html", "ppt",
+            "检索", "查一下资料", "资料诊疗室", "资料体检", "资料刨析", "资料装配",
+            "体检报告", "装配台", "knowledge", "document", "微课", "课件", "教学html", "ppt",
         ),
     ),
     # ---- 记忆：不是角色，而是**全局默认工具**（见下面 GLOBAL_TOOLS）----

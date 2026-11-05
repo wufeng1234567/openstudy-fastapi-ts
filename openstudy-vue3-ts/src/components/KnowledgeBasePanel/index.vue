@@ -144,7 +144,7 @@
                   <span class='kb-op' title='复制这段原文' @click.stop='copyHit(h)'>
                     <el-icon><DocumentCopy /></el-icon>
                   </span>
-                  <span class='kb-op' title='资料解剖' @click.stop='openAnatomyOf(h)'>
+                  <span class='kb-op' title='资料刨析' @click.stop='openAnatomyOf(h)'>
                     <el-icon><View /></el-icon>
                   </span>
                   <span class='kb-hit-more' @click.stop='toggleExpand(h.chunkId)'>
@@ -290,8 +290,8 @@
               </div>
 
               <div class="kb-doc-ops">
-                <!-- 资料解剖：章节结构 / 正文 / 图片资产统一看（复用我的资料页的查看器） -->
-                <span v-if="isDocumentSearchable(doc.status)" class="kb-op" title="资料解剖"
+                <!-- 资料刨析：章节结构 / 正文 / 图片资产统一看（复用我的资料页的查看器） -->
+                <span v-if="isDocumentSearchable(doc.status)" class="kb-op" title="资料刨析"
                   @click="showAnatomy(doc)">
                   <el-icon><Document /></el-icon>
                 </span>
@@ -314,7 +314,7 @@
       </div>
     </div>
 
-  <!-- 资料解剖：与「我的资料」页共用 DocumentAnatomyDialog -->
+  <!-- 资料刨析：与「我的资料」页共用 DocumentAnatomyDialog -->
   <DocumentAnatomyDialog ref="anatomyRef" />
 
   <!-- 粘贴文本导入：把用户自己输入的正文直接收进知识库（后端 `/document/uploadText`，不走文件解析） -->
@@ -384,7 +384,7 @@ const POLL_MAX_ROUNDS = 90
  */
 withDefaults(defineProps<{ closable?: boolean }>(), { closable: false })
 
-// 资料解剖：与「我的资料」页复用同一个查看器（章节结构、正文、图片资产）。
+// 资料刨析：与「我的资料」页复用同一个查看器（章节结构、正文、图片资产）。
 import DocumentAnatomyDialog from '@/views/front/workspace/components/DocumentAnatomyDialog.vue'
 import { ensureMarkdownImageFiles } from '@/utils/markdownUpload'
 
@@ -434,7 +434,7 @@ const query = ref('')
 const kbLoadFailed = ref(false)
 
 
-/* ===== 资料解剖 =====
+/* ===== 资料刨析 =====
    从文档列表或搜索结果进入，复用「我的资料」页的完整解剖查看器：
    章节结构、正文与图片、图片资产都在同一个页面里，不再单独画一张结构图。 */
 const anatomyRef = ref<InstanceType<typeof DocumentAnatomyDialog> | null>(null)

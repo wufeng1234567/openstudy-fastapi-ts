@@ -12,7 +12,7 @@
   从抽屉里搬出来，变成一个有侧栏、有主区、能常驻浏览的完整页面：
 
       左：知识库列表（新建 / 改名 / 删除 / 屏蔽）
-      右：选中库的文档（上传文件/粘贴文本 / 看状态 / 删除 / 重解析 / 看解剖）
+      右：选中库的文档（上传文件/粘贴文本 / 看状态 / 删除 / 重解析 / 看刨析）
       顶：全站统计（几个库、几份资料、多少可检索、占多大）
 
   与对话页那个抽屉的分工
@@ -283,15 +283,12 @@
                   >
                     <OsIcon :name="doc.disabled === 1 ? 'eye-off' : 'eye'" :size="14" />
                   </span>
-                  <span class="kbp-doc__op" title="资料体检" @click="showHealth(doc)">
+                  <button type="button" class="kbp-doc__op kbp-doc__clinic"
+                    title="资料诊疗室：资料体检、资料刨析、资料装配都在这里"
+                    @click="openClinic(doc)">
                     <OsIcon name="activity" :size="14" />
-                  </span>
-                  <span class="kbp-doc__op" title="资产装配" @click="showStudyPack(doc)">
-                    <OsIcon name="layout-grid" :size="14" />
-                  </span>
-                  <span class="kbp-doc__op" title="资料解剖" @click="showAnatomy(doc)">
-                    <OsIcon name="book-open" :size="14" />
-                  </span>
+                    <span>资料诊疗室</span>
+                  </button>
                   <span class="kbp-doc__op" title="智能整理" @click="startOrganize(doc)">
                     <OsIcon name="sparkles" :size="14" />
                   </span>
@@ -356,7 +353,7 @@
             现在：
               · 走后端真正的混合检索（向量 + 全文 + RRF），**默认只搜当前选中的库**；
               · 每条结果展示一个命中片段，只保留「定位原文」一个动作：
-                进资料解剖后自动滚动并用黄色标记标出用户搜索词所在位置。
+                进资料刨析后自动滚动并用黄色标记标出用户搜索词所在位置。
           -->
           <section v-if="activeKb.files.length" ref="tryPanelRef" class="kbp-try">
             <div class="kbp-try__head">
@@ -459,7 +456,7 @@
       <div class="kbp-shelf-page__head">
         <div>
           <h2>{{ activeKb?.name || '我的资料' }}</h2>
-          <p>{{ activeKb?.files?.length || 0 }} 份资料 · 点击卡片看解剖</p>
+          <p>{{ activeKb?.files?.length || 0 }} 份资料 · 点击卡片看刨析</p>
         </div>
         <el-button size="small" @click="viewMode = 'list'">返回资料夹</el-button>
       </div>
@@ -578,8 +575,8 @@
       </div>
     </div>
 
-    <!-- 单文档解剖：结构 / 正文与图片 / 图片资产轨 -->
-    <el-dialog v-model="anatomyVisible" :title="`资料解剖 · ${anatomyDocName}`" width="1100px" append-to-body
+    <!-- 单文档刨析：结构 / 正文与图片 / 图片资产轨 -->
+    <el-dialog v-model="anatomyVisible" :title="`资料刨析 · ${anatomyDocName}`" width="1100px" append-to-body
       class="kbp-anatomy-dialog">
       <div v-loading="anatomyLoading" class="kbp-anatomy">
         <div class="kbp-anatomy__stats">
@@ -650,7 +647,7 @@
       </div>
     </el-dialog>
 
-    <!-- 资料正文全屏观看：保留解剖的结构/图片资产信息，正文单独放大 -->
+    <!-- 资料正文全屏观看：保留刨析的结构/图片资产信息，正文单独放大 -->
     <el-dialog v-model="anatomyFullscreen" :title="`资料正文 · ${anatomyDocName}`" fullscreen append-to-body
       class="kbp-anatomy-fullscreen-dialog">
       <div class="kbp-anatomy-fullscreen__body">
@@ -665,10 +662,9 @@
       </div>
     </el-dialog>
 
-    <!-- 共享资料解剖：我的资料页与设置面板复用同一个查看器 -->
-    <DocumentAnatomyDialog ref="anatomyRef" :show-edit="true" @edit="openEditor" />
-    <DocumentHealthDialog ref="healthRef" @organize="startOrganizeFromHealth" @locate="locateHealthSection" @ask="askFromHealth" />
-    <StudyPackDialog ref="studyPackRef" @micro="openMicroCourse" />
+    <!-- 统一入口：资料体检 / 资料刨析 / 资料装配共用一套工作台 -->
+    <DocumentClinicDialog ref="clinicRef" :show-edit="true" @organize="startOrganizeFromHealth"
+      @ask="askFromHealth" @micro="openMicroCourse" @edit="openEditor" />
 
     <!-- 知识库分享 / 领取（参考题库分享） -->
     <ShareKnowledgeDialog v-model="shareDialogVisible" :default-kb-id="shareKbId" />
@@ -898,9 +894,7 @@ import { marked } from 'marked'
 import TurndownService from 'turndown'
 import { getWorkspaceOverview, uploadToWorkspace, searchWorkspace, listWorkspaceStandaloneImages, getAssetUsageSummary, recordAssetUsage, previewWorkspaceOrganize, getWorkspaceOrganizePlan, getWorkspaceOrganizeRecord, listWorkspaceOrganizePlans, applyWorkspaceOrganize, deleteWorkspaceOrganizeRecord, rollbackWorkspacePlan, setDocumentSearchable, listDocumentVersions, restoreDocumentVersion } from '@/api/ai/workspace'
 import OrganizeDiffDialog from './components/OrganizeDiffDialog.vue'
-import DocumentAnatomyDialog from './components/DocumentAnatomyDialog.vue'
-import DocumentHealthDialog from './components/DocumentHealthDialog.vue'
-import StudyPackDialog from './components/StudyPackDialog.vue'
+import DocumentClinicDialog from './components/DocumentClinicDialog.vue'
 import ShareKnowledgeDialog from './components/ShareKnowledgeDialog.vue'
 import ReceiveKnowledgeDialog from './components/ReceiveKnowledgeDialog.vue'
 import { listQuestionMain, getQuestionMain, updateQuestionMain } from '@/api/questionMain/questionMain'
@@ -1203,17 +1197,15 @@ function onTryInput() {
 
 /* 分块 */
 
-/* ===================== 单文档解剖 ===================== */
-/** 共享解剖查看器：打开、切文档、高亮定位都由组件内部处理 */
-const anatomyRef = ref<InstanceType<typeof DocumentAnatomyDialog> | null>(null)
-const healthRef = ref<InstanceType<typeof DocumentHealthDialog> | null>(null)
-const studyPackRef = ref<InstanceType<typeof StudyPackDialog> | null>(null)
+/* ===================== 单文档刨析 ===================== */
+/** 共享刨析查看器：打开、切文档、高亮定位都由组件内部处理 */
+const clinicRef = ref<InstanceType<typeof DocumentClinicDialog> | null>(null)
 const anatomyVisible = ref(false)
 const anatomyLoading = ref(false)
 const anatomyFullscreen = ref(false)
 const anatomyDocName = ref('')
 const anatomyContent = ref('')
-/** 从搜索跳转过来时要高亮的检索词；空串 = 普通解剖查看 */
+/** 从搜索跳转过来时要高亮的检索词；空串 = 普通刨析查看 */
 const anatomyHighlight = ref('')
 const anatomyTargetChunkId = ref<number | null>(null)
 const anatomyTargetChunkIndex = ref<number | null>(null)
@@ -2707,7 +2699,7 @@ async function reprocess(doc: any) {
 }
 
 /**
- * 单文档解剖：结构 + 原文/图片 + 图片资产轨。
+ * 单文档刨析：结构 + 原文/图片 + 图片资产轨。
  *
  * 数据全部来自现有接口：
  *   · getDocumentContent —— raw_content + imageMap
@@ -2725,7 +2717,7 @@ function clearAnatomyMarks(root: HTMLElement) {
   })
 }
 
-/** 在解剖正文的真实 DOM 上标黄；只包普通文本节点，绝不碰 KaTeX 内部 */
+/** 在刨析正文的真实 DOM 上标黄；只包普通文本节点，绝不碰 KaTeX 内部 */
 function applyAnatomyHighlight() {
   const roots = [
     document.querySelector('.kbp-anatomy__content-inner'),
@@ -2792,19 +2784,25 @@ async function openAnatomyFullscreen() {
   applyAnatomyHighlight()
 }
 
-function showAnatomy(doc: any, opts?: { highlight?: string; chunkId?: number; chunkIndex?: number; chunkCount?: number; targetText?: string; offset?: number }) {
-  anatomyRef.value?.open(doc, opts)
+/* ===================== 资料诊疗室（体检 / 刨析 / 装配统一入口） ===================== */
+function openClinic(doc: any) {
+  if (!doc?.docId) return
+  clinicRef.value?.open(doc, 'health')
 }
 
-/* ===================== 资料体检 ===================== */
+function showAnatomy(doc: any, opts?: { highlight?: string; chunkId?: number; chunkIndex?: number; chunkCount?: number; targetText?: string; offset?: number }) {
+  if (!doc?.docId) return
+  clinicRef.value?.open(doc, 'anatomy', opts)
+}
+
 function showHealth(doc: any) {
   if (!doc?.docId) return
-  healthRef.value?.open(doc)
+  clinicRef.value?.open(doc, 'health')
 }
 
 function showStudyPack(doc: any) {
   if (!doc?.docId) return
-  studyPackRef.value?.open(doc)
+  clinicRef.value?.open(doc, 'pack')
 }
 
 function startOrganizeFromHealth(doc: any) {
@@ -2878,7 +2876,7 @@ async function showAnatomyLegacy(doc: any, opts?: { highlight?: string; chunkId?
       }
     }
   } catch (e: any) {
-    ElMessage.error('读取资料解剖失败：' + (e?.message || e))
+    ElMessage.error('读取资料刨析失败：' + (e?.message || e))
   } finally {
     anatomyLoading.value = false
     await nextTick()
@@ -2975,7 +2973,7 @@ async function doTry() {
   }
 }
 
-/** 打开命中片段：只保留一个动作——进资料解剖并高亮定位 */
+/** 打开命中片段：只保留一个动作——进资料刨析并高亮定位 */
 function openHit(hit: any) {
   const doc = activeKb.value?.files.find((f: any) => Number(f.docId) === Number(hit.docId))
   showAnatomy(
@@ -3848,13 +3846,35 @@ onBeforeUnmount(() => {
   justify-content: center;
   width: 24px;
   height: 24px;
+  padding: 0;
+  border: 0;
   border-radius: 5px;
+  background: transparent;
+  font-family: inherit;
   color: var(--os-text-3, #9ca3af);
   cursor: pointer;
 
   &:hover {
     background: var(--os-bg-hover, #f3f4f6);
     color: var(--os-text, #111827);
+  }
+
+  &.kbp-doc__clinic {
+    width: auto;
+    gap: 4px;
+    padding: 0 8px;
+    border: 1px solid #dbeafe;
+    background: #eff6ff;
+    color: #2563eb;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+
+    &:hover {
+      border-color: #93c5fd;
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
   }
 
   &.is-danger:hover {
@@ -4314,7 +4334,7 @@ onBeforeUnmount(() => {
   color: var(--os-text-2, #4b5563);
 }
 
-/* ---------- 单文档解剖 ---------- */
+/* ---------- 单文档刨析 ---------- */
 .kbp-anatomy {
   min-height: 420px;
 }

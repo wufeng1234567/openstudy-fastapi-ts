@@ -662,7 +662,7 @@ async def get_workspace_document_health(
     """资料体检：结构 / 图文 / 知识覆盖 / 可学习化四维报告。
 
     纯规则计算，不调用模型；同一份资料两次体检结果一致。
-    前端「资料体检」按钮和整理手术台都消费这份数据。
+    前端资料诊疗室的「资料体检」页签和整理手术台都消费这份数据。
     """
     try:
         from app.services.document_health_service import build_document_health

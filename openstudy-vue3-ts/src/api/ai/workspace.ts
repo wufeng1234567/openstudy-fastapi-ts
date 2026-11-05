@@ -71,7 +71,7 @@ export function setDocumentSearchable(docId: number, disabled: boolean) {
   })
 }
 
-/** 资料体检：四维评分 + 问题清单 + 章节覆盖热力（纯规则、可复现） */
+/** 资料诊疗室 · 资料体检：四维评分 + 问题清单 + 章节覆盖热力（纯规则、可复现） */
 export function getDocumentHealth(docId: number | string) {
   return request({
     url: `/rag/workspace/documents/${docId}/health`,
