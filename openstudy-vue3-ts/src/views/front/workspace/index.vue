@@ -661,9 +661,9 @@
       </div>
     </el-dialog>
 
-    <!-- 统一入口：资料体检 / 资料刨析 / 资料装配共用一套工作台 -->
+    <!-- 统一入口：资料体检 / 资料刨析 / 学习处方共用一套工作台 -->
     <DocumentClinicDialog ref="clinicRef" :show-edit="true" @organize="startOrganizeFromHealth"
-      @ask="askFromHealth" @micro="openMicroCourse" @edit="openEditor" />
+      @ask="askFromHealth" @edit="openEditor" />
 
     <!-- 知识库分享 / 领取（参考题库分享） -->
     <ShareKnowledgeDialog v-model="shareDialogVisible" :default-kb-id="shareKbId" />
@@ -2799,9 +2799,9 @@ function showHealth(doc: any) {
   clinicRef.value?.open(doc, 'health')
 }
 
-function showStudyPack(doc: any) {
+function showPrescription(doc: any) {
   if (!doc?.docId) return
-  clinicRef.value?.open(doc, 'pack')
+  clinicRef.value?.open(doc, 'prescription')
 }
 
 function startOrganizeFromHealth(doc: any) {
@@ -2818,12 +2818,16 @@ function locateHealthSection(doc: any, section: any) {
 
 async function askFromHealth(doc: any, issue: any) {
   const name = String(doc?.fileName || '这份资料').replace(/\.[^.]+$/, '')
+  const section = String(issue?.sectionTitle || '').trim()
   const prompt = issue?.fixAction === 'questions'
-    ? `用《${name}》按章节生成一套分层练习：每个章节 3 道基础题 + 2 道变式题，并给出答案与解析。`
+    ? `用《${name}》${section ? `的「${section}」` : '按章节'}生成一套分层练习：每个章节 3 道基础题 + 2 道变式题，并给出答案与解析。`
     : `帮我整理《${name}》并检查知识覆盖情况。`
   try {
-    await navigator.clipboard.writeText(prompt)
-    ElMessage.success('已复制出题指令，粘贴到对话里即可')
+    await router.push({
+      path: '/front/agent/chat',
+      state: { seedQuestion: prompt }
+    })
+    ElMessage.success('已把练习要求带到对话，确认后发送')
   } catch {
     ElMessage.info(prompt)
   }

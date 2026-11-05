@@ -29,7 +29,7 @@ OpenStudy 是一个开源、低成本、低门槛的 AI 学习平台，帮用户
 2. 资料诊疗室：每份资料只有一个统一入口「资料诊疗室」，打开后有三个页签：
    - 资料体检：用结构完整度、图文相关度、知识覆盖度、可学习化程度四个指标说明这份资料哪里值得先处理，并给出问题清单和章节覆盖情况。分数只用来排优先级，不是给学生打分。
    - 资料刨析：查看资料的结构树、正文、原文位置里的图片和可复用的图片资产。
-   - 资料装配：选择章节并写清装配要求后，由 AI 读取完整原文重新生成复习卡、讲义或提纲；题单走智能出题，微课走微课生成器。
+   - 学习处方：根据资料体检结果和章节情况，由 AI 排出按天执行的学习计划；每天包含精读、练习、复习或复测任务，完成后可以复诊。题单仍走智能出题，微课仍走微课生成器。
 3. 题库与练习：用户可以创建题库、AI 辅助出题、在线刷题、整理错题。
 4. 原文依据：题目可以关联到资料原文，学习报告里的薄弱点也能回到对应段落查看依据。
 5. 对话里的文件与图片：上传过的文件和图片会显示成资产卡，可以展开查看、点开预览，并在后续对话里继续使用。
@@ -79,6 +79,13 @@ SCENE_STUDY_PACK = "study-pack"
 
 它不是把原文截断拼接：LLM 必须覆盖全部选中章节，并严格依据原文；
 同一条内容在 `rag.py` 的 `/rag/workspace/documents/{doc_id}/study-pack/stream` 使用。
+"""
+
+SCENE_STUDY_PRESCRIPTION = "study-prescription"
+"""**学习处方**：把资料体检结果和章节排成按天执行、可复诊的学习计划。
+
+它不是生成一份文件，而是生成「接下来每天读哪一节、做什么练习、何时复习」；
+同一条内容在 `rag.py` 的 `/rag/workspace/documents/{doc_id}/prescription/generate` 使用。
 """
 
 
@@ -158,6 +165,7 @@ STUDY_PACK_SYSTEM_PROMPT = """你是 OpenStudy 的资料装配智能体。你的
 5. 面向学生写作：用清楚的中文，先说结论，再解释原因；不要写“材料中”“文中”这类依赖上下文的指代。
 6. 只输出 Markdown 正文，不要输出 JSON、不要输出思考过程、不要用代码围栏包住整篇内容。
 7. 不要虚构章节数量、字数、题目数量或评分；文中没有的统计数字不要写。
+8. 数学公式统一用 `$...$`（行内）或 `$$...$$`（独立）包裹，不要把 LaTeX 命令裸露在正文里。
 """
 
 
@@ -165,6 +173,27 @@ def _build_study_pack(prompt: str, **vars: Any) -> List[Dict[str, str]]:
     """资料装配：正文由 `study_pack_service` 组装，包含选中章节原文。"""
     return [
         {"role": "system", "content": STUDY_PACK_SYSTEM_PROMPT},
+        {"role": "user", "content": prompt},
+    ]
+
+
+STUDY_PRESCRIPTION_SYSTEM_PROMPT = """你是 OpenStudy 的学习处方规划师。你的任务不是写一篇学习资料，而是把一份资料排成接下来可以每天执行、可以复诊的学习计划。
+
+必须遵守：
+1. 只依据平台给出的章节、体检结果和用户目标排计划，不要编造不存在的章节、题目数量或学习数据。
+2. 计划必须覆盖用户指定的章节；每一节都要有读、练、复习或复测中的具体安排。
+3. 任务要具体到可以马上执行：读哪一节、做几道题、为什么要做、预计多少分钟。
+4. 每天的总时长不要超过用户给出的时间；先理解再练习，练完安排复习。
+5. 只输出一个 JSON 对象，不要输出 Markdown 代码围栏、解释文字或前后缀。
+6. 不要编造资料里没有的知识点；如果资料信息不足，就在任务里写“先补读原文/需要补充资料”。
+7. 任务标题和描述里如果出现数学公式，统一用 `$...$` 包裹。
+"""
+
+
+def _build_study_prescription(prompt: str, **vars: Any) -> List[Dict[str, str]]:
+    """学习处方：正文由 `study_prescription_service` 组装。"""
+    return [
+        {"role": "system", "content": STUDY_PRESCRIPTION_SYSTEM_PROMPT},
         {"role": "user", "content": prompt},
     ]
 
@@ -481,6 +510,7 @@ _SCENE_BUILDERS = {
     SCENE_COMPOSITE: _build_composite,
     SCENE_ANALYSIS: _build_analysis,
     SCENE_STUDY_PACK: _build_study_pack,
+    SCENE_STUDY_PRESCRIPTION: _build_study_prescription,
     SCENE_OCR: _build_ocr,
 }
 
@@ -595,15 +625,15 @@ AGENT_IDENTITY = """You are OpenStudy Agent, an intelligent assistant of the Ope
 8. Manage notes: create, edit, search, organize, and link notes to questions or banks.
 9. Explain the unified document Material Clinic (`资料诊疗室`): one entry per document with
    three tabs — `资料体检` (health report), `资料刨析` (structure / text / image assets), and
-   `资料装配` (review cards / handouts / outlines). The old `资料解剖` name is retired; use
-   `资料刨析` in every user-facing sentence.
+   `学习处方` (a day-by-day executable study plan with tasks and recheck). The old `资料解剖`
+   name is retired; use `资料刨析` in every user-facing sentence.
 
 ## What users can ask you to do
 - Create a question bank, generate questions from a document, or export a bank to Word/PDF.
 - Organize material folders, search inside a document, or share a folder/document with a classmate.
 - Review learning progress, generate a weekly report, or build an exam countdown plan.
 - Open one document's `资料诊疗室` to read its health report, analyze its structure and images,
-  or assemble its chapters into review cards / handouts / outlines.
+  or turn it into a day-by-day study prescription with tasks and recheck.
 - Turn a document into a teaching micro-course, use a document image in a slide, or convert HTML to PPT.
 - Check English word books, practice listening, or review a mistake.
 - Create a note and link it to a question or bank.
@@ -789,13 +819,15 @@ Inside the same dialog there are three tabs:
    tree, full text with images in their original positions, and reusable image assets.
    Use it to explain where a passage or image lives; do not pretend you can see the
    rendered page unless a tool returned its text.
-3. `资料装配` (Assembly): choose chapters, write a short assembly brief, and let the LLM
-   read the complete selected text and generate review cards / handouts / outlines. Question
-   sets go through question generation; micro-courses go through the micro-course generator.
-   Never fabricate an asset the user did not generate.
-When a user asks to diagnose, inspect, or turn a document into study assets, guide them to
+3. `学习处方` (Learning Prescription): after the health check, the LLM turns the material
+   into an executable day-by-day study plan — each day lists reading, practice, review or
+   recheck tasks, with a source section for every task. The user can tick tasks and re-run
+   the health check to see progress. Question sets go through question generation;
+   micro-courses go through the micro-course generator. Never fabricate a task, a section,
+   a score, or a learning result that the platform did not actually produce.
+When a user asks to diagnose, inspect, or turn a document into a study plan, guide them to
 the corresponding tab of `资料诊疗室`. You cannot click the UI for them, so give one short
-path (for example "我的资料 → 这份资料 → 资料诊疗室 → 资料体检") instead of claiming you
+path (for example "我的资料 → 这份资料 → 资料诊疗室 → 学习处方") instead of claiming you
 opened it. Keep the three steps under one product concept; do not present them as three
 unrelated tools.
 """
@@ -1179,7 +1211,9 @@ __all__ = [
     "SCENE_ANALYSIS",
     "SCENE_AGENT",
     "SCENE_STUDY_PACK",
+    "SCENE_STUDY_PRESCRIPTION",
     "STUDY_PACK_SYSTEM_PROMPT",
+    "STUDY_PRESCRIPTION_SYSTEM_PROMPT",
     "VARIABLE_DRIVEN_SCENES",
     "AGENT_SYSTEM_PROMPT_TEMPLATE",
     "AGENT_LANGUAGE_RULES",

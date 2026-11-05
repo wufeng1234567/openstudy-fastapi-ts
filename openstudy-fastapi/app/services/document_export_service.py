@@ -15,6 +15,11 @@ from docx.shared import Inches, Pt
 
 from app.config import settings
 
+#: Markdown 单张图片内嵌上限：图片 base64 会让一个 .md 变成几 MB，
+#: Typora 等编辑器直接打不开。超过上限时保留原始图片地址，宁可让图片链接失效，
+#: 也不能导出无法打开的文件。
+MARKDOWN_EMBED_IMAGE_MAX_BYTES = 256 * 1024
+
 
 def _safe_image_path(url: str) -> str | None:
     """把 `/profile/...` 图片地址解析到 UPLOAD_DIR 下的真实文件。"""
@@ -38,6 +43,12 @@ def _safe_image_path(url: str) -> str | None:
 
 def _make_docx(raw: str, image_map: Dict[str, Any], title: str) -> bytes:
     doc = Document()
+    # 复用题库导出已经验证过的「文字 + OMML 公式」段落渲染器。
+    # 旧实现直接 add_paragraph(text)，Word 里看到的仍是 $...$ / \frac 这类源码。
+    try:
+        from app.services.bank_export_service import _add_segments
+    except Exception:  # pragma: no cover - 极端环境下退回纯文本
+        _add_segments = None
     style = doc.styles["Normal"]
     style.font.name = "宋体"
     style.font.size = Pt(11)
@@ -128,7 +139,11 @@ def _make_docx(raw: str, image_map: Dict[str, Any], title: str) -> bytes:
         # 去掉常见的 Markdown 强调符号，保留正文与公式文本
         text = re.sub(r"\*\*(.+?)\*\*", r"\1", stripped)
         text = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"\1", text)
-        doc.add_paragraph(text)
+        paragraph = doc.add_paragraph()
+        if _add_segments is not None:
+            _add_segments(paragraph, text, size=11)
+        else:
+            paragraph.add_run(text)
         i += 1
 
     buf = io.BytesIO()
@@ -145,6 +160,8 @@ def _markdown_image_url(url: str) -> str:
     if not path:
         return raw
     try:
+        if os.path.getsize(path) > MARKDOWN_EMBED_IMAGE_MAX_BYTES:
+            return raw
         mime = mimetypes.guess_type(path)[0] or "image/png"
         with open(path, "rb") as fh:
             encoded = base64.b64encode(fh.read()).decode("ascii")

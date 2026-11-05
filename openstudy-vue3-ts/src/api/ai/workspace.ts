@@ -95,6 +95,24 @@ export interface StudyPackStreamRequest {
  * 这里的纯文本流契约与 `/ai/assistant/stream` 一致：正文增量 + `[DONE]` /
  * `Error: <原因>`。
  */
+export interface StudyPrescriptionParams {
+  days: number
+  dailyMinutes: number
+  goal: 'foundation' | 'exam' | 'weakness'
+  sectionIndexes: number[]
+  instruction?: string
+}
+
+/** 学习处方：由 LLM 根据体检结果和章节生成按天计划（结构化 JSON）。 */
+export function generateStudyPrescription(docId: number | string, data: StudyPrescriptionParams) {
+  return request({
+    url: `/rag/workspace/documents/${docId}/prescription/generate`,
+    method: 'post',
+    data,
+    timeout: 180000
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
 export async function streamStudyPack(
   docId: number | string,
   data: StudyPackStreamRequest,

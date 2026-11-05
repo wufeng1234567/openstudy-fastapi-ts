@@ -663,6 +663,18 @@ class StudyPackStreamRequest(BaseModel):
     instruction: str = Field(default="", max_length=800)
 
 
+class StudyPrescriptionRequest(BaseModel):
+    """学习处方：按资料体检和章节生成按天执行的学习计划。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    days: int = Field(default=7, ge=3, le=30)
+    dailyMinutes: int = Field(default=30, ge=10, le=180)
+    goal: str = Field(default="exam", pattern="^(foundation|exam|weakness)$")
+    sectionIndexes: List[int] = Field(default_factory=list)
+    instruction: str = Field(default="", max_length=800)
+
+
 @router.post("/workspace/documents/{doc_id}/study-pack/stream")
 async def stream_workspace_study_pack(
     doc_id: int,
@@ -713,6 +725,67 @@ async def stream_workspace_study_pack(
                 "X-Accel-Buffering": "no",
                 "Connection": "keep-alive",
             },
+        )
+    except Exception as e:
+        return _fail(e)
+
+
+@router.post("/workspace/documents/{doc_id}/prescription/generate")
+async def generate_workspace_study_prescription(
+    doc_id: int,
+    data: StudyPrescriptionRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """学习处方：让 LLM 根据资料体检与章节排一份可执行的按天计划。
+
+    返回结构化 JSON（不是 Markdown 文件），前端按天展示任务、勾选完成和复诊。
+    """
+    try:
+        from app.services.ai import chat_engine, prompts
+        from app.services.document_health_service import build_document_health
+        from app.services.study_prescription_service import (
+            baseline_from_report,
+            build_prescription_prompt,
+            parse_prescription,
+        )
+
+        uid = _uid(current_user)
+        doc = await rag_write_service.get_document(db, uid, doc_id)
+        report = await asyncio.to_thread(build_document_health, doc)
+        prompt, selected = build_prescription_prompt(
+            doc_name=str(getattr(doc, "file_name", "") or "未命名资料"),
+            report=report,
+            days=data.days,
+            daily_minutes=data.dailyMinutes,
+            goal=data.goal,
+            section_indexes=data.sectionIndexes,
+            instruction=data.instruction,
+        )
+        turn = chat_engine.ChatTurn(
+            scene=prompts.SCENE_STUDY_PRESCRIPTION,
+            prompt=prompt,
+            user_id=uid,
+            temperature=0.35,
+            thinking=False,
+        )
+        chunks: List[str] = []
+        async for chunk in chat_engine.stream_turn(db, turn):
+            if chunk == "[DONE]":
+                break
+            if chunk.startswith("Error: "):
+                raise RuntimeError(chunk[7:].strip() or "AI 生成失败")
+            chunks.append(chunk)
+        plan = parse_prescription(
+            "".join(chunks),
+            selected_sections=selected,
+            days=data.days,
+        )
+        return success(
+            {
+                "plan": plan,
+                "baseline": baseline_from_report(report),
+            }
         )
     except Exception as e:
         return _fail(e)

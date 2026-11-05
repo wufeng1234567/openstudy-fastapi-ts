@@ -16,7 +16,7 @@
   组件边界：
     · DocumentHealthPanel   —— 体检报告（只读规则计算）
     · DocumentAnatomyPanel  —— 结构 / 正文 / 图片资产
-    · StudyPackPanel        —— 章节选取与学习资产导出
+    · StudyPrescriptionPanel —— 按天执行、可勾完成、可复诊的学习计划
 -->
 <template>
   <el-dialog
@@ -35,7 +35,7 @@
           <div class="clinic-head__title">资料诊疗室</div>
           <div class="clinic-head__doc" :title="docName">{{ docName }}</div>
         </div>
-        <div class="clinic-head__meta">先体检，再刨析，最后装配成学习资产</div>
+        <div class="clinic-head__meta">先体检，再刨析，最后开一份学习处方</div>
       </div>
     </template>
 
@@ -74,10 +74,11 @@
           :show-edit="showEdit"
           @edit="handleEdit"
         />
-        <StudyPackPanel
-          v-show="activeTab === 'pack'"
-          ref="packRef"
-          @micro="handleMicro"
+        <StudyPrescriptionPanel
+          v-show="activeTab === 'prescription'"
+          ref="prescriptionRef"
+          @locate="handleLocate"
+          @ask="handleAsk"
           @close="close"
         />
       </section>
@@ -89,7 +90,7 @@
 import { computed, nextTick, ref } from 'vue'
 import DocumentHealthPanel from './DocumentHealthPanel.vue'
 import DocumentAnatomyPanel from './DocumentAnatomyPanel.vue'
-import StudyPackPanel from './StudyPackPanel.vue'
+import StudyPrescriptionPanel from './StudyPrescriptionPanel.vue'
 
 defineOptions({ name: 'DocumentClinicDialog' })
 
@@ -99,7 +100,7 @@ interface ClinicDoc {
   chunkCount?: number
 }
 
-type ClinicTab = 'health' | 'anatomy' | 'pack'
+type ClinicTab = 'health' | 'anatomy' | 'prescription'
 
 const props = withDefaults(
   defineProps<{
@@ -112,7 +113,6 @@ const emit = defineEmits<{
   (e: 'organize', doc: ClinicDoc): void
   (e: 'locate', doc: ClinicDoc, section: any): void
   (e: 'ask', doc: ClinicDoc, issue: any): void
-  (e: 'micro', doc: ClinicDoc | null): void
   (e: 'edit', doc: ClinicDoc): void
 }>()
 
@@ -121,13 +121,13 @@ const currentDoc = ref<ClinicDoc | null>(null)
 const activeTab = ref<ClinicTab>('health')
 const healthRef = ref<any>(null)
 const anatomyRef = ref<any>(null)
-const packRef = ref<any>(null)
+const prescriptionRef = ref<any>(null)
 const openedTabs = ref<Set<ClinicTab>>(new Set())
 
 const tabs: Array<{ key: ClinicTab; no: string; label: string; desc: string }> = [
   { key: 'health', no: '01', label: '资料体检', desc: '先看问题，再决定怎么整理' },
   { key: 'anatomy', no: '02', label: '资料刨析', desc: '结构、正文与图片一次看清' },
-  { key: 'pack', no: '03', label: '资料装配', desc: '把选中的章节变成学习资产' }
+  { key: 'prescription', no: '03', label: '学习处方', desc: '按天执行，学完还能复诊' }
 ]
 
 const docName = computed(() => currentDoc.value?.fileName || '未命名资料')
@@ -135,7 +135,7 @@ const docName = computed(() => currentDoc.value?.fileName || '未命名资料')
 function panelRef(tab: ClinicTab) {
   if (tab === 'health') return healthRef.value
   if (tab === 'anatomy') return anatomyRef.value
-  return packRef.value
+  return prescriptionRef.value
 }
 
 async function ensureTab(tab: ClinicTab, opts?: any) {
@@ -194,10 +194,6 @@ function handleLocate(doc: ClinicDoc, section: any) {
 
 function handleAsk(doc: ClinicDoc, issue: any) {
   emit('ask', doc, issue)
-}
-
-function handleMicro(doc: ClinicDoc | null) {
-  emit('micro', doc)
 }
 
 function handleEdit(doc: ClinicDoc) {
