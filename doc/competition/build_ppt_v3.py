@@ -213,7 +213,7 @@ S11 = os.path.join(SHOTS, "25-document-health.png")
 S12 = os.path.join(SHOTS, "26-organize-surgery.png")
 S13 = os.path.join(HERE, "码道架构图", "prescription-export-core.png")
 S14 = os.path.join(HERE, "码道架构图", "gallery-core.png")
-S15 = os.path.join(HERE, "码道架构图", "knowledge-map-core.png")
+S15 = os.path.join(HERE, "码道架构图", "knowledge-graph-core.png")
 S16 = os.path.join(HERE, "码道架构图", "version-diff-0.4.0.png")
 
 
@@ -1032,18 +1032,18 @@ def p4c():
 
 def p5b():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "05  /  资料知识网络", "0.4.1：图有来源，页有连接，版本能对照",
-           "画廊把图片变成资产，引用把资产连成网络，知识地图让每个节点都能回到原文。")
+    header(s, "05  /  资料知识网络", "0.4.1：实体有来源，关系可追溯，图是活的",
+           "画廊把图片变成资产，引用把资产连成网络，知识图谱让每个实体都能回到原文。")
     text(s, M_L, 1.86, 4.05, 0.22, "画廊：图有描述、OCR 与来源", size=10.5, bold=True, color=GRAY2, spc=40)
-    text(s, 5.10, 1.86, 7.0, 0.22, "知识地图：资料页 / 章节页 / 题组 / 图组 / 笔记", size=10.5, bold=True, color=GRAY2, spc=40)
+    text(s, 5.10, 1.86, 7.0, 0.22, "知识图谱：实体 / 有向关系 / 来源 chunk", size=10.5, bold=True, color=GRAY2, spc=40)
     pic_card(s, S14, M_L, 2.10, 4.05, 2.66, border=True,
              caption="真实界面：文档图片与聊天图片同一套搜索、描述和引用")
     pic_card(s, S15, 5.10, 2.10, 7.30, 4.42, border=True,
-             caption="真实界面：点击资料页展开章节；引用关系用紫色虚线，不造假边")
+             caption="真实界面：实体按类型着色、按连接度大小；点击实体查看证据")
     rows = [
         ("0.4.0 · 画廊", "图片描述 / OCR / 来源章节 / 被谁引用"),
         ("0.4.0 · 版本", "时间线 · 左右 diff · 体检分与问题数变化"),
-        ("0.4.1 · 地图", "分组聚焦 · 搜索 · 隐藏孤立页 · 回到原文"),
+        ("0.4.1 · 图谱", "实体-关系抽取 · 关系强度 · 来源 chunk 回溯"),
     ]
     y = 5.18
     for title, desc in rows:

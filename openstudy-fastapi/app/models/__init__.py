@@ -7,3 +7,5 @@ from app.models.ai_rate_limit_log import SysAiRateLimitLog
 from app.models.chat_upload import ChatUploadFile, ChatUploadImage
 # 0.4.x 资料知识网络：图片资产索引 + 统一内容引用
 from app.models.content import ContentReference, RagImageAsset
+# 0.4.1 真知识图谱：实体 + 有向关系 + 来源分块
+from app.models.knowledge_graph import RagGraphEntity, RagGraphRelation

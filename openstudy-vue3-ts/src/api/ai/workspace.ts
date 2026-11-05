@@ -110,12 +110,47 @@ export function describeGalleryAssets(data: { docId?: number; assetKeys?: string
   }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
 }
 
-/** 资料知识地图 */
+/** 旧的页面层级地图（保留兼容；新「知识图谱」使用 getKnowledgeGraph） */
 export function getKnowledgeMap(kbId?: number | null) {
   return request({
     url: '/rag/knowledge-map',
     method: 'get',
     params: kbId ? { kbId } : undefined
+  }) as unknown as Promise<{ code: number; msg?: string; data: any }>
+}
+
+/** 实体-关系知识图谱 */
+export function getKnowledgeGraph(params: {
+  kbId?: number | null
+  q?: string
+  types?: string[]
+  minStrength?: number
+} = {}) {
+  return request({
+    url: '/rag/knowledge-graph',
+    method: 'get',
+    params: {
+      kbId: params.kbId || undefined,
+      q: params.q || undefined,
+      types: params.types?.length ? params.types.join(',') : undefined,
+      minStrength: params.minStrength || undefined
+    }
+  }) as unknown as Promise<{ code: number; msg?: string; data: any }>
+}
+
+export function buildKnowledgeGraph(data: { kbId: number; docIds?: number[]; force?: boolean }) {
+  return request({
+    url: '/rag/knowledge-graph/build',
+    method: 'post',
+    data,
+    timeout: 900000
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
+export function getKnowledgeGraphEntity(entityId: number | string) {
+  return request({
+    url: `/rag/knowledge-graph/entity/${entityId}`,
+    method: 'get'
   }) as unknown as Promise<{ code: number; msg?: string; data: any }>
 }
 

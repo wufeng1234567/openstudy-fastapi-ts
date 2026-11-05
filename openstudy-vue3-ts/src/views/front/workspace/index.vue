@@ -509,14 +509,14 @@
       @back="viewMode = 'list'"
     />
 
-    <!-- 资料知识地图：0.4.1 的页面级关系视图，不画实体图 -->
-    <KnowledgeMapPanel
+    <!-- 真知识图谱：实体-关系图，节点来自资料正文抽取 -->
+    <KnowledgeGraphPanel
       v-else-if="viewMode === 'map' && (loading || (kbs.length && !loadFailed))"
       :active-kb-id="activeKbId"
       :search-query="workspaceSearch"
-      :type-filter="workspaceFilters.nodeType || []"
+      :type-filter="workspaceFilters.entityType || []"
       @stats="onMapStats"
-      @open-doc="onMapOpenDoc"
+      @locate="onGraphLocate"
       @back="viewMode = 'list'"
     />
 
@@ -865,7 +865,7 @@ import { getWorkspaceOverview, uploadToWorkspace, searchWorkspace, searchWorkspa
 import OrganizeDiffDialog from './components/OrganizeDiffDialog.vue'
 import DocumentClinicDialog from './components/DocumentClinicDialog.vue'
 import GalleryPanel from './components/GalleryPanel.vue'
-import KnowledgeMapPanel from './components/KnowledgeMapPanel.vue'
+import KnowledgeGraphPanel from './components/KnowledgeGraphPanel.vue'
 import VersionHistoryDialog from './components/VersionHistoryDialog.vue'
 import ShareKnowledgeDialog from './components/ShareKnowledgeDialog.vue'
 import ReceiveKnowledgeDialog from './components/ReceiveKnowledgeDialog.vue'
@@ -1105,11 +1105,11 @@ const workspaceTabs = [
   { key: 'list' as const, label: '资料夹', icon: 'folder' },
   { key: 'shelf' as const, label: '书架', icon: 'book-open' },
   { key: 'gallery' as const, label: '画廊', icon: 'layout-grid' },
-  { key: 'map' as const, label: '知识地图', icon: 'activity' }
+  { key: 'map' as const, label: '知识图谱', icon: 'activity' }
 ]
 const workspaceSearchPlaceholder = computed(() => {
   if (viewMode.value === 'gallery') return '搜索图片描述或文字…'
-  if (viewMode.value === 'map') return '搜索页面标题或正文…'
+  if (viewMode.value === 'map') return '搜索实体或关系…'
   if (viewMode.value === 'shelf') return '搜索资料…'
   return '搜索资料夹或资料…'
 })
@@ -1117,7 +1117,7 @@ const workspaceCountLabel = computed(() => {
   if (viewMode.value === 'list') return `全部资料夹：共 ${stats.kbCount} 个资料夹`
   if (viewMode.value === 'shelf') return `全部资料：共 ${stats.docCount} 份资料`
   if (viewMode.value === 'gallery') return `全部图片：共 ${galleryStats.total} 张`
-  return `全部知识页：共 ${mapStats.total} 个页面`
+  return `全部实体：共 ${mapStats.total} 个`
 })
 function documentTypeKey(doc: any): string {
   const ext = String(doc?.fileType || doc?.fileName || '').toLowerCase().match(/\.([a-z0-9]+)$/)?.[1]
@@ -1139,7 +1139,7 @@ function documentStatusKey(doc: any): string {
 
 const workspaceFilterTitle = computed(() => {
   if (viewMode.value === 'gallery') return '图片筛选'
-  if (viewMode.value === 'map') return '页面筛选'
+  if (viewMode.value === 'map') return '实体筛选'
   return '资料筛选'
 })
 
@@ -1150,7 +1150,7 @@ const workspaceFilterDefault = computed(() => {
   if (viewMode.value === 'gallery') {
     return { kind: [], descriptionStatus: [] }
   }
-  return { nodeType: [] }
+  return { entityType: [] }
 })
 
 const workspaceFilterGroups = computed(() => {
@@ -1183,15 +1183,18 @@ const workspaceFilterGroups = computed(() => {
   if (viewMode.value === 'map') {
     return [
       {
-        key: 'nodeType',
-        label: '页面类型',
+        key: 'entityType',
+        label: '实体类型',
         type: 'checkbox',
         options: [
-          { value: 'document', label: '资料页' },
-          { value: 'section', label: '章节页' },
-          { value: 'note', label: '笔记' },
-          { value: 'question', label: '题组' },
-          { value: 'image', label: '图组' }
+          { value: '概念', label: '概念' },
+          { value: '定理/公式', label: '定理 / 公式' },
+          { value: '方法', label: '方法' },
+          { value: '人物', label: '人物' },
+          { value: '机构', label: '机构' },
+          { value: '事件', label: '事件' },
+          { value: '作品', label: '作品' },
+          { value: '其他', label: '其他' }
         ]
       }
     ]
@@ -2436,6 +2439,19 @@ function onMapOpenDoc(payload: { docId: number; offset?: number; targetText?: st
   } else {
     showHealth(doc)
   }
+}
+
+function onGraphLocate(payload: { docId: number; chunkId?: number; chunkIndex?: number }) {
+  const doc = findDocRecord(payload.docId)
+  if (!doc) {
+    ElMessage.warning('没有找到这条证据对应的资料，可能已经被移动或删除')
+    return
+  }
+  showAnatomy(doc, {
+    chunkId: payload.chunkId,
+    chunkIndex: payload.chunkIndex,
+    targetText: ''
+  })
 }
 
 function selectKb(kbId: number) {

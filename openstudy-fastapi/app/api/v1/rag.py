@@ -688,6 +688,16 @@ class StudyPackStreamRequest(BaseModel):
     instruction: str = Field(default="", max_length=800)
 
 
+class KnowledgeGraphBuildRequest(BaseModel):
+    """知识图谱抽取：对一个资料夹内的文档做实体/关系抽取。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kbId: int = Field(..., gt=0)
+    docIds: Optional[List[int]] = None
+    force: bool = False
+
+
 class StudyPrescriptionRequest(BaseModel):
     """学习处方：按资料体检和章节生成按天执行的学习计划。"""
 
@@ -824,6 +834,72 @@ class StudyPrescriptionExportRequest(BaseModel):
     format: str = Field(..., pattern="^(pdf|word|docx|md|markdown|txt|text)$")
     plan: dict
     meta: dict = Field(default_factory=dict)
+
+
+@router.get("/knowledge-graph")
+async def get_knowledge_graph(
+    kbId: Optional[int] = Query(None, gt=0),
+    q: str = Query("", max_length=120),
+    types: Optional[str] = Query(None, description="逗号分隔的实体类型"),
+    minStrength: int = Query(0, ge=0, le=10),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """实体-关系知识图谱。节点和边来自真实抽取，不是页面层级。"""
+    try:
+        from app.services.rag.knowledge_graph_service import list_graph
+
+        entity_types = [x.strip() for x in (types or "").split(",") if x.strip()]
+        return success(
+            await list_graph(
+                db,
+                _uid(current_user),
+                kb_id=kbId,
+                q=q,
+                entity_types=entity_types or None,
+                min_strength=minStrength,
+            )
+        )
+    except Exception as e:
+        return _fail(e)
+
+
+@router.post("/knowledge-graph/build")
+async def build_knowledge_graph(
+    data: KnowledgeGraphBuildRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """从资料正文抽取实体和关系（同步返回本批统计）。"""
+    try:
+        from app.services.rag.knowledge_graph_service import build_graph
+
+        return success(
+            await build_graph(
+                db,
+                _uid(current_user),
+                data.kbId,
+                doc_ids=data.docIds,
+                force=data.force,
+            ),
+            "知识图谱抽取完成",
+        )
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/knowledge-graph/entity/{entity_id}")
+async def get_knowledge_graph_entity(
+    entity_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        from app.services.rag.knowledge_graph_service import get_entity_detail
+
+        return success(await get_entity_detail(db, _uid(current_user), entity_id))
+    except Exception as e:
+        return _fail(e)
 
 
 @router.post("/workspace/documents/{doc_id}/prescription/export")
