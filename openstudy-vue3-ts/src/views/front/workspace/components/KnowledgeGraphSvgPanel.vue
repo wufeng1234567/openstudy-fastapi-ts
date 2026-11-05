@@ -39,8 +39,8 @@
             <g v-for="node in layoutNodes" :key="node.id" class="kg-node"
               :class="{ 'is-hovered': hoveredId === String(node.id), 'is-dimmed': isNodeDimmed(node) }"
               :transform="`translate(${node.x} ${node.y})`"
-              @pointerdown.stop.prevent="onNodeDown($event, node)"
-              @pointerup.stop="onNodeUp"
+              @pointerdown.stop="onNodeDown($event, node)"
+              @pointerup.stop="onNodeUp($event, node)"
               @click.stop="onNodeClick(node)"
               @mouseenter="hoveredId = String(node.id)"
               @mouseleave="hoveredId = null">
@@ -495,7 +495,28 @@ function onPointerMove(event: PointerEvent) {
 }
 
 function onPointerUp() {
-  if (pointerState?.moved) suppressClickUntil = performance.now() + 250
+  const state = pointerState
+  if (state?.mode === 'node' && !state.moved) {
+    // pointer capture 时 pointerup 会被重定向到 SVG 根节点，节点自身收不到；
+    // 在画布层的 pointerup 补一次点击判定，保证点节点一定能开抽屉。
+    suppressClickUntil = performance.now() + 300
+    openDetail(String(state.node.id))
+  } else if (state?.moved) {
+    suppressClickUntil = performance.now() + 250
+  }
+  pointerState = null
+}
+
+function onNodeUp(_event: PointerEvent, node: any) {
+  const state = pointerState
+  if (state?.mode === 'node' && !state.moved) {
+    // pointer capture 后 click 可能落在 SVG 根节点上，不能依赖 @click；
+    // 在 pointerup 且没有拖动时直接打开详情，保证“点一下就有抽屉”。
+    suppressClickUntil = performance.now() + 300
+    openDetail(String(node.id))
+  } else if (state?.moved) {
+    suppressClickUntil = performance.now() + 250
+  }
   pointerState = null
 }
 
