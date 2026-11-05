@@ -35,28 +35,47 @@
       style="display: none"
       @change="onFilesPicked"
     />
-    <!-- ============ 顶部：只保留一行工具条，页面标题和计数由顶栏承载 ============ -->
-    <header class="kbp-head kbp-head--compact">
-      <div class="kbp-head__meta">
-        <span>{{ stats.kbCount }} 个资料夹</span>
-        <span class="kbp-head__dot">·</span>
-        <span>{{ stats.readyCount }} 份可检索</span>
-        <span class="kbp-head__dot">·</span>
-        <span>{{ stats.totalSizeText || '0 B' }}</span>
-      </div>
+    <!-- ============ 顶部：面包屑 + 一级视图 tabs（对齐知识库工作台层级） ============ -->
+    <header class="kbp-head kbp-head--clean">
+      <nav class="kbp-crumbs" aria-label="当前位置">
+        <button type="button" class="kbp-crumbs__root" @click="viewMode = 'list'">我的资料</button>
+        <span class="kbp-crumbs__sep">/</span>
+        <span class="kbp-crumbs__current">{{ activeKb?.name || '全部资料' }}</span>
+        <template v-if="viewMode !== 'list'">
+          <span class="kbp-crumbs__sep">/</span>
+          <span class="kbp-crumbs__leaf">{{ viewModeLabel }}</span>
+        </template>
+      </nav>
       <div class="kbp-head__actions">
+        <span class="kbp-head__meta">
+          {{ stats.kbCount }} 个资料夹
+          <i>·</i>
+          {{ stats.readyCount }} 份可检索
+          <i>·</i>
+          {{ stats.totalSizeText || '0 B' }}
+        </span>
         <el-button size="small" text class="kbp-receive-share" @click="receiveDialogVisible = true">
           <el-icon><Download /></el-icon>
           获取资料分享
         </el-button>
-        <el-radio-group v-model="viewMode" size="small" class="kbp-view-switch">
-          <el-radio-button value="list">资料夹</el-radio-button>
-          <el-radio-button value="shelf">书架</el-radio-button>
-          <el-radio-button value="gallery">画廊</el-radio-button>
-          <el-radio-button value="map">知识地图</el-radio-button>
-        </el-radio-group>
       </div>
     </header>
+
+    <nav class="kbp-tabs" role="tablist" aria-label="资料视图">
+      <button
+        v-for="tab in workspaceTabs"
+        :key="tab.key"
+        type="button"
+        class="kbp-tab"
+        :class="{ 'is-active': viewMode === tab.key }"
+        role="tab"
+        :aria-selected="viewMode === tab.key"
+        @click="viewMode = tab.key"
+      >
+        <OsIcon :name="tab.icon" :size="15" />
+        <span>{{ tab.label }}</span>
+      </button>
+    </nav>
 
     <!-- 智能整理：即使关闭预览弹窗，后台进度也要可见、可再次打开 -->
     <div v-if="organizeTask.active" class="kbp-reprocess kbp-reprocess--organize">
@@ -1080,6 +1099,15 @@ function htmlToEditorMarkdown(html: string): string {
 
 const editorMarkdown = computed(() => htmlToEditorMarkdown(editorHtml.value))
 const viewMode = ref<'list' | 'shelf' | 'gallery' | 'map'>('list')
+const workspaceTabs = [
+  { key: 'list' as const, label: '资料夹', icon: 'folder' },
+  { key: 'shelf' as const, label: '书架', icon: 'book-open' },
+  { key: 'gallery' as const, label: '画廊', icon: 'layout-grid' },
+  { key: 'map' as const, label: '知识地图', icon: 'activity' }
+]
+const viewModeLabel = computed(
+  () => workspaceTabs.find((tab) => tab.key === viewMode.value)?.label || '资料夹'
+)
 const standaloneImages = ref<any[]>([])
 const assetUsage = ref<Record<string, number>>({})
 
@@ -3067,44 +3095,133 @@ onBeforeUnmount(() => {
 
 <style scoped lang="scss">
 .kb-page {
-  max-width: 1180px;
+  max-width: 1360px;
   margin: 0 auto;
-  padding: 28px 24px 60px;
+  padding: 20px 24px 60px;
 }
 
-/* ---------- 头部 ---------- */
+/* ---------- 头部：面包屑 + 工作台 tabs ---------- */
 .kbp-head {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 24px;
-  margin-bottom: 22px;
+  margin-bottom: 8px;
 }
 
-.kbp-head--compact {
-  align-items: center;
-  margin-bottom: 14px;
+.kbp-head--clean {
   padding: 0 2px;
 }
 
-.kbp-head__meta {
+.kbp-crumbs {
   display: flex;
+  min-width: 0;
   align-items: center;
-  flex-wrap: wrap;
   gap: 7px;
-  color: var(--os-text-3, #6b7280);
-  font-size: 12.5px;
+  color: #8a91a0;
+  font-size: 12px;
 }
 
-.kbp-head__dot {
+.kbp-crumbs__root {
+  overflow: hidden;
+  max-width: 140px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #6b7280;
+  cursor: pointer;
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kbp-crumbs__root:hover {
+  color: #4f6bed;
+}
+
+.kbp-crumbs__sep {
+  color: #c4c9d4;
+}
+
+.kbp-crumbs__current {
+  overflow: hidden;
+  max-width: 260px;
+  color: #374151;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kbp-crumbs__leaf {
+  color: #4f6bed;
+  font-weight: 600;
+}
+
+.kbp-head__meta {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: #9aa1af;
+  font-size: 11px;
+}
+
+.kbp-head__meta i {
   color: #d1d5db;
+  font-style: normal;
 }
 
 .kbp-head__actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   flex: none;
+}
+
+.kbp-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 0 18px;
+  padding: 0 2px;
+  border-bottom: 1px solid #e9ecf2;
+}
+
+.kbp-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 12px 10px;
+  border: 0;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: #7d8596;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.kbp-tab:hover {
+  background: #f6f8fc;
+  color: #374151;
+}
+
+.kbp-tab.is-active {
+  color: #4f6bed;
+  font-weight: 600;
+}
+
+.kbp-tab.is-active::after {
+  position: absolute;
+  right: 9px;
+  bottom: -1px;
+  left: 9px;
+  height: 2px;
+  border-radius: 2px;
+  background: #4f6bed;
+  content: '';
 }
 
 .kbp-receive-share {

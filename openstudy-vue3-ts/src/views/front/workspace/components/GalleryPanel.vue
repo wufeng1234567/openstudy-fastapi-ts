@@ -1,67 +1,41 @@
 <template>
   <section class="gallery-page">
-    <header class="gallery-hero">
-      <div class="gallery-hero__main">
-        <div class="gallery-kicker">
-          <span class="gallery-kicker__dot"></span>
-          资料知识网络 · 0.4.0 · 画廊
-        </div>
-        <h2>把每一张图，变成找得到、说得清、用得上的资料资产</h2>
-        <p>
-          搜索图片描述与 OCR，追到来源章节；补一次描述，题目、笔记和知识地图都能复用。
-        </p>
-      </div>
-      <div class="gallery-hero__stats">
-        <div class="gallery-stat">
-          <span>图片资产</span>
-          <strong>{{ stats.total }}</strong>
-        </div>
-        <div class="gallery-stat is-good">
-          <span>已有描述</span>
-          <strong>{{ stats.described }}</strong>
-        </div>
-        <div class="gallery-stat is-warn">
-          <span>待补描述</span>
-          <strong>{{ stats.pending }}</strong>
-        </div>
-        <div class="gallery-stat">
-          <span>已使用</span>
-          <strong>{{ stats.used }}</strong>
-        </div>
-      </div>
-    </header>
-
     <div class="gallery-toolbar">
-      <div class="gallery-toolbar__row">
-        <el-input
-          v-model="query"
-          class="gallery-search"
-          clearable
-          placeholder="搜图片描述、OCR、文件名或来源资料…"
-          :prefix-icon="Search"
-          @input="onQueryInput"
-        />
-        <el-radio-group v-model="scope" size="small" @change="reload">
-          <el-radio-button value="current">当前资料夹</el-radio-button>
-          <el-radio-button value="all">全部资料</el-radio-button>
-        </el-radio-group>
-        <el-select v-model="statusFilter" size="small" class="gallery-status" @change="reload">
-          <el-option label="全部状态" value="all" />
-          <el-option label="已有描述" value="done" />
-          <el-option label="待补描述" value="pending" />
-          <el-option label="生成失败" value="failed" />
-        </el-select>
-        <el-button
-          class="gallery-describe-btn"
-          :loading="describing"
-          :disabled="!pendingKeys.length"
-          @click="describePending"
-        >
-          <el-icon><MagicStick /></el-icon>
-          {{ pendingKeys.length ? `补全未描述（${Math.min(pendingKeys.length, 40)}）` : '图片已描述' }}
-        </el-button>
+      <div class="gallery-toolbar__head">
+        <div class="gallery-summary">
+          <span class="gallery-summary__title">{{ scope === 'current' ? (activeKbName || '当前资料夹') : '全部资料' }}</span>
+          <span class="gallery-summary__meta">已描述 {{ stats.described }} · 待补 {{ stats.pending }} · 已使用 {{ stats.used }}</span>
+        </div>
+        <div class="gallery-toolbar__tools">
+          <el-input
+            v-model="query"
+            class="gallery-search"
+            clearable
+            placeholder="搜索图片描述或文字…"
+            :prefix-icon="Search"
+            @input="onQueryInput"
+          />
+          <el-button
+            class="gallery-describe-btn"
+            :loading="describing"
+            :disabled="!pendingKeys.length"
+            @click="describePending"
+          >
+            <el-icon><MagicStick /></el-icon>
+            {{ pendingKeys.length ? `补全描述（${Math.min(pendingKeys.length, 40)}）` : '图片已描述' }}
+          </el-button>
+        </div>
       </div>
-      <div class="gallery-source-tabs">
+      <div class="gallery-toolbar__filters">
+        <div class="gallery-scope-tabs">
+          <button type="button" :class="{ 'is-active': scope === 'current' }" @click="setScope('current')">
+            当前资料夹
+          </button>
+          <button type="button" :class="{ 'is-active': scope === 'all' }" @click="setScope('all')">
+            全部资料
+          </button>
+        </div>
+        <span class="gallery-toolbar__divider"></span>
         <button
           v-for="item in sources"
           :key="item.key"
@@ -73,9 +47,7 @@
           {{ item.label }}
           <span>{{ item.count }}</span>
         </button>
-        <span class="gallery-toolbar__hint">
-          描述由视觉模型生成，只在你点击时运行；不会上传前偷偷消耗额度。
-        </span>
+        <span class="gallery-toolbar__hint">描述只在点击时生成，不提前消耗额度</span>
       </div>
     </div>
 
@@ -101,10 +73,6 @@
               <div class="gallery-card__img-empty">原图暂不可用</div>
             </template>
           </el-image>
-          <span class="gallery-kind">{{ kindLabel(item.kind) }}</span>
-          <span class="gallery-status" :class="`is-${item.descriptionStatus}`">
-            {{ statusLabel(item.descriptionStatus) }}
-          </span>
           <div class="gallery-card__hover">
             <span>查看详情</span>
           </div>
@@ -118,9 +86,8 @@
             <span v-if="item.sectionTitle" class="gallery-card__section">{{ item.sectionTitle }}</span>
           </div>
           <div class="gallery-card__foot">
-            <span>{{ item.usedCount ? `已用于 ${item.usedCount} 处` : '尚未被使用' }}</span>
-            <span v-if="item.referenceCount">{{ item.referenceCount }} 条引用</span>
-            <span v-else-if="item.ocrText">含 OCR</span>
+            <span class="gallery-card__state" :class="`is-${item.descriptionStatus}`">{{ statusLabel(item.descriptionStatus) }}</span>
+            <span>{{ item.usedCount ? `已用于 ${item.usedCount} 处` : item.referenceCount ? `${item.referenceCount} 条引用` : item.ocrText ? '含 OCR' : '未使用' }}</span>
           </div>
         </div>
       </article>
@@ -129,7 +96,7 @@
     <div v-else class="gallery-empty">
       <div class="gallery-empty__art"><el-icon><Picture /></el-icon></div>
       <h3>{{ hasFilter ? '没有匹配的图片' : '画廊还没有图片' }}</h3>
-      <p>{{ hasFilter ? '换个关键词，或把状态切回「全部状态」。' : '上传带图片的课件、真题，或直接在对话里贴图，这里会自动汇总。' }}</p>
+      <p>{{ hasFilter ? '换个关键词，或切回「全部图片」。' : '上传带图片的课件、真题，或直接在对话里贴图，这里会自动汇总。' }}</p>
       <el-button v-if="hasFilter" plain @click="clearFilters">清空筛选</el-button>
       <el-button v-else text @click="emit('back')">回到资料夹上传</el-button>
     </div>
@@ -251,7 +218,6 @@ const stats = reactive({ total: 0, described: 0, pending: 0, failed: 0, used: 0 
 const query = ref('')
 const scope = ref<'current' | 'all'>('current')
 const sourceFilter = ref<'all' | 'document' | 'chat'>('all')
-const statusFilter = ref<'all' | 'pending' | 'processing' | 'done' | 'failed'>('all')
 const describing = ref(false)
 const detailVisible = ref(false)
 const detailLoading = ref(false)
@@ -264,9 +230,7 @@ const pendingKeys = computed(() =>
     .filter((item) => item.descriptionStatus === 'pending' || item.descriptionStatus === 'failed')
     .map((item) => item.assetKey)
 )
-const hasFilter = computed(
-  () => !!query.value.trim() || sourceFilter.value !== 'all' || statusFilter.value !== 'all'
-)
+const hasFilter = computed(() => !!query.value.trim() || sourceFilter.value !== 'all')
 
 function displayUrl(url: string) {
   const value = String(url || '').trim()
@@ -320,7 +284,7 @@ async function reload() {
       scope: scope.value,
       kbId: scope.value === 'current' ? props.activeKbId : undefined,
       source: sourceFilter.value,
-      status: statusFilter.value,
+      status: 'all',
       q: query.value.trim(),
       limit: 300
     })
@@ -341,6 +305,11 @@ function onQueryInput() {
   queryTimer = window.setTimeout(reload, 260)
 }
 
+function setScope(next: 'current' | 'all') {
+  scope.value = next
+  reload()
+}
+
 function setSource(source: 'all' | 'document' | 'chat') {
   sourceFilter.value = source
   reload()
@@ -349,7 +318,6 @@ function setSource(source: 'all' | 'document' | 'chat') {
 function clearFilters() {
   query.value = ''
   sourceFilter.value = 'all'
-  statusFilter.value = 'all'
   reload()
 }
 
@@ -479,37 +447,6 @@ onMounted(reload)
   padding: 4px 2px 10px;
 }
 
-.gallery-hero {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 24px 26px 22px;
-  border: 1px solid rgba(79, 107, 237, 0.12);
-  border-radius: 16px;
-  background:
-    radial-gradient(circle at 8% 10%, rgba(79, 107, 237, 0.08), transparent 36%),
-    linear-gradient(135deg, #fbfcff 0%, #f6f8fd 58%, #f8fbfb 100%);
-}
-
-.gallery-hero__main h2 {
-  max-width: 720px;
-  margin: 8px 0 8px;
-  color: #1f2937;
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: -0.3px;
-  line-height: 1.35;
-}
-
-.gallery-hero__main p {
-  max-width: 720px;
-  margin: 0;
-  color: #6b7280;
-  font-size: 13px;
-  line-height: 1.7;
-}
-
 .gallery-kicker {
   display: inline-flex;
   align-items: center;
@@ -528,84 +465,110 @@ onMounted(reload)
   box-shadow: 0 0 0 4px rgba(79, 107, 237, 0.1);
 }
 
-.gallery-hero__stats {
-  display: flex;
-  flex: none;
-  gap: 8px;
-}
-
-.gallery-stat {
-  min-width: 76px;
-  padding: 10px 12px;
-  border: 1px solid rgba(15, 23, 42, 0.06);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.72);
-}
-
-.gallery-stat span {
-  display: block;
-  color: #8a91a0;
-  font-size: 10px;
-  letter-spacing: 0.04em;
-}
-
-.gallery-stat strong {
-  display: block;
-  margin-top: 5px;
-  color: #1f2937;
-  font-size: 21px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.gallery-stat.is-good strong {
-  color: #2f9e8f;
-}
-
-.gallery-stat.is-warn strong {
-  color: #c47a55;
-}
-
 .gallery-toolbar {
   display: flex;
   flex-direction: column;
-  gap: 9px;
-  padding: 13px 15px;
-  border: 1px solid var(--os-border, #e9ecf2);
-  border-radius: 12px;
-  background: #fff;
+  gap: 11px;
+  padding: 2px 2px 15px;
 }
 
-.gallery-toolbar__row {
+.gallery-toolbar__head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.gallery-summary {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
   gap: 10px;
 }
 
+.gallery-summary__title {
+  overflow: hidden;
+  max-width: 260px;
+  color: #1f2937;
+  font-size: 18px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gallery-summary__meta {
+  overflow: hidden;
+  color: #a0a6b2;
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gallery-toolbar__tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
 .gallery-search {
-  width: 320px;
+  width: 290px;
 }
 
 .gallery-search :deep(.el-input__wrapper) {
-  border-radius: 8px;
+  border-radius: 7px;
   box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08) inset;
 }
 
-.gallery-status {
-  width: 108px;
-}
-
 .gallery-describe-btn {
-  margin-left: auto;
   border-color: rgba(79, 107, 237, 0.25);
   color: #4f6bed;
   background: #f7f9ff;
 }
 
-.gallery-source-tabs {
+.gallery-toolbar__filters {
   display: flex;
   align-items: center;
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.gallery-scope-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid #e8ebf2;
+  border-radius: 7px;
+  background: #f7f9fc;
+}
+
+.gallery-scope-tabs button {
+  padding: 4px 9px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #8a91a0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10.5px;
+}
+
+.gallery-scope-tabs button:hover {
+  color: #4b5563;
+}
+
+.gallery-scope-tabs button.is-active {
+  color: #4f6bed;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(23, 32, 51, 0.08);
+  font-weight: 600;
+}
+
+.gallery-toolbar__divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 5px;
+  background: #e9ecf2;
 }
 
 .gallery-source-tab {
@@ -648,14 +611,16 @@ onMounted(reload)
 }
 
 .gallery-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(218px, 1fr));
-  gap: 14px;
+  columns: 252px;
+  column-gap: 14px;
 }
 
 .gallery-card {
-  display: flex;
+  display: inline-flex;
+  width: 100%;
+  margin: 0 0 14px;
   flex-direction: column;
+  break-inside: avoid;
   overflow: hidden;
   border: 1px solid #e9ecf2;
   border-radius: 12px;
@@ -674,20 +639,23 @@ onMounted(reload)
 
 .gallery-card__media {
   position: relative;
-  aspect-ratio: 4 / 3;
+  min-height: 100px;
   overflow: hidden;
   background: #f3f5f9;
+  line-height: 0;
 }
 
 .gallery-card__media :deep(.el-image) {
-  width: 100%;
-  height: 100%;
   display: block;
+  width: 100%;
+  height: auto;
 }
 
 .gallery-card__media :deep(img) {
+  display: block;
   width: 100%;
-  height: 100%;
+  height: auto;
+  max-height: 360px;
   object-fit: cover;
   transition: transform 0.35s ease;
 }
@@ -815,22 +783,76 @@ onMounted(reload)
 
 .gallery-card__foot {
   display: flex;
+  align-items: center;
   justify-content: space-between;
+  gap: 8px;
   margin-top: auto;
   color: #a0a6b2;
   font-size: 10px;
 }
 
+.gallery-card__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #9aa1af;
+}
+
+.gallery-card__state::before {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #c8cedb;
+  content: '';
+}
+
+.gallery-card__state.is-done {
+  color: #2f9e8f;
+}
+
+.gallery-card__state.is-done::before {
+  background: #2f9e8f;
+}
+
+.gallery-card__state.is-pending {
+  color: #b78b2a;
+}
+
+.gallery-card__state.is-pending::before {
+  background: #c99a3d;
+}
+
+.gallery-card__state.is-failed {
+  color: #c45656;
+}
+
+.gallery-card__state.is-failed::before {
+  background: #c45656;
+}
+
 .gallery-grid--loading {
-  grid-template-columns: repeat(auto-fill, minmax(218px, 1fr));
+  columns: 252px;
+  column-gap: 14px;
 }
 
 .gallery-skeleton {
-  aspect-ratio: 4 / 3.72;
+  display: inline-block;
+  width: 100%;
+  height: 210px;
+  margin-bottom: 14px;
+  break-inside: avoid;
   border-radius: 12px;
   background: linear-gradient(90deg, #f1f3f7 25%, #f8f9fb 37%, #f1f3f7 63%);
   background-size: 400% 100%;
   animation: gallery-shimmer 1.25s ease infinite;
+}
+
+.gallery-skeleton:nth-child(3n + 1) {
+  height: 290px;
+}
+
+.gallery-skeleton:nth-child(3n + 2) {
+  height: 170px;
 }
 
 @keyframes gallery-shimmer {
@@ -1088,32 +1110,24 @@ onMounted(reload)
   height: 500px;
 }
 
-@media (max-width: 1180px) {
-  .gallery-hero {
+@media (max-width: 860px) {
+  .gallery-toolbar__head {
     flex-direction: column;
     align-items: flex-start;
+    gap: 10px;
   }
 
-  .gallery-hero__stats {
+  .gallery-toolbar__tools {
     width: 100%;
-  }
-
-  .gallery-stat {
-    flex: 1;
-  }
-}
-
-@media (max-width: 840px) {
-  .gallery-toolbar__row {
-    flex-wrap: wrap;
   }
 
   .gallery-search {
-    width: 100%;
+    flex: 1;
+    width: auto;
   }
 
-  .gallery-describe-btn {
-    margin-left: 0;
+  .gallery-summary__meta {
+    display: none;
   }
 
   .gallery-toolbar__hint {
