@@ -865,7 +865,7 @@ import { getWorkspaceOverview, uploadToWorkspace, searchWorkspace, searchWorkspa
 import OrganizeDiffDialog from './components/OrganizeDiffDialog.vue'
 import DocumentClinicDialog from './components/DocumentClinicDialog.vue'
 import GalleryPanel from './components/GalleryPanel.vue'
-import KnowledgeGraphPanel from './components/KnowledgeGraphPanel.vue'
+import KnowledgeGraphPanel from './components/KnowledgeGraphSvgPanel.vue'
 import VersionHistoryDialog from './components/VersionHistoryDialog.vue'
 import ShareKnowledgeDialog from './components/ShareKnowledgeDialog.vue'
 import ReceiveKnowledgeDialog from './components/ReceiveKnowledgeDialog.vue'
