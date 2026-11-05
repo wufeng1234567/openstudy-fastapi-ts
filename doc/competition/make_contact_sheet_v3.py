@@ -1,7 +1,7 @@
 import os, re
 from PIL import Image, ImageDraw, ImageFont
 
-src = r'D:\OpenStudy\apps\fastapi-v2\doc\competition\_preview_v3'
+src = r'D:\OpenStudy\apps\fastapi-v2\doc\competition\_preview_041'
 files = [f for f in os.listdir(src) if f.lower().endswith('.png')]
 def num(f):
     m = re.search(r'(\d+)', f)
@@ -29,6 +29,6 @@ for i, f in enumerate(files[:10]):
     label = f'P{i+1}'
     d.text((x + 2, y + TH + 6), label, font=font, fill='#0B2B22')
 
-out = r'D:\OpenStudy\apps\fastapi-v2\doc\competition\OpenStudy-V3-预览.png'
+out = r'D:\OpenStudy\apps\fastapi-v2\doc\competition\OpenStudy-0.4.1-预览.png'
 sheet.save(out, 'PNG')
 print('saved', out, sheet.size, len(files))
