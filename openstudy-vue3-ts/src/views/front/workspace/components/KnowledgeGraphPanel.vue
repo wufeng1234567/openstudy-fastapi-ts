@@ -163,6 +163,44 @@ const visibleGraph = computed(() => {
   }
 })
 
+const hubIds = computed(() => {
+  const { nodes, edges } = visibleGraph.value
+  const byId = new Map(nodes.map((node: any) => [String(node.id), node]))
+  const adjacency = new Map<string, string[]>()
+  for (const node of nodes) adjacency.set(String(node.id), [])
+  for (const edge of edges) {
+    adjacency.get(String(edge.source))?.push(String(edge.target))
+    adjacency.get(String(edge.target))?.push(String(edge.source))
+  }
+  const visited = new Set<string>()
+  const hubs = new Set<string>()
+  for (const node of nodes) {
+    const start = String(node.id)
+    if (visited.has(start)) continue
+    const component: string[] = []
+    const stack = [start]
+    visited.add(start)
+    while (stack.length) {
+      const id = stack.pop()!
+      component.push(id)
+      for (const next of adjacency.get(id) || []) {
+        if (!visited.has(next)) {
+          visited.add(next)
+          stack.push(next)
+        }
+      }
+    }
+    if (component.length > 1) {
+      const hub = component
+        .map((id) => byId.get(id))
+        .filter(Boolean)
+        .sort((a: any, b: any) => Number(b.degree || 0) - Number(a.degree || 0))[0]
+      if (hub) hubs.add(String(hub.id))
+    }
+  }
+  return hubs
+})
+
 function typeColor(type: string) {
   return TYPE_META.find((item) => item.type === type)?.color || '#9AA1AF'
 }
@@ -171,10 +209,6 @@ function typeBg(type: string) {
 }
 function typeIndex(type: string) {
   return Math.max(0, TYPE_META.findIndex((item) => item.type === type))
-}
-
-function nodesCountForLabels() {
-  return visibleGraph.value.nodes.length
 }
 
 function buildNode(node: any) {
@@ -194,8 +228,8 @@ function buildNode(node: any) {
       shadowBlur: 8
     },
     label: {
-      // 节点多时只给枢纽实体常驻标签，其余 hover 时显示，避免标签盖住关系线。
-      show: nodesCountForLabels() <= 30 || degree >= 2,
+      // 默认只有每个簇的枢纽实体带标签，其余节点点开右侧详情再看。
+      show: hubIds.value.has(String(node.id)),
       position: 'right',
       distance: 6,
       color: '#4b5563',
@@ -220,21 +254,6 @@ function render() {
   const { nodes, edges } = visibleGraph.value
   const option = {
     backgroundColor: 'transparent',
-    tooltip: {
-      trigger: 'item',
-      backgroundColor: 'rgba(23,32,51,.94)',
-      borderWidth: 0,
-      padding: [9, 12],
-      textStyle: { color: '#fff', fontSize: 11 },
-      formatter: (params: any) => {
-        if (params.dataType === 'edge') {
-          const data = params.data || {}
-          return `<b>${data.type || '关系'}</b><br/><span style="opacity:.72">强度 ${data.strength || 5}</span>${data.description ? `<br/>${data.description}` : ''}`
-        }
-        const node = params.data?.rawNode
-        return node ? `<b>${node.name}</b><br/><span style="opacity:.72">${node.type} · 出现 ${node.mentionCount} 次</span>${node.description ? `<br/>${node.description}` : ''}` : ''
-      }
-    },
     series: [{
       type: 'graph',
       layout: 'force',
@@ -269,8 +288,7 @@ function render() {
       })),
       emphasis: {
         focus: 'adjacency',
-        lineStyle: { width: 2, opacity: 1 },
-        label: { show: true, color: '#172033', fontWeight: 600 }
+        lineStyle: { width: 2, opacity: 1 }
       }
     }]
   }
