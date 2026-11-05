@@ -322,7 +322,7 @@
       `anchor-selector` 指向输入卡片 —— 组件会量它的顶边，把按钮放在它上方；
       `scroll-container` 指向消息列表 —— 聊天页的滚动发生在这里而不是 window。
     -->
-    <ScrollButton :scroll-container="messagesRef" anchor-selector=".chat-input-area"
+    <ScrollButton :scroll-container="messagesRef" anchor-selector=".chat-input-area .input-box"
       :bottom="scrollButtonBottom" :right="16" />
     <!-- 输入区（底部组件：模式切换 / 附件 / 放大输入 / 工具栏 / 发送） -->
     <ChatInputArea v-model="inputContent" :mode="mode" :show-mode-switch="showModeSwitch"
