@@ -625,3 +625,12 @@ export function searchWorkspace(query: string, limit = 5, kbIds?: number[]) {
     timeout: 120000
   })
 }
+
+/** 跨资料夹级联搜索：资料夹名 + 内部文档名/备注/正文一起命中 */
+export function searchWorkspaceCascade(query: string, folderLimit = 50, documentLimit = 20) {
+  return request({
+    url: '/rag/workspace/cascade-search',
+    method: 'get',
+    params: { q: query, folderLimit, documentLimit }
+  }) as unknown as Promise<{ code: number; msg?: string; data: any }>
+}

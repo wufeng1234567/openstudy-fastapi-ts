@@ -38,48 +38,49 @@
     <!-- 路由导航属于最顶层：通过 Teleport 注入布局顶栏，而不是留在内容区 -->
     <Teleport v-if="canTeleport" to="#os-workspace-nav">
       <div class="kbp-workspace-nav">
-        <header class="kbp-head kbp-head--clean">
+        <div class="kbp-nav-row">
           <nav class="kbp-crumbs" aria-label="当前位置">
             <button type="button" class="kbp-crumbs__root" @click="viewMode = 'list'">我的资料</button>
             <span class="kbp-crumbs__sep">/</span>
             <span class="kbp-crumbs__current">{{ activeKb?.name || '全部资料' }}</span>
-            <template v-if="viewMode !== 'list'">
-              <span class="kbp-crumbs__sep">/</span>
-              <span class="kbp-crumbs__leaf">{{ viewModeLabel }}</span>
-            </template>
           </nav>
-          <div class="kbp-head__actions">
-            <span class="kbp-head__meta">
-              {{ stats.kbCount }} 个资料夹
-              <i>·</i>
-              {{ stats.readyCount }} 份可检索
-              <i>·</i>
-              {{ stats.totalSizeText || '0 B' }}
-            </span>
-            <el-button size="small" text class="kbp-receive-share" @click="receiveDialogVisible = true">
-              <el-icon><Download /></el-icon>
-              获取资料分享
-            </el-button>
-          </div>
-        </header>
 
-        <nav class="kbp-tabs" role="tablist" aria-label="资料视图">
-          <button
-            v-for="tab in workspaceTabs"
-            :key="tab.key"
-            type="button"
-            class="kbp-tab"
-            :class="{ 'is-active': viewMode === tab.key }"
-            role="tab"
-            :aria-selected="viewMode === tab.key"
-            @click="viewMode = tab.key"
-          >
-            <OsIcon :name="tab.icon" :size="15" />
-            <span>{{ tab.label }}</span>
-          </button>
-        </nav>
+          <nav class="kbp-tabs" role="tablist" aria-label="资料视图">
+            <button
+              v-for="tab in workspaceTabs"
+              :key="tab.key"
+              type="button"
+              class="kbp-tab"
+              :class="{ 'is-active': viewMode === tab.key }"
+              role="tab"
+              :aria-selected="viewMode === tab.key"
+              @click="viewMode = tab.key"
+            >
+              <OsIcon :name="tab.icon" :size="15" />
+              <span>{{ tab.label }}</span>
+            </button>
+          </nav>
+        </div>
       </div>
     </Teleport>
+
+    <!-- 第二层：当前视图的全局计数 + 全局搜索；不再重复堆统计信息 -->
+    <div class="kbp-context-bar">
+      <div class="kbp-context-count">{{ workspaceCountLabel }}</div>
+      <div class="kbp-context-tools">
+        <el-input
+          v-model="workspaceSearch"
+          class="kbp-global-search"
+          clearable
+          :placeholder="workspaceSearchPlaceholder"
+          :prefix-icon="Search"
+        />
+        <el-button size="small" text class="kbp-receive-share" @click="receiveDialogVisible = true">
+          <el-icon><Download /></el-icon>
+          获取资料分享
+        </el-button>
+      </div>
+    </div>
 
     <!-- 智能整理：即使关闭预览弹窗，后台进度也要可见、可再次打开 -->
     <div v-if="organizeTask.active" class="kbp-reprocess kbp-reprocess--organize">
@@ -112,6 +113,64 @@
       </div>
     </div>
 
+    <!-- 跨资料夹级联搜索：资料夹名命中与内部文档名/备注/正文命中同时呈现 -->
+    <section v-if="isCascadeMode" class="kbp-cascade" v-loading="cascadeLoading">
+      <header class="kbp-cascade__head">
+        <div>
+          <div class="kbp-cascade__kicker">级联搜索 · 资料夹 + 内部文档</div>
+          <h2>“{{ workspaceSearch }}”的搜索结果</h2>
+        </div>
+        <div class="kbp-cascade__summary">
+          {{ cascadeResults.totalFolders }} 个资料夹 · {{ cascadeResults.totalDocs }} 份资料命中
+        </div>
+      </header>
+
+      <div v-if="cascadeResults.folders?.length" class="kbp-cascade__folders">
+        <article v-for="folder in cascadeResults.folders" :key="folder.kbId" class="kbp-cascade-folder">
+          <button type="button" class="kbp-cascade-folder__head" @click="openCascadeFolder(folder)">
+            <span class="kbp-cascade-folder__icon"><OsIcon name="folder" :size="17" /></span>
+            <span class="kbp-cascade-folder__main">
+              <span class="kbp-cascade-folder__name" v-html="highlightQuery(folder.name, cascadeResults.query)"></span>
+              <span v-if="folder.matchedByName" class="kbp-cascade-folder__tag">资料夹名称命中</span>
+            </span>
+            <span class="kbp-cascade-folder__meta">
+              {{ folder.docCount }} 份资料
+              <template v-if="folder.matchedDocCount">· {{ folder.matchedDocCount }} 份文档命中</template>
+            </span>
+            <OsIcon name="chevron-right" :size="15" />
+          </button>
+
+          <div v-if="folder.documents?.length" class="kbp-cascade-docs">
+            <button
+              v-for="doc in folder.documents"
+              :key="doc.docId"
+              type="button"
+              class="kbp-cascade-doc"
+              @click="openCascadeDocument(doc)"
+            >
+              <span class="kbp-cascade-doc__icon"><OsIcon name="file-text" :size="15" /></span>
+              <span class="kbp-cascade-doc__main">
+                <span class="kbp-cascade-doc__top">
+                  <b v-html="highlightQuery(doc.fileName, cascadeResults.query)"></b>
+                  <span v-for="field in doc.matchedBy" :key="field" class="kbp-cascade-doc__hit">{{ field }}命中</span>
+                </span>
+                <span v-if="doc.snippet" class="kbp-cascade-doc__snippet" v-html="highlightQuery(doc.snippet, cascadeResults.query)"></span>
+                <span v-else-if="doc.note" class="kbp-cascade-doc__snippet">{{ doc.note }}</span>
+              </span>
+              <span class="kbp-cascade-doc__meta">{{ doc.sizeText }} · {{ doc.createTime }}</span>
+            </button>
+          </div>
+          <div v-else class="kbp-cascade-folder__hint">资料夹名称命中，内部暂无文档正文命中。</div>
+        </article>
+      </div>
+
+      <div v-else-if="!cascadeLoading" class="kbp-cascade__empty">
+        <div class="kbp-empty__art"><OsIcon name="search" :size="28" /></div>
+        <h3>没有找到“{{ workspaceSearch }}”</h3>
+        <p>可以换个关键词，资料夹名称和文档正文会一起搜索。</p>
+      </div>
+    </section>
+
     <!--
       ⚠️ 一个知识库都没有时**不渲染两栏区**（v-if）。
          否则会出现「左边：还没有知识库 / 右边：左边选一个知识库」这种
@@ -120,7 +179,7 @@
          注意：默认库是自动创建的，所以这个分支实际上只在接口返回异常时出现，
          但兜底必须画对。
     -->
-    <div v-if="viewMode === 'list' && (loading || (kbs.length && !loadFailed))" class="kbp-body">
+    <div v-if="viewMode === 'list' && !isCascadeMode && (loading || (kbs.length && !loadFailed))" class="kbp-body">
       <!-- ============ 左：知识库列表 ============ -->
       <aside class="kbp-side">
         <div class="kbp-side__head">
@@ -266,7 +325,7 @@
             <div v-if="uploadTip" class="kbp-tip">{{ uploadTip }}</div>
 
             <div class="kbp-docs" v-loading="docsLoading">
-              <div v-for="doc in activeKb.files" :key="doc.docId" class="kbp-doc"
+              <div v-for="doc in visibleFiles" :key="doc.docId" class="kbp-doc"
                 :data-doc-id="doc.docId"
                 :class="{ 'is-jump-target': jumpTargetDocId === Number(doc.docId) }">
                 <div class="kbp-doc__check">
@@ -333,13 +392,13 @@
                 </div>
               </div>
 
-              <div v-if="!docsLoading && !activeKb.files.length" class="kbp-docs__empty">
+              <div v-if="!docsLoading && !visibleFiles.length" class="kbp-docs__empty">
                 <div class="kbp-empty__art">
                   <OsIcon name="inbox" :size="30" />
                 </div>
-                <p class="kbp-empty__title">这个资料夹还是空的</p>
+                <p class="kbp-empty__title">{{ workspaceSearch ? '没有匹配的资料' : '这个资料夹还是空的' }}</p>
                 <span class="kbp-empty__desc">
-                  把课件、真题、笔记传进来，智能体出题时就能翻到它们
+                  {{ workspaceSearch ? '换个关键词，或清空搜索再看全部资料。' : '把课件、真题、笔记传进来，智能体出题时就能翻到它们' }}
                 </span>
                 <div class="kbp-empty__actions">
                   <el-dropdown trigger="click" :disabled="busy" @command="onUploadCommand">
@@ -367,101 +426,6 @@
             </div>
           </div>
 
-          <!--
-            语义检索（RAG）—— 2026-10-22 重做
-            =================================
-            原来这块是「纯字符串匹配」且写死只搜默认库，在别的库里搜什么都搜不到；
-            而且结果只有文件名，点不了、看不了，用户拿到一句"找到了"就没了。
-
-            现在：
-              · 走后端真正的混合检索（向量 + 全文 + RRF），**默认只搜当前选中的库**；
-              · 每条结果展示一个命中片段，只保留「定位原文」一个动作：
-                进资料刨析后自动滚动并用黄色标记标出用户搜索词所在位置。
-          -->
-          <section v-if="activeKb.files.length" ref="tryPanelRef" class="kbp-try">
-            <div class="kbp-try__head">
-              <span class="kbp-try__title">试试 AI 会怎么找</span>
-              <span class="kbp-try__hint">
-                在「{{ activeKb.name }}」里按意思找，不是只匹配字面
-              </span>
-            </div>
-            <div class="kbp-try__row">
-              <el-input
-                v-model="tryQuery"
-                placeholder="例如：随机事件、二叉树的时间复杂度"
-                clearable
-                @keyup.enter="doTry"
-                @input="onTryInput"
-              />
-              <el-button type="primary" :loading="trying" @click="doTry">找找看</el-button>
-            </div>
-
-            <transition-group v-if="tryHits.length" name="kbp-fade" tag="div" class="kbp-try__result">
-              <!--
-                低置信提示（2026-10-22）
-                ------------------------
-                向量检索**总会**返回 top_k 条，哪怕库里根本没有相关内容。
-                后端用「关键词那一路有没有命中」判断置信度，这里如实告诉用户
-                「这些可能不相关」——而不是让他误以为真的搜到了。
-              -->
-              <div v-if="lowConfidence" class="kbp-try__warn">
-                <OsIcon name="alert" :size="14" />
-                <span>
-                  这些结果可能和你的问题关系不大 —— 这些资料里也许没有相关内容。
-                  可以换个说法，或确认是否选对了资料夹。
-                </span>
-              </div>
-
-              <div
-                v-for="(h, i) in tryPageHits"
-                :key="h.chunkId || `${h.docId}-${i}`"
-                class="kbp-try__hit"
-                :class="{ 'is-best': i === 0 && !lowConfidence }"
-              >
-                <span class="kbp-try__rank">{{ (tryPage - 1) * TRY_PAGE_SIZE + i + 1 }}</span>
-                <div class="kbp-try__file-main">
-                  <div class="kbp-try__file-name-row">
-                    <!--
-                      文件名也高亮：用户搜「数据结构」，命中的那份文件名里就带着这几个字，
-                      不给它标出来反而要去正文里找 —— 而文件名往往是最强的"就是这份"信号。
-                      ⚠️ v-html 的内容由 `highlight()` 生成，**正文先转义再插标记**，
-                         不能反过来（见该函数注释）。
-                    -->
-                    <span class="kbp-try__file-name" v-html="highlight(h.docName || h.fileName || '未命名文档')"></span>
-                    <span v-if="i === 0 && !lowConfidence" class="kbp-try__badge">最匹配</span>
-                  </div>
-                  <div class="kbp-try__file-meta">
-                    <span v-if="h.kbName" class="kbp-try__kb">{{ h.kbName }}</span>
-                    <span>第 {{ Number(h.chunkIndex || 0) + 1 }} 段</span>
-                    <span v-if="h.score != null" class="kbp-try__score">匹配度 {{ Number(h.score).toFixed(3) }}</span>
-                  </div>
-                  <div class="kbp-try__snippet kbp-try__snippet--hit" v-html="highlight(buildHitSnippet(h.content))"></div>
-                </div>
-                <div class="kbp-try__ops">
-                  <button type="button" class="kbp-try__op" @click="openHit(h)">
-                    定位原文
-                  </button>
-                </div>
-              </div>
-              <div v-if="tryHits.length > TRY_PAGE_SIZE" class="kbp-try__pager">
-                <el-pagination
-                  v-model:current-page="tryPage"
-                  :page-size="TRY_PAGE_SIZE"
-                  :total="tryHits.length"
-                  layout="prev, pager, next"
-                  small
-                />
-              </div>
-            </transition-group>
-
-            <div v-else-if="tried" class="kbp-try__empty">
-              <template v-if="tryReason">{{ tryReason }}</template>
-              <template v-else>
-                没找到相关的内容。可以换个说法试试 —— 检索是按意思匹配的，
-                不必和原文用一样的词。
-              </template>
-            </div>
-          </section>
         </template>
 
         <div v-else-if="!loading" class="kbp-main__empty">
@@ -475,16 +439,16 @@
     </div>
 
     <!-- 完整书架视图 -->
-    <section v-else-if="viewMode === 'shelf' && (loading || (kbs.length && !loadFailed))" class="kbp-shelf-page">
+    <section v-else-if="viewMode === 'shelf' && !isCascadeMode && (loading || (kbs.length && !loadFailed))" class="kbp-shelf-page">
       <div class="kbp-shelf-page__head">
         <div>
           <h2>{{ activeKb?.name || '我的资料' }}</h2>
-          <p>{{ activeKb?.files?.length || 0 }} 份资料 · 点击卡片看刨析</p>
+          <p>{{ visibleFiles.length }} 份资料 · 点击卡片看刨析</p>
         </div>
         <el-button size="small" @click="viewMode = 'list'">返回资料夹</el-button>
       </div>
-      <div v-if="activeKb?.files?.length" class="kbp-shelf-grid">
-        <button v-for="doc in activeKb.files" :key="doc.docId" type="button" class="kbp-shelf-card"
+      <div v-if="visibleFiles.length" class="kbp-shelf-grid">
+        <button v-for="doc in visibleFiles" :key="doc.docId" type="button" class="kbp-shelf-card"
           @click="showAnatomy(doc)">
           <div class="kbp-shelf-card__top">
             <OsIcon name="file-text" :size="18" />
@@ -503,8 +467,8 @@
         <div class="kbp-empty__art">
           <OsIcon name="book-open" :size="30" />
         </div>
-        <p class="kbp-empty__title">书架还是空的</p>
-        <span class="kbp-empty__desc">上传课件、真题或笔记后，这里会按资料显示成书架卡片。</span>
+        <p class="kbp-empty__title">{{ workspaceSearch ? '没有匹配的资料' : '书架还是空的' }}</p>
+        <span class="kbp-empty__desc">{{ workspaceSearch ? '换个关键词，或清空搜索再看全部资料。' : '上传课件、真题或笔记后，这里会按资料显示成书架卡片。' }}</span>
         <div class="kbp-empty__actions">
           <button type="button" class="kbp-empty__btn is-primary" :disabled="busy" @click="onPick">
             <OsIcon name="arrow-up" :size="14" />
@@ -519,6 +483,8 @@
       v-else-if="viewMode === 'gallery' && (loading || (kbs.length && !loadFailed))"
       :active-kb-id="activeKbId"
       :active-kb-name="activeKb?.name"
+      v-model:search-query="workspaceSearch"
+      @stats="onGalleryStats"
       @use-image="onGalleryUseImage"
       @locate="onGalleryLocate"
       @back="viewMode = 'list'"
@@ -528,6 +494,8 @@
     <KnowledgeMapPanel
       v-else-if="viewMode === 'map' && (loading || (kbs.length && !loadFailed))"
       :active-kb-id="activeKbId"
+      :search-query="workspaceSearch"
+      @stats="onMapStats"
       @open-doc="onMapOpenDoc"
       @back="viewMode = 'list'"
     />
@@ -871,7 +839,7 @@ import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
 import { marked } from 'marked'
 import TurndownService from 'turndown'
-import { getWorkspaceOverview, uploadToWorkspace, searchWorkspace, listWorkspaceStandaloneImages, getAssetUsageSummary, recordAssetUsage, previewWorkspaceOrganize, getWorkspaceOrganizePlan, getWorkspaceOrganizeRecord, listWorkspaceOrganizePlans, applyWorkspaceOrganize, deleteWorkspaceOrganizeRecord, rollbackWorkspacePlan, setDocumentSearchable, createContentReference } from '@/api/ai/workspace'
+import { getWorkspaceOverview, uploadToWorkspace, searchWorkspace, searchWorkspaceCascade, listWorkspaceStandaloneImages, getAssetUsageSummary, recordAssetUsage, previewWorkspaceOrganize, getWorkspaceOrganizePlan, getWorkspaceOrganizeRecord, listWorkspaceOrganizePlans, applyWorkspaceOrganize, deleteWorkspaceOrganizeRecord, rollbackWorkspacePlan, setDocumentSearchable, createContentReference } from '@/api/ai/workspace'
 import OrganizeDiffDialog from './components/OrganizeDiffDialog.vue'
 import DocumentClinicDialog from './components/DocumentClinicDialog.vue'
 import GalleryPanel from './components/GalleryPanel.vue'
@@ -965,7 +933,7 @@ const activeKb = computed(() => kbs.value.find((k) => k.kbId === activeKbId.valu
 
 /** 左侧资料夹搜索：只过滤展示，不影响当前选中的库。 */
 const filteredKbs = computed(() => {
-  const keyword = folderKeyword.value.trim().toLowerCase()
+  const keyword = (folderKeyword.value || workspaceSearch.value).trim().toLowerCase()
   if (!keyword) return kbs.value
   return kbs.value.filter((kb) => String(kb.name || '').toLowerCase().includes(keyword))
 })
@@ -1104,15 +1072,93 @@ function htmlToEditorMarkdown(html: string): string {
 const editorMarkdown = computed(() => htmlToEditorMarkdown(editorHtml.value))
 const viewMode = ref<'list' | 'shelf' | 'gallery' | 'map'>('list')
 const canTeleport = ref(false)
+const workspaceSearch = ref('')
+const galleryStats = reactive({ total: 0 })
+const mapStats = reactive({ total: 0 })
 const workspaceTabs = [
   { key: 'list' as const, label: '资料夹', icon: 'folder' },
   { key: 'shelf' as const, label: '书架', icon: 'book-open' },
   { key: 'gallery' as const, label: '画廊', icon: 'layout-grid' },
   { key: 'map' as const, label: '知识地图', icon: 'activity' }
 ]
-const viewModeLabel = computed(
-  () => workspaceTabs.find((tab) => tab.key === viewMode.value)?.label || '资料夹'
+const workspaceSearchPlaceholder = computed(() => {
+  if (viewMode.value === 'gallery') return '搜索图片描述或文字…'
+  if (viewMode.value === 'map') return '搜索页面标题或正文…'
+  if (viewMode.value === 'shelf') return '搜索资料…'
+  return '搜索资料夹或资料…'
+})
+const workspaceCountLabel = computed(() => {
+  if (viewMode.value === 'list') return `全部资料夹：共 ${stats.kbCount} 个资料夹`
+  if (viewMode.value === 'shelf') return `全部资料：共 ${stats.docCount} 份资料`
+  if (viewMode.value === 'gallery') return `全部图片：共 ${galleryStats.total} 张`
+  return `全部知识页：共 ${mapStats.total} 个页面`
+})
+const visibleFiles = computed(() => {
+  const files = activeKb.value?.files || []
+  const query = workspaceSearch.value.trim().toLowerCase()
+  if (!query) return files
+  return files.filter((doc: any) =>
+    `${doc.fileName || ''} ${doc.note || ''}`.toLowerCase().includes(query)
+  )
+})
+const isCascadeMode = computed(
+  () => (viewMode.value === 'list' || viewMode.value === 'shelf') && !!workspaceSearch.value.trim()
 )
+const cascadeLoading = ref(false)
+const cascadeResults = ref<any>({ query: '', totalFolders: 0, totalDocs: 0, folders: [] })
+let cascadeTimer: ReturnType<typeof setTimeout> | undefined
+
+function resetCascade() {
+  cascadeResults.value = { query: '', totalFolders: 0, totalDocs: 0, folders: [] }
+}
+
+async function runCascade() {
+  const query = workspaceSearch.value.trim()
+  if (!query || !isCascadeMode.value) {
+    resetCascade()
+    return
+  }
+  cascadeLoading.value = true
+  try {
+    const res = await searchWorkspaceCascade(query, 50, 20)
+    if (res.code === 200) {
+      cascadeResults.value = res.data || { query, totalFolders: 0, totalDocs: 0, folders: [] }
+    } else {
+      ElMessage.error(res.msg || '搜索失败')
+    }
+  } catch (error: any) {
+    ElMessage.error('搜索失败：' + (error?.message || error))
+  } finally {
+    cascadeLoading.value = false
+  }
+}
+
+function scheduleCascade() {
+  window.clearTimeout(cascadeTimer)
+  if (!isCascadeMode.value) {
+    resetCascade()
+    return
+  }
+  cascadeTimer = window.setTimeout(runCascade, 240)
+}
+
+function openCascadeFolder(folder: any) {
+  if (!folder?.kbId) return
+  activeKbId.value = Number(folder.kbId)
+  workspaceSearch.value = ''
+  viewMode.value = 'list'
+}
+
+function openCascadeDocument(doc: any) {
+  if (!doc?.docId) return
+  showAnatomy({ docId: Number(doc.docId), fileName: doc.fileName || '未命名资料' })
+}
+
+watch(workspaceSearch, scheduleCascade)
+watch(viewMode, () => {
+  workspaceSearch.value = ''
+  resetCascade()
+})
 const standaloneImages = ref<any[]>([])
 const assetUsage = ref<Record<string, number>>({})
 
@@ -2205,6 +2251,14 @@ function findDocRecord(docId: number) {
   return fromActive || null
 }
 
+function onGalleryStats(payload: { total?: number }) {
+  galleryStats.total = Number(payload?.total || 0)
+}
+
+function onMapStats(payload: { total?: number }) {
+  mapStats.total = Number(payload?.total || 0)
+}
+
 function onGalleryUseImage(img: any) {
   if (!img) return
   if (img.target === 'question') openQuestionPicker(img)
@@ -3046,6 +3100,21 @@ function highlight(content: string): string {
   }
 }
 
+function highlightQuery(content: string, query: string): string {
+  const escaped = String(content || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+  const term = String(query || '').trim()
+  if (!term) return escaped
+  const pattern = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  try {
+    return escaped.replace(new RegExp(`(${pattern})`, 'gi'), '<mark>$1</mark>')
+  } catch {
+    return escaped
+  }
+}
+
 function cleanMathForSnippet(input: string): string {
   return String(input || '')
     .replace(/\$([^$]+)\$/g, (_, body) => body
@@ -3115,6 +3184,272 @@ onBeforeUnmount(() => {
   width: 100%;
   min-width: 0;
   flex-direction: column;
+  justify-content: center;
+}
+
+.kbp-nav-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 28px;
+}
+
+.kbp-context-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin: 0 2px 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #edf0f5;
+}
+
+.kbp-context-count {
+  flex: none;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.kbp-context-tools {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kbp-global-search {
+  width: 340px;
+}
+
+.kbp-global-search :deep(.el-input__wrapper) {
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08) inset;
+}
+
+.kbp-cascade {
+  padding: 4px 2px 40px;
+}
+
+.kbp-cascade__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 12px;
+}
+
+.kbp-cascade__kicker {
+  margin-bottom: 5px;
+  color: #4f6bed;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.kbp-cascade__head h2 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.kbp-cascade__summary {
+  color: #8a91a0;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.kbp-cascade-folder {
+  overflow: hidden;
+  margin-bottom: 9px;
+  border: 1px solid #e9ecf2;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.kbp-cascade-folder__head {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 13px;
+  border: 0;
+  background: #fbfcfe;
+  color: #596173;
+  cursor: pointer;
+  text-align: left;
+}
+
+.kbp-cascade-folder__head:hover {
+  background: #f5f7fc;
+}
+
+.kbp-cascade-folder__icon {
+  display: flex;
+  width: 27px;
+  height: 27px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  color: #4f6bed;
+  background: #eef2ff;
+}
+
+.kbp-cascade-folder__main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
+.kbp-cascade-folder__name {
+  overflow: hidden;
+  color: #374151;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kbp-cascade-folder__tag {
+  flex: none;
+  padding: 2px 5px;
+  border-radius: 4px;
+  color: #4f6bed;
+  background: #eef2ff;
+  font-size: 9px;
+}
+
+.kbp-cascade-folder__meta {
+  margin-left: auto;
+  color: #9aa1af;
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.kbp-cascade-folder__head > .os-icon:last-child {
+  color: #a0a6b2;
+}
+
+.kbp-cascade-docs {
+  padding: 2px 13px 6px 49px;
+}
+
+.kbp-cascade-doc {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 7px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  text-align: left;
+}
+
+.kbp-cascade-doc:hover {
+  background: #f7f9fc;
+}
+
+.kbp-cascade-doc__icon {
+  flex: none;
+  margin-top: 1px;
+  color: #8ea2d9;
+}
+
+.kbp-cascade-doc__main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.kbp-cascade-doc__top {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.kbp-cascade-doc__top b {
+  overflow: hidden;
+  color: #4b5563;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kbp-cascade-doc__hit {
+  flex: none;
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: #2f9e8f;
+  background: #edf9f6;
+  font-size: 9px;
+}
+
+.kbp-cascade-doc__snippet {
+  overflow: hidden;
+  color: #9aa1af;
+  font-size: 10.5px;
+  line-height: 1.55;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kbp-cascade-doc__snippet :deep(mark),
+.kbp-cascade-folder__name :deep(mark),
+.kbp-cascade-doc__top :deep(mark) {
+  padding: 0 1px;
+  border-radius: 2px;
+  color: #7a4d00;
+  background: #fff0c2;
+}
+
+.kbp-cascade-doc__meta {
+  flex: none;
+  color: #b0b6c1;
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+
+.kbp-cascade-folder__hint {
+  padding: 3px 13px 12px 49px;
+  color: #a0a6b2;
+  font-size: 10px;
+}
+
+.kbp-cascade__empty {
+  display: flex;
+  min-height: 260px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed #dfe4ec;
+  border-radius: 12px;
+  background: #fbfcfe;
+  text-align: center;
+}
+
+.kbp-cascade__empty h3 {
+  margin: 8px 0 4px;
+  color: #4b5563;
+  font-size: 14px;
+}
+
+.kbp-cascade__empty p {
+  margin: 0;
+  color: #9aa1af;
+  font-size: 11px;
 }
 
 .kbp-head {

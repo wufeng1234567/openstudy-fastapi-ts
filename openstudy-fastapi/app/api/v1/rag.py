@@ -2204,6 +2204,29 @@ async def delete_workspace_file(
         return _fail(e)
 
 
+@router.get("/workspace/cascade-search")
+async def cascade_search_workspace(
+    q: str = Query("", max_length=120),
+    folderLimit: int = Query(50, ge=1, le=100),
+    documentLimit: int = Query(20, ge=1, le=50),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """跨资料夹级联搜索：资料夹名命中 / 内部文档名、备注、正文命中同时返回。"""
+    try:
+        return success(
+            await workspace_service.cascade_search(
+                db,
+                _uid(current_user),
+                q,
+                max_folders=folderLimit,
+                max_documents_per_folder=documentLimit,
+            )
+        )
+    except Exception as e:
+        return _fail(e)
+
+
 @router.post("/workspace/search")
 async def search_workspace(
     data: dict,

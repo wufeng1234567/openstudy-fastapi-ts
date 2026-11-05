@@ -1,22 +1,5 @@
 <template>
   <section class="map-page">
-    <header class="map-hero">
-      <div class="map-hero__copy">
-        <div class="map-kicker"><span></span>资料知识网络 · 0.4.1</div>
-        <h2>资料知识地图</h2>
-        <p>
-          资料页、章节页、笔记、题组和图组，按真实引用关系连起来。每个节点都能回到原文，
-          每条连线都能说明为什么存在。
-        </p>
-      </div>
-      <div class="map-hero__stats">
-        <div><span>资料页</span><b>{{ scopeStats.documentCount }}</b></div>
-        <div><span>章节页</span><b>{{ scopeStats.sectionCount }}</b></div>
-        <div><span>引用关系</span><b>{{ scopeStats.referenceCount }}</b></div>
-        <div><span>笔记</span><b>{{ scopeStats.noteCount }}</b></div>
-      </div>
-    </header>
-
     <div class="map-layout">
       <aside class="map-rail">
         <div class="map-rail__block">
@@ -70,13 +53,6 @@
 
       <main class="map-stage">
         <div class="map-toolbar">
-          <el-input
-            v-model="keyword"
-            class="map-search"
-            clearable
-            placeholder="搜索页面标题或正文…"
-            :prefix-icon="Search"
-          />
           <button type="button" class="map-tool-btn" :class="{ 'is-on': hideIsolated }" @click="hideIsolated = !hideIsolated">
             隐藏孤立页
           </button>
@@ -187,13 +163,14 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import * as echarts from 'echarts'
-import { Aim, Search, Share } from '@element-plus/icons-vue'
+import { Aim, Share } from '@element-plus/icons-vue'
 import { getKnowledgeMap } from '@/api/ai/workspace'
 
-const props = defineProps<{ activeKbId?: number | null }>()
+const props = defineProps<{ activeKbId?: number | null; searchQuery?: string }>()
 const emit = defineEmits<{
   (e: 'open-doc', payload: { docId: number; offset?: number; targetText?: string }): void
   (e: 'back'): void
+  (e: 'stats', payload: { total: number }): void
 }>()
 
 type MapNode = {
@@ -223,7 +200,7 @@ const activeGroup = ref('')
 const activeDocId = ref<number | null>(null)
 const activeTypes = ref<string[]>(['document', 'section', 'note', 'question', 'image'])
 const hideIsolated = ref(false)
-const keyword = ref('')
+const keyword = ref(props.searchQuery || '')
 const selectedNode = ref<MapNode | null>(null)
 const groupInitialized = ref(false)
 
@@ -242,23 +219,6 @@ const typeCounts = computed(() => {
 })
 
 const rootNodeCount = computed(() => nodes.value.filter((node) => node.type !== 'section').length)
-
-/** 顶部数字跟随当前分组，避免“地图里 11 个点、标题写 38 份资料”的对不上。 */
-const scopeStats = computed(() => {
-  const inScope = activeGroup.value
-    ? nodes.value.filter((node) => node.groupId === activeGroup.value)
-    : nodes.value
-  const ids = new Set(inScope.map((node) => node.id))
-  const referenceCount = edges.value.filter(
-    (edge) => edge.type === 'reference' && ids.has(edge.source) && ids.has(edge.target)
-  ).length
-  return {
-    documentCount: inScope.filter((node) => node.type === 'document').length,
-    sectionCount: inScope.filter((node) => node.type === 'section').length,
-    noteCount: inScope.filter((node) => node.type === 'note').length,
-    referenceCount
-  }
-})
 
 function typeCount(type: string) {
   return typeCounts.value[type] || 0
@@ -338,6 +298,9 @@ function applyData(data: any) {
   stats.referenceCount = Number(s.referenceCount || 0)
   stats.questionCount = Number(s.questionCount || 0)
   stats.imageCount = Number(s.imageCount || 0)
+  emit('stats', {
+    total: nodes.value.filter((node) => node.type !== 'section').length
+  })
 }
 
 async function reload() {
@@ -618,6 +581,13 @@ function render() {
 }
 
 watch(keyword, () => render())
+watch(
+  () => props.searchQuery,
+  (value) => {
+    keyword.value = value || ''
+    render()
+  }
+)
 watch(activeTypes, () => render(), { deep: true })
 watch(hideIsolated, () => render())
 watch(

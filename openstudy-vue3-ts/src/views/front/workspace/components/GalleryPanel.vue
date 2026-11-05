@@ -1,31 +1,6 @@
 <template>
   <section class="gallery-page">
     <div class="gallery-toolbar">
-      <div class="gallery-toolbar__head">
-        <div class="gallery-summary">
-          <span class="gallery-summary__title">{{ scope === 'current' ? (activeKbName || '当前资料夹') : '全部资料' }}</span>
-          <span class="gallery-summary__meta">已描述 {{ stats.described }} · 待补 {{ stats.pending }} · 已使用 {{ stats.used }}</span>
-        </div>
-        <div class="gallery-toolbar__tools">
-          <el-input
-            v-model="query"
-            class="gallery-search"
-            clearable
-            placeholder="搜索图片描述或文字…"
-            :prefix-icon="Search"
-            @input="onQueryInput"
-          />
-          <el-button
-            class="gallery-describe-btn"
-            :loading="describing"
-            :disabled="!pendingKeys.length"
-            @click="describePending"
-          >
-            <el-icon><MagicStick /></el-icon>
-            {{ pendingKeys.length ? `补全描述（${Math.min(pendingKeys.length, 40)}）` : '图片已描述' }}
-          </el-button>
-        </div>
-      </div>
       <div class="gallery-toolbar__filters">
         <div class="gallery-scope-tabs">
           <button type="button" :class="{ 'is-active': scope === 'current' }" @click="setScope('current')">
@@ -47,7 +22,18 @@
           {{ item.label }}
           <span>{{ item.count }}</span>
         </button>
-        <span class="gallery-toolbar__hint">描述只在点击时生成，不提前消耗额度</span>
+        <span class="gallery-toolbar__hint">
+          已描述 {{ stats.described }} · 待补 {{ stats.pending }} · 描述只在点击时生成
+        </span>
+        <el-button
+          class="gallery-describe-btn"
+          :loading="describing"
+          :disabled="!pendingKeys.length"
+          @click="describePending"
+        >
+          <el-icon><MagicStick /></el-icon>
+          {{ pendingKeys.length ? `补全描述（${Math.min(pendingKeys.length, 40)}）` : '图片已描述' }}
+        </el-button>
       </div>
     </div>
 
@@ -189,7 +175,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { MagicStick, Picture, Search } from '@element-plus/icons-vue'
+import { MagicStick, Picture } from '@element-plus/icons-vue'
 import {
   describeGalleryAssets,
   getGalleryAsset,
@@ -199,12 +185,15 @@ import {
 const props = defineProps<{
   activeKbId?: number | null
   activeKbName?: string
+  searchQuery?: string
 }>()
 
 const emit = defineEmits<{
   (e: 'use-image', image: any): void
   (e: 'locate', payload: { docId: number; offset: number; targetText?: string }): void
   (e: 'back'): void
+  (e: 'stats', payload: { total: number }): void
+  (e: 'update:searchQuery', value: string): void
 }>()
 
 const loading = ref(false)
@@ -215,7 +204,7 @@ const sources = ref<Array<{ key: string; label: string; count: number }>>([
   { key: 'chat', label: '聊天图片', count: 0 }
 ])
 const stats = reactive({ total: 0, described: 0, pending: 0, failed: 0, used: 0 })
-const query = ref('')
+const query = ref(props.searchQuery || '')
 const scope = ref<'current' | 'all'>('current')
 const sourceFilter = ref<'all' | 'document' | 'chat'>('all')
 const describing = ref(false)
@@ -223,7 +212,6 @@ const detailVisible = ref(false)
 const detailLoading = ref(false)
 const detail = ref<any>(null)
 const describingOne = ref(false)
-let queryTimer: number | undefined
 
 const pendingKeys = computed(() =>
   items.value
@@ -275,6 +263,7 @@ function applyData(data: any) {
   if (Array.isArray(data?.sources) && data.sources.length) {
     sources.value = data.sources
   }
+  emit('stats', { total: stats.total })
 }
 
 async function reload() {
@@ -300,11 +289,6 @@ async function reload() {
   }
 }
 
-function onQueryInput() {
-  window.clearTimeout(queryTimer)
-  queryTimer = window.setTimeout(reload, 260)
-}
-
 function setScope(next: 'current' | 'all') {
   scope.value = next
   reload()
@@ -317,6 +301,7 @@ function setSource(source: 'all' | 'document' | 'chat') {
 
 function clearFilters() {
   query.value = ''
+  emit('update:searchQuery', '')
   sourceFilter.value = 'all'
   reload()
 }
@@ -435,6 +420,14 @@ watch(
   }
 )
 
+watch(
+  () => props.searchQuery,
+  (value) => {
+    query.value = value || ''
+    reload()
+  }
+)
+
 onMounted(reload)
 </script>
 
@@ -472,55 +465,8 @@ onMounted(reload)
   padding: 2px 2px 15px;
 }
 
-.gallery-toolbar__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-}
-
-.gallery-summary {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  gap: 10px;
-}
-
-.gallery-summary__title {
-  overflow: hidden;
-  max-width: 260px;
-  color: #1f2937;
-  font-size: 18px;
-  font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.gallery-summary__meta {
-  overflow: hidden;
-  color: #a0a6b2;
-  font-size: 10.5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.gallery-toolbar__tools {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 8px;
-}
-
-.gallery-search {
-  width: 290px;
-}
-
-.gallery-search :deep(.el-input__wrapper) {
-  border-radius: 7px;
-  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08) inset;
-}
-
 .gallery-describe-btn {
+  margin-left: 2px;
   border-color: rgba(79, 107, 237, 0.25);
   color: #4f6bed;
   background: #f7f9ff;
@@ -1111,25 +1057,6 @@ onMounted(reload)
 }
 
 @media (max-width: 860px) {
-  .gallery-toolbar__head {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .gallery-toolbar__tools {
-    width: 100%;
-  }
-
-  .gallery-search {
-    flex: 1;
-    width: auto;
-  }
-
-  .gallery-summary__meta {
-    display: none;
-  }
-
   .gallery-toolbar__hint {
     display: none;
   }

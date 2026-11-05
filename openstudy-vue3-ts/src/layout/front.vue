@@ -61,6 +61,15 @@
           <span v-if="topbarStore.countText" class="os-topbar__count">{{ topbarStore.countText }}</span>
         </div>
         <div v-else class="os-topbar__workspace">
+          <button
+            v-if="isMobile"
+            type="button"
+            class="os-icon-btn os-topbar__workspace-menu"
+            title="打开导航"
+            @click="onTopbarMenu"
+          >
+            <OsIcon name="panel-left" :size="17" />
+          </button>
           <!-- 工作空间把「面包屑 + 视图 tabs」Teleport 到这里：路由导航属于最顶层，不再下放到内容区。 -->
           <div id="os-workspace-nav" class="os-workspace-nav"></div>
         </div>
@@ -625,16 +634,22 @@ watch(
 }
 
 .os-topbar.is-workspace {
-  height: 96px;
+  height: 62px;
   align-items: stretch;
-  padding-top: 6px;
-  padding-bottom: 2px;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 .os-topbar__workspace {
   display: flex;
   flex: 1;
   min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.os-topbar__workspace-menu {
+  flex: none;
 }
 
 .os-workspace-nav {
@@ -888,8 +903,8 @@ watch(
 
   .os-topbar.is-workspace {
     height: auto;
-    min-height: 96px;
-    padding-top: 8px;
+    min-height: 62px;
+    padding-top: 6px;
     padding-bottom: 6px;
   }
 }

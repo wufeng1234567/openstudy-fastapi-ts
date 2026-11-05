@@ -2011,3 +2011,140 @@ async def rollback_organize(db: AsyncSession, user_id: int, batch_id: str) -> Di
 
     await db.commit()
     return {"batchId": batch_id, "reverted": reverted}
+
+def _cascade_snippet(text: str, term: str, limit: int = 150) -> str:
+    """返回命中的短上下文，避免把整份正文塞给前端。"""
+    raw = re.sub(r"【图\d+】", " ", str(text or ""))
+    raw = re.sub(r"\s+", " ", raw).strip()
+    if not raw or not term:
+        return ""
+    index = raw.lower().find(term.lower())
+    if index < 0:
+        return raw[:limit]
+    start = max(0, index - 52)
+    end = min(len(raw), index + len(term) + 96)
+    return ("…" if start else "") + raw[start:end] + ("…" if end < len(raw) else "")
+
+
+async def cascade_search(
+    db: AsyncSession,
+    user_id: int,
+    query: str,
+    *,
+    max_folders: int = 50,
+    max_documents_per_folder: int = 20,
+) -> Dict[str, Any]:
+    """跨资料夹 + 资料内容的级联搜索。
+
+    与普通「在当前资料夹里按文件名筛」不同：
+      · 资料夹名称命中 → 该资料夹出现在结果里（即使里面没有文档命中）；
+      · 文档文件名 / 备注 / 正文命中 → 该文档和它所属的资料夹都出现；
+      · 两者同时命中时合并到同一个资料夹结果，不重复展示。
+
+    返回的是结构化分组，前端按「资料夹 → 命中文档」级联展示。
+    """
+    term = str(query or "").strip()
+    if not term:
+        return {"query": "", "totalFolders": 0, "totalDocs": 0, "folders": []}
+
+    kbs = (
+        await db.execute(
+            select(RagKnowledgeBase)
+            .where(
+                RagKnowledgeBase.user_id == int(user_id),
+                RagKnowledgeBase.del_flag == "0",
+            )
+            .order_by(RagKnowledgeBase.id.asc())
+        )
+    ).scalars().all()
+    kb_by_id = {int(kb.id): kb for kb in kbs}
+
+    # 先取该用户的文档元信息；正文只用来找命中位置和摘录，不在接口里回传全文。
+    docs = (
+        await db.execute(
+            select(RagDocument)
+            .where(RagDocument.user_id == int(user_id))
+            .order_by(RagDocument.create_time.desc(), RagDocument.id.desc())
+            .limit(600)
+        )
+    ).scalars().all()
+    all_docs_by_kb: Dict[int, List[RagDocument]] = {}
+    for doc in docs:
+        all_docs_by_kb.setdefault(int(doc.kb_id), []).append(doc)
+
+    grouped: Dict[int, Dict[str, Any]] = {}
+    lowered = term.lower()
+    for kb in kbs:
+        name_text = f"{kb.name or ''} {kb.description or ''}".strip()
+        folder_matched = lowered in name_text.lower()
+        if folder_matched:
+            grouped[int(kb.id)] = {
+                "kbId": int(kb.id),
+                "name": kb.name or "未命名资料夹",
+                "description": kb.description or "",
+                "matchedByName": True,
+                "docCount": len(all_docs_by_kb.get(int(kb.id), [])),
+                "matchedDocCount": 0,
+                "documents": [],
+            }
+
+    for doc in docs:
+        file_name = str(doc.file_name or "")
+        note = str(doc.user_note or "")
+        raw = str(doc.raw_content or "")
+        matched_by = []
+        if lowered in file_name.lower():
+            matched_by.append("文件名")
+        if note and lowered in note.lower():
+            matched_by.append("备注")
+        if raw and lowered in raw.lower():
+            matched_by.append("正文")
+        if not matched_by:
+            continue
+        kb_id = int(doc.kb_id)
+        entry = grouped.get(kb_id)
+        if entry is None:
+            kb = kb_by_id.get(kb_id)
+            entry = {
+                "kbId": kb_id,
+                "name": (kb.name if kb else "未分类资料"),
+                "description": (kb.description if kb else "") or "",
+                "matchedByName": False,
+                "docCount": len(all_docs_by_kb.get(kb_id, [])),
+                "matchedDocCount": 0,
+                "documents": [],
+            }
+            grouped[kb_id] = entry
+        snippet = _cascade_snippet(raw, term) if "正文" in matched_by else ""
+        entry["documents"].append(
+            {
+                "docId": int(doc.id),
+                "fileName": file_name or "未命名资料",
+                "note": note,
+                "fileType": doc.file_type or "",
+                "sizeText": _size_text(int(doc.file_size or 0)),
+                "imageCount": len(doc.image_map or {}),
+                "matchedBy": matched_by,
+                "snippet": snippet,
+                "createTime": _format_display_time(doc.create_time)[:10] if doc.create_time else "",
+            }
+        )
+        entry["matchedDocCount"] = len(entry["documents"])
+
+    folders = list(grouped.values())
+    folders.sort(
+        key=lambda item: (
+            0 if item["matchedByName"] else 1,
+            -int(item["matchedDocCount"]),
+            str(item["name"]),
+        )
+    )
+    for folder in folders:
+        folder["documents"] = folder["documents"][: max(1, int(max_documents_per_folder))]
+    folders = folders[: max(1, int(max_folders))]
+    return {
+        "query": term,
+        "totalFolders": len(folders),
+        "totalDocs": sum(int(item["matchedDocCount"]) for item in folders),
+        "folders": folders,
+    }
