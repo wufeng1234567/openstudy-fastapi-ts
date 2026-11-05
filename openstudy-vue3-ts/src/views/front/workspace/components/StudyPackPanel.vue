@@ -10,10 +10,10 @@
     · 提示：每一步都有空态提示和装配数量提示；
     · 连接：装配区用竖向编号线把章节顺序串起来。
 
-  产物模板全部来自原文，不调用模型：
-    · 复习卡：每节压缩到约 300 字；
-    · 讲义：保留选中章节全文；
-    · 提纲：只保留章节标题 + 首句。
+  生成方式（AI+）：
+    · 前端只负责选章节、写装配要求、展示结果；
+    · 后端把选中章节的完整原文交给 LLM，由 LLM 重组为复习卡 / 讲义 / 提纲；
+    · 不再使用「每节截 300 字 / 标题 + 首句」这类本地裁剪算法。
   题单/微课不在这里伪造，分别引导到智能出题与现有微课生成。
 -->
 <template>
@@ -31,6 +31,19 @@
           <b>{{ mode.label }}</b>
           <span>{{ mode.desc }}</span>
         </button>
+      </div>
+
+      <div class="sp-brief">
+        <div class="sp-brief__label">装配要求（可选）</div>
+        <el-input
+          v-model="instruction"
+          type="textarea"
+          :rows="2"
+          maxlength="800"
+          show-word-limit
+          resize="none"
+          placeholder="例如：面向期末复习，重点讲第 2 章；多举原文里的例子；每节最后给我三个自测问题。"
+        />
       </div>
 
       <div class="sp-grid">
@@ -122,12 +135,34 @@
         </section>
       </div>
 
-      <div v-if="picked.length" class="sp-preview">
-        <div class="sp-preview__head">
-          <span>装配预览 · {{ packTypeLabel }}</span>
-          <span>{{ previewText.length }} 字</span>
+      <div class="sp-ai-bar">
+        <div class="sp-ai-bar__copy">
+          <b>AI 装配 · {{ packTypeLabel }}</b>
+          <span>AI 会读取全部选中章节的原文，按目标形态重新组织，不是截取开头拼接。</span>
         </div>
-        <pre class="sp-preview__body">{{ previewText }}</pre>
+        <el-button type="primary" :loading="generating" :disabled="!picked.length" @click="generatePack">
+          {{ generating ? '正在装配…' : '开始 AI 装配' }}
+        </el-button>
+      </div>
+
+      <div ref="resultRef" class="sp-preview">
+        <div class="sp-preview__head">
+          <span>装配结果 · {{ packTypeLabel }}</span>
+          <span v-if="generating">正在读取 {{ picked.length }} 个章节的原文…</span>
+          <span v-else-if="generated">{{ generated.length }} 字</span>
+          <span v-else>等待生成</span>
+        </div>
+        <div v-if="generateError" class="sp-preview__error">{{ generateError }}</div>
+        <div v-else-if="generating" class="sp-preview__stream">
+          <LatexRenderer v-if="generated" :content="generated" class="sp-preview__rendered" />
+          <span v-else class="sp-preview__wait">AI 正在阅读原文、整理章节关系并组织内容…</span>
+        </div>
+        <div v-else-if="generated" class="sp-preview__result">
+          <LatexRenderer :content="generated" class="sp-preview__rendered" />
+        </div>
+        <div v-else class="sp-preview__placeholder">
+          选好章节后点「开始 AI 装配」。这里会显示 LLM 重新组织的完整学习资产，并随生成过程实时更新。
+        </div>
       </div>
 
       <div class="sp-other">
@@ -139,14 +174,14 @@
     </div>
 
     <div class="sp-footer">
-      <span class="sp-footer__hint">产物全部来自当前资料原文，不会编造内容。</span>
+      <span class="sp-footer__hint">AI 只依据选中章节的原文组织内容，不会编造原文没有的事实。</span>
       <div class="sp-footer__actions">
         <el-button @click="closePanel">取消</el-button>
-        <el-button type="primary" :disabled="!picked.length" :loading="exporting" @click="exportPack('markdown')">
-          生成 Markdown
+        <el-button type="primary" :disabled="!generated || generating" :loading="exporting" @click="exportPack('markdown')">
+          下载 Markdown
         </el-button>
-        <el-button type="primary" plain :disabled="!picked.length" :loading="exporting" @click="exportPack('docx')">
-          生成 Word
+        <el-button type="primary" plain :disabled="!generated || generating" :loading="exporting" @click="exportPack('docx')">
+          下载 Word
         </el-button>
       </div>
     </div>
@@ -154,11 +189,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { saveAs } from 'file-saver'
+import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
 import { getDocumentContent, exportDocument } from '@/api/ai/rag'
-import { getDocumentHealth } from '@/api/ai/workspace'
+import { getDocumentHealth, streamStudyPack, type StudyPackMode } from '@/api/ai/workspace'
 import { blobValidate } from '@/utils/ruoyi'
 
 defineOptions({ name: 'StudyPackPanel' })
@@ -176,21 +212,27 @@ const emit = defineEmits<{
 const visible = ref(false)
 const loading = ref(false)
 const exporting = ref(false)
+const generating = ref(false)
 const currentDoc = ref<PackDoc | null>(null)
 const content = ref('')
 const sections = ref<any[]>([])
 const picked = ref<any[]>([])
 const keyword = ref('')
+const instruction = ref('')
+const generated = ref('')
+const generateError = ref('')
+const resultRef = ref<HTMLElement | null>(null)
 const expanded = ref(new Set<number>())
-const packType = ref<'review' | 'lecture' | 'outline'>('review')
+const packType = ref<StudyPackMode>('review')
 const dragSource = ref<{ section: any; index: number | null } | null>(null)
 const dragOverAssembly = ref(false)
 let openSeq = 0
+let abortController: AbortController | null = null
 
 const modes = [
-  { key: 'review' as const, label: '复习卡', desc: '每节压到 300 字，适合考前速览' },
-  { key: 'lecture' as const, label: '讲义', desc: '保留选中章节全文，适合打印' },
-  { key: 'outline' as const, label: '提纲', desc: '只留标题与首句，适合搭框架' }
+  { key: 'review' as const, label: '复习卡', desc: '把章节变成问答式主动回忆卡' },
+  { key: 'lecture' as const, label: '讲义', desc: '按章节重组为可阅读的讲义' },
+  { key: 'outline' as const, label: '提纲', desc: '提炼概念关系与复习顺序' }
 ]
 
 const docName = computed(() => currentDoc.value?.fileName || '未命名资料')
@@ -207,12 +249,16 @@ const pickedChars = computed(() =>
   picked.value.reduce((sum: number, s: any) => sum + Number(s.chars || 0), 0)
 )
 
-/** 预览只截取开头，让用户确认模板语气与结构；下载时仍用完整正文。 */
-const previewText = computed(() => (picked.value.length ? buildPack().slice(0, 900) : ''))
-
 const packTypeLabel = computed(
   () => modes.find((m) => m.key === packType.value)?.label || '复习卡'
 )
+
+// 章节、形态或装配要求变化后，旧结果不再对应当前输入，清掉避免下载错版本。
+watch([picked, packType, instruction], () => {
+  if (generating.value) return
+  generated.value = ''
+  generateError.value = ''
+}, { deep: true })
 
 function sectionFullText(section: any): string {
   const start = Number(section.start || 0)
@@ -297,40 +343,42 @@ function onDropReorder(targetIndex: number) {
   dragSource.value = null
 }
 
-function buildPack(): string {
-  const lines: string[] = []
-  const title = docName.value.replace(/\.[^.]+$/, '')
-  if (packType.value === 'outline') {
-    lines.push(`# ${title} · 学习提纲`, '', `> 从《${docName.value}》装配 · ${picked.value.length} 个章节`, '')
-    for (const section of picked.value) {
-      const first = String(section.excerpt || '').split(/[。！？]/)[0]
-      lines.push(`## ${section.title}`, first ? `${first}。` : '', '')
+async function generatePack() {
+  if (!currentDoc.value?.docId || !picked.value.length || generating.value) return
+  abortController?.abort()
+  abortController = new AbortController()
+  generating.value = true
+  generateError.value = ''
+  generated.value = ''
+  try {
+    await streamStudyPack(
+      currentDoc.value.docId,
+      {
+        mode: packType.value,
+        sectionIndexes: picked.value.map((section: any) => Number(section.index)),
+        instruction: instruction.value
+      },
+      (text) => { generated.value = text },
+      (text) => { generated.value = text },
+      (error) => { generateError.value = error?.message || String(error) },
+      abortController.signal
+    )
+    if (!generateError.value && generated.value) {
+      ElMessage.success('AI 装配完成')
+      await nextTick()
+      resultRef.value?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
     }
-    return lines.join('\n')
+  } finally {
+    generating.value = false
+    abortController = null
   }
-  lines.push(
-    packType.value === 'review' ? `# ${title} · 复习卡` : `# ${title} · 学习讲义`,
-    '',
-    `> 从《${docName.value}》装配 · ${picked.value.length} 个章节`,
-    ''
-  )
-  for (const section of picked.value) {
-    lines.push(`## ${section.title}`, '')
-    const full = sectionFullText(section)
-    if (packType.value === 'review') {
-      lines.push(full.slice(0, 300).trim() + (full.length > 300 ? '…' : ''), '')
-    } else {
-      lines.push(full, '')
-    }
-  }
-  return lines.join('\n')
 }
 
 async function exportPack(format: 'markdown' | 'docx') {
-  if (!currentDoc.value?.docId || !picked.value.length) return
+  if (!currentDoc.value?.docId || !generated.value) return
   exporting.value = true
   try {
-    const text = buildPack()
+    const text = generated.value
     const blob: any = await exportDocument(currentDoc.value.docId, format, text)
     // axios 对 blob 响应不做 code 校验：后端业务失败会以 JSON Blob 返回。
     // 不校验就 saveAs，会把错误信息存成 .md/.docx 并提示成功。
@@ -379,6 +427,12 @@ async function open(doc: PackDoc) {
   sections.value = []
   picked.value = []
   keyword.value = ''
+  instruction.value = ''
+  generated.value = ''
+  generateError.value = ''
+  generating.value = false
+  abortController?.abort()
+  abortController = null
   expanded.value = new Set()
   dragSource.value = null
   dragOverAssembly.value = false
@@ -394,16 +448,18 @@ async function open(doc: PackDoc) {
       ...section,
       fullText: sectionFullText(section)
     }))
-    // 默认把得分最高的前 3 个章节放进装配区，用户一打开就能看到「可生成」。
+    // 默认把全部章节放进装配区，避免「只显示了部分内容」；用户可以逐条移除。
     picked.value = [...sections.value]
-      .filter((s: any) => s.coverage !== 'thin')
-      .slice(0, 3)
   } catch (e: any) {
     if (seq === openSeq) ElMessage.error('读取资料失败：' + (e?.message || e))
   } finally {
     if (seq === openSeq) loading.value = false
   }
 }
+
+onBeforeUnmount(() => {
+  abortController?.abort()
+})
 
 defineExpose({ open })
 </script>
@@ -449,6 +505,29 @@ defineExpose({ open })
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 9px;
   margin-bottom: 12px;
+}
+
+.sp-brief {
+  margin-bottom: 11px;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.sp-brief__label {
+  margin-bottom: 5px;
+  color: #374151;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.sp-brief :deep(.el-textarea__inner) {
+  padding: 6px 8px;
+  border-radius: 6px;
+  box-shadow: none;
+  font-size: 11.5px;
+  line-height: 1.6;
 }
 
 .sp-mode__item {
@@ -740,6 +819,36 @@ defineExpose({ open })
   font-size: 10.5px;
 }
 
+.sp-ai-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 11px;
+  padding: 10px 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.sp-ai-bar__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.sp-ai-bar__copy b {
+  color: #1e3a5f;
+  font-size: 12px;
+}
+
+.sp-ai-bar__copy span {
+  color: #6b7280;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
 .sp-preview {
   margin-top: 11px;
   border: 1px solid #dbeafe;
@@ -764,16 +873,32 @@ defineExpose({ open })
   font-weight: 400;
 }
 
-.sp-preview__body {
-  max-height: 180px;
+.sp-preview__stream,
+.sp-preview__result {
+  max-height: 300px;
   overflow: auto;
-  margin: 0;
   padding: 10px 12px;
-  color: #4b5563;
-  font-family: var(--os-font-code, 'Cascadia Code', Consolas, monospace);
-  font-size: 11px;
-  line-height: 1.65;
-  white-space: pre-wrap;
+}
+
+.sp-preview__rendered {
+  color: #374151;
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+.sp-preview__wait,
+.sp-preview__placeholder {
+  padding: 14px 12px;
+  color: #9ca3af;
+  font-size: 11.5px;
+  line-height: 1.7;
+}
+
+.sp-preview__error {
+  padding: 12px;
+  color: #b91c1c;
+  font-size: 11.5px;
+  line-height: 1.6;
 }
 
 .sp-other {

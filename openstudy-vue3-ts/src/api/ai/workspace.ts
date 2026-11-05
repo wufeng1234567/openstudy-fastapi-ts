@@ -1,4 +1,5 @@
 import request from '@/utils/request'
+import { getToken } from '@/utils/auth'
 
 /**
  * 知识库 API
@@ -77,6 +78,107 @@ export function getDocumentHealth(docId: number | string) {
     url: `/rag/workspace/documents/${docId}/health`,
     method: 'get'
   }) as unknown as Promise<{ code: number; msg?: string; data: any }>
+}
+
+export type StudyPackMode = 'review' | 'lecture' | 'outline'
+
+export interface StudyPackStreamRequest {
+  mode: StudyPackMode
+  sectionIndexes: number[]
+  instruction?: string
+}
+
+/**
+ * 资料装配：把选中章节交给后端 LLM 重新组织，边生成边预览。
+ *
+ * 不能复用普通 `request`：它会把整个响应体等完才返回，长文档装配要等很久。
+ * 这里的纯文本流契约与 `/ai/assistant/stream` 一致：正文增量 + `[DONE]` /
+ * `Error: <原因>`。
+ */
+export async function streamStudyPack(
+  docId: number | string,
+  data: StudyPackStreamRequest,
+  onChunk?: (content: string) => void,
+  onComplete?: (content: string) => void,
+  onError?: (error: any) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  const base = String(import.meta.env.VITE_APP_BASE_API || '').replace(/\/$/, '')
+  try {
+    const response = await fetch(`${base}/rag/workspace/documents/${docId}/study-pack/stream`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + getToken(),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        mode: data.mode,
+        sectionIndexes: data.sectionIndexes,
+        instruction: data.instruction || ''
+      }),
+      signal
+    })
+
+    if (!response.ok) {
+      let detail = ''
+      try {
+        const raw = await response.text()
+        if (raw) {
+          try {
+            const body = JSON.parse(raw)
+            detail = body?.detail || body?.msg || body?.message || ''
+          } catch {
+            detail = raw.slice(0, 200)
+          }
+        }
+      } catch {
+        /* 读不出响应体时只保留 HTTP 状态 */
+      }
+      throw new Error(detail ? `装配失败 ${response.status}：${detail}` : `装配失败（HTTP ${response.status}）`)
+    }
+
+    const contentType = response.headers.get('content-type') || ''
+    if (contentType.includes('application/json')) {
+      let msg = '装配失败'
+      try {
+        const body = await response.json()
+        msg = body?.msg || body?.message || msg
+      } catch {
+        /* 保留默认文案 */
+      }
+      throw new Error(msg)
+    }
+    if (!response.body) throw new Error('装配接口没有返回内容')
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let full = ''
+    let pending = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      let chunk = pending + decoder.decode(value, { stream: true })
+      pending = ''
+      // 兼容极端情况下上游把结束标记拆成两半。
+      if (chunk.endsWith('[DO')) {
+        pending = '[DO'
+        chunk = chunk.slice(0, -3)
+      }
+      chunk = chunk.replace(/\[DONE\]/g, '')
+      if (!chunk) continue
+      if (chunk.indexOf('Error: ') === 0 && !full) {
+        throw new Error(chunk.slice(7).trim())
+      }
+      full += chunk
+      onChunk?.(full)
+    }
+
+    if (pending) full += pending.replace(/\[DONE\]/g, '')
+    onComplete?.(full)
+  } catch (error: any) {
+    if (error?.name !== 'AbortError') onError?.(error)
+  }
 }
 
 /** 智能整理：单文档预览（快速/深度） */

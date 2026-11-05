@@ -29,7 +29,7 @@ OpenStudy 是一个开源、低成本、低门槛的 AI 学习平台，帮用户
 2. 资料诊疗室：每份资料只有一个统一入口「资料诊疗室」，打开后有三个页签：
    - 资料体检：用结构完整度、图文相关度、知识覆盖度、可学习化程度四个指标说明这份资料哪里值得先处理，并给出问题清单和章节覆盖情况。分数只用来排优先级，不是给学生打分。
    - 资料刨析：查看资料的结构树、正文、原文位置里的图片和可复用的图片资产。
-   - 资料装配：选择章节后生成复习卡、讲义或提纲；题单走智能出题，微课走微课生成器。
+   - 资料装配：选择章节并写清装配要求后，由 AI 读取完整原文重新生成复习卡、讲义或提纲；题单走智能出题，微课走微课生成器。
 3. 题库与练习：用户可以创建题库、AI 辅助出题、在线刷题、整理错题。
 4. 原文依据：题目可以关联到资料原文，学习报告里的薄弱点也能回到对应段落查看依据。
 5. 对话里的文件与图片：上传过的文件和图片会显示成资产卡，可以展开查看、点开预览，并在后续对话里继续使用。
@@ -72,6 +72,13 @@ SCENE_AGENT = "agent"
 ⚠️ Agent 不走 `_build_plain` 那条路：它的系统提示词由
 `build_agent_system_prompt()` 动态生成（需要注入工具清单），
 入口在 `agent/loop.py`。
+"""
+
+SCENE_STUDY_PACK = "study-pack"
+"""**资料装配**：把选中的资料章节交给 LLM，重组为复习卡 / 讲义 / 提纲。
+
+它不是把原文截断拼接：LLM 必须覆盖全部选中章节，并严格依据原文；
+同一条内容在 `rag.py` 的 `/rag/workspace/documents/{doc_id}/study-pack/stream` 使用。
 """
 
 
@@ -134,6 +141,32 @@ ANALYSIS_OUTPUT_SPEC = """
 ⭐ 【拓展建议】
 给出相关知识点的学习建议或举一反三的思路。
 """
+
+
+#: 资料装配的系统提示词。
+#:
+#: 旧版 StudyPack 在浏览器里按「每节截 300 字 / 标题 + 首句」拼 Markdown，
+#: 这不是学习资产，只是把原文裁短。新链路让 LLM 读完整选中章节后重组，
+#: 但要求它只做「组织与提炼」、不做「补写与编造」。
+STUDY_PACK_SYSTEM_PROMPT = """你是 OpenStudy 的资料装配智能体。你的任务不是简单摘要，而是把用户选中的资料章节重新组织成真正可用的学习资产。
+
+必须遵守：
+1. 只依据用户提供的原文。原文没有的事实、数字、公式、例子、结论和背景，一律不能编造或凭常识补写。
+2. 用户选中的每一个章节都必须覆盖；如果某一节原文太短、信息不足，就如实写“原文未展开”，不要用外部知识补齐。
+3. 不要逐段复制原文。请根据目标形态重新组织：合并重复、提炼结构、说明前后关系，但所有事实必须能在原文中找到依据。
+4. 保留公式、符号和图片位置标记（例如【图3】）；不要改写公式，不要删除图片标记。
+5. 面向学生写作：用清楚的中文，先说结论，再解释原因；不要写“材料中”“文中”这类依赖上下文的指代。
+6. 只输出 Markdown 正文，不要输出 JSON、不要输出思考过程、不要用代码围栏包住整篇内容。
+7. 不要虚构章节数量、字数、题目数量或评分；文中没有的统计数字不要写。
+"""
+
+
+def _build_study_pack(prompt: str, **vars: Any) -> List[Dict[str, str]]:
+    """资料装配：正文由 `study_pack_service` 组装，包含选中章节原文。"""
+    return [
+        {"role": "system", "content": STUDY_PACK_SYSTEM_PROMPT},
+        {"role": "user", "content": prompt},
+    ]
 
 
 def _build_plain(prompt: str, **vars: Any) -> List[Dict[str, str]]:
@@ -447,6 +480,7 @@ _SCENE_BUILDERS = {
     SCENE_READING: _build_reading,
     SCENE_COMPOSITE: _build_composite,
     SCENE_ANALYSIS: _build_analysis,
+    SCENE_STUDY_PACK: _build_study_pack,
     SCENE_OCR: _build_ocr,
 }
 
@@ -755,10 +789,10 @@ Inside the same dialog there are three tabs:
    tree, full text with images in their original positions, and reusable image assets.
    Use it to explain where a passage or image lives; do not pretend you can see the
    rendered page unless a tool returned its text.
-3. `资料装配` (Assembly): choose chapters and generate review cards / handouts / outlines
-   from the actual document text. Question sets go through question generation; micro-
-   courses go through the micro-course generator. Never fabricate an asset the user did
-   not generate.
+3. `资料装配` (Assembly): choose chapters, write a short assembly brief, and let the LLM
+   read the complete selected text and generate review cards / handouts / outlines. Question
+   sets go through question generation; micro-courses go through the micro-course generator.
+   Never fabricate an asset the user did not generate.
 When a user asks to diagnose, inspect, or turn a document into study assets, guide them to
 the corresponding tab of `资料诊疗室`. You cannot click the UI for them, so give one short
 path (for example "我的资料 → 这份资料 → 资料诊疗室 → 资料体检") instead of claiming you
@@ -1144,6 +1178,8 @@ __all__ = [
     "SCENE_COMPOSITE",
     "SCENE_ANALYSIS",
     "SCENE_AGENT",
+    "SCENE_STUDY_PACK",
+    "STUDY_PACK_SYSTEM_PROMPT",
     "VARIABLE_DRIVEN_SCENES",
     "AGENT_SYSTEM_PROMPT_TEMPLATE",
     "AGENT_LANGUAGE_RULES",

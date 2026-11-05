@@ -653,6 +653,71 @@ async def get_document_content(
         return _fail(e)
 
 
+class StudyPackStreamRequest(BaseModel):
+    """资料装配：把选中章节交给 LLM 重组为学习资产。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: str = Field(default="review", pattern="^(review|lecture|outline)$")
+    sectionIndexes: List[int] = Field(default_factory=list)
+    instruction: str = Field(default="", max_length=800)
+
+
+@router.post("/workspace/documents/{doc_id}/study-pack/stream")
+async def stream_workspace_study_pack(
+    doc_id: int,
+    data: StudyPackStreamRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """资料装配（LLM 流式）：读取选中章节全文后重新组织，不是本地截断拼接。
+
+    返回纯文本分片（与 /ai/assistant/stream 同一事件契约）：
+      · 正文增量 → 直接追加
+      · 失败 → `Error: <原因>`
+      · 结束 → `[DONE]`
+    """
+    try:
+        from app.services.ai import chat_engine, prompts
+        from app.services.document_health_service import build_document_health
+        from app.services.study_pack_service import build_study_pack_prompt
+
+        uid = _uid(current_user)
+        doc = await rag_write_service.get_document(db, uid, doc_id)
+        report = await asyncio.to_thread(build_document_health, doc)
+        prompt, _selected = build_study_pack_prompt(
+            doc_name=str(getattr(doc, "file_name", "") or "未命名资料"),
+            raw=str(getattr(doc, "raw_content", "") or ""),
+            report=report,
+            mode=data.mode,
+            section_indexes=data.sectionIndexes,
+            instruction=data.instruction,
+        )
+        turn = chat_engine.ChatTurn(
+            scene=prompts.SCENE_STUDY_PACK,
+            prompt=prompt,
+            user_id=uid,
+            temperature=0.35,
+            thinking=False,
+        )
+
+        async def event_stream():
+            async for chunk in chat_engine.stream_turn(db, turn):
+                yield chunk
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/plain; charset=utf-8",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
+    except Exception as e:
+        return _fail(e)
+
+
 @router.get("/workspace/documents/{doc_id}/health")
 async def get_workspace_document_health(
     doc_id: int,

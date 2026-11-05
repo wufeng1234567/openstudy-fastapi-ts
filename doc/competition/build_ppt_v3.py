@@ -969,12 +969,12 @@ def p4surgery():
 def p5pack():
     """P5：资料装配——资料诊疗室里的第三步。"""
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "04  /  资料装配", "资料装配：把选中的章节，变成能带走的学习产物",
-           "你不用再找一个单独的装配系统：它就在资料诊疗室的第三步，可以在里面选章节、调顺序并导出文件。")
-    pic_card(s, S13, M_L, 1.82, 7.20, 4.95, caption="真实运行界面：在资料诊疗室切到「资料装配」，选好章节后生成 Markdown 或 Word 文件。")
+    header(s, "04  /  资料装配", "资料装配：AI 把选中的章节，重新组织成学习产物",
+           "不是把原文截短拼接：AI 会读取选中章节的完整原文，按你的装配要求重新组织。")
+    pic_card(s, S13, M_L, 1.82, 7.20, 4.95, caption="真实运行界面：资料装配由 LLM 读取选中章节后生成，不再是本地截断拼接。")
     x, y, w, h = 8.30, 1.82, 4.15, 4.95
     card = rect(s, x, y, w, h, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
-    text(s, x + 0.22, y + 0.18, w - 0.44, 0.24, "可装配的产物", size=12.0, bold=True, color=INK)
+    text(s, x + 0.22, y + 0.18, w - 0.44, 0.24, "AI 装配的产物", size=12.0, bold=True, color=INK)
     outs = ["讲义", "复习卡", "提纲", "题单", "微课"]
     ox = x + 0.22
     for i, t in enumerate(outs):
@@ -982,9 +982,9 @@ def p5pack():
         chip(s, x + 0.22 + col * 1.20, y + 0.56 + row * 0.42, 1.02, 0.32, t, MINT_L, MINT_D, 8.6)
     line(s, x + 0.22, y + 1.44, x + w - 0.22, y + 1.44, color=LINE, width=0.5)
     steps = [
-        ("01", "拖章节", "把左侧素材拖进装配区"),
-        ("02", "调顺序", "在装配区内拖拽可以调整顺序"),
-        ("03", "出产物", "生成后直接带走 Markdown 或 Word 文件"),
+        ("01", "选章节", "把要覆盖的章节选进装配区"),
+        ("02", "提要求", "告诉 AI 使用场景和复习重点"),
+        ("03", "AI 生成", "按原文重组并下载文件"),
     ]
     yy = y + 1.62
     for n, t, d in steps:
@@ -997,7 +997,7 @@ def p5pack():
     text(s, x + 0.36, y + 3.88, w - 0.70, 0.24,
          "“用这份资料做一份复习卡，重点第 2 章。”", size=8.6, bold=True, color=INK)
     text(s, x + 0.36, y + 4.14, w - 0.70, 0.22,
-         "一切皆对话：说一句，Agent 去读、去建、去生成", size=7.6, color=GRAY)
+         "AI 先读完整章节，再把内容组织成复习卡。", size=7.6, color=GRAY)
     footer(s, 5)
 
 
