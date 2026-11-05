@@ -284,10 +284,9 @@
                     <OsIcon :name="doc.disabled === 1 ? 'eye-off' : 'eye'" :size="14" />
                   </span>
                   <button type="button" class="kbp-doc__op kbp-doc__clinic"
-                    title="资料诊疗室：资料体检、资料刨析、资料装配都在这里"
+                    data-tip="资料诊疗室" aria-label="资料诊疗室"
                     @click="openClinic(doc)">
                     <OsIcon name="activity" :size="14" />
-                    <span>资料诊疗室</span>
                   </button>
                   <span class="kbp-doc__op" title="智能整理" @click="startOrganize(doc)">
                     <OsIcon name="sparkles" :size="14" />
@@ -3860,20 +3859,42 @@ onBeforeUnmount(() => {
   }
 
   &.kbp-doc__clinic {
-    width: auto;
-    gap: 4px;
-    padding: 0 8px;
-    border: 1px solid #dbeafe;
-    background: #eff6ff;
-    color: #2563eb;
-    font-size: 11px;
-    font-weight: 600;
-    white-space: nowrap;
+    position: relative;
+    width: 24px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--os-text-3, #9ca3af);
 
     &:hover {
-      border-color: #93c5fd;
-      background: #dbeafe;
-      color: #1d4ed8;
+      background: var(--os-bg-hover, #f3f4f6);
+      color: var(--os-text, #111827);
+    }
+
+    /* 只在鼠标移上去时显示说明，平时只保留一个图标 */
+    &::after {
+      position: absolute;
+      bottom: calc(100% + 7px);
+      left: 50%;
+      z-index: 30;
+      padding: 4px 8px;
+      border-radius: 5px;
+      background: #1f2937;
+      color: #fff;
+      content: attr(data-tip);
+      font-size: 11px;
+      font-weight: 400;
+      line-height: 1.3;
+      opacity: 0;
+      pointer-events: none;
+      white-space: nowrap;
+      transform: translate(-50%, 2px);
+      transition: opacity 0.14s ease, transform 0.14s ease;
+    }
+
+    &:hover::after {
+      opacity: 1;
+      transform: translate(-50%, 0);
     }
   }
 
