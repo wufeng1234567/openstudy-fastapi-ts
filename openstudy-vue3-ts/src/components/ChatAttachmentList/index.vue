@@ -75,11 +75,14 @@
           @click.stop="step(1)">›</button>
       </div>
     </Teleport>
+    <!-- 图片统一复用站内缩放预览组件（与题目/练习同一套） -->
+    <ImageViewer v-model:visible="imageViewerVisible" :src="imageViewerSrc" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
+import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
 import { buildDocPreview, dataUrlToFile, isDocFile, parseDocFile } from '@/utils/doc-parse'
 
 /**
@@ -153,6 +156,8 @@ const WHEEL_STEP = 1.12
 
 const viewerVisible = ref(false)
 const viewerIndex = ref(0)
+const imageViewerVisible = ref(false)
+const imageViewerSrc = ref('')
 const scale = ref(1)
 const tx = ref(0)
 const ty = ref(0)
@@ -221,6 +226,13 @@ const ensureDocPreview = async () => {
 }
 
 const openViewer = (idx: number) => {
+  const att = props.items[idx]
+  // 图片统一走站内 ImageViewer：缩放/拖拽/旋转的控制与题目页完全一致。
+  if (isImage(att)) {
+    imageViewerSrc.value = viewSrcOf(att)
+    imageViewerVisible.value = true
+    return
+  }
   viewerIndex.value = idx
   resetTransform()
   viewerVisible.value = true

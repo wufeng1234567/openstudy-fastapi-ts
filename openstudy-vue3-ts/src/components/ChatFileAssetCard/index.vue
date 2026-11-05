@@ -12,14 +12,30 @@
   判据认数据形状（files / images），不认工具名，后续任何工具吐出同形状都能复用。
 -->
 <template>
-  <div v-if="hasItems" class="cf-card">
-    <div class="cf-head">
+  <div v-if="hasItems" class="cf-card" :class="{ 'is-expanded': expanded, 'has-sticky': hasMore }">
+    <!--
+      长清单的标题栏就是吸顶条（与 AgentDraftCard / AgentConfirmCard 同一套交互）：
+        · 不额外再画一行标题，避免「标题 + 吸顶条」重复出现；
+        · 展开时 sticky 在消息流顶部，滚到列表中部也能一键收起；
+        · 收起后退回普通文档流，卡片只剩很短一截，不需要再吸顶。
+      展开态由 useCollapseBar 的 COLLAPSE_BAR_STYLE 提供 top，抵消聊天列表的 padding-top。
+    -->
+    <div v-if="hasMore" class="cf-sticky" :class="{ 'is-collapsed': !expanded }"
+      :style="expanded ? COLLAPSE_BAR_STYLE : undefined">
+      <span class="cf-sticky__label">{{ title }}</span>
+      <span class="cf-count">{{ total }} 项</span>
+      <button type="button" class="cf-sticky__btn" @click="expanded = !expanded">
+        {{ expanded ? '收起' : `展开全部（${total}）` }}
+      </button>
+    </div>
+
+    <div v-else class="cf-head">
       <span class="cf-title">{{ title }}</span>
       <span class="cf-count">{{ total }} 项</span>
     </div>
 
-    <div v-if="files.length" class="cf-files">
-      <button v-for="file in files" :key="`f-${file.fileId || file.fileName}`" type="button" class="cf-file"
+    <div v-if="visibleFiles.length" class="cf-files">
+      <button v-for="file in visibleFiles" :key="`f-${file.fileId || file.fileName}`" type="button" class="cf-file"
         @click="openFile(file)">
         <span class="cf-file__icon">
           <OsIcon name="file-text" :size="17" />
@@ -37,8 +53,8 @@
       </button>
     </div>
 
-    <div v-if="images.length" class="cf-images">
-      <button v-for="image in images" :key="`i-${image.imageId || image.imageName}`" type="button" class="cf-image"
+    <div v-if="visibleImages.length" class="cf-images">
+      <button v-for="image in visibleImages" :key="`i-${image.imageId || image.imageName}`" type="button" class="cf-image"
         @click="openImage(image)">
         <img class="cf-image__thumb" :src="assetUrl(image.url)" :alt="image.imageName" loading="lazy" />
         <span class="cf-image__main">
@@ -51,12 +67,15 @@
       </button>
     </div>
 
+    <div v-if="!expanded && hasMore" class="cf-more">
+      还有 {{ total - visibleImages.length - visibleFiles.length }} 项
+      <button type="button" @click="expanded = true">展开查看</button>
+    </div>
+
     <el-dialog v-model="previewVisible" :title="previewTitle" width="860px" top="4vh" append-to-body
       destroy-on-close class="cf-preview-dialog">
       <div v-if="previewItem" class="cf-preview">
-        <img v-if="previewKind === 'image'" class="cf-preview__image" :src="assetUrl(previewItem.url)"
-          :alt="previewItem.imageName || previewItem.fileName" />
-        <DocxPreview v-else-if="previewKind === 'docx'" :url="assetUrl(previewItem.url)"
+        <DocxPreview v-if="previewKind === 'docx'" :url="assetUrl(previewItem.url)"
           :title="previewTitle" :height="620" />
         <iframe v-else-if="previewKind === 'pdf'" class="cf-preview__pdf" :src="assetUrl(previewItem.url)"
           title="PDF 预览" />
@@ -67,13 +86,18 @@
         </div>
       </div>
     </el-dialog>
+
+    <!-- 与站内题目/练习共用同一个缩放预览组件 -->
+    <ImageViewer v-model:visible="imageViewerVisible" :src="imageViewerSrc" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import DocxPreview from '@/components/DocxPreview/index.vue'
+import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
+import { COLLAPSE_BAR_STYLE } from '@/composables/useCollapseBar'
 
 defineOptions({ name: 'ChatFileAssetCard' })
 
@@ -83,7 +107,14 @@ const props = defineProps<{
 
 const previewVisible = ref(false)
 const previewItem = ref<any>(null)
-const previewKind = ref<'image' | 'docx' | 'pdf' | 'other'>('other')
+const previewKind = ref<'docx' | 'pdf' | 'other'>('other')
+const imageViewerVisible = ref(false)
+const imageViewerSrc = ref('')
+const expanded = ref(false)
+
+// 默认只露前几项，避免一次把 20 张图铺满整个对话
+const COLLAPSED_IMAGES = 3
+const COLLAPSED_FILES = 2
 
 const files = computed<any[]>(() => {
   if (Array.isArray(props.data?.files)) return props.data.files
@@ -103,6 +134,16 @@ const title = computed(() => {
   if (files.value.length && images.value.length) return '对话文件与图片'
   return images.value.length ? '对话图片' : '对话文件'
 })
+const visibleFiles = computed(() => expanded.value ? files.value : files.value.slice(0, COLLAPSED_FILES))
+const visibleImages = computed(() => expanded.value ? images.value : images.value.slice(0, COLLAPSED_IMAGES))
+const hasMore = computed(() => total.value > COLLAPSED_IMAGES + COLLAPSED_FILES
+  || (files.value.length > COLLAPSED_FILES || images.value.length > COLLAPSED_IMAGES))
+
+watch(
+  () => props.data,
+  () => { expanded.value = false },
+  { deep: true }
+)
 
 const previewTitle = computed(() => {
   const item = previewItem.value
@@ -135,14 +176,17 @@ function detectKind(item: any): 'image' | 'docx' | 'pdf' | 'other' {
 }
 
 function openImage(image: any) {
-  previewItem.value = image
-  previewKind.value = 'image'
-  previewVisible.value = true
+  imageViewerSrc.value = assetUrl(image.url)
+  imageViewerVisible.value = true
 }
 
 function openFile(file: any) {
+  if (detectKind(file) === 'image') {
+    openImage({ ...file, url: file.url })
+    return
+  }
   previewItem.value = file
-  previewKind.value = detectKind(file)
+  previewKind.value = detectKind(file) as 'docx' | 'pdf' | 'other'
   previewVisible.value = true
 }
 </script>
@@ -156,11 +200,15 @@ function openFile(file: any) {
   background: #fbfdff;
 }
 
+/* 有吸顶条时顶部不再留 padding：让吸顶条天然贴住卡片上边框，避免圆角处露缝 */
+.cf-card.has-sticky {
+  padding-top: 0;
+}
+
 .cf-head {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   margin-bottom: 6px;
 }
 
@@ -173,6 +221,86 @@ function openFile(file: any) {
 .cf-count {
   color: #9ca3af;
   font-size: 10px;
+}
+
+.cf-toggle {
+  margin-left: auto;
+  padding: 2px 7px;
+  border: 1px solid #dbeafe;
+  border-radius: 5px;
+  background: #fff;
+  color: #2563eb;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.cf-toggle:hover {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.cf-sticky {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* 通栏到卡片左右边缘，滚动时底下内容不会从两侧透出来 */
+  margin: 0 -12px 0;
+  padding: 9px 12px;
+  border-bottom: 1px solid #e6eefb;
+  border-radius: 9px 9px 0 0;
+  background: rgba(251, 253, 255, 0.97);
+  box-shadow: 0 3px 12px rgba(30, 58, 95, 0.08);
+  backdrop-filter: blur(6px);
+}
+
+/* 展开时吸顶条与下方列表保持间距；收起后它就等同于卡片标题，不再额外留白 */
+.cf-sticky:not(.is-collapsed) {
+  margin-bottom: 8px;
+}
+
+.cf-sticky.is-collapsed {
+  position: static;
+  border-bottom: none;
+  border-radius: 9px;
+  box-shadow: none;
+}
+
+.cf-sticky__label {
+  color: #1e3a5f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cf-sticky__btn {
+  margin-left: auto;
+  padding: 3px 9px;
+  border: 0;
+  border-radius: 5px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.cf-sticky__btn:hover {
+  background: #dbeafe;
+}
+
+.cf-more {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+  color: #9ca3af;
+  font-size: 10px;
+}
+
+.cf-more button {
+  border: 0;
+  background: transparent;
+  color: #2563eb;
+  font-size: 10px;
+  cursor: pointer;
 }
 
 .cf-files {
@@ -239,7 +367,7 @@ function openFile(file: any) {
 
 .cf-images {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
   gap: 7px;
   margin-top: 7px;
 }
@@ -263,8 +391,8 @@ function openFile(file: any) {
 }
 
 .cf-image__thumb {
-  width: 46px;
-  height: 46px;
+  width: 40px;
+  height: 40px;
   flex: none;
   border-radius: 5px;
   object-fit: cover;

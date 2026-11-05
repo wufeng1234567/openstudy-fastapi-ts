@@ -217,8 +217,8 @@
             ⚠️ 正文**不要**绑点击复制：回答里点一下（想看链接、想选中一段、误触）
             就会把整段复制走 + 弹「复制成功」，很打扰。复制只走下面这个按钮。
           -->
-          <div class="message-text rendered-md" v-html="renderAgentMarkdown(msg.content)">
-          </div>
+          <div class="message-text rendered-md" v-html="renderAgentMarkdown(msg.content)"
+            @click="openMessageImage"></div>
           <!--
             ⚠️ 2026-10-17：正文末尾那个「思考中…」呼吸提示已删除。
             它和进度行的"正在处理…"是**同一件事的两个 UI**，叠在一起就是用户看到的
@@ -255,7 +255,7 @@
             保证两边渲染结果一致：同一段公式在提问气泡和回答正文里长得一样。
           -->
           <div v-if="msg.content" class="message-text rendered-md"
-            v-html="renderAgentMarkdown(msg.content)"></div>
+            v-html="renderAgentMarkdown(msg.content)" @click="openMessageImage"></div>
           <!--
             用户消息的复制按钮（用户 2026-09-23 要求：LLM 那边和用户那边都要有复制按钮）。
             复制的是**这一条用户消息的 `content`**（不是整轮、也不是附件）；
@@ -324,6 +324,7 @@
     -->
     <ScrollButton :scroll-container="messagesRef" anchor-selector=".chat-input-area .input-box"
       :bottom="scrollButtonBottom" :right="16" />
+    <ImageViewer v-model:visible="messageImageVisible" :src="messageImageSrc" />
     <!-- 输入区（底部组件：模式切换 / 附件 / 放大输入 / 工具栏 / 发送） -->
     <ChatInputArea v-model="inputContent" :mode="mode" :show-mode-switch="showModeSwitch"
       :show-new-session="showNewSession" :generating="isGenerating" :paused="isPaused" :placeholder="placeholder"
@@ -365,6 +366,7 @@ import AgentTurnRollback from '@/components/AgentTurnRollback/index.vue'
 import AgentRollbackNotice from '@/components/AgentRollbackNotice/index.vue'
 import ScrollButton from '@/components/ScrollButton/ScrollButton.vue'
 import ChatAttachmentList from '@/components/ChatAttachmentList/index.vue'
+import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
 import ChatInputArea from '@/components/ChatInputArea/index.vue'
 
 const props = defineProps({
@@ -671,6 +673,22 @@ watch(noticeSignature, () => {
 const inputContent = ref('')
 const messagesRef = ref(null)
 const isNearBottom = ref(true)
+
+/* 正文里的图片：不在消息流里铺满，点击后复用站内 ImageViewer 缩放查看 */
+const messageImageVisible = ref(false)
+const messageImageSrc = ref('')
+
+function openMessageImage(e: MouseEvent) {
+  const target = e.target as HTMLElement | null
+  if (!target || target.tagName !== 'IMG') return
+  const raw = target.getAttribute('src') || ''
+  if (!raw) return
+  const base = String(import.meta.env.VITE_APP_BASE_API || '').replace(/\/$/, '')
+  messageImageSrc.value = raw.startsWith('http') || raw.startsWith('data:')
+    ? raw
+    : `${base}${raw.startsWith('/') ? raw : `/${raw}`}`
+  messageImageVisible.value = true
+}
 
 /**
  * 滚动过程中**实时**记下的位置（离开本页时要拿它还原，见 `leftStash`）
@@ -1886,8 +1904,17 @@ defineExpose({
   }
 
   img {
-    max-width: 100%;
+    display: block;
+    width: auto;
+    height: auto;
+    /* 聊天里 AI 直接贴出的图片：预览尺寸收住，别把整条消息流拉满；点击再用统一 ImageViewer 放大 */
+    max-width: min(400px, 100%);
+    max-height: 240px;
+    object-fit: contain;
+    margin: 8px 0;
     border-radius: 8px;
+    cursor: zoom-in;
+    background: #f8fafc;
   }
 
   a {
