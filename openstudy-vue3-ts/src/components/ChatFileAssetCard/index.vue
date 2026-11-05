@@ -1,0 +1,328 @@
+<!--
+  对话文件 / 图片资产卡
+  ----------------------------------------------------------------------------
+  背景：`chat_file_manage` 的返回原本被当成通用 JSON 塞进「查看详情」，用户看到的是
+  imageId / fileId / mimeType / url 这种调试字段。这个组件的职责是把**输出契约**
+  翻译成用户能用的东西：
+
+    · 文件：文件名 + 类型 + 大小 + 上传时间；点击打开文档预览
+    · 图片：缩略图 + 图片名 + 大小 + 上传时间；点击打开大图
+    · 不展示内部 id / mimeType / url（这些只留在「查看详情」里）
+
+  判据认数据形状（files / images），不认工具名，后续任何工具吐出同形状都能复用。
+-->
+<template>
+  <div v-if="hasItems" class="cf-card">
+    <div class="cf-head">
+      <span class="cf-title">{{ title }}</span>
+      <span class="cf-count">{{ total }} 项</span>
+    </div>
+
+    <div v-if="files.length" class="cf-files">
+      <button v-for="file in files" :key="`f-${file.fileId || file.fileName}`" type="button" class="cf-file"
+        @click="openFile(file)">
+        <span class="cf-file__icon">
+          <OsIcon name="file-text" :size="17" />
+        </span>
+        <span class="cf-file__main">
+          <span class="cf-file__name">{{ file.fileName }}</span>
+          <span class="cf-file__meta">
+            {{ file.ext || '文件' }}
+            <template v-if="file.size"> · {{ formatSize(file.size) }}</template>
+            <template v-if="file.imageCount"> · {{ file.imageCount }} 张图</template>
+            <template v-if="file.createTime"> · {{ file.createTime }}</template>
+          </span>
+        </span>
+        <span class="cf-file__open">打开</span>
+      </button>
+    </div>
+
+    <div v-if="images.length" class="cf-images">
+      <button v-for="image in images" :key="`i-${image.imageId || image.imageName}`" type="button" class="cf-image"
+        @click="openImage(image)">
+        <img class="cf-image__thumb" :src="assetUrl(image.url)" :alt="image.imageName" loading="lazy" />
+        <span class="cf-image__main">
+          <span class="cf-image__name">{{ image.imageName }}</span>
+          <span class="cf-image__meta">
+            <template v-if="image.size">{{ formatSize(image.size) }}</template>
+            <template v-if="image.createTime"> · {{ image.createTime }}</template>
+          </span>
+        </span>
+      </button>
+    </div>
+
+    <el-dialog v-model="previewVisible" :title="previewTitle" width="860px" top="4vh" append-to-body
+      destroy-on-close class="cf-preview-dialog">
+      <div v-if="previewItem" class="cf-preview">
+        <img v-if="previewKind === 'image'" class="cf-preview__image" :src="assetUrl(previewItem.url)"
+          :alt="previewItem.imageName || previewItem.fileName" />
+        <DocxPreview v-else-if="previewKind === 'docx'" :url="assetUrl(previewItem.url)"
+          :title="previewTitle" :height="620" />
+        <iframe v-else-if="previewKind === 'pdf'" class="cf-preview__pdf" :src="assetUrl(previewItem.url)"
+          title="PDF 预览" />
+        <div v-else class="cf-preview__fallback">
+          <OsIcon name="file-text" :size="30" />
+          <p>这个文件暂不支持在线预览</p>
+          <a :href="assetUrl(previewItem.url)" target="_blank" rel="noopener">下载文件</a>
+        </div>
+      </div>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import OsIcon from '@/components/OsIcon/index.vue'
+import DocxPreview from '@/components/DocxPreview/index.vue'
+
+defineOptions({ name: 'ChatFileAssetCard' })
+
+const props = defineProps<{
+  data: Record<string, any>
+}>()
+
+const previewVisible = ref(false)
+const previewItem = ref<any>(null)
+const previewKind = ref<'image' | 'docx' | 'pdf' | 'other'>('other')
+
+const files = computed<any[]>(() => {
+  if (Array.isArray(props.data?.files)) return props.data.files
+  if (props.data?.fileId && props.data?.fileName) return [props.data]
+  return []
+})
+
+const images = computed<any[]>(() => {
+  if (Array.isArray(props.data?.images)) return props.data.images
+  if (props.data?.imageId && props.data?.imageName) return [props.data]
+  return []
+})
+
+const total = computed(() => files.value.length + images.value.length)
+const hasItems = computed(() => total.value > 0)
+const title = computed(() => {
+  if (files.value.length && images.value.length) return '对话文件与图片'
+  return images.value.length ? '对话图片' : '对话文件'
+})
+
+const previewTitle = computed(() => {
+  const item = previewItem.value
+  return String(item?.fileName || item?.imageName || '文件预览')
+})
+
+function assetUrl(url: string): string {
+  const value = String(url || '').trim()
+  if (!value) return ''
+  if (value.startsWith('data:') || value.startsWith('http://') || value.startsWith('https://')) return value
+  const base = String(import.meta.env.VITE_APP_BASE_API || '').replace(/\/$/, '')
+  return base + (value.startsWith('/') ? value : `/${value}`)
+}
+
+function formatSize(bytes: any): string {
+  const n = Number(bytes || 0)
+  if (!n) return '0 B'
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
+function detectKind(item: any): 'image' | 'docx' | 'pdf' | 'other' {
+  const mime = String(item?.mimeType || '').toLowerCase()
+  const ext = String(item?.ext || item?.fileName || item?.imageName || '').toLowerCase()
+  if (mime.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/.test(ext)) return 'image'
+  if (mime.includes('pdf') || ext.endsWith('.pdf')) return 'pdf'
+  if (mime.includes('word') || ext.endsWith('.docx') || ext.endsWith('.doc')) return 'docx'
+  return 'other'
+}
+
+function openImage(image: any) {
+  previewItem.value = image
+  previewKind.value = 'image'
+  previewVisible.value = true
+}
+
+function openFile(file: any) {
+  previewItem.value = file
+  previewKind.value = detectKind(file)
+  previewVisible.value = true
+}
+</script>
+
+<style scoped>
+.cf-card {
+  margin-top: 10px;
+  padding: 10px 12px 11px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #fbfdff;
+}
+
+.cf-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.cf-title {
+  color: #1e3a5f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cf-count {
+  color: #9ca3af;
+  font-size: 10px;
+}
+
+.cf-files {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.cf-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 7px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cf-file:hover {
+  border-color: #93c5fd;
+  background: #f8fbff;
+}
+
+.cf-file__icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  place-items: center;
+  border-radius: 6px;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.cf-file__main {
+  min-width: 0;
+}
+
+.cf-file__name {
+  display: block;
+  overflow: hidden;
+  color: #1f2937;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-file__meta {
+  display: block;
+  margin-top: 2px;
+  color: #9ca3af;
+  font-size: 10px;
+}
+
+.cf-file__open {
+  flex: none;
+  margin-left: auto;
+  color: #2563eb;
+  font-size: 10.5px;
+}
+
+.cf-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 7px;
+  margin-top: 7px;
+}
+
+.cf-image {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 5px;
+  border: 1px solid #e5e7eb;
+  border-radius: 7px;
+  background: #fff;
+  text-align: left;
+  cursor: zoom-in;
+}
+
+.cf-image:hover {
+  border-color: #93c5fd;
+  background: #f8fbff;
+}
+
+.cf-image__thumb {
+  width: 46px;
+  height: 46px;
+  flex: none;
+  border-radius: 5px;
+  object-fit: cover;
+  background: #f3f4f6;
+}
+
+.cf-image__main {
+  min-width: 0;
+}
+
+.cf-image__name {
+  display: block;
+  overflow: hidden;
+  color: #1f2937;
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-image__meta {
+  display: block;
+  margin-top: 2px;
+  color: #9ca3af;
+  font-size: 9.5px;
+}
+
+.cf-preview {
+  min-height: 180px;
+}
+
+.cf-preview__image {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  margin: 0 auto;
+  border-radius: 6px;
+}
+
+.cf-preview__pdf {
+  width: 100%;
+  height: 68vh;
+  border: 0;
+}
+
+.cf-preview__fallback {
+  padding: 50px 20px;
+  color: #9ca3af;
+  text-align: center;
+}
+
+.cf-preview__fallback p {
+  margin: 8px 0 10px;
+  font-size: 12px;
+}
+
+.cf-preview__fallback a {
+  color: #2563eb;
+  font-size: 12px;
+}
+</style>

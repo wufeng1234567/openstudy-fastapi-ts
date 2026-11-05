@@ -46,7 +46,9 @@ class BankManageTool(AgentTool):
     description = (
         "Manage question banks. Use for creating, reading, updating and deleting banks. "
         "action values: list=list my banks (optional fuzzy `bank_name` keyword, optional "
-        "`subject` filter), detail=show one bank's details, create=create a bank, "
+        "`subject` filter), detail=show one bank's details, "
+        "open=get the practice entry link for an existing bank (no data change; use when "
+        "the user asks to open / jump to a bank), create=create a bank, "
         "update=update bank fields, delete=delete by `bank_id`, "
         "delete_by_name=delete by exact bank name, "
         "delete_many=delete SEVERAL banks at once (pass `bank_ids` and/or exact `bank_names` lists). "
@@ -56,7 +58,8 @@ class BankManageTool(AgentTool):
     label = "题库管理"
     description_zh = (
         "题库的增删改查：list=列我的题库（可按名称模糊找、按科目筛）、"
-        "detail=看某个库的详情、create=建库、update=改库、delete=按 id 删库、"
+        "detail=看某个库的详情、open=取已有题库的刷题入口链接（不改数据）、"
+        "create=建库、update=改库、delete=按 id 删库、"
         "delete_by_name=按库名删库、delete_many=一次删多个。"
     )
     parameters = {
@@ -68,6 +71,7 @@ class BankManageTool(AgentTool):
                 "enum": [
                     "list",
                     "detail",
+                    "open",
                     "create",
                     "update",
                     "delete",
@@ -374,6 +378,7 @@ class BankManageTool(AgentTool):
         handlers = {
             "list": self._list,
             "detail": self._detail,
+            "open": self._open,
             "create": self._create,
             "update": self._update,
             "delete": self._delete,
@@ -438,6 +443,23 @@ class BankManageTool(AgentTool):
             for qtype, count in rows.all()
         }
         return ok(action="detail", bank=qws.bank_brief(bank), questionTypes=distribution)
+
+    async def _open(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+        """取已有题库的刷题入口。
+
+        与 `detail` 的区别：`open` 的**唯一目的**就是返回 `jumpUrl`，前端据此
+        渲染「去刷题」卡片；它不写数据、也不需要确认。用户问「打开『题库测试』
+        的入口链接」时，模型应选这个 action，而不是 create/batch_import。
+        """
+        bank = await self._resolve_bank(params, ctx)
+        if isinstance(bank, dict):
+            return bank
+        return ok(
+            action="open",
+            bank=qws.bank_brief(bank),
+            message=f"题库「{bank.bank_name}」的刷题入口已准备好。",
+            jumpUrl=f"/front/questionPractice/{int(bank.id)}",
+        )
 
     async def _create(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
         bank_name = (params.get("bank_name") or "").strip()

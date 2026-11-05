@@ -441,7 +441,7 @@ def p6():
 # ============ P7 能力 → 模块 ============
 def p7():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "06  /  码道怎么用", "用码道的哪个能力，开发了哪块系统",
+    header(s, "08  /  码道怎么用", "用码道的哪个能力，开发了哪块系统",
            "不是功能清单，是实际开发中的分工：每张卡都是「功能 → 模块 → 怎么用 → 结果」。")
     cards = [
         ("子代理 · 测试", "题库与考试链路", "developer-test-agent 生成 58 条单测，覆盖两条清洗路径。", "→ 58 passed"),
@@ -465,7 +465,7 @@ def p7():
     text(s, M_L + 0.24, 6.19, CW - 0.48, 0.24,
          "一张卡就是一条链路：码道功能 → 开发的系统模块 → 怎么用 → 可核对结果。",
          size=9.2, bold=True, color=MINT_D)
-    footer(s, 7)
+    footer(s, 9)
 
 
 # ============ P8 真实案例 ============
@@ -744,6 +744,60 @@ def p9c():
     text(s, M_L + 0.20, 6.31, CW - 0.4, 0.24,
          "一句话记住：先给结果，再讲技术；每按一次按钮，都要有一处数据变化被看见。", size=9.0, bold=True, color=MINT_D)
     footer(s, 9)
+
+
+def p10close():
+    """P10：现场演示 + 下一步/团队（收束页）"""
+    s = prs.slides.add_slide(BLANK); bg(s)
+    header(s, "09  /  现场演示与下一步", "3 分钟看闭环，下一步把「好用」做成规模",
+           "先让观众看到资料真的变成了资产，再交代我们接下来补什么、谁来做。")
+    stages = [
+        ("0:00 – 0:30", "资料体检", "上传一份混乱 Word", "四维评分、P1 问题、章节热力图"),
+        ("0:30 – 1:20", "整理手术台", "一键整理，生成 3 条建议", "逐条看理由；接受 2 条、拒绝 1 条；复检"),
+        ("1:20 – 2:10", "资产装配", "拖 3 个章节进装配区", "生成复习卡 / 讲义；题单走智能出题"),
+        ("2:10 – 3:00", "学习闭环", "做错一道题，打开诊断", "点「原文依据」回原句；生成 3 道变式题"),
+    ]
+    cw = (CW - 3 * 0.15) / 4
+    for i, (t, h, act, res) in enumerate(stages):
+        x = M_L + i * (cw + 0.15)
+        card = rect(s, x, 1.88, cw, 2.02, fill=WHITE, line=LINE, lw=0.75, radius=0.05)
+        anim(s, f"p10close_stage_{i+1}", card)
+        text(s, x + 0.18, 2.00, cw - 0.36, 0.20, t, size=8.2, bold=True, color=MINT_D, spc=30)
+        text(s, x + 0.18, 2.24, cw - 0.36, 0.24, h, size=11.5, bold=True, color=INK)
+        text(s, x + 0.18, 2.54, cw - 0.36, 0.46, act, size=8.3, color=INK2, line_spacing=1.3)
+        line(s, x + 0.18, 3.08, x + cw - 0.18, 3.08, color=LINE, width=0.5)
+        text(s, x + 0.18, 3.17, cw - 0.36, 0.56, res, size=8.0, color=GRAY, line_spacing=1.35)
+
+    # 下一步
+    left = rect(s, M_L, 4.22, 6.02, 2.35, fill=MINT_L2, line=None, radius=0.07)
+    text(s, M_L + 0.24, 4.36, 5.5, 0.24, "下一步", size=11.5, bold=True, color=MINT_D)
+    next_items = [
+        ("30 天", "知识覆盖热力图升级 · 多模态向量 · 移动端适配"),
+        ("90 天", "教师端 / 多租户 · OBS 直传 · 题库与资料开放 API"),
+        ("持续", "把每条学习结论都做成可追溯、可复检的资产"),
+    ]
+    yy = 4.72
+    for tag, desc in next_items:
+        chip(s, M_L + 0.24, yy, 0.72, 0.26, tag, WHITE, MINT_D, 7.6)
+        text(s, M_L + 1.12, yy - 0.01, 4.65, 0.44, desc, size=8.6, color=GRAY, line_spacing=1.3)
+        yy += 0.54
+
+    # 团队 / 收束
+    right = rect(s, 7.05, 4.22, 5.43, 2.35, fill=WHITE, line=LINE, lw=0.75, radius=0.07)
+    text(s, 7.25, 4.36, 4.9, 0.24, "团队分工", size=11.5, bold=True, color=INK)
+    roles = [
+        ("产品 / 后端", "场景定义、Agent 与 RAG 后端、数据与部署"),
+        ("前端 / 交互", "对话体验、资料空间、题库与微课面板"),
+        ("测试 / 演示", "探针与回归、演示脚本、材料与讲解"),
+    ]
+    yy = 4.70
+    for t, d in roles:
+        text(s, 7.25, yy, 1.08, 0.22, t, size=8.4, bold=True, color=MINT_D)
+        text(s, 8.38, yy, 3.85, 0.34, d, size=8.0, color=GRAY, line_spacing=1.25)
+        yy += 0.42
+    text(s, 7.25, 6.06, 4.95, 0.24, "谢谢。欢迎现场提问，也欢迎直接上手体验。", size=9.2, bold=True, color=INK)
+    text(s, 7.25, 6.32, 4.95, 0.20, "gitcode.com/qi142410131/openstudy-fastapi-ts", size=7.2, color=GRAY2)
+    footer(s, 10)
 
 
 def p10b():
@@ -1033,7 +1087,7 @@ def p7arch():
         ("02", "会话记住 fileId", "持久化，不丢图"),
         ("03", "下一轮说", "“把刚才那张图插到第 4 题”"),
         ("04", "chat_file_manage", "按 fileId 取回原图"),
-        ("05", "question_manage", "写入解析，结果卡确认"),
+        ("05", "question_manage", "写入解析；文件卡显示名称/时间"),
     ]
     x = M_L + 0.28
     for n, t, d in steps:
@@ -1136,7 +1190,7 @@ def p8c():
     footer(s, 8)
 
 
-for fn in (p1, p2b, p3health, p4surgery, p5pack, p5b, p7arch, p6, p9c, p10b):
+for fn in (p1, p2b, p3health, p4surgery, p5pack, p5b, p7arch, p6, p7, p10close):
     fn()
 
 out = os.path.join(HERE, "OpenStudy-10页-V3-码道版.pptx")

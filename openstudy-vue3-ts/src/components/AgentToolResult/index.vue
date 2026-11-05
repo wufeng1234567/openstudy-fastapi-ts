@@ -188,19 +188,22 @@
         </template>
       </el-dialog>
 
-    <!-- ③ 跳转卡片：建库/导题完成后，一步直达题库 -->
+    <!-- ③ 对话文件 / 图片资产卡：把 chat_file_manage 的 JSON 变成可点击的资产 -->
+    <ChatFileAssetCard v-if="chatAssets" :data="chatAssets" />
+
+    <!-- ④ 跳转卡片：建库/导题完成后，一步直达题库 -->
     <div v-if="bankJump" class="at-jump">
       <div class="at-jump__main">
         <span class="at-jump__badge">
           <OsIcon name="check-circle" :size="13" />
-          {{ bankJump.isNew ? '题库已建好' : '题目已导入' }}
+          {{ bankJump.isOpen ? '题库入口' : bankJump.isNew ? '题库已建好' : '题目已导入' }}
         </span>
         <span class="at-jump__name">{{ bankJump.bankName }}</span>
         <span v-if="bankJump.meta" class="at-jump__meta">{{ bankJump.meta }}</span>
       </div>
       <button type="button" class="at-jump__btn at-jump__btn--primary" @click="goToBank">
         <OsIcon name="book-open" :size="13" />
-        <span>立即开始刷题</span>
+        <span>{{ bankJump.isOpen ? '去刷题' : '立即开始刷题' }}</span>
       </button>
     </div>
 
@@ -315,6 +318,7 @@ import AgentToolDetail from '@/components/AgentToolDetail/index.vue'
 import MindMap from '@/components/MindMap/index.vue'
 import LearningChart from '@/components/LearningChart/index.vue'
 import DocxPreview from '@/components/DocxPreview/index.vue'
+import ChatFileAssetCard from '@/components/ChatFileAssetCard/index.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import { renderMarkdownWithLatex } from '@/utils/latex'
 import { getToken } from '@/utils/auth'
@@ -419,6 +423,7 @@ const TOOL_LABELS: Record<string, string> = {
 const ACTION_LABELS: Record<string, string> = {
   list: '查询列表',
   detail: '查看详情',
+  open: '打开入口',
   search: '搜索',
   create: '创建',
   update: '更新',
@@ -617,8 +622,11 @@ const errorCount = computed(() => (props.status === 'fail' ? props.errors.length
 
 const nonEmpty = (v: Record<string, any> | null) => Boolean(v && Object.keys(v).length > 0)
 
-/** 有入参或有返回值才给「查看详情」 */
-const hasDetails = computed(() => nonEmpty(props.params) || nonEmpty(props.data))
+/** 有入参或有返回值才给「查看详情」；对话文件结果有专用资产卡，内部 JSON 不再外露 */
+const hasDetails = computed(() => {
+  if (props.tool === 'chat_file_manage') return false
+  return nonEmpty(props.params) || nonEmpty(props.data)
+})
 
 const hasParams = computed(() => nonEmpty(props.params))
 const hasData = computed(() => nonEmpty(props.data))
@@ -756,6 +764,27 @@ const mindHeight = computed(() => {
   return Math.max(360, Math.min(1400, Math.round(need)))
 })
 
+/**
+ * 对话文件/图片资产（`chat_file_manage` 的 list / list_images / get / get_image）
+ *
+ * 判据认输出契约里的 `files` / `images` / 单文件字段，不认工具名：
+ * 以后任何工具返回同样形状，都会自动获得这张可点击卡片。
+ * 没有这类字段时返回 null，不影响原有工具结果展示。
+ */
+const chatAssets = computed<Record<string, any> | null>(() => {
+  if (props.status !== 'ok') return null
+  const d = unwrapToolData(props.data)
+  if (!d || typeof d !== 'object') return null
+  const hasFiles = Array.isArray((d as any).files)
+    && (d as any).files.some((f: any) => f && f.fileId != null)
+  const hasImages = Array.isArray((d as any).images)
+    && (d as any).images.some((i: any) => i && i.imageId != null)
+  const singleFile = (d as any).fileId && (d as any).fileName
+  const singleImage = (d as any).imageId && (d as any).imageName
+  if (!hasFiles && !hasImages && !singleFile && !singleImage) return null
+  return d
+})
+
 const artifact = computed(() => {
   if (props.status !== 'ok') return null
   const d = unwrapToolData(props.data)
@@ -796,7 +825,7 @@ const artifact = computed(() => {
  *   · question_manage(action=batch_import) → 题目导完了
  *   · 后续任何工具只要回执带 bankId，自动获得这张卡
  */
-const BANK_ACTIONS = new Set(['create', 'batch_import', 'import', 'update'])
+const BANK_ACTIONS = new Set(['create', 'batch_import', 'import', 'update', 'open'])
 
 /**
  * 从工具回执里找出「题库」对象。
@@ -861,6 +890,7 @@ const bankJump = computed(() => {
     bankName,
     meta: metaParts.join(' · '),
     isNew: action === 'create',
+    isOpen: action === 'open',
     total
   }
 })
@@ -962,6 +992,8 @@ const LINK_WRITE_ACTIONS = new Set([
   // 题库 / 题目（2026-10-26 补）
   'create',
   'batch_import',
+  // 2026-11-05：用户明确要「打开已有题库的入口」时，open 是只读动作但需要出卡
+  'open',
   // 知识库入库 / 修改（2026-10-26 补）
   'from_text',
   'from_attachment',
@@ -991,7 +1023,7 @@ const LINK_WRITE_ACTIONS = new Set([
 const LINK_UI: Record<string, { badge: string; buttonText: string; icon: string }> = {
   english_wordbook: { badge: '词库已更新', buttonText: '去看看', icon: 'book' },
   // 2026-10-26：把「智能体说做完了」和「去哪里看」接上
-  bank_manage: { badge: '题库已创建', buttonText: '去题库看看', icon: 'book-open' },
+  bank_manage: { badge: '题库入口', buttonText: '去刷题', icon: 'book-open' },
   question_manage: { badge: '题目已就绪', buttonText: '去刷题', icon: 'pen-line' },
   knowledge_ingest: { badge: '资料已入库', buttonText: '查看处理进度', icon: 'folder' },
   // 练习已就绪 —— 按钮文案直接说"开始"，不用"去看看"这种含糊说法
