@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="dialogVisible"
-    :title="`${recordView ? '整理记录' : '整理预览'} · ${mode === 'deep' ? '智能整理' : '旧版整理'}`"
+    :title="`${recordView ? '整理记录' : '整理手术台'} · ${mode === 'deep' ? '智能整理' : '旧版整理'}`"
     width="1120px"
     top="6vh"
     append-to-body
@@ -39,6 +39,20 @@
     </div>
 
     <div v-else class="od-body">
+      <div v-if="status === 'ready' && !readonlyRecord" class="od-plan">
+        <div class="od-plan__stats">
+          <div v-for="stat in planStats" :key="stat.key" class="od-plan__stat">
+            <b>{{ stat.count }}</b>
+            <span>{{ stat.label }}</span>
+          </div>
+        </div>
+        <div class="od-plan__actions">
+          <span class="od-plan__hint">这是一份「手术方案」：先看变更理由，再决定接受哪些。</span>
+          <el-button link size="small" @click="selectAllChanges">全选变更</el-button>
+          <el-button link size="small" @click="clearAllChanges">全部忽略</el-button>
+        </div>
+      </div>
+
       <div v-if="status === 'ready'" class="od-guide">
         <div class="od-guide__title">先看这里：这次整理只生成预览，不会自动改资料</div>
         <div class="od-guide__row">
@@ -70,6 +84,9 @@
             <span v-if="readonlyRecord" class="od-applied-tag">已应用</span>
             <span class="od-change__group">{{ groupLabel(change.group) }}</span>
             <span class="od-ai-tag">AI 生成</span>
+            <span v-if="change.confidence != null && change.confidence < 1" class="od-confidence">
+              置信度 {{ Math.round(Number(change.confidence) * 100) }}%
+            </span>
             <span class="od-change__reason">{{ change.reason }}</span>
           </div>
           <div v-if="isImageChange(change)" class="od-image-diff">
@@ -219,6 +236,9 @@
           >
             应用选中整理
           </el-button>
+          <el-button v-if="applied" @click="$emit('recheck')">
+            复检
+          </el-button>
           <el-button v-if="applied" type="danger" plain @click="$emit('rollback')">
             回退本次整理
           </el-button>
@@ -250,6 +270,7 @@ const emit = defineEmits<{
   (e: 'apply', changeIds: string[], exclusionIds: string[]): void
   (e: 'rollback'): void
   (e: 'rerun'): void
+  (e: 'recheck'): void
 }>()
 
 const dialogVisible = computed({
@@ -300,6 +321,33 @@ const contentStatsRows = computed(() => {
     .map((label) => ({ label, before: before.get(label) ?? '—', after: after.get(label) ?? '—' }))
 })
 const changedCount = computed(() => visibleChanges.value.length)
+
+const planStats = computed(() => {
+  const groupCount = (group: string) =>
+    visibleChanges.value.filter((change: any) => change.group === group).length
+  // 内容统计（facets）在 visibleChanges 里被过滤掉，单独按原始 changes 计数。
+  const facetsCount = (props.changes || []).filter((change: any) => change.field === 'facets').length
+  return [
+    { key: 'structure', label: '结构/顺序', count: groupCount('structure') },
+    { key: 'image', label: '图片', count: groupCount('image') },
+    { key: 'meta', label: '元信息/统计', count: groupCount('meta') + facetsCount },
+    { key: 'suggest', label: '建议剔除', count: props.suggestions.length }
+  ].filter((item) => item.count > 0)
+})
+
+function selectAllChanges() {
+  const next: Record<string, boolean> = { ...selectedChangeMap.value }
+  for (const change of visibleChanges.value) {
+    if (change.selectable !== false) next[change.id] = true
+  }
+  selectedChangeMap.value = next
+}
+
+function clearAllChanges() {
+  const next: Record<string, boolean> = { ...selectedChangeMap.value }
+  for (const change of visibleChanges.value) next[change.id] = false
+  selectedChangeMap.value = next
+}
 const selectedVisibleChangeIds = computed(() =>
   Object.entries(selectedChangeMap.value)
     .filter(([, selected]) => selected)
@@ -440,6 +488,63 @@ function apply() {
   justify-content: space-between;
   gap: 20px;
   margin-bottom: 12px;
+}
+
+.od-plan {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 13px;
+  margin-bottom: 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 9px;
+  background: linear-gradient(90deg, #f8fbff, #ffffff);
+}
+
+.od-plan__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.od-plan__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.od-plan__stat b {
+  color: #1e3a5f;
+  font-size: 19px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.od-plan__stat span {
+  color: #6b7280;
+  font-size: 10.5px;
+}
+
+.od-plan__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.od-plan__hint {
+  color: #6b7280;
+  font-size: 11.5px;
+}
+
+.od-confidence {
+  flex: none;
+  padding: 1px 5px;
+  color: #6b7280;
+  background: #f3f4f6;
+  border-radius: 3px;
+  font-size: 10.5px;
 }
 
 .od-summary {

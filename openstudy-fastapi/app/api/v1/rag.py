@@ -653,6 +653,28 @@ async def get_document_content(
         return _fail(e)
 
 
+@router.get("/workspace/documents/{doc_id}/health")
+async def get_workspace_document_health(
+    doc_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """资料体检：结构 / 图文 / 知识覆盖 / 可学习化四维报告。
+
+    纯规则计算，不调用模型；同一份资料两次体检结果一致。
+    前端「资料体检」按钮和整理手术台都消费这份数据。
+    """
+    try:
+        from app.services.document_health_service import build_document_health
+
+        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        # 体检是同步 CPU 计算（可能几十万字符），放到线程池，避免阻塞事件循环。
+        report = await asyncio.to_thread(build_document_health, doc)
+        return success(report)
+    except Exception as e:
+        return _fail(e)
+
+
 @router.get("/document/outline/{doc_id}")
 async def get_document_outline(
     doc_id: int,

@@ -178,6 +178,11 @@
               <Lightning />
             </el-icon>
             <span class="explanation-title">题目解析</span>
+            <QuestionSourceButton
+              :question-id="currentQuestion.id || currentQuestion.questionId"
+              :question-text="currentQuestion.questionText || currentQuestion.question"
+              class="explanation-source"
+            />
           </div>
           <LatexRenderer class="explanation-content" :content="currentQuestion.analysis" raw-html />
         </div>
@@ -223,6 +228,7 @@ import {
 import ReadingComprehensionDisplay from './ReadingComprehensionDisplay.vue'
 import QuestionAnalysis from './QuestionAnalysis.vue'
 import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
+import QuestionSourceButton from '@/components/QuestionSourceButton/index.vue'
 import type { TransformedQuestion } from '@/types'
 
 const props = defineProps({
@@ -758,6 +764,10 @@ function handleContentClick(e: MouseEvent) {
     border-radius: 8px;
     margin: 8px 0;
   }
+}
+
+.explanation-source {
+  margin-left: auto;
 }
 
 .question-analysis {

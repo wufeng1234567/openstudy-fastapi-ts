@@ -23,7 +23,7 @@ from app.database import get_db
 from app.core.security import get_current_user
 from app.core.response import success, paginate, error
 from app.models.question import (
-    QuestionBank, QuestionMain, QuestionSub,
+    QuestionBank, QuestionMain, QuestionSource, QuestionSub,
     UserBankFavorite, UserQuestionFavorite, UserQuestionError, UserQuestionMarked,
     UserPracticeLog, UserPracticeSession,
 )
@@ -848,6 +848,7 @@ async def save_bank_with_questions(
 
         if delete_ids:
             await db.execute(delete(QuestionSub).where(QuestionSub.main_id.in_(delete_ids)))
+            await db.execute(delete(QuestionSource).where(QuestionSource.question_id.in_(delete_ids)))
             await db.execute(delete(UserQuestionFavorite).where(UserQuestionFavorite.question_id.in_(delete_ids)))
             await db.execute(delete(UserQuestionError).where(UserQuestionError.question_id.in_(delete_ids)))
             await db.execute(delete(UserQuestionMarked).where(UserQuestionMarked.question_id.in_(delete_ids)))
@@ -1280,6 +1281,44 @@ async def get_question(
         return success(format_question(question))
     from app.services.question_grading_service import question_payload
     return success(question_payload(question, reveal=False))
+
+
+@router.get("/questionMain/questionMain/{question_id}/source")
+async def get_question_source_api(
+    question_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """题目的原文依据：这道题是从哪份资料、哪一段生成的。
+
+    没有锚点（历史题 / 手工录入题）返回 `hasSource=false`，前端据此隐藏按钮，
+    绝不伪造一段“原文”。
+    """
+    uid = int(current_user.get("user_id") or 0)
+    try:
+        question = (
+            await db.execute(select(QuestionMain).where(QuestionMain.id == question_id))
+        ).scalar_one_or_none()
+        if not question:
+            return error("题目不存在", code=404)
+        bank = (
+            await db.execute(
+                select(QuestionBank).where(QuestionBank.id == question.bank_id)
+            )
+        ).scalar_one_or_none()
+        if not await _can_view_bank(db, bank, uid):
+            return error("无权访问该题目（所属题库为私密题库）", code=403)
+
+        source = await question_write_service.get_question_source(
+            db,
+            user_id=uid,
+            question_id=question_id,
+        )
+        if not source:
+            return success({"hasSource": False, "questionId": question_id})
+        return success(source)
+    except Exception as e:  # noqa: BLE001 - 原文依据是可选展示，不能把整页打成 500
+        return error(f"读取原文依据失败：{str(e)[:200]}", code=500)
 
 
 @router.post("/questionMain/questionMain/recordStudyTime")

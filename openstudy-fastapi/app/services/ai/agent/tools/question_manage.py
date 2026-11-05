@@ -250,13 +250,35 @@ class QuestionManageTool(AgentTool):
                 "description": (
                     "**Required for batch_import**: array of question objects. "
                     'Each item looks like {"questionType":1,"questionText":"...",'
-                    '"options":["A","B"],"answer":"0","analysis":"..."}. '
+                    '"options":["A","B"],"answer":"0","analysis":"...",'
+                    '"sourceQuote":"原文证据句"}. '
+                    "When generating from a user's document, include `sourceDocId` + "
+                    "`sourceQuote` on each item (or pass them once at top level). "
                     "Pass a real array, not a JSON string. Keep LaTeX as LaTeX "
                     "(`\\overline{A}`, not `\\\\overline{A}`); do not add an extra layer "
                     "of backslashes. Max 15 questions per call; split larger sets into "
                     "several calls."
                 ),
                 "items": {"type": "object"},
+            },
+            "source_doc_id": {
+                "type": "integer",
+                "description": (
+                    "Document ID when the questions are generated from one of the user's "
+                    "documents (from workspace_search / knowledge_base_manage). "
+                    "Used to build a '原文依据' anchor for each question."
+                ),
+            },
+            "source_quote": {
+                "type": "string",
+                "description": (
+                    "A short verbatim sentence from the source document that supports "
+                    "the question. Do not paraphrase; this is shown to the user as evidence."
+                ),
+            },
+            "source_chunk_id": {
+                "type": "integer",
+                "description": "Optional RAG chunk ID for the source quote.",
             },
             "limit": {
                 "type": "integer",
@@ -727,6 +749,8 @@ class QuestionManageTool(AgentTool):
             difficulty=int(params.get("difficulty") or 2),
             sort_order=await self._next_sort_order(ctx, bank.id),
             sub_questions=params.get("sub_questions"),
+            source=self._source_params(params),
+            source_user_id=ctx.user_id,
         )
         return ok(
             action="create",
@@ -877,6 +901,8 @@ class QuestionManageTool(AgentTool):
                         sort_order=start_order + index,
                         sub_questions=subs,
                         recalc_total=False,
+                        source={**self._source_params(params), **self._source_params(item)},
+                        source_user_id=ctx.user_id,
                     )
                 imported += 1
             except Exception as e:  # noqa: BLE001 - 单题失败继续下一题
@@ -1011,12 +1037,16 @@ class QuestionManageTool(AgentTool):
 
         from app.models.note_question import NoteQuestion
         from app.models.question import (
+            QuestionSource,
             UserQuestionError,
             UserQuestionFavorite,
             UserQuestionMarked,
         )
 
         await ctx.db.execute(delete(QuestionSub).where(QuestionSub.main_id.in_(ids)))
+        await ctx.db.execute(
+            delete(QuestionSource).where(QuestionSource.question_id.in_(ids))
+        )
         await ctx.db.execute(
             delete(NoteQuestion).where(NoteQuestion.question_id.in_(ids))
         )
@@ -1315,6 +1345,42 @@ class QuestionManageTool(AgentTool):
             select(func.max(QuestionMain.sort_order)).where(QuestionMain.bank_id == bank_id)
         )
         return int(current or 0) + 1
+
+    @staticmethod
+    def _source_params(source: Dict[str, Any]) -> Dict[str, Any]:
+        """把题目对象/工具参数里的 source 字段归一成锚点入参。"""
+        if not isinstance(source, dict):
+            return {}
+        doc_id = (
+            source.get("sourceDocId")
+            or source.get("source_doc_id")
+            or source.get("docId")
+            or source.get("doc_id")
+        )
+        quote = source.get("sourceQuote") or source.get("source_quote") or source.get("quote")
+        chunk_id = (
+            source.get("sourceChunkId")
+            or source.get("source_chunk_id")
+            or source.get("chunkId")
+            or source.get("chunk_id")
+        )
+        if doc_id is None and not quote:
+            return {}
+        result: Dict[str, Any] = {}
+        if doc_id is not None:
+            result["docId"] = doc_id
+        if quote:
+            result["quote"] = quote
+        if chunk_id is not None:
+            result["chunkId"] = chunk_id
+        for camel, snake in (
+            ("startOffset", "start_offset"),
+            ("endOffset", "end_offset"),
+        ):
+            value = source.get(camel) if source.get(camel) is not None else source.get(snake)
+            if value is not None:
+                result[camel] = value
+        return result
 
     @staticmethod
     def _question_type(source: Dict[str, Any]) -> int:

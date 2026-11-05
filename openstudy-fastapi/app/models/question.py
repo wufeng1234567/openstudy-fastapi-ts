@@ -90,6 +90,40 @@ class QuestionSub(Base):
     )
 
 
+class QuestionSource(Base):
+    """题目原文锚点：这道题是从哪份资料的哪一段生成的。
+
+    为什么单独一张表、不往 `question_main` 加列：
+      · 只有「从资料生成」的题才有锚点，历史题没有；单表可空字段会让
+        `question_main` 的每一行都多背一层语义；
+      · 锚点是 1:1 的可选扩展，独立表可以按需 join，也方便未来存多个证据片段
+        （例如一道综合题同时引用两段原文）。
+
+    字段全部由写题链路显式写入；老题没有记录 = 没有锚点，不伪造。
+    """
+
+    __tablename__ = "question_source"
+    __table_args__ = (
+        UniqueConstraint("question_id", name="uk_question_source_question"),
+        Index("idx_question_source_user", "user_id"),
+        Index("idx_question_source_doc", "doc_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    question_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("question_main.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    doc_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    chunk_id: Mapped[Optional[int]] = mapped_column(BigInteger)
+    #: 原文证据句（逐字摘录，不是模型改写）
+    quote: Mapped[Optional[str]] = mapped_column(Text)
+    #: 在 `rag_document.raw_content` 里的字符区间；NULL = 只存了 quote，前端按文本查找
+    start_offset: Mapped[Optional[int]] = mapped_column(Integer)
+    end_offset: Mapped[Optional[int]] = mapped_column(Integer)
+    create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class UserBankFavorite(Base):
     """题库收藏表"""
     __tablename__ = "user_bank_favorite"

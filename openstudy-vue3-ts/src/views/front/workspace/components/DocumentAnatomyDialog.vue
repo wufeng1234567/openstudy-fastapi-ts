@@ -129,6 +129,8 @@ interface AnatomyOptions {
   chunkIndex?: number
   chunkCount?: number
   targetText?: string
+  /** 原文精确字符偏移（体检章节定位用），优先级高于 targetText */
+  offset?: number
 }
 
 const props = withDefaults(
@@ -409,7 +411,7 @@ async function load(docValue: AnatomyDoc, opts: AnatomyOptions = {}) {
   targetChunkIndex.value = opts.chunkIndex ?? null
   targetChunkCount.value = Number(opts.chunkCount || docValue.chunkCount || 0)
   targetText.value = String(opts.targetText || '')
-  scrollTargetOffset.value = null
+  scrollTargetOffset.value = opts.offset != null ? Number(opts.offset) : null
   content.value = ''
   excludedRanges.value = []
   imageMap.value = {}
@@ -447,6 +449,8 @@ async function load(docValue: AnatomyDoc, opts: AnatomyOptions = {}) {
   } finally {
     loading.value = false
     await nextTick()
+    // 体检章节用精确偏移定位；此时内容已渲染，直接滚到对应位置。
+    if (scrollTargetOffset.value != null) scrollToOffset(scrollTargetOffset.value)
     applyHighlight()
   }
 }

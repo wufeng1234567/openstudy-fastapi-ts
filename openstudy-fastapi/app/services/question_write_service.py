@@ -26,6 +26,7 @@ from app.models.note_question_bank import NoteQuestionBank
 from app.models.question import (
     QuestionBank,
     QuestionMain,
+    QuestionSource,
     QuestionSub,
     UserBankFavorite,
     UserQuestionError,
@@ -253,6 +254,163 @@ async def update_bank(
     return changed, None
 
 
+def _source_value(source: Any, *keys: str) -> Any:
+    """从 dict / pydantic 模型里读 source 字段（兼容 camelCase 与 snake_case）。"""
+    return _get(source, *keys, default=None)
+
+
+def _to_int_or_none(value: Any) -> Optional[int]:
+    """模型输出可能把数字写成任意脏格式；转换失败按「没给」处理，绝不让整题回滚。"""
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+async def attach_question_source(
+    db: AsyncSession,
+    *,
+    question_id: int,
+    user_id: int,
+    source: Any,
+) -> Optional[QuestionSource]:
+    """给一道题挂上「原文锚点」；source 为空时什么都不做。
+
+    source 允许三种形态：
+      · {"docId": 12, "chunkId": 3, "quote": "……", "startOffset": 100, "endOffset": 160}
+      · 模型偶尔用 snake_case：doc_id / chunk_id / start_offset
+      · source 为 None / 空 dict → 明确表示「没有锚点」，不写空行。
+    """
+    if not source:
+        return None
+    doc_id = _source_value(source, "docId", "doc_id", "sourceDocId", "source_doc_id")
+    if doc_id is None:
+        return None
+    try:
+        doc_id = int(doc_id)
+    except (TypeError, ValueError):
+        return None
+    if doc_id <= 0:
+        return None
+
+    # 写入前必须确认文档属于当前用户：doc_id 是裸 BigInteger，没有数据库外键兜底。
+    # 复用 rag_write_service.get_document 的严格归属校验，避免用户 A 把 B 的资料
+    # 挂到自己的题上，再通过「原文依据」读到 B 的文件名/正文。
+    try:
+        from app.services.rag.rag_write_service import get_document
+
+        await get_document(db, int(user_id), doc_id)
+    except Exception:
+        return None
+
+    chunk_id = _to_int_or_none(
+        _source_value(source, "chunkId", "chunk_id", "sourceChunkId", "source_chunk_id")
+    )
+    quote = str(_source_value(source, "quote", "sourceQuote", "source_quote") or "").strip() or None
+    start_raw = _source_value(source, "startOffset", "start_offset", "start")
+    end_raw = _source_value(source, "endOffset", "end_offset", "end")
+    start = _to_int_or_none(start_raw)
+    end = _to_int_or_none(end_raw)
+    if start is not None and start < 0:
+        start = None
+    if end is not None and end < 0:
+        end = None
+    if start is not None and end is not None and end <= start:
+        start = end = None
+    # 只有 doc_id、没有 quote 也没有 offset 的锚点没有展示价值，不写。
+    if not quote and start is None and end is None:
+        return None
+
+    # 同题重复导入/更新时覆盖旧锚点，不制造多条；只在同一 user 内覆盖。
+    existing = (
+        await db.execute(
+            select(QuestionSource).where(
+                QuestionSource.question_id == question_id,
+                QuestionSource.user_id == int(user_id),
+            )
+        )
+    ).scalars().first()
+    if existing:
+        existing.doc_id = doc_id
+        existing.chunk_id = chunk_id
+        existing.quote = quote
+        existing.start_offset = start
+        existing.end_offset = end
+        await db.flush()
+        return existing
+
+    row = QuestionSource(
+        question_id=question_id,
+        user_id=int(user_id),
+        doc_id=doc_id,
+        chunk_id=chunk_id,
+        quote=quote,
+        start_offset=start,
+        end_offset=end,
+    )
+    db.add(row)
+    await db.flush()
+    return row
+
+
+async def get_question_source(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    question_id: int,
+) -> Optional[Dict[str, Any]]:
+    """读取一道题的原文锚点；没有记录返回 None（前端据此隐藏「原文依据」）。"""
+    source = (
+        await db.execute(
+            select(QuestionSource).where(
+                QuestionSource.question_id == question_id,
+                QuestionSource.user_id == user_id,
+            )
+        )
+    ).scalars().first()
+    if not source:
+        return None
+    # 用 get_document 再核一次资料归属 + 知识库未删除，避免直接 join 绕过软删除口径。
+    try:
+        from app.services.rag.rag_write_service import get_document
+
+        doc = await get_document(db, user_id, source.doc_id)
+    except Exception:
+        return None
+    raw = doc.raw_content or ""
+    raw_len = len(raw)
+    start, end = source.start_offset, source.end_offset
+    if start is not None:
+        start = max(0, min(int(start), raw_len))
+    if end is not None:
+        end = max(0, min(int(end), raw_len))
+    if start is not None and end is not None and end <= start:
+        start = end = None
+
+    matched = ""
+    if source.quote:
+        idx = raw.find(source.quote)
+        if idx >= 0:
+            matched = source.quote
+            # 以实际命中的位置为准，避免 quote 与 offset 不一致导致前端高亮错位。
+            start, end = idx, idx + len(source.quote)
+    elif start is not None and end is not None:
+        matched = raw[start:end]
+    return {
+        "hasSource": True,
+        "questionId": question_id,
+        "docId": doc.id,
+        "docName": doc.file_name or "资料",
+        "chunkId": source.chunk_id,
+        "quote": matched or source.quote or "",
+        "startOffset": start,
+        "endOffset": end,
+        "sourceAvailable": bool(doc.raw_content),
+    }
+
+
 async def create_question(
     db: AsyncSession,
     *,
@@ -268,8 +426,14 @@ async def create_question(
     sort_order: int = 0,
     sub_questions: Optional[Sequence[Any]] = None,
     recalc_total: bool = True,
+    source: Any = None,
+    source_user_id: Optional[int] = None,
 ) -> QuestionMain:
-    """创建题目（含子题）并刷新题库总数"""
+    """创建题目（含子题）并刷新题库总数。
+
+    `source` / `source_user_id` 只影响「原文锚点」这张附加表，不改变题目本体；
+    老调用方不传时行为完全不变。
+    """
     subs = list(sub_questions or [])
     question = QuestionMain(
         bank_id=bank_id,
@@ -291,6 +455,10 @@ async def create_question(
 
     if subs:
         await insert_sub_questions(db, question.id, subs)
+    if source and source_user_id:
+        await attach_question_source(
+            db, question_id=question.id, user_id=int(source_user_id), source=source
+        )
     if recalc_total:
         await recalc_bank_total(db, bank_id)
     return question
@@ -378,9 +546,12 @@ async def delete_banks(
     await db.execute(delete(UserPracticeSession).where(UserPracticeSession.bank_id.in_(own_ids)))
 
     if question_ids:
-        # 2. 子题
+        # 2. 子题 + 原文锚点（锚点无 DB 级联时必须应用层先删）
         await db.execute(
             delete(QuestionSub).where(QuestionSub.main_id.in_(question_ids))
+        )
+        await db.execute(
+            delete(QuestionSource).where(QuestionSource.question_id.in_(question_ids))
         )
         # 3. 用户题目关联（收藏 / 错题 / 斩题 / 笔记）
         await db.execute(

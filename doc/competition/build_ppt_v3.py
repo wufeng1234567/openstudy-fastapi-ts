@@ -209,6 +209,9 @@ S7 = os.path.join(SHOTS, "20-micro-course-html.png")
 S8 = os.path.join(SHOTS, "02-agent-session.png")
 S9 = os.path.join(SHOTS, "23-word-source.png")
 S10 = os.path.join(SHOTS, "24-question-formula-image.png")
+S11 = os.path.join(SHOTS, "25-document-health.png")
+S12 = os.path.join(SHOTS, "26-organize-surgery.png")
+S13 = os.path.join(SHOTS, "27-study-pack.png")
 
 
 # ============ P1 封面 ============
@@ -221,20 +224,21 @@ def p1():
     t1 = text(s, M_L, 1.18, 7.0, 1.55, "把不会的，\n问到会", size=46, bold=True, color=INK, line_spacing=1.08)
     anim(s, "p1_title", t1)
     line(s, M_L, 2.92, M_L + 1.15, 2.92, color=MINT, width=2.5)
-    text(s, M_L, 3.16, 6.2, 0.95, "会读你资料的 AI 学习平台\n从一份 Word，到一套能刷的题、能讲的课、能打印的讲义",
-         size=14, color=GRAY, line_spacing=1.5)
+    text(s, M_L, 3.10, 6.35, 1.05,
+         "会读你资料的 AI 学习平台\n把任意学习材料，编译成可执行、可追溯、会进化的学习资产包",
+         size=13, color=GRAY, line_spacing=1.45)
 
-    text(s, M_L, 4.18, 6.0, 0.46, "对话即入口，结果即数据。", size=23, bold=True, color=INK)
-    text(s, M_L, 4.76, 6.2, 0.30, "一句话完成：建题库 / 做讲义 / 生成微课 / 导出复习卷", size=12.5, color=GRAY2)
+    text(s, M_L, 4.30, 6.3, 0.46, "对话是入口，资产是结果。", size=23, bold=True, color=INK)
+    text(s, M_L, 4.88, 6.5, 0.30, "一句话完成：体检 / 整理 / 出题 / 微课 / 装配 / 导出", size=12, color=GRAY2)
     line(s, M_L, 5.50, 6.9, 5.50, color=LINE, width=0.5)
     text(s, M_L, 5.66, 6.6, 0.24, "华为云码道 CodeArts 开发  ·  GitCode 开源  ·  FastAPI + Vue 3", size=9, color=GRAY2)
     text(s, M_L, 6.18, 6.6, 0.24, "gitcode.com/qi142410131/openstudy-fastapi-ts", size=8.5, color=MINT_D)
     # 截图
     sh = pic_card(s, S1, 7.42, 1.12, 5.05, 3.16, caption="真实运行界面  ·  对话即入口")
     anim(s, "p1_shot", sh)
-    chip(s, 7.42, 4.72, 1.45, 0.34, "资料即资产", MINT_L, MINT_D, 9)
-    chip(s, 8.99, 4.72, 2.02, 0.34, "一份资料四种产出", MINT_L, MINT_D, 9)
-    chip(s, 11.13, 4.72, 1.35, 0.34, "对话即入口", MINT_L, MINT_D, 9)
+    chip(s, 7.42, 4.72, 1.56, 0.34, "先体检，再整理", MINT_L, MINT_D, 9)
+    chip(s, 9.10, 4.72, 1.86, 0.34, "看得见的手术方案", MINT_L, MINT_D, 9)
+    chip(s, 11.08, 4.72, 1.40, 0.34, "拖拽装配资产", MINT_L, MINT_D, 9)
     footer(s, 1)
 
 
@@ -386,7 +390,7 @@ def p5():
 # ============ P6 码道开发总览 ============
 def p6():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "05  /  码道开发", "码道不是补全插件，是一条完整的 AI 编码流水线",
+    header(s, "07  /  码道开发", "码道不是补全插件，是一条完整的 AI 编码流水线",
            "从需求到沉淀，8 个环节分别对应一项码道能力，每一步都有可核对的产物。")
     chip(s, W - M_L - 2.02, 0.52, 2.02, 0.34, "华为云 · 码道 CodeArts", MINT_L, MINT_D, 9)
     nodes = [
@@ -418,8 +422,10 @@ def p6():
     text(s, M_L + 0.30, 4.31, CW - 0.6, 0.26,
          "支撑能力：规则 AGENTS.md  ·  技能 SKILL.md  ·  经验 experience  ·  沙箱 / 权限  ·  checkpoint / undo",
          size=11.5, bold=True, color=MINT_D)
-    # 说明
-    text(s, M_L, 5.02, 6.2, 0.26, "审查无 P0/P1 直接提交；有则修复并回归。任一步失败即停下说明。", size=9.5, color=GRAY)
+    # 真实案例
+    text(s, M_L, 5.00, CW - 0.4, 0.30,
+         "真实案例：为 html_sanitize 补测试  →  测出 data: 协议漏检  →  /bugfix 修复  →  回归通过后提交。",
+         size=9.3, bold=True, color=AMBER)
     # 过程说明
     band = rect(s, M_L, 5.52, CW, 0.86, fill=MINT_L2, line=None, radius=0.08)
     text(s, M_L + 0.32, 5.70, CW - 0.6, 0.28,
@@ -429,7 +435,7 @@ def p6():
          "过程记录统一放在 doc/dev-process/，可现场按会话 ID 抽查。",
          size=9.5, color=GRAY)
     text(s, M_L, 6.52, CW, 0.24, "码道把 AI 编码从「补全」变成「可核对的过程」。", size=12, bold=True, color=MINT_D)
-    footer(s, 6)
+    footer(s, 8)
 
 
 # ============ P7 能力 → 模块 ============
@@ -584,12 +590,12 @@ def p10():
 # ============ 迭代版：P2 / P3 / P4 / P9 / P10 ============
 def p2b():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "01  /  场景价值", "学生不缺资料，缺的是「把资料变成可用的资产」",
-           "手里有课件、真题、聊天里传来的附件，却没有一条把资料变成题目、讲义、微课的路。")
+    header(s, "01  /  场景价值", "学生不缺资料，缺的是「把资料编译成学习资产」",
+           "资料在硬盘里，学习在对话外：没有一条从「混乱材料」到「可执行资产」的稳定通路。")
     cards = [
-        ("01", "资料散落，找不到", "文件名没信息、文件夹越建越乱、聊天附件用完就丢——想再用一次，只能重新翻。", "散"),
-        ("02", "一份资料只用一次", "图片、公式、表格散落在文档里；想用到题目、讲义、微课，要重新找、重新截。", "断"),
-        ("03", "通用 AI 只会聊", "能解释知识点，却不能建题库、不能做讲义、不能生成微课——聊完还得自己动手。", "空"),
+        ("01", "资料乱、散、重复", "Word 里夹着广告图、重复段落、页码页眉；人工整理一份要半小时，还不一定舍得删。", "乱"),
+        ("02", "一份资料只用一次", "图片、公式、表格散落在文档里；想变成题库、讲义、复习卡、微课，只能重新找、重新截。", "断"),
+        ("03", "AI 生成是黑盒", "改了什么、为什么改、改错怎么办——通用 AI 只给结果，不给可审阅的过程。", "黑"),
     ]
     x = M_L; cw = (CW - 2 * 0.24) / 3
     for i, (num, t, d, tag) in enumerate(cards):
@@ -606,9 +612,9 @@ def p2b():
     text(s, M_L + 0.30, 5.08, 1.0, 0.24, "用户原话", size=8.5, bold=True, color=MINT_D, spc=70)
     text(s, M_L + 1.18, 5.04, CW - 1.5, 0.42, "“我只想把我自己的资料，变成能刷的题、能讲的课、能打印的讲义。”",
          size=13, bold=True, color=INK, line_spacing=1.2)
-    outs = [("资料即资产", "上传就拆成标题、公式、表格、图片，每份都有来源"),
-            ("一份资料多种产出", "题库、讲义、资料微课、教学微课，全都复用同一份资料"),
-            ("对话即入口", "聊天里传过的资料，自动进「我的资料」，还能再用")]
+    outs = [("可执行", "题目、讲义、复习卡、微课，拿到就能直接学"),
+            ("可追溯", "每道题、每条结论，都能回到原文的那一句"),
+            ("会进化", "每次练习与报告，都会让这份资产变新")]
     x = M_L; ow = (CW - 2 * 0.2) / 3
     for t, d in outs:
         line(s, x, 6.02, x + ow - 0.2, 6.02, color=MINT, width=1.2)
@@ -704,12 +710,48 @@ def p9b():
     footer(s, 9)
 
 
+def p9c():
+    """P9：现场演示——一条从混乱资料到学习闭环的 3 分钟路线。"""
+    s = prs.slides.add_slide(BLANK); bg(s)
+    header(s, "08  /  现场演示", "3 分钟，看一条完整的学习闭环",
+           "不追求功能全，只追求一件事：让观众看到「资料真的变成了资产，学习真的发生了」。")
+    stages = [
+        ("0:00 – 0:30", "资料体检", "上传一份混乱 Word：广告图、重复段落、公式", "体检报告弹出：四维评分、P1 问题、章节热力图。"),
+        ("0:30 – 1:20", "整理手术台", "一键整理，生成 3 条剔除建议", "逐条看理由：接受 2 条、拒绝 1 条；前后对比；点「复检」。"),
+        ("1:20 – 2:10", "资产装配", "把 3 个章节拖进装配区", "生成复习卡 / 讲义；题单走智能出题，微课走现有生成器。"),
+        ("2:10 – 3:00", "学习闭环", "做错一道题，打开学情诊断", "点「原文依据」回到原句；一键生成 3 道变式题。"),
+    ]
+    cw = (CW - 3 * 0.18) / 4
+    for i, (t, h, act, res) in enumerate(stages):
+        x = M_L + i * (cw + 0.18)
+        card = rect(s, x, 1.98, cw, 2.42, fill=WHITE, line=LINE, lw=0.75, radius=0.05)
+        anim(s, f"p9c_card_{i+1}", card)
+        text(s, x + 0.22, 2.12, cw - 0.44, 0.22, t, size=8.4, bold=True, color=MINT_D, spc=30)
+        text(s, x + 0.22, 2.38, cw - 0.44, 0.26, h, size=12.5, bold=True, color=INK)
+        text(s, x + 0.22, 2.72, cw - 0.44, 0.70, act, size=9.0, color=INK2, line_spacing=1.4)
+        line(s, x + 0.22, 3.44, x + cw - 0.22, 3.44, color=LINE, width=0.5)
+        text(s, x + 0.22, 3.54, cw - 0.44, 0.72, res, size=8.7, color=GRAY, line_spacing=1.45)
+    text(s, M_L, 4.68, 7.2, 0.24, "演示稳定性：把「万一」提前处理掉", size=9.5, bold=True, color=GRAY2, spc=40)
+    guards = [("预置数据", "演示账号预置资料、题库与作答记录，开场即有内容"),
+              ("提前热身", "演示前 2 小时跑 daily-start.sh，预热模型与检索"),
+              ("双保险", "网络异常切本地录屏；关键链路探针提前全跑一遍")]
+    x = M_L; gw = (CW - 2 * 0.18) / 3
+    for t, d in guards:
+        text(s, x, 5.00, gw, 0.24, "· " + t, size=9, bold=True, color=INK)
+        text(s, x + 0.14, 5.30, gw - 0.14, 0.60, d, size=8.2, color=GRAY, line_spacing=1.4)
+        x += gw + 0.18
+    strip = rect(s, M_L, 6.22, CW, 0.42, fill=MINT_L, line=None, radius=0.08)
+    text(s, M_L + 0.20, 6.31, CW - 0.4, 0.24,
+         "一句话记住：先给结果，再讲技术；每按一次按钮，都要有一处数据变化被看见。", size=9.0, bold=True, color=MINT_D)
+    footer(s, 9)
+
+
 def p10b():
     s = prs.slides.add_slide(BLANK); bg(s)
     header(s, "09  /  迭代与团队", "下一步：把「能用」做成「好用」",
            "30 天与 90 天的路线都来自真实使用中发现的边界，不是拍脑袋的功能清单。")
     cols = [
-        ("已交付 · 本轮", "DONE", ["资料空间：双入口收集 · 资料夹 · AI 找资料 · 分享副本", "资料微课 / 教学微课：逐站路径 + HTML 课件 + PPT 导出", "文档编排：Word/PDF 原生公式与表格", "题库 / 考试 / 学情诊断闭环"], INK),
+        ("已交付 · 本轮", "DONE", ["资料空间：双入口收集 · 资料夹 · AI 找资料", "资料体检 + 整理手术台：四维评分 · 逐项确认 · 复检", "资产装配台：讲义 / 复习卡 / 提纲 / 微课", "题库 / 考试 / 学情诊断 / 原文依据"], INK),
         ("30 天 · 补能力", "NEXT", ["扫描版 PDF 接入 OCR", "多模态向量：以图搜图", "移动端适配与消息中心", "评测期限流与稳定性加固"], MINT_D),
         ("90 天 · 上规模", "LATER", ["校园版多租户与教师端", "对象存储直传（OBS）", "题库 / 笔记 / 资料开放 API", "接入更多华为云能力"], GRAY2),
     ]
@@ -791,6 +833,112 @@ def p3d():
     footer(s, 3)
 
 
+def p3health():
+    """P3：资料体检——先诊断，再整理。"""
+    s = prs.slides.add_slide(BLANK); bg(s)
+    header(s, "02  /  学习材料诊疗室", "先体检，再整理：每份资料都有诊断书",
+           "上传后第一屏不是文件列表，而是四维体检：结构、图文、知识覆盖、可学习化。")
+    pic_card(s, S11, M_L, 1.82, 7.55, 4.95, caption="真实运行界面：资料体检 · 四维评分 / 问题清单 / 章节热力")
+    x, y, w, h = 8.65, 1.82, 3.80, 4.95
+    card = rect(s, x, y, w, h, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
+    text(s, x + 0.22, y + 0.18, w - 0.44, 0.24, "体检报告里有什么", size=12.0, bold=True, color=INK)
+    metrics = [
+        ("结构完整度 81", "识别到 8 个标题、6 个内容区块"),
+        ("图文相关度 100", "3 张图都能定位到题目/章节"),
+        ("知识覆盖度 100", "5 个章节都有完整讲解"),
+        ("可学习化 36", "0 个章节有例题或练习"),
+    ]
+    yy = y + 0.58
+    for t, d in metrics:
+        rect(s, x + 0.22, yy, 0.07, 0.36, fill=MINT, line=None, radius=0.2)
+        text(s, x + 0.42, yy - 0.01, w - 0.62, 0.22, t, size=10.0, bold=True, color=INK)
+        text(s, x + 0.42, yy + 0.20, w - 0.62, 0.20, d, size=8.2, color=GRAY)
+        yy += 0.55
+    line(s, x + 0.22, y + 2.90, x + w - 0.22, y + 2.90, color=LINE, width=0.5)
+    text(s, x + 0.22, y + 3.02, w - 0.44, 0.22, "问题清单", size=10.0, bold=True, color=INK)
+    text(s, x + 0.22, y + 3.28, w - 0.44, 0.44,
+         "P1  所有章节都没有例题或练习\n建议：按章节生成靶向题，变成可练资产",
+         size=8.4, color=GRAY, line_spacing=1.45)
+    # 三步闭环
+    steps = [("体检", "先看诊断"), ("手术台", "逐项确认"), ("复检", "再看变化")]
+    sx = x + 0.22
+    sw = (w - 0.44 - 2 * 0.08) / 3
+    for i, (t, d) in enumerate(steps):
+        chip(s, sx, y + 4.08, sw, 0.42, t, MINT_L, MINT_D, 9)
+        text(s, sx, y + 4.54, sw, 0.18, d, size=7.6, color=GRAY2, align=PP_ALIGN.CENTER)
+        sx += sw + 0.08
+    footer(s, 3)
+
+
+def p4surgery():
+    """P4：整理手术台——把 AI 的修改摊开给学生看。"""
+    s = prs.slides.add_slide(BLANK); bg(s)
+    header(s, "03  /  整理手术台", "AI 改了什么，一条条摊开给你看",
+           "不是一键黑盒：删除、合并、重排、改写都有原因和置信度，可逐项接受、拒绝、回退。")
+    pic_card(s, S12, M_L, 1.82, 7.70, 4.95, caption="真实运行界面：变更对比 · 逐项勾选 · 建议剔除")
+    x, y, w, h = 8.80, 1.82, 3.65, 4.95
+    card = rect(s, x, y, w, h, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
+    text(s, x + 0.20, y + 0.18, w - 0.40, 0.24, "手术方案", size=12.0, bold=True, color=INK)
+    stats = [("1", "结构 / 顺序"), ("3", "建议剔除"), ("0", "图片"), ("0", "元信息")]
+    sx = x + 0.20
+    for num, lab in stats:
+        text(s, sx, y + 0.52, 0.72, 0.30, num, size=19, bold=True, color=AMBER)
+        text(s, sx, y + 0.86, 0.80, 0.20, lab, size=7.4, color=GRAY)
+        sx += 0.82
+    line(s, x + 0.20, y + 1.22, x + w - 0.20, y + 1.22, color=LINE, width=0.5)
+    bullets = [
+        "左原文 / 右整理后，点一条两边同步高亮",
+        "每条变更都有理由 + 置信度，不是“AI 觉得”",
+        "可全选、可逐条拒绝、可一键回退",
+        "应用后点「复检」，回到同一份体检报告",
+    ]
+    yy = y + 1.40
+    for b in bullets:
+        text(s, x + 0.20, yy, 0.14, 0.20, "·", size=10, color=MINT)
+        text(s, x + 0.40, yy, w - 0.62, 0.45, b, size=8.6, color=GRAY, line_spacing=1.35)
+        yy += 0.58
+    line(s, x + 0.20, y + 3.92, x + w - 0.20, y + 3.92, color=LINE, width=0.5)
+    text(s, x + 0.20, y + 4.04, w - 0.40, 0.56,
+         "把“黑盒自动化”变成\n“可解释、可干预、可回滚的白盒协作”",
+         size=9.6, bold=True, color=MINT_D, line_spacing=1.30)
+    footer(s, 4)
+
+
+def p5pack():
+    """P5：资产装配台——把结果变成能带走的学习产物。"""
+    s = prs.slides.add_slide(BLANK); bg(s)
+    header(s, "04  /  资产装配", "拖拽章节，装配成不同的学习产物",
+           "对话负责生成，装配台负责把结果变成能带走、能打印、能复习的资产。")
+    pic_card(s, S13, M_L, 1.82, 7.20, 4.95, caption="真实运行界面：素材区拖拽 → 装配区排序 → 生成 Markdown / Word")
+    x, y, w, h = 8.30, 1.82, 4.15, 4.95
+    card = rect(s, x, y, w, h, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
+    text(s, x + 0.22, y + 0.18, w - 0.44, 0.24, "可装配的产物", size=12.0, bold=True, color=INK)
+    outs = ["讲义", "复习卡", "提纲", "题单", "微课"]
+    ox = x + 0.22
+    for i, t in enumerate(outs):
+        col = i % 3; row = i // 3
+        chip(s, x + 0.22 + col * 1.20, y + 0.56 + row * 0.42, 1.02, 0.32, t, MINT_L, MINT_D, 8.6)
+    line(s, x + 0.22, y + 1.44, x + w - 0.22, y + 1.44, color=LINE, width=0.5)
+    steps = [
+        ("01", "拖章节", "左侧素材拖进装配区"),
+        ("02", "调顺序", "装配区内拖拽排序"),
+        ("03", "出产物", "Markdown / Word 直接带走"),
+    ]
+    yy = y + 1.62
+    for n, t, d in steps:
+        text(s, x + 0.22, yy - 0.01, 0.38, 0.22, n, size=8.0, bold=True, color=MINT)
+        text(s, x + 0.62, yy - 0.02, w - 0.84, 0.22, t, size=9.2, bold=True, color=INK)
+        text(s, x + 0.62, yy + 0.20, w - 0.84, 0.22, d, size=7.8, color=GRAY)
+        yy += 0.66
+    line(s, x + 0.22, y + 3.62, x + w - 0.22, y + 3.62, color=LINE, width=0.5)
+    bubble = rect(s, x + 0.22, y + 3.80, w - 0.44, 0.74, fill=MINT_L2, line=None, radius=0.06)
+    text(s, x + 0.36, y + 3.88, w - 0.70, 0.24,
+         "“用这份资料做一份复习卡，重点第 2 章。”", size=8.6, bold=True, color=INK)
+    text(s, x + 0.36, y + 4.14, w - 0.70, 0.22,
+         "一切皆对话：说一句，Agent 去读、去建、去生成", size=7.6, color=GRAY)
+    footer(s, 5)
+
+
 def p4c():
     s = prs.slides.add_slide(BLANK); bg(s)
     header(s, "03  /  一切皆对话", "一句话，四种产出",
@@ -818,7 +966,7 @@ def p4c():
 
 def p5b():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "04  /  题库导入", "Word 题库导入：图、公式、解析都不丢",
+    header(s, "05  /  复杂输入", "Word 题库导入：图、公式、解析都不丢",
            "最常见的一份资料：Word 题库，题干里有复杂公式，后面还跟着图。")
     text(s, M_L, 1.80, 3.8, 0.22, "Word 原文", size=10.5, bold=True, color=GRAY2, spc=40)
     text(s, 5.05, 1.80, 7.0, 0.22, "导入后的题目详情", size=10.5, bold=True, color=GRAY2, spc=40)
@@ -829,7 +977,7 @@ def p5b():
     for b in bullets:
         text(s, M_L, y, 3.95, 0.22, "· " + b, size=9.0, color=GRAY)
         y += 0.28
-    footer(s, 5)
+    footer(s, 6)
 
 
 def p7arch():
@@ -988,7 +1136,7 @@ def p8c():
     footer(s, 8)
 
 
-for fn in (p1, p2b, p3d, p4c, p5b, p6, p7arch, p8c, p9b, p10b):
+for fn in (p1, p2b, p3health, p4surgery, p5pack, p5b, p7arch, p6, p9c, p10b):
     fn()
 
 out = os.path.join(HERE, "OpenStudy-10页-V3-码道版.pptx")

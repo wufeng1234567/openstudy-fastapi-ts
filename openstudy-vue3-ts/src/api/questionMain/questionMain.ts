@@ -28,6 +28,14 @@ export function getQuestionMain(id: number | string, withAnswer = true): Promise
   }) as unknown as Promise<ApiResult<QuestionMain>>
 }
 
+// 题目的原文依据（从资料生成时写入的 source anchor）
+export function getQuestionSource(questionId: number | string): Promise<ApiResult<any>> {
+  return request({
+    url: `/questionMain/questionMain/${questionId}/source`,
+    method: 'get'
+  }) as unknown as Promise<ApiResult<any>>
+}
+
 // 新增一级题目
 export function addQuestionMain(data: Partial<QuestionMain>): Promise<ApiResult> {
   return request({

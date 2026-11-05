@@ -283,6 +283,12 @@
                   >
                     <OsIcon :name="doc.disabled === 1 ? 'eye-off' : 'eye'" :size="14" />
                   </span>
+                  <span class="kbp-doc__op" title="资料体检" @click="showHealth(doc)">
+                    <OsIcon name="activity" :size="14" />
+                  </span>
+                  <span class="kbp-doc__op" title="资产装配" @click="showStudyPack(doc)">
+                    <OsIcon name="layout-grid" :size="14" />
+                  </span>
                   <span class="kbp-doc__op" title="资料解剖" @click="showAnatomy(doc)">
                     <OsIcon name="book-open" :size="14" />
                   </span>
@@ -661,6 +667,8 @@
 
     <!-- 共享资料解剖：我的资料页与设置面板复用同一个查看器 -->
     <DocumentAnatomyDialog ref="anatomyRef" :show-edit="true" @edit="openEditor" />
+    <DocumentHealthDialog ref="healthRef" @organize="startOrganizeFromHealth" @locate="locateHealthSection" @ask="askFromHealth" />
+    <StudyPackDialog ref="studyPackRef" @micro="openMicroCourse" />
 
     <!-- 知识库分享 / 领取（参考题库分享） -->
     <ShareKnowledgeDialog v-model="shareDialogVisible" :default-kb-id="shareKbId" />
@@ -794,6 +802,7 @@
       @apply="applyOrganizePreview"
       @rollback="rollbackOrganizePreview"
       @rerun="rerunOrganize"
+      @recheck="recheckOrganize"
     />
 
     <!-- 二次编辑：Word / Markdown 共用的正文编辑器 -->
@@ -890,6 +899,8 @@ import TurndownService from 'turndown'
 import { getWorkspaceOverview, uploadToWorkspace, searchWorkspace, listWorkspaceStandaloneImages, getAssetUsageSummary, recordAssetUsage, previewWorkspaceOrganize, getWorkspaceOrganizePlan, getWorkspaceOrganizeRecord, listWorkspaceOrganizePlans, applyWorkspaceOrganize, deleteWorkspaceOrganizeRecord, rollbackWorkspacePlan, setDocumentSearchable, listDocumentVersions, restoreDocumentVersion } from '@/api/ai/workspace'
 import OrganizeDiffDialog from './components/OrganizeDiffDialog.vue'
 import DocumentAnatomyDialog from './components/DocumentAnatomyDialog.vue'
+import DocumentHealthDialog from './components/DocumentHealthDialog.vue'
+import StudyPackDialog from './components/StudyPackDialog.vue'
 import ShareKnowledgeDialog from './components/ShareKnowledgeDialog.vue'
 import ReceiveKnowledgeDialog from './components/ReceiveKnowledgeDialog.vue'
 import { listQuestionMain, getQuestionMain, updateQuestionMain } from '@/api/questionMain/questionMain'
@@ -916,6 +927,7 @@ import {
 import { Plus } from '@element-plus/icons-vue'
 import { Download, Search, Share } from '@element-plus/icons-vue'
 import { saveAs } from 'file-saver'
+import { blobValidate } from '@/utils/ruoyi'
 import {
   ensureMarkdownImageFiles,
   missingMarkdownImageFiles,
@@ -1194,6 +1206,8 @@ function onTryInput() {
 /* ===================== 单文档解剖 ===================== */
 /** 共享解剖查看器：打开、切文档、高亮定位都由组件内部处理 */
 const anatomyRef = ref<InstanceType<typeof DocumentAnatomyDialog> | null>(null)
+const healthRef = ref<InstanceType<typeof DocumentHealthDialog> | null>(null)
+const studyPackRef = ref<InstanceType<typeof StudyPackDialog> | null>(null)
 const anatomyVisible = ref(false)
 const anatomyLoading = ref(false)
 const anatomyFullscreen = ref(false)
@@ -1793,6 +1807,15 @@ async function exportDoc(doc: any, format: 'markdown' | 'docx', content?: string
   if (!doc?.docId) return
   try {
     const blob: any = await exportDocument(doc.docId, format, content)
+    if (!(blob instanceof Blob) || blob.size === 0 || !blobValidate(blob)) {
+      let msg = '导出失败'
+      try {
+        const parsed = JSON.parse(await blob.text())
+        msg = parsed?.msg || parsed?.message || msg
+      } catch { /* 非 JSON 错误体 */ }
+      ElMessage.error(msg)
+      return
+    }
     const stem = String(doc.fileName || '资料').replace(/\.[^.]+$/, '')
     saveAs(new Blob([blob]), `${stem}.${format === 'docx' ? 'docx' : 'md'}`)
     ElMessage.success(`正在导出${format === 'docx' ? ' Word' : ' Markdown'}`)
@@ -1980,9 +2003,24 @@ async function applyOrganizePreview(changeIds: string[], exclusionIds: string[])
   }
 }
 
+function freshOrganizeDoc(): any {
+  const target = organizeDocTarget.value
+  if (!target?.docId) return null
+  return activeKb.value?.files.find((d: any) => Number(d.docId) === Number(target.docId)) || target
+}
+
 function rerunOrganize() {
-  if (!organizeDocTarget.value) return
-  beginOrganize(organizeDocTarget.value, 'deep')
+  const doc = freshOrganizeDoc()
+  if (!doc) return
+  beginOrganize(doc, 'deep')
+}
+
+/** 整理应用后点「复检」：关掉手术台，重新打开同一份资料的体检报告 */
+function recheckOrganize() {
+  const doc = freshOrganizeDoc()
+  if (!doc?.docId) return
+  organizeVisible.value = false
+  showHealth(doc)
 }
 
 async function rollbackOrganizePreview() {
@@ -2754,11 +2792,47 @@ async function openAnatomyFullscreen() {
   applyAnatomyHighlight()
 }
 
-function showAnatomy(doc: any, opts?: { highlight?: string; chunkId?: number; chunkIndex?: number; chunkCount?: number; targetText?: string }) {
+function showAnatomy(doc: any, opts?: { highlight?: string; chunkId?: number; chunkIndex?: number; chunkCount?: number; targetText?: string; offset?: number }) {
   anatomyRef.value?.open(doc, opts)
 }
 
-async function showAnatomyLegacy(doc: any, opts?: { highlight?: string; chunkId?: number; chunkIndex?: number; chunkCount?: number; targetText?: string }) {
+/* ===================== 资料体检 ===================== */
+function showHealth(doc: any) {
+  if (!doc?.docId) return
+  healthRef.value?.open(doc)
+}
+
+function showStudyPack(doc: any) {
+  if (!doc?.docId) return
+  studyPackRef.value?.open(doc)
+}
+
+function startOrganizeFromHealth(doc: any) {
+  startOrganize(doc)
+}
+
+function locateHealthSection(doc: any, section: any) {
+  // 用后端给出的精确字符偏移定位，excerpt 只作为兜底（空白规范化后不保证能在原文命中）。
+  showAnatomy(doc, {
+    offset: Number(section?.start || 0),
+    targetText: String(section?.title || '')
+  })
+}
+
+async function askFromHealth(doc: any, issue: any) {
+  const name = String(doc?.fileName || '这份资料').replace(/\.[^.]+$/, '')
+  const prompt = issue?.fixAction === 'questions'
+    ? `用《${name}》按章节生成一套分层练习：每个章节 3 道基础题 + 2 道变式题，并给出答案与解析。`
+    : `帮我整理《${name}》并检查知识覆盖情况。`
+  try {
+    await navigator.clipboard.writeText(prompt)
+    ElMessage.success('已复制出题指令，粘贴到对话里即可')
+  } catch {
+    ElMessage.info(prompt)
+  }
+}
+
+async function showAnatomyLegacy(doc: any, opts?: { highlight?: string; chunkId?: number; chunkIndex?: number; chunkCount?: number; targetText?: string; offset?: number }) {
   anatomyVisible.value = true
   anatomyLoading.value = true
   anatomyFullscreen.value = false

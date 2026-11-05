@@ -127,6 +127,9 @@
                             {{ item.attempts }} 次 · 对 {{ item.correctCount }} 次
                             <template v-if="item.overdueDays > 0"> · 欠复习 {{ item.overdueDays }} 天</template>
                         </span>
+                        <span class="q-source" @click.stop @keyup.enter.stop @keyup.space.stop>
+                            <QuestionSourceButton :question-id="item.questionId" :question-text="item.questionText" label="原文" />
+                        </span>
                         <el-icon class="q-go"><ArrowRight /></el-icon>
                     </div>
                 </div>
@@ -148,6 +151,7 @@ import { ElMessage } from 'element-plus'
 // 不用 `echarts/core` 按需引入 —— 混用两套容易在打包后出现 "series type not exists"。
 import * as echarts from 'echarts'
 import { renderQuestionContent } from '@/utils/latex'
+import QuestionSourceButton from '@/components/QuestionSourceButton/index.vue'
 import {
     getDiagnose,
     buildReviewSheet,
@@ -647,6 +651,11 @@ defineExpose({ reload: load })
     font-weight: 400;
     color: #9aa4b2;
     margin-left: 6px;
+}
+
+.q-source {
+  flex: none;
+  margin-left: 2px;
 }
 
 .attention-list {

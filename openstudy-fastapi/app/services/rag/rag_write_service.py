@@ -606,6 +606,15 @@ async def delete_document(db: AsyncSession, user_id: int, doc_id: int) -> dict:
     await db.execute(
         delete(MaterialOrganizeLog).where(MaterialOrganizeLog.doc_id == doc.id)
     )
+    # 题目原文锚点依附于资料：资料物理删除后锚点必须一起清，避免留下孤儿行。
+    from app.models.question import QuestionSource
+
+    await db.execute(
+        delete(QuestionSource).where(
+            QuestionSource.doc_id == doc.id,
+            QuestionSource.user_id == user_id,
+        )
+    )
     await db.execute(delete(RagDocument).where(RagDocument.id == doc.id))
     await _refresh_kb_counts(db, doc.kb_id)
     await db.commit()
