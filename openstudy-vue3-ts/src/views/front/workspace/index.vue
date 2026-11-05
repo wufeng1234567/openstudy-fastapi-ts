@@ -52,7 +52,8 @@
         <el-radio-group v-model="viewMode" size="small" class="kbp-view-switch">
           <el-radio-button value="list">资料夹</el-radio-button>
           <el-radio-button value="shelf">书架</el-radio-button>
-          <el-radio-button value="images">图片墙</el-radio-button>
+          <el-radio-button value="gallery">画廊</el-radio-button>
+          <el-radio-button value="map">知识地图</el-radio-button>
         </el-radio-group>
       </div>
     </header>
@@ -490,55 +491,26 @@
       </div>
     </section>
 
-    <!-- 完整图片墙视图 -->
-    <section v-else-if="viewMode === 'images' && (loading || (kbs.length && !loadFailed))" class="kbp-image-page">
-      <div class="kbp-shelf-page__head">
-        <div>
-          <h2>图片墙 · {{ activeKb?.name || '我的资料' }}</h2>
-          <p>{{ kbImages.length }} 张图片资产 · 可复制、插入题目或笔记</p>
-        </div>
-        <el-button size="small" @click="viewMode = 'list'">返回资料夹</el-button>
-      </div>
-      <div v-if="kbImages.length" class="kbp-image-wall">
-        <div v-for="(img, idx) in kbImages" :key="`${img.assetKey}-${idx}`" class="kbp-image-wall__card">
-          <el-image :src="img.url" fit="cover" :preview-src-list="[img.url]" preview-teleported />
-          <div class="kbp-image-wall__meta">
-            <span :title="img.docName">《{{ img.docName }}》</span>
-            <span>图 {{ img.seq }}</span>
-          </div>
-          <div class="kbp-image-wall__actions">
-            <span v-if="assetUsage[img.assetKey]" class="kbp-image-wall__used">
-              已用于 {{ assetUsage[img.assetKey] }} 处
-            </span>
-            <button type="button" class="kbp-image-wall__copy" @click="copyImageMarkdown(img.url, img.docName, img.seq)">
-              复制
-            </button>
-            <button type="button" class="kbp-image-wall__copy" @click="openQuestionPicker(img)">
-              插入题目
-            </button>
-            <button type="button" class="kbp-image-wall__copy" @click="openNotePicker(img)">
-              加入笔记
-            </button>
-          </div>
-        </div>
-      </div>
-      <div v-else class="kbp-docs__empty kbp-view-empty">
-        <div class="kbp-empty__art">
-          <OsIcon name="layout-grid" :size="30" />
-        </div>
-        <p class="kbp-empty__title">图片墙还没有图片</p>
-        <span class="kbp-empty__desc">上传带图片的课件或资料后，这里会按图片资产展示。</span>
-        <div class="kbp-empty__actions">
-          <button type="button" class="kbp-empty__btn is-primary" :disabled="busy" @click="onPick">
-            <OsIcon name="arrow-up" :size="14" />
-            <span>上传带图片的资料</span>
-          </button>
-        </div>
-      </div>
-    </section>
+    <!-- 画廊：0.4.0 起替换原图片墙，增加描述/OCR/来源/引用 -->
+    <GalleryPanel
+      v-else-if="viewMode === 'gallery' && (loading || (kbs.length && !loadFailed))"
+      :active-kb-id="activeKbId"
+      :active-kb-name="activeKb?.name"
+      @use-image="onGalleryUseImage"
+      @locate="onGalleryLocate"
+      @back="viewMode = 'list'"
+    />
+
+    <!-- 资料知识地图：0.4.1 的页面级关系视图，不画实体图 -->
+    <KnowledgeMapPanel
+      v-else-if="viewMode === 'map' && (loading || (kbs.length && !loadFailed))"
+      :active-kb-id="activeKbId"
+      @open-doc="onMapOpenDoc"
+      @back="viewMode = 'list'"
+    />
 
     <!-- 全页空态：一个知识库都没有时，用一张完整引导替代整个两栏区 -->
-    <div v-if="!loading && !kbs.length && loadFailed" class="kbp-blank">
+    <div v-if="viewMode === 'list' && !loading && !kbs.length && loadFailed" class="kbp-blank">
       <div class="kbp-blank__box">
         <div class="kbp-blank__art is-warn">
           <OsIcon name="alert" :size="32" />
@@ -556,7 +528,7 @@
     </div>
 
     <!-- 全页空态：一个知识库都没有时，用一张完整引导替代整个两栏区 -->
-    <div v-else-if="!loading && !kbs.length" class="kbp-blank">
+    <div v-else-if="viewMode === 'list' && !loading && !kbs.length" class="kbp-blank">
       <div class="kbp-blank__box">
         <div class="kbp-blank__art">
           <OsIcon name="folder-plus" :size="34" />
@@ -806,7 +778,7 @@
         <div class="kbp-editor__bar">
           <el-tag type="info" effect="plain">富文本 · Word / Markdown 兼容</el-tag>
           <span>支持加粗、标题、列表、表格和插入图片；保存后重新解析并建立检索索引。</span>
-          <el-button text size="small" @click="openDocumentVersions">历史版本</el-button>
+          <el-button text size="small" @click="versionsVisible = true">版本对照</el-button>
           <el-button text size="small" @click="editorPreview = !editorPreview">
             {{ editorPreview ? '继续编辑' : '预览排版' }}
           </el-button>
@@ -835,27 +807,12 @@
       </template>
     </el-dialog>
 
-    <!-- 历史版本：只挂在编辑器内，不新增独立页面入口 -->
-    <el-dialog v-model="versionsVisible" title="历史版本" width="760px" append-to-body>
-      <div class="kbp-versions" v-loading="versionsLoading">
-        <p class="kbp-versions__hint">
-          每次保存编辑前自动留一份快照，最多保留最近 20 个版本。恢复前会先把当前内容也存一份，可再次恢复。
-        </p>
-        <div v-if="!documentVersions.length" class="kbp-versions__empty">暂无历史版本</div>
-        <div v-for="version in documentVersions" :key="version.versionId" class="kbp-versions__row">
-          <div class="kbp-versions__meta">
-            <b>{{ version.createTime }}</b>
-            <span>{{ version.reason }}</span>
-            <span>{{ version.contentLength }} 字</span>
-          </div>
-          <div class="kbp-versions__summary">{{ version.summary || '（空内容）' }}</div>
-          <el-button size="small" plain type="primary" @click="restoreVersion(version)">恢复此版本</el-button>
-        </div>
-      </div>
-      <template #footer>
-        <el-button @click="versionsVisible = false">关闭</el-button>
-      </template>
-    </el-dialog>
+    <!-- 版本对照：时间线 + 左右 diff + 体检变化；只挂在编辑器内 -->
+    <VersionHistoryDialog
+      v-model="versionsVisible"
+      :doc="editorDoc"
+      @restored="onDocumentVersionRestored"
+    />
 
     <!-- 粘贴文本 -->
     <el-dialog v-model="textImportVisible" title="粘贴文本" width="640px" append-to-body @closed="resetTextImport">
@@ -891,9 +848,12 @@ import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
 import { marked } from 'marked'
 import TurndownService from 'turndown'
-import { getWorkspaceOverview, uploadToWorkspace, searchWorkspace, listWorkspaceStandaloneImages, getAssetUsageSummary, recordAssetUsage, previewWorkspaceOrganize, getWorkspaceOrganizePlan, getWorkspaceOrganizeRecord, listWorkspaceOrganizePlans, applyWorkspaceOrganize, deleteWorkspaceOrganizeRecord, rollbackWorkspacePlan, setDocumentSearchable, listDocumentVersions, restoreDocumentVersion } from '@/api/ai/workspace'
+import { getWorkspaceOverview, uploadToWorkspace, searchWorkspace, listWorkspaceStandaloneImages, getAssetUsageSummary, recordAssetUsage, previewWorkspaceOrganize, getWorkspaceOrganizePlan, getWorkspaceOrganizeRecord, listWorkspaceOrganizePlans, applyWorkspaceOrganize, deleteWorkspaceOrganizeRecord, rollbackWorkspacePlan, setDocumentSearchable, createContentReference } from '@/api/ai/workspace'
 import OrganizeDiffDialog from './components/OrganizeDiffDialog.vue'
 import DocumentClinicDialog from './components/DocumentClinicDialog.vue'
+import GalleryPanel from './components/GalleryPanel.vue'
+import KnowledgeMapPanel from './components/KnowledgeMapPanel.vue'
+import VersionHistoryDialog from './components/VersionHistoryDialog.vue'
 import ShareKnowledgeDialog from './components/ShareKnowledgeDialog.vue'
 import ReceiveKnowledgeDialog from './components/ReceiveKnowledgeDialog.vue'
 import { listQuestionMain, getQuestionMain, updateQuestionMain } from '@/api/questionMain/questionMain'
@@ -1037,8 +997,6 @@ const editorHtml = ref('')
 const editorImageMap = ref<Record<string, string>>({})
 const editorPreview = ref(false)
 const versionsVisible = ref(false)
-const versionsLoading = ref(false)
-const documentVersions = ref<any[]>([])
 const deepOrganizeOptions = reactive({
   structure: true,
   imageLinking: true,
@@ -1121,7 +1079,7 @@ function htmlToEditorMarkdown(html: string): string {
 }
 
 const editorMarkdown = computed(() => htmlToEditorMarkdown(editorHtml.value))
-const viewMode = ref<'list' | 'shelf' | 'images'>('list')
+const viewMode = ref<'list' | 'shelf' | 'gallery' | 'map'>('list')
 const standaloneImages = ref<any[]>([])
 const assetUsage = ref<Record<string, number>>({})
 
@@ -1667,69 +1625,37 @@ async function openEditor(doc: any) {
   }
 }
 
-async function openDocumentVersions() {
+async function onDocumentVersionRestored() {
   const doc = editorDoc.value
   if (!doc?.docId) return
-  versionsVisible.value = true
-  versionsLoading.value = true
-  documentVersions.value = []
+  versionsVisible.value = false
+  editorVisible.value = false
+  reprocessTask.active = true
+  reprocessTask.docId = doc.docId
+  reprocessTask.fileName = doc.fileName
+  reprocessTask.statusText = '历史版本已恢复，正在重新解析…'
+  reprocessTask.percent = 10
+  reprocessTask.error = ''
+  reprocessElapsed.value = 0
+  stopReprocessClock()
+  reprocessTimer = setInterval(() => {
+    reprocessElapsed.value += 1
+  }, 1000)
   try {
-    const res: any = await listDocumentVersions(doc.docId)
-    if (res.code !== 200) {
-      ElMessage.error(res.msg || '读取历史版本失败')
-      return
-    }
-    documentVersions.value = res.data || []
-  } catch (e: any) {
-    ElMessage.error('读取历史版本失败：' + (e?.message || e))
-  } finally {
-    versionsLoading.value = false
-  }
-}
-
-async function restoreVersion(version: any) {
-  const doc = editorDoc.value
-  if (!doc?.docId) return
-  try {
-    await ElMessageBox.confirm(
-      `恢复 ${version.createTime} 的历史版本？恢复前会先把当前内容自动保存一份，之后仍可再次恢复。`,
-      '恢复历史版本',
-      { type: 'warning', confirmButtonText: '恢复此版本', cancelButtonText: '取消' }
-    )
-  } catch {
-    return
-  }
-  try {
-    const res: any = await restoreDocumentVersion(doc.docId, version.versionId)
-    if (res.code !== 200) {
-      ElMessage.error(res.msg || '恢复历史版本失败')
-      return
-    }
-    versionsVisible.value = false
-    editorVisible.value = false
-    reprocessTask.active = true
-    reprocessTask.docId = doc.docId
-    reprocessTask.fileName = doc.fileName
-    reprocessTask.statusText = '历史版本已恢复，正在重新解析…'
-    reprocessTask.percent = 10
-    reprocessTask.error = ''
-    reprocessElapsed.value = 0
-    stopReprocessClock()
-    reprocessTimer = setInterval(() => {
-      reprocessElapsed.value += 1
-    }, 1000)
     await load()
     const result = await pollReprocess(doc.docId)
     reprocessTask.active = false
     stopReprocessClock()
     await load()
     if (result.ok) {
-      ElMessage.success(`「${doc.fileName}」已恢复到 ${version.createTime} 的版本`)
+      ElMessage.success(`「${doc.fileName}」已恢复，并重新建立索引`)
     } else {
       ElMessage.error(`历史版本已恢复，但重新解析失败：${result.message}`)
     }
   } catch (e: any) {
-    ElMessage.error('恢复历史版本失败：' + (e?.message || e))
+    reprocessTask.active = false
+    stopReprocessClock()
+    ElMessage.error('恢复后重新解析失败：' + (e?.message || e))
   }
 }
 
@@ -2128,6 +2054,7 @@ async function insertImageIntoQuestion(row: any, field: 'questionAnalysis' | 'qu
     if (usage.code === 200) {
       await loadAssetUsage()
     }
+    await recordAssetReference(img, 'question', row.id)
     ElMessage.success('已插入题目解析')
   } catch (e: any) {
     ElMessage.error('插入题目失败：' + (e?.message || e))
@@ -2198,11 +2125,78 @@ async function insertImageIntoNote(row: any) {
     if (usage.code === 200) {
       await loadAssetUsage()
     }
+    await recordAssetReference(img, 'note', row.id)
     ElMessage.success('已加入笔记')
   } catch (e: any) {
     ElMessage.error('加入笔记失败：' + (e?.message || e))
   } finally {
     noteInsertingId.value = null
+  }
+}
+
+/** 图片插入题目/笔记后同时写统一引用；失败不影响主操作，且不伪造成功。 */
+async function recordAssetReference(img: any, targetType: 'note' | 'question', targetId: number) {
+  const key = String(img?.assetKey || '')
+  const parts = key.split(':')
+  if (parts.length < 2) return
+  try {
+    if (parts[0] === 'doc') {
+      await createContentReference({
+        sourceType: 'document_image',
+        sourceId: Number(parts[1]),
+        sourceSubId: parts[2],
+        targetType,
+        targetId,
+        quote: String(img.sectionTitle || img.caption || '').slice(0, 800)
+      })
+    } else if (parts[0] === 'chat') {
+      await createContentReference({
+        sourceType: 'chat_image',
+        sourceId: Number(parts[1]),
+        targetType,
+        targetId,
+        quote: String(img.caption || '').slice(0, 800)
+      })
+    }
+  } catch {
+    // 引用账本是附加价值：主插入已成功时，不能因为引用失败让用户以为插入失败。
+  }
+}
+
+function findDocRecord(docId: number) {
+  for (const kb of kbs.value) {
+    const found = (kb.files || []).find((doc: any) => Number(doc.docId) === Number(docId))
+    if (found) return found
+  }
+  const fromActive = (activeKb.value?.files || []).find((doc: any) => Number(doc.docId) === Number(docId))
+  return fromActive || null
+}
+
+function onGalleryUseImage(img: any) {
+  if (!img) return
+  if (img.target === 'question') openQuestionPicker(img)
+  else openNotePicker(img)
+}
+
+function onGalleryLocate(payload: { docId: number; offset: number; targetText?: string }) {
+  const doc = findDocRecord(payload.docId)
+  if (!doc) {
+    ElMessage.warning('没有找到这张图对应的资料，可能已经被移动或删除')
+    return
+  }
+  showAnatomy(doc, { offset: payload.offset, targetText: payload.targetText || '' })
+}
+
+function onMapOpenDoc(payload: { docId: number; offset?: number; targetText?: string }) {
+  const doc = findDocRecord(payload.docId)
+  if (!doc) {
+    ElMessage.warning('没有找到这份资料，可能已经被移动或删除')
+    return
+  }
+  if (payload.offset != null) {
+    showAnatomy(doc, { offset: payload.offset, targetText: payload.targetText || '' })
+  } else {
+    showHealth(doc)
   }
 }
 

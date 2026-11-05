@@ -63,6 +63,111 @@ export function getAssetUsageSummary() {
   })
 }
 
+/* ============================================================================
+ * 0.4.x 资料知识网络：画廊 / 引用 / 知识地图 / 版本对照
+ * ========================================================================== */
+
+export interface GalleryQuery {
+  scope?: 'all' | 'current'
+  kbId?: number | null
+  source?: 'all' | 'document' | 'chat'
+  status?: 'all' | 'pending' | 'processing' | 'done' | 'failed'
+  q?: string
+  limit?: number
+}
+
+/** 画廊列表：真实图片资产 + 描述状态 + 用途计数 */
+export function listGalleryAssets(params: GalleryQuery = {}) {
+  return request({
+    url: '/rag/gallery',
+    method: 'get',
+    params: {
+      scope: params.scope || 'all',
+      kbId: params.kbId || undefined,
+      source: params.source || 'all',
+      status: params.status || 'all',
+      q: params.q || undefined,
+      limit: params.limit || 200
+    }
+  }) as unknown as Promise<{ code: number; msg?: string; data: any }>
+}
+
+/** 单张图片详情（描述、OCR、来源章节、被引用记录） */
+export function getGalleryAsset(assetKey: string) {
+  return request({
+    url: `/rag/gallery/${encodeURIComponent(assetKey)}`,
+    method: 'get'
+  }) as unknown as Promise<{ code: number; msg?: string; data: any }>
+}
+
+/** 批量补图片描述：传 docId 或 assetKeys */
+export function describeGalleryAssets(data: { docId?: number; assetKeys?: string[]; limit?: number }) {
+  return request({
+    url: '/rag/gallery/describe',
+    method: 'post',
+    data,
+    timeout: 300000
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
+/** 资料知识地图 */
+export function getKnowledgeMap(kbId?: number | null) {
+  return request({
+    url: '/rag/knowledge-map',
+    method: 'get',
+    params: kbId ? { kbId } : undefined
+  }) as unknown as Promise<{ code: number; msg?: string; data: any }>
+}
+
+export interface ContentReferencePayload {
+  sourceType: 'document' | 'document_image' | 'chat_image' | 'note' | 'question'
+  sourceId: number
+  sourceSubId?: string
+  targetType: 'document' | 'note' | 'question' | 'image'
+  targetId: number
+  quote?: string
+  startOffset?: number
+  endOffset?: number
+}
+
+export function createContentReference(data: ContentReferencePayload) {
+  return request({
+    url: '/rag/references',
+    method: 'post',
+    data
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
+export function listContentReferences(params: {
+  targetType?: string
+  targetId?: number
+  sourceType?: string
+  sourceId?: number
+  limit?: number
+}) {
+  return request({
+    url: '/rag/references',
+    method: 'get',
+    params
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any[] }>
+}
+
+export function deleteContentReference(referenceId: number) {
+  return request({
+    url: `/rag/references/${referenceId}`,
+    method: 'delete'
+  })
+}
+
+/** 版本对照：from 历史版本 → 当前/另一个历史版本 */
+export function diffDocumentVersions(docId: number, fromId: number, toId = 0) {
+  return request({
+    url: `/rag/document/versions/${docId}/diff`,
+    method: 'get',
+    params: { fromId, toId }
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
 /** 单文档可检索开关 */
 export function setDocumentSearchable(docId: number, disabled: boolean) {
   return request({

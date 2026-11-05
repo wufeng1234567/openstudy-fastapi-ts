@@ -11,6 +11,7 @@ RAG 写服务（知识库 / 文档 / 分块）
 
 from __future__ import annotations
 
+import difflib
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Sequence
@@ -457,6 +458,166 @@ async def get_document_version(
         "imageMap": snapshot.get("imageMap") or {},
         "contentStructure": snapshot.get("contentStructure") or [],
         "excludedRanges": snapshot.get("excludedRanges") or [],
+    }
+
+
+def _diff_rows(old: str, new: str, max_rows: int = 600) -> tuple[list[dict], dict]:
+    """按行生成左右对照 diff；遇到超长文本只截展示行，不改统计。"""
+    old_lines = str(old or "").splitlines()
+    new_lines = str(new or "").splitlines()
+    matcher = difflib.SequenceMatcher(None, old_lines, new_lines, autojunk=False)
+    rows: list[dict] = []
+    added = 0
+    removed = 0
+    left_no = 1
+    right_no = 1
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            for offset in range(i2 - i1):
+                rows.append(
+                    {
+                        "type": "same",
+                        "leftNo": left_no,
+                        "rightNo": right_no,
+                        "left": old_lines[i1 + offset][:240],
+                        "right": new_lines[j1 + offset][:240],
+                    }
+                )
+                left_no += 1
+                right_no += 1
+        elif tag == "delete":
+            for line in old_lines[i1:i2]:
+                removed += 1
+                rows.append({"type": "remove", "leftNo": left_no, "rightNo": None, "left": line[:240], "right": ""})
+                left_no += 1
+        elif tag == "insert":
+            for line in new_lines[j1:j2]:
+                added += 1
+                rows.append({"type": "add", "leftNo": None, "rightNo": right_no, "left": "", "right": line[:240]})
+                right_no += 1
+        else:  # replace
+            old_chunk = old_lines[i1:i2]
+            new_chunk = new_lines[j1:j2]
+            length = max(len(old_chunk), len(new_chunk))
+            for idx in range(length):
+                left = old_chunk[idx] if idx < len(old_chunk) else ""
+                right = new_chunk[idx] if idx < len(new_chunk) else ""
+                if idx < len(old_chunk):
+                    removed += 1
+                    left_no += 1
+                if idx < len(new_chunk):
+                    added += 1
+                    right_no += 1
+                rows.append(
+                    {
+                        "type": "change" if left and right else ("remove" if left else "add"),
+                        "leftNo": left_no - 1 if left else None,
+                        "rightNo": right_no - 1 if right else None,
+                        "left": left[:240],
+                        "right": right[:240],
+                    }
+                )
+    stats = {
+        "addedLines": added,
+        "removedLines": removed,
+        "oldLines": len(old_lines),
+        "newLines": len(new_lines),
+        "oldChars": len(old),
+        "newChars": len(new),
+        "charDelta": len(new) - len(old),
+    }
+    return rows[:max_rows], stats
+
+
+def _health_snapshot(snapshot: dict, doc_id: int) -> dict:
+    """对任意历史快照跑一次与「资料体检」同源的规则计算，保证前后口径一致。"""
+    from types import SimpleNamespace
+
+    from app.services.document_health_service import build_document_health
+
+    fake = SimpleNamespace(
+        id=int(doc_id),
+        file_name=str(snapshot.get("fileName") or ""),
+        raw_content=str(snapshot.get("rawContent") or ""),
+        image_map=snapshot.get("imageMap") or {},
+        content_structure=snapshot.get("contentStructure") or [],
+        material_type=str(snapshot.get("materialType") or ""),
+    )
+    report = build_document_health(fake)
+    return {
+        "score": int(report.get("score") or 0),
+        "grade": report.get("grade") or {},
+        "issueCount": len(report.get("issues") or []),
+        "stats": report.get("stats") or {},
+        "metrics": [
+            {"key": m.get("key"), "label": m.get("label"), "score": m.get("score")}
+            for m in (report.get("metrics") or [])
+        ],
+    }
+
+
+async def diff_document_versions(
+    db: AsyncSession,
+    user_id: int,
+    doc_id: int,
+    from_id: int,
+    to_id: int = 0,
+) -> dict:
+    """历史版本 ↔ 当前/另一历史版本的可解释 diff。
+
+    `to_id=0` 表示当前正文；这样用户不需要先为当前内容创建一个版本。
+    """
+    doc = await get_document(db, user_id, doc_id)
+
+    async def load_snapshot(version_id: int) -> tuple[dict, dict]:
+        if int(version_id) == 0:
+            return _version_snapshot(doc), {
+                "versionId": 0,
+                "fileName": doc.file_name or "",
+                "reason": "当前正文",
+                "createTime": _version_time(doc.update_time or doc.create_time),
+            }
+        log = (
+            await db.execute(
+                select(MaterialOrganizeLog).where(
+                    MaterialOrganizeLog.id == int(version_id),
+                    MaterialOrganizeLog.user_id == user_id,
+                    MaterialOrganizeLog.doc_id == doc.id,
+                    MaterialOrganizeLog.batch_id.like(f"{VERSION_BATCH_PREFIX}%"),
+                )
+            )
+        ).scalar_one_or_none()
+        if not log:
+            raise RagNotFound("历史版本不存在或无权访问")
+        snap = log.before_json or {}
+        return snap, {
+            "versionId": int(log.id),
+            "fileName": snap.get("fileName") or doc.file_name or "",
+            "reason": (log.after_json or {}).get("reason") or "保存前自动快照",
+            "createTime": _version_time(log.create_time),
+        }
+
+    old_snapshot, old_meta = await load_snapshot(from_id)
+    new_snapshot, new_meta = await load_snapshot(to_id)
+    old_text = str(old_snapshot.get("rawContent") or "")
+    new_text = str(new_snapshot.get("rawContent") or "")
+    rows, stats = _diff_rows(old_text, new_text)
+    before_health = _health_snapshot(old_snapshot, int(doc.id))
+    after_health = _health_snapshot(new_snapshot, int(doc.id))
+    return {
+        "docId": int(doc.id),
+        "fileName": doc.file_name or "",
+        "from": old_meta,
+        "to": new_meta,
+        "identical": old_text == new_text,
+        "rows": rows,
+        "stats": stats,
+        "health": {
+            "before": before_health,
+            "after": after_health,
+            "scoreDelta": after_health["score"] - before_health["score"],
+            "issueDelta": after_health["issueCount"] - before_health["issueCount"],
+        },
     }
 
 

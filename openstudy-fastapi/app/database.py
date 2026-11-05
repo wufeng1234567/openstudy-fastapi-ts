@@ -75,6 +75,7 @@ def register_all_models() -> None:
         bank_share,
         # 2026-10-27 聊天上传文件的持久化（chat_upload_file / chat_upload_image）
         chat_upload,
+        content,
         config,
         courses,
         dict,

@@ -35,9 +35,12 @@ from app.core.security import get_current_user, require_admin
 from app.database import async_session_factory, get_db
 from app.services.rag import (
     document_pipeline,
+    gallery_service,
+    knowledge_map_service,
     rag_config_service,
     rag_query_service,
     rag_write_service,
+    reference_service,
     workspace_service,
 )
 from app.services.rag.rag_write_service import RagConflict, RagNotFound
@@ -530,6 +533,28 @@ async def list_document_versions(
         return success(
             await rag_write_service.list_document_versions(
                 db, _uid(current_user), doc_id, limit
+            )
+        )
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/document/versions/{doc_id}/diff")
+async def diff_document_versions(
+    doc_id: int,
+    fromId: int = Query(..., ge=1, description="历史版本 ID"),
+    toId: int = Query(0, ge=0, description="对比目标版本；0=当前正文"),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """版本对照：左右 diff + 体检分数/问题数变化。
+
+    只展示真实正文和规则体检结果，不生成“AI 评价”。
+    """
+    try:
+        return success(
+            await rag_write_service.diff_document_versions(
+                db, _uid(current_user), doc_id, fromId, toId
             )
         )
     except Exception as e:
@@ -1688,6 +1713,32 @@ class AssetUsageRequest(BaseModel):
     targetId: int
 
 
+class GalleryDescribeRequest(BaseModel):
+    """批量补图片描述：传 docId 或 assetKeys，二选一。
+
+    不提供“全库自动跑”的隐藏行为——用户点哪次就描述哪批，成本可控。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    docId: Optional[int] = Field(None, gt=0)
+    assetKeys: Optional[List[str]] = None
+    limit: int = Field(20, ge=1, le=40)
+
+
+class ContentReferenceCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sourceType: str = Field(..., pattern="^(document|document_image|chat_image|note|question)$")
+    sourceId: int = Field(..., gt=0)
+    sourceSubId: Optional[str] = Field(None, max_length=64)
+    targetType: str = Field(..., pattern="^(document|note|question|image)$")
+    targetId: int = Field(..., gt=0)
+    quote: str = Field("", max_length=4000)
+    startOffset: Optional[int] = None
+    endOffset: Optional[int] = None
+
+
 class OrganizeRequest(BaseModel):
     """智能整理：传 docIds（单个/多个）或 kbId（整资料夹）。"""
 
@@ -1989,6 +2040,153 @@ async def asset_usage_summary(
             )
         ).all()
         return success({str(r[0]): int(r[1]) for r in rows})
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/gallery")
+async def list_gallery_assets(
+    scope: str = Query("all", pattern="^(all|current)$"),
+    kbId: Optional[int] = Query(None, gt=0),
+    source: str = Query("all", pattern="^(all|document|chat)$"),
+    status: str = Query("all", pattern="^(all|pending|processing|done|failed)$"),
+    q: str = Query("", max_length=120),
+    limit: int = Query(200, ge=1, le=500),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """画廊：当前用户全部/指定资料夹的图片资产。
+
+    每次读取前会幂等同步 `rag_document.image_map` 与 `chat_upload_image`，
+    不依赖上传时是否跑过描述任务。
+    """
+    try:
+        return success(
+            await gallery_service.list_gallery(
+                db,
+                _uid(current_user),
+                scope=scope,
+                kb_id=kbId,
+                source=source,
+                status=status,
+                q=q,
+                limit=limit,
+            )
+        )
+    except Exception as e:
+        return _fail(e)
+
+
+@router.post("/gallery/describe")
+async def describe_gallery_assets(
+    data: GalleryDescribeRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """为一批未描述图片生成描述/OCR。
+
+    同步返回完成数量，前端用 loading 进度展示；不阻塞上传链路。
+    """
+    try:
+        result = await gallery_service.describe_assets(
+            db,
+            _uid(current_user),
+            asset_keys=data.assetKeys,
+            doc_id=data.docId,
+            limit=data.limit,
+        )
+        msg = f"已处理 {result['done']} 张" + (f"，{result['failed']} 张失败" if result["failed"] else "")
+        return success(result, msg)
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/gallery/{asset_key}")
+async def gallery_asset_detail(
+    asset_key: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """单张图片资产详情：描述、OCR、来源章节、用途与引用。"""
+    try:
+        return success(await gallery_service.get_asset_detail(db, _uid(current_user), asset_key))
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/knowledge-map")
+async def get_knowledge_map(
+    kbId: Optional[int] = Query(None, gt=0),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """资料知识地图：真实文档/章节/笔记/题组/图组节点与可解释边。"""
+    try:
+        return success(await knowledge_map_service.build_knowledge_map(db, _uid(current_user), kb_id=kbId))
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/references")
+async def list_content_references(
+    targetType: Optional[str] = Query(None, pattern="^(document|note|question|image)$"),
+    targetId: Optional[int] = Query(None, gt=0),
+    sourceType: Optional[str] = Query(None, pattern="^(document|document_image|chat_image|note|question)$"),
+    sourceId: Optional[int] = Query(None, gt=0),
+    limit: int = Query(100, ge=1, le=300),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return success(
+            await reference_service.list_references(
+                db,
+                _uid(current_user),
+                target_type=targetType,
+                target_id=targetId,
+                source_type=sourceType,
+                source_id=sourceId,
+                limit=limit,
+            )
+        )
+    except Exception as e:
+        return _fail(e)
+
+
+@router.post("/references")
+async def create_content_reference(
+    data: ContentReferenceCreateRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """建立统一引用；同一来源→同一目标幂等更新。"""
+    try:
+        return success(
+            await reference_service.create_reference(
+                db,
+                _uid(current_user),
+                source_type=data.sourceType,
+                source_id=data.sourceId,
+                source_sub_id=data.sourceSubId,
+                target_type=data.targetType,
+                target_id=data.targetId,
+                quote=data.quote,
+                start_offset=data.startOffset,
+                end_offset=data.endOffset,
+            )
+        )
+    except Exception as e:
+        return _fail(e)
+
+
+@router.delete("/references/{reference_id}")
+async def delete_content_reference(
+    reference_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return success(await reference_service.delete_reference(db, _uid(current_user), reference_id))
     except Exception as e:
         return _fail(e)
 

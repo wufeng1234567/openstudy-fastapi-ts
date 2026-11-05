@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""OpenStudy 10 页方案（V3）· 浅色高级感 · 突出码道 CodeArts 开发能力
+"""OpenStudy 10 页方案（0.4.1）· 浅色高级感 · 突出码道 CodeArts 开发能力
 运行：openstudy-fastapi/.venv/Scripts/python.exe build_ppt_v3.py
 """
 import os
@@ -212,6 +212,9 @@ S10 = os.path.join(SHOTS, "24-question-formula-image.png")
 S11 = os.path.join(SHOTS, "25-document-health.png")
 S12 = os.path.join(SHOTS, "26-organize-surgery.png")
 S13 = os.path.join(SHOTS, "28-study-prescription.png")
+S14 = os.path.join(HERE, "码道架构图", "gallery-core.png")
+S15 = os.path.join(HERE, "码道架构图", "knowledge-map-core.png")
+S16 = os.path.join(HERE, "码道架构图", "version-diff-0.4.0.png")
 
 
 # ============ P1 封面 ============
@@ -220,7 +223,7 @@ def p1():
     # 装饰
     rect(s, 10.6, -2.1, 5.4, 5.4, fill=None, line=RGBColor(0xE3, 0xF4, 0xEC), lw=1.0, radius=0.5)
     rect(s, 11.9, 3.3, 3.6, 3.6, fill=None, line=RGBColor(0xEF, 0xF9, 0xF4), lw=1.0, radius=0.5)
-    text(s, M_L, 0.78, 7.0, 0.24, "OPENSTUDY  ·  AI 学习智能体", size=9.5, bold=True, color=MINT_D, spc=160)
+    text(s, M_L, 0.78, 7.0, 0.24, "OPENSTUDY  ·  0.4.1  ·  资料知识网络", size=9.5, bold=True, color=MINT_D, spc=160)
     t1 = text(s, M_L, 1.18, 7.0, 1.55, "把不会的，\n问到会", size=46, bold=True, color=INK, line_spacing=1.08)
     anim(s, "p1_title", t1)
     line(s, M_L, 2.92, M_L + 1.15, 2.92, color=MINT, width=2.5)
@@ -1028,17 +1031,24 @@ def p4c():
 
 def p5b():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "05  /  复杂输入", "Word 题库导入：图、公式、解析都不丢",
-           "最常见的一份资料：Word 题库，题干里有复杂公式，后面还跟着图。")
-    text(s, M_L, 1.80, 3.8, 0.22, "Word 原文", size=10.5, bold=True, color=GRAY2, spc=40)
-    text(s, 5.05, 1.80, 7.0, 0.22, "导入后的题目详情", size=10.5, bold=True, color=GRAY2, spc=40)
-    pic_card(s, S9, M_L, 2.04, 3.95, 3.47, border=True)
-    pic_card(s, S10, 5.05, 2.04, 6.95, 4.83, border=True)
-    bullets = ["题干 / 选项 / 答案自动拆开", "图片按原位置归属到题目", "复杂公式渲染成 LaTeX / KaTeX"]
-    y = 5.66
-    for b in bullets:
-        text(s, M_L, y, 3.95, 0.22, "· " + b, size=9.0, color=GRAY)
-        y += 0.28
+    header(s, "05  /  资料知识网络", "0.4.1：图有来源，页有连接，版本能对照",
+           "画廊把图片变成资产，引用把资产连成网络，知识地图让每个节点都能回到原文。")
+    text(s, M_L, 1.86, 4.05, 0.22, "画廊：图有描述、OCR 与来源", size=10.5, bold=True, color=GRAY2, spc=40)
+    text(s, 5.10, 1.86, 7.0, 0.22, "知识地图：资料页 / 章节页 / 题组 / 图组 / 笔记", size=10.5, bold=True, color=GRAY2, spc=40)
+    pic_card(s, S14, M_L, 2.10, 4.05, 2.66, border=True,
+             caption="真实界面：文档图片与聊天图片同一套搜索、描述和引用")
+    pic_card(s, S15, 5.10, 2.10, 7.30, 4.42, border=True,
+             caption="真实界面：点击资料页展开章节；引用关系用紫色虚线，不造假边")
+    rows = [
+        ("0.4.0 · 画廊", "图片描述 / OCR / 来源章节 / 被谁引用"),
+        ("0.4.0 · 版本", "时间线 · 左右 diff · 体检分与问题数变化"),
+        ("0.4.1 · 地图", "分组聚焦 · 搜索 · 隐藏孤立页 · 回到原文"),
+    ]
+    y = 5.18
+    for title, desc in rows:
+        text(s, M_L, y, 1.32, 0.20, title, size=7.6, bold=True, color=MINT_D)
+        text(s, M_L + 1.25, y, 2.78, 0.20, desc, size=7.6, color=GRAY)
+        y += 0.30
     footer(s, 6)
 
 
@@ -1201,7 +1211,7 @@ def p8c():
 for fn in (p1, p2b, p3health, p4surgery, p5pack, p5b, p7arch, p6, p7, p10close):
     fn()
 
-out = os.path.join(HERE, "OpenStudy-10页-V3-码道版.pptx")
+out = os.path.join(HERE, "OpenStudy-0.4.1-10页-码道版.pptx")
 prs.save(out)
 print("saved:", out, os.path.getsize(out))
 

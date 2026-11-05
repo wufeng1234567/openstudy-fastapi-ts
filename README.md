@@ -4,6 +4,8 @@
 >
 > 上传一份 Word / PDF / Markdown，它自己读、自己体检、自己整理、自己出题——还能把同一份资料排成每天能执行的学习处方。
 
+**当前版本：0.4.1 · 资料知识网络**（画廊 / 引用 / 版本对照 / 资料知识地图；按 `0.x` 语义化版本迭代）
+
 **仓库地址**：[gitee.com/wufeng1234567/openstudy-fastapi-ts](https://gitee.com/wufeng1234567/openstudy-fastapi-ts)
 　|　[GitHub](https://github.com/wufeng1234567/openstudy-fastapi-ts)
 　|　[GitCode](https://gitcode.com/qi142410131/openstudy-fastapi-ts)
@@ -40,6 +42,15 @@ Word/PDF/MD/图片   统一解析 · 自动归位      四维评分     可审�
 
 **它不是一个聊天框。** 对话里的每个动作都调用真实工具、写真实数据表——
 你说"用这份资料建个题库，出 10 道题"，它真的会建出来，你能点进去刷。
+
+### 0.4.1：资料知识网络
+
+- **画廊**：文档图片和聊天图片统一索引，支持描述 / OCR / 来源章节搜索、引用与插入笔记/题目。
+- **引用**：`content_reference` 记录 source + quote + offset；知识地图只连接真实引用。
+- **版本对照**：时间线 + 左右 diff + 规则体检分/问题数变化，恢复产生新版本。
+- **资料知识地图**：资料页、章节页、笔记、题组、图组按资料夹分组；点资料展开章节，点节点看详情并回到原文。
+
+详见 [OpenStudy-0.4.1-发布说明.md](doc/planning/OpenStudy-0.4.1-发布说明.md) 与 [OpenStudy-0.4.1-迭代方案.md](doc/planning/OpenStudy-0.4.1-迭代方案.md)。
 
 > 📖 四步各自做了什么、代码在哪 → **[doc/CORE-FLOW.md](doc/CORE-FLOW.md)**
 

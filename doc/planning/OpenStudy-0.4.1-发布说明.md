@@ -1,0 +1,52 @@
+# OpenStudy 0.4.1 发布说明：资料知识网络
+
+> 版本号说明：项目尚未发布 1.0，统一使用语义化 `0.x` 版本。本次不叫 V4，对应 `0.4.0 → 0.4.1`。
+
+## 0.4.0：可找 + 可引 + 可验证
+
+### 画廊
+- 「我的资料」顶部新增「画廊」，替换原图片墙；
+- 汇总文档图片、聊天图片，支持按当前资料夹 / 全部资料查看；
+- 搜索覆盖图片描述、OCR、文件名、来源资料、章节标题；
+- 图片详情展示真实来源章节、附近原文、描述、OCR、用途和引用；
+- 顶部「补全未描述」只描述当前列表内未完成的图片，不自动消耗额度；
+- 视觉模型返回 `caption / ocrText / kind / keywords`，结果写入 `rag_image_asset`。
+
+### 统一引用
+- 新增 `content_reference`：`source_type / source_id / source_sub_id → target_type / target_id`；
+- 支持文档图片 / 聊天图片 / 笔记 / 题目之间的引用；
+- 从画廊把图片插入笔记或题目时，自动写入引用账本；
+- 画廊详情展示「被谁引用」，知识地图读取真实引用生成虚线边。
+
+### 版本对照
+- 编辑器「版本对照」升级为时间线 + 左右 diff + 体检变化；
+- 支持选两个历史版本，或历史版本 ↔ 当前正文；
+- 差异按新增 / 删除 / 修改着色，同时显示字数、体检分、问题数变化；
+- 恢复历史版本仍会先保存当前快照，不覆盖历史。
+
+## 0.4.1：可视知识地图
+
+### 方案
+- 节点不是“实体”，而是真实存在的内容页：资料页、章节页、笔记、题组、图组；
+- 分组按资料夹，颜色按资料量排序分配；
+- 默认展示资料页与题组/图组/笔记，点击资料页才展开章节，避免全量章节把画面铺满；
+- 图布局在前端完成：分组网格 + 组内向日葵分布 + 围绕资料页的轨道；
+- 采用 ECharts `scatter + lines` 固定坐标，不用力导向，因此节点不会抱团或变成椭圆；
+- 引用边为紫色虚线，文档归属边为浅色细线；节点、边都可解释。
+
+### 交互
+- 左侧资料夹分组聚焦；顶部搜索、隐藏孤立页；右侧页面详情；
+- 点击资料页：展示摘要、章节数、题目数、图片数、版本，并展开章节；
+- 点击章节/笔记：显示真实正文摘录，可「定位原文」回到资料刨析；
+- Esc / 返回全图：退出聚焦；无引用时不画假虚线，无笔记时不造节点。
+
+## 数据与接口
+- `GET /rag/gallery`、`GET /rag/gallery/{asset_key}`、`POST /rag/gallery/describe`
+- `GET /rag/references`、`POST /rag/references`、`DELETE /rag/references/{id}`
+- `GET /rag/knowledge-map`
+- `GET /rag/document/versions/{doc_id}/diff`
+
+## 验证
+- `pytest tests/test_gallery_service.py tests/test_knowledge_map_service.py tests/test_version_diff_service.py`：10 passed；
+- `npx vite build --mode development`：通过；
+- 真实界面截图：`gallery-0.4.0.png`、`gallery-detail-0.4.0.png`、`knowledge-map-0.4.1.png`、`knowledge-map-focus-0.4.1.png`、`version-diff-0.4.0.png`。
