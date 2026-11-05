@@ -35,47 +35,51 @@
       style="display: none"
       @change="onFilesPicked"
     />
-    <!-- ============ 顶部：面包屑 + 一级视图 tabs（对齐知识库工作台层级） ============ -->
-    <header class="kbp-head kbp-head--clean">
-      <nav class="kbp-crumbs" aria-label="当前位置">
-        <button type="button" class="kbp-crumbs__root" @click="viewMode = 'list'">我的资料</button>
-        <span class="kbp-crumbs__sep">/</span>
-        <span class="kbp-crumbs__current">{{ activeKb?.name || '全部资料' }}</span>
-        <template v-if="viewMode !== 'list'">
-          <span class="kbp-crumbs__sep">/</span>
-          <span class="kbp-crumbs__leaf">{{ viewModeLabel }}</span>
-        </template>
-      </nav>
-      <div class="kbp-head__actions">
-        <span class="kbp-head__meta">
-          {{ stats.kbCount }} 个资料夹
-          <i>·</i>
-          {{ stats.readyCount }} 份可检索
-          <i>·</i>
-          {{ stats.totalSizeText || '0 B' }}
-        </span>
-        <el-button size="small" text class="kbp-receive-share" @click="receiveDialogVisible = true">
-          <el-icon><Download /></el-icon>
-          获取资料分享
-        </el-button>
-      </div>
-    </header>
+    <!-- 路由导航属于最顶层：通过 Teleport 注入布局顶栏，而不是留在内容区 -->
+    <Teleport v-if="canTeleport" to="#os-workspace-nav">
+      <div class="kbp-workspace-nav">
+        <header class="kbp-head kbp-head--clean">
+          <nav class="kbp-crumbs" aria-label="当前位置">
+            <button type="button" class="kbp-crumbs__root" @click="viewMode = 'list'">我的资料</button>
+            <span class="kbp-crumbs__sep">/</span>
+            <span class="kbp-crumbs__current">{{ activeKb?.name || '全部资料' }}</span>
+            <template v-if="viewMode !== 'list'">
+              <span class="kbp-crumbs__sep">/</span>
+              <span class="kbp-crumbs__leaf">{{ viewModeLabel }}</span>
+            </template>
+          </nav>
+          <div class="kbp-head__actions">
+            <span class="kbp-head__meta">
+              {{ stats.kbCount }} 个资料夹
+              <i>·</i>
+              {{ stats.readyCount }} 份可检索
+              <i>·</i>
+              {{ stats.totalSizeText || '0 B' }}
+            </span>
+            <el-button size="small" text class="kbp-receive-share" @click="receiveDialogVisible = true">
+              <el-icon><Download /></el-icon>
+              获取资料分享
+            </el-button>
+          </div>
+        </header>
 
-    <nav class="kbp-tabs" role="tablist" aria-label="资料视图">
-      <button
-        v-for="tab in workspaceTabs"
-        :key="tab.key"
-        type="button"
-        class="kbp-tab"
-        :class="{ 'is-active': viewMode === tab.key }"
-        role="tab"
-        :aria-selected="viewMode === tab.key"
-        @click="viewMode = tab.key"
-      >
-        <OsIcon :name="tab.icon" :size="15" />
-        <span>{{ tab.label }}</span>
-      </button>
-    </nav>
+        <nav class="kbp-tabs" role="tablist" aria-label="资料视图">
+          <button
+            v-for="tab in workspaceTabs"
+            :key="tab.key"
+            type="button"
+            class="kbp-tab"
+            :class="{ 'is-active': viewMode === tab.key }"
+            role="tab"
+            :aria-selected="viewMode === tab.key"
+            @click="viewMode = tab.key"
+          >
+            <OsIcon :name="tab.icon" :size="15" />
+            <span>{{ tab.label }}</span>
+          </button>
+        </nav>
+      </div>
+    </Teleport>
 
     <!-- 智能整理：即使关闭预览弹窗，后台进度也要可见、可再次打开 -->
     <div v-if="organizeTask.active" class="kbp-reprocess kbp-reprocess--organize">
@@ -1099,6 +1103,7 @@ function htmlToEditorMarkdown(html: string): string {
 
 const editorMarkdown = computed(() => htmlToEditorMarkdown(editorHtml.value))
 const viewMode = ref<'list' | 'shelf' | 'gallery' | 'map'>('list')
+const canTeleport = ref(false)
 const workspaceTabs = [
   { key: 'list' as const, label: '资料夹', icon: 'folder' },
   { key: 'shelf' as const, label: '书架', icon: 'book-open' },
@@ -3085,6 +3090,10 @@ onMounted(() => {
   loadStandaloneImages()
   loadAssetUsage()
   refreshOrganizePlans(true)
+  // 布局层顶栏的 Teleport 目标在父组件挂载完成后才稳定存在。
+  nextTick(() => {
+    canTeleport.value = true
+  })
 })
 
 onBeforeUnmount(() => {
@@ -3097,16 +3106,23 @@ onBeforeUnmount(() => {
 .kb-page {
   max-width: 1360px;
   margin: 0 auto;
-  padding: 20px 24px 60px;
+  padding: 16px 24px 60px;
 }
 
-/* ---------- 头部：面包屑 + 工作台 tabs ---------- */
+/* ---------- 全局顶栏里的工作台路由导航 ---------- */
+.kbp-workspace-nav {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+}
+
 .kbp-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  margin-bottom: 8px;
+  margin: 0;
 }
 
 .kbp-head--clean {
@@ -3182,9 +3198,9 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 2px;
-  margin: 0 0 18px;
+  height: 42px;
+  margin: 0;
   padding: 0 2px;
-  border-bottom: 1px solid #e9ecf2;
 }
 
 .kbp-tab {

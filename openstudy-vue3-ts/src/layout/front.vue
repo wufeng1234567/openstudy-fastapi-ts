@@ -32,8 +32,8 @@
 
     <!-- ==================== ② 主区 ==================== -->
     <div class="os-main">
-      <header class="os-topbar">
-        <div class="os-topbar__left">
+      <header class="os-topbar" :class="{ 'is-workspace': isWorkspace }">
+        <div v-if="!isWorkspace" class="os-topbar__left">
           <!--
             只在移动端出现：桌面端收起侧栏后，展开入口在**最左侧图标栏**里（见 FrontSidebar），
             内容区不再放第二个展开按钮（用户明确要求：收起后按钮不要出现在路由显示区域）。
@@ -59,6 +59,10 @@
             标题重复，用户 2026-10-18 要求合并到同一行。
           -->
           <span v-if="topbarStore.countText" class="os-topbar__count">{{ topbarStore.countText }}</span>
+        </div>
+        <div v-else class="os-topbar__workspace">
+          <!-- 工作空间把「面包屑 + 视图 tabs」Teleport 到这里：路由导航属于最顶层，不再下放到内容区。 -->
+          <div id="os-workspace-nav" class="os-workspace-nav"></div>
         </div>
 
         <div class="os-topbar__right">
@@ -454,6 +458,8 @@ const SECOND_LEVEL_HINT: Record<string, string> = {
   FrontMicroCourse: '围绕资料生成可直接演示的教学 HTML，并可一键转成 PPT'
 }
 
+const isWorkspace = computed(() => route.name === 'FrontWorkspace')
+
 const pageTitle = computed(() => {
   // 「我的学习」优先匹配子页（更长的前缀先命中）
   const sub = MY_LEARNING_SUB.find(([prefix]) => route.path.startsWith(prefix))
@@ -616,6 +622,27 @@ watch(
   border-bottom: 1px solid var(--os-border-soft);
   background: #fff;
   box-sizing: border-box;
+}
+
+.os-topbar.is-workspace {
+  height: 96px;
+  align-items: stretch;
+  padding-top: 6px;
+  padding-bottom: 2px;
+}
+
+.os-topbar__workspace {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.os-workspace-nav {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .os-topbar__left {
@@ -857,6 +884,13 @@ watch(
 
   .os-topbar {
     padding: 0 12px;
+  }
+
+  .os-topbar.is-workspace {
+    height: auto;
+    min-height: 96px;
+    padding-top: 8px;
+    padding-bottom: 6px;
   }
 }
 </style>
