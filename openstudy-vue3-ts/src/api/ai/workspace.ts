@@ -46,6 +46,15 @@ export function uploadToWorkspace(file: File | File[], note?: string, timeout = 
   })
 }
 
+/** 新会话首页的提问推测：有资料读资料，没有资料给起步体验。 */
+export function getChatSuggestions(docId?: number | string | null) {
+  return request({
+    url: '/rag/chat/suggestions',
+    method: 'get',
+    params: docId ? { docId } : undefined
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
 /** 聊天中直接粘贴/上传的独立图片（我的资料图片墙用） */
 export function listWorkspaceStandaloneImages(limit = 100) {
   return request({

@@ -836,6 +836,21 @@ class StudyPrescriptionExportRequest(BaseModel):
     meta: dict = Field(default_factory=dict)
 
 
+@router.get("/chat/suggestions")
+async def get_chat_suggestions(
+    docId: Optional[int] = Query(None, gt=0),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """新会话首页的提问推测；没有资料时返回起步体验问题。"""
+    try:
+        from app.services.rag.chat_suggestion_service import get_chat_suggestions as load_suggestions
+
+        return success(await load_suggestions(db, _uid(current_user), doc_id=docId))
+    except Exception as e:
+        return _fail(e)
+
+
 @router.get("/knowledge-graph")
 async def get_knowledge_graph(
     kbId: Optional[int] = Query(None, gt=0),

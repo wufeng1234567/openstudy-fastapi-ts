@@ -45,6 +45,7 @@
 - 四类视图的搜索框统一复用 `SearchFilterInput`，筛选下拉复用 `CommonFilterSidebar`：资料视图筛选资料类型/处理状态，画廊筛选图片类型/描述状态，知识图谱筛选实体类型；
 - 知识图谱使用 LLM 从资料 chunk 抽取实体与有向关系，存储 `rag_graph_entity` / `rag_graph_relation`；节点大小按连接度、边按关系强度绘制，实体详情可查看来源分块并跳回原文；
 - 知识图谱支持隐藏孤立实体、实体类型筛选、实体搜索、点击查看邻居与来源证据，不依赖 Neo4j；
+- 新会话首页重做：`Hi，我是 OpenStudy` 欢迎语 + 「你可以这样问我」动态提问推测；有资料时由 LLM 读取最近资料生成问题，没有资料时给起步体验问题；上传文档后会基于该文档刷新提问；
 - 画廊改为瀑布流：按图片原始比例自然排布，卡片高度有梯度，不再固定 4:3 裁切；
 - 画廊移除「全部状态」筛选；只保留当前资料夹 / 全部资料、图片来源和补描述动作；
 - 图谱详情展示实体描述、出现次数、关联邻居和来源 chunk；点击来源可回到资料刨析定位原文；
@@ -54,9 +55,10 @@
 - `GET /rag/gallery`、`GET /rag/gallery/{asset_key}`、`POST /rag/gallery/describe`
 - `GET /rag/references`、`POST /rag/references`、`DELETE /rag/references/{id}`
 - `GET /rag/knowledge-graph`、`POST /rag/knowledge-graph/build`、`GET /rag/knowledge-graph/entity/{entity_id}`
+- `GET /rag/chat/suggestions`（新会话提问推测，可带 `docId`）
 - `GET /rag/document/versions/{doc_id}/diff`
 
 ## 验证
 - `pytest tests/test_gallery_service.py tests/test_knowledge_map_service.py tests/test_version_diff_service.py tests/test_knowledge_graph_service.py tests/test_study_prescription_export_service.py`：28 passed；
 - `npx vite build --mode development`：通过；
-- 真实界面截图：`gallery-0.4.0.png`、`gallery-detail-0.4.0.png`、`36-knowledge-graph-0.4.1.png`、`version-diff-0.4.0.png`。
+- 真实界面截图：`gallery-0.4.0.png`、`gallery-detail-0.4.0.png`、`36-knowledge-graph-0.4.1.png`、`37-chat-new-session.png`、`version-diff-0.4.0.png`。

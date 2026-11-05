@@ -236,7 +236,8 @@ function typeBg(type: string) {
   return TYPE_META.find((item) => item.type === type)?.bg || '#F3F5F9'
 }
 function nodeRadius(node: any) {
-  return 14 + Math.min(17, Math.sqrt(Number(node.degree || 0) + 1) * 4)
+  // 节点克制一些，把空间留给簇与簇之间的留白。
+  return 8 + Math.min(12, Math.sqrt(Number(node.degree || 0) + 1) * 3)
 }
 
 function buildStaticLayout(nodes: any[], edges: any[], width: number, height: number) {
@@ -267,11 +268,22 @@ function buildStaticLayout(nodes: any[], edges: any[], width: number, height: nu
     }
     components.push(component)
   }
-  // 小碎片（1~2 个实体）多半是抽取噪声；默认只展示前三个真正有关系的主题簇，
+  // 小碎片（1~2 个实体）多半是抽取噪声；默认只展示两个主主题簇，
   // 每个簇占独立网格单元，避免簇与簇的多边形互相覆盖。
-  components.sort((a, b) => b.length - a.length)
+  // 排序优先概念/定理占比高的主题簇，避免把 make/main 这类代码工具簇
+  // 误当成知识主题排到概率论前面。
+  const componentScore = (component: string[]) =>
+    component.reduce((score, id) => {
+      const node: any = byId.get(id)
+      if (!node) return score
+      if (node.type === '概念' || node.type === '定理/公式') return score + 2
+      if (node.type === '方法') return score + 1
+      return score
+    }, 0)
+  components.sort((a, b) => componentScore(b) - componentScore(a) || b.length - a.length)
   if (hideIsolated.value) {
-    components = components.filter((component) => component.length >= 3).slice(0, 3)
+    // 只保留两个主主题簇，给多边形留出真正的外圈空白；小碎片仍可关掉开关查看。
+    components = components.filter((component) => component.length >= 3).slice(0, 2)
   }
 
   const count = components.length
@@ -291,7 +303,7 @@ function buildStaticLayout(nodes: any[], edges: any[], width: number, height: nu
     const centerX = cellW * (col + 0.5)
     const centerY = cellH * (row + 0.5)
     const others = items.filter((item) => item !== hub).sort((a, b) => Number(b.degree || 0) - Number(a.degree || 0))
-    const baseRadius = Math.max(72, Math.min(190, Math.min(cellW * 0.30, cellH * 0.34)))
+    const baseRadius = Math.max(70, Math.min(150, Math.min(cellW * 0.24, cellH * 0.30)))
     const innerCount = Math.min(others.length, Math.max(6, Math.floor((Math.PI * 2 * baseRadius) / 78)))
     const inner = others.slice(0, innerCount)
     const outer = others.slice(innerCount)
@@ -309,7 +321,7 @@ function buildStaticLayout(nodes: any[], edges: any[], width: number, height: nu
       })
     }
     placeRing(inner, baseRadius, 0)
-    placeRing(outer, baseRadius + 92, Math.PI / Math.max(outer.length, 1))
+    placeRing(outer, baseRadius + 82, Math.PI / Math.max(outer.length, 1))
     clusters.push({ ids: component, nodes: [hub, ...inner, ...outer] })
   })
 
@@ -349,7 +361,7 @@ function clusterOutline(points: any[]) {
   if (!points.length) return ''
   const samples = 20
   const expanded = points.flatMap((p) => {
-    const radius = nodeRadius(p) + 22
+    const radius = nodeRadius(p) + 20
     return Array.from({ length: samples }, (_, i) => ({
       x: p.x + Math.cos((i * 2 * Math.PI) / samples) * radius,
       y: p.y + Math.sin((i * 2 * Math.PI) / samples) * radius

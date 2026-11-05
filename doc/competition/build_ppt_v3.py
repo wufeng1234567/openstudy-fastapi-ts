@@ -199,7 +199,7 @@ prs.slide_width = Inches(W)
 prs.slide_height = Inches(H)
 BLANK = prs.slide_layouts[6]
 
-S1 = os.path.join(SHOTS, "01-agent-chat.png")
+S1 = os.path.join(SHOTS, "37-chat-new-session.png")
 S2 = os.path.join(SHOTS, "03-question-practice.png")
 S3 = os.path.join(SHOTS, "05-stats.png")
 S4 = os.path.join(SHOTS, "07-rag-config.png")

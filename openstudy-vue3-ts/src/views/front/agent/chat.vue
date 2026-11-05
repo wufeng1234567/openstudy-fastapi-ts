@@ -107,7 +107,7 @@
         -->
         <AiChatStream ref="chatRef" :messages="messages" :is-generating="isGenerating" :is-paused="false"
           :is-restoring="isRestoring"
-          :has-attachment="attachmentCount > 0" placeholder="告诉我你想做什么…（Enter 发送，Ctrl+Enter 换行）"
+          :has-attachment="attachmentCount > 0" placeholder="把你的资料交给我，或者直接问一个问题…（Enter 发送，Ctrl+Enter 换行）"
           :show-mode-switch="false" :rollback-states="rollbackStates" @send="handleSend" @stop="stop"
           @toggle-pause="stop" @rollback-turn="onRollbackTurn" @window-change="onChatWindowChange"
           @files-pasted="onPasteFiles">
@@ -215,29 +215,29 @@
               <div class="hero-mark">
                 <OsLogo :size="44" />
               </div>
-              <h2 class="hero-title">把不会的，问到会</h2>
+              <h2 class="hero-title">Hi，我是 OpenStudy</h2>
               <p class="hero-desc">
-                我能读你的题库、笔记与错题，替你建库、出题、批改、归总。
-                你只管问，剩下的交给它。
+                把你的资料，变成会回答问题的学习搭子。
+                不会的，我们一点点问到会。
               </p>
-              <div class="hero-actions">
+              <div class="hero-suggestions-head">
+                <span>你可以这样问我</span>
+                <button type="button" class="hero-refresh" :disabled="heroSuggestionsLoading"
+                  title="换一批问题" aria-label="换一批问题" @click="refreshHeroSuggestions()">
+                  <el-icon :class="{ 'is-spinning': heroSuggestionsLoading }"><Refresh /></el-icon>
+                </button>
+              </div>
+              <div class="hero-suggestions">
                 <button
-                  v-for="(q, i) in quickActions"
+                  v-for="(q, i) in heroSuggestions"
                   :key="i"
                   type="button"
-                  class="hero-card"
+                  class="hero-suggestion"
+                  :title="q.desc || ''"
                   @click="onHeroCard(q)"
                 >
-                  <span class="hero-card-icon">
-                    <el-icon><component :is="q.icon" /></el-icon>
-                  </span>
-                  <span class="hero-card-text">
-                    <span class="hero-card-title">{{ q.label }}</span>
-                    <span class="hero-card-desc">{{ q.desc }}</span>
-                  </span>
-                  <span class="hero-card-arrow">
-                    <OsIcon name="arrow-right" :size="15" />
-                  </span>
+                  <span class="hero-suggestion__dot" :class="{ 'is-upload': q.action === 'upload' }"></span>
+                  <span class="hero-suggestion__text">{{ q.text || q.label }}</span>
                 </button>
               </div>
             </div>
@@ -330,7 +330,7 @@ import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount, o
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Delete, Setting,
+  Delete, Setting, Refresh,
   FolderOpened, QuestionFilled, UploadFilled, Search, View
 } from '@element-plus/icons-vue'
 import AiChatStream from '@/components/AiChatStream/index.vue'
@@ -350,7 +350,7 @@ import OsIcon from '@/components/OsIcon/index.vue'
 import { fetchAgentToolsForUi } from '@/api/ai/agentDsFree'
 import { useAgentChat, normalizeRestoredMessages } from '@/composables/useAgentChat'
 import { listSessions, createSession, deleteSession, getConversationHistory, saveConversationMessages, getAgentTimeline, attachmentPlaceholder, fillAttachmentMetas } from '@/api/ai/ai'
-import { uploadToWorkspace } from '@/api/ai/workspace'
+import { getChatSuggestions, uploadToWorkspace } from '@/api/ai/workspace'
 import {
   listAgentConfigs,
   createAgentConfig,
@@ -913,6 +913,7 @@ const newSession = async () => {
   if (isGenerating.value) stop()
   reset()
   sessionId.value = await sessionStore.startNewSession()
+  void refreshHeroSuggestions()
 }
 
 /**
@@ -1048,7 +1049,7 @@ const removeSession = async (s: any) => {
  *
  * 副标题统一写"点完会发生什么"，而不是复述功能名。
  */
-const quickActions = [
+const fallbackHeroSuggestions = [
   {
     icon: FolderOpened,
     label: '我有哪些题库',
@@ -1087,7 +1088,35 @@ const quickActions = [
  * · `upload` → **先唤起文件选择框**；用户选完文件后再自动发送那句话。
  *              用户若取消选择就什么都不做（不会留下一条"没有资料"的消息）。
  */
-function onHeroCard(q: (typeof quickActions)[number]) {
+const suggestionIcons = [FolderOpened, UploadFilled, Search, QuestionFilled]
+const heroSuggestions = ref<any[]>(fallbackHeroSuggestions.map((item) => ({ ...item })))
+const heroSuggestionsLoading = ref(false)
+let heroSuggestionSeq = 0
+
+function normalizeHeroSuggestions(list: any[] = []): any[] {
+  return list.map((item, index) => ({
+    ...item,
+    label: item.label || item.text,
+    icon: item.action === 'upload' ? UploadFilled : suggestionIcons[index % suggestionIcons.length]
+  }))
+}
+
+async function refreshHeroSuggestions(docId?: number | string | null) {
+  const seq = ++heroSuggestionSeq
+  heroSuggestionsLoading.value = true
+  try {
+    const res = await getChatSuggestions(docId)
+    if (seq !== heroSuggestionSeq) return
+    const list = Array.isArray(res?.data?.suggestions) ? res.data.suggestions : []
+    if (list.length) heroSuggestions.value = normalizeHeroSuggestions(list)
+  } catch (error) {
+    console.warn('[chat] 读取提问推测失败，保留默认问题', error)
+  } finally {
+    if (seq === heroSuggestionSeq) heroSuggestionsLoading.value = false
+  }
+}
+
+function onHeroCard(q: any) {
   if (q.action === 'upload') {
     pendingUploadPrompt.value = q.text
     attachRef.value?.openPicker?.()
@@ -1115,6 +1144,7 @@ watch(attachmentCount, (n, prev) => {
  * 这样用户不需要先打开「我的资料」页，聊天里传过的 Word/PDF 也会出现在默认资料夹。
  */
 function autoCollectChatDocs(docs: Array<{ name: string; type: string; base64: string }>) {
+  const uploads: Promise<any>[] = []
   for (const doc of docs) {
     try {
       const raw = String(doc.base64 || '')
@@ -1126,14 +1156,26 @@ function autoCollectChatDocs(docs: Array<{ name: string; type: string; base64: s
       const bytes = new Uint8Array(bin.length)
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
       const file = new File([bytes], doc.name || '聊天附件', { type: doc.type || mime })
-      // 不 await：解析在服务端进行，不能拖慢用户发送消息
-      uploadToWorkspace(file, '智能体对话自动收集').catch((e: any) => {
-        console.warn('[我的资料] 聊天附件自动收集失败：', doc.name, e?.message || e)
-      })
+      // 不阻塞发送；上传完成后顺手让 LLM 读一遍新资料，刷新提问推测。
+      uploads.push(
+        uploadToWorkspace(file, '智能体对话自动收集')
+          .then((res: any) => res?.data || null)
+          .catch((e: any) => {
+            console.warn('[我的资料] 聊天附件自动收集失败：', doc.name, e?.message || e)
+            return null
+          })
+      )
     } catch (e: any) {
       console.warn('[我的资料] 聊天附件无法转为文件：', doc.name, e?.message || e)
     }
   }
+  if (!uploads.length) return
+  Promise.all(uploads).then((results) => {
+    const ids = results
+      .map((data) => data?.docId || data?.documents?.[0]?.docId)
+      .filter((id): id is number => Number(id) > 0)
+    if (ids.length) void refreshHeroSuggestions(ids[0])
+  })
 }
 
 const handleSend = async ({ content, injectHistory = false }: { content: string; injectHistory?: boolean }) => {
@@ -1278,6 +1320,8 @@ onMounted(async () => {
    */
   isRestoring.value = true
   try {
+    // 新会话欢迎区的提问推测：不阻塞会话加载
+    void refreshHeroSuggestions()
     // 智能体清单（官方角色 + 我的智能体）：不阻塞会话加载，失败静默降级
     loadAgents()
     // ⚡ 进页面即**预取**专家清单：不管用户先点哪个 tab（设置 / 知识库 / 历史），
@@ -1745,12 +1789,111 @@ onBeforeUnmount(() => {
   text-wrap: balance;
 }
 
-.hero-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.hero-suggestions-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 28px;
+  color: var(--os-text-3);
+  font-size: 12px;
+}
+
+.hero-refresh {
+  display: inline-flex;
+  width: 23px;
+  height: 23px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  background: transparent;
+  color: var(--os-text-4);
+  cursor: pointer;
+  transition: color 0.18s ease, background-color 0.18s ease;
+}
+
+.hero-refresh:hover {
+  color: var(--os-accent, #2563eb);
+  background: rgba(79, 107, 237, 0.07);
+}
+
+.hero-refresh:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.hero-refresh .el-icon {
+  font-size: 14px;
+}
+
+.hero-refresh .el-icon.is-spinning {
+  animation: hero-refresh-spin 0.85s linear infinite;
+}
+
+@keyframes hero-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+
+.hero-suggestions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 10px;
-  margin-top: 30px;
+  width: 100%;
+  margin: 12px auto 0;
+}
+
+.hero-suggestion {
+  display: flex;
+  width: fit-content;
+  max-width: min(100%, 760px);
+  align-items: center;
+  gap: 10px;
+  padding: 12px 22px;
+  border: 1px solid transparent;
+  border-radius: 15px;
+  /* 渐变描边 + 轻微渐变底，让每一颗问题像一块有层次的软标签，而不是统一表格行 */
+  background:
+    linear-gradient(135deg, #ffffff 0%, #f7f9ff 100%) padding-box,
+    linear-gradient(135deg, rgba(148, 163, 184, 0.42), rgba(79, 107, 237, 0.16)) border-box;
+  color: var(--os-text-2);
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.55;
   text-align: left;
+  cursor: pointer;
+  box-shadow: 0 5px 16px rgba(15, 23, 42, 0.045), 0 1px 2px rgba(15, 23, 42, 0.025);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.hero-suggestion:hover {
+  transform: translateY(-1px);
+  background:
+    linear-gradient(135deg, #ffffff 0%, #f3f7ff 100%) padding-box,
+    linear-gradient(135deg, rgba(79, 107, 237, 0.34), rgba(47, 158, 143, 0.22)) border-box;
+  box-shadow: 0 9px 24px rgba(79, 107, 237, 0.11), 0 2px 4px rgba(15, 23, 42, 0.03);
+}
+
+.hero-suggestion__dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4f6bed;
+  box-shadow: 0 0 0 3px rgba(79, 107, 237, 0.08);
+}
+
+.hero-suggestion__dot.is-upload {
+  background: #2f9e8f;
+  box-shadow: 0 0 0 3px rgba(47, 158, 143, 0.08);
+}
+
+.hero-suggestion__text {
+  overflow: visible;
+  white-space: normal;
+  text-wrap: balance;
 }
 
 .hero-card {
