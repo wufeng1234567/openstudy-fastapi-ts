@@ -41,9 +41,9 @@
       <div v-for="i in 8" :key="i" class="gallery-skeleton"></div>
     </div>
 
-    <div v-else-if="items.length" class="gallery-grid">
+    <div v-else-if="displayItems.length" class="gallery-grid">
       <article
-        v-for="item in items"
+        v-for="item in displayItems"
         :key="item.assetKey"
         class="gallery-card"
         tabindex="0"
@@ -186,6 +186,7 @@ const props = defineProps<{
   activeKbId?: number | null
   activeKbName?: string
   searchQuery?: string
+  filters?: Record<string, any>
 }>()
 
 const emit = defineEmits<{
@@ -213,12 +214,27 @@ const detailLoading = ref(false)
 const detail = ref<any>(null)
 const describingOne = ref(false)
 
+const displayItems = computed(() => {
+  const kinds = Array.isArray(props.filters?.kind) ? props.filters.kind : []
+  const statuses = Array.isArray(props.filters?.descriptionStatus) ? props.filters.descriptionStatus : []
+  return items.value.filter((item) => {
+    if (kinds.length && !kinds.includes(item.kind)) return false
+    if (statuses.length && !statuses.includes(item.descriptionStatus)) return false
+    return true
+  })
+})
+
 const pendingKeys = computed(() =>
-  items.value
+  displayItems.value
     .filter((item) => item.descriptionStatus === 'pending' || item.descriptionStatus === 'failed')
     .map((item) => item.assetKey)
 )
-const hasFilter = computed(() => !!query.value.trim() || sourceFilter.value !== 'all')
+const hasFilter = computed(
+  () =>
+    !!query.value.trim() ||
+    sourceFilter.value !== 'all' ||
+    Object.values(props.filters || {}).some((value) => Array.isArray(value) && value.length > 0)
+)
 
 function displayUrl(url: string) {
   const value = String(url || '').trim()

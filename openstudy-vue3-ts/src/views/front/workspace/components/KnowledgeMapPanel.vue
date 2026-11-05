@@ -166,7 +166,11 @@ import * as echarts from 'echarts'
 import { Aim, Share } from '@element-plus/icons-vue'
 import { getKnowledgeMap } from '@/api/ai/workspace'
 
-const props = defineProps<{ activeKbId?: number | null; searchQuery?: string }>()
+const props = defineProps<{
+  activeKbId?: number | null
+  searchQuery?: string
+  typeFilter?: string[]
+}>()
 const emit = defineEmits<{
   (e: 'open-doc', payload: { docId: number; offset?: number; targetText?: string }): void
   (e: 'back'): void
@@ -587,6 +591,16 @@ watch(
     keyword.value = value || ''
     render()
   }
+)
+watch(
+  () => props.typeFilter,
+  (value) => {
+    activeTypes.value = Array.isArray(value) && value.length
+      ? [...value]
+      : ['document', 'section', 'note', 'question', 'image']
+    render()
+  },
+  { deep: true, immediate: true }
 )
 watch(activeTypes, () => render(), { deep: true })
 watch(hideIsolated, () => render())

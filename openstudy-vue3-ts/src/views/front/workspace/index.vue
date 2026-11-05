@@ -68,13 +68,31 @@
     <div class="kbp-context-bar">
       <div class="kbp-context-count">{{ workspaceCountLabel }}</div>
       <div class="kbp-context-tools">
-        <el-input
-          v-model="workspaceSearch"
-          class="kbp-global-search"
-          clearable
-          :placeholder="workspaceSearchPlaceholder"
-          :prefix-icon="Search"
-        />
+        <div class="kbp-search-wrap">
+          <SearchFilterInput
+            v-model="workspaceSearch"
+            class="kbp-global-search"
+            :placeholder="workspaceSearchPlaceholder"
+            :filter-open="workspaceFilterOpen"
+            :filter-active="workspaceFilterActive"
+            @toggle-filter="toggleWorkspaceFilter"
+          />
+          <CommonFilterSidebar
+            ref="workspaceFilterRef"
+            :key="viewMode"
+            :title="workspaceFilterTitle"
+            hide-trigger
+            :filter-groups="workspaceFilterGroups"
+            :filter-form="workspaceFilters"
+            :default-filter="workspaceFilterDefault"
+            :default-collapsed="true"
+            :style="{ '--filter-top': '38px', '--filter-left': '0px' }"
+            @filter-change="handleWorkspaceFilterChange"
+            @reset-filters="handleWorkspaceFilterReset"
+            @collapse-change="workspaceFilterOpen = $event"
+            @active-change="workspaceFilterActive = $event"
+          />
+        </div>
         <el-button size="small" text class="kbp-receive-share" @click="receiveDialogVisible = true">
           <el-icon><Download /></el-icon>
           获取资料分享
@@ -484,6 +502,7 @@
       :active-kb-id="activeKbId"
       :active-kb-name="activeKb?.name"
       v-model:search-query="workspaceSearch"
+      :filters="workspaceFilters"
       @stats="onGalleryStats"
       @use-image="onGalleryUseImage"
       @locate="onGalleryLocate"
@@ -495,6 +514,7 @@
       v-else-if="viewMode === 'map' && (loading || (kbs.length && !loadFailed))"
       :active-kb-id="activeKbId"
       :search-query="workspaceSearch"
+      :type-filter="workspaceFilters.nodeType || []"
       @stats="onMapStats"
       @open-doc="onMapOpenDoc"
       @back="viewMode = 'list'"
@@ -837,6 +857,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import OsIcon from '@/components/OsIcon/index.vue'
 import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
+import SearchFilterInput from '@/components/SearchFilterInput/index.vue'
+import CommonFilterSidebar from '@/components/CommonFilterSidebar/index.vue'
 import { marked } from 'marked'
 import TurndownService from 'turndown'
 import { getWorkspaceOverview, uploadToWorkspace, searchWorkspace, searchWorkspaceCascade, listWorkspaceStandaloneImages, getAssetUsageSummary, recordAssetUsage, previewWorkspaceOrganize, getWorkspaceOrganizePlan, getWorkspaceOrganizeRecord, listWorkspaceOrganizePlans, applyWorkspaceOrganize, deleteWorkspaceOrganizeRecord, rollbackWorkspacePlan, setDocumentSearchable, createContentReference } from '@/api/ai/workspace'
@@ -1073,6 +1095,10 @@ const editorMarkdown = computed(() => htmlToEditorMarkdown(editorHtml.value))
 const viewMode = ref<'list' | 'shelf' | 'gallery' | 'map'>('list')
 const canTeleport = ref(false)
 const workspaceSearch = ref('')
+const workspaceFilterOpen = ref(false)
+const workspaceFilterActive = ref(false)
+const workspaceFilterRef = ref<any>(null)
+const workspaceFilters = reactive<Record<string, any>>({})
 const galleryStats = reactive({ total: 0 })
 const mapStats = reactive({ total: 0 })
 const workspaceTabs = [
@@ -1093,13 +1119,121 @@ const workspaceCountLabel = computed(() => {
   if (viewMode.value === 'gallery') return `全部图片：共 ${galleryStats.total} 张`
   return `全部知识页：共 ${mapStats.total} 个页面`
 })
+function documentTypeKey(doc: any): string {
+  const ext = String(doc?.fileType || doc?.fileName || '').toLowerCase().match(/\.([a-z0-9]+)$/)?.[1]
+    || String(doc?.fileType || '').toLowerCase()
+  if (['doc', 'docx'].includes(ext)) return 'word'
+  if (['ppt', 'pptx'].includes(ext)) return 'ppt'
+  if (['md', 'markdown', 'txt'].includes(ext)) return 'text'
+  if (['pdf'].includes(ext)) return 'pdf'
+  if (['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'].includes(ext)) return 'image'
+  return 'other'
+}
+
+function documentStatusKey(doc: any): string {
+  if (Number(doc?.disabled) === 1) return 'blocked'
+  if (Number(doc?.status) === 4) return 'failed'
+  if (Number(doc?.status) === 5) return 'ready'
+  return 'processing'
+}
+
+const workspaceFilterTitle = computed(() => {
+  if (viewMode.value === 'gallery') return '图片筛选'
+  if (viewMode.value === 'map') return '页面筛选'
+  return '资料筛选'
+})
+
+const workspaceFilterDefault = computed(() => {
+  if (viewMode.value === 'list' || viewMode.value === 'shelf') {
+    return { fileType: [], status: [] }
+  }
+  if (viewMode.value === 'gallery') {
+    return { kind: [], descriptionStatus: [] }
+  }
+  return { nodeType: [] }
+})
+
+const workspaceFilterGroups = computed(() => {
+  if (viewMode.value === 'gallery') {
+    return [
+      {
+        key: 'kind',
+        label: '图片类型',
+        type: 'checkbox',
+        options: [
+          { value: 'photo', label: '照片' },
+          { value: 'diagram', label: '示意图' },
+          { value: 'table', label: '表格' },
+          { value: 'formula', label: '公式' },
+          { value: 'screenshot', label: '截图' }
+        ]
+      },
+      {
+        key: 'descriptionStatus',
+        label: '描述状态',
+        type: 'checkbox',
+        options: [
+          { value: 'done', label: '已描述' },
+          { value: 'pending', label: '待描述' },
+          { value: 'failed', label: '失败' }
+        ]
+      }
+    ]
+  }
+  if (viewMode.value === 'map') {
+    return [
+      {
+        key: 'nodeType',
+        label: '页面类型',
+        type: 'checkbox',
+        options: [
+          { value: 'document', label: '资料页' },
+          { value: 'section', label: '章节页' },
+          { value: 'note', label: '笔记' },
+          { value: 'question', label: '题组' },
+          { value: 'image', label: '图组' }
+        ]
+      }
+    ]
+  }
+  return [
+    {
+      key: 'fileType',
+      label: '资料类型',
+      type: 'checkbox',
+      options: [
+        { value: 'word', label: 'Word' },
+        { value: 'pdf', label: 'PDF' },
+        { value: 'ppt', label: 'PPT' },
+        { value: 'text', label: 'Markdown / TXT' },
+        { value: 'image', label: '图片' }
+      ]
+    },
+    {
+      key: 'status',
+      label: '处理状态',
+      type: 'checkbox',
+      options: [
+        { value: 'ready', label: '可检索' },
+        { value: 'processing', label: '处理中' },
+        { value: 'failed', label: '失败' },
+        { value: 'blocked', label: '已屏蔽' }
+      ]
+    }
+  ]
+})
+
 const visibleFiles = computed(() => {
   const files = activeKb.value?.files || []
   const query = workspaceSearch.value.trim().toLowerCase()
-  if (!query) return files
-  return files.filter((doc: any) =>
-    `${doc.fileName || ''} ${doc.note || ''}`.toLowerCase().includes(query)
-  )
+  const types = Array.isArray(workspaceFilters.fileType) ? workspaceFilters.fileType : []
+  const statuses = Array.isArray(workspaceFilters.status) ? workspaceFilters.status : []
+  return files.filter((doc: any) => {
+    if (query && !`${doc.fileName || ''} ${doc.note || ''}`.toLowerCase().includes(query)) return false
+    if (types.length && !types.includes(documentTypeKey(doc))) return false
+    if (statuses.length && !statuses.includes(documentStatusKey(doc))) return false
+    return true
+  })
 })
 const isCascadeMode = computed(
   () => (viewMode.value === 'list' || viewMode.value === 'shelf') && !!workspaceSearch.value.trim()
@@ -1154,9 +1288,26 @@ function openCascadeDocument(doc: any) {
   showAnatomy({ docId: Number(doc.docId), fileName: doc.fileName || '未命名资料' })
 }
 
+function toggleWorkspaceFilter() {
+  workspaceFilterRef.value?.toggleCollapse?.()
+}
+
+function handleWorkspaceFilterChange(value: Record<string, any>) {
+  Object.keys(workspaceFilters).forEach((key) => delete workspaceFilters[key])
+  Object.assign(workspaceFilters, value || {})
+}
+
+function handleWorkspaceFilterReset() {
+  Object.keys(workspaceFilters).forEach((key) => delete workspaceFilters[key])
+  workspaceFilterActive.value = false
+}
+
 watch(workspaceSearch, scheduleCascade)
 watch(viewMode, () => {
   workspaceSearch.value = ''
+  workspaceFilterOpen.value = false
+  workspaceFilterActive.value = false
+  Object.keys(workspaceFilters).forEach((key) => delete workspaceFilters[key])
   resetCascade()
 })
 const standaloneImages = ref<any[]>([])
@@ -3221,8 +3372,14 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
+.kbp-search-wrap {
+  position: relative;
+  flex: none;
+  width: 380px;
+}
+
 .kbp-global-search {
-  width: 340px;
+  width: 100%;
 }
 
 .kbp-global-search :deep(.el-input__wrapper) {
