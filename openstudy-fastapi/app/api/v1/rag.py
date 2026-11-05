@@ -816,6 +816,45 @@ async def generate_workspace_study_prescription(
         return _fail(e)
 
 
+class StudyPrescriptionExportRequest(BaseModel):
+    """学习处方导出：plan 是当前前端正在展示的结构化处方。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    format: str = Field(..., pattern="^(pdf|word|docx|md|markdown|txt|text)$")
+    plan: dict
+    meta: dict = Field(default_factory=dict)
+
+
+@router.post("/workspace/documents/{doc_id}/prescription/export")
+async def export_workspace_study_prescription(
+    doc_id: int,
+    data: StudyPrescriptionExportRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """导出学习处方：PDF / Word / Markdown / TXT。"""
+    try:
+        from app.services.study_prescription_export_service import export_prescription
+
+        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        body, filename, media_type = export_prescription(
+            doc_name=str(getattr(doc, "file_name", "") or data.meta.get("docName") or "资料"),
+            plan=data.plan,
+            fmt=data.format,
+            meta=data.meta,
+        )
+        from app.services.document_export_service import content_disposition
+
+        return Response(
+            content=body,
+            media_type=media_type,
+            headers={"Content-Disposition": content_disposition(filename)},
+        )
+    except Exception as e:
+        return _fail(e)
+
+
 @router.get("/workspace/documents/{doc_id}/health")
 async def get_workspace_document_health(
     doc_id: int,

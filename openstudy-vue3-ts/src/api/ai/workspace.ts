@@ -218,6 +218,20 @@ export function generateStudyPrescription(docId: number | string, data: StudyPre
   }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
 }
 
+/** 导出学习处方：PDF / Word / Markdown / TXT */
+export function exportStudyPrescription(
+  docId: number | string,
+  data: { format: 'pdf' | 'word' | 'docx' | 'md' | 'txt'; plan: any; meta?: any }
+) {
+  return request({
+    url: `/rag/workspace/documents/${docId}/prescription/export`,
+    method: 'post',
+    data,
+    responseType: 'blob',
+    timeout: 120000
+  })
+}
+
 export async function streamStudyPack(
   docId: number | string,
   data: StudyPackStreamRequest,

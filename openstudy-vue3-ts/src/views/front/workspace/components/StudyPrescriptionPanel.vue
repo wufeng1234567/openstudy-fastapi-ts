@@ -82,12 +82,25 @@
             <h4>{{ plan.title }}</h4>
             <p>{{ plan.summary }}</p>
           </div>
-          <div class="rp-progress">
-            <div class="rp-progress__top">
-              <span>计划进度</span>
-              <b>{{ doneCount }} / {{ totalTasks }}</b>
+          <div class="rp-plan-head__right">
+            <div class="rp-progress">
+              <div class="rp-progress__top">
+                <span>计划进度</span>
+                <b>{{ doneCount }} / {{ totalTasks }}</b>
+              </div>
+              <div class="rp-progress__bar"><i :style="{ width: `${progressPercent}%` }"></i></div>
             </div>
-            <div class="rp-progress__bar"><i :style="{ width: `${progressPercent}%` }"></i></div>
+            <el-dropdown trigger="click" class="rp-export" @command="exportPrescription">
+              <el-button size="small" :loading="exporting">导出处方</el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="pdf">导出 PDF</el-dropdown-item>
+                  <el-dropdown-item command="docx">导出 Word</el-dropdown-item>
+                  <el-dropdown-item command="md">导出 Markdown</el-dropdown-item>
+                  <el-dropdown-item command="txt">导出 TXT</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </div>
 
@@ -160,8 +173,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { saveAs } from 'file-saver'
 import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
 import {
+  exportStudyPrescription,
   generateStudyPrescription,
   getDocumentHealth,
   type StudyPrescriptionParams
@@ -188,6 +203,7 @@ const goals: Array<{ key: StudyPrescriptionParams['goal']; label: string }> = [
 
 const loading = ref(false)
 const generating = ref(false)
+const exporting = ref(false)
 const rechecking = ref(false)
 const error = ref('')
 const currentDoc = ref<PrescriptionDoc | null>(null)
@@ -323,6 +339,45 @@ async function generate() {
     error.value = e?.message || String(e)
   } finally {
     generating.value = false
+  }
+}
+
+async function exportPrescription(format: 'pdf' | 'docx' | 'md' | 'txt') {
+  const doc = currentDoc.value
+  if (!doc?.docId || !plan.value || exporting.value) return
+  const ext = format
+  exporting.value = true
+  try {
+    const planForExport = {
+      ...plan.value,
+      days: (plan.value.days || []).map((day: any) => ({
+        ...day,
+        tasks: (day.tasks || []).map((task: any, index: number) => ({
+          ...task,
+          done: isTaskDone(day, index)
+        }))
+      }))
+    }
+    const res: any = await exportStudyPrescription(doc.docId, {
+      format,
+      plan: planForExport,
+      meta: {
+        docName: doc.fileName || '',
+        goal: goal.value,
+        goalLabel: goals.find((item) => item.key === goal.value)?.label || goal.value,
+        days: days.value,
+        dailyMinutes: dailyMinutes.value
+      }
+    })
+    const blob = res instanceof Blob ? res : new Blob([res])
+    if (!blob.size) throw new Error('导出文件为空')
+    const stem = String(doc.fileName || '资料').replace(/\.[^.]+$/, '') || '资料'
+    saveAs(blob, `${stem}-学习处方.${ext}`)
+    ElMessage.success('学习处方已导出')
+  } catch (e: any) {
+    ElMessage.error('导出学习处方失败：' + (e?.message || e))
+  } finally {
+    exporting.value = false
   }
 }
 
@@ -584,6 +639,19 @@ defineExpose({ open })
   justify-content: space-between;
   gap: 20px;
   margin-bottom: 10px;
+}
+
+.rp-plan-head__right {
+  display: flex;
+  flex: none;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.rp-export :deep(.el-button) {
+  border-color: #dbe4ff;
+  color: #4f6bed;
+  background: #f8faff;
 }
 
 .rp-plan-head h4 {

@@ -211,7 +211,7 @@ S9 = os.path.join(SHOTS, "23-word-source.png")
 S10 = os.path.join(SHOTS, "24-question-formula-image.png")
 S11 = os.path.join(SHOTS, "25-document-health.png")
 S12 = os.path.join(SHOTS, "26-organize-surgery.png")
-S13 = os.path.join(SHOTS, "28-study-prescription.png")
+S13 = os.path.join(HERE, "码道架构图", "prescription-export-core.png")
 S14 = os.path.join(HERE, "码道架构图", "gallery-core.png")
 S15 = os.path.join(HERE, "码道架构图", "knowledge-map-core.png")
 S16 = os.path.join(HERE, "码道架构图", "version-diff-0.4.0.png")
@@ -973,9 +973,10 @@ def p5pack():
     """P5：学习处方——资料诊疗室里的第三步。"""
     s = prs.slides.add_slide(BLANK); bg(s)
     header(s, "04  /  学习处方", "学习处方：把资料排成每天能执行的学习计划",
-           "不是给一份文件：先看体检结果，再按目标排出每天的精读、练习、复习和复诊。")
-    pic_card(s, S13, M_L, 1.82, 7.20, 4.95,
-             caption="真实运行界面：学习处方按天排任务，每项都能回到原文，完成后可以复诊。")
+           "先看体检结果，再按目标排出每天的精读、练习、复习和复诊；可导出 PDF / Word / Markdown / TXT。")
+    pic_card(s, S13, M_L, 1.82, 7.20, 4.62)
+    text(s, M_L, 6.52, 7.20, 0.20,
+         "真实运行界面：学习处方按天排任务，支持导出，完成后可以复诊。", size=8, color=GRAY2)
     x, y, w, h = 8.30, 1.82, 4.15, 4.95
     card = rect(s, x, y, w, h, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
     text(s, x + 0.22, y + 0.18, w - 0.44, 0.24, "一张处方，三个关键动作", size=12.0, bold=True, color=INK)
