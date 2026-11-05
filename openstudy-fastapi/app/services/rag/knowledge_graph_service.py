@@ -38,6 +38,19 @@ def _norm_name(value: Any) -> str:
     return name.lower()
 
 
+def _canonical_key(value: Any) -> str:
+    """把「智能体定义 / 智能体概念 / 智能体概述」这类同义写法归到实体本身。
+
+    只处理材料里常见的解释性后缀，不做模糊同义词合并，避免把「函数」和
+    「函数图像」这类不同概念误并成一个节点。
+    """
+    norm = _norm_name(value)
+    for suffix in ("定义", "概念", "概述", "简介", "介绍", "说明"):
+        if len(norm) > len(suffix) + 1 and norm.endswith(suffix):
+            return norm[: -len(suffix)]
+    return norm
+
+
 def _clean(value: Any, limit: int = 400) -> str:
     text = re.sub(r"\s+", " ", str(value or "")).strip()
     return text[:limit]
@@ -200,6 +213,85 @@ def _merge_unique(existing: Optional[list], new_values: Iterable[Any]) -> list:
     return out
 
 
+async def merge_duplicate_entities(db: AsyncSession, user_id: int, kb_id: int) -> int:
+    """合并历史数据里的同义实体（如「智能体」与「智能体定义」）。
+
+    合并时同时迁移关系的 source/target，若迁移后与已有关系重复，则合并
+    chunk_ids/strength 后删除重复关系，保证不会出现悬空边。
+    """
+    rows = (
+        await db.execute(
+            select(RagGraphEntity).where(
+                RagGraphEntity.user_id == int(user_id),
+                RagGraphEntity.kb_id == int(kb_id),
+            )
+        )
+    ).scalars().all()
+    groups: Dict[str, List[RagGraphEntity]] = {}
+    for row in rows:
+        groups.setdefault(_canonical_key(row.name), []).append(row)
+    merged_count = 0
+    for key, group in groups.items():
+        if len(group) < 2:
+            continue
+        group.sort(key=lambda item: (len(_norm_name(item.name)), -int(item.mention_count or 0)))
+        keeper = group[0]
+        for duplicate in group[1:]:
+            if int(duplicate.id) == int(keeper.id):
+                continue
+            keeper.doc_ids = _merge_unique(keeper.doc_ids, duplicate.doc_ids or [])
+            keeper.chunk_ids = _merge_unique(keeper.chunk_ids, duplicate.chunk_ids or [])
+            keeper.mention_count = int(keeper.mention_count or 0) + int(duplicate.mention_count or 0)
+            if not keeper.description or len(str(duplicate.description or "")) > len(str(keeper.description or "")):
+                keeper.description = duplicate.description or keeper.description
+
+            relations = (
+                await db.execute(
+                    select(RagGraphRelation).where(
+                        RagGraphRelation.user_id == int(user_id),
+                        RagGraphRelation.kb_id == int(kb_id),
+                        or_(
+                            RagGraphRelation.source_id == int(duplicate.id),
+                            RagGraphRelation.target_id == int(duplicate.id),
+                        ),
+                    )
+                )
+            ).scalars().all()
+            for relation in relations:
+                new_source = int(keeper.id) if int(relation.source_id) == int(duplicate.id) else int(relation.source_id)
+                new_target = int(keeper.id) if int(relation.target_id) == int(duplicate.id) else int(relation.target_id)
+                if new_source == new_target:
+                    await db.delete(relation)
+                    continue
+                existing = (
+                    await db.execute(
+                        select(RagGraphRelation).where(
+                            RagGraphRelation.user_id == int(user_id),
+                            RagGraphRelation.kb_id == int(kb_id),
+                            RagGraphRelation.source_id == new_source,
+                            RagGraphRelation.target_id == new_target,
+                            RagGraphRelation.relation_type == relation.relation_type,
+                            RagGraphRelation.id != int(relation.id),
+                        )
+                    )
+                ).scalars().first()
+                if existing:
+                    existing.doc_ids = _merge_unique(existing.doc_ids, relation.doc_ids or [])
+                    existing.chunk_ids = _merge_unique(existing.chunk_ids, relation.chunk_ids or [])
+                    existing.strength = max(int(existing.strength or 5), int(relation.strength or 5))
+                    existing.description = existing.description or relation.description
+                    await db.delete(relation)
+                else:
+                    relation.source_id = new_source
+                    relation.target_id = new_target
+            await db.delete(duplicate)
+            merged_count += 1
+        keeper.normalized_name = _norm_name(keeper.name)
+    if merged_count:
+        await db.commit()
+    return merged_count
+
+
 async def build_graph(
     db: AsyncSession,
     user_id: int,
@@ -212,6 +304,7 @@ async def build_graph(
 
     `force=False` 时跳过已经有实体的文档（避免重复消耗模型额度）。
     """
+    await merge_duplicate_entities(db, user_id, kb_id)
     docs = (
         await db.execute(
             select(RagDocument)
@@ -234,7 +327,7 @@ async def build_graph(
             )
         )
     ).scalars().all()
-    entity_by_norm = {str(e.normalized_name): e for e in existing_entities}
+    entity_by_norm = {_canonical_key(e.name): e for e in existing_entities}
     built_doc_ids = {
         int(doc_id)
         for entity in existing_entities
@@ -261,7 +354,8 @@ async def build_graph(
         doc_entity_map: Dict[str, RagGraphEntity] = {}
         for item in entities:
             norm = _norm_name(item["name"])
-            row = entity_by_norm.get(norm)
+            key = _canonical_key(item["name"])
+            row = entity_by_norm.get(key)
             if row is None:
                 row = RagGraphEntity(
                     user_id=int(user_id),
@@ -276,15 +370,18 @@ async def build_graph(
                 )
                 db.add(row)
                 await db.flush()
-                entity_by_norm[norm] = row
+                entity_by_norm[key] = row
             else:
                 if not row.description and item["description"]:
                     row.description = item["description"]
+                if len(norm) < len(_norm_name(row.name)):
+                    row.name = item["name"]
                 row.doc_ids = _merge_unique(row.doc_ids, [int(doc.id)])
                 row.chunk_ids = _merge_unique(row.chunk_ids, item["chunk_ids"])
                 row.mention_count = int(row.mention_count or 0) + 1
                 row.update_time = datetime.now()
             doc_entity_map[norm] = row
+            doc_entity_map[key] = row
 
         for item in relations:
             source = doc_entity_map.get(_norm_name(item["source"]))

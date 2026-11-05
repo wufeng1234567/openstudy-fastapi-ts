@@ -211,35 +211,119 @@ function typeIndex(type: string) {
   return Math.max(0, TYPE_META.findIndex((item) => item.type === type))
 }
 
-function buildNode(node: any) {
-  const degree = Number(node.degree || 0)
-  const size = 13 + Math.min(18, Math.sqrt(degree + 1) * 5)
-  return {
-    id: String(node.id),
-    name: node.name,
-    value: Number(node.mentionCount || 1),
-    symbolSize: size,
-    category: typeIndex(node.type),
-    itemStyle: {
-      color: typeColor(node.type),
-      borderColor: '#ffffff',
-      borderWidth: 2,
-      shadowColor: `${typeColor(node.type)}33`,
-      shadowBlur: 8
-    },
-    label: {
-      // 默认只有每个簇的枢纽实体带标签，其余节点点开右侧详情再看。
-      show: hubIds.value.has(String(node.id)),
-      position: 'right',
-      distance: 6,
-      color: '#4b5563',
-      fontSize: 10,
-      width: 86,
-      overflow: 'truncate',
-      formatter: () => node.name
-    },
-    rawNode: node
+const MIN_NODE_GAP = 72
+
+/** 固定布局：每个连通簇一个枢纽，其余节点按环排开。
+ *
+ * 不再使用 ECharts force：力导向会持续迭代，枢纽节点会让整簇“自旋/抖动”，
+ * 而且密集簇会互相压住。静态布局 + 两轮间距校正可以稳定地保证可点区域。
+ */
+function buildStaticLayout(nodes: any[], edges: any[], width: number, height: number) {
+  const byId = new Map(nodes.map((node) => [String(node.id), { ...node, x: 0, y: 0, isHub: false }]))
+  const adjacency = new Map<string, string[]>()
+  for (const node of nodes) adjacency.set(String(node.id), [])
+  for (const edge of edges) {
+    adjacency.get(String(edge.source))?.push(String(edge.target))
+    adjacency.get(String(edge.target))?.push(String(edge.source))
   }
+
+  const visited = new Set<string>()
+  const components: string[][] = []
+  for (const node of nodes) {
+    const start = String(node.id)
+    if (visited.has(start)) continue
+    const component: string[] = []
+    const stack = [start]
+    visited.add(start)
+    while (stack.length) {
+      const id = stack.pop()!
+      component.push(id)
+      for (const next of adjacency.get(id) || []) {
+        if (!visited.has(next)) {
+          visited.add(next)
+          stack.push(next)
+        }
+      }
+    }
+    components.push(component)
+  }
+  components.sort((a, b) => b.length - a.length)
+
+  const slots = [
+    { x: 0.38, y: 0.52 },
+    { x: 0.76, y: 0.23 },
+    { x: 0.75, y: 0.78 },
+    { x: 0.16, y: 0.20 },
+    { x: 0.16, y: 0.80 },
+    { x: 0.92, y: 0.50 }
+  ]
+  const laidOut: any[] = []
+
+  components.forEach((component, index) => {
+    const items = component.map((id) => byId.get(id)).filter(Boolean) as any[]
+    if (!items.length) return
+    const hub = [...items].sort((a, b) => Number(b.degree || 0) - Number(a.degree || 0))[0]
+    const slot = components.length === 1
+      ? { x: 0.5, y: 0.5 }
+      : slots[index % slots.length]
+    const centerX = width * slot.x
+    const centerY = height * slot.y
+    const others = items.filter((item) => item !== hub).sort((a, b) => Number(b.degree || 0) - Number(a.degree || 0))
+    const baseRadius = Math.max(92, Math.min(190, 70 + Math.sqrt(Math.max(items.length, 1)) * 16))
+    const innerCount = Math.min(
+      others.length,
+      Math.max(6, Math.floor((Math.PI * 2 * baseRadius) / 78))
+    )
+    const inner = others.slice(0, innerCount)
+    const outer = others.slice(innerCount)
+
+    hub.x = centerX
+    hub.y = centerY
+    // 只给最大的几个连通簇标枢纽名；小簇只画点，点开看详情。
+    hub.isHub = index < 3 && items.length > 1
+    laidOut.push(hub)
+    const placeRing = (ring: any[], radius: number, offset = 0) => {
+      ring.forEach((node, ringIndex) => {
+        const angle = -Math.PI / 2 + (Math.PI * 2 * ringIndex) / Math.max(ring.length, 1) + offset
+        node.x = centerX + Math.cos(angle) * radius
+        node.y = centerY + Math.sin(angle) * radius
+        laidOut.push(node)
+      })
+    }
+    placeRing(inner, baseRadius, 0)
+    placeRing(outer, baseRadius + 92, Math.PI / Math.max(outer.length, 1))
+  })
+
+  // 自动检查节点间距：把重叠的节点沿连线方向推开，避免边缘节点被压住。
+  // 这是渲染前的一次性校正，不是持续力导向，所以不会自旋。
+  for (let pass = 0; pass < 16; pass++) {
+    let moved = false
+    for (let i = 0; i < laidOut.length; i++) {
+      for (let j = i + 1; j < laidOut.length; j++) {
+        const a = laidOut[i]
+        const b = laidOut[j]
+        let dx = b.x - a.x
+        let dy = b.y - a.y
+        let distance = Math.hypot(dx, dy)
+        if (distance >= MIN_NODE_GAP) continue
+        if (distance < 0.001) {
+          dx = 1
+          dy = 0
+          distance = 1
+        }
+        const push = (MIN_NODE_GAP - distance) / 2 + 0.5
+        const ux = dx / distance
+        const uy = dy / distance
+        a.x = Math.max(26, Math.min(width - 26, a.x - ux * push))
+        a.y = Math.max(26, Math.min(height - 26, a.y - uy * push))
+        b.x = Math.max(26, Math.min(width - 26, b.x + ux * push))
+        b.y = Math.max(26, Math.min(height - 26, b.y + uy * push))
+        moved = true
+      }
+    }
+    if (!moved) break
+  }
+  return laidOut
 }
 
 function render() {
@@ -251,46 +335,80 @@ function render() {
       if (node) openDetail(node.id)
     })
   }
+  const width = Math.max(680, chartRef.value.clientWidth || 1000)
+  const height = Math.max(480, chartRef.value.clientHeight || 660)
   const { nodes, edges } = visibleGraph.value
+  const layoutNodes = buildStaticLayout(nodes, edges, width, height)
+  const position = new Map(layoutNodes.map((node) => [String(node.id), node]))
   const option = {
     backgroundColor: 'transparent',
-    series: [{
-      type: 'graph',
-      layout: 'force',
-      roam: true,
-      draggable: true,
-      zoom: nodes.length > 60 ? 0.66 : nodes.length > 35 ? 0.78 : 1,
-      force: {
-        repulsion: Math.max(180, 360 - nodes.length * 2),
-        edgeLength: [55, 150],
-        gravity: 0.1,
-        friction: 0.8,
-        layoutAnimation: true
+    animation: false,
+    grid: { left: 8, right: 8, top: 8, bottom: 8, containLabel: false },
+    xAxis: { type: 'value', min: 0, max: width, show: false },
+    yAxis: { type: 'value', min: 0, max: height, inverse: true, show: false },
+    series: [
+      {
+        type: 'lines',
+        coordinateSystem: 'cartesian2d',
+        polyline: false,
+        silent: true,
+        z: 1,
+        symbol: ['none', 'arrow'],
+        symbolSize: 5,
+        data: edges.map((edge: any) => {
+          const source = position.get(String(edge.source))
+          const target = position.get(String(edge.target))
+          if (!source || !target) return null
+          return {
+            coords: [
+              [source.x, source.y],
+              [target.x, target.y]
+            ],
+            lineStyle: {
+              color: '#c7d0e0',
+              width: 0.8 + Number(edge.strength || 5) / 12,
+              opacity: 0.72,
+              curveness: 0.08
+            }
+          }
+        }).filter(Boolean)
       },
-      labelLayout: { hideOverlap: true },
-      categories: TYPE_META.map((item) => ({ name: item.type })),
-      data: nodes.map(buildNode),
-      edges: edges.map((edge: any) => ({
-        source: String(edge.source),
-        target: String(edge.target),
-        value: Number(edge.strength || 5),
-        type: edge.type,
-        strength: edge.strength,
-        description: edge.description,
-        lineStyle: {
-          color: '#c7d0e0',
-          width: 0.8 + Number(edge.strength || 5) / 10,
-          opacity: 0.72,
-          curveness: 0.1
-        },
-        edgeSymbol: ['none', 'arrow'],
-        edgeSymbolSize: 5
-      })),
-      emphasis: {
-        focus: 'adjacency',
-        lineStyle: { width: 2, opacity: 1 }
+      {
+        type: 'scatter',
+        coordinateSystem: 'cartesian2d',
+        z: 10,
+        symbolSize: (_value: any, params: any) => params.data?.size || 14,
+        data: layoutNodes.map((node: any) => {
+          const degree = Number(node.degree || 0)
+          return {
+            value: [node.x, node.y],
+            symbolSize: 14 + Math.min(16, Math.sqrt(degree + 1) * 4),
+            itemStyle: {
+              color: typeColor(node.type),
+              borderColor: '#ffffff',
+              borderWidth: 2,
+              shadowColor: `${typeColor(node.type)}33`,
+              shadowBlur: 8
+            },
+            label: {
+              show: !!node.isHub,
+              position: 'right',
+              distance: 7,
+              color: '#4b5563',
+              fontSize: 10,
+              width: 90,
+              overflow: 'truncate',
+              formatter: () => node.name
+            },
+            rawNode: node
+          }
+        }),
+        emphasis: {
+          scale: 1.12,
+          itemStyle: { borderColor: '#172033', borderWidth: 3 }
+        }
       }
-    }]
+    ]
   }
   chart.setOption(option, { notMerge: true })
   chart.resize()
