@@ -228,6 +228,8 @@ export interface AgentChatMessage {
   action?: string
   status?: 'running' | 'ok' | 'fail'
   detail?: string
+  /** 助手回答引用到的知识库片段（文档 chip + hover 切片） */
+  references?: any[]
   errors?: string[]
   params?: Record<string, any>
   /** 工具返回的完整结构化结果（卡片里「查看详情」用；仅内存，不落库） */
@@ -363,6 +365,7 @@ function slimTimeline(msgs: AgentChatMessage[]): any[] {
       return out
     }
     if (m.noteKind) out.noteKind = m.noteKind
+    if (m.references?.length) out.references = m.references
     if (m.tool) out.tool = m.tool
     if (m.action) out.action = m.action
     if (m.status) out.status = m.status
@@ -729,6 +732,49 @@ export function useAgentChat() {
   /** 当前「未闭合」的 assistant 正文气泡下标；-1 = 下一条 text 要新建气泡 */
   let openTextIndex = -1
   let controller: AbortController | null = null
+  /**
+   * 本轮知识库检索命中的引用片段。
+   *
+   * `knowledge_search` 的结果里本来就有 docName / chunkId / chunkIndex / content，
+   * 但工具结果只用于回灌模型，最终回答气泡并不知道这些来源。这里在 tool_result
+   * 时先收起来，随后创建 assistant 正文气泡时挂到 `references` 上，前端即可渲染
+   * 「文档 chip + hover 切片」。
+   */
+  let pendingReferences: any[] = []
+
+  function collectKnowledgeReferences(data: any): any[] {
+    const hits = Array.isArray(data?.hits)
+      ? data.hits
+      : Array.isArray(data?.data?.hits)
+        ? data.data.hits
+        : []
+    return hits
+      .map((hit: any) => ({
+        chunkId: hit?.chunkId ?? null,
+        docId: hit?.docId ?? null,
+        docName: String(hit?.docName || hit?.wikiPageTitle || hit?.source || '').trim(),
+        chunkIndex: Number.isFinite(Number(hit?.chunkIndex)) ? Number(hit.chunkIndex) : null,
+        source: String(hit?.source || '').trim(),
+        sourceType: String(hit?.sourceType || 'document'),
+        wikiPageId: hit?.wikiPageId ?? null,
+        wikiPageTitle: String(hit?.wikiPageTitle || '').trim(),
+        content: String(hit?.content || hit?.preview || '').trim(),
+        images: Array.isArray(hit?.images) ? hit.images.slice(0, 4) : []
+      }))
+      .filter((ref: any) => ref.docName || ref.wikiPageTitle || ref.source)
+  }
+
+  function mergeKnowledgeReferences(list: any[]): any[] {
+    const seen = new Set<string>()
+    return [...pendingReferences, ...list].filter((ref: any) => {
+      const key = String(
+        ref.chunkId ?? `${ref.docId || ref.docName}:${ref.chunkIndex ?? ''}:${String(ref.content || '').slice(0, 40)}`
+      )
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    }).slice(0, 24)
+  }
 
   /** 一次运行里所有工具调用（含运行中）—— 供页面做统计/折叠用 */
   const toolCalls = computed(() =>
@@ -745,6 +791,7 @@ export function useAgentChat() {
     pendingConfirms.forEach((resolve) => resolve(false))
     pendingConfirms.clear()
     openTextIndex = -1
+    pendingReferences = []
     // 直接置空而不是调 closeReasoning：整条消息流都要清掉，没必要再往旧对象上写状态
     openReasoning = null
     turnReasoning = null
@@ -1114,12 +1161,17 @@ export function useAgentChat() {
     closeProgress()
     clearPlaceholder()
     if (openTextIndex < 0 || openTextIndex >= messages.value.length) {
-      messages.value.push({ role: 'assistant', content: chunk })
+      messages.value.push({
+        role: 'assistant',
+        content: chunk,
+        ...(pendingReferences.length ? { references: pendingReferences } : {})
+      })
       openTextIndex = messages.value.length - 1
       return
     }
     const target = messages.value[openTextIndex]
     target.content = (target.content || '') + chunk
+    if (pendingReferences.length && !target.references?.length) target.references = pendingReferences
   }
 
   const pushNote = (kind: 'correct' | 'warning' | 'error', text: string, attempt?: number) => {
@@ -1167,6 +1219,13 @@ export function useAgentChat() {
         m.errors = errs
         m.data = event.data
         m.content = detail || m.content
+        if (
+          event.success &&
+          ['knowledge_search', 'search_knowledge', 'workspace_search'].includes(event.tool || '')
+        ) {
+          const refs = collectKnowledgeReferences(event.data)
+          if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
+        }
         return
       }
     }
@@ -1185,6 +1244,13 @@ export function useAgentChat() {
       errors: errs,
       data: event.data
     })
+    if (
+      event.success &&
+      ['knowledge_search', 'search_knowledge', 'workspace_search'].includes(event.tool || '')
+    ) {
+      const refs = collectKnowledgeReferences(event.data)
+      if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
+    }
   }
 
   /**
@@ -1526,6 +1592,16 @@ export function useAgentChat() {
           // done.answer 是最终全文：若正文气泡已有内容就整体替换，避免重复
           if (openTextIndex >= 0 && messages.value[openTextIndex]) {
             messages.value[openTextIndex].content = event.answer
+            if (pendingReferences.length && !messages.value[openTextIndex].references?.length) {
+              messages.value[openTextIndex].references = pendingReferences
+            }
+          } else {
+            messages.value.push({
+              role: 'assistant',
+              content: event.answer,
+              ...(pendingReferences.length ? { references: pendingReferences } : {})
+            })
+            openTextIndex = messages.value.length - 1
           }
         }
         if (event.corrections) corrections.value = Number(event.corrections)
@@ -1582,6 +1658,7 @@ export function useAgentChat() {
     turnReasoning = null
     reasoningStartedAt = 0
 
+    pendingReferences = []
     isGenerating.value = true
     controller = new AbortController()
 

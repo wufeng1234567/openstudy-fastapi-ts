@@ -231,6 +231,7 @@
             </el-icon>
             <span class="mc-label">复制</span>
           </el-button>
+          <ChatSourceList v-if="msg.references?.length" :references="msg.references" class="msg-sources" />
           <div v-if="isGenerating && (!msg.content || msg.content.trim() === '') && isLastAssistantEmpty(idx)" class="ai-loading-inline">
             <LoadingDots size="small" :label="loadingText" />
           </div>
@@ -360,6 +361,7 @@ import { ElMessage } from 'element-plus'
 import { CopyDocument, Connection, Select, CloseBold, ArrowDown } from '@element-plus/icons-vue'
 import { renderAgentMarkdown } from '@/utils/markdown'
 import LoadingDots from '@/components/LoadingDots/index.vue'
+import ChatSourceList from '@/components/ChatSourceList/index.vue'
 import AgentReasoning from '@/components/AgentReasoning/index.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import AgentTurnRollback from '@/components/AgentTurnRollback/index.vue'
