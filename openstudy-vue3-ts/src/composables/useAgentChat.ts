@@ -776,6 +776,43 @@ export function useAgentChat() {
     }).slice(0, 24)
   }
 
+  /** 整篇文档读取结果没有 chunk 列表，按段落切成可展示的知识切片。 */
+  function splitDocumentContent(content: string): string[] {
+    const text = String(content || '').replace(/\r\n/g, '\n').trim()
+    if (!text) return []
+    const paragraphs = text.split(/\n{2,}/).map((item) => item.trim()).filter(Boolean)
+    const chunks: string[] = []
+    let current = ''
+    for (const paragraph of paragraphs) {
+      if (current && current.length + paragraph.length + 2 > 900) {
+        chunks.push(current)
+        current = ''
+      }
+      current = current ? `${current}\n\n${paragraph}` : paragraph
+      while (current.length > 1400) {
+        chunks.push(current.slice(0, 1400))
+        current = current.slice(1400)
+      }
+    }
+    if (current) chunks.push(current)
+    return chunks
+  }
+
+  function collectDocumentReferences(data: any): any[] {
+    if (!data?.content || !(data?.fileName || data?.docName)) return []
+    const docName = String(data.fileName || data.docName)
+    const docId = data.docId ?? null
+    return splitDocumentContent(String(data.content)).map((content, index) => ({
+      chunkId: null,
+      docId,
+      docName,
+      chunkIndex: index,
+      source: `${docName} 第 ${index + 1} 段`,
+      sourceType: 'document',
+      content
+    }))
+  }
+
   /** 一次运行里所有工具调用（含运行中）—— 供页面做统计/折叠用 */
   const toolCalls = computed(() =>
     messages.value.filter((m) => m.type === 'tool_result')
@@ -1226,6 +1263,14 @@ export function useAgentChat() {
           const refs = collectKnowledgeReferences(event.data)
           if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
         }
+        if (
+          event.success &&
+          event.tool === 'knowledge_base_manage' &&
+          ['read_document', 'get_document', 'read'].includes(String(event.action || event.data?.action || ''))
+        ) {
+          const refs = collectDocumentReferences(event.data)
+          if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
+        }
         return
       }
     }
@@ -1249,6 +1294,14 @@ export function useAgentChat() {
       ['knowledge_search', 'search_knowledge', 'workspace_search'].includes(event.tool || '')
     ) {
       const refs = collectKnowledgeReferences(event.data)
+      if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
+    }
+    if (
+      event.success &&
+      event.tool === 'knowledge_base_manage' &&
+      ['read_document', 'get_document', 'read'].includes(String(event.action || event.data?.action || ''))
+    ) {
+      const refs = collectDocumentReferences(event.data)
       if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
     }
   }

@@ -87,6 +87,12 @@ function termsOf(text: string): string[] {
 function pickReferences(block: string): any[] {
   if (!props.references?.length) return []
   const text = block.toLowerCase()
+  const answerText = String(props.content || '').toLowerCase()
+  const docCounts = new Map<string, number>()
+  for (const ref of props.references) {
+    const key = String(ref.docId || ref.wikiPageId || ref.docName || ref.wikiPageTitle || '')
+    docCounts.set(key, (docCounts.get(key) || 0) + 1)
+  }
   const scored = props.references.map((ref: any) => {
     const haystack = `${ref.docName || ''} ${ref.wikiPageTitle || ''} ${ref.source || ''} ${ref.content || ''}`.toLowerCase()
     let score = 0
@@ -95,8 +101,14 @@ function pickReferences(block: string): any[] {
       if (haystack.includes(term)) score += term.length >= 4 ? 2 : 1
     }
     for (const name of [ref.docName, ref.wikiPageTitle].filter(Boolean)) {
-      if (text.includes(String(name).toLowerCase())) score += 8
+      const normalized = String(name).toLowerCase()
+      if (text.includes(normalized)) score += 8
+      // 回答明确提到的资料，给它的所有段落一个稳定的文档级归属，
+      // 避免“学习路径”这类句子被检索结果里的其他文档抢走。
+      if (answerText.includes(normalized)) score += 18
     }
+    const docKey = String(ref.docId || ref.wikiPageId || ref.docName || ref.wikiPageTitle || '')
+    score += Math.min(3, docCounts.get(docKey) || 0)
     return { ref, score }
   }).sort((a, b) => b.score - a.score)
 
@@ -106,7 +118,7 @@ function pickReferences(block: string): any[] {
 }
 
 function isHeadingBlock(content: string): boolean {
-  return /^#{1,6}\s+/.test(content.trim()) || /^\d+[.、]\s*[^\n]{2,24}$/.test(content.trim())
+  return /^#{1,6}\s+/.test(content.trim()) || /^([一二三四五六七八九十百]+[、.]|\d+[.、])\s*[^\n]{2,24}$/.test(content.trim())
 }
 
 const blocks = computed<Block[]>(() =>
