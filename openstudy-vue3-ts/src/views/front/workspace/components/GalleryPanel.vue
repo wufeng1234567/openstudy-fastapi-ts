@@ -102,6 +102,19 @@
       <el-button v-else text @click="emit('back')">回到资料夹上传</el-button>
     </div>
 
+    <GalleryViewer
+      :visible="viewerVisible"
+      :items="displayItems"
+      :index="viewerIndex"
+      @close="closeViewer"
+      @select="selectViewer"
+      @describe="describeViewerItem"
+      @insert-question="(item) => viewerUseImage(item, 'question')"
+      @insert-note="(item) => viewerUseImage(item, 'note')"
+      @insert-wiki="viewerOpenWiki"
+      @locate="locate"
+    />
+
     <el-drawer v-model="detailVisible" class="gallery-detail-drawer" size="560px" :with-header="false" append-to-body>
       <div v-if="detail" class="gallery-detail">
         <header class="gallery-detail__head">
@@ -204,6 +217,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { MagicStick, Picture } from '@element-plus/icons-vue'
+import GalleryViewer from './GalleryViewer.vue'
 import {
   createContentReference,
   describeGalleryAssets,
@@ -247,6 +261,8 @@ const describeJob = ref<any>(null)
 const detailVisible = ref(false)
 const detailLoading = ref(false)
 const detail = ref<any>(null)
+const viewerVisible = ref(false)
+const viewerIndex = ref(0)
 const describingOne = ref(false)
 const wikiPickerVisible = ref(false)
 const wikiLoading = ref(false)
@@ -448,9 +464,40 @@ async function describePending() {
 }
 
 async function openDetail(item: any) {
-  detailVisible.value = true
+  const index = displayItems.value.findIndex((candidate: any) => candidate.assetKey === item.assetKey)
+  viewerIndex.value = index >= 0 ? index : 0
+  viewerVisible.value = true
   detail.value = item
-  await loadDetail(item.assetKey, true)
+}
+
+function selectViewer(index: number) {
+  if (!displayItems.value.length) return
+  viewerIndex.value = Math.max(0, Math.min(displayItems.value.length - 1, index))
+  detail.value = displayItems.value[viewerIndex.value]
+}
+
+function closeViewer() {
+  viewerVisible.value = false
+}
+
+async function describeViewerItem(assetKey: string) {
+  const item = displayItems.value.find((candidate: any) => candidate.assetKey === assetKey)
+  if (!item) return
+  detail.value = item
+  await describeOne()
+  await reload(true)
+  const fresh = displayItems.value.find((candidate: any) => candidate.assetKey === assetKey)
+  if (fresh) Object.assign(item, fresh)
+}
+
+function viewerUseImage(item: any, target: 'question' | 'note') {
+  detail.value = item
+  useImage(item, target)
+}
+
+function viewerOpenWiki(item: any) {
+  detail.value = item
+  void openWikiPicker()
 }
 
 async function loadDetail(assetKey: string, showLoading = true) {
