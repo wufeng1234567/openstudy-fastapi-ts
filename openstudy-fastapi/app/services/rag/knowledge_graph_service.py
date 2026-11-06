@@ -448,6 +448,25 @@ async def list_graph(
     if entity_types:
         query = query.where(RagGraphEntity.type.in_(entity_types))
     entities = (await db.execute(query.order_by(RagGraphEntity.id.asc()))).scalars().all()
+    # 图谱永远只展示当前资料夹仍存在的文档实体：用户删除资料后，旧实体
+    # 不会继续挂在图上，也不会被误认为新资料夹的内容。
+    if kb_id is not None:
+        valid_doc_ids = {
+            int(x)
+            for x in (
+                await db.execute(
+                    select(RagDocument.id).where(
+                        RagDocument.user_id == int(user_id),
+                        RagDocument.kb_id == int(kb_id),
+                    )
+                )
+            ).scalars().all()
+        }
+        entities = [
+            entity
+            for entity in entities
+            if any(int(doc_id) in valid_doc_ids for doc_id in (entity.doc_ids or []))
+        ]
     entity_by_id = {int(e.id): e for e in entities}
 
     relation_rows = (

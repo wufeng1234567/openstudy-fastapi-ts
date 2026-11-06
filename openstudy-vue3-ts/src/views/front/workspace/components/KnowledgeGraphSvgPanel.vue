@@ -17,7 +17,7 @@
         <el-checkbox v-model="hideIsolated" size="small">隐藏孤立实体与小碎片</el-checkbox>
         <el-button size="small" :loading="loading" @click="reload">刷新</el-button>
         <el-button size="small" class="kg-build-btn" :loading="building" :disabled="!activeKbId" @click="buildGraph">
-          抽取当前资料夹
+          {{ graph?.nodes?.length ? '更新当前资料夹图谱' : '构建当前资料夹图谱' }}
         </el-button>
       </div>
     </div>
@@ -46,7 +46,7 @@
               @mouseleave="hoveredId = null">
               <circle class="kg-node__halo" :r="nodeRadius(node) + 7" />
               <circle class="kg-node__dot" :r="nodeRadius(node)" :fill="typeColor(node.type)" />
-              <text v-if="node.isHub" class="kg-node__label" :x="nodeRadius(node) + 8" y="3">{{ node.name }}</text>
+              <text v-if="showNodeLabel(node)" class="kg-node__label" :x="nodeRadius(node) + 8" y="3">{{ node.name }}</text>
             </g>
           </g>
         </svg>
@@ -61,7 +61,7 @@
         <div v-if="loading" class="kg-loading" v-loading="true"></div>
         <div class="kg-search-hint">
           <span v-if="searchQuery">搜索：{{ searchQuery }}</span>
-          <span>滚轮缩放 · 空白拖拽平移 · 拖拽节点 · 双击复位</span>
+          <span>滚轮放大显示实体名 · 空白拖拽平移 · 拖拽节点 · 双击复位</span>
         </div>
         <div class="kg-legend">
           <span v-for="item in typeLegend" :key="item.type" class="kg-legend__item">
@@ -240,6 +240,11 @@ function nodeRadius(node: any) {
   return 8 + Math.min(12, Math.sqrt(Number(node.degree || 0) + 1) * 3)
 }
 
+function showNodeLabel(node: any) {
+  // 缩放到一定程度再放出全部实体名，默认只显示簇枢纽，避免一进来就标签打架。
+  return !!node.isHub || viewport.scale >= 1.18
+}
+
 function buildStaticLayout(nodes: any[], edges: any[], width: number, height: number) {
   const byId = new Map(nodes.map((node) => [String(node.id), { ...node, x: 0, y: 0, isHub: false }]))
   const adjacency = new Map<string, string[]>()
@@ -312,11 +317,23 @@ function buildStaticLayout(nodes: any[], edges: any[], width: number, height: nu
     hub.y = centerY
     hub.isHub = index < 3 && items.length > 1
     laidOut.push(hub)
+    const jitter = (seed: number) => {
+      const value = Math.sin(seed * 12.9898) * 43758.5453
+      return value - Math.floor(value) - 0.5
+    }
     const placeRing = (ring: any[], radius: number, offset = 0) => {
       ring.forEach((node, ringIndex) => {
-        const angle = -Math.PI / 2 + (Math.PI * 2 * ringIndex) / Math.max(ring.length, 1) + offset
-        node.x = centerX + Math.cos(angle) * radius
-        node.y = centerY + Math.sin(angle) * radius
+        // 环上加入确定性的小扰动：保留簇的中心秩序，但节点不再像尺子量出来一样齐，
+        // 更接近 WeKnora 那种“乱中有序”的天然分布。
+        const seed = Number(node.id) || index * 1000 + ringIndex + 1
+        const angle =
+          -Math.PI / 2 +
+          (Math.PI * 2 * ringIndex) / Math.max(ring.length, 1) +
+          offset +
+          jitter(seed) * 0.42
+        const ringRadius = radius + jitter(seed + 19) * 30
+        node.x = centerX + Math.cos(angle) * ringRadius
+        node.y = centerY + Math.sin(angle) * ringRadius
         laidOut.push(node)
       })
     }
@@ -554,7 +571,11 @@ async function buildGraph() {
   if (!props.activeKbId || building.value) return
   building.value = true
   try {
-    const res = await buildKnowledgeGraph({ kbId: Number(props.activeKbId) })
+    const res = await buildKnowledgeGraph({
+      kbId: Number(props.activeKbId),
+      // 用户手动点“更新”时强制重抽当前资料夹；自动更新由解析流水线逐文档触发。
+      force: Boolean(graph.value?.nodes?.length)
+    })
     if (res.code !== 200) {
       ElMessage.error(res.msg || '知识图谱抽取失败')
       return

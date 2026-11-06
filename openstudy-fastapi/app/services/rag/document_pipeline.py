@@ -192,6 +192,25 @@ async def _run(db: AsyncSession, doc: RagDocument) -> dict:
 
     n = await replace_chunks(db, doc, contents, vectors)
     logger.info(f"[rag.pipeline] id={doc.id} 完成，{n} 块已向量化（status=5）")
+
+    # 解析完成后自动更新该文档所在资料夹的知识图谱。
+    # 后台任务里失败不能影响文档本身已经成功的解析状态，所以只记日志。
+    try:
+        from app.services.rag.knowledge_graph_service import build_graph
+
+        graph_result = await build_graph(
+            db,
+            int(doc.user_id),
+            int(doc.kb_id),
+            doc_ids=[int(doc.id)],
+        )
+        logger.info(
+            f"[rag.pipeline] id={doc.id} 知识图谱自动更新："
+            f"{graph_result.get('entities', 0)} 实体 / {graph_result.get('relations', 0)} 关系"
+        )
+    except Exception as graph_error:  # noqa: BLE001
+        logger.warning(f"[rag.pipeline] id={doc.id} 知识图谱自动更新失败：{graph_error}")
+
     return {"docId": doc.id, "ok": True, "chunks": n}
 
 
