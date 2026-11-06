@@ -883,6 +883,9 @@ const bankJump = computed(() => {
   const bankName = String(payload.bankName || payload.bank_name || payload.name || '题库')
   const total = Number(payload.bankTotal ?? payload.totalQuestions ?? payload.total_questions ?? d.imported ?? 0)
 
+  // 刚创建的空题库没有题目：不出现「立即开始刷题」入口，否则用户点进去是空题库。
+  if (action === 'create' && total <= 0) return null
+
   // 副标题：优先说「共几题」，其次是「本次导入了几题」
   const metaParts: string[] = []
   if (total > 0) metaParts.push(`共 ${total} 题`)
@@ -1047,6 +1050,13 @@ const linkJump = computed(() => {
   // 只读 action 不出卡（见上方注释）
   const action = String(d.action || props.action || '').toLowerCase()
   if (action && !LINK_WRITE_ACTIONS.has(action)) return null
+
+  // 兜底：即使旧版后端仍返回 create+jumpUrl，空题库也不能出「去刷题」卡。
+  if (props.tool === 'bank_manage' && action === 'create') {
+    const payload = pickBankPayload(d)
+    const total = Number(payload?.bankTotal ?? payload?.totalQuestions ?? payload?.total_questions ?? 0)
+    if (total <= 0) return null
+  }
 
   // 已经被 bankJump / noteJump 覆盖的，不重复出卡
   if (bankJump.value || noteJump.value) return null

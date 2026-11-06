@@ -485,11 +485,10 @@ class BankManageTool(AgentTool):
         return ok(
             action="create",
             bank=qws.bank_brief(bank),
-            message=f"题库「{bank.bank_name}」创建成功（ID={bank.id}）",
-            # 2026-10-26：写成功后给出落地页，前端渲染成「去看看」按钮。
-            # 原来只有英语类工具带 jumpUrl，题库创建完用户还得自己去侧边栏找 ——
-            # 这是「智能体说建好了，但我看不到」的典型断点。
-            jumpUrl=f"/front/questionPractice/{int(bank.id)}",
+            message=f"题库「{bank.bank_name}」创建成功（ID={bank.id}），还没有题目，导入题目后再开始刷题",
+            # ⚠️ 空题库不返回 jumpUrl：刚创建完没有题目，给「去刷题」入口会直接落到
+            # 一个空题库页，用户会以为创建失败。等 batch_import 成功、题库有题目后
+            # 再由 question_manage 的 jumpUrl 给出刷题入口。
         )
 
     async def _update(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
