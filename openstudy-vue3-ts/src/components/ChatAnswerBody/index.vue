@@ -2,7 +2,8 @@
   <div class="chat-answer-body">
     <div v-for="(block, index) in blocks" :key="index" class="chat-answer-block">
       <div class="chat-answer-block__html" v-html="renderAgentMarkdown(block.content)"></div>
-      <ChatSourceList v-if="block.references.length" :references="block.references" :show-label="false" />
+      <ChatSourceList v-if="block.references.length" :references="block.references" :show-label="false"
+        @open-document="$emit('open-document', $event)" />
     </div>
   </div>
 </template>
@@ -16,6 +17,7 @@ const props = defineProps<{
   content: string
   references: any[]
 }>()
+const emit = defineEmits<{ (e: 'open-document', item: any): void }>()
 
 type Block = { content: string; references: any[] }
 

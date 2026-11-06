@@ -3,8 +3,9 @@
     <span v-if="showLabel !== false" class="chat-sources__label">参考文档</span>
     <button v-for="group in groups" :key="group.key" type="button" class="chat-source-chip"
       :class="{ 'is-active': float.visible && float.groupKey === group.key }"
+      :title="group.chunks.some((chunk: any) => chunk.docId) ? '点击查看文档原文' : group.docName"
       @mouseenter="showGroup(group, $event)" @focus="showGroup(group, $event)" @mouseleave="scheduleClose"
-      @click.stop="showGroup(group, $event)">
+      @click.stop="onChipClick(group, $event)">
       <el-icon class="chat-source-chip__icon"><Document /></el-icon>
       <span class="chat-source-chip__name">{{ group.docName }}</span>
       <span v-if="group.chunks.length > 1" class="chat-source-chip__count">{{ group.chunks.length }}</span>
@@ -37,6 +38,7 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { Document } from '@element-plus/icons-vue'
 
 const props = defineProps<{ references: any[]; showLabel?: boolean }>()
+const emit = defineEmits<{ (e: 'open-document', item: any): void }>()
 
 type SourceGroup = { key: string; docName: string; chunks: any[] }
 const float = ref<{ visible: boolean; groupKey: string; docName: string; chunks: any[]; top: number; left: number }>({
@@ -79,6 +81,15 @@ function chunkLabel(chunk: any, index: number) {
 
 function chunkKey(chunk: any, index: number) {
   return String(chunk?.chunkId ?? `${chunk?.docId || ''}-${chunk?.chunkIndex ?? index}-${index}`)
+}
+
+function onChipClick(group: SourceGroup, event: Event) {
+  const documentChunk = group.chunks.find((chunk: any) => chunk.docId)
+  if (documentChunk) {
+    emit('open-document', { ...documentChunk, docName: group.docName })
+    return
+  }
+  showGroup(group, event)
 }
 
 function showGroup(group: SourceGroup, event: Event) {

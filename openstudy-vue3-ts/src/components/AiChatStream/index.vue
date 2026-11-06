@@ -218,7 +218,8 @@
             就会把整段复制走 + 弹「复制成功」，很打扰。复制只走下面这个按钮。
           -->
           <div class="message-text rendered-md" @click="openMessageImage">
-            <ChatAnswerBody v-if="msg.references?.length" :content="msg.content" :references="msg.references" />
+            <ChatAnswerBody v-if="msg.references?.length" :content="msg.content" :references="msg.references"
+              @open-document="openChatDocument" />
             <div v-else v-html="renderAgentMarkdown(msg.content)"></div>
           </div>
           <!--
@@ -327,6 +328,10 @@
     <ScrollButton :scroll-container="messagesRef" anchor-selector=".chat-input-area .input-box"
       :bottom="scrollButtonBottom" :right="16" />
     <ImageViewer v-model:visible="messageImageVisible" :src="messageImageSrc" />
+    <ResizableDrawer v-model="docReaderVisible" storage-key="openstudy_chat_document_reader_size"
+      direction="rtl" :default-width="760" :min="460" :max="1100" class="chat-document-reader">
+      <DocumentAnatomyPanel ref="docReaderRef" />
+    </ResizableDrawer>
     <!-- 输入区（底部组件：模式切换 / 附件 / 放大输入 / 工具栏 / 发送） -->
     <ChatInputArea v-model="inputContent" :mode="mode" :show-mode-switch="showModeSwitch"
       :show-new-session="showNewSession" :generating="isGenerating" :paused="isPaused" :placeholder="placeholder"
@@ -363,6 +368,8 @@ import { CopyDocument, Connection, Select, CloseBold, ArrowDown } from '@element
 import { renderAgentMarkdown } from '@/utils/markdown'
 import LoadingDots from '@/components/LoadingDots/index.vue'
 import ChatAnswerBody from '@/components/ChatAnswerBody/index.vue'
+import ResizableDrawer from '@/components/ResizableDrawer/index.vue'
+import DocumentAnatomyPanel from '@/views/front/workspace/components/DocumentAnatomyPanel.vue'
 import AgentReasoning from '@/components/AgentReasoning/index.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import AgentTurnRollback from '@/components/AgentTurnRollback/index.vue'
@@ -680,6 +687,27 @@ const isNearBottom = ref(true)
 /* 正文里的图片：不在消息流里铺满，点击后复用站内 ImageViewer 缩放查看 */
 const messageImageVisible = ref(false)
 const messageImageSrc = ref('')
+const docReaderVisible = ref(false)
+const docReaderRef = ref<any>(null)
+
+/** 点击回答里的文档 chip：在右侧可拉伸抽屉里打开全文阅读器。 */
+async function openChatDocument(item: any) {
+  if (!item?.docId) return
+  docReaderVisible.value = true
+  await nextTick()
+  docReaderRef.value?.open(
+    {
+      docId: Number(item.docId),
+      fileName: item.docName || item.fileName || '未命名资料'
+    },
+    {
+      chunkId: item.chunkId ?? undefined,
+      chunkIndex: item.chunkIndex ?? undefined,
+      chunkCount: undefined,
+      targetText: String(item.content || '').slice(0, 300)
+    }
+  )
+}
 
 function openMessageImage(e: MouseEvent) {
   const target = e.target as HTMLElement | null
@@ -1714,6 +1742,20 @@ defineExpose({
  *（类名保持不变：`.chat-input-area` / `.input-box` / `.input-header` / `.input-bottom` / `.send-btn`，
  *  所以调用方（含 `views/front/agent/chat.vue`）针对这些类的样式覆盖继续有效。）
  */
+
+/* 聊天里的文档阅读抽屉：把阅读面板撑满可拉伸抽屉 */
+.chat-document-reader :deep(.reader-panel) {
+  height: calc(100vh - 16px);
+  min-height: 0;
+  padding: 16px;
+}
+.chat-document-reader :deep(.reader-body) {
+  min-height: 0;
+  height: calc(100vh - 154px);
+}
+.chat-document-reader :deep(.reader-main) {
+  max-height: 100%;
+}
 </style>
 
 <style lang="scss">
