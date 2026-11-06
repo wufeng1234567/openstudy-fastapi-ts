@@ -391,9 +391,13 @@ const mapSelectedPageId = ref<number | null>(null)
 const mapHideUnlinked = ref(false)
 const mapShowArrows = ref(true)
 const mapNodeOffsets = reactive<Record<string, { x: number; y: number }>>({})
+const mapSimPositions = reactive<Record<string, { x: number; y: number }>>({})
 let mapDrag: any = null
 let mapNodeDrag: any = null
 let suppressMapNodeClick = false
+let mapAnimFrame = 0
+let mapSimAlpha = 0
+let mapSimNodes: any[] = []
 
 const filteredPages = computed(() => {
   const query = String(props.searchQuery || '').trim().toLowerCase()
@@ -506,11 +510,12 @@ const mapNodes = computed(() => {
         orbitIndex += 1
       }
       const offset = mapNodeOffsets[String(node.id)]
+      const simulated = mapSimPositions[String(node.id)]
       result.push({
         ...node,
         pageType,
-        x: offset?.x ?? x,
-        y: offset?.y ?? y,
+        x: offset?.x ?? simulated?.x ?? x,
+        y: offset?.y ?? simulated?.y ?? y,
         // 与 WeKnora 的 graphNodeRadius 同一条公式：叶子小、枢纽大。
         r: Math.max(5, Math.min(20, 4 + Math.sqrt(Math.max(0, degree)) * 1.8)),
         color: pageTypeMeta(pageType).color
@@ -586,6 +591,7 @@ function showMapLabel(node: any) {
 }
 
 function selectMapNode(node: any) {
+  stopMapAnimation()
   mapSelectedPageId.value = Number(node.pageId)
   // 点击节点后把它移到画布左侧中央，右侧留给详情抽屉（与 WeKnora 一致）。
   mapView.x = 330 - Number(node.x) * mapView.scale
@@ -647,6 +653,88 @@ function stopMapNodeDrag() {
   suppressMapNodeClick = false
   window.removeEventListener('pointermove', onMapNodeMove)
   window.removeEventListener('pointerup', onMapNodeUp)
+}
+
+function stopMapAnimation() {
+  if (mapAnimFrame) {
+    cancelAnimationFrame(mapAnimFrame)
+    mapAnimFrame = 0
+  }
+  mapSimAlpha = 0
+  mapSimNodes = []
+}
+
+function startMapAnimation() {
+  stopMapAnimation()
+  if (view.value !== 'map' || detailVisible.value || !mapNodes.value.length) return
+  mapSimNodes = mapNodes.value.map((node: any) => ({
+    id: String(node.id),
+    x: Number(node.x),
+    y: Number(node.y),
+    vx: Math.sin(Number(node.id) * 1.37) * 0.45,
+    vy: Math.cos(Number(node.id) * 1.91) * 0.45,
+    degree: Number(node.degree || 0)
+  }))
+  const byId = new Map(mapSimNodes.map((node) => [node.id, node]))
+  mapSimAlpha = 1
+  // 与 WeKnora 相同的快慢节奏：初始 alpha=1，逐帧衰减；前半段移动快，后半段慢慢停稳。
+  const tick = () => {
+    if (detailVisible.value || view.value !== 'map') {
+      stopMapAnimation()
+      return
+    }
+    mapSimAlpha *= 0.985
+    if (mapSimAlpha < 0.02) {
+      mapAnimFrame = 0
+      return
+    }
+    for (let i = 0; i < mapSimNodes.length; i++) {
+      const a = mapSimNodes[i]!
+      for (let j = i + 1; j < mapSimNodes.length; j++) {
+        const b = mapSimNodes[j]!
+        const dx = b.x - a.x
+        const dy = b.y - a.y
+        const distance = Math.hypot(dx, dy) || 1
+        const force = (12000 * mapSimAlpha) / Math.max(distance * distance, 100)
+        const fx = (dx / distance) * force
+        const fy = (dy / distance) * force
+        a.vx -= fx
+        a.vy -= fy
+        b.vx += fx
+        b.vy += fy
+      }
+    }
+    for (const edge of mapEdges.value) {
+      const source = byId.get(edge.source)
+      const target = byId.get(edge.target)
+      if (!source || !target) continue
+      const dx = target.x - source.x
+      const dy = target.y - source.y
+      const distance = Math.hypot(dx, dy) || 1
+      const degree = Math.max(1, Math.sqrt(Math.max(1, (source.degree || 0) + (target.degree || 0))))
+      const force = ((distance - 140) * 0.003 * mapSimAlpha) / degree
+      const fx = (dx / distance) * force
+      const fy = (dy / distance) * force
+      source.vx += fx
+      source.vy += fy
+      target.vx -= fx
+      target.vy -= fy
+    }
+    for (const node of mapSimNodes) {
+      node.vx *= 0.6
+      node.vy *= 0.6
+      const speed = Math.hypot(node.vx, node.vy)
+      if (speed > 20) {
+        node.vx *= 20 / speed
+        node.vy *= 20 / speed
+      }
+      node.x = Math.max(40, Math.min(960, node.x + node.vx))
+      node.y = Math.max(40, Math.min(600, node.y + node.vy))
+      mapSimPositions[node.id] = { x: node.x, y: node.y }
+    }
+    mapAnimFrame = requestAnimationFrame(tick)
+  }
+  mapAnimFrame = requestAnimationFrame(tick)
 }
 
 function clusterOutline(points: any[]) {
@@ -833,16 +921,20 @@ async function build() {
 
 function resetMapNodeOffsets() {
   Object.keys(mapNodeOffsets).forEach((key) => delete mapNodeOffsets[key])
+  Object.keys(mapSimPositions).forEach((key) => delete mapSimPositions[key])
+  stopMapAnimation()
 }
 
 function toggleMapType(type: string) {
   mapTypeVisible[type] = mapTypeVisible[type] === false
   resetMapNodeOffsets()
+  nextTick(startMapAnimation)
 }
 
 function toggleHideUnlinked() {
   mapHideUnlinked.value = !mapHideUnlinked.value
   resetMapNodeOffsets()
+  nextTick(startMapAnimation)
 }
 
 function toggleMapArrows() {
@@ -893,6 +985,7 @@ async function switchMap() {
       await nextTick()
       fitMapView()
       if (String(props.searchQuery || '').trim()) focusMapSearch()
+      startMapAnimation()
     }
   } catch {
     // 地图失败时保持主题页入口，不影响阅读。
@@ -1202,6 +1295,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   stopBuildPolling()
   stopMapNodeDrag()
+  stopMapAnimation()
   if (mapSearchTimer) clearTimeout(mapSearchTimer)
 })
 </script>
