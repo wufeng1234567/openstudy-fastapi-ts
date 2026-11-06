@@ -2491,23 +2491,59 @@ async def list_gallery_assets(
 @router.post("/gallery/describe")
 async def describe_gallery_assets(
     data: GalleryDescribeRequest,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """为一批未描述图片生成描述/OCR。
+    """创建图片描述后台任务。
 
-    同步返回完成数量，前端用 loading 进度展示；不阻塞上传链路。
+    以前这里是同步循环，浏览器切走后前端 loading 状态丢失；现在任务落库，
+    前端重新进入画廊时通过 `jobs/latest` 恢复进度。
     """
     try:
-        result = await gallery_service.describe_assets(
+        job, keys, created = await gallery_service.create_describe_job(
             db,
             _uid(current_user),
             asset_keys=data.assetKeys,
             doc_id=data.docId,
             limit=data.limit,
         )
-        msg = f"已处理 {result['done']} 张" + (f"，{result['failed']} 张失败" if result["failed"] else "")
-        return success(result, msg)
+        if created and keys:
+            background_tasks.add_task(
+                gallery_service.run_describe_job, job["jobId"], _uid(current_user), keys
+            )
+        if job.get("total", 0) == 0:
+            return success(job, "没有需要补描述的图片")
+        msg = (
+            f"已开始生成 {job['total']} 张图片描述"
+            if created
+            else f"图片描述任务进行中：{job['done']}/{job['total']}"
+        )
+        return success(job, msg)
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/gallery/describe/jobs/latest")
+async def latest_gallery_describe_job(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """返回当前用户最近一次图片描述任务，供画廊重新进入时恢复等待 UI。"""
+    try:
+        return success(await gallery_service.get_latest_describe_job(db, _uid(current_user)))
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/gallery/describe/jobs/{job_id}")
+async def gallery_describe_job(
+    job_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return success(await gallery_service.get_describe_job(db, _uid(current_user), job_id))
     except Exception as e:
         return _fail(e)
 

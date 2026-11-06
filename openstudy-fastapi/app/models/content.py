@@ -83,6 +83,33 @@ class RagImageAsset(Base):
     update_time: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
 
+class RagImageDescribeJob(Base):
+    """图片描述批量任务。
+
+    为什么放到数据库：浏览器切到别的页面后，前端组件会被销毁；如果进度只存在
+    组件内存里，回来时「生成中」就消失了。任务状态落库后，画廊重新挂载可以
+    继续显示进度并轮询，不依赖原请求的生命周期。
+    """
+
+    __tablename__ = "rag_image_describe_job"
+    __table_args__ = (
+        Index("idx_rag_image_describe_job_user", "user_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="running")
+    total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    done: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    current_asset_key: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    asset_keys: Mapped[Optional[list]] = mapped_column(JSON)
+    error: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    update_time: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+
 class ContentReference(Base):
     """统一内容引用。
 

@@ -27,13 +27,23 @@
         </span>
         <el-button
           class="gallery-describe-btn"
-          :loading="describing"
-          :disabled="!pendingKeys.length"
+          :loading="describing || jobActive"
+          :disabled="!pendingKeys.length && !jobActive"
           @click="describePending"
         >
           <el-icon><MagicStick /></el-icon>
-          {{ pendingKeys.length ? `补全描述（${Math.min(pendingKeys.length, 40)}）` : '图片已描述' }}
+          {{ jobActive ? `补全中 ${describeJob.done}/${describeJob.total}` : pendingKeys.length ? `补全描述（${Math.min(pendingKeys.length, 40)}）` : '图片已描述' }}
         </el-button>
+      </div>
+      <div v-if="jobActive" class="gallery-describe-progress">
+        <div class="gallery-describe-progress__top">
+          <span>正在生成图片描述 {{ describeJob.done }}/{{ describeJob.total }}</span>
+          <span v-if="describeJob.failed">失败 {{ describeJob.failed }}</span>
+        </div>
+        <div class="gallery-describe-progress__bar">
+          <i :style="{ width: `${jobProgress}%` }"></i>
+        </div>
+        <p>切换页面不会中断；回到画廊会自动恢复进度。</p>
       </div>
     </div>
 
@@ -187,13 +197,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { MagicStick, Picture } from '@element-plus/icons-vue'
 import {
   createContentReference,
   describeGalleryAssets,
   getGalleryAsset,
+  getGalleryDescribeJob,
+  getLatestGalleryDescribeJob,
   listGalleryAssets,
   listWikiPages
 } from '@/api/ai/workspace'
@@ -225,6 +237,7 @@ const query = ref(props.searchQuery || '')
 const scope = ref<'current' | 'all'>('current')
 const sourceFilter = ref<'all' | 'document' | 'chat'>('all')
 const describing = ref(false)
+const describeJob = ref<any>(null)
 const detailVisible = ref(false)
 const detailLoading = ref(false)
 const detail = ref<any>(null)
@@ -249,6 +262,12 @@ const pendingKeys = computed(() =>
     .filter((item) => item.descriptionStatus === 'pending' || item.descriptionStatus === 'failed')
     .map((item) => item.assetKey)
 )
+const jobActive = computed(() => describeJob.value?.status === 'running')
+const jobProgress = computed(() => {
+  const total = Number(describeJob.value?.total || 0)
+  const done = Number(describeJob.value?.done || 0)
+  return total ? Math.min(100, Math.round((done / total) * 100)) : 0
+})
 const hasFilter = computed(
   () =>
     !!query.value.trim() ||
@@ -302,8 +321,8 @@ function applyData(data: any) {
   emit('stats', { total: stats.total })
 }
 
-async function reload() {
-  loading.value = true
+async function reload(silent = false) {
+  if (!silent) loading.value = true
   try {
     const res = await listGalleryAssets({
       scope: scope.value,
@@ -314,14 +333,14 @@ async function reload() {
       limit: 300
     })
     if (res.code !== 200) {
-      ElMessage.error(res.msg || '画廊加载失败')
+      if (!silent) ElMessage.error(res.msg || '画廊加载失败')
       return
     }
     applyData(res.data)
   } catch (error: any) {
-    ElMessage.error('画廊加载失败：' + (error?.message || error))
+    if (!silent) ElMessage.error('画廊加载失败：' + (error?.message || error))
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
@@ -342,9 +361,58 @@ function clearFilters() {
   reload()
 }
 
+let describeTimer: ReturnType<typeof setInterval> | null = null
+
+function stopDescribePolling() {
+  if (describeTimer) {
+    clearInterval(describeTimer)
+    describeTimer = null
+  }
+}
+
+function startDescribePolling(jobId: number) {
+  stopDescribePolling()
+  describeTimer = setInterval(async () => {
+    try {
+      const res = await getGalleryDescribeJob(jobId)
+      if (res.code !== 200 || !res.data) return
+      describeJob.value = res.data
+      // 同步刷新卡片状态，用户能看到每张图从「生成中」变成「已描述」
+      await reload(true)
+      if (res.data.status !== 'running') {
+        stopDescribePolling()
+        if (res.data.status === 'failed') {
+          ElMessage.error(res.data.error || '图片描述任务失败')
+        } else if (Number(res.data.failed || 0)) {
+          ElMessage.warning(`完成 ${res.data.done || 0} 张，${res.data.failed} 张失败，可在详情里查看原因`)
+        } else {
+          ElMessage.success(`已为 ${res.data.done || 0} 张图片补上描述`)
+        }
+        if (detail.value?.assetKey) await loadDetail(detail.value.assetKey, false)
+      }
+    } catch (error: any) {
+      // 网络抖动不立刻终止任务状态，下一轮继续；只有组件卸载才清理定时器
+      console.warn('[gallery] describe job poll failed', error)
+    }
+  }, 1500)
+}
+
+async function resumeDescribeJob() {
+  try {
+    const res = await getLatestGalleryDescribeJob()
+    const job = res.code === 200 ? res.data : null
+    if (job?.status === 'running') {
+      describeJob.value = job
+      startDescribePolling(job.jobId)
+    }
+  } catch {
+    // 恢复进度失败不影响画廊本身
+  }
+}
+
 async function describePending() {
   const keys = pendingKeys.value.slice(0, 40)
-  if (!keys.length) return
+  if (!keys.length || jobActive.value) return
   describing.value = true
   try {
     const res = await describeGalleryAssets({ assetKeys: keys, limit: 40 })
@@ -352,14 +420,14 @@ async function describePending() {
       ElMessage.error(res.msg || '生成图片描述失败')
       return
     }
-    const failed = Number(res.data?.failed || 0)
-    if (failed) {
-      ElMessage.warning(`完成 ${res.data?.done || 0} 张，${failed} 张失败，可在详情里查看原因`)
+    describeJob.value = res.data
+    if (res.data?.jobId && res.data.status === 'running') {
+      ElMessage.info(res.msg || '已开始生成图片描述，切换页面不会中断')
+      startDescribePolling(res.data.jobId)
     } else {
-      ElMessage.success(`已为 ${res.data?.done || 0} 张图片补上描述`)
+      ElMessage.success(res.msg || '图片描述已完成')
+      await reload()
     }
-    await reload()
-    if (detail.value?.assetKey) await loadDetail(detail.value.assetKey, false)
   } catch (error: any) {
     ElMessage.error('生成图片描述失败：' + (error?.message || error))
   } finally {
@@ -398,13 +466,14 @@ async function describeOne() {
       ElMessage.error(res.msg || '生成描述失败')
       return
     }
-    if (res.data?.failed) {
-      ElMessage.warning('生成失败，失败原因已显示在详情里')
+    describeJob.value = res.data
+    if (res.data?.jobId && res.data.status === 'running') {
+      startDescribePolling(res.data.jobId)
+      ElMessage.info('已开始生成描述')
     } else {
-      ElMessage.success('描述已更新')
+      await loadDetail(detail.value.assetKey)
+      await reload()
     }
-    await loadDetail(detail.value.assetKey)
-    await reload()
   } catch (error: any) {
     ElMessage.error('生成描述失败：' + (error?.message || error))
   } finally {
@@ -514,7 +583,12 @@ watch(
   }
 )
 
-onMounted(reload)
+onMounted(async () => {
+  await reload()
+  await resumeDescribeJob()
+})
+
+onBeforeUnmount(stopDescribePolling)
 </script>
 
 <style scoped>
@@ -557,6 +631,38 @@ onMounted(reload)
   color: #4f6bed;
   background: #f7f9ff;
 }
+
+.gallery-describe-progress {
+  padding: 9px 12px;
+  border: 1px solid #e2e9fb;
+  border-radius: 7px;
+  background: #f8faff;
+}
+.gallery-describe-progress__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #4f6bed;
+  font-size: 11px;
+  font-weight: 600;
+}
+.gallery-describe-progress__top span:last-child { color: #d97706; font-weight: 400; }
+.gallery-describe-progress__bar {
+  height: 5px;
+  margin-top: 7px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #e7edfb;
+}
+.gallery-describe-progress__bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6f8df2, #4f6bed);
+  transition: width .35s ease;
+}
+.gallery-describe-progress p { margin: 6px 0 0; color: #9aa1af; font-size: 10px; }
 
 .gallery-toolbar__filters {
   display: flex;

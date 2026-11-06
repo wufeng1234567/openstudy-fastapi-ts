@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""OpenStudy 10 页方案（0.7.0）· 浅色高级感 · 突出码道 CodeArts 开发能力
+"""OpenStudy 10 页方案（0.7.1）· 浅色高级感 · 突出码道 CodeArts 开发能力
 运行：openstudy-fastapi/.venv/Scripts/python.exe build_ppt_v3.py
 """
 import os
@@ -225,7 +225,7 @@ def p1():
     # 装饰
     rect(s, 10.6, -2.1, 5.4, 5.4, fill=None, line=RGBColor(0xE3, 0xF4, 0xEC), lw=1.0, radius=0.5)
     rect(s, 11.9, 3.3, 3.6, 3.6, fill=None, line=RGBColor(0xEF, 0xF9, 0xF4), lw=1.0, radius=0.5)
-    text(s, M_L, 0.78, 7.0, 0.24, "OPENSTUDY  ·  0.7.0  ·  智能资料阅读器", size=9.5, bold=True, color=MINT_D, spc=160)
+    text(s, M_L, 0.78, 7.0, 0.24, "OPENSTUDY  ·  0.7.1  ·  智能资料阅读器", size=9.5, bold=True, color=MINT_D, spc=160)
     t1 = text(s, M_L, 1.18, 7.0, 1.55, "把不会的，\n问到会", size=46, bold=True, color=INK, line_spacing=1.08)
     anim(s, "p1_title", t1)
     line(s, M_L, 2.92, M_L + 1.15, 2.92, color=MINT, width=2.5)
@@ -1034,7 +1034,7 @@ def p4c():
 
 def p5b():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "05  /  知识百科", "0.7.0：知识百科从能读，到能改、能挂图",
+    header(s, "05  /  知识百科", "0.7.1：知识百科从能读，到能改、能挂图",
            "主题页可手动编辑并保留历史版本；画廊图片可以直接挂到主题页，对话也能管理主题页。")
     text(s, M_L, 1.86, 4.05, 0.22, "主题页编辑：改标题 / 摘要 / 小节", size=10.5, bold=True, color=GRAY2, spc=40)
     text(s, 5.10, 1.86, 7.0, 0.22, "画廊 → 知识百科：图片直接挂到主题页", size=10.5, bold=True, color=GRAY2, spc=40)
@@ -1043,9 +1043,9 @@ def p5b():
     pic_card(s, S17, 5.10, 2.10, 7.30, 4.42, border=True,
              caption="真实界面：画廊图片插入知识百科主题页")
     rows = [
-        ("0.7.0 · 可编辑", "版本快照 / 历史恢复 / 来源保留"),
-        ("0.7.0 · 画廊联动", "图片引用 / 反向可见 / 不复制原图"),
-        ("0.7.0 · 对话", "知识百科 CRUD / sourceType=wiki / 回到原文"),
+        ("0.7.1 · 可编辑", "版本快照 / 历史恢复 / 来源保留"),
+        ("0.7.1 · 画廊联动", "图片引用 / 反向可见 / 不复制原图"),
+        ("0.7.1 · 对话", "知识百科 CRUD / sourceType=wiki / 回到原文"),
     ]
     y = 5.18
     for title, desc in rows:
@@ -1217,6 +1217,7 @@ for fn in (p1, p2b, p3health, p4surgery, p5pack, p5b, p7arch, p6, p7, p10close):
 out = os.path.join(HERE, "OpenStudy-10页-码道版.pptx")
 prs.save(out)
 print("saved:", out, os.path.getsize(out))
+
 
 
 

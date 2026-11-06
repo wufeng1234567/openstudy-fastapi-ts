@@ -109,13 +109,29 @@ export function getGalleryAsset(assetKey: string) {
   }) as unknown as Promise<{ code: number; msg?: string; data: any }>
 }
 
-/** 批量补图片描述：传 docId 或 assetKeys */
+/** 创建图片描述后台任务：传 docId 或 assetKeys，立即返回 jobId */
 export function describeGalleryAssets(data: { docId?: number; assetKeys?: string[]; limit?: number }) {
   return request({
     url: '/rag/gallery/describe',
     method: 'post',
     data,
-    timeout: 300000
+    timeout: 60000
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
+/** 当前用户最近一次图片描述任务（画廊重新进入时恢复进度 UI） */
+export function getLatestGalleryDescribeJob() {
+  return request({
+    url: '/rag/gallery/describe/jobs/latest',
+    method: 'get'
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
+/** 查询图片描述任务进度 */
+export function getGalleryDescribeJob(jobId: number) {
+  return request({
+    url: `/rag/gallery/describe/jobs/${jobId}`,
+    method: 'get'
   }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
 }
 

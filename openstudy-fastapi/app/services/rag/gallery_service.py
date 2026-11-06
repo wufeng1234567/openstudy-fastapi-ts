@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from datetime import datetime
@@ -20,7 +21,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chat_upload import ChatUploadImage
-from app.models.content import ContentReference, RagImageAsset
+from app.models.content import ContentReference, RagImageAsset, RagImageDescribeJob
 from app.models.note import Note
 from app.models.question import QuestionMain
 from app.models.rag import MaterialAssetUsage, RagDocument
@@ -564,6 +565,182 @@ async def describe_asset(
         raise
 
 
+def _job_dict(job: RagImageDescribeJob) -> Dict[str, Any]:
+    return {
+        "jobId": int(job.id),
+        "status": job.status,
+        "total": int(job.total or 0),
+        "done": int(job.done or 0),
+        "failed": int(job.failed or 0),
+        "currentAssetKey": job.current_asset_key or "",
+        "error": job.error or "",
+        "active": job.status == "running",
+        "createTime": job.create_time.strftime("%Y-%m-%d %H:%M:%S") if job.create_time else "",
+        "finishedAt": job.finished_at.strftime("%Y-%m-%d %H:%M:%S") if job.finished_at else "",
+    }
+
+
+async def _select_describe_rows(
+    db: AsyncSession,
+    user_id: int,
+    *,
+    asset_keys: Optional[Iterable[str]] = None,
+    doc_id: Optional[int] = None,
+    limit: int = 40,
+) -> List[RagImageAsset]:
+    query = select(RagImageAsset).where(RagImageAsset.user_id == int(user_id))
+    if doc_id is not None:
+        query = query.where(RagImageAsset.doc_id == int(doc_id))
+    if asset_keys:
+        keys = [str(x) for x in asset_keys if str(x)]
+        if keys:
+            query = query.where(RagImageAsset.asset_key.in_(keys))
+    query = query.order_by(RagImageAsset.create_time.asc()).limit(max(1, min(int(limit or 40), 40)))
+    return list((await db.execute(query)).scalars().all())
+
+
+async def create_describe_job(
+    db: AsyncSession,
+    user_id: int,
+    *,
+    asset_keys: Optional[Iterable[str]] = None,
+    doc_id: Optional[int] = None,
+    limit: int = 40,
+) -> tuple[Dict[str, Any], List[str], bool]:
+    """创建批量描述任务；已有运行中的任务时直接复用，避免重复调用视觉模型。
+
+    返回 `(job, asset_keys, created)`：`created=False` 表示复用已有运行中任务。
+    """
+    await sync_image_assets(db, user_id)
+    active = (
+        await db.execute(
+            select(RagImageDescribeJob)
+            .where(
+                RagImageDescribeJob.user_id == int(user_id),
+                RagImageDescribeJob.status == "running",
+            )
+            .order_by(RagImageDescribeJob.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if active is not None:
+        return _job_dict(active), [str(x) for x in (active.asset_keys or [])], False
+
+    rows = await _select_describe_rows(
+        db, user_id, asset_keys=asset_keys, doc_id=doc_id, limit=limit
+    )
+    keys = [row.asset_key for row in rows]
+    if not keys:
+        return {
+            "jobId": 0,
+            "status": "done",
+            "total": 0,
+            "done": 0,
+            "failed": 0,
+            "currentAssetKey": "",
+            "error": "",
+            "active": False,
+        }, [], False
+    job = RagImageDescribeJob(
+        user_id=int(user_id),
+        status="running",
+        total=len(keys),
+        done=0,
+        failed=0,
+        asset_keys=keys,
+        update_time=datetime.now(),
+    )
+    db.add(job)
+    await db.commit()
+    await db.refresh(job)
+    return _job_dict(job), keys, True
+
+
+async def run_describe_job(job_id: int, user_id: int, asset_keys: List[str]) -> None:
+    """后台执行批量描述：3 路并发调用视觉模型，逐张回写任务进度。"""
+    if not asset_keys:
+        return
+    semaphore = asyncio.Semaphore(3)
+
+    async def one(key: str) -> tuple[str, bool]:
+        async with semaphore:
+            try:
+                from app.database import async_session_factory
+
+                async with async_session_factory() as session:
+                    await describe_asset(session, int(user_id), key)
+                return key, True
+            except Exception:  # noqa: BLE001 - 单张失败不拖垮整批
+                return key, False
+
+    tasks = [asyncio.create_task(one(key)) for key in asset_keys]
+    try:
+        for completed in asyncio.as_completed(tasks):
+            key, ok = await completed
+            from app.database import async_session_factory
+
+            async with async_session_factory() as job_db:
+                job = await job_db.get(RagImageDescribeJob, int(job_id))
+                if job is None:
+                    continue
+                job.done = int(job.done or 0) + 1
+                if not ok:
+                    job.failed = int(job.failed or 0) + 1
+                job.current_asset_key = key
+                job.update_time = datetime.now()
+                await job_db.commit()
+        from app.database import async_session_factory
+
+        async with async_session_factory() as job_db:
+            job = await job_db.get(RagImageDescribeJob, int(job_id))
+            if job is not None:
+                job.status = "done"
+                job.current_asset_key = ""
+                job.finished_at = datetime.now()
+                job.update_time = datetime.now()
+                await job_db.commit()
+    except Exception as exc:  # noqa: BLE001
+        from app.database import async_session_factory
+
+        async with async_session_factory() as job_db:
+            job = await job_db.get(RagImageDescribeJob, int(job_id))
+            if job is not None:
+                job.status = "failed"
+                job.error = str(exc)[:480]
+                job.current_asset_key = ""
+                job.finished_at = datetime.now()
+                job.update_time = datetime.now()
+                await job_db.commit()
+
+
+async def get_describe_job(
+    db: AsyncSession, user_id: int, job_id: int
+) -> Dict[str, Any]:
+    job = (
+        await db.execute(
+            select(RagImageDescribeJob).where(
+                RagImageDescribeJob.id == int(job_id),
+                RagImageDescribeJob.user_id == int(user_id),
+            )
+        )
+    ).scalar_one_or_none()
+    if job is None:
+        raise ValueError("图片描述任务不存在或无权访问")
+    return _job_dict(job)
+
+
+async def get_latest_describe_job(db: AsyncSession, user_id: int) -> Optional[Dict[str, Any]]:
+    job = (
+        await db.execute(
+            select(RagImageDescribeJob)
+            .where(RagImageDescribeJob.user_id == int(user_id))
+            .order_by(RagImageDescribeJob.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return _job_dict(job) if job else None
+
+
 async def describe_assets(
     db: AsyncSession,
     user_id: int,
@@ -603,4 +780,8 @@ __all__ = [
     "get_asset_detail",
     "describe_asset",
     "describe_assets",
+    "create_describe_job",
+    "run_describe_job",
+    "get_describe_job",
+    "get_latest_describe_job",
 ]
