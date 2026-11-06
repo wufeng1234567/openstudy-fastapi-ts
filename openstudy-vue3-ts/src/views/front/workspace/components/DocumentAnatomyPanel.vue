@@ -26,6 +26,7 @@
         <el-button size="small" plain @click="toggleToc">{{ tocCollapsed ? '展开目录' : '收起目录' }}</el-button>
         <el-button size="small" plain @click="openImages">图片 {{ images.length }}</el-button>
         <el-button v-if="showEdit" size="small" text type="primary" @click="emitEdit">编辑</el-button>
+        <el-button size="small" plain @click="openRelatedPages">相关主题页</el-button>
       </div>
     </div>
 
@@ -104,8 +105,22 @@
       <button type="button" @click="askSelection('practice')">从这段出题</button>
       <button type="button" @click="askSelection('note')">引用到笔记</button>
       <button type="button" @click="askSelection('prescription')">加入学习处方</button>
+      <button type="button" @click="openRelatedPages">相关主题页</button>
       <button type="button" @click="copySelection">复制原文</button>
     </div>
+
+    <el-drawer v-model="relatedVisible" title="相关主题页" size="380px" append-to-body>
+      <div v-loading="relatedLoading" class="reader-related">
+        <div v-if="!relatedPages.length && !relatedLoading" class="reader-empty">
+          没有找到相关主题页，可以先在知识百科里生成。
+        </div>
+        <div v-for="page in relatedPages" :key="page.pageId" class="reader-related__item">
+          <div class="reader-related__title">{{ page.title }}</div>
+          <p>{{ page.summary || '暂无摘要' }}</p>
+          <span>{{ page.sectionCount || 0 }} 个小节 · {{ page.sourceCount || 0 }} 个来源</span>
+        </div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -120,6 +135,7 @@ import {
   getDocumentOutline,
   rebuildDocumentOutline
 } from '@/api/ai/rag'
+import { listWikiPages } from '@/api/ai/workspace'
 
 defineOptions({ name: 'DocumentAnatomyPanel' })
 
@@ -127,6 +143,7 @@ interface ReaderDoc {
   docId: number
   fileName?: string
   chunkCount?: number
+  kbId?: number
 }
 
 interface ReaderOptions {
@@ -167,6 +184,9 @@ const searchOffsets = ref<number[]>([])
 const searchCount = computed(() => searchOffsets.value.length)
 const imagesVisible = ref(false)
 const imageCurrentOnly = ref(false)
+const relatedVisible = ref(false)
+const relatedLoading = ref(false)
+const relatedPages = ref<any[]>([])
 const selectionInfo = ref<{ text: string; x: number; y: number; section: number } | null>(null)
 const sectionEls = new Map<number, HTMLElement>()
 const stats = reactive({ contentLength: 0 })
@@ -432,6 +452,28 @@ function openImages() {
   imagesVisible.value = true
 }
 
+async function openRelatedPages() {
+  if (relatedLoading.value) return
+  const sectionTitle = selectionInfo.value
+    ? sections.value.find((item: any) => item.index === selectionInfo.value?.section)?.title
+    : ''
+  relatedVisible.value = true
+  relatedLoading.value = true
+  relatedPages.value = []
+  try {
+    const res = await listWikiPages({
+      kbId: doc.value?.kbId,
+      q: sectionTitle || docName.value,
+      limit: 8
+    })
+    relatedPages.value = res.code === 200 ? (res.data?.pages || []) : []
+  } catch {
+    relatedPages.value = []
+  } finally {
+    relatedLoading.value = false
+  }
+}
+
 async function rebuildOutline() {
   if (!doc.value?.docId || aiBuilding.value) return
   aiBuilding.value = true
@@ -582,6 +624,11 @@ defineExpose({
 .reader-selection { position: absolute; z-index: 20; display: flex; gap: 2px; padding: 3px; border: 1px solid #dce4f2; border-radius: 7px; background: #fff; box-shadow: 0 4px 14px rgba(36, 61, 118, .13); }
 .reader-selection button { padding: 4px 7px; border: 0; border-radius: 4px; color: #4b5563; background: transparent; cursor: pointer; font-size: 10px; white-space: nowrap; }
 .reader-selection button:hover { color: #2f5fce; background: #eef2ff; }
+.reader-related { min-height: 80px; }
+.reader-related__item { padding: 10px 0; border-bottom: 1px solid #edf0f5; }
+.reader-related__title { color: #1f2937; font-size: 13px; font-weight: 600; }
+.reader-related__item p { margin: 5px 0; color: #6b7280; font-size: 11px; line-height: 1.6; }
+.reader-related__item span { color: #9aa1af; font-size: 10px; }
 .reader-search-mark { padding: 0 2px; border-radius: 2px; background: #fff3c4; color: inherit; }
 @media (max-width: 900px) { .reader-body { grid-template-columns: 1fr; } .reader-body.is-toc-collapsed { grid-template-columns: 1fr; } .reader-toc { max-height: 220px; } .reader-toc__list { max-height: 160px; } .reader-article { padding: 20px 20px 40px; } .reader-toolbar { align-items: flex-start; flex-direction: column; } .reader-toolbar__tools { flex-wrap: wrap; } }
 </style>

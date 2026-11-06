@@ -19,6 +19,7 @@ interface AnatomyDoc {
   docId: number
   fileName?: string
   chunkCount?: number
+  kbId?: number
 }
 
 interface AnatomyOptions {

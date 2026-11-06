@@ -98,6 +98,7 @@ interface ClinicDoc {
   docId: number
   fileName?: string
   chunkCount?: number
+  kbId?: number
 }
 
 type ClinicTab = 'health' | 'anatomy' | 'prescription'
