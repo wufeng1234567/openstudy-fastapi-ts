@@ -271,20 +271,22 @@ function sectionSegments(section: any) {
   return result
 }
 
-function scrollToSection(index: number) {
+function scrollToSection(index: number, smooth = true): boolean {
   const el = sectionEls.get(Number(index))
   const root = readerScroll.value
-  if (!el || !root) return
+  if (!el || !root) return false
   const top = el.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop - 8
-  root.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+  root.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' })
   activeSection.value = Number(index)
   persistPosition()
+  return true
 }
 
-function scrollToOffset(offset: number) {
+function scrollToOffset(offset: number, smooth = true): boolean {
   const target = Math.max(0, Math.min(content.value.length, Number(offset) || 0))
   const section = sections.value.find((item: any) => target >= Number(item.start) && target < Number(item.end))
-  if (section) scrollToSection(section.index)
+  if (!section) return false
+  return scrollToSection(section.index, smooth)
 }
 
 function onContentScroll() {
@@ -534,16 +536,19 @@ async function load(docValue: ReaderDoc, opts: ReaderOptions = {}) {
         sections.value = flattenTree(data.tree)
       }
     }
+    // 必须先结束 loading，v-if 的正文容器才会挂载；否则下面 scrollToOffset
+    // 找不到 reader-main / sectionEls，定位会静默失败并停在最开头。
+    loading.value = false
     await nextTick()
+    let located = false
     if (targetOffset.value != null) {
-      scrollToOffset(targetOffset.value)
-    } else if (targetText.value) {
-      const found = content.value.indexOf(targetText.value)
-      if (found >= 0) scrollToOffset(found)
-      else restorePosition()
-    } else {
-      restorePosition()
+      located = scrollToOffset(targetOffset.value, false)
     }
+    if (!located && targetText.value) {
+      const found = content.value.indexOf(targetText.value)
+      if (found >= 0) located = scrollToOffset(found, false)
+    }
+    if (!located) restorePosition()
     if (opts.highlight && opts.highlight.trim()) {
       await nextTick()
       highlightSearch(opts.highlight.trim())

@@ -229,6 +229,7 @@ async def list_gallery(
     *,
     scope: str = "all",
     kb_id: Optional[int] = None,
+    doc_id: Optional[int] = None,
     source: str = "all",
     status: str = "all",
     q: str = "",
@@ -266,10 +267,18 @@ async def list_gallery(
 
     # scope / kb 过滤先做；统计也只统计当前范围，避免“全部”数字误导。
     scoped: List[RagImageAsset] = []
+    document_options_map: Dict[int, Dict[str, Any]] = {}
     for row in rows:
         if row.source_type == "document":
             if row.doc_id not in active_doc_ids or str(row.url) not in active_doc_urls.get(int(row.doc_id), set()):
                 continue
+            did = int(row.doc_id or 0)
+            if did:
+                item = document_options_map.setdefault(
+                    did,
+                    {"docId": did, "fileName": row.source_name or f"文档#{did}", "count": 0},
+                )
+                item["count"] = int(item["count"]) + 1
         elif row.source_type == "chat":
             try:
                 chat_id = int(str(row.asset_key).rsplit(":", 1)[-1])
@@ -278,6 +287,8 @@ async def list_gallery(
             if chat_id not in active_chat_ids:
                 continue
         if scope == "current" and kb_id is not None and int(row.kb_id or 0) != int(kb_id):
+            continue
+        if doc_id is not None and int(row.doc_id or 0) != int(doc_id):
             continue
         scoped.append(row)
 
@@ -336,6 +347,9 @@ async def list_gallery(
         )
         for row in filtered[: max(1, min(int(limit or 200), 500))]
     ]
+    document_options = sorted(
+        document_options_map.values(), key=lambda item: str(item["fileName"])
+    )
     return {
         "items": items,
         "stats": {
@@ -350,6 +364,7 @@ async def list_gallery(
             {"key": "document", "label": "文档图片", "count": source_counts["document"]},
             {"key": "chat", "label": "聊天图片", "count": source_counts["chat"]},
         ],
+        "documents": document_options,
         "scope": scope,
         "query": q,
     }

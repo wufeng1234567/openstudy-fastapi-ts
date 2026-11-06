@@ -79,6 +79,7 @@ export function getAssetUsageSummary() {
 export interface GalleryQuery {
   scope?: 'all' | 'current'
   kbId?: number | null
+  docId?: number | null
   source?: 'all' | 'document' | 'chat'
   status?: 'all' | 'pending' | 'processing' | 'done' | 'failed'
   q?: string
@@ -93,6 +94,7 @@ export function listGalleryAssets(params: GalleryQuery = {}) {
     params: {
       scope: params.scope || 'all',
       kbId: params.kbId || undefined,
+      docId: params.docId || undefined,
       source: params.source || 'all',
       status: params.status || 'all',
       q: params.q || undefined,

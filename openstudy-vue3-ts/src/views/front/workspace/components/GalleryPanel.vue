@@ -22,6 +22,11 @@
           {{ item.label }}
           <span>{{ item.count }}</span>
         </button>
+        <el-select v-model="docFilter" class="gallery-doc-filter" size="small" clearable
+          placeholder="按文档筛选" @change="() => reload()">
+          <el-option v-for="doc in documentOptions" :key="doc.docId"
+            :label="`${doc.fileName}（${doc.count}）`" :value="doc.docId" />
+        </el-select>
         <span class="gallery-toolbar__hint">
           已描述 {{ stats.described }} · 待补 {{ stats.pending }} · 描述只在点击时生成
         </span>
@@ -171,7 +176,6 @@
         </section>
 
         <div class="gallery-detail__actions">
-          <el-button plain @click="copyMarkdown(detail)">复制图片</el-button>
           <el-button v-if="detail.canLocate" plain @click="locate(detail)">定位原文</el-button>
           <el-button plain @click="useImage(detail, 'question')">插入题目</el-button>
           <el-button type="primary" plain @click="useImage(detail, 'note')">加入笔记</el-button>
@@ -236,6 +240,8 @@ const stats = reactive({ total: 0, described: 0, pending: 0, failed: 0, used: 0 
 const query = ref(props.searchQuery || '')
 const scope = ref<'current' | 'all'>('current')
 const sourceFilter = ref<'all' | 'document' | 'chat'>('all')
+const docFilter = ref<number | null>(null)
+const documentOptions = ref<Array<{ docId: number; fileName: string; count: number }>>([])
 const describing = ref(false)
 const describeJob = ref<any>(null)
 const detailVisible = ref(false)
@@ -272,6 +278,7 @@ const hasFilter = computed(
   () =>
     !!query.value.trim() ||
     sourceFilter.value !== 'all' ||
+    docFilter.value != null ||
     Object.values(props.filters || {}).some((value) => Array.isArray(value) && value.length > 0)
 )
 
@@ -318,6 +325,7 @@ function applyData(data: any) {
   if (Array.isArray(data?.sources) && data.sources.length) {
     sources.value = data.sources
   }
+  documentOptions.value = Array.isArray(data?.documents) ? data.documents : []
   emit('stats', { total: stats.total })
 }
 
@@ -327,6 +335,7 @@ async function reload(silent = false) {
     const res = await listGalleryAssets({
       scope: scope.value,
       kbId: scope.value === 'current' ? props.activeKbId : undefined,
+      docId: docFilter.value,
       source: sourceFilter.value,
       status: 'all',
       q: query.value.trim(),
@@ -346,11 +355,13 @@ async function reload(silent = false) {
 
 function setScope(next: 'current' | 'all') {
   scope.value = next
+  docFilter.value = null
   reload()
 }
 
 function setSource(source: 'all' | 'document' | 'chat') {
   sourceFilter.value = source
+  if (source === 'chat') docFilter.value = null
   reload()
 }
 
@@ -358,6 +369,7 @@ function clearFilters() {
   query.value = ''
   emit('update:searchQuery', '')
   sourceFilter.value = 'all'
+  docFilter.value = null
   reload()
 }
 
@@ -557,21 +569,13 @@ async function insertToWiki(page: any) {
   }
 }
 
-async function copyMarkdown(item: any) {
-  const alt = `${item.sourceName || '资料'}·${item.fileName || '图片'}`
-  const text = `![${alt}](${item.url})`
-  try {
-    await navigator.clipboard.writeText(text)
-    ElMessage.success('已复制图片 Markdown')
-  } catch {
-    ElMessage.warning('复制失败，请打开图片后手动复制')
-  }
-}
-
 watch(
   () => [props.activeKbId, props.activeKbName],
   () => {
-    if (scope.value === 'current') reload()
+    if (scope.value === 'current') {
+      docFilter.value = null
+      reload()
+    }
   }
 )
 
@@ -623,6 +627,10 @@ onBeforeUnmount(stopDescribePolling)
   flex-direction: column;
   gap: 11px;
   padding: 2px 2px 15px;
+}
+
+.gallery-doc-filter {
+  width: 190px;
 }
 
 .gallery-describe-btn {

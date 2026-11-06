@@ -2459,6 +2459,7 @@ async def asset_usage_summary(
 async def list_gallery_assets(
     scope: str = Query("all", pattern="^(all|current)$"),
     kbId: Optional[int] = Query(None, gt=0),
+    docId: Optional[int] = Query(None, gt=0),
     source: str = Query("all", pattern="^(all|document|chat)$"),
     status: str = Query("all", pattern="^(all|pending|processing|done|failed)$"),
     q: str = Query("", max_length=120),
@@ -2478,6 +2479,7 @@ async def list_gallery_assets(
                 _uid(current_user),
                 scope=scope,
                 kb_id=kbId,
+                doc_id=docId,
                 source=source,
                 status=status,
                 q=q,
