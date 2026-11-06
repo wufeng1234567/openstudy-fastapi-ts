@@ -695,6 +695,14 @@ async function openChatDocument(item: any) {
   if (!item?.docId) return
   docReaderVisible.value = true
   await nextTick()
+  const rawContent = String(item.content || '').replace(/\r\n/g, '\n')
+  const targetText = (
+    rawContent
+      .split('\n')
+      .map((line: string) => line.trim())
+      .find((line: string) => line.length >= 8 && !line.startsWith('#')) ||
+    rawContent.replace(/\s+/g, ' ').trim()
+  ).slice(0, 120)
   docReaderRef.value?.open(
     {
       docId: Number(item.docId),
@@ -704,7 +712,9 @@ async function openChatDocument(item: any) {
       chunkId: item.chunkId ?? undefined,
       chunkIndex: item.chunkIndex ?? undefined,
       chunkCount: undefined,
-      targetText: String(item.content || '').slice(0, 300)
+      targetText,
+      highlight: targetText,
+      temporaryHighlight: true
     }
   )
 }

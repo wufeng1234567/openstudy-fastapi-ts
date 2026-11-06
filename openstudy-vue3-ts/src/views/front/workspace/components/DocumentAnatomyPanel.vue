@@ -148,6 +148,8 @@ interface ReaderDoc {
 
 interface ReaderOptions {
   highlight?: string
+  /** 从对话引用跳转时使用：高亮 5 秒后自动消失。 */
+  temporaryHighlight?: boolean
   chunkId?: number
   chunkIndex?: number
   chunkCount?: number
@@ -188,6 +190,7 @@ const relatedVisible = ref(false)
 const relatedLoading = ref(false)
 const relatedPages = ref<any[]>([])
 const selectionInfo = ref<{ text: string; x: number; y: number; section: number } | null>(null)
+let searchMarkTimer: ReturnType<typeof setTimeout> | null = null
 const sectionEls = new Map<number, HTMLElement>()
 const stats = reactive({ contentLength: 0 })
 
@@ -357,9 +360,13 @@ function nextSearch() {
   scrollToOffset(searchOffsets.value[searchIndex.value])
 }
 
-function highlightSearch(query: string) {
+function highlightSearch(query: string, temporary = false) {
   const root = readerScroll.value
   if (!root) return
+  if (searchMarkTimer) {
+    clearTimeout(searchMarkTimer)
+    searchMarkTimer = null
+  }
   root.querySelectorAll('mark.reader-search-mark').forEach((mark) => {
     const parent = mark.parentNode
     if (!parent) return
@@ -381,11 +388,22 @@ function highlightSearch(query: string) {
       const match = current.splitText(found)
       const after = match.splitText(query.length)
       const mark = document.createElement('mark')
-      mark.className = 'reader-search-mark'
+      mark.className = `reader-search-mark${temporary ? ' reader-jump-highlight' : ''}`
       mark.textContent = match.nodeValue
       match.parentNode?.replaceChild(mark, match)
       current = after
     }
+  }
+  if (temporary) {
+    searchMarkTimer = setTimeout(() => {
+      root.querySelectorAll('mark.reader-jump-highlight').forEach((mark) => {
+        const parent = mark.parentNode
+        if (!parent) return
+        parent.replaceChild(document.createTextNode(mark.textContent || ''), mark)
+        ;(parent as Element).normalize?.()
+      })
+      searchMarkTimer = null
+    }, 5000)
   }
 }
 
@@ -551,7 +569,7 @@ async function load(docValue: ReaderDoc, opts: ReaderOptions = {}) {
     if (!located) restorePosition()
     if (opts.highlight && opts.highlight.trim()) {
       await nextTick()
-      highlightSearch(opts.highlight.trim())
+      highlightSearch(opts.highlight.trim(), opts.temporaryHighlight === true)
     }
   } catch (error: any) {
     ElMessage.error('读取资料失败：' + (error?.message || error))
@@ -574,6 +592,10 @@ function flattenTree(tree: any): any[] {
 
 onBeforeUnmount(() => {
   persistPosition()
+  if (searchMarkTimer) {
+    clearTimeout(searchMarkTimer)
+    searchMarkTimer = null
+  }
 })
 
 defineExpose({
@@ -635,5 +657,14 @@ defineExpose({
 .reader-related__item p { margin: 5px 0; color: #6b7280; font-size: 11px; line-height: 1.6; }
 .reader-related__item span { color: #9aa1af; font-size: 10px; }
 .reader-search-mark { padding: 0 2px; border-radius: 2px; background: #fff3c4; color: inherit; }
+.reader-search-mark.reader-jump-highlight {
+  background: #ffe58f;
+  box-shadow: 0 0 0 3px rgba(255, 214, 102, .28);
+  animation: reader-jump-flash .6s ease-in-out 8;
+}
+@keyframes reader-jump-flash {
+  0%, 100% { background: #fff3c4; }
+  50% { background: #ffd666; }
+}
 @media (max-width: 900px) { .reader-body { grid-template-columns: 1fr; } .reader-body.is-toc-collapsed { grid-template-columns: 1fr; } .reader-toc { max-height: 220px; } .reader-toc__list { max-height: 160px; } .reader-article { padding: 20px 20px 40px; } .reader-toolbar { align-items: flex-start; flex-direction: column; } .reader-toolbar__tools { flex-wrap: wrap; } }
 </style>
