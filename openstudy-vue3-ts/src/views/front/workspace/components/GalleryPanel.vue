@@ -22,7 +22,7 @@
           {{ item.label }}
           <span>{{ item.count }}</span>
         </button>
-        <el-select v-model="docFilter" class="gallery-doc-filter" size="small" clearable
+        <el-select v-model="docFilter" class="gallery-doc-filter" size="small" clearable filterable
           placeholder="按文档筛选" @change="() => reload()">
           <el-option v-for="doc in documentOptions" :key="doc.docId"
             :label="`${doc.fileName}（${doc.count}）`" :value="doc.docId" />

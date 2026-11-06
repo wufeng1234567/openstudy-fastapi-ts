@@ -269,6 +269,10 @@ async def list_gallery(
     scoped: List[RagImageAsset] = []
     document_options_map: Dict[int, Dict[str, Any]] = {}
     for row in rows:
+        # 先按资料夹范围过滤，再生成文档下拉选项；否则「当前资料夹」会列出
+        # 其他资料夹的文档，用户选中后必然得到 0 张图片。
+        if scope == "current" and kb_id is not None and int(row.kb_id or 0) != int(kb_id):
+            continue
         if row.source_type == "document":
             if row.doc_id not in active_doc_ids or str(row.url) not in active_doc_urls.get(int(row.doc_id), set()):
                 continue
@@ -286,8 +290,6 @@ async def list_gallery(
                 chat_id = 0
             if chat_id not in active_chat_ids:
                 continue
-        if scope == "current" and kb_id is not None and int(row.kb_id or 0) != int(kb_id):
-            continue
         if doc_id is not None and int(row.doc_id or 0) != int(doc_id):
             continue
         scoped.append(row)

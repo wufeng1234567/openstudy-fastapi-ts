@@ -80,7 +80,8 @@
               :class="{ 'is-selected': isMapSelected(node), 'is-hovered': mapHoveredId === String(node.id), 'is-dimmed': isMapNodeDimmed(node) }"
               :transform="`translate(${node.x} ${node.y})`"
               @mouseenter="mapHoveredId = String(node.id)" @mouseleave="mapHoveredId = null"
-              @pointerdown.stop="onMapNodeDown($event, node)" @pointerup.stop @click.stop="onMapNodeClick(node)">
+              @pointerdown.stop="onMapNodeDown($event, node)" @pointerup.stop="onMapNodeUp"
+              @click.stop="onMapNodeClick(node)">
               <circle class="kw-map-node__halo" :r="node.r + 8" />
               <circle v-if="isMapSelected(node)" class="kw-map-node__active" :r="node.r + 7" :stroke="node.color" />
               <circle class="kw-map-node__dot" :r="node.r + (isMapSelected(node) || mapHoveredId === String(node.id) ? 3 : 0)" :fill="node.color" />
@@ -592,6 +593,7 @@ function showMapLabel(node: any) {
 
 function selectMapNode(node: any) {
   stopMapAnimation()
+  stopMapNodeDrag()
   mapSelectedPageId.value = Number(node.pageId)
   // 点击节点后把它移到画布左侧中央，右侧留给详情抽屉（与 WeKnora 一致）。
   mapView.x = 330 - Number(node.x) * mapView.scale
@@ -626,6 +628,10 @@ function onMapNodeDown(event: PointerEvent, node: any) {
 
 function onMapNodeMove(event: PointerEvent) {
   if (!mapNodeDrag) return
+  if (detailVisible.value) {
+    stopMapNodeDrag()
+    return
+  }
   const dx = (event.clientX - mapNodeDrag.startX) / mapView.scale
   const dy = (event.clientY - mapNodeDrag.startY) / mapView.scale
   if (Math.abs(dx) + Math.abs(dy) > 4) mapNodeDrag.moved = true
