@@ -5,7 +5,7 @@
       :class="{ 'is-active': float.visible && float.groupKey === group.key }"
       :title="group.chunks.some((chunk: any) => chunk.docId) ? '点击查看文档原文' : group.docName"
       @mouseenter="showGroup(group, $event)" @focus="showGroup(group, $event)" @mouseleave="scheduleClose"
-      @click.stop="onChipClick(group, $event)">
+      @mousedown.stop @click.stop="onChipClick(group, $event)">
       <el-icon class="chat-source-chip__icon"><Document /></el-icon>
       <span class="chat-source-chip__name">{{ group.docName }}</span>
       <span v-if="group.chunks.length > 1" class="chat-source-chip__count">{{ group.chunks.length }}</span>
@@ -97,8 +97,23 @@ function showGroup(group: SourceGroup, event: Event) {
   const el = event.currentTarget as HTMLElement
   const rect = el.getBoundingClientRect()
   const width = 340
-  const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12))
-  const top = Math.min(rect.bottom + 8, window.innerHeight - 280)
+  const cardHeight = 280
+  const gap = 8
+  // 优先放右侧：不要把浮层盖在触发 chip 上，否则用户点不到跳转。
+  let left = rect.right + gap
+  let top = rect.top
+  if (left + width > window.innerWidth - 12) {
+    left = rect.left - width - gap
+  }
+  if (left < 12) {
+    // 左右都放不下时，放到 chip 上方/下方；保证不覆盖触发点。
+    left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12))
+    const above = rect.top - cardHeight - gap
+    top = above >= 12 ? above : rect.bottom + gap
+  }
+  if (top + cardHeight > window.innerHeight - 12) {
+    top = Math.max(12, window.innerHeight - cardHeight - 12)
+  }
   float.value = { visible: true, groupKey: group.key, docName: group.docName, chunks: group.chunks, top, left }
 }
 
