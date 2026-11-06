@@ -90,7 +90,7 @@
               :class="{ 'is-selected': isMapSelected(node), 'is-hovered': mapHoveredId === String(node.id), 'is-dimmed': isMapNodeDimmed(node) }"
               :transform="`translate(${node.x} ${node.y})`"
               @mouseenter="mapHoveredId = String(node.id)" @mouseleave="mapHoveredId = null"
-              @pointerdown.stop @pointerup.stop @click.stop="selectMapNode(node)">
+              @pointerdown.stop="onMapNodeDown($event, node)" @pointerup.stop @click.stop="onMapNodeClick(node)">
               <circle class="kw-map-node__halo" :r="node.r + 8" />
               <circle v-if="isMapSelected(node)" class="kw-map-node__active" :r="node.r + 7" :stroke="node.color" />
               <circle class="kw-map-node__dot" :r="node.r + (isMapSelected(node) || mapHoveredId === String(node.id) ? 3 : 0)" :fill="node.color" />
@@ -360,7 +360,10 @@ const mapGraph = ref<any>({ nodes: [], edges: [] })
 const mapView = reactive({ x: 0, y: 0, scale: 1 })
 const mapHoveredId = ref<string | null>(null)
 const mapSelectedPageId = ref<number | null>(null)
+const mapNodeOffsets = reactive<Record<string, { x: number; y: number }>>({})
 let mapDrag: any = null
+let mapNodeDrag: any = null
+let suppressMapNodeClick = false
 
 const filteredPages = computed(() => {
   const query = String(props.searchQuery || '').trim().toLowerCase()
@@ -430,11 +433,12 @@ const mapNodes = computed(() => {
       x = 500 + Math.cos(angle) * radius
       y = 320 + Math.sin(angle) * radius
     }
+    const offset = mapNodeOffsets[String(node.id)]
     return {
       ...node,
       pageType,
-      x,
-      y,
+      x: offset?.x ?? x,
+      y: offset?.y ?? y,
       // 与 WeKnora 的 graphNodeRadius 同一条公式：叶子小、枢纽大。
       r: Math.max(5, Math.min(20, 4 + Math.sqrt(Math.max(0, degree)) * 1.8)),
       color: pageTypeMeta(pageType).color
@@ -513,6 +517,62 @@ function selectMapNode(node: any) {
   mapView.x = 330 - Number(node.x) * mapView.scale
   mapView.y = 320 - Number(node.y) * mapView.scale
   openPage(Number(node.pageId))
+}
+
+function onMapNodeClick(node: any) {
+  if (suppressMapNodeClick || mapNodeDrag?.moved) {
+    suppressMapNodeClick = false
+    mapNodeDrag = null
+    return
+  }
+  selectMapNode(node)
+}
+
+function onMapNodeDown(event: PointerEvent, node: any) {
+  if (event.button !== 0) return
+  suppressMapNodeClick = false
+  mapNodeDrag = {
+    node,
+    nodeId: String(node.id),
+    startX: event.clientX,
+    startY: event.clientY,
+    origX: Number(node.x),
+    origY: Number(node.y),
+    moved: false
+  }
+  window.addEventListener('pointermove', onMapNodeMove)
+  window.addEventListener('pointerup', onMapNodeUp)
+}
+
+function onMapNodeMove(event: PointerEvent) {
+  if (!mapNodeDrag) return
+  const dx = (event.clientX - mapNodeDrag.startX) / mapView.scale
+  const dy = (event.clientY - mapNodeDrag.startY) / mapView.scale
+  if (Math.abs(dx) + Math.abs(dy) > 4) mapNodeDrag.moved = true
+  mapNodeOffsets[mapNodeDrag.nodeId] = {
+    x: Math.max(30, Math.min(970, mapNodeDrag.origX + dx)),
+    y: Math.max(30, Math.min(610, mapNodeDrag.origY + dy))
+  }
+}
+
+function onMapNodeUp() {
+  if (!mapNodeDrag) return
+  const state = mapNodeDrag
+  mapNodeDrag = null
+  window.removeEventListener('pointermove', onMapNodeMove)
+  window.removeEventListener('pointerup', onMapNodeUp)
+  if (state.moved) {
+    // 拖拽结束后浏览器仍会补发一次 click；暂时压掉，避免误打开详情。
+    suppressMapNodeClick = true
+    window.setTimeout(() => { suppressMapNodeClick = false }, 80)
+  }
+}
+
+function stopMapNodeDrag() {
+  mapNodeDrag = null
+  suppressMapNodeClick = false
+  window.removeEventListener('pointermove', onMapNodeMove)
+  window.removeEventListener('pointerup', onMapNodeUp)
 }
 
 function clusterOutline(points: any[]) {
@@ -717,9 +777,14 @@ async function build() {
   }
 }
 
+function resetMapNodeOffsets() {
+  Object.keys(mapNodeOffsets).forEach((key) => delete mapNodeOffsets[key])
+}
+
 async function switchMap() {
   if (!pages.value.length) return
   view.value = 'map'
+  resetMapNodeOffsets()
   try {
     const res = await getWikiGraph(Number(props.activeKbId))
     if (res.code === 200) mapGraph.value = res.data || { nodes: [], edges: [] }
@@ -984,6 +1049,8 @@ function onMapUp() {
 
 watch(() => props.activeKbId, async () => {
   stopBuildPolling()
+  stopMapNodeDrag()
+  resetMapNodeOffsets()
   buildJob.value = null
   await reload()
   await resumeBuildJob()
@@ -992,7 +1059,10 @@ onMounted(async () => {
   await reload()
   await resumeBuildJob()
 })
-onBeforeUnmount(stopBuildPolling)
+onBeforeUnmount(() => {
+  stopBuildPolling()
+  stopMapNodeDrag()
+})
 </script>
 
 <style scoped>
@@ -1066,7 +1136,8 @@ onBeforeUnmount(stopBuildPolling)
 .kw-map-edge.is-mention { stroke: #77bfae; }
 .kw-map-edge.is-active { stroke: #7e94bf; stroke-width: 1.5; opacity: 0.85; }
 .kw-map-edge.is-dimmed { opacity: 0.08; }
-.kw-map-node { cursor: pointer; transition: opacity 0.18s ease; }
+.kw-map-node { cursor: grab; transition: opacity 0.18s ease; }
+.kw-map-node:active { cursor: grabbing; }
 .kw-map-node.is-dimmed { opacity: 0.2; }
 .kw-map-node__halo { fill: rgba(255, 255, 255, 0.86); }
 .kw-map-node__dot { stroke: #fff; stroke-width: 1.5; transition: r 0.2s ease, stroke-width 0.2s ease, opacity 0.2s ease; }
