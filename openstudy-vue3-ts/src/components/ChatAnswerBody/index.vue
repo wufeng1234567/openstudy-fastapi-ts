@@ -27,37 +27,10 @@ function trimBlock(value: string) {
   return value.replace(/^\s+|\s+$/g, '')
 }
 
-function splitBlocks(content: string): string[] {
-  const text = String(content || '')
-  if (!text.trim()) return []
-  const blocks: string[] = []
-  let current: string[] = []
-  let inFence = false
-  const flush = () => {
-    const value = trimBlock(current.join('\n'))
-    if (value) blocks.push(value)
-    current = []
-  }
-  for (const line of text.split('\n')) {
-    if (/^\s*```/.test(line)) {
-      inFence = !inFence
-      current.push(line)
-      continue
-    }
-    if (!inFence && !line.trim()) {
-      flush()
-      continue
-    }
-    current.push(line)
-  }
-  flush()
-  return blocks
-}
-
-/** 顶层章节标题（2. / 六、 / ##），用来把回答切成「一个知识点段落」。 */
-function isTopHeading(content: string): boolean {
-  const text = content.trim()
-  if (!text || text.includes('\n')) return false
+/** 顶层大点标题：一、 / 二、 / 2. / 2、 / ## 标题。 */
+function isTopHeadingLine(line: string): boolean {
+  const text = line.trim()
+  if (!text) return false
   return (
     /^#{1,2}\s+/.test(text) ||
     /^[一二三四五六七八九十百]+[、.]/.test(text) ||
@@ -65,45 +38,41 @@ function isTopHeading(content: string): boolean {
   )
 }
 
-/** 标题后面如果紧跟正文，视为同一节的标题 + 段落。 */
-function splitLeadingHeading(block: string): { heading: string; body: string } | null {
-  const lines = block.split('\n')
-  const first = lines[0].trim()
-  if (!isTopHeading(first)) return null
-  return { heading: first, body: lines.slice(1).join('\n').trim() }
-}
-
-function buildGroups(blocks: string[]): Group[] {
+/**
+ * 按「大点」切组：一个大点标题下面的 2.1/2.2/2.3 及所有列表都算同一段，
+ * 只在整段结尾挂一个来源索引；没有标题的回答才按空行分普通段落。
+ */
+function buildGroups(content: string): Group[] {
+  const text = String(content || '')
+  if (!text.trim()) return []
   const groups: Group[] = []
   let current: string[] = []
   let currentSection = false
+  let inFence = false
   const flush = () => {
-    const content = trimBlock(current.join('\n'))
-    if (content) groups.push({ content, section: currentSection })
+    const value = trimBlock(current.join('\n'))
+    if (value) groups.push({ content: value, section: currentSection })
     current = []
     currentSection = false
   }
-  for (const block of blocks) {
-    const leading = splitLeadingHeading(block)
-    if (leading) {
+  for (const line of text.split('\n')) {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence
+      current.push(line)
+      continue
+    }
+    if (!inFence && isTopHeadingLine(line)) {
       flush()
-      current = [leading.heading]
-      if (leading.body) current.push(leading.body)
+      current = [line]
       currentSection = true
       continue
     }
-    if (isTopHeading(block)) {
+    // 进入大点后，空行和其后的 2.1/2.2/2.3 都留在同一个段落里。
+    if (!currentSection && !inFence && !line.trim()) {
       flush()
-      current = [block]
-      currentSection = true
       continue
     }
-    if (currentSection) {
-      current.push(block)
-    } else {
-      flush()
-      groups.push({ content: block, section: false })
-    }
+    current.push(line)
   }
   flush()
   return groups
@@ -163,7 +132,7 @@ function isFollowUpBlock(content: string): boolean {
 }
 
 const blocks = computed<Block[]>(() =>
-  buildGroups(splitBlocks(props.content)).map((group) => ({
+  buildGroups(props.content).map((group) => ({
     content: group.content,
     section: group.section,
     references: isFollowUpBlock(group.content) ? [] : pickReferences(group.content)
