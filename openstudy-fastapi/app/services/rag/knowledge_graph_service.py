@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,11 +26,38 @@ from app.services.ai.base_client import ChatMessage, TextBlock
 from app.services.ai.db_config import chat_with_config
 from app.services.rag.hybrid_search import ChunkHit
 
-ENTITY_TYPES = ["概念", "定理/公式", "方法", "人物", "机构", "事件", "作品", "其他"]
-RELATION_TYPES = ["包含", "属于", "定义", "推导", "应用", "前置", "对比", "相关", "产生", "属于领域"]
-MAX_ENTITIES_PER_DOC = 40
-MAX_RELATIONS_PER_DOC = 40
-MAX_CHUNKS_PER_DOC = 12
+ENTITY_TYPES = [
+    "概念",
+    "定理/公式",
+    "方法",
+    "人物",
+    "机构",
+    "事件",
+    "作品",
+    "术语",
+    "变量/符号",
+    "其他",
+]
+RELATION_TYPES = [
+    "包含",
+    "属于",
+    "定义",
+    "推导",
+    "应用",
+    "前置",
+    "对比",
+    "相关",
+    "产生",
+    "属于领域",
+    "组成",
+    "影响",
+]
+MAX_ENTITIES_PER_DOC = 180
+MAX_RELATIONS_PER_DOC = 260
+MAX_CHUNKS_PER_DOC = 60
+MAX_CHUNKS_PER_BATCH = 8
+MAX_ENTITIES_PER_BATCH = 80
+MAX_RELATIONS_PER_BATCH = 120
 
 
 def _norm_name(value: Any) -> str:
@@ -92,24 +119,52 @@ def _parse_json_payload(raw: str) -> Dict[str, Any]:
     return payload
 
 
-def _prompt(doc_name: str, context: str) -> str:
+def _prompt(
+    doc_name: str,
+    context: str,
+    *,
+    batch_index: int = 1,
+    batch_total: int = 1,
+) -> str:
+    """首次抽取提示词：目标是把资料拆成可成页的知识网络，而不是只摘几个关键词。"""
     return (
-        "你是学习资料的知识图谱抽取器。请从给定资料片段中抽取实体和实体之间的关系。\n"
+        "你是学习资料的知识图谱抽取器。目标：把一份资料拆成**可成页、可复习、可互相跳转**的"
+        "知识网络，尽量覆盖这一批次里的所有知识点，不要只抽开头几个词。\n"
         "只输出一个 JSON 对象，不要 Markdown，不要解释。\n\n"
-        "实体类型只能从以下列表选：'概念','定理/公式','方法','人物','机构','事件','作品','其他'。\n"
-        "关系必须是资料中明确出现的，不要靠常识补关系；关系末端必须是同一份 JSON 里的实体。\n"
-        "关系类型优先选最具体的一种：'属于','定义','推导','应用','前置','对比','产生','属于领域'；"
+        "实体粒度：\n"
+        "- 概念/术语/定理/公式/方法：能被单独解释、能出题、能复习的知识点；\n"
+        "- 人物/机构/事件/作品：资料里明确出现且值得单独成页的对象；\n"
+        "- 变量/符号：有明确含义、反复出现的数学符号；\n"
+        "- 不要把整段话、章节标题、泛化词（如“内容”“问题”“资料”）当成实体。\n\n"
+        "实体类型只能从以下列表选：'概念','定理/公式','方法','人物','机构','事件','作品','术语','变量/符号','其他'。\n"
+        "实体字段：name=资料中的标准名称；type=类型；description=用资料原话压缩成一句解释；"
+        "aliases=资料里明确出现过的同义名/缩写（没有就空数组）。\n"
+        "关系必须是资料中明确出现的，不要靠常识补关系；source/target 必须是同一份 JSON 里的实体名。\n"
+        "关系类型优先选最具体的一种：'属于','定义','推导','应用','前置','对比','产生','属于领域','组成','影响'；"
         "只有真正的整体—部分结构才用'包含'，不要把每一条关系都写成'包含'。\n"
         "输出格式（示例只示意字段，不要照抄示例内容）：\n"
-        '{"entities":[{"name":"实体名","type":"概念","description":"资料中的简短解释"}],'
+        '{"entities":[{"name":"实体名","type":"概念","description":"资料中的简短解释","aliases":["同义名"]}],'
         '"relations":[{"source":"实体名1","target":"实体名2","type":"前置","description":"关系的原文依据","strength":8},'
         '{"source":"实体名1","target":"实体名3","type":"包含","description":"整体与部分关系","strength":6}]}\n'
-        "strength 取值 1-10，越直接越强。若没有实体/关系，返回空数组。\n\n"
+        "strength 取值 1-10，越直接越强。若本批没有实体/关系，返回空数组。\n"
+        f"当前是第 {batch_index}/{batch_total} 批，只处理本批片段，不要重复其他批次的内容。\n\n"
         f"资料名：{doc_name}\n资料片段：\n{context}"
     )
 
 
+def _count_mentions(name: str, chunks: Sequence[RagDocumentChunk]) -> int:
+    """统计实体名在正文中的出现次数，用于图节点大小，不做模糊同义词合并。"""
+    needle = _norm_name(name)
+    if not needle:
+        return 1
+    total = 0
+    for chunk in chunks:
+        total += _norm_name(chunk.content).count(needle)
+    return max(1, total)
+
+
 async def _document_chunks(db: AsyncSession, doc: RagDocument) -> List[RagDocumentChunk]:
+    """取文档分块；超过上限时按全文均匀抽样，避免只读开头几章。"""
     rows = (
         await db.execute(
             select(RagDocumentChunk)
@@ -118,10 +173,13 @@ async def _document_chunks(db: AsyncSession, doc: RagDocument) -> List[RagDocume
                 RagDocumentChunk.index_version == int(getattr(doc, "index_version", 1) or 1),
             )
             .order_by(RagDocumentChunk.chunk_index.asc())
-            .limit(MAX_CHUNKS_PER_DOC)
         )
     ).scalars().all()
     if rows:
+        if len(rows) > MAX_CHUNKS_PER_DOC:
+            step = len(rows) / float(MAX_CHUNKS_PER_DOC)
+            indexes = sorted({min(len(rows) - 1, int(i * step)) for i in range(MAX_CHUNKS_PER_DOC)})
+            rows = [rows[index] for index in indexes]
         return list(rows)
     # 极端情况下 chunk 还没生成：退化为按原文切段，不伪造分块 ID。
     raw = str(doc.raw_content or "")
@@ -139,64 +197,146 @@ async def _document_chunks(db: AsyncSession, doc: RagDocument) -> List[RagDocume
     ]
 
 
-async def _extract_doc(
+async def _extract_batch(
     db: AsyncSession,
     user_id: int,
     doc: RagDocument,
-    chunks: List[RagDocumentChunk],
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    chunks: Sequence[RagDocumentChunk],
+    *,
+    batch_index: int,
+    batch_total: int,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     context = "\n\n".join(
         f"[片段 {int(c.chunk_index) + 1}] {str(c.content or '')[:1400]}"
         for c in chunks
         if str(c.content or "").strip()
     )
     if not context.strip():
-        return [], [], []
+        return [], []
     messages = [
         ChatMessage(role="system", content="你只输出严格 JSON，不输出客套话或 Markdown 代码围栏。"),
         ChatMessage(
             role="user",
-            content=[TextBlock(type="text", text=_prompt(doc.file_name or "未命名资料", context))],
+            content=[
+                TextBlock(
+                    type="text",
+                    text=_prompt(
+                        doc.file_name or "未命名资料",
+                        context,
+                        batch_index=batch_index,
+                        batch_total=batch_total,
+                    ),
+                )
+            ],
         ),
     ]
     response = await chat_with_config(
         db,
         messages,
         temperature=0.15,
-        max_tokens=3500,
+        max_tokens=4096,
         user_id=int(user_id),
     )
     payload = _parse_json_payload(response.content or "")
     raw_entities = payload.get("entities") or payload.get("nodes") or []
+    raw_concepts = payload.get("concepts") or []
+    if isinstance(raw_concepts, list):
+        for concept in raw_concepts:
+            if isinstance(concept, dict):
+                item = dict(concept)
+                item.setdefault("type", "概念")
+                raw_entities.append(item)
     raw_relations = payload.get("relations") or payload.get("edges") or []
-    entities: List[Dict[str, Any]] = []
-    seen = set()
+    return (
+        [item for item in raw_entities if isinstance(item, dict)][:MAX_ENTITIES_PER_BATCH],
+        [item for item in raw_relations if isinstance(item, dict)][:MAX_RELATIONS_PER_BATCH],
+    )
+
+
+async def _extract_doc(
+    db: AsyncSession,
+    user_id: int,
+    doc: RagDocument,
+    chunks: List[RagDocumentChunk],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """按批抽取一篇文档，再合并实体/关系，避免长文档只读前 12 个 chunk。"""
+    if not chunks:
+        return [], [], []
+    batch_total = max(1, (len(chunks) + MAX_CHUNKS_PER_BATCH - 1) // MAX_CHUNKS_PER_BATCH)
+    raw_entities: List[Dict[str, Any]] = []
+    raw_relations: List[Dict[str, Any]] = []
+    errors: List[Dict[str, Any]] = []
+    for start in range(0, len(chunks), MAX_CHUNKS_PER_BATCH):
+        batch = chunks[start : start + MAX_CHUNKS_PER_BATCH]
+        batch_index = start // MAX_CHUNKS_PER_BATCH + 1
+        try:
+            entities, relations = await _extract_batch(
+                db,
+                int(user_id),
+                doc,
+                batch,
+                batch_index=batch_index,
+                batch_total=batch_total,
+            )
+            raw_entities.extend(entities)
+            raw_relations.extend(relations)
+        except Exception as exc:  # noqa: BLE001 - 单批失败不丢其他批次
+            errors.append(
+                {
+                    "batch": batch_index,
+                    "error": str(exc)[:300],
+                    "chunkIndexes": [int(c.chunk_index) for c in batch],
+                }
+            )
+
+    # 合并同一篇文档里跨批次的实体；只用 name/canonical key 做名称级合并。
+    entity_by_key: Dict[str, Dict[str, Any]] = {}
     for item in raw_entities:
-        if not isinstance(item, dict):
-            continue
         name = _clean(item.get("name") or item.get("title"), 120)
-        if not name or _norm_name(name) in seen:
+        if not name:
             continue
-        seen.add(_norm_name(name))
+        key = _canonical_key(name)
         kind = _clean(item.get("type"), 30) or "概念"
         if kind not in ENTITY_TYPES:
             kind = "概念"
-        entities.append(
-            {
+        aliases = []
+        raw_aliases = item.get("aliases") or item.get("alias") or []
+        if isinstance(raw_aliases, str):
+            raw_aliases = [raw_aliases]
+        if isinstance(raw_aliases, list):
+            for alias in raw_aliases:
+                alias = _clean(alias, 80)
+                if alias and alias != name and alias not in aliases:
+                    aliases.append(alias)
+        row = entity_by_key.get(key)
+        if row is None:
+            entity_by_key[key] = {
                 "name": name,
                 "type": kind,
                 "description": _clean(item.get("description"), 800),
+                "aliases": aliases,
                 "doc_id": int(doc.id),
                 "chunk_ids": _matching_chunk_ids(name, chunks),
+                "mention_count": _count_mentions(name, chunks),
             }
-        )
-        if len(entities) >= MAX_ENTITIES_PER_DOC:
-            break
-    names = {_norm_name(e["name"]): e for e in entities}
+        else:
+            if len(str(item.get("description") or "")) > len(str(row.get("description") or "")):
+                row["description"] = _clean(item.get("description"), 800)
+            row["aliases"] = list(dict.fromkeys([*(row.get("aliases") or []), *aliases]))[:8]
+            row["chunk_ids"] = list(
+                dict.fromkeys([*(row.get("chunk_ids") or []), *_matching_chunk_ids(name, chunks)])
+            )
+            row["mention_count"] = int(row.get("mention_count") or 1) + _count_mentions(name, chunks)
+
+    entities = list(entity_by_key.values())[:MAX_ENTITIES_PER_DOC]
+    names: Dict[str, Dict[str, Any]] = {}
+    for entity in entities:
+        names[_norm_name(entity["name"])] = entity
+        for alias in entity.get("aliases") or []:
+            names.setdefault(_norm_name(alias), entity)
+
     relations: List[Dict[str, Any]] = []
     for item in raw_relations:
-        if not isinstance(item, dict):
-            continue
         source_name = _clean(item.get("source"), 120)
         target_name = _clean(item.get("target"), 120)
         source = names.get(_norm_name(source_name))
@@ -226,7 +366,7 @@ async def _extract_doc(
         )
         if len(relations) >= MAX_RELATIONS_PER_DOC:
             break
-    return entities, relations, []
+    return entities, relations, errors
 
 
 def _merge_unique(existing: Optional[list], new_values: Iterable[Any]) -> list:
@@ -265,6 +405,7 @@ async def merge_duplicate_entities(db: AsyncSession, user_id: int, kb_id: int) -
                 continue
             keeper.doc_ids = _merge_unique(keeper.doc_ids, duplicate.doc_ids or [])
             keeper.chunk_ids = _merge_unique(keeper.chunk_ids, duplicate.chunk_ids or [])
+            keeper.aliases = _merge_unique(keeper.aliases, duplicate.aliases or [])
             keeper.mention_count = int(keeper.mention_count or 0) + int(duplicate.mention_count or 0)
             if not keeper.description or len(str(duplicate.description or "")) > len(str(keeper.description or "")):
                 keeper.description = duplicate.description or keeper.description
@@ -332,7 +473,11 @@ async def build_graph(
     docs = (
         await db.execute(
             select(RagDocument)
-            .where(RagDocument.user_id == int(user_id), RagDocument.kb_id == int(kb_id))
+            .where(
+                RagDocument.user_id == int(user_id),
+                RagDocument.kb_id == int(kb_id),
+                RagDocument.disabled == 0,
+            )
             .order_by(RagDocument.create_time.desc(), RagDocument.id.desc())
             .limit(100)
         )
@@ -370,7 +515,16 @@ async def build_graph(
         if not chunks:
             continue
         try:
-            entities, relations, _ = await _extract_doc(db, user_id, doc, chunks)
+            entities, relations, batch_errors = await _extract_doc(db, user_id, doc, chunks)
+            for batch_error in batch_errors:
+                errors.append(
+                    {
+                        "docId": int(doc.id),
+                        "fileName": doc.file_name,
+                        "batch": batch_error.get("batch"),
+                        "error": batch_error.get("error") or "本批抽取失败",
+                    }
+                )
         except Exception as exc:  # noqa: BLE001 - 单文档失败不拖垮整个资料夹
             errors.append({"docId": int(doc.id), "fileName": doc.file_name, "error": str(exc)[:300]})
             continue
@@ -388,21 +542,23 @@ async def build_graph(
                     normalized_name=norm,
                     type=item["type"],
                     description=item["description"],
+                    aliases=list(item.get("aliases") or []),
                     doc_ids=[int(doc.id)],
                     chunk_ids=list(item["chunk_ids"]),
-                    mention_count=1,
+                    mention_count=max(1, int(item.get("mention_count") or 1)),
                 )
                 db.add(row)
                 await db.flush()
                 entity_by_norm[key] = row
             else:
-                if not row.description and item["description"]:
+                if item["description"] and len(str(item["description"])) > len(str(row.description or "")):
                     row.description = item["description"]
                 if len(norm) < len(_norm_name(row.name)):
                     row.name = item["name"]
+                row.aliases = _merge_unique(row.aliases, item.get("aliases") or [])
                 row.doc_ids = _merge_unique(row.doc_ids, [int(doc.id)])
                 row.chunk_ids = _merge_unique(row.chunk_ids, item["chunk_ids"])
-                row.mention_count = int(row.mention_count or 0) + 1
+                row.mention_count = int(row.mention_count or 0) + max(1, int(item.get("mention_count") or 1))
                 row.update_time = datetime.now()
             doc_entity_map[norm] = row
             doc_entity_map[key] = row
@@ -453,7 +609,7 @@ async def build_graph(
         "entities": extracted_entities,
         "relations": extracted_relations,
         "errors": errors,
-        "skippedDocs": len(docs) - processed_docs - len(errors),
+        "skippedDocs": max(0, len(docs) - processed_docs - len({int(e["docId"]) for e in errors if e.get("docId")})),
     }
 
 
@@ -538,6 +694,7 @@ async def list_graph(
                 "name": entity.name,
                 "type": entity.type,
                 "description": entity.description or "",
+                "aliases": entity.aliases or [],
                 "mentionCount": int(entity.mention_count or 1),
                 "degree": degree.get(int(entity.id), 0),
                 "docIds": entity.doc_ids or [],
@@ -636,6 +793,7 @@ async def get_entity_detail(db: AsyncSession, user_id: int, entity_id: int) -> D
             "name": entity.name,
             "type": entity.type,
             "description": entity.description or "",
+            "aliases": entity.aliases or [],
             "mentionCount": int(entity.mention_count or 1),
             "docIds": entity.doc_ids or [],
             "chunkIds": entity.chunk_ids or [],

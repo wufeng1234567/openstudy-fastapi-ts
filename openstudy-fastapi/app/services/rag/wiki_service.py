@@ -28,6 +28,14 @@ from app.services.rag.embedding import embed_texts
 from app.services.rag.hybrid_search import ChunkHit
 from app.services.rag.rag_write_service import get_knowledge_base, sanitize_text
 from app.services.rag.tokenizer import query_tokens, tokenize
+from app.services.rag.wiki_link_service import (
+    WIKI_TOKEN_RE,
+    extract_wiki_links,
+    linkify_content,
+    normalize_wiki_tokens,
+    page_text_blocks,
+    strip_wiki_tokens,
+)
 
 #: 每个主题页最多取多少条来源 chunk；足够形成要点，又不会撑爆模型上下文。
 MAX_SOURCE_CHUNKS = 12
@@ -47,6 +55,49 @@ _SOURCE_TYPES = {"包含", "属于", "定义", "推导", "应用", "前置", "�
 
 #: 这些关系更像“目录/结构”，不应作为页面里最重要的“洞察”反复出现。
 _GENERIC_RELATIONS = {"包含", "属于", "定义", "相关"}
+
+#: 实体类型 → 主题页类型。前端按 pageType 上色（摘要/实体/概念/综合/对比）。
+_ENTITY_PAGE_TYPES = {
+    "人物": "entity",
+    "机构": "entity",
+    "事件": "entity",
+    "作品": "entity",
+    "其他": "entity",
+    "概念": "concept",
+    "定理/公式": "concept",
+    "方法": "concept",
+    "术语": "concept",
+    "变量/符号": "concept",
+}
+
+
+def _page_type_for_entity(entity: RagGraphEntity, degree: int, relations: Sequence[dict]) -> str:
+    """按实体类型 + 图上位置生成 Wiki 页面类型，供图谱颜色区分。"""
+    base = _ENTITY_PAGE_TYPES.get(str(entity.type or ""), "concept")
+    contrast_count = sum(1 for item in relations if item.get("relationType") == "对比")
+    if contrast_count >= 2:
+        return "comparison"
+    # 枢纽页不是“更好的概念页”，而是把多个主题串起来的综合页。
+    if int(degree or 0) >= 8:
+        return "synthesis"
+    return base
+
+
+def _clean_aliases(value: Any, limit: int = 8) -> list[str]:
+    """清洗模型给出的同义名：去重、去空白、限制长度，不把整段解释当别名。"""
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        text = _clean(item, 80)
+        if not text or len(text) < 2 or text in seen:
+            continue
+        seen.add(text)
+        result.append(text)
+        if len(result) >= limit:
+            break
+    return result
 
 
 def _clean(value: Any, limit: int = 4000) -> str:
@@ -157,7 +208,12 @@ def _validate_page_payload(
         if key in allowed_names and allowed_names[key] not in related:
             related.append(allowed_names[key])
 
-    return {"summary": summary, "sections": sections, "relatedTitles": related}
+    return {
+        "summary": summary,
+        "sections": sections,
+        "relatedTitles": related,
+        "aliases": _clean_aliases(payload.get("aliases") or payload.get("alias") or []),
+    }
 
 
 def _render_markdown(summary: str, sections: Sequence[Dict[str, Any]]) -> str:
@@ -177,6 +233,7 @@ def _build_prompt(
     relations: Sequence[Dict[str, Any]],
     chunks: Sequence[RagDocumentChunk],
     doc_names: Dict[int, str],
+    linkable_titles: Sequence[str] = (),
 ) -> str:
     context_parts = []
     for chunk in chunks:
@@ -193,6 +250,12 @@ def _build_prompt(
             f"{entity.name} {direction} {item.get('relationType', '相关')} {item.get('name', '')}"
         )
     relation_text = "\n".join(relation_lines) or "（暂时没有抽到实体关系）"
+    linkable = [
+        _display_title(item)
+        for item in linkable_titles
+        if _display_title(item) and _normalize_title(item) != _normalize_title(entity.name)
+    ][:80]
+    linkable_text = "、".join(dict.fromkeys(linkable)) or "（暂无其他主题页）"
 
     return (
         "你是 OpenStudy 的课程知识编辑。请把给定资料整理成一篇可读的知识主题页。\n"
@@ -201,15 +264,19 @@ def _build_prompt(
         "2. 每个 section 必须给出至少一个 sourceChunkIds，且只能从提供的 [chunk:数字] 里选。\n"
         "3. 资料不足以支撑的章节直接不写，不要写“补充证据”“据推测”等话。\n"
         "4. 不要把所有关系都罗列出来；只写对学习这个主题有帮助的内容。\n"
-        "5. 输出严格 JSON，不要 Markdown 代码围栏。\n\n"
+        "5. 正文里凡是提到「可链接主题页」里的名称或同义名，必须写成 [[主题页标题|正文原词]]，例如 [[记忆机制|记忆机制]]；只能使用候选列表里的标题，不能链接本页自己，同一目标只链接第一次出现。\n"
+        "6. aliases 只写资料里明确出现过的同义名/缩写，没有就返回空数组。\n"
+        "7. 输出严格 JSON，不要 Markdown 代码围栏。\n\n"
         "输出格式：\n"
         '{"summary":"一句话解释这个主题",'
-        '"sections":[{"heading":"核心要点","body":"用短段落或列表写清楚",'
+        '"aliases":["同义名或缩写"],'
+        '"sections":[{"heading":"核心要点","body":"用短段落或列表写清楚，必要时带 [[主题页标题|原词]]",'
         '"sourceChunkIds":[123]}],'
         '"relatedTitles":["只能是相邻实体名"]}\n\n'
         f"资料夹：{kb_name}\n"
         f"主题：{entity.name}（类型：{entity.type}）\n"
         f"已有描述：{_clean(entity.description, 500) or '（无）'}\n"
+        f"可链接主题页：{linkable_text}\n"
         f"相邻实体：\n{relation_text}\n\n"
         f"资料片段：\n{context}"
     )
@@ -337,7 +404,7 @@ async def _replace_wiki_chunks(
     """重建页面小节向量；失败只影响 Wiki RAG，不让页面生成失败。"""
     await db.execute(delete(RagWikiChunk).where(RagWikiChunk.page_id == int(page.id)))
     texts = [
-        f"{section.get('heading', '')}\n{section.get('body', '')}".strip()
+        f"{section.get('heading', '')}\n{strip_wiki_tokens(str(section.get('body', '')))}".strip()
         for section in sections
         if str(section.get("body") or "").strip()
     ]
@@ -382,26 +449,25 @@ def _link_type_for_relation(relation_type: str) -> str:
 async def _rebuild_links(
     db: AsyncSession, user_id: int, kb_id: int, pages: Sequence[RagWikiPage]
 ) -> int:
-    """从实体关系推导页面级导航边；只连接已经存在的页面。"""
+    """重建页面级导航边：实体关系 + 正文里真实存在的页面内链。
+
+    实体关系边回答“这两个主题为什么相关”；内链边回答“用户从哪一页能点到
+    哪一页”。两者分开建，内链边在每次页面保存/批量更新后整体重建，避免旧链接
+    残留在图上。
+    """
     if not pages:
         return 0
-    entity_to_page: dict[int, RagWikiPage] = {}
-    for page in pages:
-        for entity_id in page.entity_ids or []:
-            try:
-                entity_to_page[int(entity_id)] = page
-            except (TypeError, ValueError):
-                continue
-    if len(entity_to_page) < 2:
-        return 0
-    relations = (
-        await db.execute(
-            select(RagGraphRelation).where(
-                RagGraphRelation.user_id == int(user_id),
-                RagGraphRelation.kb_id == int(kb_id),
-            )
+    page_by_id = {int(page.id): page for page in pages}
+    page_ids = set(page_by_id)
+    # 只清理正文内链产生的边，不动实体关系推导出的页面边。
+    await db.execute(
+        delete(RagWikiPageLink).where(
+            RagWikiPageLink.user_id == int(user_id),
+            RagWikiPageLink.kb_id == int(kb_id),
+            RagWikiPageLink.link_type == "mention",
+            RagWikiPageLink.source == "mention",
         )
-    ).scalars().all()
+    )
     existing = {
         (int(row.from_page_id), int(row.to_page_id), row.link_type)
         for row in (
@@ -414,30 +480,228 @@ async def _rebuild_links(
         ).scalars().all()
     }
     created = 0
-    for rel in relations:
-        source_page = entity_to_page.get(int(rel.source_id))
-        target_page = entity_to_page.get(int(rel.target_id))
-        if not source_page or not target_page or source_page.id == target_page.id:
-            continue
-        link_type = _link_type_for_relation(str(rel.relation_type or "相关"))
-        key = (int(source_page.id), int(target_page.id), link_type)
-        reverse_key = (int(target_page.id), int(source_page.id), link_type)
-        if key in existing or reverse_key in existing:
-            continue
+
+    def add_link(
+        from_page_id: int,
+        to_page_id: int,
+        link_type: str,
+        weight: int,
+        source: str,
+        *,
+        skip_reverse: bool = False,
+    ) -> None:
+        nonlocal created
+        if from_page_id == to_page_id:
+            return
+        key = (int(from_page_id), int(to_page_id), str(link_type))
+        if key in existing:
+            return
+        if skip_reverse and (int(to_page_id), int(from_page_id), str(link_type)) in existing:
+            return
         db.add(
             RagWikiPageLink(
                 user_id=int(user_id),
                 kb_id=int(kb_id),
-                from_page_id=int(source_page.id),
-                to_page_id=int(target_page.id),
-                link_type=link_type,
-                weight=max(1, min(10, int(rel.strength or 5))),
-                source="graph",
+                from_page_id=int(from_page_id),
+                to_page_id=int(to_page_id),
+                link_type=str(link_type),
+                weight=max(1, min(10, int(weight or 5))),
+                source=str(source),
             )
         )
         existing.add(key)
         created += 1
+
+    entity_to_page: dict[int, RagWikiPage] = {}
+    for page in pages:
+        for entity_id in page.entity_ids or []:
+            try:
+                entity_to_page[int(entity_id)] = page
+            except (TypeError, ValueError):
+                continue
+    if len(entity_to_page) >= 2:
+        relations = (
+            await db.execute(
+                select(RagGraphRelation).where(
+                    RagGraphRelation.user_id == int(user_id),
+                    RagGraphRelation.kb_id == int(kb_id),
+                )
+            )
+        ).scalars().all()
+        for rel in relations:
+            source_page = entity_to_page.get(int(rel.source_id))
+            target_page = entity_to_page.get(int(rel.target_id))
+            if not source_page or not target_page:
+                continue
+            add_link(
+                int(source_page.id),
+                int(target_page.id),
+                _link_type_for_relation(str(rel.relation_type or "相关")),
+                int(rel.strength or 5),
+                "graph",
+                skip_reverse=True,
+            )
+
+    # 正文内链：[[page:目标页|显示词]]，只连接仍在当前资料夹里的页面。
+    for page in pages:
+        for block in page_text_blocks(str(page.summary or ""), page.sections or []):
+            for item in extract_wiki_links(str(block.get("text") or ""), int(block.get("sectionIndex", -1))):
+                target_id = int(item.get("pageId") or 0)
+                if target_id in page_ids:
+                    add_link(int(page.id), target_id, "mention", 5, "mention")
     return created
+
+
+async def linkify_wiki_pages(
+    db: AsyncSession,
+    user_id: int,
+    kb_id: int,
+    *,
+    add_missing: bool = True,
+) -> dict:
+    """重建 Wiki 页面内链。
+
+    - 先把正文里的 ``[[标题|原词]]`` 归一化成 ``[[page:id|原词]]``；
+    - 再由页面标题、aliases、实体名做最长匹配，给每个页面补第一条安全链接；
+    - 只改正文，不重算向量：`RagWikiChunk` 索引的是去掉链接标记后的文字，
+      链接标记不改变锚文本，所以向量内容等价。
+    """
+    pages = (
+        await db.execute(
+            select(RagWikiPage).where(
+                RagWikiPage.user_id == int(user_id),
+                RagWikiPage.kb_id == int(kb_id),
+                RagWikiPage.status.in_([WIKI_READY, WIKI_STALE]),
+            )
+        )
+    ).scalars().all()
+    if not pages:
+        return {"pages": 0, "links": 0}
+    page_ids = {int(page.id) for page in pages}
+    page_by_id = {int(page.id): page for page in pages}
+
+    entities = (
+        await db.execute(
+            select(RagGraphEntity).where(
+                RagGraphEntity.user_id == int(user_id),
+                RagGraphEntity.kb_id == int(kb_id),
+            )
+        )
+    ).scalars().all()
+    entity_by_id = {int(entity.id): entity for entity in entities}
+    relation_rows = (
+        await db.execute(
+            select(RagGraphRelation).where(
+                RagGraphRelation.user_id == int(user_id),
+                RagGraphRelation.kb_id == int(kb_id),
+            )
+        )
+    ).scalars().all()
+    degree: dict[int, int] = {}
+    page_relation_types: dict[int, list[dict]] = {}
+    for relation in relation_rows:
+        source_id, target_id = int(relation.source_id), int(relation.target_id)
+        degree[source_id] = degree.get(source_id, 0) + 1
+        degree[target_id] = degree.get(target_id, 0) + 1
+        item = {"relationType": relation.relation_type}
+        page_relation_types.setdefault(source_id, []).append(item)
+        page_relation_types.setdefault(target_id, []).append(item)
+    entity_names_by_page: dict[int, list[str]] = {}
+    for page in pages:
+        names: list[str] = []
+        typed = False
+        original_type = str(page.page_type or "")
+        for raw_id in page.entity_ids or []:
+            try:
+                entity = entity_by_id.get(int(raw_id))
+            except (TypeError, ValueError):
+                entity = None
+            if not entity:
+                continue
+            if not typed and str(page.page_type or "") in {"", "topic"}:
+                page.page_type = _page_type_for_entity(
+                    entity,
+                    degree.get(int(entity.id), 0),
+                    page_relation_types.get(int(entity.id), []),
+                )
+                typed = True
+            names.append(str(entity.name or ""))
+            names.extend(str(x) for x in (entity.aliases or []) if str(x).strip())
+        entity_names_by_page[int(page.id)] = names
+
+    # 候选标题/别名 → 页面。页面标题优先于实体别名；同一表面词只允许指向一个页面。
+    title_to_page: dict[str, dict[str, Any]] = {}
+    surface_priority: dict[str, tuple[int, int]] = {}
+    surface_to_page: dict[str, int] = {}
+
+    def register_surface(surface: str, page_id: int, priority: int) -> None:
+        text = _clean(surface, 120)
+        key = _normalize_title(text)
+        if not key or len(text) < 2:
+            return
+        if priority > surface_priority.get(key, (-1, 0))[0] or (
+            priority == surface_priority.get(key, (-1, 0))[0]
+            and page_id < surface_priority.get(key, (-1, 0))[1]
+        ):
+            surface_priority[key] = (priority, page_id)
+            surface_to_page[key] = page_id
+        title_to_page.setdefault(key, {"pageId": page_id, "title": page_by_id[page_id].title})
+
+    for page in pages:
+        register_surface(str(page.title or ""), int(page.id), 10)
+        for alias in page.aliases or []:
+            register_surface(str(alias or ""), int(page.id), 8)
+        for name in entity_names_by_page.get(int(page.id), []):
+            register_surface(name, int(page.id), 6)
+
+    # surface_to_page 里存的是 key（归一化文本），但展示时应使用原词；重新从页面标题/别名收集。
+    display_surfaces: dict[str, str] = {}
+    for page in pages:
+        for surface in [page.title, *(page.aliases or []), *entity_names_by_page.get(int(page.id), [])]:
+            text = _clean(surface, 120)
+            key = _normalize_title(text)
+            if key and surface_to_page.get(key) == int(page.id) and len(text) >= 2:
+                display_surfaces.setdefault(key, text)
+    refs = [
+        {"pageId": int(page_id), "matchText": display_surfaces.get(key, key)}
+        for key, page_id in surface_to_page.items()
+        if page_id in page_by_id
+    ]
+
+    changed_pages = 0
+    total_links = 0
+    for page in pages:
+        summary = normalize_wiki_tokens(
+            str(page.summary or ""), title_to_page, page_ids, int(page.id)
+        )
+        sections: list[dict] = []
+        for section in page.sections or []:
+            if not isinstance(section, dict):
+                continue
+            item = dict(section)
+            body = normalize_wiki_tokens(str(item.get("body") or ""), title_to_page, page_ids, int(page.id))
+            if add_missing:
+                body, added = linkify_content(body, refs, self_page_id=int(page.id))
+                total_links += added
+            item["body"] = body
+            sections.append(item)
+        if add_missing:
+            summary, added = linkify_content(summary, refs, self_page_id=int(page.id))
+            total_links += added
+        if (
+            summary != (page.summary or "")
+            or sections != (page.sections or [])
+            or str(page.page_type or "") != original_type
+        ):
+            page.summary = summary
+            page.sections = sections
+            page.content_md = _render_markdown(summary, sections)
+            page.update_time = datetime.now()
+            changed_pages += 1
+
+    if changed_pages:
+        await db.commit()
+    return {"pages": changed_pages, "links": total_links}
 
 
 async def build_wiki_pages(
@@ -532,6 +796,7 @@ async def build_wiki_pages(
     pages_touched: list[RagWikiPage] = []
     errors: list[dict] = []
     progress_total = max(1, min(max(1, int(limit)), len(candidates)))
+    linkable_titles = [_display_title(entity.name) for entity in candidates]
     for entity in candidates:
         if candidates_done >= max(1, int(limit)):
             break
@@ -565,6 +830,7 @@ async def build_wiki_pages(
                                     relations=relations,
                                     chunks=chunks,
                                     doc_names=doc_names,
+                                    linkable_titles=linkable_titles,
                                 ),
                             )
                         ],
@@ -603,7 +869,17 @@ async def build_wiki_pages(
                 # 快照必须在覆盖字段之前：保存旧标题/旧摘要/旧小节。
                 db.add(_page_revision_snapshot(existing, "before_ai_regenerate", "agent"))
             page.title = _display_title(entity.name)[:255]
-            page.page_type = "topic"
+            page.page_type = _page_type_for_entity(
+                entity, degree.get(int(entity.id), 0), relations
+            )
+            page.aliases = list(
+                dict.fromkeys(
+                    [
+                        *[str(x).strip() for x in (entity.aliases or []) if str(x).strip()],
+                        *validated.get("aliases", []),
+                    ]
+                )
+            )[:8]
             page.summary = summary
             page.content_md = content_md
             page.sections = sections
@@ -623,6 +899,8 @@ async def build_wiki_pages(
             page.generation_meta = {
                 "relationCount": len(relations),
                 "sourceChunkCount": len(chunks),
+                "pageType": page.page_type,
+                "aliases": page.aliases or [],
                 "generatedAt": datetime.now().isoformat(timespec="seconds"),
             }
             if existing:
@@ -669,6 +947,8 @@ async def build_wiki_pages(
             logger.warning(f"[rag.wiki] 实体 {entity.name} 主题页生成失败: {exc}")
 
     # 页面生成过程中遇到过 rollback，重新取一遍所有页面再建链接。
+    # 先做内链归一化/补链，再把内链边写进页面图。
+    linkify_stats = await linkify_wiki_pages(db, int(user_id), int(kb_id), add_missing=True)
     all_pages = (
         await db.execute(
             select(RagWikiPage).where(
@@ -684,6 +964,7 @@ async def build_wiki_pages(
         "processed": len(pages_touched),
         "pages": len(all_pages),
         "links": links,
+        "mentions": int(linkify_stats.get("links") or 0),
         "errors": errors,
         "skipped": max(0, len(candidates) - len(pages_touched) - len(errors)),
     }
@@ -767,7 +1048,8 @@ async def list_wiki_pages(
                 "kbId": int(page.kb_id),
                 "title": page.title,
                 "pageType": page.page_type,
-                "summary": page.summary,
+                "aliases": page.aliases or [],
+                "summary": strip_wiki_tokens(page.summary),
                 "status": page.status,
                 "version": int(page.version or 1),
                 "sourceCount": len(page.source_refs or []),
@@ -784,8 +1066,95 @@ async def list_wiki_pages(
         "readyCount": sum(1 for item in items if item["status"] == WIKI_READY),
         "staleCount": sum(1 for item in items if item["status"] == WIKI_STALE),
         "docCount": len({doc_id for page in pages for doc_id in (page.source_doc_ids or [])}),
+        "linkCount": sum(1 for link in (links if page_ids else []) if str(link.link_type) == "mention"),
+        "typeCounts": {},
     }
+    for item in items:
+        key = str(item.get("pageType") or "concept")
+        stats["typeCounts"][key] = stats["typeCounts"].get(key, 0) + 1
     return {"pages": items, "stats": stats}
+
+
+async def _page_link_payload(db: AsyncSession, user_id: int, page: RagWikiPage) -> dict:
+    """从页面正文解析出链/反链，不依赖第二张链接表。
+
+    正文是唯一事实源：用户删除一个 ``[[page:...]]`` 标记，反链自然消失；不需要
+    再维护一套容易漂移的 link 表。页面图仍然由 `_rebuild_links` 从正文派生。
+    """
+    pages = (
+        await db.execute(
+            select(RagWikiPage).where(
+                RagWikiPage.user_id == int(user_id),
+                RagWikiPage.kb_id == int(page.kb_id),
+                RagWikiPage.status.in_([WIKI_READY, WIKI_STALE, WIKI_DRAFT]),
+            )
+        )
+    ).scalars().all()
+    page_by_id = {int(item.id): item for item in pages}
+    page_by_id[int(page.id)] = page
+
+    out_links: list[dict] = []
+    seen_out: set[tuple[int, int, str]] = set()
+    for block in page_text_blocks(str(page.summary or ""), page.sections or []):
+        for item in extract_wiki_links(str(block.get("text") or ""), int(block.get("sectionIndex", -1))):
+            target = page_by_id.get(int(item["pageId"]))
+            if not target or int(target.id) == int(page.id):
+                continue
+            key = (int(target.id), int(item["sectionIndex"]), str(item["anchorText"]))
+            if key in seen_out:
+                continue
+            seen_out.add(key)
+            out_links.append(
+                {
+                    "pageId": int(target.id),
+                    "title": target.title,
+                    "pageType": target.page_type,
+                    "anchorText": item["anchorText"],
+                    "sectionIndex": int(item["sectionIndex"]),
+                    "startOffset": int(item["startOffset"]),
+                    "endOffset": int(item["endOffset"]),
+                    "source": "content",
+                }
+            )
+
+    in_links: list[dict] = []
+    seen_in: set[tuple[int, int, str]] = set()
+    for other in pages:
+        if int(other.id) == int(page.id):
+            continue
+        for block in page_text_blocks(str(other.summary or ""), other.sections or []):
+            for item in extract_wiki_links(str(block.get("text") or ""), int(block.get("sectionIndex", -1))):
+                if int(item["pageId"]) != int(page.id):
+                    continue
+                key = (int(other.id), int(item["sectionIndex"]), str(item["anchorText"]))
+                if key in seen_in:
+                    continue
+                seen_in.add(key)
+                in_links.append(
+                    {
+                        "pageId": int(other.id),
+                        "title": other.title,
+                        "pageType": other.page_type,
+                        "anchorText": item["anchorText"],
+                        "sectionIndex": int(item["sectionIndex"]),
+                    }
+                )
+
+    def sort_key(item: dict) -> tuple[str, int, str]:
+        return (str(item.get("title") or ""), int(item.get("sectionIndex") or -1), str(item.get("anchorText") or ""))
+
+    out_links.sort(key=sort_key)
+    in_links.sort(key=sort_key)
+    return {
+        "outLinks": out_links,
+        "inLinks": in_links,
+        "linkStats": {
+            "outCount": len(out_links),
+            "inCount": len(in_links),
+            "outPageCount": len({int(item["pageId"]) for item in out_links}),
+            "inPageCount": len({int(item["pageId"]) for item in in_links}),
+        },
+    }
 
 
 async def get_wiki_page(db: AsyncSession, user_id: int, page_id: int) -> dict:
@@ -825,6 +1194,9 @@ async def get_wiki_page(db: AsyncSession, user_id: int, page_id: int) -> dict:
         other = by_id.get(other_id)
         if not other:
             continue
+        # mention 是正文内链，单独用 outLinks/inLinks 展示，避免“相关主题”重复一长串。
+        if str(link.link_type) == "mention":
+            continue
         related_items.append(
             {
                 "pageId": int(other.id),
@@ -835,11 +1207,13 @@ async def get_wiki_page(db: AsyncSession, user_id: int, page_id: int) -> dict:
                 "direction": "out" if int(link.from_page_id) == int(page.id) else "in",
             }
         )
+    link_payload = await _page_link_payload(db, user_id, page)
     return {
         "pageId": int(page.id),
         "kbId": int(page.kb_id),
         "title": page.title,
         "pageType": page.page_type,
+        "aliases": page.aliases or [],
         "summary": page.summary,
         "contentMd": page.content_md,
         "sections": page.sections or [],
@@ -852,6 +1226,9 @@ async def get_wiki_page(db: AsyncSession, user_id: int, page_id: int) -> dict:
         "version": int(page.version or 1),
         "updateTime": page.update_time.isoformat(sep=" ") if page.update_time else None,
         "related": related_items,
+        "outLinks": link_payload["outLinks"],
+        "inLinks": link_payload["inLinks"],
+        "linkStats": link_payload["linkStats"],
         "images": await _page_images(db, user_id, int(page.id)),
     }
 
@@ -969,6 +1346,7 @@ async def create_manual_wiki_page(
     title: str,
     summary: str = "",
     sections: Optional[Sequence[dict]] = None,
+    aliases: Optional[Sequence[str]] = None,
 ) -> dict:
     """用户/Agent 手动创建主题页（不调用模型）。"""
     await get_knowledge_base(db, user_id, kb_id)
@@ -996,6 +1374,7 @@ async def create_manual_wiki_page(
         title=clean_title,
         normalized_title=normalized,
         page_type="topic",
+        aliases=_clean_aliases(aliases or []),
         summary=_clean(summary or clean_title, 500),
         content_md=_render_markdown(_clean(summary or clean_title, 500), clean_sections),
         sections=clean_sections,
@@ -1023,6 +1402,7 @@ async def update_wiki_page(
     title: Optional[str] = None,
     summary: Optional[str] = None,
     sections: Optional[Sequence[dict]] = None,
+    aliases: Optional[Sequence[str]] = None,
     change_type: str = "manual",
     created_by: str = "user",
     expected_version: Optional[int] = None,
@@ -1077,6 +1457,12 @@ async def update_wiki_page(
         if cleaned != (page.sections or []):
             new_sections = cleaned
             changed = True
+    new_aliases = page.aliases or []
+    if aliases is not None:
+        cleaned_aliases = _clean_aliases(aliases)
+        if cleaned_aliases != list(page.aliases or []):
+            new_aliases = cleaned_aliases
+            changed = True
     if not changed:
         return await get_wiki_page(db, user_id, int(page.id))
 
@@ -1084,6 +1470,7 @@ async def update_wiki_page(
     db.add(_page_revision_snapshot(page, change_type, created_by))
     page.title = new_title
     page.normalized_title = new_normalized_title
+    page.aliases = new_aliases
     page.summary = new_summary
     page.sections = new_sections
     page.content_md = _render_markdown(new_summary, new_sections)
@@ -1094,7 +1481,220 @@ async def update_wiki_page(
     await db.flush()
     await _replace_wiki_chunks(db, page, new_sections)
     await db.commit()
+    # 手动编辑可能新增/删除 [[标题]] 标记；只做归一化，不自动回填，尊重用户删链接。
+    await linkify_wiki_pages(db, int(user_id), int(page.kb_id), add_missing=False)
+    all_pages = (
+        await db.execute(
+            select(RagWikiPage).where(
+                RagWikiPage.user_id == int(user_id),
+                RagWikiPage.kb_id == int(page.kb_id),
+                RagWikiPage.status.in_([WIKI_READY, WIKI_STALE]),
+            )
+        )
+    ).scalars().all()
+    await _rebuild_links(db, int(user_id), int(page.kb_id), all_pages)
+    await db.commit()
     return await get_wiki_page(db, user_id, int(page.id))
+
+
+def _find_anchor_position(text: str, anchor: str) -> int:
+    """在正文里找第一个不在已有 wiki 标记内的锚文本位置。"""
+    if not text or not anchor:
+        return -1
+    occupied = [(match.start(), match.end()) for match in WIKI_TOKEN_RE.finditer(text)]
+    start = 0
+    while start <= len(text) - len(anchor):
+        pos = text.find(anchor, start)
+        if pos < 0:
+            return -1
+        end = pos + len(anchor)
+        if not any(pos < span_end and end > span_start for span_start, span_end in occupied):
+            return pos
+        start = pos + 1
+    return -1
+
+
+async def add_wiki_page_link(
+    db: AsyncSession,
+    user_id: int,
+    page_id: int,
+    *,
+    target_page_id: int,
+    anchor_text: str,
+    section_index: Optional[int] = None,
+) -> dict:
+    """手动添加页面内链：只允许链接同资料夹页面，锚文本必须真实出现在正文。"""
+    page = (
+        await db.execute(
+            select(RagWikiPage).where(
+                RagWikiPage.id == int(page_id),
+                RagWikiPage.user_id == int(user_id),
+            )
+        )
+    ).scalar_one_or_none()
+    if not page:
+        raise ValueError("知识主题页不存在或无权访问")
+    target = (
+        await db.execute(
+            select(RagWikiPage).where(
+                RagWikiPage.id == int(target_page_id),
+                RagWikiPage.user_id == int(user_id),
+                RagWikiPage.kb_id == int(page.kb_id),
+            )
+        )
+    ).scalar_one_or_none()
+    if not target:
+        raise ValueError("目标主题页不存在，或不属于当前资料夹")
+    if int(target.id) == int(page.id):
+        raise ValueError("不能把主题页链接到它自己")
+    anchor = _clean(anchor_text, 120)
+    if not anchor:
+        raise ValueError("锚文本不能为空")
+    if section_index is not None and int(section_index) < -1:
+        raise ValueError("sectionIndex 只能是 -1（摘要）或小节序号")
+
+    blocks = page_text_blocks(str(page.summary or ""), page.sections or [])
+    chosen: Optional[dict] = None
+    for block in blocks:
+        if section_index is not None and int(block["sectionIndex"]) != int(section_index):
+            continue
+        if _find_anchor_position(str(block["text"]), anchor) >= 0:
+            chosen = block
+            break
+    if chosen is None:
+        raise ValueError("正文中没有找到这段文字，请先在正文里写上锚文本再添加链接")
+    text = str(chosen["text"])
+    pos = _find_anchor_position(text, anchor)
+    replacement = f"[[page:{int(target.id)}|{anchor}]]"
+    new_text = text[:pos] + replacement + text[pos + len(anchor) :]
+    db.add(_page_revision_snapshot(page, "before_manual_link", "user"))
+    if int(chosen["sectionIndex"]) == -1:
+        page.summary = new_text
+    else:
+        sections = [dict(item) if isinstance(item, dict) else item for item in (page.sections or [])]
+        idx = int(chosen["sectionIndex"])
+        if idx >= len(sections) or not isinstance(sections[idx], dict):
+            raise ValueError("小节不存在，请刷新后重试")
+        sections[idx]["body"] = new_text
+        page.sections = sections
+    page.content_md = _render_markdown(str(page.summary or ""), page.sections or [])
+    page.version = int(page.version or 1) + 1
+    page.update_time = datetime.now()
+    await db.flush()
+    await db.commit()
+    await linkify_wiki_pages(db, int(user_id), int(page.kb_id), add_missing=False)
+    all_pages = (
+        await db.execute(
+            select(RagWikiPage).where(
+                RagWikiPage.user_id == int(user_id),
+                RagWikiPage.kb_id == int(page.kb_id),
+                RagWikiPage.status.in_([WIKI_READY, WIKI_STALE]),
+            )
+        )
+    ).scalars().all()
+    await _rebuild_links(db, int(user_id), int(page.kb_id), all_pages)
+    await db.commit()
+    return await get_wiki_page(db, user_id, int(page.id))
+
+
+async def remove_wiki_page_link(
+    db: AsyncSession,
+    user_id: int,
+    page_id: int,
+    *,
+    target_page_id: int,
+    anchor_text: str = "",
+    section_index: Optional[int] = None,
+) -> dict:
+    """手动移除页面内链：把 [[page:id|锚文本]] 还原成普通文字，保留正文。"""
+    page = (
+        await db.execute(
+            select(RagWikiPage).where(
+                RagWikiPage.id == int(page_id),
+                RagWikiPage.user_id == int(user_id),
+            )
+        )
+    ).scalar_one_or_none()
+    if not page:
+        raise ValueError("知识主题页不存在或无权访问")
+    pattern = re.compile(rf"\[\[page:{int(target_page_id)}(?:\|([^\[\]]+))?\]\]")
+    desired_anchor = _clean(anchor_text, 120)
+    blocks = page_text_blocks(str(page.summary or ""), page.sections or [])
+    chosen: Optional[dict] = None
+    match_to_replace: Optional[re.Match[str]] = None
+    for block in blocks:
+        if section_index is not None and int(block["sectionIndex"]) != int(section_index):
+            continue
+        for match in pattern.finditer(str(block["text"])):
+            label = str(match.group(1) or "").strip()
+            if desired_anchor and label != desired_anchor:
+                continue
+            chosen = block
+            match_to_replace = match
+            break
+        if chosen:
+            break
+    if chosen is None or match_to_replace is None:
+        raise ValueError("没有找到这条页面链接，可能已被删除")
+    text = str(chosen["text"])
+    label = str(match_to_replace.group(1) or "").strip()
+    new_text = text[: match_to_replace.start()] + (label or "链接") + text[match_to_replace.end() :]
+    db.add(_page_revision_snapshot(page, "before_manual_unlink", "user"))
+    if int(chosen["sectionIndex"]) == -1:
+        page.summary = new_text
+    else:
+        sections = [dict(item) if isinstance(item, dict) else item for item in (page.sections or [])]
+        idx = int(chosen["sectionIndex"])
+        if idx >= len(sections) or not isinstance(sections[idx], dict):
+            raise ValueError("小节不存在，请刷新后重试")
+        sections[idx]["body"] = new_text
+        page.sections = sections
+    page.content_md = _render_markdown(str(page.summary or ""), page.sections or [])
+    page.version = int(page.version or 1) + 1
+    page.update_time = datetime.now()
+    await db.flush()
+    await db.commit()
+    all_pages = (
+        await db.execute(
+            select(RagWikiPage).where(
+                RagWikiPage.user_id == int(user_id),
+                RagWikiPage.kb_id == int(page.kb_id),
+                RagWikiPage.status.in_([WIKI_READY, WIKI_STALE]),
+            )
+        )
+    ).scalars().all()
+    await _rebuild_links(db, int(user_id), int(page.kb_id), all_pages)
+    await db.commit()
+    return await get_wiki_page(db, user_id, int(page.id))
+
+
+async def refresh_wiki_page_links(db: AsyncSession, user_id: int, page_id: int) -> dict:
+    """重新扫描当前资料夹页面标题/别名，给所有页面补链。"""
+    page = (
+        await db.execute(
+            select(RagWikiPage).where(
+                RagWikiPage.id == int(page_id),
+                RagWikiPage.user_id == int(user_id),
+            )
+        )
+    ).scalar_one_or_none()
+    if not page:
+        raise ValueError("知识主题页不存在或无权访问")
+    stats = await linkify_wiki_pages(db, int(user_id), int(page.kb_id), add_missing=True)
+    all_pages = (
+        await db.execute(
+            select(RagWikiPage).where(
+                RagWikiPage.user_id == int(user_id),
+                RagWikiPage.kb_id == int(page.kb_id),
+                RagWikiPage.status.in_([WIKI_READY, WIKI_STALE]),
+            )
+        )
+    ).scalars().all()
+    links = await _rebuild_links(db, int(user_id), int(page.kb_id), all_pages)
+    await db.commit()
+    result = await get_wiki_page(db, user_id, int(page.id))
+    result["refreshStats"] = {**stats, "pageLinks": links}
+    return result
 
 
 async def list_wiki_revisions(db: AsyncSession, user_id: int, page_id: int) -> list[dict]:
@@ -1164,6 +1764,18 @@ async def restore_wiki_revision(
     await db.flush()
     await _replace_wiki_chunks(db, page, page.sections or [])
     await db.commit()
+    await linkify_wiki_pages(db, int(user_id), int(page.kb_id), add_missing=False)
+    all_pages = (
+        await db.execute(
+            select(RagWikiPage).where(
+                RagWikiPage.user_id == int(user_id),
+                RagWikiPage.kb_id == int(page.kb_id),
+                RagWikiPage.status.in_([WIKI_READY, WIKI_STALE]),
+            )
+        )
+    ).scalars().all()
+    await _rebuild_links(db, int(user_id), int(page.kb_id), all_pages)
+    await db.commit()
     return await get_wiki_page(db, user_id, int(page.id))
 
 
@@ -1197,8 +1809,11 @@ async def delete_wiki_page(db: AsyncSession, user_id: int, page_id: int) -> dict
         .values(deleted=1)
     )
     title = page.title
+    kb_id = int(page.kb_id)
     await db.delete(page)
     await db.commit()
+    # 把其他页面里指向已删除页面的 [[page:id|...]] 还原成普通文字，避免死链。
+    await linkify_wiki_pages(db, int(user_id), kb_id, add_missing=False)
     return {"pageId": int(page_id), "title": title, "deleted": True}
 
 
@@ -1334,6 +1949,8 @@ async def get_wiki_graph(db: AsyncSession, user_id: int, kb_id: int) -> dict:
             "id": str(page.id),
             "pageId": int(page.id),
             "title": page.title,
+            "pageType": page.page_type,
+            "aliases": page.aliases or [],
             "summary": page.summary,
             "status": page.status,
             "degree": degree.get(int(page.id), 0),
@@ -1351,7 +1968,37 @@ async def get_wiki_graph(db: AsyncSession, user_id: int, kb_id: int) -> dict:
         }
         for link in links
     ]
-    return {"nodes": nodes, "edges": edges, "stats": {"pageCount": len(nodes), "linkCount": len(edges)}}
+    # 即使页面图还没重建，也把正文里的内链即时画出来；前端不需要等一次写库。
+    known_edges = {(str(edge["source"]), str(edge["target"])) for edge in edges}
+    for page in pages:
+        for block in page_text_blocks(str(page.summary or ""), page.sections or []):
+            for item in extract_wiki_links(str(block.get("text") or "")):
+                source_id, target_id = str(page.id), str(item["pageId"])
+                if target_id not in {str(x) for x in page_ids} or (source_id, target_id) in known_edges:
+                    continue
+                known_edges.add((source_id, target_id))
+                edges.append(
+                    {
+                        "id": f"mention-{source_id}-{target_id}",
+                        "source": source_id,
+                        "target": target_id,
+                        "type": "mention",
+                        "weight": 5,
+                    }
+                )
+    type_counts: dict[str, int] = {}
+    for node in nodes:
+        key = str(node.get("pageType") or "concept")
+        type_counts[key] = type_counts.get(key, 0) + 1
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "stats": {
+            "pageCount": len(nodes),
+            "linkCount": len(edges),
+            "typeCounts": type_counts,
+        },
+    }
 
 
 async def search_wiki_chunks(

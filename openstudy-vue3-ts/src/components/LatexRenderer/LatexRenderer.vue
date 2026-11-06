@@ -1,6 +1,6 @@
 <!-- src/components/LatexRenderer/LatexRenderer.vue -->
 <template>
-  <div class="latex-content" v-html="renderedContent"></div>
+  <div class="latex-content" v-html="renderedContent" @click="onContentClick"></div>
 </template>
 
 <script setup lang="ts">
@@ -13,8 +13,14 @@ import {
   renderMarkdownWithLatex
 } from '@/utils/latex'
 
+const emit = defineEmits<{
+  (e: 'wiki-link-click', pageId: number): void
+}>()
+
 const props = defineProps({
   content: { type: String, default: '' },
+  // Wiki 正文：把 [[page:12|智能体]] 渲染成绿色下划线页面链接
+  wikiMode: { type: Boolean, default: false },
   // 是否将内容视为 HTML（保留已有 HTML 标签，仅渲染 LaTeX 公式）
   // 默认 false：先转义 HTML 再渲染 LaTeX（适用于纯文本场景如选项）
   // true：保留 HTML 标签并渲染 LaTeX，用 DOMPurify 做 XSS 防护（适用于原 v-html 内容）
@@ -30,26 +36,60 @@ const props = defineProps({
   rich: { type: Boolean, default: true }
 })
 
+function escapeHtml(value: string) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+/**
+ * 把后端稳定的 [[page:12|智能体]] 标记转成可点击锚点。
+ * 未归一化的 [[标题|原词]] 只显示原词，绝不猜页面 id。
+ */
+function resolveWikiTokens(text: string) {
+  let result = String(text || '')
+  result = result.replace(/\[\[page:(\d+)\|([^\[\]]+)\]\]/g, (_match, pageId, label) => {
+    return `<a href="#wiki-page-${pageId}" data-wiki-page-id="${pageId}" class="wiki-inline-link">${escapeHtml(label)}</a>`
+  })
+  result = result.replace(/\[\[([^\[\]|]+)(?:\|([^\[\]]+))?\]\]/g, (_match, target, label) => {
+    return escapeHtml(String(label || target || '').trim())
+  })
+  return result
+}
+
+function onContentClick(event: MouseEvent) {
+  const target = event.target as HTMLElement | null
+  const link = target?.closest?.('a[data-wiki-page-id]') as HTMLElement | null
+  if (!link) return
+  const pageId = Number(link.dataset.wikiPageId || 0)
+  if (!pageId) return
+  event.preventDefault()
+  emit('wiki-link-click', pageId)
+}
+
 const renderedContent = computed(() => {
   if (!props.content) return ''
+  const content = props.wikiMode ? resolveWikiTokens(props.content) : props.content
 
   // 默认走统一管线：`$...$` 公式 + Markdown 表格一并渲染
   if (props.rich) {
-    return renderMarkdownWithLatex(props.content)
+    return renderMarkdownWithLatex(content)
   }
 
   // ---- 以下为显式 :rich="false" 时的旧行为（保持兼容）----
   if (props.rawLatex) {
     if (props.markdown) {
-      return renderMarkdownContent(props.content)
+      return renderMarkdownContent(content)
     }
-    return renderQuestionContent(props.content, { renderMarkdown: props.markdown })
+    return renderQuestionContent(content, { renderMarkdown: props.markdown })
   }
 
   if (props.rawHtml) {
-    return renderLatexSafe(props.content)
+    return renderLatexSafe(content)
   }
-  return renderLatexPlainText(props.content)
+  return renderLatexPlainText(content)
 })
 </script>
 
@@ -103,6 +143,20 @@ const renderedContent = computed(() => {
 .latex-content table img {
   max-width: 100%;
   height: auto;
+}
+
+/* 知识百科正文内链：与 WeKnora Wiki 的绿色下划线观感一致 */
+.latex-content a.wiki-inline-link {
+  color: #2e9e83;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  font-weight: inherit;
+}
+.latex-content a.wiki-inline-link:hover {
+  color: #1b7d67;
+  background: #eefaf6;
 }
 </style>
 

@@ -1170,14 +1170,16 @@ export function renderMarkdownWithLatex(text: string): string {
       'mfrac', 'msqrt', 'mrow', 'mtext', 'annotation', 'semantics', 'mspace',
       'mtable', 'mtr', 'mtd', 'munderover', 'semantics',
       'strong', 'em', 'u', 'span', 'br', 'sub', 'sup', 'img',
-      'table', 'thead', 'tbody', 'tr', 'th', 'td', 'caption'
+      'table', 'thead', 'tbody', 'tr', 'th', 'td', 'caption',
+      'a'
     ],
     ADD_ATTR: [
       'xmlns', 'viewBox', 'd', 'fill', 'stroke', 'stroke-width',
       'width', 'height', 'style', 'encoding', 'src', 'alt',
       'class', 'aria-hidden', 'role', 'colspan', 'rowspan', 'align',
       'mathvariant', 'stretchy', 'fence', 'separator', 'accent', 'accentunder',
-      'columnalign', 'rowalign', 'columnspan', 'linethickness'
+      'columnalign', 'rowalign', 'columnspan', 'linethickness',
+      'href', 'data-wiki-page-id'
     ],
     KEEP_CONTENT: true
   })

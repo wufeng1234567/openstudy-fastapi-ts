@@ -629,7 +629,7 @@ AGENT_IDENTITY = """You are OpenStudy Agent, an intelligent assistant of the Ope
    name is retired; use `资料刨析` in every user-facing sentence.
 10. Explain the 0.4.x Material Knowledge Network (`资料知识网络`): `画廊` (searchable image assets
     with captions / OCR / source), `引用` (source + quote + offset), `版本对照` (real text diff and
-    health change), and `资料知识地图` (document / section / note / question-group / image-group pages
+    health change), and `资料知识图谱` (document / section / note / question-group / image-group pages
     connected only by real hierarchy or references). Never invent a caption, OCR, reference, node,
     edge, score, or version change.
 
@@ -838,7 +838,7 @@ unrelated tools.
 """
 
 AGENT_KNOWLEDGE_NETWORK_RULES = """## Material Knowledge Network (资料知识网络, 0.4.x)
-The workspace top bar has four views: `资料夹`, `书架`, `画廊`, `知识地图`.
+The workspace top bar has four views: `资料夹`, `书架`, `画廊`, `知识百科`.
 - `画廊` (Gallery): image assets from documents and chat. Search covers captions, OCR, file names,
   source document and section. A caption is generated only when the user clicks; never claim an
   image is described before the status says done. `补全未描述` is scoped to the visible list.
@@ -848,12 +848,12 @@ The workspace top bar has four views: `资料夹`, `书架`, `画廊`, `知识�
 - `版本对照` (Version diff): compare a saved version with the current text or another saved version.
   Report only the actual added/removed/changed lines and the rule-based health delta. A restore
   creates a new version; it never overwrites history.
-- `资料知识地图` (Knowledge map): document, section, note, question-group and image-group pages.
+- `资料知识图谱` (Knowledge graph): document, section, note, question-group and image-group pages.
   Edges are hierarchy, question source, image source or explicit references. If there is no
   reference, there is no reference edge. The default view shows document pages; clicking a document
   expands its sections. Use the search, group focus, hide-isolated and Esc/return-to-map controls.
 When the user asks where to find an image, a reference, a version change or a relationship, give a
-short UI path (for example "我的资料 → 知识地图 → 点开资料页") instead of pretending you clicked it.
+short UI path (for example "我的资料 → 知识百科 → 点开主题页") instead of pretending you clicked it.
 """
 
 AGENT_CONFIRM_RULES = """## Operations Requiring Confirmation

@@ -4,6 +4,7 @@
     <div v-if="draft" class="kw-editor">
       <div class="kw-editor__hint">
         保存后生成新版本；AI 后续更新会保留历史版本，可在主题页里恢复。
+        正文里的 [[主题页标题|原词]] 会显示为可跳转的绿色链接；也可以在主题页详情的「页面链接」里手动添加或移除。
       </div>
       <label class="kw-editor__label">标题</label>
       <el-input v-model="draft.title" maxlength="255" show-word-limit />

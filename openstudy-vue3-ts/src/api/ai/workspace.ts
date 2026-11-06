@@ -73,7 +73,7 @@ export function getAssetUsageSummary() {
 }
 
 /* ============================================================================
- * 0.4.x 资料知识网络：画廊 / 引用 / 知识地图 / 版本对照
+ * 0.4.x 资料知识网络：画廊 / 引用 / 知识图谱 / 版本对照
  * ========================================================================== */
 
 export interface GalleryQuery {
@@ -249,6 +249,7 @@ export function createWikiPage(data: {
   title: string
   summary?: string
   sections?: Array<{ heading: string; body: string; sourceChunkIds?: number[] }>
+  aliases?: string[]
 }) {
   return request({
     url: '/rag/wiki/pages',
@@ -261,6 +262,7 @@ export function updateWikiPage(pageId: number | string, data: {
   title?: string
   summary?: string
   sections?: Array<{ heading: string; body: string; sourceChunkIds?: number[] }>
+  aliases?: string[]
   changeType?: 'manual' | 'agent'
   baseVersion?: number
 }) {
@@ -281,6 +283,44 @@ export function listWikiRevisions(pageId: number | string) {
 export function restoreWikiRevision(pageId: number | string, revisionId: number | string) {
   return request({
     url: `/rag/wiki/pages/${pageId}/revisions/${revisionId}/restore`,
+    method: 'post'
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
+/** 手动添加页面内链：锚文本必须在页面正文里存在 */
+export function addWikiPageLink(pageId: number | string, data: {
+  targetPageId: number
+  anchorText: string
+  sectionIndex?: number | null
+}) {
+  return request({
+    url: `/rag/wiki/pages/${pageId}/links`,
+    method: 'post',
+    data
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
+/** 手动移除页面内链 */
+export function removeWikiPageLink(pageId: number | string, params: {
+  targetPageId: number
+  anchorText?: string
+  sectionIndex?: number | null
+}) {
+  return request({
+    url: `/rag/wiki/pages/${pageId}/links`,
+    method: 'delete',
+    params: {
+      targetPageId: params.targetPageId,
+      anchorText: params.anchorText || undefined,
+      sectionIndex: params.sectionIndex ?? undefined
+    }
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
+/** 重新扫描资料夹标题/别名并为所有页面补内链 */
+export function refreshWikiPageLinks(pageId: number | string) {
+  return request({
+    url: `/rag/wiki/pages/${pageId}/links/refresh`,
     method: 'post'
   }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
 }

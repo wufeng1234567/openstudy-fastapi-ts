@@ -717,6 +717,7 @@ class WikiPageCreateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     summary: str = Field("", max_length=500)
     sections: List[dict] = Field(default_factory=list)
+    aliases: List[str] = Field(default_factory=list, max_length=8)
 
 
 class WikiPageUpdateRequest(BaseModel):
@@ -727,8 +728,19 @@ class WikiPageUpdateRequest(BaseModel):
     title: Optional[str] = Field(None, max_length=255)
     summary: Optional[str] = Field(None, max_length=500)
     sections: Optional[List[dict]] = None
+    aliases: Optional[List[str]] = Field(None, max_length=8)
     changeType: str = Field(default="manual", pattern="^(manual|agent)$")
     baseVersion: Optional[int] = Field(None, ge=1)
+
+
+class WikiPageLinkCreateRequest(BaseModel):
+    """手动添加页面内链：锚文本必须在正文中真实存在。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    targetPageId: int = Field(..., gt=0)
+    anchorText: str = Field(..., min_length=1, max_length=120)
+    sectionIndex: Optional[int] = Field(None, ge=-1, description="-1=摘要，0=第一个小节")
 
 
 class WikiImageAttachRequest(BaseModel):
@@ -1012,7 +1024,7 @@ async def get_wiki_graph(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """知识地图：主题页级别的页面链接图，不是实体关系图。"""
+    """知识图谱的页面关系：主题页级别的页面链接图，不是实体关系图。"""
     try:
         from app.services.rag.wiki_service import get_wiki_graph as load_graph
 
@@ -1105,6 +1117,7 @@ async def create_wiki_page(
                 title=data.title,
                 summary=data.summary,
                 sections=data.sections,
+                aliases=data.aliases,
             ),
             "主题页已创建",
         )
@@ -1131,6 +1144,7 @@ async def update_wiki_page(
                 title=data.title,
                 summary=data.summary,
                 sections=data.sections,
+                aliases=data.aliases,
                 change_type=data.changeType,
                 created_by="user" if data.changeType == "manual" else "agent",
                 expected_version=data.baseVersion,
@@ -1152,6 +1166,75 @@ async def delete_wiki_page(
         from app.services.rag.wiki_service import delete_wiki_page as remove_page
 
         return success(await remove_page(db, _uid(current_user), page_id), "主题页已删除")
+    except Exception as e:
+        return _fail(e)
+
+
+@router.post("/wiki/pages/{page_id}/links")
+async def add_wiki_page_link(
+    page_id: int,
+    data: WikiPageLinkCreateRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """手动添加页面内链：把正文里的锚文本变成可跳转的 [[page:id|锚文本]]。"""
+    try:
+        from app.services.rag.wiki_service import add_wiki_page_link as create_link
+
+        return success(
+            await create_link(
+                db,
+                _uid(current_user),
+                page_id,
+                target_page_id=data.targetPageId,
+                anchor_text=data.anchorText,
+                section_index=data.sectionIndex,
+            ),
+            "页面链接已添加",
+        )
+    except Exception as e:
+        return _fail(e)
+
+
+@router.delete("/wiki/pages/{page_id}/links")
+async def remove_wiki_page_link(
+    page_id: int,
+    targetPageId: int = Query(..., gt=0),
+    anchorText: str = Query("", max_length=120),
+    sectionIndex: Optional[int] = Query(None, ge=-1),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """手动移除页面内链：只把标记还原成文字，不改正文内容。"""
+    try:
+        from app.services.rag.wiki_service import remove_wiki_page_link as delete_link
+
+        return success(
+            await delete_link(
+                db,
+                _uid(current_user),
+                page_id,
+                target_page_id=targetPageId,
+                anchor_text=anchorText,
+                section_index=sectionIndex,
+            ),
+            "页面链接已移除",
+        )
+    except Exception as e:
+        return _fail(e)
+
+
+@router.post("/wiki/pages/{page_id}/links/refresh")
+async def refresh_wiki_page_links(
+    page_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """重新扫描资料夹内标题/别名，补齐页面内链（保留手动链接）。"""
+    try:
+        from app.services.rag.wiki_service import refresh_wiki_page_links as refresh_links
+
+        return success(await refresh_links(db, _uid(current_user), page_id), "页面链接已刷新")
     except Exception as e:
         return _fail(e)
 
@@ -2613,7 +2696,7 @@ async def get_knowledge_map(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """资料知识地图：真实文档/章节/笔记/题组/图组节点与可解释边。"""
+    """资料知识图谱：真实文档/章节/笔记/题组/图组节点与可解释边。"""
     try:
         return success(await knowledge_map_service.build_knowledge_map(db, _uid(current_user), kb_id=kbId))
     except Exception as e:

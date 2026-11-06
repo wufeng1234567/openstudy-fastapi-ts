@@ -510,7 +510,7 @@
       @back="viewMode = 'list'"
     />
 
-    <!-- 0.5.x 知识百科：主题页是前台内容，知识地图是页面级图谱 -->
+    <!-- 0.5.x 知识百科：主题页是前台内容 -->
     <KnowledgeWikiPanel
       v-else-if="viewMode === 'wiki' && (loading || (kbs.length && !loadFailed))"
       :active-kb-id="activeKbId"

@@ -49,6 +49,8 @@ class RagGraphEntity(Base):
     normalized_name: Mapped[str] = mapped_column(String(200), nullable=False)
     type: Mapped[str] = mapped_column(String(40), nullable=False, default="概念")
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    #: 同义名/缩写：只用于内链匹配与检索，不改变实体主名称
+    aliases: Mapped[Optional[list]] = mapped_column(JSON)
     doc_ids: Mapped[Optional[list]] = mapped_column(JSON)
     chunk_ids: Mapped[Optional[list]] = mapped_column(JSON)
     mention_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)

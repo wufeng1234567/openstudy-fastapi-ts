@@ -4,7 +4,7 @@
 --------
 - `rag_graph_entity` / `rag_graph_relation` 仍是底层实体索引，供 GraphRAG 使用；
 - `rag_wiki_page` 是面向用户的可读主题页，内容来自原始 chunk，不是凭空扩写；
-- `rag_wiki_page_link` 是页面之间的导航图（知识地图），不是第二套实体图；
+- `rag_wiki_page_link` 是页面之间的导航图（知识图谱的页面关系），不是第二套实体图；
 - `rag_wiki_chunk` 让知识百科本身也能被 RAG 检索到，但每条命中都必须能回到原资料。
 
 页面正文同时保留 `content_md` 与结构化 `sections`：
@@ -53,8 +53,10 @@ class RagWikiPage(Base):
 
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     normalized_title: Mapped[str] = mapped_column(String(255), nullable=False)
-    #: topic = 概念/方法/实体主题页；overview = 资料夹总览（后续扩展）
+    #: concept/entity/synthesis/comparison/summary/overview；旧数据 topic 仍兼容
     page_type: Mapped[str] = mapped_column(String(32), nullable=False, default="topic")
+    #: 同义名/缩写，供页面内链识别与展示；不是第二套标题
+    aliases: Mapped[Optional[list]] = mapped_column(JSON)
     summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
     content_md: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
@@ -102,7 +104,7 @@ class RagWikiPageRevision(Base):
 
 
 class RagWikiPageLink(Base):
-    """主题页之间的导航边，构成“知识地图”。"""
+    """主题页之间的导航边，构成“知识图谱”的页面关系。"""
 
     __tablename__ = "rag_wiki_page_link"
     __table_args__ = (

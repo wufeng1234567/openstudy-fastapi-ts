@@ -262,6 +262,21 @@ async def init_db():
 
         await conn.run_sync(_ensure_rag_chunk_columns)
 
+        # 兼容历史库：Wiki 页面与图谱实体增加 aliases，供页面内链按同义名匹配。
+        # create_all 只建缺失表、不给已有表加列，所以这里手动补齐（幂等）。
+        def _ensure_wiki_aliases_columns(sync_conn):
+            from sqlalchemy import inspect, text
+            inspector = inspect(sync_conn)
+            for table in ("rag_wiki_page", "rag_graph_entity"):
+                if table not in inspector.get_table_names():
+                    continue
+                columns = {c["name"] for c in inspector.get_columns(table)}
+                if "aliases" not in columns:
+                    sync_conn.execute(text(f"ALTER TABLE {table} ADD COLUMN aliases JSON NULL"))
+                    logger.info(f"{table}.aliases 列已补齐")
+
+        await conn.run_sync(_ensure_wiki_aliases_columns)
+
         # 兼容历史库：ai_agent_role_pref 新增「专家模型覆盖」列（用户给某专家挑的模型）。
         # ⚠️ 同理：`create_all` 只建缺失的表、不给已存在的表加列 —— 这张表上线已久，
         #    必须在这里手动补 model 列，否则 ORM 查询带上它时直接 UndefinedColumn。
