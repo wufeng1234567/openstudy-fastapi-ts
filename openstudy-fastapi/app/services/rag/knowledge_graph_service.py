@@ -21,9 +21,10 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.knowledge_graph import RagGraphEntity, RagGraphRelation
-from app.models.rag import RagDocument, RagDocumentChunk
+from app.models.rag import DOC_VECTORIZED, RagDocument, RagDocumentChunk
 from app.services.ai.base_client import ChatMessage, TextBlock
 from app.services.ai.db_config import chat_with_config
+from app.services.rag.hybrid_search import ChunkHit
 
 ENTITY_TYPES = ["概念", "定理/公式", "方法", "人物", "机构", "事件", "作品", "其他"]
 RELATION_TYPES = ["包含", "属于", "定义", "推导", "应用", "前置", "对比", "相关", "产生", "属于领域"]
@@ -621,4 +622,148 @@ async def get_entity_detail(db: AsyncSession, user_id: int, entity_id: int) -> D
     }
 
 
-__all__ = ["ENTITY_TYPES", "RELATION_TYPES", "build_graph", "list_graph", "get_entity_detail"]
+async def expand_query_chunks(
+    db: AsyncSession,
+    user_id: int,
+    kb_ids: List[int],
+    query: str,
+    *,
+    top_k: int = 5,
+    max_hops: int = 2,
+) -> List[ChunkHit]:
+    """实体识别 → 图邻居扩展 → 来源 chunk。
+
+    这是 GraphRAG 的“图谱召回”一路，不替代向量/关键词：
+      · 先按实体名是否出现在问题里做实体识别；
+      · 沿关系做 1~2 跳邻居扩展，收集邻居实体的来源 chunk；
+      · 返回 ChunkHit，交给 hybrid_search 的 RRF 与另外两路融合。
+    """
+    if not kb_ids or not (query or "").strip():
+        return []
+
+    valid_doc_ids = {
+        int(x)
+        for x in (
+            await db.execute(
+                select(RagDocument.id).where(
+                    RagDocument.user_id == int(user_id),
+                    RagDocument.kb_id.in_([int(x) for x in kb_ids]),
+                    RagDocument.disabled == 0,
+                )
+            )
+        ).scalars().all()
+    }
+    entities = (
+        await db.execute(
+            select(RagGraphEntity).where(
+                RagGraphEntity.user_id == int(user_id),
+                RagGraphEntity.kb_id.in_([int(x) for x in kb_ids]),
+            )
+        )
+    ).scalars().all()
+    entities = [
+        entity
+        for entity in entities
+        if any(int(doc_id) in valid_doc_ids for doc_id in (entity.doc_ids or []))
+    ]
+    if not entities:
+        return []
+    by_id = {int(entity.id): entity for entity in entities}
+    normalized_query = _norm_name(query)
+    matched = [
+        entity
+        for entity in entities
+        if len(str(entity.normalized_name or "")) >= 2
+        and str(entity.normalized_name) in normalized_query
+    ]
+    if not matched:
+        return []
+
+    relations = (
+        await db.execute(
+            select(RagGraphRelation).where(
+                RagGraphRelation.user_id == int(user_id),
+                RagGraphRelation.kb_id.in_([int(x) for x in kb_ids]),
+            )
+        )
+    ).scalars().all()
+    adjacency: Dict[int, List[Tuple[int, RagGraphRelation]]] = {}
+    for relation in relations:
+        source_id, target_id = int(relation.source_id), int(relation.target_id)
+        if source_id not in by_id or target_id not in by_id:
+            continue
+        adjacency.setdefault(source_id, []).append((target_id, relation))
+        adjacency.setdefault(target_id, []).append((source_id, relation))
+
+    selected = {int(entity.id) for entity in matched}
+    frontier = set(selected)
+    relation_results: List[Tuple[int, RagGraphRelation]] = []
+    for _ in range(max(1, int(max_hops))):
+        next_frontier: set[int] = set()
+        for entity_id in frontier:
+            for neighbor_id, relation in adjacency.get(entity_id, []):
+                if neighbor_id not in selected:
+                    next_frontier.add(neighbor_id)
+                relation_results.append((entity_id, relation))
+        selected |= next_frontier
+        frontier = next_frontier
+        if not frontier:
+            break
+
+    # 关系 evidence 优先，其次是被命中实体自身的 chunk；只取当前有效版本。
+    chunk_ids: List[int] = []
+    for _, relation in sorted(relation_results, key=lambda item: int(item[1].strength or 0), reverse=True):
+        for chunk_id in relation.chunk_ids or []:
+            value = int(chunk_id)
+            if value > 0 and value not in chunk_ids:
+                chunk_ids.append(value)
+    for entity_id in selected:
+        entity = by_id.get(entity_id)
+        for chunk_id in (entity.chunk_ids if entity else []) or []:
+            value = int(chunk_id)
+            if value > 0 and value not in chunk_ids:
+                chunk_ids.append(value)
+    if not chunk_ids:
+        return []
+
+    rows = (
+        await db.execute(
+            select(RagDocumentChunk, RagDocument.file_name)
+            .join(RagDocument, RagDocument.id == RagDocumentChunk.doc_id)
+            .where(
+                RagDocumentChunk.id.in_(chunk_ids[: max(top_k * 4, 20)]),
+                RagDocumentChunk.kb_id.in_([int(x) for x in kb_ids]),
+                RagDocumentChunk.index_version == RagDocument.index_version,
+                RagDocument.status == DOC_VECTORIZED,
+                RagDocument.disabled == 0,
+            )
+        )
+    ).all()
+    order = {chunk_id: index for index, chunk_id in enumerate(chunk_ids)}
+    rows = sorted(rows, key=lambda row: order.get(int(row[0].id), 9999))
+    hits: List[ChunkHit] = []
+    for chunk, doc_name in rows:
+        hits.append(
+            ChunkHit(
+                chunk_id=int(chunk.id),
+                doc_id=int(chunk.doc_id),
+                kb_id=int(chunk.kb_id),
+                chunk_index=int(chunk.chunk_index or 0),
+                content=str(chunk.content or ""),
+                doc_name=doc_name,
+                graph_hit=True,
+            )
+        )
+        if len(hits) >= max(top_k, 1) * 2:
+            break
+    return hits
+
+
+__all__ = [
+    "ENTITY_TYPES",
+    "RELATION_TYPES",
+    "build_graph",
+    "list_graph",
+    "get_entity_detail",
+    "expand_query_chunks",
+]

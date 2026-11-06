@@ -28,6 +28,7 @@ from app.services.rag.hybrid_search import (
     has_keyword_agreement,
     hybrid_search,
 )
+from app.services.rag.knowledge_graph_service import expand_query_chunks
 from app.services.rag.rag_write_service import resolve_knowledge_bases, sanitize_text
 
 #: 单块塞进 prompt 的最大字符数
@@ -73,6 +74,27 @@ def build_context(hits: Sequence[ChunkHit]) -> str:
     return "\n\n".join(parts)
 
 
+async def _graph_hits(db: AsyncSession, user_id: int, query: str, kbs, top_k: int) -> list[ChunkHit]:
+    """做图谱召回；失败只降级，不影响向量/关键词主路。"""
+    try:
+        return await expand_query_chunks(
+            db,
+            user_id,
+            [int(kb.id) for kb in kbs],
+            query,
+            top_k=top_k,
+            max_hops=2,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[rag] 图谱邻居扩展失败，跳过该路: {}", e)
+        return []
+
+
+def _has_strong_agreement(hits: Sequence[ChunkHit]) -> bool:
+    """关键词命中或图谱邻居命中都算强相关信号。"""
+    return has_keyword_agreement(hits) or any(bool(getattr(hit, "graph_hit", False)) for hit in hits)
+
+
 async def search(
     db: AsyncSession,
     user_id: int,
@@ -110,12 +132,13 @@ async def search(
         }
 
     query_vector = await embed_query(query)
+    graph_hits = await _graph_hits(db, user_id, query, kbs, top_k)
     hits = await hybrid_search(
-        db, query, query_vector, [kb.id for kb in kbs], top_k=top_k
+        db, query, query_vector, [kb.id for kb in kbs], top_k=top_k, graph_hits=graph_hits
     )
-    low_confidence = bool(hits) and not has_keyword_agreement(hits)
+    low_confidence = bool(hits) and not _has_strong_agreement(hits)
     # 低置信时不要把 5 条“相似度地板”噪声全铺给用户：只保留最靠前的一条，
-    # 由界面明确提示“可能不相关”。关键词真命中时仍返回完整 top_k。
+    # 由界面明确提示“可能不相关”。关键词或图谱命中时仍返回完整 top_k。
     visible_hits = hits[:1] if low_confidence else hits
     return {
         "query": query,
@@ -157,8 +180,9 @@ async def answer(
         )
 
     query_vector = await embed_query(query)
+    graph_hits = await _graph_hits(db, user_id, query, kbs, top_k)
     hits = await hybrid_search(
-        db, query, query_vector, [kb.id for kb in kbs], top_k=top_k
+        db, query, query_vector, [kb.id for kb in kbs], top_k=top_k, graph_hits=graph_hits
     )
 
     # 真正的相关性兜底：检索为空就不编答案（legacy 这里是硬编码 true）
@@ -224,6 +248,7 @@ async def answer(
             "chunkIndex": h.chunk_index,
             "source": h.source,
             "score": round(h.score, 6),
+            "graphHit": bool(getattr(h, "graph_hit", False)),
             "vectorScore": None if h.vector_score is None else round(h.vector_score, 4),
             "keywordScore": None if h.keyword_score is None else round(h.keyword_score, 4),
             "preview": _truncate(h.content, 200),
@@ -250,7 +275,7 @@ async def answer(
     #    所以额外给一个可靠得多的信号：关键词那一路有没有命中。
     #    只有向量路命中时，可能是换词提问（真相关），也可能是跑题（不相关）——交给调用方决定
     #    怎么提示，而不是在这里武断拒答。
-    low_confidence = not has_keyword_agreement(hits)
+    low_confidence = not _has_strong_agreement(hits)
 
     return {
         "answer": text,

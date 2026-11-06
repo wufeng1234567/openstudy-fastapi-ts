@@ -72,6 +72,8 @@ class ChunkHit:
     keyword_score: Optional[float] = None
     vec_rank: Optional[int] = None
     kw_rank: Optional[int] = None
+    #: 是否由知识图谱邻居扩展召回（图谱命中也要参与最终上下文，但明确标记来源）
+    graph_hit: bool = False
     #: 该分块关联的图片 URL 列表（`/profile/upload/...` 或 http(s) 外链）。
     #: 来自 `rag_document_chunk.meta_data["images"]`（分块时按正文 `【图N】` 归属）。
     #: 空 = 这一块没有图。检索命中时把它作为多模态图片一起回给模型（见
@@ -96,6 +98,8 @@ class ChunkHit:
             "chunkIndex": self.chunk_index,
             "content": self.content,
             "score": round(self.score, 6),
+            "graphHit": bool(self.graph_hit),
+            "graphScore": None,
             "vectorScore": None if self.vector_score is None else round(self.vector_score, 4),
             "keywordScore": None if self.keyword_score is None else round(self.keyword_score, 4),
             "source": self.source,
@@ -248,13 +252,15 @@ def reciprocal_rank_fusion(
                 # 两路都命中同一块时，images 取非空的一路（两路都来自同一行，值一致）
                 entry.images = list(hit.images)
             entry.score += 1.0 / (k + rank)
-            # 同一块可能两路都命中，两路原始分都留一份
+            # 同一块可能多路都命中，各路原始信息都留一份
             if hit.vector_score is not None:
                 entry.vector_score = hit.vector_score
                 entry.vec_rank = rank
             if hit.keyword_score is not None:
                 entry.keyword_score = hit.keyword_score
                 entry.kw_rank = rank
+            if hit.graph_hit:
+                entry.graph_hit = True
 
     ordered = sorted(fused.values(), key=lambda h: h.score, reverse=True)
     return ordered[:top_k]
@@ -267,6 +273,7 @@ async def hybrid_search(
     kb_ids: Sequence[int],
     top_k: int = 5,
     min_similarity: float = DEFAULT_MIN_SIMILARITY,
+    graph_hits: Optional[Sequence[ChunkHit]] = None,
 ) -> list[ChunkHit]:
     """向量 + 全文混合检索。
 
@@ -285,15 +292,14 @@ async def hybrid_search(
             logger.warning(f"[rag] 向量检索失败，降级为纯关键词检索: {e}")
 
     kw_hits = await keyword_search(db, query, kb_ids, pool)
+    graph_hits = list(graph_hits or [])
 
-    if not vec_hits and not kw_hits:
+    if not vec_hits and not kw_hits and not graph_hits:
         return []
-    if not vec_hits:
-        return kw_hits[:top_k]
-    if not kw_hits:
-        return vec_hits[:top_k]
-
-    return reciprocal_rank_fusion([vec_hits, kw_hits], top_k)
+    if not vec_hits and not kw_hits:
+        return graph_hits[:top_k]
+    # 图谱邻居命中也进入 RRF：它代表“语义上相邻”的原文位置，不是另一套分数体系。
+    return reciprocal_rank_fusion([vec_hits, kw_hits, graph_hits], top_k)
 
 
 def has_keyword_agreement(hits: Sequence[ChunkHit]) -> bool:
