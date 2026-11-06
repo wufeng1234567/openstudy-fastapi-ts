@@ -1,5 +1,18 @@
 <template>
   <section class="kw-page" :class="{ 'kw-page--graph': view === 'map' }">
+    <Teleport to="#workspace-wiki-search-dropdown">
+      <div v-if="view === 'map' && graphSearchSuggestions.length" class="kw-graph-search-dropdown">
+        <button v-for="item in graphSearchSuggestions" :key="item.pageId" type="button"
+          class="kw-graph-search-item" @click="selectSearchSuggestion(item)">
+          <span class="kw-graph-search-item__dot" :style="{ background: pageTypeMeta(item.pageType).color }"></span>
+          <span class="kw-graph-search-item__main">
+            <b>{{ item.title }}</b>
+            <em>{{ item.summary || '打开主题页查看内容' }}</em>
+          </span>
+          <span class="kw-graph-search-item__type">{{ pageTypeMeta(item.pageType).label }}</span>
+        </button>
+      </div>
+    </Teleport>
     <Teleport to="#workspace-wiki-toolbar">
       <div class="kw-context-actions">
         <div class="kw-switch">
@@ -74,9 +87,10 @@
             <path v-for="hull in mapHulls" :key="hull.key" :d="hull.path" class="kw-map-hull"
               :class="{ 'is-hovered': mapHoveredId && hull.ids.includes(String(mapHoveredId)) }" />
             <line v-for="edge in mapEdges" :key="edge.key" :x1="edge.x1" :y1="edge.y1" :x2="edge.x2" :y2="edge.y2"
-              class="kw-map-edge" :class="[`is-${edge.type}`, { 'is-active': isMapEdgeActive(edge), 'is-dimmed': isMapEdgeDimmed(edge) }]"
+              :data-edge-source="edge.source" :data-edge-target="edge.target"
+              class="kw-map-edge" :class="[`is-${edge.type}`, { 'is-active': isMapEdgeActive(edge), 'is-dimmed': isMapEdgeDimmed(edge), 'is-hidden': mapDraggingId && edge.source !== mapDraggingId && edge.target !== mapDraggingId }]"
               :marker-end="mapShowArrows ? (isMapEdgeActive(edge) ? 'url(#kw-arrow-hl)' : 'url(#kw-arrow)') : undefined" />
-            <g v-for="node in mapNodes" :key="node.id" class="kw-map-node"
+            <g v-for="node in mapNodes" :key="node.id" class="kw-map-node" :data-node-id="String(node.id)"
               :class="{ 'is-selected': isMapSelected(node), 'is-hovered': mapHoveredId === String(node.id), 'is-dimmed': isMapNodeDimmed(node) }"
               :transform="`translate(${node.x} ${node.y})`"
               @mouseenter="mapHoveredId = String(node.id)" @mouseleave="mapHoveredId = null"
@@ -340,6 +354,7 @@ import {
 const props = defineProps<{
   activeKbId?: number | null
   searchQuery?: string
+  searchSubmitKey?: number
 }>()
 
 const emit = defineEmits<{
@@ -373,7 +388,15 @@ const linkForm = reactive<{ targetPageId: number | null; anchorText: string; sec
   anchorText: '',
   sectionIndex: -1
 })
-const view = ref<'pages' | 'map'>('pages')
+const WIKI_VIEW_KEY = 'openstudy.workspace.wikiView'
+function readWikiView(): 'pages' | 'map' {
+  try {
+    return localStorage.getItem(WIKI_VIEW_KEY) === 'map' ? 'map' : 'pages'
+  } catch {
+    return 'pages'
+  }
+}
+const view = ref<'pages' | 'map'>(readWikiView())
 const detailVisible = ref(false)
 const pageLoading = ref(false)
 const activePage = ref<any>(null)
@@ -391,6 +414,7 @@ const mapHoveredId = ref<string | null>(null)
 const mapSelectedPageId = ref<number | null>(null)
 const mapHideUnlinked = ref(false)
 const mapShowArrows = ref(true)
+const mapDraggingId = ref<string | null>(null)
 const mapNodeOffsets = reactive<Record<string, { x: number; y: number }>>({})
 const mapSimPositions = reactive<Record<string, { x: number; y: number }>>({})
 let mapDrag: any = null
@@ -435,6 +459,22 @@ const mapTypeCounts = computed(() => {
 const unlinkedCount = computed(() =>
   allMapNodes.value.filter((node: any) => Number(node.degree || 0) === 0).length
 )
+
+const graphSearchSuggestions = computed(() => {
+  const query = String(props.searchQuery || '').trim().toLowerCase()
+  if (!query || view.value !== 'map') return []
+  return allMapNodes.value
+    .filter((node: any) => {
+      const haystack = `${node.title || ''} ${node.summary || ''} ${(node.aliases || []).join(' ')}`.toLowerCase()
+      return haystack.includes(query)
+    })
+    .sort((a: any, b: any) => {
+      const at = String(a.title || '').toLowerCase()
+      const bt = String(b.title || '').toLowerCase()
+      return Number(bt === query) - Number(at === query) || at.localeCompare(bt)
+    })
+    .slice(0, 8)
+})
 
 function normalizePageType(value?: string) {
   const type = String(value || '').trim()
@@ -612,18 +652,53 @@ function onMapNodeClick(node: any) {
 
 function onMapNodeDown(event: PointerEvent, node: any) {
   if (event.button !== 0 || detailVisible.value) return
+  stopMapAnimation()
   suppressMapNodeClick = false
+  mapDraggingId.value = String(node.id)
+  const nodeEl = mapCanvasRef.value?.querySelector(`[data-node-id="${String(node.id)}"]`) as SVGGElement | null
+  const relatedEdges = Array.from(
+    mapCanvasRef.value?.querySelectorAll(`[data-edge-source="${String(node.id)}"], [data-edge-target="${String(node.id)}"]`) || []
+  ) as SVGLineElement[]
   mapNodeDrag = {
     node,
     nodeId: String(node.id),
+    nodeEl,
+    relatedEdges,
+    positions: new Map(mapNodes.value.map((item: any) => [String(item.id), item])),
     startX: event.clientX,
     startY: event.clientY,
     origX: Number(node.x),
     origY: Number(node.y),
-    moved: false
+    x: Number(node.x),
+    y: Number(node.y),
+    r: Number(node.r || 5),
+    moved: false,
+    raf: 0
   }
   window.addEventListener('pointermove', onMapNodeMove)
   window.addEventListener('pointerup', onMapNodeUp)
+}
+
+function renderDraggedNode() {
+  if (!mapNodeDrag) return
+  const { nodeEl, relatedEdges, positions, nodeId, x, y, r } = mapNodeDrag
+  nodeEl?.setAttribute('transform', `translate(${x} ${y})`)
+  for (const line of relatedEdges) {
+    const sourceId = line.getAttribute('data-edge-source') || ''
+    const targetId = line.getAttribute('data-edge-target') || ''
+    const source = sourceId === nodeId ? { x, y, r } : positions.get(sourceId)
+    const target = targetId === nodeId ? { x, y, r } : positions.get(targetId)
+    if (!source || !target) continue
+    const dx = target.x - source.x
+    const dy = target.y - source.y
+    const distance = Math.hypot(dx, dy) || 1
+    const ux = dx / distance
+    const uy = dy / distance
+    line.setAttribute('x1', String(source.x + ux * (Number(source.r || 5) + 5)))
+    line.setAttribute('y1', String(source.y + uy * (Number(source.r || 5) + 5)))
+    line.setAttribute('x2', String(target.x - ux * (Number(target.r || 5) + 7)))
+    line.setAttribute('y2', String(target.y - uy * (Number(target.r || 5) + 7)))
+  }
 }
 
 function onMapNodeMove(event: PointerEvent) {
@@ -635,9 +710,15 @@ function onMapNodeMove(event: PointerEvent) {
   const dx = (event.clientX - mapNodeDrag.startX) / mapView.scale
   const dy = (event.clientY - mapNodeDrag.startY) / mapView.scale
   if (Math.abs(dx) + Math.abs(dy) > 4) mapNodeDrag.moved = true
-  mapNodeOffsets[mapNodeDrag.nodeId] = {
-    x: Math.max(30, Math.min(970, mapNodeDrag.origX + dx)),
-    y: Math.max(30, Math.min(610, mapNodeDrag.origY + dy))
+  mapNodeDrag.x = Math.max(30, Math.min(970, mapNodeDrag.origX + dx))
+  mapNodeDrag.y = Math.max(30, Math.min(610, mapNodeDrag.origY + dy))
+  // 拖拽过程中只写 DOM，不触发 Vue 的整图 computed 重算；松手后再落一次状态。
+  if (!mapNodeDrag.raf) {
+    mapNodeDrag.raf = requestAnimationFrame(() => {
+      if (!mapNodeDrag) return
+      mapNodeDrag.raf = 0
+      renderDraggedNode()
+    })
   }
 }
 
@@ -645,9 +726,12 @@ function onMapNodeUp() {
   if (!mapNodeDrag) return
   const state = mapNodeDrag
   mapNodeDrag = null
+  mapDraggingId.value = null
   window.removeEventListener('pointermove', onMapNodeMove)
   window.removeEventListener('pointerup', onMapNodeUp)
+  if (state.raf) cancelAnimationFrame(state.raf)
   if (state.moved) {
+    mapNodeOffsets[state.nodeId] = { x: state.x, y: state.y }
     // 拖拽结束后浏览器仍会补发一次 click；暂时压掉，避免误打开详情。
     suppressMapNodeClick = true
     window.setTimeout(() => { suppressMapNodeClick = false }, 80)
@@ -655,7 +739,9 @@ function onMapNodeUp() {
 }
 
 function stopMapNodeDrag() {
+  if (mapNodeDrag?.raf) cancelAnimationFrame(mapNodeDrag.raf)
   mapNodeDrag = null
+  mapDraggingId.value = null
   suppressMapNodeClick = false
   window.removeEventListener('pointermove', onMapNodeMove)
   window.removeEventListener('pointerup', onMapNodeUp)
@@ -834,7 +920,12 @@ async function reload() {
     pages.value = res.data?.pages || []
     Object.assign(stats, res.data?.stats || {})
     emit('stats', { total: pages.value.length })
-    if (!pages.value.length) view.value = 'pages'
+    if (!pages.value.length) {
+      view.value = 'pages'
+    } else if (view.value === 'map') {
+      // 刷新后仍停留在知识图谱：页面数据回来后再拉一次图数据。
+      await switchMap()
+    }
   } catch (error: any) {
     ElMessage.error('知识百科加载失败：' + (error?.message || error))
   } finally {
@@ -978,7 +1069,7 @@ function fitMapView() {
 }
 
 async function switchMap() {
-  if (!pages.value.length) return
+  if (!pages.value.length || !Number(props.activeKbId)) return
   view.value = 'map'
   resetMapNodeOffsets()
   mapView.x = -70
@@ -1260,17 +1351,13 @@ function onMapUp() {
 
 let mapSearchTimer: ReturnType<typeof setTimeout> | null = null
 
-function focusMapSearch() {
+function focusMapSearch(force = false) {
   if (view.value !== 'map') return
   const query = String(props.searchQuery || '').trim().toLowerCase()
   if (!query) return
   const nodes = allMapNodes.value
   const exact = nodes.find((node: any) => String(node.title || '').trim().toLowerCase() === query)
-  const target = exact || nodes.find((node: any) => {
-    const title = String(node.title || '').toLowerCase()
-    const summary = String(node.summary || '').toLowerCase()
-    return title.includes(query) || summary.includes(query)
-  })
+  const target = exact || (force ? graphSearchSuggestions.value[0] : null)
   if (!target) return
   // 搜索命中的节点可能被类型筛选隐藏；先恢复它的类型再选中。
   mapTypeVisible[normalizePageType(target.pageType)] = true
@@ -1281,17 +1368,41 @@ function focusMapSearch() {
   })
 }
 
+function selectSearchSuggestion(item: any) {
+  mapTypeVisible[normalizePageType(item.pageType)] = true
+  resetMapNodeOffsets()
+  nextTick(() => {
+    const current = mapNodes.value.find((node: any) => Number(node.pageId) === Number(item.pageId))
+    if (current) selectMapNode(current)
+  })
+}
+
 watch(() => props.searchQuery, () => {
   if (mapSearchTimer) clearTimeout(mapSearchTimer)
   mapSearchTimer = setTimeout(focusMapSearch, 280)
 })
 
-watch(() => props.activeKbId, async () => {
+watch(() => props.searchSubmitKey, () => {
+  focusMapSearch(true)
+})
+
+watch(view, (value) => {
+  try {
+    localStorage.setItem(WIKI_VIEW_KEY, value)
+  } catch {
+    // 忽略 localStorage 不可用
+  }
+})
+
+watch(() => props.activeKbId, async (kbId) => {
   stopBuildPolling()
   stopMapNodeDrag()
   resetMapNodeOffsets()
   buildJob.value = null
   await reload()
+  if (view.value === 'map' && kbId && !mapGraph.value.nodes?.length) {
+    await switchMap()
+  }
   await resumeBuildJob()
 })
 onMounted(async () => {
@@ -1309,6 +1420,14 @@ onBeforeUnmount(() => {
 <style scoped>
 .kw-page { display: flex; flex-direction: column; gap: 14px; padding: 2px 2px 12px; }
 .kw-context-actions { display: flex; align-items: center; gap: 6px; }
+.kw-graph-search-dropdown { position: absolute; z-index: 30; top: 42px; left: 0; right: 0; overflow: hidden; padding: 6px; border: 1px solid #e4eaf3; border-radius: 10px; background: #fff; box-shadow: 0 12px 30px rgba(28, 45, 75, .14); }
+.kw-graph-search-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; border: 0; border-radius: 7px; background: transparent; color: #4b5563; cursor: pointer; font: inherit; text-align: left; }
+.kw-graph-search-item:hover { background: #f3f7ff; }
+.kw-graph-search-item__dot { width: 9px; height: 9px; flex: none; border-radius: 50%; }
+.kw-graph-search-item__main { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
+.kw-graph-search-item__main b { overflow: hidden; color: #253247; font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.kw-graph-search-item__main em { overflow: hidden; color: #9aa1af; font-size: 9px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.kw-graph-search-item__type { flex: none; color: #a0a6b2; font-size: 9px; }
 .kw-toolbar-btn {
   display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 11px;
   border: 1px solid #e5eaf2; border-radius: 7px; color: #5f6b7d; background: #fff;
@@ -1396,6 +1515,7 @@ onBeforeUnmount(() => {
 .kw-map-edge.is-mention { stroke: #77bfae; }
 .kw-map-edge.is-active { stroke: #7e94bf; stroke-width: 1.5; opacity: 0.85; }
 .kw-map-edge.is-dimmed { opacity: 0.08; }
+.kw-map-edge.is-hidden { display: none; }
 .kw-map-node { cursor: grab; transition: opacity 0.18s ease; }
 .kw-map-node:active { cursor: grabbing; }
 .kw-map-node.is-dimmed { opacity: 0.2; }

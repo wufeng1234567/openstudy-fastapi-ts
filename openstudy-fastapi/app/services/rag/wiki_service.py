@@ -1989,7 +1989,7 @@ async def get_wiki_graph(db: AsyncSession, user_id: int, kb_id: int) -> dict:
             "pageType": page.page_type,
             "aliases": page.aliases or [],
             "docIds": page.source_doc_ids or [],
-            "summary": page.summary,
+            "summary": strip_wiki_tokens(page.summary),
             "status": page.status,
             "degree": degree.get(int(page.id), 0),
             "sectionCount": len(page.sections or []),

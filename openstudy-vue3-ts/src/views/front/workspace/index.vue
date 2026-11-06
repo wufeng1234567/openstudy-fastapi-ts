@@ -77,7 +77,12 @@
             :filter-open="workspaceFilterOpen"
             :filter-active="workspaceFilterActive"
             @toggle-filter="toggleWorkspaceFilter"
-          />
+            @enter="onWorkspaceSearchEnter"
+          >
+            <template #dropdown>
+              <div v-if="viewMode === 'wiki'" id="workspace-wiki-search-dropdown"></div>
+            </template>
+          </SearchFilterInput>
           <CommonFilterSidebar
             ref="workspaceFilterRef"
             :key="viewMode"
@@ -516,6 +521,7 @@
       v-else-if="viewMode === 'wiki' && (loading || (kbs.length && !loadFailed))"
       :active-kb-id="activeKbId"
       :search-query="workspaceSearch"
+      :search-submit-key="wikiSearchSubmitKey"
       @stats="onMapStats"
       @locate="onGraphLocate"
       @ask="onWikiAsk"
@@ -1122,6 +1128,7 @@ const workspaceFilterRef = ref<any>(null)
 const workspaceFilters = reactive<Record<string, any>>({})
 const galleryStats = reactive({ total: 0 })
 const mapStats = reactive({ total: 0 })
+const wikiSearchSubmitKey = ref(0)
 const workspaceTabs = [
   { key: 'list' as const, label: '资料夹', icon: 'folder' },
   { key: 'shelf' as const, label: '书架', icon: 'book-open' },
@@ -2447,6 +2454,10 @@ function findDocRecord(docId: number) {
 
 function onGalleryStats(payload: { total?: number }) {
   galleryStats.total = Number(payload?.total || 0)
+}
+
+function onWorkspaceSearchEnter() {
+  if (viewMode.value === 'wiki') wikiSearchSubmitKey.value += 1
 }
 
 function onMapStats(payload: { total?: number }) {
