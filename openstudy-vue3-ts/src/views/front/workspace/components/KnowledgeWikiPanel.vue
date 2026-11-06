@@ -93,7 +93,7 @@
             <g v-for="node in mapNodes" :key="node.id" class="kw-map-node" :data-node-id="String(node.id)"
               :class="{ 'is-selected': isMapSelected(node), 'is-hovered': mapHoveredId === String(node.id), 'is-dimmed': isMapNodeDimmed(node) }"
               :transform="`translate(${node.x} ${node.y})`"
-              @mouseenter="mapHoveredId = String(node.id)" @mouseleave="mapHoveredId = null"
+              @mouseenter="onMapNodeEnter(node)" @mouseleave="onMapNodeLeave(node)"
               @pointerdown.stop="onMapNodeDown($event, node)" @pointerup.stop="onMapNodeUp"
               @click.stop="onMapNodeClick(node)">
               <circle class="kw-map-node__halo" :r="node.r + 8" />
@@ -606,6 +606,17 @@ const mapNeighborIds = computed(() => {
   return result
 })
 
+function onMapNodeEnter(node: any) {
+  // 拖拽期间冻结悬停态：指针扫过其他节点时不能反复切换高亮/灰化。
+  if (mapDraggingId.value || detailVisible.value) return
+  mapHoveredId.value = String(node.id)
+}
+
+function onMapNodeLeave(node: any) {
+  if (mapDraggingId.value || detailVisible.value) return
+  if (mapHoveredId.value === String(node.id)) mapHoveredId.value = null
+}
+
 function isMapSelected(node: any) {
   return Number(node.pageId) === Number(mapSelectedPageId.value)
 }
@@ -655,6 +666,8 @@ function onMapNodeDown(event: PointerEvent, node: any) {
   stopMapAnimation()
   suppressMapNodeClick = false
   mapDraggingId.value = String(node.id)
+  // 拖拽开始时固定高亮当前节点，整段拖拽期间只保留它的邻接高亮，不跟随指针变化。
+  mapHoveredId.value = String(node.id)
   const nodeEl = mapCanvasRef.value?.querySelector(`[data-node-id="${String(node.id)}"]`) as SVGGElement | null
   const relatedEdges = Array.from(
     mapCanvasRef.value?.querySelectorAll(`[data-edge-source="${String(node.id)}"], [data-edge-target="${String(node.id)}"]`) || []
@@ -742,6 +755,7 @@ function stopMapNodeDrag() {
   if (mapNodeDrag?.raf) cancelAnimationFrame(mapNodeDrag.raf)
   mapNodeDrag = null
   mapDraggingId.value = null
+  mapHoveredId.value = null
   suppressMapNodeClick = false
   window.removeEventListener('pointermove', onMapNodeMove)
   window.removeEventListener('pointerup', onMapNodeUp)
