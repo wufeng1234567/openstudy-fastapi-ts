@@ -777,24 +777,59 @@ export function useAgentChat() {
   }
 
   /** 整篇文档读取结果没有 chunk 列表，按段落切成可展示的知识切片。 */
+  function isDocumentHeading(line: string): boolean {
+    const text = line.trim()
+    if (!text) return false
+    return (
+      /^#{1,2}\s+/.test(text) ||
+      /^[一二三四五六七八九十百]+[、.]/.test(text) ||
+      /^\d+[.、](?!\d)\s*\S/.test(text)
+    )
+  }
+
   function splitDocumentContent(content: string): string[] {
     const text = String(content || '').replace(/\r\n/g, '\n').trim()
     if (!text) return []
-    const paragraphs = text.split(/\n{2,}/).map((item) => item.trim()).filter(Boolean)
-    const chunks: string[] = []
-    let current = ''
-    for (const paragraph of paragraphs) {
-      if (current && current.length + paragraph.length + 2 > 900) {
-        chunks.push(current)
-        current = ''
-      }
-      current = current ? `${current}\n\n${paragraph}` : paragraph
-      while (current.length > 1400) {
-        chunks.push(current.slice(0, 1400))
-        current = current.slice(1400)
-      }
+    const sections: string[] = []
+    let current: string[] = []
+    let inFence = false
+    const flush = () => {
+      const value = current.join('\n').trim()
+      if (value) sections.push(value)
+      current = []
     }
-    if (current) chunks.push(current)
+    for (const line of text.split('\n')) {
+      if (/^\s*```/.test(line)) {
+        inFence = !inFence
+        current.push(line)
+        continue
+      }
+      // 文档引用按「大点」切，不要把一个 chunk 切成跨章节的 900 字片段；
+      // 否则「四、数据清洗」可能命中包含前面「二、流程」的同一块，浮层显示错内容。
+      if (!inFence && isDocumentHeading(line) && current.some((item) => item.trim())) {
+        flush()
+        current = [line]
+        continue
+      }
+      current.push(line)
+    }
+    flush()
+    const chunks: string[] = []
+    for (const section of sections) {
+      if (section.length <= 1400) {
+        chunks.push(section)
+        continue
+      }
+      // 超长章节再按段落/长度切，避免单块过大。
+      let rest = section
+      while (rest.length > 1400) {
+        let cut = rest.lastIndexOf('\n\n', 1400)
+        if (cut < 500) cut = 1400
+        chunks.push(rest.slice(0, cut).trim())
+        rest = rest.slice(cut).trim()
+      }
+      if (rest) chunks.push(rest)
+    }
     return chunks
   }
 
