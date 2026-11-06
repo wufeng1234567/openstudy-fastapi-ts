@@ -1,6 +1,6 @@
 <template>
-  <div class="chat-sources" @mouseleave="scheduleClose">
-    <span class="chat-sources__label">参考文档</span>
+  <div class="chat-sources" :class="{ 'chat-sources--compact': showLabel === false }" @mouseleave="scheduleClose">
+    <span v-if="showLabel !== false" class="chat-sources__label">参考文档</span>
     <button v-for="group in groups" :key="group.key" type="button" class="chat-source-chip"
       :class="{ 'is-active': float.visible && float.groupKey === group.key }"
       @mouseenter="showGroup(group, $event)" @focus="showGroup(group, $event)" @mouseleave="scheduleClose"
@@ -36,7 +36,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { Document } from '@element-plus/icons-vue'
 
-const props = defineProps<{ references: any[] }>()
+const props = defineProps<{ references: any[]; showLabel?: boolean }>()
 
 type SourceGroup = { key: string; docName: string; chunks: any[] }
 const float = ref<{ visible: boolean; groupKey: string; docName: string; chunks: any[]; top: number; left: number }>({
@@ -105,6 +105,8 @@ onBeforeUnmount(cancelClose)
 
 <style scoped>
 .chat-sources { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.chat-sources--compact { display: inline-flex; margin-top: 2px; vertical-align: baseline; }
+.chat-sources--compact .chat-source-chip { padding: 1px 5px; font-size: 9px; }
 .chat-sources__label { margin-right: 1px; color: #a0a7b4; font-size: 10px; }
 .chat-source-chip { display: inline-flex; max-width: 240px; align-items: center; gap: 4px; padding: 2px 7px; border: 1px solid #e6eaf1; border-radius: 999px; color: #7a8494; background: #f7f9fc; cursor: pointer; font: inherit; font-size: 10px; line-height: 1.5; transition: background .15s ease, border-color .15s ease, color .15s ease; }
 .chat-source-chip:hover, .chat-source-chip.is-active { border-color: #cddaf4; color: #3f5f9d; background: #f0f5ff; }

@@ -217,8 +217,10 @@
             ⚠️ 正文**不要**绑点击复制：回答里点一下（想看链接、想选中一段、误触）
             就会把整段复制走 + 弹「复制成功」，很打扰。复制只走下面这个按钮。
           -->
-          <div class="message-text rendered-md" v-html="renderAgentMarkdown(msg.content)"
-            @click="openMessageImage"></div>
+          <div class="message-text rendered-md" @click="openMessageImage">
+            <ChatAnswerBody v-if="msg.references?.length" :content="msg.content" :references="msg.references" />
+            <div v-else v-html="renderAgentMarkdown(msg.content)"></div>
+          </div>
           <!--
             ⚠️ 2026-10-17：正文末尾那个「思考中…」呼吸提示已删除。
             它和进度行的"正在处理…"是**同一件事的两个 UI**，叠在一起就是用户看到的
@@ -231,7 +233,6 @@
             </el-icon>
             <span class="mc-label">复制</span>
           </el-button>
-          <ChatSourceList v-if="msg.references?.length" :references="msg.references" class="msg-sources" />
           <div v-if="isGenerating && (!msg.content || msg.content.trim() === '') && isLastAssistantEmpty(idx)" class="ai-loading-inline">
             <LoadingDots size="small" :label="loadingText" />
           </div>
@@ -361,7 +362,7 @@ import { ElMessage } from 'element-plus'
 import { CopyDocument, Connection, Select, CloseBold, ArrowDown } from '@element-plus/icons-vue'
 import { renderAgentMarkdown } from '@/utils/markdown'
 import LoadingDots from '@/components/LoadingDots/index.vue'
-import ChatSourceList from '@/components/ChatSourceList/index.vue'
+import ChatAnswerBody from '@/components/ChatAnswerBody/index.vue'
 import AgentReasoning from '@/components/AgentReasoning/index.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import AgentTurnRollback from '@/components/AgentTurnRollback/index.vue'

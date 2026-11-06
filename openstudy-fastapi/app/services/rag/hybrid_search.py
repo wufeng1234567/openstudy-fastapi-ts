@@ -247,6 +247,37 @@ async def keyword_search(
     ]
 
 
+def _balance_document_and_wiki(hits: Sequence[ChunkHit], top_k: int) -> list[ChunkHit]:
+    """在最终 top_k 里给文档原文和知识百科都留出位置。
+
+    Wiki 小节通常是已经整理过的完整段落，RRF 分数容易把它们顶到前面；如果只按
+    融合分截断，用户问知识时经常只看到一串知识百科页面，看不到原始文档知识点。
+    这里不改变融合分排序，只做**来源配额**：两类都有命中时各保底若干条，剩余名额
+    仍按原始融合顺序补足。
+    """
+    if top_k <= 1:
+        return list(hits[:top_k])
+    docs = [hit for hit in hits if not hit.wiki_hit and not hit.graph_hit]
+    wiki = [hit for hit in hits if hit.wiki_hit]
+    if not docs or not wiki:
+        return list(hits[:top_k])
+    doc_quota = min(len(docs), max(1, top_k // 2))
+    wiki_quota = min(len(wiki), max(1, top_k // 2))
+    selected: list[ChunkHit] = []
+    picked: set[str] = set()
+    for hit in [*docs[:doc_quota], *wiki[:wiki_quota]]:
+        if hit.fusion_key not in picked:
+            picked.add(hit.fusion_key)
+            selected.append(hit)
+    for hit in hits:
+        if len(selected) >= top_k:
+            break
+        if hit.fusion_key not in picked:
+            picked.add(hit.fusion_key)
+            selected.append(hit)
+    return selected[:top_k]
+
+
 def reciprocal_rank_fusion(
     result_lists: Sequence[Sequence[ChunkHit]],
     top_k: int,
@@ -299,7 +330,7 @@ def reciprocal_rank_fusion(
                 entry.wiki_stale = bool(hit.wiki_stale or entry.wiki_stale)
 
     ordered = sorted(fused.values(), key=lambda h: h.score, reverse=True)
-    return ordered[:top_k]
+    return _balance_document_and_wiki(ordered, top_k)
 
 
 async def hybrid_search(
