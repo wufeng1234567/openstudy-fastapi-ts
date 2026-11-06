@@ -1,6 +1,6 @@
 param(
-  [string]$Pptx = "D:\OpenStudy\apps\fastapi-v2\doc\competition\OpenStudy-0.7.0-10页-码道版.pptx",
-  [string]$Pdf  = "D:\OpenStudy\apps\fastapi-v2\doc\competition\OpenStudy-0.7.0-10页-码道版.pdf"
+  [string]$Pptx = "D:\OpenStudy\apps\fastapi-v2\doc\competition\OpenStudy-10页-码道版.pptx",
+  [string]$Pdf  = "D:\OpenStudy\apps\fastapi-v2\doc\competition\OpenStudy-10页-码道版.pdf"
 )
 $app = New-Object -ComObject PowerPoint.Application
 $app.Visible = 1
@@ -9,3 +9,4 @@ $pres.SaveAs($Pdf, 32)
 $pres.Close()
 $app.Quit()
 Write-Host "pdf saved: $Pdf"
+

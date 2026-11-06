@@ -1,10 +1,10 @@
 # OpenStudy 10 页方案 0.7.0 · 码道版说明
 
 > 产物：
-> - `OpenStudy-0.7.0-10页-码道版.pptx`（可编辑，含动画）
-> - `OpenStudy-0.7.0-10页-码道版.pdf`（静态预览）
-> - `OpenStudy-0.7.0-预览.png`（10 页缩略图）
-> - `_preview_070/`（逐页 PNG）
+> - `OpenStudy-10页-码道版.pptx`（可编辑，含动画）
+> - `OpenStudy-10页-码道版.pdf`（静态预览）
+> - `OpenStudy-10页-码道版-预览.png`（10 页缩略图）
+> - `_preview/`（逐页 PNG）
 
 ## 一、设计基调
 
@@ -61,3 +61,4 @@ pwsh -NoProfile -File doc\competition\pdf_v3.ps1
 # 5) 生成缩略图
 openstudy-fastapi\.venv\Scripts\python.exe doc\competition\make_contact_sheet_v3.py
 ```
+

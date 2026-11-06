@@ -1,6 +1,6 @@
 param(
-  [string]$Pptx = "D:\OpenStudy\apps\fastapi-v2\doc\competition\OpenStudy-0.7.0-10页-码道版.pptx",
-  [string]$OutDir = "D:\OpenStudy\apps\fastapi-v2\doc\competition\_preview_070"
+  [string]$Pptx = "D:\OpenStudy\apps\fastapi-v2\doc\competition\OpenStudy-10页-码道版.pptx",
+  [string]$OutDir = "D:\OpenStudy\apps\fastapi-v2\doc\competition\_preview"
 )
 $ErrorActionPreference = 'Stop'
 if (Test-Path $OutDir) { Remove-Item $OutDir -Recurse -Force }
@@ -13,3 +13,4 @@ $pres.Close()
 $app.Quit()
 [System.Runtime.InteropServices.Marshal]::ReleaseComObject($app) | Out-Null
 Get-ChildItem $OutDir | Select-Object Name, Length
+

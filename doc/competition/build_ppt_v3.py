@@ -1214,9 +1214,10 @@ def p8c():
 for fn in (p1, p2b, p3health, p4surgery, p5pack, p5b, p7arch, p6, p7, p10close):
     fn()
 
-out = os.path.join(HERE, "OpenStudy-0.7.0-10页-码道版.pptx")
+out = os.path.join(HERE, "OpenStudy-10页-码道版.pptx")
 prs.save(out)
 print("saved:", out, os.path.getsize(out))
+
 
 
 
