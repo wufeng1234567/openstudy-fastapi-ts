@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""OpenStudy 10 页方案（0.4.1）· 浅色高级感 · 突出码道 CodeArts 开发能力
+"""OpenStudy 10 页方案（0.5.0）· 浅色高级感 · 突出码道 CodeArts 开发能力
 运行：openstudy-fastapi/.venv/Scripts/python.exe build_ppt_v3.py
 """
 import os
@@ -213,7 +213,8 @@ S11 = os.path.join(SHOTS, "25-document-health.png")
 S12 = os.path.join(SHOTS, "26-organize-surgery.png")
 S13 = os.path.join(HERE, "码道架构图", "prescription-export-core.png")
 S14 = os.path.join(HERE, "码道架构图", "gallery-core.png")
-S15 = os.path.join(HERE, "码道架构图", "knowledge-graph-core.png")
+S15 = os.path.join(HERE, "码道架构图", "knowledge-wiki-detail-core.png")
+S17 = os.path.join(SHOTS, "42-knowledge-wiki-map-0.5.0.png")
 S16 = os.path.join(HERE, "码道架构图", "version-diff-0.4.0.png")
 
 
@@ -223,7 +224,7 @@ def p1():
     # 装饰
     rect(s, 10.6, -2.1, 5.4, 5.4, fill=None, line=RGBColor(0xE3, 0xF4, 0xEC), lw=1.0, radius=0.5)
     rect(s, 11.9, 3.3, 3.6, 3.6, fill=None, line=RGBColor(0xEF, 0xF9, 0xF4), lw=1.0, radius=0.5)
-    text(s, M_L, 0.78, 7.0, 0.24, "OPENSTUDY  ·  0.4.1  ·  资料知识网络", size=9.5, bold=True, color=MINT_D, spc=160)
+    text(s, M_L, 0.78, 7.0, 0.24, "OPENSTUDY  ·  0.5.0  ·  知识百科", size=9.5, bold=True, color=MINT_D, spc=160)
     t1 = text(s, M_L, 1.18, 7.0, 1.55, "把不会的，\n问到会", size=46, bold=True, color=INK, line_spacing=1.08)
     anim(s, "p1_title", t1)
     line(s, M_L, 2.92, M_L + 1.15, 2.92, color=MINT, width=2.5)
@@ -1032,18 +1033,18 @@ def p4c():
 
 def p5b():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "05  /  资料知识网络", "0.4.1：实体有来源，关系可追溯，图是活的",
-           "画廊把图片变成资产，引用把资产连成网络，知识图谱让每个实体都能回到原文。")
-    text(s, M_L, 1.86, 4.05, 0.22, "画廊：图有描述、OCR 与来源", size=10.5, bold=True, color=GRAY2, spc=40)
-    text(s, 5.10, 1.86, 7.0, 0.22, "知识图谱：实体 / 有向关系 / 来源 chunk", size=10.5, bold=True, color=GRAY2, spc=40)
-    pic_card(s, S14, M_L, 2.10, 4.05, 2.66, border=True,
-             caption="真实界面：文档图片与聊天图片同一套搜索、描述和引用")
-    pic_card(s, S15, 5.10, 2.10, 7.30, 4.42, border=True,
-             caption="真实界面：实体按类型着色、按连接度大小；点击实体查看证据")
+    header(s, "05  /  知识百科", "0.5.0：实体图变成能读、能查、能回溯的主题页",
+           "后台仍是实体关系图；前台按主题整理成页面，每个小节都能回到原始资料。")
+    text(s, M_L, 1.86, 4.05, 0.22, "主题页：定义 / 要点 / 来源 / 相关主题", size=10.5, bold=True, color=GRAY2, spc=40)
+    text(s, 5.10, 1.86, 7.0, 0.22, "知识地图：主题页之间的关系", size=10.5, bold=True, color=GRAY2, spc=40)
+    pic_card(s, S15, M_L, 2.10, 4.05, 2.66, border=True,
+             caption="真实界面：主题页正文与核心小节")
+    pic_card(s, S17, 5.10, 2.10, 7.30, 4.42, border=True,
+             caption="真实界面：页面级知识地图，点节点打开主题页")
     rows = [
+        ("0.5.0 · 知识百科", "主题页 / 来源回溯 / 知识地图"),
+        ("0.5.0 · Wiki RAG", "主题页小节参与检索，回答能落回原文"),
         ("0.4.0 · 画廊", "图片描述 / OCR / 来源章节 / 被谁引用"),
-        ("0.4.0 · 版本", "时间线 · 左右 diff · 体检分与问题数变化"),
-        ("0.4.1 · 图谱", "实体-关系抽取 · 关系强度 · 来源 chunk 回溯"),
     ]
     y = 5.18
     for title, desc in rows:
@@ -1212,7 +1213,7 @@ def p8c():
 for fn in (p1, p2b, p3health, p4surgery, p5pack, p5b, p7arch, p6, p7, p10close):
     fn()
 
-out = os.path.join(HERE, "OpenStudy-0.4.1-10页-码道版.pptx")
+out = os.path.join(HERE, "OpenStudy-0.5.0-10页-码道版.pptx")
 prs.save(out)
 print("saved:", out, os.path.getsize(out))
 

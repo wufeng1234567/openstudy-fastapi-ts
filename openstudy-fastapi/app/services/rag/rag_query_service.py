@@ -30,6 +30,7 @@ from app.services.rag.hybrid_search import (
 )
 from app.services.rag.knowledge_graph_service import expand_query_chunks
 from app.services.rag.rag_write_service import resolve_knowledge_bases, sanitize_text
+from app.services.rag.wiki_service import search_wiki_chunks
 
 #: 单块塞进 prompt 的最大字符数
 MAX_CHUNK_CHARS = 1200
@@ -90,9 +91,36 @@ async def _graph_hits(db: AsyncSession, user_id: int, query: str, kbs, top_k: in
         return []
 
 
+async def _wiki_hits(
+    db: AsyncSession,
+    user_id: int,
+    query: str,
+    query_vector: Optional[list[float]],
+    kbs,
+    top_k: int,
+) -> list[ChunkHit]:
+    """知识百科检索；失败只降级，不影响原文检索。"""
+    try:
+        return await search_wiki_chunks(
+            db,
+            user_id,
+            query,
+            query_vector,
+            [int(kb.id) for kb in kbs],
+            top_k=top_k,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[rag] 知识百科检索失败，跳过该路: {}", e)
+        return []
+
+
 def _has_strong_agreement(hits: Sequence[ChunkHit]) -> bool:
-    """关键词命中或图谱邻居命中都算强相关信号。"""
-    return has_keyword_agreement(hits) or any(bool(getattr(hit, "graph_hit", False)) for hit in hits)
+    """关键词、图谱邻居或知识百科命中都算强相关信号。"""
+    return (
+        has_keyword_agreement(hits)
+        or any(bool(getattr(hit, "graph_hit", False)) for hit in hits)
+        or any(bool(getattr(hit, "wiki_hit", False)) for hit in hits)
+    )
 
 
 async def search(
@@ -133,8 +161,15 @@ async def search(
 
     query_vector = await embed_query(query)
     graph_hits = await _graph_hits(db, user_id, query, kbs, top_k)
+    wiki_hits = await _wiki_hits(db, user_id, query, query_vector, kbs, top_k)
     hits = await hybrid_search(
-        db, query, query_vector, [kb.id for kb in kbs], top_k=top_k, graph_hits=graph_hits
+        db,
+        query,
+        query_vector,
+        [kb.id for kb in kbs],
+        top_k=top_k,
+        graph_hits=graph_hits,
+        wiki_hits=wiki_hits,
     )
     low_confidence = bool(hits) and not _has_strong_agreement(hits)
     # 低置信时不要把 5 条“相似度地板”噪声全铺给用户：只保留最靠前的一条，
@@ -181,8 +216,15 @@ async def answer(
 
     query_vector = await embed_query(query)
     graph_hits = await _graph_hits(db, user_id, query, kbs, top_k)
+    wiki_hits = await _wiki_hits(db, user_id, query, query_vector, kbs, top_k)
     hits = await hybrid_search(
-        db, query, query_vector, [kb.id for kb in kbs], top_k=top_k, graph_hits=graph_hits
+        db,
+        query,
+        query_vector,
+        [kb.id for kb in kbs],
+        top_k=top_k,
+        graph_hits=graph_hits,
+        wiki_hits=wiki_hits,
     )
 
     # 真正的相关性兜底：检索为空就不编答案（legacy 这里是硬编码 true）
@@ -249,6 +291,11 @@ async def answer(
             "source": h.source,
             "score": round(h.score, 6),
             "graphHit": bool(getattr(h, "graph_hit", False)),
+            "wikiHit": bool(getattr(h, "wiki_hit", False)),
+            "wikiPageId": getattr(h, "wiki_page_id", None),
+            "wikiPageTitle": getattr(h, "wiki_page_title", None),
+            "wikiSection": getattr(h, "wiki_section", None),
+            "sourceType": "wiki" if getattr(h, "wiki_hit", False) else ("graph" if getattr(h, "graph_hit", False) else "document"),
             "vectorScore": None if h.vector_score is None else round(h.vector_score, 4),
             "keywordScore": None if h.keyword_score is None else round(h.keyword_score, 4),
             "preview": _truncate(h.content, 200),

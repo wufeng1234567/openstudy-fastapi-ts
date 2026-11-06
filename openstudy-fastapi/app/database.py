@@ -101,7 +101,7 @@ def register_all_models() -> None:
     # RAG 四表是 **PG 专有**（vector(1024) / tsvector 生成列 MySQL 都没有）。
     # 只在 PG 下导入，否则用 DB_DRIVER=mysql 回滚时 create_all 会直接报 DDL 错误。
     if IS_POSTGRES:
-        from app.models import rag  # noqa: F401
+        from app.models import rag, wiki  # noqa: F401
 
 
 async def init_db():

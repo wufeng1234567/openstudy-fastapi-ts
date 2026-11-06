@@ -698,6 +698,16 @@ class KnowledgeGraphBuildRequest(BaseModel):
     force: bool = False
 
 
+class WikiBuildRequest(BaseModel):
+    """知识百科生成：把实体图整理成可读主题页。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kbId: int = Field(..., gt=0)
+    force: bool = False
+    limit: int = Field(default=10, ge=1, le=30)
+
+
 class StudyPrescriptionRequest(BaseModel):
     """学习处方：按资料体检和章节生成按天执行的学习计划。"""
 
@@ -913,6 +923,92 @@ async def get_knowledge_graph_entity(
         from app.services.rag.knowledge_graph_service import get_entity_detail
 
         return success(await get_entity_detail(db, _uid(current_user), entity_id))
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/wiki/pages")
+async def list_wiki_pages(
+    kbId: Optional[int] = Query(None, gt=0),
+    q: str = Query("", max_length=120),
+    limit: int = Query(200, ge=1, le=500),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """知识百科主题页列表。"""
+    try:
+        from app.services.rag.wiki_service import list_wiki_pages as load_pages
+
+        return success(
+            await load_pages(db, _uid(current_user), kb_id=kbId, q=q, limit=limit)
+        )
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/wiki/pages/by-entity/{entity_id}")
+async def get_wiki_page_by_entity(
+    entity_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """按实体 id 找主题页；没有生成过主题页时返回 null，不伪造页面。"""
+    try:
+        from app.services.rag.wiki_service import get_wiki_page_by_entity as load_page
+
+        return success(await load_page(db, _uid(current_user), entity_id))
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/wiki/pages/{page_id}")
+async def get_wiki_page(
+    page_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """知识百科主题页详情：正文、来源、相关主题。"""
+    try:
+        from app.services.rag.wiki_service import get_wiki_page as load_page
+
+        return success(await load_page(db, _uid(current_user), page_id))
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/wiki/graph")
+async def get_wiki_graph(
+    kbId: int = Query(..., gt=0),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """知识地图：主题页级别的页面链接图，不是实体关系图。"""
+    try:
+        from app.services.rag.wiki_service import get_wiki_graph as load_graph
+
+        return success(await load_graph(db, _uid(current_user), kbId))
+    except Exception as e:
+        return _fail(e)
+
+
+@router.post("/wiki/build")
+async def build_wiki(
+    data: WikiBuildRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """把当前资料夹的实体图整理成知识百科主题页（同步返回本批统计）。"""
+    try:
+        from app.services.rag.wiki_service import build_wiki_pages
+
+        result = await build_wiki_pages(
+            db,
+            _uid(current_user),
+            data.kbId,
+            force=data.force,
+            limit=data.limit,
+        )
+        return success(result, "知识百科生成完成")
     except Exception as e:
         return _fail(e)
 

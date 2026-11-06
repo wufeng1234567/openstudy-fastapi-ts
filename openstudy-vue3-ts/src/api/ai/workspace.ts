@@ -163,6 +163,53 @@ export function getKnowledgeGraphEntity(entityId: number | string) {
   }) as unknown as Promise<{ code: number; msg?: string; data: any }>
 }
 
+/* ============================================================================
+ * 0.5.x 知识百科 / Wiki 图谱
+ * ========================================================================== */
+
+export function listWikiPages(params: { kbId?: number | null; q?: string; limit?: number } = {}) {
+  return request({
+    url: '/rag/wiki/pages',
+    method: 'get',
+    params: {
+      kbId: params.kbId || undefined,
+      q: params.q || undefined,
+      limit: params.limit || 200
+    }
+  }) as unknown as Promise<{ code: number; msg?: string; data: any }>
+}
+
+export function buildWikiPages(data: { kbId: number; force?: boolean; limit?: number }) {
+  return request({
+    url: '/rag/wiki/build',
+    method: 'post',
+    data,
+    timeout: 900000
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
+export function getWikiPage(pageId: number | string) {
+  return request({
+    url: `/rag/wiki/pages/${pageId}`,
+    method: 'get'
+  }) as unknown as Promise<{ code: number; msg?: string; data: any }>
+}
+
+export function getWikiPageByEntity(entityId: number | string) {
+  return request({
+    url: `/rag/wiki/pages/by-entity/${entityId}`,
+    method: 'get'
+  }) as unknown as Promise<{ code: number; msg?: string; data: any }>
+}
+
+export function getWikiGraph(kbId: number) {
+  return request({
+    url: '/rag/wiki/graph',
+    method: 'get',
+    params: { kbId }
+  }) as unknown as Promise<{ code: number; msg?: string; data: any }>
+}
+
 export interface ContentReferencePayload {
   sourceType: 'document' | 'document_image' | 'chat_image' | 'note' | 'question'
   sourceId: number

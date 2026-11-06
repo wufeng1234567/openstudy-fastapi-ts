@@ -73,6 +73,7 @@
             v-model="workspaceSearch"
             class="kbp-global-search"
             :placeholder="workspaceSearchPlaceholder"
+            :show-filter="viewMode !== 'wiki'"
             :filter-open="workspaceFilterOpen"
             :filter-active="workspaceFilterActive"
             @toggle-filter="toggleWorkspaceFilter"
@@ -509,15 +510,13 @@
       @back="viewMode = 'list'"
     />
 
-    <!-- 真知识图谱：实体-关系图，节点来自资料正文抽取 -->
-    <KnowledgeGraphPanel
-      v-else-if="viewMode === 'map' && (loading || (kbs.length && !loadFailed))"
+    <!-- 0.5.x 知识百科：主题页是前台内容，知识地图是页面级图谱 -->
+    <KnowledgeWikiPanel
+      v-else-if="viewMode === 'wiki' && (loading || (kbs.length && !loadFailed))"
       :active-kb-id="activeKbId"
       :search-query="workspaceSearch"
-      :type-filter="workspaceFilters.entityType || []"
       @stats="onMapStats"
       @locate="onGraphLocate"
-      @back="viewMode = 'list'"
     />
 
     <!-- 全页空态：一个知识库都没有时，用一张完整引导替代整个两栏区 -->
@@ -865,7 +864,7 @@ import { getWorkspaceOverview, uploadToWorkspace, searchWorkspace, searchWorkspa
 import OrganizeDiffDialog from './components/OrganizeDiffDialog.vue'
 import DocumentClinicDialog from './components/DocumentClinicDialog.vue'
 import GalleryPanel from './components/GalleryPanel.vue'
-import KnowledgeGraphPanel from './components/KnowledgeGraphSvgPanel.vue'
+import KnowledgeWikiPanel from './components/KnowledgeWikiPanel.vue'
 import VersionHistoryDialog from './components/VersionHistoryDialog.vue'
 import ShareKnowledgeDialog from './components/ShareKnowledgeDialog.vue'
 import ReceiveKnowledgeDialog from './components/ReceiveKnowledgeDialog.vue'
@@ -1092,7 +1091,7 @@ function htmlToEditorMarkdown(html: string): string {
 }
 
 const editorMarkdown = computed(() => htmlToEditorMarkdown(editorHtml.value))
-const viewMode = ref<'list' | 'shelf' | 'gallery' | 'map'>('list')
+const viewMode = ref<'list' | 'shelf' | 'gallery' | 'wiki'>('list')
 const canTeleport = ref(false)
 const workspaceSearch = ref('')
 const workspaceFilterOpen = ref(false)
@@ -1105,11 +1104,11 @@ const workspaceTabs = [
   { key: 'list' as const, label: '资料夹', icon: 'folder' },
   { key: 'shelf' as const, label: '书架', icon: 'book-open' },
   { key: 'gallery' as const, label: '画廊', icon: 'layout-grid' },
-  { key: 'map' as const, label: '知识图谱', icon: 'activity' }
+  { key: 'wiki' as const, label: '知识百科', icon: 'book-open' }
 ]
 const workspaceSearchPlaceholder = computed(() => {
   if (viewMode.value === 'gallery') return '搜索图片描述或文字…'
-  if (viewMode.value === 'map') return '搜索实体或关系…'
+  if (viewMode.value === 'wiki') return '搜索主题或概念…'
   if (viewMode.value === 'shelf') return '搜索资料…'
   return '搜索资料夹或资料…'
 })
@@ -1117,7 +1116,7 @@ const workspaceCountLabel = computed(() => {
   if (viewMode.value === 'list') return `全部资料夹：共 ${stats.kbCount} 个资料夹`
   if (viewMode.value === 'shelf') return `全部资料：共 ${stats.docCount} 份资料`
   if (viewMode.value === 'gallery') return `全部图片：共 ${galleryStats.total} 张`
-  return `全部实体：共 ${mapStats.total} 个`
+  return `全部主题：共 ${mapStats.total} 个`
 })
 function documentTypeKey(doc: any): string {
   const ext = String(doc?.fileType || doc?.fileName || '').toLowerCase().match(/\.([a-z0-9]+)$/)?.[1]
@@ -1139,7 +1138,7 @@ function documentStatusKey(doc: any): string {
 
 const workspaceFilterTitle = computed(() => {
   if (viewMode.value === 'gallery') return '图片筛选'
-  if (viewMode.value === 'map') return '实体筛选'
+  if (viewMode.value === 'wiki') return '主题筛选'
   return '资料筛选'
 })
 
@@ -1150,7 +1149,7 @@ const workspaceFilterDefault = computed(() => {
   if (viewMode.value === 'gallery') {
     return { kind: [], descriptionStatus: [] }
   }
-  return { entityType: [] }
+  return {}
 })
 
 const workspaceFilterGroups = computed(() => {
@@ -1180,24 +1179,8 @@ const workspaceFilterGroups = computed(() => {
       }
     ]
   }
-  if (viewMode.value === 'map') {
-    return [
-      {
-        key: 'entityType',
-        label: '实体类型',
-        type: 'checkbox',
-        options: [
-          { value: '概念', label: '概念' },
-          { value: '定理/公式', label: '定理 / 公式' },
-          { value: '方法', label: '方法' },
-          { value: '人物', label: '人物' },
-          { value: '机构', label: '机构' },
-          { value: '事件', label: '事件' },
-          { value: '作品', label: '作品' },
-          { value: '其他', label: '其他' }
-        ]
-      }
-    ]
+  if (viewMode.value === 'wiki') {
+    return []
   }
   return [
     {

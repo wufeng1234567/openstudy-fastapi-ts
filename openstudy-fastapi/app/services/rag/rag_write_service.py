@@ -276,6 +276,14 @@ async def delete_knowledge_base(db: AsyncSession, user_id: int, kb_id: int) -> d
         await db.execute(delete(RagDocumentChunk).where(RagDocumentChunk.doc_id.in_(doc_ids)))
         await db.execute(delete(RagDocument).where(RagDocument.id.in_(doc_ids)))
 
+    # 知识百科页面/链接/检索块依附于资料夹，逻辑删除资料夹时一起清理，
+    # 避免页面仍然出现在知识地图里、或者继续被 Wiki RAG 召回。
+    from app.models.wiki import RagWikiChunk, RagWikiPage, RagWikiPageLink
+
+    await db.execute(delete(RagWikiChunk).where(RagWikiChunk.kb_id == int(kb.id)))
+    await db.execute(delete(RagWikiPageLink).where(RagWikiPageLink.kb_id == int(kb.id)))
+    await db.execute(delete(RagWikiPage).where(RagWikiPage.kb_id == int(kb.id)))
+
     kb.doc_count = 0
     kb.chunk_count = 0
     kb.del_flag = "2"  # 与笔记一致：逻辑删用 '2'
@@ -744,6 +752,13 @@ async def update_document_content(
 
 async def delete_document(db: AsyncSession, user_id: int, doc_id: int) -> dict:
     doc = await get_document(db, user_id, doc_id)
+    # 文档删除后，引用它的知识百科页面立即标为 stale，避免继续以“已整理内容”参与检索。
+    try:
+        from app.services.rag.wiki_service import mark_wiki_pages_stale
+
+        await mark_wiki_pages_stale(db, user_id, int(doc.kb_id), [int(doc.id)])
+    except Exception as e:  # noqa: BLE001 - 清理标记失败不阻断资料删除
+        logger.warning(f"[rag] 删除资料时标记知识百科页面失效失败: {e}")
     # 收集物理文件：原始文件 + 解析出的插图。先记路径，删库成功后统一清盘。
     physical_paths: list[str] = []
     if doc.file_path:

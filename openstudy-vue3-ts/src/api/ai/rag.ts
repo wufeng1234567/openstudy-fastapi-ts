@@ -68,6 +68,12 @@ export interface RagSearchHit {
   keywordScore?: number | null
   vectorScore?: number | null
   source?: string
+  graphHit?: boolean
+  wikiHit?: boolean
+  wikiPageId?: number | null
+  wikiPageTitle?: string | null
+  wikiSection?: string | null
+  sourceType?: 'document' | 'graph' | 'wiki' | string
 }
 
 /* ===================== 文档状态（给 UI 用） ===================== */

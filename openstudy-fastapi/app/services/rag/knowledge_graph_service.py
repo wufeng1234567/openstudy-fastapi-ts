@@ -29,8 +29,8 @@ from app.services.rag.hybrid_search import ChunkHit
 ENTITY_TYPES = ["概念", "定理/公式", "方法", "人物", "机构", "事件", "作品", "其他"]
 RELATION_TYPES = ["包含", "属于", "定义", "推导", "应用", "前置", "对比", "相关", "产生", "属于领域"]
 MAX_ENTITIES_PER_DOC = 40
-MAX_RELATIONS_PER_DOC = 60
-MAX_CHUNKS_PER_DOC = 8
+MAX_RELATIONS_PER_DOC = 40
+MAX_CHUNKS_PER_DOC = 12
 
 
 def _norm_name(value: Any) -> str:
@@ -57,6 +57,23 @@ def _clean(value: Any, limit: int = 400) -> str:
     return text[:limit]
 
 
+def _matching_chunk_ids(name: str, chunks: List[RagDocumentChunk]) -> List[int]:
+    """只把真正出现该实体名的 chunk 挂到实体上。
+
+    旧实现把整篇文档的所有 chunk 都挂给每个实体，导致前端“来源 chunk”
+    看起来有内容、实际却对不上。这里先按实体名精确匹配；匹配不到时返回空，
+    由主题页生成阶段再用正文检索补来源，绝不伪造。
+    """
+    norm = _norm_name(name)
+    if not norm:
+        return []
+    return [
+        int(chunk.id)
+        for chunk in chunks
+        if getattr(chunk, "id", 0) and norm in _norm_name(chunk.content)
+    ]
+
+
 def _parse_json_payload(raw: str) -> Dict[str, Any]:
     text = str(raw or "").strip()
     text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.I)
@@ -81,9 +98,12 @@ def _prompt(doc_name: str, context: str) -> str:
         "只输出一个 JSON 对象，不要 Markdown，不要解释。\n\n"
         "实体类型只能从以下列表选：'概念','定理/公式','方法','人物','机构','事件','作品','其他'。\n"
         "关系必须是资料中明确出现的，不要靠常识补关系；关系末端必须是同一份 JSON 里的实体。\n"
-        "输出格式：\n"
+        "关系类型优先选最具体的一种：'属于','定义','推导','应用','前置','对比','产生','属于领域'；"
+        "只有真正的整体—部分结构才用'包含'，不要把每一条关系都写成'包含'。\n"
+        "输出格式（示例只示意字段，不要照抄示例内容）：\n"
         '{"entities":[{"name":"实体名","type":"概念","description":"资料中的简短解释"}],'
-        '"relations":[{"source":"实体名1","target":"实体名2","type":"包含","description":"关系的原文依据","strength":8}]}\n'
+        '"relations":[{"source":"实体名1","target":"实体名2","type":"前置","description":"关系的原文依据","strength":8},'
+        '{"source":"实体名1","target":"实体名3","type":"包含","description":"整体与部分关系","strength":6}]}\n'
         "strength 取值 1-10，越直接越强。若没有实体/关系，返回空数组。\n\n"
         f"资料名：{doc_name}\n资料片段：\n{context}"
     )
@@ -167,7 +187,7 @@ async def _extract_doc(
                 "type": kind,
                 "description": _clean(item.get("description"), 800),
                 "doc_id": int(doc.id),
-                "chunk_ids": [int(c.id) for c in chunks if getattr(c, "id", 0)],
+                "chunk_ids": _matching_chunk_ids(name, chunks),
             }
         )
         if len(entities) >= MAX_ENTITIES_PER_DOC:
@@ -190,6 +210,9 @@ async def _extract_doc(
             strength = max(1, min(10, int(item.get("strength") or 5)))
         except (TypeError, ValueError):
             strength = 5
+        source_chunks = set(source.get("chunk_ids") or [])
+        target_chunks = set(target.get("chunk_ids") or [])
+        relation_chunk_ids = list(source_chunks & target_chunks) or list(source_chunks | target_chunks)
         relations.append(
             {
                 "source": source["name"],
@@ -198,7 +221,7 @@ async def _extract_doc(
                 "description": _clean(item.get("description"), 800),
                 "strength": strength,
                 "doc_id": int(doc.id),
-                "chunk_ids": [int(c.id) for c in chunks if getattr(c, "id", 0)],
+                "chunk_ids": relation_chunk_ids,
             }
         )
         if len(relations) >= MAX_RELATIONS_PER_DOC:

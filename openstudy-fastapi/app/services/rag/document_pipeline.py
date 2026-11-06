@@ -211,6 +211,18 @@ async def _run(db: AsyncSession, doc: RagDocument) -> dict:
     except Exception as graph_error:  # noqa: BLE001
         logger.warning(f"[rag.pipeline] id={doc.id} 知识图谱自动更新失败：{graph_error}")
 
+    # 文档变化后，已经生成的主题页可能过期；标记为 stale，避免它继续参与 RAG。
+    try:
+        from app.services.rag.wiki_service import mark_wiki_pages_stale
+
+        marked = await mark_wiki_pages_stale(
+            db, int(doc.user_id), int(doc.kb_id), [int(doc.id)]
+        )
+        if marked:
+            logger.info(f"[rag.pipeline] id={doc.id} 标记 {marked} 个知识百科页面待更新")
+    except Exception as wiki_error:  # noqa: BLE001
+        logger.warning(f"[rag.pipeline] id={doc.id} 标记知识百科页面失效失败：{wiki_error}")
+
     return {"docId": doc.id, "ok": True, "chunks": n}
 
 

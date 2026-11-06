@@ -74,6 +74,11 @@ class ChunkHit:
     kw_rank: Optional[int] = None
     #: 是否由知识图谱邻居扩展召回（图谱命中也要参与最终上下文，但明确标记来源）
     graph_hit: bool = False
+    #: 是否由知识百科（Wiki）小节召回
+    wiki_hit: bool = False
+    wiki_page_id: Optional[int] = None
+    wiki_page_title: Optional[str] = None
+    wiki_section: Optional[str] = None
     #: 该分块关联的图片 URL 列表（`/profile/upload/...` 或 http(s) 外链）。
     #: 来自 `rag_document_chunk.meta_data["images"]`（分块时按正文 `【图N】` 归属）。
     #: 空 = 这一块没有图。检索命中时把它作为多模态图片一起回给模型（见
@@ -81,8 +86,17 @@ class ChunkHit:
     images: list[str] = field(default_factory=list)
 
     @property
+    def fusion_key(self) -> str:
+        """RRF 去重键。文档 chunk 与 Wiki chunk 的 id 各自独立，不能直接混用。"""
+        return f"wiki:{self.chunk_id}" if self.wiki_hit else f"doc:{self.chunk_id}"
+
+    @property
     def source(self) -> str:
         """给模型/前端看的出处文案。"""
+        if self.wiki_hit:
+            title = self.wiki_page_title or "未命名主题"
+            section = f" · {self.wiki_section}" if self.wiki_section else ""
+            return f"知识百科《{title}》{section}"
         name = self.doc_name or f"文档#{self.doc_id}"
         return f"{name} 第 {self.chunk_index + 1} 段"
 
@@ -99,6 +113,11 @@ class ChunkHit:
             "content": self.content,
             "score": round(self.score, 6),
             "graphHit": bool(self.graph_hit),
+            "wikiHit": bool(self.wiki_hit),
+            "wikiPageId": self.wiki_page_id,
+            "wikiPageTitle": self.wiki_page_title,
+            "wikiSection": self.wiki_section,
+            "sourceType": "wiki" if self.wiki_hit else ("graph" if self.graph_hit else "document"),
             "graphScore": None,
             "vectorScore": None if self.vector_score is None else round(self.vector_score, 4),
             "keywordScore": None if self.keyword_score is None else round(self.keyword_score, 4),
@@ -233,10 +252,11 @@ def reciprocal_rank_fusion(
 
     只依赖**排名**，所以向量分和全文分不需要归一化、也不用拍权重系数。
     """
-    fused: dict[int, ChunkHit] = {}
+    fused: dict[str, ChunkHit] = {}
     for hits in result_lists:
         for rank, hit in enumerate(hits):
-            entry = fused.get(hit.chunk_id)
+            key = hit.fusion_key
+            entry = fused.get(key)
             if entry is None:
                 entry = ChunkHit(
                     chunk_id=hit.chunk_id,
@@ -246,8 +266,13 @@ def reciprocal_rank_fusion(
                     content=hit.content,
                     doc_name=hit.doc_name,
                     images=list(hit.images),
+                    graph_hit=bool(hit.graph_hit),
+                    wiki_hit=bool(hit.wiki_hit),
+                    wiki_page_id=hit.wiki_page_id,
+                    wiki_page_title=hit.wiki_page_title,
+                    wiki_section=hit.wiki_section,
                 )
-                fused[hit.chunk_id] = entry
+                fused[key] = entry
             elif hit.images and not entry.images:
                 # 两路都命中同一块时，images 取非空的一路（两路都来自同一行，值一致）
                 entry.images = list(hit.images)
@@ -261,6 +286,11 @@ def reciprocal_rank_fusion(
                 entry.kw_rank = rank
             if hit.graph_hit:
                 entry.graph_hit = True
+            if hit.wiki_hit:
+                entry.wiki_hit = True
+                entry.wiki_page_id = hit.wiki_page_id or entry.wiki_page_id
+                entry.wiki_page_title = hit.wiki_page_title or entry.wiki_page_title
+                entry.wiki_section = hit.wiki_section or entry.wiki_section
 
     ordered = sorted(fused.values(), key=lambda h: h.score, reverse=True)
     return ordered[:top_k]
@@ -274,10 +304,13 @@ async def hybrid_search(
     top_k: int = 5,
     min_similarity: float = DEFAULT_MIN_SIMILARITY,
     graph_hits: Optional[Sequence[ChunkHit]] = None,
+    wiki_hits: Optional[Sequence[ChunkHit]] = None,
 ) -> list[ChunkHit]:
-    """向量 + 全文混合检索。
+    """向量 + 全文 + 图谱 + 知识百科混合检索。
 
     `query_vector` 为 None 时降级为纯关键词检索（向量化失败不该让整个检索挂掉）。
+    Wiki 命中是独立的一路：它提供“已经整理过的主题页内容”，但仍需与原文一起
+    交给模型，并在引用里保留 `wikiPageId` 与原始 chunk 的对应关系。
     """
     if not kb_ids:
         return []
@@ -293,13 +326,13 @@ async def hybrid_search(
 
     kw_hits = await keyword_search(db, query, kb_ids, pool)
     graph_hits = list(graph_hits or [])
+    wiki_hits = list(wiki_hits or [])
 
-    if not vec_hits and not kw_hits and not graph_hits:
+    if not vec_hits and not kw_hits and not graph_hits and not wiki_hits:
         return []
-    if not vec_hits and not kw_hits:
-        return graph_hits[:top_k]
-    # 图谱邻居命中也进入 RRF：它代表“语义上相邻”的原文位置，不是另一套分数体系。
-    return reciprocal_rank_fusion([vec_hits, kw_hits, graph_hits], top_k)
+    # 图谱邻居命中和 Wiki 小节都进入 RRF：它们各自代表一种“已整理过的语义相邻”，
+    # 不是另一套分数体系，统一按排名融合，避免手工加权重拍脑袋。
+    return reciprocal_rank_fusion([vec_hits, kw_hits, graph_hits, wiki_hits], top_k)
 
 
 def has_keyword_agreement(hits: Sequence[ChunkHit]) -> bool:

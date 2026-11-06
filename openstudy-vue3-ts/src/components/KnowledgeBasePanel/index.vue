@@ -116,7 +116,8 @@
                   <div class='kb-group-doc' :title='g.docName'>{{ g.docName }}</div>
                   <div class='kb-group-meta'>
                     <span v-if='g.kbName' class='kb-hit-kb'>{{ g.kbName }}</span>
-                    <span>{{ g.hits.length }} 段命中</span>
+                    <span v-if='g.isWiki' class='kb-hit-kb'>知识百科</span>
+                    <span>{{ g.hits.length }} {{ g.isWiki ? '节' : '段' }}命中</span>
                   </div>
                 </div>
                 <span v-if='g.kbId' class='kb-group-open' title='打开这个资料夹' @click='gotoKb(g.kbId)'>
@@ -130,7 +131,7 @@
                   <span class='kb-hit-idx'>{{ j + 1 }}</span>
                   <div class='kb-hit-title'>
                     <div class='kb-hit-meta'>
-                      <span>第 {{ h.chunkIndex + 1 }} 段</span>
+                      <span>{{ h.wikiHit ? (h.wikiSection || '主题页') : `第 ${h.chunkIndex + 1} 段` }}</span>
                       <!-- 库里可能有同名文档，所以组头之外每段再标一次库名 -->
                       <span v-if='kbNameOf(h.kbId)' class='kb-hit-kb'>{{ kbNameOf(h.kbId) }}</span>
                     </div>
@@ -144,7 +145,7 @@
                   <span class='kb-op' title='复制这段原文' @click.stop='copyHit(h)'>
                     <el-icon><DocumentCopy /></el-icon>
                   </span>
-                  <span class='kb-op' title='资料刨析' @click.stop='openAnatomyOf(h)'>
+                  <span v-if='!h.wikiHit' class='kb-op' title='资料刨析' @click.stop='openAnatomyOf(h)'>
                     <el-icon><View /></el-icon>
                   </span>
                   <span class='kb-hit-more' @click.stop='toggleExpand(h.chunkId)'>
@@ -534,10 +535,19 @@ const scopeLabel = computed(() => (activeKbId.value ? activeKb.value?.name || ''
 const buildHitGroups = (hits: RagSearchHit[]) => {
   const m = new Map<string, any>()
   hits.forEach((h) => {
-    const k = String(h.kbId || 0) + '-' + h.docId
+    const k = h.wikiHit ? `wiki-${h.wikiPageId || 0}` : String(h.kbId || 0) + '-' + h.docId
     let g = m.get(k)
     if (!g) {
-      g = { key: k, kbId: h.kbId, kbName: kbNameOf(h.kbId), docName: h.docName || ('文档#' + h.docId), hits: [] }
+      g = {
+        key: k,
+        kbId: h.kbId,
+        kbName: kbNameOf(h.kbId),
+        docName: h.wikiHit
+          ? (h.wikiPageTitle ? `知识百科《${h.wikiPageTitle}》` : '知识百科主题页')
+          : (h.docName || ('文档#' + h.docId)),
+        isWiki: !!h.wikiHit,
+        hits: []
+      }
       m.set(k, g)
     }
     g.hits.push(h)
