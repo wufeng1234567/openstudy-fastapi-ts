@@ -417,3 +417,39 @@ class RagMicroCourse(Base):
     progress_json: Mapped[Optional[dict]] = mapped_column(JSON)
     error_msg: Mapped[Optional[str]] = mapped_column(String(300))
     create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class RagDocumentSection(Base):
+    """资料阅读器的章节分段：标题 + 原文起止偏移。
+
+    这是「资料定位」的稳定索引，不复制正文：
+      · 规则解析能识别 Markdown / 中文序号 / 数字序号标题；
+      · Word/PDF 格式不统一时，LLM 只负责判断标题行与分段，偏移仍由后端
+        用原文行号计算，避免模型编造字符位置；
+      · 没有标题的资料退化为 chunk 分段，保证目录始终可导航。
+    """
+
+    __tablename__ = "rag_document_section"
+    __table_args__ = (
+        UniqueConstraint(
+            "doc_id", "index_version", "section_index",
+            name="uk_rag_document_section",
+        ),
+        Index("idx_rag_document_section_doc", "doc_id", "index_version"),
+        Index("idx_rag_document_section_user", "user_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    kb_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    doc_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    index_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    section_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    level: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    start_offset: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    end_offset: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    #: rule / llm / chunk
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="rule")
+    create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    update_time: Mapped[Optional[datetime]] = mapped_column(DateTime)

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""OpenStudy 10 页方案（0.6.1）· 浅色高级感 · 突出码道 CodeArts 开发能力
+"""OpenStudy 10 页方案（0.7.0）· 浅色高级感 · 突出码道 CodeArts 开发能力
 运行：openstudy-fastapi/.venv/Scripts/python.exe build_ppt_v3.py
 """
 import os
@@ -215,6 +215,7 @@ S13 = os.path.join(HERE, "码道架构图", "prescription-export-core.png")
 S14 = os.path.join(HERE, "码道架构图", "gallery-core.png")
 S15 = os.path.join(HERE, "码道架构图", "knowledge-wiki-editor-core.png")
 S17 = os.path.join(HERE, "码道架构图", "gallery-wiki-picker-core.png")
+S18 = os.path.join(SHOTS, "46-reader-0.7.0.png")
 S16 = os.path.join(HERE, "码道架构图", "version-diff-0.4.0.png")
 
 
@@ -224,7 +225,7 @@ def p1():
     # 装饰
     rect(s, 10.6, -2.1, 5.4, 5.4, fill=None, line=RGBColor(0xE3, 0xF4, 0xEC), lw=1.0, radius=0.5)
     rect(s, 11.9, 3.3, 3.6, 3.6, fill=None, line=RGBColor(0xEF, 0xF9, 0xF4), lw=1.0, radius=0.5)
-    text(s, M_L, 0.78, 7.0, 0.24, "OPENSTUDY  ·  0.6.1  ·  知识百科 · 可编辑", size=9.5, bold=True, color=MINT_D, spc=160)
+    text(s, M_L, 0.78, 7.0, 0.24, "OPENSTUDY  ·  0.7.0  ·  智能资料阅读器", size=9.5, bold=True, color=MINT_D, spc=160)
     t1 = text(s, M_L, 1.18, 7.0, 1.55, "把不会的，\n问到会", size=46, bold=True, color=INK, line_spacing=1.08)
     anim(s, "p1_title", t1)
     line(s, M_L, 2.92, M_L + 1.15, 2.92, color=MINT, width=2.5)
@@ -894,18 +895,18 @@ def p3d():
 def p3health():
     """P3：资料诊疗室——体检 / 刨析 / 学习处方统一入口。"""
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "02  /  学习材料诊疗室", "资料诊疗室：先体检，再刨析，最后开处方",
+    header(s, "02  /  学习材料诊疗室", "资料诊疗室：先体检，再读原文，最后开处方",
            "同一份资料只有一个入口，三步都在同一间诊疗室里完成，不用在三个功能之间来回找。")
-    pic_card(s, S11, M_L, 1.82, 7.55, 4.95,
-             caption="真实运行界面：打开资料诊疗室后，先看到四维体检、问题清单与章节覆盖。")
+    pic_card(s, S18, M_L, 1.82, 7.55, 4.95,
+             caption="真实运行界面：原文阅读器按章节导航，图片收进抽屉，选中文字可继续问 AI。")
     x, y, w, h = 8.65, 1.82, 3.80, 4.95
     card = rect(s, x, y, w, h, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
-    text(s, x + 0.22, y + 0.18, w - 0.44, 0.24, "四个指标，分别回答什么", size=12.0, bold=True, color=INK)
+    text(s, x + 0.22, y + 0.18, w - 0.44, 0.24, "四个能力，分别解决什么", size=12.0, bold=True, color=INK)
     metrics = [
-        ("结构完整度", "它看标题层级是否清楚、长段落是否过多"),
-        ("图文相关度", "它看图片是否真的属于这段内容"),
-        ("知识覆盖度", "它看每节有没有讲解，找出空章节"),
-        ("可学习化程度", "它看资料能不能直接出题、做复习卡"),
+        ("目录导航", "点击章节、滚动高亮、目录搜索"),
+        ("阅读区", "760–860 宽、标题锚点、文档内搜索"),
+        ("图片抽屉", "按章节筛选、点击定位原文"),
+        ("选中即操作", "问 AI / 出题 / 笔记 / 学习处方"),
     ]
     yy = y + 0.58
     for t, d in metrics:
@@ -914,14 +915,14 @@ def p3health():
         text(s, x + 0.42, yy + 0.20, w - 0.62, 0.32, d, size=8.0, color=GRAY, line_spacing=1.25)
         yy += 0.57
     line(s, x + 0.22, y + 2.96, x + w - 0.22, y + 2.96, color=LINE, width=0.5)
-    text(s, x + 0.22, y + 3.08, w - 0.44, 0.22, "问题清单：先处理学习问题", size=9.0, bold=True, color=INK)
+    text(s, x + 0.22, y + 3.08, w - 0.44, 0.22, "选中原文：直接进入下一步", size=9.0, bold=True, color=INK)
     text(s, x + 0.22, y + 3.36, w - 0.44, 0.54,
-         "每条都写清楚「发现了什么、建议怎么处理」，可以直接去整理、去出题或看章节。",
+         "选中一段原文后，可以问 AI、出题、加入笔记或学习处方，不必复制到别处。",
          size=8.2, color=GRAY, line_spacing=1.35)
     text(s, x + 0.22, y + 3.86, w - 0.44, 0.20,
-         "分数只用来排优先级，不是给学生打分。", size=7.8, color=GRAY2)
+         "原文始终是事实来源，AI 只做整理和解释。", size=7.8, color=GRAY2)
     # 三步闭环
-    steps = [("体检", "先看问题"), ("刨析", "拆开看内容"), ("处方", "每天怎么学")]
+    steps = [("体检", "先看问题"), ("读原文", "按章节看内容"), ("处方", "每天怎么学")]
     sx = x + 0.22
     sw = (w - 0.44 - 2 * 0.08) / 3
     for i, (t, d) in enumerate(steps):
@@ -1033,7 +1034,7 @@ def p4c():
 
 def p5b():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "05  /  知识百科", "0.6.1：知识百科从能读，到能改、能挂图",
+    header(s, "05  /  知识百科", "0.7.0：知识百科从能读，到能改、能挂图",
            "主题页可手动编辑并保留历史版本；画廊图片可以直接挂到主题页，对话也能管理主题页。")
     text(s, M_L, 1.86, 4.05, 0.22, "主题页编辑：改标题 / 摘要 / 小节", size=10.5, bold=True, color=GRAY2, spc=40)
     text(s, 5.10, 1.86, 7.0, 0.22, "画廊 → 知识百科：图片直接挂到主题页", size=10.5, bold=True, color=GRAY2, spc=40)
@@ -1042,9 +1043,9 @@ def p5b():
     pic_card(s, S17, 5.10, 2.10, 7.30, 4.42, border=True,
              caption="真实界面：画廊图片插入知识百科主题页")
     rows = [
-        ("0.6.1 · 可编辑", "版本快照 / 历史恢复 / 来源保留"),
-        ("0.6.1 · 画廊联动", "图片引用 / 反向可见 / 不复制原图"),
-        ("0.6.1 · 对话", "知识百科 CRUD / sourceType=wiki / 回到原文"),
+        ("0.7.0 · 可编辑", "版本快照 / 历史恢复 / 来源保留"),
+        ("0.7.0 · 画廊联动", "图片引用 / 反向可见 / 不复制原图"),
+        ("0.7.0 · 对话", "知识百科 CRUD / sourceType=wiki / 回到原文"),
     ]
     y = 5.18
     for title, desc in rows:
@@ -1213,7 +1214,7 @@ def p8c():
 for fn in (p1, p2b, p3health, p4surgery, p5pack, p5b, p7arch, p6, p7, p10close):
     fn()
 
-out = os.path.join(HERE, "OpenStudy-0.6.1-10页-码道版.pptx")
+out = os.path.join(HERE, "OpenStudy-0.7.0-10页-码道版.pptx")
 prs.save(out)
 print("saved:", out, os.path.getsize(out))
 

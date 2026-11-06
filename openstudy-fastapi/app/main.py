@@ -195,7 +195,7 @@ logging.getLogger("sqlalchemy.engine").setLevel(logging.CRITICAL)
 app = FastAPI(
     title="OpenStudy API",
     description="OpenStudy Online Learning Platform",
-    version="0.6.1",
+    version="0.7.0",
     docs_url="/swagger-ui.html",
     openapi_url="/v3/api-docs",
     lifespan=lifespan,
@@ -313,7 +313,7 @@ async def root():
         "code": 200,
         "msg": "OpenStudy API is running",
         "data": {
-            "version": "0.6.1",
+            "version": "0.7.0",
             "docs": "/swagger-ui.html",
         },
     }

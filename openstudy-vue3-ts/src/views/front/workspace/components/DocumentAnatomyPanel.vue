@@ -1,422 +1,477 @@
 <!--
-  单份资料的「资料刨析」查看器
-  ----------------------------------------------------------------------------
-  从 workspace/index.vue 抽出的共享组件：我的资料页、设置面板的「我的资料」
-  tab、以及资料夹面板里的「资料刨析」入口都复用这一份页面，避免两套结构树/
-  正文/图片资产的展示逻辑逐渐分叉。
+  资料阅读器（原「资料剖析」的核心阅读面板）
 
-  入口行为：
-    · `open(doc, opts)`：加载正文、章节树、图片资产并打开弹窗；
-    · 可选 `showEdit`：显示「编辑」按钮，点击后向调用方抛 `edit` 事件；
-    · `highlight` / `targetText` / `chunkIndex`：语义检索命中后定位并标黄。
+  设计目标：
+  · 左侧目录是真导航：点击滚动、滚动高亮、可收起、可搜索；
+  · 正文限宽，图片收进抽屉；
+  · 支持 LLM 清洗后的章节偏移与 chunk 兜底；
+  · 选中文字可问 AI / 出题 / 复制，作为学习资料的阅读入口。
 -->
 <template>
-  <div class="kbp-anatomy-shell">
-    <div class="kbp-anatomy-panel">
-      <div ref="mainBodyRef" v-loading="loading" class="kbp-anatomy">
-      <div class="kbp-anatomy__stats">
-        <span><b>{{ stats.contentLength }}</b> 字</span>
-        <span><b>{{ stats.imageCount }}</b> 张图</span>
-        <span><b>{{ stats.headingCount }}</b> 个标题</span>
-        <span><b>{{ stats.chunkCount }}</b> 个分块</span>
-        <el-button v-if="props.showEdit && doc" text type="primary" size="small" class="kbp-anatomy__edit"
-          @click="emitEdit">编辑</el-button>
+  <div ref="readerRoot" class="reader-panel">
+    <div class="reader-toolbar">
+      <div class="reader-toolbar__title">
+        <span class="reader-toolbar__kicker">资料原文</span>
+        <b :title="docName">{{ docName || '未命名资料' }}</b>
       </div>
-
-      <div class="kbp-anatomy__grid">
-        <section class="kbp-anatomy__outline">
-          <h4>资料结构</h4>
-          <div v-if="questionGroups.length" class="kbp-anatomy__question-groups">
-            <div class="kbp-anatomy__question-groups-label">按题型整理</div>
-            <div v-for="group in questionGroups" :key="group.name" class="kbp-anatomy__question-group"
-              @click="jumpToQuestionGroup(group)">
-              <span>{{ group.name }}</span>
-              <b>{{ group.count }} 题</b>
-            </div>
-          </div>
-          <div v-if="outlineItems.length" class="kbp-anatomy__outline-list">
-            <div v-for="(item, idx) in outlineItems" :key="idx" class="kbp-anatomy__outline-item"
-              :style="{ paddingLeft: `${12 + item.level * 14}px` }">
-              {{ item.name }}
-            </div>
-          </div>
-          <div v-else-if="!questionGroups.length" class="kbp-anatomy__empty">
-            {{ outlineReason || '这份资料没有可提取的章节结构。' }}
-          </div>
-        </section>
-
-        <section class="kbp-anatomy__content">
-          <h4 class="kbp-anatomy__content-head">
-            <span>正文与图片</span>
-            <button type="button" class="kbp-anatomy__fullscreen" title="全屏查看正文与图片"
-              @click="openFullscreen">全屏观看</button>
-          </h4>
-          <div v-if="segments.length" class="kbp-anatomy__content-inner">
-            <template v-for="(seg, si) in segments" :key="si">
-              <div v-if="seg.type === 'image'" class="kbp-anatomy__segment"
-                :data-raw-start="seg.start" :data-raw-end="seg.end">
-                <el-image :src="seg.url" fit="contain" class="kbp-anatomy__inline-image"
-                  :preview-src-list="[seg.url]" preview-teleported @load="onImageLoad" />
-              </div>
-              <div v-else class="kbp-anatomy__segment" :data-raw-start="seg.start" :data-raw-end="seg.end">
-                <LatexRenderer :content="seg.text" class="kbp-anatomy__rendered" />
-              </div>
-            </template>
-          </div>
-          <div v-else class="kbp-anatomy__empty">没有可展示的正文，可能还在解析中。</div>
-        </section>
-
-        <section class="kbp-anatomy__assets">
-          <h4>图片资产 <span>{{ images.length }}</span></h4>
-          <div v-if="images.length" class="kbp-anatomy__image-grid">
-            <div v-for="(img, idx) in images" :key="img.key" class="kbp-anatomy__image-card">
-              <el-image :src="img.url" fit="cover" :preview-src-list="[img.url]" preview-teleported />
-              <span>图 {{ idx + 1 }}</span>
-              <button type="button" class="kbp-anatomy__copy" @click="copyImageMarkdown(img.url, idx + 1)">
-                复制
-              </button>
-            </div>
-          </div>
-          <div v-else class="kbp-anatomy__empty">这份资料里没有提取到图片。</div>
-        </section>
+      <div class="reader-toolbar__tools">
+        <el-input v-model="searchInput" class="reader-search" size="small" clearable
+          placeholder="搜索正文" @keyup.enter="startSearch">
+          <template #prefix><el-icon><Search /></el-icon></template>
+        </el-input>
+        <span v-if="searchInput.trim() && searchCount" class="reader-search__count">
+          {{ searchIndex + 1 }}/{{ searchCount }}
+        </span>
+        <el-button v-if="searchInput.trim()" size="small" text @click="nextSearch">下一处</el-button>
+        <el-button size="small" plain @click="toggleToc">{{ tocCollapsed ? '展开目录' : '收起目录' }}</el-button>
+        <el-button size="small" plain @click="openImages">图片 {{ images.length }}</el-button>
+        <el-button v-if="showEdit" size="small" text type="primary" @click="emitEdit">编辑</el-button>
       </div>
     </div>
+
+    <div class="reader-stats">
+      <span><b>{{ stats.contentLength }}</b> 字</span>
+      <span><b>{{ sections.length }}</b> 节</span>
+      <span><b>{{ images.length }}</b> 张图</span>
+      <span v-if="needsAiOutline" class="reader-stats__ai">
+        <el-button size="small" text type="primary" :loading="aiBuilding" @click="rebuildOutline">AI 整理目录</el-button>
+      </span>
     </div>
 
-  <el-dialog v-model="fullscreenVisible" :title="`资料正文 · ${docName}`" fullscreen append-to-body
-    class="kbp-anatomy-fullscreen-dialog">
-    <div ref="fullscreenBodyRef" class="kbp-anatomy-fullscreen__body">
-      <template v-if="segments.length">
-        <template v-for="(seg, si) in segments" :key="`full-${si}`">
-          <div v-if="seg.type === 'image'" class="kbp-anatomy__segment"
-            :data-raw-start="seg.start" :data-raw-end="seg.end">
-            <el-image :src="seg.url" fit="contain" class="kbp-anatomy__inline-image"
-              :preview-src-list="[seg.url]" preview-teleported />
+    <div v-if="loading" class="reader-loading" v-loading="true"></div>
+    <div v-else class="reader-body" :class="{ 'is-toc-collapsed': tocCollapsed }">
+      <aside class="reader-toc">
+        <div class="reader-toc__head">
+          <span>目录</span>
+          <button type="button" @click="tocCollapsed = true">‹</button>
+        </div>
+        <template v-if="!tocCollapsed">
+          <el-input v-model="tocQuery" size="small" clearable placeholder="搜索目录" class="reader-toc__search" />
+          <div class="reader-toc__list">
+            <button v-for="item in filteredSections" :key="item.index" type="button"
+              class="reader-toc__item" :class="{ 'is-active': activeSection === item.index }"
+              :style="{ paddingLeft: `${12 + Math.max(0, Number(item.level || 1) - 1) * 14}px` }"
+              @click="scrollToSection(item.index)">
+              <span class="reader-toc__dot"></span>
+              <span class="reader-toc__label" :title="item.title">{{ item.title }}</span>
+            </button>
+            <div v-if="!filteredSections.length" class="reader-toc__empty">没有匹配的章节</div>
           </div>
-          <div v-else class="kbp-anatomy__segment" :data-raw-start="seg.start" :data-raw-end="seg.end">
-            <LatexRenderer :content="seg.text" class="kbp-anatomy__rendered" />
+          <div v-if="needsAiOutline" class="reader-toc__hint">
+            当前目录是分段兜底，可点上方「AI 整理目录」按内容重新识别章节。
           </div>
         </template>
-      </template>
-      <div v-else class="kbp-anatomy__empty">没有可展示的正文，可能还在解析中。</div>
+      </aside>
+
+      <main ref="readerScroll" class="reader-main" @scroll="onContentScroll" @mouseup="onContentMouseUp">
+        <article class="reader-article">
+          <section v-for="section in sections" :key="section.index" :ref="(el) => setSectionRef(section.index, el)"
+            class="reader-section" :data-section-index="section.index">
+            <h2 v-if="Number(section.level || 1) <= 2" class="reader-section__title">{{ section.title }}</h2>
+            <h3 v-else class="reader-section__title reader-section__title--sub">{{ section.title }}</h3>
+            <template v-for="(seg, segIndex) in sectionSegments(section)" :key="`${section.index}-${segIndex}`">
+              <div v-if="seg.type === 'image'" class="reader-image">
+                <el-image :src="seg.url" fit="contain" :preview-src-list="[seg.url]" preview-teleported />
+              </div>
+              <LatexRenderer v-else :content="seg.text" class="reader-text" />
+            </template>
+          </section>
+          <div v-if="!sections.length" class="reader-empty">没有可展示的正文，可能还在解析中。</div>
+        </article>
+      </main>
     </div>
-  </el-dialog>
+
+    <el-drawer v-model="imagesVisible" title="资料图片" size="360px" append-to-body class="reader-image-drawer">
+      <div class="reader-image-drawer__bar">
+        <span>共 {{ images.length }} 张</span>
+        <el-checkbox v-model="imageCurrentOnly" size="small">只看当前章节</el-checkbox>
+      </div>
+      <div class="reader-image-grid">
+        <div v-for="img in visibleImages" :key="img.key" class="reader-image-card">
+          <el-image :src="img.url" fit="cover" :preview-src-list="[img.url]" preview-teleported @click="scrollToOffset(img.offset)" />
+          <div class="reader-image-card__foot">
+            <span :title="img.title">{{ img.title }}</span>
+            <button type="button" @click="copyImageMarkdown(img)">复制</button>
+          </div>
+        </div>
+        <div v-if="!visibleImages.length" class="reader-empty">当前章节没有图片。</div>
+      </div>
+    </el-drawer>
+
+    <div v-if="selectionInfo" class="reader-selection" :style="{ left: `${selectionInfo.x}px`, top: `${selectionInfo.y}px` }"
+      @mousedown.prevent>
+      <button type="button" @click="askSelection('ask')">问 AI 这段</button>
+      <button type="button" @click="askSelection('practice')">从这段出题</button>
+      <button type="button" @click="askSelection('note')">引用到笔记</button>
+      <button type="button" @click="askSelection('prescription')">加入学习处方</button>
+      <button type="button" @click="copySelection">复制原文</button>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Search } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
 import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
-import { getDocumentContent, getDocumentOutline } from '@/api/ai/rag'
+import {
+  getDocumentContent,
+  getDocumentOutline,
+  rebuildDocumentOutline
+} from '@/api/ai/rag'
 
 defineOptions({ name: 'DocumentAnatomyPanel' })
 
-interface AnatomyDoc {
+interface ReaderDoc {
   docId: number
   fileName?: string
   chunkCount?: number
 }
 
-interface AnatomyOptions {
+interface ReaderOptions {
   highlight?: string
   chunkId?: number
   chunkIndex?: number
   chunkCount?: number
   targetText?: string
-  /** 原文精确字符偏移（体检章节定位用），优先级高于 targetText */
   offset?: number
 }
 
-const props = withDefaults(
-  defineProps<{
-    showEdit?: boolean
-  }>(),
-  { showEdit: false }
-)
-
+const props = withDefaults(defineProps<{ showEdit?: boolean }>(), { showEdit: false })
 const emit = defineEmits<{
-  (e: 'edit', doc: AnatomyDoc): void
+  (e: 'edit', doc: ReaderDoc): void
 }>()
 
-const visible = ref(false)
-const fullscreenVisible = ref(false)
-const loading = ref(false)
-const mainBodyRef = ref<HTMLElement | null>(null)
-const fullscreenBodyRef = ref<HTMLElement | null>(null)
-const doc = ref<AnatomyDoc | null>(null)
+const router = useRouter()
+const readerRoot = ref<HTMLElement | null>(null)
+const readerScroll = ref<HTMLElement | null>(null)
+const doc = ref<ReaderDoc | null>(null)
 const docName = ref('')
 const content = ref('')
-const highlight = ref('')
-const targetChunkId = ref<number | null>(null)
+const sections = ref<any[]>([])
+const imageMap = ref<Record<string, string>>({})
+const loading = ref(false)
+const aiBuilding = ref(false)
+const needsAiOutline = ref(false)
+const targetOffset = ref<number | null>(null)
+const targetText = ref('')
 const targetChunkIndex = ref<number | null>(null)
 const targetChunkCount = ref(0)
-const targetText = ref('')
-const scrollTargetOffset = ref<number | null>(null)
-const excludedRanges = ref<any[]>([])
-const imageMap = ref<Record<string, string>>({})
-const tree = ref<any>(null)
-const outlineReason = ref('')
-const stats = reactive({
-  contentLength: 0,
-  imageCount: 0,
-  headingCount: 0,
-  chunkCount: 0
+const activeSection = ref(0)
+const tocCollapsed = ref(false)
+const tocQuery = ref('')
+const searchInput = ref('')
+const searchIndex = ref(0)
+const searchOffsets = ref<number[]>([])
+const searchCount = computed(() => searchOffsets.value.length)
+const imagesVisible = ref(false)
+const imageCurrentOnly = ref(false)
+const selectionInfo = ref<{ text: string; x: number; y: number; section: number } | null>(null)
+const sectionEls = new Map<number, HTMLElement>()
+const stats = reactive({ contentLength: 0 })
+
+const images = computed(() => {
+  const raw = content.value
+  return Object.entries(imageMap.value)
+    .map(([key, url]) => {
+      const marker = `【图${key}】`
+      const offset = raw.indexOf(marker)
+      const section = sections.value.find((item: any) => offset >= Number(item.start) && offset < Number(item.end))
+      return {
+        key,
+        url: imageUrl(url),
+        offset: offset >= 0 ? offset : 0,
+        section: section?.index ?? 0,
+        title: `图 ${Number(key) + 1}`
+      }
+    })
+    .filter((item) => !!item.url)
 })
 
-function imageUrl(url: string): string {
-  const v = String(url || '').trim()
-  if (!v) return ''
-  if (v.startsWith('data:') || v.startsWith('http://') || v.startsWith('https://')) return v
+const visibleImages = computed(() => {
+  if (!imageCurrentOnly.value) return images.value
+  return images.value.filter((img) => img.section === activeSection.value)
+})
+
+const filteredSections = computed(() => {
+  const query = tocQuery.value.trim().toLowerCase()
+  if (!query) return sections.value
+  return sections.value.filter((item: any) => String(item.title || '').toLowerCase().includes(query))
+})
+
+function imageUrl(url: string) {
+  const value = String(url || '').trim()
+  if (!value) return ''
+  if (value.startsWith('data:') || value.startsWith('http://') || value.startsWith('https://')) return value
   const base = (import.meta.env.VITE_APP_BASE_API || '').replace(/\/$/, '')
-  return base + (v.startsWith('/') ? v : '/' + v)
+  return base + (value.startsWith('/') ? value : '/' + value)
 }
 
-async function copyImageMarkdown(url: string, seq: number) {
-  if (!url) return
-  const alt = `${docName.value || '资料'}·图${seq}`
-  const text = `![${alt}](${url})`
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text)
-    } else {
-      const input = document.createElement('textarea')
-      input.value = text
-      document.body.appendChild(input)
-      input.select()
-      document.execCommand('copy')
-      document.body.removeChild(input)
+function setSectionRef(index: number, el: any) {
+  if (el?.$el) el = el.$el
+  if (el instanceof HTMLElement) sectionEls.set(index, el)
+}
+
+function sectionBody(section: any) {
+  let text = content.value.slice(Number(section.start || 0), Number(section.end || 0))
+  if (!text) return ''
+  const firstBreak = text.indexOf('\n')
+  if (firstBreak >= 0 && String(section.source || '') !== 'chunk') {
+    const first = text.slice(0, firstBreak).replace(/^#+\s*/, '').trim()
+    if (first && (first.includes(section.title) || String(section.title).includes(first))) {
+      text = text.slice(firstBreak + 1)
     }
-    ElMessage.success('已复制图片 Markdown')
-  } catch {
-    ElMessage.warning('复制失败，请打开图片后手动复制')
   }
+  return text
 }
 
-const images = computed(() =>
-  Object.entries(imageMap.value)
-    .map(([key, url]) => ({ key, url: imageUrl(url) }))
-    .filter((x) => !!x.url)
-)
-
-const outlineItems = computed(() => {
-  const out: Array<{ name: string; level: number }> = []
-  const walk = (node: any, level: number) => {
-    if (!node || out.length >= 80) return
-    out.push({ name: String(node.name || '未命名'), level })
-    for (const child of node.children || []) walk(child, level + 1)
-  }
-  if (tree.value) walk(tree.value, 0)
-  return out
-})
-
-const questionGroups = computed(() => {
-  const text = content.value
+function sectionSegments(section: any) {
+  const text = sectionBody(section)
   if (!text) return []
-  const re = /^\s*(\d+)[.、]\s*[［\[]?(单选题|多选题|填空题|简答题|判断题|选择题|计算题|论述题)[\]\]]?/gm
-  const groups = new Map<string, { name: string; count: number; first: number }>()
-  let m: RegExpExecArray | null
-  while ((m = re.exec(text)) !== null) {
-    const name = m[2]
-    const no = Number(m[1])
-    const item = groups.get(name)
-    if (item) item.count += 1
-    else groups.set(name, { name, count: 1, first: no })
-  }
-  return [...groups.values()]
-})
-
-function contentElement(root: HTMLElement | null): HTMLElement | null {
-  if (!root) return null
-  return (root.querySelector('.kbp-anatomy__content-inner') as HTMLElement | null) || root
-}
-
-function scrollToOffset(offset: number): boolean {
-  const el = contentElement(mainBodyRef.value)
-  if (!el) return false
-  const blocks = [...el.querySelectorAll<HTMLElement>('[data-raw-start]')]
-  if (!blocks.length) return false
-  const targetOffset = Math.max(0, Math.min(content.value.length, Number(offset) || 0))
-  scrollTargetOffset.value = targetOffset
-  let target = blocks.find((block) => {
-    const start = Number(block.dataset.rawStart || 0)
-    const end = Number(block.dataset.rawEnd || start)
-    return targetOffset >= start && targetOffset < end
-  })
-  if (!target) target = blocks[blocks.length - 1]
-  const top = target.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop
-  el.scrollTop = Math.max(0, top - el.clientHeight * 0.18)
-  return true
-}
-
-function onImageLoad() {
-  const offset = scrollTargetOffset.value
-  if (offset == null) return
-  nextTick(() => scrollToOffset(offset))
-}
-
-function jumpToQuestionGroup(group: { first: number }) {
-  const match = new RegExp(`^\\s*${Number(group.first)}[.、]`, 'm').exec(content.value)
-  if (!match) return
-  scrollToOffset(match.index)
-}
-
-function isExcluded(start: number, end: number): boolean {
-  return excludedRanges.value.some((range: any) => {
-    const rs = Number(range?.start)
-    const re = Number(range?.end)
-    return Number.isFinite(rs) && Number.isFinite(re) && rs < end && re > start
-  })
-}
-
-function blankExcludedText(text: string, start: number, end: number): string {
-  if (!excludedRanges.value.length) return text
-  let out = text
-  for (const range of excludedRanges.value) {
-    const rs = Number(range?.start)
-    const re = Number(range?.end)
-    if (!Number.isFinite(rs) || !Number.isFinite(re) || re <= start || rs >= end) continue
-    const from = Math.max(0, rs - start)
-    const to = Math.min(out.length, re - start)
-    if (to > from) out = out.slice(0, from) + ' '.repeat(to - from) + out.slice(to)
-  }
-  return out
-}
-
-const segments = computed(() => {
-  const text = content.value
-  if (!text) return []
-  if (!/【图\d+】/.test(text)) {
-    return [{ type: 'text', text: blankExcludedText(text, 0, text.length), start: 0, end: text.length }]
-  }
-  const segs: any[] = []
+  const start = Number(section.start || 0)
+  if (!/【图\d+】/.test(text)) return [{ type: 'text', text, start }]
+  const result: any[] = []
   const re = /【图(\d+)】/g
   let last = 0
-  let m: RegExpExecArray | null
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > last) {
-      segs.push({
-        type: 'text',
-        text: blankExcludedText(text.slice(last, m.index), last, m.index),
-        start: last,
-        end: m.index
-      })
+  let match: RegExpExecArray | null
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > last) {
+      result.push({ type: 'text', text: text.slice(last, match.index), start: start + last })
     }
-    if (isExcluded(m.index, m.index + m[0].length)) {
-      last = m.index + m[0].length
-      continue
-    }
-    const url = imageMap.value[m[1]] || ''
+    const url = imageMap.value[match[1]] || ''
     if (url) {
-      segs.push({ type: 'image', url: imageUrl(url), start: m.index, end: m.index + m[0].length })
+      result.push({ type: 'image', url: imageUrl(url), start: start + match.index })
     } else {
-      segs.push({ type: 'text', text: m[0], start: m.index, end: m.index + m[0].length })
+      result.push({ type: 'text', text: match[0], start: start + match.index })
     }
-    last = m.index + m[0].length
+    last = match.index + match[0].length
   }
-  if (last < text.length) {
-    segs.push({
-      type: 'text',
-      text: blankExcludedText(text.slice(last), last, text.length),
-      start: last,
-      end: text.length
-    })
-  }
-  return segs
-})
+  if (last < text.length) result.push({ type: 'text', text: text.slice(last), start: start + last })
+  return result
+}
 
-function clearMarks(root: HTMLElement) {
-  root.querySelectorAll('mark.kbp-search-mark').forEach((mark) => {
+function scrollToSection(index: number) {
+  const el = sectionEls.get(Number(index))
+  const root = readerScroll.value
+  if (!el || !root) return
+  const top = el.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop - 8
+  root.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+  activeSection.value = Number(index)
+  persistPosition()
+}
+
+function scrollToOffset(offset: number) {
+  const target = Math.max(0, Math.min(content.value.length, Number(offset) || 0))
+  const section = sections.value.find((item: any) => target >= Number(item.start) && target < Number(item.end))
+  if (section) scrollToSection(section.index)
+}
+
+function onContentScroll() {
+  const root = readerScroll.value
+  if (!root) return
+  const top = root.getBoundingClientRect().top + 90
+  let current = 0
+  for (const [index, el] of sectionEls.entries()) {
+    if (el.getBoundingClientRect().top <= top) current = index
+  }
+  activeSection.value = current
+  persistPosition()
+  if (selectionInfo.value) selectionInfo.value = null
+}
+
+function persistPosition() {
+  if (!doc.value?.docId) return
+  try {
+    localStorage.setItem(`openstudy.reader.position.${doc.value.docId}`, String(readerScroll.value?.scrollTop || 0))
+  } catch {
+    // 忽略存储失败
+  }
+}
+
+function restorePosition() {
+  if (!doc.value?.docId) return
+  try {
+    const position = Number(localStorage.getItem(`openstudy.reader.position.${doc.value.docId}`) || 0)
+    if (position > 0 && readerScroll.value) readerScroll.value.scrollTop = position
+  } catch {
+    // 忽略存储失败
+  }
+}
+
+function toggleToc() {
+  tocCollapsed.value = !tocCollapsed.value
+}
+
+function startSearch() {
+  const query = searchInput.value.trim()
+  searchOffsets.value = []
+  searchIndex.value = 0
+  if (!query) return
+  const lower = content.value.toLowerCase()
+  const needle = query.toLowerCase()
+  let pos = 0
+  while (pos < lower.length) {
+    const found = lower.indexOf(needle, pos)
+    if (found < 0) break
+    searchOffsets.value.push(found)
+    pos = found + Math.max(1, needle.length)
+    if (searchOffsets.value.length >= 100) break
+  }
+  if (!searchOffsets.value.length) {
+    ElMessage.info('正文中没有找到这个关键词')
+    return
+  }
+  scrollToOffset(searchOffsets.value[0])
+  nextTick(() => highlightSearch(query))
+}
+
+function nextSearch() {
+  if (!searchOffsets.value.length) {
+    startSearch()
+    return
+  }
+  searchIndex.value = (searchIndex.value + 1) % searchOffsets.value.length
+  scrollToOffset(searchOffsets.value[searchIndex.value])
+}
+
+function highlightSearch(query: string) {
+  const root = readerScroll.value
+  if (!root) return
+  root.querySelectorAll('mark.reader-search-mark').forEach((mark) => {
     const parent = mark.parentNode
     if (!parent) return
     parent.replaceChild(document.createTextNode(mark.textContent || ''), mark)
     ;(parent as Element).normalize?.()
   })
-}
-
-function applyHighlight() {
-  const roots = [mainBodyRef.value, fullscreenBodyRef.value].filter(Boolean) as HTMLElement[]
-  roots.forEach(clearMarks)
-  const phrase = highlight.value.trim()
-  if (!phrase) return
-  const needle = phrase.toLowerCase()
-  for (const root of roots) {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-    const nodes: Node[] = []
-    let node: Node | null
-    while ((node = walker.nextNode())) nodes.push(node)
-    for (const textNode of nodes) {
-      const parent = textNode.parentElement
-      if (!parent || parent.closest('.katex, .katex-mathml, .katex-html, .latex-error, .kbp-search-mark')) continue
-      let current: Text | null = textNode as Text
-      while (current && current.nodeValue) {
-        const idx = current.nodeValue.toLowerCase().indexOf(needle)
-        if (idx < 0) break
-        const matchNode = current.splitText(idx)
-        const afterNode = matchNode.splitText(needle.length)
-        const mark = document.createElement('mark')
-        mark.className = 'kbp-search-mark'
-        mark.textContent = matchNode.nodeValue
-        matchNode.parentNode?.replaceChild(mark, matchNode)
-        current = afterNode
-      }
+  if (!query) return
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const nodes: Text[] = []
+  let node: Node | null
+  while ((node = walker.nextNode())) nodes.push(node as Text)
+  for (const textNode of nodes) {
+    const parent = textNode.parentElement
+    if (!parent || parent.closest('.katex, .katex-mathml, .katex-html, .reader-search-mark')) continue
+    let current: Text | null = textNode
+    while (current?.nodeValue) {
+      const found = current.nodeValue.toLowerCase().indexOf(query.toLowerCase())
+      if (found < 0) break
+      const match = current.splitText(found)
+      const after = match.splitText(query.length)
+      const mark = document.createElement('mark')
+      mark.className = 'reader-search-mark'
+      mark.textContent = match.nodeValue
+      match.parentNode?.replaceChild(mark, match)
+      current = after
     }
   }
-
-  const rawTarget = targetText.value.trim()
-  const target = rawTarget.replace(/【图\d+】/g, '').trim()
-  const source = content.value || ''
-  let targetOffset: number | null = null
-  if (source) {
-    let idx = rawTarget ? source.indexOf(rawTarget) : -1
-    if (idx < 0 && target) idx = source.indexOf(target)
-    if (idx < 0 && target) idx = source.indexOf(target.slice(0, Math.min(80, target.length)))
-    if (idx < 0 && target) idx = source.indexOf(target.slice(0, 30))
-    if (idx >= 0) targetOffset = idx
-  }
-
-  if (targetOffset != null && scrollToOffset(targetOffset)) return
-  const totalChunks = targetChunkCount.value || stats.chunkCount
-  if (targetOffset == null && targetChunkIndex.value != null && totalChunks > 0 && source) {
-    const estimated = source.length * ((Number(targetChunkIndex.value) + 0.5) / totalChunks)
-    if (scrollToOffset(estimated)) return
-  }
-  const first = mainBodyRef.value?.querySelector('mark.kbp-search-mark') as HTMLElement | null
-  first?.scrollIntoView({ block: 'center', behavior: 'smooth' })
 }
 
-async function openFullscreen() {
-  fullscreenVisible.value = true
-  await nextTick()
-  applyHighlight()
+function copyImageMarkdown(image: any) {
+  const text = `![${docName.value || '资料'}·${image.title}](${image.url})`
+  navigator.clipboard?.writeText(text)
+    .then(() => ElMessage.success('已复制图片 Markdown'))
+    .catch(() => ElMessage.warning('复制失败，请打开图片后手动复制'))
+}
+
+function onContentMouseUp() {
+  const selection = window.getSelection()
+  const text = selection?.toString().trim() || ''
+  if (!text || text.length < 2) {
+    selectionInfo.value = null
+    return
+  }
+  const range = selection?.rangeCount ? selection.getRangeAt(0) : null
+  const root = readerRoot.value
+  if (!range || !root) return
+  const rect = range.getBoundingClientRect()
+  const rootRect = root.getBoundingClientRect()
+  const sectionEl = (range.startContainer.parentElement as HTMLElement | null)?.closest('.reader-section') as HTMLElement | null
+  selectionInfo.value = {
+    text: text.slice(0, 1500),
+    x: Math.max(8, Math.min(rootRect.width - 260, rect.left - rootRect.left)),
+    y: Math.max(8, rect.top - rootRect.top - 42),
+    section: Number(sectionEl?.dataset.sectionIndex || 0)
+  }
+}
+
+function clearSelection() {
+  selectionInfo.value = null
+  window.getSelection()?.removeAllRanges()
+}
+
+function askSelection(kind: 'ask' | 'practice' | 'note' | 'prescription') {
+  if (!selectionInfo.value || !doc.value) return
+  const title = sections.value.find((item: any) => item.index === selectionInfo.value?.section)?.title || docName.value
+  const quote = selectionInfo.value.text
+  const prompt = kind === 'practice'
+    ? `请基于《${docName.value}》的「${title}」这段原文出 3 道练习题：\n\n${quote}\n\n请给出答案与解析，并标注来源。`
+    : kind === 'note'
+      ? `请把《${docName.value}》的「${title}」这段内容整理成一篇学习笔记：\n\n${quote}`
+      : kind === 'prescription'
+        ? `请把《${docName.value}》的「${title}」这段内容加入我的学习处方，并给出下一步练习建议：\n\n${quote}`
+        : `请基于《${docName.value}》的「${title}」回答我的问题，并标注原文来源：\n\n${quote}`
+  router.push({ path: '/front/agent/chat', state: { seedQuestion: prompt } })
+  ElMessage.success('已把这段内容带入对话，确认后发送')
+  clearSelection()
+}
+
+function copySelection() {
+  if (!selectionInfo.value) return
+  navigator.clipboard?.writeText(selectionInfo.value.text)
+    .then(() => ElMessage.success('已复制原文'))
+    .catch(() => ElMessage.warning('复制失败，请手动选择'))
+  clearSelection()
 }
 
 function emitEdit() {
   if (doc.value) emit('edit', doc.value)
 }
 
-async function load(docValue: AnatomyDoc, opts: AnatomyOptions = {}) {
-  visible.value = true
-  loading.value = true
-  fullscreenVisible.value = false
+function openImages() {
+  imagesVisible.value = true
+}
+
+async function rebuildOutline() {
+  if (!doc.value?.docId || aiBuilding.value) return
+  aiBuilding.value = true
+  try {
+    const res = await rebuildDocumentOutline(doc.value.docId)
+    if (res.code !== 200) {
+      ElMessage.error(res.msg || 'AI 目录整理失败')
+      return
+    }
+    sections.value = res.data?.sections || sections.value
+    needsAiOutline.value = sections.value.length <= 1 || sections.value.some((item: any) => item.source !== 'llm')
+    activeSection.value = 0
+    await nextTick()
+    if (readerScroll.value) readerScroll.value.scrollTop = 0
+    ElMessage.success(`AI 已整理出 ${sections.value.length} 个章节`)
+  } catch (error: any) {
+    ElMessage.error('AI 目录整理失败：' + (error?.message || error))
+  } finally {
+    aiBuilding.value = false
+  }
+}
+
+async function load(docValue: ReaderDoc, opts: ReaderOptions = {}) {
   doc.value = docValue
   docName.value = docValue.fileName || '未命名资料'
-  highlight.value = String(opts.highlight || '')
-  targetChunkId.value = opts.chunkId ?? null
+  loading.value = true
+  content.value = ''
+  sections.value = []
+  imageMap.value = {}
+  needsAiOutline.value = false
+  targetOffset.value = opts.offset != null ? Number(opts.offset) : null
+  targetText.value = String(opts.targetText || '')
   targetChunkIndex.value = opts.chunkIndex ?? null
   targetChunkCount.value = Number(opts.chunkCount || docValue.chunkCount || 0)
-  targetText.value = String(opts.targetText || '')
-  scrollTargetOffset.value = opts.offset != null ? Number(opts.offset) : null
-  content.value = ''
-  excludedRanges.value = []
-  imageMap.value = {}
-  tree.value = null
-  outlineReason.value = ''
   stats.contentLength = 0
-  stats.imageCount = 0
-  stats.headingCount = 0
-  stats.chunkCount = Number(opts.chunkCount || docValue.chunkCount || 0)
-
+  activeSection.value = 0
+  tocQuery.value = ''
+  searchInput.value = ''
+  searchOffsets.value = []
+  sectionEls.clear()
   try {
     const [contentRes, outlineRes] = await Promise.all([
       getDocumentContent(docValue.docId),
@@ -425,298 +480,108 @@ async function load(docValue: AnatomyDoc, opts: AnatomyOptions = {}) {
     if (contentRes.code === 200) {
       const data = contentRes.data || {}
       content.value = data.content || ''
-      excludedRanges.value = data.excludedRanges || []
       imageMap.value = data.imageMap || {}
       stats.contentLength = Number(data.contentLength || content.value.length || 0)
-      stats.imageCount = Object.keys(imageMap.value).length
     }
     if (outlineRes.code === 200) {
       const data = outlineRes.data || {}
-      if (data.hasOutline && data.tree) {
-        tree.value = data.tree
-        stats.headingCount = Number(data.totalHeadings || data.count || 0)
-      } else {
-        outlineReason.value = data.reason || '这份资料没有可提取的章节结构。'
+      sections.value = data.sections || []
+      needsAiOutline.value = Boolean(data.needsAiOutline)
+      if (!sections.value.length) {
+        // 兼容旧后端：没有 sections 时用旧树展开成可点击章节。
+        sections.value = flattenTree(data.tree)
       }
     }
-  } catch (e: any) {
-    ElMessage.error('读取资料刨析失败：' + (e?.message || e))
+    await nextTick()
+    if (targetOffset.value != null) {
+      scrollToOffset(targetOffset.value)
+    } else if (targetText.value) {
+      const found = content.value.indexOf(targetText.value)
+      if (found >= 0) scrollToOffset(found)
+      else restorePosition()
+    } else {
+      restorePosition()
+    }
+    if (opts.highlight && opts.highlight.trim()) {
+      await nextTick()
+      highlightSearch(opts.highlight.trim())
+    }
+  } catch (error: any) {
+    ElMessage.error('读取资料失败：' + (error?.message || error))
   } finally {
     loading.value = false
-    await nextTick()
-    // 体检章节用精确偏移定位；此时内容已渲染，直接滚到对应位置。
-    if (scrollTargetOffset.value != null) scrollToOffset(scrollTargetOffset.value)
-    applyHighlight()
   }
 }
 
+function flattenTree(tree: any): any[] {
+  if (!tree) return []
+  const result: any[] = []
+  const walk = (node: any, level: number) => {
+    if (!node) return
+    result.push({ index: result.length, title: String(node.name || '未命名章节'), level, start: 0, end: 0, source: 'rule' })
+    for (const child of node.children || []) walk(child, level + 1)
+  }
+  walk(tree, 1)
+  return result
+}
+
+onBeforeUnmount(() => {
+  persistPosition()
+})
+
 defineExpose({
-  open: (docValue: AnatomyDoc, opts?: AnatomyOptions) => load(docValue, opts)
+  open: (docValue: ReaderDoc, opts?: ReaderOptions) => load(docValue, opts)
 })
 </script>
 
 <style scoped>
-.kbp-anatomy__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding-right: 28px;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--os-text-1, #111827);
-}
-
-.kbp-anatomy__edit {
-  margin-left: auto;
-}
-
-.kbp-anatomy {
-  min-height: 420px;
-}
-
-.kbp-anatomy__stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 20px;
-  padding: 10px 14px;
-  margin-bottom: 14px;
-  border-radius: 8px;
-  background: var(--os-surface-2, #f8fafc);
-  color: var(--os-text-3, #6b7280);
-  font-size: 12px;
-}
-
-.kbp-anatomy__stats b {
-  color: var(--os-text-1, #111827);
-  font-size: 15px;
-}
-
-.kbp-anatomy__grid {
-  display: grid;
-  grid-template-columns: minmax(220px, 0.9fr) minmax(320px, 1.4fr) minmax(220px, 0.7fr);
-  gap: 14px;
-  min-height: 480px;
-}
-
-.kbp-anatomy__outline,
-.kbp-anatomy__content,
-.kbp-anatomy__assets {
-  min-width: 0;
-  border: 1px solid var(--os-border, #e5e7eb);
-  border-radius: 8px;
-  overflow: hidden;
-  background: #fff;
-}
-
-.kbp-anatomy__outline h4,
-.kbp-anatomy__content h4,
-.kbp-anatomy__assets h4 {
-  margin: 0;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--os-border, #e5e7eb);
-  font-size: 13px;
-  color: var(--os-text-1, #111827);
-}
-
-.kbp-anatomy__assets h4 span {
-  color: var(--os-text-3, #9ca3af);
-  font-weight: 400;
-}
-
-.kbp-anatomy__outline-list {
-  max-height: 540px;
-  padding: 8px 0;
-  overflow: auto;
-}
-
-.kbp-anatomy__question-groups {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--os-border, #e5e7eb);
-  background: #f8fafc;
-}
-
-.kbp-anatomy__question-groups-label {
-  margin-bottom: 6px;
-  color: var(--os-text-3, #6b7280);
-  font-size: 11px;
-}
-
-.kbp-anatomy__question-group {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 5px 7px;
-  border-radius: 4px;
-  color: var(--os-text-2, #4b5563);
-  font-size: 12.5px;
-  cursor: pointer;
-}
-
-.kbp-anatomy__question-group:hover {
-  background: #eff6ff;
-  color: var(--os-primary, #2563eb);
-}
-
-.kbp-anatomy__question-group b {
-  color: var(--os-primary, #2563eb);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.kbp-anatomy__outline-item {
-  padding-top: 5px;
-  padding-bottom: 5px;
-  padding-right: 10px;
-  border-left: 2px solid transparent;
-  font-size: 12.5px;
-  line-height: 1.45;
-  color: var(--os-text-2, #4b5563);
-  word-break: break-word;
-}
-
-.kbp-anatomy__outline-item:hover {
-  border-left-color: var(--os-primary, #2563eb);
-  background: var(--os-surface-2, #f8fafc);
-}
-
-.kbp-anatomy__content-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.kbp-anatomy__fullscreen {
-  padding: 2px 7px;
-  border: 1px solid var(--os-border, #e5e7eb);
-  border-radius: 4px;
-  background: #fff;
-  color: var(--os-primary, #2563eb);
-  cursor: pointer;
-  font-size: 11px;
-}
-
-.kbp-anatomy__fullscreen:hover {
-  border-color: var(--os-primary, #2563eb);
-  background: #eff6ff;
-}
-
-.kbp-anatomy-fullscreen__body {
-  height: calc(100vh - 116px);
-  padding: 24px max(24px, calc((100vw - 980px) / 2));
-  overflow: auto;
-  background: #fff;
-  font-size: 15px;
-  line-height: 1.8;
-}
-
-.kbp-anatomy-fullscreen__body .kbp-anatomy__inline-image {
-  max-height: 75vh;
-}
-
-.kbp-anatomy-fullscreen__body .kbp-anatomy__rendered {
-  font-size: 15px;
-}
-
-.kbp-anatomy__content-inner {
-  max-height: 540px;
-  padding: 12px;
-  overflow: auto;
-}
-
-.kbp-anatomy__rendered {
-  margin-bottom: 8px;
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--os-text-2, #4b5563);
-}
-
-.kbp-anatomy__rendered :deep(.latex-content) {
-  font-size: inherit;
-}
-
-.kbp-anatomy__content-inner :deep(mark.kbp-search-mark),
-.kbp-anatomy-fullscreen__body :deep(mark.kbp-search-mark) {
-  padding: 0 2px;
-  border-radius: 2px;
-  background: #fff3c4;
-  color: inherit;
-}
-
-.kbp-anatomy__inline-image {
-  display: block;
-  max-width: 100%;
-  max-height: 320px;
-  margin: 8px auto 12px;
-  border-radius: 6px;
-}
-
-.kbp-anatomy__image-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
-  gap: 8px;
-  max-height: 540px;
-  padding: 12px;
-  overflow: auto;
-}
-
-.kbp-anatomy__image-card {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  padding: 4px;
-  border: 1px solid var(--os-border, #e5e7eb);
-  border-radius: 6px;
-}
-
-.kbp-anatomy__image-card .el-image {
-  width: 100%;
-  aspect-ratio: 1;
-  border-radius: 4px;
-  background: #f3f4f6;
-}
-
-.kbp-anatomy__image-card span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 11px;
-  color: var(--os-text-3, #6b7280);
-}
-
-.kbp-anatomy__copy {
-  padding: 3px 6px;
-  border: 1px solid var(--os-border, #e5e7eb);
-  border-radius: 4px;
-  background: #fff;
-  color: var(--os-text-3, #6b7280);
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.kbp-anatomy__copy:hover {
-  border-color: var(--os-primary, #2563eb);
-  color: var(--os-primary, #2563eb);
-}
-
-.kbp-anatomy__empty {
-  padding: 18px 12px;
-  font-size: 12.5px;
-  line-height: 1.6;
-  color: var(--os-text-3, #9ca3af);
-}
-
-@media (max-width: 900px) {
-  .kbp-anatomy__grid {
-    grid-template-columns: 1fr;
-  }
-
-  .kbp-anatomy__content-inner,
-  .kbp-anatomy__image-grid {
-    max-height: 40vh;
-  }
-}
+.reader-panel { position: relative; display: flex; flex-direction: column; gap: 10px; min-height: 520px; }
+.reader-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 0 2px 10px; border-bottom: 1px solid #edf0f5; }
+.reader-toolbar__title { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
+.reader-toolbar__kicker { flex: none; color: #4f6bed; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.reader-toolbar__title b { overflow: hidden; color: #1f2937; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.reader-toolbar__tools { display: flex; flex: none; align-items: center; gap: 6px; }
+.reader-search { width: 150px; }
+.reader-search__count { color: #9aa1af; font-size: 10px; white-space: nowrap; }
+.reader-stats { display: flex; gap: 16px; color: #9aa1af; font-size: 10px; }
+.reader-stats b { color: #4f6bed; font-size: 12px; }
+.reader-stats__ai { margin-left: auto; }
+.reader-loading { min-height: 460px; }
+.reader-body { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 16px; min-height: 540px; }
+.reader-body.is-toc-collapsed { grid-template-columns: 34px minmax(0, 1fr); }
+.reader-toc { min-width: 0; border: 1px solid #e8edf5; border-radius: 9px; background: #fbfcfe; }
+.reader-toc__head { display: flex; align-items: center; justify-content: space-between; padding: 10px 11px; border-bottom: 1px solid #edf0f5; color: #6b7280; font-size: 12px; font-weight: 600; }
+.reader-toc__head button { border: 0; color: #9aa1af; background: transparent; cursor: pointer; font-size: 18px; line-height: 1; }
+.reader-toc__search { margin: 8px; width: calc(100% - 16px); }
+.reader-toc__list { max-height: 470px; padding: 2px 5px 8px; overflow: auto; }
+.reader-toc__item { display: flex; width: 100%; align-items: center; gap: 6px; padding-top: 6px; padding-bottom: 6px; border: 0; border-left: 2px solid transparent; color: #697386; background: transparent; cursor: pointer; font-size: 11.5px; line-height: 1.45; text-align: left; }
+.reader-toc__item:hover { color: #2f5fce; background: #f3f6fc; }
+.reader-toc__item.is-active { border-left-color: #4f6bed; color: #2f5fce; background: #eef2ff; font-weight: 600; }
+.reader-toc__dot { width: 3px; height: 3px; flex: none; border-radius: 50%; background: currentColor; opacity: .45; }
+.reader-toc__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reader-toc__empty, .reader-toc__hint { padding: 8px 10px; color: #9aa1af; font-size: 10px; line-height: 1.6; }
+.reader-toc__hint { margin-top: 4px; border-top: 1px dashed #e8edf5; }
+.reader-main { min-width: 0; max-height: 600px; overflow: auto; scroll-behavior: smooth; border: 1px solid #e8edf5; border-radius: 9px; background: #fff; }
+.reader-article { max-width: 820px; margin: 0 auto; padding: 28px 46px 60px; }
+.reader-section { scroll-margin-top: 14px; }
+.reader-section + .reader-section { margin-top: 26px; padding-top: 22px; border-top: 1px solid #f0f2f6; }
+.reader-section__title { margin: 0 0 12px; color: #1f2937; font-size: 20px; line-height: 1.35; }
+.reader-section__title--sub { font-size: 16px; }
+.reader-text { color: #374151; font-size: 14px; line-height: 1.9; }
+.reader-text :deep(.latex-content) { font-size: 14px; line-height: 1.9; }
+.reader-image { margin: 14px 0; text-align: center; }
+.reader-image :deep(.el-image) { max-width: 100%; max-height: 420px; border-radius: 6px; }
+.reader-image-drawer__bar { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 10px; color: #9aa1af; font-size: 11px; }
+.reader-image-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.reader-image-card { overflow: hidden; border: 1px solid #e8edf5; border-radius: 7px; background: #fbfcfe; }
+.reader-image-card :deep(.el-image) { display: block; width: 100%; height: 100px; cursor: pointer; }
+.reader-image-card__foot { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 5px 7px; color: #9aa1af; font-size: 10px; }
+.reader-image-card__foot span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reader-image-card__foot button { border: 0; color: #4f6bed; background: transparent; cursor: pointer; font-size: 10px; }
+.reader-empty { padding: 30px 12px; color: #9aa1af; font-size: 12px; text-align: center; }
+.reader-selection { position: absolute; z-index: 20; display: flex; gap: 2px; padding: 3px; border: 1px solid #dce4f2; border-radius: 7px; background: #fff; box-shadow: 0 4px 14px rgba(36, 61, 118, .13); }
+.reader-selection button { padding: 4px 7px; border: 0; border-radius: 4px; color: #4b5563; background: transparent; cursor: pointer; font-size: 10px; white-space: nowrap; }
+.reader-selection button:hover { color: #2f5fce; background: #eef2ff; }
+.reader-search-mark { padding: 0 2px; border-radius: 2px; background: #fff3c4; color: inherit; }
+@media (max-width: 900px) { .reader-body { grid-template-columns: 1fr; } .reader-body.is-toc-collapsed { grid-template-columns: 1fr; } .reader-toc { max-height: 220px; } .reader-toc__list { max-height: 160px; } .reader-article { padding: 20px 20px 40px; } .reader-toolbar { align-items: flex-start; flex-direction: column; } .reader-toolbar__tools { flex-wrap: wrap; } }
 </style>

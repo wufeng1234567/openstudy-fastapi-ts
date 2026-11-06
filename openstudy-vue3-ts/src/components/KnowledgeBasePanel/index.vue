@@ -145,7 +145,7 @@
                   <span class='kb-op' title='复制这段原文' @click.stop='copyHit(h)'>
                     <el-icon><DocumentCopy /></el-icon>
                   </span>
-                  <span v-if='!h.wikiHit' class='kb-op' title='资料刨析' @click.stop='openAnatomyOf(h)'>
+                  <span v-if='!h.wikiHit' class='kb-op' title='查看原文' @click.stop='openAnatomyOf(h)'>
                     <el-icon><View /></el-icon>
                   </span>
                   <span class='kb-hit-more' @click.stop='toggleExpand(h.chunkId)'>
@@ -292,7 +292,7 @@
 
               <div class="kb-doc-ops">
                 <!-- 资料刨析：章节结构 / 正文 / 图片资产统一看（复用我的资料页的查看器） -->
-                <span v-if="isDocumentSearchable(doc.status)" class="kb-op" title="资料刨析"
+                <span v-if="isDocumentSearchable(doc.status)" class="kb-op" title="查看原文"
                   @click="showAnatomy(doc)">
                   <el-icon><Document /></el-icon>
                 </span>

@@ -558,7 +558,7 @@
     </div>
 
     <!-- 单文档刨析：结构 / 正文与图片 / 图片资产轨 -->
-    <el-dialog v-model="anatomyVisible" :title="`资料刨析 · ${anatomyDocName}`" width="1100px" append-to-body
+    <el-dialog v-model="anatomyVisible" :title="`原文阅读 · ${anatomyDocName}`" width="1100px" append-to-body
       class="kbp-anatomy-dialog">
       <div v-loading="anatomyLoading" class="kbp-anatomy">
         <div class="kbp-anatomy__stats">
@@ -3117,7 +3117,7 @@ async function showAnatomyLegacy(doc: any, opts?: { highlight?: string; chunkId?
       }
     }
   } catch (e: any) {
-    ElMessage.error('读取资料刨析失败：' + (e?.message || e))
+    ElMessage.error('读取资料原文失败：' + (e?.message || e))
   } finally {
     anatomyLoading.value = false
     await nextTick()

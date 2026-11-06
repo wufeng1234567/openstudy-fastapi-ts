@@ -10,7 +10,7 @@
   所以这里把它们收成一个入口「资料诊疗室」和一套工作台：
     · 一个按钮进入，左侧三步导航，右侧只显示当前步骤；
     · 三步共用同一份文档上下文，不用反复关窗、重新找文件；
-    · “资料解剖”统一改名为“资料刨析”，与体检、装配并列；
+    · “资料解剖 / 资料刨析”统一改为“原文阅读”，与体检、学习处方并列；
     · 每个面板仍复用原来的真实数据与操作，不伪造分数和产物。
 
   组件边界：
@@ -35,7 +35,7 @@
           <div class="clinic-head__title">资料诊疗室</div>
           <div class="clinic-head__doc" :title="docName">{{ docName }}</div>
         </div>
-        <div class="clinic-head__meta">先体检，再刨析，最后开一份学习处方</div>
+        <div class="clinic-head__meta">先体检，再读原文，最后开一份学习处方</div>
       </div>
     </template>
 
@@ -126,7 +126,7 @@ const openedTabs = ref<Set<ClinicTab>>(new Set())
 
 const tabs: Array<{ key: ClinicTab; no: string; label: string; desc: string }> = [
   { key: 'health', no: '01', label: '资料体检', desc: '先看问题，再决定怎么整理' },
-  { key: 'anatomy', no: '02', label: '资料刨析', desc: '结构、正文与图片一次看清' },
+  { key: 'anatomy', no: '02', label: '原文阅读', desc: '按章节阅读、搜索与定位原文' },
   { key: 'prescription', no: '03', label: '学习处方', desc: '按天执行，学完还能复诊' }
 ]
 

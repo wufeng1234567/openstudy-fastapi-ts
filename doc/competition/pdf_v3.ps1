@@ -1,6 +1,6 @@
 param(
-  [string]$Pptx = "D:\OpenStudy\apps\fastapi-v2\doc\competition\OpenStudy-0.6.1-10页-码道版.pptx",
-  [string]$Pdf  = "D:\OpenStudy\apps\fastapi-v2\doc\competition\OpenStudy-0.6.1-10页-码道版.pdf"
+  [string]$Pptx = "D:\OpenStudy\apps\fastapi-v2\doc\competition\OpenStudy-0.7.0-10页-码道版.pptx",
+  [string]$Pdf  = "D:\OpenStudy\apps\fastapi-v2\doc\competition\OpenStudy-0.7.0-10页-码道版.pdf"
 )
 $app = New-Object -ComObject PowerPoint.Application
 $app.Visible = 1

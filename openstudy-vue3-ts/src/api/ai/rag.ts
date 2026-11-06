@@ -295,6 +295,15 @@ export function getDocumentOutline(docId: number, maxNodes = 120) {
   })
 }
 
+/** 用 LLM 清洗标题并重建目录；字符偏移由后端按原文行号计算 */
+export function rebuildDocumentOutline(docId: number) {
+  return request({
+    url: `/rag/document/outline/${docId}/rebuild`,
+    method: 'post',
+    timeout: 180000
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
 /** 处理进度（上传后轮询这个，直到 `done`） */
 export function getDocumentStatus(docId: number) {
   return request({

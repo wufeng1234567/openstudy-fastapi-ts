@@ -1267,6 +1267,7 @@ async def get_document_outline(
     让前端能如实提示"这份资料没有可提取的章节结构"，
     而不是画一张只有根节点的空图。
     """
+    from app.services.document_section_service import ensure_sections
     from app.services.outline_tree_service import build_outline_tree
 
     try:
@@ -1274,38 +1275,52 @@ async def get_document_outline(
     except Exception as e:
         return _fail(e)
 
+    sections, needs_ai = await ensure_sections(
+        db, _uid(current_user), doc, use_llm=False
+    )
     tree = build_outline_tree(
         doc.raw_content or "",
         root_name=doc.file_name or "资料结构",
         max_nodes=max_nodes,
     )
 
-    if not tree:
-        # 题库型文档（纯题目列表）和未排版的纯文本都会走到这里。
-        # 这不是错误，是"这份资料本身没有章节结构"。
-        return success(
-            {
-                "docId": doc.id,
-                "fileName": doc.file_name,
-                "hasOutline": False,
-                "reason": (
-                    "这份资料里没有可识别的章节标题（Markdown 标题、"
-                    "「一、」或「1.」序号），因此画不出结构树。"
-                    "题库类文档（纯题目列表）通常就是这种情况。"
-                ),
-                "chunkCount": getattr(doc, "chunk_count", 0) or 0,
-            }
-        )
-
     return success(
         {
             "docId": doc.id,
             "fileName": doc.file_name,
-            "hasOutline": True,
+            "hasOutline": len(sections) > 1,
             "tree": tree,
+            "sections": sections,
+            "needsAiOutline": bool(needs_ai),
+            "reason": "" if tree else "这份资料没有可识别的章节标题，已按分块生成可导航的分段目录。",
             "chunkCount": getattr(doc, "chunk_count", 0) or 0,
         }
     )
+
+
+@router.post("/document/outline/{doc_id}/rebuild")
+async def rebuild_document_outline(
+    doc_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """用 LLM 清洗标题并重建阅读器目录；偏移仍由原文行号计算。"""
+    try:
+        from app.services.document_section_service import rebuild_sections
+
+        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        sections = await rebuild_sections(db, _uid(current_user), doc)
+        return success(
+            {
+                "docId": doc.id,
+                "fileName": doc.file_name,
+                "sections": sections,
+                "count": len(sections),
+            },
+            "AI 目录整理完成",
+        )
+    except Exception as e:
+        return _fail(e)
 
 
 @router.get("/document/micro-course/{doc_id}")
