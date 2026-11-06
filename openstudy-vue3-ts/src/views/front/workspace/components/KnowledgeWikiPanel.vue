@@ -603,7 +603,7 @@ function onMapNodeClick(node: any) {
 }
 
 function onMapNodeDown(event: PointerEvent, node: any) {
-  if (event.button !== 0) return
+  if (event.button !== 0 || detailVisible.value) return
   suppressMapNodeClick = false
   mapNodeDrag = {
     node,
@@ -892,6 +892,7 @@ async function switchMap() {
       mapGraph.value = res.data || { nodes: [], edges: [] }
       await nextTick()
       fitMapView()
+      if (String(props.searchQuery || '').trim()) focusMapSearch()
     }
   } catch {
     // 地图失败时保持主题页入口，不影响阅读。
@@ -1124,6 +1125,12 @@ function askPage(kind: 'ask' | 'practice' = 'ask') {
 }
 
 function onMapWheel(event: WheelEvent) {
+  // 详情抽屉打开时冻结图谱：滚轮只服务抽屉内容，不允许缩放/移动节点。
+  if (detailVisible.value) {
+    stopMapNodeDrag()
+    mapDrag = null
+    return
+  }
   const rect = mapCanvasRef.value?.getBoundingClientRect()
   if (!rect) return
   const px = event.clientX - rect.left
@@ -1138,7 +1145,7 @@ function onMapWheel(event: WheelEvent) {
 }
 
 function onMapDown(event: PointerEvent) {
-  if (event.button !== 0) return
+  if (event.button !== 0 || detailVisible.value) return
   mapDrag = { x: event.clientX, y: event.clientY, vx: mapView.x, vy: mapView.y }
 }
 
@@ -1151,6 +1158,34 @@ function onMapMove(event: PointerEvent) {
 function onMapUp() {
   mapDrag = null
 }
+
+let mapSearchTimer: ReturnType<typeof setTimeout> | null = null
+
+function focusMapSearch() {
+  if (view.value !== 'map') return
+  const query = String(props.searchQuery || '').trim().toLowerCase()
+  if (!query) return
+  const nodes = allMapNodes.value
+  const exact = nodes.find((node: any) => String(node.title || '').trim().toLowerCase() === query)
+  const target = exact || nodes.find((node: any) => {
+    const title = String(node.title || '').toLowerCase()
+    const summary = String(node.summary || '').toLowerCase()
+    return title.includes(query) || summary.includes(query)
+  })
+  if (!target) return
+  // 搜索命中的节点可能被类型筛选隐藏；先恢复它的类型再选中。
+  mapTypeVisible[normalizePageType(target.pageType)] = true
+  resetMapNodeOffsets()
+  nextTick(() => {
+    const current = mapNodes.value.find((node: any) => Number(node.pageId) === Number(target.pageId))
+    if (current) selectMapNode(current)
+  })
+}
+
+watch(() => props.searchQuery, () => {
+  if (mapSearchTimer) clearTimeout(mapSearchTimer)
+  mapSearchTimer = setTimeout(focusMapSearch, 280)
+})
 
 watch(() => props.activeKbId, async () => {
   stopBuildPolling()
@@ -1167,6 +1202,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   stopBuildPolling()
   stopMapNodeDrag()
+  if (mapSearchTimer) clearTimeout(mapSearchTimer)
 })
 </script>
 
@@ -1273,21 +1309,21 @@ onBeforeUnmount(() => {
   0% { opacity: 0.8; transform: scale(1); }
   100% { opacity: 0; transform: scale(1.6); }
 }
-.kw-graph-panel { position: absolute; z-index: 8; top: 16px; right: 16px; display: flex; width: 252px; flex-direction: column; gap: 10px; padding: 12px 13px; border: 1px solid rgba(15, 23, 42, 0.08); border-radius: 12px; background: rgba(255, 255, 255, 0.94); box-shadow: 0 10px 28px rgba(29, 43, 70, 0.1); backdrop-filter: blur(10px); }
-.kw-graph-panel__legend { display: flex; flex-direction: column; gap: 7px; }
-.kw-graph-type { display: flex; align-items: center; gap: 8px; width: 100%; padding: 1px 2px; border: 0; color: #5f6b7d; background: transparent; cursor: pointer; font: inherit; font-size: 11px; text-align: left; transition: opacity .15s ease, color .15s ease; }
+.kw-graph-panel { position: absolute; z-index: 8; top: 16px; right: 16px; display: flex; width: 176px; flex-direction: column; gap: 7px; padding: 9px 10px; border: 1px solid rgba(15, 23, 42, 0.08); border-radius: 10px; background: rgba(255, 255, 255, 0.94); box-shadow: 0 8px 22px rgba(29, 43, 70, 0.1); backdrop-filter: blur(10px); }
+.kw-graph-panel__legend { display: flex; flex-direction: column; gap: 5px; }
+.kw-graph-type { display: flex; align-items: center; gap: 6px; width: 100%; padding: 0 1px; border: 0; color: #5f6b7d; background: transparent; cursor: pointer; font: inherit; font-size: 10px; text-align: left; transition: opacity .15s ease, color .15s ease; }
 .kw-graph-type:hover { color: #253247; }
 .kw-graph-type.is-disabled { opacity: .35; text-decoration: line-through; }
-.kw-graph-type i { width: 10px; height: 10px; flex: none; border-radius: 50%; }
-.kw-graph-type em { margin-left: auto; color: #a0a6b2; font-size: 9.5px; font-style: normal; }
-.kw-graph-panel__divider { height: 1px; margin: 0 -13px; background: #edf0f5; }
-.kw-graph-panel__actions { display: flex; flex-direction: column; gap: 3px; }
-.kw-graph-action { display: flex; align-items: center; gap: 7px; width: 100%; padding: 5px 2px; border: 0; color: #6b7280; background: transparent; cursor: pointer; font: inherit; font-size: 10.5px; text-align: left; transition: color .15s ease; }
+.kw-graph-type i { width: 8px; height: 8px; flex: none; border-radius: 50%; }
+.kw-graph-type em { margin-left: auto; color: #a0a6b2; font-size: 8.5px; font-style: normal; }
+.kw-graph-panel__divider { height: 1px; margin: 0 -10px; background: #edf0f5; }
+.kw-graph-panel__actions { display: flex; flex-direction: column; gap: 2px; }
+.kw-graph-action { display: flex; align-items: center; gap: 5px; width: 100%; padding: 4px 1px; border: 0; color: #6b7280; background: transparent; cursor: pointer; font: inherit; font-size: 9.5px; text-align: left; transition: color .15s ease; }
 .kw-graph-action:hover, .kw-graph-action.is-active { color: #2f5fce; }
 .kw-graph-action:disabled { opacity: .35; cursor: not-allowed; }
-.kw-graph-panel__overview { display: flex; flex-direction: column; gap: 3px; color: #9aa1af; font-size: 9.5px; }
-.kw-graph-panel__overview span { display: inline-flex; align-items: center; gap: 4px; }
-.kw-graph-panel__overview b { color: #253247; font-size: 13px; font-weight: 600; }
+.kw-graph-panel__overview { display: flex; flex-direction: column; gap: 2px; color: #9aa1af; font-size: 8.5px; }
+.kw-graph-panel__overview span { display: inline-flex; align-items: center; gap: 3px; }
+.kw-graph-panel__overview b { color: #253247; font-size: 11px; font-weight: 600; }
 .kw-graph-panel__overview em { color: #a0a6b2; font-style: normal; }
 .kw-graph-hint { position: absolute; z-index: 7; left: 16px; bottom: 14px; padding: 5px 9px; border: 1px solid rgba(15, 23, 42, 0.05); border-radius: 6px; color: #9aa1af; background: rgba(255, 255, 255, 0.82); font-size: 9.5px; pointer-events: none; }
 .kw-empty { display: flex; min-height: 520px; flex-direction: column; align-items: center; justify-content: center; border: 1px dashed #dfe6f2; border-radius: 13px; background: #fcfdff; text-align: center; }
