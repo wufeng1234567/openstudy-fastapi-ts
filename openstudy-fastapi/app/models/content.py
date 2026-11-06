@@ -110,6 +110,33 @@ class RagImageDescribeJob(Base):
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
 
+class RagWikiBuildJob(Base):
+    """知识百科批量生成任务。
+
+    生成一个资料夹的主题页可能要连续调用多次模型。任务落库后，前端切换
+    页面再回来仍能看到进度，而不是只能看着一个已经消失的 loading。
+    """
+
+    __tablename__ = "rag_wiki_build_job"
+    __table_args__ = (
+        Index("idx_rag_wiki_build_job_user", "user_id", "status"),
+        Index("idx_rag_wiki_build_job_kb", "kb_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    kb_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="running")
+    total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    done: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    current_title: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    error: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    update_time: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+
 class ContentReference(Base):
     """统一内容引用。
 

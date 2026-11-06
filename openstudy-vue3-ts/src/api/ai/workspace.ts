@@ -202,7 +202,23 @@ export function buildWikiPages(data: { kbId: number; force?: boolean; limit?: nu
     url: '/rag/wiki/build',
     method: 'post',
     data,
-    timeout: 900000
+    timeout: 60000
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
+/** 当前用户最近一次知识百科生成任务（重新进入知识百科时恢复进度） */
+export function getLatestWikiBuildJob(kbId?: number | null) {
+  return request({
+    url: '/rag/wiki/build/jobs/latest',
+    method: 'get',
+    params: { kbId: kbId || undefined }
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
+export function getWikiBuildJob(jobId: number) {
+  return request({
+    url: `/rag/wiki/build/jobs/${jobId}`,
+    method: 'get'
   }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
 }
 

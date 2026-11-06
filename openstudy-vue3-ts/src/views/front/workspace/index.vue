@@ -1092,7 +1092,27 @@ function htmlToEditorMarkdown(html: string): string {
 }
 
 const editorMarkdown = computed(() => htmlToEditorMarkdown(editorHtml.value))
-const viewMode = ref<'list' | 'shelf' | 'gallery' | 'wiki'>('list')
+const WORKSPACE_VIEW_KEY = 'openstudy.workspace.viewMode'
+const WORKSPACE_KB_KEY = 'openstudy.workspace.activeKbId'
+const WORKSPACE_VIEWS = ['list', 'shelf', 'gallery', 'wiki'] as const
+
+function readWorkspaceView(): 'list' | 'shelf' | 'gallery' | 'wiki' {
+  const fromQuery = typeof route.query.view === 'string' ? route.query.view : ''
+  if ((WORKSPACE_VIEWS as readonly string[]).includes(fromQuery)) {
+    return fromQuery as 'list' | 'shelf' | 'gallery' | 'wiki'
+  }
+  try {
+    const saved = localStorage.getItem(WORKSPACE_VIEW_KEY) || ''
+    if ((WORKSPACE_VIEWS as readonly string[]).includes(saved)) {
+      return saved as 'list' | 'shelf' | 'gallery' | 'wiki'
+    }
+  } catch {
+    // localStorage 不可用时退回默认资料夹
+  }
+  return 'list'
+}
+
+const viewMode = ref<'list' | 'shelf' | 'gallery' | 'wiki'>(readWorkspaceView())
 const canTeleport = ref(false)
 const workspaceSearch = ref('')
 const workspaceFilterOpen = ref(false)
@@ -1290,12 +1310,37 @@ function handleWorkspaceFilterReset() {
 }
 
 watch(workspaceSearch, scheduleCascade)
-watch(viewMode, () => {
+watch(viewMode, (mode) => {
   workspaceSearch.value = ''
   workspaceFilterOpen.value = false
   workspaceFilterActive.value = false
   Object.keys(workspaceFilters).forEach((key) => delete workspaceFilters[key])
   resetCascade()
+  try {
+    localStorage.setItem(WORKSPACE_VIEW_KEY, mode)
+  } catch {
+    // 忽略存储失败
+  }
+  const nextQuery = { ...route.query }
+  if (mode === 'list') delete nextQuery.view
+  else nextQuery.view = mode
+  if (String(route.query.view || '') !== String(nextQuery.view || '')) {
+    router.replace({ query: nextQuery }).catch(() => {})
+  }
+})
+watch(() => route.query.view, (value) => {
+  if (typeof value !== 'string') return
+  if ((WORKSPACE_VIEWS as readonly string[]).includes(value) && value !== viewMode.value) {
+    viewMode.value = value as 'list' | 'shelf' | 'gallery' | 'wiki'
+  }
+})
+watch(activeKbId, (kbId) => {
+  try {
+    if (kbId) localStorage.setItem(WORKSPACE_KB_KEY, String(kbId))
+    else localStorage.removeItem(WORKSPACE_KB_KEY)
+  } catch {
+    // 忽略存储失败
+  }
 })
 const standaloneImages = ref<any[]>([])
 const assetUsage = ref<Record<string, number>>({})
@@ -1633,12 +1678,22 @@ async function load(keepActive = true) {
       kbs.value = res.data.knowledgeBases || []
       Object.assign(stats, res.data.stats || {})
 
-      // 从聊天跳转过来时优先打开指定资料夹；否则保持当前选中的库，库被删了就退回默认库。
+      // 从聊天跳转过来时优先打开指定资料夹；否则保持当前选中的库。
+      // 刷新页面时用 localStorage 恢复上次刷新的资料夹，避免知识百科直接退回默认库。
       const requestedKbId = Number(route.query.kbId || 0)
+      let savedKbId = 0
+      try {
+        savedKbId = Number(localStorage.getItem(WORKSPACE_KB_KEY) || 0)
+      } catch {
+        savedKbId = 0
+      }
       if (requestedKbId && kbs.value.some((k) => Number(k.kbId) === requestedKbId)) {
         activeKbId.value = requestedKbId
       } else if (!keepActive || !kbs.value.some((k) => k.kbId === activeKbId.value)) {
-        activeKbId.value = res.data.defaultKbId || kbs.value[0]?.kbId || null
+        const fallbackKbId = savedKbId && kbs.value.some((k) => Number(k.kbId) === savedKbId)
+          ? savedKbId
+          : res.data.defaultKbId || kbs.value[0]?.kbId || null
+        activeKbId.value = fallbackKbId
       }
       // 文档被删/换库后，清掉已经不存在的批量选择
       const aliveIds = new Set(

@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from loguru import logger
 from sqlalchemy import delete, func, or_, select
@@ -447,11 +447,15 @@ async def build_wiki_pages(
     *,
     force: bool = False,
     limit: int = DEFAULT_BUILD_LIMIT,
+    progress_cb: Optional[Callable[[int, int, int, str], Awaitable[None]]] = None,
 ) -> dict:
     """把实体图整理成可读主题页。
 
     `force=False` 时跳过已有 ready 页面；资料变化后由 stale 标记触发重生成。
     每页只调用一次模型，任何单页失败都不拖垮整个资料夹。
+
+    `progress_cb(done, total, failed, current_title)` 用于后台任务回写进度，
+    不传时与原来的同步调用完全一致。
     """
     kb = await get_knowledge_base(db, user_id, kb_id)
     docs = (
@@ -527,6 +531,7 @@ async def build_wiki_pages(
     candidates_done = 0
     pages_touched: list[RagWikiPage] = []
     errors: list[dict] = []
+    progress_total = max(1, min(max(1, int(limit)), len(candidates)))
     for entity in candidates:
         if candidates_done >= max(1, int(limit)):
             break
@@ -633,6 +638,10 @@ async def build_wiki_pages(
             by_entity[int(entity.id)] = page
             pages_touched.append(page)
             candidates_done += 1
+            if progress_cb is not None:
+                await progress_cb(
+                    len(pages_touched), progress_total, len(errors), str(page.title)
+                )
         except Exception as exc:  # noqa: BLE001 - 单页失败不拖垮整个资料夹
             await db.rollback()
             # rollback 会丢掉未提交页面；已存在页面重新查询后再标 failed。
@@ -653,6 +662,10 @@ async def build_wiki_pages(
                 }
                 await db.commit()
             errors.append({"entityId": int(entity.id), "name": entity.name, "error": _clean(exc, 300)})
+            if progress_cb is not None:
+                await progress_cb(
+                    len(pages_touched), progress_total, len(errors), str(entity.name)
+                )
             logger.warning(f"[rag.wiki] 实体 {entity.name} 主题页生成失败: {exc}")
 
     # 页面生成过程中遇到过 rollback，重新取一遍所有页面再建链接。

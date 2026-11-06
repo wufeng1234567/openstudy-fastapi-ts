@@ -1024,21 +1024,65 @@ async def get_wiki_graph(
 @router.post("/wiki/build")
 async def build_wiki(
     data: WikiBuildRequest,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """把当前资料夹的实体图整理成知识百科主题页（同步返回本批统计）。"""
+    """创建知识百科生成任务；耗时模型调用在后台执行。"""
     try:
-        from app.services.rag.wiki_service import build_wiki_pages
+        from app.services.rag.wiki_build_job_service import (
+            create_build_job,
+            run_build_job,
+        )
 
-        result = await build_wiki_pages(
+        job, created = await create_build_job(
             db,
             _uid(current_user),
             data.kbId,
             force=data.force,
             limit=data.limit,
         )
-        return success(result, "知识百科生成完成")
+        if created:
+            background_tasks.add_task(
+                run_build_job,
+                job["jobId"],
+                _uid(current_user),
+                data.kbId,
+                force=data.force,
+                limit=data.limit,
+            )
+        return success(
+            job,
+            "已开始生成知识百科，切换页面不会中断" if created else "知识百科任务进行中",
+        )
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/wiki/build/jobs/latest")
+async def latest_wiki_build_job(
+    kbId: Optional[int] = Query(None, gt=0),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        from app.services.rag.wiki_build_job_service import get_latest_build_job
+
+        return success(await get_latest_build_job(db, _uid(current_user), kbId))
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/wiki/build/jobs/{job_id}")
+async def wiki_build_job(
+    job_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        from app.services.rag.wiki_build_job_service import get_build_job
+
+        return success(await get_build_job(db, _uid(current_user), job_id))
     except Exception as e:
         return _fail(e)
 

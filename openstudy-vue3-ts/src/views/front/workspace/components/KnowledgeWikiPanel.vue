@@ -19,11 +19,23 @@
           <button type="button" :class="{ 'is-active': view === 'map' }" :disabled="!pages.length" @click="switchMap">知识地图</button>
         </div>
         <el-button size="small" :loading="loading" @click="reload">刷新</el-button>
-        <el-button size="small" class="kw-build-btn" :loading="building" :disabled="!activeKbId" @click="build">
-          {{ pages.length ? '更新知识百科' : '生成知识百科' }}
+        <el-button size="small" class="kw-build-btn" :loading="building || buildActive" :disabled="!activeKbId || buildActive" @click="build">
+          {{ buildActive ? `更新中 ${buildJob.done}/${buildJob.total}` : pages.length ? '更新知识百科' : '生成知识百科' }}
         </el-button>
       </div>
     </header>
+
+    <div v-if="buildActive" class="kw-build-progress">
+      <div class="kw-build-progress__top">
+        <span>正在更新知识百科 {{ buildJob.done }}/{{ buildJob.total }}</span>
+        <span v-if="buildJob.failed">失败 {{ buildJob.failed }}</span>
+      </div>
+      <div class="kw-build-progress__bar">
+        <i :style="{ width: `${buildProgress}%` }"></i>
+      </div>
+      <p v-if="buildJob.currentTitle">正在整理：{{ buildJob.currentTitle }}</p>
+      <p>切换页面不会中断；回到知识百科会自动恢复进度。</p>
+    </div>
 
     <div v-if="loading" class="kw-loading" v-loading="true"></div>
 
@@ -82,8 +94,8 @@
       <div class="kw-empty__art">◇</div>
       <h3>这个资料夹还没有知识百科</h3>
       <p>先生成知识图谱，再把图谱里的概念整理成可读主题页。不会补充资料里没有的内容。</p>
-      <el-button class="kw-build-btn" type="primary" :loading="building" :disabled="!activeKbId" @click="build">
-        生成知识百科
+      <el-button class="kw-build-btn" type="primary" :loading="building || buildActive" :disabled="!activeKbId || buildActive" @click="build">
+        {{ buildActive ? `更新中 ${buildJob.done}/${buildJob.total}` : '生成知识百科' }}
       </el-button>
     </div>
 
@@ -196,7 +208,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
 import KnowledgeWikiEditor from './KnowledgeWikiEditor.vue'
@@ -204,6 +216,8 @@ import {
   attachWikiImage,
   buildWikiPages,
   detachWikiImage,
+  getLatestWikiBuildJob,
+  getWikiBuildJob,
   getWikiGraph,
   getWikiPage,
   listGalleryAssets,
@@ -225,6 +239,7 @@ const emit = defineEmits<{
 
 const loading = ref(false)
 const building = ref(false)
+const buildJob = ref<any>(null)
 const pages = ref<any[]>([])
 const stats = reactive({ pageCount: 0, docCount: 0, staleCount: 0 })
 const view = ref<'pages' | 'map'>('pages')
@@ -249,6 +264,13 @@ const filteredPages = computed(() => {
   return pages.value.filter((page: any) =>
     `${page.title || ''} ${page.summary || ''}`.toLowerCase().includes(query)
   )
+})
+
+const buildActive = computed(() => buildJob.value?.status === 'running')
+const buildProgress = computed(() => {
+  const total = Number(buildJob.value?.total || 0)
+  const done = Number(buildJob.value?.done || 0)
+  return total ? Math.min(100, Math.round((done / total) * 100)) : 0
 })
 
 const mapNodes = computed(() => {
@@ -329,8 +351,55 @@ async function reload() {
   }
 }
 
+let buildTimer: ReturnType<typeof setInterval> | null = null
+
+function stopBuildPolling() {
+  if (buildTimer) {
+    clearInterval(buildTimer)
+    buildTimer = null
+  }
+}
+
+function startBuildPolling(jobId: number) {
+  stopBuildPolling()
+  buildTimer = setInterval(async () => {
+    try {
+      const res = await getWikiBuildJob(jobId)
+      if (res.code !== 200 || !res.data) return
+      buildJob.value = res.data
+      if (res.data.status !== 'running') {
+        stopBuildPolling()
+        await reload()
+        if (res.data.status === 'failed') {
+          ElMessage.error(res.data.error || '知识百科生成失败')
+        } else if (Number(res.data.failed || 0)) {
+          ElMessage.warning(`已整理 ${res.data.done || 0} 个主题，${res.data.failed} 个生成失败`)
+        } else {
+          ElMessage.success(`已整理 ${res.data.done || 0} 个主题页`)
+        }
+      }
+    } catch (error: any) {
+      // 网络短暂抖动不立刻结束进度；组件卸载时会清理定时器
+      console.warn('[wiki] build job poll failed', error)
+    }
+  }, 1500)
+}
+
+async function resumeBuildJob() {
+  try {
+    const res = await getLatestWikiBuildJob(props.activeKbId || undefined)
+    const job = res.code === 200 ? res.data : null
+    if (job?.status === 'running') {
+      buildJob.value = job
+      startBuildPolling(job.jobId)
+    }
+  } catch {
+    // 恢复失败不影响知识百科本身
+  }
+}
+
 async function build() {
-  if (!props.activeKbId || building.value) return
+  if (!props.activeKbId || building.value || buildActive.value) return
   building.value = true
   try {
     const res = await buildWikiPages({
@@ -343,6 +412,17 @@ async function build() {
       return
     }
     const data = res.data || {}
+    if (data.jobId) {
+      buildJob.value = data
+      if (data.status === 'running') {
+        ElMessage.info(res.msg || '已开始更新知识百科，切换页面不会中断')
+        startBuildPolling(data.jobId)
+      } else {
+        await reload()
+      }
+      return
+    }
+    // 兼容旧后端：没有 jobId 时按原同步结果处理
     const errors = Array.isArray(data.errors) ? data.errors.length : 0
     if (errors) ElMessage.warning(`已完成 ${data.pages || 0} 个主题，${errors} 个生成失败`)
     else ElMessage.success(`已整理 ${data.pages || 0} 个主题页`)
@@ -537,8 +617,17 @@ function onMapUp() {
   mapDrag = null
 }
 
-watch(() => props.activeKbId, () => reload())
-onMounted(reload)
+watch(() => props.activeKbId, async () => {
+  stopBuildPolling()
+  buildJob.value = null
+  await reload()
+  await resumeBuildJob()
+})
+onMounted(async () => {
+  await reload()
+  await resumeBuildJob()
+})
+onBeforeUnmount(stopBuildPolling)
 </script>
 
 <style scoped>
@@ -555,6 +644,37 @@ onMounted(reload)
 .kw-switch button.is-active { color: #2f5fce; background: #fff; box-shadow: 0 1px 4px rgba(47, 95, 206, 0.1); font-weight: 600; }
 .kw-switch button:disabled { opacity: 0.45; cursor: not-allowed; }
 .kw-build-btn { border-color: rgba(47, 95, 206, 0.28); color: #2f5fce; background: #f5f8ff; }
+.kw-build-progress {
+  padding: 9px 12px;
+  border: 1px solid #e2e9fb;
+  border-radius: 8px;
+  background: #f8faff;
+}
+.kw-build-progress__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #2f5fce;
+  font-size: 11px;
+  font-weight: 600;
+}
+.kw-build-progress__top span:last-child { color: #d97706; font-weight: 400; }
+.kw-build-progress__bar {
+  height: 5px;
+  margin-top: 7px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #e7edfb;
+}
+.kw-build-progress__bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6f8df2, #2f5fce);
+  transition: width .35s ease;
+}
+.kw-build-progress p { margin: 6px 0 0; color: #9aa1af; font-size: 10px; }
 .kw-loading { min-height: 420px; }
 .kw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
 .kw-card { display: flex; min-height: 160px; flex-direction: column; padding: 15px 16px 13px; border: 1px solid #e7ebf3; border-radius: 13px; background: #fff; cursor: pointer; transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease; }
