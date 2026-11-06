@@ -498,9 +498,12 @@ async function refreshActivePage() {
 function askPage(kind: 'ask' | 'practice' = 'ask') {
   if (!activePage.value) return
   const title = activePage.value.title
+  const pageId = activePage.value.pageId
+  const kbId = activePage.value.kbId
+  const pageRef = `知识百科主题页《${title}》（pageId=${pageId}，kbId=${kbId}）`
   const prompt = kind === 'practice'
-    ? `请基于知识百科主题页《${title}》生成 5 道练习题，并在每题后标出对应的主题页小节和原文来源。`
-    : `请基于知识百科主题页《${title}》回答我，并在回答里标出引用的主题页和原文来源。`
+    ? `请基于${pageRef}生成 5 道练习题，并在每题后标出对应的主题页小节和原文来源。`
+    : `请基于${pageRef}回答我，并在回答里标出引用的主题页和原文来源。`
   emit('ask', prompt)
   detailVisible.value = false
 }
