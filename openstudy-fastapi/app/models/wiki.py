@@ -76,6 +76,31 @@ class RagWikiPage(Base):
     update_time: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
 
+class RagWikiPageRevision(Base):
+    """主题页版本快照：手动编辑 / AI 重生成 / 恢复前各留一份。"""
+
+    __tablename__ = "rag_wiki_page_revision"
+    __table_args__ = (
+        Index("idx_rag_wiki_revision_page", "page_id", "version"),
+        Index("idx_rag_wiki_revision_user", "user_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    kb_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    page_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    title: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    content_md: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    sections: Mapped[Optional[list]] = mapped_column(JSON)
+    source_refs: Mapped[Optional[list]] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="ready")
+    change_type: Mapped[str] = mapped_column(String(24), nullable=False, default="manual")
+    created_by: Mapped[str] = mapped_column(String(16), nullable=False, default="user")
+    create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class RagWikiPageLink(Base):
     """主题页之间的导航边，构成“知识地图”。"""
 

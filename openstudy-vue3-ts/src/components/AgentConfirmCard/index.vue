@@ -264,6 +264,8 @@ const TOOL_LABELS: Record<string, string> = {
   bank_share_manage: '题库分享',
   knowledge_search: '资料检索',
   memory_search: '记忆检索',
+  // 0.6.x 知识百科：主题页 CRUD 与画廊图片关联
+  wiki_manage: '知识百科',
   agent_manage: '智能体管理',
   delegate_task: '请专家帮忙'
 }
@@ -308,6 +310,9 @@ const ACTION_LABELS: Record<string, string> = {
   from_attachment: '附件入库',
   update_document: '修改正文',
   restore_document_version: '恢复历史版本',
+  // wiki_manage
+  attach_image: '关联配图',
+  detach_image: '移除配图',
   // bank_share_manage
   list_shares: '分享列表',
   share: '创建分享',
@@ -411,6 +416,15 @@ const PREVIEW_LABELS: Record<string, string> = {
   chunks: '分块数',
   docId: '文档 ID',
   fileName: '文件名',
+  // ---- 知识百科 wiki_manage
+  pageId: '主题页 ID',
+  page_id: '主题页 ID',
+  status: '状态',
+  sections: '正文小节',
+  assetKey: '图片资产',
+  asset_key: '图片资产',
+  referenceId: '图片引用 ID',
+  reference_id: '图片引用 ID',
   // ---- 存入我的资料 knowledge_ingest（preview：反查的资料夹名 + 切块/向量化估算）
   kbName: '资料夹名称',
   embedCalls: '向量化次数',

@@ -210,11 +210,67 @@ export function getWikiGraph(kbId: number) {
   }) as unknown as Promise<{ code: number; msg?: string; data: any }>
 }
 
+export function createWikiPage(data: {
+  kbId: number
+  title: string
+  summary?: string
+  sections?: Array<{ heading: string; body: string; sourceChunkIds?: number[] }>
+}) {
+  return request({
+    url: '/rag/wiki/pages',
+    method: 'post',
+    data
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
+export function updateWikiPage(pageId: number | string, data: {
+  title?: string
+  summary?: string
+  sections?: Array<{ heading: string; body: string; sourceChunkIds?: number[] }>
+  changeType?: 'manual' | 'agent'
+  baseVersion?: number
+}) {
+  return request({
+    url: `/rag/wiki/pages/${pageId}`,
+    method: 'put',
+    data
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
+export function listWikiRevisions(pageId: number | string) {
+  return request({
+    url: `/rag/wiki/pages/${pageId}/revisions`,
+    method: 'get'
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any[] }>
+}
+
+export function restoreWikiRevision(pageId: number | string, revisionId: number | string) {
+  return request({
+    url: `/rag/wiki/pages/${pageId}/revisions/${revisionId}/restore`,
+    method: 'post'
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
+export function attachWikiImage(pageId: number | string, data: { assetKey: string; quote?: string }) {
+  return request({
+    url: `/rag/wiki/pages/${pageId}/images`,
+    method: 'post',
+    data
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
+export function detachWikiImage(pageId: number | string, referenceId: number | string) {
+  return request({
+    url: `/rag/wiki/pages/${pageId}/images/${referenceId}`,
+    method: 'delete'
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
 export interface ContentReferencePayload {
   sourceType: 'document' | 'document_image' | 'chat_image' | 'note' | 'question'
   sourceId: number
   sourceSubId?: string
-  targetType: 'document' | 'note' | 'question' | 'image'
+  targetType: 'document' | 'note' | 'question' | 'image' | 'wiki_page'
   targetId: number
   quote?: string
   startOffset?: number

@@ -1,6 +1,6 @@
 param(
-  [string]$Pptx = "D:\OpenStudy\apps\fastapi-v2\doc\competition\OpenStudy-0.5.0-10页-码道版.pptx",
-  [string]$OutDir = "D:\OpenStudy\apps\fastapi-v2\doc\competition\_preview_050"
+  [string]$Pptx = "D:\OpenStudy\apps\fastapi-v2\doc\competition\OpenStudy-0.6.0-10页-码道版.pptx",
+  [string]$OutDir = "D:\OpenStudy\apps\fastapi-v2\doc\competition\_preview_060"
 )
 $ErrorActionPreference = 'Stop'
 if (Test-Path $OutDir) { Remove-Item $OutDir -Recurse -Force }

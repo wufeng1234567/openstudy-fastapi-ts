@@ -517,6 +517,7 @@
       :search-query="workspaceSearch"
       @stats="onMapStats"
       @locate="onGraphLocate"
+      @ask="onWikiAsk"
     />
 
     <!-- 全页空态：一个知识库都没有时，用一张完整引导替代整个两栏区 -->
@@ -2435,6 +2436,12 @@ function onGraphLocate(payload: { docId: number; chunkId?: number; chunkIndex?: 
     chunkIndex: payload.chunkIndex,
     targetText: ''
   })
+}
+
+function onWikiAsk(prompt: string) {
+  const text = String(prompt || '').trim()
+  if (!text) return
+  router.push({ path: '/front/agent/chat', state: { seedQuestion: text } })
 }
 
 function selectKb(kbId: number) {

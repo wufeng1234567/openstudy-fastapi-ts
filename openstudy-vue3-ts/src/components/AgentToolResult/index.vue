@@ -408,6 +408,8 @@ const TOOL_LABELS: Record<string, string> = {
   memory_search: '记忆检索',
   // 工作空间找文件（workspace_search.py）——2026-10-22
   workspace_search: '找资料',
+  // 0.6.x 知识百科：主题页 CRUD 与画廊图片关联
+  wiki_manage: '知识百科',
   // 用户自定义智能体的管理工具（agent_manage.py）
   agent_manage: '智能体管理',
   // 指挥家「派发专家」的元工具：对用户只该说「请专家帮忙」，不该露出 delegate_task
@@ -464,6 +466,9 @@ const ACTION_LABELS: Record<string, string> = {
   from_attachment: '附件入库',
   update_document: '修改正文',
   restore_document_version: '恢复历史版本',
+  // wiki_manage
+  attach_image: '关联配图',
+  detach_image: '移除配图',
   // bank_share_manage
   list_shares: '分享列表',
   share: '创建分享',

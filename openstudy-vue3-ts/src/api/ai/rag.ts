@@ -73,6 +73,7 @@ export interface RagSearchHit {
   wikiPageId?: number | null
   wikiPageTitle?: string | null
   wikiSection?: string | null
+  wikiStale?: boolean
   sourceType?: 'document' | 'graph' | 'wiki' | string
 }
 

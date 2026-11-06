@@ -18,9 +18,10 @@ from loguru import logger
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.content import ContentReference, RagImageAsset
 from app.models.knowledge_graph import RagGraphEntity, RagGraphRelation
 from app.models.rag import DOC_VECTORIZED, RagDocument, RagDocumentChunk
-from app.models.wiki import RagWikiChunk, RagWikiPage, RagWikiPageLink
+from app.models.wiki import RagWikiChunk, RagWikiPage, RagWikiPageLink, RagWikiPageRevision
 from app.services.ai.base_client import ChatMessage, TextBlock
 from app.services.ai.db_config import chat_with_config
 from app.services.rag.embedding import embed_texts
@@ -530,6 +531,10 @@ async def build_wiki_pages(
         if candidates_done >= max(1, int(limit)):
             break
         existing = by_entity.get(int(entity.id)) or by_title.get(_normalize_title(entity.name))
+        # 用户手写过的页面不能被批量“更新知识百科”静默覆盖；保留用户内容，交给页面内
+        # 的“重新整理 AI 部分”（后续版本）或人工编辑处理。
+        if existing and existing.generated_by in {"manual", "agent"}:
+            continue
         if existing and not force and existing.status == WIKI_READY:
             continue
         chunks = await _load_entity_chunks(db, int(user_id), int(kb_id), entity)
@@ -589,6 +594,9 @@ async def build_wiki_pages(
                 normalized_title=_normalize_title(entity.name),
                 page_type="topic",
             )
+            if existing:
+                # 快照必须在覆盖字段之前：保存旧标题/旧摘要/旧小节。
+                db.add(_page_revision_snapshot(existing, "before_ai_regenerate", "agent"))
             page.title = _display_title(entity.name)[:255]
             page.page_type = "topic"
             page.summary = summary
@@ -754,6 +762,7 @@ async def list_wiki_pages(
                 "sectionCount": len(page.sections or []),
                 "relatedCount": link_counts.get(int(page.id), 0),
                 "entityIds": page.entity_ids or [],
+                "generatedBy": page.generated_by or "llm",
                 "updateTime": page.update_time.isoformat(sep=" ") if page.update_time else None,
             }
         )
@@ -826,10 +835,445 @@ async def get_wiki_page(db: AsyncSession, user_id: int, page_id: int) -> dict:
         "sourceChunkIds": page.source_chunk_ids or [],
         "entityIds": page.entity_ids or [],
         "status": page.status,
+        "generatedBy": page.generated_by or "llm",
         "version": int(page.version or 1),
         "updateTime": page.update_time.isoformat(sep=" ") if page.update_time else None,
         "related": related_items,
+        "images": await _page_images(db, user_id, int(page.id)),
     }
+
+
+def _asset_key_from_reference(ref: ContentReference) -> str:
+    if ref.source_type == "document_image":
+        return f"doc:{int(ref.source_id)}:{ref.source_sub_id or ''}"
+    if ref.source_type == "chat_image":
+        return f"chat:{int(ref.source_id)}"
+    return ""
+
+
+async def _page_images(db: AsyncSession, user_id: int, page_id: int) -> list[dict]:
+    """主题页关联的画廊图片（统一走 content_reference，不复制原图）。"""
+    rows = (
+        await db.execute(
+            select(ContentReference).where(
+                ContentReference.user_id == int(user_id),
+                ContentReference.deleted == 0,
+                ContentReference.target_type == "wiki_page",
+                ContentReference.target_id == int(page_id),
+            )
+        )
+    ).scalars().all()
+    if not rows:
+        return []
+    from app.services.rag import reference_service
+
+    items: list[dict] = []
+    for ref in rows:
+        asset_key = _asset_key_from_reference(ref)
+        asset = (
+            await db.execute(
+                select(RagImageAsset).where(
+                    RagImageAsset.user_id == int(user_id),
+                    RagImageAsset.asset_key == asset_key,
+                )
+            )
+        ).scalar_one_or_none()
+        try:
+            enriched = await reference_service.get_reference(db, user_id, int(ref.id))
+        except Exception:  # noqa: BLE001 - 单条失效引用不阻断页面
+            enriched = {}
+        items.append(
+            {
+                "referenceId": int(ref.id),
+                "assetKey": asset_key,
+                "url": asset.url if asset else "",
+                "fileName": asset.file_name if asset else "",
+                "caption": asset.caption if asset else "",
+                "quote": ref.quote or "",
+                "sourceType": ref.source_type,
+                "sourceId": int(ref.source_id),
+                "sourceSubId": ref.source_sub_id,
+                "sourceTitle": ((enriched.get("source") or {}).get("title") if enriched else "") or "",
+            }
+        )
+    return items
+
+
+def _page_revision_snapshot(page: RagWikiPage, change_type: str, created_by: str) -> RagWikiPageRevision:
+    return RagWikiPageRevision(
+        user_id=int(page.user_id),
+        kb_id=int(page.kb_id),
+        page_id=int(page.id),
+        version=int(page.version or 1),
+        title=page.title or "",
+        summary=page.summary or "",
+        content_md=page.content_md or "",
+        sections=page.sections or [],
+        source_refs=page.source_refs or [],
+        status=page.status or WIKI_READY,
+        change_type=change_type,
+        created_by=created_by,
+    )
+
+
+def _manual_sections(value: Any, allowed_chunk_ids: Optional[Sequence[int]] = None) -> list[dict]:
+    """清洗用户编辑/Agent 提交的小节。
+
+    手动编辑允许没有 chunk 来源（用户自己写的内容）；但模型传来的来源 id
+    只能落在页面已知来源 chunk 里，不能让模型把任意 id 写进页面。
+    """
+    allowed = {int(x) for x in (allowed_chunk_ids or []) if str(x).isdigit()}
+    out: list[dict] = []
+    for item in value or []:
+        if not isinstance(item, dict):
+            continue
+        heading = _clean(item.get("heading") or item.get("title"), 60)
+        body = _clean(item.get("body") or item.get("content") or item.get("text"), MAX_SECTION_CHARS)
+        if not heading or not body:
+            continue
+        raw_ids = item.get("sourceChunkIds") or item.get("chunkIds") or []
+        if not isinstance(raw_ids, list):
+            raw_ids = []
+        source_ids = []
+        for chunk_id in raw_ids:
+            try:
+                chunk_id = int(chunk_id)
+            except (TypeError, ValueError):
+                continue
+            if allowed and chunk_id in allowed and chunk_id not in source_ids:
+                source_ids.append(chunk_id)
+        out.append({"heading": heading, "body": body, "sourceChunkIds": source_ids})
+        if len(out) >= MAX_SECTIONS:
+            break
+    return out
+
+
+async def create_manual_wiki_page(
+    db: AsyncSession,
+    user_id: int,
+    kb_id: int,
+    *,
+    title: str,
+    summary: str = "",
+    sections: Optional[Sequence[dict]] = None,
+) -> dict:
+    """用户/Agent 手动创建主题页（不调用模型）。"""
+    await get_knowledge_base(db, user_id, kb_id)
+    clean_title = _clean(title, 255)
+    if not clean_title:
+        raise ValueError("主题页标题不能为空")
+    normalized = _normalize_title(clean_title)
+    dup = (
+        await db.execute(
+            select(RagWikiPage).where(
+                RagWikiPage.user_id == int(user_id),
+                RagWikiPage.kb_id == int(kb_id),
+                RagWikiPage.normalized_title == normalized,
+            )
+        )
+    ).scalar_one_or_none()
+    if dup:
+        raise ValueError(f"同名主题页已存在：{dup.title}")
+    clean_sections = _manual_sections(sections)
+    if not clean_sections:
+        raise ValueError("主题页至少需要一个正文小节")
+    page = RagWikiPage(
+        user_id=int(user_id),
+        kb_id=int(kb_id),
+        title=clean_title,
+        normalized_title=normalized,
+        page_type="topic",
+        summary=_clean(summary or clean_title, 500),
+        content_md=_render_markdown(_clean(summary or clean_title, 500), clean_sections),
+        sections=clean_sections,
+        source_refs=[],
+        source_doc_ids=[],
+        source_chunk_ids=[],
+        entity_ids=[],
+        status=WIKI_READY,
+        generated_by="manual",
+        version=1,
+        update_time=datetime.now(),
+    )
+    db.add(page)
+    await db.flush()
+    await _replace_wiki_chunks(db, page, clean_sections)
+    await db.commit()
+    return await get_wiki_page(db, user_id, int(page.id))
+
+
+async def update_wiki_page(
+    db: AsyncSession,
+    user_id: int,
+    page_id: int,
+    *,
+    title: Optional[str] = None,
+    summary: Optional[str] = None,
+    sections: Optional[Sequence[dict]] = None,
+    change_type: str = "manual",
+    created_by: str = "user",
+    expected_version: Optional[int] = None,
+) -> dict:
+    """手动编辑主题页；先保存旧版本，再更新并重建 Wiki 检索块。"""
+    page = (
+        await db.execute(
+            select(RagWikiPage).where(
+                RagWikiPage.id == int(page_id),
+                RagWikiPage.user_id == int(user_id),
+            )
+        )
+    ).scalar_one_or_none()
+    if not page:
+        raise ValueError("知识主题页不存在或无权访问")
+    if expected_version is not None and int(page.version or 1) != int(expected_version):
+        raise ValueError(
+            f"主题页已被更新（当前版本 {int(page.version or 1)}，提交版本 {int(expected_version)}），请刷新后再保存"
+        )
+    changed = False
+    new_title = page.title
+    new_normalized_title = page.normalized_title
+    if title is not None:
+        new_title = _clean(title, 255)
+        if not new_title:
+            raise ValueError("主题页标题不能为空")
+        if new_title != page.title:
+            dup = (
+                await db.execute(
+                    select(RagWikiPage).where(
+                        RagWikiPage.user_id == int(user_id),
+                        RagWikiPage.kb_id == int(page.kb_id),
+                        RagWikiPage.normalized_title == _normalize_title(new_title),
+                        RagWikiPage.id != int(page.id),
+                    )
+                )
+            ).scalar_one_or_none()
+            if dup:
+                raise ValueError(f"同名主题页已存在：{dup.title}")
+            new_normalized_title = _normalize_title(new_title)
+            changed = True
+    new_summary = page.summary
+    if summary is not None:
+        new_summary = _clean(summary, 500)
+        if new_summary != page.summary:
+            changed = True
+    new_sections = page.sections or []
+    if sections is not None:
+        cleaned = _manual_sections(sections, page.source_chunk_ids or [])
+        if not cleaned:
+            raise ValueError("主题页至少需要一个正文小节")
+        if cleaned != (page.sections or []):
+            new_sections = cleaned
+            changed = True
+    if not changed:
+        return await get_wiki_page(db, user_id, int(page.id))
+
+    # 快照必须保存**修改前**的标题 / 摘要 / 小节，否则“恢复历史版本”会把新值当成旧值。
+    db.add(_page_revision_snapshot(page, change_type, created_by))
+    page.title = new_title
+    page.normalized_title = new_normalized_title
+    page.summary = new_summary
+    page.sections = new_sections
+    page.content_md = _render_markdown(new_summary, new_sections)
+    page.status = WIKI_READY
+    page.generated_by = change_type
+    page.version = int(page.version or 1) + 1
+    page.update_time = datetime.now()
+    await db.flush()
+    await _replace_wiki_chunks(db, page, new_sections)
+    await db.commit()
+    return await get_wiki_page(db, user_id, int(page.id))
+
+
+async def list_wiki_revisions(db: AsyncSession, user_id: int, page_id: int) -> list[dict]:
+    page = (
+        await db.execute(
+            select(RagWikiPage).where(
+                RagWikiPage.id == int(page_id), RagWikiPage.user_id == int(user_id)
+            )
+        )
+    ).scalar_one_or_none()
+    if not page:
+        raise ValueError("知识主题页不存在或无权访问")
+    rows = (
+        await db.execute(
+            select(RagWikiPageRevision)
+            .where(RagWikiPageRevision.page_id == int(page_id))
+            .order_by(RagWikiPageRevision.version.desc(), RagWikiPageRevision.id.desc())
+            .limit(30)
+        )
+    ).scalars().all()
+    return [
+        {
+            "revisionId": int(row.id),
+            "version": int(row.version or 1),
+            "title": row.title,
+            "summary": row.summary,
+            "changeType": row.change_type,
+            "createdBy": row.created_by,
+            "createTime": row.create_time.isoformat(sep=" ") if row.create_time else "",
+        }
+        for row in rows
+    ]
+
+
+async def restore_wiki_revision(
+    db: AsyncSession, user_id: int, page_id: int, revision_id: int
+) -> dict:
+    page = (
+        await db.execute(
+            select(RagWikiPage).where(
+                RagWikiPage.id == int(page_id), RagWikiPage.user_id == int(user_id)
+            )
+        )
+    ).scalar_one_or_none()
+    revision = (
+        await db.execute(
+            select(RagWikiPageRevision).where(
+                RagWikiPageRevision.id == int(revision_id),
+                RagWikiPageRevision.page_id == int(page_id),
+                RagWikiPageRevision.user_id == int(user_id),
+            )
+        )
+    ).scalar_one_or_none()
+    if not page or not revision:
+        raise ValueError("主题页或历史版本不存在")
+    db.add(_page_revision_snapshot(page, "before_restore", "user"))
+    page.title = revision.title or page.title
+    page.normalized_title = _normalize_title(page.title)
+    page.summary = revision.summary or ""
+    page.sections = revision.sections or []
+    page.source_refs = revision.source_refs or page.source_refs or []
+    page.content_md = revision.content_md or _render_markdown(page.summary, page.sections or [])
+    page.status = WIKI_READY
+    page.generated_by = "manual"
+    page.version = int(page.version or 1) + 1
+    page.update_time = datetime.now()
+    await db.flush()
+    await _replace_wiki_chunks(db, page, page.sections or [])
+    await db.commit()
+    return await get_wiki_page(db, user_id, int(page.id))
+
+
+async def delete_wiki_page(db: AsyncSession, user_id: int, page_id: int) -> dict:
+    page = (
+        await db.execute(
+            select(RagWikiPage).where(
+                RagWikiPage.id == int(page_id), RagWikiPage.user_id == int(user_id)
+            )
+        )
+    ).scalar_one_or_none()
+    if not page:
+        raise ValueError("知识主题页不存在或无权访问")
+    await db.execute(delete(RagWikiChunk).where(RagWikiChunk.page_id == int(page.id)))
+    await db.execute(
+        delete(RagWikiPageLink).where(
+            or_(
+                RagWikiPageLink.from_page_id == int(page.id),
+                RagWikiPageLink.to_page_id == int(page.id),
+            )
+        )
+    )
+    await db.execute(delete(RagWikiPageRevision).where(RagWikiPageRevision.page_id == int(page.id)))
+    await db.execute(
+        ContentReference.__table__.update()
+        .where(
+            ContentReference.user_id == int(user_id),
+            ContentReference.target_type == "wiki_page",
+            ContentReference.target_id == int(page.id),
+        )
+        .values(deleted=1)
+    )
+    title = page.title
+    await db.delete(page)
+    await db.commit()
+    return {"pageId": int(page_id), "title": title, "deleted": True}
+
+
+def _asset_source_ref(asset_key: str) -> tuple[str, int, Optional[str]]:
+    key = str(asset_key or "").strip()
+    if key.startswith("doc:"):
+        parts = key.split(":")
+        if len(parts) >= 3 and parts[1].isdigit():
+            return "document_image", int(parts[1]), parts[2]
+    if key.startswith("chat:"):
+        tail = key.rsplit(":", 1)[-1]
+        if tail.isdigit():
+            return "chat_image", int(tail), None
+    raise ValueError("不支持的图片资产键")
+
+
+async def attach_wiki_image(
+    db: AsyncSession,
+    user_id: int,
+    page_id: int,
+    asset_key: str,
+    quote: str = "",
+) -> dict:
+    page = (
+        await db.execute(
+            select(RagWikiPage).where(
+                RagWikiPage.id == int(page_id), RagWikiPage.user_id == int(user_id)
+            )
+        )
+    ).scalar_one_or_none()
+    if not page:
+        raise ValueError("知识主题页不存在或无权访问")
+    asset = (
+        await db.execute(
+            select(RagImageAsset).where(
+                RagImageAsset.user_id == int(user_id),
+                RagImageAsset.asset_key == str(asset_key),
+            )
+        )
+    ).scalar_one_or_none()
+    if not asset:
+        raise ValueError("图片资产不存在或无权访问")
+    # 文档图片默认只能挂到同一资料夹的主题页；聊天图片没有 kb，允许用户自行关联。
+    if asset.source_type == "document" and asset.kb_id is not None and int(asset.kb_id) != int(page.kb_id):
+        raise ValueError("这张图片属于其他资料夹，不能挂到当前主题页")
+    source_type, source_id, source_sub_id = _asset_source_ref(asset_key)
+    from app.services.rag import reference_service
+
+    ref = await reference_service.create_reference(
+        db,
+        user_id,
+        source_type=source_type,
+        source_id=source_id,
+        source_sub_id=source_sub_id,
+        target_type="wiki_page",
+        target_id=int(page.id),
+        quote=_clean(quote or asset.caption or asset.file_name, 800),
+        created_by="user",
+    )
+    return {"pageId": int(page.id), "reference": ref}
+
+
+async def detach_wiki_image(
+    db: AsyncSession, user_id: int, page_id: int, reference_id: int
+) -> dict:
+    page = (
+        await db.execute(
+            select(RagWikiPage).where(
+                RagWikiPage.id == int(page_id), RagWikiPage.user_id == int(user_id)
+            )
+        )
+    ).scalar_one_or_none()
+    ref = (
+        await db.execute(
+            select(ContentReference).where(
+                ContentReference.id == int(reference_id),
+                ContentReference.user_id == int(user_id),
+                ContentReference.target_type == "wiki_page",
+                ContentReference.target_id == int(page_id),
+                ContentReference.deleted == 0,
+            )
+        )
+    ).scalar_one_or_none()
+    if not page or not ref:
+        raise ValueError("主题页图片引用不存在或无权访问")
+    from app.services.rag import reference_service
+
+    return await reference_service.delete_reference(db, user_id, int(reference_id))
 
 
 async def get_wiki_page_by_entity(db: AsyncSession, user_id: int, entity_id: int) -> Optional[dict]:
@@ -910,11 +1354,13 @@ async def search_wiki_chunks(
         return []
     pool = max(int(top_k) * 3, int(top_k))
     base = (
-        select(RagWikiChunk, RagWikiPage.title, RagWikiPage.id)
+        select(RagWikiChunk, RagWikiPage.title, RagWikiPage.id, RagWikiPage.status)
         .join(RagWikiPage, RagWikiPage.id == RagWikiChunk.page_id)
         .where(
             RagWikiPage.user_id == int(user_id),
-            RagWikiPage.status == WIKI_READY,
+            # stale 页面仍然参与检索（用户手写内容不应从问答里消失），
+            # 但 ChunkHit 会带 wikiStale，提示回答“这一页可能过期”。
+            RagWikiPage.status.in_([WIKI_READY, WIKI_STALE]),
             RagWikiChunk.kb_id.in_([int(x) for x in kb_ids]),
         )
     )
@@ -931,10 +1377,12 @@ async def search_wiki_chunks(
         ).all()
         for row in rows:
             chunk: RagWikiChunk = row[0]
-            similarity = 1.0 - float(row[3])
+            similarity = 1.0 - float(row[4])
             if similarity < 0.3:
                 continue
-            vector_hits.append(_wiki_hit(chunk, row[1], row[2], vector_score=similarity))
+            vector_hits.append(
+                _wiki_hit(chunk, row[1], row[2], row[3], vector_score=similarity)
+            )
     keyword_hits: list[ChunkHit] = []
     tokens = [t for t in query_tokens(query) if t]
     if tokens:
@@ -952,7 +1400,9 @@ async def search_wiki_chunks(
         ).all()
         for row in rows:
             chunk: RagWikiChunk = row[0]
-            keyword_hits.append(_wiki_hit(chunk, row[1], row[2], keyword_score=float(row[3])))
+            keyword_hits.append(
+                _wiki_hit(chunk, row[1], row[2], row[3], keyword_score=float(row[4]))
+            )
     if not vector_hits and not keyword_hits:
         return []
     from app.services.rag.hybrid_search import reciprocal_rank_fusion
@@ -964,6 +1414,7 @@ def _wiki_hit(
     chunk: RagWikiChunk,
     page_title: str,
     page_id: int,
+    page_status: str,
     *,
     vector_score: Optional[float] = None,
     keyword_score: Optional[float] = None,
@@ -981,4 +1432,5 @@ def _wiki_hit(
         wiki_page_id=int(page_id),
         wiki_page_title=page_title,
         wiki_section=chunk.section_title,
+        wiki_stale=(page_status == WIKI_STALE),
     )

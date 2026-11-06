@@ -79,6 +79,8 @@ class ChunkHit:
     wiki_page_id: Optional[int] = None
     wiki_page_title: Optional[str] = None
     wiki_section: Optional[str] = None
+    #: Wiki 页面因源资料变化而标记 stale；仍参与检索，但要在回答里提示可能过期。
+    wiki_stale: bool = False
     #: 该分块关联的图片 URL 列表（`/profile/upload/...` 或 http(s) 外链）。
     #: 来自 `rag_document_chunk.meta_data["images"]`（分块时按正文 `【图N】` 归属）。
     #: 空 = 这一块没有图。检索命中时把它作为多模态图片一起回给模型（见
@@ -96,7 +98,8 @@ class ChunkHit:
         if self.wiki_hit:
             title = self.wiki_page_title or "未命名主题"
             section = f" · {self.wiki_section}" if self.wiki_section else ""
-            return f"知识百科《{title}》{section}"
+            stale = "（待更新）" if self.wiki_stale else ""
+            return f"知识百科《{title}》{section}{stale}"
         name = self.doc_name or f"文档#{self.doc_id}"
         return f"{name} 第 {self.chunk_index + 1} 段"
 
@@ -117,6 +120,7 @@ class ChunkHit:
             "wikiPageId": self.wiki_page_id,
             "wikiPageTitle": self.wiki_page_title,
             "wikiSection": self.wiki_section,
+            "wikiStale": bool(self.wiki_stale),
             "sourceType": "wiki" if self.wiki_hit else ("graph" if self.graph_hit else "document"),
             "graphScore": None,
             "vectorScore": None if self.vector_score is None else round(self.vector_score, 4),
@@ -271,6 +275,7 @@ def reciprocal_rank_fusion(
                     wiki_page_id=hit.wiki_page_id,
                     wiki_page_title=hit.wiki_page_title,
                     wiki_section=hit.wiki_section,
+                    wiki_stale=bool(hit.wiki_stale),
                 )
                 fused[key] = entry
             elif hit.images and not entry.images:
@@ -291,6 +296,7 @@ def reciprocal_rank_fusion(
                 entry.wiki_page_id = hit.wiki_page_id or entry.wiki_page_id
                 entry.wiki_page_title = hit.wiki_page_title or entry.wiki_page_title
                 entry.wiki_section = hit.wiki_section or entry.wiki_section
+                entry.wiki_stale = bool(hit.wiki_stale or entry.wiki_stale)
 
     ordered = sorted(fused.values(), key=lambda h: h.score, reverse=True)
     return ordered[:top_k]

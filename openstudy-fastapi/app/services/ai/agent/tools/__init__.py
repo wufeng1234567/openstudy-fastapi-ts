@@ -34,6 +34,8 @@ from app.services.ai.agent.tools.question_manage import QuestionManageTool
 from app.services.ai.agent.tools.question_mark_manage import QuestionFlagManageTool
 from app.services.ai.agent.tools.review_sheet import ReviewSheetTool
 from app.services.ai.agent.tools.workspace_search import WorkspaceSearchTool
+# 0.6.x 知识百科：主题页 CRUD + 画廊图片关联（写操作走确认卡）
+from app.services.ai.agent.tools.wiki_manage import WikiManageTool
 # 2026-10-27 对话文件：取用用户在聊天里传过的文件与图片（含之前轮次）
 from app.services.ai.agent.tools.chat_file_manage import ChatFileManageTool
 # 2026-10-27 思维导图：产出结构化树，前端用现成 `MindMap` 组件渲染成卡片+连线图
@@ -45,6 +47,9 @@ registry.register(BankManageTool())
 registry.register(NoteManageTool())
 registry.register(QuestionManageTool())
 registry.register(KnowledgeSearchTool())
+# —— 0.6.x 知识百科：主题页 CRUD 与画廊图片关联。
+#    ⚠️ 写操作必须确认；delete 是破坏性动作，恒确认。
+registry.register(WikiManageTool())
 # —— 2026-10-22 工作空间：按文件名 / 备注 / 正文找「用户空间里的那份资料」。
 #    与 knowledge_search 分工：这个找**文件**（返回 docId），那个找**正文片段**。
 #    用户说「用那份概率论的资料出题」时，先用这个定位文件，再用 knowledge_search 读内容。
@@ -145,4 +150,5 @@ __all__ = [
     "WorkspaceSearchTool",
     "ChatFileManageTool",
     "MindMapTool",
+    "WikiManageTool",
 ]

@@ -21,9 +21,10 @@ from app.models.content import ContentReference, RagImageAsset
 from app.models.note import Note
 from app.models.question import QuestionMain
 from app.models.rag import RagDocument
+from app.models.wiki import RagWikiPage
 
 SOURCE_TYPES = {"document", "document_image", "chat_image", "note", "question"}
-TARGET_TYPES = {"document", "note", "question", "image"}
+TARGET_TYPES = {"document", "note", "question", "image", "wiki_page"}
 
 
 def _trim(value: Any, limit: int = 800) -> str:
@@ -114,6 +115,17 @@ async def _validate_target(
         ).scalar_one_or_none()
         if not row:
             raise ValueError("目标图片不存在或无权访问")
+    elif target_type == "wiki_page":
+        row = (
+            await db.execute(
+                select(RagWikiPage).where(
+                    RagWikiPage.user_id == int(user_id),
+                    RagWikiPage.id == int(target_id),
+                )
+            )
+        ).scalar_one_or_none()
+        if not row:
+            raise ValueError("目标知识百科主题页不存在或无权访问")
 
 
 async def create_reference(
@@ -199,6 +211,15 @@ async def _describe_target(db: AsyncSession, user_id: int, target_type: str, tar
             )
         ).scalar_one_or_none()
         return {"type": "image", "id": int(target_id), "title": row.file_name if row else "图片"}
+    if target_type == "wiki_page":
+        row = (
+            await db.execute(
+                select(RagWikiPage).where(
+                    RagWikiPage.user_id == int(user_id), RagWikiPage.id == int(target_id)
+                )
+            )
+        ).scalar_one_or_none()
+        return {"type": "wiki_page", "id": int(target_id), "title": row.title if row else "知识百科主题页"}
     return {"type": target_type, "id": target_id, "title": target_type}
 
 

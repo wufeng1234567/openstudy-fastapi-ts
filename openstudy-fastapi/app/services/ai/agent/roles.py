@@ -57,6 +57,9 @@ GENERAL_ROLE = "general"
 GLOBAL_TOOLS: Tuple[str, ...] = (
     "memory_search",
     "memory_manage",
+    # 0.6.x：知识百科是跨资料域的通用阅读层；所有角色都能查/编辑主题页，
+    # 但写操作仍受确认卡、破坏性保护和归属校验约束。
+    "wiki_manage",
 )
 
 #: **指挥家专属的元工具**名（`delegate_task`）。它**不属于任何子代理**，也**不参与**

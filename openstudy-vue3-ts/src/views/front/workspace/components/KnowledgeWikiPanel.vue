@@ -99,9 +99,16 @@
               <span>{{ activePage.sources?.length || 0 }} 条来源</span>
               <span>{{ activePage.version || 1 }} 版</span>
               <span v-if="activePage.status === 'stale'" class="is-stale">待更新</span>
+              <span v-if="activePage.generatedBy === 'manual'" class="is-manual">手动编辑</span>
             </div>
           </div>
-          <button type="button" class="kw-detail__close" @click="detailVisible = false">×</button>
+          <div class="kw-detail__head-actions">
+            <el-button size="small" plain @click="openEditor">编辑</el-button>
+            <el-button size="small" plain @click="openRevisions">历史版本</el-button>
+            <el-button size="small" plain @click="askPage('practice')">生成练习</el-button>
+            <el-button size="small" type="primary" plain @click="askPage()">问 AI 这一页</el-button>
+            <button type="button" class="kw-detail__close" @click="detailVisible = false">×</button>
+          </div>
         </header>
 
         <div v-if="activePage.status === 'stale'" class="kw-detail__warning">
@@ -112,6 +119,24 @@
         <section v-for="(section, index) in activePage.sections || []" :key="`${index}-${section.heading}`" class="kw-detail__section">
           <h3>{{ section.heading }}</h3>
           <LatexRenderer :content="section.body" class="kw-detail__body" />
+        </section>
+
+        <section class="kw-detail__block">
+          <div class="kw-detail__block-head">
+            <span>画廊图片</span>
+            <b>{{ activePage.images?.length || 0 }}</b>
+            <el-button size="small" text type="primary" @click="openGalleryPicker">从画廊添加</el-button>
+          </div>
+          <div v-if="activePage.images?.length" class="kw-image-grid">
+            <div v-for="image in activePage.images" :key="image.referenceId" class="kw-image-card">
+              <el-image :src="imageUrl(image.url)" fit="cover" />
+              <div class="kw-image-card__foot">
+                <span :title="image.caption || image.fileName">{{ image.caption || image.fileName || '图片' }}</span>
+                <button type="button" title="取消关联" @click="removeImage(image)">×</button>
+              </div>
+            </div>
+          </div>
+          <div v-else class="kw-image-empty">还没有关联画廊图片，可以从画廊选择。</div>
         </section>
 
         <section v-if="activePage.sources?.length" class="kw-detail__block">
@@ -140,6 +165,33 @@
         </footer>
       </div>
     </el-drawer>
+
+    <KnowledgeWikiEditor v-model="editorVisible" :page="activePage" @saved="onPageSaved" />
+
+    <el-dialog v-model="revisionVisible" title="主题页历史版本" width="560px" append-to-body>
+      <div v-if="revisions.length" class="kw-revisions">
+        <div v-for="revision in revisions" :key="revision.revisionId" class="kw-revision">
+          <div>
+            <b>v{{ revision.version }}</b>
+            <span>{{ revision.changeType === 'manual' ? '手动编辑' : revision.changeType === 'before_restore' ? '恢复前快照' : '生成' }}</span>
+            <em>{{ revision.createTime }}</em>
+          </div>
+          <el-button size="small" plain @click="restoreRevision(revision)">恢复</el-button>
+        </div>
+      </div>
+      <div v-else class="kw-image-empty">还没有历史版本。</div>
+    </el-dialog>
+
+    <el-dialog v-model="galleryPickerVisible" title="从画廊选择图片" width="760px" append-to-body>
+      <div v-loading="galleryLoading" class="kw-gallery-picker">
+        <button v-for="item in galleryItems" :key="item.assetKey" type="button" class="kw-gallery-pick"
+          @click="attachImage(item)">
+          <el-image :src="imageUrl(item.url)" fit="cover" />
+          <span>{{ item.caption || item.fileName || item.assetKey }}</span>
+        </button>
+        <div v-if="!galleryLoading && !galleryItems.length" class="kw-image-empty">当前资料夹还没有可用的画廊图片。</div>
+      </div>
+    </el-dialog>
   </section>
 </template>
 
@@ -147,7 +199,18 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
-import { buildWikiPages, getWikiGraph, getWikiPage, listWikiPages } from '@/api/ai/workspace'
+import KnowledgeWikiEditor from './KnowledgeWikiEditor.vue'
+import {
+  attachWikiImage,
+  buildWikiPages,
+  detachWikiImage,
+  getWikiGraph,
+  getWikiPage,
+  listGalleryAssets,
+  listWikiPages,
+  listWikiRevisions,
+  restoreWikiRevision
+} from '@/api/ai/workspace'
 
 const props = defineProps<{
   activeKbId?: number | null
@@ -157,6 +220,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'stats', payload: { total: number }): void
   (e: 'locate', payload: { docId: number; chunkId?: number; chunkIndex?: number }): void
+  (e: 'ask', prompt: string): void
 }>()
 
 const loading = ref(false)
@@ -167,6 +231,12 @@ const view = ref<'pages' | 'map'>('pages')
 const detailVisible = ref(false)
 const pageLoading = ref(false)
 const activePage = ref<any>(null)
+const editorVisible = ref(false)
+const revisionVisible = ref(false)
+const revisions = ref<any[]>([])
+const galleryPickerVisible = ref(false)
+const galleryLoading = ref(false)
+const galleryItems = ref<any[]>([])
 
 const mapCanvasRef = ref<HTMLElement | null>(null)
 const mapGraph = ref<any>({ nodes: [], edges: [] })
@@ -326,6 +396,115 @@ function locateSource(source: any) {
   detailVisible.value = false
 }
 
+function imageUrl(url: string) {
+  const value = String(url || '').trim()
+  if (!value) return ''
+  if (value.startsWith('data:') || value.startsWith('http://') || value.startsWith('https://')) return value
+  const base = (import.meta.env.VITE_APP_BASE_API || '').replace(/\/$/, '')
+  return base + (value.startsWith('/') ? value : '/' + value)
+}
+
+function openEditor() {
+  if (!activePage.value) return
+  editorVisible.value = true
+}
+
+async function onPageSaved(page: any) {
+  if (page?.pageId) activePage.value = page
+  await reload()
+}
+
+async function openRevisions() {
+  if (!activePage.value) return
+  revisionVisible.value = true
+  try {
+    const res = await listWikiRevisions(activePage.value.pageId)
+    revisions.value = res.code === 200 ? (res.data || []) : []
+  } catch {
+    revisions.value = []
+  }
+}
+
+async function restoreRevision(revision: any) {
+  if (!activePage.value) return
+  try {
+    const res = await restoreWikiRevision(activePage.value.pageId, revision.revisionId)
+    if (res.code !== 200) {
+      ElMessage.error(res.msg || '恢复失败')
+      return
+    }
+    activePage.value = res.data
+    revisionVisible.value = false
+    await reload()
+    ElMessage.success('已恢复历史版本')
+  } catch (error: any) {
+    ElMessage.error('恢复失败：' + (error?.message || error))
+  }
+}
+
+async function openGalleryPicker() {
+  galleryPickerVisible.value = true
+  galleryLoading.value = true
+  try {
+    const res = await listGalleryAssets({
+      scope: 'current',
+      kbId: props.activeKbId || undefined,
+      limit: 200
+    })
+    galleryItems.value = res.code === 200 ? (res.data?.items || []) : []
+  } catch {
+    galleryItems.value = []
+  } finally {
+    galleryLoading.value = false
+  }
+}
+
+async function attachImage(item: any) {
+  if (!activePage.value || !item?.assetKey) return
+  try {
+    const res = await attachWikiImage(activePage.value.pageId, { assetKey: item.assetKey })
+    if (res.code !== 200) {
+      ElMessage.error(res.msg || '关联图片失败')
+      return
+    }
+    await refreshActivePage()
+    galleryPickerVisible.value = false
+    ElMessage.success('图片已关联到主题页')
+  } catch (error: any) {
+    ElMessage.error('关联图片失败：' + (error?.message || error))
+  }
+}
+
+async function removeImage(image: any) {
+  if (!activePage.value || !image?.referenceId) return
+  try {
+    const res = await detachWikiImage(activePage.value.pageId, image.referenceId)
+    if (res.code !== 200) {
+      ElMessage.error(res.msg || '取消关联失败')
+      return
+    }
+    await refreshActivePage()
+  } catch (error: any) {
+    ElMessage.error('取消关联失败：' + (error?.message || error))
+  }
+}
+
+async function refreshActivePage() {
+  if (!activePage.value?.pageId) return
+  const res = await getWikiPage(activePage.value.pageId)
+  if (res.code === 200) activePage.value = res.data
+}
+
+function askPage(kind: 'ask' | 'practice' = 'ask') {
+  if (!activePage.value) return
+  const title = activePage.value.title
+  const prompt = kind === 'practice'
+    ? `请基于知识百科主题页《${title}》生成 5 道练习题，并在每题后标出对应的主题页小节和原文来源。`
+    : `请基于知识百科主题页《${title}》回答我，并在回答里标出引用的主题页和原文来源。`
+  emit('ask', prompt)
+  detailVisible.value = false
+}
+
 function onMapWheel(event: WheelEvent) {
   const rect = mapCanvasRef.value?.getBoundingClientRect()
   if (!rect) return
@@ -417,6 +596,8 @@ onMounted(reload)
 .kw-detail__badges { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; color: #9aa1af; font-size: 10px; }
 .kw-detail__type { padding: 3px 7px; border-radius: 5px; color: #2f5fce; background: #eef4ff; font-weight: 600; }
 .kw-detail__badges .is-stale { color: #c47a55; }
+.kw-detail__badges .is-manual { color: #2f9e8f; }
+.kw-detail__head-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 .kw-detail__close { flex: none; padding: 0 4px; border: 0; color: #9aa1af; background: transparent; cursor: pointer; font-size: 24px; line-height: 1; }
 .kw-detail__warning { padding: 9px 11px; border: 1px solid #f0d9cc; border-radius: 8px; color: #a96545; background: #fff8f3; font-size: 11px; line-height: 1.6; }
 .kw-detail__lead { margin: 0; padding: 14px 16px; border-left: 3px solid #5f87e6; border-radius: 0 8px 8px 0; color: #4b5563; background: #f7f9ff; font-size: 13px; line-height: 1.8; }
@@ -436,6 +617,23 @@ onMounted(reload)
 .kw-related__item:hover { border-color: #cbd9f2; background: #f7f9ff; }
 .kw-related__item span { color: #9aa1af; font-size: 9px; }
 .kw-detail__foot { padding-top: 5px; color: #a0a6b2; font-size: 10px; }
+.kw-image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.kw-image-card { overflow: hidden; border: 1px solid #e8edf5; border-radius: 8px; background: #fbfcfe; }
+.kw-image-card :deep(.el-image) { display: block; width: 100%; height: 110px; }
+.kw-image-card__foot { display: flex; align-items: center; gap: 5px; padding: 5px 7px; color: #697386; font-size: 10px; }
+.kw-image-card__foot span { overflow: hidden; flex: 1; text-overflow: ellipsis; white-space: nowrap; }
+.kw-image-card__foot button { border: 0; color: #c05c7e; background: transparent; cursor: pointer; font-size: 16px; line-height: 1; }
+.kw-image-empty { padding: 12px; border: 1px dashed #e4eaf3; border-radius: 7px; color: #a0a6b2; font-size: 10.5px; text-align: center; }
+.kw-gallery-picker { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; max-height: 55vh; overflow-y: auto; }
+.kw-gallery-pick { display: flex; min-width: 0; flex-direction: column; gap: 5px; padding: 6px; border: 1px solid #e8edf5; border-radius: 8px; background: #fff; color: #697386; cursor: pointer; font-size: 10px; text-align: left; }
+.kw-gallery-pick:hover { border-color: #cbd9f2; }
+.kw-gallery-pick :deep(.el-image) { width: 100%; height: 95px; border-radius: 5px; }
+.kw-gallery-pick span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kw-revisions { display: flex; flex-direction: column; gap: 7px; }
+.kw-revision { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid #eef1f6; border-radius: 7px; background: #fbfcfe; }
+.kw-revision > div { display: flex; align-items: center; gap: 8px; color: #697386; font-size: 11px; }
+.kw-revision b { color: #2f5fce; }
+.kw-revision em { color: #a0a6b2; font-style: normal; font-size: 10px; }
 .kw-detail-loading { height: 500px; }
 @media (max-width: 900px) { .kw-head { flex-direction: column; align-items: flex-start; gap: 10px; } .kw-head__actions { flex-wrap: wrap; } .kw-map, .kw-map__svg { min-height: 460px; height: 460px; } .kw-detail-drawer { width: 92vw !important; } }
 </style>

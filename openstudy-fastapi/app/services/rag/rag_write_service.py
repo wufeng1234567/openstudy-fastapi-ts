@@ -26,6 +26,7 @@ from app.models.rag import (
     DOC_PARSING,
     DOC_PENDING,
     DOC_VECTORIZED,
+    MaterialAssetUsage,
     MaterialOrganizeLog,
     MaterialOrganizePlan,
     RagDocument,
@@ -789,6 +790,30 @@ async def delete_document(db: AsyncSession, user_id: int, doc_id: int) -> dict:
         delete(QuestionSource).where(
             QuestionSource.doc_id == doc.id,
             QuestionSource.user_id == user_id,
+        )
+    )
+    # 资料图片资产与引用也要跟着清：否则画廊会显示死链，知识百科主题页会挂 404 图，
+    # 引用统计也会把已删资料继续算进去。
+    from app.models.content import ContentReference, RagImageAsset
+
+    asset_prefix = f"doc:{int(doc.id)}:"
+    await db.execute(
+        delete(RagImageAsset).where(
+            RagImageAsset.user_id == int(user_id),
+            RagImageAsset.asset_key.like(f"{asset_prefix}%"),
+        )
+    )
+    await db.execute(
+        delete(ContentReference).where(
+            ContentReference.user_id == int(user_id),
+            ContentReference.source_type == "document_image",
+            ContentReference.source_id == int(doc.id),
+        )
+    )
+    await db.execute(
+        delete(MaterialAssetUsage).where(
+            MaterialAssetUsage.user_id == int(user_id),
+            MaterialAssetUsage.asset_key.like(f"{asset_prefix}%"),
         )
     )
     await db.execute(delete(RagDocument).where(RagDocument.id == doc.id))

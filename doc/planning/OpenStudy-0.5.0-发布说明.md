@@ -20,7 +20,7 @@
 - 新增 `rag_wiki_chunk`：主题页小节级检索块（pgvector + tsvector）；
 - 页面生成只使用原始资料 chunk，不拿其他主题页做二次摘要；
 - 每个小节必须引用真实 chunk；找不到来源的小节不写入，不编造事实；
-- 文档重新解析、删除或更新后，相关主题页标记为 `stale`，不继续参与 Wiki RAG。
+- 文档重新解析、删除或更新后，相关主题页标记为 `stale`（0.5.0 版实现不参与 Wiki RAG；0.6.0 起改为可检索并提示「待更新」）。
 
 ## 知识地图
 
@@ -33,7 +33,7 @@
 
 - `hybrid_search` 在向量、关键词、图谱三路之外增加 Wiki 小节一路，统一用 RRF 融合；
 - 回答引用同时保留 `wikiPageId`、`wikiPageTitle`、`wikiSection` 和原始 `docId/chunkId`；
-- Wiki 命中只作为增强，不替代原文；`stale` 页面不参与检索；
+- Wiki 命中只作为增强，不替代原文；`stale` 页面在 0.5.0 不参与检索，0.6.0 起参与但带回 `wikiStale` 提示；
 - 检索预览会返回 `sourceType=wiki`，前端可区分「知识百科命中」和「原文命中」。
 
 ## 图谱质量修正

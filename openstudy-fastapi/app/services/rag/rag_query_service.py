@@ -52,6 +52,8 @@ SYSTEM_PROMPT_TEMPLATE = """你是 OpenStudy 的资料问答助手，当前基�
 3. 如果背景知识只有部分相关，就基于已有内容回答，并说明哪部分来自我的资料
 4. **如果背景知识完全没有相关信息，直接说「在当前资料中没有找到相关内容」**，不要硬答
 5. 用清晰的结构（标题、列表）组织回答
+6. 标注为《知识百科》的来源是整理稿，其最终依据是同一页面列出的原文段落；两者冲突时以原文为准
+7. 如果知识百科来源标有「待更新」，回答时要提醒用户该主题页可能已过期
 """
 
 
@@ -295,6 +297,7 @@ async def answer(
             "wikiPageId": getattr(h, "wiki_page_id", None),
             "wikiPageTitle": getattr(h, "wiki_page_title", None),
             "wikiSection": getattr(h, "wiki_section", None),
+            "wikiStale": bool(getattr(h, "wiki_stale", False)),
             "sourceType": "wiki" if getattr(h, "wiki_hit", False) else ("graph" if getattr(h, "graph_hit", False) else "document"),
             "vectorScore": None if h.vector_score is None else round(h.vector_score, 4),
             "keywordScore": None if h.keyword_score is None else round(h.keyword_score, 4),

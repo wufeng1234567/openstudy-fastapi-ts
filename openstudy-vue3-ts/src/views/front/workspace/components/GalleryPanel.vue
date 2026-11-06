@@ -142,7 +142,7 @@
           <div class="gallery-detail__section-title"><span>引用关系</span></div>
           <div class="gallery-detail__usages">
             <div v-for="ref in detail.references" :key="`ref-${ref.id}`" class="gallery-detail__usage">
-              <span>{{ ref.targetType === 'question' ? '题目' : ref.targetType === 'note' ? '笔记' : '资料' }}</span>
+              <span>{{ ref.targetType === 'question' ? '题目' : ref.targetType === 'note' ? '笔记' : ref.targetType === 'wiki_page' ? '知识百科' : '资料' }}</span>
               <b>{{ ref.targetTitle }}</b>
               <em>{{ ref.createTime }}</em>
             </div>
@@ -165,10 +165,24 @@
           <el-button v-if="detail.canLocate" plain @click="locate(detail)">定位原文</el-button>
           <el-button plain @click="useImage(detail, 'question')">插入题目</el-button>
           <el-button type="primary" plain @click="useImage(detail, 'note')">加入笔记</el-button>
+          <el-button plain @click="openWikiPicker">插入知识百科</el-button>
         </div>
       </div>
       <div v-else class="gallery-detail__loading" v-loading="true"></div>
     </el-drawer>
+
+    <el-dialog v-model="wikiPickerVisible" title="插入知识百科主题页" width="560px" append-to-body>
+      <div v-loading="wikiLoading" class="gallery-wiki-picker">
+        <button v-for="page in wikiPages" :key="page.pageId" type="button" class="gallery-wiki-pick"
+          :disabled="insertingWiki" @click="insertToWiki(page)">
+          <b>{{ page.title }}</b>
+          <span>{{ page.summary || '打开主题页查看内容' }}</span>
+        </button>
+        <div v-if="!wikiLoading && !wikiPages.length" class="gallery-wiki-empty">
+          当前资料夹还没有知识百科主题页，先去「知识百科」生成一页。
+        </div>
+      </div>
+    </el-dialog>
   </section>
 </template>
 
@@ -177,9 +191,11 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { MagicStick, Picture } from '@element-plus/icons-vue'
 import {
+  createContentReference,
   describeGalleryAssets,
   getGalleryAsset,
-  listGalleryAssets
+  listGalleryAssets,
+  listWikiPages
 } from '@/api/ai/workspace'
 
 const props = defineProps<{
@@ -213,6 +229,10 @@ const detailVisible = ref(false)
 const detailLoading = ref(false)
 const detail = ref<any>(null)
 const describingOne = ref(false)
+const wikiPickerVisible = ref(false)
+const wikiLoading = ref(false)
+const wikiPages = ref<any[]>([])
+const insertingWiki = ref(false)
 
 const displayItems = computed(() => {
   const kinds = Array.isArray(props.filters?.kind) ? props.filters.kind : []
@@ -416,6 +436,56 @@ function locate(item: any) {
     offset: Number(item.offset),
     targetText: item.sectionTitle || ''
   })
+}
+
+async function openWikiPicker() {
+  if (!detail.value?.assetKey) return
+  wikiPickerVisible.value = true
+  wikiLoading.value = true
+  try {
+    const res = await listWikiPages({ kbId: props.activeKbId || undefined })
+    wikiPages.value = res.code === 200 ? (res.data?.pages || []) : []
+  } catch {
+    wikiPages.value = []
+  } finally {
+    wikiLoading.value = false
+  }
+}
+
+async function insertToWiki(page: any) {
+  if (!detail.value?.assetKey || !page?.pageId || insertingWiki.value) return
+  const key = String(detail.value.assetKey)
+  const parts = key.split(':')
+  const isDoc = key.startsWith('doc:')
+  const sourceType = isDoc ? 'document_image' : 'chat_image'
+  const sourceId = Number(parts[1] || 0)
+  const sourceSubId = isDoc ? parts[2] : undefined
+  if (!sourceId) {
+    ElMessage.error('这张图片缺少来源，暂时不能关联')
+    return
+  }
+  insertingWiki.value = true
+  try {
+    const res = await createContentReference({
+      sourceType,
+      sourceId,
+      sourceSubId,
+      targetType: 'wiki_page',
+      targetId: Number(page.pageId),
+      quote: String(detail.value.caption || detail.value.surroundingText || detail.value.fileName || '').slice(0, 800)
+    })
+    if (res.code !== 200) {
+      ElMessage.error(res.msg || '插入知识百科失败')
+      return
+    }
+    ElMessage.success(`已关联到《${page.title}》`)
+    wikiPickerVisible.value = false
+    await loadDetail(detail.value.assetKey, false)
+  } catch (error: any) {
+    ElMessage.error('插入知识百科失败：' + (error?.message || error))
+  } finally {
+    insertingWiki.value = false
+  }
 }
 
 async function copyMarkdown(item: any) {
@@ -1066,6 +1136,52 @@ onMounted(reload)
   flex-wrap: wrap;
   gap: 8px;
   padding-top: 4px;
+}
+
+.gallery-wiki-picker {
+  display: flex;
+  min-height: 120px;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 52vh;
+  overflow-y: auto;
+}
+
+.gallery-wiki-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #e8edf5;
+  border-radius: 8px;
+  background: #fff;
+  color: #4b5563;
+  cursor: pointer;
+  text-align: left;
+}
+
+.gallery-wiki-pick:hover {
+  border-color: #cbd9f2;
+  background: #f7f9ff;
+}
+
+.gallery-wiki-pick b {
+  font-size: 13px;
+}
+
+.gallery-wiki-pick span {
+  overflow: hidden;
+  color: #9aa1af;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gallery-wiki-empty {
+  padding: 30px 0;
+  color: #a0a6b2;
+  font-size: 12px;
+  text-align: center;
 }
 
 .gallery-detail__loading {

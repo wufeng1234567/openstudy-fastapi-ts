@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "openstudy-fastapi"
-version = "0.4.1"
+version = "0.6.0"
 description = "OpenStudy Online Learning Platform - FastAPI Backend"
 authors = ["OpenStudy Team"]
 readme = "README.md"

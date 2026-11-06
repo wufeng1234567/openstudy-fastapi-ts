@@ -2,7 +2,9 @@
 
 from app.services.rag.hybrid_search import ChunkHit, reciprocal_rank_fusion
 from app.services.rag.wiki_service import (
+    _asset_source_ref,
     _display_title,
+    _manual_sections,
     _normalize_title,
     _parse_page_payload,
     _render_markdown,
@@ -66,8 +68,33 @@ def test_wiki_and_document_chunk_ids_do_not_collide_in_rrf():
         wiki_hit=True,
         wiki_page_id=9,
         wiki_page_title="智能体",
+        wiki_stale=True,
     )
     fused = reciprocal_rank_fusion([[doc], [wiki]], top_k=10)
     assert len(fused) == 2
     assert {hit.fusion_key for hit in fused} == {"doc:1", "wiki:1"}
     assert any(hit.wiki_hit for hit in fused)
+    assert any(hit.wiki_stale for hit in fused)
+
+
+def test_manual_sections_drops_unknown_source_chunk_ids():
+    sections = _manual_sections(
+        [
+            {"heading": "要点", "body": "正文", "sourceChunkIds": [11, 999]},
+            {"heading": "无来源", "body": "用户自己写的内容"},
+        ],
+        allowed_chunk_ids=[11],
+    )
+    assert sections[0]["sourceChunkIds"] == [11]
+    assert sections[1]["sourceChunkIds"] == []
+
+
+def test_asset_source_ref_parses_doc_and_chat_keys():
+    assert _asset_source_ref("doc:123:2") == ("document_image", 123, "2")
+    assert _asset_source_ref("chat:45") == ("chat_image", 45, None)
+    try:
+        _asset_source_ref("bad-key")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("bad asset key should fail")

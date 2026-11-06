@@ -708,6 +708,36 @@ class WikiBuildRequest(BaseModel):
     limit: int = Field(default=10, ge=1, le=30)
 
 
+class WikiPageCreateRequest(BaseModel):
+    """手动创建知识百科主题页（不调用模型）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kbId: int = Field(..., gt=0)
+    title: str = Field(..., min_length=1, max_length=255)
+    summary: str = Field("", max_length=500)
+    sections: List[dict] = Field(default_factory=list)
+
+
+class WikiPageUpdateRequest(BaseModel):
+    """手动编辑主题页；只改传入字段，未传字段保留原值。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: Optional[str] = Field(None, max_length=255)
+    summary: Optional[str] = Field(None, max_length=500)
+    sections: Optional[List[dict]] = None
+    changeType: str = Field(default="manual", pattern="^(manual|agent)$")
+    baseVersion: Optional[int] = Field(None, ge=1)
+
+
+class WikiImageAttachRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    assetKey: str = Field(..., min_length=1, max_length=120)
+    quote: str = Field("", max_length=800)
+
+
 class StudyPrescriptionRequest(BaseModel):
     """学习处方：按资料体检和章节生成按天执行的学习计划。"""
 
@@ -1009,6 +1039,146 @@ async def build_wiki(
             limit=data.limit,
         )
         return success(result, "知识百科生成完成")
+    except Exception as e:
+        return _fail(e)
+
+
+@router.post("/wiki/pages")
+async def create_wiki_page(
+    data: WikiPageCreateRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """手动创建主题页（用户或 Agent 均可；不调用模型）。"""
+    try:
+        from app.services.rag.wiki_service import create_manual_wiki_page
+
+        return success(
+            await create_manual_wiki_page(
+                db,
+                _uid(current_user),
+                data.kbId,
+                title=data.title,
+                summary=data.summary,
+                sections=data.sections,
+            ),
+            "主题页已创建",
+        )
+    except Exception as e:
+        return _fail(e)
+
+
+@router.put("/wiki/pages/{page_id}")
+async def update_wiki_page(
+    page_id: int,
+    data: WikiPageUpdateRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """手动编辑主题页；保存前自动留一份历史版本。"""
+    try:
+        from app.services.rag.wiki_service import update_wiki_page as save_page
+
+        return success(
+            await save_page(
+                db,
+                _uid(current_user),
+                page_id,
+                title=data.title,
+                summary=data.summary,
+                sections=data.sections,
+                change_type=data.changeType,
+                created_by="user" if data.changeType == "manual" else "agent",
+                expected_version=data.baseVersion,
+            ),
+            "主题页已保存",
+        )
+    except Exception as e:
+        return _fail(e)
+
+
+@router.delete("/wiki/pages/{page_id}")
+async def delete_wiki_page(
+    page_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除主题页（用户主动操作；同时清理检索块、页面链接和图片引用）。"""
+    try:
+        from app.services.rag.wiki_service import delete_wiki_page as remove_page
+
+        return success(await remove_page(db, _uid(current_user), page_id), "主题页已删除")
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/wiki/pages/{page_id}/revisions")
+async def get_wiki_page_revisions(
+    page_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        from app.services.rag.wiki_service import list_wiki_revisions
+
+        return success(await list_wiki_revisions(db, _uid(current_user), page_id))
+    except Exception as e:
+        return _fail(e)
+
+
+@router.post("/wiki/pages/{page_id}/revisions/{revision_id}/restore")
+async def restore_wiki_page_revision(
+    page_id: int,
+    revision_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        from app.services.rag.wiki_service import restore_wiki_revision
+
+        return success(
+            await restore_wiki_revision(db, _uid(current_user), page_id, revision_id),
+            "已恢复历史版本",
+        )
+    except Exception as e:
+        return _fail(e)
+
+
+@router.post("/wiki/pages/{page_id}/images")
+async def attach_wiki_page_image(
+    page_id: int,
+    data: WikiImageAttachRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """把画廊图片关联到主题页（只存引用，不复制原图）。"""
+    try:
+        from app.services.rag.wiki_service import attach_wiki_image
+
+        return success(
+            await attach_wiki_image(
+                db, _uid(current_user), page_id, data.assetKey, data.quote
+            ),
+            "图片已关联到主题页",
+        )
+    except Exception as e:
+        return _fail(e)
+
+
+@router.delete("/wiki/pages/{page_id}/images/{reference_id}")
+async def detach_wiki_page_image(
+    page_id: int,
+    reference_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        from app.services.rag.wiki_service import detach_wiki_image
+
+        return success(
+            await detach_wiki_image(db, _uid(current_user), page_id, reference_id),
+            "已取消图片关联",
+        )
     except Exception as e:
         return _fail(e)
 
@@ -1958,7 +2128,7 @@ class ContentReferenceCreateRequest(BaseModel):
     sourceType: str = Field(..., pattern="^(document|document_image|chat_image|note|question)$")
     sourceId: int = Field(..., gt=0)
     sourceSubId: Optional[str] = Field(None, max_length=64)
-    targetType: str = Field(..., pattern="^(document|note|question|image)$")
+    targetType: str = Field(..., pattern="^(document|note|question|image|wiki_page)$")
     targetId: int = Field(..., gt=0)
     quote: str = Field("", max_length=4000)
     startOffset: Optional[int] = None
@@ -2355,7 +2525,7 @@ async def get_knowledge_map(
 
 @router.get("/references")
 async def list_content_references(
-    targetType: Optional[str] = Query(None, pattern="^(document|note|question|image)$"),
+    targetType: Optional[str] = Query(None, pattern="^(document|note|question|image|wiki_page)$"),
     targetId: Optional[int] = Query(None, gt=0),
     sourceType: Optional[str] = Query(None, pattern="^(document|document_image|chat_image|note|question)$"),
     sourceId: Optional[int] = Query(None, gt=0),
