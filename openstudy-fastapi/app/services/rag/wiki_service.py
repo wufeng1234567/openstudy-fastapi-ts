@@ -398,6 +398,25 @@ def _source_refs(chunks: Sequence[RagDocumentChunk], doc_names: Dict[int, str]) 
     return refs
 
 
+def _cited_source_refs(page: RagWikiPage) -> list[dict]:
+    """只展示正文小节真正引用的 chunk；生成上下文里未被引用的大段内容不算来源。"""
+    refs = list(page.source_refs or [])
+    cited = {int(x) for x in (page.source_chunk_ids or []) if str(x).isdigit()}
+    if not cited:
+        return refs
+    filtered = []
+    for item in refs:
+        if not isinstance(item, dict):
+            continue
+        try:
+            chunk_id = int(item.get("chunkId") or 0)
+        except (TypeError, ValueError):
+            continue
+        if chunk_id in cited:
+            filtered.append(item)
+    return filtered
+
+
 async def _replace_wiki_chunks(
     db: AsyncSession, page: RagWikiPage, sections: Sequence[Dict[str, Any]]
 ) -> int:
@@ -852,12 +871,17 @@ async def build_wiki_pages(
             summary = validated["summary"]
             sections = validated["sections"]
             content_md = _render_markdown(summary, sections)
-            source_refs = _source_refs(chunks, doc_names)
             source_chunk_ids = []
             for section in sections:
                 for chunk_id in section.get("sourceChunkIds", []):
                     if chunk_id not in source_chunk_ids:
                         source_chunk_ids.append(int(chunk_id))
+            cited_ids = set(source_chunk_ids)
+            source_refs = [
+                item
+                for item in _source_refs(chunks, doc_names)
+                if int(item["chunkId"]) in cited_ids
+            ]
             page = existing or RagWikiPage(
                 user_id=int(user_id),
                 kb_id=int(kb_id),
@@ -1052,7 +1076,7 @@ async def list_wiki_pages(
                 "summary": strip_wiki_tokens(page.summary),
                 "status": page.status,
                 "version": int(page.version or 1),
-                "sourceCount": len(page.source_refs or []),
+                "sourceCount": len(page.source_chunk_ids or page.source_refs or []),
                 "docCount": len(page.source_doc_ids or []),
                 "sectionCount": len(page.sections or []),
                 "relatedCount": link_counts.get(int(page.id), 0),
@@ -1208,6 +1232,14 @@ async def get_wiki_page(db: AsyncSession, user_id: int, page_id: int) -> dict:
             }
         )
     link_payload = await _page_link_payload(db, user_id, page)
+    page_sources = _cited_source_refs(page)
+    source_doc_ids = sorted(
+        {
+            int(item["docId"])
+            for item in page_sources
+            if isinstance(item, dict) and str(item.get("docId") or "").isdigit()
+        }
+    ) or list(page.source_doc_ids or [])
     return {
         "pageId": int(page.id),
         "kbId": int(page.kb_id),
@@ -1217,9 +1249,14 @@ async def get_wiki_page(db: AsyncSession, user_id: int, page_id: int) -> dict:
         "summary": page.summary,
         "contentMd": page.content_md,
         "sections": page.sections or [],
-        "sources": page.source_refs or [],
-        "sourceDocIds": page.source_doc_ids or [],
+        "sources": page_sources,
+        "sourceDocIds": source_doc_ids,
         "sourceChunkIds": page.source_chunk_ids or [],
+        "sourceStats": {
+            "docCount": len(source_doc_ids),
+            "chunkCount": len(page_sources),
+            "contextChunkCount": len(page.source_refs or []),
+        },
         "entityIds": page.entity_ids or [],
         "status": page.status,
         "generatedBy": page.generated_by or "llm",

@@ -209,7 +209,7 @@
         </section>
 
         <section v-if="activePage.sources?.length" class="kw-detail__block">
-          <div class="kw-detail__block-head"><span>来源</span><b>{{ activePage.sources.length }}</b></div>
+          <div class="kw-detail__block-head"><span>来源</span><b>{{ activePage.sourceDocIds?.length || 0 }} 份资料 · {{ activePage.sources.length }} 个片段</b></div>
           <button v-for="source in activePage.sources" :key="`${source.docId}-${source.chunkId}`" type="button"
             class="kw-source" @click="locateSource(source)">
             <span class="kw-source__name">{{ source.docName }}</span>
