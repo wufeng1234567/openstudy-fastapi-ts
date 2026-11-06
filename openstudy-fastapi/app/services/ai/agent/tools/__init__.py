@@ -21,6 +21,7 @@ from app.services.ai.agent.tools.delegate import DelegateTaskTool
 from app.services.ai.agent.tools.document_compose import DocumentComposeTool
 from app.services.ai.agent.tools.document_compare import DocumentCompareTool
 from app.services.ai.agent.tools.english_practice import EnglishPracticeTool
+from app.services.ai.agent.tools.gallery_manage import GalleryManageTool
 from app.services.ai.agent.tools.english_wordbook import EnglishWordbookTool
 from app.services.ai.agent.tools.knowledge_base_manage import KnowledgeBaseManageTool
 from app.services.ai.agent.tools.knowledge_ingest import KnowledgeIngestTool
@@ -59,6 +60,11 @@ registry.register(WorkspaceSearchTool())
 #       这个找**聊天窗口传的附件**（保真、按文件与图片粒度）。
 #       两者数据源不同，不能互相替代。
 registry.register(ChatFileManageTool())
+# —— 2026-11-06 画廊取图：让智能体主动列出 / 搜索 / 取用画廊图片资产。
+#    ⚠️ 与 chat_file_manage 的分工：那个只找**本次对话**上传的附件；画廊是
+#       文档插图 + 聊天图片的长期资产索引，有 assetKey、来源章节和描述/OCR。
+#       两者都返回可用作图片源的 url，但数据源与稳定键不同，不能互相替代。
+registry.register(GalleryManageTool())
 # —— 2026-10-27 思维导图：用户要「带卡片连线那种效果」，而此前只能输出文本大纲。
 #    本工具吐结构化树，前端 `MindMap` 组件（echarts tree，项目里早就有）负责画。
 registry.register(MindMapTool())
@@ -136,6 +142,7 @@ __all__ = [
     "DocumentCompareTool",
     "EnglishPracticeTool",
     "EnglishWordbookTool",
+    "GalleryManageTool",
     "KnowledgeBaseManageTool",
     "KnowledgeIngestTool",
     "KnowledgeSearchTool",

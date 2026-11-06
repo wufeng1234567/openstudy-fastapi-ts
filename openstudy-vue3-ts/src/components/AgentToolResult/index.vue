@@ -188,8 +188,12 @@
         </template>
       </el-dialog>
 
-    <!-- ③ 对话文件 / 图片资产卡：把 chat_file_manage 的 JSON 变成可点击的资产 -->
-    <ChatFileAssetCard v-if="chatAssets" :data="chatAssets" />
+    <!-- ③ 文件 / 图片资产卡：把 chat_file_manage / gallery_manage 的 JSON 变成可点击的资产 -->
+    <ChatFileAssetCard
+      v-if="chatAssets"
+      :data="chatAssets"
+      :title="chatAssets.assetSource === 'gallery' ? '画廊图片' : ''"
+    />
 
     <!-- ④ 跳转卡片：建库/导题完成后，一步直达题库 -->
     <div v-if="bankJump" class="at-jump">
@@ -383,10 +387,7 @@ onBeforeUnmount(stopTimer)
  * —— 但也因此会**把英文标识符直接打在用户脸上**（`question_flag_manage · master`）。
  *
  * ⚠️ 工具名必须与后端 `app/services/ai/agent/tools/*.py` 里那个 `name = "…"` 一一对应：
- *    清单是 13 个（bank_manage / question_manage / note_manage / question_flag_manage /
- *    memory_manage / learning_stats / knowledge_base_manage / knowledge_ingest /
- *    bank_share_manage / knowledge_search / memory_search / agent_manage / delegate_task）。
- *    漏一个，用户看到的就是那个英文标识符。
+ *    这张表要覆盖注册表里的**每一个**工具；漏一个，用户看到的就是那个英文标识符。
  *    这条由 `tests/check_frontend_static.mjs` 的 L46 / L47 **读后端注册表自动比对**，别只靠眼睛。
  */
 const TOOL_LABELS: Record<string, string> = {
@@ -408,6 +409,8 @@ const TOOL_LABELS: Record<string, string> = {
   memory_search: '记忆检索',
   // 工作空间找文件（workspace_search.py）——2026-10-22
   workspace_search: '找资料',
+  // 0.7.2 画廊取图（gallery_manage.py）——文档插图 / 聊天图片的统一资产层
+  gallery_manage: '画廊图片',
   // 0.6.x 知识百科：主题页 CRUD 与画廊图片关联
   wiki_manage: '知识百科',
   // 用户自定义智能体的管理工具（agent_manage.py）
@@ -425,6 +428,7 @@ const TOOL_LABELS: Record<string, string> = {
 const ACTION_LABELS: Record<string, string> = {
   list: '查询列表',
   detail: '查看详情',
+  get: '查看图片',
   open: '打开入口',
   search: '搜索',
   create: '创建',
@@ -770,9 +774,10 @@ const mindHeight = computed(() => {
 })
 
 /**
- * 对话文件/图片资产（`chat_file_manage` 的 list / list_images / get / get_image）
+ * 文件/图片资产（`chat_file_manage` 的 list / list_images / get / get_image；
+ * 以及 `gallery_manage` 的 list / search / get）
  *
- * 判据认输出契约里的 `files` / `images` / 单文件字段，不认工具名：
+ * 判据认输出契约里的 `files` / `images` / 单文件字段 / `assetKey`，不认工具名：
  * 以后任何工具返回同样形状，都会自动获得这张可点击卡片。
  * 没有这类字段时返回 null，不影响原有工具结果展示。
  */
@@ -783,9 +788,10 @@ const chatAssets = computed<Record<string, any> | null>(() => {
   const hasFiles = Array.isArray((d as any).files)
     && (d as any).files.some((f: any) => f && f.fileId != null)
   const hasImages = Array.isArray((d as any).images)
-    && (d as any).images.some((i: any) => i && i.imageId != null)
+    && (d as any).images.some((i: any) => i && (i.imageId != null || i.assetKey != null))
   const singleFile = (d as any).fileId && (d as any).fileName
-  const singleImage = (d as any).imageId && (d as any).imageName
+  const singleImage = ((d as any).imageId != null || (d as any).assetKey)
+    && ((d as any).imageName || (d as any).fileName)
   if (!hasFiles && !hasImages && !singleFile && !singleImage) return null
   return d
 })

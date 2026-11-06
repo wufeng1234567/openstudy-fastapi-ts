@@ -59,7 +59,9 @@
         <img class="cf-image__thumb" :src="assetUrl(image.url)" :alt="image.imageName" loading="lazy" />
         <span class="cf-image__main">
           <span class="cf-image__name">{{ image.imageName }}</span>
-          <span class="cf-image__meta">
+          <span v-if="image.caption" class="cf-image__caption">{{ image.caption }}</span>
+          <span v-if="image.meta" class="cf-image__meta">{{ image.meta }}</span>
+          <span v-else class="cf-image__meta">
             <template v-if="image.size">{{ formatSize(image.size) }}</template>
             <template v-if="image.createTime"> · {{ image.createTime }}</template>
           </span>
@@ -103,6 +105,8 @@ defineOptions({ name: 'ChatFileAssetCard' })
 
 const props = defineProps<{
   data: Record<string, any>
+  /** 卡片标题；不传时按 files/images 自动判断（对话文件 / 对话图片）。 */
+  title?: string
 }>()
 
 const previewVisible = ref(false)
@@ -131,6 +135,8 @@ const images = computed<any[]>(() => {
 const total = computed(() => files.value.length + images.value.length)
 const hasItems = computed(() => total.value > 0)
 const title = computed(() => {
+  const custom = String(props.title || '').trim()
+  if (custom) return custom
   if (files.value.length && images.value.length) return '对话文件与图片'
   return images.value.length ? '对话图片' : '对话文件'
 })
@@ -413,11 +419,25 @@ function openFile(file: any) {
   white-space: nowrap;
 }
 
+.cf-image__caption {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 2px;
+  color: #6b7280;
+  font-size: 9.5px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .cf-image__meta {
   display: block;
+  overflow: hidden;
   margin-top: 2px;
   color: #9ca3af;
   font-size: 9.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cf-preview {

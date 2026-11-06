@@ -249,7 +249,7 @@ const onDraftResolve = (payload: any) => emit('resolve', payload)
  * ============================================================ */
 
 /**
- * ⚠️ 与 `AgentToolResult` 的 `TOOL_LABELS` 必须**同一份清单**（13 个工具名，见那边的注释）：
+ * ⚠️ 与 `AgentToolResult` 的 `TOOL_LABELS` 必须**同一份清单**（覆盖后端注册表全部工具）：
  *    这张卡片也要写「需要确认：写操作 / 题库管理 · 批量删除」的头，漏一个就是英文标识符。
  */
 const TOOL_LABELS: Record<string, string> = {
@@ -264,6 +264,8 @@ const TOOL_LABELS: Record<string, string> = {
   bank_share_manage: '题库分享',
   knowledge_search: '资料检索',
   memory_search: '记忆检索',
+  // 0.7.2 画廊取图（只读，不会弹确认卡；保留标签是为了与结果卡片同一份清单）
+  gallery_manage: '画廊图片',
   // 0.6.x 知识百科：主题页 CRUD 与画廊图片关联
   wiki_manage: '知识百科',
   agent_manage: '智能体管理',
@@ -274,6 +276,7 @@ const TOOL_LABELS: Record<string, string> = {
 const ACTION_LABELS: Record<string, string> = {
   list: '查询列表',
   detail: '查看详情',
+  get: '查看图片',
   search: '搜索',
   create: '创建',
   update: '更新',
