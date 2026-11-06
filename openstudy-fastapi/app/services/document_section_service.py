@@ -272,7 +272,8 @@ async def ensure_sections(
         )
     ).scalars().all()
     if existing and not force:
-        return [_serialize(item) for item in existing], False
+        cached = [_serialize(item) for item in existing]
+        return cached, not all(item.get("source") == "llm" for item in cached)
 
     raw = str(doc.raw_content or "")
     sections = _rule_sections(raw)
