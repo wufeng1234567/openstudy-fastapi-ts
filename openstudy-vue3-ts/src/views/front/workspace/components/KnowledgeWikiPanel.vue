@@ -1,32 +1,22 @@
 <template>
-  <section class="kw-page">
-    <header class="kw-head">
-      <div class="kw-head__copy">
-        <div class="kw-kicker">KNOWLEDGE WIKI · 知识百科</div>
-        <!-- 知识图谱与知识百科融合：一个主题页 = 一个节点，点击节点打开百科详情。 -->
-        <h2>资料知识百科</h2>
-        <p>把资料里的概念整理成能读、能查、能回到原文的主题页。</p>
-        <div v-if="stats.pageCount" class="kw-stats">
-          <b>{{ stats.pageCount }}</b> 个主题
-          <span>·</span>
-          <b>{{ stats.docCount }}</b> 份资料
-          <span v-if="stats.linkCount">·</span>
-          <b v-if="stats.linkCount">{{ stats.linkCount }}</b><span v-if="stats.linkCount"> 条页面链接</span>
-          <span v-if="stats.staleCount">·</span>
-          <b v-if="stats.staleCount">{{ stats.staleCount }}</b><span v-if="stats.staleCount"> 个待更新</span>
-        </div>
-      </div>
-      <div class="kw-head__actions">
+  <section class="kw-page" :class="{ 'kw-page--graph': view === 'map' }">
+    <Teleport to="#workspace-wiki-toolbar">
+      <div class="kw-context-actions">
         <div class="kw-switch">
           <button type="button" :class="{ 'is-active': view === 'pages' }" @click="view = 'pages'">主题页</button>
           <button type="button" :class="{ 'is-active': view === 'map' }" :disabled="!pages.length" @click="switchMap">知识图谱</button>
         </div>
-        <el-button size="small" :loading="loading" @click="reload">刷新</el-button>
-        <el-button size="small" class="kw-build-btn" :loading="building || buildActive" :disabled="!activeKbId || buildActive" @click="build">
-          {{ buildActive ? `更新中 ${buildJob.done}/${buildJob.total}` : pages.length ? '更新知识百科' : '生成知识百科' }}
-        </el-button>
+        <button type="button" class="kw-toolbar-btn" :disabled="loading" @click="reload">
+          <span class="kw-toolbar-btn__glyph">↻</span>
+          <span>刷新</span>
+        </button>
+        <button type="button" class="kw-toolbar-btn is-primary" :disabled="!activeKbId || buildActive"
+          @click="build">
+          <span v-if="buildActive" class="kw-toolbar-btn__spinner"></span>
+          <span>{{ buildActive ? `更新中 ${buildJob.done}/${buildJob.total}` : pages.length ? '更新知识百科' : '生成知识百科' }}</span>
+        </button>
       </div>
-    </header>
+    </Teleport>
 
     <div v-if="buildActive" class="kw-build-progress">
       <div class="kw-build-progress__top">
@@ -85,7 +75,7 @@
               :class="{ 'is-hovered': mapHoveredId && hull.ids.includes(String(mapHoveredId)) }" />
             <line v-for="edge in mapEdges" :key="edge.key" :x1="edge.x1" :y1="edge.y1" :x2="edge.x2" :y2="edge.y2"
               class="kw-map-edge" :class="[`is-${edge.type}`, { 'is-active': isMapEdgeActive(edge), 'is-dimmed': isMapEdgeDimmed(edge) }]"
-              :marker-end="isMapEdgeActive(edge) ? 'url(#kw-arrow-hl)' : 'url(#kw-arrow)'" />
+              :marker-end="mapShowArrows ? (isMapEdgeActive(edge) ? 'url(#kw-arrow-hl)' : 'url(#kw-arrow)') : undefined" />
             <g v-for="node in mapNodes" :key="node.id" class="kw-map-node"
               :class="{ 'is-selected': isMapSelected(node), 'is-hovered': mapHoveredId === String(node.id), 'is-dimmed': isMapNodeDimmed(node) }"
               :transform="`translate(${node.x} ${node.y})`"
@@ -98,10 +88,40 @@
             </g>
           </g>
         </svg>
-        <div class="kw-map__legend">
-          <span v-for="item in pageTypeLegend" :key="item.type"><i :class="`is-${item.type}`"></i>{{ item.label }}</span>
-          <em>滚轮缩放 · 空白处拖拽平移 · 点节点打开主题页</em>
-        </div>
+        <aside class="kw-graph-panel">
+          <div class="kw-graph-panel__legend">
+            <button v-for="item in pageTypeLegend" :key="item.type" type="button" class="kw-graph-type"
+              :class="{ 'is-disabled': mapTypeVisible[item.type] === false }"
+              @click="toggleMapType(item.type)">
+              <i :style="{ background: item.color }"></i>
+              <span>{{ item.label }}</span>
+              <em>{{ mapTypeCounts[item.type] || 0 }}</em>
+            </button>
+          </div>
+          <div class="kw-graph-panel__divider"></div>
+          <div class="kw-graph-panel__actions">
+            <button type="button" class="kw-graph-action" :class="{ 'is-active': mapHideUnlinked }"
+              :disabled="!unlinkedCount" @click="toggleHideUnlinked">
+              <OsIcon name="eye-off" :size="14" />
+              <span>隐藏无关联页面（{{ unlinkedCount }}）</span>
+            </button>
+            <button type="button" class="kw-graph-action" @click="fitMapView">
+              <OsIcon name="activity" :size="14" />
+              <span>适应屏幕</span>
+            </button>
+            <button type="button" class="kw-graph-action" :class="{ 'is-active': !mapShowArrows }" @click="toggleMapArrows">
+              <OsIcon name="check" :size="14" />
+              <span>{{ mapShowArrows ? '隐藏箭头' : '显示箭头' }}</span>
+            </button>
+          </div>
+          <div class="kw-graph-panel__divider"></div>
+          <div class="kw-graph-panel__overview">
+            <span><OsIcon name="database" :size="13" /> 全库概览</span>
+            <b>{{ mapNodes.length }} / {{ allMapNodes.length }} 个节点</b>
+            <em>{{ mapNodes.length === allMapNodes.length ? '已展示知识库全部节点' : '已按类型筛选节点' }}</em>
+          </div>
+        </aside>
+        <div class="kw-graph-hint">滚轮缩放 · 空白处拖拽平移 · 点节点打开主题页</div>
       </div>
     </template>
 
@@ -114,7 +134,9 @@
       </el-button>
     </div>
 
-    <el-drawer v-model="detailVisible" size="620px" :with-header="false" :modal="false" append-to-body class="kw-detail-drawer">
+    <ResizableDrawer v-model="detailVisible" direction="rtl" storage-key="openstudy_wiki_detail_size"
+      :default-width="620" :min="420" :max="1000">
+      <div class="kw-detail-shell">
       <div v-if="pageLoading" class="kw-detail-loading" v-loading="true"></div>
       <div v-else-if="activePage" class="kw-detail">
         <header class="kw-detail__head">
@@ -233,9 +255,10 @@
           基于 {{ activePage.sourceDocIds?.length || 0 }} 份资料生成 · {{ formatTime(activePage.updateTime) }}
         </footer>
       </div>
-    </el-drawer>
+      </div>
+    </ResizableDrawer>
 
-    <KnowledgeWikiEditor v-model="editorVisible" :page="activePage" @saved="onPageSaved" />
+    <KnowledgeWikiEditor v-model="editorVisible" :page="activePage" :pages="pages" @saved="onPageSaved" />
 
     <el-dialog v-model="linkDialogVisible" title="添加页面链接" width="540px" append-to-body>
       <div class="kw-link-dialog">
@@ -290,9 +313,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
+import OsIcon from '@/components/OsIcon/index.vue'
+import ResizableDrawer from '@/components/ResizableDrawer/index.vue'
 import KnowledgeWikiEditor from './KnowledgeWikiEditor.vue'
 import {
   addWikiPageLink,
@@ -330,6 +355,9 @@ const PAGE_TYPE_META = [
   { type: 'comparison', label: '对比', color: '#D95757' },
   { type: 'overview', label: '总览', color: '#8A94A6' }
 ]
+const mapTypeVisible = reactive<Record<string, boolean>>(
+  Object.fromEntries(PAGE_TYPE_META.map((item) => [item.type, true]))
+)
 
 const loading = ref(false)
 const building = ref(false)
@@ -360,6 +388,8 @@ const mapGraph = ref<any>({ nodes: [], edges: [] })
 const mapView = reactive({ x: 0, y: 0, scale: 1 })
 const mapHoveredId = ref<string | null>(null)
 const mapSelectedPageId = ref<number | null>(null)
+const mapHideUnlinked = ref(false)
+const mapShowArrows = ref(true)
 const mapNodeOffsets = reactive<Record<string, { x: number; y: number }>>({})
 let mapDrag: any = null
 let mapNodeDrag: any = null
@@ -388,6 +418,19 @@ const pageTypeLegend = computed(() =>
   PAGE_TYPE_META.filter((item) => item.type !== 'overview')
 )
 
+const allMapNodes = computed(() => mapGraph.value?.nodes || [])
+const mapTypeCounts = computed(() => {
+  const counts: Record<string, number> = {}
+  for (const node of allMapNodes.value) {
+    const type = normalizePageType(node.pageType)
+    counts[type] = (counts[type] || 0) + 1
+  }
+  return counts
+})
+const unlinkedCount = computed(() =>
+  allMapNodes.value.filter((node: any) => Number(node.degree || 0) === 0).length
+)
+
 function normalizePageType(value?: string) {
   const type = String(value || '').trim()
   if (type === 'topic' || !type) return 'concept'
@@ -403,47 +446,78 @@ function pageTypeLabel(value?: string) {
   return pageTypeMeta(value).label
 }
 
+const mapComponents = computed(() => {
+  const nodes = allMapNodes.value
+  const byId = new Map(nodes.map((node: any) => [String(node.id), node]))
+  // 以资料（文档）为聚类边界：同一份资料的主题页放在同一个灰色包裹区，
+  // 跨资料页面链接仍然作为边绘制，但不把两块灰色区域粘成一团。
+  const grouped = new Map<string, string[]>()
+  for (const node of nodes) {
+    const rawDocs = Array.isArray(node.docIds) ? node.docIds : []
+    const primaryDoc = rawDocs.length ? String(rawDocs[0]) : '__none__'
+    if (!grouped.has(primaryDoc)) grouped.set(primaryDoc, [])
+    grouped.get(primaryDoc)!.push(String(node.id))
+  }
+  const components = [...grouped.values()].sort((a, b) => b.length - a.length || a[0].localeCompare(b[0]))
+  return { components, byId }
+})
+
 const mapNodes = computed(() => {
-  const nodes = mapGraph.value?.nodes || []
-  const total = nodes.length
-  const sorted = [...nodes].sort((a: any, b: any) => Number(b.degree || 0) - Number(a.degree || 0))
-  const hubId = total <= 12 ? String(sorted[0]?.id ?? '') : ''
-  const orbit = nodes.filter((node: any) => String(node.id) !== hubId)
-  let orbitIndex = 0
-  return nodes.map((node: any) => {
-    const degree = Number(node.degree || 0)
-    const pageType = normalizePageType(node.pageType)
-    let x = 500
-    let y = 320
-    if (String(node.id) === hubId) {
-      x = 500
-      y = 320
-    } else if (total <= 12) {
-      const angle = -Math.PI / 2 + (Math.PI * 2 * orbitIndex) / Math.max(1, orbit.length)
-      x = 500 + Math.cos(angle) * 225
-      y = 320 + Math.sin(angle) * 225
-      orbitIndex += 1
-    } else {
-      const index = nodes.indexOf(node)
-      const ring = index < 8 ? 0 : 1
-      const count = ring === 0 ? Math.min(8, total) : Math.max(1, total - 8)
-      const localIndex = ring === 0 ? index : index - Math.min(8, total)
-      const angle = -Math.PI / 2 + (Math.PI * 2 * localIndex) / Math.max(1, count)
-      const radius = ring === 0 ? 145 : 272
-      x = 500 + Math.cos(angle) * radius
-      y = 320 + Math.sin(angle) * radius
-    }
-    const offset = mapNodeOffsets[String(node.id)]
-    return {
-      ...node,
-      pageType,
-      x: offset?.x ?? x,
-      y: offset?.y ?? y,
-      // 与 WeKnora 的 graphNodeRadius 同一条公式：叶子小、枢纽大。
-      r: Math.max(5, Math.min(20, 4 + Math.sqrt(Math.max(0, degree)) * 1.8)),
-      color: pageTypeMeta(pageType).color
+  const { components, byId } = mapComponents.value
+  const visibleIds = new Set(
+    allMapNodes.value
+      .filter((node: any) => mapTypeVisible[normalizePageType(node.pageType)] !== false)
+      .filter((node: any) => !mapHideUnlinked.value || Number(node.degree || 0) > 0)
+      .map((node: any) => String(node.id))
+  )
+  const visibleComponents = components
+    .map((component) => component.filter((id) => visibleIds.has(id)))
+    .filter((component) => component.length)
+  const centerSets: Record<number, { x: number; y: number }[]> = {
+    1: [{ x: 500, y: 320 }],
+    2: [{ x: 340, y: 300 }, { x: 760, y: 485 }],
+    3: [{ x: 250, y: 210 }, { x: 750, y: 210 }, { x: 500, y: 525 }],
+    4: [{ x: 260, y: 210 }, { x: 740, y: 210 }, { x: 260, y: 510 }, { x: 740, y: 510 }]
+  }
+  const centers = centerSets[visibleComponents.length] || visibleComponents.map((_, index) => ({
+    x: 220 + (index % 3) * 280,
+    y: 180 + Math.floor(index / 3) * 250
+  }))
+  const result: any[] = []
+  visibleComponents.forEach((component, componentIndex) => {
+    const members = component.map((id) => byId.get(id)).filter(Boolean) as any[]
+    const hub = [...members].sort((a, b) => Number(b.degree || 0) - Number(a.degree || 0))[0]
+    const center = centers[componentIndex] || centers[centers.length - 1]
+    const radius = Math.min(160, 54 + Math.sqrt(members.length) * 20)
+    const orbit = members.filter((node) => node !== hub)
+    const hubOnCenter = members.length > 1
+    let orbitIndex = 0
+    for (const node of members) {
+      const degree = Number(node.degree || 0)
+      const pageType = normalizePageType(node.pageType)
+      let x = center.x
+      let y = center.y
+      if (members.length > 1 && !(hubOnCenter && node === hub)) {
+        const count = orbit.length
+        const angle = -Math.PI / 2 + (Math.PI * 2 * orbitIndex) / Math.max(1, count)
+        const jitter = Math.sin((Number(node.id) || orbitIndex + 1) * 12.9898) * 0.16
+        x = center.x + Math.cos(angle + jitter) * radius
+        y = center.y + Math.sin(angle + jitter) * radius
+        orbitIndex += 1
+      }
+      const offset = mapNodeOffsets[String(node.id)]
+      result.push({
+        ...node,
+        pageType,
+        x: offset?.x ?? x,
+        y: offset?.y ?? y,
+        // 与 WeKnora 的 graphNodeRadius 同一条公式：叶子小、枢纽大。
+        r: Math.max(5, Math.min(20, 4 + Math.sqrt(Math.max(0, degree)) * 1.8)),
+        color: pageTypeMeta(pageType).color
+      })
     }
   })
+  return result
 })
 
 const mapEdges = computed(() => {
@@ -506,8 +580,8 @@ function showMapLabel(node: any) {
   return (
     isMapSelected(node) ||
     mapHoveredId.value === String(node.id) ||
-    mapView.scale >= 0.72 ||
-    Number(node.degree || 0) >= 3
+    mapView.scale >= 1.05 ||
+    Number(node.degree || 0) >= 5
   )
 }
 
@@ -621,33 +695,13 @@ const mapHulls = computed(() => {
   const nodes = mapNodes.value
   if (!nodes.length) return []
   const byId = new Map(nodes.map((node: any) => [String(node.id), node]))
-  const adjacency = new Map<string, string[]>()
-  for (const node of nodes) adjacency.set(String(node.id), [])
-  for (const edge of mapEdges.value) {
-    adjacency.get(edge.source)?.push(edge.target)
-    adjacency.get(edge.target)?.push(edge.source)
-  }
-  const visited = new Set<string>()
+  const visibleIds = new Set(byId.keys())
   const hulls: any[] = []
-  for (const node of nodes) {
-    const start = String(node.id)
-    if (visited.has(start)) continue
-    const component: string[] = []
-    const stack = [start]
-    visited.add(start)
-    while (stack.length) {
-      const id = stack.pop()!
-      component.push(id)
-      for (const next of adjacency.get(id) || []) {
-        if (!visited.has(next)) {
-          visited.add(next)
-          stack.push(next)
-        }
-      }
-    }
-    if (component.length < 2) continue
-    const points = component.map((id) => byId.get(id)).filter(Boolean)
-    hulls.push({ key: component[0], ids: component, path: clusterOutline(points) })
+  for (const component of mapComponents.value.components) {
+    const ids = component.filter((id) => visibleIds.has(id))
+    if (ids.length < 2) continue
+    const points = ids.map((id) => byId.get(id)).filter(Boolean)
+    hulls.push({ key: ids[0], ids, path: clusterOutline(points) })
   }
   return hulls
 })
@@ -748,7 +802,7 @@ async function build() {
     const res = await buildWikiPages({
       kbId: Number(props.activeKbId),
       force: pages.value.length > 0,
-      limit: 10
+      limit: 30
     })
     if (res.code !== 200) {
       ElMessage.error(res.msg || '知识百科生成失败')
@@ -781,13 +835,64 @@ function resetMapNodeOffsets() {
   Object.keys(mapNodeOffsets).forEach((key) => delete mapNodeOffsets[key])
 }
 
+function toggleMapType(type: string) {
+  mapTypeVisible[type] = mapTypeVisible[type] === false
+  resetMapNodeOffsets()
+}
+
+function toggleHideUnlinked() {
+  mapHideUnlinked.value = !mapHideUnlinked.value
+  resetMapNodeOffsets()
+}
+
+function toggleMapArrows() {
+  mapShowArrows.value = !mapShowArrows.value
+}
+
+function fitMapView() {
+  const nodes = mapNodes.value
+  if (!nodes.length) {
+    mapView.x = 0
+    mapView.y = 0
+    mapView.scale = 1
+    return
+  }
+  const xs = nodes.map((node: any) => Number(node.x))
+  const ys = nodes.map((node: any) => Number(node.y))
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs)
+  const minY = Math.min(...ys)
+  const maxY = Math.max(...ys)
+  const padding = 90
+  const scale = Math.min(
+    1.4,
+    Math.max(
+      0.4,
+      Math.min(
+        (1000 - padding * 2) / Math.max(120, maxX - minX + 100),
+        (640 - padding * 2) / Math.max(120, maxY - minY + 100)
+      )
+    )
+  )
+  mapView.scale = scale
+  mapView.x = 500 - ((minX + maxX) / 2) * scale
+  mapView.y = 320 - ((minY + maxY) / 2) * scale
+}
+
 async function switchMap() {
   if (!pages.value.length) return
   view.value = 'map'
   resetMapNodeOffsets()
+  mapView.x = -70
+  mapView.y = 0
+  mapView.scale = 1
   try {
     const res = await getWikiGraph(Number(props.activeKbId))
-    if (res.code === 200) mapGraph.value = res.data || { nodes: [], edges: [] }
+    if (res.code === 200) {
+      mapGraph.value = res.data || { nodes: [], edges: [] }
+      await nextTick()
+      fitMapView()
+    }
   } catch {
     // 地图失败时保持主题页入口，不影响阅读。
     view.value = 'pages'
@@ -1067,6 +1172,22 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .kw-page { display: flex; flex-direction: column; gap: 14px; padding: 2px 2px 12px; }
+.kw-context-actions { display: flex; align-items: center; gap: 6px; }
+.kw-toolbar-btn {
+  display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 11px;
+  border: 1px solid #e5eaf2; border-radius: 7px; color: #5f6b7d; background: #fff;
+  cursor: pointer; font: inherit; font-size: 11px; white-space: nowrap;
+  transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+.kw-toolbar-btn:hover { border-color: #c7d8f1; color: #2f5fce; background: #f8faff; }
+.kw-toolbar-btn:disabled { opacity: .5; cursor: not-allowed; }
+.kw-toolbar-btn.is-primary { border-color: #c9d9f8; color: #2f5fce; background: #f4f7ff; }
+.kw-toolbar-btn__glyph { font-size: 15px; line-height: 1; }
+.kw-toolbar-btn__spinner {
+  width: 10px; height: 10px; border: 1.5px solid currentColor; border-right-color: transparent;
+  border-radius: 50%; animation: kw-spin .8s linear infinite;
+}
+@keyframes kw-spin { to { transform: rotate(360deg); } }
 .kw-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; padding: 2px 2px 12px; border-bottom: 1px solid #edf0f5; }
 .kw-kicker { color: #2f5fce; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; }
 .kw-head h2 { margin: 5px 0 4px; color: #1f2937; font-size: 22px; font-weight: 700; }
@@ -1123,9 +1244,12 @@ onBeforeUnmount(() => {
 .kw-card p { display: -webkit-box; overflow: hidden; flex: 1; margin: 0; color: #697386; font-size: 11px; line-height: 1.7; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .kw-card__meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; color: #a0a6b2; font-size: 9.5px; }
 .kw-filter-empty { grid-column: 1 / -1; padding: 60px 0; color: #9aa1af; text-align: center; font-size: 12px; }
+.kw-page--graph { height: calc(100vh - 138px); min-height: 0; gap: 0; padding: 0; overflow: hidden; }
 .kw-map { position: relative; min-height: 590px; overflow: hidden; border: 1px solid #e6ebf4; border-radius: 13px; background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.1) 1px, transparent 0), #fbfcfe; background-size: 20px 20px; cursor: grab; touch-action: none; user-select: none; }
+.kw-page--graph .kw-map { flex: 1; min-height: 0; height: 100%; border: 0; border-radius: 0; background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.1) 1px, transparent 0), #fbfcfe; background-size: 20px 20px; }
 .kw-map:active { cursor: grabbing; }
 .kw-map__svg { width: 100%; height: 590px; }
+.kw-page--graph .kw-map__svg { height: 100%; }
 .kw-map-hull { fill: #f1f3f7; fill-opacity: 0.72; stroke: #e5e8ef; stroke-width: 1; vector-effect: non-scaling-stroke; transition: fill 0.2s ease, stroke 0.2s ease; }
 .kw-map-hull.is-hovered { fill: #ebeef5; stroke: #dce2ed; }
 .kw-map-edge { stroke: #c7d0e0; stroke-width: 0.8; opacity: 0.42; vector-effect: non-scaling-stroke; transition: stroke 0.2s, stroke-width 0.2s, stroke-opacity 0.2s; }
@@ -1149,22 +1273,29 @@ onBeforeUnmount(() => {
   0% { opacity: 0.8; transform: scale(1); }
   100% { opacity: 0; transform: scale(1.6); }
 }
-.kw-map__legend { position: absolute; right: 14px; bottom: 12px; display: flex; align-items: center; flex-wrap: wrap; gap: 10px; max-width: calc(100% - 28px); padding: 6px 9px; border: 1px solid rgba(15, 23, 42, 0.05); border-radius: 7px; background: rgba(255, 255, 255, 0.88); color: #7d8596; font-size: 9.5px; pointer-events: none; }
-.kw-map__legend span { display: inline-flex; align-items: center; gap: 4px; }
-.kw-map__legend i { width: 7px; height: 7px; border-radius: 50%; background: #c9d4e5; }
-.kw-map__legend i.is-summary { background: #3b7cff; }
-.kw-map__legend i.is-entity { background: #2f9e8f; }
-.kw-map__legend i.is-concept { background: #f08a24; }
-.kw-map__legend i.is-synthesis { background: #2d8cf0; }
-.kw-map__legend i.is-comparison { background: #d95757; }
-.kw-map__legend i.is-overview { background: #8a94a6; }
-.kw-map__legend em { color: #a0a6b2; font-style: normal; }
+.kw-graph-panel { position: absolute; z-index: 8; top: 16px; right: 16px; display: flex; width: 252px; flex-direction: column; gap: 10px; padding: 12px 13px; border: 1px solid rgba(15, 23, 42, 0.08); border-radius: 12px; background: rgba(255, 255, 255, 0.94); box-shadow: 0 10px 28px rgba(29, 43, 70, 0.1); backdrop-filter: blur(10px); }
+.kw-graph-panel__legend { display: flex; flex-direction: column; gap: 7px; }
+.kw-graph-type { display: flex; align-items: center; gap: 8px; width: 100%; padding: 1px 2px; border: 0; color: #5f6b7d; background: transparent; cursor: pointer; font: inherit; font-size: 11px; text-align: left; transition: opacity .15s ease, color .15s ease; }
+.kw-graph-type:hover { color: #253247; }
+.kw-graph-type.is-disabled { opacity: .35; text-decoration: line-through; }
+.kw-graph-type i { width: 10px; height: 10px; flex: none; border-radius: 50%; }
+.kw-graph-type em { margin-left: auto; color: #a0a6b2; font-size: 9.5px; font-style: normal; }
+.kw-graph-panel__divider { height: 1px; margin: 0 -13px; background: #edf0f5; }
+.kw-graph-panel__actions { display: flex; flex-direction: column; gap: 3px; }
+.kw-graph-action { display: flex; align-items: center; gap: 7px; width: 100%; padding: 5px 2px; border: 0; color: #6b7280; background: transparent; cursor: pointer; font: inherit; font-size: 10.5px; text-align: left; transition: color .15s ease; }
+.kw-graph-action:hover, .kw-graph-action.is-active { color: #2f5fce; }
+.kw-graph-action:disabled { opacity: .35; cursor: not-allowed; }
+.kw-graph-panel__overview { display: flex; flex-direction: column; gap: 3px; color: #9aa1af; font-size: 9.5px; }
+.kw-graph-panel__overview span { display: inline-flex; align-items: center; gap: 4px; }
+.kw-graph-panel__overview b { color: #253247; font-size: 13px; font-weight: 600; }
+.kw-graph-panel__overview em { color: #a0a6b2; font-style: normal; }
+.kw-graph-hint { position: absolute; z-index: 7; left: 16px; bottom: 14px; padding: 5px 9px; border: 1px solid rgba(15, 23, 42, 0.05); border-radius: 6px; color: #9aa1af; background: rgba(255, 255, 255, 0.82); font-size: 9.5px; pointer-events: none; }
 .kw-empty { display: flex; min-height: 520px; flex-direction: column; align-items: center; justify-content: center; border: 1px dashed #dfe6f2; border-radius: 13px; background: #fcfdff; text-align: center; }
 .kw-empty__art { display: flex; width: 56px; height: 56px; align-items: center; justify-content: center; margin-bottom: 10px; border-radius: 16px; color: #2f5fce; background: #eef4ff; font-size: 28px; }
 .kw-empty h3 { margin: 0 0 6px; color: #374151; font-size: 16px; }
 .kw-empty p { max-width: 420px; margin: 0 0 16px; color: #9aa1af; font-size: 11px; line-height: 1.7; }
-.kw-detail-drawer :deep(.el-drawer__body) { padding: 24px 30px 40px; }
-.kw-detail { display: flex; flex-direction: column; gap: 18px; }
+.kw-detail-shell { height: 100%; overflow-y: auto; padding: 24px 30px 40px; }
+.kw-detail { display: flex; min-height: 100%; flex-direction: column; gap: 18px; }
 .kw-detail__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 14px; border-bottom: 1px solid #edf0f5; }
 .kw-detail__head h2 { margin: 6px 0 7px; color: #1f2937; font-size: 25px; line-height: 1.3; }
 .kw-detail__badges { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; color: #9aa1af; font-size: 10px; }

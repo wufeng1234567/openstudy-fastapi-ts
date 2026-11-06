@@ -40,7 +40,7 @@ from app.services.rag.wiki_link_service import (
 #: 每个主题页最多取多少条来源 chunk；足够形成要点，又不会撑爆模型上下文。
 MAX_SOURCE_CHUNKS = 12
 #: 单次接口最多生成多少页，避免一个请求把模型额度打穿。
-DEFAULT_BUILD_LIMIT = 10
+DEFAULT_BUILD_LIMIT = 30
 #: 单页最多保留多少个正文小节。
 MAX_SECTIONS = 6
 #: 单节正文上限（字符）。
@@ -1988,6 +1988,7 @@ async def get_wiki_graph(db: AsyncSession, user_id: int, kb_id: int) -> dict:
             "title": page.title,
             "pageType": page.page_type,
             "aliases": page.aliases or [],
+            "docIds": page.source_doc_ids or [],
             "summary": page.summary,
             "status": page.status,
             "degree": degree.get(int(page.id), 0),

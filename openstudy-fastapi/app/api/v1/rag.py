@@ -705,7 +705,7 @@ class WikiBuildRequest(BaseModel):
 
     kbId: int = Field(..., gt=0)
     force: bool = False
-    limit: int = Field(default=10, ge=1, le=30)
+    limit: int = Field(default=30, ge=1, le=30)
 
 
 class WikiPageCreateRequest(BaseModel):

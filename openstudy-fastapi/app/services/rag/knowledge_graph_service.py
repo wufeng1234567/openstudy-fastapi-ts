@@ -52,12 +52,12 @@ RELATION_TYPES = [
     "组成",
     "影响",
 ]
-MAX_ENTITIES_PER_DOC = 180
-MAX_RELATIONS_PER_DOC = 260
+MAX_ENTITIES_PER_DOC = 240
+MAX_RELATIONS_PER_DOC = 320
 MAX_CHUNKS_PER_DOC = 60
 MAX_CHUNKS_PER_BATCH = 8
-MAX_ENTITIES_PER_BATCH = 80
-MAX_RELATIONS_PER_BATCH = 120
+MAX_ENTITIES_PER_BATCH = 120
+MAX_RELATIONS_PER_BATCH = 160
 
 
 def _norm_name(value: Any) -> str:
@@ -131,10 +131,15 @@ def _prompt(
         "你是学习资料的知识图谱抽取器。目标：把一份资料拆成**可成页、可复习、可互相跳转**的"
         "知识网络，尽量覆盖这一批次里的所有知识点，不要只抽开头几个词。\n"
         "只输出一个 JSON 对象，不要 Markdown，不要解释。\n\n"
-        "实体粒度：\n"
+        "实体粒度（默认 exhaustive 全量模式）：\n"
         "- 概念/术语/定理/公式/方法：能被单独解释、能出题、能复习的知识点；\n"
         "- 人物/机构/事件/作品：资料里明确出现且值得单独成页的对象；\n"
         "- 变量/符号：有明确含义、反复出现的数学符号；\n"
+        "- 工具、软件、命令、路径、缓存目录、系统组件、版本、设置项、指标、操作步骤，"
+        "只要能单独解释或后续复习，都应作为实体；例如 Rust、Cargo、WSL、Docker Desktop、"
+        "Windows Update、DISM、TEMP、WinSxS、Android SDK、Gradle 都应被识别，不要只抽章节标题；\n"
+        "- 一个普通技术资料通常应有 30-60 个实体，内容更丰富时可以有 80 个以上；"
+        "不要因为实体多而主动省略，但必须保持名称来自资料且可被正文检索到；\n"
         "- 不要把整段话、章节标题、泛化词（如“内容”“问题”“资料”）当成实体。\n\n"
         "实体类型只能从以下列表选：'概念','定理/公式','方法','人物','机构','事件','作品','术语','变量/符号','其他'。\n"
         "实体字段：name=资料中的标准名称；type=类型；description=用资料原话压缩成一句解释；"
@@ -234,7 +239,7 @@ async def _extract_batch(
         db,
         messages,
         temperature=0.15,
-        max_tokens=4096,
+        max_tokens=6000,
         user_id=int(user_id),
     )
     payload = _parse_json_payload(response.content or "")

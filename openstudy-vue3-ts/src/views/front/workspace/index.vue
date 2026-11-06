@@ -25,7 +25,7 @@
      自动建的落脚点；改名只改变展示名称，`is_workspace=1` 的默认标识保持不变。
 -->
 <template>
-  <div class="kb-page">
+  <div class="kb-page" :class="{ 'kb-page--wiki': viewMode === 'wiki' }">
     <!-- 全局文件选择器：书架/图片墙空态也必须能上传，不能只绑在资料夹列表里 -->
     <input
       ref="fileInputRef"
@@ -94,6 +94,7 @@
             @active-change="workspaceFilterActive = $event"
           />
         </div>
+        <div v-if="viewMode === 'wiki'" id="workspace-wiki-toolbar" class="kbp-wiki-toolbar"></div>
         <el-button size="small" text class="kbp-receive-share" @click="receiveDialogVisible = true">
           <el-icon><Download /></el-icon>
           获取资料分享
@@ -3390,6 +3391,12 @@ onBeforeUnmount(() => {
   padding: 16px 24px 60px;
 }
 
+/* 知识百科使用完整子路由宽度，图谱页不能被 1360px 的内容栏包住。 */
+.kb-page--wiki {
+  max-width: none;
+  padding: 10px 16px 0;
+}
+
 /* ---------- 全局顶栏里的工作台路由导航 ---------- */
 .kbp-workspace-nav {
   display: flex;
@@ -3431,6 +3438,18 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
   gap: 8px;
   min-width: 0;
+  flex-wrap: wrap;
+}
+
+.kbp-wiki-toolbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.kbp-wiki-toolbar:empty {
+  display: none;
 }
 
 .kbp-search-wrap {
