@@ -41,6 +41,7 @@
 ## 验证
 
 - 后端真实 API：创建 2 张图片任务，返回 `jobId=1`；轮询从 `running 0/2` 到 `done 2/2`，图片描述成功写回。
-- 后端编译通过。
+- 知识百科任务表与 `create/run/get` 服务已接入；后端编译通过。
+- 工作台页面恢复实测：点击「知识百科」后 URL 变为 `#/front/workspace?view=wiki`，刷新后仍停留在知识百科。
 - 前端 `npx vite build --mode development`：通过。
 - 比赛 PPT 已用同一稳定文件名 `OpenStudy-10页-码道版.pptx` 覆盖更新，不再新增版本文件。
