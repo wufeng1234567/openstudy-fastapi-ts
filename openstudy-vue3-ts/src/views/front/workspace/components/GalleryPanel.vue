@@ -23,6 +23,7 @@
           <span>{{ item.count }}</span>
         </button>
         <el-select v-model="docFilter" class="gallery-doc-filter" size="small" clearable filterable
+          popper-class="gallery-doc-filter-popper"
           placeholder="按文档筛选" @change="() => reload()">
           <el-option v-for="doc in documentOptions" :key="doc.docId"
             :label="`${doc.fileName}（${doc.count}）`" :value="doc.docId" />
@@ -1363,5 +1364,30 @@ onBeforeUnmount(stopDescribePolling)
   .gallery-toolbar__hint {
     display: none;
   }
+}
+</style>
+
+<!--
+  el-select 的 popper 默认挂到 body，scoped 样式命中不到。
+  只约束「按文档筛选」这一个 popper，避免长文件名把下拉撑到 500px+。
+-->
+<style>
+.gallery-doc-filter-popper {
+  width: 320px !important;
+  max-width: calc(100vw - 24px) !important;
+}
+.gallery-doc-filter-popper .el-select-dropdown {
+  width: 100% !important;
+}
+.gallery-doc-filter-popper .el-select-dropdown__item {
+  overflow: hidden;
+  padding: 0 12px;
+  font-size: 12px;
+  line-height: 32px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gallery-doc-filter-popper .el-select-dropdown__item.is-selected {
+  font-weight: 600;
 }
 </style>
