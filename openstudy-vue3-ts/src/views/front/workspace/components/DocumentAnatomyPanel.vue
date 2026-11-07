@@ -71,10 +71,13 @@
             <h2 v-if="Number(section.level || 1) <= 2" class="reader-section__title">{{ section.title }}</h2>
             <h3 v-else class="reader-section__title reader-section__title--sub">{{ section.title }}</h3>
             <template v-for="(seg, segIndex) in sectionSegments(section)" :key="`${section.index}-${segIndex}`">
-              <div v-if="seg.type === 'image'" class="reader-image">
-                <el-image :src="seg.url" fit="contain" :preview-src-list="[seg.url]" preview-teleported />
+              <div v-if="seg.type === 'image'" class="reader-image" :data-image-seq="seg.seq"
+                :data-raw-start="seg.start" :data-raw-end="seg.end">
+                <el-image :src="seg.url" fit="contain" :preview-src-list="[seg.url]" preview-teleported
+                  @load="onReaderImageLoad" />
               </div>
-              <LatexRenderer v-else :content="seg.text" class="reader-text" />
+              <LatexRenderer v-else :content="seg.text" class="reader-text"
+                :data-raw-start="seg.start" :data-raw-end="seg.end" />
             </template>
           </section>
           <div v-if="!sections.length" class="reader-empty">没有可展示的正文，可能还在解析中。</div>
@@ -155,6 +158,8 @@ interface ReaderOptions {
   chunkCount?: number
   targetText?: string
   offset?: number
+  /** 来源片段里【图N】的 N；没有文本命中时用于把图片滚到视野中间并闪一下。 */
+  targetImageSeq?: number
 }
 
 const props = withDefaults(defineProps<{ showEdit?: boolean }>(), { showEdit: false })
@@ -177,6 +182,10 @@ const targetOffset = ref<number | null>(null)
 const targetText = ref('')
 const targetChunkIndex = ref<number | null>(null)
 const targetChunkCount = ref(0)
+const targetImageSeq = ref<number | null>(null)
+const chunkStarts = ref<any[]>([])
+const pendingJumpOffset = ref<number | null>(null)
+let lastJumpMark: HTMLElement | null = null
 const activeSection = ref(0)
 const tocCollapsed = ref(false)
 const tocQuery = ref('')
@@ -191,6 +200,8 @@ const relatedLoading = ref(false)
 const relatedPages = ref<any[]>([])
 const selectionInfo = ref<{ text: string; x: number; y: number; section: number } | null>(null)
 let searchMarkTimer: ReturnType<typeof setTimeout> | null = null
+let imageFlashTimer: ReturnType<typeof setTimeout> | null = null
+let jumpTimers: ReturnType<typeof setTimeout>[] = []
 const sectionEls = new Map<number, HTMLElement>()
 const stats = reactive({ contentLength: 0 })
 
@@ -236,42 +247,74 @@ function setSectionRef(index: number, el: any) {
   if (el instanceof HTMLElement) sectionEls.set(index, el)
 }
 
-function sectionBody(section: any) {
-  let text = content.value.slice(Number(section.start || 0), Number(section.end || 0))
-  if (!text) return ''
+function sectionBodyInfo(section: any) {
+  const rawStart = Number(section.start || 0)
+  let text = content.value.slice(rawStart, Number(section.end || 0))
+  let start = rawStart
+  if (!text) return { text: '', start }
   const firstBreak = text.indexOf('\n')
   if (firstBreak >= 0 && String(section.source || '') !== 'chunk') {
     const first = text.slice(0, firstBreak).replace(/^#+\s*/, '').trim()
     if (first && (first.includes(section.title) || String(section.title).includes(first))) {
       text = text.slice(firstBreak + 1)
+      start += firstBreak + 1
     }
   }
-  return text
+  return { text, start }
+}
+
+function sectionBody(section: any) {
+  return sectionBodyInfo(section).text
 }
 
 function sectionSegments(section: any) {
-  const text = sectionBody(section)
+  const body = sectionBodyInfo(section)
+  const text = body.text
   if (!text) return []
-  const start = Number(section.start || 0)
-  if (!/【图\d+】/.test(text)) return [{ type: 'text', text, start }]
+  const start = body.start
+  if (!/【图\d+】/.test(text)) return [{ type: 'text', text, start, end: start + text.length }]
   const result: any[] = []
   const re = /【图(\d+)】/g
   let last = 0
   let match: RegExpExecArray | null
   while ((match = re.exec(text)) !== null) {
     if (match.index > last) {
-      result.push({ type: 'text', text: text.slice(last, match.index), start: start + last })
+      result.push({ type: 'text', text: text.slice(last, match.index), start: start + last, end: start + match.index })
     }
     const url = imageMap.value[match[1]] || ''
     if (url) {
-      result.push({ type: 'image', url: imageUrl(url), start: start + match.index })
+      result.push({ type: 'image', url: imageUrl(url), start: start + match.index, end: start + match.index + match[0].length, seq: Number(match[1]) })
     } else {
-      result.push({ type: 'text', text: match[0], start: start + match.index })
+      result.push({ type: 'text', text: match[0], start: start + match.index, end: start + match.index + match[0].length })
     }
     last = match.index + match[0].length
   }
-  if (last < text.length) result.push({ type: 'text', text: text.slice(last), start: start + last })
+  if (last < text.length) result.push({ type: 'text', text: text.slice(last), start: start + last, end: start + text.length })
   return result
+}
+
+function scrollRootTo(root: HTMLElement, top: number, smooth: boolean) {
+  const max = Math.max(0, root.scrollHeight - root.clientHeight)
+  const next = Math.max(0, Math.min(max, top))
+  if (smooth) {
+    root.scrollTo({ top: next, behavior: 'smooth' })
+    return
+  }
+  // CSS 的 `scroll-behavior: smooth` 也会作用于 scrollTop 赋值；跳转索引时要立即到位，
+  // 否则 5 秒高亮都过了一半，阅读器还在滚动动画里。
+  const previous = root.style.scrollBehavior
+  root.style.scrollBehavior = 'auto'
+  root.scrollTop = next
+  root.style.scrollBehavior = previous
+}
+
+function scrollElementToCenter(el: HTMLElement, smooth = true) {
+  const root = readerScroll.value
+  if (!root) return false
+  const top = el.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop
+    - Math.max(24, (root.clientHeight - Math.max(24, el.offsetHeight)) / 2)
+  scrollRootTo(root, top, smooth)
+  return true
 }
 
 function scrollToSection(index: number, smooth = true): boolean {
@@ -279,7 +322,7 @@ function scrollToSection(index: number, smooth = true): boolean {
   const root = readerScroll.value
   if (!el || !root) return false
   const top = el.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop - 8
-  root.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' })
+  scrollRootTo(root, top, smooth)
   activeSection.value = Number(index)
   persistPosition()
   return true
@@ -288,8 +331,63 @@ function scrollToSection(index: number, smooth = true): boolean {
 function scrollToOffset(offset: number, smooth = true): boolean {
   const target = Math.max(0, Math.min(content.value.length, Number(offset) || 0))
   const section = sections.value.find((item: any) => target >= Number(item.start) && target < Number(item.end))
+  const root = readerScroll.value
+  if (root) {
+    const blocks = Array.from(root.querySelectorAll<HTMLElement>('[data-raw-start]'))
+    const block = blocks.find((item) => {
+      const start = Number(item.dataset.rawStart || 0)
+      const end = Number(item.dataset.rawEnd || start + 1)
+      return target >= start && target < end
+    })
+    if (block) {
+      if (section) activeSection.value = Number(section.index)
+      scrollElementToCenter(block, smooth)
+      persistPosition()
+      return true
+    }
+  }
   if (!section) return false
   return scrollToSection(section.index, smooth)
+}
+
+function scrollToImage(seq: number | null, smooth = true): boolean {
+  if (seq == null) return false
+  const root = readerScroll.value
+  if (!root) return false
+  const el = root.querySelector<HTMLElement>(`[data-image-seq="${Number(seq)}"]`)
+  if (!el) return false
+  const section = sections.value.find((item: any) => {
+    const start = Number(el.dataset.rawStart || 0)
+    return start >= Number(item.start) && start < Number(item.end)
+  })
+  if (section) activeSection.value = Number(section.index)
+  scrollElementToCenter(el, smooth)
+  flashReaderImage(el)
+  persistPosition()
+  return true
+}
+
+function flashReaderImage(el: HTMLElement) {
+  if (imageFlashTimer) {
+    clearTimeout(imageFlashTimer)
+    imageFlashTimer = null
+  }
+  el.classList.remove('reader-jump-image')
+  // 强制重排，重复点击同一张图也能重新触发静态高亮。
+  void el.offsetWidth
+  el.classList.add('reader-jump-image')
+  imageFlashTimer = setTimeout(() => {
+    el.classList.remove('reader-jump-image')
+    imageFlashTimer = null
+  }, 5000)
+}
+
+function highlightImageBySeq(seq: number | null) {
+  if (seq == null) return
+  const root = readerScroll.value
+  if (!root) return
+  const el = root.querySelector<HTMLElement>(`[data-image-seq="${Number(seq)}"]`)
+  if (el) flashReaderImage(el)
 }
 
 function onContentScroll() {
@@ -360,20 +458,145 @@ function nextSearch() {
   scrollToOffset(searchOffsets.value[searchIndex.value])
 }
 
-function highlightSearch(query: string, temporary = false) {
-  const root = readerScroll.value
-  if (!root) return
-  if (searchMarkTimer) {
-    clearTimeout(searchMarkTimer)
-    searchMarkTimer = null
-  }
-  root.querySelectorAll('mark.reader-search-mark').forEach((mark) => {
+function clearReaderMarks(root: HTMLElement, onlyJump = false) {
+  const selector = onlyJump ? 'mark.reader-jump-highlight' : 'mark.reader-search-mark'
+  root.querySelectorAll(selector).forEach((mark) => {
     const parent = mark.parentNode
     if (!parent) return
     parent.replaceChild(document.createTextNode(mark.textContent || ''), mark)
     ;(parent as Element).normalize?.()
   })
-  if (!query) return
+}
+
+/** 去掉 Markdown / 图片标记，得到阅读器 DOM 文本能匹配的候选行。 */
+function jumpCandidates(query: string): string[] {
+  const cleaned = String(query || '')
+    .replace(/【图\d+】/g, '\n')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '\n')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[*_`~#>]/g, '')
+    .replace(/^\s*(?:[-+*]|\d+[.、])\s*/gm, '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\r/g, '')
+  return Array.from(new Set(
+    cleaned.split('\n')
+      .map((line) => line.replace(/\s+/g, ' ').trim())
+      .filter((line) => line.length >= 2)
+  ))
+}
+
+function textIndex(root: HTMLElement) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const map: Array<{ node: Text; offset: number }> = []
+  let text = ''
+  let lastSpace = false
+  let node: Node | null
+  while ((node = walker.nextNode())) {
+    const textNode = node as Text
+    const parent = textNode.parentElement
+    if (!parent || parent.closest('.katex, .katex-mathml, .katex-html, .reader-search-mark')) continue
+    const value = textNode.nodeValue || ''
+    for (let i = 0; i < value.length; i += 1) {
+      let ch = value[i]
+      if (ch === '\u00a0') ch = ' '
+      if (/\s/.test(ch)) {
+        if (lastSpace) continue
+        text += ' '
+        map.push({ node: textNode, offset: i })
+        lastSpace = true
+        continue
+      }
+      text += ch
+      map.push({ node: textNode, offset: i })
+      lastSpace = false
+    }
+  }
+  return { text, map }
+}
+
+function findTextRange(root: HTMLElement, needle: string): Range | null {
+  const target = String(needle || '').replace(/\s+/g, ' ').trim()
+  if (target.length < 2) return null
+  const { text, map } = textIndex(root)
+  const start = text.indexOf(target)
+  if (start < 0) return null
+  const first = map[start]
+  const last = map[start + target.length - 1]
+  if (!first || !last) return null
+  const range = document.createRange()
+  range.setStart(first.node, first.offset)
+  range.setEnd(last.node, last.offset + 1)
+  return range
+}
+
+function wrapRange(range: Range): HTMLElement {
+  const mark = document.createElement('mark')
+  mark.className = 'reader-search-mark reader-jump-highlight'
+  const fragment = range.extractContents()
+  mark.appendChild(fragment)
+  range.insertNode(mark)
+  return mark
+}
+
+function scrollMarkToCenter(mark: HTMLElement | null, smooth = true) {
+  const root = readerScroll.value
+  if (!mark || !root) return
+  const rect = mark.getBoundingClientRect()
+  const rootRect = root.getBoundingClientRect()
+  const top = root.scrollTop + (rect.top - rootRect.top) - (root.clientHeight - rect.height) / 2
+  scrollRootTo(root, top, smooth)
+}
+
+/** 临时跳转高亮：把整个知识切片里的文本行一起标黄，而不是只标一行。 */
+function highlightTemporary(query: string): HTMLElement | null {
+  const root = readerScroll.value
+  if (!root) return null
+  const offset = pendingJumpOffset.value
+  const section = offset == null
+    ? null
+    : sections.value.find((item: any) => offset >= Number(item.start) && offset < Number(item.end))
+  const scope = section
+    ? (root.querySelector<HTMLElement>(`.reader-section[data-section-index="${section.index}"]`) || root)
+    : root
+  const candidates = jumpCandidates(query)
+  const marks: HTMLElement[] = []
+  const seen = new Set<string>()
+  for (const candidate of candidates) {
+    if (seen.has(candidate)) continue
+    const range = findTextRange(scope, candidate)
+    if (range) {
+      marks.push(wrapRange(range))
+      seen.add(candidate)
+      continue
+    }
+    // 整行被 Markdown 拆得过碎时，按分句/长词补标，保证整块切片尽量完整。
+    const pieces = candidate.split(/[，。；：、\s]+/).map((item) => item.trim()).filter((item) => item.length >= 3)
+      .sort((a, b) => b.length - a.length)
+    for (const piece of pieces) {
+      if (seen.has(piece)) continue
+      const pieceRange = findTextRange(scope, piece)
+      if (pieceRange) {
+        marks.push(wrapRange(pieceRange))
+        seen.add(piece)
+        break
+      }
+    }
+  }
+  return marks[0] || null
+}
+
+function highlightSearch(query: string, temporary = false) {
+  const root = readerScroll.value
+  if (!root) return null
+  if (searchMarkTimer) {
+    clearTimeout(searchMarkTimer)
+    searchMarkTimer = null
+  }
+  clearReaderMarks(root)
+  if (!query) return null
+  if (temporary) {
+    return highlightTemporary(query)
+  }
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
   const nodes: Text[] = []
   let node: Node | null
@@ -388,23 +611,26 @@ function highlightSearch(query: string, temporary = false) {
       const match = current.splitText(found)
       const after = match.splitText(query.length)
       const mark = document.createElement('mark')
-      mark.className = `reader-search-mark${temporary ? ' reader-jump-highlight' : ''}`
+      mark.className = 'reader-search-mark'
       mark.textContent = match.nodeValue
       match.parentNode?.replaceChild(mark, match)
       current = after
     }
   }
-  if (temporary) {
-    searchMarkTimer = setTimeout(() => {
-      root.querySelectorAll('mark.reader-jump-highlight').forEach((mark) => {
-        const parent = mark.parentNode
-        if (!parent) return
-        parent.replaceChild(document.createTextNode(mark.textContent || ''), mark)
-        ;(parent as Element).normalize?.()
-      })
-      searchMarkTimer = null
-    }, 5000)
+  return null
+}
+
+function startTemporaryHighlightTimer() {
+  const root = readerScroll.value
+  if (!root) return
+  if (searchMarkTimer) {
+    clearTimeout(searchMarkTimer)
+    searchMarkTimer = null
   }
+  searchMarkTimer = setTimeout(() => {
+    clearReaderMarks(root, true)
+    searchMarkTimer = null
+  }, 5000)
 }
 
 function copyImageMarkdown(image: any) {
@@ -516,6 +742,59 @@ async function rebuildOutline() {
   }
 }
 
+function firstMeaningfulLine(text: string): string {
+  return String(text || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => line.length >= 4 && !line.startsWith('#')) || ''
+}
+
+function resolveTargetOffset(): number | null {
+  if (targetOffset.value != null) return targetOffset.value
+  const chunk = chunkStarts.value.find((item: any) => Number(item.chunkIndex) === Number(targetChunkIndex.value))
+  const chunkStart = chunk?.start != null ? Number(chunk.start) : null
+  const text = targetText.value
+  if (text) {
+    if (chunkStart != null) {
+      let found = content.value.indexOf(text, chunkStart)
+      if (found < 0) {
+        const line = firstMeaningfulLine(text)
+        if (line) found = content.value.indexOf(line, chunkStart)
+      }
+      if (found >= 0) return found
+    }
+    let found = content.value.indexOf(text)
+    if (found < 0) {
+      const line = firstMeaningfulLine(text)
+      if (line) found = content.value.indexOf(line)
+    }
+    if (found >= 0) return found
+  }
+  return chunkStart
+}
+
+function recenterJumpTargets() {
+  if (pendingJumpOffset.value != null) scrollToOffset(pendingJumpOffset.value, false)
+  if (lastJumpMark?.isConnected) {
+    scrollMarkToCenter(lastJumpMark, false)
+  } else if (targetImageSeq.value != null) {
+    scrollToImage(targetImageSeq.value, false)
+  }
+}
+
+/** 图片加载会改变阅读器总高度；在跳转后的前 2.5 秒内按同一个目标反复校正。 */
+function scheduleJumpRecenter() {
+  jumpTimers.forEach((timer) => clearTimeout(timer))
+  jumpTimers = []
+  ;[0, 30, 80, 150, 300, 600, 1000, 1600, 2500].forEach((delay) => {
+    jumpTimers.push(setTimeout(recenterJumpTargets, delay))
+  })
+}
+
+function onReaderImageLoad() {
+  if (pendingJumpOffset.value != null || lastJumpMark?.isConnected) recenterJumpTargets()
+}
+
 async function load(docValue: ReaderDoc, opts: ReaderOptions = {}) {
   doc.value = docValue
   docName.value = docValue.fileName || '未命名资料'
@@ -523,11 +802,20 @@ async function load(docValue: ReaderDoc, opts: ReaderOptions = {}) {
   content.value = ''
   sections.value = []
   imageMap.value = {}
+  chunkStarts.value = []
   needsAiOutline.value = false
   targetOffset.value = opts.offset != null ? Number(opts.offset) : null
   targetText.value = String(opts.targetText || '')
   targetChunkIndex.value = opts.chunkIndex ?? null
   targetChunkCount.value = Number(opts.chunkCount || docValue.chunkCount || 0)
+  const imageMatch = String(opts.targetText || '').match(/【图(\d+)】/)
+  targetImageSeq.value = opts.targetImageSeq != null
+    ? Number(opts.targetImageSeq)
+    : (imageMatch ? Number(imageMatch[1]) : null)
+  pendingJumpOffset.value = null
+  lastJumpMark = null
+  jumpTimers.forEach((timer) => clearTimeout(timer))
+  jumpTimers = []
   stats.contentLength = 0
   activeSection.value = 0
   tocQuery.value = ''
@@ -543,6 +831,7 @@ async function load(docValue: ReaderDoc, opts: ReaderOptions = {}) {
       const data = contentRes.data || {}
       content.value = data.content || ''
       imageMap.value = data.imageMap || {}
+      chunkStarts.value = Array.isArray(data.chunkStarts) ? data.chunkStarts : []
       stats.contentLength = Number(data.contentLength || content.value.length || 0)
     }
     if (outlineRes.code === 200) {
@@ -558,19 +847,29 @@ async function load(docValue: ReaderDoc, opts: ReaderOptions = {}) {
     // 找不到 reader-main / sectionEls，定位会静默失败并停在最开头。
     loading.value = false
     await nextTick()
+    const resolvedOffset = resolveTargetOffset()
+    pendingJumpOffset.value = resolvedOffset
     let located = false
-    if (targetOffset.value != null) {
-      located = scrollToOffset(targetOffset.value, false)
-    }
-    if (!located && targetText.value) {
-      const found = content.value.indexOf(targetText.value)
-      if (found >= 0) located = scrollToOffset(found, false)
+    if (resolvedOffset != null) {
+      located = scrollToOffset(resolvedOffset, false)
     }
     if (!located) restorePosition()
     if (opts.highlight && opts.highlight.trim()) {
       await nextTick()
-      highlightSearch(opts.highlight.trim(), opts.temporaryHighlight === true)
+      lastJumpMark = highlightSearch(opts.highlight.trim(), opts.temporaryHighlight === true)
+      if (lastJumpMark) {
+        await nextTick()
+        scrollMarkToCenter(lastJumpMark, true)
+        // 从“用户真正看到已居中”开始算 5 秒，而不是从 mark 创建的那一帧开始。
+        startTemporaryHighlightTimer()
+      }
     }
+    if (targetImageSeq.value != null && !lastJumpMark) {
+      scrollToImage(targetImageSeq.value, false)
+    } else if (targetImageSeq.value != null) {
+      highlightImageBySeq(targetImageSeq.value)
+    }
+    if (pendingJumpOffset.value != null || lastJumpMark) scheduleJumpRecenter()
   } catch (error: any) {
     ElMessage.error('读取资料失败：' + (error?.message || error))
   } finally {
@@ -596,6 +895,12 @@ onBeforeUnmount(() => {
     clearTimeout(searchMarkTimer)
     searchMarkTimer = null
   }
+  if (imageFlashTimer) {
+    clearTimeout(imageFlashTimer)
+    imageFlashTimer = null
+  }
+  jumpTimers.forEach((timer) => clearTimeout(timer))
+  jumpTimers = []
 })
 
 defineExpose({
@@ -660,11 +965,23 @@ defineExpose({
 .reader-search-mark.reader-jump-highlight {
   background: #ffe58f;
   box-shadow: 0 0 0 3px rgba(255, 214, 102, .28);
-  animation: reader-jump-flash .6s ease-in-out 8;
-}
-@keyframes reader-jump-flash {
-  0%, 100% { background: #fff3c4; }
-  50% { background: #ffd666; }
 }
 @media (max-width: 900px) { .reader-body { grid-template-columns: 1fr; } .reader-body.is-toc-collapsed { grid-template-columns: 1fr; } .reader-toc { max-height: 220px; } .reader-toc__list { max-height: 160px; } .reader-article { padding: 20px 20px 40px; } .reader-toolbar { align-items: flex-start; flex-direction: column; } .reader-toolbar__tools { flex-wrap: wrap; } }
+</style>
+
+<!--
+  ⚠️ 不能放进上面的 scoped 块：`<mark>` 是 highlightSearch 运行时 createElement 出来的，
+  不会带 Vue 的 `data-v-xxx` 作用域属性。scoped 的 `.reader-search-mark[data-v-xxx]`
+  对动态节点不生效，浏览器只能用 `<mark>` 默认的纯黄色，背景/边框也不会按设计显示。
+-->
+<style>
+.reader-search-mark { padding: 0 2px; border-radius: 2px; background: #fff3c4; color: inherit; }
+.reader-search-mark.reader-jump-highlight {
+  background: #ffe58f;
+  box-shadow: 0 0 0 3px rgba(255, 214, 102, .28);
+}
+.reader-image.reader-jump-image {
+  border-radius: 8px;
+  box-shadow: 0 0 0 4px rgba(255, 214, 102, .34);
+}
 </style>

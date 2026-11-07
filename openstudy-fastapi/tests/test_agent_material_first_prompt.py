@@ -16,3 +16,10 @@ def test_knowledge_search_description_is_material_first():
     assert "Use this FIRST" in description
     assert "substantive knowledge" in description
     assert "general knowledge" in description
+
+
+def test_material_first_prompt_routes_image_questions_to_gallery():
+    prompt = prompts.build_agent_system_prompt(include_tools=False)
+    assert "gallery_manage" in prompt
+    assert "图里的公式是什么" in prompt
+    assert "descriptionStatus" in prompt

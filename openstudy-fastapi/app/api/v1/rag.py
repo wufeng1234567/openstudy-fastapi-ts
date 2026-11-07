@@ -672,6 +672,10 @@ async def get_document_content(
                 # 图片清单：{"0": "/profile/upload/...", ...}，键即正文里 `【图N】` 的 N。
                 # 前端据此把正文中的标记渲染成真实图片（否则只会看到「【图0】」文字）。
                 "imageMap": workspace_service.visible_image_map(doc),
+                # 当前索引版本每个 chunk 在 raw_content 里的字符区间。
+                # 对话来源 chip 带 chunkIndex 跳转时，前端据此直接定位到原文段落，
+                # 不再靠“章节顶部”或模糊字符串匹配。
+                "chunkStarts": await rag_write_service.list_chunk_offsets(db, doc),
             }
         )
     except Exception as e:

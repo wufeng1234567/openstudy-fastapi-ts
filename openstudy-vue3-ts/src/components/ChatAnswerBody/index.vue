@@ -83,6 +83,13 @@ const COMMON_TERMS = new Set([
   '学习', '路径', '分析', '数据', '处理', '优化', '输出', '生成', '结果'
 ])
 
+// 代码/模型训练文档里极常见的英文词：命中它们不能证明“这段正文在讲同一个知识点”。
+const CODE_TERMS = new Set([
+  'loss', 'model', 'models', 'acc', 'accuracy', 'compile', 'optimizer', 'adam',
+  'keras', 'tensorflow', 'predict', 'prediction', 'print', 'import', 'true',
+  'false', 'train', 'test', 'data', 'image', 'images', 'label', 'labels'
+])
+
 function termsOf(text: string): string[] {
   return Array.from(new Set(
     String(text || '')
@@ -115,6 +122,50 @@ function bestSnippet(content: string, block: string): string {
   return lines.slice(start, end).join('\n').trim().slice(0, 900)
 }
 
+/** 清洗一行原文，得到可以拿去 DOM 文本节点里匹配的高亮种子。 */
+function cleanHighlightLine(line: string): string {
+  return String(line || '')
+    .replace(/【图\d+】/g, ' ')
+    .replace(/^\s*(?:#{1,6}|>|[-+*]|\d+[.、])\s*/, '')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[*_`~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * 从 snippet 中挑“最适合做高亮锚点”的一行：
+ * 先按当前回答段落的命中词打分，分数相同取更长的一行；
+ * 都命不中时退化为最长的一行。绝不把 `【图N】` 或 Markdown 标记带进查询串。
+ */
+function highlightLineOf(snippet: string, block: string): string {
+  const terms = termsOf(block)
+  const lines = String(snippet || '')
+    .split('\n')
+    .map(cleanHighlightLine)
+    .filter((line) => line.length >= 2)
+  if (!lines.length) return ''
+  let best = ''
+  let bestScore = -1
+  for (const line of lines) {
+    let score = 0
+    for (const term of terms) {
+      if (line.includes(term)) score += term.length >= 4 ? 2 : 1
+    }
+    if (score > bestScore || (score === bestScore && line.length > best.length)) {
+      best = line
+      bestScore = score
+    }
+  }
+  return best || lines.sort((a, b) => b.length - a.length)[0] || ''
+}
+
+function imageSeqOf(snippet: string): number | null {
+  const match = String(snippet || '').match(/【图(\d+)】/)
+  return match ? Number(match[1]) : null
+}
+
 function pickReferences(block: string, references: any[] = props.references): any[] {
   if (!references?.length) return []
   const text = block.toLowerCase()
@@ -126,9 +177,13 @@ function pickReferences(block: string, references: any[] = props.references): an
   const scored = references.map((ref: any) => {
     const haystack = `${ref.docName || ''} ${ref.wikiPageTitle || ''} ${ref.source || ''} ${ref.content || ''}`.toLowerCase()
     let directScore = 0
+    const matchedTerms: string[] = []
     for (const term of termsOf(block)) {
-      if (term.length < 2) continue
-      if (haystack.includes(term)) directScore += term.length >= 4 ? 2 : 1
+      if (term.length < 2 || CODE_TERMS.has(term)) continue
+      if (haystack.includes(term)) {
+        matchedTerms.push(term)
+        directScore += term.length >= 4 ? 2 : 1
+      }
     }
     for (const name of [ref.docName, ref.wikiPageTitle].filter(Boolean)) {
       const normalized = String(name).toLowerCase()
@@ -139,14 +194,25 @@ function pickReferences(block: string, references: any[] = props.references): an
     let score = directScore
     const docKey = String(ref.docId || ref.wikiPageId || ref.docName || ref.wikiPageTitle || '')
     score += Math.min(3, docCounts.get(docKey) || 0)
-    return { ref, score, directScore }
+    // 只命中一个「折线图」或代码词 `loss` 不算内容匹配；至少一个 4 字词，
+    // 或两个 3 字词，才允许给这一段挂来源。
+    const strongMatch = matchedTerms.some((term) => term.length >= 4)
+      || matchedTerms.filter((term) => term.length >= 3).length >= 2
+    return { ref, score, directScore, strongMatch }
   }).sort((a, b) => b.score - a.score)
 
   // 每个段落只挂一个最相关的来源；没有直接内容命中就不硬贴来源。
   const best = scored[0]
-  return best && best.directScore > 0
-    ? [{ ...best.ref, content: bestSnippet(best.ref.content, block) }]
-    : []
+  if (!best || best.directScore <= 0 || !best.strongMatch) return []
+  const snippet = bestSnippet(best.ref.content, block)
+  return [{
+    ...best.ref,
+    // 完整 chunk 保留给定位；snippet 只用于 hover 浮层和阅读器打开参数。
+    content: best.ref.content,
+    snippet,
+    highlightText: highlightLineOf(snippet, block),
+    imageSeq: imageSeqOf(snippet) ?? (best.ref.imageSeq ?? null)
+  }]
 }
 
 function isFollowUpBlock(content: string): boolean {

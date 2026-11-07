@@ -25,7 +25,7 @@
               <span>{{ chunkLabel(chunk, index) }}</span>
               <span v-if="chunk.source" class="chat-source-chunk__source">{{ chunk.source }}</span>
             </div>
-            <p>{{ cleanContent(chunk.content) || '这个片段暂无可读内容。' }}</p>
+            <p>{{ cleanContent(chunk.snippet || chunk.content) || '这个片段暂无可读内容。' }}</p>
           </div>
         </div>
       </div>
@@ -75,6 +75,9 @@ function cleanContent(content: string) {
 }
 
 function chunkLabel(chunk: any, index: number) {
+  if (chunk?.sourceType === 'image') {
+    return chunk.sectionTitle || chunk.source || '图片'
+  }
   const number = Number.isFinite(Number(chunk?.chunkIndex)) ? Number(chunk.chunkIndex) + 1 : index + 1
   return chunk?.sourceType === 'wiki' ? (chunk?.wikiPageTitle || `主题页 ${number}`) : `第 ${number} 段`
 }

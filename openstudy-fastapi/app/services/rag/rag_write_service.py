@@ -14,7 +14,7 @@ from __future__ import annotations
 import difflib
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 from uuid import uuid4
 
 from loguru import logger
@@ -1115,6 +1115,94 @@ async def mark_document_failed(db: AsyncSession, doc: RagDocument, message: str)
     doc.error_msg = (message or "")[:490]
     doc.update_time = datetime.utcnow()
     await db.commit()
+
+
+def build_chunk_offsets(raw: str, chunks: Sequence[Any]) -> list[dict]:
+    """计算每个 chunk 在原文中的字符区间，供阅读器精确跳转。
+
+    为什么不在 `RagDocumentChunk` 上新增 start/end 列：
+      · 现有库里的历史 chunk 没有这两个值，加列后还要全量回填；
+      · chunk 文本本身就是原文的连续子串（带 overlap 的块也一样），
+        用 `raw.find(content, cursor)` 即可稳定求出区间，零迁移成本。
+      · `cursor = start + 1` 而不是 `start + len(content)`：相邻块允许 100 字重叠，
+        如果直接跳过整块，下一块从上一块尾部开始时会找不到。
+
+    找不到时返回 `start/end = None`，前端退化为字符串匹配，绝不伪造位置。
+    """
+    text = str(raw or "")
+    cursor = 0
+    result: list[dict] = []
+
+    def find_start(content: str) -> int:
+        """先精确找整块；再按首个可读行找，兼容历史数据的空白差异。"""
+        if not content or not text:
+            return -1
+        start = text.find(content, cursor)
+        if start >= 0:
+            return start
+        probe = content.strip()
+        if probe:
+            start = text.find(probe, cursor)
+            if start >= 0:
+                return start
+        for line in content.splitlines():
+            line = line.strip()
+            if len(line) < 4:
+                continue
+            start = text.find(line, cursor)
+            if start >= 0:
+                return start
+        # 极端历史数据：当前游标之后找不到时，允许全篇兜底一次。
+        start = text.find(content)
+        if start >= 0:
+            return start
+        for line in content.splitlines():
+            line = line.strip()
+            if len(line) >= 4:
+                start = text.find(line)
+                if start >= 0:
+                    return start
+        return -1
+
+    for chunk in chunks:
+        content = str(getattr(chunk, "content", "") or "")
+        start = find_start(content)
+        if start < 0:
+            result.append(
+                {
+                    "chunkId": getattr(chunk, "id", None),
+                    "chunkIndex": getattr(chunk, "chunk_index", None),
+                    "start": None,
+                    "end": None,
+                }
+            )
+            continue
+        end = min(len(text), start + len(content))
+        result.append(
+            {
+                "chunkId": getattr(chunk, "id", None),
+                "chunkIndex": getattr(chunk, "chunk_index", None),
+                "start": start,
+                "end": end,
+            }
+        )
+        cursor = max(cursor, start + 1)
+    return result
+
+
+async def list_chunk_offsets(db: AsyncSession, doc: RagDocument) -> list[dict]:
+    """当前有效索引版本的 chunk 字符区间。"""
+    rows = (
+        await db.execute(
+            select(RagDocumentChunk)
+            .where(
+                RagDocumentChunk.doc_id == doc.id,
+                RagDocumentChunk.index_version == int(doc.index_version or 1),
+            )
+            .order_by(RagDocumentChunk.chunk_index)
+        )
+    ).scalars().all()
+    return build_chunk_offsets(doc.raw_content or "", rows)
 
 
 async def list_chunks(db: AsyncSession, user_id: int, doc_id: int, limit: int = 200) -> list[dict]:

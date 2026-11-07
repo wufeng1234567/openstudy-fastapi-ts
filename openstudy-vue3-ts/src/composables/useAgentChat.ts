@@ -848,6 +848,44 @@ export function useAgentChat() {
     }))
   }
 
+  /**
+   * gallery_manage 命中的图片资产 → 可点击的文档来源 chip。
+   *
+   * 图片描述本身不在文档 chunk 里；只有 asset.offset 能精确回到原文的图片位置。
+   * 因此这里把 caption/OCR 作为浮层内容，把 offset / imageSeq 带到阅读器，
+   * 点击后由 DocumentAnatomyPanel 滚动到对应图片并闪烁高亮。
+   */
+  function collectGalleryReferences(data: any): any[] {
+    const images = Array.isArray(data?.images) ? data.images : []
+    return images.map((img: any) => {
+      const docId = Number(img?.docId || 0)
+      if (!docId) return null
+      const assetKey = String(img?.assetKey || '')
+      const lastPart = assetKey.startsWith('doc:') ? Number(assetKey.split(':').pop()) : null
+      const imageSeq = Number.isFinite(lastPart as number) ? Number(lastPart) : null
+      const docName = String(img?.sourceName || img?.source || '资料').trim()
+      const section = String(img?.sectionTitle || '').trim()
+      const caption = String(img?.caption || '').trim()
+      const keywords = Array.isArray(img?.keywords) ? img.keywords.filter(Boolean).join('、') : ''
+      const content = [caption, keywords].filter(Boolean).join('；') || section || String(img?.imageName || '')
+      return {
+        chunkId: null,
+        docId,
+        docName,
+        chunkIndex: null,
+        source: `${docName}${section ? ` · ${section}` : ''}${imageSeq != null ? ` · 图片 ${imageSeq + 1}` : ''}`,
+        sourceType: 'image',
+        content,
+        snippet: content,
+        highlightText: '',
+        imageSeq,
+        offset: Number.isFinite(Number(img?.offset)) ? Number(img.offset) : null,
+        assetKey,
+        images: img?.url ? [String(img.url)] : []
+      }
+    }).filter(Boolean)
+  }
+
   /** 一次运行里所有工具调用（含运行中）—— 供页面做统计/折叠用 */
   const toolCalls = computed(() =>
     messages.value.filter((m) => m.type === 'tool_result')
@@ -1306,6 +1344,10 @@ export function useAgentChat() {
           const refs = collectDocumentReferences(event.data)
           if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
         }
+        if (event.success && event.tool === 'gallery_manage') {
+          const refs = collectGalleryReferences(event.data)
+          if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
+        }
         return
       }
     }
@@ -1337,6 +1379,10 @@ export function useAgentChat() {
       ['read_document', 'get_document', 'read'].includes(String(event.action || event.data?.action || ''))
     ) {
       const refs = collectDocumentReferences(event.data)
+      if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
+    }
+    if (event.success && event.tool === 'gallery_manage') {
+      const refs = collectGalleryReferences(event.data)
       if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
     }
   }

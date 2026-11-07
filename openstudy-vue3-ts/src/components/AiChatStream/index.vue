@@ -329,7 +329,8 @@
       :bottom="scrollButtonBottom" :right="16" />
     <ImageViewer v-model:visible="messageImageVisible" :src="messageImageSrc" />
     <ResizableDrawer v-model="docReaderVisible" storage-key="openstudy_chat_document_reader_size"
-      direction="rtl" :default-width="760" :min="460" :max="1100" class="chat-document-reader">
+      direction="rtl" :default-width="760" :min="460" :max="1100" class="chat-document-reader"
+      @open="onDocReaderOpen">
       <DocumentAnatomyPanel ref="docReaderRef" />
     </ResizableDrawer>
     <!-- 输入区（底部组件：模式切换 / 附件 / 放大输入 / 工具栏 / 发送） -->
@@ -691,32 +692,59 @@ const docReaderVisible = ref(false)
 const docReaderRef = ref<any>(null)
 
 /** 点击回答里的文档 chip：在右侧可拉伸抽屉里打开全文阅读器。 */
-async function openChatDocument(item: any) {
-  if (!item?.docId) return
-  docReaderVisible.value = true
-  await nextTick()
-  const rawContent = String(item.content || '').replace(/\r\n/g, '\n')
-  const targetText = (
-    rawContent
-      .split('\n')
-      .map((line: string) => line.trim())
-      .find((line: string) => line.length >= 8 && !line.startsWith('#')) ||
-    rawContent.replace(/\s+/g, ' ').trim()
-  ).slice(0, 120)
-  docReaderRef.value?.open(
+let pendingDocOpen: any = null
+
+function buildDocReadOptions(item: any) {
+  const rawText = String(item.snippet || item.content || '').trim()
+  const options: any = {
+    chunkId: item.chunkId ?? undefined,
+    chunkIndex: item.chunkIndex ?? undefined,
+    chunkCount: undefined,
+    targetText: rawText,
+    // 整段知识切片一起高亮；单行 highlightText 只作为没有 snippet 时的兜底。
+    highlight: String(item.snippet || item.highlightText || rawText).trim() || rawText,
+    temporaryHighlight: true
+  }
+  if (Number.isFinite(Number(item.offset))) options.offset = Number(item.offset)
+  if (Number.isFinite(Number(item.imageSeq))) options.targetImageSeq = Number(item.imageSeq)
+  return options
+}
+
+async function openDocReaderItem(item: any) {
+  if (!item?.docId || !docReaderRef.value) return false
+  await docReaderRef.value.open(
     {
       docId: Number(item.docId),
       fileName: item.docName || item.fileName || '未命名资料'
     },
-    {
-      chunkId: item.chunkId ?? undefined,
-      chunkIndex: item.chunkIndex ?? undefined,
-      chunkCount: undefined,
-      targetText,
-      highlight: targetText,
-      temporaryHighlight: true
-    }
+    buildDocReadOptions(item)
   )
+  return true
+}
+
+async function openChatDocument(item: any) {
+  if (!item?.docId) return
+  // 抽屉已经打开时直接切换内容；尚未挂载时先记下 item，等 ResizableDrawer 的
+  // open 事件（destroy-on-close 下插槽真正挂载后）再调用，避免 ref 为空静默失败。
+  if (docReaderVisible.value && docReaderRef.value) {
+    await openDocReaderItem(item)
+    return
+  }
+  pendingDocOpen = item
+  docReaderVisible.value = true
+  await nextTick()
+  if (docReaderRef.value && pendingDocOpen) {
+    const target = pendingDocOpen
+    pendingDocOpen = null
+    await openDocReaderItem(target)
+  }
+}
+
+function onDocReaderOpen() {
+  if (!pendingDocOpen) return
+  const target = pendingDocOpen
+  pendingDocOpen = null
+  nextTick(() => { void openDocReaderItem(target) })
 }
 
 function openMessageImage(e: MouseEvent) {

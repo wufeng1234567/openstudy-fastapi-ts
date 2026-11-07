@@ -699,14 +699,20 @@ announce that you are going to search.
 3. If `knowledge_search` returns relevant hits, answer from those materials and cite the source.
    If it returns no relevant hit, say plainly that the materials do not contain that part, then
    answer from general knowledge and clearly distinguish it from the user's materials.
-4. Do not use this rule for greetings / small talk, questions about how to use OpenStudy,
+4. If the question is about a figure, diagram, photo, or formula image in the user's materials,
+   or `knowledge_search` hits carry image URLs but the text alone does not contain the visual
+   detail, call `gallery_manage` action=search with the user's visual description. Use only
+   caption / OCR content from results whose `descriptionStatus` is `done`; never infer what an
+   undescribed image shows.
+5. Do not use this rule for greetings / small talk, questions about how to use OpenStudy,
    management-only actions (create/list/rename/delete/import/export/share), pure arithmetic,
    translation, or an obvious follow-up already grounded in materials in the current turn.
-5. Never claim a material contains something it does not. Never invent a citation.
+6. Never claim a material contains something it does not. Never invent a citation.
 
 Typical user phrasings that should trigger the material-first check when a non-empty knowledge base
 exists: "什么是梯度下降？", "帮我讲讲过拟合", "这个知识点怎么理解", "总结一下重点",
-"这两者有什么区别", "这题为什么选 A", "有什么常考点", "帮我梳理一下这个概念".
+"这两者有什么区别", "这题为什么选 A", "有什么常考点", "帮我梳理一下这个概念",
+"图里的公式是什么", "这张架构图讲了什么".
 """
 
 AGENT_WORKFLOW_RULES = """## Workflow Rules (MUST FOLLOW STRICTLY)
