@@ -703,7 +703,9 @@ function buildDocReadOptions(item: any) {
     targetText: rawText,
     // 整段知识切片一起高亮；单行 highlightText 只作为没有 snippet 时的兜底。
     highlight: String(item.snippet || item.highlightText || rawText).trim() || rawText,
-    temporaryHighlight: true
+    temporaryHighlight: true,
+    // 来源跳转先读正文：目录需要时再展开，避免 210px 目录把正文挤窄。
+    collapseToc: true
   }
   if (Number.isFinite(Number(item.offset))) options.offset = Number(item.offset)
   if (Number.isFinite(Number(item.imageSeq))) options.targetImageSeq = Number(item.imageSeq)
@@ -2224,6 +2226,13 @@ defineExpose({
   grid-template-columns: 210px minmax(0, 1fr) !important;
   gap: 14px !important;
   padding: 14px 20px 18px !important;
+}
+.chat-document-reader .reader-body.is-toc-collapsed {
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 0 !important;
+}
+.chat-document-reader .reader-body.is-toc-collapsed .reader-toc {
+  display: none !important;
 }
 .chat-document-reader .reader-toc {
   display: flex !important;

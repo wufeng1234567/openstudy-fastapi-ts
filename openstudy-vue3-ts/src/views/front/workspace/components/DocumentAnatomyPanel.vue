@@ -164,6 +164,8 @@ interface ReaderOptions {
   offset?: number
   /** 来源片段里【图N】的 N；没有文本命中时用于把图片滚到视野中间并闪一下。 */
   targetImageSeq?: number
+  /** 从对话来源打开时默认收起目录，优先展示正文。 */
+  collapseToc?: boolean
 }
 
 const props = withDefaults(defineProps<{ showEdit?: boolean; showClose?: boolean }>(), {
@@ -806,6 +808,7 @@ function onReaderImageLoad() {
 async function load(docValue: ReaderDoc, opts: ReaderOptions = {}) {
   doc.value = docValue
   docName.value = docValue.fileName || '未命名资料'
+  tocCollapsed.value = opts.collapseToc === true
   loading.value = true
   content.value = ''
   sections.value = []
