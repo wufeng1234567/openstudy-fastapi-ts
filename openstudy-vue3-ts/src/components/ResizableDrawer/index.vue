@@ -45,6 +45,7 @@
     :size="width + 'px'"
     :with-header="false"
     :modal="modal"
+    :modal-penetrable="modalPenetrable"
     append-to-body
     destroy-on-close
     :class="['rd-drawer', `rd-${direction}`, drawerClass]"
@@ -83,6 +84,8 @@ const props = withDefaults(
     defaultWidth?: number
     /** 是否显示遮罩层；知识图谱详情需要保持画布可操作时传 false */
     modal?: boolean
+    /** 无遮罩时是否允许点击穿透到抽屉外的画布（Element Plus modalPenetrable） */
+    modalPenetrable?: boolean
     /** 宽度持久化 key：有值才读写 localStorage（设置类固定宽度抽屉不传） */
     storageKey?: string
     /**
@@ -109,7 +112,8 @@ const props = withDefaults(
     storageKey: '',
     anchorSelector: '',
     offsetLeft: 0,
-    modal: true
+    modal: true,
+    modalPenetrable: false
   }
 )
 
