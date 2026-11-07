@@ -86,6 +86,15 @@ const props = withDefaults(
     modal?: boolean
     /** 无遮罩时是否允许点击穿透到抽屉外的画布（Element Plus modalPenetrable） */
     modalPenetrable?: boolean
+    /**
+     * 无遮罩穿透模式下，点击抽屉外部是否自动关闭。
+     *
+     * 注意：Element Plus 在 `modal=false + modalPenetrable=true` 时会把
+     * 外层 `.el-modal-drawer` 设为 `pointer-events:none`，点击会直接穿透到
+     * 页面元素，EP 自己的 `close-on-click-modal` 收不到事件，所以这里补一个
+     * 文档级的“按下/抬起同一位置”判定：普通点击关闭，拖拽画布不误关。
+     */
+    closeOnClickOutside?: boolean
     /** 宽度持久化 key：有值才读写 localStorage（设置类固定宽度抽屉不传） */
     storageKey?: string
     /**
@@ -113,7 +122,8 @@ const props = withDefaults(
     anchorSelector: '',
     offsetLeft: 0,
     modal: true,
-    modalPenetrable: false
+    modalPenetrable: false,
+    closeOnClickOutside: false
   }
 )
 
@@ -155,6 +165,77 @@ function onClosed() {
   // 退场动画走完，再收掉让位用的 left / 内联 transform（见 cleanupOffsetAfterLeave 的说明）
   cleanupOffsetAfterLeave()
 }
+
+/* ---------- 无遮罩穿透：点击抽屉外部关闭 ---------- */
+let outsidePress: { x: number; y: number } | null = null
+
+/**
+ * 判断点击目标是否属于「抽屉自身或它的浮层」。
+ *
+ * 抽屉里的 el-select / el-dialog / 右键菜单都是 append-to-body 的，
+ * DOM 上不在抽屉内部；如果不豁免，点开下拉或弹窗时会被误判成点击外部。
+ */
+function belongsToDrawerLayer(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false
+  const drawer = getDrawerEl()
+  if (drawer?.contains(target)) return true
+  return Boolean(
+    target.closest(
+      '.el-drawer, .el-dialog, .el-message-box, .el-popper, .el-select-dropdown, .el-message, .el-notification'
+    )
+  )
+}
+
+function resetOutsidePress() {
+  outsidePress = null
+}
+
+function onOutsidePointerDown(event: PointerEvent) {
+  if (!props.closeOnClickOutside || !props.modelValue || event.button !== 0) {
+    outsidePress = null
+    return
+  }
+  if (belongsToDrawerLayer(event.target)) {
+    outsidePress = null
+    return
+  }
+  outsidePress = { x: event.clientX, y: event.clientY }
+}
+
+function onOutsidePointerUp(event: PointerEvent) {
+  const start = outsidePress
+  outsidePress = null
+  if (!start || !props.closeOnClickOutside || !props.modelValue) return
+  // 拖动画布 / 拖选文字不触发关闭；只有真正的“点一下”才关。
+  if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5) return
+  if (belongsToDrawerLayer(event.target)) return
+  emit('update:modelValue', false)
+}
+
+function stopOutsideTracking() {
+  document.removeEventListener('pointerdown', onOutsidePointerDown, true)
+  document.removeEventListener('pointerup', onOutsidePointerUp, true)
+  document.removeEventListener('pointercancel', resetOutsidePress, true)
+  outsidePress = null
+}
+
+function startOutsideTracking() {
+  document.addEventListener('pointerdown', onOutsidePointerDown, true)
+  document.addEventListener('pointerup', onOutsidePointerUp, true)
+  document.addEventListener('pointercancel', resetOutsidePress, true)
+}
+
+watch(
+  [() => props.modelValue, () => props.closeOnClickOutside],
+  ([open, enabled]) => {
+    if (open && enabled) startOutsideTracking()
+    else stopOutsideTracking()
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(stopOutsideTracking)
+
 /* ---------- 宽度状态 ---------- */
 //: 持久化：只在传了 storageKey 时读写
 const readStored = (): number => {

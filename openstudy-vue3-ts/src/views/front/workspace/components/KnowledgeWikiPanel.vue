@@ -146,7 +146,8 @@
     </div>
 
     <ResizableDrawer v-model="detailVisible" direction="rtl" storage-key="openstudy_wiki_detail_size"
-      :default-width="620" :min="420" :max="1000" :modal="false" :modal-penetrable="true">
+      :default-width="620" :min="420" :max="1000" :modal="false" :modal-penetrable="true"
+      :close-on-click-outside="true">
       <div class="kw-detail-shell">
       <div v-if="pageLoading" class="kw-detail-loading" v-loading="true"></div>
       <div v-else-if="activePage" class="kw-detail">
