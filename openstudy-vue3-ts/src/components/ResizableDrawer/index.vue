@@ -44,6 +44,7 @@
     :direction="direction"
     :size="width + 'px'"
     :with-header="false"
+    :modal="modal"
     append-to-body
     destroy-on-close
     :class="['rd-drawer', `rd-${direction}`, drawerClass]"
@@ -80,6 +81,8 @@ const props = withDefaults(
     max?: number
     /** 初始 / 默认宽度（px） */
     defaultWidth?: number
+    /** 是否显示遮罩层；知识图谱详情需要保持画布可操作时传 false */
+    modal?: boolean
     /** 宽度持久化 key：有值才读写 localStorage（设置类固定宽度抽屉不传） */
     storageKey?: string
     /**
@@ -105,7 +108,8 @@ const props = withDefaults(
     defaultWidth: 520,
     storageKey: '',
     anchorSelector: '',
-    offsetLeft: 0
+    offsetLeft: 0,
+    modal: true
   }
 )
 

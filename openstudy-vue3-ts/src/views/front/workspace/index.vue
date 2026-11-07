@@ -101,7 +101,7 @@
         </div>
         <div v-if="viewMode === 'gallery'" id="workspace-gallery-describe" class="kbp-gallery-describe-slot"></div>
         <div v-if="viewMode === 'wiki'" id="workspace-wiki-toolbar" class="kbp-wiki-toolbar"></div>
-        <el-button size="small" text class="kbp-receive-share" @click="receiveDialogVisible = true">
+        <el-button v-if="viewMode !== 'wiki'" size="small" text class="kbp-receive-share" @click="receiveDialogVisible = true">
           <el-icon><Download /></el-icon>
           获取资料分享
         </el-button>
@@ -3436,10 +3436,14 @@ onBeforeUnmount(() => {
 }
 
 .kbp-context-count {
+  display: flex;
+  height: 32px;
   flex: none;
+  align-items: center;
   color: #374151;
   font-size: 14px;
   font-weight: 600;
+  line-height: 1;
   white-space: nowrap;
 }
 

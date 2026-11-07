@@ -19,10 +19,6 @@
           <button type="button" :class="{ 'is-active': view === 'pages' }" @click="view = 'pages'">主题页</button>
           <button type="button" :class="{ 'is-active': view === 'map' }" :disabled="!pages.length" @click="switchMap">知识图谱</button>
         </div>
-        <button type="button" class="kw-toolbar-btn" :disabled="loading" @click="reload">
-          <span class="kw-toolbar-btn__glyph">↻</span>
-          <span>刷新</span>
-        </button>
         <button type="button" class="kw-toolbar-btn is-primary" :disabled="!activeKbId || buildActive"
           @click="build">
           <span v-if="buildActive" class="kw-toolbar-btn__spinner"></span>
@@ -103,7 +99,7 @@
             </g>
           </g>
         </svg>
-        <aside class="kw-graph-panel">
+        <aside class="kw-graph-panel" @pointerdown.stop>
           <div class="kw-graph-panel__legend">
             <button v-for="item in pageTypeLegend" :key="item.type" type="button" class="kw-graph-type"
               :class="{ 'is-disabled': mapTypeVisible[item.type] === false }"
@@ -150,7 +146,7 @@
     </div>
 
     <ResizableDrawer v-model="detailVisible" direction="rtl" storage-key="openstudy_wiki_detail_size"
-      :default-width="620" :min="420" :max="1000">
+      :default-width="620" :min="420" :max="1000" :modal="false">
       <div class="kw-detail-shell">
       <div v-if="pageLoading" class="kw-detail-loading" v-loading="true"></div>
       <div v-else-if="activePage" class="kw-detail">
@@ -161,8 +157,8 @@
             <div class="kw-detail__badges">
               <span class="kw-detail__type" :style="{ color: pageTypeMeta(activePage.pageType).color }">{{ pageTypeLabel(activePage.pageType) }}</span>
               <span>{{ activePage.sources?.length || 0 }} 条来源</span>
-              <span>{{ activePage.linkStats?.outCount || 0 }} 条出链</span>
-              <span>{{ activePage.linkStats?.inCount || 0 }} 条反链</span>
+              <span>{{ activePage.linkStats?.outPageCount || 0 }} 个出链页面</span>
+              <span>{{ activePage.linkStats?.inPageCount || 0 }} 个反链页面</span>
               <span>{{ activePage.version || 1 }} 版</span>
               <span v-if="activePage.status === 'stale'" class="is-stale">待更新</span>
               <span v-if="activePage.generatedBy === 'manual'" class="is-manual">手动编辑</span>
@@ -173,7 +169,7 @@
             <el-button size="small" plain @click="openRevisions">历史版本</el-button>
             <el-button size="small" plain @click="askPage('practice')">生成练习</el-button>
             <el-button size="small" type="primary" plain @click="askPage()">问 AI 这一页</el-button>
-            <button type="button" class="kw-detail__close" @click="detailVisible = false">×</button>
+            <button type="button" class="kw-detail__close" @click="closeDetail">×</button>
           </div>
         </header>
 
@@ -192,37 +188,37 @@
         <section class="kw-detail__block kw-link-block">
           <div class="kw-detail__block-head">
             <span>页面链接</span>
-            <b>{{ activePage.linkStats?.outCount || 0 }} 出 / {{ activePage.linkStats?.inCount || 0 }} 入</b>
+            <b>{{ activePage.linkStats?.outPageCount || 0 }} 页出链 · {{ activePage.linkStats?.inPageCount || 0 }} 页反链</b>
             <el-button size="small" text type="primary" @click="openLinkDialog">添加页面链接</el-button>
             <el-button size="small" text type="primary" :loading="linkRefreshing" @click="refreshLinks">刷新链接</el-button>
           </div>
-          <div v-if="activePage.outLinks?.length" class="kw-link-group">
+          <div v-if="groupedOutLinks.length" class="kw-link-group">
             <div class="kw-link-group__label">本页链接到</div>
             <div class="kw-link-list">
-              <div v-for="item in activePage.outLinks" :key="`out-${item.pageId}-${item.sectionIndex}-${item.anchorText}`"
+              <div v-for="item in groupedOutLinks" :key="`out-${item.pageId}-${item.anchorText}`"
                 class="kw-link-item">
                 <button type="button" class="kw-link-main" @click="openPage(item.pageId)">
                   <b>{{ item.title }}</b>
                   <span>“{{ item.anchorText }}”</span>
-                  <em>{{ sectionLabel(item.sectionIndex) }}</em>
+                  <em>{{ linkSectionsLabel(item) }}</em>
                 </button>
                 <button type="button" class="kw-link-remove" title="移除这条链接"
                   @click="removeLink(item)">×</button>
               </div>
             </div>
           </div>
-          <div v-if="activePage.inLinks?.length" class="kw-link-group">
+          <div v-if="groupedInLinks.length" class="kw-link-group">
             <div class="kw-link-group__label">反向链接</div>
             <div class="kw-link-list">
-              <button v-for="item in activePage.inLinks" :key="`in-${item.pageId}-${item.sectionIndex}-${item.anchorText}`"
+              <button v-for="item in groupedInLinks" :key="`in-${item.pageId}-${item.anchorText}`"
                 type="button" class="kw-link-main" @click="openPage(item.pageId)">
                 <b>{{ item.title }}</b>
                 <span>“{{ item.anchorText }}”</span>
-                <em>{{ sectionLabel(item.sectionIndex) }}</em>
+                <em>{{ linkSectionsLabel(item) }}</em>
               </button>
             </div>
           </div>
-          <div v-if="!activePage.outLinks?.length && !activePage.inLinks?.length" class="kw-image-empty">
+          <div v-if="!groupedOutLinks.length && !groupedInLinks.length" class="kw-image-empty">
             正文里还没有页面链接。点击「添加页面链接」，或先在正文里写上目标主题名。
           </div>
         </section>
@@ -423,6 +419,8 @@ let suppressMapNodeClick = false
 let mapAnimFrame = 0
 let mapSimAlpha = 0
 let mapSimNodes: any[] = []
+let mapViewFrame = 0
+let mapOpenTimer: ReturnType<typeof setTimeout> | null = null
 
 const filteredPages = computed(() => {
   const query = String(props.searchQuery || '').trim().toLowerCase()
@@ -435,6 +433,30 @@ const filteredPages = computed(() => {
 const linkTargets = computed(() =>
   pages.value.filter((page: any) => Number(page.pageId) !== Number(activePage.value?.pageId))
 )
+
+/** 同一目标页 + 同一锚文本的多次正文出现合并成一行，避免摘要/各小节重复刷屏。 */
+function groupLinkItems(items: any[] = []) {
+  const grouped = new Map<string, any>()
+  for (const item of items) {
+    const key = `${item.pageId}:${item.anchorText || ''}`
+    let entry = grouped.get(key)
+    if (!entry) {
+      entry = { ...item, sectionIndexes: [] as number[] }
+      grouped.set(key, entry)
+    }
+    const sectionIndex = Number(item.sectionIndex)
+    if (!entry.sectionIndexes.includes(sectionIndex)) entry.sectionIndexes.push(sectionIndex)
+  }
+  return Array.from(grouped.values())
+    .map((item) => ({
+      ...item,
+      sectionIndexes: [...item.sectionIndexes].sort((a: number, b: number) => a - b)
+    }))
+    .sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')))
+}
+
+const groupedOutLinks = computed(() => groupLinkItems(activePage.value?.outLinks || []))
+const groupedInLinks = computed(() => groupLinkItems(activePage.value?.inLinks || []))
 
 const buildActive = computed(() => buildJob.value?.status === 'running')
 const buildProgress = computed(() => {
@@ -594,8 +616,7 @@ const mapEdges = computed(() => {
     .filter(Boolean)
 })
 
-const mapNeighborIds = computed(() => {
-  const id = mapHoveredId.value
+function neighborIdsFor(id: string | null) {
   const result = new Set<string>()
   if (!id) return result
   result.add(id)
@@ -604,7 +625,14 @@ const mapNeighborIds = computed(() => {
     if (edge.target === id) result.add(edge.source)
   }
   return result
+}
+
+const mapSelectedNodeId = computed(() => {
+  const selected = mapNodes.value.find((node: any) => Number(node.pageId) === Number(mapSelectedPageId.value))
+  return selected ? String(selected.id) : null
 })
+const mapFocusId = computed(() => mapHoveredId.value || mapSelectedNodeId.value)
+const mapNeighborIds = computed(() => neighborIdsFor(mapFocusId.value))
 
 function onMapNodeEnter(node: any) {
   // 拖拽期间冻结悬停态：指针扫过其他节点时不能反复切换高亮/灰化。
@@ -622,15 +650,16 @@ function isMapSelected(node: any) {
 }
 
 function isMapNodeDimmed(node: any) {
-  return !!mapHoveredId.value && !mapNeighborIds.value.has(String(node.id))
+  if (isMapSelected(node)) return false
+  return !!mapFocusId.value && !mapNeighborIds.value.has(String(node.id))
 }
 
 function isMapEdgeActive(edge: any) {
-  return !!mapHoveredId.value && (edge.source === mapHoveredId.value || edge.target === mapHoveredId.value)
+  return !!mapFocusId.value && (edge.source === mapFocusId.value || edge.target === mapFocusId.value)
 }
 
 function isMapEdgeDimmed(edge: any) {
-  return !!mapHoveredId.value && !isMapEdgeActive(edge)
+  return !!mapFocusId.value && !isMapEdgeActive(edge)
 }
 
 function showMapLabel(node: any) {
@@ -642,14 +671,45 @@ function showMapLabel(node: any) {
   )
 }
 
+function animateMapViewTo(targetX: number, targetY: number, targetScale = mapView.scale, duration = 360) {
+  if (mapViewFrame) cancelAnimationFrame(mapViewFrame)
+  const from = { x: Number(mapView.x), y: Number(mapView.y), scale: Number(mapView.scale) }
+  const to = { x: Number(targetX), y: Number(targetY), scale: Number(targetScale) }
+  const start = performance.now()
+  const tick = (now: number) => {
+    const progress = Math.min(1, (now - start) / Math.max(1, duration))
+    const eased = 1 - Math.pow(1 - progress, 3)
+    mapView.x = from.x + (to.x - from.x) * eased
+    mapView.y = from.y + (to.y - from.y) * eased
+    mapView.scale = from.scale + (to.scale - from.scale) * eased
+    if (progress < 1) {
+      mapViewFrame = requestAnimationFrame(tick)
+    } else {
+      mapViewFrame = 0
+    }
+  }
+  mapViewFrame = requestAnimationFrame(tick)
+}
+
 function selectMapNode(node: any) {
   stopMapAnimation()
   stopMapNodeDrag()
   mapSelectedPageId.value = Number(node.pageId)
-  // 点击节点后把它移到画布左侧中央，右侧留给详情抽屉（与 WeKnora 一致）。
-  mapView.x = 330 - Number(node.x) * mapView.scale
-  mapView.y = 320 - Number(node.y) * mapView.scale
-  openPage(Number(node.pageId))
+  // 把选中节点移到画布左侧中央，右侧留给详情抽屉。
+  // 用 rAF 做镜头移动，而不是瞬移；节点选中环和周围灰化同时生效。
+  const targetScale = Math.max(0.9, Math.min(1.25, Number(mapView.scale) || 1))
+  animateMapViewTo(
+    330 - Number(node.x) * targetScale,
+    320 - Number(node.y) * targetScale,
+    targetScale,
+    360
+  )
+  if (mapOpenTimer) clearTimeout(mapOpenTimer)
+  const pageId = Number(node.pageId)
+  mapOpenTimer = setTimeout(() => {
+    mapOpenTimer = null
+    openPage(pageId)
+  }, 260)
 }
 
 function onMapNodeClick(node: any) {
@@ -911,6 +971,15 @@ function sectionLabel(index: number) {
   return Number(index) < 0 ? '摘要' : `第 ${Number(index) + 1} 节`
 }
 
+function linkSectionsLabel(item: any) {
+  const indexes = Array.isArray(item?.sectionIndexes) && item.sectionIndexes.length
+    ? item.sectionIndexes
+    : [item?.sectionIndex]
+  const labels = indexes.map((index: number) => sectionLabel(index))
+  if (labels.length <= 2) return labels.join('、')
+  return `${labels.slice(0, 2).join('、')} 等 ${labels.length} 节`
+}
+
 function linkTypeLabel(type: string) {
   if (type === 'prerequisite') return '先学'
   if (type === 'contrast') return '对比'
@@ -1104,6 +1173,23 @@ async function switchMap() {
   }
 }
 
+function closeDetail() {
+  if (mapOpenTimer) {
+    clearTimeout(mapOpenTimer)
+    mapOpenTimer = null
+  }
+  detailVisible.value = false
+  mapSelectedPageId.value = null
+  mapHoveredId.value = null
+}
+
+watch(detailVisible, (visible) => {
+  if (visible) return
+  mapSelectedPageId.value = null
+  mapHoveredId.value = null
+  if (view.value === 'map') nextTick(startMapAnimation)
+})
+
 async function openPage(pageId: number) {
   mapSelectedPageId.value = Number(pageId)
   detailVisible.value = true
@@ -1113,13 +1199,13 @@ async function openPage(pageId: number) {
     const res = await getWikiPage(pageId)
     if (res.code !== 200) {
       ElMessage.error(res.msg || '主题页加载失败')
-      detailVisible.value = false
+      closeDetail()
       return
     }
     activePage.value = res.data
   } catch (error: any) {
     ElMessage.error('主题页加载失败：' + (error?.message || error))
-    detailVisible.value = false
+    closeDetail()
   } finally {
     pageLoading.value = false
   }
@@ -1132,7 +1218,7 @@ function locateSource(source: any) {
     chunkId: Number(source.chunkId) || undefined,
     chunkIndex: Number(source.chunkIndex) || undefined
   })
-  detailVisible.value = false
+  closeDetail()
 }
 
 function imageUrl(url: string) {
@@ -1193,20 +1279,27 @@ async function removeLink(item: any) {
   if (!activePage.value) return
   try {
     await ElMessageBox.confirm(
-      `移除「${item.title}」这条页面链接？正文会保留锚文本，只去掉跳转。`,
+      `移除「${item.title}」这条页面链接${Array.isArray(item.sectionIndexes) && item.sectionIndexes.length > 1 ? `（共 ${item.sectionIndexes.length} 处正文）` : ''}？正文会保留锚文本，只去掉跳转。`,
       '移除页面链接',
       { type: 'warning', confirmButtonText: '移除', cancelButtonText: '取消' }
     )
-    const res = await removeWikiPageLink(activePage.value.pageId, {
-      targetPageId: Number(item.pageId),
-      anchorText: item.anchorText,
-      sectionIndex: Number(item.sectionIndex)
-    })
-    if (res.code !== 200) {
-      ElMessage.error(res.msg || '移除页面链接失败')
-      return
+    const sectionIndexes = Array.isArray(item.sectionIndexes) && item.sectionIndexes.length
+      ? item.sectionIndexes
+      : [Number(item.sectionIndex)]
+    let latest: any = null
+    for (const sectionIndex of sectionIndexes) {
+      const res = await removeWikiPageLink(activePage.value.pageId, {
+        targetPageId: Number(item.pageId),
+        anchorText: item.anchorText,
+        sectionIndex: Number(sectionIndex)
+      })
+      if (res.code !== 200) {
+        ElMessage.error(res.msg || '移除页面链接失败')
+        return
+      }
+      latest = res.data
     }
-    activePage.value = res.data
+    if (latest) activePage.value = latest
     await reload()
     ElMessage.success('页面链接已移除')
   } catch (error: any) {
@@ -1325,16 +1418,22 @@ function askPage(kind: 'ask' | 'practice' = 'ask') {
     ? `请基于${pageRef}生成 5 道练习题，并在每题后标出对应的主题页小节和原文来源。`
     : `请基于${pageRef}回答我，并在回答里标出引用的主题页和原文来源。`
   emit('ask', prompt)
-  detailVisible.value = false
+  closeDetail()
+}
+
+function renderMapPan() {
+  if (!mapDrag) return
+  const g = mapCanvasRef.value?.querySelector('.kw-map__svg > g')
+  if (g) {
+    g.setAttribute(
+      'transform',
+      `translate(${mapDrag.nextX} ${mapDrag.nextY}) scale(${mapView.scale})`
+    )
+  }
+  mapDrag.raf = 0
 }
 
 function onMapWheel(event: WheelEvent) {
-  // 详情抽屉打开时冻结图谱：滚轮只服务抽屉内容，不允许缩放/移动节点。
-  if (detailVisible.value) {
-    stopMapNodeDrag()
-    mapDrag = null
-    return
-  }
   const rect = mapCanvasRef.value?.getBoundingClientRect()
   if (!rect) return
   const px = event.clientX - rect.left
@@ -1349,18 +1448,49 @@ function onMapWheel(event: WheelEvent) {
 }
 
 function onMapDown(event: PointerEvent) {
-  if (event.button !== 0 || detailVisible.value) return
-  mapDrag = { x: event.clientX, y: event.clientY, vx: mapView.x, vy: mapView.y }
+  if (event.button !== 0) return
+  stopMapAnimation()
+  if (mapViewFrame) {
+    cancelAnimationFrame(mapViewFrame)
+    mapViewFrame = 0
+  }
+  mapDrag = {
+    x: event.clientX,
+    y: event.clientY,
+    vx: mapView.x,
+    vy: mapView.y,
+    nextX: mapView.x,
+    nextY: mapView.y,
+    moved: false,
+    closeDetailOnClick: detailVisible.value,
+    raf: 0
+  }
 }
 
 function onMapMove(event: PointerEvent) {
   if (!mapDrag) return
-  mapView.x = mapDrag.vx + event.clientX - mapDrag.x
-  mapView.y = mapDrag.vy + event.clientY - mapDrag.y
+  const dx = event.clientX - mapDrag.x
+  const dy = event.clientY - mapDrag.y
+  if (Math.abs(dx) + Math.abs(dy) > 4) mapDrag.moved = true
+  mapDrag.nextX = mapDrag.vx + dx
+  mapDrag.nextY = mapDrag.vy + dy
+  // 拖动期间只改 SVG <g> 的 transform，不写 Vue 响应式 mapView，
+  // 避免每个 pointermove 都重算几百个节点/边，保住帧率。
+  if (!mapDrag.raf) mapDrag.raf = requestAnimationFrame(renderMapPan)
 }
 
 function onMapUp() {
+  const state = mapDrag
+  if (!state) return
+  if (state.raf) cancelAnimationFrame(state.raf)
   mapDrag = null
+  if (state.moved) {
+    mapView.x = state.nextX
+    mapView.y = state.nextY
+  } else if (state.closeDetailOnClick && detailVisible.value) {
+    // 抽屉打开时仍允许拖动图谱；只有“按下后没移动”的空白点击才关闭抽屉。
+    closeDetail()
+  }
 }
 
 let mapSearchTimer: ReturnType<typeof setTimeout> | null = null
@@ -1428,6 +1558,8 @@ onBeforeUnmount(() => {
   stopMapNodeDrag()
   stopMapAnimation()
   if (mapSearchTimer) clearTimeout(mapSearchTimer)
+  if (mapViewFrame) cancelAnimationFrame(mapViewFrame)
+  if (mapOpenTimer) clearTimeout(mapOpenTimer)
 })
 </script>
 
@@ -1533,6 +1665,9 @@ onBeforeUnmount(() => {
 .kw-map-node { cursor: grab; transition: opacity 0.18s ease; }
 .kw-map-node:active { cursor: grabbing; }
 .kw-map-node.is-dimmed { opacity: 0.2; }
+.kw-map-node.is-selected { opacity: 1 !important; }
+.kw-map-node.is-selected .kw-map-node__dot { stroke: #253247; stroke-width: 2.5; }
+.kw-map-node.is-selected .kw-map-node__label { fill: #1f2937; font-weight: 700; }
 .kw-map-node__halo { fill: rgba(255, 255, 255, 0.86); }
 .kw-map-node__dot { stroke: #fff; stroke-width: 1.5; transition: r 0.2s ease, stroke-width 0.2s ease, opacity 0.2s ease; }
 .kw-map-node__active { fill: none; stroke-width: 2; pointer-events: none; transform-box: fill-box; transform-origin: center; animation: kw-node-pulse 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite; }
@@ -1543,21 +1678,21 @@ onBeforeUnmount(() => {
   0% { opacity: 0.8; transform: scale(1); }
   100% { opacity: 0; transform: scale(1.6); }
 }
-.kw-graph-panel { position: absolute; z-index: 8; top: 16px; right: 16px; display: flex; width: 176px; flex-direction: column; gap: 7px; padding: 9px 10px; border: 1px solid rgba(15, 23, 42, 0.08); border-radius: 10px; background: rgba(255, 255, 255, 0.94); box-shadow: 0 8px 22px rgba(29, 43, 70, 0.1); backdrop-filter: blur(10px); }
-.kw-graph-panel__legend { display: flex; flex-direction: column; gap: 5px; }
-.kw-graph-type { display: flex; align-items: center; gap: 6px; width: 100%; padding: 0 1px; border: 0; color: #5f6b7d; background: transparent; cursor: pointer; font: inherit; font-size: 10px; text-align: left; transition: opacity .15s ease, color .15s ease; }
+.kw-graph-panel { position: absolute; z-index: 8; top: 12px; right: 12px; display: flex; width: 160px; flex-direction: column; gap: 5px; padding: 8px 9px; border: 1px solid rgba(15, 23, 42, 0.08); border-radius: 9px; background: rgba(255, 255, 255, 0.94); box-shadow: 0 8px 22px rgba(29, 43, 70, 0.1); backdrop-filter: blur(10px); }
+.kw-graph-panel__legend { display: flex; flex-direction: column; gap: 4px; }
+.kw-graph-type { display: flex; align-items: center; gap: 4px; width: 100%; padding: 0 1px; border: 0; color: #5f6b7d; background: transparent; cursor: pointer; font: inherit; font-size: 9.5px; line-height: 1.35; text-align: left; transition: opacity .15s ease, color .15s ease; }
 .kw-graph-type:hover { color: #253247; }
 .kw-graph-type.is-disabled { opacity: .35; text-decoration: line-through; }
-.kw-graph-type i { width: 8px; height: 8px; flex: none; border-radius: 50%; }
-.kw-graph-type em { margin-left: auto; color: #a0a6b2; font-size: 8.5px; font-style: normal; }
-.kw-graph-panel__divider { height: 1px; margin: 0 -10px; background: #edf0f5; }
-.kw-graph-panel__actions { display: flex; flex-direction: column; gap: 2px; }
-.kw-graph-action { display: flex; align-items: center; gap: 5px; width: 100%; padding: 4px 1px; border: 0; color: #6b7280; background: transparent; cursor: pointer; font: inherit; font-size: 9.5px; text-align: left; transition: color .15s ease; }
+.kw-graph-type i { width: 7px; height: 7px; flex: none; border-radius: 50%; }
+.kw-graph-type em { margin-left: auto; color: #a0a6b2; font-size: 8px; font-style: normal; }
+.kw-graph-panel__divider { height: 1px; margin: 0 -9px; background: #edf0f5; }
+.kw-graph-panel__actions { display: flex; flex-direction: column; gap: 1px; }
+.kw-graph-action { display: flex; align-items: center; gap: 4px; width: 100%; padding: 3px 1px; border: 0; color: #6b7280; background: transparent; cursor: pointer; font: inherit; font-size: 9.5px; line-height: 1.35; text-align: left; transition: color .15s ease; }
 .kw-graph-action:hover, .kw-graph-action.is-active { color: #2f5fce; }
 .kw-graph-action:disabled { opacity: .35; cursor: not-allowed; }
-.kw-graph-panel__overview { display: flex; flex-direction: column; gap: 2px; color: #9aa1af; font-size: 8.5px; }
+.kw-graph-panel__overview { display: flex; flex-direction: column; gap: 2px; color: #9aa1af; font-size: 8.5px; line-height: 1.35; }
 .kw-graph-panel__overview span { display: inline-flex; align-items: center; gap: 3px; }
-.kw-graph-panel__overview b { color: #253247; font-size: 11px; font-weight: 600; }
+.kw-graph-panel__overview b { color: #253247; font-size: 10.5px; font-weight: 600; }
 .kw-graph-panel__overview em { color: #a0a6b2; font-style: normal; }
 .kw-graph-hint { position: absolute; z-index: 7; left: 16px; bottom: 14px; padding: 5px 9px; border: 1px solid rgba(15, 23, 42, 0.05); border-radius: 6px; color: #9aa1af; background: rgba(255, 255, 255, 0.82); font-size: 9.5px; pointer-events: none; }
 .kw-empty { display: flex; min-height: 520px; flex-direction: column; align-items: center; justify-content: center; border: 1px dashed #dfe6f2; border-radius: 13px; background: #fcfdff; text-align: center; }
