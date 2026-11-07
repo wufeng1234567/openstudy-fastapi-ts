@@ -526,6 +526,7 @@
       @stats="onMapStats"
       @locate="onGraphLocate"
       @ask="onWikiAsk"
+      @search-selected="onWikiSearchSelected"
     />
 
     <!-- 全页空态：一个知识库都没有时，用一张完整引导替代整个两栏区 -->
@@ -2463,6 +2464,15 @@ function onWorkspaceSearchEnter() {
 
 function onMapStats(payload: { total?: number }) {
   mapStats.total = Number(payload?.total || 0)
+}
+
+/** 图谱搜索选中节点后收起搜索建议并清空输入框。 */
+function onWikiSearchSelected() {
+  workspaceSearch.value = ''
+  nextTick(() => {
+    const input = document.querySelector<HTMLInputElement>('.kbp-global-search input')
+    input?.blur()
+  })
 }
 
 function onGalleryUseImage(img: any) {

@@ -357,6 +357,7 @@ const emit = defineEmits<{
   (e: 'stats', payload: { total: number }): void
   (e: 'locate', payload: { docId: number; chunkId?: number; chunkIndex?: number }): void
   (e: 'ask', prompt: string): void
+  (e: 'search-selected', payload: { pageId: number }): void
 }>()
 
 const PAGE_TYPE_META = [
@@ -408,6 +409,7 @@ const mapGraph = ref<any>({ nodes: [], edges: [] })
 const mapView = reactive({ x: 0, y: 0, scale: 1 })
 const mapHoveredId = ref<string | null>(null)
 const mapSelectedPageId = ref<number | null>(null)
+const searchSuppressed = ref(false)
 const mapHideUnlinked = ref(false)
 const mapShowArrows = ref(true)
 const mapDraggingId = ref<string | null>(null)
@@ -484,7 +486,7 @@ const unlinkedCount = computed(() =>
 
 const graphSearchSuggestions = computed(() => {
   const query = String(props.searchQuery || '').trim().toLowerCase()
-  if (!query || view.value !== 'map') return []
+  if (searchSuppressed.value || !query || view.value !== 'map') return []
   return allMapNodes.value
     .filter((node: any) => {
       const haystack = `${node.title || ''} ${node.summary || ''} ${(node.aliases || []).join(' ')}`.toLowerCase()
@@ -1513,6 +1515,8 @@ function focusMapSearch(force = false) {
 }
 
 function selectSearchSuggestion(item: any) {
+  searchSuppressed.value = true
+  emit('search-selected', { pageId: Number(item.pageId) })
   mapTypeVisible[normalizePageType(item.pageType)] = true
   resetMapNodeOffsets()
   nextTick(() => {
@@ -1522,6 +1526,7 @@ function selectSearchSuggestion(item: any) {
 }
 
 watch(() => props.searchQuery, () => {
+  searchSuppressed.value = false
   if (mapSearchTimer) clearTimeout(mapSearchTimer)
   mapSearchTimer = setTimeout(focusMapSearch, 280)
 })
