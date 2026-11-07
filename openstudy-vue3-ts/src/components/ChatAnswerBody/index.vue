@@ -78,12 +78,42 @@ function buildGroups(content: string): Group[] {
   return groups
 }
 
+const COMMON_TERMS = new Set([
+  '资料', '内容', '知识', '知识点', '章节', '部分', '方法', '问题', '进行', '可以',
+  '需要', '对应', '包括', '其中', '使用', '通过', '以及', '这个', '一个', '我们',
+  '学习', '路径', '分析', '数据', '处理', '优化', '输出', '生成', '结果'
+])
+
 function termsOf(text: string): string[] {
   return Array.from(new Set(
     String(text || '')
       .toLowerCase()
       .match(/[\u4e00-\u9fff]{2,}|[a-z0-9_]{2,}/g) || []
-  ))
+  )).filter((term) => !COMMON_TERMS.has(term))
+}
+
+/** 从一个可能跨章节的 chunk 里，截出和当前回答段落字符串最接近的片段。 */
+function bestSnippet(content: string, block: string): string {
+  const text = String(content || '').replace(/\r\n/g, '\n').trim()
+  const terms = termsOf(block)
+  if (!text || !terms.length) return text.slice(0, 600)
+  const lines = text.split('\n')
+  let best = { score: -1, start: 0, end: Math.min(lines.length, 3) }
+  for (let i = 0; i < lines.length; i += 1) {
+    for (let size = 1; size <= 4 && i + size <= lines.length; size += 1) {
+      const segment = lines.slice(i, i + size).join('\n').toLowerCase()
+      let score = 0
+      for (const term of terms) {
+        if (segment.includes(term)) score += term.length >= 4 ? 3 : 1
+      }
+      if (score > best.score) best = { score, start: i, end: i + size }
+    }
+  }
+  if (best.score <= 0) return text.slice(0, 600)
+  // 前后各带一行，保留上下文但不把整个跨章节 chunk 都塞进浮层。
+  const start = Math.max(0, best.start - 1)
+  const end = Math.min(lines.length, best.end + 1)
+  return lines.slice(start, end).join('\n').trim().slice(0, 900)
 }
 
 function pickReferences(block: string): any[] {
@@ -119,7 +149,9 @@ function pickReferences(block: string): any[] {
 
   // 每个段落只挂一个最相关的来源；没有直接内容命中就不硬贴来源。
   const best = scored[0]
-  return best && best.directScore > 0 ? [best.ref] : []
+  return best && best.directScore > 0
+    ? [{ ...best.ref, content: bestSnippet(best.ref.content, block) }]
+    : []
 }
 
 function isFollowUpBlock(content: string): boolean {
