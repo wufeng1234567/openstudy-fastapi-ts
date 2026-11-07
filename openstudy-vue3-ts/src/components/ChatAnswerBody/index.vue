@@ -31,11 +31,10 @@ function trimBlock(value: string) {
 function isTopHeadingLine(line: string): boolean {
   const text = line.trim()
   if (!text) return false
-  return (
-    /^#{1,2}\s+/.test(text) ||
-    /^[一二三四五六七八九十百]+[、.]/.test(text) ||
-    /^\d+[.、](?!\d)\s*\S/.test(text)
-  )
+  if (/^#{1,6}\s+/.test(text) || /^[一二三四五六七八九十百]+[、.]/.test(text)) return true
+  // 数字编号只有短标题才算大点；“1. **模型复杂度过高**——……” 是列表项。
+  if (!/^\d+[.、](?!\d)\s*\S/.test(text)) return false
+  return text.length <= 40 && !text.includes('**') && !/[—，。；：]/.test(text)
 }
 
 /**
@@ -116,16 +115,15 @@ function bestSnippet(content: string, block: string): string {
   return lines.slice(start, end).join('\n').trim().slice(0, 900)
 }
 
-function pickReferences(block: string): any[] {
-  if (!props.references?.length) return []
+function pickReferences(block: string, references: any[] = props.references): any[] {
+  if (!references?.length) return []
   const text = block.toLowerCase()
-  const answerText = String(props.content || '').toLowerCase()
   const docCounts = new Map<string, number>()
-  for (const ref of props.references) {
+  for (const ref of references) {
     const key = String(ref.docId || ref.wikiPageId || ref.docName || ref.wikiPageTitle || '')
     docCounts.set(key, (docCounts.get(key) || 0) + 1)
   }
-  const scored = props.references.map((ref: any) => {
+  const scored = references.map((ref: any) => {
     const haystack = `${ref.docName || ''} ${ref.wikiPageTitle || ''} ${ref.source || ''} ${ref.content || ''}`.toLowerCase()
     let directScore = 0
     for (const term of termsOf(block)) {
@@ -136,12 +134,9 @@ function pickReferences(block: string): any[] {
       const normalized = String(name).toLowerCase()
       if (text.includes(normalized)) directScore += 8
     }
-    // 回答里提到某份资料时，只在「本段确实命中该资料内容」的前提下加权，
-    // 避免把同一份文档的 chip 无差别贴到每一句话后面。
+    // 只用当前段落自己的直接命中分数，绝不把回答末尾提到的知识百科
+    // 反向加权到前面的所有段落（那会把真正命中的文档压掉）。
     let score = directScore
-    for (const name of [ref.docName, ref.wikiPageTitle].filter(Boolean)) {
-      if (answerText.includes(String(name).toLowerCase())) score += 18
-    }
     const docKey = String(ref.docId || ref.wikiPageId || ref.docName || ref.wikiPageTitle || '')
     score += Math.min(3, docCounts.get(docKey) || 0)
     return { ref, score, directScore }
@@ -163,11 +158,26 @@ function isFollowUpBlock(content: string): boolean {
   return /[?？]$/.test(text) && text.length <= 100
 }
 
+function isPreambleBlock(content: string): boolean {
+  return /^(我先|我先在|我先查|我查|我看|让我|好的|收到|已核对|已经核对)/.test(content.trim())
+}
+
+function isHeadingOnlyBlock(content: string): boolean {
+  const text = content.trim()
+  if (text.includes('\n') || !isTopHeadingLine(text)) return false
+  // "1. **模型复杂度过高**……" 是列表项，不是章节标题；真正的标题应当短、
+  // 不含加粗标记/句号式解释。
+  return text.length <= 32 && !text.includes('**') && !/[：:，。；]/.test(text)
+}
+
 const blocks = computed<Block[]>(() =>
   buildGroups(props.content).map((group) => ({
     content: group.content,
     section: group.section,
-    references: isFollowUpBlock(group.content) ? [] : pickReferences(group.content)
+    references:
+      isFollowUpBlock(group.content) || isPreambleBlock(group.content) || isHeadingOnlyBlock(group.content)
+        ? []
+        : pickReferences(group.content, props.references)
   }))
 )
 </script>
