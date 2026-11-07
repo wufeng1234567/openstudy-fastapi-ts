@@ -99,6 +99,7 @@
             @active-change="workspaceFilterActive = $event"
           />
         </div>
+        <div v-if="viewMode === 'gallery'" id="workspace-gallery-describe" class="kbp-gallery-describe-slot"></div>
         <div v-if="viewMode === 'wiki'" id="workspace-wiki-toolbar" class="kbp-wiki-toolbar"></div>
         <el-button size="small" text class="kbp-receive-share" @click="receiveDialogVisible = true">
           <el-icon><Download /></el-icon>
@@ -3457,6 +3458,24 @@ onBeforeUnmount(() => {
   flex: none;
   align-items: center;
   gap: 8px;
+}
+
+.kbp-gallery-describe-slot {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+}
+
+.kbp-gallery-describe-slot :deep(.gallery-describe-trigger) {
+  padding: 0 4px;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.kbp-gallery-describe-slot :deep(.gallery-describe-trigger:hover) {
+  color: #374151;
+  background: transparent;
 }
 
 .kbp-wiki-toolbar:empty {

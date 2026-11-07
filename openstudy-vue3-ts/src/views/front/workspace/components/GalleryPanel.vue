@@ -30,15 +30,6 @@
         <span class="gallery-toolbar__hint">
           已描述 {{ stats.described }} · 待补 {{ stats.pending }} · 描述只在点击时生成
         </span>
-        <el-button
-          class="gallery-describe-btn"
-          :loading="describing || jobActive"
-          :disabled="!pendingKeys.length && !jobActive"
-          @click="describePending"
-        >
-          <el-icon><MagicStick /></el-icon>
-          {{ jobActive ? `补全中 ${describeJob.done}/${describeJob.total}` : pendingKeys.length ? `补全描述（${Math.min(pendingKeys.length, 40)}）` : '图片已描述' }}
-        </el-button>
       </div>
       <div v-if="jobActive" class="gallery-describe-progress">
         <div class="gallery-describe-progress__top">
@@ -51,6 +42,21 @@
         <p>切换页面不会中断；回到画廊会自动恢复进度。</p>
       </div>
     </div>
+
+    <!-- 描述按钮挂到页面顶部的搜索框旁；样式沿用 context bar 的轻量文字按钮。 -->
+    <Teleport to="#workspace-gallery-describe">
+      <el-button
+        class="gallery-describe-trigger"
+        text
+        size="small"
+        :loading="describing || jobActive"
+        :disabled="!pendingKeys.length && !jobActive"
+        @click="describePending"
+      >
+        <el-icon><MagicStick /></el-icon>
+        {{ jobActive ? `补全中 ${describeJob.done}/${describeJob.total}` : pendingKeys.length ? `补全描述（${Math.min(pendingKeys.length, 40)}）` : '图片已描述' }}
+      </el-button>
+    </Teleport>
 
     <div v-if="loading" class="gallery-grid gallery-grid--loading">
       <div v-for="i in 8" :key="i" class="gallery-skeleton"></div>
@@ -680,11 +686,15 @@ onBeforeUnmount(stopDescribePolling)
   width: 190px;
 }
 
-.gallery-describe-btn {
+.gallery-describe-trigger {
   margin-left: 2px;
-  border-color: rgba(79, 107, 237, 0.25);
-  color: #4f6bed;
-  background: #f7f9ff;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 400;
+}
+.gallery-describe-trigger:hover {
+  color: #374151;
+  background: #f3f4f6;
 }
 
 .gallery-describe-progress {
