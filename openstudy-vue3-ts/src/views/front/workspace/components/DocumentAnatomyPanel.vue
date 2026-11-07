@@ -27,6 +27,10 @@
         <el-button size="small" plain @click="openImages">图片 {{ images.length }}</el-button>
         <el-button v-if="showEdit" size="small" text type="primary" @click="emitEdit">编辑</el-button>
         <el-button size="small" plain @click="openRelatedPages">相关主题页</el-button>
+        <el-button v-if="showClose" class="reader-close" size="small" text circle
+          title="关闭" aria-label="关闭" @click="emit('close')">
+          <el-icon><Close /></el-icon>
+        </el-button>
       </div>
     </div>
 
@@ -130,7 +134,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Search } from '@element-plus/icons-vue'
+import { Search, Close } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
 import {
@@ -162,9 +166,13 @@ interface ReaderOptions {
   targetImageSeq?: number
 }
 
-const props = withDefaults(defineProps<{ showEdit?: boolean }>(), { showEdit: false })
+const props = withDefaults(defineProps<{ showEdit?: boolean; showClose?: boolean }>(), {
+  showEdit: false,
+  showClose: false
+})
 const emit = defineEmits<{
   (e: 'edit', doc: ReaderDoc): void
+  (e: 'close'): void
 }>()
 
 const router = useRouter()

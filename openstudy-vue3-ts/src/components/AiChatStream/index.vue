@@ -331,7 +331,7 @@
     <ResizableDrawer v-model="docReaderVisible" storage-key="openstudy_chat_document_reader_size"
       direction="rtl" :default-width="760" :min="460" :max="1100" class="chat-document-reader"
       @open="onDocReaderOpen">
-      <DocumentAnatomyPanel ref="docReaderRef" />
+      <DocumentAnatomyPanel ref="docReaderRef" show-close @close="docReaderVisible = false" />
     </ResizableDrawer>
     <!-- 输入区（底部组件：模式切换 / 附件 / 放大输入 / 工具栏 / 发送） -->
     <ChatInputArea v-model="inputContent" :mode="mode" :show-mode-switch="showModeSwitch"
@@ -1781,19 +1781,7 @@ defineExpose({
  *  所以调用方（含 `views/front/agent/chat.vue`）针对这些类的样式覆盖继续有效。）
  */
 
-/* 聊天里的文档阅读抽屉：把阅读面板撑满可拉伸抽屉 */
-.chat-document-reader :deep(.reader-panel) {
-  height: calc(100vh - 16px);
-  min-height: 0;
-  padding: 16px;
-}
-.chat-document-reader :deep(.reader-body) {
-  min-height: 0;
-  height: calc(100vh - 154px);
-}
-.chat-document-reader :deep(.reader-main) {
-  max-height: 100%;
-}
+/* 聊天里的文档阅读抽屉：具体布局在文件末尾的非 scoped 样式里（el-drawer 会 append-to-body，scoped 选择器命中不了） */
 </style>
 
 <style lang="scss">
@@ -2183,5 +2171,95 @@ defineExpose({
   line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
+}
+</style>
+
+<!--
+  el-drawer 会 append-to-body；AiChatStream 的 scoped 选择器拿不到它内部的
+  DocumentAnatomyPanel 节点。这里用 `.chat-document-reader` 限定在聊天阅读抽屉内，
+  不影响资料诊疗室自身的阅读面板。
+-->
+<style>
+.chat-document-reader .reader-panel {
+  height: 100% !important;
+  min-height: 0 !important;
+  gap: 0 !important;
+  padding: 0 !important;
+}
+.chat-document-reader .reader-toolbar {
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 16px 20px 10px !important;
+  border-bottom: 0 !important;
+}
+.chat-document-reader .reader-toolbar__title {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+}
+.chat-document-reader .reader-toolbar__title b {
+  max-width: 280px !important;
+}
+.chat-document-reader .reader-toolbar__tools {
+  flex: 0 0 auto !important;
+  gap: 4px !important;
+}
+.chat-document-reader .reader-toolbar__tools .el-button {
+  padding: 5px 8px !important;
+  font-size: 11px !important;
+}
+.chat-document-reader .reader-search {
+  width: 170px !important;
+}
+.chat-document-reader .reader-stats {
+  flex: 0 0 auto !important;
+  gap: 14px !important;
+  padding: 0 20px 10px !important;
+  border-bottom: 1px solid #f0f3f8 !important;
+}
+.chat-document-reader .reader-body {
+  flex: 1 1 auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  grid-template-columns: 210px minmax(0, 1fr) !important;
+  gap: 14px !important;
+  padding: 14px 20px 18px !important;
+}
+.chat-document-reader .reader-toc {
+  display: flex !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  flex-direction: column !important;
+}
+.chat-document-reader .reader-toc__list {
+  flex: 1 1 auto !important;
+  max-height: none !important;
+  overflow: auto !important;
+}
+.chat-document-reader .reader-main {
+  height: 100% !important;
+  max-height: none !important;
+}
+.chat-document-reader .reader-article {
+  max-width: 720px !important;
+  padding: 22px 28px 52px !important;
+}
+.chat-document-reader .reader-section__title {
+  font-size: 18px !important;
+}
+.chat-document-reader .reader-section__title--sub {
+  font-size: 15px !important;
+}
+.chat-document-reader .reader-close {
+  margin-left: 2px !important;
+  color: #8b95a5 !important;
+}
+.chat-document-reader .reader-close:hover {
+  color: #2f5fce !important;
+  background: #eef2ff !important;
+}
+.chat-document-reader .reader-loading {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
 }
 </style>
