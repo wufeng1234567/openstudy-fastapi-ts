@@ -778,6 +778,7 @@ export function useAgentChat() {
         webTitle: String(business.title || '').trim(),
         url: String(business.url).trim(),
         source: String(business.siteName || '').trim(),
+        siteIcon: String(business.siteIcon || business.site_icon || '').trim(),
         content: String(business.content || '').slice(0, 1200),
         date: ''
       }].filter((ref) => ref.url && /^https?:\/\//i.test(ref.url))
@@ -795,6 +796,7 @@ export function useAgentChat() {
         webTitle: String(item?.title || '').trim(),
         url: String(item?.url || '').trim(),
         source: String(item?.siteName || item?.site_name || '').trim(),
+        siteIcon: String(item?.siteIcon || item?.site_icon || '').trim(),
         content: String(item?.snippet || item?.summary || '').trim(),
         date: String(item?.date || '').trim()
       }))

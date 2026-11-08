@@ -204,14 +204,16 @@ function imageSeqOf(snippet: string): number | null {
 }
 
 function pickReferences(block: string, references: any[] = props.references): any[] {
-  if (!references?.length) return []
+  // 网页来源统一走底部「参考来源 N 个网页」汇总；不要在正文段落里再贴一遍 chip。
+  const docReferences = (references || []).filter((ref: any) => ref?.sourceType !== 'web')
+  if (!docReferences.length) return []
   const text = block.toLowerCase()
   const docCounts = new Map<string, number>()
-  for (const ref of references) {
+  for (const ref of docReferences) {
     const key = String(ref.docId || ref.wikiPageId || ref.docName || ref.wikiPageTitle || '')
     docCounts.set(key, (docCounts.get(key) || 0) + 1)
   }
-  const scored = references.map((ref: any) => {
+  const scored = docReferences.map((ref: any) => {
     const haystack = `${ref.docName || ''} ${ref.wikiPageTitle || ''} ${ref.source || ''} ${ref.content || ''}`.toLowerCase()
     let directScore = 0
     const matchedTerms: string[] = []

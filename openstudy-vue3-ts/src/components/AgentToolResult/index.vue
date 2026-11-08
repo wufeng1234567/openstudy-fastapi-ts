@@ -23,8 +23,8 @@
 -->
 <template>
   <div class="agent-tool" :class="[`is-${status}`]">
-    <!-- ① 状态 + 结果摘要 -->
-    <div class="at-head">
+    <!-- ① 状态 + 结果摘要（网页搜索有结果时由 at-web-head 接管，避免重复两行） -->
+    <div v-if="!webSearchWithResults" class="at-head">
       <!--
         状态图标统一走 `OsIcon`（2026-10-18）：
         原来是字形 ✓ / — / !，与全站线性图标不是一套语言。
@@ -56,7 +56,7 @@
     </div>
 
     <!-- ② 工具 · 动作（原始标识符只在 title 里，不占视线） -->
-    <div v-if="toolLabel || errorCount || (status === 'running' && elapsed >= 1)" class="at-meta">
+    <div v-if="!webSearchWithResults && (toolLabel || errorCount || (status === 'running' && elapsed >= 1))" class="at-meta">
       <span v-if="toolLabel" class="at-tool" :title="toolPath">{{ toolLabel }}</span>
       <span v-if="errorCount" class="at-badge">{{ errorCount }} 项错误</span>
       <!-- 运行中显示已用时，让用户看到"它在动"而不是傻等 -->
@@ -105,19 +105,39 @@
 
     <LearningChart v-if="learningChart" :chart="learningChart" />
 
-    <!-- 网页搜索：每条都是真实可点击索引，不是模型编的链接 -->
-    <div v-if="webResults.length" class="at-web-results">
-      <div v-for="item in webResults" :key="item.url" class="at-web-item">
-        <span class="at-web-index">W{{ item.index }}</span>
-        <div class="at-web-main">
-          <a class="at-web-title" :href="item.url" target="_blank" rel="noopener noreferrer">
-            {{ item.title }}
-          </a>
-          <div class="at-web-meta">
-            <span>{{ item.siteName }}</span>
-            <span v-if="item.date">· {{ item.date }}</span>
+    <!--
+      网页搜索：搜索结果默认折叠成一行「搜索到 N 个网页」。
+      交互/视觉对齐 `AgentReasoning` 的「已深度思考 X 秒」：
+      四角星 + 灰字 + 右侧 caret；不是 AgentConfirmCard 那种白底「收起」胶囊。
+      展开时头部 sticky 在消息流顶部，滚到卡片中间也能一键收起。
+    -->
+    <div v-if="webResults.length" class="at-web-results" :class="{ 'is-expanded': webExpanded }">
+      <div class="at-web-head" :class="{ 'is-expanded': webExpanded }" :style="webExpanded ? COLLAPSE_BAR_STYLE : undefined"
+        role="button" tabindex="0" :aria-expanded="webExpanded" :title="webExpanded ? '收起搜索到的网页' : '展开搜索到的网页'"
+        @click="webExpanded = !webExpanded" @keydown.enter.prevent="webExpanded = !webExpanded" @keydown.space.prevent="webExpanded = !webExpanded">
+        <span class="at-web-spark" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="13" height="13">
+            <path d="M8 1.6c.5 2.6 1.3 3.4 3.9 3.9-2.6.5-3.4 1.3-3.9 3.9-.5-2.6-1.3-3.4-3.9-3.9C6.7 5 7.5 4.2 8 1.6Z" fill="currentColor" />
+            <path d="M12.4 9.6c.28 1.45.72 1.9 2.17 2.17-1.45.28-1.9.72-2.17 2.17-.28-1.45-.72-1.9-2.17-2.17 1.45-.27 1.9-.72 2.17-2.17Z" fill="currentColor" opacity=".55" />
+          </svg>
+        </span>
+        <span class="at-web-head-title">搜索到 {{ webResults.length }} 个网页</span>
+        <span class="at-web-head-hint">{{ webExpanded ? '收起' : '展开' }}</span>
+        <span class="at-web-caret" :class="{ 'is-open': webExpanded }" aria-hidden="true">▾</span>
+      </div>
+      <div v-if="webExpanded" class="at-web-list">
+        <div v-for="item in webResults" :key="item.url" class="at-web-item">
+          <span class="at-web-index">W{{ item.index }}</span>
+          <div class="at-web-main">
+            <a class="at-web-title" :href="item.url" target="_blank" rel="noopener noreferrer">
+              {{ item.title }}
+            </a>
+            <div class="at-web-meta">
+              <span>{{ item.siteName }}</span>
+              <span v-if="item.date">· {{ item.date }}</span>
+            </div>
+            <p v-if="item.snippet" class="at-web-snippet">{{ item.snippet }}</p>
           </div>
-          <p v-if="item.snippet" class="at-web-snippet">{{ item.snippet }}</p>
         </div>
       </div>
     </div>
@@ -332,6 +352,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
+import { COLLAPSE_BAR_STYLE } from '@/composables/useCollapseBar'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import AgentToolDetail from '@/components/AgentToolDetail/index.vue'
@@ -775,6 +796,12 @@ const webResults = computed<Array<Record<string, any>>>(() => {
     }))
     .slice(0, 10)
 })
+
+/** 网页搜索结果默认折叠；展开后头部吸顶，允许随时收起。 */
+const webExpanded = ref(false)
+const webSearchWithResults = computed(
+  () => props.tool === 'web_search' && webResults.value.length > 0
+)
 
 /** 导图标题（根节点名；组件拿它做空态与导出文件名） */
 const mindTitle = computed(() => {
@@ -1593,6 +1620,85 @@ const downloadArtifact = async () => {
   gap: 7px;
   margin-top: 9px;
   max-width: 100%;
+}
+
+/* 搜索摘要头：视觉语言对齐 AgentReasoning（深度思考），不是确认卡的白色胶囊。 */
+.at-web-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 2px 6px 2px 2px;
+  margin-left: -2px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--os-text-3, #6b7280);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.5;
+  text-align: left;
+  user-select: none;
+  transition: background-color .15s ease;
+}
+
+.at-web-head:hover {
+  background: var(--os-bg-hover, #f3f5f9);
+}
+
+.at-web-head.is-expanded {
+  position: sticky;
+  z-index: 2;
+  background: var(--os-bg, #fff);
+  border-bottom: 1px solid var(--os-border-soft, #edf0f5);
+}
+
+.at-web-spark {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--os-text-4, #9ca3af);
+}
+
+.at-web-head.is-expanded .at-web-spark {
+  color: var(--os-accent, #2f5fce);
+}
+
+.at-web-head-title {
+  overflow: hidden;
+  color: var(--os-text-3, #6b7280);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.at-web-head-hint {
+  margin-left: auto;
+  color: var(--os-text-4, #9ca3af);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.at-web-caret {
+  flex: none;
+  color: var(--os-text-4, #9ca3af);
+  font-size: 13px;
+  line-height: 1;
+  transition: transform .18s ease;
+}
+
+.at-web-caret.is-open {
+  transform: rotate(180deg);
+}
+
+.at-web-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
 }
 
 .at-web-item {
