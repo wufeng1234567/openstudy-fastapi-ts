@@ -29,12 +29,7 @@
             <SegmentedTabs v-model="activeTab" :tabs="tabList" @change="onTabChange" />
         </div>
 
-        <!-- ==================== Tab 0：学习计划（唯一计划入口） ==================== -->
-        <div v-show="activeTab === 'plan'" class="tab-pane">
-            <StudyPlanWorkbench v-if="tabSeen.plan" ref="studyPlanRef" />
-        </div>
-
-        <!-- ==================== Tab 1：题库练习 ==================== -->
+        <!-- ==================== Tab 0：题库练习 ==================== -->
         <div v-show="activeTab === 'bank'" class="tab-pane" v-loading="loading">
             <!--
               标题行已整块移除
@@ -255,12 +250,12 @@
 
         <!-- ==================== Tab 3：学习周报 ==================== -->
         <div v-show="activeTab === 'weekly'" class="tab-pane">
-            <WeeklyReportPanel v-if="tabSeen.weekly" ref="weeklyReportRef" @open-plan="onTabChange('plan')" />
+            <WeeklyReportPanel v-if="tabSeen.weekly" ref="weeklyReportRef" @open-plan="openKnowledgeAdvice" />
         </div>
 
         <!-- ==================== 历史入口：旧考前计划（只读归档，不在 tabs 展示） ==================== -->
         <div v-show="activeTab === 'legacyExam'" class="tab-pane">
-            <LegacyExamPlanPanel v-if="tabSeen.legacyExam" ref="legacyExamRef" @open-plan="onTabChange('plan')" />
+            <LegacyExamPlanPanel v-if="tabSeen.legacyExam" ref="legacyExamRef" @open-plan="openKnowledgeAdvice" />
         </div>
 
     </div>
@@ -280,7 +275,7 @@ import WeeklyReportPanel from './components/WeeklyReportPanel.vue'
 import LegacyExamPlanPanel from './components/LegacyExamPlanPanel.vue'
 // 学情诊断面板（2026-10-26 v3）：把后端逐题诊断画成页内图表，而不是下载 PDF
 import DiagnosisPanel from './components/DiagnosisPanel.vue'
-import StudyPlanWorkbench from './components/StudyPlanWorkbench.vue'
+
 import {
     getOverview,
     getBySubject,
@@ -310,23 +305,21 @@ const router = useRouter()
  *
  * 所以切换时不需要互相同步，只要保证英语那边**第一次切过去才加载**。
  * ========================================================================== */
-type StatsTab = 'plan' | 'bank' | 'english' | 'weekly' | 'legacyExam'
+type StatsTab = 'bank' | 'english' | 'weekly' | 'legacyExam'
 
-const activeTab = ref<StatsTab>('plan')
+const activeTab = ref<StatsTab>('bank')
 
 /** 各 tab 是否已挂载过（图表/重组件懒挂载的关键） */
-const tabSeen = reactive({ plan: true, bank: true, english: false, weekly: false, legacyExam: false })
+const tabSeen = reactive({ bank: true, english: false, weekly: false, legacyExam: false })
 
 /** 题库数据是否已经拉过（决定切回 tab 时要不要补拉） */
 const bankLoaded = ref(false)
 
 const englishStatsRef = ref<any>(null)
 const weeklyReportRef = ref<any>(null)
-const studyPlanRef = ref<any>(null)
 const legacyExamRef = ref<any>(null)
 
 const tabList = [
-    { key: 'plan', label: '学习计划' },
     { key: 'bank', label: '题库练习' },
     { key: 'english', label: '英语练习' },
     { key: 'weekly', label: '学习周报' }
@@ -341,11 +334,10 @@ const tabList = [
  */
 function syncTopbarSubtitle() {
     const subtitleMap: Record<StatsTab, string> = {
-        plan: '一张图看懂先学什么、为什么，建议可以反复调整',
         bank: '数据来自你的刷题、错题、斩题与收藏记录',
         english: '数据来自你的单词听写与阅读练习',
         weekly: '最近 7 天的真实学习记录，可以保存成图片',
-        legacyExam: '旧版考前计划归档，只读查看；新的学习计划在「学习计划」tab'
+        legacyExam: '旧版考前计划归档，只读查看；学习建议在「我的资料 → 知识图谱」里'
     }
     topbarStore.setCount(subtitleMap[activeTab.value])
 }
@@ -373,12 +365,6 @@ function onTabChange(key: string) {
         return
     }
 
-    if (k === 'plan') {
-        tabSeen.plan = true
-        nextTick(() => studyPlanRef.value?.refresh?.())
-        return
-    }
-
     if (k === 'weekly') {
         tabSeen.weekly = true
         nextTick(() => weeklyReportRef.value?.refresh?.())
@@ -398,6 +384,10 @@ function onTabChange(key: string) {
         setTimeout(fetchAll, 50)
     }
     nextTick(() => handleResize())
+}
+
+function openKnowledgeAdvice() {
+    router.push({ path: '/front/workspace', query: { view: 'wiki' } })
 }
 
 function onEnglishLoaded(_stats: any) {
@@ -430,9 +420,12 @@ function applyTabFromQuery() {
         tabSeen.weekly = true
         nextTick(() => weeklyReportRef.value?.refresh?.())
     } else if (t === 'plan') {
-        activeTab.value = 'plan'
-        tabSeen.plan = true
-        nextTick(() => studyPlanRef.value?.refresh?.())
+        // 旧学习计划页已移除：旧链接直接回到知识图谱页（学习建议模式）。
+        router.replace({
+            path: '/front/workspace',
+            query: { view: 'wiki', kbId: router.currentRoute.value.query.kbId || undefined }
+        })
+        return
     } else if (t === 'legacyExam') {
         activeTab.value = 'legacyExam'
         tabSeen.legacyExam = true
@@ -879,8 +872,7 @@ onMounted(async () => {
 
 onActivated(() => {
     // 从题目页/其他路由返回时，刷新当前 tab 的实时数据
-    if (activeTab.value === 'plan') studyPlanRef.value?.refresh?.()
-    else if (activeTab.value === 'weekly') weeklyReportRef.value?.refresh?.()
+    if (activeTab.value === 'weekly') weeklyReportRef.value?.refresh?.()
     else if (activeTab.value === 'legacyExam') legacyExamRef.value?.refresh?.()
 })
 

@@ -1,0 +1,153 @@
+"""从题库/图片/网页等来源抽取知识点、实体与关系。
+
+题库不把题干本身当图节点；这里让 LLM 读题目正文与解析，抽成
+`知识点/实体 + 关系`，供学习建议引用。结果按内容哈希做内存缓存。
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import time
+from typing import Any, Dict, List, Optional, Sequence
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.question import QuestionMain
+
+_CACHE: Dict[str, tuple[float, Dict[str, Any]]] = {}
+_CACHE_TTL = 600
+
+
+def _strip_json(text: str) -> str:
+    value = (text or "").strip()
+    value = re.sub(r"^```(?:json)?\s*", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"\s*```$", "", value)
+    start = value.find("{")
+    end = value.rfind("}")
+    return value[start : end + 1] if start >= 0 and end > start else value
+
+
+def _key(source_type: str, source_id: int, text: str) -> str:
+    raw = f"{source_type}:{source_id}:{text[:4000]}"
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+
+def _normalize(payload: Dict[str, Any]) -> Dict[str, Any]:
+    entities = []
+    for item in payload.get("entities") or payload.get("nodes") or []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        entities.append(
+            {
+                "name": name[:80],
+                "type": str(item.get("type") or "概念")[:32],
+                "description": str(item.get("description") or "")[:240],
+            }
+        )
+    relations = []
+    for item in payload.get("relations") or payload.get("edges") or []:
+        if not isinstance(item, dict):
+            continue
+        source = str(item.get("source") or "").strip()
+        target = str(item.get("target") or "").strip()
+        if not source or not target:
+            continue
+        relations.append(
+            {
+                "source": source[:80],
+                "target": target[:80],
+                "type": str(item.get("type") or "相关")[:32],
+                "description": str(item.get("description") or "")[:240],
+            }
+        )
+    return {"entities": entities[:30], "relations": relations[:40]}
+
+
+async def extract_entities_from_text(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    source_type: str,
+    source_id: int,
+    source_name: str,
+    text: str,
+    use_llm: bool = True,
+) -> Dict[str, Any]:
+    clean = str(text or "").strip()
+    if not clean:
+        return {"entities": [], "relations": [], "degraded": {"empty": True}}
+    key = _key(source_type, source_id, clean)
+    now = time.time()
+    cached = _CACHE.get(key)
+    if cached and now - cached[0] < _CACHE_TTL:
+        return cached[1]
+    if not use_llm:
+        return {"entities": [], "relations": [], "degraded": {"llmDisabled": True}}
+    try:
+        from app.services.ai.base_client import ChatMessage
+        from app.services.ai.db_config import chat_with_config
+
+        prompt = f"""你是一个知识图谱抽取器。请从下面的「{source_name}」内容中抽取知识点、实体和它们的关系。
+不要把题目原文、选项或整段话当成实体；实体应是可学习的概念/定理/方法/术语。
+只依据给定内容，不要靠常识补关系。
+输出严格 JSON：
+{{"entities":[{{"name":"实体名","type":"概念","description":"一句话解释"}}],"relations":[{{"source":"实体1","target":"实体2","type":"前置/包含/应用/相关","description":"依据"}}]}}
+来源类型：{source_type}
+内容：
+{clean[:12000]}
+"""
+        response = await chat_with_config(
+            db,
+            [ChatMessage(role="user", content=prompt)],
+            temperature=0.2,
+            max_tokens=2600,
+            thinking=False,
+            user_id=int(user_id),
+        )
+        payload = json.loads(_strip_json(response.content or ""))
+        result = {**_normalize(payload if isinstance(payload, dict) else {}), "degraded": {}}
+        _CACHE[key] = (now, result)
+        return result
+    except Exception as exc:  # noqa: BLE001
+        return {"entities": [], "relations": [], "degraded": {"error": str(exc)[:160]}}
+
+
+async def extract_bank_entities(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    bank_id: int,
+    limit: int = 20,
+    use_llm: bool = True,
+) -> Dict[str, Any]:
+    rows = (
+        await db.execute(
+            select(QuestionMain.question_text, QuestionMain.analysis)
+            .where(QuestionMain.bank_id == int(bank_id), QuestionMain.status == "0")
+            .order_by(QuestionMain.id.asc())
+            .limit(max(1, min(int(limit or 20), 40)))
+        )
+    ).all()
+    text = "\n\n".join(
+        f"题目：{str(row.question_text or '')}\n解析：{str(row.analysis or '')}"
+        for row in rows
+        if str(row.question_text or "").strip()
+    )
+    return await extract_entities_from_text(
+        db,
+        user_id=user_id,
+        source_type="bank",
+        source_id=int(bank_id),
+        source_name=f"题库 #{bank_id}",
+        text=text,
+        use_llm=use_llm,
+    )
+
+
+__all__ = ["extract_entities_from_text", "extract_bank_entities"]

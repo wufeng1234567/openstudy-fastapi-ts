@@ -59,6 +59,7 @@ const props = withDefaults(
   defineProps<{
     nodes?: GraphNode[]
     edges?: GraphEdge[]
+    groups?: any[]
     trace?: any
     activeStep?: number
     phase?: string
@@ -69,6 +70,7 @@ const props = withDefaults(
   {
     nodes: () => [],
     edges: () => [],
+    groups: () => [],
     trace: null,
     activeStep: -1,
     phase: 'idle',
@@ -102,6 +104,12 @@ const activeEdge = computed(() => {
   return steps[Number(props.activeStep)] || null
 })
 
+const trailSteps = computed(() => {
+  const steps = props.trace?.steps || []
+  const count = props.phase === 'ready' ? steps.length : Math.max(0, Number(props.activeStep) + 1)
+  return steps.slice(0, count)
+})
+
 const visitedSet = computed(() => {
   const set = new Set<string>((props.visitedIds || []).map(String))
   if (props.selectedId) set.add(String(props.selectedId))
@@ -118,6 +126,7 @@ const nodeColor = (node: GraphNode) => {
     return '#9aa7ba'
   }
   if (node.kind === 'bank') return '#7c6cf2'
+  if (node.kind === 'question') return '#9aa7ba'
   if (node.kind === 'note') return '#2f9e8f'
   if (node.kind === 'image') return '#c47a55'
   if (node.kind === 'web') return '#5c8fa8'
@@ -127,19 +136,85 @@ const nodeColor = (node: GraphNode) => {
 function nodeSize(node: GraphNode) {
   const degree = Number(node.metrics?.degree || 0)
   if (node.kind === 'topic') return 15 + Math.min(9, Math.sqrt(degree + 1) * 2.4)
-  if (node.kind === 'bank') return 22
+  if (node.kind === 'bank') return 18
+  if (node.kind === 'question') return 9
   return 13
 }
 
 function layoutNodes(nodes: GraphNode[]) {
   const width = Math.max(580, chartRef.value?.clientWidth || 900)
   const height = Math.max(360, chartRef.value?.clientHeight || 470)
+  const groupDefs = (props.groups || []).filter((group: any) => (group.nodeIds || []).length)
+  const positions = new Map<string, { x: number; y: number }>()
+  const boxes: any[] = []
+
+  if (groupDefs.length) {
+    const gap = 10
+    const header = 26
+    const placeGroup = (group: any, box: any) => {
+      boxes.push({ ...box, group })
+      const items = nodes.filter((node) => (group.nodeIds || []).map(String).includes(String(node.id)))
+      const innerCols = Math.max(1, Math.min(3, Math.ceil(Math.sqrt(items.length))))
+      const innerRows = Math.max(1, Math.ceil(items.length / innerCols))
+      const innerW = Math.max(40, box.w - 18)
+      const innerH = Math.max(40, box.h - header - 12)
+      items.forEach((node, index) => {
+        const innerCol = index % innerCols
+        const innerRow = Math.floor(index / innerCols)
+        positions.set(String(node.id), {
+          x: box.x + 9 + (innerCol + 0.5) * (innerW / innerCols),
+          y: box.y + header + (innerRow + 0.5) * (innerH / innerRows)
+        })
+      })
+    }
+    const topicGroup = groupDefs.find((group: any) => group.kind === 'topic')
+    const sideGroups = groupDefs.filter((group: any) => group.kind !== 'topic')
+    if (topicGroup) {
+      const wikiBox = { x: gap, y: gap, w: width * 0.48, h: height - gap * 2 }
+      placeGroup(topicGroup, wikiBox)
+      const sideX = width * 0.52
+      const sideW = width - sideX - gap
+      const sideCols = sideGroups.length <= 1 ? 1 : 2
+      const sideRows = Math.max(1, Math.ceil(sideGroups.length / sideCols))
+      const sideCellW = (sideW - gap * (sideCols - 1)) / sideCols
+      const sideCellH = (height - gap * (sideRows + 1)) / sideRows
+      sideGroups.forEach((group: any, index: number) => {
+        placeGroup(group, {
+          x: sideX + (index % sideCols) * (sideCellW + gap),
+          y: gap + Math.floor(index / sideCols) * (sideCellH + gap),
+          w: sideCellW,
+          h: sideCellH
+        })
+      })
+    } else {
+      const cols = groupDefs.length <= 2 ? 1 : 2
+      const rows = Math.ceil(groupDefs.length / cols)
+      const cellW = (width - gap * (cols + 1)) / cols
+      const cellH = (height - gap * (rows + 1)) / rows
+      groupDefs.forEach((group: any, groupIndex: number) => {
+        placeGroup(group, {
+          x: gap + (groupIndex % cols) * (cellW + gap),
+          y: gap + Math.floor(groupIndex / cols) * (cellH + gap),
+          w: cellW,
+          h: cellH
+        })
+      })
+    }
+    return {
+      list: nodes.map((node) => ({
+        ...node,
+        x: positions.get(String(node.id))?.x ?? width / 2,
+        y: positions.get(String(node.id))?.y ?? height / 2
+      })),
+      boxes
+    }
+  }
+
   const cx = width / 2
   const cy = height / 2
   const topics = nodes.filter((n) => n.kind === 'topic')
   const banks = nodes.filter((n) => n.kind === 'bank')
   const sources = nodes.filter((n) => !['topic', 'bank'].includes(n.kind))
-  const positions = new Map<string, { x: number; y: number }>()
   const neighborIds = new Set<string>()
   if (props.selectedId) {
     for (const edge of props.edges || []) {
@@ -173,11 +248,14 @@ function layoutNodes(nodes: GraphNode[]) {
     placeRing(banks, Math.min(width, height) * 0.43, Math.PI * 0.18)
     placeRing(sources, Math.min(width, height) * 0.47, Math.PI * 0.02)
   }
-  return nodes.map((node) => ({
-    ...node,
-    x: positions.get(String(node.id))?.x ?? cx,
-    y: positions.get(String(node.id))?.y ?? cy
-  }))
+  return {
+    list: nodes.map((node) => ({
+      ...node,
+      x: positions.get(String(node.id))?.x ?? cx,
+      y: positions.get(String(node.id))?.y ?? cy
+    })),
+    boxes: []
+  }
 }
 
 function isDimmed(id: string) {
@@ -196,7 +274,8 @@ function render() {
   }
   const width = Math.max(580, chartRef.value.clientWidth || 900)
   const height = Math.max(360, chartRef.value.clientHeight || 470)
-  const list = layoutNodes(props.nodes || [])
+  const layout = layoutNodes(props.nodes || [])
+  const list = layout.list
   const pos = new Map(list.map((node) => [String(node.id), node]))
   const active = activeEdge.value
   const activeSource = active?.from ? pos.get(String(active.from)) : null
@@ -225,38 +304,80 @@ function render() {
     })
     .filter(Boolean) as any[]
 
-  const nodeData = list.map((node) => {
-    const dim = isDimmed(node.id) && String(node.id) !== String(active?.to || '')
-    const isActive = active && (String(node.id) === String(active.from) || String(node.id) === String(active.to))
-    return {
-      name: node.title || node.id,
-      value: [node.x, node.y],
-      symbol: node.kind === 'bank' ? 'roundRect' : node.kind === 'document' ? 'diamond' : 'circle',
-      symbolSize: nodeSize(node),
-      rawNode: node,
-      itemStyle: {
-        color: node.kind === 'topic' ? '#ffffff' : nodeColor(node),
-        borderColor: isActive ? '#2f5fce' : nodeColor(node),
-        borderWidth: isActive ? 3 : 1.6,
-        opacity: dim ? 0.28 : 1,
-        shadowBlur: isActive ? 18 : 0,
-        shadowColor: 'rgba(47,95,206,.45)'
-      },
-      label: {
-        show: true,
-        formatter: String(node.title || '').slice(0, 12),
-        position: 'right',
-        color: dim ? '#b8c0cd' : '#5f6b7d',
-        fontSize: 10,
-        fontWeight: isActive ? 700 : 500
+  // 已经走过的射线保留下来：当前步用带粒子的 effect，上一步用普通高亮线。
+  const trailData = trailSteps.value
+    .map((step: any) => {
+      const source = pos.get(String(step.from))
+      const target = pos.get(String(step.to))
+      if (!source || !target) return null
+      return {
+        coords: [
+          [source.x, source.y],
+          [target.x, target.y]
+        ]
       }
-    }
-  })
+    })
+    .filter(Boolean) as any[]
+
+  const nodeData = list
+    .filter((node) => node.kind !== 'bank')
+    .map((node) => {
+      const dim = isDimmed(node.id) && String(node.id) !== String(active?.to || '')
+      const isActive = active && (String(node.id) === String(active.from) || String(node.id) === String(active.to))
+      return {
+        name: node.title || node.id,
+        value: [node.x, node.y],
+        symbol: node.kind === 'document' ? 'diamond' : node.kind === 'question' ? 'roundRect' : 'circle',
+        symbolSize: nodeSize(node),
+        rawNode: node,
+        itemStyle: {
+          color: node.kind === 'topic' ? '#ffffff' : nodeColor(node),
+          borderColor: isActive ? '#2f5fce' : nodeColor(node),
+          borderWidth: isActive ? 3 : 1.6,
+          opacity: dim ? 0.28 : 1,
+          shadowBlur: isActive ? 18 : 0,
+          shadowColor: 'rgba(47,95,206,.45)'
+        },
+        label: {
+          show: true,
+          formatter: String(node.title || '').slice(0, 8),
+          position: 'bottom',
+          distance: 3,
+          color: dim ? '#b8c0cd' : '#5f6b7d',
+          fontSize: 9,
+          fontWeight: isActive ? 700 : 500
+        }
+      }
+    })
 
   const effectData = activeSource && activeTarget ? [[[activeSource.x, activeSource.y], [activeTarget.x, activeTarget.y]]] : []
   const option: any = {
     backgroundColor: 'transparent',
     animationDuration: 420,
+    graphic: (layout.boxes || []).map((entry: any) => ({
+      type: 'group',
+      left: entry.x,
+      top: entry.y,
+      silent: true,
+      children: [
+        {
+          type: 'rect',
+          shape: { width: entry.w, height: entry.h, r: 10 },
+          style: { fill: '#f7f8fb', stroke: '#dfe5ee', lineWidth: 1 }
+        },
+        {
+          type: 'text',
+          style: {
+            text: `${entry.group.title || ''} · ${(entry.group.nodeIds || []).length}`,
+            x: 10,
+            y: 8,
+            fill: '#7d8798',
+            fontSize: 10,
+            fontWeight: 600
+          }
+        }
+      ]
+    })),
     grid: { left: 4, right: 4, top: 4, bottom: 4, containLabel: false },
     xAxis: { type: 'value', min: 0, max: width, show: false },
     yAxis: { type: 'value', min: 0, max: height, inverse: true, show: false },
@@ -287,6 +408,15 @@ function render() {
         polyline: false,
         silent: true,
         z: 2,
+        lineStyle: { color: '#2f5fce', width: 2, opacity: 0.55, curveness: 0.08 },
+        data: trailData
+      },
+      {
+        type: 'lines',
+        coordinateSystem: 'cartesian2d',
+        polyline: false,
+        silent: true,
+        z: 3,
         effect: {
           show: true,
           period: 0.65,

@@ -94,6 +94,35 @@ def _image_id(doc_id: Any) -> str:
     return f"image:{_safe_int(doc_id)}"
 
 
+def _build_groups(nodes: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    specs = [
+        ("group:wiki", "topic", "知识百科"),
+        ("group:bank", "bank", "题库"),
+        ("group:document", "document", "文档"),
+        ("group:web", "web", "网站"),
+        ("group:image", "image", "图片"),
+        ("group:note", "note", "笔记"),
+    ]
+    groups: List[Dict[str, Any]] = []
+    for group_id, kind, title in specs:
+        if kind == "bank":
+            ids = [str(n["id"]) for n in nodes if n.get("kind") in {"bank", "question"}]
+        elif kind == "topic":
+            ids = [str(n["id"]) for n in nodes if n.get("kind") == "topic"]
+        else:
+            ids = [str(n["id"]) for n in nodes if n.get("kind") == kind]
+        if ids:
+            groups.append(
+                {
+                    "id": group_id,
+                    "kind": kind,
+                    "title": title,
+                    "nodeIds": ids,
+                }
+            )
+    return groups
+
+
 def _node_sort_key(node: Dict[str, Any]) -> tuple:
     return (
         _KIND_PRIORITY.get(str(node.get("kind") or ""), 9),
@@ -576,6 +605,7 @@ async def build_study_map(
         "webCount": sum(1 for n in nodes if n["kind"] == "web"),
         "noteCount": sum(1 for n in nodes if n["kind"] == "note"),
         "imageCount": sum(1 for n in nodes if n["kind"] == "image"),
+        "questionNodeCount": sum(1 for n in nodes if n["kind"] == "question"),
         "edgeCount": len(edges),
     }
     stats["weakQuestionCount"] = sum(
@@ -583,6 +613,7 @@ async def build_study_map(
         for n in nodes
         if n["kind"] == "bank"
     )
+    groups = _build_groups(nodes)
     source_stats = [
         {"type": "wiki", "label": "知识百科", "count": stats["topicCount"]},
         {"type": "bank", "label": "题库", "count": stats["bankCount"]},
@@ -596,6 +627,7 @@ async def build_study_map(
         "generatedAt": moment.isoformat(sep=" ", timespec="seconds"),
         "nodes": nodes,
         "edges": edges,
+        "groups": groups,
         "stats": stats,
         "sourceStats": source_stats,
         "degraded": {

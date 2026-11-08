@@ -206,10 +206,16 @@ def focus_graph(graph: Dict[str, Any], node_ids: Sequence[str]) -> Dict[str, Any
             if node.get("kind") == "bank"
         ),
     }
+    groups = []
+    for group in graph.get("groups") or []:
+        group_ids = [str(item) for item in (group.get("nodeIds") or []) if str(item) in keep]
+        if group_ids:
+            groups.append({**group, "nodeIds": group_ids})
     return {
         **graph,
         "nodes": nodes,
         "edges": kept_edges,
+        "groups": groups,
         "stats": stats,
     }
 

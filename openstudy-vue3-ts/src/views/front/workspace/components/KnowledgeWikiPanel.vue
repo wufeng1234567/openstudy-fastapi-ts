@@ -68,7 +68,8 @@
         </div>
       </div>
 
-      <div v-else ref="mapCanvasRef" class="kw-map" @wheel.prevent="onMapWheel" @pointerdown="onMapDown"
+      <div v-else ref="mapCanvasRef" class="kw-map" :class="{ 'is-advice-focus': adviceMode && !!mapSelectedPageId }"
+        @wheel.prevent="onMapWheel" @pointerdown="onMapDown"
         @pointermove="onMapMove" @pointerup="onMapUp" @pointerleave="onMapUp">
         <div class="kw-map-purpose">知识图谱：先看懂知识结构，再让系统帮你排下一步。</div>
         <svg class="kw-map__svg" viewBox="0 0 1000 640" aria-label="知识图谱：每个主题页一个节点">
@@ -87,9 +88,11 @@
               :data-edge-source="edge.source" :data-edge-target="edge.target"
               class="kw-map-edge" :class="[`is-${edge.type}`, { 'is-active': isMapEdgeActive(edge), 'is-dimmed': isMapEdgeDimmed(edge), 'is-current-route': isRouteEdge(edge), 'is-hidden': mapDraggingId && edge.source !== mapDraggingId && edge.target !== mapDraggingId }]"
               :marker-end="mapShowArrows ? (isMapEdgeActive(edge) ? 'url(#kw-arrow-hl)' : 'url(#kw-arrow)') : undefined" />
+            <line v-for="line in adviceTraceLines" :key="`advice-${line.key}`" :x1="line.x1" :y1="line.y1" :x2="line.x2" :y2="line.y2"
+              class="kw-map-advice-ray" />
             <path v-if="learningPathD" :d="learningPathD" class="kw-map-learning-path" :class="{ 'is-fallback': learningRoute?.mode === 'fallback' }" />
             <g v-for="node in mapNodes" :key="node.id" class="kw-map-node" :data-node-id="String(node.id)"
-              :class="{ 'is-selected': isMapSelected(node), 'is-hovered': mapHoveredId === String(node.id), 'is-dimmed': isMapNodeDimmed(node), 'is-learned': Number(node.learning?.viewCount || 0) > 0, 'is-weak': Number(node.learning?.practiceCount || 0) > 0 && Number(node.learning?.accuracy || 0) < 60, 'is-route': isRouteNode(node), 'is-next-stop': isNextStopNode(node) }"
+              :class="{ 'is-selected': isMapSelected(node), 'is-hovered': mapHoveredId === String(node.id), 'is-dimmed': isMapNodeDimmed(node), 'is-learned': Number(node.learning?.viewCount || 0) > 0, 'is-weak': Number(node.learning?.practiceCount || 0) > 0 && Number(node.learning?.accuracy || 0) < 60, 'is-route': isRouteNode(node), 'is-next-stop': isNextStopNode(node), 'is-advice-visited': adviceVisitedPageIds.includes(String(node.pageId)), 'is-advice-dimmed': adviceMode && adviceVisitedPageIds.length > 0 && !adviceVisitedPageIds.includes(String(node.pageId)) }"
               :transform="`translate(${node.x} ${node.y})`"
               @mouseenter="onMapNodeEnter(node)" @mouseleave="onMapNodeLeave(node)"
               @pointerdown.stop="onMapNodeDown($event, node)" @pointerup.stop="onMapNodeUp"
@@ -107,65 +110,73 @@
             </g>
           </g>
         </svg>
-        <aside v-if="!routeActive" class="kw-graph-panel" @pointerdown.stop>
-          <div class="kw-graph-panel__legend">
-            <button v-for="item in pageTypeLegend" :key="item.type" type="button" class="kw-graph-type"
-              :class="{ 'is-disabled': mapTypeVisible[item.type] === false }"
-              @click="toggleMapType(item.type)">
-              <i :style="{ background: item.color }"></i>
-              <span>{{ item.label }}</span>
-              <em>{{ mapTypeCounts[item.type] || 0 }}</em>
+        <aside class="kw-graph-panel" @pointerdown.stop>
+          <div class="kw-graph-mode-row">
+            <span>学习建议模式</span>
+            <button type="button" class="kw-mode-switch" :class="{ 'is-on': adviceMode }" :aria-pressed="adviceMode"
+              @click="toggleAdviceMode">
+              <i></i>
             </button>
           </div>
-          <div class="kw-graph-panel__divider"></div>
-          <div class="kw-graph-panel__actions">
-            <button type="button" class="kw-graph-action" :class="{ 'is-active': mapHideUnlinked }"
-              :disabled="!unlinkedCount" @click="toggleHideUnlinked">
-              <OsIcon name="eye-off" :size="14" />
-              <span>隐藏无关联页面（{{ unlinkedCount }}）</span>
-            </button>
-            <button type="button" class="kw-graph-action" :class="{ 'is-active': !mapShowArrows }" @click="toggleMapArrows">
-              <OsIcon name="check" :size="14" />
-              <span>{{ mapShowArrows ? '隐藏箭头' : '显示箭头' }}</span>
-            </button>
-            <button type="button" class="kw-graph-action" @click="showRouteGuide">
-              <OsIcon name="circle-help" :size="14" />
-              <span>使用说明</span>
-            </button>
-            <button type="button" class="kw-graph-action kw-route-action" :disabled="routeLoading" @click="generateRoute()">
-              <OsIcon name="sparkles" :size="14" />
-              <span>{{ routeLoading ? '正在规划…' : '查看今日学习路径' }}</span>
-            </button>
-          </div>
-          <div class="kw-graph-panel__divider"></div>
-          <div class="kw-graph-panel__overview">
-            <span><OsIcon name="chart-column" :size="13" /> 学习雷达</span>
-            <b>{{ mapLearnSummary.read }} / {{ mapLearnSummary.total }} 已读 · {{ mapLearnSummary.practiced }} 练过</b>
-            <em>掌握 {{ mapLearnSummary.mastered }} · 待补强 {{ mapLearnSummary.weak }}</em>
-            <div class="kw-learn-legend">
-              <span v-for="item in learningLegend" :key="item.level">
-                <i :style="{ background: item.color }"></i>{{ item.label }}
-              </span>
+          <template v-if="!adviceMode">
+            <div class="kw-graph-panel__legend">
+              <button v-for="item in pageTypeLegend" :key="item.type" type="button" class="kw-graph-type"
+                :class="{ 'is-disabled': mapTypeVisible[item.type] === false }"
+                @click="toggleMapType(item.type)">
+                <i :style="{ background: item.color }"></i>
+                <span>{{ item.label }}</span>
+                <em>{{ mapTypeCounts[item.type] || 0 }}</em>
+              </button>
             </div>
-          </div>
+            <div class="kw-graph-panel__divider"></div>
+            <div class="kw-graph-panel__actions">
+              <button type="button" class="kw-graph-action" :class="{ 'is-active': mapHideUnlinked }"
+                :disabled="!unlinkedCount" @click="toggleHideUnlinked">
+                <OsIcon name="eye-off" :size="14" />
+                <span>隐藏无关联页面（{{ unlinkedCount }}）</span>
+              </button>
+              <button type="button" class="kw-graph-action" :class="{ 'is-active': !mapShowArrows }" @click="toggleMapArrows">
+                <OsIcon name="check" :size="14" />
+                <span>{{ mapShowArrows ? '隐藏箭头' : '显示箭头' }}</span>
+              </button>
+              <button type="button" class="kw-graph-action" @click="showRouteGuide">
+                <OsIcon name="circle-help" :size="14" />
+                <span>使用说明</span>
+              </button>
+              <button type="button" class="kw-graph-action kw-route-action" :disabled="routeLoading" @click="generateRoute()">
+                <OsIcon name="sparkles" :size="14" />
+                <span>{{ routeLoading ? '正在规划…' : '查看今日学习路径' }}</span>
+              </button>
+            </div>
+            <div class="kw-graph-panel__divider"></div>
+            <div class="kw-graph-panel__overview">
+              <span><OsIcon name="chart-column" :size="13" /> 学习雷达</span>
+              <b>{{ mapLearnSummary.read }} / {{ mapLearnSummary.total }} 已读 · {{ mapLearnSummary.practiced }} 练过</b>
+              <em>掌握 {{ mapLearnSummary.mastered }} · 待补强 {{ mapLearnSummary.weak }}</em>
+              <div class="kw-learn-legend">
+                <span v-for="item in learningLegend" :key="item.level">
+                  <i :style="{ background: item.color }"></i>{{ item.label }}
+                </span>
+              </div>
+            </div>
+          </template>
+          <template v-else>
+            <p class="kw-advice-mode-tip">点一个节点作为起点，生成可反复调整的学习建议；不会打开知识百科抽屉。</p>
+            <button type="button" class="kw-graph-action kw-route-action" :disabled="adviceLoading" @click="generateAdvice">
+              <OsIcon name="sparkles" :size="14" />
+              <span>{{ adviceLoading ? '正在生成…' : '生成学习建议' }}</span>
+            </button>
+          </template>
         </aside>
-        <KnowledgeRoutePanel
-          v-if="routeActive"
-          :route="learningRoute"
-          :stops="routeStopsView"
-          :active-stop="activeRouteStop"
-          :loading="routeLoading"
-          :off-route-title="offRoutePage?.title || ''"
-          :off-route-page-id="offRoutePage?.pageId || null"
-          @select="onRouteStopSelect"
-          @start="startNextRouteStop"
-          @exit="exitRoute"
-          @guide="showRouteGuide"
-          @set-target="planToPage"
-          @open-plan="openStudyPlan"
-        />
-        <div class="kw-graph-hint" :class="{ 'is-route': routeActive }">点节点查看主题页 · 点「生成学习路径」查看今天的安排</div>
+        <div v-if="!adviceMode" class="kw-graph-hint" :class="{ 'is-route': routeActive }">点节点查看主题页 · 点「生成学习路径」查看今天的安排</div>
       </div>
+      <KnowledgeAdviceHost
+        ref="adviceHostRef"
+        :active-kb-id="activeKbId"
+        :node-titles="adviceNodeTitles"
+        @update="onAdviceUpdate"
+        @busy="adviceLoading = $event"
+      />
     </template>
 
     <div v-else class="kw-empty">
@@ -411,7 +422,7 @@ import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import ResizableDrawer from '@/components/ResizableDrawer/index.vue'
 import { readStudyPlanConfig, saveStudyPlanConfig } from '@/utils/studyPlanState'
-import KnowledgeRoutePanel from './KnowledgeRoutePanel.vue'
+import KnowledgeAdviceHost from './KnowledgeAdviceHost.vue'
 import KnowledgeWikiEditor from './KnowledgeWikiEditor.vue'
 import {
   addWikiPageLink,
@@ -508,6 +519,11 @@ function readRouteQuery(): { strategy: 'weakness' | 'foundation' | 'explore'; ta
   }
 }
 const view = ref<'pages' | 'map'>(readWikiView())
+const adviceMode = ref(false)
+const adviceHostRef = ref<any>(null)
+const adviceLoading = ref(false)
+const adviceTrace = ref<any>(null)
+const adviceVisitedPageIds = ref<string[]>([])
 const detailVisible = ref(false)
 const pageLoading = ref(false)
 const activePage = ref<any>(null)
@@ -653,6 +669,27 @@ const mapComponents = computed(() => {
   }
   const components = [...grouped.values()].sort((a, b) => b.length - a.length || a[0].localeCompare(b[0]))
   return { components, byId }
+})
+
+const adviceNodeTitles = computed(() => {
+  const result: Record<string, string> = {}
+  for (const node of mapNodes.value || []) result[String(node.pageId)] = String(node.title || '')
+  return result
+})
+
+const adviceTraceLines = computed(() => {
+  const steps = adviceTrace.value?.steps || []
+  const position = new Map(mapNodes.value.map((node: any) => [String(node.pageId), node]))
+  return steps
+    .map((step: any, index: number) => {
+      const fromId = String(step.from || '').replace(/^topic:/, '')
+      const toId = String(step.to || '').replace(/^topic:/, '')
+      const from = position.get(fromId)
+      const to = position.get(toId)
+      if (!from || !to) return null
+      return { key: `${fromId}-${toId}-${index}`, x1: from.x, y1: from.y, x2: to.x, y2: to.y }
+    })
+    .filter(Boolean) as any[]
 })
 
 const mapNodes = computed(() => {
@@ -1000,12 +1037,39 @@ async function planToPage(pageId: number) {
   await generateRoute(Number(pageId))
 }
 
-/** 完整计划只在学习统计页维护；这里只做轻量路径预览。 */
+function toggleAdviceMode() {
+  adviceMode.value = !adviceMode.value
+  if (adviceMode.value) {
+    view.value = 'map'
+    detailVisible.value = false
+  } else {
+    adviceTrace.value = null
+    adviceVisitedPageIds.value = []
+  }
+}
+
+function generateAdvice() {
+  if (!adviceMode.value) {
+    adviceMode.value = true
+    view.value = 'map'
+  }
+  if (mapSelectedPageId.value) {
+    nextTick(() => adviceHostRef.value?.generateForPage?.(Number(mapSelectedPageId.value)))
+  } else {
+    nextTick(() => adviceHostRef.value?.open?.())
+  }
+}
+
+function onAdviceUpdate(payload: any) {
+  adviceTrace.value = payload?.trace || null
+  adviceVisitedPageIds.value = (payload?.visitedPageIds || []).map(String)
+}
+
+/** 旧入口：不再跳学习计划页，直接在当前知识图谱里开启建议模式。 */
 function openStudyPlan() {
-  router.push({
-    path: '/front/myQuestion/myStats',
-    query: { tab: 'plan', kbId: props.activeKbId || undefined }
-  })
+  adviceMode.value = true
+  view.value = 'map'
+  detailVisible.value = false
 }
 
 function exitRoute() {
@@ -1165,6 +1229,13 @@ function onMapNodeClick(node: any) {
   if (suppressMapNodeClick || mapNodeDrag?.moved) {
     suppressMapNodeClick = false
     mapNodeDrag = null
+    return
+  }
+  if (adviceMode.value) {
+    mapSelectedPageId.value = Number(node.pageId)
+    // 建议模式只选中节点，不打开知识百科详情抽屉。
+    detailVisible.value = false
+    adviceHostRef.value?.generateForPage?.(Number(node.pageId))
     return
   }
   selectMapNode(node)
@@ -2263,7 +2334,15 @@ onBeforeUnmount(() => {
 .kw-map.is-route-mode .kw-map-edge.is-current-route { stroke: #7e94bf; opacity: 0.82; }
 .kw-map-edge.is-dimmed { opacity: 0.08; }
 .kw-map-edge.is-hidden { display: none; }
+.kw-map-advice-ray { stroke: #2f5fce; stroke-width: 2; opacity: .72; pointer-events: none; stroke-dasharray: 5 4; animation: kw-advice-flow .8s linear infinite; }
+.kw-map.is-advice-focus .kw-map-edge,
+.kw-map.is-advice-focus .kw-map-learning-path { display: none; }
+.kw-map.is-advice-focus .kw-map-hull { opacity: .18; }
+.kw-map.is-advice-focus .kw-map-node:not(.is-selected) { opacity: .18; }
+@keyframes kw-advice-flow { to { stroke-dashoffset: -18; } }
 .kw-map-node { cursor: grab; transition: opacity 0.18s ease; }
+.kw-map-node.is-advice-dimmed { opacity: .24; }
+.kw-map-node.is-advice-visited .kw-map-node__dot { stroke: #2f5fce; stroke-width: 2.8; filter: drop-shadow(0 0 5px rgba(47, 95, 206, .55)); }
 .kw-map-node:active { cursor: grabbing; }
 .kw-map-node.is-dimmed { opacity: 0.2; }
 .kw-map.is-route-mode .kw-map-node.is-dimmed { opacity: 0.42; }
@@ -2291,6 +2370,13 @@ onBeforeUnmount(() => {
   100% { opacity: 0; transform: scale(1.6); }
 }
 .kw-graph-panel { position: absolute; z-index: 8; top: 12px; right: 12px; display: flex; width: min(200px, calc(100vw - 32px)); max-height: calc(100% - 24px); flex-direction: column; gap: 5px; overflow-y: auto; padding: 8px 9px; border: 1px solid rgba(15, 23, 42, 0.08); border-radius: 9px; background: rgba(255, 255, 255, 0.94); box-shadow: 0 8px 22px rgba(29, 43, 70, 0.1); backdrop-filter: blur(10px); }
+.kw-graph-mode-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 2px 6px; color: #5f6b7d; font-size: 11px; font-weight: 600; }
+.kw-mode-switch { position: relative; width: 30px; height: 17px; flex: none; padding: 0; border: 0; border-radius: 99px; background: #dfe5ee; cursor: pointer; transition: background .18s ease; }
+.kw-mode-switch i { position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(20, 34, 60, .18); transition: left .18s ease; }
+.kw-mode-switch.is-on { background: #2f5fce; }
+.kw-mode-switch.is-on i { left: 15px; }
+.kw-advice-mode-tip { margin: 1px 0 2px; color: #7d8596; font-size: 11px; line-height: 1.55; }
+
 .kw-graph-panel__legend { display: flex; flex-direction: column; gap: 4px; }
 .kw-graph-type { display: flex; align-items: center; gap: 4px; width: 100%; padding: 0 1px; border: 0; color: #5f6b7d; background: transparent; cursor: pointer; font: inherit; font-size: 9.5px; line-height: 1.35; text-align: left; transition: opacity .15s ease, color .15s ease; }
 .kw-graph-type:hover { color: #253247; }

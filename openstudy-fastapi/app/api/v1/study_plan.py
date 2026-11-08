@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.response import error, success
 from app.core.security import get_current_user
 from app.database import get_db
-from app.services import study_advice_service, study_plan_history_service
+from app.services import source_entity_service, study_advice_service, study_plan_history_service
 from app.services.rag import study_map_service
 
 router = APIRouter(prefix="/rag")
@@ -73,6 +73,35 @@ class HistorySaveRequest(BaseModel):
 class HistoryPatchRequest(BaseModel):
     title: Optional[str] = None
     pinned: Optional[bool] = None
+
+
+class SourceEntityRequest(BaseModel):
+    sourceType: str = "bank"
+    sourceId: int = 0
+    limit: int = 20
+    useLlm: bool = True
+
+
+@router.post("/study-source-entities")
+async def extract_study_source_entities(
+    data: SourceEntityRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """从题库内容抽取知识点/实体/关系；不把题干当作图节点。"""
+    try:
+        if data.sourceType != "bank" or int(data.sourceId or 0) <= 0:
+            return error("目前只支持从题库抽取知识点，请传 sourceType=bank 和 sourceId")
+        result = await source_entity_service.extract_bank_entities(
+            db,
+            user_id=_uid(current_user),
+            bank_id=int(data.sourceId),
+            limit=data.limit,
+            use_llm=bool(data.useLlm),
+        )
+        return success(result)
+    except Exception as exc:  # noqa: BLE001
+        return error(f"抽取来源知识点失败：{exc}")
 
 
 @router.get("/study-map")

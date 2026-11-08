@@ -15,6 +15,7 @@
       compact
       :nodes="graph?.nodes || []"
       :edges="graph?.edges || []"
+      :groups="graph?.groups || []"
       :trace="trace"
       :visited-ids="visitedIds"
       phase="ready"
