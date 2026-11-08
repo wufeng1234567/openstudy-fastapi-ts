@@ -10,13 +10,13 @@
   所以这里把它们收成一个入口「资料诊疗室」和一套工作台：
     · 一个按钮进入，左侧三步导航，右侧只显示当前步骤；
     · 三步共用同一份文档上下文，不用反复关窗、重新找文件；
-    · “资料解剖 / 资料刨析”统一改为“原文阅读”，与体检、学习处方并列；
+    · “资料解剖 / 资料刨析”统一改为“原文阅读”，与体检、智能报告并列；
     · 每个面板仍复用原来的真实数据与操作，不伪造分数和产物。
 
   组件边界：
-    · DocumentHealthPanel   —— 体检报告（只读规则计算）
-    · DocumentAnatomyPanel  —— 结构 / 正文 / 图片资产
-    · StudyPrescriptionPanel —— 按天执行、可勾完成、可复诊的学习计划
+    · DocumentHealthPanel      —— 体检报告（只读规则计算）
+    · DocumentAnatomyPanel     —— 结构 / 正文 / 图片资产 / 全屏阅读
+    · DocumentSmartReportPanel —— 更新目标 + 可以做得更好的地方（不排任务）
 -->
 <template>
   <el-dialog
@@ -35,7 +35,7 @@
           <div class="clinic-head__title">资料诊疗室</div>
           <div class="clinic-head__doc" :title="docName">{{ docName }}</div>
         </div>
-        <div class="clinic-head__meta">先体检，再读原文，最后开一份学习处方</div>
+        <div class="clinic-head__meta">先体检，再读原文，最后看智能报告</div>
       </div>
     </template>
 
@@ -74,11 +74,10 @@
           :show-edit="showEdit"
           @edit="handleEdit"
         />
-        <StudyPrescriptionPanel
-          v-show="activeTab === 'prescription'"
-          ref="prescriptionRef"
+        <DocumentSmartReportPanel
+          v-show="activeTab === 'report'"
+          ref="reportRef"
           @locate="handleLocate"
-          @ask="handleAsk"
           @close="close"
         />
       </section>
@@ -90,7 +89,7 @@
 import { computed, nextTick, ref } from 'vue'
 import DocumentHealthPanel from './DocumentHealthPanel.vue'
 import DocumentAnatomyPanel from './DocumentAnatomyPanel.vue'
-import StudyPrescriptionPanel from './StudyPrescriptionPanel.vue'
+import DocumentSmartReportPanel from './DocumentSmartReportPanel.vue'
 
 defineOptions({ name: 'DocumentClinicDialog' })
 
@@ -101,7 +100,7 @@ interface ClinicDoc {
   kbId?: number
 }
 
-type ClinicTab = 'health' | 'anatomy' | 'prescription'
+type ClinicTab = 'health' | 'anatomy' | 'report'
 
 const props = withDefaults(
   defineProps<{
@@ -122,13 +121,13 @@ const currentDoc = ref<ClinicDoc | null>(null)
 const activeTab = ref<ClinicTab>('health')
 const healthRef = ref<any>(null)
 const anatomyRef = ref<any>(null)
-const prescriptionRef = ref<any>(null)
+const reportRef = ref<any>(null)
 const openedTabs = ref<Set<ClinicTab>>(new Set())
 
 const tabs: Array<{ key: ClinicTab; no: string; label: string; desc: string }> = [
   { key: 'health', no: '01', label: '资料体检', desc: '先看问题，再决定怎么整理' },
   { key: 'anatomy', no: '02', label: '原文阅读', desc: '按章节阅读、搜索与定位原文' },
-  { key: 'prescription', no: '03', label: '学习处方', desc: '按天执行，学完还能复诊' }
+  { key: 'report', no: '03', label: '智能报告', desc: '这份资料可以哪里做得更好' }
 ]
 
 const docName = computed(() => currentDoc.value?.fileName || '未命名资料')
@@ -136,7 +135,7 @@ const docName = computed(() => currentDoc.value?.fileName || '未命名资料')
 function panelRef(tab: ClinicTab) {
   if (tab === 'health') return healthRef.value
   if (tab === 'anatomy') return anatomyRef.value
-  return prescriptionRef.value
+  return reportRef.value
 }
 
 async function ensureTab(tab: ClinicTab, opts?: any) {

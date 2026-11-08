@@ -27,6 +27,7 @@
         <el-button size="small" plain @click="openImages">图片 {{ images.length }}</el-button>
         <el-button v-if="showEdit" size="small" text type="primary" @click="emitEdit">编辑</el-button>
         <el-button size="small" plain @click="openRelatedPages">相关主题页</el-button>
+        <el-button size="small" plain @click="toggleFullscreen">{{ isFullscreen ? '退出全屏' : '全屏阅读' }}</el-button>
         <el-button v-if="showClose" class="reader-close" size="small" text circle
           title="关闭" aria-label="关闭" @click="emit('close')">
           <el-icon><Close /></el-icon>
@@ -111,7 +112,7 @@
       <button type="button" @click="askSelection('ask')">问 AI 这段</button>
       <button type="button" @click="askSelection('practice')">从这段出题</button>
       <button type="button" @click="askSelection('note')">引用到笔记</button>
-      <button type="button" @click="askSelection('prescription')">加入学习处方</button>
+      <button type="button" @click="askSelection('report')">生成智能报告</button>
       <button type="button" @click="openRelatedPages">相关主题页</button>
       <button type="button" @click="copySelection">复制原文</button>
     </div>
@@ -132,7 +133,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search, Close } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
@@ -180,6 +181,7 @@ const emit = defineEmits<{
 const router = useRouter()
 const readerRoot = ref<HTMLElement | null>(null)
 const readerScroll = ref<HTMLElement | null>(null)
+const isFullscreen = ref(false)
 const doc = ref<ReaderDoc | null>(null)
 const docName = ref('')
 const content = ref('')
@@ -676,7 +678,7 @@ function clearSelection() {
   window.getSelection()?.removeAllRanges()
 }
 
-function askSelection(kind: 'ask' | 'practice' | 'note' | 'prescription') {
+function askSelection(kind: 'ask' | 'practice' | 'note' | 'report') {
   if (!selectionInfo.value || !doc.value) return
   const title = sections.value.find((item: any) => item.index === selectionInfo.value?.section)?.title || docName.value
   const quote = selectionInfo.value.text
@@ -684,8 +686,8 @@ function askSelection(kind: 'ask' | 'practice' | 'note' | 'prescription') {
     ? `请基于《${docName.value}》的「${title}」这段原文出 3 道练习题：\n\n${quote}\n\n请给出答案与解析，并标注来源。`
     : kind === 'note'
       ? `请把《${docName.value}》的「${title}」这段内容整理成一篇学习笔记：\n\n${quote}`
-      : kind === 'prescription'
-        ? `请把《${docName.value}》的「${title}」这段内容加入我的学习处方，并给出下一步练习建议：\n\n${quote}`
+      : kind === 'report'
+        ? `请把《${docName.value}》的「${title}」这段内容作为证据，更新这份资料的智能报告：它哪里可以做得更好、下一步该补什么？\n\n${quote}`
         : `请基于《${docName.value}》的「${title}」回答我的问题，并标注原文来源：\n\n${quote}`
   router.push({ path: '/front/agent/chat', state: { seedQuestion: prompt } })
   ElMessage.success('已把这段内容带入对话，确认后发送')
@@ -888,6 +890,30 @@ async function load(docValue: ReaderDoc, opts: ReaderOptions = {}) {
   }
 }
 
+function syncFullscreen() {
+  const active = !!readerRoot.value && document.fullscreenElement === readerRoot.value
+  isFullscreen.value = active
+  readerRoot.value?.classList.toggle('is-fullscreen-fallback', false)
+}
+
+async function toggleFullscreen() {
+  if (!readerRoot.value) return
+  if (document.fullscreenElement === readerRoot.value) {
+    await document.exitFullscreen()
+    return
+  }
+  try {
+    await readerRoot.value.requestFullscreen()
+  } catch {
+    isFullscreen.value = !isFullscreen.value
+    readerRoot.value.classList.toggle('is-fullscreen-fallback', isFullscreen.value)
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('fullscreenchange', syncFullscreen)
+})
+
 function flattenTree(tree: any): any[] {
   if (!tree) return []
   const result: any[] = []
@@ -902,6 +928,7 @@ function flattenTree(tree: any): any[] {
 
 onBeforeUnmount(() => {
   persistPosition()
+  document.removeEventListener('fullscreenchange', syncFullscreen)
   if (searchMarkTimer) {
     clearTimeout(searchMarkTimer)
     searchMarkTimer = null
@@ -921,6 +948,24 @@ defineExpose({
 
 <style scoped>
 .reader-panel { position: relative; display: flex; flex-direction: column; gap: 10px; min-height: 520px; }
+.reader-panel:fullscreen,
+.reader-panel.is-fullscreen-fallback {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  min-height: 100vh;
+  overflow: auto;
+  padding: 14px 18px;
+  background: #fff;
+}
+.reader-panel:fullscreen .reader-body,
+.reader-panel.is-fullscreen-fallback .reader-body {
+  min-height: calc(100vh - 150px);
+}
+.reader-panel:fullscreen .reader-main,
+.reader-panel.is-fullscreen-fallback .reader-main {
+  max-height: calc(100vh - 170px);
+}
 .reader-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 0 2px 10px; border-bottom: 1px solid #edf0f5; }
 .reader-toolbar__title { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
 .reader-toolbar__kicker { flex: none; color: #4f6bed; font-size: 10px; font-weight: 700; letter-spacing: .08em; }

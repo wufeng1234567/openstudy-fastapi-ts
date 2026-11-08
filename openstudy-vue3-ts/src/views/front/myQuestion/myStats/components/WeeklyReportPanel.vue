@@ -142,7 +142,7 @@
           <div v-if="!data.nextWeek.length" class="report-empty">下周保持现在的节奏就好。</div>
         </div>
         <div class="report-actions">
-          <el-button size="small" @click="emit('openBank')">查看今日学习任务</el-button>
+          <el-button size="small" @click="emit('openPlan')">查看学习计划</el-button>
           <el-button size="small" @click="goPractice">去题库练习</el-button>
         </div>
       </section>
@@ -165,7 +165,7 @@ import { getWeeklyReport, type WeeklyReportResult } from '@/api/userStats/userSt
 
 defineOptions({ name: 'WeeklyReport' })
 
-const emit = defineEmits<{ (e: 'openBank'): void }>()
+const emit = defineEmits<{ (e: 'openPlan'): void }>()
 
 const router = useRouter()
 const loading = ref(true)

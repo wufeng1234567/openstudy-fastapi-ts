@@ -244,6 +244,7 @@ from app.api.v1 import (
     sensitive_word, chat, ocr, document, notice_front, user_front,
     noteQuestionBank, noteQuestion, user_stats,
     common, catch_all, ai_config, bankShare, kbShare, notification, systemComment,
+    study_plan, document_clinic,
     rag, rate_limit_admin, bank_export, tts, english_practice,
     # 题库练习会话/服务端判分（与题库 CRUD 分开，见 practice.py 文件头）
     practice,
@@ -296,6 +297,9 @@ app.include_router(bankShare.router, tags=["题库分享"])
 app.include_router(kbShare.router, tags=["知识库分享"])
 app.include_router(notification.router, tags=["站内通知"])
 app.include_router(systemComment.router, tags=["评论管理"])  # 后台 /system/comment/*（此前缺失，落到 catch_all 假成功）
+# ⚠️ 学习建议新路由必须排在 rag.router 之前，避免 /rag/* 兜底路由截走。
+app.include_router(study_plan.router, tags=["学习建议"])
+app.include_router(document_clinic.router, tags=["资料诊疗室"])
 app.include_router(rag.router, tags=["RAG知识库"])
 app.include_router(rate_limit_admin.router, tags=["AI限流管理"])
 app.include_router(monitor.router, tags=["系统监控"])

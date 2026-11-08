@@ -31,7 +31,7 @@
 
         <!-- ==================== Tab 0：学习计划（唯一计划入口） ==================== -->
         <div v-show="activeTab === 'plan'" class="tab-pane">
-            <StudyPlanPanel v-if="tabSeen.plan" ref="studyPlanRef" />
+            <StudyPlanWorkbench v-if="tabSeen.plan" ref="studyPlanRef" />
         </div>
 
         <!-- ==================== Tab 1：题库练习 ==================== -->
@@ -255,7 +255,7 @@
 
         <!-- ==================== Tab 3：学习周报 ==================== -->
         <div v-show="activeTab === 'weekly'" class="tab-pane">
-            <WeeklyReportPanel v-if="tabSeen.weekly" ref="weeklyReportRef" @open-bank="onTabChange('bank')" />
+            <WeeklyReportPanel v-if="tabSeen.weekly" ref="weeklyReportRef" @open-plan="onTabChange('plan')" />
         </div>
 
         <!-- ==================== 历史入口：旧考前计划（只读归档，不在 tabs 展示） ==================== -->
@@ -280,7 +280,7 @@ import WeeklyReportPanel from './components/WeeklyReportPanel.vue'
 import LegacyExamPlanPanel from './components/LegacyExamPlanPanel.vue'
 // 学情诊断面板（2026-10-26 v3）：把后端逐题诊断画成页内图表，而不是下载 PDF
 import DiagnosisPanel from './components/DiagnosisPanel.vue'
-import StudyPlanPanel from './components/StudyPlanPanel.vue'
+import StudyPlanWorkbench from './components/StudyPlanWorkbench.vue'
 import {
     getOverview,
     getBySubject,
@@ -341,7 +341,7 @@ const tabList = [
  */
 function syncTopbarSubtitle() {
     const subtitleMap: Record<StatsTab, string> = {
-        plan: '知识图谱 + 题库一起安排，今天该学什么、为什么，一眼看到',
+        plan: '一张图看懂先学什么、为什么，建议可以反复调整',
         bank: '数据来自你的刷题、错题、斩题与收藏记录',
         english: '数据来自你的单词听写与阅读练习',
         weekly: '最近 7 天的真实学习记录，可以保存成图片',

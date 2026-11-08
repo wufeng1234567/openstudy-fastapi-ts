@@ -9,3 +9,5 @@ from app.models.chat_upload import ChatUploadFile, ChatUploadImage
 from app.models.content import ContentReference, RagImageAsset
 # 0.4.1 真知识图谱：实体 + 有向关系 + 来源分块
 from app.models.knowledge_graph import RagGraphEntity, RagGraphRelation
+# 学习建议历史快照（只存建议，不存任务/完成态）
+from app.models.study_plan import StudyPlanSnapshot

@@ -17,47 +17,6 @@
     </div>
 
     <template v-else>
-      <div class="loop-head">
-        <div class="loop-head-main">
-          <div class="loop-head-title">
-            <h2>今日学习任务</h2>
-            <span class="loop-head-chip">学习计划</span>
-          </div>
-          <p>{{ planHeadline || data.headline }}</p>
-        </div>
-        <div class="loop-head-meta">
-          <span><b>{{ displayTasks.length }}</b> 个动作</span>
-          <span class="loop-head-divider"></span>
-          <span>预计 {{ todayMinutes }} 分钟</span>
-        </div>
-      </div>
-
-      <div class="loop-plan">
-        <article
-          v-for="(task, index) in displayTasks"
-          :key="task.id"
-          class="loop-task"
-          role="button"
-          tabindex="0"
-          @click="onTaskClick(task)"
-          @keyup.enter="onTaskClick(task)"
-        >
-          <span class="loop-task-index">0{{ index + 1 }}</span>
-          <div class="loop-task-body">
-            <div class="loop-task-title" v-html="renderQuestionContent(task.title)"></div>
-            <div class="loop-task-reason">{{ task.reason }}</div>
-            <div v-if="task.advice" class="loop-task-advice">{{ task.advice }}</div>
-          </div>
-          <div class="loop-task-side">
-            <span class="loop-task-time">{{ task.estimatedMinutes }} 分钟</span>
-            <span class="loop-task-go">{{ task.status === 'done' ? '已完成' : '开始' }} <el-icon><ArrowRight /></el-icon></span>
-          </div>
-        </article>
-        <div v-if="!displayTasks.length" class="loop-no-task">
-          当前没有需要立即处理的任务，继续保持节奏。
-        </div>
-      </div>
-
       <div class="loop-columns">
         <div class="loop-card health-card">
           <div class="loop-card-head">
@@ -193,7 +152,6 @@ import { computed, onMounted, ref } from 'vue'
 import { Loading, TrendCharts, ArrowRight } from '@element-plus/icons-vue'
 import {
   getLearningLoop,
-  getStudyPlanToday,
   type LearningLoopHealthNode,
   type LearningLoopResult
 } from '@/api/userStats/userStats'
@@ -202,12 +160,10 @@ import { renderQuestionContent } from '@/utils/latex'
 const emit = defineEmits<{
   (e: 'practice'): void
   (e: 'openQuestion', item: { questionId: number }): void
-  (e: 'openPlanTask', item: any): void
 }>()
 
 const loading = ref(true)
 const data = ref<LearningLoopResult | null>(null)
-const studyPlan = ref<any>(null)
 const selectedSubject = ref('')
 
 const emptyLoop = {
@@ -218,29 +174,9 @@ const emptyLoop = {
   errorBattle: { total: 0, mastered: 0, cleared: 0, observing: 0, active: 0, progress: 0, targets: [] }
 } as unknown as LearningLoopResult
 
-const planTodayTasks = computed(() => {
-  const days = studyPlan.value?.days || []
-  const today = new Date().toISOString().slice(0, 10)
-  const day = days.find((item: any) => String(item.date || '').slice(0, 10) === today) || days[0]
-  return day?.tasks || []
-})
-const displayTasks = computed(() => {
-  if (planTodayTasks.value.length) {
-    return planTodayTasks.value.map((task: any) => ({
-      ...task,
-      estimatedMinutes: Number(task.minutes || 0),
-      status: task.status || 'next'
-    }))
-  }
-  return data.value?.todayPlan || []
-})
-const hasContent = computed(() => Boolean(data.value?.hasData || displayTasks.value.length))
-const planHeadline = computed(() => studyPlan.value?.route?.headline || '')
+const hasContent = computed(() => Boolean(data.value?.hasData))
 const healthNodes = computed<LearningLoopHealthNode[]>(() => data.value?.healthMap || [])
 const battleTargets = computed(() => data.value?.errorBattle.targets || [])
-const todayMinutes = computed(() =>
-  displayTasks.value.reduce((sum, task: any) => sum + (task.estimatedMinutes || task.minutes || 0), 0)
-)
 const activeHealthNode = computed<LearningLoopHealthNode | null>(() => {
   const nodes = healthNodes.value
   if (!nodes.length) return null
@@ -249,14 +185,6 @@ const activeHealthNode = computed<LearningLoopHealthNode | null>(() => {
 
 function pickSubject(node: LearningLoopHealthNode) {
   selectedSubject.value = node.subject
-}
-
-function onTaskClick(task: any) {
-  if (task?.target) {
-    emit('openPlanTask', { ...task, kbId: studyPlan.value?.intent?.kbId || 0 })
-    return
-  }
-  emit('openQuestion', task)
 }
 
 /** 圆环周长 = 2π × 24 ≈ 150.8 */
@@ -268,13 +196,6 @@ function ringDash(accuracy: number) {
 async function load() {
   loading.value = true
   try {
-    try {
-      const kbId = Number(localStorage.getItem('openstudy.workspace.activeKbId') || 0)
-      const planRes: any = await getStudyPlanToday(kbId || undefined)
-      if (planRes.code === 200 && planRes.data?.hasPlan) studyPlan.value = planRes.data
-    } catch (e: any) {
-      console.warn('[学习计划] 今日任务加载失败', e)
-    }
     const res: any = await getLearningLoop()
     if (res.code === 200 && res.data?.hasData) {
       data.value = res.data

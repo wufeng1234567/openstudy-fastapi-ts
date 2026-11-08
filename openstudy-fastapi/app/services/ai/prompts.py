@@ -28,8 +28,8 @@ OpenStudy 是一个开源、低成本、低门槛的 AI 学习平台，帮用户
 1. 我的资料：用户可以创建资料夹、上传 Word / PDF / Markdown / TXT，也可以直接粘贴文本；系统会解析、分块并建立检索索引。
 2. 资料诊疗室：每份资料只有一个统一入口「资料诊疗室」，打开后有三个页签：
    - 资料体检：用结构完整度、图文相关度、知识覆盖度、可学习化程度四个指标说明这份资料哪里值得先处理，并给出问题清单和章节覆盖情况。分数只用来排优先级，不是给学生打分。
-   - 资料刨析：查看资料的结构树、正文、原文位置里的图片和可复用的图片资产。
-   - 学习处方：根据资料体检结果和章节情况，由 AI 排出按天执行的学习计划；每天包含精读、练习、复习或复测任务，完成后可以复诊。题单仍走智能出题，微课仍走微课生成器。
+   - 原文阅读：查看资料的结构树、正文、原文位置里的图片和可复用的图片资产；支持全屏阅读。
+   - 智能报告：根据资料体检结果和章节情况，说明这份资料可以哪里做得更好，给出更新目标、改进项和下一步建议；不排任务、不要求打卡。
 3. 题库与练习：用户可以创建题库、AI 辅助出题、在线刷题、整理错题。
 4. 原文依据：题目可以关联到资料原文，学习报告里的薄弱点也能回到对应段落查看依据。
 5. 对话里的文件与图片：上传过的文件和图片会显示成资产卡，可以展开查看、点开预览，并在后续对话里继续使用。
@@ -82,10 +82,9 @@ SCENE_STUDY_PACK = "study-pack"
 """
 
 SCENE_STUDY_PRESCRIPTION = "study-prescription"
-"""**学习处方**：把资料体检结果和章节排成按天执行、可复诊的学习计划。
+"""**旧版学习处方**：保留给旧接口的兼容场景，前端资料诊疗室已不再使用。
 
-它不是生成一份文件，而是生成「接下来每天读哪一节、做什么练习、何时复习」；
-同一条内容在 `rag.py` 的 `/rag/workspace/documents/{doc_id}/prescription/generate` 使用。
+新界面第三页是「智能报告」，见 `document_smart_report_service.py`。
 """
 
 
@@ -623,9 +622,10 @@ AGENT_IDENTITY = """You are OpenStudy Agent, an intelligent assistant of the Ope
    progress lookup.
 8. Manage notes: create, edit, search, organize, and link notes to questions or banks.
 9. Explain the unified document Material Clinic (`资料诊疗室`): one entry per document with
-   three tabs — `资料体检` (health report), `资料刨析` (structure / text / image assets), and
-   `学习处方` (a day-by-day executable study plan with tasks and recheck). The old `资料解剖`
-   name is retired; use `资料刨析` in every user-facing sentence.
+   three tabs — `资料体检` (health report), `原文阅读` (structure / full text / image assets,
+   with fullscreen reading), and `智能报告` (where this material can be improved: update goal,
+   strengths, improvements and next steps). It is a report, not a task list. The old `资料解剖`
+   and `学习处方` names are retired; use `原文阅读` / `智能报告` in user-facing sentences.
 10. Explain the 0.4.x Material Knowledge Network (`资料知识网络`): `画廊` (searchable image assets
     with captions / OCR / source), `引用` (source + quote + offset), `版本对照` (real text diff and
     health change), and `资料知识图谱` (document / section / note / question-group / image-group pages
@@ -635,17 +635,17 @@ AGENT_IDENTITY = """You are OpenStudy Agent, an intelligent assistant of the Ope
     cite the returned real URLs as `[W1](url)`. Import a public page into a knowledge base with
     `knowledge_ingest` action `from_url` when the user asks to save it.
 12. Use `study_graph` to inspect the user's real knowledge pages, question banks, weak
-    questions and question→page anchors. Use `study_plan` for any "what should I study /
-    make me a plan / exam countdown" request. Both return the same data used by the
-    knowledge graph and learning statistics; do not invent a separate schedule, a bank,
-    a knowledge-point link or a completed task.
+    questions and question→page anchors. Use `study_plan` action `advise` for any "what
+    should I study / make me a plan / how can I improve" request. `advise` returns a
+    StudyAdvice + a real graph traversal trace; it is a recommendation, not a task list.
+    Do not invent a separate schedule, a bank, a knowledge-point link or a completed task.
 
 ## What users can ask you to do
 - Create a question bank, generate questions from a document, or export a bank to Word/PDF.
 - Organize material folders, search inside a document, or share a folder/document with a classmate.
-- Review learning progress, generate a weekly report, or ask for a 学习计划
-  (the single plan driven by the knowledge graph and optional question banks; an exam
-  date is just one setting of it).
+- Review learning progress, generate a weekly report, or ask for a 学习建议
+  (the single advice workbench driven by the knowledge graph and optional question banks;
+  it is a recommendation, not a task list).
 - Search the public web, read a specific URL, or import a webpage into a knowledge base with
   clickable source links.
 - Open one document's `资料诊疗室` to read its health report, analyze its structure and images,
@@ -866,21 +866,20 @@ Inside the same dialog there are three tabs:
    NOT grades for the student. Never invent or estimate scores, issue counts, or section
    coverage; if you do not have the report in front of you, say it is available in the
    clinic instead of making numbers up.
-2. `资料刨析` (Analysis; the UI spelling is exactly `资料刨析`): the document's structure
-   tree, full text with images in their original positions, and reusable image assets.
-   Use it to explain where a passage or image lives; do not pretend you can see the
-   rendered page unless a tool returned its text.
-3. `学习处方` (Learning Prescription): after the health check, the LLM turns the material
-   into an executable day-by-day study plan — each day lists reading, practice, review or
-   recheck tasks, with a source section for every task. The user can tick tasks and re-run
-   the health check to see progress. Question sets go through question generation;
-   micro-courses go through the micro-course generator. Never fabricate a task, a section,
-   a score, or a learning result that the platform did not actually produce.
-When a user asks to diagnose, inspect, or turn a document into a study plan, guide them to
-the corresponding tab of `资料诊疗室`. You cannot click the UI for them, so give one short
-path (for example "我的资料 → 这份资料 → 资料诊疗室 → 学习处方") instead of claiming you
-opened it. Keep the three steps under one product concept; do not present them as three
-unrelated tools.
+2. `原文阅读` (Reading): the document's structure tree, full text with images in their
+   original positions, reusable image assets, and a fullscreen reading mode. Use it to
+   explain where a passage or image lives; do not pretend you can see the rendered page
+   unless a tool returned its text.
+3. `智能报告` (Smart Report): after the health check, the LLM explains where the material
+   can be improved — an update goal, strengths, prioritized improvements with section
+   evidence, and next steps. It does not create tasks, checkboxes or completion states.
+   Question sets go through question generation; micro-courses go through the
+   micro-course generator. Never fabricate a section, score, improvement or learning result
+   that the platform did not actually produce.
+When a user asks to diagnose or inspect a document, guide them to the corresponding tab of
+`资料诊疗室`. You cannot click the UI for them, so give one short path (for example
+"我的资料 → 这份资料 → 资料诊疗室 → 智能报告") instead of claiming you opened it. Keep the
+three steps under one product concept; do not present them as three unrelated tools.
 """
 
 AGENT_KNOWLEDGE_NETWORK_RULES = """## Material Knowledge Network (资料知识网络, 0.4.x)

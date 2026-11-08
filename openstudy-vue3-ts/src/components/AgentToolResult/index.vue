@@ -105,6 +105,14 @@
 
     <LearningChart v-if="learningChart" :chart="learningChart" />
 
+    <StudyPlanGenerativeCard
+      v-if="studyPlanAdvice"
+      :advice="studyPlanAdvice"
+      :trace="studyPlanTrace"
+      :graph="studyPlanGraph"
+      :jump-url="studyPlanJumpUrl"
+    />
+
     <!--
       网页搜索：搜索结果默认折叠成一行「搜索到 N 个网页」。
       交互/视觉对齐 `AgentReasoning` 的「已深度思考 X 秒」：
@@ -359,6 +367,7 @@ import AgentToolDetail from '@/components/AgentToolDetail/index.vue'
 // 思维导图：`mind_map` 工具吐出结构化树，用现成组件画成卡片+连线（2026-10-27）
 import MindMap from '@/components/MindMap/index.vue'
 import LearningChart from '@/components/LearningChart/index.vue'
+import StudyPlanGenerativeCard from '@/components/StudyPlanGenerativeCard/index.vue'
 import DocxPreview from '@/components/DocxPreview/index.vue'
 import ChatFileAssetCard from '@/components/ChatFileAssetCard/index.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
@@ -445,7 +454,7 @@ const TOOL_LABELS: Record<string, string> = {
   // 只读检索类：它们没有 action 参数，卡片上只有工具名这一层
   knowledge_search: '资料检索',
   web_search: '网页搜索',
-  study_plan: '学习规划',
+  study_plan: '学习建议',
   memory_search: '记忆检索',
   // 工作空间找文件（workspace_search.py）——2026-10-22
   workspace_search: '找资料',
@@ -497,6 +506,7 @@ const ACTION_LABELS: Record<string, string> = {
   error_analysis: '错题分析',
   growth: '成长记录',
   // study_plan
+  advise: '生成学习建议',
   plan: '生成计划',
   today: '今日任务',
   adjust: '调整计划',
@@ -770,6 +780,28 @@ const learningChart = computed<Record<string, any> | null>(() => {
   if (!chart || typeof chart !== 'object') return null
   if (!Array.isArray(chart.xAxis) || !Array.isArray(chart.series) || !chart.series.length) return null
   return chart
+})
+
+/** 学习建议生成式卡片：只认 data.advice + data.trace 这组输出契约。 */
+const studyPlanAdvice = computed<Record<string, any> | null>(() => {
+  const d = unwrapToolData(props.data)
+  const advice = (d as any)?.advice
+  const trace = (d as any)?.trace
+  if (!advice || typeof advice !== 'object' || !trace || typeof trace !== 'object') return null
+  if (!Array.isArray(advice.phases) || !advice.title) return null
+  return advice
+})
+const studyPlanTrace = computed<Record<string, any> | null>(() => {
+  const d = unwrapToolData(props.data)
+  return (d as any)?.trace || null
+})
+const studyPlanGraph = computed<Record<string, any> | null>(() => {
+  const d = unwrapToolData(props.data)
+  return (d as any)?.graph || { nodes: [], edges: [] }
+})
+const studyPlanJumpUrl = computed(() => {
+  const d = unwrapToolData(props.data)
+  return String((d as any)?.jumpUrl || '')
 })
 
 /**

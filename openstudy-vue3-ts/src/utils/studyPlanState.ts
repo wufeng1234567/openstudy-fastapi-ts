@@ -15,6 +15,9 @@ export interface StudyPlanConfig {
   sinceMs: number
   savedAt: number
   planId?: string
+  sourceTypes?: string[]
+  seedNodeId?: string
+  adviceId?: number
 }
 
 // 兼容旧键名：不新建第二个计划状态键，只在原键上做加性字段扩展。
@@ -56,7 +59,12 @@ function normalizeConfig(value: any): StudyPlanConfig | null {
       : [],
     sinceMs,
     savedAt: Number(value.savedAt || Date.now()),
-    planId: value.planId ? String(value.planId) : undefined
+    planId: value.planId ? String(value.planId) : undefined,
+    sourceTypes: Array.isArray(value.sourceTypes)
+      ? value.sourceTypes.map(String).filter((x: string) => ['wiki', 'bank', 'document', 'web', 'note', 'image'].includes(x))
+      : undefined,
+    seedNodeId: value.seedNodeId ? String(value.seedNodeId) : undefined,
+    adviceId: Number(value.adviceId || 0) || undefined
   }
 }
 

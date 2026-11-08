@@ -1,11 +1,10 @@
-"""`study_plan` —— 在智能对话里生成/查看「学习计划」。
+"""`study_plan` —— 在智能对话里生成/查看「学习建议」。
 
-用户说「我 7 天后考微积分，帮我安排」时，模型不应该自己编一份计划，
-也不应该把用户踢回某个页面。这个工具直接复用 `study_plan_service` 的
-确定性排程，返回与知识图谱、学习统计同一份 StudyPlan。
+旧 action（plan/today/adjust/reassess）仍返回可重建的学习计划；新 action
+`advise` 返回可反复修改的 `StudyAdvice` + 真实图遍历 `trace`，供页面/对话
+生成式卡片复用。
 
-只读：不建表、不写完成态、不复制题目。真正完成由答题流水和主题页阅读
-自动回写。
+不建任务表、不写完成态、不复制题目。历史只存建议快照。
 """
 
 from __future__ import annotations
@@ -13,6 +12,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
+from app.services import study_advice_service, study_plan_history_service
 from app.services.ai.agent.base import AgentTool, ToolContext, fail, ok
 from app.services.study_plan_service import build_study_plan
 
@@ -61,6 +61,70 @@ async def _resolve_kb_id(ctx: ToolContext, params: Dict[str, Any]) -> int | Dict
     )
 
 
+def _compact_graph(graph: Dict[str, Any], trace: Dict[str, Any]) -> Dict[str, Any]:
+    """对话卡片只需要 trace 子图，避免整张图灌进模型上下文。"""
+    visited = {str(x) for x in (trace.get("visitedNodeIds") or [])}
+    nodes = [node for node in (graph.get("nodes") or []) if str(node.get("id")) in visited]
+    node_ids = {str(node["id"]) for node in nodes}
+    edges = [
+        edge
+        for edge in (graph.get("edges") or [])
+        if str(edge.get("source")) in node_ids and str(edge.get("target")) in node_ids
+    ]
+    return {"nodes": nodes[:30], "edges": edges[:40], "stats": graph.get("stats") or {}}
+
+
+async def _run_advise(ctx: ToolContext, params: Dict[str, Any], kb_id: int) -> Dict[str, Any]:
+    source_types = params.get("source_types") or ["wiki", "bank"]
+    if not isinstance(source_types, list):
+        source_types = ["wiki", "bank"]
+    preview = await study_advice_service.prepare_trace(
+        ctx.db,
+        int(ctx.user_id),
+        kb_id=int(kb_id or 0),
+        bank_ids=[int(x) for x in (params.get("bank_ids") or []) if _to_int(x)],
+        source_types=source_types,
+        seed_node_id=str(params.get("seed_node_id") or ""),
+        goal=str(params.get("goal") or "weakness"),
+        daily_minutes=_to_int(params.get("daily_minutes")) or 30,
+        horizon_days=_to_int(params.get("horizon_days")) or 14,
+        instruction=str(params.get("instruction") or ""),
+    )
+    advice = await study_advice_service.generate_advice(
+        ctx.db,
+        facts=preview["facts"],
+        trace=preview["trace"],
+        instruction=str(params.get("instruction") or ""),
+        use_llm=True,
+    )
+    # 用独立会话保存快照，避免在 Agent 的工具事务里 commit 污染外层。
+    from app.database import async_session_factory
+
+    async with async_session_factory() as save_db:
+        saved = await study_plan_history_service.save_snapshot(
+            save_db,
+            user_id=int(ctx.user_id),
+            kb_id=int(kb_id or 0),
+            title=str(advice.get("title") or ""),
+            scope=advice.get("scope") or {},
+            advice=advice,
+            trace=preview["trace"],
+            graph=_compact_graph(preview["graph"], preview["trace"]),
+            parent_id=_to_int(params.get("parent_advice_id")) or 0,
+            source="chat",
+        )
+    return ok(
+        action="advise",
+        kbId=kb_id,
+        adviceId=saved.get("id") or 0,
+        advice=advice,
+        trace=preview["trace"],
+        graph=_compact_graph(preview["graph"], preview["trace"]),
+        message=str(advice.get("summary") or "已生成学习建议"),
+        jumpUrl=f"/front/myQuestion/myStats?tab=plan&adviceId={saved.get('id') or 0}",
+    )
+
+
 def _public_plan(plan: Dict[str, Any], limit_days: int = MAX_DAYS_RETURNED) -> Dict[str, Any]:
     """控制回灌模型的长度：完整 route 保留，days 最多前 N 天。"""
     return {
@@ -81,24 +145,21 @@ def _public_plan(plan: Dict[str, Any], limit_days: int = MAX_DAYS_RETURNED) -> D
 class StudyPlanTool(AgentTool):
     name = "study_plan"
     description = (
-        "Build or read the user's single study plan. Use this whenever the user asks "
-        "what to study today, asks for a study plan / schedule / exam countdown plan, "
-        "mentions a goal such as 'in 7 days I have an exam', or asks to connect study "
-        "tasks to their knowledge graph or question bank. The plan is computed "
-        "deterministically from the real knowledge graph, practice diagnosis and "
-        "practice logs; it never invents pages, questions or completion. action values: "
-        "plan=return the full plan; today=return today's tasks and progress; "
-        "adjust=recompute with new parameters; reassess=recompute from the latest real "
-        "learning data. Pass kb_id when the user has more than one knowledge base; pass "
-        "bank_ids when the user wants specific question banks included. If the user only "
-        "wants question-bank study, kb_id can be omitted. Do not use this for simply "
-        "querying statistics; use learning_stats for raw numbers, and study_graph for "
-        "graph/page/bank structure."
+        "Give the user a study recommendation grounded in the real knowledge graph and "
+        "question banks. Use action=advise whenever the user asks for a study plan, "
+        "what to study next, how to improve, or asks to connect a topic/note/document/"
+        "question bank to a plan. `advise` returns a StudyAdvice (no tasks/checkboxes), "
+        "a real graph traversal trace, a compact graph for the generative card, and a "
+        "snapshot id. It never invents nodes, edges, questions or completion. Old "
+        "actions plan/today/adjust/reassess remain for backward compatibility; prefer "
+        "advise for new conversations. Pass kb_id when the user has multiple knowledge "
+        "bases; pass bank_ids for specific banks; pass seed_node_id when the user picked "
+        "a node. Use study_graph for raw graph search, learning_stats for raw numbers."
     )
-    label = "学习计划"
+    label = "学习建议"
     description_zh = (
-        "学习计划：按知识图谱和题库生成今天/未来几天的可执行学习任务；"
-        "plan=完整计划、today=今日任务、adjust=按新目标重算、reassess=按最新学习数据重算。"
+        "学习建议：基于真实知识图谱与题库生成可反复修改的建议（不是任务清单）；"
+        "advise=生成/调整建议（含真实遍历 trace），plan/today/adjust/reassess=旧版兼容。"
     )
     parameters = {
         "type": "object",
@@ -106,7 +167,7 @@ class StudyPlanTool(AgentTool):
             "action": {
                 "type": "string",
                 "description": "Operation to perform",
-                "enum": ["plan", "today", "adjust", "reassess"],
+                "enum": ["advise", "plan", "today", "adjust", "reassess"],
             },
             "kb_id": {
                 "type": "integer",
@@ -116,6 +177,23 @@ class StudyPlanTool(AgentTool):
                 "type": "array",
                 "items": {"type": "integer"},
                 "description": "Question bank IDs to include as a real question-bank axis in the same plan. Use study_graph action=bank first if the user names a bank instead of an ID. Omit to use graph-only tasks; when there is no knowledge base, the tool falls back to the user's real weak questions.",
+            },
+            "source_types": {
+                "type": "array",
+                "items": {"type": "string", "enum": ["wiki", "bank", "document", "web", "note", "image"]},
+                "description": "Graph source layers to include. Default wiki+bank. Add document/web/note/image when the user explicitly mentions those materials.",
+            },
+            "seed_node_id": {
+                "type": "string",
+                "description": "Optional unified node id selected by the user, e.g. topic:12, bank:1293, note:9, doc:45, web:45, image:45.",
+            },
+            "instruction": {
+                "type": "string",
+                "description": "The user's natural-language adjustment, e.g. 'more basic' or 'only 20 minutes per day'.",
+            },
+            "parent_advice_id": {
+                "type": "integer",
+                "description": "Previous snapshot id when this is an adjustment of an existing advice.",
             },
             "goal": {
                 "type": "string",
@@ -164,14 +242,16 @@ class StudyPlanTool(AgentTool):
 
     async def execute(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
         action = str(params.get("action") or "plan").strip().lower()
-        if action not in {"plan", "today", "adjust", "reassess"}:
+        if action not in {"advise", "plan", "today", "adjust", "reassess"}:
             return fail(
                 f"未知操作: {action}",
-                "action 只能是 plan / today / adjust / reassess。",
+                "action 只能是 advise / plan / today / adjust / reassess。",
             )
         kb = await _resolve_kb_id(ctx, params)
         if isinstance(kb, dict):
             return kb
+        if action == "advise":
+            return await _run_advise(ctx, params, int(kb or 0))
         goal = str(params.get("goal") or ("today" if action == "today" else "weakness"))
         if action == "today" and goal not in {"today", "weakness", "foundation", "explore"}:
             goal = "today"

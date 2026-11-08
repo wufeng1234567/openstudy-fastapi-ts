@@ -357,8 +357,9 @@
             <div class="kbp-docs" v-loading="docsLoading">
               <div v-for="doc in visibleFiles" :key="doc.docId" class="kbp-doc"
                 :data-doc-id="doc.docId"
-                :class="{ 'is-jump-target': jumpTargetDocId === Number(doc.docId) }">
-                <div class="kbp-doc__check">
+                :class="{ 'is-jump-target': jumpTargetDocId === Number(doc.docId) }"
+                @click="showAnatomy(doc)">
+                <div class="kbp-doc__check" @click.stop>
                   <el-checkbox :model-value="selectedDocIds.includes(Number(doc.docId))"
                     @change="toggleDocSelected(Number(doc.docId))" />
                 </div>
@@ -389,7 +390,7 @@
                     {{ doc.errorMsg }}
                   </div>
                 </div>
-                <div class="kbp-doc__ops">
+                <div class="kbp-doc__ops" @click.stop>
                   <span
                     class="kbp-doc__op"
                     :class="{ 'is-blocked': doc.disabled === 1 }"
@@ -660,7 +661,7 @@
       </div>
     </el-dialog>
 
-    <!-- 统一入口：资料体检 / 资料刨析 / 学习处方共用一套工作台 -->
+    <!-- 统一入口：资料体检 / 原文阅读 / 智能报告共用一套工作台 -->
     <DocumentClinicDialog ref="clinicRef" :show-edit="true" @organize="startOrganizeFromHealth"
       @ask="askFromHealth" @edit="openEditor" />
 
@@ -3184,9 +3185,9 @@ function showHealth(doc: any) {
   clinicRef.value?.open(doc, 'health')
 }
 
-function showPrescription(doc: any) {
+function showSmartReport(doc: any) {
   if (!doc?.docId) return
-  clinicRef.value?.open(doc, 'prescription')
+  clinicRef.value?.open(doc, 'report')
 }
 
 function startOrganizeFromHealth(doc: any) {
@@ -4645,6 +4646,7 @@ onBeforeUnmount(() => {
   padding: 11px 12px;
   border-radius: 9px;
   border: 1px solid transparent;
+  cursor: pointer;
   transition: all 0.15s;
 
   &:hover {
