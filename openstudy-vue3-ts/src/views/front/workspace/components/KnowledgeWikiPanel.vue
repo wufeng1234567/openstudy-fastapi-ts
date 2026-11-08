@@ -90,7 +90,7 @@
               :marker-end="mapShowArrows ? (isMapEdgeActive(edge) ? 'url(#kw-arrow-hl)' : 'url(#kw-arrow)') : undefined" />
             <line v-for="line in adviceTraceLines" :key="`advice-${line.key}`" :x1="line.x1" :y1="line.y1" :x2="line.x2" :y2="line.y2"
               class="kw-map-advice-ray" />
-            <path v-if="learningPathD" :d="learningPathD" class="kw-map-learning-path" :class="{ 'is-fallback': learningRoute?.mode === 'fallback' }" />
+
             <g v-for="node in mapNodes" :key="node.id" class="kw-map-node" :data-node-id="String(node.id)"
               :class="{ 'is-selected': isMapSelected(node), 'is-hovered': mapHoveredId === String(node.id), 'is-dimmed': isMapNodeDimmed(node), 'is-learned': Number(node.learning?.viewCount || 0) > 0, 'is-weak': Number(node.learning?.practiceCount || 0) > 0 && Number(node.learning?.accuracy || 0) < 60, 'is-route': isRouteNode(node), 'is-next-stop': isNextStopNode(node), 'is-advice-visited': adviceVisitedPageIds.includes(String(node.pageId)), 'is-advice-dimmed': adviceMode && adviceVisitedPageIds.length > 0 && !adviceVisitedPageIds.includes(String(node.pageId)) }"
               :transform="`translate(${node.x} ${node.y})`"
@@ -143,10 +143,6 @@
                 <OsIcon name="circle-help" :size="14" />
                 <span>使用说明</span>
               </button>
-              <button type="button" class="kw-graph-action kw-route-action" :disabled="routeLoading" @click="generateRoute()">
-                <OsIcon name="sparkles" :size="14" />
-                <span>{{ routeLoading ? '正在规划…' : '查看今日学习路径' }}</span>
-              </button>
             </div>
             <div class="kw-graph-panel__divider"></div>
             <div class="kw-graph-panel__overview">
@@ -168,7 +164,7 @@
             </button>
           </template>
         </aside>
-        <div v-if="!adviceMode" class="kw-graph-hint" :class="{ 'is-route': routeActive }">点节点查看主题页 · 点「生成学习路径」查看今天的安排</div>
+        <div v-if="!adviceMode" class="kw-graph-hint"><span>点节点查看主题页 · 右侧开启学习建议模式后可生成建议</span></div>
       </div>
       <KnowledgeAdviceHost
         ref="adviceHostRef"
@@ -233,13 +229,6 @@
             <span>练过 {{ activePage.learning.practiceCount }} 题</span>
             <span v-if="activePage.learning.practiceCount">正确率 {{ activePage.learning.accuracy }}%</span>
           </div>
-        </div>
-
-        <div class="kw-detail__route-action">
-          <span>{{ routeActive ? '当前正在看学习路径' : '想把这一页安排进学习计划？' }}</span>
-          <button type="button" @click="planToPage(activePage.pageId)">
-            {{ routeActive ? '以此页为目标重新规划' : '从这一页规划学习路径' }}
-          </button>
         </div>
 
         <div v-if="activePage.status === 'stale'" class="kw-detail__warning">
@@ -399,7 +388,7 @@
         </div>
         <div class="kw-guide-step">
           <i>02</i>
-          <div><b>生成一条学习路径</b><p>点右侧“查看今日学习路径”，系统会按图谱连接、阅读记录和练习情况，挑出今天先看的几页。</p></div>
+          <div><b>生成学习建议</b><p>打开右侧「学习建议模式」，点一个节点作为起点，系统会沿着图谱关系生成可调整的学习建议。</p></div>
         </div>
         <div class="kw-guide-step">
           <i>03</i>
@@ -1737,7 +1726,6 @@ async function switchMap() {
       fitMapView()
       if (String(props.searchQuery || '').trim()) focusMapSearch()
       startMapAnimation()
-      if (!learningRoute.value) await maybeRestoreRoute()
     }
   } catch {
     // 地图失败时保持主题页入口，不影响阅读。
