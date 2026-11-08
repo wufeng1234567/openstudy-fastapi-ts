@@ -529,6 +529,7 @@
       :active-kb-id="activeKbId"
       :search-query="workspaceSearch"
       :search-submit-key="wikiSearchSubmitKey"
+      :initial-page-id="wikiInitialPageId"
       @stats="onMapStats"
       @locate="onGraphLocate"
       @ask="onWikiAsk"
@@ -1017,6 +1018,9 @@ watch(
 )
 
 const activeKb = computed(() => kbs.value.find((k) => k.kbId === activeKbId.value) || null)
+
+/** 从学习计划点“打开完整主题页”时，用 ?pageId= 直接打开对应主题页。 */
+const wikiInitialPageId = computed(() => Number(route.query.pageId || 0) || null)
 
 /** 左侧资料夹搜索：只过滤展示，不影响当前选中的库。 */
 const filteredKbs = computed(() => {

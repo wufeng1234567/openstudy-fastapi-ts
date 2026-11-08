@@ -8,6 +8,7 @@ from app.services.study_plan_service import (
     _apply_progress,
     _pack_days,
     _task_done,
+    _tasks_for_banks,
     _tasks_for_stop,
     plan_dates,
 )
@@ -99,3 +100,45 @@ def test_apply_progress_marks_first_open_current_and_done_tasks():
     assert days[0]["tasks"][1]["status"] == "done"
     assert progress["doneTasks"] == 2
     assert progress["percent"] == 100.0
+
+
+def test_bank_tasks_use_real_question_ids_and_skip_legacy_banks():
+    diagnosis = {
+        1: {
+            "questionId": 101,
+            "bankId": 9,
+            "bankName": "题库 A",
+            "level": "repeated_failure",
+            "levelText": "反复失守",
+            "questionText": "题一",
+            "advice": "先补前置",
+            "attempts": 5,
+            "accuracy": 20,
+        },
+        2: {
+            "questionId": 102,
+            "bankId": 9,
+            "bankName": "题库 A",
+            "level": "lapsing",
+            "levelText": "一做就错",
+            "questionText": "题二",
+            "attempts": 3,
+            "accuracy": 30,
+        },
+        3: {
+            "questionId": 201,
+            "bankId": 10,
+            "bankName": "考前计划·旧库",
+            "level": "repeated_failure",
+            "levelText": "反复失守",
+            "questionText": "旧题",
+            "attempts": 3,
+            "accuracy": 10,
+        },
+    }
+    tasks = _tasks_for_banks(diagnosis, max_banks=2, max_per_bank=2)
+
+    assert [task["target"]["questionId"] for task in tasks] == [101, 102]
+    assert all(task["target"]["kind"] == "question" for task in tasks)
+    assert all(task["sourceNodeId"] == "b:9" for task in tasks)
+    assert all(task["axis"] == "bank" for task in tasks)

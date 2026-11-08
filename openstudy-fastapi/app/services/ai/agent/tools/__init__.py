@@ -36,6 +36,7 @@ from app.services.ai.agent.tools.question_mark_manage import QuestionFlagManageT
 from app.services.ai.agent.tools.review_sheet import ReviewSheetTool
 from app.services.ai.agent.tools.workspace_search import WorkspaceSearchTool
 from app.services.ai.agent.tools.web_search import WebSearchTool
+from app.services.ai.agent.tools.study_graph import StudyGraphTool
 from app.services.ai.agent.tools.study_plan import StudyPlanTool
 # 0.6.x 知识百科：主题页 CRUD + 画廊图片关联（写操作走确认卡）
 from app.services.ai.agent.tools.wiki_manage import WikiManageTool
@@ -66,9 +67,12 @@ registry.register(ChatFileManageTool())
 #    与 knowledge_search 的分工：那个搜用户自己的资料，这个搜公开互联网。
 #    数据源是 DeepSeek 官方 Search / Fetch API，不经过任何网页版反代。
 registry.register(WebSearchTool())
-# —— 2026-11-08 知航 · 活计划：把知识图谱航线展开成按天任务。
+# —— 2026-11-08 学习计划：把知识图谱与题库展开成按天任务。
 #    这是「学习处方 / 今日处方 / 考前计划」统一后的唯一计划入口；只读、无计划表。
 registry.register(StudyPlanTool())
+# —— 2026-11-08 知识图谱查询：LLM 先查知识页/题库/真实题源映射，再决定怎么规划。
+#    只读、不猜知识点、不写用户数据。
+registry.register(StudyGraphTool())
 # —— 2026-11-06 画廊取图：让智能体主动列出 / 搜索 / 取用画廊图片资产。
 #    ⚠️ 与 chat_file_manage 的分工：那个只找**本次对话**上传的附件；画廊是
 #       文档插图 + 聊天图片的长期资产索引，有 assetKey、来源章节和描述/OCR。
@@ -168,5 +172,6 @@ __all__ = [
     "MindMapTool",
     "WikiManageTool",
     "WebSearchTool",
+    "StudyGraphTool",
     "StudyPlanTool",
 ]

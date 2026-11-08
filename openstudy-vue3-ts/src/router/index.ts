@@ -495,14 +495,14 @@ export const constantRoutes: AppRouteRecordRaw[] = [
             hidden: true
           },
           {
-            /* 旧的独立考前计划页已并入「学习统计」的第四个 tab */
+            /* 旧的独立考前计划页并入唯一「学习计划」tab；旧书签仍能落到这里 */
             path: 'examPlan',
             name: 'FrontExamPlan',
             redirect: (to) => ({
               path: '/front/myQuestion/myStats',
-              query: { ...to.query, tab: 'exam' }
+              query: { ...to.query, tab: 'plan' }
             }),
-            meta: { title: '考前计划', layout: 'front' },
+            meta: { title: '学习计划', layout: 'front' },
             hidden: true
           }
         ]

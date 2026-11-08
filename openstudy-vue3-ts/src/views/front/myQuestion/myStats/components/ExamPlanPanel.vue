@@ -222,7 +222,7 @@
                     <div class="task-detail">{{ task.detail }}</div>
                   </div>
                   <el-checkbox
-                    v-if="task.questionId === 0"
+                    v-if="task.questionId === 0 && !props.readonly"
                     class="task-check"
                     :model-value="isTaskDone(day, task, ti)"
                     @click.stop
@@ -270,6 +270,8 @@ import {
 import { renderQuestionContent } from '@/utils/latex'
 
 defineOptions({ name: 'ExamPlan' })
+
+const props = defineProps<{ readonly?: boolean }>()
 
 const STORAGE_KEY = 'os_exam_plan_v1'
 
@@ -432,6 +434,7 @@ function dayCompleted(day: any) {
 }
 
 function toggleManual(day: any, index: number) {
+  if (props.readonly) return
   const key = `${day.date}|${index}`
   if (manualDone.value.includes(key)) {
     manualDone.value = manualDone.value.filter((x) => x !== key)
@@ -521,6 +524,7 @@ async function loadBanks() {
 }
 
 async function generate() {
+  if (props.readonly) return
   const fixes = normalizePlanFormDates()
   if (fixes.length) {
     dateFallbackHint.value = fixes.join('；')

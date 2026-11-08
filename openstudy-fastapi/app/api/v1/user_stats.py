@@ -524,14 +524,16 @@ async def get_growth(
 
 @router.get("/study-plan-today")
 async def get_study_plan_today(
-    kbId: Optional[int] = Query(None, gt=0),
+    kbId: Optional[int] = Query(None, ge=0),
+    bankIds: str = Query("", description="题库 ID，逗号分隔"),
+    sinceMs: Optional[int] = Query(None, ge=0, description="计划生成时间戳（毫秒）"),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """今日学习任务：走「知航 · 活计划」，无 kbId 时自动选默认资料夹。
+    """今日学习任务：学习计划的兼容薄封装，只调用一次 build_study_plan。
 
-    这是学习统计页与知识图谱共用同一份计划的服务端入口，不再生成第二套
-    “今日处方”。找不到资料夹时返回 `hasPlan=false`，由旧学习闭环兜底。
+    与统计页「学习计划」读同一份数据；今天没有任务时如实返回空，不用
+    `days[0]` 冒充今天。无资料夹时允许 kbId=0，仅按题库安排。
     """
     from datetime import date as _date
 
@@ -539,10 +541,8 @@ async def get_study_plan_today(
     from app.services.study_plan_service import build_study_plan
 
     uid = int(current_user.get("user_id") or 0)
-    candidates: list[int] = []
-    if kbId:
-        candidates.append(int(kbId))
-    else:
+    target_kb = int(kbId or 0)
+    if kbId is None:
         try:
             bases = await rws.list_knowledge_bases(db, uid)
         except Exception:  # noqa: BLE001
@@ -551,40 +551,35 @@ async def get_study_plan_today(
             bases,
             key=lambda item: (0 if int(item.get("isDefault") or 0) == 1 else 1, -int(item.get("docCount") or 0)),
         )
-        candidates = [int(item.get("kbId") or 0) for item in ordered if int(item.get("kbId") or 0)]
-    if not candidates:
-        return success({"hasPlan": False, "reason": "还没有资料夹，先生成知识百科主题页", "todayTasks": []})
-    last_plan: dict = {}
-    for target_kb in candidates:
+        target_kb = int(ordered[0].get("kbId") or 0) if ordered else 0
+    bank_list: list[int] = []
+    if bankIds.strip():
         try:
-            plan = await build_study_plan(
-                db, uid, int(target_kb), goal="today", horizon_days=7, daily_minutes=40
-            )
-        except Exception:  # noqa: BLE001
-            continue
-        last_plan = plan
-        if plan.get("route", {}).get("stops"):
-            today = _date.today().isoformat()
-            day = next((item for item in plan.get("days") or [] if str(item.get("date")) == today), None)
-            if day is None and plan.get("days"):
-                day = plan["days"][0]
-            return success(
-                {
-                    **plan,
-                    "hasPlan": True,
-                    "todayTasks": (day or {}).get("tasks") or [],
-                }
-            )
+            bank_list = [int(x) for x in bankIds.split(",") if x.strip()]
+        except ValueError:
+            return error("bankIds 格式应为逗号分隔的整数", code=400)
+    try:
+        plan = await build_study_plan(
+            db,
+            uid,
+            target_kb,
+            goal="today",
+            horizon_days=7,
+            daily_minutes=40,
+            bank_ids=bank_list,
+            since_ms=sinceMs,
+        )
+    except Exception as e:  # noqa: BLE001
+        return error(f"读取今日学习任务失败：{e}")
     today = _date.today().isoformat()
-    day = next((item for item in last_plan.get("days") or [] if str(item.get("date")) == today), None)
-    if day is None and last_plan.get("days"):
-        day = last_plan["days"][0]
+    day = next((item for item in plan.get("days") or [] if str(item.get("date")) == today), None)
+    today_tasks = (day or {}).get("tasks") or []
     return success(
         {
-            **last_plan,
-            "hasPlan": False,
-            "reason": "资料夹还没有可规划的知识百科主题页",
-            "todayTasks": (day or {}).get("tasks") or [],
+            **plan,
+            "hasPlan": bool(plan.get("days")),
+            "reason": "" if plan.get("days") else (plan.get("route", {}).get("headline") or "还没有可执行的学习任务"),
+            "todayTasks": today_tasks,
         }
     )
 

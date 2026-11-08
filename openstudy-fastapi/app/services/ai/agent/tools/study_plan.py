@@ -1,4 +1,4 @@
-"""`study_plan` —— 在智能对话里生成/查看「知航 · 活计划」。
+"""`study_plan` —— 在智能对话里生成/查看「学习计划」。
 
 用户说「我 7 天后考微积分，帮我安排」时，模型不应该自己编一份计划，
 也不应该把用户踢回某个页面。这个工具直接复用 `study_plan_service` 的
@@ -49,10 +49,15 @@ async def _resolve_kb_id(ctx: ToolContext, params: Dict[str, Any]) -> int | Dict
     bases = await rws.list_knowledge_bases(ctx.db, ctx.user_id)
     if len(bases) == 1:
         return int(bases[0]["kbId"])
+    # 用户明确只按题库安排时，不需要知识图谱资料夹。
+    if params.get("bank_ids"):
+        return 0
+    if not bases:
+        return 0
     names = "、".join(str(item.get("name") or "未命名") for item in bases[:8])
     return fail(
         "生成学习计划需要先确定用哪个资料夹的知识图谱",
-        f"当前有 {len(bases)} 个资料夹：{names}。请让用户指定一个，再传 kb_id。",
+        f"当前有 {len(bases)} 个资料夹：{names}。请让用户指定一个，再传 kb_id；如果只想按题库安排，请传 bank_ids。",
     )
 
 
@@ -62,6 +67,8 @@ def _public_plan(plan: Dict[str, Any], limit_days: int = MAX_DAYS_RETURNED) -> D
         "planId": plan.get("planId"),
         "generatedAt": plan.get("generatedAt"),
         "intent": plan.get("intent") or {},
+        "bankIds": plan.get("bankIds") or [],
+        "axisSummary": plan.get("axisSummary") or {},
         "window": plan.get("window") or {},
         "route": plan.get("route") or {},
         "days": (plan.get("days") or [])[:limit_days],
@@ -74,22 +81,23 @@ def _public_plan(plan: Dict[str, Any], limit_days: int = MAX_DAYS_RETURNED) -> D
 class StudyPlanTool(AgentTool):
     name = "study_plan"
     description = (
-        "Build or read the user's single knowledge-graph-driven study plan "
-        "(知航 · 活计划). Use this whenever the user asks what to study today, asks for "
-        "a study plan / schedule / exam countdown plan, mentions a goal such as "
-        "'in 7 days I have an exam', or asks to connect study tasks to their knowledge "
-        "graph. The plan is computed deterministically from the real knowledge graph, "
-        "practice diagnosis and practice logs; it does not invent pages, questions or "
-        "completion. action values: plan=return the full plan; today=return today's "
-        "tasks and progress; adjust=recompute with new parameters; reassess=recompute "
-        "from the latest real learning data. Always pass kb_id when the user has more "
-        "than one knowledge base; if you do not know it, ask the user or call "
-        "knowledge_base_manage action=list first. Do not use this for simply querying "
-        "statistics; use learning_stats for raw numbers."
+        "Build or read the user's single study plan. Use this whenever the user asks "
+        "what to study today, asks for a study plan / schedule / exam countdown plan, "
+        "mentions a goal such as 'in 7 days I have an exam', or asks to connect study "
+        "tasks to their knowledge graph or question bank. The plan is computed "
+        "deterministically from the real knowledge graph, practice diagnosis and "
+        "practice logs; it never invents pages, questions or completion. action values: "
+        "plan=return the full plan; today=return today's tasks and progress; "
+        "adjust=recompute with new parameters; reassess=recompute from the latest real "
+        "learning data. Pass kb_id when the user has more than one knowledge base; pass "
+        "bank_ids when the user wants specific question banks included. If the user only "
+        "wants question-bank study, kb_id can be omitted. Do not use this for simply "
+        "querying statistics; use learning_stats for raw numbers, and study_graph for "
+        "graph/page/bank structure."
     )
-    label = "学习规划"
+    label = "学习计划"
     description_zh = (
-        "知航 · 活计划：按知识图谱生成今天/未来几天的可执行学习任务；"
+        "学习计划：按知识图谱和题库生成今天/未来几天的可执行学习任务；"
         "plan=完整计划、today=今日任务、adjust=按新目标重算、reassess=按最新学习数据重算。"
     )
     parameters = {
@@ -102,7 +110,12 @@ class StudyPlanTool(AgentTool):
             },
             "kb_id": {
                 "type": "integer",
-                "description": "Knowledge base ID whose knowledge graph should drive the plan. Required when the user has multiple knowledge bases.",
+                "description": "Knowledge base ID whose knowledge graph should drive the plan. Required when the user has multiple knowledge bases and wants graph tasks.",
+            },
+            "bank_ids": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "description": "Question bank IDs to include as a real question-bank axis in the same plan. Use study_graph action=bank first if the user names a bank instead of an ID. Omit to use graph-only tasks; when there is no knowledge base, the tool falls back to the user's real weak questions.",
             },
             "goal": {
                 "type": "string",
@@ -171,11 +184,14 @@ class StudyPlanTool(AgentTool):
         section_indexes = params.get("section_indexes") or []
         if not isinstance(section_indexes, list):
             section_indexes = []
+        bank_ids = params.get("bank_ids") or []
+        if not isinstance(bank_ids, list):
+            bank_ids = []
         try:
             plan = await build_study_plan(
                 ctx.db,
                 ctx.user_id,
-                kb,
+                int(kb or 0),
                 goal=goal,
                 exam_date=exam_date,
                 horizon_days=horizon,
@@ -184,6 +200,7 @@ class StudyPlanTool(AgentTool):
                 focus_page_id=_to_int(params.get("focus_page_id")),
                 doc_id=_to_int(params.get("doc_id")),
                 section_indexes=[int(x) for x in section_indexes if _to_int(x) is not None],
+                bank_ids=[int(x) for x in bank_ids if _to_int(x) is not None],
                 mode=str(params.get("mode") or "balanced"),
             )
         except ValueError as exc:
@@ -197,15 +214,32 @@ class StudyPlanTool(AgentTool):
             if str(day.get("date") or "") == today_date:
                 today_tasks = list(day.get("tasks") or [])
                 break
-        if action == "today" and not today_tasks and plan.get("days"):
-            today_tasks = list((plan.get("days") or [])[0].get("tasks") or [])
+        # 不再把第一天冒充“今天”：今天没有任务就如实说没有。
+        next_day = next(
+            (day for day in (plan.get("days") or []) if str(day.get("date") or "") > today_date),
+            None,
+        )
+        if today_tasks:
+            today_text = "今天先做：" + "、".join(
+                str(t.get("title") or "") for t in today_tasks[:3]
+            ) + "。"
+        elif next_day:
+            today_text = (
+                f"今天没有安排；下一段计划从 {next_day.get('date')} 开始："
+                + "、".join(
+                    str(t.get("title") or "")
+                    for t in (next_day.get("tasks") or [])[:3]
+                )
+                + "。"
+            )
+        else:
+            today_text = "当前没有可执行任务，先读一个主题页或做一道题。"
 
         message = (
-            f"已生成「知航 · 活计划」：{len(plan.get('days') or [])} 天，"
+            f"已生成学习计划：{len(plan.get('days') or [])} 天，"
             f"共 {(plan.get('progress') or {}).get('totalTasks', 0)} 个任务。"
-            "今天先做："
-            + ("、".join(str(t.get("title") or "") for t in today_tasks[:3]) if today_tasks else "暂无任务，先读一个主题页。")
-            + "。完成后重新调用 reassess 即可看到进度自动推进。"
+            + today_text
+            + "完成后重新调用 reassess 即可看到进度自动推进。"
         )
         payload: Dict[str, Any] = {
             "action": action,
@@ -215,7 +249,11 @@ class StudyPlanTool(AgentTool):
             "progress": plan.get("progress") or {},
             "todayTasks": today_tasks,
             "message": message,
-            "jumpUrl": f"/front/workspace?view=wiki&kbId={kb}&plan=1",
+            "jumpUrl": (
+                f"/front/myQuestion/myStats?tab=plan&kbId={kb}"
+                if int(kb or 0) > 0
+                else "/front/myQuestion/myStats?tab=plan"
+            ),
         }
         # today 只回今日任务与摘要，避免整份 days 灌进对话上下文；
         # plan/adjust/reassess 才返回最多 14 天的计划。

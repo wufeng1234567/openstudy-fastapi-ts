@@ -1155,8 +1155,11 @@ async def _wiki_learning_map(
                 )
                 .select_from(UserPracticeLog)
                 .join(QuestionSource, QuestionSource.question_id == UserPracticeLog.question_id)
+                # 题目被物理删除后流水仍在；学习态不能把孤儿流水算成“练过”。
+                .join(QuestionMain, QuestionMain.id == QuestionSource.question_id)
                 .where(
                     UserPracticeLog.user_id == int(user_id),
+                    QuestionMain.status == "0",
                     QuestionSource.doc_id.in_(list(doc_to_pages.keys())),
                 )
             )
@@ -1240,7 +1243,8 @@ async def _wiki_practice_bank(
     grouped: dict[int, dict] = {}
     for question_id, bank_id, bank_name, owner_id, is_public in rows:
         # 与练习接口保持同一可见性口径：自己的题库、公开题库可练；分享题库由练习接口再校验。
-        if int(owner_id or 0) != int(user_id) and int(is_public or 0) != 0:
+        # 修复：此前条件写反，会跳过别人的公开题库、反而放行别人的私有题库。
+        if int(owner_id or 0) != int(user_id) and int(is_public or 0) == 0:
             continue
         key = int(bank_id)
         entry = grouped.setdefault(

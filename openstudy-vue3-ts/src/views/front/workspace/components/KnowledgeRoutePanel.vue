@@ -2,24 +2,11 @@
   <aside class="krp" @pointerdown.stop>
     <header class="krp__head">
       <div class="krp__title-wrap">
-        <span class="krp__eyebrow"><OsIcon name="sparkles" :size="13" /> 知航 · 活计划</span>
-        <h3>{{ route.targetTitle ? `目标：${route.targetTitle}` : '今日航线' }}</h3>
+        <span class="krp__eyebrow"><OsIcon name="sparkles" :size="13" /> 学习计划</span>
+        <h3>{{ route.targetTitle ? `目标：${route.targetTitle}` : '今日学习路径' }}</h3>
       </div>
-      <button type="button" class="krp__exit" title="退出航线，回到知识图谱" @click="emit('exit')">结束</button>
+      <button type="button" class="krp__exit" title="退出路径，回到知识图谱" @click="emit('exit')">结束</button>
     </header>
-
-    <div class="krp__strategies" role="group" aria-label="航线规划方式">
-      <button
-        v-for="item in strategyOptions"
-        :key="item.value"
-        type="button"
-        class="krp__strategy"
-        :class="{ 'is-active': strategy === item.value }"
-        @click="emit('strategy', item.value)"
-      >
-        {{ item.label }}
-      </button>
-    </div>
 
     <div v-if="offRouteTitle" class="krp__offroute">
       <span>你正在看《{{ offRouteTitle }}》，它不在当前航线上</span>
@@ -50,8 +37,8 @@
     </div>
 
     <button type="button" class="krp__plan-link" @click="emit('open-plan')">
-      <span>今日任务 {{ plan?.progress?.todayDone || 0 }}/{{ plan?.progress?.todayTotal || 0 }}</span>
-      <b>查看完整计划 →</b>
+      <span>今天的任务在「学习计划」里</span>
+      <b>查看完整学习计划 →</b>
     </button>
 
     <button type="button" class="krp__go" :disabled="loading" @click="emit('start')">
@@ -72,17 +59,14 @@ import OsIcon from '@/components/OsIcon/index.vue'
 
 const props = defineProps<{
   route: any
-  plan?: any | null
   stops: any[]
   activeStop: any | null
-  strategy: string
   loading?: boolean
   offRouteTitle?: string
   offRoutePageId?: number | null
 }>()
 
 const emit = defineEmits<{
-  (e: 'strategy', value: string): void
   (e: 'select', pageId: number): void
   (e: 'start'): void
   (e: 'exit'): void
@@ -91,20 +75,14 @@ const emit = defineEmits<{
   (e: 'open-plan'): void
 }>()
 
-const strategyOptions = [
-  { value: 'weakness', label: '补弱' },
-  { value: 'foundation', label: '打基础' },
-  { value: 'explore', label: '拓展' }
-]
-
 const activeStop = computed(() => props.activeStop)
 const basisText = computed(() => {
   const route = props.route || {}
   if (route.mode === 'graph') {
-    return '依据：前置关系 + 学习状态'
+    return '依据：知识图谱前置关系 + 学习记录'
   }
-  if (route.degraded?.noPracticeData) return '依据：图谱连接 + 阅读状态'
-  return '依据：图谱连接 + 学习状态'
+  if (route.degraded?.noPracticeData) return '依据：图谱结构 + 阅读记录'
+  return '依据：知识图谱 + 学习记录'
 })
 
 function statusText(stop: any) {

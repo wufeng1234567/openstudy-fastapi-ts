@@ -188,7 +188,7 @@ export function getDiagnose(limit: number = 30): Promise<ApiResult<DiagnosisResu
 
 /* ============================================================================
  * 学习闭环（2026-10-31）
- * 今日处方 / 知识体检 / 错题歼灭战共用一份逐题诊断结果。
+ * 今日任务 / 学习概览 / 错题歼灭战共用一份逐题诊断结果。
  * ========================================================================== */
 
 export interface LearningLoopTask {
@@ -262,12 +262,20 @@ export function getLearningLoop(): Promise<ApiResult<LearningLoopResult>> {
   >
 }
 
-/** 今日学习任务：与知识图谱共用的「知航 · 活计划」视图。 */
-export function getStudyPlanToday(kbId?: number): Promise<ApiResult<any>> {
+/** 今日学习任务：与知识图谱共用的「学习计划」视图。 */
+export function getStudyPlanToday(
+  kbId?: number,
+  bankIds?: number[],
+  sinceMs?: number
+): Promise<ApiResult<any>> {
   return request({
     url: '/userStats/study-plan-today',
     method: 'get',
-    params: kbId ? { kbId } : undefined
+    params: {
+      kbId: kbId ?? undefined,
+      bankIds: bankIds?.length ? bankIds.join(',') : undefined,
+      sinceMs: sinceMs || undefined
+    }
   }) as unknown as Promise<ApiResult<any>>
 }
 

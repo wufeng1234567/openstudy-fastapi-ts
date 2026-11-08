@@ -614,12 +614,15 @@ async def _load_diagnosis_page_signals(
     db: AsyncSession,
     user_id: int,
     pages: Sequence[RagWikiPage],
+    *,
+    diagnosis: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Dict[int, Dict[str, Any]], Dict[str, Any]]:
     """把逐题诊断反查到主题页，形成页面级病灶。
 
     只有真实 `QuestionSource` 锚点才参与；没有锚点的老题跳过。
+    `diagnosis` 可由调用方复用，避免同一请求重复跑逐题诊断。
     """
-    diagnosis = await sds.diagnose(db, user_id, limit=50)
+    diagnosis = diagnosis or await sds.diagnose(db, user_id, limit=50)
     attention_items = [
         item
         for item in (diagnosis.get("items") or [])

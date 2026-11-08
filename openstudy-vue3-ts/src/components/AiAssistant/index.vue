@@ -253,9 +253,24 @@ const selectedModel = ref('')
 const selectedConfigId = ref(null)
 const onModelSelect = (cfg) => { selectedConfigId.value = cfg?.configId ?? null }
 
-/** 侧边栏的助手入口通过 window 事件唤起，避免全屏悬浮按钮遮挡内容。 */
-function openAssistant() {
+/** 侧边栏/学习计划的助手入口通过 window 事件唤起，避免全屏悬浮按钮遮挡内容。 */
+function openAssistant(event?: Event) {
   visible.value = true
+  activeTab.value = 'chat'
+  const prompt = String((event as CustomEvent)?.detail?.prompt || '').trim()
+  if (!prompt) return
+  // 抽屉刚打开时 AiChatStream 可能还没挂载；重试到输入框就绪再预填。
+  let attempts = 0
+  const fill = () => {
+    if (chatRef.value?.setInputText) {
+      chatRef.value.setInputText(prompt)
+      chatRef.value.scrollToBottom?.()
+      return
+    }
+    attempts += 1
+    if (attempts < 10) setTimeout(fill, 120)
+  }
+  setTimeout(fill, 120)
 }
 
 // ===================== 智能体模式 =====================
@@ -1255,6 +1270,7 @@ onMounted(async () => {
   }
   initPosition()
   window.addEventListener('openstudy:open-assistant', openAssistant)
+  window.addEventListener('openstudy:ask-assistant', openAssistant)
   await loadSessions()
   if (sessions.value.length > 0) {
     // 默认打开最近一次会话
@@ -1274,6 +1290,7 @@ onUnmounted(() => {
   window.removeEventListener('mouseup', stopDrag)
   window.removeEventListener('resize', initPosition)
   window.removeEventListener('openstudy:open-assistant', openAssistant)
+  window.removeEventListener('openstudy:ask-assistant', openAssistant)
   document.removeEventListener('mousedown', onDocMousedown)
   // Ctrl+V 粘贴监听是在 **document** 上挂的：必须在这里成对摘掉，
   // 否则每次卸载都给 document 留一条指向已销毁实例的闭包（见 onMounted 里的注释）。

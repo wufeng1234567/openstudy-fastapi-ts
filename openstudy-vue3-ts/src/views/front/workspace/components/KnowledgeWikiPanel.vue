@@ -68,7 +68,7 @@
         </div>
       </div>
 
-      <div v-else ref="mapCanvasRef" class="kw-map" :class="{ 'is-route-mode': routeActive }" @wheel.prevent="onMapWheel" @pointerdown="onMapDown"
+      <div v-else ref="mapCanvasRef" class="kw-map" @wheel.prevent="onMapWheel" @pointerdown="onMapDown"
         @pointermove="onMapMove" @pointerup="onMapUp" @pointerleave="onMapUp">
         <div class="kw-map-purpose">知识图谱：先看懂知识结构，再让系统帮你排下一步。</div>
         <svg class="kw-map__svg" viewBox="0 0 1000 640" aria-label="知识图谱：每个主题页一个节点">
@@ -134,7 +134,7 @@
             </button>
             <button type="button" class="kw-graph-action kw-route-action" :disabled="routeLoading" @click="generateRoute()">
               <OsIcon name="sparkles" :size="14" />
-              <span>{{ routeLoading ? '正在规划…' : '生成学习计划' }}</span>
+              <span>{{ routeLoading ? '正在规划…' : '查看今日学习路径' }}</span>
             </button>
           </div>
           <div class="kw-graph-panel__divider"></div>
@@ -152,30 +152,19 @@
         <KnowledgeRoutePanel
           v-if="routeActive"
           :route="learningRoute"
-          :plan="studyPlan"
           :stops="routeStopsView"
           :active-stop="activeRouteStop"
-          :strategy="routeStrategy"
           :loading="routeLoading"
           :off-route-title="offRoutePage?.title || ''"
           :off-route-page-id="offRoutePage?.pageId || null"
-          @strategy="changeRouteStrategy"
           @select="onRouteStopSelect"
           @start="startNextRouteStop"
           @exit="exitRoute"
           @guide="showRouteGuide"
           @set-target="planToPage"
-          @open-plan="planDrawerVisible = true"
+          @open-plan="openStudyPlan"
         />
-        <StudyPlanDrawer
-          v-model="planDrawerVisible"
-          :plan="studyPlan"
-          :loading="planLoading"
-          @open-task="onPlanTask"
-          @select-stop="onRouteStopSelect"
-          @adjust="onPlanAdjust"
-        />
-        <div class="kw-graph-hint" :class="{ 'is-route': routeActive }">点节点查看主题页 · 点「生成学习计划」让系统安排下一步</div>
+        <div class="kw-graph-hint" :class="{ 'is-route': routeActive }">点节点查看主题页 · 点「生成学习路径」查看今天的安排</div>
       </div>
     </template>
 
@@ -236,9 +225,9 @@
         </div>
 
         <div class="kw-detail__route-action">
-          <span>{{ routeActive ? '当前正在走学习航线' : '想把这一页安排进学习计划？' }}</span>
+          <span>{{ routeActive ? '当前正在看学习路径' : '想把这一页安排进学习计划？' }}</span>
           <button type="button" @click="planToPage(activePage.pageId)">
-            {{ routeActive ? '以此页为目标重新规划' : '从这一页规划学习航线' }}
+            {{ routeActive ? '以此页为目标重新规划' : '从这一页规划学习路径' }}
           </button>
         </div>
 
@@ -399,14 +388,14 @@
         </div>
         <div class="kw-guide-step">
           <i>02</i>
-          <div><b>生成一条航线</b><p>点右侧“生成学习航线”，系统会按图谱连接、阅读记录和练习情况，挑出 3 站。</p></div>
+          <div><b>生成一条学习路径</b><p>点右侧“查看今日学习路径”，系统会按图谱连接、阅读记录和练习情况，挑出今天先看的几页。</p></div>
         </div>
         <div class="kw-guide-step">
           <i>03</i>
-          <div><b>读完就练，航线会变</b><p>每站读完可以直接练同源题。练习后回到图谱，掌握度会更新，航线会自动往前推荐。</p></div>
+          <div><b>读完就练，计划会变</b><p>每页读完可以直接练同源题。练习后回到图谱，掌握度会更新，学习计划会按真实记录重算。</p></div>
         </div>
       </div>
-      <div class="kw-guide-tip">航线有「补弱 / 打基础 / 拓展」三种方式；点任意节点，还可以在详情里“以此页为目标重新规划”。</div>
+      <div class="kw-guide-tip">点任意节点都可以在详情里“以此页为目标重新规划”；完整按天任务在「学习统计 → 学习计划」里。</div>
       <template #footer>
         <el-button type="primary" @click="routeGuideVisible = false">知道了</el-button>
       </template>
@@ -421,9 +410,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import ResizableDrawer from '@/components/ResizableDrawer/index.vue'
+import { readStudyPlanConfig, saveStudyPlanConfig } from '@/utils/studyPlanState'
 import KnowledgeRoutePanel from './KnowledgeRoutePanel.vue'
 import KnowledgeWikiEditor from './KnowledgeWikiEditor.vue'
-import StudyPlanDrawer from './StudyPlanDrawer.vue'
 import {
   addWikiPageLink,
   attachWikiImage,
@@ -448,6 +437,7 @@ const props = defineProps<{
   activeKbId?: number | null
   searchQuery?: string
   searchSubmitKey?: number
+  initialPageId?: number | null
 }>()
 
 const emit = defineEmits<{
@@ -487,7 +477,6 @@ const WIKI_VIEW_KEY = 'openstudy.workspace.wikiView'
 const WIKI_LEARN_KEY = 'openstudy.workspace.wikiLearnMode'
 const WIKI_GUIDE_KEY = 'openstudy.workspace.routeGuideSeen'
 const WIKI_ROUTE_KEY = 'openstudy.workspace.routeQuery'
-const WIKI_PLAN_KEY = 'openstudy.workspace.studyPlanState'
 function readWikiView(): 'pages' | 'map' {
   try {
     return localStorage.getItem(WIKI_VIEW_KEY) === 'map' ? 'map' : 'pages'
@@ -541,8 +530,6 @@ const mapLearnMode = ref(true)
 const mapLearningPath = ref<string[]>([])
 const learningRoute = ref<any>(null)
 const studyPlan = ref<any>(null)
-const planDrawerVisible = ref(false)
-const planLoading = ref(false)
 const routeLoading = ref(false)
 const routeStrategy = ref<'weakness' | 'foundation' | 'explore'>('weakness')
 const routeTargetPageId = ref<number | null>(null)
@@ -915,32 +902,21 @@ function applyLearningRoute(data: any) {
 /** 计划快照只存“可重建状态 + 当前视图”，不把前端勾选当完成态。 */
 function persistPlanState(plan: any) {
   if (!plan) return
-  try {
-    localStorage.setItem(
-      WIKI_PLAN_KEY,
-      JSON.stringify({
-        kbId: Number(props.activeKbId || 0),
-        plan,
-        sinceMs: plan.window?.sinceMs || 0,
-        strategy: routeStrategy.value,
-        targetPageId: routeTargetPageId.value
-      })
-    )
-  } catch {
-    // localStorage 不可用时不影响当前计划
-  }
+  saveStudyPlanConfig({
+    kbId: Number(props.activeKbId || 0),
+    goal: plan.intent?.goal || routeStrategy.value,
+    examDate: plan.intent?.examDate || '',
+    horizonDays: Number(plan.window?.horizonDays || 7),
+    dailyMinutes: Number(plan.window?.dailyMinutes || 40),
+    restDays: Array.isArray(plan.window?.restDays) ? plan.window.restDays : [],
+    bankIds: Array.isArray(plan.intent?.bankIds) ? plan.intent.bankIds : [],
+    sinceMs: Number(plan.window?.sinceMs || 0),
+    planId: String(plan.planId || '')
+  })
 }
 
 function readPlanState(): any | null {
-  try {
-    const raw = localStorage.getItem(WIKI_PLAN_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-    if (Number(parsed?.kbId || 0) !== Number(props.activeKbId || 0)) return null
-    return parsed
-  } catch {
-    return null
-  }
+  return readStudyPlanConfig(props.activeKbId)
 }
 
 /** 生成/重新生成学习计划；focusPageId 表示“以这一页为目标规划”。 */
@@ -949,12 +925,16 @@ async function generateRoute(focusPageId?: number | null, sinceMs?: number) {
   routeLoading.value = true
   try {
     const target = focusPageId ?? routeTargetPageId.value ?? undefined
+    const savedConfig = readStudyPlanConfig(props.activeKbId)
     const res = await getStudyPlan(Number(props.activeKbId), {
       goal: routeStrategy.value,
+      examDate: savedConfig?.examDate || undefined,
       focusPageId: target || undefined,
-      horizonDays: 7,
-      dailyMinutes: 40,
-      sinceMs
+      horizonDays: savedConfig?.horizonDays || 7,
+      dailyMinutes: savedConfig?.dailyMinutes || 40,
+      restDays: savedConfig?.restDays || [],
+      bankIds: savedConfig?.bankIds || [],
+      sinceMs: sinceMs || savedConfig?.sinceMs
     })
     if (res.code === 200 && res.data?.route?.stops?.length) {
       const plan = res.data
@@ -998,11 +978,10 @@ async function generateRoute(focusPageId?: number | null, sinceMs?: number) {
   }
 }
 
-/** 计划抽屉里点一个任务：有真实 target 才跳，没 target 的模型幻觉不接。 */
+/** 路径里点一个任务：有真实 target 才跳，没 target 的模型幻觉不接。 */
 function onPlanTask(task: any) {
   const target = task?.target || {}
-  if (target.kind === 'bank' && target.bankId) {
-    planDrawerVisible.value = false
+  if ((target.kind === 'bank' || target.kind === 'question') && target.bankId) {
     router.push({
       path: `/front/questionPractice/${target.bankId}/practice/sequential`,
       query: { bankName: target.bankName || '题库' }
@@ -1010,50 +989,8 @@ function onPlanTask(task: any) {
     return
   }
   if (target.pageId) {
-    planDrawerVisible.value = false
     void openPage(Number(target.pageId))
   }
-}
-
-/** 调整目标/考试日/每日时间后重拉同一份活计划。 */
-async function onPlanAdjust(payload: any) {
-  if (!props.activeKbId || planLoading.value) return
-  planLoading.value = true
-  try {
-    const res = await getStudyPlan(Number(props.activeKbId), {
-      goal: payload.goal || 'weakness',
-      examDate: payload.goal === 'exam' ? payload.examDate || undefined : undefined,
-      horizonDays: Number(payload.horizonDays || 7),
-      dailyMinutes: Number(payload.dailyMinutes || 40),
-      focusPageId: routeTargetPageId.value || undefined,
-      sinceMs: studyPlan.value?.window?.sinceMs || undefined
-    })
-    if (res.code !== 200 || !res.data?.route?.stops?.length) {
-      ElMessage.error(res.msg || res.data?.route?.headline || '没有生成可执行计划')
-      return
-    }
-    studyPlan.value = res.data
-    persistPlanState(res.data)
-    applyLearningRoute({
-      ...res.data.route,
-      hasRoute: true,
-      strategy: res.data.route?.strategy || routeStrategy.value,
-      targetPageId: res.data.route?.targetPageId || null,
-      plan: res.data
-    })
-    await nextTick()
-    fitMapView()
-  } catch (error: any) {
-    ElMessage.error('调整计划失败：' + (error?.message || error))
-  } finally {
-    planLoading.value = false
-  }
-}
-
-async function changeRouteStrategy(value: string) {
-  if (routeStrategy.value === value) return
-  routeStrategy.value = value as 'weakness' | 'foundation' | 'explore'
-  await generateRoute(routeTargetPageId.value)
 }
 
 async function planToPage(pageId: number) {
@@ -1063,15 +1000,22 @@ async function planToPage(pageId: number) {
   await generateRoute(Number(pageId))
 }
 
+/** 完整计划只在学习统计页维护；这里只做轻量路径预览。 */
+function openStudyPlan() {
+  router.push({
+    path: '/front/myQuestion/myStats',
+    query: { tab: 'plan', kbId: props.activeKbId || undefined }
+  })
+}
+
 function exitRoute() {
   learningRoute.value = null
   studyPlan.value = null
-  planDrawerVisible.value = false
   mapLearningPath.value = []
   routeTargetPageId.value = null
   try {
     sessionStorage.removeItem(WIKI_ROUTE_KEY)
-    localStorage.removeItem(WIKI_PLAN_KEY)
+    // 不删除共享的计划参数；「结束」只是退出当前路径预览。
   } catch {
     // 忽略 storage 不可用
   }
@@ -2192,9 +2136,19 @@ watch(() => props.activeKbId, async (kbId) => {
   }
   await resumeBuildJob()
 })
+async function openInitialPage() {
+  const pageId = Number(props.initialPageId || 0)
+  if (!pageId) return
+  await nextTick()
+  void openPage(pageId)
+}
+
+watch(() => props.initialPageId, () => { void openInitialPage() })
+
 onMounted(async () => {
   await reload()
   await resumeBuildJob()
+  await openInitialPage()
 })
 onBeforeUnmount(() => {
   stopBuildPolling()

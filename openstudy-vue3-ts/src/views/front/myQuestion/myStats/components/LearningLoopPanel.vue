@@ -11,7 +11,7 @@
       </div>
       <div>
         <div class="loop-empty-title">学习闭环还没有启动</div>
-        <div class="loop-empty-desc">先做几道题，系统会根据你的作答记录生成今日处方和知识体检。</div>
+        <div class="loop-empty-desc">先做几道题，系统会根据你的作答记录生成今日任务和学习概览。</div>
       </div>
       <el-button type="primary" plain @click="emit('practice')">去题库练习</el-button>
     </div>
@@ -21,7 +21,7 @@
         <div class="loop-head-main">
           <div class="loop-head-title">
             <h2>今日学习任务</h2>
-            <span class="loop-head-chip">知航 · 活计划</span>
+            <span class="loop-head-chip">学习计划</span>
           </div>
           <p>{{ planHeadline || data.headline }}</p>
         </div>
@@ -273,7 +273,7 @@ async function load() {
       const planRes: any = await getStudyPlanToday(kbId || undefined)
       if (planRes.code === 200 && planRes.data?.hasPlan) studyPlan.value = planRes.data
     } catch (e: any) {
-      console.warn('[知航 · 活计划] 今日任务加载失败', e)
+      console.warn('[学习计划] 今日任务加载失败', e)
     }
     const res: any = await getLearningLoop()
     if (res.code === 200 && res.data?.hasData) {

@@ -252,7 +252,7 @@ export function getWikiGraph(kbId: number) {
   }) as unknown as Promise<{ code: number; msg?: string; data: any }>
 }
 
-/** 知航：按图谱前置关系 + 真实学习态生成学习航线（只读，不调模型） */
+/** 学习路径：按图谱前置关系 + 真实学习态生成轻量预览（只读，不调模型） */
 export function getLearningRoute(
   kbId: number,
   maxStops = 3,
@@ -266,9 +266,9 @@ export function getLearningRoute(
   }) as unknown as Promise<{ code: number; msg?: string; data: any }>
 }
 
-/** 知航 · 活计划：知识图谱航线展开成按天任务（只读、零计划表） */
+/** 学习计划：知识图谱 + 题库展开成按天任务（只读、零计划表） */
 export function getStudyPlan(
-  kbId: number,
+  kbId: number | null | undefined,
   options: {
     goal?: 'weakness' | 'foundation' | 'explore' | 'exam' | 'today' | 'sections'
     examDate?: string
@@ -278,6 +278,7 @@ export function getStudyPlan(
     focusPageId?: number
     docId?: number
     sectionIndexes?: number[]
+    bankIds?: number[]
     mode?: 'balanced' | 'sprint'
     sinceMs?: number
   } = {}
@@ -287,7 +288,7 @@ export function getStudyPlan(
     url: '/rag/study-plan',
     method: 'get',
     params: {
-      kbId,
+      kbId: kbId || 0,
       goal: o.goal || 'weakness',
       examDate: o.examDate || undefined,
       horizonDays: o.horizonDays ?? 7,
@@ -296,8 +297,28 @@ export function getStudyPlan(
       focusPageId: o.focusPageId || undefined,
       docId: o.docId || undefined,
       sectionIndexes: o.sectionIndexes?.length ? o.sectionIndexes.join(',') : undefined,
+      bankIds: o.bankIds?.length ? o.bankIds.join(',') : undefined,
       mode: o.mode || 'balanced',
       sinceMs: o.sinceMs || undefined
+    }
+  }) as unknown as Promise<{ code: number; msg?: string; data: any }>
+}
+
+/** 学习图谱：知识页 + 用户题库 + 真实 QuestionSource 桥接 */
+export function getStudyGraph(kbId?: number | null, options: {
+  bankIds?: number[]
+  includeLegacy?: boolean
+  bankLimit?: number
+} = {}) {
+  const o = options || {}
+  return request({
+    url: '/rag/study-graph',
+    method: 'get',
+    params: {
+      kbId: kbId || 0,
+      bankIds: o.bankIds?.length ? o.bankIds.join(',') : undefined,
+      includeLegacy: o.includeLegacy ? 1 : undefined,
+      bankLimit: o.bankLimit ?? 8
     }
   }) as unknown as Promise<{ code: number; msg?: string; data: any }>
 }

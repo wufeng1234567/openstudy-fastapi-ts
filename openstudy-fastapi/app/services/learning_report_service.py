@@ -292,7 +292,7 @@ async def build_weekly_report(
         next_week.append(
             {
                 "title": f"先还清 {overdue} 道欠复习的题",
-                "detail": "它们已经过了记忆窗口，现在练收益最高。打开「今日处方」会自动排在最前面。",
+                "detail": "它们已经过了记忆窗口，现在练收益最高。打开「学习计划」会自动排在最前面。",
             }
         )
     if subjects:

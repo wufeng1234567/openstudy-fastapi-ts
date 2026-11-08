@@ -66,8 +66,10 @@ GLOBAL_TOOLS: Tuple[str, ...] = (
     # 2026-11-08：网页搜索是「一切皆对话」的通用能力 —— 任何专家都可能需要
     # 查最新资料/官方文档；只读、带真实来源链接，不会写用户数据。
     "web_search",
-    # 2026-11-08：知航 · 活计划是跨资料/题库/统计的通用能力；只读、无计划表。
+    # 2026-11-08：学习计划是跨资料/题库/统计的通用能力；只读、无计划表。
     "study_plan",
+    # 2026-11-08：知识图谱查询是学习计划的上游；所有角色都能查真实知识页/题库/题源映射。
+    "study_graph",
 )
 
 #: **指挥家专属的元工具**名（`delegate_task`）。它**不属于任何子代理**，也**不参与**
@@ -289,7 +291,7 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
     "stats": RoleSpec(
         key="stats",
         name="学习统计专家",
-        description="帮你看学习数据：错题多少、正确率、掌握情况，以及题库分享记录",
+        description="帮你看学习数据、知识图谱与学习计划：错题、正确率、掌握情况、下一步学什么",
         # ⚠️ 2026-10-17 补 `question_flag_manage`：
         #    `learning_stats` 只给**汇总数字**（总数 / 掌握率 / 按难度分布），
         #    要列"具体哪几道错题"必须走 `question_flag_manage`（flag_type=error）。
@@ -327,11 +329,15 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
             "spec rendered automatically by the UI, so do not draw fake charts in text. "
             "The concrete question list comes from `question_flag_manage` "
             "(flag_type=error|favorite|marked, action=list|detail). Treat that tool as "
-            "read-only: never create / update / remove anything."
+            "read-only: never create / update / remove anything. "
+            "For questions about the knowledge graph or question-bank map use "
+            "`study_graph`; for what to study next use `study_plan`. Both read the same "
+            "real pages, banks and practice logs as the statistics page."
         ),
         keywords=(
             "统计", "多少题", "正确率", "掌握", "学习情况", "分享", "数据",
-            "stats", "statistic", "report",
+            "知识图谱", "学习计划", "题库图谱", "薄弱点", "下一步学什么",
+            "stats", "statistic", "report", "knowledge graph", "study plan",
         ),
     ),
     # ---- 智能体域：对话式创建 / 管理用户自己的智能体 ----

@@ -1191,9 +1191,42 @@ async def get_wiki_learning_route(
         return _fail(e)
 
 
+@router.get("/study-graph")
+async def get_study_graph(
+    kbId: Optional[int] = Query(None, ge=0, description="资料夹 ID；0 表示只看题库"),
+    bankIds: str = Query("", description="题库 ID，逗号分隔；留空表示用户默认题库"),
+    includeLegacy: bool = Query(False, description="是否包含旧考前计划自动生成的题库"),
+    bankLimit: int = Query(8, ge=1, le=30),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """学习图谱：知识页 + 用户题库 + 真实 QuestionSource 桥接（只读）。"""
+    from app.services.rag.study_graph_service import build_study_graph
+
+    try:
+        bank_list = []
+        if bankIds.strip():
+            try:
+                bank_list = [int(x) for x in bankIds.split(",") if x.strip()]
+            except ValueError:
+                return error("bankIds 格式应为逗号分隔的整数", code=400)
+        return success(
+            await build_study_graph(
+                db,
+                _uid(current_user),
+                int(kbId or 0),
+                bank_ids=bank_list or None,
+                include_legacy=includeLegacy,
+                bank_limit=bankLimit,
+            )
+        )
+    except Exception as e:  # noqa: BLE001
+        return _fail(e)
+
+
 @router.get("/study-plan")
 async def get_study_plan(
-    kbId: int = Query(..., gt=0),
+    kbId: Optional[int] = Query(None, ge=0, description="资料夹 ID；0 表示只从题库安排"),
     goal: str = Query("weakness", pattern="^(weakness|foundation|explore|exam|today|sections)$"),
     examDate: str = Query("", description="考试日期 YYYY-MM-DD；留空表示不按考试倒排"),
     horizonDays: int = Query(7, ge=1, le=30),
@@ -1202,12 +1235,13 @@ async def get_study_plan(
     focusPageId: Optional[int] = Query(None, gt=0),
     docId: Optional[int] = Query(None, gt=0),
     sectionIndexes: str = Query("", description="资料章节 index，逗号分隔"),
+    bankIds: str = Query("", description="题库 ID，逗号分隔；留空表示不混入题库"),
     mode: str = Query("balanced", pattern="^(balanced|sprint)$"),
     sinceMs: Optional[int] = Query(None, ge=0, description="计划生成时间戳（毫秒），用于真实完成判定"),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """知航 · 活计划：把知识图谱航线展开成按天可执行任务（只读、零计划表）。"""
+    """学习计划：把知识图谱/题库展开成按天可执行任务（只读、零计划表）。"""
     from datetime import datetime as _dt
 
     from app.services.study_plan_service import build_study_plan
@@ -1231,11 +1265,17 @@ async def get_study_plan(
                 section_list = [int(x) for x in sectionIndexes.split(",") if x.strip()]
             except ValueError:
                 return error("sectionIndexes 格式应为逗号分隔的整数", code=400)
+        bank_list = []
+        if bankIds.strip():
+            try:
+                bank_list = [int(x) for x in bankIds.split(",") if x.strip()]
+            except ValueError:
+                return error("bankIds 格式应为逗号分隔的整数", code=400)
         return success(
             await build_study_plan(
                 db,
                 _uid(current_user),
-                kbId,
+                int(kbId or 0),
                 goal=goal,
                 exam_date=target,
                 horizon_days=horizonDays,
@@ -1244,6 +1284,7 @@ async def get_study_plan(
                 focus_page_id=focusPageId,
                 doc_id=docId,
                 section_indexes=section_list,
+                bank_ids=bank_list,
                 mode=mode,
                 since_ms=sinceMs,
             )

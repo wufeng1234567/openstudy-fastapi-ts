@@ -1,9 +1,9 @@
-"""知航 · 活计划（StudyPlan）：把知识图谱航线展开成每天可执行的任务。
+"""学习计划（StudyPlan）：把知识图谱与用户题库展开成每天可执行的任务。
 
 设计边界
 ========
-· **唯一计划对象**：学习航线是主对象；学习处方、今日处方、考前计划都只是
-  它的生成参数/视图，不再各自维护一份“计划”。
+· **唯一计划对象**：知识图谱与题库共同生成一份按天任务；旧的考前计划、
+  今日处方只作为历史参数/视图，不再各自维护一份“计划”。
 · **零新表**：所有字段从 `build_learning_route()`、`diagnose()`、
   `_wiki_practice_bank()`、`user_practice_log`、`rag_wiki_page_learning` 实时推导。
 · **不造假**：没有真实 page/bank/question target 的任务不排；没有题目就不排题；
@@ -119,8 +119,10 @@ def _task(
 ) -> Dict[str, Any]:
     page_id = _safe_int(stop.get("pageId"))
     seq = len(stop.get("_tasks") or []) + 1
+    # 题库轴伪站点 pageId=0；用 sourceRef 保证多个题库的 task id 不撞。
+    id_token = source_ref or str(page_id)
     task = {
-        "id": f"t:{page_id}:{task_type}:{seq}",
+        "id": f"t:{id_token}:{task_type}:{seq}",
         "type": task_type,
         "typeLabel": TASK_LABELS.get(task_type, "学习"),
         "title": title,
@@ -129,6 +131,8 @@ def _task(
         "status": "next",
         "target": target,
         "pageId": page_id,
+        "axis": "page" if page_id > 0 else "bank",
+        "sourceNodeId": f"p:{page_id}" if page_id > 0 else "",
         "sourceRef": source_ref,
     }
     stop.setdefault("_tasks", []).append(task)
@@ -252,6 +256,96 @@ def _tasks_for_stop(
                     source_ref=f"bank:{practice.get('bankId')}",
                 )
             )
+    return tasks
+
+
+def _tasks_for_banks(
+    diagnosis_items: Dict[int, Dict[str, Any]],
+    *,
+    bank_ids: Optional[Sequence[int]] = None,
+    covered_question_ids: Optional[set[int]] = None,
+    max_banks: int = 2,
+    max_per_bank: int = 2,
+) -> List[Dict[str, Any]]:
+    """题库轴任务：只排真实诊断出的薄弱题，不复制题库、不猜知识点。
+
+    题库轴是「用户明确选择了题库」或「完全没有知识页」时的补位，不会把
+    与当前资料夹无关的题库硬混进知识图谱计划。旧 `考前计划·` 自动题库
+    默认跳过，避免历史副本重复占任务。
+    """
+    selected = {_safe_int(x) for x in (bank_ids or []) if _safe_int(x) > 0}
+    covered = {_safe_int(x) for x in (covered_question_ids or set()) if _safe_int(x) > 0}
+    grouped: Dict[int, List[Dict[str, Any]]] = {}
+    bank_names: Dict[int, str] = {}
+    for qid, item in (diagnosis_items or {}).items():
+        question_id = _safe_int(qid)
+        if question_id <= 0 or question_id in covered:
+            continue
+        level = str(item.get("level") or "")
+        if level not in {"repeated_failure", "lapsing", "overdue", "due_soon"}:
+            continue
+        bid = _safe_int(item.get("bankId"))
+        if bid <= 0:
+            continue
+        bank_name = str(item.get("bankName") or "题库")
+        if selected:
+            if bid not in selected:
+                continue
+        elif bank_name.startswith("考前计划·"):
+            continue
+        grouped.setdefault(bid, []).append(item)
+        bank_names[bid] = bank_name
+
+    ranked_banks = sorted(
+        grouped,
+        key=lambda bid: (-len(grouped[bid]), bid),
+    )[: max(1, int(max_banks))]
+
+    tasks: List[Dict[str, Any]] = []
+    order = {
+        "repeated_failure": 0,
+        "lapsing": 1,
+        "overdue": 2,
+        "due_soon": 3,
+    }
+    for bid in ranked_banks:
+        items = sorted(
+            grouped[bid],
+            key=lambda item: (
+                order.get(str(item.get("level") or ""), 9),
+                -_safe_int(item.get("attempts")),
+                _safe_int(item.get("questionId")),
+            ),
+        )
+        pseudo_stop: Dict[str, Any] = {
+            "pageId": 0,
+            "title": bank_names.get(bid, "题库"),
+            "learning": {},
+            "reason": "来自你真实练过的题库；这些题没有可反查的知识页锚点，按题库直接学，不伪造图谱归属",
+        }
+        for item in items[: max(1, int(max_per_bank))]:
+            qid = _safe_int(item.get("questionId"))
+            stem = _safe_text(item.get("questionText") or f"题目 {qid}", 60)
+            task = _task(
+                stop=pseudo_stop,
+                task_type="question",
+                title=f"攻克「{stem}」",
+                reason=(
+                    f"题库《{bank_names.get(bid, '题库')}》 · "
+                    + str(item.get("advice") or item.get("levelText") or "诊断显示需要优先处理")
+                ),
+                minutes=TASK_MINUTES["question"],
+                target={
+                    "kind": "question",
+                    "pageId": 0,
+                    "questionId": qid,
+                    "bankId": bid,
+                    "bankName": bank_names.get(bid, "题库"),
+                },
+                source_ref=f"q:{qid}",
+            )
+            task["sourceNodeId"] = f"b:{bid}"
+            tasks.append(task)
     return tasks
 
 
@@ -439,11 +533,12 @@ async def build_study_plan(
     focus_page_id: Optional[int] = None,
     doc_id: Optional[int] = None,
     section_indexes: Optional[Sequence[int]] = None,
+    bank_ids: Optional[Sequence[int]] = None,
     mode: str = "balanced",
     since_ms: Optional[int] = None,
     now: Optional[datetime] = None,
 ) -> Dict[str, Any]:
-    """生成当前用户的活计划（只读、确定性、无 LLM）。
+    """生成当前用户的学习计划（只读、确定性、无 LLM）。
 
     `since_ms` 是「这份计划从什么时候开始算完成」的客户端锚点：前端首次生成
     时写入 localStorage/sessionStorage，之后每次重拉都带回来。缺省用今天 00:00。
@@ -460,6 +555,7 @@ async def build_study_plan(
         "docId": int(doc_id) if doc_id else 0,
         "sectionIndexes": [int(x) for x in (section_indexes or [])],
         "focusPageId": int(focus_page_id) if focus_page_id else 0,
+        "bankIds": sorted({_safe_int(x) for x in (bank_ids or []) if _safe_int(x) > 0}),
         "mode": "sprint" if mode == "sprint" else "balanced",
     }
     dates = plan_dates(
@@ -478,34 +574,24 @@ async def build_study_plan(
         "sinceMs": int(since_ms) if since_ms else int(datetime.combine(today, time.min).timestamp() * 1000),
     }
 
-    route = await learning_route_service.build_learning_route(
-        db,
-        user_id,
-        kb_id,
-        max_stops=MAX_STOPS,
-        focus_page_id=focus_page_id,
-        strategy=strategy,
-    )
-    if not route.get("hasRoute"):
-        return {
-            "planId": _plan_id(user_id, kb_id, intent, window, version),
-            "planVersion": version,
-            "generatedAt": moment.isoformat(sep=" ", timespec="seconds"),
-            "intent": intent,
-            "window": window,
-            "route": {"mode": "empty", "strategy": strategy, "stops": [], "headline": route.get("reason") or "还没有可规划的主题页"},
-            "days": [],
-            "progress": {"doneTasks": 0, "totalTasks": 0, "doneMinutes": 0, "plannedMinutes": 0, "todayDone": 0, "todayTotal": 0, "percent": 0.0},
-            "sources": _sources(),
-            "degraded": {
-                "pagesEmpty": True,
-                "noPracticeData": True,
-                "noQuestionSource": True,
-                "noPrerequisiteEdges": True,
-                "allMastered": False,
-                "noBankForStop": True,
-                "examTooSoon": bool(exam_date and (exam_date - today).days <= 3),
-            },
+    if int(kb_id or 0) > 0:
+        route = await learning_route_service.build_learning_route(
+            db,
+            user_id,
+            int(kb_id),
+            max_stops=MAX_STOPS,
+            focus_page_id=focus_page_id,
+            strategy=strategy,
+        )
+    else:
+        route = {
+            "hasRoute": False,
+            "reason": "这次只从题库安排学习",
+            "mode": "bank",
+            "stops": [],
+            "edges": [],
+            "stats": {"totalPages": 0},
+            "degraded": {},
         }
 
     stops: List[Dict[str, Any]] = list(route.get("stops") or [])
@@ -542,52 +628,37 @@ async def build_study_plan(
             _tasks_for_stop(stop, diagnosis_items=diagnosis_items, exam_mode=exam_mode)
         )
 
-    # 题库轴：考前计划里有些错题没有 QuestionSource 页面锚点。它们不能进航线站点，
-    # 但也不能静默消失 —— 按真实 bankId 排成“考前薄弱题”任务，显示为独立目标。
-    if exam_mode and diagnosis_items:
-        covered = {
-            _safe_int((task.get("target") or {}).get("questionId"))
-            for task in all_tasks
-            if (task.get("target") or {}).get("questionId")
-        }
-        uncovered_by_bank: Dict[int, List[Dict[str, Any]]] = {}
-        for qid, item in diagnosis_items.items():
-            if qid in covered:
-                continue
-            level = str(item.get("level") or "")
-            if level not in {"repeated_failure", "lapsing", "overdue", "due_soon"}:
-                continue
-            bank_id = _safe_int(item.get("bankId"))
-            if not bank_id:
-                continue
-            uncovered_by_bank.setdefault(bank_id, []).append(item)
-        for bank_id, items in list(uncovered_by_bank.items())[:2]:
-            items.sort(key=lambda item: (-_safe_int(item.get("errorCount")), _safe_int(item.get("questionId"))))
-            pseudo_stop: Dict[str, Any] = {
-                "pageId": 0,
-                "title": str(items[0].get("bankName") or "考前薄弱题"),
-                "learning": {},
-                "reason": "这些题没有可反查的知识页锚点，按题库直接进入考前复习，不伪造图谱归属",
-            }
-            for item in items[:2]:
-                qid = _safe_int(item.get("questionId"))
-                stem = _safe_text(item.get("questionText") or f"题目 {qid}", 60)
-                all_tasks.append(
-                    _task(
-                        stop=pseudo_stop,
-                        task_type="question",
-                        title=f"考前回看「{stem}」",
-                        reason=str(item.get("advice") or item.get("levelText") or "考前薄弱题需要优先处理"),
-                        minutes=TASK_MINUTES["question"],
-                        target={
-                            "kind": "question",
-                            "pageId": 0,
-                            "questionId": qid,
-                            "bankId": bank_id,
-                        },
-                        source_ref=f"q:{qid}",
-                    )
-                )
+    # 题库轴：用户明确选择了题库，或完全没有知识页时，才补真实薄弱题。
+    # 不复制题库、不按题干猜知识点；没有锚点的题按题库直接进入计划。
+    covered_question_ids = {
+        _safe_int((task.get("target") or {}).get("questionId"))
+        for task in all_tasks
+        if _safe_int((task.get("target") or {}).get("questionId")) > 0
+    }
+    for task in all_tasks:
+        target = task.get("target") or {}
+        for qid in target.get("questionIds") or []:
+            if _safe_int(qid) > 0:
+                covered_question_ids.add(_safe_int(qid))
+    bank_ids_selected = [
+        _safe_int(x) for x in (bank_ids or []) if _safe_int(x) > 0
+    ]
+    if diagnosis_items and (bank_ids_selected or not stops):
+        all_tasks.extend(
+            _tasks_for_banks(
+                diagnosis_items,
+                bank_ids=bank_ids_selected or None,
+                covered_question_ids=covered_question_ids,
+                max_banks=2,
+                max_per_bank=2,
+            )
+        )
+    bank_task_count = sum(
+        1
+        for task in all_tasks
+        if str((task.get("target") or {}).get("kind") or "") == "question"
+        and _safe_int((task.get("target") or {}).get("pageId")) == 0
+    )
     days = _pack_days(all_tasks, dates, daily_minutes=window["dailyMinutes"])
 
     start_dt = (
@@ -614,27 +685,61 @@ async def build_study_plan(
     degraded = dict(route.get("degraded") or {})
     degraded.update(
         {
-            "pagesEmpty": False,
+            "pagesEmpty": not bool(stops),
             "noBankForStop": any(
                 not (s.get("practice") or {}).get("bankId") and int(s.get("weakCount") or 0) > 0
                 for s in stops
             ),
             "examTooSoon": bool(exam_date and (exam_date - today).days <= 3),
             "docFiltered": bool(doc_id and not stops),
+            "bankOnly": bool(bank_task_count and not stops),
+            "noKb": int(kb_id or 0) == 0,
+            "bankOnlyPlan": bool(bank_task_count and not stops),
+            "noBankSelected": not bool(bank_ids_selected),
+            "noAnchoredMapping": bool(bank_task_count and not stops),
         }
     )
-    headline = str(route.get("headline") or "按知识图谱为你排好了今天的学习")
+    route_stats = dict(route.get("stats") or {})
+    route_stats.update(
+        {
+            "bankTaskCount": bank_task_count,
+            "bankCount": len(
+                {
+                    _safe_int((task.get("target") or {}).get("bankId"))
+                    for task in all_tasks
+                    if _safe_int((task.get("target") or {}).get("bankId")) > 0
+                }
+            ),
+        }
+    )
+    axis_summary = {
+        "pageTasks": sum(1 for task in all_tasks if task.get("axis") == "page"),
+        "bankTasks": sum(1 for task in all_tasks if task.get("axis") == "bank"),
+        "questionTasks": sum(
+            1
+            for task in all_tasks
+            if str((task.get("target") or {}).get("kind") or "") == "question"
+        ),
+    }
+    if bank_task_count and not stops:
+        headline = f"先从你的题库里攻克 {bank_task_count} 道薄弱题"
+    elif bank_task_count:
+        headline = f"知识图谱与题库一起排好了：{len(stops)} 个知识页 + {bank_task_count} 道题库薄弱题"
+    else:
+        headline = str(route.get("headline") or "按知识图谱为你排好了今天的学习")
     if not days:
-        headline = "这条航线暂时没有可执行任务；先读一页或做一道题，计划会自己长出来。"
+        headline = "暂时没有可执行任务；先读一页或做一道题，计划会自己长出来。"
 
     return {
         "planId": _plan_id(user_id, kb_id, intent, window, version),
         "planVersion": version,
         "generatedAt": moment.isoformat(sep=" ", timespec="seconds"),
         "intent": intent,
+        "bankIds": intent["bankIds"],
+        "axisSummary": axis_summary,
         "window": window,
         "route": {
-            "mode": route.get("mode") or "fallback",
+            "mode": (route.get("mode") or "fallback") if stops else ("bank-only" if bank_task_count else "empty"),
             "strategy": strategy,
             "strategyLabel": route.get("strategyLabel") or {"weakness": "补弱", "foundation": "打基础", "explore": "拓展"}.get(strategy, "补弱"),
             "headline": headline,
@@ -642,7 +747,7 @@ async def build_study_plan(
             "targetTitle": route.get("targetTitle") or "",
             "stops": clean_stops,
             "edges": route.get("edges") or [],
-            "stats": route.get("stats") or {},
+            "stats": route_stats,
         },
         "days": days,
         "progress": progress,
@@ -658,6 +763,7 @@ def _sources() -> Dict[str, str]:
         "questionSource": "question_source",
         "pageLearning": "rag_wiki_page_learning",
         "practiceBank": "wiki_service._wiki_practice_bank",
+        "questionBank": "question_bank / question_main / user_practice_log",
         "route": "learning_route_service.build_learning_route",
         "generated": "request-time recompute; no plan table",
     }

@@ -1,7 +1,7 @@
 <!--
-  知航 · 活计划抽屉
+  学习计划抽屉（历史兼容组件，不再由主流程挂载）
   ---------------------------------------------------------------------------
-  这是「学习处方 / 今日处方 / 考前计划」统一后的唯一计划视图：
+  这是历史版本的学习计划视图（当前主流程统一在统计页）：
   · 航线站点、按天任务、真实进度都来自同一份 StudyPlan；
   · 只有一个主操作「开始今日任务」和一个轻量「调整」；
   · 不在前端勾选完成 —— 答完题/读完页后由后端真实流水重算。
@@ -9,10 +9,10 @@
 <template>
   <Teleport to="body">
     <div v-if="modelValue" class="spd-mask" @click.self="close">
-      <aside class="spd" role="dialog" aria-label="知航 · 活计划">
+      <aside class="spd" role="dialog" aria-label="学习计划">
         <header class="spd__head">
           <div class="spd__title-wrap">
-            <span class="spd__eyebrow">知航 · 活计划</span>
+            <span class="spd__eyebrow">学习计划</span>
             <h2>{{ plan?.route?.targetTitle ? `目标：${plan.route.targetTitle}` : '按知识图谱排好的学习计划' }}</h2>
           </div>
           <button type="button" class="spd__close" aria-label="关闭" @click="close">×</button>
