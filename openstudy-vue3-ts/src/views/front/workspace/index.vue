@@ -359,18 +359,22 @@
             <div v-if="uploadTip" class="kbp-tip">{{ uploadTip }}</div>
 
             <div v-if="linkedBanks.length" class="kbp-linked-banks">
-              <span class="kbp-linked-banks__label"><OsIcon name="database" :size="14" /> 已关联题库</span>
-              <el-tag
-                v-for="bank in linkedBanks"
-                :key="bank.bankId || bank.id"
-                size="small"
-                type="info"
-                effect="plain"
-                closable
-                @close="removeLinkedBank(bank)"
-              >
-                {{ bank.bankName || bank.name }} · {{ bank.questionCount || bank.totalQuestions || 0 }} 题
-              </el-tag>
+              <div class="kbp-linked-banks__head">
+                <span class="kbp-linked-banks__label"><OsIcon name="database" :size="14" /> 已关联题库</span>
+                <span class="kbp-linked-banks__sub">题库不复制，只做逻辑关联</span>
+              </div>
+              <div class="kbp-linked-bank-list">
+                <div v-for="bank in linkedBanks" :key="bank.bankId || bank.id" class="kbp-linked-bank">
+                  <el-tag size="small" type="success" effect="plain">题库</el-tag>
+                  <div class="kbp-linked-bank__main">
+                    <b>{{ bank.bankName || bank.name }}</b>
+                    <span>{{ bank.subject || '未设置科目' }} · {{ bank.questionCount || bank.totalQuestions || 0 }} 道题</span>
+                    <em v-if="bank.description">{{ bank.description }}</em>
+                  </div>
+                  <button type="button" class="kbp-linked-bank__knowledge" @click="openBankKnowledge(bank)">查看知识点</button>
+                  <button type="button" class="kbp-linked-bank__remove" @click="removeLinkedBank(bank)">取消关联</button>
+                </div>
+              </div>
             </div>
 
             <div class="kbp-docs" v-loading="docsLoading">
@@ -983,6 +987,39 @@
         <el-button @click="bankImportVisible = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="bankKnowledgeVisible" :title="`题库知识点 · ${bankKnowledgeTitle}`" width="720px" append-to-body>
+      <div v-loading="bankKnowledgeLoading" class="kbp-bank-knowledge">
+        <section class="kbp-bank-knowledge__section">
+          <h4>知识点</h4>
+          <div v-if="bankKnowledge.entities?.length" class="kbp-bank-knowledge__chips">
+            <el-tag v-for="entity in bankKnowledge.entities" :key="entity.name" size="small" effect="plain">
+              {{ entity.name }}<em v-if="entity.type"> · {{ entity.type }}</em>
+            </el-tag>
+          </div>
+          <p v-else class="kbp-bank-knowledge__empty">还没有抽取到知识点，关联后会在后台自动抽取。</p>
+          <div v-if="bankKnowledge.relations?.length" class="kbp-bank-knowledge__relations">
+            <span v-for="rel in bankKnowledge.relations" :key="`${rel.source}-${rel.target}-${rel.type}`">
+              {{ rel.source }} → {{ rel.target }}<em>（{{ rel.type }}）</em>
+            </span>
+          </div>
+        </section>
+        <section class="kbp-bank-knowledge__section">
+          <h4>对应题目 <span>示例 {{ bankKnowledge.questions?.length || 0 }} 道</span></h4>
+          <div v-if="bankKnowledge.questions?.length" class="kbp-bank-knowledge__questions">
+            <article v-for="question in bankKnowledge.questions" :key="question.id">
+              <b>#{{ question.id }}</b>
+              <p>{{ question.text }}</p>
+              <em v-if="question.analysis">解析：{{ question.analysis }}</em>
+            </article>
+          </div>
+          <p v-else class="kbp-bank-knowledge__empty">暂无题目样例。</p>
+        </section>
+      </div>
+      <template #footer>
+        <el-button @click="bankKnowledgeVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -1007,7 +1044,7 @@ import ShareKnowledgeDialog from './components/ShareKnowledgeDialog.vue'
 import ReceiveKnowledgeDialog from './components/ReceiveKnowledgeDialog.vue'
 import { listQuestionMain, getQuestionMain, updateQuestionMain } from '@/api/questionMain/questionMain'
 import { listMyQuestionBank } from '@/api/questionBank/questionBank'
-import { listKbQuestionBanks, linkKbQuestionBank, unlinkKbQuestionBank } from '@/api/ai/questionBankLink'
+import { listKbQuestionBanks, linkKbQuestionBank, unlinkKbQuestionBank, getKbQuestionBankKnowledge } from '@/api/ai/questionBankLink'
 import { listNote, getNote, updateNote } from '@/api/notes/note'
 import useUserStore from '@/store/modules/user'
 import useTopbarStore from '@/store/modules/topbar'
@@ -1828,6 +1865,10 @@ const bankImportKeyword = ref('')
 const bankImportAvailable = ref<any[]>([])
 const linkedBanks = ref<any[]>([])
 const bankImportLoadingId = ref(0)
+const bankKnowledgeVisible = ref(false)
+const bankKnowledgeLoading = ref(false)
+const bankKnowledgeTitle = ref('')
+const bankKnowledge = ref<any>({ entities: [], relations: [], questions: [] })
 
 /* ===================== 加载 ===================== */
 
@@ -3560,6 +3601,25 @@ async function importQuestionBank(bank: any) {
   } finally {
     bankImporting.value = false
     bankImportLoadingId.value = 0
+  }
+}
+
+async function openBankKnowledge(bank: any) {
+  const kb = activeKb.value
+  const bankId = Number(bank?.bankId || bank?.id || 0)
+  if (!kb || !bankId || bankKnowledgeLoading.value) return
+  bankKnowledgeTitle.value = String(bank.bankName || bank.name || '题库知识点')
+  bankKnowledge.value = { entities: [], relations: [], questions: [] }
+  bankKnowledgeVisible.value = true
+  bankKnowledgeLoading.value = true
+  try {
+    const res: any = await getKbQuestionBankKnowledge(Number(kb.kbId), bankId)
+    if (res.code === 200) bankKnowledge.value = res.data || { entities: [], relations: [], questions: [] }
+    else ElMessage.error(res.msg || '读取题库知识点失败')
+  } catch (e: any) {
+    ElMessage.error('读取题库知识点失败：' + (e?.message || e))
+  } finally {
+    bankKnowledgeLoading.value = false
   }
 }
 
@@ -5625,26 +5685,111 @@ onBeforeUnmount(() => {
   line-height: 1.55;
 }
 
+.kbp-bank-knowledge { display: flex; max-height: 560px; flex-direction: column; gap: 16px; overflow-y: auto; }
+.kbp-bank-knowledge__section h4 { margin: 0 0 8px; color: var(--os-text-1, #253247); font-size: 13px; }
+.kbp-bank-knowledge__section h4 span { color: var(--os-text-4, #9ca3af); font-size: 10.5px; font-weight: 400; }
+.kbp-bank-knowledge__chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.kbp-bank-knowledge__chips em { color: #9aa3b2; font-size: 10px; font-style: normal; }
+.kbp-bank-knowledge__relations { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 9px; color: #6b7280; font-size: 10.5px; line-height: 1.6; }
+.kbp-bank-knowledge__relations em { color: #9aa3b2; font-style: normal; }
+.kbp-bank-knowledge__questions { display: flex; flex-direction: column; gap: 8px; }
+.kbp-bank-knowledge__questions article { padding: 9px 10px; border: 1px solid #e8edf5; border-radius: 7px; background: #fafbfe; }
+.kbp-bank-knowledge__questions b { color: #2f5fce; font-size: 10.5px; }
+.kbp-bank-knowledge__questions p { margin: 4px 0 0; color: #4b5563; font-size: 11.5px; line-height: 1.55; white-space: pre-wrap; }
+.kbp-bank-knowledge__questions em { display: block; margin-top: 5px; color: #9aa3b2; font-size: 10.5px; font-style: normal; line-height: 1.5; }
+.kbp-bank-knowledge__empty { margin: 0; color: #9aa3b2; font-size: 11.5px; }
+
 .kbp-linked-banks {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
   margin: 4px 0 10px;
-  padding: 8px 10px;
+  padding: 9px 10px;
   border: 1px solid var(--os-border-soft, #e5eaf2);
   border-radius: 8px;
   background: var(--os-surface-2, #f8fafc);
+}
+
+.kbp-linked-banks__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
 }
 
 .kbp-linked-banks__label {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  margin-right: 2px;
   color: var(--os-text-3, #6b7280);
   font-size: 11.5px;
   font-weight: 600;
+}
+
+.kbp-linked-banks__sub {
+  color: var(--os-text-4, #9ca3af);
+  font-size: 10.5px;
+}
+
+.kbp-linked-bank-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kbp-linked-bank {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid #e8edf5;
+  border-radius: 7px;
+  background: #fff;
+}
+
+.kbp-linked-bank__main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kbp-linked-bank__main b {
+  overflow: hidden;
+  color: var(--os-text-1, #253247);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kbp-linked-bank__main span,
+.kbp-linked-bank__main em {
+  overflow: hidden;
+  color: var(--os-text-4, #9ca3af);
+  font-size: 10.5px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kbp-linked-bank__knowledge {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: #2f5fce;
+  cursor: pointer;
+  font-size: 10.5px;
+}
+
+.kbp-linked-bank__remove {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: #9aa3b2;
+  cursor: pointer;
+  font-size: 10.5px;
+}
+
+.kbp-linked-bank__remove:hover {
+  color: #d9534f;
 }
 
 /* ---------- 单文档刨析 ---------- */

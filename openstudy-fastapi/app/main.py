@@ -244,7 +244,7 @@ from app.api.v1 import (
     sensitive_word, chat, ocr, document, notice_front, user_front,
     noteQuestionBank, noteQuestion, user_stats,
     common, catch_all, ai_config, bankShare, kbShare, notification, systemComment,
-    study_plan, document_clinic, question_bank_link,
+    study_plan, document_clinic, question_bank_link, wiki_update,
     rag, rate_limit_admin, bank_export, tts, english_practice,
     # 题库练习会话/服务端判分（与题库 CRUD 分开，见 practice.py 文件头）
     practice,
@@ -300,6 +300,7 @@ app.include_router(systemComment.router, tags=["评论管理"])  # 后台 /syste
 # ⚠️ 学习建议新路由必须排在 rag.router 之前，避免 /rag/* 兜底路由截走。
 app.include_router(study_plan.router, tags=["规划建议"])
 app.include_router(question_bank_link.router, tags=["资料夹题库关联"])
+app.include_router(wiki_update.router, tags=["知识百科增量更新"])
 app.include_router(document_clinic.router, tags=["资料诊疗室"])
 app.include_router(rag.router, tags=["RAG知识库"])
 app.include_router(rate_limit_admin.router, tags=["AI限流管理"])

@@ -206,6 +206,16 @@ export function buildWikiPages(data: { kbId: number; force?: boolean; limit?: nu
   }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
 }
 
+/** 按单个来源（文档/图片/题库/网页）增量更新知识百科 */
+export function buildWikiSource(data: { kbId: number; sourceType: 'document' | 'image' | 'bank' | 'web'; sourceId: number; limit?: number }) {
+  return request({
+    url: '/rag/wiki/build/selective',
+    method: 'post',
+    data,
+    timeout: 60000
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
 /** 当前用户最近一次知识百科生成任务（重新进入知识百科时恢复进度） */
 export function getLatestWikiBuildJob(kbId?: number | null) {
   return request({

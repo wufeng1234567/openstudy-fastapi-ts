@@ -24,6 +24,14 @@ export function linkKbQuestionBank(kbId: number | string, bankId: number) {
   }) as unknown as Promise<{ code: number; msg?: string; data: KbQuestionBank }>
 }
 
+export function getKbQuestionBankKnowledge(kbId: number | string, bankId: number) {
+  return request({
+    url: `/rag/workspace/kbs/${kbId}/question-banks/${bankId}/knowledge`,
+    method: 'get',
+    timeout: 120000
+  }) as unknown as Promise<{ code: number; msg?: string; data: any }>
+}
+
 export function unlinkKbQuestionBank(kbId: number | string, bankId: number) {
   return request({
     url: `/rag/workspace/kbs/${kbId}/question-banks/${bankId}`,

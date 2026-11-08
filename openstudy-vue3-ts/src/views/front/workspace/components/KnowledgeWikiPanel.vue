@@ -19,11 +19,22 @@
           <button type="button" :class="{ 'is-active': view === 'pages' }" @click="view = 'pages'">主题页</button>
           <button type="button" :class="{ 'is-active': view === 'map' }" :disabled="!pages.length" @click="switchMap">知识图谱</button>
         </div>
-        <button type="button" class="kw-toolbar-btn is-primary" :disabled="!activeKbId || buildActive"
-          @click="build">
-          <span v-if="buildActive" class="kw-toolbar-btn__spinner"></span>
-          <span>{{ buildActive ? `更新中 ${buildJob.done}/${buildJob.total}` : pages.length ? '更新知识百科' : '生成知识百科' }}</span>
-        </button>
+        <el-dropdown trigger="click" :disabled="!activeKbId || buildActive" @command="onBuildCommand">
+          <button type="button" class="kw-toolbar-btn is-primary" :disabled="!activeKbId || buildActive">
+            <span v-if="buildActive" class="kw-toolbar-btn__spinner"></span>
+            <span>{{ buildActive ? `更新中 ${buildJob.done}/${buildJob.total}` : pages.length ? '更新知识百科' : '生成知识百科' }}</span>
+            <OsIcon name="chevron-down" :size="12" />
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="all">增量更新全部（跳过已更新）</el-dropdown-item>
+              <el-dropdown-item command="document">只更新文档</el-dropdown-item>
+              <el-dropdown-item command="image">只更新图片</el-dropdown-item>
+              <el-dropdown-item command="bank">只更新题库</el-dropdown-item>
+              <el-dropdown-item command="web">只更新网页</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </Teleport>
 
@@ -399,6 +410,29 @@
         <el-button type="primary" @click="routeGuideVisible = false">知道了</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="wikiUpdateVisible" title="按来源更新知识百科" width="540px" append-to-body>
+      <p class="kw-update-hint">
+        只更新选中的一个来源；已生成且未变化的主题页会跳过，不会重复调用模型。
+      </p>
+      <div v-loading="wikiUpdateLoading" class="kw-update-list">
+        <button v-for="item in wikiUpdateOptions" :key="`${item.id}-${item.title}`" type="button"
+          class="kw-update-item" :disabled="wikiUpdateSubmitting" @click="applyWikiUpdate(item)">
+          <span class="kw-update-item__type">{{ { document: '文档', image: '图片', bank: '题库', web: '网页' }[wikiUpdateType] }}</span>
+          <span class="kw-update-item__main">
+            <b>{{ item.title }}</b>
+            <em>{{ item.subtitle || '更新这个来源对应的主题页' }}</em>
+          </span>
+          <OsIcon name="chevron-right" :size="14" />
+        </button>
+        <div v-if="!wikiUpdateLoading && !wikiUpdateOptions.length" class="kw-update-empty">
+          这个资料夹暂时没有可更新的{{ { document: '文档', image: '图片', bank: '题库', web: '网页' }[wikiUpdateType] }}来源。
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="wikiUpdateVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
@@ -410,12 +444,14 @@ import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import ResizableDrawer from '@/components/ResizableDrawer/index.vue'
 import { readStudyPlanConfig, saveStudyPlanConfig } from '@/utils/studyPlanState'
+import { getStudyMap } from '@/api/ai/studyPlan'
 import KnowledgeAdviceHost from './KnowledgeAdviceHost.vue'
 import KnowledgeWikiEditor from './KnowledgeWikiEditor.vue'
 import {
   addWikiPageLink,
   attachWikiImage,
   buildWikiPages,
+  buildWikiSource,
   detachWikiImage,
   getLatestWikiBuildJob,
   getLearningRoute,
@@ -462,6 +498,11 @@ const loading = ref(false)
 const building = ref(false)
 const buildJob = ref<any>(null)
 const pages = ref<any[]>([])
+const wikiUpdateVisible = ref(false)
+const wikiUpdateType = ref<'document' | 'image' | 'bank' | 'web'>('document')
+const wikiUpdateOptions = ref<any[]>([])
+const wikiUpdateLoading = ref(false)
+const wikiUpdateSubmitting = ref(false)
 const stats = reactive({ pageCount: 0, docCount: 0, staleCount: 0, linkCount: 0 })
 const linkDialogVisible = ref(false)
 const linkSaving = ref(false)
@@ -1706,14 +1747,82 @@ async function resumeBuildJob() {
   }
 }
 
+function onBuildCommand(command: string) {
+  if (command === 'all') {
+    void build()
+    return
+  }
+  if (['document', 'image', 'bank', 'web'].includes(command)) {
+    void openWikiUpdate(command as typeof wikiUpdateType.value)
+  }
+}
+
+async function openWikiUpdate(type: typeof wikiUpdateType.value) {
+  wikiUpdateType.value = type
+  wikiUpdateVisible.value = true
+  wikiUpdateLoading.value = true
+  wikiUpdateOptions.value = []
+  try {
+    const res: any = await getStudyMap({
+      kbId: Number(props.activeKbId || 0),
+      sourceTypes: [type],
+      limit: 120
+    })
+    if (res.code !== 200) throw new Error(res.msg || '读取来源失败')
+    wikiUpdateOptions.value = (res.data?.nodes || [])
+      .filter((node: any) => String(node.kind) === type)
+      .map((node: any) => ({
+        id: Number(node.ref?.docId || node.ref?.bankId || 0),
+        title: String(node.title || '未命名来源'),
+        subtitle: String(node.subtitle || ''),
+        node
+      }))
+      .filter((item: any) => item.id > 0)
+  } catch (error: any) {
+    ElMessage.error('读取可更新来源失败：' + (error?.message || error))
+  } finally {
+    wikiUpdateLoading.value = false
+  }
+}
+
+async function applyWikiUpdate(item: any) {
+  if (!props.activeKbId || !item?.id || wikiUpdateSubmitting.value) return
+  wikiUpdateSubmitting.value = true
+  try {
+    const res: any = await buildWikiSource({
+      kbId: Number(props.activeKbId),
+      sourceType: wikiUpdateType.value,
+      sourceId: Number(item.id),
+      limit: 120
+    })
+    if (res.code !== 200) {
+      ElMessage.error(res.msg || '按来源更新失败')
+      return
+    }
+    wikiUpdateVisible.value = false
+    if (res.data?.jobId) {
+      buildJob.value = res.data
+      ElMessage.info(res.msg || '已开始增量更新')
+      startBuildPolling(res.data.jobId)
+    } else {
+      ElMessage.success(res.msg || '已加入更新队列')
+    }
+  } catch (error: any) {
+    ElMessage.error('按来源更新失败：' + (error?.message || error))
+  } finally {
+    wikiUpdateSubmitting.value = false
+  }
+}
+
 async function build() {
   if (!props.activeKbId || building.value || buildActive.value) return
   building.value = true
   try {
     const res = await buildWikiPages({
       kbId: Number(props.activeKbId),
-      force: pages.value.length > 0,
-      limit: 30
+      // 默认只补未完成/stale 页面；已有 ready 页面不重复生成。
+      force: false,
+      limit: 120
     })
     if (res.code !== 200) {
       ElMessage.error(res.msg || '知识百科生成失败')
@@ -2626,6 +2735,15 @@ onBeforeUnmount(() => {
 .kw-guide-step b { color: #253247; font-size: 12px; font-weight: 600; }
 .kw-guide-step p { margin: 3px 0 0; color: #7d8596; font-size: 11px; line-height: 1.6; }
 .kw-guide-tip { margin-top: 13px; padding: 8px 10px; border: 1px dashed #dbe5f8; border-radius: 8px; color: #7d8596; background: #fbfcff; font-size: 11px; line-height: 1.6; }
+.kw-update-hint { margin: 0 0 10px; color: #7d8596; font-size: 12px; line-height: 1.6; }
+.kw-update-list { display: flex; max-height: 360px; flex-direction: column; gap: 8px; overflow-y: auto; }
+.kw-update-item { display: flex; align-items: center; gap: 9px; width: 100%; padding: 10px 11px; border: 1px solid #e8edf5; border-radius: 8px; background: #fff; color: #4b5563; cursor: pointer; text-align: left; }
+.kw-update-item:hover { border-color: #c9d8f5; background: #f8faff; }
+.kw-update-item__type { flex: none; padding: 2px 6px; border-radius: 5px; background: #eef4ff; color: #2f5fce; font-size: 10px; }
+.kw-update-item__main { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+.kw-update-item__main b { overflow: hidden; color: #253247; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.kw-update-item__main em { overflow: hidden; color: #9aa3b2; font-size: 10.5px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.kw-update-empty { padding: 24px 0; color: #9aa3b2; font-size: 12px; text-align: center; }
 @media (max-width: 900px) { .kw-head { flex-direction: column; align-items: flex-start; gap: 10px; } .kw-head__actions { flex-wrap: wrap; } .kw-map, .kw-map__svg { min-height: 460px; height: 460px; } .kw-detail-drawer { width: 92vw !important; } }
 </style>
 

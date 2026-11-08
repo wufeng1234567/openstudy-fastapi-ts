@@ -123,31 +123,53 @@ async def extract_bank_entities(
     *,
     user_id: int,
     bank_id: int,
-    limit: int = 20,
+    limit: int = 200,
+    chunk_size: int = 20,
     use_llm: bool = True,
 ) -> Dict[str, Any]:
+    """按题目块抽取后合并，避免大题库一次塞进模型上下文。"""
     rows = (
         await db.execute(
             select(QuestionMain.question_text, QuestionMain.analysis)
             .where(QuestionMain.bank_id == int(bank_id), QuestionMain.status == "0")
             .order_by(QuestionMain.id.asc())
-            .limit(max(1, min(int(limit or 20), 40)))
+            .limit(max(1, min(int(limit or 200), 300)))
         )
     ).all()
-    text = "\n\n".join(
-        f"题目：{str(row.question_text or '')}\n解析：{str(row.analysis or '')}"
-        for row in rows
-        if str(row.question_text or "").strip()
-    )
-    return await extract_entities_from_text(
-        db,
-        user_id=user_id,
-        source_type="bank",
-        source_id=int(bank_id),
-        source_name=f"题库 #{bank_id}",
-        text=text,
-        use_llm=use_llm,
-    )
+    chunk_size = max(1, min(int(chunk_size or 20), 40))
+    chunks = [rows[index : index + chunk_size] for index in range(0, len(rows), chunk_size)]
+    all_entities: Dict[str, Dict[str, Any]] = {}
+    all_relations: Dict[tuple, Dict[str, Any]] = {}
+    errors: List[str] = []
+    for chunk in chunks:
+        text = "\n\n".join(
+            f"题目：{str(row.question_text or '')}\n解析：{str(row.analysis or '')}"
+            for row in chunk
+            if str(row.question_text or "").strip()
+        )
+        if not text:
+            continue
+        result = await extract_entities_from_text(
+            db,
+            user_id=user_id,
+            source_type="bank",
+            source_id=int(bank_id),
+            source_name=f"题库 #{bank_id}",
+            text=text,
+            use_llm=use_llm,
+        )
+        if result.get("degraded", {}).get("error"):
+            errors.append(str(result["degraded"]["error"]))
+        for item in result.get("entities") or []:
+            all_entities[str(item.get("name") or "")] = item
+        for item in result.get("relations") or []:
+            key = (str(item.get("source") or ""), str(item.get("target") or ""), str(item.get("type") or ""))
+            all_relations[key] = item
+    return {
+        "entities": list(all_entities.values())[:80],
+        "relations": list(all_relations.values())[:120],
+        "degraded": {"error": errors[0] if errors else "", "chunks": len(chunks)},
+    }
 
 
 __all__ = ["extract_entities_from_text", "extract_bank_entities"]
