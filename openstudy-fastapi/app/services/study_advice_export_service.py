@@ -1,4 +1,4 @@
-"""学习建议导出：PDF / Markdown / TXT。
+"""规划建议导出：PDF / Markdown / TXT。
 
 建议对象没有任务/完成态；只导出标题、结论、阶段、依据、替代方案和风险。
 """
@@ -16,12 +16,12 @@ def _text(value: Any, limit: int = 2000) -> str:
 
 
 def _safe_filename(value: str) -> str:
-    stem = re.sub(r'[\\/:*?"<>|]+', "_", str(value or "学习建议")).strip(" ._")
-    return (stem or "学习建议")[:80]
+    stem = re.sub(r'[\\/:*?"<>|]+', "_", str(value or "规划建议")).strip(" ._")
+    return (stem or "规划建议")[:80]
 
 
 def _markdown(advice: Dict[str, Any]) -> str:
-    lines = [f"# {_text(advice.get('title') or '学习建议', 120)}", ""]
+    lines = [f"# {_text(advice.get('title') or '规划建议', 120)}", ""]
     if advice.get("summary"):
         lines.extend([_text(advice.get("summary"), 600), ""])
     lines.extend(["## 阶段建议", ""])
@@ -47,12 +47,12 @@ def _markdown(advice: Dict[str, Any]) -> str:
         lines.extend(f"- {_text(item, 300)}" for item in advice["risks"])
         lines.append("")
     lines.append(f"> 导出时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    lines.append("> 这是学习建议，不是任务清单。")
+    lines.append("> 这是规划建议，不是任务清单。")
     return "\n".join(lines).strip() + "\n"
 
 
 def _plain(advice: Dict[str, Any]) -> str:
-    lines = [_text(advice.get("title") or "学习建议", 120), "=" * 32, ""]
+    lines = [_text(advice.get("title") or "规划建议", 120), "=" * 32, ""]
     if advice.get("summary"):
         lines.extend([_text(advice.get("summary"), 600), ""])
     lines.append("阶段建议")
@@ -72,7 +72,7 @@ def _plain(advice: Dict[str, Any]) -> str:
     if advice.get("risks"):
         lines.extend(["", "需要注意"])
         lines.extend(f"- {_text(item, 300)}" for item in advice["risks"])
-    lines.extend(["", f"导出时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}", "这是学习建议，不是任务清单。"])
+    lines.extend(["", f"导出时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}", "这是规划建议，不是任务清单。"])
     return "\n".join(lines).strip() + "\n"
 
 
@@ -90,7 +90,7 @@ def _pdf(advice: Dict[str, Any]) -> bytes:
     title_style = ParagraphStyle("AdviceTitle", fontName=font, fontSize=18, leading=24, spaceAfter=10)
     body_style = ParagraphStyle("AdviceBody", fontName=font, fontSize=10.5, leading=16, spaceAfter=8)
     head_style = ParagraphStyle("AdviceHead", fontName=font, fontSize=12, leading=18, spaceBefore=10, spaceAfter=6)
-    story = [Paragraph(_rl_text_with_math(_text(advice.get("title") or "学习建议", 120), font, 18), title_style)]
+    story = [Paragraph(_rl_text_with_math(_text(advice.get("title") or "规划建议", 120), font, 18), title_style)]
     if advice.get("summary"):
         story.append(Paragraph(_rl_text_with_math(_text(advice.get("summary"), 600), font), body_style))
     story.append(Paragraph("阶段建议", head_style))
@@ -129,7 +129,7 @@ def _pdf(advice: Dict[str, Any]) -> bytes:
             story.append(Paragraph(_rl_text_with_math(f"· {_text(item, 300)}", font), body_style))
     story.append(Spacer(1, 8))
     story.append(Paragraph(f"导出时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}", body_style))
-    story.append(Paragraph("这是学习建议，不是任务清单。", body_style))
+    story.append(Paragraph("这是规划建议，不是任务清单。", body_style))
     doc.build(story)
     return buffer.getvalue()
 
@@ -141,7 +141,7 @@ def _escape(value: Any) -> str:
 
 def export_advice(advice: Dict[str, Any], fmt: str) -> Tuple[bytes, str, str]:
     format_value = str(fmt or "pdf").lower()
-    stem = _safe_filename(str(advice.get("title") or "学习建议"))
+    stem = _safe_filename(str(advice.get("title") or "规划建议"))
     if format_value == "pdf":
         return _pdf(advice), f"{stem}.pdf", "application/pdf"
     if format_value == "md":

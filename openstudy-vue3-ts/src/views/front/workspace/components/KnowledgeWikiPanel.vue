@@ -121,7 +121,7 @@
         </svg>
         <aside class="kw-graph-panel" @pointerdown.stop>
           <div class="kw-graph-mode-row">
-            <span>学习建议模式</span>
+            <span>规划建议模式</span>
             <button type="button" class="kw-mode-switch" :class="{ 'is-on': adviceMode }" :aria-pressed="adviceMode"
               @click="toggleAdviceMode">
               <i></i>
@@ -155,14 +155,14 @@
             </div>
           </template>
           <template v-else>
-            <p class="kw-advice-mode-tip">点一个节点作为起点，生成可反复调整的学习建议；不会打开知识百科抽屉。</p>
+            <p class="kw-advice-mode-tip">点一个节点作为起点，生成可反复调整的规划建议；不会打开知识百科抽屉。</p>
             <button type="button" class="kw-graph-action kw-route-action" :disabled="adviceLoading" @click="generateAdvice">
               <OsIcon name="sparkles" :size="14" />
-              <span>{{ adviceLoading ? '正在生成…' : '生成学习建议' }}</span>
+              <span>{{ adviceLoading ? '正在生成…' : '生成规划建议' }}</span>
             </button>
           </template>
         </aside>
-        <div v-if="!adviceMode" class="kw-graph-hint"><span>点节点查看主题页 · 右侧开启学习建议模式后可生成建议</span></div>
+        <div v-if="!adviceMode" class="kw-graph-hint"><span>点节点查看主题页 · 右侧开启规划建议模式后可生成建议</span></div>
       </div>
       <KnowledgeAdviceHost
         ref="adviceHostRef"
@@ -387,7 +387,7 @@
         </div>
         <div class="kw-guide-step">
           <i>02</i>
-          <div><b>生成学习建议</b><p>打开右侧「学习建议模式」，点一个节点作为起点，系统会沿着图谱关系生成可调整的学习建议。</p></div>
+          <div><b>生成规划建议</b><p>打开右侧「规划建议模式」，点一个节点作为起点，系统会沿着图谱关系生成可调整的规划建议。</p></div>
         </div>
         <div class="kw-guide-step">
           <i>03</i>

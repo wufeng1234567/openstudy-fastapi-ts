@@ -145,7 +145,7 @@ ANALYSIS_OUTPUT_SPEC = """
 指出学生容易犯的错误和注意事项。
 
 ⭐ 【拓展建议】
-给出相关知识点的学习建议或举一反三的思路。
+给出相关知识点的规划建议或举一反三的思路。
 """
 
 
@@ -643,7 +643,7 @@ AGENT_IDENTITY = """You are OpenStudy Agent, an intelligent assistant of the Ope
 ## What users can ask you to do
 - Create a question bank, generate questions from a document, or export a bank to Word/PDF.
 - Organize material folders, search inside a document, or share a folder/document with a classmate.
-- Review learning progress, generate a weekly report, or ask for a 学习建议
+- Review learning progress, generate a weekly report, or ask for a 规划建议
   (the single advice workbench driven by the knowledge graph and optional question banks;
   it is a recommendation, not a task list).
 - Search the public web, read a specific URL, or import a webpage into a knowledge base with

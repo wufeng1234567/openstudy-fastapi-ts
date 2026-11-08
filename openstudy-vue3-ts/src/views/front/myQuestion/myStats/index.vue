@@ -337,7 +337,7 @@ function syncTopbarSubtitle() {
         bank: '数据来自你的刷题、错题、斩题与收藏记录',
         english: '数据来自你的单词听写与阅读练习',
         weekly: '最近 7 天的真实学习记录，可以保存成图片',
-        legacyExam: '旧版考前计划归档，只读查看；学习建议在「我的资料 → 知识图谱」里'
+        legacyExam: '旧版考前计划归档，只读查看；规划建议在「我的资料 → 知识图谱」里'
     }
     topbarStore.setCount(subtitleMap[activeTab.value])
 }
@@ -420,7 +420,7 @@ function applyTabFromQuery() {
         tabSeen.weekly = true
         nextTick(() => weeklyReportRef.value?.refresh?.())
     } else if (t === 'plan') {
-        // 旧学习计划页已移除：旧链接直接回到知识图谱页（学习建议模式）。
+        // 旧学习计划页已移除：旧链接直接回到知识图谱页（规划建议模式）。
         router.replace({
             path: '/front/workspace',
             query: { view: 'wiki', kbId: router.currentRoute.value.query.kbId || undefined }

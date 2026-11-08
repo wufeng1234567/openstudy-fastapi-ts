@@ -2,7 +2,7 @@
   <aside ref="exportRoot" class="sap" :class="{ 'is-exporting': exporting }">
     <header class="sap__head">
       <div>
-        <span class="sap__eyebrow">学习建议</span>
+        <span class="sap__eyebrow">规划建议</span>
         <h3>{{ advice?.title || '先选一个起点，再生成建议' }}</h3>
       </div>
       <div class="sap__head-actions">
@@ -127,14 +127,14 @@ const exportRoot = ref<HTMLElement | null>(null)
 const exporting = ref(false)
 
 function fileStem() {
-  const raw = String(props.advice?.title || '学习建议').replace(/[\\/:*?"<>|]+/g, '-').trim()
-  return raw || '学习建议'
+  const raw = String(props.advice?.title || '规划建议').replace(/[\\/:*?"<>|]+/g, '-').trim()
+  return raw || '规划建议'
 }
 
 function buildText() {
   const advice = props.advice || {}
   const lines: string[] = [
-    `# ${advice.title || '学习建议'}`,
+    `# ${advice.title || '规划建议'}`,
     '',
     String(advice.summary || ''),
     '',
@@ -161,7 +161,7 @@ function buildText() {
     for (const item of advice.risks) lines.push(`- ${item}`)
     lines.push('')
   }
-  lines.push('> 这是学习建议，不是任务清单；可以在 OpenStudy 中继续调整。')
+  lines.push('> 这是规划建议，不是任务清单；可以在 OpenStudy 中继续调整。')
   return lines.join('\n')
 }
 
@@ -170,7 +170,7 @@ async function exportAdvice(command: string) {
   if (command === 'text') {
     const blob = new Blob([buildText()], { type: 'text/plain;charset=utf-8' })
     saveAs(blob, `${fileStem()}.txt`)
-    ElMessage.success('学习建议文本（TXT）已导出')
+    ElMessage.success('规划建议文本（TXT）已导出')
     return
   }
   if (command === 'pdf') {
@@ -180,7 +180,7 @@ async function exportAdvice(command: string) {
       const blob = res instanceof Blob ? res : new Blob([res], { type: 'application/pdf' })
       if (!blob.size) throw new Error('导出文件为空')
       saveAs(blob, `${fileStem()}.pdf`)
-      ElMessage.success('学习建议 PDF 已导出')
+      ElMessage.success('规划建议 PDF 已导出')
     } catch (error: any) {
       ElMessage.error(String(error?.message || '导出 PDF 失败'))
     } finally {
@@ -203,7 +203,7 @@ async function exportAdvice(command: string) {
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
     if (!blob) throw new Error('图片生成失败')
     saveAs(blob, `${fileStem()}.png`)
-    ElMessage.success('学习建议图片已导出')
+    ElMessage.success('规划建议图片已导出')
   } catch (error: any) {
     ElMessage.error(String(error?.message || '导出图片失败'))
   } finally {

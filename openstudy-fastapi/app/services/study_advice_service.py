@@ -1,4 +1,4 @@
-"""学习建议：真实图遍历 trace + LLM 解释 + 模板降级。
+"""规划建议：真实图遍历 trace + LLM 解释 + 模板降级。
 
 关键边界
 ========
@@ -293,11 +293,11 @@ def build_template_advice(
     phases = [
         {
             "id": "phase:foundation",
-            "title": "先把关系读懂",
-            "goal": f"沿着「{seed_title}」的真实图谱关系建立整体理解",
+            "title": "先把关键信息理清",
+            "goal": f"围绕「{seed_title}」梳理重点、前置依赖和可执行步骤",
             "estimatedMinutes": max(20, min(120, 25 * max(1, len(visited)))),
             "nodeIds": phase_nodes,
-            "reason": f"这次从「{seed_title}」出发，沿真实边访问了 {max(0, len(visited) - 1)} 个关联节点。",
+            "reason": f"这次从「{seed_title}」出发，沿真实关联访问了 {max(0, len(visited) - 1)} 个相关内容。",
             "evidence": [{"edgeId": step.get("edgeId"), "type": step.get("kind")} for step in trace.get("steps") or []],
         }
     ]
@@ -318,11 +318,11 @@ def build_template_advice(
             }
         )
     return {
-        "title": f"围绕「{seed_title}」的建议",
+        "title": f"围绕「{seed_title}」的规划建议",
         "summary": (
-            f"从「{seed_title}」出发，建议先看 {len(visited_titles[:3])} 个相关节点"
+            f"围绕「{seed_title}」，建议先梳理 {len(visited_titles[:3])} 个关键内容"
             + (f"，再用题库验证" if stats.get("bankCount") else "")
-            + "。这是一条可调整的建议路径，不是任务清单。"
+            + "。这是一份可调整的规划建议，不是任务清单。"
         ),
         "scope": {
             "kbId": _safe_int(facts.get("kbId")),
@@ -540,7 +540,7 @@ def _build_prompt(facts: Dict[str, Any], trace: Dict[str, Any], instruction: str
         if edge.get("id")
     ]
     payload = {
-        "task": "请基于以下真实学习图谱写一份可调整的学习建议。只解释，不发明节点或关系。",
+        "task": "请基于用户提供的真实内容（可能是比赛通知、活动信息、资料分析、学习材料、工作文档等）写一份可调整的规划建议。先判断内容类型和用户目标，再给阶段；只解释，不发明节点或关系。",
         "seedNodeId": trace.get("seedNodeId"),
         "trace": trace,
         "nodes": compact_nodes[:30],
@@ -548,7 +548,7 @@ def _build_prompt(facts: Dict[str, Any], trace: Dict[str, Any], instruction: str
         "stats": facts.get("stats") or {},
         "userInstruction": instruction or "没有额外要求。",
         "outputSchema": {
-            "title": "一句话标题",
+            "title": "一句话标题，必须体现内容类型（如比赛、资料分析、学习材料）",
             "summary": "一到两句结论，尽量 50 字以内，用中文自然表达",
             "phases": [
                 {
@@ -567,9 +567,29 @@ def _build_prompt(facts: Dict[str, Any], trace: Dict[str, Any], instruction: str
             "alternatives": [{"title": "替代路径", "summary": "替代方案", "tradeoff": "取舍"}],
             "risks": ["一条结论，最多 35 字"],
         },
+        "fewShotExamples": [
+            {
+                "contentType": "比赛通知",
+                "sampleInput": "华为比赛报名信息，包含报名截止时间、参赛资格、需要提交的材料。",
+                "goodTitle": "华为比赛报名与备赛规划",
+                "goodSummary": "先确认报名资格和截止时间，再准备参赛材料并安排赛前演练。",
+                "goodPhaseTitles": ["确认报名条件", "准备参赛材料", "赛前演练与提交"],
+                "goodRisk": "报名截止时间固定，错过无法补报。"
+            },
+            {
+                "contentType": "资料分析",
+                "sampleInput": "一份行业分析报告，用户想快速看懂结论、关键数据和可执行方向。",
+                "goodTitle": "行业报告阅读与结论提炼",
+                "goodSummary": "先看结论和统计口径，再核对关键数据，最后整理可执行建议。",
+                "goodPhaseTitles": ["读结论与范围", "核对数据口径", "提炼行动建议"],
+                "goodRisk": "报告数据口径不统一时，结论只能作为参考。"
+            }
+        ],
         "rules": [
             "不要输出 tasks/days/status/done/progress/todayTasks。",
             "不要出现“你今天必须/完成后/已为你安排任务”这类命令式措辞。",
+            "先识别内容类型：比赛/活动/通知、资料分析、学习材料、工作文档；不要把所有内容都写成课程学习。",
+            "标题和阶段必须贴合内容类型：比赛写报名、材料、演练、提交；资料分析写结论、口径、数据、行动；只有学习材料才写知识点和练习。",
             "不要新增 nodes 之外的 nodeId，不要新增 edges 之外的 edgeId。",
             "所有面向用户的文字必须用中文自然表达；不要出现 topic:/doc:/bank: 等内部 ID，也不要出现 degree/viewCount/practiceCount/mappedQuestionCount/edgeId/nodeId 等字段名。",
             "把内部数据翻译成用户能懂的话：例如「关联较少」「暂无阅读」「暂无练习」「题目暂未对应」。",

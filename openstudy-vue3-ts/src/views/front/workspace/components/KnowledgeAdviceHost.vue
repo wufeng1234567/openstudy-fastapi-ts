@@ -134,7 +134,7 @@ async function generate(instruction = '', parentId = 0) {
   if (isBusy.value) return
   if (!selectedNode.value?.id) {
     drawer.value = true
-    ElMessage.info('先点一个图谱节点，再生成学习建议')
+    ElMessage.info('先点一个图谱节点，再生成规划建议')
     return
   }
   const seq = ++runSeq

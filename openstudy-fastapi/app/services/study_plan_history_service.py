@@ -1,4 +1,4 @@
-"""学习建议快照 CRUD：只存建议，不存任务/完成态。"""
+"""规划建议快照 CRUD：只存建议，不存任务/完成态。"""
 
 from __future__ import annotations
 
@@ -104,7 +104,7 @@ async def save_snapshot(
     row = StudyPlanSnapshot(
         user_id=int(user_id),
         kb_id=int(kb_id or 0),
-        title=str(title or advice.get("title") or "学习建议")[:160],
+        title=str(title or advice.get("title") or "规划建议")[:160],
         scope_json=scope or advice.get("scope") or {},
         advice_json=advice,
         trace_json=trace or {},

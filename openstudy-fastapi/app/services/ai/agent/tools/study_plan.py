@@ -1,4 +1,4 @@
-"""`study_plan` —— 在智能对话里生成/查看「学习建议」。
+"""`study_plan` —— 在智能对话里生成/查看「规划建议」。
 
 旧 action（plan/today/adjust/reassess）仍返回可重建的学习计划；新 action
 `advise` 返回可反复修改的 `StudyAdvice` + 真实图遍历 `trace`，供页面/对话
@@ -120,7 +120,7 @@ async def _run_advise(ctx: ToolContext, params: Dict[str, Any], kb_id: int) -> D
         advice=advice,
         trace=preview["trace"],
         graph=_compact_graph(preview["graph"], preview["trace"]),
-        message=str(advice.get("summary") or "已生成学习建议"),
+        message=str(advice.get("summary") or "已生成规划建议"),
         jumpUrl=f"/front/myQuestion/myStats?tab=plan&adviceId={saved.get('id') or 0}",
     )
 
@@ -156,9 +156,9 @@ class StudyPlanTool(AgentTool):
         "bases; pass bank_ids for specific banks; pass seed_node_id when the user picked "
         "a node. Use study_graph for raw graph search, learning_stats for raw numbers."
     )
-    label = "学习建议"
+    label = "规划建议"
     description_zh = (
-        "学习建议：基于真实知识图谱与题库生成可反复修改的建议（不是任务清单）；"
+        "规划建议：基于真实知识图谱与题库生成可反复修改的建议（不是任务清单）；"
         "advise=生成/调整建议（含真实遍历 trace），plan/today/adjust/reassess=旧版兼容。"
     )
     parameters = {

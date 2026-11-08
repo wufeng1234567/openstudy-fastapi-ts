@@ -454,7 +454,7 @@ const TOOL_LABELS: Record<string, string> = {
   // 只读检索类：它们没有 action 参数，卡片上只有工具名这一层
   knowledge_search: '资料检索',
   web_search: '网页搜索',
-  study_plan: '学习建议',
+  study_plan: '规划建议',
   memory_search: '记忆检索',
   // 工作空间找文件（workspace_search.py）——2026-10-22
   workspace_search: '找资料',
@@ -506,7 +506,7 @@ const ACTION_LABELS: Record<string, string> = {
   error_analysis: '错题分析',
   growth: '成长记录',
   // study_plan
-  advise: '生成学习建议',
+  advise: '生成规划建议',
   plan: '生成计划',
   today: '今日任务',
   adjust: '调整计划',
@@ -782,7 +782,7 @@ const learningChart = computed<Record<string, any> | null>(() => {
   return chart
 })
 
-/** 学习建议生成式卡片：只认 data.advice + data.trace 这组输出契约。 */
+/** 规划建议生成式卡片：只认 data.advice + data.trace 这组输出契约。 */
 const studyPlanAdvice = computed<Record<string, any> | null>(() => {
   const d = unwrapToolData(props.data)
   const advice = (d as any)?.advice

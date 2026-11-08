@@ -1,4 +1,4 @@
-"""学习建议工作台 API：统一图谱 / trace / advice / 历史快照。
+"""规划建议工作台 API：统一图谱 / trace / advice / 历史快照。
 
 放在新文件里，避免改 `rag.py` 基线；main.py 中必须排在 rag.router 之前，
 否则 `/rag/*` 的兜底路由可能截走这些端点。
@@ -219,7 +219,7 @@ async def generate_study_advice(
             }
         )
     except Exception as exc:  # noqa: BLE001
-        return error(f"生成学习建议失败：{exc}")
+        return error(f"生成规划建议失败：{exc}")
 
 
 @router.post("/study-plan/advice/export")
@@ -227,7 +227,7 @@ async def export_study_advice(
     data: AdviceExportRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """导出学习建议：PDF / TXT / Markdown。PNG 由前端画布直接生成。"""
+    """导出规划建议：PDF / TXT / Markdown。PNG 由前端画布直接生成。"""
     try:
         content, filename, media_type = study_advice_export_service.export_advice(data.advice, data.format)
         from urllib.parse import quote
@@ -240,7 +240,7 @@ async def export_study_advice(
     except ValueError as exc:
         return error(str(exc))
     except Exception as exc:  # noqa: BLE001
-        return error(f"导出学习建议失败：{exc}")
+        return error(f"导出规划建议失败：{exc}")
 
 
 @router.post("/study-plan/history")
@@ -264,7 +264,7 @@ async def create_study_history(
         )
         return success(saved)
     except Exception as exc:  # noqa: BLE001
-        return error(f"保存学习建议失败：{exc}")
+        return error(f"保存规划建议失败：{exc}")
 
 
 @router.get("/study-plan/history")
@@ -280,7 +280,7 @@ async def list_study_history(
         )
         return success({"items": items})
     except Exception as exc:  # noqa: BLE001
-        return error(f"读取学习建议历史失败：{exc}")
+        return error(f"读取规划建议历史失败：{exc}")
 
 
 @router.get("/study-plan/history/{snapshot_id}")
@@ -294,10 +294,10 @@ async def get_study_history(
             db, user_id=_uid(current_user), snapshot_id=snapshot_id
         )
         if not item:
-            return error("学习建议不存在或不属于当前用户", 404)
+            return error("规划建议不存在或不属于当前用户", 404)
         return success(item)
     except Exception as exc:  # noqa: BLE001
-        return error(f"读取学习建议失败：{exc}")
+        return error(f"读取规划建议失败：{exc}")
 
 
 @router.patch("/study-plan/history/{snapshot_id}")
@@ -316,10 +316,10 @@ async def patch_study_history(
             pinned=data.pinned,
         )
         if not item:
-            return error("学习建议不存在或不属于当前用户", 404)
+            return error("规划建议不存在或不属于当前用户", 404)
         return success(item)
     except Exception as exc:  # noqa: BLE001
-        return error(f"更新学习建议失败：{exc}")
+        return error(f"更新规划建议失败：{exc}")
 
 
 @router.delete("/study-plan/history/{snapshot_id}")
@@ -333,10 +333,10 @@ async def delete_study_history(
             db, user_id=_uid(current_user), snapshot_id=snapshot_id
         )
         if not ok:
-            return error("学习建议不存在或不属于当前用户", 404)
+            return error("规划建议不存在或不属于当前用户", 404)
         return success({"id": snapshot_id, "deleted": True})
     except Exception as exc:  # noqa: BLE001
-        return error(f"删除学习建议失败：{exc}")
+        return error(f"删除规划建议失败：{exc}")
 
 
 __all__ = ["router"]

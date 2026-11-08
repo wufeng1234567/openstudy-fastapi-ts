@@ -2,8 +2,8 @@
   <article class="spgc">
     <header class="spgc__head">
       <div>
-        <span class="spgc__kicker">学习建议</span>
-        <h4>{{ advice?.title || '围绕当前范围的学习建议' }}</h4>
+        <span class="spgc__kicker">规划建议</span>
+        <h4>{{ advice?.title || '围绕当前范围的规划建议' }}</h4>
       </div>
       <span class="spgc__meta">{{ advice?.phases?.length || 0 }} 个阶段</span>
     </header>
