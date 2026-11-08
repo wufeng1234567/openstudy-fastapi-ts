@@ -715,14 +715,17 @@ watch(adviceTrace, (trace) => {
       setTimeout(() => {
         adviceVisibleLines.value = lines.slice(0, index + 1)
         adviceActiveLine.value = line
-        // 射线到达后才点亮目标节点；未到达的节点保持未点亮。
+        // 起点先亮；目标节点必须等亮点真正跑到终点后才亮。
         adviceLitPageIds.value = Array.from(
-          new Set([...adviceLitPageIds.value, line.fromPageId, line.toPageId].filter(Boolean))
+          new Set([...adviceLitPageIds.value, line.fromPageId].filter(Boolean))
         )
       }, 220 + index * ADVICE_DOT_MS)
     )
     adviceLineTimers.push(
       setTimeout(() => {
+        adviceLitPageIds.value = Array.from(
+          new Set([...adviceLitPageIds.value, line.toPageId].filter(Boolean))
+        )
         if (adviceActiveLine.value?.key === line.key) adviceActiveLine.value = null
       }, 220 + (index + 1) * ADVICE_DOT_MS - 20)
     )
