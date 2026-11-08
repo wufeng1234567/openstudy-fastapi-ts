@@ -8,14 +8,14 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.response import error, success
 from app.core.security import get_current_user
 from app.database import get_db
-from app.services import source_entity_service, study_advice_service, study_plan_history_service
+from app.services import source_entity_service, study_advice_export_service, study_advice_service, study_plan_history_service
 from app.services.rag import study_map_service
 
 router = APIRouter(prefix="/rag")
@@ -80,6 +80,11 @@ class SourceEntityRequest(BaseModel):
     sourceId: int = 0
     limit: int = 20
     useLlm: bool = True
+
+
+class AdviceExportRequest(BaseModel):
+    format: str = "pdf"
+    advice: Dict[str, Any] = Field(default_factory=dict)
 
 
 @router.post("/study-source-entities")
@@ -215,6 +220,27 @@ async def generate_study_advice(
         )
     except Exception as exc:  # noqa: BLE001
         return error(f"生成学习建议失败：{exc}")
+
+
+@router.post("/study-plan/advice/export")
+async def export_study_advice(
+    data: AdviceExportRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """导出学习建议：PDF / TXT / Markdown。PNG 由前端画布直接生成。"""
+    try:
+        content, filename, media_type = study_advice_export_service.export_advice(data.advice, data.format)
+        from urllib.parse import quote
+
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+        )
+    except ValueError as exc:
+        return error(str(exc))
+    except Exception as exc:  # noqa: BLE001
+        return error(f"导出学习建议失败：{exc}")
 
 
 @router.post("/study-plan/history")

@@ -1201,6 +1201,7 @@ function showMapLabel(node: any) {
   return (
     isMapSelected(node) ||
     isRouteNode(node) ||
+    adviceVisitedPageIds.value.includes(String(node.pageId)) ||
     mapHoveredId.value === String(node.id) ||
     mapView.scale >= 1.05 ||
     Number(node.degree || 0) >= 5
@@ -2364,7 +2365,8 @@ onBeforeUnmount(() => {
 .kw-map.is-advice-focus .kw-map-edge,
 .kw-map.is-advice-focus .kw-map-learning-path { display: none; }
 .kw-map.is-advice-focus .kw-map-hull { opacity: .18; }
-.kw-map.is-advice-focus .kw-map-node:not(.is-selected) { opacity: .18; }
+.kw-map.is-advice-focus .kw-map-node:not(.is-selected):not(.is-advice-visited) { opacity: .18; }
+.kw-map.is-advice-focus .kw-map-node.is-advice-visited { opacity: 1; }
 @keyframes kw-advice-draw { to { stroke-dashoffset: 0; } }
 .kw-map-node { cursor: grab; transition: opacity 0.18s ease; }
 .kw-map-node.is-advice-dimmed { opacity: .24; }
@@ -2374,7 +2376,8 @@ onBeforeUnmount(() => {
 .kw-map.is-route-mode .kw-map-node.is-dimmed { opacity: 0.42; }
 .kw-map-node.is-selected { opacity: 1 !important; }
 .kw-map-node.is-selected .kw-map-node__dot { stroke: #253247; stroke-width: 2.5; }
-.kw-map-node.is-selected .kw-map-node__label { fill: #1f2937; font-weight: 700; }
+.kw-map-node.is-selected .kw-map-node__label,
+.kw-map-node.is-advice-visited .kw-map-node__label { fill: #1f2937; font-size: 12px; font-weight: 700; }
 .kw-map-node__halo { fill: rgba(255, 255, 255, 0.86); }
 .kw-map.is-route-mode .kw-map-node.is-route .kw-map-node__halo { fill: #f4f8ff; }
 .kw-map-node__learn-track { fill: none; stroke: #e5eaf2; stroke-width: 1.8; pointer-events: none; }

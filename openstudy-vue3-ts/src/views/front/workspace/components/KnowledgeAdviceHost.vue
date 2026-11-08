@@ -124,7 +124,7 @@ async function playTrace(current: any) {
   }
   phase.value = 'traversing'
   for (let index = 0; index < steps.length; index++) {
-    await sleep(Number(steps[index]?.durationMs || 520))
+    await sleep(1500)
   }
   phase.value = 'thinking'
 }
@@ -253,5 +253,5 @@ defineExpose({ generateForPage, open })
 </script>
 
 <style scoped>
-.kah__drawer { padding: 10px; }
+.kah__drawer { height: 100%; overflow-y: auto; overscroll-behavior: contain; padding: 10px; box-sizing: border-box; }
 </style>

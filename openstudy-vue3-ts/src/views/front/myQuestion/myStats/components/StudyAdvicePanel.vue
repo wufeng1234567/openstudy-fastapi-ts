@@ -1,11 +1,21 @@
 <template>
-  <aside class="sap">
+  <aside ref="exportRoot" class="sap" :class="{ 'is-exporting': exporting }">
     <header class="sap__head">
       <div>
         <span class="sap__eyebrow">学习建议</span>
         <h3>{{ advice?.title || '先选一个起点，再生成建议' }}</h3>
       </div>
       <div class="sap__head-actions">
+        <el-dropdown v-if="advice" trigger="click" @command="exportAdvice">
+          <el-button size="small" text>导出</el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="image">导出图片（PNG）</el-dropdown-item>
+              <el-dropdown-item command="text">导出文本（TXT）</el-dropdown-item>
+              <el-dropdown-item command="pdf">导出 PDF</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-button v-if="advice" size="small" plain @click="emit('save')">保存</el-button>
         <el-button size="small" text @click="emit('history')">历史</el-button>
       </div>
@@ -82,7 +92,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import html2canvas from 'html2canvas'
+import { saveAs } from 'file-saver'
+import { exportStudyAdvice } from '@/api/ai/studyPlan'
 
 const props = withDefaults(
   defineProps<{
@@ -109,6 +123,93 @@ const emit = defineEmits<{
 }>()
 
 const custom = ref('')
+const exportRoot = ref<HTMLElement | null>(null)
+const exporting = ref(false)
+
+function fileStem() {
+  const raw = String(props.advice?.title || '学习建议').replace(/[\\/:*?"<>|]+/g, '-').trim()
+  return raw || '学习建议'
+}
+
+function buildText() {
+  const advice = props.advice || {}
+  const lines: string[] = [
+    `# ${advice.title || '学习建议'}`,
+    '',
+    String(advice.summary || ''),
+    '',
+    '## 阶段建议'
+  ]
+  for (const phase of advice.phases || []) {
+    lines.push(`### ${phase.title || '阶段'}（约 ${Number(phase.estimatedMinutes || 0)} 分钟）`)
+    if (phase.goal) lines.push(`目标：${phase.goal}`)
+    const nodes = (phase.nodeIds || []).map((id: string) => nodeTitle(id)).filter(Boolean)
+    if (nodes.length) lines.push(`涉及节点：${nodes.join('、')}`)
+    if (phase.reason) lines.push(`依据：${phase.reason}`)
+    lines.push('')
+  }
+  if (advice.alternatives?.length) {
+    lines.push('## 另一种选择')
+    for (const item of advice.alternatives) {
+      lines.push(`- ${item.title || '替代路径'}：${item.summary || ''}`)
+      if (item.tradeoff) lines.push(`  取舍：${item.tradeoff}`)
+    }
+    lines.push('')
+  }
+  if (advice.risks?.length) {
+    lines.push('## 需要注意')
+    for (const item of advice.risks) lines.push(`- ${item}`)
+    lines.push('')
+  }
+  lines.push('> 这是学习建议，不是任务清单；可以在 OpenStudy 中继续调整。')
+  return lines.join('\n')
+}
+
+async function exportAdvice(command: string) {
+  if (!props.advice) return
+  if (command === 'text') {
+    const blob = new Blob([buildText()], { type: 'text/plain;charset=utf-8' })
+    saveAs(blob, `${fileStem()}.txt`)
+    ElMessage.success('学习建议文本（TXT）已导出')
+    return
+  }
+  if (command === 'pdf') {
+    exporting.value = true
+    try {
+      const res: any = await exportStudyAdvice('pdf', props.advice)
+      const blob = res instanceof Blob ? res : new Blob([res], { type: 'application/pdf' })
+      if (!blob.size) throw new Error('导出文件为空')
+      saveAs(blob, `${fileStem()}.pdf`)
+      ElMessage.success('学习建议 PDF 已导出')
+    } catch (error: any) {
+      ElMessage.error(String(error?.message || '导出 PDF 失败'))
+    } finally {
+      exporting.value = false
+    }
+    return
+  }
+  if (command !== 'image') return
+  if (!exportRoot.value) return
+  exporting.value = true
+  try {
+    await nextTick()
+    await new Promise((resolve) => setTimeout(resolve, 80))
+    const canvas = await html2canvas(exportRoot.value, {
+      backgroundColor: '#ffffff',
+      scale: 2,
+      useCORS: true,
+      logging: false
+    })
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+    if (!blob) throw new Error('图片生成失败')
+    saveAs(blob, `${fileStem()}.png`)
+    ElMessage.success('学习建议图片已导出')
+  } catch (error: any) {
+    ElMessage.error(String(error?.message || '导出图片失败'))
+  } finally {
+    exporting.value = false
+  }
+}
 
 const totalMinutes = computed(() =>
   (props.advice?.phases || []).reduce((sum: number, phase: any) => sum + Number(phase.estimatedMinutes || 0), 0)
@@ -156,6 +257,9 @@ function submitCustom() {
   line-height: 1.35;
 }
 .sap__head-actions { display: flex; flex: none; gap: 2px; }
+.sap.is-exporting .sap__head-actions,
+.sap.is-exporting .sap__adjust,
+.sap.is-exporting .sap__foot { display: none; }
 .sap__summary {
   margin: 0;
   color: #5f6b7d;

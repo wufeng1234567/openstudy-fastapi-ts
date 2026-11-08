@@ -118,3 +118,13 @@ export function deleteStudyPlanHistory(snapshotId: number) {
     method: 'delete'
   }) as unknown as Promise<{ code: number; msg?: string; data: any }>
 }
+
+export function exportStudyAdvice(format: 'pdf' | 'txt' | 'md', advice: any) {
+  return request({
+    url: '/rag/study-plan/advice/export',
+    method: 'post',
+    data: { format, advice },
+    responseType: 'blob',
+    timeout: 120000
+  })
+}
