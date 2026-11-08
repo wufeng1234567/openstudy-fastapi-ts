@@ -247,9 +247,20 @@ async function deleteHistory(item: any) {
   await loadHistory()
 }
 
+function clear() {
+  runSeq++
+  drawer.value = false
+  selectedNode.value = null
+  advice.value = null
+  trace.value = null
+  snapshotId.value = 0
+  phase.value = 'idle'
+  syncState()
+}
+
 onMounted(loadHistory)
 
-defineExpose({ generateForPage, open })
+defineExpose({ generateForPage, open, clear })
 </script>
 
 <style scoped>

@@ -1258,10 +1258,20 @@ function onMapNodeClick(node: any) {
     return
   }
   if (adviceMode.value) {
+    const pageId = Number(node.pageId)
+    // 再次点击同一个节点 = 取消选中，恢复图谱原状。
+    if (Number(mapSelectedPageId.value) === pageId) {
+      mapSelectedPageId.value = null
+      detailVisible.value = false
+      adviceHostRef.value?.clear?.()
+      adviceTrace.value = null
+      adviceVisitedPageIds.value = []
+      return
+    }
     // 建议模式只选中节点并把它移到视野中央，不打开知识百科详情抽屉。
     detailVisible.value = false
     selectMapNode(node, false)
-    adviceHostRef.value?.generateForPage?.(Number(node.pageId))
+    adviceHostRef.value?.generateForPage?.(pageId)
     return
   }
   selectMapNode(node)
