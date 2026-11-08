@@ -1,0 +1,14 @@
+请提取图片中的内容，并按以下 JSON Schema 返回结构化数据。
+
+要求：
+- 只返回 JSON，不要 markdown 代码块，不要任何解释
+- 字段值类型必须与 Schema 一致
+- 缺失字段使用 null
+- 数组字段无数据时返回空数组 []
+
+JSON Schema：
+```json
+${schema}
+```
+
+（此为通用结构化 OCR 提示词，未绑定具体 Provider。）
