@@ -682,6 +682,8 @@ const nonEmpty = (v: Record<string, any> | null) => Boolean(v && Object.keys(v).
 /** 有入参或有返回值才给「查看详情」；对话文件结果有专用资产卡，内部 JSON 不再外露 */
 const hasDetails = computed(() => {
   if (props.tool === 'chat_file_manage') return false
+  // 网页搜索已有专用折叠结果卡，不再重复暴露「查看详情」的原始 JSON。
+  if (props.tool === 'web_search') return false
   return nonEmpty(props.params) || nonEmpty(props.data)
 })
 

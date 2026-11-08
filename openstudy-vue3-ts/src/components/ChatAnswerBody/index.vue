@@ -33,9 +33,21 @@ const webReferences = computed(() =>
 
 /**
  * 模型有时只写 `W3` / `W3、W5`，不写完整 Markdown 链接。这里用真实
- * 搜索结果把它补成可点击的 `[W3](url)`；没有对应 url 的编号保持原样，
- * 绝不编造链接。
+ * 搜索结果把它补成**灰色小号上标索引**；没有对应 url 的编号保持原样，
+ * 绝不编造链接。参考来源列表在回答底部统一展示。
  */
+function escapeAttr(value: string) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function citationHtml(number: string, url: string) {
+  return `<sup class="chat-cite"><a href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer">${number}</a></sup>`
+}
+
 function withWebLinks(content: string) {
   let text = String(content || '')
   if (!webReferences.value.length || !text) return text
@@ -45,7 +57,13 @@ function withWebLinks(content: string) {
     if (index > 0 && ref.url) byIndex.set(index, String(ref.url))
   })
   if (!byIndex.size) return text
-  // 先遮住模型已经写好的 Markdown 链接，避免把链接标签里的 W3 二次替换。
+
+  // 模型已经写成 `[W3](url)` 的，统一转成灰色上标（不保留蓝色链接样式）。
+  text = text.replace(/\[W(\d+)\]\((https?:\/\/[^)\s]+)\)/g, (_whole, number: string, url: string) => {
+    return citationHtml(number, url)
+  })
+
+  // 遮住普通 Markdown 链接，避免把链接标签里的 W3 二次替换。
   const links: string[] = []
   text = text.replace(/\[[^\]]*\]\([^)]*\)/g, (whole) => {
     const token = `\u0000MDLINK${links.length}\u0000`
@@ -54,7 +72,7 @@ function withWebLinks(content: string) {
   })
   text = text.replace(/\bW(\d+)\b/g, (whole: string, number: string) => {
     const url = byIndex.get(Number(number))
-    return url ? `[W${number}](${url})` : whole
+    return url ? citationHtml(number, url) : whole
   })
   return text.replace(/\u0000MDLINK(\d+)\u0000/g, (_whole, index: string) => links[Number(index)] || '')
 }
@@ -299,6 +317,33 @@ const blocks = computed<Block[]>(() =>
 .chat-answer-block__html :deep(h1), .chat-answer-block__html :deep(h2), .chat-answer-block__html :deep(h3),
 .chat-answer-block__html :deep(h4), .chat-answer-block__html :deep(h5), .chat-answer-block__html :deep(h6) { margin: 6px 0 3px; }
 .chat-answer-block__html :deep(pre) { margin: 5px 0; }
+/* 网页检索索引：灰色小上标（不是蓝色 W 编号），点击打开真实来源 */
+.chat-answer-block__html :deep(.chat-cite) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 13px;
+  height: 13px;
+  margin: 0 2px;
+  padding: 0 3px;
+  border-radius: 4px;
+  vertical-align: super;
+  color: #9aa3b2;
+  background: #f1f3f7;
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 500;
+  text-decoration: none;
+}
+.chat-answer-block__html :deep(.chat-cite a) {
+  color: inherit;
+  text-decoration: none;
+  font: inherit;
+}
+.chat-answer-block__html :deep(.chat-cite:hover) {
+  color: #5f6b7d;
+  background: #e8ecf3;
+}
 .chat-answer-block--plain .chat-answer-block__html :deep(p) { display: inline; margin: 0; }
 .chat-answer-block--plain { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px; }
 </style>
