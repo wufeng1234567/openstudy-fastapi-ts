@@ -31,7 +31,9 @@
             placeholder="默认今天"
             :disabled-date="disableStart"
             style="width: 100%"
+            @change="dateFallbackHint = ''"
           />
+          <p v-if="dateFallbackHint" class="form-help form-help--fallback">{{ dateFallbackHint }}</p>
         </div>
 
         <div class="form-item">
@@ -282,6 +284,7 @@ const banks = ref<ExamBankOption[]>([])
 const visibleDays = ref(7)
 const progressMap = ref<Record<number, number>>({})
 const manualDone = ref<string[]>([])
+const dateFallbackHint = ref('')
 
 const today = computed(() => localDateString(new Date()))
 
@@ -353,6 +356,26 @@ function defaultExamDate() {
 function defaultStartDate() {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/**
+ * 日期兜底：localStorage 里可能存着几天前的 startDate。
+ * 不把它丢给后端报 400，而是在加载/提交前自动校准并给出可见提示。
+ */
+function normalizePlanFormDates(): string[] {
+  const fixes: string[] = []
+  const todayStr = today.value
+  if (!form.startDate || form.startDate < todayStr) {
+    form.startDate = todayStr
+    fixes.push('开始复习日期已自动更新为今天')
+  }
+  if (!form.examDate || form.examDate <= form.startDate) {
+    const base = new Date(`${form.startDate}T00:00:00`)
+    base.setDate(base.getDate() + 30)
+    form.examDate = localDateString(base)
+    fixes.push('考试日期已自动兜底为 30 天后')
+  }
+  return fixes
 }
 
 const weekdayOptions = [
@@ -444,6 +467,8 @@ function loadPlanState() {
     form.restDays = Array.isArray(savedForm.restDays) ? savedForm.restDays : []
     form.mode = savedForm.mode === 'sprint' ? 'sprint' : 'balanced'
     form.startDate = savedForm.startDate || defaultStartDate()
+    const fixes = normalizePlanFormDates()
+    if (fixes.length) dateFallbackHint.value = fixes.join('；')
     plan.value = saved.plan
     planCreatedAt.value = Number(saved.createdAt)
     manualDone.value = Array.isArray(saved.manualDone) ? saved.manualDone : []
@@ -496,11 +521,11 @@ async function loadBanks() {
 }
 
 async function generate() {
-  if (!form.examDate) {
-    ElMessage.warning('先选一个考试日期')
-    return
+  const fixes = normalizePlanFormDates()
+  if (fixes.length) {
+    dateFallbackHint.value = fixes.join('；')
+    ElMessage.info(`${fixes.join('；')}，已按新日期生成`)
   }
-  if (!form.startDate) form.startDate = defaultStartDate()
   if (form.startDate >= form.examDate) {
     ElMessage.warning('开始复习日期必须早于考试日期')
     return
@@ -534,7 +559,7 @@ async function generate() {
       ElMessage.error(res.msg || '生成失败')
     }
   } catch (e: any) {
-    ElMessage.error('生成路线图失败，请重试')
+    ElMessage.error(e?.response?.data?.msg || e?.message || '生成路线图失败，请重试')
     console.warn('[考前路线图] 生成失败', e)
   } finally {
     loading.value = false
@@ -636,6 +661,13 @@ onMounted(async () => {
   color: var(--os-text-4, #adb2b8);
   font-size: 10px;
   line-height: 1.6;
+}
+
+.form-help--fallback {
+  padding: 5px 7px;
+  border-radius: 6px;
+  color: #a15c0b;
+  background: #fff8eb;
 }
 
 .bank-option {
