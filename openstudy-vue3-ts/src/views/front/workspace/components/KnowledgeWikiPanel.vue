@@ -549,6 +549,9 @@ let mapAnimFrame = 0
 let mapSimAlpha = 0
 let mapSimNodes: any[] = []
 let mapViewFrame = 0
+let mapWheelRaf = 0
+let mapWheelCommitTimer: ReturnType<typeof setTimeout> | null = null
+let mapWheelPending: { x: number; y: number; scale: number } | null = null
 let mapOpenTimer: ReturnType<typeof setTimeout> | null = null
 let lastDetailPageId: number | null = null
 
@@ -1241,6 +1244,7 @@ function showMapLabel(node: any) {
 }
 
 function animateMapViewTo(targetX: number, targetY: number, targetScale = mapView.scale, duration = 360) {
+  cancelMapWheel(true)
   if (mapViewFrame) cancelAnimationFrame(mapViewFrame)
   const from = { x: Number(mapView.x), y: Number(mapView.y), scale: Number(mapView.scale) }
   const to = { x: Number(targetX), y: Number(targetY), scale: Number(targetScale) }
@@ -2155,23 +2159,66 @@ function renderMapPan() {
   mapDrag.raf = 0
 }
 
+function renderMapZoom() {
+  if (!mapWheelPending) {
+    mapWheelRaf = 0
+    return
+  }
+  const g = mapCanvasRef.value?.querySelector('.kw-map__svg > g')
+  if (g) {
+    g.setAttribute(
+      'transform',
+      `translate(${mapWheelPending.x} ${mapWheelPending.y}) scale(${mapWheelPending.scale})`
+    )
+  }
+  mapWheelRaf = 0
+}
+
+function commitMapZoom() {
+  if (!mapWheelPending) return
+  mapView.x = mapWheelPending.x
+  mapView.y = mapWheelPending.y
+  mapView.scale = mapWheelPending.scale
+  mapWheelPending = null
+  mapWheelCommitTimer = null
+}
+
+function cancelMapWheel(commit = false) {
+  if (mapWheelRaf) {
+    cancelAnimationFrame(mapWheelRaf)
+    mapWheelRaf = 0
+  }
+  if (mapWheelCommitTimer) {
+    clearTimeout(mapWheelCommitTimer)
+    mapWheelCommitTimer = null
+  }
+  if (commit) commitMapZoom()
+  else mapWheelPending = null
+}
+
 function onMapWheel(event: WheelEvent) {
+  // 缩放时停止初始力导向动画，避免每一帧同时改响应式节点位置造成卡顿。
+  if (mapAnimFrame) stopMapAnimation()
   const rect = mapCanvasRef.value?.getBoundingClientRect()
   if (!rect) return
   const px = event.clientX - rect.left
   const py = event.clientY - rect.top
-  const old = mapView.scale
+  const current = mapWheelPending || { x: mapView.x, y: mapView.y, scale: mapView.scale }
+  const old = current.scale
   const next = Math.max(0.35, Math.min(3, old * (event.deltaY < 0 ? 1.12 : 1 / 1.12)))
-  const wx = (px - mapView.x) / old
-  const wy = (py - mapView.y) / old
-  mapView.scale = next
-  mapView.x = px - wx * next
-  mapView.y = py - wy * next
+  const wx = (px - current.x) / old
+  const wy = (py - current.y) / old
+  mapWheelPending = { x: px - wx * next, y: py - wy * next, scale: next }
+  // 滚轮期间只直接改 SVG transform，不触发几百个节点/边的 Vue 重渲染。
+  if (!mapWheelRaf) mapWheelRaf = requestAnimationFrame(renderMapZoom)
+  if (mapWheelCommitTimer) clearTimeout(mapWheelCommitTimer)
+  mapWheelCommitTimer = setTimeout(commitMapZoom, 140)
 }
 
 function onMapDown(event: PointerEvent) {
   if (event.button !== 0) return
   stopMapAnimation()
+  cancelMapWheel(true)
   if (mapViewFrame) {
     cancelAnimationFrame(mapViewFrame)
     mapViewFrame = 0
@@ -2293,6 +2340,7 @@ onBeforeUnmount(() => {
   stopBuildPolling()
   stopMapNodeDrag()
   stopMapAnimation()
+  cancelMapWheel()
   if (mapSearchTimer) clearTimeout(mapSearchTimer)
   if (mapViewFrame) cancelAnimationFrame(mapViewFrame)
   if (mapOpenTimer) clearTimeout(mapOpenTimer)
