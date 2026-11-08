@@ -28,13 +28,14 @@ MAX_ADVICE_SUGGESTIONS = 6
 
 _EDGE_PRIORITY = {
     "prerequisite": 0,
-    "source_doc": 1,
-    "reference": 2,
-    "question_source": 3,
-    "related": 4,
-    "contrast": 5,
-    "part_of": 6,
-    "image_source": 7,
+    "mention": 1,
+    "related": 2,
+    "part_of": 3,
+    "contrast": 4,
+    "question_source": 5,
+    "source_doc": 6,
+    "reference": 7,
+    "image_source": 8,
 }
 
 

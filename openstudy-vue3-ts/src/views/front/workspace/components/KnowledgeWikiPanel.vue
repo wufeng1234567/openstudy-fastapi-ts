@@ -88,8 +88,8 @@
               :data-edge-source="edge.source" :data-edge-target="edge.target"
               class="kw-map-edge" :class="[`is-${edge.type}`, { 'is-active': isMapEdgeActive(edge), 'is-dimmed': isMapEdgeDimmed(edge), 'is-current-route': isRouteEdge(edge), 'is-hidden': mapDraggingId && edge.source !== mapDraggingId && edge.target !== mapDraggingId }]"
               :marker-end="mapShowArrows ? (isMapEdgeActive(edge) ? 'url(#kw-arrow-hl)' : 'url(#kw-arrow)') : undefined" />
-            <line v-for="line in adviceTraceLines" :key="`advice-${line.key}`" :x1="line.x1" :y1="line.y1" :x2="line.x2" :y2="line.y2"
-              class="kw-map-advice-ray" />
+            <line v-for="line in adviceVisibleLines" :key="`advice-${line.key}`" :x1="line.x1" :y1="line.y1" :x2="line.x2" :y2="line.y2"
+              pathLength="1" class="kw-map-advice-ray" />
 
             <g v-for="node in mapNodes" :key="node.id" class="kw-map-node" :data-node-id="String(node.id)"
               :class="{ 'is-selected': isMapSelected(node), 'is-hovered': mapHoveredId === String(node.id), 'is-dimmed': isMapNodeDimmed(node), 'is-learned': Number(node.learning?.viewCount || 0) > 0, 'is-weak': Number(node.learning?.practiceCount || 0) > 0 && Number(node.learning?.accuracy || 0) < 60, 'is-route': isRouteNode(node), 'is-next-stop': isNextStopNode(node), 'is-advice-visited': adviceVisitedPageIds.includes(String(node.pageId)), 'is-advice-dimmed': adviceMode && adviceVisitedPageIds.length > 0 && !adviceVisitedPageIds.includes(String(node.pageId)) }"
@@ -670,6 +670,33 @@ const adviceTraceLines = computed(() => {
     .filter(Boolean) as any[]
 })
 
+// 射线逐条发射：不再让所有连线一次性出现。
+const adviceVisibleLines = ref<any[]>([])
+let adviceLineTimers: ReturnType<typeof setTimeout>[] = []
+watch(adviceTrace, (trace) => {
+  adviceLineTimers.forEach((timer) => clearTimeout(timer))
+  adviceLineTimers = []
+  adviceVisibleLines.value = []
+  const lines = adviceTraceLines.value
+  if (!trace?.steps?.length || !lines.length) return
+  const reduced = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  if (reduced) {
+    adviceVisibleLines.value = lines
+    return
+  }
+  lines.forEach((line: any, index: number) => {
+    adviceLineTimers.push(
+      setTimeout(() => {
+        adviceVisibleLines.value = lines.slice(0, index + 1)
+      }, 220 + index * 560)
+    )
+  })
+})
+
+onBeforeUnmount(() => {
+  adviceLineTimers.forEach((timer) => clearTimeout(timer))
+})
+
 const mapNodes = computed(() => {
   const { components, byId } = mapComponents.value
   const visibleIds = new Set(
@@ -1182,7 +1209,7 @@ function animateMapViewTo(targetX: number, targetY: number, targetScale = mapVie
   mapViewFrame = requestAnimationFrame(tick)
 }
 
-function selectMapNode(node: any) {
+function selectMapNode(node: any, openDetail = true) {
   stopMapAnimation()
   stopMapNodeDrag()
   mapSelectedPageId.value = Number(node.pageId)
@@ -1196,6 +1223,8 @@ function selectMapNode(node: any) {
     360
   )
   if (mapOpenTimer) clearTimeout(mapOpenTimer)
+  mapOpenTimer = null
+  if (!openDetail) return
   const pageId = Number(node.pageId)
   mapOpenTimer = setTimeout(() => {
     mapOpenTimer = null
@@ -1210,9 +1239,9 @@ function onMapNodeClick(node: any) {
     return
   }
   if (adviceMode.value) {
-    mapSelectedPageId.value = Number(node.pageId)
-    // 建议模式只选中节点，不打开知识百科详情抽屉。
+    // 建议模式只选中节点并把它移到视野中央，不打开知识百科详情抽屉。
     detailVisible.value = false
+    selectMapNode(node, false)
     adviceHostRef.value?.generateForPage?.(Number(node.pageId))
     return
   }
@@ -2311,12 +2340,12 @@ onBeforeUnmount(() => {
 .kw-map.is-route-mode .kw-map-edge.is-current-route { stroke: #7e94bf; opacity: 0.82; }
 .kw-map-edge.is-dimmed { opacity: 0.08; }
 .kw-map-edge.is-hidden { display: none; }
-.kw-map-advice-ray { stroke: #2f5fce; stroke-width: 2; opacity: .72; pointer-events: none; stroke-dasharray: 5 4; animation: kw-advice-flow .8s linear infinite; }
+.kw-map-advice-ray { stroke: #2f5fce; stroke-width: 2; opacity: .78; pointer-events: none; stroke-dasharray: 1; stroke-dashoffset: 1; animation: kw-advice-draw .58s ease-out forwards; filter: drop-shadow(0 0 3px rgba(47, 95, 206, .35)); }
 .kw-map.is-advice-focus .kw-map-edge,
 .kw-map.is-advice-focus .kw-map-learning-path { display: none; }
 .kw-map.is-advice-focus .kw-map-hull { opacity: .18; }
 .kw-map.is-advice-focus .kw-map-node:not(.is-selected) { opacity: .18; }
-@keyframes kw-advice-flow { to { stroke-dashoffset: -18; } }
+@keyframes kw-advice-draw { to { stroke-dashoffset: 0; } }
 .kw-map-node { cursor: grab; transition: opacity 0.18s ease; }
 .kw-map-node.is-advice-dimmed { opacity: .24; }
 .kw-map-node.is-advice-visited .kw-map-node__dot { stroke: #2f5fce; stroke-width: 2.8; filter: drop-shadow(0 0 5px rgba(47, 95, 206, .55)); }
