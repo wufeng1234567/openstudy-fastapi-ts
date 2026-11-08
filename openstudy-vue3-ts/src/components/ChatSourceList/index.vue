@@ -1,5 +1,5 @@
 <template>
-  <div class="chat-sources" :class="{ 'chat-sources--compact': showLabel === false, 'chat-sources--web': webRefs.length }" @mouseleave="scheduleClose">
+  <div ref="rootRef" class="chat-sources" :class="{ 'chat-sources--compact': showLabel === false, 'chat-sources--web': webRefs.length }" @mouseleave="scheduleClose">
     <!-- 网页来源：一个可展开的汇总胶囊，避免几十个 chip 把回答底部铺满。 -->
     <template v-if="webRefs.length">
       <button type="button" class="chat-web-summary" :class="{ 'is-open': webExpanded }"
@@ -64,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Document } from '@element-plus/icons-vue'
 
 const props = defineProps<{ references: any[]; showLabel?: boolean }>()
@@ -80,7 +80,32 @@ const float = ref<{ visible: boolean; groupKey: string; docName: string; chunks:
   left: 0
 })
 let closeTimer: ReturnType<typeof setTimeout> | null = null
+const rootRef = ref<HTMLElement | null>(null)
 const webExpanded = ref(false)
+
+/** 点击参考来源面板以外的空白/其它消息时自动收起。 */
+function onDocumentClick(event: MouseEvent) {
+  if (!webExpanded.value) return
+  const root = rootRef.value
+  if (root && !root.contains(event.target as Node)) {
+    webExpanded.value = false
+  }
+}
+
+function onDocumentKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') webExpanded.value = false
+}
+
+onMounted(() => {
+  document.addEventListener('click', onDocumentClick, true)
+  document.addEventListener('keydown', onDocumentKeydown)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocumentClick, true)
+  document.removeEventListener('keydown', onDocumentKeydown)
+  cancelClose()
+})
 
 const labelText = computed(() => '参考文档')
 const webRefs = computed(() =>
@@ -195,7 +220,6 @@ function scheduleClose() {
   closeTimer = setTimeout(() => { float.value.visible = false }, 160)
 }
 
-onBeforeUnmount(cancelClose)
 </script>
 
 <style scoped>
