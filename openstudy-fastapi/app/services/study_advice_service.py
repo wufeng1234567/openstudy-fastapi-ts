@@ -358,6 +358,74 @@ def _strip_json_fence(text: str) -> str:
     return value
 
 
+def _humanize_advice_text(value: Any, title_map: Dict[str, str]) -> str:
+    """Remove internal graph vocabulary from user-facing advice text."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+
+    def topic_title(match: re.Match) -> str:
+        return title_map.get(match.group(0), "相关主题")
+
+    # 去掉「标题（topic:xx）」里的重复括号 ID。
+    text = re.sub(r"[（(]\s*topic:\d+\s*[）)]", "", text)
+    text = re.sub(r"[（(]\s*(?:doc|bank):\d+\s*[）)]", "", text)
+    text = re.sub(r"\btopic:\d+\b", topic_title, text)
+    text = re.sub(r"\bdoc:\d+\b", "来源资料", text)
+    text = re.sub(r"题库\s*bank:\d+", "题库", text)
+    text = re.sub(r"\bbank:\d+\b", "题库", text)
+    text = re.sub(r"\bpageId\s*=\s*\d+", "", text)
+    text = re.sub(r"\bdegree\s*为\s*0", "关联较少", text)
+    text = re.sub(r"\bdegree\s*为\s*(\d+)", r"关联数 \1", text)
+    text = re.sub(r"\bviewCount\s*为\s*0", "暂无阅读", text)
+    text = re.sub(r"\bviewCount\s*为\s*(\d+)", r"阅读次数 \1", text)
+    text = re.sub(r"\bpracticeCount\s*为\s*0", "暂无练习", text)
+    text = re.sub(r"\bpracticeCount\s*为\s*(\d+)", r"练习次数 \1", text)
+    text = re.sub(r"\bmappedQuestionCount\s*为\s*0", "暂无对应题目", text)
+    text = re.sub(r"\bmappedQuestionCount\b", "题目对应", text)
+    text = re.sub(r"\bviewCount\b", "阅读次数", text)
+    text = re.sub(r"\bpracticeCount\b", "练习次数", text)
+    text = re.sub(r"\bdegree\b", "关联数", text)
+    text = re.sub(r"\bquestionCount\b", "题目数量", text)
+    text = re.sub(r"\bestimatedMinutes\b", "预计时长", text)
+    text = re.sub(r"\bnodeId\b", "节点", text)
+    text = re.sub(r"\bedgeId\b", "关系", text)
+    text = re.sub(r"\bmention\b", "主题关系", text)
+    text = re.sub(r"\bprerequisite\b", "前置关系", text)
+    text = re.sub(r"\bpart_of\b", "归属关系", text)
+    text = re.sub(r"\bsource_doc\b", "来源资料", text)
+    text = re.sub(r"\bquestion_source\b", "题源关系", text)
+    text = re.sub(r"\brelated\b", "相关关系", text)
+    text = re.sub(r"\bcontrast\b", "对比关系", text)
+    text = text.replace("但其 暂无对应题目", "但题目暂未对应")
+    text = text.replace("其 暂无对应题目", "题目暂未对应")
+    text = text.replace("无对应关系", "暂无对应关系")
+    text = text.replace("节点 关联数", "节点关联数")
+    text = text.replace("的 练习次数", "的练习次数")
+    text = text.replace("的 预计时长", "的预计时长")
+    text = text.replace("主题关系 关系", "主题关系")
+    text = text.replace("前置关系 关系", "前置关系")
+    text = text.replace("归属关系 关系", "归属关系")
+    text = text.replace("练习次数 均为", "练习次数均为")
+    text = text.replace("预计时长 仅", "预计时长仅")
+    text = re.sub(r"(\d+)\s*条边", r"\1 条关联", text)
+    text = text.replace("题库节点", "题库").replace("主题节点", "主题")
+    text = re.sub(r"无直接映射|没有直接映射", "暂无对应题", text)
+    text = re.sub(r"映射", "对应", text)
+    text = re.sub(r"题库\s*有\s*\d+\s*道薄弱题(?:、题库\s*有\s*\d+\s*道)+", "题库还有一批薄弱题", text)
+    text = text.replace("暂无对应题（暂无对应题目）", "暂无对应题目")
+    text = text.replace("来源资料 原文", "来源资料原文")
+    text = re.sub(r"以\s+来源资料原文", "以来源资料原文", text)
+    text = re.sub(r"，除来源资料外缺少其他关联，其评分框架细节需以来源资料原文为准", "，评分框架细节需以来源资料原文为准", text)
+    text = re.sub(r"题库\s+有", "题库有", text)
+    text = re.sub(r"阅读次数\s+均为", "阅读次数均为", text)
+    text = re.sub(r"在图中还有.*?等其他关联主题未在轨迹中出现，本建议未对其展开。", "还有几个关联主题未覆盖，本建议暂不展开。", text)
+    text = re.sub(r"本次轨迹仅覆盖\s*(\d+)\s*个主题节点", r"本次只覆盖 \1 个主题", text)
+    # 中文之间的排版空格去掉，读起来更紧凑自然。
+    text = re.sub(r"(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])", "", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def _normalize_advice(
     raw: Dict[str, Any],
     facts: Dict[str, Any],
@@ -365,11 +433,12 @@ def _normalize_advice(
 ) -> Dict[str, Any]:
     node_ids = {str(node["id"]) for node in facts.get("nodes") or []}
     edge_ids = {str(edge.get("id")) for edge in facts.get("edges") or [] if edge.get("id")}
+    title_map = {str(node.get("id")): str(node.get("title") or "") for node in facts.get("nodes") or []}
     template = build_template_advice(facts, trace)
 
     def clean_text(value: Any, fallback: str = "") -> str:
-        text = str(value or "").strip()
-        return text or fallback
+        text = _humanize_advice_text(value, title_map)
+        return text or _humanize_advice_text(fallback, title_map)
 
     def clean_node_ids(values: Any) -> List[str]:
         if not isinstance(values, list):
@@ -440,7 +509,11 @@ def _normalize_advice(
         "phases": phases[:MAX_ADVICE_PHASES],
         "suggestions": suggestions,
         "alternatives": alternatives or template.get("alternatives") or [],
-        "risks": [str(x).strip() for x in (raw.get("risks") or []) if str(x).strip()]
+        "risks": [
+            _humanize_advice_text(x, title_map)
+            for x in (raw.get("risks") or [])
+            if str(x).strip()
+        ]
         or template.get("risks")
         or [],
         "degraded": {**(facts.get("degraded") or {}), "llmFallback": False},
@@ -476,28 +549,31 @@ def _build_prompt(facts: Dict[str, Any], trace: Dict[str, Any], instruction: str
         "userInstruction": instruction or "没有额外要求。",
         "outputSchema": {
             "title": "一句话标题",
-            "summary": "一到两句话结论，必须引用真实统计",
+            "summary": "一到两句结论，尽量 50 字以内，用中文自然表达",
             "phases": [
                 {
                     "id": "phase:foundation",
                     "title": "阶段名",
-                    "goal": "阶段目标",
+                    "goal": "阶段目标，30 字以内",
                     "estimatedMinutes": 30,
                     "nodeIds": ["只能使用 nodes 里的 id"],
-                    "reason": "为什么这样建议",
+                    "reason": "一句话依据，最多 60 字",
                     "evidence": [{"edgeId": "只能使用 edges 里的 id", "type": "prerequisite"}],
                 }
             ],
             "suggestions": [
-                {"nodeId": "只能使用 nodes 里的 id", "title": "节点标题", "kind": "topic/bank/...", "why": "为什么", "estimatedMinutes": 20}
+                {"nodeId": "只能使用 nodes 里的 id", "title": "节点标题", "kind": "topic/bank/...", "why": "一句话为什么，最多 40 字", "estimatedMinutes": 20}
             ],
             "alternatives": [{"title": "替代路径", "summary": "替代方案", "tradeoff": "取舍"}],
-            "risks": ["风险或不确定点"],
+            "risks": ["一条结论，最多 35 字"],
         },
         "rules": [
             "不要输出 tasks/days/status/done/progress/todayTasks。",
             "不要出现“你今天必须/完成后/已为你安排任务”这类命令式措辞。",
             "不要新增 nodes 之外的 nodeId，不要新增 edges 之外的 edgeId。",
+            "所有面向用户的文字必须用中文自然表达；不要出现 topic:/doc:/bank: 等内部 ID，也不要出现 degree/viewCount/practiceCount/mappedQuestionCount/edgeId/nodeId 等字段名。",
+            "把内部数据翻译成用户能懂的话：例如「关联较少」「暂无阅读」「暂无练习」「题目暂未对应」。",
+            "每条风险尽量控制在 35 个汉字以内，只说结论和影响，不展开技术细节。",
             "没有真实依据就写“暂无足够依据”，不要编造。",
             "只输出一个 JSON 对象，不要代码围栏，不要解释文字。",
         ],

@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.study_plan import StudyPlanSnapshot
+from app.services.study_advice_service import _humanize_advice_text
 
 MAX_SNAPSHOTS_PER_USER = 50
 
@@ -18,6 +19,49 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _humanize_advice(advice: Dict[str, Any], graph: Dict[str, Any]) -> Dict[str, Any]:
+    """把历史快照里的内部术语也翻译成用户可读文本。"""
+    if not isinstance(advice, dict):
+        return {}
+    title_map = {
+        str(node.get("id")): str(node.get("title") or "")
+        for node in (graph or {}).get("nodes") or []
+        if isinstance(node, dict)
+    }
+    out = dict(advice)
+    for key in ("title", "summary"):
+        out[key] = _humanize_advice_text(out.get(key), title_map)
+    phases = []
+    for phase in advice.get("phases") or []:
+        if not isinstance(phase, dict):
+            continue
+        item = dict(phase)
+        for key in ("title", "goal", "reason"):
+            item[key] = _humanize_advice_text(item.get(key), title_map)
+        phases.append(item)
+    out["phases"] = phases
+    suggestions = []
+    for suggestion in advice.get("suggestions") or []:
+        if not isinstance(suggestion, dict):
+            continue
+        item = dict(suggestion)
+        for key in ("title", "why"):
+            item[key] = _humanize_advice_text(item.get(key), title_map)
+        suggestions.append(item)
+    out["suggestions"] = suggestions
+    alternatives = []
+    for alt in advice.get("alternatives") or []:
+        if not isinstance(alt, dict):
+            continue
+        item = dict(alt)
+        for key in ("title", "summary", "tradeoff"):
+            item[key] = _humanize_advice_text(item.get(key), title_map)
+        alternatives.append(item)
+    out["alternatives"] = alternatives
+    out["risks"] = [_humanize_advice_text(item, title_map) for item in (advice.get("risks") or [])]
+    return out
 
 
 def _serialize(row: StudyPlanSnapshot, *, include_payload: bool = True) -> Dict[str, Any]:
@@ -33,11 +77,11 @@ def _serialize(row: StudyPlanSnapshot, *, include_payload: bool = True) -> Dict[
     }
     if include_payload:
         data["scope"] = row.scope_json or {}
-        data["advice"] = row.advice_json or {}
+        data["advice"] = _humanize_advice(row.advice_json or {}, row.graph_json or {})
         data["trace"] = row.trace_json or {}
         data["graph"] = row.graph_json or {}
     else:
-        advice = row.advice_json or {}
+        advice = _humanize_advice(row.advice_json or {}, {})
         data["summary"] = str(advice.get("summary") or "")
         data["phaseCount"] = len(advice.get("phases") or [])
     return data
