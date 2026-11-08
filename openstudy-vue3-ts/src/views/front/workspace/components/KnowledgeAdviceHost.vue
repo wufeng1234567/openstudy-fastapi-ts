@@ -253,5 +253,7 @@ defineExpose({ generateForPage, open })
 </script>
 
 <style scoped>
-.kah__drawer { height: 100%; overflow-y: auto; overscroll-behavior: contain; padding: 10px; box-sizing: border-box; }
+.kah__drawer { height: 100%; overflow-y: auto; overscroll-behavior: contain; padding: 10px; box-sizing: border-box; scrollbar-width: thin; scrollbar-color: #cfd8e6 transparent; }
+.kah__drawer::-webkit-scrollbar { width: 6px; }
+.kah__drawer::-webkit-scrollbar-thumb { border-radius: 99px; background: #cfd8e6; }
 </style>

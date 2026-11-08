@@ -216,7 +216,9 @@ const totalMinutes = computed(() =>
 )
 
 function nodeTitle(id: string) {
-  return props.nodeTitles?.[String(id)] || String(id)
+  const raw = String(id || '')
+  const pageId = raw.replace(/^topic:/, '')
+  return props.nodeTitles?.[raw] || props.nodeTitles?.[pageId] || raw
 }
 
 function submitCustom() {
