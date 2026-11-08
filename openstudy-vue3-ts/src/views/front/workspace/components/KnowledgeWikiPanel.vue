@@ -90,6 +90,15 @@
               :marker-end="mapShowArrows ? (isMapEdgeActive(edge) ? 'url(#kw-arrow-hl)' : 'url(#kw-arrow)') : undefined" />
             <line v-for="line in adviceVisibleLines" :key="`advice-${line.key}`" :x1="line.x1" :y1="line.y1" :x2="line.x2" :y2="line.y2"
               pathLength="1" class="kw-map-advice-ray" />
+            <circle v-if="adviceActiveLine" :key="`advice-dot-${adviceActiveLine.key}`" r="3" class="kw-map-advice-dot">
+              <animateMotion
+                :path="`M ${adviceActiveLine.x1} ${adviceActiveLine.y1} L ${adviceActiveLine.x2} ${adviceActiveLine.y2}`"
+                dur="1.5s"
+                begin="0s"
+                repeatCount="1"
+                fill="freeze"
+              />
+            </circle>
 
             <g v-for="node in mapNodes" :key="node.id" class="kw-map-node" :data-node-id="String(node.id)"
               :class="{ 'is-selected': isMapSelected(node), 'is-hovered': mapHoveredId === String(node.id), 'is-dimmed': isMapNodeDimmed(node), 'is-learned': Number(node.learning?.viewCount || 0) > 0, 'is-weak': Number(node.learning?.practiceCount || 0) > 0 && Number(node.learning?.accuracy || 0) < 60, 'is-route': isRouteNode(node), 'is-next-stop': isNextStopNode(node), 'is-advice-visited': adviceVisitedPageIds.includes(String(node.pageId)), 'is-advice-dimmed': adviceMode && adviceVisitedPageIds.length > 0 && !adviceVisitedPageIds.includes(String(node.pageId)) }"
@@ -670,13 +679,16 @@ const adviceTraceLines = computed(() => {
     .filter(Boolean) as any[]
 })
 
-// 射线逐条发射：不再让所有连线一次性出现。
+// 射线逐条发射：一条线走完，才出现下一条线的新亮点。
+const ADVICE_DOT_MS = 1500
 const adviceVisibleLines = ref<any[]>([])
+const adviceActiveLine = ref<any>(null)
 let adviceLineTimers: ReturnType<typeof setTimeout>[] = []
 watch(adviceTrace, (trace) => {
   adviceLineTimers.forEach((timer) => clearTimeout(timer))
   adviceLineTimers = []
   adviceVisibleLines.value = []
+  adviceActiveLine.value = null
   const lines = adviceTraceLines.value
   if (!trace?.steps?.length || !lines.length) return
   const reduced = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
@@ -688,7 +700,13 @@ watch(adviceTrace, (trace) => {
     adviceLineTimers.push(
       setTimeout(() => {
         adviceVisibleLines.value = lines.slice(0, index + 1)
-      }, 220 + index * 560)
+        adviceActiveLine.value = line
+      }, 220 + index * ADVICE_DOT_MS)
+    )
+    adviceLineTimers.push(
+      setTimeout(() => {
+        if (adviceActiveLine.value?.key === line.key) adviceActiveLine.value = null
+      }, 220 + (index + 1) * ADVICE_DOT_MS - 20)
     )
   })
 })
@@ -2341,6 +2359,8 @@ onBeforeUnmount(() => {
 .kw-map-edge.is-dimmed { opacity: 0.08; }
 .kw-map-edge.is-hidden { display: none; }
 .kw-map-advice-ray { stroke: #2f5fce; stroke-width: 2; opacity: .78; pointer-events: none; stroke-dasharray: 1; stroke-dashoffset: 1; animation: kw-advice-draw .58s ease-out forwards; filter: drop-shadow(0 0 3px rgba(47, 95, 206, .35)); }
+.kw-map-advice-dot { fill: #2f5fce; pointer-events: none; filter: drop-shadow(0 0 5px rgba(47, 95, 206, .8)); }
+.kw-map-advice-dot circle { pointer-events: none; }
 .kw-map.is-advice-focus .kw-map-edge,
 .kw-map.is-advice-focus .kw-map-learning-path { display: none; }
 .kw-map.is-advice-focus .kw-map-hull { opacity: .18; }
