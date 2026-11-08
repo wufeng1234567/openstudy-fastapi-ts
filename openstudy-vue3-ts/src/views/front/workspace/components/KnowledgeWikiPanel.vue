@@ -101,7 +101,7 @@
             </circle>
 
             <g v-for="node in mapNodes" :key="node.id" class="kw-map-node" :data-node-id="String(node.id)"
-              :class="{ 'is-selected': isMapSelected(node), 'is-hovered': mapHoveredId === String(node.id), 'is-dimmed': isMapNodeDimmed(node), 'is-learned': Number(node.learning?.viewCount || 0) > 0, 'is-weak': Number(node.learning?.practiceCount || 0) > 0 && Number(node.learning?.accuracy || 0) < 60, 'is-route': isRouteNode(node), 'is-next-stop': isNextStopNode(node), 'is-advice-visited': adviceVisitedPageIds.includes(String(node.pageId)), 'is-advice-dimmed': adviceMode && adviceVisitedPageIds.length > 0 && !adviceVisitedPageIds.includes(String(node.pageId)) }"
+              :class="{ 'is-selected': isMapSelected(node), 'is-hovered': mapHoveredId === String(node.id), 'is-dimmed': isMapNodeDimmed(node), 'is-learned': Number(node.learning?.viewCount || 0) > 0, 'is-weak': Number(node.learning?.practiceCount || 0) > 0 && Number(node.learning?.accuracy || 0) < 60, 'is-route': isRouteNode(node), 'is-next-stop': isNextStopNode(node), 'is-advice-visited': adviceLitPageIds.includes(String(node.pageId)), 'is-advice-dimmed': adviceMode && adviceLitPageIds.length > 0 && !adviceLitPageIds.includes(String(node.pageId)) }"
               :transform="`translate(${node.x} ${node.y})`"
               @mouseenter="onMapNodeEnter(node)" @mouseleave="onMapNodeLeave(node)"
               @pointerdown.stop="onMapNodeDown($event, node)" @pointerup.stop="onMapNodeUp"
@@ -511,6 +511,7 @@ const adviceHostRef = ref<any>(null)
 const adviceLoading = ref(false)
 const adviceTrace = ref<any>(null)
 const adviceVisitedPageIds = ref<string[]>([])
+const adviceLitPageIds = ref<string[]>([])
 const detailVisible = ref(false)
 const pageLoading = ref(false)
 const activePage = ref<any>(null)
@@ -674,7 +675,15 @@ const adviceTraceLines = computed(() => {
       const from = position.get(fromId)
       const to = position.get(toId)
       if (!from || !to) return null
-      return { key: `${fromId}-${toId}-${index}`, x1: from.x, y1: from.y, x2: to.x, y2: to.y }
+      return {
+        key: `${fromId}-${toId}-${index}`,
+        fromPageId: fromId,
+        toPageId: toId,
+        x1: from.x,
+        y1: from.y,
+        x2: to.x,
+        y2: to.y
+      }
     })
     .filter(Boolean) as any[]
 })
@@ -689,11 +698,15 @@ watch(adviceTrace, (trace) => {
   adviceLineTimers = []
   adviceVisibleLines.value = []
   adviceActiveLine.value = null
+  adviceLitPageIds.value = mapSelectedPageId.value ? [String(mapSelectedPageId.value)] : []
   const lines = adviceTraceLines.value
   if (!trace?.steps?.length || !lines.length) return
   const reduced = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
   if (reduced) {
     adviceVisibleLines.value = lines
+    adviceLitPageIds.value = Array.from(
+      new Set(lines.flatMap((line: any) => [line.fromPageId, line.toPageId]).filter(Boolean))
+    )
     return
   }
   lines.forEach((line: any, index: number) => {
@@ -701,6 +714,10 @@ watch(adviceTrace, (trace) => {
       setTimeout(() => {
         adviceVisibleLines.value = lines.slice(0, index + 1)
         adviceActiveLine.value = line
+        // 射线到达后才点亮目标节点；未到达的节点保持未点亮。
+        adviceLitPageIds.value = Array.from(
+          new Set([...adviceLitPageIds.value, line.fromPageId, line.toPageId].filter(Boolean))
+        )
       }, 220 + index * ADVICE_DOT_MS)
     )
     adviceLineTimers.push(
@@ -1068,6 +1085,7 @@ function toggleAdviceMode() {
   } else {
     adviceTrace.value = null
     adviceVisitedPageIds.value = []
+    adviceLitPageIds.value = []
   }
 }
 
@@ -1201,7 +1219,7 @@ function showMapLabel(node: any) {
   return (
     isMapSelected(node) ||
     isRouteNode(node) ||
-    adviceVisitedPageIds.value.includes(String(node.pageId)) ||
+    adviceLitPageIds.value.includes(String(node.pageId)) ||
     mapHoveredId.value === String(node.id) ||
     mapView.scale >= 1.05 ||
     Number(node.degree || 0) >= 5
@@ -1266,6 +1284,7 @@ function onMapNodeClick(node: any) {
       adviceHostRef.value?.clear?.()
       adviceTrace.value = null
       adviceVisitedPageIds.value = []
+      adviceLitPageIds.value = []
       return
     }
     // 建议模式只选中节点并把它移到视野中央，不打开知识百科详情抽屉。
