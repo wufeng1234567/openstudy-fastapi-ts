@@ -238,6 +238,7 @@ async def init_db():
                 ("content_structure", "JSON NULL"),
                 ("index_version", "INTEGER NOT NULL DEFAULT 1"),
                 ("version", "INTEGER NOT NULL DEFAULT 1"),
+                ("source_url", "VARCHAR(1000) NULL"),
             ):
                 if col not in columns:
                     sync_conn.execute(text(f"ALTER TABLE rag_document ADD COLUMN {col} {ddl}"))

@@ -329,6 +329,10 @@
                       <OsIcon name="file-text" :size="14" />
                       {{ importing ? '导入中…' : '粘贴文本' }}
                     </el-dropdown-item>
+                    <el-dropdown-item command="url" :disabled="importing">
+                      <OsIcon name="globe" :size="14" />
+                      从网页导入
+                    </el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -377,6 +381,8 @@
                     <span v-if="doc.chunkCount">· {{ doc.chunkCount }} 个片段</span>
                     <span v-if="doc.imageCount">· {{ doc.imageCount }} 张图</span>
                     <span v-if="doc.note" class="kbp-doc__note">· {{ doc.note }}</span>
+                    <a v-if="doc.sourceUrl" class="kbp-doc__source" :href="doc.sourceUrl" target="_blank"
+                      rel="noopener noreferrer" @click.stop>来源网页</a>
                     <span class="kbp-doc__time">{{ doc.createTime }}</span>
                   </div>
                   <div v-if="doc.status === 4 && doc.errorMsg" class="kbp-doc__err">
@@ -856,6 +862,54 @@
         <el-button type="primary" :loading="importing" @click="submitTextImport">导入</el-button>
       </template>
     </el-dialog>
+
+    <!-- 从网页导入：一个输入框同时支持「粘贴网址」和「关键词搜索」 -->
+    <el-dialog v-model="webImportVisible" title="从网页导入" width="680px" append-to-body @closed="resetWebImport">
+      <div class="kbp-web">
+        <p class="kbp-web__hint">
+          粘贴一个公开网页链接直接导入；或输入关键词，让系统搜索后由你挑选。
+        </p>
+        <div class="kbp-web__search">
+          <el-input
+            v-model="webImportQuery"
+            clearable
+            placeholder="粘贴网址，或输入关键词搜索网页"
+            @keyup.enter="submitWebImport"
+          />
+          <el-button type="primary" :loading="webSearching || webImporting" @click="submitWebImport">
+            {{ webImportIsUrl ? '导入网址' : '搜索网页' }}
+          </el-button>
+        </div>
+        <div v-if="webImportQuery.trim() && !webImportIsUrl && !webResults.length && !webSearching" class="kbp-web__empty">
+          还没有搜索结果。输入关键词后点「搜索网页」。
+        </div>
+        <div v-if="webResults.length" class="kbp-web__results">
+          <div v-for="item in webResults" :key="item.url" class="kbp-web__item">
+            <div class="kbp-web__main">
+              <a class="kbp-web__title" :href="item.url" target="_blank" rel="noopener noreferrer">
+                [{{ item.index }}] {{ item.title }}
+              </a>
+              <div class="kbp-web__meta">
+                <span>{{ item.siteName }}</span>
+                <span v-if="item.date">· {{ item.date }}</span>
+              </div>
+              <p>{{ item.snippet || item.summary }}</p>
+            </div>
+            <el-button size="small" plain :loading="webImporting" @click="importWebResult(item)">导入</el-button>
+          </div>
+        </div>
+        <div class="kbp-web__note">
+          <span class="kbp-import__label">备注（可选）</span>
+          <el-input v-model="webImportNote" maxlength="200" placeholder="例如：这节课要用的参考资料" />
+        </div>
+        <p class="kbp-web__foot">
+          导入后会走和上传文件相同的分块、向量化、知识百科与知识图谱流程，智能体可以直接检索。
+        </p>
+      </div>
+      <template #footer>
+        <el-button @click="webImportVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -895,7 +949,9 @@ import {
   updateDocumentContent,
   exportDocument,
   importDocumentText,
+  importDocumentUrl,
   reprocessDocument,
+  searchPublicWeb,
   updateKnowledgeBase,
   uploadDocument
 } from '@/api/ai/rag'
@@ -1676,6 +1732,14 @@ const importing = ref(false)
 const textImportVisible = ref(false)
 const textImportContent = ref('')
 const textImportFileName = ref('')
+/* 在线网页导入：一个输入框同时支持「粘贴网址」与「关键词搜索」 */
+const webImportVisible = ref(false)
+const webImportQuery = ref('')
+const webImportNote = ref('')
+const webSearching = ref(false)
+const webImporting = ref(false)
+const webResults = ref<Array<Record<string, any>>>([])
+const webImportIsUrl = computed(() => /^https?:\/\/\S+/i.test(webImportQuery.value.trim()))
 
 /* ===================== 加载 ===================== */
 
@@ -2701,6 +2765,7 @@ function onUploadCommand(command: string) {
   if (busy.value) return
   if (command === 'file') onPick()
   else if (command === 'text') openTextImport()
+  else if (command === 'url') openWebImport()
 }
 
 async function onFilesPicked(e: Event) {
@@ -3247,6 +3312,91 @@ async function submitTextImport() {
     ElMessage.error('导入失败：' + (e?.message || e))
   } finally {
     importing.value = false
+  }
+}
+
+/* ===================== 从网页导入 ===================== */
+
+function openWebImport() {
+  if (busy.value) {
+    ElMessage.warning('有导入正在进行，等它跑完')
+    return
+  }
+  webImportQuery.value = ''
+  webImportNote.value = ''
+  webResults.value = []
+  webImportVisible.value = true
+}
+
+function resetWebImport() {
+  webImportQuery.value = ''
+  webImportNote.value = ''
+  webResults.value = []
+  webSearching.value = false
+  webImporting.value = false
+}
+
+async function submitWebImport() {
+  if (webImportIsUrl.value) {
+    await importWebUrl(webImportQuery.value.trim())
+    return
+  }
+  await runWebSearch()
+}
+
+async function runWebSearch() {
+  const query = webImportQuery.value.trim()
+  if (!query) {
+    ElMessage.warning('先输入关键词')
+    return
+  }
+  if (webSearching.value) return
+  webSearching.value = true
+  webResults.value = []
+  try {
+    const res: any = await searchPublicWeb(query, 6)
+    if (res.code === 200) {
+      webResults.value = Array.isArray(res.data?.results) ? res.data.results : []
+      if (!webResults.value.length) ElMessage.warning('没有搜索到公开网页结果，换个关键词试试')
+    } else {
+      ElMessage.error(res.msg || '网页搜索失败')
+    }
+  } catch (e: any) {
+    ElMessage.error('网页搜索失败：' + (e?.message || e))
+  } finally {
+    webSearching.value = false
+  }
+}
+
+async function importWebResult(item: Record<string, any>) {
+  const url = String(item?.url || '').trim()
+  if (!url) return
+  await importWebUrl(url)
+}
+
+async function importWebUrl(url: string) {
+  const kb = activeKb.value
+  if (!kb) return
+  if (!/^https?:\/\/\S+/i.test(url)) {
+    ElMessage.warning('请提供 http:// 或 https:// 开头的公开网页链接')
+    return
+  }
+  if (webImporting.value) return
+  webImporting.value = true
+  try {
+    const res: any = await importDocumentUrl(kb.kbId, url, webImportNote.value.trim() || undefined)
+    if (res.code === 200) {
+      ElMessage.success(res.msg || '网页已导入，后台正在分块')
+      webImportVisible.value = false
+      await load()
+      setTimeout(() => load(), 4000)
+    } else {
+      ElMessage.error(res.msg || '网页导入失败')
+    }
+  } catch (e: any) {
+    ElMessage.error('网页导入失败：' + (e?.message || e))
+  } finally {
+    webImporting.value = false
   }
 }
 
@@ -4559,6 +4709,15 @@ onBeforeUnmount(() => {
   color: var(--os-text-2, #6b7280);
 }
 
+.kbp-doc__source {
+  color: var(--os-accent, #2f5fce);
+  text-decoration: none;
+}
+
+.kbp-doc__source:hover {
+  text-decoration: underline;
+}
+
 .kbp-doc__time {
   margin-left: auto;
 }
@@ -5100,6 +5259,105 @@ onBeforeUnmount(() => {
   flex: none;
   font-size: 13px;
   color: var(--os-text-2, #4b5563);
+}
+
+/* ===================== 从网页导入 ===================== */
+.kbp-web__hint {
+  margin: 0 0 10px;
+  color: var(--os-text-3, #6b7280);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.kbp-web__search {
+  display: flex;
+  gap: 8px;
+}
+
+.kbp-web__search .el-input {
+  flex: 1;
+}
+
+.kbp-web__empty {
+  padding: 18px 0;
+  color: var(--os-text-4, #9ca3af);
+  font-size: 12px;
+  text-align: center;
+}
+
+.kbp-web__results {
+  display: flex;
+  max-height: 320px;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  margin-top: 12px;
+}
+
+.kbp-web__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--os-border-soft, #e5eaf2);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.kbp-web__main {
+  min-width: 0;
+  flex: 1;
+}
+
+.kbp-web__title {
+  display: block;
+  overflow: hidden;
+  color: var(--os-accent, #2f5fce);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kbp-web__title:hover {
+  text-decoration: underline;
+}
+
+.kbp-web__meta {
+  margin-top: 2px;
+  color: var(--os-text-4, #9ca3af);
+  font-size: 11px;
+}
+
+.kbp-web__main p {
+  margin: 4px 0 0;
+  color: var(--os-text-3, #6b7280);
+  font-size: 12px;
+  line-height: 1.55;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.kbp-web__note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.kbp-web__note .el-input {
+  flex: 1;
+}
+
+.kbp-web__foot {
+  margin: 10px 0 0;
+  color: var(--os-text-4, #9ca3af);
+  font-size: 11px;
+  line-height: 1.55;
 }
 
 /* ---------- 单文档刨析 ---------- */

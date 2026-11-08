@@ -1,11 +1,6 @@
 <template>
   <div class="ai-assistant">
-    <!-- 悬浮按钮 -->
-    <div class="float-btn" :style="btnStyle" title="OpenStudy 助手" @mousedown="startDrag" @click="onFloatClick">
-      <el-icon :size="24">
-        <ChatDotRound />
-      </el-icon>
-    </div>
+    <!-- 入口由 FrontSidebar 统一渲染，通过 openstudy:open-assistant 事件唤起 -->
 
     <!-- 抽屉面板 -->
     <el-drawer v-model="visible" direction="rtl" :size="drawerSize + 'px'" :with-header="false"
@@ -257,6 +252,11 @@ const selectedModel = ref('')
 // 选中的 AI 配置 id（区分同名的系统/用户模型）；由 AiModelSelector 的 @select 提供
 const selectedConfigId = ref(null)
 const onModelSelect = (cfg) => { selectedConfigId.value = cfg?.configId ?? null }
+
+/** 侧边栏的助手入口通过 window 事件唤起，避免全屏悬浮按钮遮挡内容。 */
+function openAssistant() {
+  visible.value = true
+}
 
 // ===================== 智能体模式 =====================
 // 与「大屏智能体页」共用同一套引擎（useAgentChat）：普通聊天里也能调工具建题库 / 导题。
@@ -1254,6 +1254,7 @@ onMounted(async () => {
     document.addEventListener('paste', handlePaste)
   }
   initPosition()
+  window.addEventListener('openstudy:open-assistant', openAssistant)
   await loadSessions()
   if (sessions.value.length > 0) {
     // 默认打开最近一次会话
@@ -1272,6 +1273,7 @@ onUnmounted(() => {
   window.removeEventListener('mousemove', onDrag)
   window.removeEventListener('mouseup', stopDrag)
   window.removeEventListener('resize', initPosition)
+  window.removeEventListener('openstudy:open-assistant', openAssistant)
   document.removeEventListener('mousedown', onDocMousedown)
   // Ctrl+V 粘贴监听是在 **document** 上挂的：必须在这里成对摘掉，
   // 否则每次卸载都给 document 留一条指向已销毁实例的闭包（见 onMounted 里的注释）。
@@ -1360,6 +1362,26 @@ onUnmounted(() => {
   /* ========== 悬浮按钮 ==========
      与 DSH 的浮层语言一致：**近黑实心圆 + 白色图标**、无毛玻璃、无描边，
      只在 hover 时抬一点阴影。旧版是"白底毛玻璃 + 灰图标"，在浅色页面里像块补丁。 */
+  .assistant-entry {
+    display: inline-flex;
+    width: 28px;
+    height: 28px;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: 7px;
+    color: var(--os-text-3);
+    background: transparent;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+
+  .assistant-entry:hover {
+    color: var(--os-accent);
+    background: var(--os-bg-hover);
+  }
+
   .float-btn {
     position: fixed;
     left: auto;

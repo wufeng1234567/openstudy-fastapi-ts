@@ -60,6 +60,7 @@ from __future__ import annotations
 
 import asyncio
 import difflib
+import re
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
@@ -213,6 +214,8 @@ class KnowledgeIngestTool(AgentTool):
         "from_attachment=store the plain text of a file the USER attached in THIS "
         "message as a document (requires `kb_id`; optional `index` to pick which "
         "attachment when several were sent, 0-based), "
+        "from_url=fetch one public web page and store it as a document in the knowledge "
+        "base (requires `kb_id` and `url`; optional `file_name`), "
         "update_document=replace/update an EXISTING document in place (requires `doc_id` "
         "and either `text` or `edits`; optional `file_name` to rename). Use this for "
         "edits instead of deleting and recreating a document. "
@@ -230,8 +233,9 @@ class KnowledgeIngestTool(AgentTool):
     label = "存入我的资料"
     description_zh = (
         "把内容存入我的资料并生成可检索文档：from_text=把一段文本（总结/笔记/生成内容）"
-        "存入、from_attachment=把用户本轮上传的附件正文存入、update_document=修改已有"
-        "文档正文（支持精确补丁，不删除重建）、restore_document_version=恢复历史版本。"
+        "存入、from_attachment=把用户本轮上传的附件正文存入、from_url=抓取一个公开网页"
+        "并存入、update_document=修改已有文档正文（支持精确补丁，不删除重建）、"
+        "restore_document_version=恢复历史版本。"
         "会消耗 embedding 额度，需用户确认；向量化在后台进行，文档稍后才可检索。"
     )
     parameters = {
@@ -243,6 +247,7 @@ class KnowledgeIngestTool(AgentTool):
                 "enum": [
                     "from_text",
                     "from_attachment",
+                    "from_url",
                     "update_document",
                     "restore_document_version",
                 ],
@@ -318,6 +323,13 @@ class KnowledgeIngestTool(AgentTool):
                     "0) when the user attached more than one file."
                 ),
             },
+            "url": {
+                "type": "string",
+                "description": (
+                    "Public http(s) URL of the web page to import (required for "
+                    "action=from_url). Use `web_search` first if you need to find it."
+                ),
+            },
         },
         "required": ["action"],
     }
@@ -345,7 +357,7 @@ class KnowledgeIngestTool(AgentTool):
                     return True
                 text = str(raw)
                 return len(text) >= 3000 or _estimate_chunks(text) >= 8
-            if action == "from_attachment":
+            if action in ("from_attachment", "from_url"):
                 return True
             if action in ("update_document", "restore_document_version"):
                 return True
@@ -451,6 +463,17 @@ class KnowledgeIngestTool(AgentTool):
                 except RagNotFound:
                     return {"hint": f"（没有找到属于你的资料夹：kbId={kid}）"}
 
+            # from_url 的正文在网页上，预览阶段不为了估算再抓一次网络（也避免费用）；
+            # 确认卡只显示目标库和来源 URL，真实块数由执行后回执给出。
+            if action == "from_url":
+                url = str(params.get("url") or "").strip()
+                out["action"] = action
+                out["source"] = url or "（未提供网址）"
+                out["chunks"] = 0
+                out["embedCalls"] = 0
+                out["charCount"] = 0
+                return out
+
             # 2) 取正文（只读）+ 估算块数；update_document 的补丁要基于当前正文应用
             if action == "restore_document_version":
                 text = str((restore_version or {}).get("content") or "")
@@ -482,11 +505,13 @@ class KnowledgeIngestTool(AgentTool):
             return await self._execute_update(params, ctx)
         if action == "restore_document_version":
             return await self._execute_restore_version(params, ctx)
+        if action == "from_url":
+            return await self._execute_from_url(params, ctx)
         if action not in ("from_text", "from_attachment"):
             return fail(
                 f"未知操作: {action}",
-                "action 只能是 from_text / from_attachment / update_document / "
-                "restore_document_version",
+                "action 只能是 from_text / from_attachment / from_url / "
+                "update_document / restore_document_version",
             )
 
         kb_id = _to_int(params.get("kb_id"))
@@ -562,6 +587,92 @@ class KnowledgeIngestTool(AgentTool):
                 # 用户看到"处理中"却不知道去哪里看，只能等。
                 "jumpUrl": f"/front/workspace?kbId={kb_id}&docId={doc_id}&open=1",
             }
+        )
+
+    async def _execute_from_url(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+        """抓取一个公开网页并写入知识库（与手动入口共用官方 Fetch 服务）。"""
+        kb_id = _to_int(params.get("kb_id"))
+        if kb_id is None:
+            return fail(
+                "网页入库需要 kb_id",
+                "请先用 knowledge_base_manage 的 action=list 拿到知识库 ID；"
+                "如果不知道要存入哪个库，先问用户。",
+            )
+        url = str(params.get("url") or "").strip()
+        if not url:
+            return fail(
+                "网页入库需要 url",
+                "请先用 web_search 找到目标网页，或让用户提供公开网址。",
+            )
+        try:
+            await rws.get_knowledge_base(ctx.db, ctx.user_id, kb_id)
+        except RagNotFound:
+            return fail(f"没有找到属于你的知识库：kbId={kb_id}", "请重新确认知识库 ID。")
+
+        from app.services.ai.web_search_service import WebSearchError, fetch_web_page
+
+        try:
+            page = await fetch_web_page(
+                ctx.db,
+                url,
+                max_chars=MAX_RAW_LENGTH - 1200,
+                user_id=ctx.user_id or None,
+            )
+        except WebSearchError as exc:
+            return fail(str(exc), "请换一个公开网页，或确认网址可以正常访问。")
+
+        title = str(page.get("title") or "网页资料").strip()
+        content = str(page.get("content") or "").strip()
+        if len(content) < 80:
+            return fail("这个网页没有足够的可读正文，无法作为学习资料。", "请换一个内容完整的网页。")
+        safe_title = re.sub(r'[\\/:*?"<>|]+', "_", title).strip(" ._")[:80] or "网页资料"
+        file_name = str(params.get("file_name") or f"{safe_title}.md").strip()
+        if not file_name.lower().endswith((".md", ".markdown", ".txt")):
+            file_name += ".md"
+        body_text = f"# {title}\n\n> 来源：{page.get('url') or url}\n\n{content}"
+
+        from app.database import async_session_factory
+
+        try:
+            async with async_session_factory() as db:
+                doc = await rws.create_document(
+                    db,
+                    ctx.user_id,
+                    kb_id,
+                    file_name=file_name,
+                    raw_content=body_text,
+                    file_type="url",
+                    source_url=page.get("url") or url,
+                    status=DOC_PENDING,
+                )
+                doc_id = int(doc.id)
+                unchanged = bool(getattr(doc, "_upload_unchanged", False))
+                try:
+                    kb_name = (await rws.get_knowledge_base(db, ctx.user_id, kb_id)).name
+                except Exception:  # noqa: BLE001
+                    kb_name = ""
+        except Exception as e:  # noqa: BLE001
+            return self._fail_from(e)
+
+        if not unchanged:
+            self._schedule_processing(doc_id)
+        return ok(
+            action="from_url",
+            docId=doc_id,
+            kbId=kb_id,
+            kbName=kb_name,
+            fileName=file_name,
+            sourceUrl=page.get("url") or url,
+            title=title,
+            status=DOC_PENDING,
+            statusText="处理中" if not unchanged else "内容未变化",
+            unchanged=unchanged,
+            message=(
+                f"已把网页《{title}》存入我的资料"
+                f"{('「' + kb_name + '」') if kb_name else ''}（docId={doc_id}）。"
+                + ("这个网页之前导入过，内容没有变化。" if unchanged else "正在后台分块并向量化，稍后即可检索。")
+            ),
+            jumpUrl=f"/front/workspace?kbId={kb_id}&docId={doc_id}&open=1",
         )
 
     async def _execute_update(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:

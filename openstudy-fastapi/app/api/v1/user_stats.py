@@ -8,6 +8,8 @@
 """
 
 from datetime import datetime, timedelta
+from typing import Optional
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -518,6 +520,73 @@ async def get_growth(
         "totalNotes": total_notes or 0,
         "milestones": milestones,
     })
+
+
+@router.get("/study-plan-today")
+async def get_study_plan_today(
+    kbId: Optional[int] = Query(None, gt=0),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """今日学习任务：走「知航 · 活计划」，无 kbId 时自动选默认资料夹。
+
+    这是学习统计页与知识图谱共用同一份计划的服务端入口，不再生成第二套
+    “今日处方”。找不到资料夹时返回 `hasPlan=false`，由旧学习闭环兜底。
+    """
+    from datetime import date as _date
+
+    from app.services.rag import rag_write_service as rws
+    from app.services.study_plan_service import build_study_plan
+
+    uid = int(current_user.get("user_id") or 0)
+    candidates: list[int] = []
+    if kbId:
+        candidates.append(int(kbId))
+    else:
+        try:
+            bases = await rws.list_knowledge_bases(db, uid)
+        except Exception:  # noqa: BLE001
+            bases = []
+        ordered = sorted(
+            bases,
+            key=lambda item: (0 if int(item.get("isDefault") or 0) == 1 else 1, -int(item.get("docCount") or 0)),
+        )
+        candidates = [int(item.get("kbId") or 0) for item in ordered if int(item.get("kbId") or 0)]
+    if not candidates:
+        return success({"hasPlan": False, "reason": "还没有资料夹，先生成知识百科主题页", "todayTasks": []})
+    last_plan: dict = {}
+    for target_kb in candidates:
+        try:
+            plan = await build_study_plan(
+                db, uid, int(target_kb), goal="today", horizon_days=7, daily_minutes=40
+            )
+        except Exception:  # noqa: BLE001
+            continue
+        last_plan = plan
+        if plan.get("route", {}).get("stops"):
+            today = _date.today().isoformat()
+            day = next((item for item in plan.get("days") or [] if str(item.get("date")) == today), None)
+            if day is None and plan.get("days"):
+                day = plan["days"][0]
+            return success(
+                {
+                    **plan,
+                    "hasPlan": True,
+                    "todayTasks": (day or {}).get("tasks") or [],
+                }
+            )
+    today = _date.today().isoformat()
+    day = next((item for item in last_plan.get("days") or [] if str(item.get("date")) == today), None)
+    if day is None and last_plan.get("days"):
+        day = last_plan["days"][0]
+    return success(
+        {
+            **last_plan,
+            "hasPlan": False,
+            "reason": "资料夹还没有可规划的知识百科主题页",
+            "todayTasks": (day or {}).get("tasks") or [],
+        }
+    )
 
 
 @router.get("/learning-loop")

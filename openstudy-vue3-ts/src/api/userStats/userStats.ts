@@ -262,6 +262,15 @@ export function getLearningLoop(): Promise<ApiResult<LearningLoopResult>> {
   >
 }
 
+/** 今日学习任务：与知识图谱共用的「知航 · 活计划」视图。 */
+export function getStudyPlanToday(kbId?: number): Promise<ApiResult<any>> {
+  return request({
+    url: '/userStats/study-plan-today',
+    method: 'get',
+    params: kbId ? { kbId } : undefined
+  }) as unknown as Promise<ApiResult<any>>
+}
+
 export interface PracticeProgressItem {
   questionId: number
   lastPracticeTime: string

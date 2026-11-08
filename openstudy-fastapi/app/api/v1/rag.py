@@ -479,6 +479,118 @@ async def import_text(
     return success({"docId": doc.id, "fileName": doc.file_name, "status": doc.status}, "导入成功，正在后台处理")
 
 
+# ============================================================ 在线网页
+
+class WebSearchRequest(BaseModel):
+    """知识库「在线网页」手动入口：先搜索，再让用户选择导入。"""
+
+    query: str = Field(..., min_length=1, max_length=500)
+    count: int = Field(6, ge=1, le=10)
+
+
+class WebImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kbId: int = Field(..., gt=0)
+    url: str = Field(..., min_length=8, max_length=2000)
+    note: Optional[str] = Field(None, max_length=200)
+
+
+@router.post("/web/search")
+async def search_public_web(
+    data: WebSearchRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """手动入口：搜索公开互联网，返回可点击的真实结果（不落库）。"""
+    from app.services.ai.web_search_service import WebSearchError, search_web
+
+    try:
+        return success(
+            await search_web(
+                db,
+                data.query,
+                count=data.count,
+                user_id=_uid(current_user) or None,
+            )
+        )
+    except WebSearchError as exc:
+        return error(str(exc), code=400)
+    except Exception as exc:  # noqa: BLE001
+        return error(f"网页搜索失败：{exc}")
+
+
+@router.post("/document/importUrl")
+async def import_web_document(
+    data: WebImportRequest,
+    background: BackgroundTasks,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """把公开网页抓取成 Markdown 并写入指定知识库（与上传走同一条流水线）。
+
+    这是「知识库手动入口」；智能对话里由 `knowledge_ingest.from_url` 复用同一份
+    `fetch_web_page` / `create_document` 逻辑，不维护第二套抓取或解析。
+    """
+    from app.services.ai.web_search_service import WebSearchError, fetch_web_page
+    from app.services.material_organizer import analyze as analyze_material
+
+    uid = _uid(current_user)
+    try:
+        await rag_write_service.get_knowledge_base(db, uid, data.kbId)
+        page = await fetch_web_page(db, data.url, max_chars=100_000, user_id=uid)
+        content = (page.get("content") or "").strip()
+        if len(content) < 80:
+            return error("这个网页没有足够的可读正文，无法作为学习资料导入。", code=400)
+        title = (page.get("title") or "网页资料").strip()
+        safe_name = re.sub(r'[\\/:*?"<>|]+', "_", title).strip(" ._")[:80] or "网页资料"
+        file_name = f"{safe_name}.md"
+        # 正文里显式保留来源 URL，方便资料详情和后续检索都能追溯。
+        body_text = f"# {title}\n\n> 来源：{page.get('url') or data.url}\n\n{content}"
+        organized = analyze_material(file_name, body_text, {}, image_count=0)
+        doc = await rag_write_service.create_document(
+            db,
+            uid,
+            data.kbId,
+            file_name=organized["display_name"],
+            raw_content=body_text,
+            file_type="url",
+            file_size=len(body_text.encode("utf-8")),
+            source_url=page.get("url") or data.url,
+            content_structure=[],
+            original_file_name=file_name,
+            subject=organized["subject"],
+            material_type=organized["material_type"],
+            facets=organized["facets"],
+        )
+        if data.note and data.note.strip():
+            doc.user_note = data.note.strip()[:200]
+            await db.flush()
+        unchanged = bool(getattr(doc, "_upload_unchanged", False))
+        if not unchanged:
+            background.add_task(document_pipeline.process_document, doc.id)
+        return success(
+            {
+                "docId": int(doc.id),
+                "kbId": data.kbId,
+                "fileName": doc.file_name,
+                "title": title,
+                "sourceUrl": page.get("url") or data.url,
+                "contentLength": len(body_text),
+                "status": int(doc.status),
+                "unchanged": unchanged,
+                "version": int(getattr(doc, "version", 1) or 1),
+            },
+            "网页已导入，正在后台处理" if not unchanged else "这个网页已经导入过，内容没有变化",
+        )
+    except WebSearchError as exc:
+        return error(str(exc), code=400)
+    except (RagNotFound, RagConflict) as exc:
+        return _fail(exc)
+    except Exception as exc:  # noqa: BLE001
+        return error(f"网页导入失败：{exc}")
+
+
 @router.get("/document/list/{kb_id}")
 async def list_documents(
     kb_id: int,
@@ -1022,6 +1134,21 @@ async def get_wiki_page(
         return _fail(e)
 
 
+@router.post("/wiki/pages/{page_id}/view")
+async def record_wiki_page_view(
+    page_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """记录一次主题页阅读，为学习态图谱提供真实阅读事实。"""
+    try:
+        from app.services.rag.wiki_service import record_wiki_page_view as record_view
+
+        return success(await record_view(db, _uid(current_user), page_id))
+    except Exception as e:
+        return _fail(e)
+
+
 @router.get("/wiki/graph")
 async def get_wiki_graph(
     kbId: int = Query(..., gt=0),
@@ -1034,6 +1161,94 @@ async def get_wiki_graph(
 
         return success(await load_graph(db, _uid(current_user), kbId))
     except Exception as e:
+        return _fail(e)
+
+
+@router.get("/wiki/route")
+async def get_wiki_learning_route(
+    kbId: int = Query(..., gt=0),
+    maxStops: int = Query(3, ge=1, le=8),
+    strategy: str = Query("weakness", pattern="^(weakness|foundation|explore)$"),
+    focusPageId: Optional[int] = Query(None, gt=0),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """知航：按图谱前置边与真实学习态生成只读学习航线。"""
+    try:
+        from app.services.rag.learning_route_service import build_learning_route
+
+        return success(
+            await build_learning_route(
+                db,
+                _uid(current_user),
+                kbId,
+                max_stops=maxStops,
+                focus_page_id=focusPageId,
+                strategy=strategy,
+            )
+        )
+    except Exception as e:
+        return _fail(e)
+
+
+@router.get("/study-plan")
+async def get_study_plan(
+    kbId: int = Query(..., gt=0),
+    goal: str = Query("weakness", pattern="^(weakness|foundation|explore|exam|today|sections)$"),
+    examDate: str = Query("", description="考试日期 YYYY-MM-DD；留空表示不按考试倒排"),
+    horizonDays: int = Query(7, ge=1, le=30),
+    dailyMinutes: int = Query(40, ge=10, le=240),
+    restDays: str = Query("", description="每周休息日，逗号分隔 1-7（周一=1）"),
+    focusPageId: Optional[int] = Query(None, gt=0),
+    docId: Optional[int] = Query(None, gt=0),
+    sectionIndexes: str = Query("", description="资料章节 index，逗号分隔"),
+    mode: str = Query("balanced", pattern="^(balanced|sprint)$"),
+    sinceMs: Optional[int] = Query(None, ge=0, description="计划生成时间戳（毫秒），用于真实完成判定"),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """知航 · 活计划：把知识图谱航线展开成按天可执行任务（只读、零计划表）。"""
+    from datetime import datetime as _dt
+
+    from app.services.study_plan_service import build_study_plan
+
+    try:
+        target = None
+        if examDate.strip():
+            try:
+                target = _dt.strptime(examDate.strip(), "%Y-%m-%d").date()
+            except ValueError:
+                return error("考试日期格式应为 YYYY-MM-DD", code=400)
+        rest_list = []
+        if restDays.strip():
+            try:
+                rest_list = [int(x) for x in restDays.split(",") if x.strip()]
+            except ValueError:
+                return error("restDays 格式应为逗号分隔的 1-7", code=400)
+        section_list = []
+        if sectionIndexes.strip():
+            try:
+                section_list = [int(x) for x in sectionIndexes.split(",") if x.strip()]
+            except ValueError:
+                return error("sectionIndexes 格式应为逗号分隔的整数", code=400)
+        return success(
+            await build_study_plan(
+                db,
+                _uid(current_user),
+                kbId,
+                goal=goal,
+                exam_date=target,
+                horizon_days=horizonDays,
+                daily_minutes=dailyMinutes,
+                rest_days=rest_list,
+                focus_page_id=focusPageId,
+                doc_id=docId,
+                section_indexes=section_list,
+                mode=mode,
+                since_ms=sinceMs,
+            )
+        )
+    except Exception as e:  # noqa: BLE001
         return _fail(e)
 
 

@@ -1,9 +1,9 @@
 <template>
   <div class="chat-sources" :class="{ 'chat-sources--compact': showLabel === false }" @mouseleave="scheduleClose">
-    <span v-if="showLabel !== false" class="chat-sources__label">参考文档</span>
+    <span v-if="showLabel !== false" class="chat-sources__label">{{ labelText }}</span>
     <button v-for="group in groups" :key="group.key" type="button" class="chat-source-chip"
       :class="{ 'is-active': float.visible && float.groupKey === group.key }"
-      :title="group.chunks.some((chunk: any) => chunk.docId) ? '点击查看文档原文' : group.docName"
+      :title="group.chunks.some((chunk: any) => chunk.url) ? '点击打开网页' : (group.chunks.some((chunk: any) => chunk.docId) ? '点击查看文档原文' : group.docName)"
       @mouseenter="showGroup(group, $event)" @focus="showGroup(group, $event)" @mouseleave="scheduleClose"
       @mousedown.stop @click.stop="onChipClick(group, $event)">
       <el-icon class="chat-source-chip__icon"><Document /></el-icon>
@@ -51,11 +51,15 @@ const float = ref<{ visible: boolean; groupKey: string; docName: string; chunks:
 })
 let closeTimer: ReturnType<typeof setTimeout> | null = null
 
+const labelText = computed(() =>
+  (props.references || []).some((ref: any) => ref?.sourceType === 'web') ? '参考来源' : '参考文档'
+)
+
 const groups = computed<SourceGroup[]>(() => {
   const map = new Map<string, SourceGroup>()
   for (const ref of props.references || []) {
-    const docName = String(ref?.docName || ref?.wikiPageTitle || ref?.source || '未命名文档')
-    const key = String(ref?.docId || ref?.wikiPageId || docName)
+    const docName = String(ref?.webTitle || ref?.docName || ref?.wikiPageTitle || ref?.source || '未命名文档')
+    const key = String(ref?.url || ref?.docId || ref?.wikiPageId || docName)
     if (!map.has(key)) map.set(key, { key, docName, chunks: [] })
     map.get(key)!.chunks.push(ref)
   }
@@ -75,6 +79,9 @@ function cleanContent(content: string) {
 }
 
 function chunkLabel(chunk: any, index: number) {
+  if (chunk?.sourceType === 'web') {
+    return chunk?.source || chunk?.siteName || '网页'
+  }
   if (chunk?.sourceType === 'image') {
     return chunk.sectionTitle || chunk.source || '图片'
   }
@@ -87,6 +94,11 @@ function chunkKey(chunk: any, index: number) {
 }
 
 function onChipClick(group: SourceGroup, event: Event) {
+  const webChunk = group.chunks.find((chunk: any) => chunk.url)
+  if (webChunk) {
+    window.open(String(webChunk.url), '_blank', 'noopener,noreferrer')
+    return
+  }
   const documentChunk = group.chunks.find((chunk: any) => chunk.docId)
   if (documentChunk) {
     emit('open-document', { ...documentChunk, docName: group.docName })

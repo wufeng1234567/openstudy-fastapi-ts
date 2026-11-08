@@ -103,6 +103,29 @@ class RagWikiPageRevision(Base):
     create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+class RagWikiPageLearning(Base):
+    """用户在某张主题页上的阅读轨迹（学习态图谱的最小事实源）。
+
+    只记录“用户确实打开过这一页”的次数与最近时间；练习正确率不在这里复制，
+    而是从 `user_practice_log` + `question_source` 实时聚合，避免两套数据漂移。
+    """
+
+    __tablename__ = "rag_wiki_page_learning"
+    __table_args__ = (
+        UniqueConstraint("user_id", "page_id", name="uk_rag_wiki_page_learning"),
+        Index("idx_rag_wiki_learning_user_kb", "user_id", "kb_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    kb_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    page_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    view_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_view_time: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    update_time: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+
 class RagWikiPageLink(Base):
     """主题页之间的导航边，构成“知识图谱”的页面关系。"""
 

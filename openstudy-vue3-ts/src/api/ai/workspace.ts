@@ -229,6 +229,14 @@ export function getWikiPage(pageId: number | string) {
   }) as unknown as Promise<{ code: number; msg?: string; data: any }>
 }
 
+/** 记录一次主题页阅读，用于学习态图谱（只累加真实打开次数） */
+export function recordWikiPageView(pageId: number | string) {
+  return request({
+    url: `/rag/wiki/pages/${pageId}/view`,
+    method: 'post'
+  }) as unknown as Promise<{ code: number; msg?: string; data: any }>
+}
+
 export function getWikiPageByEntity(entityId: number | string) {
   return request({
     url: `/rag/wiki/pages/by-entity/${entityId}`,
@@ -241,6 +249,56 @@ export function getWikiGraph(kbId: number) {
     url: '/rag/wiki/graph',
     method: 'get',
     params: { kbId }
+  }) as unknown as Promise<{ code: number; msg?: string; data: any }>
+}
+
+/** 知航：按图谱前置关系 + 真实学习态生成学习航线（只读，不调模型） */
+export function getLearningRoute(
+  kbId: number,
+  maxStops = 3,
+  strategy: 'weakness' | 'foundation' | 'explore' = 'weakness',
+  focusPageId?: number
+) {
+  return request({
+    url: '/rag/wiki/route',
+    method: 'get',
+    params: { kbId, maxStops, strategy, focusPageId: focusPageId || undefined }
+  }) as unknown as Promise<{ code: number; msg?: string; data: any }>
+}
+
+/** 知航 · 活计划：知识图谱航线展开成按天任务（只读、零计划表） */
+export function getStudyPlan(
+  kbId: number,
+  options: {
+    goal?: 'weakness' | 'foundation' | 'explore' | 'exam' | 'today' | 'sections'
+    examDate?: string
+    horizonDays?: number
+    dailyMinutes?: number
+    restDays?: number[]
+    focusPageId?: number
+    docId?: number
+    sectionIndexes?: number[]
+    mode?: 'balanced' | 'sprint'
+    sinceMs?: number
+  } = {}
+) {
+  const o = options || {}
+  return request({
+    url: '/rag/study-plan',
+    method: 'get',
+    params: {
+      kbId,
+      goal: o.goal || 'weakness',
+      examDate: o.examDate || undefined,
+      horizonDays: o.horizonDays ?? 7,
+      dailyMinutes: o.dailyMinutes ?? 40,
+      restDays: o.restDays?.length ? o.restDays.join(',') : undefined,
+      focusPageId: o.focusPageId || undefined,
+      docId: o.docId || undefined,
+      sectionIndexes: o.sectionIndexes?.length ? o.sectionIndexes.join(',') : undefined,
+      mode: o.mode || 'balanced',
+      sinceMs: o.sinceMs || undefined
+    }
   }) as unknown as Promise<{ code: number; msg?: string; data: any }>
 }
 

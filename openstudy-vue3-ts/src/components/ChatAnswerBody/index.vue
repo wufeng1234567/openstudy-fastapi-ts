@@ -2,10 +2,13 @@
   <div class="chat-answer-body">
     <div v-for="(block, index) in blocks" :key="index"
       class="chat-answer-block" :class="{ 'chat-answer-block--plain': !block.section }">
-      <div class="chat-answer-block__html" v-html="renderAgentMarkdown(block.content)"></div>
+      <div class="chat-answer-block__html" v-html="renderAgentMarkdown(withWebLinks(block.content))"></div>
       <ChatSourceList v-if="block.references.length" :references="block.references" :show-label="false"
         @open-document="$emit('open-document', $event)" />
     </div>
+    <!-- 网页搜索的索引必须始终可见：不依赖正文段落是否命中关键词。 -->
+    <ChatSourceList v-if="webReferences.length" :references="webReferences" show-label
+      @open-document="$emit('open-document', $event)" />
   </div>
 </template>
 
@@ -21,6 +24,40 @@ const props = defineProps<{
 const emit = defineEmits<{ (e: 'open-document', item: any): void }>()
 
 type Block = { content: string; references: any[]; section: boolean }
+
+const webReferences = computed(() =>
+  (props.references || []).filter(
+    (ref: any) => ref?.sourceType === 'web' && /^https?:\/\//i.test(String(ref?.url || ''))
+  )
+)
+
+/**
+ * 模型有时只写 `W3` / `W3、W5`，不写完整 Markdown 链接。这里用真实
+ * 搜索结果把它补成可点击的 `[W3](url)`；没有对应 url 的编号保持原样，
+ * 绝不编造链接。
+ */
+function withWebLinks(content: string) {
+  let text = String(content || '')
+  if (!webReferences.value.length || !text) return text
+  const byIndex = new Map<number, string>()
+  webReferences.value.forEach((ref: any, position: number) => {
+    const index = Number(ref.index || position + 1)
+    if (index > 0 && ref.url) byIndex.set(index, String(ref.url))
+  })
+  if (!byIndex.size) return text
+  // 先遮住模型已经写好的 Markdown 链接，避免把链接标签里的 W3 二次替换。
+  const links: string[] = []
+  text = text.replace(/\[[^\]]*\]\([^)]*\)/g, (whole) => {
+    const token = `\u0000MDLINK${links.length}\u0000`
+    links.push(whole)
+    return token
+  })
+  text = text.replace(/\bW(\d+)\b/g, (whole: string, number: string) => {
+    const url = byIndex.get(Number(number))
+    return url ? `[W${number}](${url})` : whole
+  })
+  return text.replace(/\u0000MDLINK(\d+)\u0000/g, (_whole, index: string) => links[Number(index)] || '')
+}
 type Group = { content: string; section: boolean }
 
 function trimBlock(value: string) {

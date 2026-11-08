@@ -981,6 +981,7 @@ async def create_document(
     file_type: Optional[str] = None,
     file_size: Optional[int] = None,
     file_path: Optional[str] = None,
+    source_url: Optional[str] = None,
     image_map: Optional[dict] = None,
     content_structure: Optional[list] = None,
     original_file_name: Optional[str] = None,
@@ -1036,6 +1037,7 @@ async def create_document(
         dup.file_type = file_type
         dup.file_size = file_size if file_size is not None else len(raw_content or "")
         dup.file_path = file_path
+        dup.source_url = source_url
         dup.raw_content = raw_content
         dup.image_map = image_map or None
         dup.content_structure = content_structure or None
@@ -1066,6 +1068,7 @@ async def create_document(
         file_type=file_type,
         file_size=file_size if file_size is not None else len(raw_content or ""),
         file_path=file_path,
+        source_url=source_url,
         raw_content=raw_content,
         image_map=image_map or None,
         content_structure=content_structure or None,
@@ -1301,6 +1304,7 @@ def _doc_brief(doc: RagDocument) -> dict:
         "statusText": DOC_STATUS_TEXT.get(doc.status, "未知"),
         "disabled": 1 if getattr(doc, "disabled", 0) else 0,
         "sourceType": getattr(doc, "source_type", "self") or "self",
+        "sourceUrl": getattr(doc, "source_url", None) or "",
         "sourceDocId": getattr(doc, "source_doc_id", None),
         "shareId": getattr(doc, "share_id", None),
         "errorMsg": doc.error_msg,

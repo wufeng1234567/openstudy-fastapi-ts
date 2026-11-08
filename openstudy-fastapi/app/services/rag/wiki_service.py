@@ -20,8 +20,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content import ContentReference, RagImageAsset
 from app.models.knowledge_graph import RagGraphEntity, RagGraphRelation
+from app.models.question import QuestionBank, QuestionMain, QuestionSource, UserPracticeLog
 from app.models.rag import DOC_VECTORIZED, RagDocument, RagDocumentChunk
-from app.models.wiki import RagWikiChunk, RagWikiPage, RagWikiPageLink, RagWikiPageRevision
+from app.models.wiki import (
+    RagWikiChunk,
+    RagWikiPage,
+    RagWikiPageLearning,
+    RagWikiPageLink,
+    RagWikiPageRevision,
+)
 from app.services.ai.base_client import ChatMessage, TextBlock
 from app.services.ai.db_config import chat_with_config
 from app.services.rag.embedding import embed_texts
@@ -52,6 +59,64 @@ WIKI_STALE = "stale"
 WIKI_FAILED = "failed"
 
 _SOURCE_TYPES = {"包含", "属于", "定义", "推导", "应用", "前置", "对比", "相关", "产生", "属于领域"}
+
+
+#: 学习态标签；前端只认 level，label 作为无障碍/提示文案。
+LEARNING_LABELS = {
+    "unread": "未学习",
+    "reading": "已阅读",
+    "practicing": "练习中",
+    "mastered": "已掌握",
+}
+
+
+def build_learning_snapshot(
+    *,
+    view_count: int = 0,
+    practice_count: int = 0,
+    correct_count: int = 0,
+    last_view_time: Optional[datetime] = None,
+    last_practice_time: Optional[datetime] = None,
+) -> dict:
+    """把阅读次数与练习结果折成可解释的学习态。
+
+    不存“掌握度”字段，全部按事实实时算，避免练习记录更新后图谱还是旧状态：
+      · 阅读只给基础分 25；
+      · 练习按正确率给分，并用练习量做成熟度折扣（1 题不会直接满分）；
+      · 只有练过且总分 ≥ 80 才标记“已掌握”。
+    """
+    views = max(0, int(view_count or 0))
+    practices = max(0, int(practice_count or 0))
+    correct = max(0, min(practices, int(correct_count or 0)))
+    accuracy = round(correct / practices * 100, 1) if practices else 0.0
+    read_score = 25 if views > 0 else 0
+    if practices:
+        volume = min(1.0, 0.4 + practices / 5 * 0.6)
+        practice_score = round((25 + 50 * (correct / practices)) * volume)
+        score = min(100, read_score + practice_score)
+        level = "mastered" if score >= 80 else "practicing"
+    elif views:
+        score = read_score
+        level = "reading"
+    else:
+        score = 0
+        level = "unread"
+
+    times = [value for value in (last_view_time, last_practice_time) if value is not None]
+    last_activity = max(times) if times else None
+    return {
+        "viewCount": views,
+        "practiceCount": practices,
+        "correctCount": correct,
+        "wrongCount": max(0, practices - correct),
+        "accuracy": accuracy,
+        "masteryScore": score,
+        "level": level,
+        "label": LEARNING_LABELS[level],
+        "lastViewTime": last_view_time.isoformat(sep=" ") if last_view_time else None,
+        "lastPracticeTime": last_practice_time.isoformat(sep=" ") if last_practice_time else None,
+        "lastActivityTime": last_activity.isoformat(sep=" ") if last_activity else None,
+    }
 
 #: 这些关系更像“目录/结构”，不应作为页面里最重要的“洞察”反复出现。
 _GENERIC_RELATIONS = {"包含", "属于", "定义", "相关"}
@@ -552,10 +617,24 @@ async def _rebuild_links(
             target_page = entity_to_page.get(int(rel.target_id))
             if not source_page or not target_page:
                 continue
+            relation_type = str(rel.relation_type or "相关")
+            if relation_type == "前置":
+                # 抽取结果中 source 是“依赖方”，target 是“前置知识”
+                # （例如：微分中值定理 -> 导数，表示学中值定理前要先学导数）。
+                # 页面图必须把前置页指向依赖页，才能让前端箭头与航线顺序正确。
+                add_link(
+                    int(target_page.id),
+                    int(source_page.id),
+                    "prerequisite",
+                    int(rel.strength or 5),
+                    "graph",
+                    skip_reverse=True,
+                )
+                continue
             add_link(
                 int(source_page.id),
                 int(target_page.id),
-                _link_type_for_relation(str(rel.relation_type or "相关")),
+                _link_type_for_relation(relation_type),
                 int(rel.strength or 5),
                 "graph",
                 skip_reverse=True,
@@ -767,6 +846,9 @@ async def build_wiki_pages(
         entity
         for entity in entities
         if any(int(doc_id) in valid_doc_ids for doc_id in (entity.doc_ids or []) if str(doc_id).isdigit())
+        # 变量/符号保留在实体图里供 GraphRAG 使用，但不值得单独成一篇“主题页”，
+        # 否则知识百科会被 x0、ξ、[a,b] 这类碎片页面稀释。
+        and str(entity.type or "") != "变量/符号"
     ]
     if not entities:
         raise ValueError("当前资料夹还没有实体，请先抽取知识图谱")
@@ -1022,6 +1104,203 @@ async def mark_wiki_pages_stale(
     return changed
 
 
+async def _wiki_learning_map(
+    db: AsyncSession, user_id: int, pages: Sequence[RagWikiPage]
+) -> dict[int, dict]:
+    """一次算出多张主题页的阅读 + 练习学习态，避免图谱/列表 N+1 查询。"""
+    page_list = [page for page in pages if page is not None]
+    if not page_list:
+        return {}
+    page_ids = [int(page.id) for page in page_list]
+    view_rows = (
+        await db.execute(
+            select(RagWikiPageLearning).where(
+                RagWikiPageLearning.user_id == int(user_id),
+                RagWikiPageLearning.page_id.in_(page_ids),
+            )
+        )
+    ).scalars().all()
+    view_by_page = {
+        int(row.page_id): (int(row.view_count or 0), row.last_view_time)
+        for row in view_rows
+    }
+
+    doc_to_pages: dict[int, set[int]] = {}
+    chunk_to_pages: dict[int, set[int]] = {}
+    for page in page_list:
+        page_id = int(page.id)
+        for doc_id in page.source_doc_ids or []:
+            try:
+                doc_to_pages.setdefault(int(doc_id), set()).add(page_id)
+            except (TypeError, ValueError):
+                continue
+        for chunk_id in page.source_chunk_ids or []:
+            try:
+                chunk_to_pages.setdefault(int(chunk_id), set()).add(page_id)
+            except (TypeError, ValueError):
+                continue
+
+    practice_stats = {
+        int(page.id): {"practice_count": 0, "correct_count": 0, "last_practice_time": None}
+        for page in page_list
+    }
+    if doc_to_pages:
+        practice_rows = (
+            await db.execute(
+                select(
+                    QuestionSource.doc_id,
+                    QuestionSource.chunk_id,
+                    UserPracticeLog.is_correct,
+                    UserPracticeLog.create_time,
+                )
+                .select_from(UserPracticeLog)
+                .join(QuestionSource, QuestionSource.question_id == UserPracticeLog.question_id)
+                .where(
+                    UserPracticeLog.user_id == int(user_id),
+                    QuestionSource.doc_id.in_(list(doc_to_pages.keys())),
+                )
+            )
+        ).all()
+        for doc_id, chunk_id, is_correct, create_time in practice_rows:
+            target_pages: set[int] = set()
+            if chunk_id is not None:
+                target_pages.update(chunk_to_pages.get(int(chunk_id), set()))
+            if not target_pages:
+                target_pages.update(doc_to_pages.get(int(doc_id), set()))
+            for page_id in target_pages:
+                stat = practice_stats.get(page_id)
+                if stat is None:
+                    continue
+                stat["practice_count"] += 1
+                if int(is_correct or 0) == 1:
+                    stat["correct_count"] += 1
+                if create_time and (
+                    stat["last_practice_time"] is None
+                    or create_time > stat["last_practice_time"]
+                ):
+                    stat["last_practice_time"] = create_time
+
+    result: dict[int, dict] = {}
+    for page in page_list:
+        page_id = int(page.id)
+        views, last_view = view_by_page.get(page_id, (0, None))
+        stat = practice_stats[page_id]
+        result[page_id] = build_learning_snapshot(
+            view_count=views,
+            practice_count=stat["practice_count"],
+            correct_count=stat["correct_count"],
+            last_view_time=last_view,
+            last_practice_time=stat["last_practice_time"],
+        )
+    return result
+
+
+async def _wiki_practice_bank(
+    db: AsyncSession, user_id: int, page: RagWikiPage
+) -> Optional[dict]:
+    """找这道主题页的“同源练习题库”：题目来源命中页面 chunk 或文档时才算。"""
+    doc_ids = []
+    chunk_ids = []
+    for value in page.source_doc_ids or []:
+        try:
+            doc_ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    for value in page.source_chunk_ids or []:
+        try:
+            chunk_ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    conditions = []
+    if doc_ids:
+        conditions.append(QuestionSource.doc_id.in_(doc_ids))
+    if chunk_ids:
+        conditions.append(QuestionSource.chunk_id.in_(chunk_ids))
+    if not conditions:
+        return None
+    rows = (
+        await db.execute(
+            select(
+                QuestionSource.question_id,
+                QuestionMain.bank_id,
+                QuestionBank.bank_name,
+                QuestionBank.user_id,
+                QuestionBank.is_public,
+            )
+            .select_from(QuestionSource)
+            .join(QuestionMain, QuestionMain.id == QuestionSource.question_id)
+            .join(QuestionBank, QuestionBank.id == QuestionMain.bank_id)
+            .where(
+                QuestionMain.status == "0",
+                QuestionBank.status == "0",
+                or_(*conditions),
+            )
+        )
+    ).all()
+    grouped: dict[int, dict] = {}
+    for question_id, bank_id, bank_name, owner_id, is_public in rows:
+        # 与练习接口保持同一可见性口径：自己的题库、公开题库可练；分享题库由练习接口再校验。
+        if int(owner_id or 0) != int(user_id) and int(is_public or 0) != 0:
+            continue
+        key = int(bank_id)
+        entry = grouped.setdefault(
+            key,
+            {"bankId": key, "bankName": str(bank_name or "题库"), "questionIds": set()},
+        )
+        entry["questionIds"].add(int(question_id))
+    if not grouped:
+        return None
+    best = max(grouped.values(), key=lambda item: (len(item["questionIds"]), -item["bankId"]))
+    return {
+        "bankId": best["bankId"],
+        "bankName": best["bankName"],
+        "questionCount": len(best["questionIds"]),
+        # 计划层需要真实题目 ID 做完成判定；这里只返回可见题库里的题，
+        # 与练习接口的可见性口径一致（自己的 / 公开的）。
+        "questionIds": sorted(best["questionIds"]),
+    }
+
+
+async def record_wiki_page_view(db: AsyncSession, user_id: int, page_id: int) -> dict:
+    """记录一次真实打开主题页；重复打开累加次数，不编造阅读时长。"""
+    page = (
+        await db.execute(
+            select(RagWikiPage).where(
+                RagWikiPage.id == int(page_id),
+                RagWikiPage.user_id == int(user_id),
+            )
+        )
+    ).scalar_one_or_none()
+    if not page:
+        raise ValueError("知识主题页不存在或无权访问")
+    row = (
+        await db.execute(
+            select(RagWikiPageLearning).where(
+                RagWikiPageLearning.user_id == int(user_id),
+                RagWikiPageLearning.page_id == int(page_id),
+            )
+        )
+    ).scalar_one_or_none()
+    now = datetime.now()
+    if row is None:
+        row = RagWikiPageLearning(
+            user_id=int(user_id),
+            kb_id=int(page.kb_id),
+            page_id=int(page_id),
+            view_count=1,
+            last_view_time=now,
+            update_time=now,
+        )
+        db.add(row)
+    else:
+        row.view_count = int(row.view_count or 0) + 1
+        row.last_view_time = now
+        row.update_time = now
+    await db.flush()
+    learning = (await _wiki_learning_map(db, int(user_id), [page]))[int(page.id)]
+    return {"pageId": int(page.id), "learning": learning}
+
+
 async def list_wiki_pages(
     db: AsyncSession,
     user_id: int,
@@ -1048,6 +1327,7 @@ async def list_wiki_pages(
             if keyword in f"{page.title} {page.summary}".lower()
         ]
     page_ids = [int(page.id) for page in pages]
+    learning_by_page = await _wiki_learning_map(db, int(user_id), pages)
     link_counts: dict[int, int] = {}
     if page_ids:
         links = (
@@ -1082,6 +1362,7 @@ async def list_wiki_pages(
                 "relatedCount": link_counts.get(int(page.id), 0),
                 "entityIds": page.entity_ids or [],
                 "generatedBy": page.generated_by or "llm",
+                "learning": learning_by_page.get(int(page.id)),
                 "updateTime": page.update_time.isoformat(sep=" ") if page.update_time else None,
             }
         )
@@ -1091,6 +1372,9 @@ async def list_wiki_pages(
         "staleCount": sum(1 for item in items if item["status"] == WIKI_STALE),
         "docCount": len({doc_id for page in pages for doc_id in (page.source_doc_ids or [])}),
         "linkCount": sum(1 for link in (links if page_ids else []) if str(link.link_type) == "mention"),
+        "readCount": sum(1 for item in items if item["learning"]["viewCount"] > 0),
+        "practicedCount": sum(1 for item in items if item["learning"]["practiceCount"] > 0),
+        "masteredCount": sum(1 for item in items if item["learning"]["level"] == "mastered"),
         "typeCounts": {},
     }
     for item in items:
@@ -1232,6 +1516,8 @@ async def get_wiki_page(db: AsyncSession, user_id: int, page_id: int) -> dict:
             }
         )
     link_payload = await _page_link_payload(db, user_id, page)
+    learning = (await _wiki_learning_map(db, int(user_id), [page]))[int(page.id)]
+    practice_bank = await _wiki_practice_bank(db, int(user_id), page)
     page_sources = _cited_source_refs(page)
     source_doc_ids = sorted(
         {
@@ -1267,6 +1553,8 @@ async def get_wiki_page(db: AsyncSession, user_id: int, page_id: int) -> dict:
         "inLinks": link_payload["inLinks"],
         "linkStats": link_payload["linkStats"],
         "images": await _page_images(db, user_id, int(page.id)),
+        "learning": learning,
+        "practice": practice_bank,
     }
 
 
@@ -1964,6 +2252,7 @@ async def get_wiki_graph(db: AsyncSession, user_id: int, kb_id: int) -> dict:
         )
     ).scalars().all()
     page_ids = {int(page.id) for page in pages}
+    learning_by_page = await _wiki_learning_map(db, int(user_id), pages)
     links = (
         await db.execute(
             select(RagWikiPageLink).where(
@@ -1993,6 +2282,7 @@ async def get_wiki_graph(db: AsyncSession, user_id: int, kb_id: int) -> dict:
             "status": page.status,
             "degree": degree.get(int(page.id), 0),
             "sectionCount": len(page.sections or []),
+            "learning": learning_by_page.get(int(page.id)),
         }
         for page in pages
     ]
@@ -2035,6 +2325,9 @@ async def get_wiki_graph(db: AsyncSession, user_id: int, kb_id: int) -> dict:
             "pageCount": len(nodes),
             "linkCount": len(edges),
             "typeCounts": type_counts,
+            "readCount": sum(1 for node in nodes if node["learning"]["viewCount"] > 0),
+            "practicedCount": sum(1 for node in nodes if node["learning"]["practiceCount"] > 0),
+            "masteredCount": sum(1 for node in nodes if node["learning"]["level"] == "mastered"),
         },
     }
 

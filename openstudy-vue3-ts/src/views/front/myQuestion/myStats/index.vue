@@ -59,7 +59,7 @@
 
         <template v-else>
             <!-- ============ 学习闭环：今日处方 / 知识体检 / 错题歼灭战 ============ -->
-            <LearningLoopPanel @practice="goPractice" @open-question="onOpenDiagnosisItem" />
+            <LearningLoopPanel @practice="goPractice" @open-question="onOpenDiagnosisItem" @open-plan-task="onOpenPlanTask" />
 
             <!-- ============ 学习总览 ============ -->
             <section class="panel overview-panel">
@@ -813,6 +813,28 @@ async function fetchAll() {
 }
 
 const goPractice = () => router.push('/front/questionPractice')
+
+/** 统一活计划里的任务：有真实 target 才跳；页面任务回到知识图谱，题库任务直达练习。 */
+function onOpenPlanTask(task: any) {
+    const target = task?.target || {}
+    if (target.kind === 'bank' && target.bankId) {
+        router.push({
+            path: `/front/questionPractice/${target.bankId}/practice/sequential`,
+            query: { bankName: target.bankName || '题库' }
+        })
+        return
+    }
+    if (target.pageId) {
+        router.push({
+            path: '/front/workspace',
+            query: { kbId: task.kbId || localStorage.getItem('openstudy.workspace.activeKbId') || undefined, view: 'wiki' }
+        })
+        return
+    }
+    if (target.questionId) {
+        onOpenDiagnosisItem({ questionId: target.questionId } as any)
+    }
+}
 
 /** 点击易错题 → 跳到「我的错题」并自动定位、打开该题卡片 */
 const goWrongQuestion = (item: { questionId: number | string }) => {

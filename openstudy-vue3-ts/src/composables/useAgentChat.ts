@@ -764,11 +764,48 @@ export function useAgentChat() {
       .filter((ref: any) => ref.docName || ref.wikiPageTitle || ref.source)
   }
 
+  /**
+   * 网页搜索/抓取的引用：保留真实 url、站点与日期。
+   * `ChatSourceList` 会把它渲染成 chip；点击直接打开外部网页。
+   */
+  function collectWebReferences(data: any): any[] {
+    const business = data?.data && typeof data.data === 'object' ? data.data : data
+    const action = String(business?.action || data?.action || '')
+    if (action === 'fetch' && typeof business?.url === 'string') {
+      return [{
+        sourceType: 'web',
+        docName: String(business.title || business.siteName || business.url).trim(),
+        webTitle: String(business.title || '').trim(),
+        url: String(business.url).trim(),
+        source: String(business.siteName || '').trim(),
+        content: String(business.content || '').slice(0, 1200),
+        date: ''
+      }].filter((ref) => ref.url && /^https?:\/\//i.test(ref.url))
+    }
+    const list = Array.isArray(business?.results)
+      ? business.results
+      : Array.isArray(business?.hits)
+        ? business.hits
+        : []
+    return list
+      .map((item: any, index: number) => ({
+        sourceType: 'web',
+        index: Number(item?.index || index + 1),
+        docName: String(item?.title || item?.siteName || item?.url || '').trim(),
+        webTitle: String(item?.title || '').trim(),
+        url: String(item?.url || '').trim(),
+        source: String(item?.siteName || item?.site_name || '').trim(),
+        content: String(item?.snippet || item?.summary || '').trim(),
+        date: String(item?.date || '').trim()
+      }))
+      .filter((ref: any) => ref.url && /^https?:\/\//i.test(ref.url))
+  }
+
   function mergeKnowledgeReferences(list: any[]): any[] {
     const seen = new Set<string>()
     return [...pendingReferences, ...list].filter((ref: any) => {
       const key = String(
-        ref.chunkId ?? `${ref.docId || ref.docName}:${ref.chunkIndex ?? ''}:${String(ref.content || '').slice(0, 40)}`
+        ref.chunkId ?? ref.url ?? `${ref.docId || ref.docName}:${ref.chunkIndex ?? ''}:${String(ref.content || '').slice(0, 40)}`
       )
       if (seen.has(key)) return false
       seen.add(key)
@@ -1348,6 +1385,10 @@ export function useAgentChat() {
           const refs = collectGalleryReferences(event.data)
           if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
         }
+        if (event.success && event.tool === 'web_search') {
+          const refs = collectWebReferences(event.data)
+          if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
+        }
         return
       }
     }
@@ -1383,6 +1424,10 @@ export function useAgentChat() {
     }
     if (event.success && event.tool === 'gallery_manage') {
       const refs = collectGalleryReferences(event.data)
+      if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
+    }
+    if (event.success && event.tool === 'web_search') {
+      const refs = collectWebReferences(event.data)
       if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
     }
   }

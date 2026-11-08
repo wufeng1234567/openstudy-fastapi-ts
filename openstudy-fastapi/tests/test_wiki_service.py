@@ -9,6 +9,7 @@ from app.services.rag.wiki_service import (
     _parse_page_payload,
     _render_markdown,
     _validate_page_payload,
+    build_learning_snapshot,
 )
 
 
@@ -98,3 +99,29 @@ def test_asset_source_ref_parses_doc_and_chat_keys():
         pass
     else:
         raise AssertionError("bad asset key should fail")
+
+
+def test_learning_snapshot_distinguishes_unread_read_and_practiced():
+    assert build_learning_snapshot()["level"] == "unread"
+    assert build_learning_snapshot()["masteryScore"] == 0
+
+    reading = build_learning_snapshot(view_count=2)
+    assert reading["level"] == "reading"
+    assert reading["masteryScore"] == 25
+
+    practicing = build_learning_snapshot(view_count=1, practice_count=1, correct_count=1)
+    assert practicing["level"] == "practicing"
+    assert practicing["accuracy"] == 100.0
+    assert 25 < practicing["masteryScore"] < 80
+
+
+def test_learning_snapshot_mastery_requires_practice_volume_and_accuracy():
+    mastered = build_learning_snapshot(view_count=2, practice_count=5, correct_count=5)
+    assert mastered["level"] == "mastered"
+    assert mastered["masteryScore"] == 100
+
+    weak = build_learning_snapshot(view_count=2, practice_count=5, correct_count=2)
+    assert weak["level"] == "practicing"
+    assert weak["accuracy"] == 40.0
+    assert weak["wrongCount"] == 3
+    assert weak["masteryScore"] < 80

@@ -105,6 +105,23 @@
 
     <LearningChart v-if="learningChart" :chart="learningChart" />
 
+    <!-- 网页搜索：每条都是真实可点击索引，不是模型编的链接 -->
+    <div v-if="webResults.length" class="at-web-results">
+      <div v-for="item in webResults" :key="item.url" class="at-web-item">
+        <span class="at-web-index">W{{ item.index }}</span>
+        <div class="at-web-main">
+          <a class="at-web-title" :href="item.url" target="_blank" rel="noopener noreferrer">
+            {{ item.title }}
+          </a>
+          <div class="at-web-meta">
+            <span>{{ item.siteName }}</span>
+            <span v-if="item.date">· {{ item.date }}</span>
+          </div>
+          <p v-if="item.snippet" class="at-web-snippet">{{ item.snippet }}</p>
+        </div>
+      </div>
+    </div>
+
     <div v-if="artifact" class="at-artifact">
       <span class="at-artifact-icon" aria-hidden="true">
         <OsIcon name="file-text" :size="15" />
@@ -406,6 +423,8 @@ const TOOL_LABELS: Record<string, string> = {
   bank_export: '题库导出',
   // 只读检索类：它们没有 action 参数，卡片上只有工具名这一层
   knowledge_search: '资料检索',
+  web_search: '网页搜索',
+  study_plan: '学习规划',
   memory_search: '记忆检索',
   // 工作空间找文件（workspace_search.py）——2026-10-22
   workspace_search: '找资料',
@@ -456,6 +475,11 @@ const ACTION_LABELS: Record<string, string> = {
   trend: '学习趋势',
   error_analysis: '错题分析',
   growth: '成长记录',
+  // study_plan
+  plan: '生成计划',
+  today: '今日任务',
+  adjust: '调整计划',
+  reassess: '重新评估',
   // 2026-10-20 新增：逐题学情诊断（不是聚合数字，见 study_diagnosis_service）
   diagnose: '学情诊断',
   plan_review: '排复习计划',
@@ -465,9 +489,12 @@ const ACTION_LABELS: Record<string, string> = {
   get_document: '读取正文',
   list_document_versions: '历史版本',
   delete_document: '删除文档',
+  // web_search
+  fetch: '读取网页',
   // knowledge_ingest
   from_text: '文本入库',
   from_attachment: '附件入库',
+  from_url: '网页入库',
   update_document: '修改正文',
   restore_document_version: '恢复历史版本',
   // wiki_manage
@@ -720,6 +747,33 @@ const learningChart = computed<Record<string, any> | null>(() => {
   if (!chart || typeof chart !== 'object') return null
   if (!Array.isArray(chart.xAxis) || !Array.isArray(chart.series) || !chart.series.length) return null
   return chart
+})
+
+/**
+ * 网页搜索结果卡（2026-11-08）
+ *
+ * 只认「结果里有真实 url」的条目；模型自己写的 markdown 链接不在这里渲染，
+ * 避免把模型编的地址伪装成系统索引。与 ChatSourceList 的引用 chip 同一事实源。
+ */
+const webResults = computed<Array<Record<string, any>>>(() => {
+  const d = unwrapToolData(props.data)
+  if (!d || typeof d !== 'object') return []
+  const list = Array.isArray((d as any).results)
+    ? (d as any).results
+    : Array.isArray((d as any).data?.results)
+      ? (d as any).data.results
+      : []
+  return list
+    .filter((item: any) => item && typeof item.url === 'string' && /^https?:\/\//i.test(item.url))
+    .map((item: any, index: number) => ({
+      index: Number(item.index || index + 1),
+      title: String(item.title || item.siteName || item.url),
+      url: String(item.url),
+      siteName: String(item.siteName || item.site_name || ''),
+      date: String(item.date || ''),
+      snippet: String(item.snippet || item.summary || '')
+    }))
+    .slice(0, 10)
 })
 
 /** 导图标题（根节点名；组件拿它做空态与导出文件名） */
@@ -1531,6 +1585,75 @@ const downloadArtifact = async () => {
   margin-left: -10px;
   margin-right: -10px;
   max-width: calc(100% + 20px);
+}
+
+.at-web-results {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 9px;
+  max-width: 100%;
+}
+
+.at-web-item {
+  display: flex;
+  gap: 8px;
+  padding: 8px 9px;
+  border: 1px solid var(--os-border-soft, #e5eaf2);
+  border-radius: 8px;
+  background: var(--os-surface-2, #f8fafc);
+}
+
+.at-web-index {
+  display: inline-flex;
+  width: 22px;
+  height: 20px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  color: var(--os-accent, #2f5fce);
+  background: #eaf1ff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.at-web-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.at-web-title {
+  display: block;
+  overflow: hidden;
+  color: var(--os-accent, #2f5fce);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.at-web-title:hover {
+  text-decoration: underline;
+}
+
+.at-web-meta {
+  margin-top: 2px;
+  color: var(--os-text-4, #9ca3af);
+  font-size: 10px;
+}
+
+.at-web-snippet {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 3px 0 0;
+  color: var(--os-text-3, #6b7280);
+  font-size: 11px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .at-artifact {

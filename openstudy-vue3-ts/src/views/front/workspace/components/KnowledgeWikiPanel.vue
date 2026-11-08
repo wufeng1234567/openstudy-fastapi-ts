@@ -68,8 +68,9 @@
         </div>
       </div>
 
-      <div v-else ref="mapCanvasRef" class="kw-map" @wheel.prevent="onMapWheel" @pointerdown="onMapDown"
+      <div v-else ref="mapCanvasRef" class="kw-map" :class="{ 'is-route-mode': routeActive }" @wheel.prevent="onMapWheel" @pointerdown="onMapDown"
         @pointermove="onMapMove" @pointerup="onMapUp" @pointerleave="onMapUp">
+        <div class="kw-map-purpose">知识图谱：先看懂知识结构，再让系统帮你排下一步。</div>
         <svg class="kw-map__svg" viewBox="0 0 1000 640" aria-label="知识图谱：每个主题页一个节点">
           <defs>
             <marker id="kw-arrow" viewBox="0 0 10 6" refX="10" refY="3" markerWidth="8" markerHeight="6" orient="auto">
@@ -84,22 +85,29 @@
               :class="{ 'is-hovered': mapHoveredId && hull.ids.includes(String(mapHoveredId)) }" />
             <line v-for="edge in mapEdges" :key="edge.key" :x1="edge.x1" :y1="edge.y1" :x2="edge.x2" :y2="edge.y2"
               :data-edge-source="edge.source" :data-edge-target="edge.target"
-              class="kw-map-edge" :class="[`is-${edge.type}`, { 'is-active': isMapEdgeActive(edge), 'is-dimmed': isMapEdgeDimmed(edge), 'is-hidden': mapDraggingId && edge.source !== mapDraggingId && edge.target !== mapDraggingId }]"
+              class="kw-map-edge" :class="[`is-${edge.type}`, { 'is-active': isMapEdgeActive(edge), 'is-dimmed': isMapEdgeDimmed(edge), 'is-current-route': isRouteEdge(edge), 'is-hidden': mapDraggingId && edge.source !== mapDraggingId && edge.target !== mapDraggingId }]"
               :marker-end="mapShowArrows ? (isMapEdgeActive(edge) ? 'url(#kw-arrow-hl)' : 'url(#kw-arrow)') : undefined" />
+            <path v-if="learningPathD" :d="learningPathD" class="kw-map-learning-path" :class="{ 'is-fallback': learningRoute?.mode === 'fallback' }" />
             <g v-for="node in mapNodes" :key="node.id" class="kw-map-node" :data-node-id="String(node.id)"
-              :class="{ 'is-selected': isMapSelected(node), 'is-hovered': mapHoveredId === String(node.id), 'is-dimmed': isMapNodeDimmed(node) }"
+              :class="{ 'is-selected': isMapSelected(node), 'is-hovered': mapHoveredId === String(node.id), 'is-dimmed': isMapNodeDimmed(node), 'is-learned': Number(node.learning?.viewCount || 0) > 0, 'is-weak': Number(node.learning?.practiceCount || 0) > 0 && Number(node.learning?.accuracy || 0) < 60, 'is-route': isRouteNode(node), 'is-next-stop': isNextStopNode(node) }"
               :transform="`translate(${node.x} ${node.y})`"
               @mouseenter="onMapNodeEnter(node)" @mouseleave="onMapNodeLeave(node)"
               @pointerdown.stop="onMapNodeDown($event, node)" @pointerup.stop="onMapNodeUp"
               @click.stop="onMapNodeClick(node)">
+              <title>{{ node.title }}{{ node.learning ? ` · ${node.learning.label}` : '' }}</title>
               <circle class="kw-map-node__halo" :r="node.r + 8" />
+              <circle v-if="mapLearnMode" class="kw-map-node__learn-track" :r="node.r + 5" />
+              <circle v-if="mapLearnMode && Number(node.learning?.masteryScore || 0) > 0" class="kw-map-node__learn-ring"
+                :r="node.r + 5" pathLength="100" stroke-dasharray="100"
+                :stroke-dashoffset="100 - Number(node.learning?.masteryScore || 0)"
+                :stroke="learningColor(node.learning)" transform="rotate(-90)" />
               <circle v-if="isMapSelected(node)" class="kw-map-node__active" :r="node.r + 7" :stroke="node.color" />
               <circle class="kw-map-node__dot" :r="node.r + (isMapSelected(node) || mapHoveredId === String(node.id) ? 3 : 0)" :fill="node.color" />
               <text v-if="showMapLabel(node)" class="kw-map-node__label" text-anchor="middle" :y="node.r + 14">{{ node.title }}</text>
             </g>
           </g>
         </svg>
-        <aside class="kw-graph-panel" @pointerdown.stop>
+        <aside v-if="!routeActive" class="kw-graph-panel" @pointerdown.stop>
           <div class="kw-graph-panel__legend">
             <button v-for="item in pageTypeLegend" :key="item.type" type="button" class="kw-graph-type"
               :class="{ 'is-disabled': mapTypeVisible[item.type] === false }"
@@ -116,23 +124,58 @@
               <OsIcon name="eye-off" :size="14" />
               <span>隐藏无关联页面（{{ unlinkedCount }}）</span>
             </button>
-            <button type="button" class="kw-graph-action" @click="fitMapView">
-              <OsIcon name="activity" :size="14" />
-              <span>适应屏幕</span>
-            </button>
             <button type="button" class="kw-graph-action" :class="{ 'is-active': !mapShowArrows }" @click="toggleMapArrows">
               <OsIcon name="check" :size="14" />
               <span>{{ mapShowArrows ? '隐藏箭头' : '显示箭头' }}</span>
             </button>
+            <button type="button" class="kw-graph-action" @click="showRouteGuide">
+              <OsIcon name="circle-help" :size="14" />
+              <span>使用说明</span>
+            </button>
+            <button type="button" class="kw-graph-action kw-route-action" :disabled="routeLoading" @click="generateRoute()">
+              <OsIcon name="sparkles" :size="14" />
+              <span>{{ routeLoading ? '正在规划…' : '生成学习计划' }}</span>
+            </button>
           </div>
           <div class="kw-graph-panel__divider"></div>
           <div class="kw-graph-panel__overview">
-            <span><OsIcon name="database" :size="13" /> 全库概览</span>
-            <b>{{ mapNodes.length }} / {{ allMapNodes.length }} 个节点</b>
-            <em>{{ mapNodes.length === allMapNodes.length ? '已展示知识库全部节点' : '已按类型筛选节点' }}</em>
+            <span><OsIcon name="chart-column" :size="13" /> 学习雷达</span>
+            <b>{{ mapLearnSummary.read }} / {{ mapLearnSummary.total }} 已读 · {{ mapLearnSummary.practiced }} 练过</b>
+            <em>掌握 {{ mapLearnSummary.mastered }} · 待补强 {{ mapLearnSummary.weak }}</em>
+            <div class="kw-learn-legend">
+              <span v-for="item in learningLegend" :key="item.level">
+                <i :style="{ background: item.color }"></i>{{ item.label }}
+              </span>
+            </div>
           </div>
         </aside>
-        <div class="kw-graph-hint">滚轮缩放 · 空白处拖拽平移 · 点节点打开主题页</div>
+        <KnowledgeRoutePanel
+          v-if="routeActive"
+          :route="learningRoute"
+          :plan="studyPlan"
+          :stops="routeStopsView"
+          :active-stop="activeRouteStop"
+          :strategy="routeStrategy"
+          :loading="routeLoading"
+          :off-route-title="offRoutePage?.title || ''"
+          :off-route-page-id="offRoutePage?.pageId || null"
+          @strategy="changeRouteStrategy"
+          @select="onRouteStopSelect"
+          @start="startNextRouteStop"
+          @exit="exitRoute"
+          @guide="showRouteGuide"
+          @set-target="planToPage"
+          @open-plan="planDrawerVisible = true"
+        />
+        <StudyPlanDrawer
+          v-model="planDrawerVisible"
+          :plan="studyPlan"
+          :loading="planLoading"
+          @open-task="onPlanTask"
+          @select-stop="onRouteStopSelect"
+          @adjust="onPlanAdjust"
+        />
+        <div class="kw-graph-hint" :class="{ 'is-route': routeActive }">点节点查看主题页 · 点「生成学习计划」让系统安排下一步</div>
       </div>
     </template>
 
@@ -168,11 +211,36 @@
           <div class="kw-detail__head-actions">
             <el-button size="small" plain @click="openEditor">编辑</el-button>
             <el-button size="small" plain @click="openRevisions">历史版本</el-button>
-            <el-button size="small" plain @click="askPage('practice')">生成练习</el-button>
+            <el-button v-if="activePage.practice?.bankId" size="small" plain @click="goPractice">
+              去练 {{ activePage.practice.questionCount }} 题
+            </el-button>
+            <el-button v-else size="small" plain @click="askPage('practice')">生成练习</el-button>
             <el-button size="small" type="primary" plain @click="askPage()">问 AI 这一页</el-button>
             <button type="button" class="kw-detail__close" @click="closeDetail">×</button>
           </div>
         </header>
+
+        <div v-if="activePage.learning" class="kw-detail__learning">
+          <div class="kw-detail__learning-head">
+            <span>学习状态</span>
+            <b :class="`is-${activePage.learning.level}`">{{ activePage.learning.label }}</b>
+          </div>
+          <div class="kw-detail__learning-bar">
+            <i :class="`is-${activePage.learning.level}`" :style="{ width: `${activePage.learning.masteryScore}%` }"></i>
+          </div>
+          <div class="kw-detail__learning-meta">
+            <span>读过 {{ activePage.learning.viewCount }} 次</span>
+            <span>练过 {{ activePage.learning.practiceCount }} 题</span>
+            <span v-if="activePage.learning.practiceCount">正确率 {{ activePage.learning.accuracy }}%</span>
+          </div>
+        </div>
+
+        <div class="kw-detail__route-action">
+          <span>{{ routeActive ? '当前正在走学习航线' : '想把这一页安排进学习计划？' }}</span>
+          <button type="button" @click="planToPage(activePage.pageId)">
+            {{ routeActive ? '以此页为目标重新规划' : '从这一页规划学习航线' }}
+          </button>
+        </div>
 
         <div v-if="activePage.status === 'stale'" class="kw-detail__warning">
           资料已经更新，这一页的内容可能过期。请回到知识百科点击「更新知识百科」重新整理。
@@ -321,28 +389,56 @@
         <div v-if="!galleryLoading && !galleryItems.length" class="kw-image-empty">当前资料夹还没有可用的画廊图片。</div>
       </div>
     </el-dialog>
+
+    <el-dialog v-model="routeGuideVisible" title="知识图谱怎么用" width="520px" append-to-body class="kw-guide-dialog">
+      <div class="kw-guide-lead">知识图谱不是一张要背下来的图，而是帮你决定“下一步学什么”。</div>
+      <div class="kw-guide-steps">
+        <div class="kw-guide-step">
+          <i>01</i>
+          <div><b>先看节点</b><p>每个圆点是一个主题页。点击节点可以查看内容、来源和它连接的知识。</p></div>
+        </div>
+        <div class="kw-guide-step">
+          <i>02</i>
+          <div><b>生成一条航线</b><p>点右侧“生成学习航线”，系统会按图谱连接、阅读记录和练习情况，挑出 3 站。</p></div>
+        </div>
+        <div class="kw-guide-step">
+          <i>03</i>
+          <div><b>读完就练，航线会变</b><p>每站读完可以直接练同源题。练习后回到图谱，掌握度会更新，航线会自动往前推荐。</p></div>
+        </div>
+      </div>
+      <div class="kw-guide-tip">航线有「补弱 / 打基础 / 拓展」三种方式；点任意节点，还可以在详情里“以此页为目标重新规划”。</div>
+      <template #footer>
+        <el-button type="primary" @click="routeGuideVisible = false">知道了</el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import ResizableDrawer from '@/components/ResizableDrawer/index.vue'
+import KnowledgeRoutePanel from './KnowledgeRoutePanel.vue'
 import KnowledgeWikiEditor from './KnowledgeWikiEditor.vue'
+import StudyPlanDrawer from './StudyPlanDrawer.vue'
 import {
   addWikiPageLink,
   attachWikiImage,
   buildWikiPages,
   detachWikiImage,
   getLatestWikiBuildJob,
+  getLearningRoute,
+  getStudyPlan,
   getWikiBuildJob,
   getWikiGraph,
   getWikiPage,
   listGalleryAssets,
   listWikiPages,
   listWikiRevisions,
+  recordWikiPageView,
   refreshWikiPageLinks,
   removeWikiPageLink,
   restoreWikiRevision
@@ -386,12 +482,40 @@ const linkForm = reactive<{ targetPageId: number | null; anchorText: string; sec
   anchorText: '',
   sectionIndex: -1
 })
+const router = useRouter()
 const WIKI_VIEW_KEY = 'openstudy.workspace.wikiView'
+const WIKI_LEARN_KEY = 'openstudy.workspace.wikiLearnMode'
+const WIKI_GUIDE_KEY = 'openstudy.workspace.routeGuideSeen'
+const WIKI_ROUTE_KEY = 'openstudy.workspace.routeQuery'
+const WIKI_PLAN_KEY = 'openstudy.workspace.studyPlanState'
 function readWikiView(): 'pages' | 'map' {
   try {
     return localStorage.getItem(WIKI_VIEW_KEY) === 'map' ? 'map' : 'pages'
   } catch {
     return 'pages'
+  }
+}
+function readWikiLearnMode(): boolean {
+  try {
+    return localStorage.getItem(WIKI_LEARN_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+function readRouteQuery(): { strategy: 'weakness' | 'foundation' | 'explore'; targetPageId: number | null } | null {
+  try {
+    const raw = sessionStorage.getItem(WIKI_ROUTE_KEY)
+    if (!raw) return null
+    const value = JSON.parse(raw)
+    const strategy = ['weakness', 'foundation', 'explore'].includes(value?.strategy)
+      ? value.strategy
+      : 'weakness'
+    return {
+      strategy,
+      targetPageId: Number(value?.targetPageId) || null
+    }
+  } catch {
+    return null
   }
 }
 const view = ref<'pages' | 'map'>(readWikiView())
@@ -413,6 +537,16 @@ const mapSelectedPageId = ref<number | null>(null)
 const searchSuppressed = ref(false)
 const mapHideUnlinked = ref(false)
 const mapShowArrows = ref(true)
+const mapLearnMode = ref(true)
+const mapLearningPath = ref<string[]>([])
+const learningRoute = ref<any>(null)
+const studyPlan = ref<any>(null)
+const planDrawerVisible = ref(false)
+const planLoading = ref(false)
+const routeLoading = ref(false)
+const routeStrategy = ref<'weakness' | 'foundation' | 'explore'>('weakness')
+const routeTargetPageId = ref<number | null>(null)
+const routeGuideVisible = ref(false)
 const mapDraggingId = ref<string | null>(null)
 const mapNodeOffsets = reactive<Record<string, { x: number; y: number }>>({})
 const mapSimPositions = reactive<Record<string, { x: number; y: number }>>({})
@@ -424,6 +558,7 @@ let mapSimAlpha = 0
 let mapSimNodes: any[] = []
 let mapViewFrame = 0
 let mapOpenTimer: ReturnType<typeof setTimeout> | null = null
+let lastDetailPageId: number | null = null
 
 const filteredPages = computed(() => {
   const query = String(props.searchQuery || '').trim().toLowerCase()
@@ -484,6 +619,7 @@ const mapTypeCounts = computed(() => {
 const unlinkedCount = computed(() =>
   allMapNodes.value.filter((node: any) => Number(node.degree || 0) === 0).length
 )
+const routeActive = computed(() => !!learningRoute.value?.stops?.length)
 
 const graphSearchSuggestions = computed(() => {
   const query = String(props.searchQuery || '').trim().toLowerCase()
@@ -536,8 +672,8 @@ const mapNodes = computed(() => {
   const { components, byId } = mapComponents.value
   const visibleIds = new Set(
     allMapNodes.value
-      .filter((node: any) => mapTypeVisible[normalizePageType(node.pageType)] !== false)
-      .filter((node: any) => !mapHideUnlinked.value || Number(node.degree || 0) > 0)
+      .filter((node: any) => routeActive.value || mapTypeVisible[normalizePageType(node.pageType)] !== false)
+      .filter((node: any) => routeActive.value || !mapHideUnlinked.value || Number(node.degree || 0) > 0)
       .map((node: any) => String(node.id))
   )
   const visibleComponents = components
@@ -619,6 +755,366 @@ const mapEdges = computed(() => {
     .filter(Boolean)
 })
 
+const learningLegend = [
+  { level: 'unread', label: '未学', color: '#cbd3df' },
+  { level: 'reading', label: '已读', color: '#5b8def' },
+  { level: 'practicing', label: '练习中', color: '#f0a13a' },
+  { level: 'mastered', label: '已掌握', color: '#2f9e8f' }
+]
+
+function learningColor(learning: any) {
+  return learningLegend.find((item) => item.level === learning?.level)?.color || '#cbd3df'
+}
+
+function learningPriority(node: any) {
+  const learning = node?.learning || {}
+  const accuracy = Number(learning.accuracy || 0)
+  const degree = Number(node?.degree || 0)
+  if (!Number(learning.viewCount || 0) && !Number(learning.practiceCount || 0)) {
+    return 100 + degree * 2
+  }
+  if (Number(learning.practiceCount || 0) && accuracy < 60) {
+    return 140 + (60 - accuracy)
+  }
+  if (Number(learning.viewCount || 0) && !Number(learning.practiceCount || 0)) {
+    return 70 + degree
+  }
+  if (Number(learning.practiceCount || 0) && accuracy < 80) return 60
+  if (learning.level === 'mastered') return 10
+  return 20
+}
+
+function learningReason(node: any) {
+  const routeStop = (learningRoute.value?.stops || []).find(
+    (stop: any) => Number(stop.pageId) === Number(node?.pageId ?? node?.id)
+  )
+  if (routeStop?.reason) return routeStop.reason
+  const learning = node?.learning || {}
+  const accuracy = Number(learning.accuracy || 0)
+  if (!Number(learning.viewCount || 0) && !Number(learning.practiceCount || 0)) {
+    return `还没读过 · 连接 ${Number(node?.degree || 0)} 个主题`
+  }
+  if (Number(learning.practiceCount || 0) && accuracy < 60) {
+    return `练习正确率 ${accuracy}% · 建议回看`
+  }
+  if (Number(learning.viewCount || 0) && !Number(learning.practiceCount || 0)) {
+    return '已读但还没练过'
+  }
+  if (Number(learning.practiceCount || 0) && accuracy < 80) {
+    return `正确率 ${accuracy}% · 再练一轮`
+  }
+  if (learning.level === 'mastered') return '已掌握 · 可快速复习'
+  return '按图谱连接继续探索'
+}
+
+const mapLearnSummary = computed(() => {
+  const nodes = mapNodes.value
+  const read = nodes.filter((node: any) => Number(node.learning?.viewCount || 0) > 0).length
+  const practiced = nodes.filter((node: any) => Number(node.learning?.practiceCount || 0) > 0).length
+  const mastered = nodes.filter((node: any) => node.learning?.level === 'mastered').length
+  const weak = nodes.filter((node: any) => {
+    const learning = node.learning || {}
+    return Number(learning.practiceCount || 0) > 0 && Number(learning.accuracy || 0) < 60
+  }).length
+  return {
+    total: nodes.length,
+    read,
+    practiced,
+    mastered,
+    weak,
+    coverage: nodes.length ? Math.round((read / nodes.length) * 100) : 0
+  }
+})
+
+const learningRecommendations = computed(() =>
+  [...mapNodes.value]
+    .map((node: any) => ({ node, score: learningPriority(node), reason: learningReason(node) }))
+    .sort((a, b) => b.score - a.score || Number(b.node.degree || 0) - Number(a.node.degree || 0))
+    .slice(0, 3)
+)
+
+const routeStopsView = computed(() => {
+  const byId = new Map(mapNodes.value.map((node: any) => [String(node.id), node]))
+  return (learningRoute.value?.stops || [])
+    .map((stop: any) => {
+      const node = byId.get(String(stop.pageId))
+      return node ? { ...stop, node } : null
+    })
+    .filter(Boolean) as any[]
+})
+
+const activeRouteStop = computed(() =>
+  routeStopsView.value.find((stop: any) => stop.status === 'current') ||
+  routeStopsView.value.find((stop: any) => stop.learning?.level !== 'mastered') ||
+  routeStopsView.value[0] ||
+  null
+)
+
+const offRoutePage = computed(() => {
+  if (!routeActive.value || !detailVisible.value || !activePage.value) return null
+  const pageId = Number(activePage.value.pageId)
+  const inRoute = (learningRoute.value?.stops || []).some(
+    (stop: any) => Number(stop.pageId) === pageId
+  )
+  return inRoute ? null : activePage.value
+})
+
+const nextLearningStep = computed(() => {
+  const routeStop = activeRouteStop.value
+  if (routeStop?.node) return { node: routeStop.node, reason: routeStop.reason }
+  return learningRecommendations.value[0] || null
+})
+
+const learningPathItems = computed(() => {
+  if (routeStopsView.value.length) {
+    return routeStopsView.value.map((stop: any) => ({ node: stop.node, reason: stop.reason }))
+  }
+  const byId = new Map(mapNodes.value.map((node: any) => [String(node.id), node]))
+  return mapLearningPath.value
+    .map((id) => {
+      const node = byId.get(id)
+      return node ? { node, reason: learningReason(node) } : null
+    })
+    .filter(Boolean) as Array<{ node: any; reason: string }>
+})
+
+const learningPathD = computed(() => {
+  const items = learningPathItems.value
+  if (items.length < 2) return ''
+  const edges = learningRoute.value?.edges || []
+  const routeEdgeSet = new Set(
+    edges.map((edge: any) => `${String(edge.source)}|${String(edge.target)}`)
+  )
+  const segments: string[] = []
+  for (let index = 1; index < items.length; index += 1) {
+    const previous = items[index - 1].node
+    const current = items[index].node
+    const forward = `${String(previous.id)}|${String(current.id)}`
+    const backward = `${String(current.id)}|${String(previous.id)}`
+    // 只画图谱里真实存在的相邻边；没有边就不画，绝不把启发式顺序伪装成前置关系。
+    if (!routeEdgeSet.has(forward) && !routeEdgeSet.has(backward)) continue
+    segments.push(`M${Number(previous.x)} ${Number(previous.y)} L${Number(current.x)} ${Number(current.y)}`)
+  }
+  return segments.join(' ')
+})
+
+function applyLearningRoute(data: any) {
+  const plan = data?.plan || null
+  if (plan) studyPlan.value = plan
+  if (data?.hasRoute && Array.isArray(data.stops) && data.stops.length) {
+    learningRoute.value = data
+    mapLearningPath.value = data.stops.map((stop: any) => String(stop.pageId))
+    if (data.strategy) routeStrategy.value = data.strategy
+    routeTargetPageId.value = data.targetPageId ? Number(data.targetPageId) : null
+  } else {
+    learningRoute.value = null
+    mapLearningPath.value = []
+  }
+}
+
+/** 计划快照只存“可重建状态 + 当前视图”，不把前端勾选当完成态。 */
+function persistPlanState(plan: any) {
+  if (!plan) return
+  try {
+    localStorage.setItem(
+      WIKI_PLAN_KEY,
+      JSON.stringify({
+        kbId: Number(props.activeKbId || 0),
+        plan,
+        sinceMs: plan.window?.sinceMs || 0,
+        strategy: routeStrategy.value,
+        targetPageId: routeTargetPageId.value
+      })
+    )
+  } catch {
+    // localStorage 不可用时不影响当前计划
+  }
+}
+
+function readPlanState(): any | null {
+  try {
+    const raw = localStorage.getItem(WIKI_PLAN_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (Number(parsed?.kbId || 0) !== Number(props.activeKbId || 0)) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+/** 生成/重新生成学习计划；focusPageId 表示“以这一页为目标规划”。 */
+async function generateRoute(focusPageId?: number | null, sinceMs?: number) {
+  if (!props.activeKbId || routeLoading.value) return
+  routeLoading.value = true
+  try {
+    const target = focusPageId ?? routeTargetPageId.value ?? undefined
+    const res = await getStudyPlan(Number(props.activeKbId), {
+      goal: routeStrategy.value,
+      focusPageId: target || undefined,
+      horizonDays: 7,
+      dailyMinutes: 40,
+      sinceMs
+    })
+    if (res.code === 200 && res.data?.route?.stops?.length) {
+      const plan = res.data
+      studyPlan.value = plan
+      persistPlanState(plan)
+      applyLearningRoute({
+        ...plan.route,
+        hasRoute: true,
+        strategy: plan.route?.strategy || routeStrategy.value,
+        targetPageId: plan.route?.targetPageId || null,
+        plan
+      })
+    } else {
+      // 兼容旧后端：新端点尚不可用时退回只读航线，不让用户看到空面板。
+      const legacy = await getLearningRoute(Number(props.activeKbId), 3, routeStrategy.value, target || undefined)
+      if (legacy.code !== 200) {
+        ElMessage.error(legacy.msg || res.msg || '学习计划生成失败')
+        return
+      }
+      if (!legacy.data?.hasRoute) {
+        ElMessage.info(legacy.data?.reason || res.data?.route?.headline || '当前资料夹还没有可规划的主题页')
+        exitRoute()
+        return
+      }
+      applyLearningRoute(legacy.data)
+    }
+    try {
+      sessionStorage.setItem(
+        WIKI_ROUTE_KEY,
+        JSON.stringify({ strategy: routeStrategy.value, targetPageId: routeTargetPageId.value })
+      )
+    } catch {
+      // 计划仍可用，只是切页后不恢复
+    }
+    await nextTick()
+    fitMapView()
+  } catch (error: any) {
+    ElMessage.error('学习计划生成失败：' + (error?.message || error))
+  } finally {
+    routeLoading.value = false
+  }
+}
+
+/** 计划抽屉里点一个任务：有真实 target 才跳，没 target 的模型幻觉不接。 */
+function onPlanTask(task: any) {
+  const target = task?.target || {}
+  if (target.kind === 'bank' && target.bankId) {
+    planDrawerVisible.value = false
+    router.push({
+      path: `/front/questionPractice/${target.bankId}/practice/sequential`,
+      query: { bankName: target.bankName || '题库' }
+    })
+    return
+  }
+  if (target.pageId) {
+    planDrawerVisible.value = false
+    void openPage(Number(target.pageId))
+  }
+}
+
+/** 调整目标/考试日/每日时间后重拉同一份活计划。 */
+async function onPlanAdjust(payload: any) {
+  if (!props.activeKbId || planLoading.value) return
+  planLoading.value = true
+  try {
+    const res = await getStudyPlan(Number(props.activeKbId), {
+      goal: payload.goal || 'weakness',
+      examDate: payload.goal === 'exam' ? payload.examDate || undefined : undefined,
+      horizonDays: Number(payload.horizonDays || 7),
+      dailyMinutes: Number(payload.dailyMinutes || 40),
+      focusPageId: routeTargetPageId.value || undefined,
+      sinceMs: studyPlan.value?.window?.sinceMs || undefined
+    })
+    if (res.code !== 200 || !res.data?.route?.stops?.length) {
+      ElMessage.error(res.msg || res.data?.route?.headline || '没有生成可执行计划')
+      return
+    }
+    studyPlan.value = res.data
+    persistPlanState(res.data)
+    applyLearningRoute({
+      ...res.data.route,
+      hasRoute: true,
+      strategy: res.data.route?.strategy || routeStrategy.value,
+      targetPageId: res.data.route?.targetPageId || null,
+      plan: res.data
+    })
+    await nextTick()
+    fitMapView()
+  } catch (error: any) {
+    ElMessage.error('调整计划失败：' + (error?.message || error))
+  } finally {
+    planLoading.value = false
+  }
+}
+
+async function changeRouteStrategy(value: string) {
+  if (routeStrategy.value === value) return
+  routeStrategy.value = value as 'weakness' | 'foundation' | 'explore'
+  await generateRoute(routeTargetPageId.value)
+}
+
+async function planToPage(pageId: number) {
+  routeTargetPageId.value = Number(pageId)
+  lastDetailPageId = null
+  closeDetail()
+  await generateRoute(Number(pageId))
+}
+
+function exitRoute() {
+  learningRoute.value = null
+  studyPlan.value = null
+  planDrawerVisible.value = false
+  mapLearningPath.value = []
+  routeTargetPageId.value = null
+  try {
+    sessionStorage.removeItem(WIKI_ROUTE_KEY)
+    localStorage.removeItem(WIKI_PLAN_KEY)
+  } catch {
+    // 忽略 storage 不可用
+  }
+}
+
+function showRouteGuide() {
+  routeGuideVisible.value = true
+}
+
+function maybeShowRouteGuide() {
+  try {
+    if (localStorage.getItem(WIKI_GUIDE_KEY) !== '1') {
+      routeGuideVisible.value = true
+      localStorage.setItem(WIKI_GUIDE_KEY, '1')
+    }
+  } catch {
+    // localStorage 不可用时只在本次打开说明
+    routeGuideVisible.value = true
+  }
+}
+
+async function maybeRestoreRoute() {
+  if (learningRoute.value) return
+  const state = readPlanState()
+  const saved = readRouteQuery()
+  if (!saved && !state) {
+    maybeShowRouteGuide()
+    return
+  }
+  routeStrategy.value = state?.strategy || saved?.strategy || 'weakness'
+  routeTargetPageId.value = state?.targetPageId ?? saved?.targetPageId ?? null
+  await generateRoute(routeTargetPageId.value, state?.sinceMs)
+}
+
+function toggleLearnMode() {
+  mapLearnMode.value = !mapLearnMode.value
+  try {
+    localStorage.setItem(WIKI_LEARN_KEY, mapLearnMode.value ? '1' : '0')
+  } catch {
+    // localStorage 不可用时只影响持久化，不影响当前页面
+  }
+}
+
 function neighborIdsFor(id: string | null) {
   const result = new Set<string>()
   if (!id) return result
@@ -653,6 +1149,7 @@ function isMapSelected(node: any) {
 }
 
 function isMapNodeDimmed(node: any) {
+  if (routeActive.value && !isRouteNode(node)) return true
   if (isMapSelected(node)) return false
   return !!mapFocusId.value && !mapNeighborIds.value.has(String(node.id))
 }
@@ -662,12 +1159,17 @@ function isMapEdgeActive(edge: any) {
 }
 
 function isMapEdgeDimmed(edge: any) {
+  if (routeActive.value) {
+    const routeIds = new Set((learningRoute.value?.stops || []).map((stop: any) => String(stop.pageId)))
+    return !(routeIds.has(edge.source) && routeIds.has(edge.target))
+  }
   return !!mapFocusId.value && !isMapEdgeActive(edge)
 }
 
 function showMapLabel(node: any) {
   return (
     isMapSelected(node) ||
+    isRouteNode(node) ||
     mapHoveredId.value === String(node.id) ||
     mapView.scale >= 1.05 ||
     Number(node.degree || 0) >= 5
@@ -722,6 +1224,56 @@ function onMapNodeClick(node: any) {
     return
   }
   selectMapNode(node)
+}
+
+function isRouteNode(node: any) {
+  return (learningRoute.value?.stops || []).some(
+    (stop: any) => Number(stop.pageId) === Number(node?.pageId)
+  )
+}
+
+function isRouteEdge(edge: any) {
+  const routeIds = new Set((learningRoute.value?.stops || []).map((stop: any) => String(stop.pageId)))
+  return routeIds.has(edge.source) && routeIds.has(edge.target)
+}
+
+function isNextStopNode(node: any) {
+  return activeRouteStop.value
+    ? Number(activeRouteStop.value.pageId) === Number(node?.pageId)
+    : false
+}
+
+function onRouteStopSelect(pageId: number) {
+  const node = mapNodes.value.find((item: any) => Number(item.pageId) === Number(pageId))
+  if (node) selectMapNode(node)
+}
+
+function startNextRouteStop() {
+  const stop = activeRouteStop.value
+  if (!stop) return
+  const planTask = (studyPlan.value?.days || [])
+    .flatMap((day: any) => day.tasks || [])
+    .find((item: any) => Number(item.pageId) === Number(stop.pageId) && item.status !== 'done')
+  if (planTask) {
+    onPlanTask(planTask)
+    return
+  }
+  const task = stop.task || {}
+  if (task.type === 'practice' && task.bankId) {
+    router.push({
+      path: `/front/questionPractice/${task.bankId}/practice/sequential`,
+      query: { bankName: task.bankName || '题库' }
+    })
+    return
+  }
+  if (task.type === 'ask-agent') {
+    emit(
+      'ask',
+      `请基于知识百科主题页《${stop.title}》（pageId=${stop.pageId}，kbId=${props.activeKbId}）生成 5 道练习题，并在每题后标出对应的主题页小节和原文来源。`
+    )
+    return
+  }
+  if (stop.node) selectMapNode(stop.node)
 }
 
 function onMapNodeDown(event: PointerEvent, node: any) {
@@ -1105,6 +1657,7 @@ async function build() {
 function resetMapNodeOffsets() {
   Object.keys(mapNodeOffsets).forEach((key) => delete mapNodeOffsets[key])
   Object.keys(mapSimPositions).forEach((key) => delete mapSimPositions[key])
+  mapLearningPath.value = []
   stopMapAnimation()
 }
 
@@ -1162,13 +1715,14 @@ async function switchMap() {
   mapView.y = 0
   mapView.scale = 1
   try {
-    const res = await getWikiGraph(Number(props.activeKbId))
-    if (res.code === 200) {
-      mapGraph.value = res.data || { nodes: [], edges: [] }
+    const graphRes = await getWikiGraph(Number(props.activeKbId))
+    if (graphRes.code === 200) {
+      mapGraph.value = graphRes.data || { nodes: [], edges: [] }
       await nextTick()
       fitMapView()
       if (String(props.searchQuery || '').trim()) focusMapSearch()
       startMapAnimation()
+      if (!learningRoute.value) await maybeRestoreRoute()
     }
   } catch {
     // 地图失败时保持主题页入口，不影响阅读。
@@ -1188,13 +1742,75 @@ function closeDetail() {
 
 watch(detailVisible, (visible) => {
   if (visible) return
+  const viewedPageId = lastDetailPageId
+  lastDetailPageId = null
   mapSelectedPageId.value = null
   mapHoveredId.value = null
   if (view.value === 'map') nextTick(startMapAnimation)
+  if (
+    routeActive.value &&
+    viewedPageId &&
+    (learningRoute.value?.stops || []).some((stop: any) => Number(stop.pageId) === Number(viewedPageId))
+  ) {
+    void generateRoute(routeTargetPageId.value)
+  }
 })
+
+function updateMapNodeLearning(pageId: number, learning: any) {
+  const node = (mapGraph.value?.nodes || []).find((item: any) => Number(item.pageId) === Number(pageId))
+  if (node) node.learning = learning
+
+  const stops = learningRoute.value?.stops || []
+  const stop = stops.find((item: any) => Number(item.pageId) === Number(pageId))
+  if (!stop) return
+  stop.learning = learning
+  const views = Number(learning?.viewCount || 0)
+  if (views === 0) {
+    stop.task = { type: 'read', label: '读主题页', pageId: Number(pageId) }
+  } else if (Number(stop.practice?.bankId || 0) > 0) {
+    const count = Number(stop.practice?.questionCount || 0)
+    stop.task = {
+      type: 'practice',
+      label: count ? `去练 ${count} 题` : '去练同源题',
+      pageId: Number(pageId),
+      bankId: Number(stop.practice.bankId),
+      bankName: stop.practice.bankName || '题库',
+      questionCount: count
+    }
+  } else if (String(learning?.level || '') === 'mastered') {
+    stop.task = { type: 'review', label: '快速复习', pageId: Number(pageId) }
+  } else {
+    stop.task = { type: 'ask-agent', label: '生成练习', pageId: Number(pageId) }
+  }
+
+  const practices = Number(learning?.practiceCount || 0)
+  const accuracy = Number(learning?.accuracy || 0)
+  if (views === 0) {
+    stop.reason = `还没读过 · 连接 ${Number(node?.degree || 0)} 个主题`
+  } else if (practices === 0) {
+    stop.reason = '已读但还没练过 · 用同源题检验'
+  } else if (accuracy < 60) {
+    stop.reason = `正确率 ${accuracy}% · 建议回看后再练一轮`
+  } else if (accuracy < 80) {
+    stop.reason = `正确率 ${accuracy}% · 再练一轮`
+  } else if (String(learning?.level || '') === 'mastered') {
+    stop.reason = '已掌握 · 可快速复习'
+  }
+
+  const openIndex = stops.findIndex(
+    (item: any) => String(item.learning?.level || '') !== 'mastered' && Number(item.learning?.practiceCount || 0) === 0
+  )
+  stops.forEach((item: any, index: number) => {
+    if (openIndex < 0) item.status = 'review'
+    else if (index < openIndex) item.status = 'done'
+    else if (index === openIndex) item.status = 'current'
+    else item.status = 'next'
+  })
+}
 
 async function openPage(pageId: number) {
   mapSelectedPageId.value = Number(pageId)
+  lastDetailPageId = Number(pageId)
   detailVisible.value = true
   pageLoading.value = true
   activePage.value = null
@@ -1206,6 +1822,16 @@ async function openPage(pageId: number) {
       return
     }
     activePage.value = res.data
+    // 阅读记录不阻塞正文展示；成功后再把学习态回填到当前页和图谱节点。
+    void recordWikiPageView(pageId).then((viewRes) => {
+      if (viewRes.code !== 200 || !viewRes.data?.learning) return
+      if (Number(activePage.value?.pageId) === Number(pageId)) {
+        activePage.value.learning = viewRes.data.learning
+      }
+      updateMapNodeLearning(Number(pageId), viewRes.data.learning)
+    }).catch(() => {
+      // 阅读统计失败不影响阅读本身（例如离线/接口暂时不可用）
+    })
   } catch (error: any) {
     ElMessage.error('主题页加载失败：' + (error?.message || error))
     closeDetail()
@@ -1424,6 +2050,16 @@ function askPage(kind: 'ask' | 'practice' = 'ask') {
   closeDetail()
 }
 
+function goPractice() {
+  const practice = activePage.value?.practice
+  if (!practice?.bankId) return
+  closeDetail()
+  router.push({
+    path: `/front/questionPractice/${practice.bankId}/practice/sequential`,
+    query: { bankName: practice.bankName || '题库' }
+  })
+}
+
 function renderMapPan() {
   if (!mapDrag) return
   const g = mapCanvasRef.value?.querySelector('.kw-map__svg > g')
@@ -1548,6 +2184,7 @@ watch(() => props.activeKbId, async (kbId) => {
   stopBuildPolling()
   stopMapNodeDrag()
   resetMapNodeOffsets()
+  exitRoute()
   buildJob.value = null
   await reload()
   if (view.value === 'map' && kbId && !mapGraph.value.nodes?.length) {
@@ -1654,9 +2291,11 @@ onBeforeUnmount(() => {
 .kw-page--graph { height: calc(100vh - 138px); min-height: 0; gap: 0; padding: 0; overflow: hidden; }
 .kw-map { position: relative; min-height: 590px; overflow: hidden; border: 1px solid #e6ebf4; border-radius: 13px; background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.1) 1px, transparent 0), #fbfcfe; background-size: 20px 20px; cursor: grab; touch-action: none; user-select: none; }
 .kw-page--graph .kw-map { flex: 1; min-height: 0; height: 100%; border: 0; border-radius: 0; background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.1) 1px, transparent 0), #fbfcfe; background-size: 20px 20px; }
+.kw-map.is-route-mode { background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.1) 1px, transparent 0), #fbfcfe; background-size: 20px 20px; }
 .kw-map:active { cursor: grabbing; }
 .kw-map__svg { width: 100%; height: 590px; }
 .kw-page--graph .kw-map__svg { height: 100%; }
+.kw-map-purpose { position: absolute; z-index: 7; top: 14px; left: 16px; padding: 6px 9px; border: 1px solid rgba(15, 23, 42, 0.05); border-radius: 6px; color: #7d8596; background: rgba(255, 255, 255, 0.86); font-size: 11px; pointer-events: none; }
 .kw-map-hull { fill: #f1f3f7; fill-opacity: 0.72; stroke: #e5e8ef; stroke-width: 1; vector-effect: non-scaling-stroke; transition: fill 0.2s ease, stroke 0.2s ease; }
 .kw-map-hull.is-hovered { fill: #ebeef5; stroke: #dce2ed; }
 .kw-map-edge { stroke: #c7d0e0; stroke-width: 0.8; opacity: 0.42; vector-effect: non-scaling-stroke; transition: stroke 0.2s, stroke-width 0.2s, stroke-opacity 0.2s; }
@@ -1666,25 +2305,38 @@ onBeforeUnmount(() => {
 .kw-map-edge.is-related { stroke: #c7d0e0; }
 .kw-map-edge.is-mention { stroke: #77bfae; }
 .kw-map-edge.is-active { stroke: #7e94bf; stroke-width: 1.5; opacity: 0.85; }
+.kw-map.is-route-mode .kw-map-edge { opacity: 0.36; }
+.kw-map.is-route-mode .kw-map-edge.is-current-route { stroke: #7e94bf; opacity: 0.82; }
 .kw-map-edge.is-dimmed { opacity: 0.08; }
 .kw-map-edge.is-hidden { display: none; }
 .kw-map-node { cursor: grab; transition: opacity 0.18s ease; }
 .kw-map-node:active { cursor: grabbing; }
 .kw-map-node.is-dimmed { opacity: 0.2; }
+.kw-map.is-route-mode .kw-map-node.is-dimmed { opacity: 0.42; }
 .kw-map-node.is-selected { opacity: 1 !important; }
 .kw-map-node.is-selected .kw-map-node__dot { stroke: #253247; stroke-width: 2.5; }
 .kw-map-node.is-selected .kw-map-node__label { fill: #1f2937; font-weight: 700; }
 .kw-map-node__halo { fill: rgba(255, 255, 255, 0.86); }
+.kw-map.is-route-mode .kw-map-node.is-route .kw-map-node__halo { fill: #f4f8ff; }
+.kw-map-node__learn-track { fill: none; stroke: #e5eaf2; stroke-width: 1.8; pointer-events: none; }
+.kw-map-node__learn-ring { fill: none; stroke-width: 2.4; stroke-linecap: round; pointer-events: none; transition: stroke-dashoffset .35s ease, stroke .2s ease; }
+.kw-map-node.is-weak .kw-map-node__halo { fill: #fff8f5; }
+.kw-map-node.is-weak .kw-map-node__learn-ring { filter: drop-shadow(0 0 2px rgba(224, 122, 95, .28)); }
 .kw-map-node__dot { stroke: #fff; stroke-width: 1.5; transition: r 0.2s ease, stroke-width 0.2s ease, opacity 0.2s ease; }
+.kw-map.is-route-mode .kw-map-node.is-route .kw-map-node__dot { stroke: #2f5fce; stroke-width: 2.2; }
+.kw-map-node.is-next-stop .kw-map-node__halo { fill: #edf3fe; }
 .kw-map-node__active { fill: none; stroke-width: 2; pointer-events: none; transform-box: fill-box; transform-origin: center; animation: kw-node-pulse 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite; }
+.kw-map-learning-path { fill: none; stroke: #2f5fce; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; opacity: .8; pointer-events: none; }
+.kw-map-learning-path.is-fallback { stroke: #c7d0e0; stroke-width: 1.5; stroke-dasharray: 5 4; opacity: .75; }
 .kw-map-node__label { fill: #4b5563; font-size: 11px; pointer-events: none; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
+.kw-map.is-route-mode .kw-map-node.is-route .kw-map-node__label { fill: #1f3f8f; font-weight: 700; }
 .kw-map-node.is-hovered .kw-map-node__dot { stroke: #253247; stroke-width: 2.5; }
 .kw-map-node.is-hovered .kw-map-node__label { fill: #1f2937; font-weight: 600; }
 @keyframes kw-node-pulse {
   0% { opacity: 0.8; transform: scale(1); }
   100% { opacity: 0; transform: scale(1.6); }
 }
-.kw-graph-panel { position: absolute; z-index: 8; top: 12px; right: 12px; display: flex; width: 160px; flex-direction: column; gap: 5px; padding: 8px 9px; border: 1px solid rgba(15, 23, 42, 0.08); border-radius: 9px; background: rgba(255, 255, 255, 0.94); box-shadow: 0 8px 22px rgba(29, 43, 70, 0.1); backdrop-filter: blur(10px); }
+.kw-graph-panel { position: absolute; z-index: 8; top: 12px; right: 12px; display: flex; width: min(200px, calc(100vw - 32px)); max-height: calc(100% - 24px); flex-direction: column; gap: 5px; overflow-y: auto; padding: 8px 9px; border: 1px solid rgba(15, 23, 42, 0.08); border-radius: 9px; background: rgba(255, 255, 255, 0.94); box-shadow: 0 8px 22px rgba(29, 43, 70, 0.1); backdrop-filter: blur(10px); }
 .kw-graph-panel__legend { display: flex; flex-direction: column; gap: 4px; }
 .kw-graph-type { display: flex; align-items: center; gap: 4px; width: 100%; padding: 0 1px; border: 0; color: #5f6b7d; background: transparent; cursor: pointer; font: inherit; font-size: 9.5px; line-height: 1.35; text-align: left; transition: opacity .15s ease, color .15s ease; }
 .kw-graph-type:hover { color: #253247; }
@@ -1695,12 +2347,37 @@ onBeforeUnmount(() => {
 .kw-graph-panel__actions { display: flex; flex-direction: column; gap: 1px; }
 .kw-graph-action { display: flex; align-items: center; gap: 4px; width: 100%; padding: 3px 1px; border: 0; color: #6b7280; background: transparent; cursor: pointer; font: inherit; font-size: 9.5px; line-height: 1.35; text-align: left; transition: color .15s ease; }
 .kw-graph-action:hover, .kw-graph-action.is-active { color: #2f5fce; }
+.kw-route-action { color: #2f5fce; font-weight: 600; }
 .kw-graph-action:disabled { opacity: .35; cursor: not-allowed; }
 .kw-graph-panel__overview { display: flex; flex-direction: column; gap: 2px; color: #9aa1af; font-size: 8.5px; line-height: 1.35; }
 .kw-graph-panel__overview span { display: inline-flex; align-items: center; gap: 3px; }
 .kw-graph-panel__overview b { color: #253247; font-size: 10.5px; font-weight: 600; }
 .kw-graph-panel__overview em { color: #a0a6b2; font-style: normal; }
-.kw-graph-hint { position: absolute; z-index: 7; left: 16px; bottom: 14px; padding: 5px 9px; border: 1px solid rgba(15, 23, 42, 0.05); border-radius: 6px; color: #9aa1af; background: rgba(255, 255, 255, 0.82); font-size: 9.5px; pointer-events: none; }
+.kw-route-generate { display: flex; align-items: center; gap: 7px; width: 100%; padding: 7px; border: 1px solid #c9d9f8; border-radius: 8px; background: linear-gradient(135deg, #f5f8ff, #eef4ff); color: #2f5fce; cursor: pointer; font: inherit; text-align: left; transition: border-color .15s ease, background .15s ease; }
+.kw-route-generate:hover { border-color: #a9c3f2; background: #edf4ff; }
+.kw-route-generate:disabled { opacity: .6; cursor: wait; }
+.kw-route-generate__icon { display: inline-flex; width: 25px; height: 25px; flex: none; align-items: center; justify-content: center; border-radius: 7px; background: #e3edff; }
+.kw-route-generate__text { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.kw-route-generate__text b { color: #2f5fce; font-size: 11.5px; font-weight: 700; }
+.kw-route-generate__text em { color: #8b95a7; font-size: 11px; font-style: normal; line-height: 1.4; }
+.kw-learn-next { display: flex; align-items: center; gap: 4px; width: 100%; margin-top: 3px; padding: 4px 6px; border: 1px solid #e0e8f8; border-radius: 6px; background: #f7f9ff; color: #2f5fce; cursor: pointer; font: inherit; font-size: 9px; text-align: left; }
+.kw-learn-next span { flex: none; color: #8a91a0; }
+.kw-learn-next b { overflow: hidden; flex: 1; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.kw-learn-next:hover { border-color: #c7d8f1; background: #eef4ff; }
+.kw-learn-legend { display: flex; flex-wrap: wrap; gap: 3px 8px; margin-top: 3px; color: #9aa1af; font-size: 8px; }
+.kw-learn-legend span { display: inline-flex; align-items: center; gap: 3px; }
+.kw-learn-legend i { width: 6px; height: 6px; border-radius: 50%; }
+.kw-graph-hint { position: absolute; z-index: 7; left: 16px; bottom: 14px; padding: 5px 9px; border: 1px solid rgba(15, 23, 42, 0.05); border-radius: 6px; color: #9aa1af; background: rgba(255, 255, 255, 0.82); font-size: 11px; pointer-events: none; }
+.kw-graph-hint.is-route { right: 16px; left: auto; font-size: 11px; }
+.kw-learning-path-card { position: absolute; z-index: 9; left: 16px; bottom: 14px; display: flex; width: 242px; flex-direction: column; gap: 3px; padding: 8px 9px; border: 1px solid #dbe5fb; border-radius: 9px; background: rgba(255, 255, 255, 0.95); box-shadow: 0 10px 24px rgba(47, 95, 206, 0.14); backdrop-filter: blur(10px); }
+.kw-learning-path-card__head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 3px; border-bottom: 1px solid #edf1fa; color: #2f5fce; font-size: 9.5px; font-weight: 600; }
+.kw-learning-path-card__head span { display: inline-flex; align-items: center; gap: 3px; }
+.kw-learning-path-card__head button { padding: 0 2px; border: 0; color: #9aa1af; background: transparent; cursor: pointer; font-size: 15px; line-height: 1; }
+.kw-learning-path-step { display: flex; align-items: center; gap: 5px; width: 100%; padding: 3px 1px; border: 0; background: transparent; color: #5f6b7d; cursor: pointer; font: inherit; font-size: 9.5px; text-align: left; }
+.kw-learning-path-step:hover { color: #2f5fce; }
+.kw-learning-path-step i { display: inline-flex; width: 15px; height: 15px; flex: none; align-items: center; justify-content: center; border-radius: 50%; color: #2f5fce; background: #edf3ff; font-size: 8px; font-style: normal; font-weight: 600; }
+.kw-learning-path-step span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kw-learning-path-step em { flex: none; margin-left: auto; color: #a0a6b2; font-size: 8px; font-style: normal; }
 .kw-empty { display: flex; min-height: 520px; flex-direction: column; align-items: center; justify-content: center; border: 1px dashed #dfe6f2; border-radius: 13px; background: #fcfdff; text-align: center; }
 .kw-empty__art { display: flex; width: 56px; height: 56px; align-items: center; justify-content: center; margin-bottom: 10px; border-radius: 16px; color: #2f5fce; background: #eef4ff; font-size: 28px; }
 .kw-empty h3 { margin: 0 0 6px; color: #374151; font-size: 16px; }
@@ -1716,6 +2393,21 @@ onBeforeUnmount(() => {
 .kw-detail__head-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 .kw-detail__close { flex: none; padding: 0 4px; border: 0; color: #9aa1af; background: transparent; cursor: pointer; font-size: 24px; line-height: 1; }
 .kw-detail__warning { padding: 9px 11px; border: 1px solid #f0d9cc; border-radius: 8px; color: #a96545; background: #fff8f3; font-size: 11px; line-height: 1.6; }
+.kw-detail__learning { display: flex; flex-direction: column; gap: 5px; padding: 9px 11px; border: 1px solid #e7ebf3; border-radius: 8px; background: #fbfcfe; }
+.kw-detail__learning-head { display: flex; align-items: center; justify-content: space-between; color: #6b7280; font-size: 10px; font-weight: 600; }
+.kw-detail__learning-head b { font-weight: 600; }
+.kw-detail__learning-head b.is-unread { color: #9aa1af; }
+.kw-detail__learning-head b.is-reading { color: #5b8def; }
+.kw-detail__learning-head b.is-practicing { color: #f0a13a; }
+.kw-detail__learning-head b.is-mastered { color: #2f9e8f; }
+.kw-detail__learning-bar { height: 4px; overflow: hidden; border-radius: 99px; background: #e9eef7; }
+.kw-detail__learning-bar i { display: block; height: 100%; border-radius: inherit; background: #5b8def; transition: width .35s ease; }
+.kw-detail__learning-bar i.is-practicing { background: #f0a13a; }
+.kw-detail__learning-bar i.is-mastered { background: #2f9e8f; }
+.kw-detail__learning-meta { display: flex; flex-wrap: wrap; gap: 10px; color: #9aa1af; font-size: 9.5px; }
+.kw-detail__route-action { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px dashed #dbe5f8; border-radius: 8px; background: #fbfcff; color: #8a91a0; font-size: 11px; }
+.kw-detail__route-action button { flex: none; padding: 0; border: 0; color: #2f5fce; background: transparent; cursor: pointer; font: inherit; font-size: 11px; font-weight: 600; }
+.kw-detail__route-action button:hover { text-decoration: underline; }
 .kw-detail__lead { margin: 0; padding: 14px 16px; border-left: 3px solid #5f87e6; border-radius: 0 8px 8px 0; color: #4b5563; background: #f7f9ff; font-size: 13px; line-height: 1.8; }
 .kw-detail__section h3 { margin: 0 0 7px; color: #253247; font-size: 15px; font-weight: 700; }
 .kw-detail__body { color: #4b5563; font-size: 13px; line-height: 1.85; }
@@ -1767,5 +2459,23 @@ onBeforeUnmount(() => {
 .kw-revision b { color: #2f5fce; }
 .kw-revision em { color: #a0a6b2; font-style: normal; font-size: 10px; }
 .kw-detail-loading { height: 500px; }
+.kw-guide-lead { margin-bottom: 12px; padding: 9px 11px; border-radius: 8px; color: #4b5563; background: #f7f9ff; font-size: 11px; line-height: 1.6; }
+.kw-guide-steps { display: flex; flex-direction: column; gap: 9px; }
+.kw-guide-step { display: flex; align-items: flex-start; gap: 9px; }
+.kw-guide-step > i { display: inline-flex; width: 24px; height: 24px; flex: none; align-items: center; justify-content: center; border-radius: 50%; color: #2f5fce; background: #edf3ff; font-size: 9px; font-style: normal; font-weight: 700; }
+.kw-guide-step b { color: #253247; font-size: 12px; font-weight: 600; }
+.kw-guide-step p { margin: 3px 0 0; color: #7d8596; font-size: 11px; line-height: 1.6; }
+.kw-guide-tip { margin-top: 13px; padding: 8px 10px; border: 1px dashed #dbe5f8; border-radius: 8px; color: #7d8596; background: #fbfcff; font-size: 11px; line-height: 1.6; }
 @media (max-width: 900px) { .kw-head { flex-direction: column; align-items: flex-start; gap: 10px; } .kw-head__actions { flex-wrap: wrap; } .kw-map, .kw-map__svg { min-height: 460px; height: 460px; } .kw-detail-drawer { width: 92vw !important; } }
 </style>
+
+
+
+
+
+
+
+
+
+
+

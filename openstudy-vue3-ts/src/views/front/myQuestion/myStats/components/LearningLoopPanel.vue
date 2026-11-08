@@ -5,7 +5,7 @@
       <span>正在整理你的学习闭环…</span>
     </div>
 
-    <div v-else-if="!data || !data.hasData" class="loop-empty">
+    <div v-else-if="!hasContent" class="loop-empty">
       <div class="loop-empty-mark">
         <el-icon :size="24"><TrendCharts /></el-icon>
       </div>
@@ -20,13 +20,13 @@
       <div class="loop-head">
         <div class="loop-head-main">
           <div class="loop-head-title">
-            <h2>今日学习处方</h2>
-            <span class="loop-head-chip">今日</span>
+            <h2>今日学习任务</h2>
+            <span class="loop-head-chip">知航 · 活计划</span>
           </div>
-          <p>{{ data.headline }}</p>
+          <p>{{ planHeadline || data.headline }}</p>
         </div>
         <div class="loop-head-meta">
-          <span><b>{{ data.todayPlan.length }}</b> 个动作</span>
+          <span><b>{{ displayTasks.length }}</b> 个动作</span>
           <span class="loop-head-divider"></span>
           <span>预计 {{ todayMinutes }} 分钟</span>
         </div>
@@ -34,13 +34,13 @@
 
       <div class="loop-plan">
         <article
-          v-for="(task, index) in data.todayPlan"
+          v-for="(task, index) in displayTasks"
           :key="task.id"
           class="loop-task"
           role="button"
           tabindex="0"
-          @click="emit('openQuestion', task)"
-          @keyup.enter="emit('openQuestion', task)"
+          @click="onTaskClick(task)"
+          @keyup.enter="onTaskClick(task)"
         >
           <span class="loop-task-index">0{{ index + 1 }}</span>
           <div class="loop-task-body">
@@ -50,11 +50,11 @@
           </div>
           <div class="loop-task-side">
             <span class="loop-task-time">{{ task.estimatedMinutes }} 分钟</span>
-            <span class="loop-task-go">开始 <el-icon><ArrowRight /></el-icon></span>
+            <span class="loop-task-go">{{ task.status === 'done' ? '已完成' : '开始' }} <el-icon><ArrowRight /></el-icon></span>
           </div>
         </article>
-        <div v-if="!data.todayPlan.length" class="loop-no-task">
-          当前没有需要立即处理的薄弱题，继续保持节奏。
+        <div v-if="!displayTasks.length" class="loop-no-task">
+          当前没有需要立即处理的任务，继续保持节奏。
         </div>
       </div>
 
@@ -193,6 +193,7 @@ import { computed, onMounted, ref } from 'vue'
 import { Loading, TrendCharts, ArrowRight } from '@element-plus/icons-vue'
 import {
   getLearningLoop,
+  getStudyPlanToday,
   type LearningLoopHealthNode,
   type LearningLoopResult
 } from '@/api/userStats/userStats'
@@ -201,16 +202,44 @@ import { renderQuestionContent } from '@/utils/latex'
 const emit = defineEmits<{
   (e: 'practice'): void
   (e: 'openQuestion', item: { questionId: number }): void
+  (e: 'openPlanTask', item: any): void
 }>()
 
 const loading = ref(true)
 const data = ref<LearningLoopResult | null>(null)
+const studyPlan = ref<any>(null)
 const selectedSubject = ref('')
 
+const emptyLoop = {
+  hasData: false,
+  headline: '',
+  todayPlan: [],
+  healthMap: [],
+  errorBattle: { total: 0, mastered: 0, cleared: 0, observing: 0, active: 0, progress: 0, targets: [] }
+} as unknown as LearningLoopResult
+
+const planTodayTasks = computed(() => {
+  const days = studyPlan.value?.days || []
+  const today = new Date().toISOString().slice(0, 10)
+  const day = days.find((item: any) => String(item.date || '').slice(0, 10) === today) || days[0]
+  return day?.tasks || []
+})
+const displayTasks = computed(() => {
+  if (planTodayTasks.value.length) {
+    return planTodayTasks.value.map((task: any) => ({
+      ...task,
+      estimatedMinutes: Number(task.minutes || 0),
+      status: task.status || 'next'
+    }))
+  }
+  return data.value?.todayPlan || []
+})
+const hasContent = computed(() => Boolean(data.value?.hasData || displayTasks.value.length))
+const planHeadline = computed(() => studyPlan.value?.route?.headline || '')
 const healthNodes = computed<LearningLoopHealthNode[]>(() => data.value?.healthMap || [])
 const battleTargets = computed(() => data.value?.errorBattle.targets || [])
 const todayMinutes = computed(() =>
-  (data.value?.todayPlan || []).reduce((sum, task) => sum + (task.estimatedMinutes || 0), 0)
+  displayTasks.value.reduce((sum, task: any) => sum + (task.estimatedMinutes || task.minutes || 0), 0)
 )
 const activeHealthNode = computed<LearningLoopHealthNode | null>(() => {
   const nodes = healthNodes.value
@@ -222,6 +251,14 @@ function pickSubject(node: LearningLoopHealthNode) {
   selectedSubject.value = node.subject
 }
 
+function onTaskClick(task: any) {
+  if (task?.target) {
+    emit('openPlanTask', { ...task, kbId: studyPlan.value?.intent?.kbId || 0 })
+    return
+  }
+  emit('openQuestion', task)
+}
+
 /** 圆环周长 = 2π × 24 ≈ 150.8 */
 function ringDash(accuracy: number) {
   const value = Math.max(0, Math.min(100, Number(accuracy) || 0))
@@ -231,13 +268,23 @@ function ringDash(accuracy: number) {
 async function load() {
   loading.value = true
   try {
+    try {
+      const kbId = Number(localStorage.getItem('openstudy.workspace.activeKbId') || 0)
+      const planRes: any = await getStudyPlanToday(kbId || undefined)
+      if (planRes.code === 200 && planRes.data?.hasPlan) studyPlan.value = planRes.data
+    } catch (e: any) {
+      console.warn('[知航 · 活计划] 今日任务加载失败', e)
+    }
     const res: any = await getLearningLoop()
-    if (res.code === 200) {
+    if (res.code === 200 && res.data?.hasData) {
       data.value = res.data
       selectedSubject.value = res.data?.healthMap?.[0]?.subject || ''
+    } else {
+      data.value = emptyLoop
     }
   } catch (e: any) {
     console.warn('[学习闭环] 加载失败', e)
+    data.value = emptyLoop
   } finally {
     loading.value = false
   }

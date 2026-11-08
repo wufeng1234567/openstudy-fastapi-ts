@@ -751,7 +751,19 @@ function onDocReaderOpen() {
 
 function openMessageImage(e: MouseEvent) {
   const target = e.target as HTMLElement | null
-  if (!target || target.tagName !== 'IMG') return
+  if (!target) return
+  // 正文里的真实外链（网页搜索引用等）统一新标签打开；站内 wiki 链接由
+  // LatexRenderer 自己处理，不在这里抢。DOMPurify 会保留 href，但不保证 target。
+  const anchor = target.closest?.('a[href]') as HTMLAnchorElement | null
+  if (anchor && !anchor.dataset.wikiPageId) {
+    const href = anchor.getAttribute('href') || ''
+    if (/^https?:\/\//i.test(href)) {
+      e.preventDefault()
+      window.open(href, '_blank', 'noopener,noreferrer')
+      return
+    }
+  }
+  if (target.tagName !== 'IMG') return
   const raw = target.getAttribute('src') || ''
   if (!raw) return
   const base = String(import.meta.env.VITE_APP_BASE_API || '').replace(/\/$/, '')

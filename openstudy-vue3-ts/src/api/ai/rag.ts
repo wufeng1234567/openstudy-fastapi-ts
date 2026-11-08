@@ -233,6 +233,27 @@ export function importDocumentText(kbId: number, content: string, fileName?: str
   })
 }
 
+/* ===================== 在线网页 ===================== */
+
+/** 手动入口：搜索公开互联网，返回真实标题/url/摘要（不落库）。 */
+export function searchPublicWeb(query: string, count = 6) {
+  return request({
+    url: '/rag/web/search',
+    method: 'post',
+    data: { query, count }
+  })
+}
+
+/** 手动入口：把公开网页抓取成 Markdown 并导入指定知识库。 */
+export function importDocumentUrl(kbId: number, url: string, note?: string) {
+  return request({
+    url: '/rag/document/importUrl',
+    method: 'post',
+    data: { kbId, url, ...(note ? { note } : {}) },
+    timeout: 120000
+  })
+}
+
 export function getDocumentContent(docId: number) {
   return request({
     url: `/rag/document/content/${docId}`,

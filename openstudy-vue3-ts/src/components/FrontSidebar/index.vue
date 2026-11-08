@@ -44,30 +44,39 @@
           <span class="sb-name">OpenStudy</span>
         </button>
 
-        <el-tooltip placement="right" popper-class="os-tip-pop" :show-after="400" :offset="10">
+        <div class="sb-head-actions">
+          <button type="button" class="assistant-entry" title="OpenStudy 助手" aria-label="打开 OpenStudy 助手"
+            @click="openAssistant">
+            <OsIcon name="bot" :size="17" />
+          </button>
+          <el-tooltip placement="right" popper-class="os-tip-pop" :show-after="400" :offset="10">
+            <template #content>
+              <span class="os-tip">
+                <span class="os-tip__label">收起侧边栏</span>
+                <kbd class="os-tip__kbd">Ctrl + Alt + B</kbd>
+              </span>
+            </template>
+            <button class="sb-toggle" type="button" aria-label="收起侧边栏" @click="$emit('toggle')">
+              <OsIcon name="panel-left-close" :size="17" />
+            </button>
+          </el-tooltip>
+        </div>
+      </template>
+
+      <template v-else>
+        <!-- 收起态只保留「展开侧边栏」这一枚按钮：助手入口只在展开态出现。 -->
+        <el-tooltip placement="right" popper-class="os-tip-pop" :show-after="250" :offset="10">
           <template #content>
             <span class="os-tip">
-              <span class="os-tip__label">收起侧边栏</span>
+              <span class="os-tip__label">展开侧边栏</span>
               <kbd class="os-tip__kbd">Ctrl + Alt + B</kbd>
             </span>
           </template>
-          <button class="sb-toggle" type="button" aria-label="收起侧边栏" @click="$emit('toggle')">
-            <OsIcon name="panel-left-close" :size="17" />
+          <button class="sb-toggle sb-rail-toggle" type="button" aria-label="展开侧边栏" @click="$emit('toggle')">
+            <OsIcon name="panel-left" :size="18" />
           </button>
         </el-tooltip>
       </template>
-
-      <el-tooltip v-else placement="right" popper-class="os-tip-pop" :show-after="250" :offset="10">
-        <template #content>
-          <span class="os-tip">
-            <span class="os-tip__label">展开侧边栏</span>
-            <kbd class="os-tip__kbd">Ctrl + Alt + B</kbd>
-          </span>
-        </template>
-        <button class="sb-toggle sb-rail-toggle" type="button" aria-label="展开侧边栏" @click="$emit('toggle')">
-          <OsIcon name="panel-left" :size="18" />
-        </button>
-      </el-tooltip>
     </div>
 
     <!-- ==================== ② 新建对话 + 功能入口 ==================== -->
@@ -215,7 +224,7 @@
       </div>
     </section>
 
-      <!-- 收起态：给一个「回到对话」的图标，避免会话列表完全不可达 -->
+      <!-- 收起态：给一个「回到智能对话」的图标，避免会话列表完全不可达 -->
       <div v-else class="sb-rail-conv">
         <el-tooltip placement="right" popper-class="os-tip-pop" :show-after="250" :offset="10">
           <template #content>
@@ -647,6 +656,10 @@ function goEntry() {
   emitNavigate()
 }
 
+function openAssistant() {
+  window.dispatchEvent(new CustomEvent('openstudy:open-assistant'))
+}
+
 /** 新建对话：清掉当前会话 + 让对话页重置 */
 async function startNewChat() {
   if (!(await ensureLogin('使用智能对话'))) return
@@ -814,6 +827,44 @@ watch(
     justify-content: center;
     margin-bottom: 10px;
   }
+}
+
+.sb-head-actions {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.assistant-entry {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  color: var(--os-text-3);
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.assistant-entry:hover {
+  color: var(--os-accent);
+  background: var(--os-bg-hover);
+}
+
+.sb-assistant-slot {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.sb-assistant-slot--collapsed {
+  display: none;
 }
 
 .sb-brand {
@@ -1249,7 +1300,7 @@ watch(
   word-break: break-word;
 }
 
-/* 收起态：只有一枚「回到对话」的图标 */
+/* 收起态：只有一枚「回到智能对话」的图标 */
 .sb-rail-conv {
   display: flex;
   flex-direction: column;

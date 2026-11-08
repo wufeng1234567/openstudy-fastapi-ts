@@ -169,6 +169,9 @@ class RagDocument(Base):
     file_type: Mapped[Optional[str]] = mapped_column(String(50))
     file_size: Mapped[Optional[int]] = mapped_column(BigInteger)
     file_path: Mapped[Optional[str]] = mapped_column(String(500))
+    #: 在线网页导入时的原始 URL（普通上传为空）。前端据此显示「来源网页」并可点击回原文；
+    #: 不是 file_path 的替代 —— file_path 是本地落盘路径，这里是外部公开地址。
+    source_url: Mapped[Optional[str]] = mapped_column(String(1000))
 
     # 解析出来的全文。留着它才能「不重新上传就重新分块 / 重新向量化」
     # ⚠️ 含 `【图N】` 图片位置标记（见 `file_parser.build_marked_document`）—— 标记本身
