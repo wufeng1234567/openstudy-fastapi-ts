@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import re
@@ -138,26 +139,59 @@ async def extract_bank_entities(
     ).all()
     chunk_size = max(1, min(int(chunk_size or 20), 40))
     chunks = [rows[index : index + chunk_size] for index in range(0, len(rows), chunk_size)]
-    all_entities: Dict[str, Dict[str, Any]] = {}
-    all_relations: Dict[tuple, Dict[str, Any]] = {}
-    errors: List[str] = []
-    for chunk in chunks:
-        text = "\n\n".join(
+    texts = [
+        "\n\n".join(
             f"题目：{str(row.question_text or '')}\n解析：{str(row.analysis or '')}"
             for row in chunk
             if str(row.question_text or "").strip()
         )
-        if not text:
-            continue
-        result = await extract_entities_from_text(
-            db,
-            user_id=user_id,
-            source_type="bank",
-            source_id=int(bank_id),
-            source_name=f"题库 #{bank_id}",
-            text=text,
-            use_llm=use_llm,
-        )
+        for chunk in chunks
+    ]
+    texts = [text for text in texts if text]
+    all_entities: Dict[str, Dict[str, Any]] = {}
+    all_relations: Dict[tuple, Dict[str, Any]] = {}
+    errors: List[str] = []
+
+    async def _extract_chunk(text: str) -> Dict[str, Any]:
+        # 每块独立 session，避免多个并发 LLM 调用共享同一个 AsyncSession。
+        from app.database import async_session_factory
+
+        async with async_session_factory() as chunk_db:
+            return await extract_entities_from_text(
+                chunk_db,
+                user_id=user_id,
+                source_type="bank",
+                source_id=int(bank_id),
+                source_name=f"题库 #{bank_id}",
+                text=text,
+                use_llm=use_llm,
+            )
+
+    if use_llm and len(texts) > 1:
+        semaphore = asyncio.Semaphore(3)
+
+        async def _limited(text: str) -> Dict[str, Any]:
+            async with semaphore:
+                return await _extract_chunk(text)
+
+        results = await asyncio.gather(*(_limited(text) for text in texts))
+    else:
+        results = []
+        for text in texts:
+            async with db.begin_nested():
+                results.append(
+                    await extract_entities_from_text(
+                        db,
+                        user_id=user_id,
+                        source_type="bank",
+                        source_id=int(bank_id),
+                        source_name=f"题库 #{bank_id}",
+                        text=text,
+                        use_llm=use_llm,
+                    )
+                )
+
+    for result in results:
         if result.get("degraded", {}).get("error"):
             errors.append(str(result["degraded"]["error"]))
         for item in result.get("entities") or []:
@@ -168,7 +202,7 @@ async def extract_bank_entities(
     return {
         "entities": list(all_entities.values())[:80],
         "relations": list(all_relations.values())[:120],
-        "degraded": {"error": errors[0] if errors else "", "chunks": len(chunks)},
+        "degraded": {"error": errors[0] if errors else "", "chunks": len(texts), "parallel": bool(use_llm and len(texts) > 1)},
     }
 
 
