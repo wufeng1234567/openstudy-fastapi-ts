@@ -333,6 +333,10 @@
                       <OsIcon name="globe" :size="14" />
                       从网页导入
                     </el-dropdown-item>
+                    <el-dropdown-item command="bank" :disabled="bankImporting">
+                      <OsIcon name="database" :size="14" />
+                      从题库导入
+                    </el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -353,6 +357,21 @@
             </div>
 
             <div v-if="uploadTip" class="kbp-tip">{{ uploadTip }}</div>
+
+            <div v-if="linkedBanks.length" class="kbp-linked-banks">
+              <span class="kbp-linked-banks__label"><OsIcon name="database" :size="14" /> 已关联题库</span>
+              <el-tag
+                v-for="bank in linkedBanks"
+                :key="bank.bankId || bank.id"
+                size="small"
+                type="info"
+                effect="plain"
+                closable
+                @close="removeLinkedBank(bank)"
+              >
+                {{ bank.bankName || bank.name }} · {{ bank.questionCount || bank.totalQuestions || 0 }} 题
+              </el-tag>
+            </div>
 
             <div class="kbp-docs" v-loading="docsLoading">
               <div v-for="doc in visibleFiles" :key="doc.docId" class="kbp-doc"
@@ -447,6 +466,12 @@
                         </el-dropdown-item>
                         <el-dropdown-item command="text">
                           <OsIcon name="file-text" :size="14" /> 粘贴文本
+                        </el-dropdown-item>
+                        <el-dropdown-item command="url">
+                          <OsIcon name="globe" :size="14" /> 从网页导入
+                        </el-dropdown-item>
+                        <el-dropdown-item command="bank">
+                          <OsIcon name="database" :size="14" /> 从题库导入
                         </el-dropdown-item>
                       </el-dropdown-menu>
                     </template>
@@ -912,6 +937,52 @@
         <el-button @click="webImportVisible = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- 从题库导入：只做资料夹与题库的逻辑关联，不复制题目 -->
+    <el-dialog v-model="bankImportVisible" title="从题库导入" width="700px" append-to-body>
+      <div class="kbp-bank">
+        <p class="kbp-bank__hint">
+          把已有题库关联到当前资料夹。题库不会复制到资料夹里，只建立逻辑连接；关联后知识图谱会读取题库中的知识点与题目关系。
+        </p>
+        <div class="kbp-bank__bar">
+          <el-input v-model="bankImportKeyword" clearable placeholder="搜索题库名称或科目" />
+          <el-button size="small" plain :loading="bankImportLoading" @click="refreshBankImportList">刷新</el-button>
+        </div>
+        <div v-loading="bankImportLoading" class="kbp-bank__list">
+          <article v-for="bank in filteredBankImportBanks" :key="bank.bankId || bank.id" class="kbp-bank__item">
+            <div class="kbp-bank__main">
+              <div class="kbp-bank__title-row">
+                <b>{{ bank.bankName || bank.name || '未命名题库' }}</b>
+                <el-tag v-if="bank.linked" size="small" type="success" effect="plain">已关联</el-tag>
+              </div>
+              <span class="kbp-bank__meta">
+                {{ bank.subject || '未设置科目' }} · {{ bank.questionCount || bank.totalQuestions || 0 }} 道题
+              </span>
+              <p v-if="bank.description" class="kbp-bank__desc">{{ bank.description }}</p>
+            </div>
+            <el-button
+              size="small"
+              :type="bank.linked ? 'success' : 'primary'"
+              plain
+              :loading="bankImportLoadingId === (bank.bankId || bank.id)"
+              :disabled="bank.linked"
+              @click="importQuestionBank(bank)"
+            >
+              {{ bank.linked ? '已关联' : '关联到资料夹' }}
+            </el-button>
+          </article>
+          <div v-if="!bankImportLoading && !filteredBankImportBanks.length" class="kbp-bank__empty">
+            没有找到可关联的题库。先去「题库搭建」创建或导入题库。
+          </div>
+        </div>
+        <p class="kbp-bank__foot">
+          关联后题库仍归题库模块管理；知识图谱只读取其中的知识点、题目关系和薄弱题信息，不会复制题干。
+        </p>
+      </div>
+      <template #footer>
+        <el-button @click="bankImportVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -936,6 +1007,7 @@ import ShareKnowledgeDialog from './components/ShareKnowledgeDialog.vue'
 import ReceiveKnowledgeDialog from './components/ReceiveKnowledgeDialog.vue'
 import { listQuestionMain, getQuestionMain, updateQuestionMain } from '@/api/questionMain/questionMain'
 import { listMyQuestionBank } from '@/api/questionBank/questionBank'
+import { listKbQuestionBanks, linkKbQuestionBank, unlinkKbQuestionBank } from '@/api/ai/questionBankLink'
 import { listNote, getNote, updateNote } from '@/api/notes/note'
 import useUserStore from '@/store/modules/user'
 import useTopbarStore from '@/store/modules/topbar'
@@ -1412,6 +1484,8 @@ watch(activeKbId, (kbId) => {
   } catch {
     // 忽略存储失败
   }
+  if (kbId) void loadLinkedBanks()
+  else linkedBanks.value = []
 })
 const standaloneImages = ref<any[]>([])
 const assetUsage = ref<Record<string, number>>({})
@@ -1746,6 +1820,15 @@ const webImporting = ref(false)
 const webResults = ref<Array<Record<string, any>>>([])
 const webImportIsUrl = computed(() => /^https?:\/\/\S+/i.test(webImportQuery.value.trim()))
 
+/* 从题库导入：题库本身不复制，只建立资料夹 ↔ 题库引用 */
+const bankImportVisible = ref(false)
+const bankImportLoading = ref(false)
+const bankImporting = ref(false)
+const bankImportKeyword = ref('')
+const bankImportAvailable = ref<any[]>([])
+const linkedBanks = ref<any[]>([])
+const bankImportLoadingId = ref(0)
+
 /* ===================== 加载 ===================== */
 
 async function load(keepActive = true) {
@@ -1780,6 +1863,7 @@ async function load(keepActive = true) {
       )
       selectedDocIds.value = selectedDocIds.value.filter((id) => aliveIds.has(id))
       await applyJumpQuery()
+      await loadLinkedBanks()
     } else {
       loadFailed.value = true
     }
@@ -2771,6 +2855,7 @@ function onUploadCommand(command: string) {
   if (command === 'file') onPick()
   else if (command === 'text') openTextImport()
   else if (command === 'url') openWebImport()
+  else if (command === 'bank') openBankImport()
 }
 
 async function onFilesPicked(e: Event) {
@@ -3402,6 +3487,94 @@ async function importWebUrl(url: string) {
     ElMessage.error('网页导入失败：' + (e?.message || e))
   } finally {
     webImporting.value = false
+  }
+}
+
+/* ===================== 从题库导入（逻辑关联） ===================== */
+
+const filteredBankImportBanks = computed(() => {
+  const q = bankImportKeyword.value.trim().toLowerCase()
+  if (!q) return bankImportAvailable.value
+  return bankImportAvailable.value.filter((bank: any) => {
+    const text = `${bank.bankName || bank.name || ''} ${bank.subject || ''}`.toLowerCase()
+    return text.includes(q)
+  })
+})
+
+async function loadLinkedBanks() {
+  const kb = activeKb.value
+  if (!kb || !Number(kb.kbId)) {
+    linkedBanks.value = []
+    return
+  }
+  try {
+    const res: any = await listKbQuestionBanks(Number(kb.kbId))
+    if (res.code === 200) linkedBanks.value = res.data?.linked || []
+  } catch {
+    linkedBanks.value = []
+  }
+}
+
+async function refreshBankImportList() {
+  const kb = activeKb.value
+  if (!kb || !Number(kb.kbId)) return
+  bankImportLoading.value = true
+  try {
+    const res: any = await listKbQuestionBanks(Number(kb.kbId))
+    if (res.code === 200) {
+      linkedBanks.value = res.data?.linked || []
+      bankImportAvailable.value = res.data?.available || []
+    } else {
+      ElMessage.error(res.msg || '读取题库失败')
+    }
+  } catch (e: any) {
+    ElMessage.error('读取题库失败：' + (e?.message || e))
+  } finally {
+    bankImportLoading.value = false
+  }
+}
+
+async function openBankImport() {
+  if (!activeKb.value) return
+  bankImportKeyword.value = ''
+  bankImportVisible.value = true
+  await refreshBankImportList()
+}
+
+async function importQuestionBank(bank: any) {
+  const kb = activeKb.value
+  const bankId = Number(bank?.bankId || bank?.id || 0)
+  if (!kb || !bankId || bank?.linked || bankImporting.value) return
+  bankImporting.value = true
+  bankImportLoadingId.value = bankId
+  try {
+    const res: any = await linkKbQuestionBank(Number(kb.kbId), bankId)
+    if (res.code === 200) {
+      ElMessage.success(`已关联题库「${bank.bankName || bank.name || ''}」，知识图谱会自动提取其中的知识点`)
+      await refreshBankImportList()
+    } else {
+      ElMessage.error(res.msg || '关联题库失败')
+    }
+  } catch (e: any) {
+    ElMessage.error('关联题库失败：' + (e?.message || e))
+  } finally {
+    bankImporting.value = false
+    bankImportLoadingId.value = 0
+  }
+}
+
+async function removeLinkedBank(bank: any) {
+  const kb = activeKb.value
+  const bankId = Number(bank?.bankId || bank?.id || 0)
+  if (!kb || !bankId) return
+  try {
+    const res: any = await unlinkKbQuestionBank(Number(kb.kbId), bankId)
+    if (res.code === 200) {
+      ElMessage.success('已取消关联')
+      await refreshBankImportList()
+    }
+  } catch (e: any) {
+    ElMessage.error('取消关联失败：' + (e?.message || e))
   }
 }
 
@@ -5364,6 +5537,114 @@ onBeforeUnmount(() => {
   color: var(--os-text-4, #9ca3af);
   font-size: 11px;
   line-height: 1.55;
+}
+
+/* ===================== 从题库导入 ===================== */
+.kbp-bank__hint {
+  margin: 0 0 12px;
+  color: var(--os-text-3, #6b7280);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.kbp-bank__bar {
+  display: flex;
+  gap: 8px;
+}
+
+.kbp-bank__bar .el-input {
+  flex: 1;
+}
+
+.kbp-bank__list {
+  display: flex;
+  max-height: 360px;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  margin-top: 12px;
+}
+
+.kbp-bank__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--os-border-soft, #e5eaf2);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.kbp-bank__main {
+  min-width: 0;
+  flex: 1;
+}
+
+.kbp-bank__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kbp-bank__title-row b {
+  overflow: hidden;
+  color: var(--os-text-1, #253247);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kbp-bank__meta {
+  display: block;
+  margin-top: 4px;
+  color: var(--os-text-4, #9ca3af);
+  font-size: 11px;
+}
+
+.kbp-bank__desc {
+  overflow: hidden;
+  margin: 4px 0 0;
+  color: var(--os-text-3, #6b7280);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kbp-bank__empty {
+  padding: 24px 0;
+  color: var(--os-text-4, #9ca3af);
+  font-size: 12px;
+  text-align: center;
+}
+
+.kbp-bank__foot {
+  margin: 10px 0 0;
+  color: var(--os-text-4, #9ca3af);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.kbp-linked-banks {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--os-border-soft, #e5eaf2);
+  border-radius: 8px;
+  background: var(--os-surface-2, #f8fafc);
+}
+
+.kbp-linked-banks__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 2px;
+  color: var(--os-text-3, #6b7280);
+  font-size: 11.5px;
+  font-weight: 600;
 }
 
 /* ---------- 单文档刨析 ---------- */

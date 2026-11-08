@@ -27,6 +27,7 @@ from app.models.content import ContentReference, RagImageAsset
 from app.models.note import Note
 from app.models.rag import DOC_PARSED, DOC_VECTORIZED, RagDocument
 from app.models.wiki import RagWikiPage
+from app.services import question_bank_link_service
 from app.services.rag import study_graph_service
 
 SOURCE_TYPES = ("wiki", "bank", "document", "web", "note", "image")
@@ -354,6 +355,14 @@ async def build_study_map(
     include_doc = bool({"document", "web", "note", "image"} & wanted)
     include_wiki = "wiki" in wanted
     include_bank = "bank" in wanted
+
+    # 资料夹里逻辑关联的题库默认参与本次图谱；显式传入 bank_ids 时以传入为准。
+    if int(kb_id or 0) > 0 and not bank_ids and include_bank:
+        linked_ids = await question_bank_link_service.linked_bank_ids(
+            db, user_id=int(user_id), kb_id=int(kb_id)
+        )
+        if linked_ids:
+            bank_ids = linked_ids
 
     core = await study_graph_service.build_study_graph(
         db,

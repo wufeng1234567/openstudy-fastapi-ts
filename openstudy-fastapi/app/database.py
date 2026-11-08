@@ -88,6 +88,7 @@ def register_all_models() -> None:
         notice,
         notification,
         question,
+        question_bank_link,
         role,
         study_plan,
         user,

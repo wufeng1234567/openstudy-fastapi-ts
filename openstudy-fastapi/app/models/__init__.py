@@ -11,3 +11,5 @@ from app.models.content import ContentReference, RagImageAsset
 from app.models.knowledge_graph import RagGraphEntity, RagGraphRelation
 # 学习建议历史快照（只存建议，不存任务/完成态）
 from app.models.study_plan import StudyPlanSnapshot
+# 资料夹 ↔ 题库逻辑关联（不复制题库，只做引用）
+from app.models.question_bank_link import QuestionBankKbLink
