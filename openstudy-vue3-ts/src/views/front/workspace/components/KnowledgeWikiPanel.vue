@@ -169,6 +169,7 @@
         :active-kb-id="activeKbId"
         :node-titles="adviceNodeTitles"
         @update="onAdviceUpdate"
+        @focus-page="focusAdvicePage"
         @busy="adviceLoading = $event"
       />
     </template>
@@ -1104,6 +1105,16 @@ function generateAdvice() {
 function onAdviceUpdate(payload: any) {
   adviceTrace.value = payload?.trace || null
   adviceVisitedPageIds.value = (payload?.visitedPageIds || []).map(String)
+}
+
+function focusAdvicePage(pageId: number) {
+  const node = mapNodes.value.find((item: any) => Number(item.pageId) === Number(pageId))
+  detailVisible.value = false
+  if (node) {
+    selectMapNode(node, false)
+  } else {
+    mapSelectedPageId.value = Number(pageId)
+  }
 }
 
 /** 旧入口：不再跳学习计划页，直接在当前知识图谱里开启建议模式。 */

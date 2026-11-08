@@ -37,7 +37,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import ResizableDrawer from '@/components/ResizableDrawer/index.vue'
 import {
@@ -64,6 +64,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   (e: 'busy', value: boolean): void
   (e: 'update', payload: { advice: any; trace: any; visitedPageIds: string[] }): void
+  (e: 'focus-page', pageId: number): void
 }>()
 
 const advice = ref<any>(null)
@@ -223,12 +224,28 @@ async function loadHistoryItem(item: any) {
     ElMessage.error(res.msg || '读取规划失败')
     return
   }
+  runSeq++
+  // 先清空旧轨迹，确保再次载入历史时 parent 能重新触发连线动画。
+  advice.value = null
+  trace.value = null
+  await nextTick()
   advice.value = res.data.advice || null
   trace.value = res.data.trace || null
   snapshotId.value = Number(res.data.id || 0)
   phase.value = 'ready'
   drawer.value = true
   historyOpen.value = false
+  const seedRaw = String(
+    res.data.scope?.seedNodeId ||
+    res.data.advice?.scope?.seedNodeId ||
+    res.data.trace?.seedNodeId ||
+    ''
+  )
+  const seedPageId = Number(seedRaw.replace(/^topic:/, ''))
+  if (seedPageId) {
+    selectedNode.value = { id: `topic:${seedPageId}`, title: props.nodeTitles?.[String(seedPageId)] || '' }
+    emit('focus-page', seedPageId)
+  }
   syncState()
 }
 
