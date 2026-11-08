@@ -1,17 +1,29 @@
 <template>
-  <el-drawer v-model="drawer" size="420px" :with-header="false" append-to-body class="kah__drawer">
-    <StudyAdvicePanel
-      :advice="advice"
-      :loading="isBusy"
-      :phase="phase"
-      :selected-node="selectedNode"
-      :node-titles="nodeTitles || {}"
-      @generate="generate()"
-      @adjust="adjust"
-      @save="saveCurrent"
-      @history="openHistory"
-    />
-  </el-drawer>
+  <ResizableDrawer
+    v-model="drawer"
+    direction="rtl"
+    storage-key="openstudy_advice_drawer_size"
+    :default-width="440"
+    :min="360"
+    :max="760"
+    :modal="false"
+    :modal-penetrable="true"
+    :close-on-click-outside="true"
+  >
+    <div class="kah__drawer">
+      <StudyAdvicePanel
+        :advice="advice"
+        :loading="isBusy"
+        :phase="phase"
+        :selected-node="selectedNode"
+        :node-titles="nodeTitles || {}"
+        @generate="generate()"
+        @adjust="adjust"
+        @save="saveCurrent"
+        @history="openHistory"
+      />
+    </div>
+  </ResizableDrawer>
 
   <StudyPlanHistoryDrawer
     v-model="historyOpen"
@@ -27,6 +39,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import ResizableDrawer from '@/components/ResizableDrawer/index.vue'
 import {
   createStudyPlanHistory,
   deleteStudyPlanHistory,
@@ -240,5 +253,5 @@ defineExpose({ generateForPage, open })
 </script>
 
 <style scoped>
-.kah__drawer :deep(.el-drawer__body) { padding: 10px; }
+.kah__drawer { padding: 10px; }
 </style>

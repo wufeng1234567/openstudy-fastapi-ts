@@ -13,7 +13,7 @@
 
     <div v-if="loading" class="sap__skeleton">
       <i></i><i></i><i></i><i></i>
-      <span>{{ phase === 'thinking' ? 'LLM 正在思考…' : '正在生成建议…' }}</span>
+      <span>{{ phase === 'thinking' ? 'OpenStudy 正在思考…' : '正在生成建议…' }}</span>
     </div>
 
     <template v-else-if="advice">

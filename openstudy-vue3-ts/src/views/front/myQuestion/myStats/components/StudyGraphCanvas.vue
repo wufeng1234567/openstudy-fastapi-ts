@@ -94,7 +94,7 @@ const statusText = computed(() => {
   const phase = String(props.phase || 'idle')
   if (phase === 'reading') return '正在读取知识图谱…'
   if (phase === 'traversing') return '正在沿真实图谱关系读取…'
-  if (phase === 'thinking') return 'LLM 正在思考…'
+  if (phase === 'thinking') return 'OpenStudy 正在思考…'
   if (phase === 'ready') return '建议已生成'
   return '点一个节点，或直接生成建议'
 })

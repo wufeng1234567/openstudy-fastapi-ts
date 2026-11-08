@@ -144,17 +144,6 @@
                 <span>使用说明</span>
               </button>
             </div>
-            <div class="kw-graph-panel__divider"></div>
-            <div class="kw-graph-panel__overview">
-              <span><OsIcon name="chart-column" :size="13" /> 学习雷达</span>
-              <b>{{ mapLearnSummary.read }} / {{ mapLearnSummary.total }} 已读 · {{ mapLearnSummary.practiced }} 练过</b>
-              <em>掌握 {{ mapLearnSummary.mastered }} · 待补强 {{ mapLearnSummary.weak }}</em>
-              <div class="kw-learn-legend">
-                <span v-for="item in learningLegend" :key="item.level">
-                  <i :style="{ background: item.color }"></i>{{ item.label }}
-                </span>
-              </div>
-            </div>
           </template>
           <template v-else>
             <p class="kw-advice-mode-tip">点一个节点作为起点，生成可反复调整的学习建议；不会打开知识百科抽屉。</p>
