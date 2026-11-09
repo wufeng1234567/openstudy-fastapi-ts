@@ -73,6 +73,15 @@ from app.services.ai.agent.guard import ExecutionGuard, GuardState, params_hash
 from app.services.ai.agent import memory_hook
 from app.services.ai.agent import orchestrator
 from app.services.ai.agent import roles as roles_mod
+from app.services.ai.agent.loop_helpers import (
+    detect_user_language as _detect_user_language,
+    dumps as _dumps,
+    friendly_llm_error as _friendly_llm_error,
+    reasoning_of as _reasoning_of,
+    safe_params as _safe_params,
+    text_of as _text_of,
+    tool_start_message as _tool_start_message,
+)
 from app.services.ai.agent import rollback_service
 from app.services.ai.agent import runtime_context
 from app.services.ai.agent import tool_pref_service
@@ -1141,20 +1150,6 @@ async def _rollback_empty_created_bank(
         logger.info("[agent] 用户取消导入：删除本轮新建的空题库 bank_id={}", bank_id)
     except Exception as e:  # noqa: BLE001 - 清理是增强项，失败不影响「已取消」
         logger.warning("[agent] 取消导入后清理空题库失败 bank_id={}: {}", bank_id, e)
-
-
-def _detect_user_language(text: str) -> str:
-    """粗略判断用户消息语言（只为把「结论语言」透传给子代理）
-
-    判据：CJK 汉字占比 >= 15% 即认为中文，否则英文。**不求精确**——它只用于给子代理
-    末尾追加一句「用 X 语言总结」，判错的代价极小（子代理仍会读到原始任务文本）。
-    默认中文（本平台用户以中文为主）。
-    """
-    s = text or ""
-    if not s:
-        return "中文"
-    han = sum(1 for ch in s if "\u4e00" <= ch <= "\u9fff")
-    return "中文" if (han / max(1, len(s))) >= 0.15 else "English"
 
 
 async def run_agent_stream(
@@ -2539,126 +2534,6 @@ async def run_agent_stream(
         }
     )
     yield "[DONE]"
-
-
-# ============================================================
-# 小工具
-# ============================================================
-
-
-def _text_of(message: Any) -> str:
-    content = getattr(message, "content", "")
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = [
-            block.get("text", "")
-            for block in content
-            if isinstance(block, dict) and block.get("type") == "text"
-        ]
-        return "\n".join(p for p in parts if p)
-    return ""
-
-
-def _reasoning_of(chunk: Any) -> str:
-    """从流式分片里取「深度思考正文」，取不到返回空串。
-
-    ⚠️ 与 `chunk.content` 是**两回事**，千万别混：
-       - `content` 是给用户看的正式回答，要进 `full_text` → 落库 → `done.answer`
-       - 思考正文只用于下发 `thinking` 事件，**不进** `full_text`
-         （否则思考会混进最终回答，还会被写进聊天记录）
-
-    分片上的思考正文由 `langchain_reasoning_patch` 注入到 `additional_kwargs`
-    （langchain-openai 默认会把它丢掉，详见该模块 docstring）。
-    """
-    kwargs = getattr(chunk, "additional_kwargs", None)
-    if not isinstance(kwargs, dict):
-        return ""
-    for key in REASONING_DELTA_KEYS:
-        value = kwargs.get(key)
-        if isinstance(value, str) and value:
-            return value
-    return ""
-
-
-def _dumps(payload: Any) -> str:
-    try:
-        return json.dumps(payload, ensure_ascii=False, default=str)
-    except Exception:  # noqa: BLE001
-        return str(payload)
-
-
-def _safe_params(params: Dict[str, Any]) -> Dict[str, Any]:
-    """给前端看的参数：长字段截断（`questions` 可能上万字）"""
-    safe: Dict[str, Any] = {}
-    for key, value in (params or {}).items():
-        if key.startswith("_"):
-            continue
-        if isinstance(value, str) and len(value) > 200:
-            safe[key] = value[:200] + f"…（共 {len(value)} 字）"
-        else:
-            safe[key] = value
-    return safe
-
-
-def _tool_start_message(tool_name: str, params: Dict[str, Any]) -> str:
-    """把工具调用翻译成用户看得懂的一句话"""
-    action = str(params.get("action") or "")
-    bank = params.get("bank_name") or (f"ID={params.get('bank_id')}" if params.get("bank_id") else "")
-    if tool_name == "bank_manage":
-        return {
-            "list": "正在查询你的题库…",
-            "detail": f"正在查看题库{bank}的详情…",
-            "create": f"正在创建题库「{params.get('bank_name') or ''}」…",
-            "update": f"正在修改题库{bank}…",
-            "delete": f"正在删除题库{bank}…",
-            "delete_by_name": f"正在删除题库「{params.get('bank_name') or ''}」…",
-        }.get(action, "正在处理题库…")
-    if tool_name == "question_manage":
-        # batch_import 的入参里有 questions 数组 + 目标题库，据实说清"导入几道到哪"
-        # —— 泛泛一句「正在批量导入题目…」在分批导入（第1~15题、16~30题）时看不出进展。
-        if action == "batch_import":
-            qs = params.get("questions")
-            n = len(qs) if isinstance(qs, list) else None
-            cnt = f"{n} 道" if n else ""
-            target = f"到「{bank}」" if bank else ""
-            return f"正在批量导入{cnt}题目{target}…"
-        return {
-            "list": f"正在查询「{bank}」的题目…",
-            "detail": "正在查看题目详情…",
-            "search": "正在搜索题目…",
-            "create": "正在创建题目…",
-            "update": "正在修改题目…",
-            "delete": "正在删除题目…",
-            "delete_many": "正在批量删除题目…",
-            "clear_questions": f"正在清空「{bank}」的题目…",
-        }.get(action, "正在处理题目…")
-    return f"正在执行 {tool_name}…"
-
-
-def _friendly_llm_error(error: Exception) -> str:
-    """把上游异常翻译成用户能看懂、且**可行动**的一句话"""
-    text = str(error)
-    lowered = text.lower()
-    # 若异常本身已经是后端抛出的**中文友好提示**（含配置指引），原样透传，不要覆盖。
-    if "管理员" in text or "我的模型" in text or "系统管理" in text:
-        return text
-    if "tools" in lowered and ("not support" in lowered or "unsupported" in lowered):
-        return (
-            "当前模型不支持工具调用（Function Calling），Agent 无法工作。"
-            "请在模型下拉框里切换到 deepseek-flash / deepseek-v4-pro 等官方模型。"
-        )
-    if "api_key" in lowered or "401" in lowered or "unauthorized" in lowered or "authentication" in lowered:
-        return (
-            "模型凭据无效或未配置。\n"
-            "• 用的是系统官方模型：请联系【管理员】进入后台「系统管理 → AI 模型配置」填写该模型的 API Key；\n"
-            "• 用的是你自己添加的模型：请到「个人中心 → 我的模型」补全有效的 API Key。"
-        )
-    if "rate limit" in lowered or "429" in lowered:
-        return "模型请求过于频繁（限流），请稍后再试。"
-    if "timeout" in lowered or "timed out" in lowered:
-        return "模型响应超时，请重试；文档较大时可以只上传其中一部分。"
-    return f"模型调用失败：{text}"
 
 
 __all__ = [
