@@ -1701,6 +1701,7 @@ async function reload() {
 }
 
 let buildTimer: ReturnType<typeof setInterval> | null = null
+let buildPollFailures = 0
 
 function stopBuildPolling() {
   if (buildTimer) {
@@ -1711,10 +1712,12 @@ function stopBuildPolling() {
 
 function startBuildPolling(jobId: number) {
   stopBuildPolling()
+  buildPollFailures = 0
   buildTimer = setInterval(async () => {
     try {
       const res = await getWikiBuildJob(jobId)
       if (res.code !== 200 || !res.data) return
+      buildPollFailures = 0
       buildJob.value = res.data
       if (res.data.status !== 'running') {
         stopBuildPolling()
@@ -1728,8 +1731,18 @@ function startBuildPolling(jobId: number) {
         }
       }
     } catch (error: any) {
-      // 网络短暂抖动不立刻结束进度；组件卸载时会清理定时器
+      // 后端重启/断网时不能无限显示更新中：连续 3 次轮询失败就结束。
+      buildPollFailures += 1
       console.warn('[wiki] build job poll failed', error)
+      if (buildPollFailures >= 3) {
+        stopBuildPolling()
+        buildJob.value = {
+          ...(buildJob.value || {}),
+          status: 'failed',
+          error: '知识百科更新任务连接中断，请重新发起'
+        }
+        ElMessage.error('知识百科更新任务连接中断，请重新发起')
+      }
     }
   }, 1500)
 }
@@ -1817,6 +1830,7 @@ async function applyWikiUpdate(item: any) {
 async function build() {
   if (!props.activeKbId || building.value || buildActive.value) return
   building.value = true
+  buildPollFailures = 0
   try {
     const res = await buildWikiPages({
       kbId: Number(props.activeKbId),

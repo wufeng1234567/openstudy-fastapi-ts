@@ -397,6 +397,7 @@ function clearFilters() {
 }
 
 let describeTimer: ReturnType<typeof setInterval> | null = null
+let describePollFailures = 0
 
 function stopDescribePolling() {
   if (describeTimer) {
@@ -407,10 +408,12 @@ function stopDescribePolling() {
 
 function startDescribePolling(jobId: number) {
   stopDescribePolling()
+  describePollFailures = 0
   describeTimer = setInterval(async () => {
     try {
       const res = await getGalleryDescribeJob(jobId)
       if (res.code !== 200 || !res.data) return
+      describePollFailures = 0
       describeJob.value = res.data
       // 同步刷新卡片状态，用户能看到每张图从「生成中」变成「已描述」
       await reload(true)
@@ -426,8 +429,18 @@ function startDescribePolling(jobId: number) {
         if (detail.value?.assetKey) await loadDetail(detail.value.assetKey, false)
       }
     } catch (error: any) {
-      // 网络抖动不立刻终止任务状态，下一轮继续；只有组件卸载才清理定时器
+      // 后端重启/断网时不能无限转圈：连续 3 次失败就结束当前轮询并提示。
+      describePollFailures += 1
       console.warn('[gallery] describe job poll failed', error)
+      if (describePollFailures >= 3) {
+        stopDescribePolling()
+        describeJob.value = {
+          ...(describeJob.value || {}),
+          status: 'failed',
+          error: '图片描述任务连接中断，请重新发起'
+        }
+        ElMessage.error('图片描述任务连接中断，请重新发起')
+      }
     }
   }, 1500)
 }
@@ -449,6 +462,7 @@ async function describePending() {
   const keys = pendingKeys.value.slice(0, 40)
   if (!keys.length || jobActive.value) return
   describing.value = true
+  describePollFailures = 0
   try {
     const res = await describeGalleryAssets({ assetKeys: keys, limit: 40 })
     if (res.code !== 200) {

@@ -76,6 +76,9 @@ async def lifespan(app: FastAPI):
         from app.services.rag.document_pipeline import recover_stale_documents
 
         await recover_stale_documents()
+        from app.services.ai_job_recovery import recover_stale_ai_jobs
+
+        await recover_stale_ai_jobs()
     except Exception as _e:  # noqa: BLE001
         from loguru import logger as _logger
 
