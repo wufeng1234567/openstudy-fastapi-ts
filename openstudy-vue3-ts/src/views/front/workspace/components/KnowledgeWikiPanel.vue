@@ -95,7 +95,7 @@
           <g :transform="`translate(${mapView.x} ${mapView.y}) scale(${mapView.scale})`">
             <path v-for="hull in mapHulls" :key="hull.key" :d="hull.path" class="kw-map-hull"
               :class="{ 'is-hovered': mapHoveredId && hull.ids.includes(String(mapHoveredId)) }" />
-            <text v-for="hull in mapHulls" :key="`label-${hull.key}`" :x="hull.labelX" :y="hull.labelY"
+            <text v-for="hull in mapHulls" v-show="mapShowEntitySetLabels" :key="`label-${hull.key}`" :x="hull.labelX" :y="hull.labelY"
               class="kw-map-hull-label">{{ hull.label }}</text>
             <line v-for="edge in mapEdges" :key="edge.key" :x1="edge.x1" :y1="edge.y1" :x2="edge.x2" :y2="edge.y2"
               :data-edge-source="edge.source" :data-edge-target="edge.target"
@@ -160,6 +160,11 @@
               <button type="button" class="kw-graph-action" :class="{ 'is-active': !mapShowArrows }" @click="toggleMapArrows">
                 <OsIcon name="check" :size="14" />
                 <span>{{ mapShowArrows ? '隐藏箭头' : '显示箭头' }}</span>
+              </button>
+              <button type="button" class="kw-graph-action" :class="{ 'is-active': !mapShowEntitySetLabels }"
+                @click="mapShowEntitySetLabels = !mapShowEntitySetLabels">
+                <OsIcon name="eye-off" :size="14" />
+                <span>{{ mapShowEntitySetLabels ? '隐藏实体集名称' : '显示实体集名称' }}</span>
               </button>
               <button type="button" class="kw-graph-action" @click="showRouteGuide">
                 <OsIcon name="circle-help" :size="14" />
@@ -578,6 +583,7 @@ const mapSelectedPageId = ref<number | null>(null)
 const searchSuppressed = ref(false)
 const mapHideUnlinked = ref(false)
 const mapShowArrows = ref(true)
+const mapShowEntitySetLabels = ref(true)
 const mapLearnMode = ref(true)
 const mapLearningPath = ref<string[]>([])
 const learningRoute = ref<any>(null)
