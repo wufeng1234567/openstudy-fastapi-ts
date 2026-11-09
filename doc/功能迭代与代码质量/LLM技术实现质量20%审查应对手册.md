@@ -14,7 +14,7 @@
 
 | 级别 | 目标任务 | 验收标准 |
 |---|---|---|
-| P0 | 证据数字统一：29 个 Agent 工具、98 pytest、3,214 lint warnings、2,993 type-check errors、19% coverage | 全文搜索无 28 工具/102 tests/3,218 errors 等旧数字；与 `quality-report.md` 一致 |
+| P0 | 证据数字统一：29 个 Agent 工具、99 pytest、3,214 lint warnings、2,993 type-check errors、19% coverage | 全文搜索无 28 工具/102 tests/3,218 errors 等旧数字；与 `quality-report.md` 一致 |
 | P1 | 把第 2 节 7 步检查扩成 10 步可执行清单：根目录/README/scripts/命令/大文件/坏味道/测试/版本/死代码/口径一致性 | 每一步都有「看什么 → 怎么跑 → 期望结果 → 不通过怎么解释」 |
 | P1 | 增加评审模拟脚本入口与证据文件索引 | 评审可依次打开 `quality-report.md`、测试/构建命令、P0/P1/P2 台账 |
 | P2 | 增加答辩 Q12–Q14：type-check 存量、笔记导入资料夹、图谱四套服务 | 每个问题都有事实数字、边界说明、下一步动作，不空泛 |

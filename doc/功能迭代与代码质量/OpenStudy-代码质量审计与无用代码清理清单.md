@@ -30,7 +30,7 @@
 1. **type-check 存量 2,993 条错误（初始 3,218）**：多数集中在 RuoYi 后台页（system/monitor/questionMarked/questionError 等）与历史组件；需要按文件批处理，先修 `request.ts` 返回类型、全局 `ComponentCustomProperties`、`ref({})` 泛型，再逐模块收紧。
 2. **ESLint 3,214 条 warnings**：当前为 warn-only 基线，P1 按规则分组清理（`no-explicit-any`、`no-console`、`vue/require-valid-default-prop` 等）。
 3. **CI 完整验证**：本地已改 CI 的 pytest/ruff step 与 `npm install` 兜底，但未在 GitHub runner 实跑。
-4. **Git 提交**：本轮只改工作区，未提交；`doc/功能迭代与代码质量/` 本身仍是未跟踪目录。
+4. **Git 提交**：本轮代码/文档已提交并推送；最新提交 `fb430ee`，工作区只剩用户文件 `智能体核心知识梳理.docx`、`智能整理测试集/` 未跟踪。
 
 ### 0.1 P1 第一批执行记录（2026-11-09）
 
@@ -510,7 +510,7 @@ node tests/check_agent_dsfree.mjs
 
 **P0 后仍然最容易被抓的 5 个点：**
 
-1. `npm run type-check` 从「必崩」变成「能跑但 3,218 条存量错误」——比之前诚实，但离绿还有距离；
+1. `npm run type-check` 从「必崩」变成「能跑但 2,993 条存量错误」——比之前诚实，但离绿还有距离；
 2. `npm run lint` 是 0 errors / 3,214 warnings 的 warn-only 基线，warning 数量会被评审追问；
 3. `package-lock.json` 被前端 .gitignore 忽略，CI 目前用 `npm install` 兜底，锁文件口径未完全统一；
 4. 后台动态菜单页（system/monitor/courses 等）仍有历史类型错误与「教师/学生」字段，需产品确认去留；
@@ -531,7 +531,7 @@ node tests/check_agent_dsfree.mjs
 7. **加 lint 基线**：`ruff.toml`（先开 `E9/F63/F7/F82/F401/F841/E722`，ignore `B008/E501/E402`）；前端加 ESLint flat config + Prettier，先 `warn` 不阻塞。
 8. **5 处裸 except 清零**：`auth.py:101`、`ai.py:405`、`notes.py:1103/1138`、`notice_front.py:68`。
 
-**验收标准（修订后）**：`git status` 干净；`pytest tests` 99 passed；`ruff check app --select E9,F63,F7,F82` exit 0；`npm run lint` 0 errors；`npm run build:prod` exit 0；VERSION 全一致；全仓 grep `float-btn` 0 命中。**`npm run type-check` 仍会失败（3,218 条存量错误），列入 P1 首个专项，不伪装为 P0 已完成。**
+**验收标准（修订后）**：`git status` 仅剩用户文件；`pytest tests` 99 passed；`ruff check app --select E9,F63,F7,F82` exit 0；`npm run lint` 0 errors；`npm run build:prod` exit 0；VERSION 全一致；全仓 grep `float-btn` 0 命中。**`npm run type-check` 仍会失败（3,218 条存量错误），列入 P1 首个专项，不伪装为 P0 已完成。**
 
 ### P1（1～2 周，结构化改进，需测试保护）— 下一步
 
@@ -566,7 +566,7 @@ Get-Content VERSION
 Select-String -Path openstudy-fastapi/app/main.py -Pattern 'version="'
 Select-String -Path openstudy-vue3-ts/package.json -Pattern '"version"'
 
-# 前端类型检查（P0 后：不再崩溃，但仍有 3,218 条存量错误）
+# 前端类型检查（P0 后：不再崩溃，但仍有 2,993 条存量错误）
 cd openstudy-vue3-ts; npm run type-check
 
 # 后端测试（P0 后）

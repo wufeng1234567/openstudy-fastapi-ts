@@ -1,7 +1,7 @@
 # OpenStudy 质量验收报告
 
 > 生成日期：2026-11-09
-> 代码基线：`main @ 58f12c7` + 本轮未提交工作区改动
+> 代码基线：`main @ fb430ee`（质量/笔记导入/write metadata 已提交）
 > 用途：给 LLM 评审/答辩提供可直接复核的命令、输出与当前债务边界。
 > 结论口径：**不把 type-check 的 2,993 条存量错误说成已清零；P0 门禁除 type-check 外可复跑，P1 已在结构债务上推进。**
 
@@ -15,11 +15,11 @@
 | 后端覆盖率基线 | `pytest tests --cov=app/services --cov-report=term-missing` | **19%**（20,620 / 25,327 行未覆盖） | ✅ 仅报告 |
 | 后端语法/未定义名 | `ruff check app --select E9,F63,F7,F82` | **All checks passed** | ✅ |
 | 后端字节码 | `python -m compileall -q app` | **exit 0** | ✅ |
-| 应用装配 | `python -c "from app.main import app"` | **routes: 541** | ✅ |
+| 应用装配 | `python -c "from app.main import app"` | **routes: 545** | ✅ |
 | 前端 lint | `npm run lint` | **0 errors / 3,214 warnings** | ✅ warn-only 基线 |
 | 前端构建 | `npm run build:prod` | **exit 0** | ✅ |
 | 前端类型检查 | `npm run type-check` | **exit 2；2,993 条存量错误** | 🟡 工具已修复，未清零 |
-| 工作区差异 | `git diff --stat` | **72 files changed, +344 / −14,124** | 🟡 未提交 |
+| 工作区状态 | `git status --porcelain` | 仅剩用户文件 `智能体核心知识梳理.docx`、`智能整理测试集/`；代码/文档已提交 | ✅ |
 
 > `npm run type-check` 的失败不是 vue-tsc 启动崩溃（旧问题已修复），而是代码里真实存在的存量类型错误；详见 `OpenStudy-代码质量审计与无用代码清理清单.md` 的 P1 专项。
 
@@ -65,7 +65,7 @@
 2. **lint 是 warn-only 基线**：3,214 warnings 是存量债务台账，不是 0 告警。
 3. **覆盖率只有 19%**：这是基线数字，不是质量目标；不设阈值。
 4. **CI 尚未在 GitHub runner 实跑**：本轮只修改了 workflow 配置，本地验证通过不等于远端绿。
-5. **所有改动未提交 git**：`git status` 仍包含文档目录、新增模型/配置与若干未跟踪文件；提交前需按团队规范 review。
+5. **本轮代码/文档已提交并推送**：最新提交 `fb430ee`；工作区只剩用户文件 `智能体核心知识梳理.docx`、`智能整理测试集/` 未跟踪。
 
 ---
 
