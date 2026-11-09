@@ -16,7 +16,7 @@
         :loading="isBusy"
         :phase="phase"
         :selected-node="selectedNode"
-        :node-titles="nodeTitles || {}"
+        :node-titles="displayNodeTitles"
         @generate="generate()"
         @adjust="adjust"
         @save="saveCurrent"
@@ -76,6 +76,8 @@ const historyOpen = ref(false)
 const history = ref<any[]>([])
 const snapshotId = ref(0)
 const bankIds = ref<number[]>([...(readStudyPlanConfig(props.activeKbId)?.bankIds || [])])
+const graphTitles = ref<Record<string, string>>({})
+const displayNodeTitles = computed(() => ({ ...(props.nodeTitles || {}), ...graphTitles.value }))
 let runSeq = 0
 
 const isBusy = computed(() => ['reading', 'traversing', 'thinking'].includes(phase.value))
@@ -113,6 +115,15 @@ async function generateForPage(pageId: number) {
   selectedNode.value = { id: `topic:${pageId}`, title: props.nodeTitles?.[String(pageId)] || '当前主题' }
   // 只打开“是否生成建议”的抽屉；用户确认后再生成。
   drawer.value = true
+}
+
+function rememberGraphTitles(graph: any) {
+  if (!graph?.nodes) return
+  const next = { ...graphTitles.value }
+  for (const node of graph.nodes) {
+    if (node?.id && node?.title) next[String(node.id)] = String(node.title)
+  }
+  graphTitles.value = next
 }
 
 async function playTrace(current: any) {
@@ -166,6 +177,7 @@ async function generate(instruction = '', parentId = 0) {
     if (adviceRes.code !== 200 || !adviceRes.data) throw new Error(adviceRes.msg || '建议生成失败')
     advice.value = adviceRes.data.advice || null
     snapshotId.value = Number(adviceRes.data.snapshotId || 0)
+    rememberGraphTitles(adviceRes.data.graph)
     phase.value = 'ready'
     await loadHistory()
     syncState()
@@ -231,6 +243,7 @@ async function loadHistoryItem(item: any) {
   await nextTick()
   advice.value = res.data.advice || null
   trace.value = res.data.trace || null
+  rememberGraphTitles(res.data.graph)
   snapshotId.value = Number(res.data.id || 0)
   phase.value = 'ready'
   drawer.value = true

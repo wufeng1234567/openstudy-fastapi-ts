@@ -218,7 +218,8 @@ const totalMinutes = computed(() =>
 function nodeTitle(id: string) {
   const raw = String(id || '')
   const pageId = raw.replace(/^topic:/, '')
-  return props.nodeTitles?.[raw] || props.nodeTitles?.[pageId] || raw
+  const fallback = raw.startsWith('bank:') ? '题库' : raw
+  return props.nodeTitles?.[raw] || props.nodeTitles?.[pageId] || fallback
 }
 
 function submitCustom() {

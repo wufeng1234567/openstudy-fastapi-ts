@@ -664,8 +664,21 @@ const mapTypeCounts = computed(() => {
   }
   return counts
 })
+const mapConnectedNodeIds = computed(() => {
+  const ids = new Set(allMapNodes.value.map((node: any) => String(node.id)))
+  const connected = new Set<string>()
+  for (const edge of mapGraph.value?.edges || []) {
+    const source = String(edge.source || '')
+    const target = String(edge.target || '')
+    if (ids.has(source) && ids.has(target)) {
+      connected.add(source)
+      connected.add(target)
+    }
+  }
+  return connected
+})
 const unlinkedCount = computed(() =>
-  allMapNodes.value.filter((node: any) => Number(node.degree || 0) === 0).length
+  allMapNodes.value.filter((node: any) => !mapConnectedNodeIds.value.has(String(node.id))).length
 )
 const routeActive = computed(() => !!learningRoute.value?.stops?.length)
 
@@ -815,7 +828,7 @@ const mapNodes = computed(() => {
   const visibleIds = new Set(
     allMapNodes.value
       .filter((node: any) => routeActive.value || mapTypeVisible[normalizePageType(node.pageType)] !== false)
-      .filter((node: any) => routeActive.value || !mapHideUnlinked.value || Number(node.degree || 0) > 0)
+      .filter((node: any) => routeActive.value || !mapHideUnlinked.value || mapConnectedNodeIds.value.has(String(node.id)))
       .map((node: any) => String(node.id))
   )
   const visibleComponents = components
