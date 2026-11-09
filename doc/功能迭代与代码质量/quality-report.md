@@ -1,7 +1,7 @@
 # OpenStudy 质量验收报告
 
 > 生成日期：2026-11-09
-> 代码基线：`main @ fb430ee`（质量/笔记导入/write metadata 已提交）
+> 代码基线：`main @ d557f4e`（质量/笔记导入/write metadata/CI 修复已提交）
 > 用途：给 LLM 评审/答辩提供可直接复核的命令、输出与当前债务边界。
 > 结论口径：**不把 type-check 的 2,993 条存量错误说成已清零；P0 门禁除 type-check 外可复跑，P1 已在结构债务上推进。**
 
