@@ -2950,13 +2950,13 @@ async def gallery_asset_detail(
         return _fail(e)
 
 
-@router.get("/knowledge-map")
+@router.get("/knowledge-map", deprecated=True)
 async def get_knowledge_map(
     kbId: Optional[int] = Query(None, gt=0),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """资料知识图谱：真实文档/章节/笔记/题组/图组节点与可解释边。"""
+    """旧页面层级图（兼容保留，已标记 deprecated；新调用请用 /study-map 或 /wiki-graph）。"""
     try:
         return success(await knowledge_map_service.build_knowledge_map(db, _uid(current_user), kb_id=kbId))
     except Exception as e:

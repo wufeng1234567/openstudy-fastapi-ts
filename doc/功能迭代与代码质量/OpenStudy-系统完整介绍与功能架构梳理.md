@@ -630,7 +630,7 @@ flowchart TB
 | **B21** | 资料体检 P0 只在排序枚举里，实际只产 P1/P2 | `document_health_service.py:532` 有 `P0:0`，全文无 `_issue(..., "P0", ...)` | 对外写「P0/P1/P2 三级问题」会夸大 |
 | **B22** | 智能报告降级标志边界不诚实：LLM 返回合法 JSON 但零有效改进项时用模板补齐，仍标 `llmFallback: False` | `document_smart_report_service.py:158-159, 171` | 报告来源标注可能误导 |
 | **B23** | 题库知识点抽取后台失败被 `except Exception: pass` 静默吞掉 | `question_bank_link.py:41-43` | 关联成功但图谱可能为空，前端无感 |
-| **B24** | 图谱四套服务/五个端点并存；已建共享 `GraphNode/GraphEdge` 契约并先接入 `study_map` | `graph_contract.py`；`knowledge_map_service`、`knowledge_graph_service`、`study_graph_service`、`study_map_service` | 口径统一进行中，旧三套迁移/下线仍待 P2 |
+| **B24** | 图谱四套服务/五个端点并存；已建共享 `GraphNode/GraphEdge` 契约，`study_map`/`knowledge_map` 已接入，`knowledge-map` 端点已标 deprecated | `graph_contract.py`；`knowledge_map_service`、`knowledge_graph_service`、`study_graph_service`、`study_map_service` | 口径统一进行中，旧三套迁移/下线仍待 P2 |
 | **B25** | 实体/关系图前端入口死：`KnowledgeGraphSvgPanel.vue`（710 行）零引用；`getKnowledgeGraph` 只被它调用 | 全仓 grep `KnowledgeGraphSvgPanel` 0 引用 | 用户看不到实体图，只能看主题页图 |
 | **B26** | 题源锚点极少：748 题仅 6 条 `question_source`；两个主资料夹 `noQuestionSource=True` | DB 查询；`study_graph_service.py:481` | 图谱无法把知识点连到真实题目 |
 | **B27** | 笔记导入资料夹 | `note_kb_link` 表/服务/4 API、`note_kb_link` Agent 工具、笔记详情「加入资料夹」入口 | 已闭合 |
