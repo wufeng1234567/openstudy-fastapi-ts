@@ -679,6 +679,9 @@ async def list_graph(
                 "source": str(source.id),
                 "target": str(target.id),
                 "type": relation.relation_type,
+                # GraphEdge 契约字段：与 type 保持同义，不改变既有 API。
+                "kind": relation.relation_type,
+                "label": relation.relation_type,
                 "description": relation.description or "",
                 "strength": int(relation.strength or 5),
                 "docIds": relation.doc_ids or [],
@@ -698,6 +701,9 @@ async def list_graph(
                 "id": str(entity.id),
                 "name": entity.name,
                 "type": entity.type,
+                # GraphNode 契约字段：与既有 name/type 保持同义。
+                "kind": entity.type,
+                "title": entity.name,
                 "description": entity.description or "",
                 "aliases": entity.aliases or [],
                 "mentionCount": int(entity.mention_count or 1),
