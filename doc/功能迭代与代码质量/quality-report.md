@@ -19,6 +19,7 @@
 | 前端 lint | `npm run lint` | **0 errors / 3,214 warnings** | ✅ warn-only 基线 |
 | 前端构建 | `npm run build:prod` | **exit 0** | ✅ |
 | 前端类型检查 | `npm run type-check` | **exit 2；2,993 条存量错误** | 🟡 工具已修复，未清零 |
+| GitHub Actions | run `42615921856` | **3 jobs 全绿**（type-check 为报告型） | ✅ runner 实跑 |
 | 工作区状态 | `git status --porcelain` | 仅剩用户文件 `智能体核心知识梳理.docx`、`智能整理测试集/`；代码/文档已提交 | ✅ |
 
 > `npm run type-check` 的失败不是 vue-tsc 启动崩溃（旧问题已修复），而是代码里真实存在的存量类型错误；详见 `OpenStudy-代码质量审计与无用代码清理清单.md` 的 P1 专项。
@@ -64,7 +65,7 @@
 1. **type-check 不是绿门禁**：`npm run type-check` 仍 exit 2，2,993 条错误主要是历史 RuoYi 页面/巨型组件；不能对外声称「类型检查通过」。
 2. **lint 是 warn-only 基线**：3,214 warnings 是存量债务台账，不是 0 告警。
 3. **覆盖率只有 19%**：这是基线数字，不是质量目标；不设阈值。
-4. **CI 尚未在 GitHub runner 实跑**：本轮只修改了 workflow 配置，本地验证通过不等于远端绿。
+4. **CI 已在 GitHub Actions runner 实跑成功**：run `42615921856`，后端/前端/仓库卫生 3 jobs 全绿；其中 type-check 是 `continue-on-error` 的报告步骤，不代表类型检查已通过。
 5. **本轮代码/文档已提交并推送**：最新提交 `fb430ee`；工作区只剩用户文件 `智能体核心知识梳理.docx`、`智能整理测试集/` 未跟踪。
 
 ---
@@ -74,5 +75,5 @@
 - [ ] type-check 错误从 2,993 降到 < 2,000（按文件分组）
 - [x] `console.log` 清理 Top3 文件（全前端 129～155 → 56）
 - [x] 写工具元数据核对完成（5 个产物/快照工具 write_operation=True）
-- [ ] GitHub Actions 实际跑一次
+- [x] GitHub Actions 实际跑一次（run `42615921856`，3 jobs 全绿）
 - [x] P2 笔记导入资料夹：后端 + Agent 工具 + 前端「加入资料夹」入口
