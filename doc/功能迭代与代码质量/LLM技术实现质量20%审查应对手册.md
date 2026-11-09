@@ -85,7 +85,7 @@ type-errors.txt
 
 ### 第 4 步：实际跑「最显眼的命令」
 
-- 跑 `npm run type-check` → **不再崩溃**（TypeScript 已锁 5.3.3、Node heap 8GB），但会报出 **3,039 条存量类型错误**（P1 第一批收敛后；初始 3,218）；
+- 跑 `npm run type-check` → **不再崩溃**（TypeScript 已锁 5.3.3、Node heap 8GB），但会报出 **2,993 条存量类型错误**（P1 第一批收敛后；初始 3,218）；
 - 跑 `pytest tests` → **98 passed**（P0 后）；
 - 跑 `npm run lint` → **0 errors / 3,200 warnings**（warn-only 基线）；
 - 跑 `npm run build:prod` → 成功（exit 0）。
@@ -144,7 +144,7 @@ debugger
 | 1 | 仓库结构 | ✅ 清晰 | — | 保持 | 免扣 |
 | 2 | README/架构文档 | 🟡 丰富但过时 | 前端 README 写 Spring Boot 3；README 32 模块/20+ 工具与实际不符 | 统一 README 数据、加 `ARCHITECTURE.md` | 高 |
 | 3 | lint/format | ✅ P0 已配置 | ruff.toml / eslint.config.js / .prettierrc.json 已加；lint 0 errors/3,200 warnings | P1 按规则清 warning | 极高 |
-| 4 | type-check | 🟡 工具已修复，存量 3,039 条错误 | TS 已锁 5.3.3、Node heap 8GB；不再崩溃，但类型错误需 P1 批处理 | 按 `request.ts`/全局类型/文件分批收紧 | 极高 |
+| 4 | type-check | 🟡 工具已修复，存量 2,993 条错误 | TS 已锁 5.3.3、Node heap 8GB；不再崩溃，但类型错误需 P1 批处理 | 按 `request.ts`/全局类型/文件分批收紧 | 极高 |
 | 5 | test 可跑 + CI | ✅ 本地 98 passed；CI 已补 pytest step | `pytest.ini` + `asyncio_mode=auto`；CI 未在 runner 实跑 | 跑一次 GitHub Actions 并截图 | 高 |
 | 6 | 异常处理 | ✅ P0 已清零裸 except | `auth.py/ai.py/notes.py/notice_front.py` 已改 `except Exception` + loguru | 保持 | 高 |
 | 7 | 类型纪律 | 🟡 strict 开但 any 多 | 约 1,379～1,958 处 any | ESLint `no-explicit-any: warn` + `noUnusedLocals` | 中 |

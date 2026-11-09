@@ -3,7 +3,7 @@
 > 生成日期：2026-11-09
 > 代码基线：`main @ 58f12c7` + 本轮未提交工作区改动
 > 用途：给 LLM 评审/答辩提供可直接复核的命令、输出与当前债务边界。
-> 结论口径：**不把 type-check 的 3,039 条存量错误说成已清零；P0 门禁除 type-check 外可复跑，P1 已在结构债务上推进。**
+> 结论口径：**不把 type-check 的 2,993 条存量错误说成已清零；P0 门禁除 type-check 外可复跑，P1 已在结构债务上推进。**
 
 ---
 
@@ -18,7 +18,7 @@
 | 应用装配 | `python -c "from app.main import app"` | **routes: 541** | ✅ |
 | 前端 lint | `npm run lint` | **0 errors / 3,200 warnings** | ✅ warn-only 基线 |
 | 前端构建 | `npm run build:prod` | **exit 0** | ✅ |
-| 前端类型检查 | `npm run type-check` | **exit 2；3,039 条存量错误** | 🟡 工具已修复，未清零 |
+| 前端类型检查 | `npm run type-check` | **exit 2；2,993 条存量错误** | 🟡 工具已修复，未清零 |
 | 工作区差异 | `git diff --stat` | **72 files changed, +344 / −14,124** | 🟡 未提交 |
 
 > `npm run type-check` 的失败不是 vue-tsc 启动崩溃（旧问题已修复），而是代码里真实存在的存量类型错误；详见 `OpenStudy-代码质量审计与无用代码清理清单.md` 的 P1 专项。
@@ -38,7 +38,7 @@
 | 裸 `except:` | ✅ | 5 处已改 `except Exception` + loguru |
 | 死代码清理 | ✅ 第一批 | 17 个零引用 Vue 组件/页面 + 旧首页/dictation/chats + `utils/generator` + 旧后端脚本；`git diff --stat` 共 −14,124 行 |
 | 前端构建 | ✅ | `npm run build:prod` exit 0 |
-| type-check | 🟡 | 工具不再崩溃；3,039 条存量错误待 P1 |
+| type-check | 🟡 | 工具不再崩溃；2,993 条存量错误待 P1 |
 
 ---
 
@@ -46,7 +46,7 @@
 
 | P1 项 | 状态 | 证据 |
 |---|---|---|
-| type-check 高杠杆收敛 | 🟡 | `request.ts` 返回类型契约 + `vue-globals.d.ts`；3,218 → 3,039 |
+| type-check 高杠杆收敛 | 🟡 | `request.ts` 返回类型契约 + `vue-globals.d.ts`；3,218 → 2,993 |
 | Agent 工具中文标签 | ✅ | `AgentToolResult` / `AgentConfirmCard` 29/29 |
 | Agent 工具契约测试 | ✅ | `tests/test_agent_tool_contract.py`；pytest 98 passed |
 | 分页 helper | ✅ | `app/utils/pagination.py`；`api/v1` 的 `count_query = select(func.count())...` 模板清零 |
@@ -61,7 +61,7 @@
 
 ## 4. 重要边界（评审时必须如实说明）
 
-1. **type-check 不是绿门禁**：`npm run type-check` 仍 exit 2，3,039 条错误主要是历史 RuoYi 页面/巨型组件；不能对外声称「类型检查通过」。
+1. **type-check 不是绿门禁**：`npm run type-check` 仍 exit 2，2,993 条错误主要是历史 RuoYi 页面/巨型组件；不能对外声称「类型检查通过」。
 2. **lint 是 warn-only 基线**：3,200 warnings 是存量债务台账，不是 0 告警。
 3. **覆盖率只有 19%**：这是基线数字，不是质量目标；不设阈值。
 4. **CI 尚未在 GitHub runner 实跑**：本轮只修改了 workflow 配置，本地验证通过不等于远端绿。
@@ -71,7 +71,7 @@
 
 ## 5. 下一轮验收清单
 
-- [ ] type-check 错误从 3,039 降到 < 2,000（按文件分组）
+- [ ] type-check 错误从 2,993 降到 < 2,000（按文件分组）
 - [x] `console.log` 清理 Top3 文件（全前端 129～155 → 56）
 - [ ] 写工具元数据核对完成
 - [ ] GitHub Actions 实际跑一次
