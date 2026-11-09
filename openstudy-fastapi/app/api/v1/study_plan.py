@@ -160,6 +160,36 @@ async def prepare_study_trace(
         return error(f"生成学习轨迹失败：{exc}")
 
 
+@router.post("/study-plan/advice/preview")
+async def preview_study_advice(
+    data: AdviceRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """节点点击后的轻量预览：用结构化模板快速给出阶段方向，不调用 LLM。"""
+    try:
+        payload = await study_advice_service.prepare_trace(
+            db,
+            _uid(current_user),
+            kb_id=data.kbId,
+            bank_ids=data.bankIds,
+            source_types=data.sourceTypes,
+            seed_node_id=data.seedNodeId,
+            goal=data.goal,
+            daily_minutes=data.dailyMinutes,
+            horizon_days=data.horizonDays,
+            instruction=data.instruction,
+        )
+        advice = study_advice_service.build_template_advice(
+            payload["facts"],
+            payload["trace"],
+            instruction=data.instruction,
+        )
+        return success({"advice": advice, "trace": payload["trace"]})
+    except Exception as exc:  # noqa: BLE001
+        return error(f"生成规划建议预览失败：{exc}")
+
+
 @router.post("/study-plan/advice")
 async def generate_study_advice(
     data: AdviceRequest,

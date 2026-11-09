@@ -11,7 +11,16 @@
     :close-on-click-outside="true"
   >
     <div class="kah__drawer">
+      <NodeAdvicePreview
+        v-if="previewAdvice || previewLoading"
+        :advice="previewAdvice"
+        :loading="previewLoading"
+        :selected-node="selectedNode"
+        :node-titles="displayNodeTitles"
+        @generate="generate()"
+      />
       <StudyAdvicePanel
+        v-else
         :advice="advice"
         :loading="isBusy"
         :phase="phase"
@@ -47,9 +56,11 @@ import {
   getStudyPlanHistory,
   listStudyPlanHistory,
   prepareStudyTrace,
+  previewStudyAdvice,
   updateStudyPlanHistory
 } from '@/api/ai/studyPlan'
 import { readStudyPlanConfig } from '@/utils/studyPlanState'
+import NodeAdvicePreview from './NodeAdvicePreview.vue'
 import StudyAdvicePanel from '@/views/front/myQuestion/myStats/components/StudyAdvicePanel.vue'
 import StudyPlanHistoryDrawer from '@/views/front/myQuestion/myStats/components/StudyPlanHistoryDrawer.vue'
 
@@ -69,6 +80,8 @@ const emit = defineEmits<{
 
 const advice = ref<any>(null)
 const trace = ref<any>(null)
+const previewAdvice = ref<any>(null)
+const previewLoading = ref(false)
 const selectedNode = ref<any>(null)
 const phase = ref('idle')
 const drawer = ref(false)
@@ -113,8 +126,17 @@ async function generateForPage(pageId: number) {
     return
   }
   selectedNode.value = { id: `topic:${pageId}`, title: props.nodeTitles?.[String(pageId)] || '当前主题' }
-  // 只打开“是否生成建议”的抽屉；用户确认后再生成。
+  previewAdvice.value = null
+  previewLoading.value = true
   drawer.value = true
+  try {
+    const res: any = await previewStudyAdvice(buildParams())
+    if (res.code === 200 && res.data?.advice) previewAdvice.value = res.data.advice
+  } catch {
+    // 预览失败仍然保留“以此生成建议”按钮，不影响正式生成。
+  } finally {
+    previewLoading.value = false
+  }
 }
 
 function rememberGraphTitles(graph: any) {
@@ -151,6 +173,8 @@ async function generate(instruction = '', parentId = 0, animateTrace = true) {
   const seq = ++runSeq
   advice.value = null
   trace.value = null
+  previewAdvice.value = null
+  previewLoading.value = false
   snapshotId.value = 0
   phase.value = 'reading'
   // 首次生成播放轨迹动画；从“继续调整”进入时只展示思考动画，不重新跑连线。
@@ -289,6 +313,8 @@ function clear() {
   selectedNode.value = null
   advice.value = null
   trace.value = null
+  previewAdvice.value = null
+  previewLoading.value = false
   snapshotId.value = 0
   phase.value = 'idle'
   syncState()

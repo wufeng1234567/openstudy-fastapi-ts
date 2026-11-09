@@ -60,6 +60,24 @@ export interface StudyAdviceParams extends StudyTraceParams {
   useLlm?: boolean
 }
 
+export function previewStudyAdvice(params: StudyTraceParams) {
+  return request({
+    url: '/rag/study-plan/advice/preview',
+    method: 'post',
+    data: {
+      kbId: params.kbId || 0,
+      bankIds: params.bankIds || [],
+      sourceTypes: params.sourceTypes?.length ? params.sourceTypes : ['wiki', 'bank'],
+      seedNodeId: params.seedNodeId || '',
+      goal: params.goal || 'weakness',
+      dailyMinutes: params.dailyMinutes ?? 30,
+      horizonDays: params.horizonDays ?? 14,
+      instruction: params.instruction || ''
+    },
+    timeout: 60000
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
 export function generateStudyAdvice(params: StudyAdviceParams) {
   return request({
     url: '/rag/study-plan/advice',
