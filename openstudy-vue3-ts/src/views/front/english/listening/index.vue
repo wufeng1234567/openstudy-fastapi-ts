@@ -701,9 +701,9 @@ const isWaitingAutoNext = ref(false)
 const currentPlayCount = ref(0)
 
 // 词库相关
-const bookOptions = ref([])
+const bookOptions = ref<any[]>([])
 const selectedBookId = ref(null)
-const wordList = ref([])
+const wordList = ref<any[]>([])
 /**
  * 当前**正在练**的词库 id（2026-10-26）
  *
@@ -780,7 +780,7 @@ const seedFromUrl = ref(false)
 //    那里和 speechRate 放在一起更易读，不再重复声明。
 
 // 练习状态
-const practiceWords = ref([])
+const practiceWords = ref<any[]>([])
 const currentIndex = ref(0)
 const userAnswer = ref('')
 const showFeedback = ref(false)
@@ -806,7 +806,7 @@ const inputRef = ref(null)
 // 具体细节见 `src/utils/speech.ts` 顶部注释。
 
 // 统计
-const practiceResults = ref([])
+const practiceResults = ref<any[]>([])
 
 /* ============================================================================
  * 练习结果面板状态（2026-10-26 闭环）

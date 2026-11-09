@@ -605,7 +605,7 @@ export function useAgentChat() {
    * 写某一轮的状态（**整对象替换**而不是 `rollbackStates.value[tid] = …`）
    *
    * 替换整份对象是为了让「新键」也一定能被 Vue 的依赖收集看到：
-   * `ref({})` 装的是 `reactive` 代理，直接加键在 Vue 3 里本来也能追踪，
+   * `ref<any>({})` 装的是 `reactive` 代理，直接加键在 Vue 3 里本来也能追踪，
    * 但 UI 若把某个组件的结果**解构**出去用（`const s = rollbackStates.value[id]`），
    * 只有替换整份对象才能保证既有的解构引用被重新求值。
    */
@@ -1044,7 +1044,7 @@ export function useAgentChat() {
     }
     /*
      * ⚠️⚠️ 卡死真凶（用户 2026-10-11 报「卡在 The 后不动、最后才整段出现」）：
-     *   `messages` 是 `ref([])`，Vue 3 的数组元素**只有通过代理读出来**才带依赖追踪。
+     *   `messages` 是 `ref<any[]>([])`，Vue 3 的数组元素**只有通过代理读出来**才带依赖追踪。
      *   闭包变量 `openReasoning` 指向的是**push 进去的那个 raw 对象**，直接 `openReasoning.content += delta`
      *   改的是 **raw 对象**（无代理 setter）→ **不触发 Vue 重渲染** → 界面停住；直到后续某次
      *   （如正文/工具/轮末）触发了整数组的响应式刷新，才把累计的内容"一次性刷出"。

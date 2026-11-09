@@ -128,11 +128,11 @@ import { listNoteImage, getNoteImage, delNoteImage, addNoteImage, updateNoteImag
 
 const { proxy } = getCurrentInstance()
 
-const noteImageList = ref([])
+const noteImageList = ref<any[]>([])
 const open = ref(false)
 const loading = ref(true)
 const showSearch = ref(true)
-const ids = ref([])
+const ids = ref<any[]>([])
 const single = ref(true)
 const multiple = ref(true)
 const total = ref(0)

@@ -153,11 +153,11 @@ import { listCarousel, getCarousel, delCarousel, addCarousel, updateCarousel } f
 
 const { proxy } = getCurrentInstance()
 
-const carouselList = ref([])
+const carouselList = ref<any[]>([])
 const open = ref(false)
 const loading = ref(true)
 const showSearch = ref(true)
-const ids = ref([])
+const ids = ref<any[]>([])
 const single = ref(true)
 const multiple = ref(true)
 const total = ref(0)

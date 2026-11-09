@@ -284,12 +284,12 @@ import IconSelect from "@/components/IconSelect";
 const { proxy } = getCurrentInstance();
 const { sys_show_hide, sys_normal_disable } = proxy.useDict("sys_show_hide", "sys_normal_disable");
 
-const menuList = ref([]);
+const menuList = ref<any[]>([]);
 const open = ref(false);
 const loading = ref(true);
 const showSearch = ref(true);
 const title = ref("");
-const menuOptions = ref([]);
+const menuOptions = ref<any[]>([]);
 const isExpandAll = ref(false);
 const refreshTable = ref(true);
 const iconSelectRef = ref(null);

@@ -43,7 +43,7 @@ const currentUserId = computed(() => userStore.id)
 const searchKeyword = ref('')
 const activeIndex = ref(0)
 const loading = ref(false)
-const allUsers = ref([])
+const allUsers = ref<any[]>([])
 const searchInputRef = ref(null)
 
 const popupStyle = computed(() => {

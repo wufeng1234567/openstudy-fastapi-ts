@@ -24,8 +24,8 @@ import { isHttp } from '@/utils/validate'
 import usePermissionStore from '@/store/modules/permission'
 
 const search = ref('');
-const options = ref([]);
-const searchPool = ref([]);
+const options = ref<any[]>([]);
+const searchPool = ref<any[]>([]);
 const show = ref(false);
 const fuse = ref(undefined);
 const headerSearchSelectRef = ref(null);

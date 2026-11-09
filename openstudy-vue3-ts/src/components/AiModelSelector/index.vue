@@ -82,7 +82,7 @@ const emit = defineEmits(['update:modelValue', 'change', 'select'])
 // 分场景历史记忆：localStorage key 按 scene 隔离（存 configId）
 const storageKey = `openstudy_ai_model_${props.scene}`
 
-const configList = ref([])
+const configList = ref<any[]>([])
 // 内部选中的 configId（'' = 自动）
 const selectedId = ref('')
 

@@ -75,13 +75,13 @@ const props = defineProps({
 const { proxy } = getCurrentInstance();
 const emit = defineEmits();
 const number = ref(0);
-const uploadList = ref([]);
+const uploadList = ref<any[]>([]);
 const dialogImageUrl = ref("");
 const dialogVisible = ref(false);
 const baseUrl = import.meta.env.VITE_APP_BASE_API;
 const uploadImgUrl = ref(import.meta.env.VITE_APP_BASE_API + "/common/upload"); // 上传的图片服务器地址
 const headers = ref({ Authorization: "Bearer " + getToken() });
-const fileList = ref([]);
+const fileList = ref<any[]>([]);
 const showTip = computed(
   () => props.isShowTip && (props.fileType || props.fileSize)
 );

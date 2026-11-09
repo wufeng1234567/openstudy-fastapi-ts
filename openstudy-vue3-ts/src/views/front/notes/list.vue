@@ -197,13 +197,13 @@ const route = useRoute()
 const topbarStore = useTopbarStore()
 
 const loading = ref(false)
-const notesList = ref([])
+const notesList = ref<any[]>([])
 const searchKeyword = ref('')
 const pageNum = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
 
-const publicSectionList = ref([])
+const publicSectionList = ref<any[]>([])
 
 /*
  * ==================== 筛选状态 ====================
@@ -245,7 +245,7 @@ const pageRef = ref(null)
 const filterTop = ref(0)
 const filterLeft = ref(0)
 
-const rankingList = ref([])
+const rankingList = ref<any[]>([])
 const rankingPeriod = ref('week')
 // 热榜加载态 / 请求竞态序号（快速切换时只认最后一次结果）
 const rankingLoading = ref(false)
@@ -259,7 +259,7 @@ let rankingReqSeq = 0
   }
 const rankingSubtitle = computed(() => rankingPeriodMeta[rankingPeriod.value]?.subtitle || '')
 const showSearchHistory = ref(false)
-const searchHistory = ref([])
+const searchHistory = ref<any[]>([])
 
 let blurTimer = null
 
@@ -403,7 +403,7 @@ const getTagList = (tags) => {
 }
 
 // 热门标签：来自后端聚合（不是当前页数据，避免筛选后标签乱跳）
-const hotTags = ref([])
+const hotTags = ref<any[]>([])
 const fetchHotTags = async () => {
   try {
     const res = await getPublicNoteTags(20)

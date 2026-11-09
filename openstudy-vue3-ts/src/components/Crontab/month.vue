@@ -59,7 +59,7 @@ const cycle01 = ref(1)
 const cycle02 = ref(2)
 const average01 = ref(1)
 const average02 = ref(1)
-const checkboxList = ref([])
+const checkboxList = ref<any[]>([])
 const checkCopy = ref([1])
 const monthList = ref([
     {key: 1, value: '一月'},

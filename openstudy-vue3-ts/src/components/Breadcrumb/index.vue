@@ -12,7 +12,7 @@
 <script setup lang="ts">
 const route = useRoute();
 const router = useRouter();
-const levelList = ref([])
+const levelList = ref<any[]>([])
 
 function getBreadcrumb() {
   // only show routes with meta.title

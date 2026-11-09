@@ -124,11 +124,11 @@ import { listNoteCategory, getNoteCategory, delNoteCategory, addNoteCategory, up
 
 const { proxy } = getCurrentInstance()
 
-const noteCategoryList = ref([])
+const noteCategoryList = ref<any[]>([])
 const open = ref(false)
 const loading = ref(true)
 const showSearch = ref(true)
-const ids = ref([])
+const ids = ref<any[]>([])
 const single = ref(true)
 const multiple = ref(true)
 const total = ref(0)

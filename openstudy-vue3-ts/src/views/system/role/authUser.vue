@@ -100,12 +100,12 @@ const route = useRoute();
 const { proxy } = getCurrentInstance();
 const { sys_normal_disable } = proxy.useDict("sys_normal_disable");
 
-const userList = ref([]);
+const userList = ref<any[]>([]);
 const loading = ref(true);
 const showSearch = ref(true);
 const multiple = ref(true);
 const total = ref(0);
-const userIds = ref([]);
+const userIds = ref<any[]>([]);
 
 const queryParams = reactive({
   pageNum: 1,

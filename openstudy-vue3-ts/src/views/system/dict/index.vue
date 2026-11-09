@@ -179,16 +179,16 @@ import { listType, getType, delType, addType, updateType, refreshCache } from "@
 const { proxy } = getCurrentInstance();
 const { sys_normal_disable } = proxy.useDict("sys_normal_disable");
 
-const typeList = ref([]);
+const typeList = ref<any[]>([]);
 const open = ref(false);
 const loading = ref(true);
 const showSearch = ref(true);
-const ids = ref([]);
+const ids = ref<any[]>([]);
 const single = ref(true);
 const multiple = ref(true);
 const total = ref(0);
 const title = ref("");
-const dateRange = ref([]);
+const dateRange = ref<any[]>([]);
 
 const data = reactive({
   form: {},

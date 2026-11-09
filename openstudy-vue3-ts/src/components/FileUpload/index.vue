@@ -68,11 +68,11 @@ const props = defineProps({
 const { proxy } = getCurrentInstance();
 const emit = defineEmits();
 const number = ref(0);
-const uploadList = ref([]);
+const uploadList = ref<any[]>([]);
 const baseUrl = import.meta.env.VITE_APP_BASE_API;
 const uploadFileUrl = ref(import.meta.env.VITE_APP_BASE_API + "/common/upload"); // 上传文件服务器地址
 const headers = ref({ Authorization: "Bearer " + getToken() });
-const fileList = ref([]);
+const fileList = ref<any[]>([]);
 const showTip = computed(
   () => props.isShowTip && (props.fileType || props.fileSize)
 );

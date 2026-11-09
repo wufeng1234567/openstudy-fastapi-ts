@@ -56,8 +56,8 @@ const loading = ref(true);
 const total = ref(0);
 const pageNum = ref(1);
 const pageSize = ref(10);
-const roleIds = ref([]);
-const roles = ref([]);
+const roleIds = ref<any[]>([]);
+const roles = ref<any[]>([]);
 const form = ref({
   nickName: undefined,
   userName: undefined,

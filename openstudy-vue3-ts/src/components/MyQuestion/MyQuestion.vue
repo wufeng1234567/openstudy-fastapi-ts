@@ -272,11 +272,11 @@ const filterGroups = computed(() => {
 
 const loading = ref(true)
 const total = ref(0)
-const allQuestions = ref([])
-const questions = ref([])
+const allQuestions = ref<any[]>([])
+const questions = ref<any[]>([])
 const detailDialogVisible = ref(false)
 const isFullscreen = ref(false)
-const uncollectLoading = ref({})
+const uncollectLoading = ref<any>({})
 const filterSidebarRef = ref<any>(null)
 const headerRef = ref(null)
 const headerHeight = ref(0)
@@ -287,12 +287,12 @@ const filterActive = ref(false)
 const currentFavoriteQuestion = ref(null)
 const currentQuestionDetail = ref(null)
 const currentQuestionIndex = ref(0)
-const dialogQuestions = ref([])
+const dialogQuestions = ref<any[]>([])
 
 const selectedAnswer = ref('')
-const subFillBlankAnswers = ref({})
-const subEssayAnswers = ref({})
-const answers = ref([])
+const subFillBlankAnswers = ref<any>({})
+const subEssayAnswers = ref<any>({})
+const answers = ref<any[]>([])
 
 const searchQuery = reactive({
   pageNum: 1,

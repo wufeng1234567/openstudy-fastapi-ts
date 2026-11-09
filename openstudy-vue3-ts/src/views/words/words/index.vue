@@ -163,11 +163,11 @@ import { listWords, getWords, delWords, addWords, updateWords } from "@/api/word
 
 const { proxy } = getCurrentInstance()
 
-const wordsList = ref([])
+const wordsList = ref<any[]>([])
 const open = ref(false)
 const loading = ref(true)
 const showSearch = ref(true)
-const ids = ref([])
+const ids = ref<any[]>([])
 const single = ref(true)
 const multiple = ref(true)
 const total = ref(0)

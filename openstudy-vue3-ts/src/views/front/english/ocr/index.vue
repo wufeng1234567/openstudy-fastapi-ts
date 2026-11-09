@@ -468,8 +468,8 @@ const imageUrl = ref('')
 const selectedFile = ref(null)
 const recognizing = ref(false)
 const batchAdding = ref(false)
-const recognizedList = ref([])
-const bookOptions = ref([])
+const recognizedList = ref<any[]>([])
+const bookOptions = ref<any[]>([])
 const selectedBookId = ref(null)
 
 /* ============================================================================

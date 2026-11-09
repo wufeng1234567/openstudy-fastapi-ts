@@ -65,7 +65,7 @@ const props = defineProps({
 const emits = defineEmits(['update:showSearch', 'queryTable']);
 
 // 显隐数据
-const value = ref([]);
+const value = ref<any[]>([]);
 // 弹出层标题
 const title = ref("显示/隐藏");
 // 是否显示弹出层

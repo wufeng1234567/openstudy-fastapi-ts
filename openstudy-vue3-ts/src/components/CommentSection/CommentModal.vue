@@ -72,7 +72,7 @@ const cacheStore = useCommentCacheStore()
 const noteId = computed(() => Number(props.noteId))
 
 const loading = ref(false)
-const commentList = ref([])
+const commentList = ref<any[]>([])
 const total = ref(0)
 const pageSize = 10
 const currentPage = ref(1)

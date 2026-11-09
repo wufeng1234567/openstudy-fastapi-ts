@@ -19,8 +19,8 @@ const props = defineProps({
 })
 const dayRule = ref('')
 const dayRuleSup = ref('')
-const dateArr = ref([])
-const resultList = ref([])
+const dateArr = ref<any[]>([])
+const resultList = ref<any[]>([])
 const isShow = ref(false)
 watch(() => props.ex, () => expressionChange())
 // 表达式值变化时，开始去计算结果

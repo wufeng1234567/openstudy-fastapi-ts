@@ -247,7 +247,7 @@ const imageUrl = ref('')
 const selectedFile = ref(null)
 const recognizing = ref(false)
 const batchAdding = ref(false)
-const recognizedList = ref([])
+const recognizedList = ref<any[]>([])
 
 // 流式输出相关
 const streamContent = ref('')

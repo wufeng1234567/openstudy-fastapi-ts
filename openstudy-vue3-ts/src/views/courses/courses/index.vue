@@ -188,11 +188,11 @@ import { listCourses, getCourses, delCourses, addCourses, updateCourses } from "
 
 const { proxy } = getCurrentInstance()
 
-const coursesList = ref([])
+const coursesList = ref<any[]>([])
 const open = ref(false)
 const loading = ref(true)
 const showSearch = ref(true)
-const ids = ref([])
+const ids = ref<any[]>([])
 const single = ref(true)
 const multiple = ref(true)
 const total = ref(0)

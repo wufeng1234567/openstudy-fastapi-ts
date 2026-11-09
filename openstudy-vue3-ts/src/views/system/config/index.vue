@@ -124,7 +124,7 @@ defineOptions({ name: 'Config' })
 import { listConfig, getConfig, updateConfig } from '@/api/system/config'
 import { ElMessageBox } from 'element-plus'
 
-const configList = ref([])
+const configList = ref<any[]>([])
 const { proxy } = getCurrentInstance()
 const { sys_yes_no } = proxy?.useDict('sys_yes_no')
 const open = ref(false)

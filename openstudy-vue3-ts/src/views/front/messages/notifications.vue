@@ -54,7 +54,7 @@ import { isSystemNotice, parseNoticeRemark } from '@/utils/notice'
 const router = useRouter()
 
 const loading = ref(false)
-const noticeList = ref([])
+const noticeList = ref<any[]>([])
 const unreadCount = ref(0)
 const expandedId = ref(null)
 const page = ref(1)

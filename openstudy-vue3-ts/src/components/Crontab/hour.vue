@@ -59,7 +59,7 @@ const cycle01 = ref(0)
 const cycle02 = ref(1)
 const average01 = ref(0)
 const average02 = ref(1)
-const checkboxList = ref([])
+const checkboxList = ref<any[]>([])
 const checkCopy = ref([0])
 const cycleTotal = computed(() => {
     cycle01.value = props.check(cycle01.value, 0, 22)

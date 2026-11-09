@@ -218,8 +218,8 @@ const currentWord = ref("")
 const currentProgress = ref(0)
 const totalWords = ref(0)
 const userAnswer = ref("")
-const practiceResults = ref([])
-const wordBookWords = ref([]) // 单词本中的单词列表
+const practiceResults = ref<any[]>([])
+const wordBookWords = ref<any[]>([]) // 单词本中的单词列表
 const showWordList = ref(false) // 控制单词列表抽屉显示
 
 // 语音播放相关
@@ -233,7 +233,7 @@ let repeatCount = ref(0) // 当前单词已重复播放次数
 
 const playedWordsCount = ref(0) // 已播放的单词数量（用于非循环随机播放模式）
 // 添加一个数组用于跟踪已播放的单词索引
-const playedWordIndices = ref([]) // 已播放的单词索引列表
+const playedWordIndices = ref<any[]>([]) // 已播放的单词索引列表
 
 const dictationForm = reactive({
   wordBookId: null,
@@ -258,7 +258,7 @@ const wordBookWordsTotal = ref(0)
 
 const dictationFormRef = ref(null)
 
-const fullWordBookWords = ref([]) // 用于存储完整的单词本单词列表
+const fullWordBookWords = ref<any[]>([]) // 用于存储完整的单词本单词列表
 
 
 // 在 onWordBookChange 函数中重置分页参数和播放状态

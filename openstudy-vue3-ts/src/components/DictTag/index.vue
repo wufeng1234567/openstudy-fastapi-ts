@@ -26,7 +26,7 @@
 
 <script setup lang="ts">
 // 记录未匹配的项
-const unmatchArray = ref([]);
+const unmatchArray = ref<any[]>([]);
 
 const props = defineProps({
   // 数据

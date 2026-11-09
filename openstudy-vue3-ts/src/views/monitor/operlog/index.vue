@@ -203,7 +203,7 @@ import { list, delOperlog, cleanOperlog } from "@/api/monitor/operlog";
 const { proxy } = getCurrentInstance() as any;
 const { sys_oper_type, sys_common_status } = proxy.useDict("sys_oper_type","sys_common_status");
 
-const operlogList = ref([]);
+const operlogList = ref<any[]>([]);
 const open = ref(false);
 const loading = ref(true);
 const showSearch = ref(true);

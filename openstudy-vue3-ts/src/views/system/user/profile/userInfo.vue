@@ -34,7 +34,7 @@ const props = defineProps({
 const emit = defineEmits(['close', 'saved'])
 const { proxy } = getCurrentInstance();
 
-const form = ref({});
+const form = ref<any>({});
 const validateOptionalEmail = (_rule: any, value: string, callback: (error?: Error) => void) => {
   if (!value) return callback();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) return callback(new Error("请输入正确的邮箱地址"));

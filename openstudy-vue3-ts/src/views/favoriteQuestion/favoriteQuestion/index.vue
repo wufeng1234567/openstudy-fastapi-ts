@@ -381,11 +381,11 @@ import { listQuestionBankAll } from "@/api/questionBank/questionBank"  // 添加
 
 const { proxy } = getCurrentInstance()
 
-const favoriteQuestionList = ref([])
+const favoriteQuestionList = ref<any[]>([])
 const open = ref(false)
 const loading = ref(true)
 const showSearch = ref(true)
-const ids = ref([])
+const ids = ref<any[]>([])
 const single = ref(true)
 const multiple = ref(true)
 const total = ref(0)

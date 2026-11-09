@@ -1246,11 +1246,11 @@ const currentBankId = computed(() => props.bankId)
 
 // 视图模式：'raw' 显示原始JSON文本，'pretty' 显示美化卡片
 const viewMode = ref('pretty')
-const parsedQuestionsForPreview = ref(null)
+const parsedQuestionsForPreview = ref<any>(null)
 const rawJsonContent = ref('') // 原始 JSON 内容
 
 // 题目列表
-const questions = ref([])
+const questions = ref<any[]>([])
 const currentId = ref(null)
 
 // AI 生成相关状态
@@ -1333,11 +1333,11 @@ watch(aiGenerating, (running) => {
 })
 const streamBoxRef = ref(null)
 const generatedCount = ref(0)
-const pendingImportData = ref(null) // 暂存待导入的数据
+const pendingImportData = ref<any>(null) // 暂存待导入的数据
 const currentGeneratingType = ref({ isComposite: false, questionType: 'single' })
 
 // 可编辑预览数据（深拷贝，用于用户编辑）
-const editablePreviewData = ref(null)
+const editablePreviewData = ref<any>(null)
 
 
 // 编辑状态
@@ -1424,7 +1424,7 @@ const historyCount = ref(0)
 const clearingContext = ref(false)
 
 // AI 模型配置相关
-const userAiConfigs = ref([])
+const userAiConfigs = ref<any[]>([])
 const aiModelManagerVisible = ref(false)
 const aiModelManagerRef = ref(null)
 
@@ -1496,7 +1496,7 @@ const handleClearContext = async () => {
 // ==================== 提示词历史记录 ====================
 const PROMPT_HISTORY_KEY = 'ai_prompt_history'
 const MAX_HISTORY_COUNT = 10
-const promptHistory = ref([])
+const promptHistory = ref<any[]>([])
 
 /**
  * 一条历史记录里「用户到底输入了什么」
@@ -1913,7 +1913,7 @@ const MATERIAL_MAX_CHARS = 20000
 const MATERIAL_ACCEPT = '.txt,.md,.markdown,.pdf,.docx,.doc,image/*'
 
 /** 知识库列表 */
-const kbList = ref([])
+const kbList = ref<any[]>([])
 const kbLoading = ref(false)
 
 /**
@@ -1928,7 +1928,7 @@ const kbLoading = ref(false)
  *   拆成两个数组就丢了顺序，拼接提示词时也只能按类型分组。
  *   一个数组 + kind 字段，顺序自然保留，UI 遍历也简单。
  */
-const materialItems = ref([])
+const materialItems = ref<any[]>([])
 const materialParsing = ref(false)
 
 /**

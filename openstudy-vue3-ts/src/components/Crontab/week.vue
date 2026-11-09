@@ -95,7 +95,7 @@ const cycle02 = ref(3)
 const average01 = ref(1)
 const average02 = ref(2)
 const weekday = ref(2)
-const checkboxList = ref([])
+const checkboxList = ref<any[]>([])
 const checkCopy = ref([2])
 const weekList = ref([
     {key: 1, value: '星期日'},

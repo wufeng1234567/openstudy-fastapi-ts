@@ -309,15 +309,15 @@ MdEditor.config({
 // ====== 原有逻辑（完全保留）======
 const isEditingMode = ref(false);
 const searchText = ref('');
-const notebooks = ref([]);
-const rawNotebooks = ref([]);
+const notebooks = ref<any[]>([]);
+const rawNotebooks = ref<any[]>([]);
 const treeRef = ref(null);
 const showSelectCategoryDialog = ref(false);
 const selectedCategoryId = ref(null);
 const newCategoryName = ref('');
 const isSidebarExpanded = ref(true);
 const creatingNote = ref(false);
-const selectedNodes = ref([]);
+const selectedNodes = ref<any[]>([]);
 
 const treeProps = {
   children: 'children',

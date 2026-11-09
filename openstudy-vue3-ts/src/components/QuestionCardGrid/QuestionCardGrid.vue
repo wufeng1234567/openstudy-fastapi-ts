@@ -478,7 +478,7 @@ const localSearchKeyword = ref(props.searchKeyword)
 const currentPage = ref(1)
 const pageSize = ref(12)
 const localFilters = reactive({ ...props.initialFilters })
-const uncollectLoading = ref({})
+const uncollectLoading = ref<any>({})
 
 // 常量定义
 const questionTypes = [

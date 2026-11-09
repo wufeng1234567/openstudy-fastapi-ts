@@ -181,7 +181,7 @@ const basicFormRef = ref(null)
 const builderRef = ref(null)
 const questionsLoading = ref(false)
 const editLoadError = ref(false)
-const myBanks = ref([])
+const myBanks = ref<any[]>([])
 const selectedBankId = ref(null)
 
 /*

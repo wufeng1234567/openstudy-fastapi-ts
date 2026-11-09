@@ -65,7 +65,7 @@ const cacheStore = useCommentCacheStore()
 
 const noteId = computed(() => Number(props.noteId))
 
-const previewComments = ref([])
+const previewComments = ref<any[]>([])
 const totalComments = ref(0)
 const initialLoading = ref(false)
 const showWriteInput = ref(false)

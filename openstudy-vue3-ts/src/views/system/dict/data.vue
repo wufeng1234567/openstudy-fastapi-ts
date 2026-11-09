@@ -184,17 +184,17 @@ import { listData, getData, delData, addData, updateData } from "@/api/system/di
 const { proxy } = getCurrentInstance();
 const { sys_normal_disable } = proxy.useDict("sys_normal_disable");
 
-const dataList = ref([]);
+const dataList = ref<any[]>([]);
 const open = ref(false);
 const loading = ref(true);
 const showSearch = ref(true);
-const ids = ref([]);
+const ids = ref<any[]>([]);
 const single = ref(true);
 const multiple = ref(true);
 const total = ref(0);
 const title = ref("");
 const defaultDictType = ref("");
-const typeOptions = ref([]);
+const typeOptions = ref<any[]>([]);
 const route = useRoute();
 // 数据标签回显样式
 const listClassOptions = ref([

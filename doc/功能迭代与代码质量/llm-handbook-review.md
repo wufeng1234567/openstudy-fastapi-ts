@@ -12,7 +12,7 @@
 
 | 目标任务 | 状态 | 证据 |
 |---|---|---|
-| 证据数字统一：29 个 Agent 工具、99 pytest、3,214 lint warnings、2,993 type-check errors、19% coverage | ✅ | 全文相关数字已统一；`quality-report.md` 可复核 |
+| 证据数字统一：29 个 Agent 工具、99 pytest、3,214 lint warnings、2,325 type-check errors、19% coverage | ✅ | 全文相关数字已统一；`quality-report.md` 可复核 |
 | 10 步可执行评审清单 | ✅ | 第 2 节由 7 步扩为 10 步，新增死代码/口径一致性/AI 工具留痕三步 |
 | 评审证据索引 | ✅ | `quality-report.md`、`OpenStudy-代码质量审计与无用代码清理清单.md` 交叉引用 |
 | Q12–Q14 答辩问答 | ✅ | 新增 type-check 存量、笔记导入资料夹、图谱四套服务三问 |
@@ -21,7 +21,7 @@
 ## 三、审查发现与边界
 
 1. **可宣称**：手册已覆盖 LLM 评审最可能检查的 10 个动作，并给出可复跑证据。
-2. **不可宣称**：`npm run type-check` 仍失败（2,993 条存量错误），不能写成“类型检查通过”。
+2. **不可宣称**：`npm run type-check` 仍失败（2,325 条存量错误），不能写成“类型检查通过”。
 3. **可宣称**：GitHub Actions 已在真实 runner 跑过（run `42618690202`，3 jobs 全绿）；但 type-check step 是报告型 `continue-on-error`，不能宣称“类型检查通过”。
 4. **P2 图谱四套服务收口、巨型文件拆分**仍是工程债务，不应写成已合并。
 5. 本手册的定位是“对外答辩口径”，不替代 `quality-report.md` 的原始命令输出。

@@ -213,7 +213,7 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'save'])
 
 const visible = ref(props.modelValue)
-const question = ref({})
+const question = ref<any>({})
 const selectedSubType = ref('single')
 
 const viewerVisible = ref(false)

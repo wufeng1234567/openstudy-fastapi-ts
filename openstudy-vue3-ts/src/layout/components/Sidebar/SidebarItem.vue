@@ -45,7 +45,7 @@ const props = defineProps({
   }
 })
 
-const onlyOneChild = ref({});
+const onlyOneChild = ref<any>({});
 
 function hasOneShowingChild(children = [], parent) {
   if (!children) {

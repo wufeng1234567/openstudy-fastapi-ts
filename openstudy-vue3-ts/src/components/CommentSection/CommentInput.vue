@@ -50,7 +50,7 @@ const showAtSelector = ref(false)
  * 提交时（handleSubmit → toWireContent）才还原成线上的 `@{106} 演示用户2`。
  * 这样用户看不到 `{106}` 这种实现细节，而 CommentItem / 后端解析的格式一点没变。
  */
-const mentionedUsers = ref([])
+const mentionedUsers = ref<any[]>([])
 const mentionedUserIds = computed(() => mentionedUsers.value.map(u => u.id))
 const textareaRef = ref(null)
 const atSelectorRef = ref(null)

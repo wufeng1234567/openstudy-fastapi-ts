@@ -60,7 +60,7 @@ const valueId = computed({
   }
 });
 const valueTitle = ref('');
-const defaultExpandedKey = ref([]);
+const defaultExpandedKey = ref<any[]>([]);
 
 function initHandle() {
   nextTick(() => {

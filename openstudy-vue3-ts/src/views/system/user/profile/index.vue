@@ -171,14 +171,14 @@ const editDialogVisible = ref(false)
 const pwdDialogVisible = ref(false)
 const activeTab = ref('notes')
 
-const categoryList = ref([])
+const categoryList = ref<any[]>([])
 const selectedCategoryId = ref(null)
-const notesList = ref([])
+const notesList = ref<any[]>([])
 const loadingNotes = ref(false)
 const pageNum = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
-const selectedNoteIds = ref([])
+const selectedNoteIds = ref<any[]>([])
 
 const isAllSelected = computed(() => {
   const pageIds = paginatedNotes.value.map(n => n.id)

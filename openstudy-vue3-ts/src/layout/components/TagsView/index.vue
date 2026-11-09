@@ -51,8 +51,8 @@ import usePermissionStore from '@/store/modules/permission'
 const visible = ref(false);
 const top = ref(0);
 const left = ref(0);
-const selectedTag = ref({});
-const affixTags = ref([]);
+const selectedTag = ref<any>({});
+const affixTags = ref<any[]>([]);
 const scrollPaneRef = ref(null);
 
 const { proxy } = getCurrentInstance();

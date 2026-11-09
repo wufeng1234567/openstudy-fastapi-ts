@@ -313,20 +313,20 @@ const router = useRouter();
 const { proxy } = getCurrentInstance();
 const { sys_normal_disable, sys_user_sex } = proxy.useDict("sys_normal_disable", "sys_user_sex");
 
-const userList = ref([]);
+const userList = ref<any[]>([]);
 const open = ref(false);
 const loading = ref(true);
 const showSearch = ref(true);
-const ids = ref([]);
+const ids = ref<any[]>([]);
 const single = ref(true);
 const multiple = ref(true);
 const total = ref(0);
 const title = ref("");
-const dateRange = ref([]);
+const dateRange = ref<any[]>([]);
 const deptOptions = ref(undefined);
 const initPassword = ref(undefined);
-const postOptions = ref([]);
-const roleOptions = ref([]);
+const postOptions = ref<any[]>([]);
+const roleOptions = ref<any[]>([]);
 /*** 用户导入参数 */
 const upload = reactive({
   // 是否显示弹出层（用户导入）

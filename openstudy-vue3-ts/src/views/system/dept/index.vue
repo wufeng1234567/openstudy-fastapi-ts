@@ -147,12 +147,12 @@ import { listDept, getDept, delDept, addDept, updateDept, listDeptExcludeChild }
 const { proxy } = getCurrentInstance();
 const { sys_normal_disable } = proxy.useDict("sys_normal_disable");
 
-const deptList = ref([]);
+const deptList = ref<any[]>([]);
 const open = ref(false);
 const loading = ref(true);
 const showSearch = ref(true);
 const title = ref("");
-const deptOptions = ref([]);
+const deptOptions = ref<any[]>([]);
 const isExpandAll = ref(true);
 const refreshTable = ref(true);
 

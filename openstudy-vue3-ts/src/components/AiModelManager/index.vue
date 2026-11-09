@@ -275,7 +275,7 @@ const props = defineProps({
 const emit = defineEmits(['saved'])
 
 const loading = ref(false)
-const configList = ref([])
+const configList = ref<any[]>([])
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const testing = ref(false)
