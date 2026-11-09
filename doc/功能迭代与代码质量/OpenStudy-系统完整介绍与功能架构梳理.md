@@ -907,7 +907,7 @@ run_agent_stream
 | format | ✅ Prettier 基线（warn-only） | ✅ Prettier |
 | type-check | ❌ 无 mypy | 🟡 工具已修复（TS 5.3.3 + 8GB heap），P1 第一批后存量 2,325 条错误 |
 | test | ✅ 99 个 pytest 用例通过；✅ pytest.ini/conftest | 自研 `check_agent_dsfree.mjs`；无 vitest/jest |
-| CI | ✅ 3 jobs 全绿（run `42618690202`）；pytest/ruff 已接电 | ✅ type-check 为报告型步骤，存量错误仍 2,325 |
+| CI | ✅ 3 jobs 全绿（run `42621589258`）；pytest/ruff 已接电 | ✅ type-check 为报告型步骤，存量错误仍 2,325 |
 | pre-commit | ❌ 无 | ❌ 无 |
 
 ### 7.2 代码规范现状
