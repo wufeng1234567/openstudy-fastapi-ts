@@ -994,9 +994,16 @@
         <section class="kbp-bank-knowledge__section">
           <h4>知识点</h4>
           <div v-if="bankKnowledge.entities?.length" class="kbp-bank-knowledge__chips">
-            <el-tag v-for="entity in bankKnowledge.entities" :key="entity.name" size="small" effect="plain">
+            <button type="button" class="kbp-bank-knowledge__chip"
+              :class="{ 'is-active': !selectedBankEntityName }" @click="selectedBankEntityName = ''">
+              全部
+            </button>
+            <button v-for="entity in bankKnowledge.entities" :key="entity.name" type="button"
+              class="kbp-bank-knowledge__chip" :class="{ 'is-active': selectedBankEntityName === entity.name }"
+              @click="selectBankKnowledgeEntity(entity.name)">
               {{ entity.name }}<em v-if="entity.type"> · {{ entity.type }}</em>
-            </el-tag>
+              <span v-if="entity.questionIds?.length">{{ entity.questionIds.length }} 题</span>
+            </button>
           </div>
           <p v-else class="kbp-bank-knowledge__empty">还没有抽取到知识点，关联后会在后台自动抽取。</p>
           <div v-if="bankKnowledge.relations?.length" class="kbp-bank-knowledge__relations">
@@ -1006,15 +1013,21 @@
           </div>
         </section>
         <section class="kbp-bank-knowledge__section">
-          <h4>对应题目 <span>示例 {{ bankKnowledge.questions?.length || 0 }} 道</span></h4>
-          <div v-if="bankKnowledge.questions?.length" class="kbp-bank-knowledge__questions">
-            <article v-for="question in bankKnowledge.questions" :key="question.id">
+          <h4>
+            对应题目
+            <span v-if="selectedBankEntityName">「{{ selectedBankEntityName }}」{{ filteredBankKnowledgeQuestions.length }} 道</span>
+            <span v-else>示例 {{ filteredBankKnowledgeQuestions.length }} 道</span>
+          </h4>
+          <div v-if="filteredBankKnowledgeQuestions.length" class="kbp-bank-knowledge__questions">
+            <article v-for="question in filteredBankKnowledgeQuestions" :key="question.id">
               <b>#{{ question.id }}</b>
               <p>{{ question.text }}</p>
               <em v-if="question.analysis">解析：{{ question.analysis }}</em>
             </article>
           </div>
-          <p v-else class="kbp-bank-knowledge__empty">暂无题目样例。</p>
+          <p v-else class="kbp-bank-knowledge__empty">
+            {{ selectedBankEntityName ? '这个知识点暂未匹配到可展示的题目。' : '暂无题目样例。' }}
+          </p>
         </section>
       </div>
       <template #footer>
@@ -1870,6 +1883,16 @@ const bankKnowledgeVisible = ref(false)
 const bankKnowledgeLoading = ref(false)
 const bankKnowledgeTitle = ref('')
 const bankKnowledge = ref<any>({ summary: '', entities: [], relations: [], questions: [] })
+const selectedBankEntityName = ref('')
+const selectedBankEntity = computed(() =>
+  (bankKnowledge.value.entities || []).find((entity: any) => String(entity.name) === selectedBankEntityName.value)
+)
+const filteredBankKnowledgeQuestions = computed(() => {
+  const questions = bankKnowledge.value.questions || []
+  if (!selectedBankEntityName.value) return questions.slice(0, 20)
+  const ids = new Set((selectedBankEntity.value?.questionIds || []).map(Number))
+  return questions.filter((question: any) => ids.has(Number(question.id)))
+})
 
 /* ===================== 加载 ===================== */
 
@@ -3605,12 +3628,17 @@ async function importQuestionBank(bank: any) {
   }
 }
 
+function selectBankKnowledgeEntity(name: string) {
+  selectedBankEntityName.value = selectedBankEntityName.value === name ? '' : name
+}
+
 async function openBankKnowledge(bank: any) {
   const kb = activeKb.value
   const bankId = Number(bank?.bankId || bank?.id || 0)
   if (!kb || !bankId || bankKnowledgeLoading.value) return
   bankKnowledgeTitle.value = String(bank.bankName || bank.name || '题库知识点')
   bankKnowledge.value = { summary: '', entities: [], relations: [], questions: [] }
+  selectedBankEntityName.value = ''
   bankKnowledgeVisible.value = true
   bankKnowledgeLoading.value = true
   try {
@@ -5691,7 +5719,11 @@ onBeforeUnmount(() => {
 .kbp-bank-knowledge__section h4 { margin: 0 0 8px; color: var(--os-text-1, #253247); font-size: 13px; }
 .kbp-bank-knowledge__section h4 span { color: var(--os-text-4, #9ca3af); font-size: 10.5px; font-weight: 400; }
 .kbp-bank-knowledge__chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.kbp-bank-knowledge__chips em { color: #9aa3b2; font-size: 10px; font-style: normal; }
+.kbp-bank-knowledge__chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid #e4eaf3; border-radius: 7px; background: #fff; color: #4b5563; cursor: pointer; font-size: 11px; }
+.kbp-bank-knowledge__chip:hover { border-color: #c7d8f1; color: #2f5fce; background: #f8faff; }
+.kbp-bank-knowledge__chip.is-active { border-color: #9db9ef; background: #eef4ff; color: #2f5fce; font-weight: 600; }
+.kbp-bank-knowledge__chip em { color: #9aa3b2; font-size: 10px; font-style: normal; }
+.kbp-bank-knowledge__chip span { color: #8b95a6; font-size: 9.5px; }
 .kbp-bank-knowledge__relations { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 9px; color: #6b7280; font-size: 10.5px; line-height: 1.6; }
 .kbp-bank-knowledge__relations em { color: #9aa3b2; font-style: normal; }
 .kbp-bank-knowledge__questions { display: flex; flex-direction: column; gap: 8px; }

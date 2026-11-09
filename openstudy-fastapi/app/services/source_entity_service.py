@@ -132,7 +132,7 @@ async def extract_bank_entities(
     """按题目块抽取后合并，避免大题库一次塞进模型上下文。"""
     rows = (
         await db.execute(
-            select(QuestionMain.question_text, QuestionMain.analysis)
+            select(QuestionMain.id, QuestionMain.question_text, QuestionMain.analysis)
             .where(QuestionMain.bank_id == int(bank_id), QuestionMain.status == "0")
             .order_by(QuestionMain.id.asc())
             .limit(max(1, min(int(limit or 200), 300)))
@@ -232,6 +232,19 @@ async def extract_bank_entities(
         for key, item in sorted(all_relations.items(), key=lambda pair: relation_hits.get(pair[0], 0), reverse=True)
         if str(item.get("source") or "") in kept_names and str(item.get("target") or "") in kept_names
     ][:60]
+    # 给每个核心知识点回挂对应题目，前端点击知识点即可筛出题目。
+    question_rows = [
+        (int(row.id), f"{str(row.question_text or '')} {str(row.analysis or '')}")
+        for row in rows
+        if getattr(row, "id", None) is not None
+    ]
+    for entity in top_entities:
+        name = str(entity.get("name") or "").strip()
+        entity["questionIds"] = (
+            [qid for qid, text in question_rows if name and name in text]
+            if name
+            else []
+        )
     top_names = [str(item.get("name") or "") for item in top_entities[:8] if str(item.get("name") or "")]
     summary = f"题库主要聚焦：{'、'.join(top_names)}。" if top_names else ""
     return {

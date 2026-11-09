@@ -106,7 +106,7 @@ async def get_bank_knowledge(
                 select(QuestionMain.id, QuestionMain.question_text, QuestionMain.analysis)
                 .where(QuestionMain.bank_id == int(bank_id), QuestionMain.status == "0")
                 .order_by(QuestionMain.id.asc())
-                .limit(20)
+                .limit(200)
             )
         ).all()
         return success(
