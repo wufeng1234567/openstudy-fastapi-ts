@@ -101,6 +101,9 @@ class ReviewSheetTool(AgentTool):
         "required": [],
     }
 
+    #: 生成 Word 复习卷，属于产物落盘；不写用户数据，因此不弹确认
+    write_operation = True
+
     async def preview(  # noqa: D401 - 与基类同签名
         self, params: Dict[str, Any], ctx: ToolContext
     ) -> Dict[str, Any]:

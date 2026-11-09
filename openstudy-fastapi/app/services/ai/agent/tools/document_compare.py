@@ -124,7 +124,9 @@ class DocumentCompareTool(AgentTool):
         "required": ["action"],
     }
 
-    #: 只读：不写用户数据，只生成可选报告文件
+    #: 只生成可选报告文件，不写用户数据；产物落盘属于 write
+    write_operation = True
+
     def needs_confirmation(self, params: Dict[str, Any]) -> bool:
         return False
 

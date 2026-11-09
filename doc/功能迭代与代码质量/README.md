@@ -22,7 +22,7 @@
 - **笔记导入资料夹**：后端 `note_kb_link` 表/服务/4 端点 + Agent `note_kb_link` 工具 + 笔记详情「加入资料夹」入口已完成（P2）。题库导入资料夹已经做了（逻辑引用，不复制题目）。
 - **P1 第一批**：工具标签补齐 29/29、`api/v1` 分页样板已全部迁移到 helper、4 个 ORM 模型从 API 层迁入 `app/models/`、5 个工具补角色白名单、覆盖率基线 19%、`console.log` 从 129～155 处降到 56 处；type-check 3,218→2,993。
 - **当前迭代**：0.8.0 之后的 48 个提交（2026-11-08～09）主题是「规划建议工作台 + 六类节点统一图谱 + 来源实体集增量更新 + 资料夹题库关联 + 资料智能报告」，README 的 0.8.0 段落已落后。
-- **代码质量**：P0 第一批已执行——版本统一 0.8.0、pytest 配置（98 passed）、ruff 语法门禁通过、ESLint/Prettier 基线（0 errors/3,200 warnings）、25 个 `.bak` 与 17 个零引用 Vue 组件已删、`AiAssistant` 悬浮按钮残留已清（`rg "float-btn"` 0）、`npm run build:prod` exit 0。**type-check 工具已修复；P1 第一批修 `request.ts` 返回类型与全局组件属性后，存量错误从 3,218 降到 2,993，仍列 P1 首项**；CI 配置已补 pytest/ruff step，尚未在 runner 实跑。
+- **代码质量**：P0 第一批已执行——版本统一 0.8.0、pytest 配置（99 passed）、ruff 语法门禁通过、ESLint/Prettier 基线（0 errors/3,214 warnings）、25 个 `.bak` 与 17 个零引用 Vue 组件已删、`AiAssistant` 悬浮按钮残留已清（`rg "float-btn"` 0）、`npm run build:prod` exit 0。**type-check 工具已修复；P1 第一批修 `request.ts` 返回类型与全局组件属性后，存量错误从 3,218 降到 2,993，仍列 P1 首项**；CI 配置已补 pytest/ruff step，尚未在 runner 实跑。
 - **评审风险**：LLM 评审不会读完全部代码，它看「根目录配置 + README + 可执行命令 + 大文件/坏味道搜索 + 死代码/版本 + 口径一致性」。先把 P0 门禁接电，比继续加功能更划算。
 
 ## 建议阅读顺序
@@ -40,7 +40,7 @@
 | 已挂载路由模块 | 42 个 |
 | ORM 表 | 80 张 |
 | Agent 工具 | 29 个 |
-| 后端 pytest 用例 | 98 个（P0 后 `pytest tests` 实跑通过，含新增 Agent 工具契约测试；6 个 script-style 检查另列） |
+| 后端 pytest 用例 | 99 个（P0 后 `pytest tests` 实跑通过，含新增 Agent 工具契约测试；6 个 script-style 检查另列） |
 | 本地验证库知识百科 | 109 页 / 241 链接 / 704 实体 / 745 关系 |
 | 当前质量评分（本目录口径） | 5.5 / 10 |
 | 智能图谱评级 | 6.0 / 10（能用，不算好用） |

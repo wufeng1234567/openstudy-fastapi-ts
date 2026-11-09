@@ -71,6 +71,9 @@ class MicroCourseTool(AgentTool):
         "required": [],
     }
 
+    #: 生成 HTML/PPTX 文件，属于产物落盘；不写用户数据，因此不弹确认
+    write_operation = True
+
     def needs_confirmation(self, params: Dict[str, Any]) -> bool:
         return False
 

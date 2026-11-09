@@ -18,9 +18,9 @@
 |---|---|---|
 | 统一版本号 | ✅ 完成 | `VERSION` 0.8.0、`openstudy-fastapi/pyproject.toml` 0.8.0；`package.json`/`main.py` 原为 0.8.0 |
 | 修复 type-check 工具链 | ⚠️ 部分完成 | `vue-tsc` 不再因 TS 5.9 崩溃（锁 TypeScript 5.3.3、Node heap 8GB）；但首次运行暴露 **3,218 条存量类型错误**（strict 口径）；P1 第一批修 `request.ts` 返回类型与全局组件属性后降到 **2,993 条**，尚未达到 exit 0，列为 P1 首项 |
-| pytest 配置 + 裸 pytest 可跑 | ✅ 完成 | 新增 `pytest.ini`（`testpaths=tests`、`asyncio_mode=auto`）与 `tests/conftest.py`；`pytest tests` → **98 passed, 9.12s**；6 个 script-style 文件（`test_agent_rag_tools.py`、`test_context_memory.py`）已加入 `collect_ignore`，仍可 `python tests/<file>.py` 运行 |
+| pytest 配置 + 裸 pytest 可跑 | ✅ 完成 | 新增 `pytest.ini`（`testpaths=tests`、`asyncio_mode=auto`）与 `tests/conftest.py`；`pytest tests` → **99 passed, 9.12s**；6 个 script-style 文件（`test_agent_rag_tools.py`、`test_context_memory.py`）已加入 `collect_ignore`，仍可 `python tests/<file>.py` 运行 |
 | ruff 配置 + 语法门禁 | ✅ 完成 | 新增 `ruff.toml`；`ruff check app --select E9,F63,F7,F82` → **All checks passed**；5 处裸 `except` 已改为 `except Exception` + loguru；4 个 F821 用 `TYPE_CHECKING` 修复 |
-| ESLint/Prettier 基线 | ✅ 完成 | 新增 `eslint.config.js`、`.prettierrc.json`、`requirements-dev.txt`；`npm run lint` → **0 errors / 3,200 warnings**（存量债务以 warning 呈现） |
+| ESLint/Prettier 基线 | ✅ 完成 | 新增 `eslint.config.js`、`.prettierrc.json`、`requirements-dev.txt`；`npm run lint` → **0 errors / 3,214 warnings**（存量债务以 warning 呈现） |
 | 仓库卫生 | ✅ 完成（第一批） | 删除 `300`、`audit_ws_summary.json`、`type-errors.txt`、`ts_errors.txt`；删除 25 个 `.bak`；`.gitignore` 补 `_scratch*/`、`300`、`audit_ws_summary.json`、`doc/competition/码道架构图/` |
 | 悬浮助手残留 | ✅ 完成 | 删除 `AiAssistant` 悬浮按钮拖拽逻辑（约 70 行）与 `.float-btn` 死样式（约 30 行）、`FrontSidebar` 死样式；全仓 `rg "float-btn"` → **0** |
 | 死代码清理 | ✅ 完成（第一批） | 删除 17 个零引用 Vue 组件/页面 + 旧首页/dictation/chats + `utils/generator`（1,340 行）+ `PageWithFilter` + 后端 `favorites.py`/`notice_repo.py`/旧检查脚本；前端 `.vue` 从 276 降到 254，构建通过 |
@@ -28,7 +28,7 @@
 **仍然未完成、留给 P1：**
 
 1. **type-check 存量 2,993 条错误（初始 3,218）**：多数集中在 RuoYi 后台页（system/monitor/questionMarked/questionError 等）与历史组件；需要按文件批处理，先修 `request.ts` 返回类型、全局 `ComponentCustomProperties`、`ref({})` 泛型，再逐模块收紧。
-2. **ESLint 3,200 条 warnings**：当前为 warn-only 基线，P1 按规则分组清理（`no-explicit-any`、`no-console`、`vue/require-valid-default-prop` 等）。
+2. **ESLint 3,214 条 warnings**：当前为 warn-only 基线，P1 按规则分组清理（`no-explicit-any`、`no-console`、`vue/require-valid-default-prop` 等）。
 3. **CI 完整验证**：本地已改 CI 的 pytest/ruff step 与 `npm install` 兜底，但未在 GitHub runner 实跑。
 4. **Git 提交**：本轮只改工作区，未提交；`doc/功能迭代与代码质量/` 本身仍是未跟踪目录。
 
@@ -41,8 +41,9 @@
 | 分页 helper | ✅ 完成（api/v1） | 新增 `app/utils/pagination.py`（`paginate` / `select_count`）；`api/v1` 的 `count_query = select(func.count())...` 模板已全部清零，`notes/questions/system/words/...` 均迁移 |
 | ORM 分层 | ✅ 完成（4 个） | `Carousel` / `LeaveMessage` / `SensitiveWord` / `ChatMessage` 从 `api/v1` 迁入 `app/models/{carousel,leave_message,sensitive_word,chat_message}.py`，`database.register_all_models()` 统一注册 |
 | 工具角色白名单 | ✅ 完成 5/7 | `document_compose`/`document_compare`/`chat_file_manage`→kb，`mind_map`→note，`review_sheet`→stats；仅 2 个英语工具仍只在 general |
-| Agent 工具契约测试 | ✅ 新增 | `tests/test_agent_tool_contract.py` 校验 29 个工具的 name/description/parameters/label/description_zh 和角色白名单引用；`pytest tests` 现为 **98 passed** |
-| P2 笔记导入工具 | ✅ 后端 | `note_kb_link` Agent 工具已注册（list/link/unlink/knowledge），挂 `note`/`kb` 角色；前端入口待接 |
+| Agent 工具契约测试 | ✅ 新增 | `tests/test_agent_tool_contract.py` 校验 29 个工具的 name/description/parameters/label/description_zh、角色白名单引用和产物工具 `write_operation`；`pytest tests` 现为 **99 passed** |
+| 写工具元数据 | ✅ 完成 | `document_compose` / `document_compare` / `micro_course_generate` / `review_sheet` / `study_plan` 已声明 `write_operation=True`（文件产物/快照，不强制确认） |
+| P2 笔记导入工具 | ✅ 完成 | `note_kb_link` 表/服务/4 API + Agent 工具 + 笔记详情「加入资料夹」入口 |
 | 调试残留清理 | ✅ 第一批 | `QuestionBuilder.vue` 25 处、`PracticeComponent.vue` 14 处、`CommentModal.vue` 15 处 `console.log` 已删除；全前端从 129～155 处降到 **56 处 / 14 文件** |
 | 覆盖率基线 | ✅ 已建立 | `pytest tests --cov=app/services --cov-report=term-missing` → **19%**（20,620/25,327 行未覆盖）；CI 已加 `--cov` 仅报告、不设阈值 |
 
@@ -57,7 +58,7 @@
 | 架构清晰度 | 6.5 / 10 | 目录分层清楚；P1 已迁出 4 个内联 ORM 模型，但 API 层仍有大量内联查询、图谱四套服务并存 |
 | 代码可读性 | 6.5 / 10 | 注释/docstring 质量高；超大文件/超长函数拉低 |
 | 可维护性 | 5.5 / 10 | 重复样板、死代码、双源依赖、双锁文件、旧链路未下线 |
-| 测试资产 | 8.0 / 10 | P0 后 `pytest tests` 98 passed；已加 pytest.ini/conftest/CI step；仍无覆盖率门禁 |
+| 测试资产 | 8.0 / 10 | P0 后 `pytest tests` 99 passed；已加 pytest.ini/conftest/CI step；仍无覆盖率门禁 |
 | 工具链/门禁 | 6.0 / 10 | P0 已加 ruff/eslint/prettier/pytest + CI step；type-check 存量 2,993 错误仍未清零 |
 | 仓库卫生 | 7.0 / 10 | P0 已删 300/audit/type-errors/ts_errors/25 个 `.bak`；既有历史未跟踪项仍在（见 P1） |
 | 文档一致性 | 5.0 / 10 | 文档丰富；版本双轨、README 落后、子 README 仍是 Spring Boot |
@@ -383,8 +384,8 @@
 
 | 项 | 结果 |
 |---|---|
-| `pytest tests` | **98 passed in 9.39s，exit 0**（P0 后） |
-| 裸 `pytest` | **98 passed**（pytest.ini 的 testpaths=tests；6 个 script-style 文件已 collect_ignore） |
+| `pytest tests` | **99 passed in 9.39s，exit 0**（P0 后） |
+| 裸 `pytest` | **99 passed**（pytest.ini 的 testpaths=tests；6 个 script-style 文件已 collect_ignore） |
 | 历史裸 pytest 报错来源 | `test_notice.py:2` 引用不存在的 `async_session`；`_scratch/` 下 5 个临时测试 import 失败（均已清理） |
 | pytest 配置 | ❌ 无 `pytest.ini` / `conftest.py` / 覆盖率配置 |
 | CI | ❌ 不跑 pytest（`ci.yml:54-73` 仅 compileall + import） |
@@ -431,7 +432,7 @@ node tests/check_agent_dsfree.mjs
 - README 0.8.0 段落未覆盖 2026-11-08～09 的规划建议/实体集/题库关联/资料智能报告；
 - `openstudy-vue3-ts/README.md:22` 仍写 Spring Boot 3；
 - `package.json:19-22` repository 指向 RuoYi 上游；
-- `doc/代码质量提升实施方案.md` 是 2026-10-21 的历史方案，基线已过时（当时 156 个文件、无 pytest），与当前 245 个 py、98 个 pytest 测试不符；建议更新或重命名为「历史方案」。
+- `doc/代码质量提升实施方案.md` 是 2026-10-21 的历史方案，基线已过时（当时 156 个文件、无 pytest），与当前 245 个 py、99 个 pytest 测试不符；建议更新或重命名为「历史方案」。
 
 ---
 
@@ -510,7 +511,7 @@ node tests/check_agent_dsfree.mjs
 **P0 后仍然最容易被抓的 5 个点：**
 
 1. `npm run type-check` 从「必崩」变成「能跑但 3,218 条存量错误」——比之前诚实，但离绿还有距离；
-2. `npm run lint` 是 0 errors / 3,200 warnings 的 warn-only 基线，warning 数量会被评审追问；
+2. `npm run lint` 是 0 errors / 3,214 warnings 的 warn-only 基线，warning 数量会被评审追问；
 3. `package-lock.json` 被前端 .gitignore 忽略，CI 目前用 `npm install` 兜底，锁文件口径未完全统一；
 4. 后台动态菜单页（system/monitor/courses 等）仍有历史类型错误与「教师/学生」字段，需产品确认去留；
 5. 「说没有悬浮助手/建议不是任务/笔记没做」曾经与代码残留不一致——本轮已清到 `rg "float-btn"` 0，但旧文档若未同步会再次制造矛盾。
@@ -530,7 +531,7 @@ node tests/check_agent_dsfree.mjs
 7. **加 lint 基线**：`ruff.toml`（先开 `E9/F63/F7/F82/F401/F841/E722`，ignore `B008/E501/E402`）；前端加 ESLint flat config + Prettier，先 `warn` 不阻塞。
 8. **5 处裸 except 清零**：`auth.py:101`、`ai.py:405`、`notes.py:1103/1138`、`notice_front.py:68`。
 
-**验收标准（修订后）**：`git status` 干净；`pytest tests` 98 passed；`ruff check app --select E9,F63,F7,F82` exit 0；`npm run lint` 0 errors；`npm run build:prod` exit 0；VERSION 全一致；全仓 grep `float-btn` 0 命中。**`npm run type-check` 仍会失败（3,218 条存量错误），列入 P1 首个专项，不伪装为 P0 已完成。**
+**验收标准（修订后）**：`git status` 干净；`pytest tests` 99 passed；`ruff check app --select E9,F63,F7,F82` exit 0；`npm run lint` 0 errors；`npm run build:prod` exit 0；VERSION 全一致；全仓 grep `float-btn` 0 命中。**`npm run type-check` 仍会失败（3,218 条存量错误），列入 P1 首个专项，不伪装为 P0 已完成。**
 
 ### P1（1～2 周，结构化改进，需测试保护）— 下一步
 
@@ -539,7 +540,7 @@ node tests/check_agent_dsfree.mjs
 3. `requirements.txt` 由 `poetry export` 生成，消除双源漂移。
 4. 🟡 `console.log` Top3 已清（`QuestionBuilder` 25 / `PracticeComponent` 14 / `CommentModal` 15）；全前端仍剩 56 处，`any` 继续按规则清理。
 5. 为 `agentDsFree.ts` 与 `loop.py` 的镜像常量写一致性契约测试（`SAME_CALL_LIMIT` / `DEAD_LOOP_STRIKES` / `FORMAT_FIX_LIMIT`）。
-6. 补 `TOOL_LABELS`/`ACTION_LABELS` 9+13 个工具标签；给 4 个写工具加 `write_operation`/`needs_confirmation`/`undo_plan`；7 个仅 general 工具补角色白名单。
+6. ✅ 已完成：29 个工具标签、5 个角色白名单、5 个产物/快照工具 `write_operation=True`；`needs_confirmation` 按工具语义保留。
 7. 修智能报告降级标志边界（`document_smart_report_service.py:158-159`）；给体检 P0 规则或把「P0/P1/P2」改成「P1/P2」。
 8. 题库关联后台抽取失败改为回传 `degraded`，前端提示「知识点抽取失败，可重新更新」。
 9. ✅ 覆盖率基线已加：`pytest tests --cov=app/services --cov-report=term-missing` → **19%**；只报数字不设门槛。
@@ -570,7 +571,7 @@ cd openstudy-vue3-ts; npm run type-check
 
 # 后端测试（P0 后）
 cd openstudy-fastapi; .\.venv\Scripts\python.exe -m pytest tests
-# → 98 passed in 9.39s, exit 0
+# → 99 passed in 9.39s, exit 0
 
 # ruff 语法门禁（P0 后）
 .\.venv\Scripts\python.exe -m ruff check app --select E9,F63,F7,F82

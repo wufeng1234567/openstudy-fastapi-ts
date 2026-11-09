@@ -162,7 +162,9 @@ class DocumentComposeTool(AgentTool):
         "required": ["source"],
     }
 
-    #: 只读工具：不碰用户数据，只是生成文件 → 不需要二次确认
+    #: 产物落盘是真实写入；不碰用户数据，因此不需要二次确认
+    write_operation = True
+
     def needs_confirmation(self, params: Dict[str, Any]) -> bool:
         return False
 

@@ -19,6 +19,20 @@ def test_registry_has_expected_tools_and_metadata():
         assert tool.description_zh.strip(), f"{tool.name} missing UI description_zh"
 
 
+def test_artifact_tools_declare_write_operation():
+    artifact_tools = {
+        "document_compose",
+        "document_compare",
+        "micro_course_generate",
+        "review_sheet",
+        "study_plan",
+    }
+    for name in artifact_tools:
+        tool = registry.get(name)
+        assert tool is not None, f"missing tool {name}"
+        assert tool.write_operation is True, f"{name} should declare write_operation=True"
+
+
 def test_role_whitelists_only_reference_registered_tools():
     names = set(registry.names())
     for role_key, role in OFFICIAL_ROLES.items():

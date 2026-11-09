@@ -46,7 +46,7 @@
 |---|---:|
 | 后端 `app/` Python 文件 | 247 个 |
 | 后端 `app/` 物理行数 | 96,111 行 |
-| 后端测试目录 | 28 个 `test_*.py` + 59 个 `_probe_*` + 12 个 `e2e_*`；pytest 98 passed |
+| 后端测试目录 | 28 个 `test_*.py` + 59 个 `_probe_*` + 12 个 `e2e_*`；pytest 99 passed |
 | 前端 `src/` 文件 | 437 个（276 `.vue` + 161 `.ts`） |
 | 前端 `src/` 物理行数 | 179,276 行 |
 | 已挂载后端路由模块 | 42 个（`api/v1` 下 43 个 `.py`，含 `__init__.py`） |
@@ -906,7 +906,7 @@ run_agent_stream
 | lint | ✅ P0 已加 `ruff.toml` | ✅ P0 已加 ESLint / Prettier |
 | format | ✅ Prettier 基线（warn-only） | ✅ Prettier |
 | type-check | ❌ 无 mypy | 🟡 工具已修复（TS 5.3.3 + 8GB heap），P1 第一批后存量 2,993 条错误 |
-| test | ✅ 98 个 pytest 用例通过；✅ pytest.ini/conftest | 自研 `check_agent_dsfree.mjs`；无 vitest/jest |
+| test | ✅ 99 个 pytest 用例通过；✅ pytest.ini/conftest | 自研 `check_agent_dsfree.mjs`；无 vitest/jest |
 | CI | ✅ 3 jobs；✅ P0 已补 pytest/ruff step（未在 runner 实跑） | ✅ type-check/build 步骤；type-check 仍会因存量错误失败 |
 | pre-commit | ❌ 无 | ❌ 无 |
 
@@ -936,7 +936,7 @@ run_agent_stream
 
 ### 7.3 测试现状
 
-- `pytest tests`（P0 后）：**98 passed in 9.12s，exit 0**；新增 `pytest.ini` / `tests/conftest.py` / `asyncio_mode=auto`。
+- `pytest tests`（P0 后）：**99 passed in 9.12s，exit 0**；新增 `pytest.ini` / `tests/conftest.py` / `asyncio_mode=auto`。
 - 6 个 script-style 文件（`test_agent_rag_tools.py`、`test_context_memory.py`）已加入 `collect_ignore`，仍可用 `python tests/<file>.py` 手动运行；`test_notice.py` 与 `_scratch/` 干扰已清理。
 - CI **不跑 pytest**（`.github/workflows/ci.yml:54-73` 只有 compileall + import app）。
 - 前端 `npm run type-check` 实测 exit 1：`vue-tsc 1.8.27` 与 `typescript 5.9.3` 不兼容。
@@ -1061,7 +1061,7 @@ run_agent_stream
 ## 附录 D：审计方法与证据
 
 - 静态：`git log/diff/status`、`rg`/`grep`、文件行数统计、Python AST 函数长度分析、`ruff check app --statistics`。
-- 运行（P0 后）：`pytest tests`（98 passed / exit 0）、`ruff check app --select E9,F63,F7,F82`（All checks passed）、`npm run lint`（0 errors / 3,200 warnings）、`npm run type-check`（可执行，P1 第一批后仍报 2,993 条存量错误）、`npm run build:prod`（exit 0）。
+- 运行（P0 后）：`pytest tests`（99 passed / exit 0）、`ruff check app --select E9,F63,F7,F82`（All checks passed）、`npm run lint`（0 errors / 3,214 warnings）、`npm run type-check`（可执行，P1 第一批后仍报 2,993 条存量错误）、`npm run build:prod`（exit 0）。
 - 数据库只读：`openstudy_v2_pgsql`（本地测试库）表计数与图谱服务直接调用；`wiki_service.get_wiki_graph` / `study_map_service.build_study_map` 实测 0.03～0.27 秒。
 - 子代理审计：前端入口（Hy4）、资料诊疗/题库闭环（Hy4）、智能图谱（MiniMax-M3.1-Flash）、文档纠偏（MiniMax-M3.1-Flash）；主代理复核关键结论并补齐交叉证据。
 - 限制：本报告不替代运行时全量回归；标「待验证」的动态菜单、后台页面入口、部分工具回执字段需在真实环境进一步确认。

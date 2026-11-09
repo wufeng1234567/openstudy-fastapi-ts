@@ -238,7 +238,8 @@ class StudyPlanTool(AgentTool):
         },
         "required": ["action"],
     }
-    write_operation = False
+    #: advise 会写 study_plan_snapshot（仅建议快照，不是任务/完成态）
+    write_operation = True
 
     async def execute(self, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
         action = str(params.get("action") or "plan").strip().lower()
