@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -44,51 +46,59 @@ async def _run_incremental_sources(job_id: int, user_id: int, kb_id: int, states
     from app.services.rag.wiki_build_job_service import _update_job
     from app.services.rag.wiki_service import build_wiki_pages
 
+    total = max(1, len(states))
     failed = 0
-    for index, state in enumerate(states):
+    done = 0
+    lock = asyncio.Lock()
+    semaphore = asyncio.Semaphore(3)
+
+    async def process(state: dict) -> None:
+        nonlocal failed, done
         source_type = str(state.get("sourceType") or "")
         source_id = int(state.get("sourceId") or 0)
         source_name = str(state.get("sourceName") or "来源")
+        ok = True
         try:
-            async with async_session_factory() as db:
-                if source_type in {"document", "web"}:
-                    await build_wiki_pages(
-                        db,
-                        int(user_id),
-                        int(kb_id),
-                        force=False,
-                        limit=max(1, min(int(limit or 30), 30)),
-                        doc_ids=[source_id],
+            async with semaphore:
+                async with async_session_factory() as db:
+                    if source_type in {"document", "web"}:
+                        await build_wiki_pages(
+                            db,
+                            int(user_id),
+                            int(kb_id),
+                            force=False,
+                            limit=max(1, min(int(limit or 30), 30)),
+                            doc_ids=[source_id],
+                        )
+                    elif source_type == "bank":
+                        await source_graph_service.sync_bank_graph(
+                            db,
+                            user_id=int(user_id),
+                            kb_id=int(kb_id),
+                            bank_id=source_id,
+                            source_name=source_name,
+                        )
+                    elif source_type in {"image", "note"}:
+                        text = await source_graph_state_service.source_text(
+                            db, source_type=source_type, source_id=source_id
+                        )
+                        if not text.strip():
+                            raise ValueError("来源没有可抽取的文本")
+                        await source_graph_service.sync_text_source(
+                            db,
+                            user_id=int(user_id),
+                            kb_id=int(kb_id),
+                            source_type=source_type,
+                            source_id=source_id,
+                            source_name=source_name,
+                            text=text,
+                        )
+                    await source_graph_state_service.mark_state(
+                        db, state_id=int(state["stateId"]), status="done"
                     )
-                elif source_type == "bank":
-                    await source_graph_service.sync_bank_graph(
-                        db,
-                        user_id=int(user_id),
-                        kb_id=int(kb_id),
-                        bank_id=source_id,
-                        source_name=source_name,
-                    )
-                elif source_type in {"image", "note"}:
-                    text = await source_graph_state_service.source_text(
-                        db, source_type=source_type, source_id=source_id
-                    )
-                    if not text.strip():
-                        raise ValueError("来源没有可抽取的文本")
-                    await source_graph_service.sync_text_source(
-                        db,
-                        user_id=int(user_id),
-                        kb_id=int(kb_id),
-                        source_type=source_type,
-                        source_id=source_id,
-                        source_name=source_name,
-                        text=text,
-                    )
-                await source_graph_state_service.mark_state(
-                    db, state_id=int(state["stateId"]), status="done"
-                )
-                await db.commit()
+                    await db.commit()
         except Exception as exc:  # noqa: BLE001
-            failed += 1
+            ok = False
             try:
                 async with async_session_factory() as db:
                     await source_graph_state_service.mark_state(
@@ -100,14 +110,20 @@ async def _run_incremental_sources(job_id: int, user_id: int, kb_id: int, states
                     await db.commit()
             except Exception:
                 pass
-        await _update_job(
-            job_id,
-            done=index + 1,
-            total=max(1, len(states)),
-            failed=failed,
-            current_title=source_name,
-            status="running" if index + 1 < len(states) else "done",
-        )
+        async with lock:
+            done += 1
+            if not ok:
+                failed += 1
+            await _update_job(
+                job_id,
+                done=done,
+                total=total,
+                failed=failed,
+                current_title=source_name,
+                status="running" if done < len(states) else "done",
+            )
+
+    await asyncio.gather(*(process(state) for state in states))
 
 
 async def _mark_source_pages_stale(db: AsyncSession, *, user_id: int, kb_id: int, source_id: int) -> int:
