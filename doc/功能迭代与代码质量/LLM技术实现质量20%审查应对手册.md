@@ -56,7 +56,7 @@ LLM 评审的上下文有限，它不会逐行读 27 万行代码。它实际做
 
 ---
 
-## 2. 同行 LLM 的 7 步检查流程（模拟）
+## 2. 同行 LLM 的 10 步检查流程（模拟）
 
 ### 第 1 步：扫根目录与文件树
 
@@ -148,6 +148,39 @@ debugger
 - `doc/代码质量提升实施方案.md` 描述的是「还没有 pytest」的旧基线。
 
 **它得出的判断：**「测试资产有，但工程化不足；版本管理不严谨。」
+
+### 第 8 步：搜死代码与调用链
+
+它会跑/搜索：
+
+```
+rg "utils/generator|PageWithFilter|StudyPrescriptionPanel" src
+rg "float-btn|悬浮" src
+rg "favorites\.py|notice_repo" app
+```
+
+在 OpenStudy 当前会看到：`utils/generator`、`PageWithFilter`、17 个旧组件已删除；`AiAssistant` 的 `.float-btn` 已删除；后端 `favorites.py`/`notice_repo.py` 已删除。它会把「文档说已清理、代码确有 diff」视为可信证据。
+
+### 第 9 步：看口径一致性
+
+它会拿文档中的承诺逐条对照代码：
+
+- 「没有悬浮助手」→ grep `float-btn` 是否为 0；
+- 「笔记导入资料夹」→ 是否有 `note_kb_link` 表/服务/API/Agent 工具/前端入口；
+- 「建议不是任务」→ `StudyAdvice` 是否含 `tasks/days/status/done`，旧 `StudyPrescriptionPanel` 是否已删；
+- 「图谱能用」→ 是否有真实数据/真实边，而不是只有截图。
+
+这是 LLM 评审最容易被说服、也最容易发现反例的一步。
+
+### 第 10 步：看 AI 工具使用留痕与验收证据
+
+它会找：
+
+- `doc/dev-process/` 日志、session、memory；
+- `quality-report.md` 中 pytest/ruff/lint/build/type-check 的真实输出；
+- commit 记录是否与文档结论对得上（如 `ca5cf66`、`b91d493`、`a0ee935`）。
+
+**它得出的判断：**「过程可追溯、验收有数字，但 type-check 仍有公开债务。」
 
 ---
 
@@ -409,6 +442,18 @@ LLM 评审喜欢**能被 grep/打开/引用**的文件。建议在 `doc/功能�
 ### Q11：智能报告是不是每次都调用大模型？有没有历史？
 
 > 「不一定。默认 `useLlm=true` 会尝试调用；`useLlm=false` 或模型失败/超时/返回非法 JSON 时，会回退到基于体检规则的模板报告，并用 `degraded.llmFallback=true` 明确标注『未调用模型』。报告**不写库、没有历史版本、刷新会重新生成**——这是当前已知缺口（B20）。另外有一处边界要诚实：如果模型返回合法 JSON 但零个有效改进项，我们用模板补齐时仍标了 `llmFallback=false`，这个标志需要修（`document_smart_report_service.py:158-159`）。」
+
+### Q12：`npm run type-check` 为什么还有几千条错误？
+
+> 「先说结论：**工具已修复，但类型债务未清零**。旧问题是 `vue-tsc 1.8.27 + TypeScript 5.9.3` 直接崩溃；现在锁 TypeScript 5.3.3、Node heap 8GB，命令能完整跑完，暴露的是真实存量错误（当前 **2,993 条**，初始 3,218）。主要集中在 RuoYi 后台页（system/monitor/questionMarked/questionError 等）、历史组件的 `ref({})` 推断和 `catch (error)` 的 unknown 类型；我们不会把『能跑』说成『已通过』，P1 按文件批处理，下一步目标先降到 2,000 以下。」
+
+### Q13：笔记导入资料夹做到什么程度？
+
+> 「**已完成 P2 首条完整闭环**：`note_kb_link` 表 / service / 4 个 API（列表、关联、取消关联、知识点预览）/ `source_graph_state_service` 来源集 / Agent `note_kb_link` 工具 / 笔记详情『加入资料夹』入口均已接通；关联后后台用 `sync_text_source` 抽实体与关系。它不复制笔记正文，只建立逻辑引用。前端与 Agent 的 29 个工具标签也已覆盖。」
+
+### Q14：你们图谱为什么有四套服务，是不是重复建设？
+
+> 「历史上确实叠了四层：`knowledge_map_service` 旧页面层级图、`knowledge_graph_service` 实体图、`study_graph_service` 旧学习图、`study_map_service` 六类统一图。当前用户主路径是 `wiki_service.get_wiki_graph`（主题页图）+ `study_map_service`（建议 trace）；另外两套是历史兼容/内部能力。我们不把四套说成优点：P2 会统一 `GraphNode/GraphEdge` 契约、补实体图入口或明确下线、把边 ID 改为内容派生，再决定是否保留旧端点。」
 
 ---
 
