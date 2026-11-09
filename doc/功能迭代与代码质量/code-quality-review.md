@@ -18,7 +18,7 @@
 1. `npm run type-check` 仍 exit 2，当前 **1,980 条**存量错误；不是“类型检查通过”。
 2. ESLint 是 **0 errors / 3,214 warnings** 的 warn-only 基线，不是零告警。
 3. 覆盖率 **19%** 是基线，不是质量门槛。
-4. CI **已在 GitHub Actions runner 实跑成功**（run `42626308647`，3 jobs 全绿）；但 type-check step 是 `continue-on-error` 的报告步骤，不等于 type-check 已通过。
+4. CI **已在 GitHub Actions runner 实跑成功**（run `42630095384`，3 jobs 全绿）；但 type-check step 是 `continue-on-error` 的报告步骤，不等于 type-check 已通过。
 5. 工作区仍有用户文件 `智能体核心知识梳理.docx`、`智能整理测试集/` 未跟踪；不属于本轮代码交付。
 
 ## 三、已修正的文档问题
@@ -36,4 +36,4 @@
 1. 先把 type-check 从 1,980 按文件压到 2,000 以下，再逐模块收紧；
 2. 给 `any` 建立按目录的 warn 台账，优先清 `src/views/front` 活跃路径；
 3. 单独开一轮 P2 图谱服务收口，不在本轮声称完成；
-4. 保持 CI 运行记录：`quality-report.md` 已记录 run `42626308647` 的 3 jobs 全绿。
+4. 保持 CI 运行记录：`quality-report.md` 已记录 run `42630095384` 的 3 jobs 全绿。
