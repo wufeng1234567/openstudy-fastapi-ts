@@ -28,6 +28,7 @@ from app.models.question import (
 from app.models.wiki import RagWikiPage
 from app.services import study_diagnosis_service as sds
 from app.services.rag import learning_route_service, wiki_service
+from app.services.rag.graph_contract import stable_edge_id
 
 ATTENTION_LEVELS = ("repeated_failure", "lapsing", "overdue", "due_soon")
 LEGACY_BANK_PREFIX = "考前计划·"
@@ -290,7 +291,7 @@ async def _attach_bank_page_edges(
         for page_id, weight in sorted(page_map.items()):
             edges.append(
                 {
-                    "id": f"bank:{bid}-page:{page_id}",
+                    "id": stable_edge_id("question_source", f"bank:{bid}", f"page:{page_id}"),
                     "source": f"bank:{bid}",
                     "target": f"page:{page_id}",
                     "type": "question_source",

@@ -551,7 +551,7 @@ node tests/check_agent_dsfree.mjs
 2. `questions.py` / `rag.py` 业务下沉 service，路由只留参数/权限/响应。
 3. 合并 OCR 双实现、上传/预览组件族；建 `useFileUpload`、`useOcr` 等 composable。
 4. `any` 减量从 `permission.ts`、`utils/index.ts` 开始，每文件小步类型化。
-5. **图谱四套服务收口**：🟡 已新增 `app/services/rag/graph_contract.py`（`GraphNode/GraphEdge` + `stable_edge_id` + `add_edge`），`study_map_service` / `knowledge_map_service` 已使用稳定边 ID；`knowledge_graph_service` / `study_graph_service` 仍未迁完，前端六类图未接画布、页/链接查询 limit 未补，P2 继续。
+5. **图谱四套服务收口**：🟡 已新增 `app/services/rag/graph_contract.py`（`GraphNode/GraphEdge` + `stable_edge_id` + `add_edge`），`study_map_service` / `knowledge_map_service` 已使用稳定边 ID；`study_graph_service` 已接入稳定边 ID；`knowledge_graph_service` 仍待迁移，前端六类图未接画布、页/链接查询 limit 未补，P2 继续。
 6. **笔记导入资料夹**：✅ 已完成：`note_kb_link` 表 + 4 端点 + service + `source_graph_state` + Agent 工具 + 笔记详情「加入资料夹」入口。
 7. **资料诊疗室 Agent 化**：补 `document_health`、`document_smart_report`、`material_organize_preview` 三工具，挂 `kb`/`general` 角色。
 8. 建立 `docs/quality/`：质量报告、死代码台账、覆盖率趋势、评审指南。
