@@ -228,6 +228,9 @@ app.add_exception_handler(Exception, general_exception_handler)
 
 # Static files (with placeholder fallback)
 from app.core.static_files import StaticFilesWithPlaceholder
+# StaticFiles 在 import 阶段就校验目录；干净 clone/CI 没有 data/uploadPath，
+# 必须先在 mount 前建好，不能只依赖 lifespan 里的 makedirs。
+os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/profile", StaticFilesWithPlaceholder(directory=settings.UPLOAD_DIR), name="uploads")
 
 # 预置轮播图静态资源（随镜像打包，见 app/static/carousel/）
