@@ -821,31 +821,41 @@ const mapNodes = computed(() => {
   const visibleComponents = components
     .map((component) => component.filter((id) => visibleIds.has(id)))
     .filter((component) => component.length)
-  const centerSets: Record<number, { x: number; y: number }[]> = {
-    1: [{ x: 500, y: 320 }],
-    2: [{ x: 340, y: 300 }, { x: 760, y: 485 }],
-    3: [{ x: 250, y: 210 }, { x: 750, y: 210 }, { x: 500, y: 525 }],
-    4: [{ x: 260, y: 210 }, { x: 740, y: 210 }, { x: 260, y: 510 }, { x: 740, y: 510 }]
-  }
-  const centers = centerSets[visibleComponents.length] || visibleComponents.map((_, index) => ({
-    x: 220 + (index % 3) * 280,
-    y: 180 + Math.floor(index / 3) * 250
+  // 实体集使用等距网格排布：按实体集数量自适应列数，给每个实体集留出
+  // 轮廓外扩空间，避免大题库/大文档的灰色包裹区互相挤压。
+  const columns = visibleComponents.length <= 2 ? Math.max(1, visibleComponents.length) : 2
+  const rows = Math.max(1, Math.ceil(visibleComponents.length / columns))
+  const cellW = 1000 / columns
+  const cellH = 640 / rows
+  const centers = visibleComponents.map((_, index) => ({
+    x: cellW * ((index % columns) + 0.5),
+    y: cellH * (Math.floor(index / columns) + 0.5)
   }))
   const result: any[] = []
   visibleComponents.forEach((component, componentIndex) => {
     const members = component.map((id) => byId.get(id)).filter(Boolean) as any[]
     const hub = [...members].sort((a, b) => Number(b.degree || 0) - Number(a.degree || 0))[0]
     const center = centers[componentIndex] || centers[centers.length - 1]
-    const radius = Math.min(160, 54 + Math.sqrt(members.length) * 20)
+    const radius = Math.min(76, 34 + Math.sqrt(members.length) * 9)
+    // 大实体集用网格而不是单环：几十个节点挤在一个圆环上会重叠，
+    // 网格排列仍保持同一实体集，同时让每个节点可辨认。
+    const gridGap = 48
+    const gridColumns = members.length > 6 ? Math.min(6, Math.ceil(Math.sqrt(members.length * 1.4))) : 0
+    const gridRows = gridColumns ? Math.ceil(members.length / gridColumns) : 0
+    const gridStartX = center.x - ((gridColumns - 1) * gridGap) / 2
+    const gridStartY = center.y - ((gridRows - 1) * gridGap) / 2
     const orbit = members.filter((node) => node !== hub)
     const hubOnCenter = members.length > 1
     let orbitIndex = 0
-    for (const node of members) {
+    for (const [memberIndex, node] of members.entries()) {
       const degree = Number(node.degree || 0)
       const pageType = normalizePageType(node.pageType)
       let x = center.x
       let y = center.y
-      if (members.length > 1 && !(hubOnCenter && node === hub)) {
+      if (gridColumns) {
+        x = gridStartX + (memberIndex % gridColumns) * gridGap
+        y = gridStartY + Math.floor(memberIndex / gridColumns) * gridGap
+      } else if (members.length > 1 && !(hubOnCenter && node === hub)) {
         const count = orbit.length
         const angle = -Math.PI / 2 + (Math.PI * 2 * orbitIndex) / Math.max(1, count)
         const jitter = Math.sin((Number(node.id) || orbitIndex + 1) * 12.9898) * 0.16
@@ -1544,7 +1554,7 @@ function stopMapAnimation() {
   mapSimNodes = []
 }
 
-const MAP_SIMULATION_NODE_LIMIT = 80
+const MAP_SIMULATION_NODE_LIMIT = 30
 
 function startMapAnimation() {
   stopMapAnimation()
@@ -1676,7 +1686,7 @@ const mapHulls = computed(() => {
   const hulls: any[] = []
   for (const component of mapComponents.value.components) {
     const ids = component.filter((id) => visibleIds.has(id))
-    if (ids.length < 2) continue
+    if (ids.length < 1) continue
     const points = ids.map((id) => byId.get(id)).filter(Boolean)
     const minX = Math.min(...points.map((point: any) => Number(point.x || 0)))
     const minY = Math.min(...points.map((point: any) => Number(point.y || 0)))
