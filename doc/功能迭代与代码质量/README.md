@@ -22,9 +22,9 @@
 - **智能体**：对话是默认首页；OpenStudy 助手入口在**侧边栏左上角品牌行**（右侧抽屉，无悬浮球）；29 个工具；SSE/确认/回滚/记忆/子代理主链路完整；核心资料/题库/笔记域双向闭环，资料诊疗室/智能报告/题库关联/知识库分享/后台仍是孤岛。
 - **智能图谱**：评级「能用 6/10」。真实数据、真实边、百毫秒级响应；但前端画布没渲染六类统一图、实体图无前端入口、题源锚点仅 6/748、笔记节点恒 0、边 ID 跨请求不稳定——不是摆设，但也不是「好用」。
 - **笔记导入资料夹**：后端 `note_kb_link` 表/服务/4 端点 + Agent `note_kb_link` 工具 + 笔记详情「加入资料夹」入口已完成（P2）。题库导入资料夹已经做了（逻辑引用，不复制题目）。
-- **P1 第一批**：工具标签补齐 29/29、`api/v1` 分页样板已全部迁移到 helper、4 个 ORM 模型从 API 层迁入 `app/models/`、5 个工具补角色白名单、覆盖率基线 19%、`console.log` 从 129～155 处降到 56 处；type-check 3,218→1,980。
+- **P1 第一批**：工具标签补齐 29/29、`api/v1` 分页样板已全部迁移到 helper、4 个 ORM 模型从 API 层迁入 `app/models/`、5 个工具补角色白名单、覆盖率基线 19%、`console.log` 从 129～155 处降到 56 处；type-check 3,218→1,951。
 - **当前迭代**：0.8.0 之后的 48 个提交（2026-11-08～09）主题是「规划建议工作台 + 六类节点统一图谱 + 来源实体集增量更新 + 资料夹题库关联 + 资料智能报告」，README 的 0.8.0 段落已落后。
-- **代码质量**：P0 第一批已执行——版本统一 0.8.0、pytest 配置（102 passed）、ruff 语法门禁通过、ESLint/Prettier 基线（0 errors/3,362 warnings）、25 个 `.bak` 与 17 个零引用 Vue 组件已删、`AiAssistant` 悬浮按钮残留已清（`rg "float-btn"` 0）、`npm run build:prod` exit 0。**type-check 工具已修复；P1 第一批修 `request.ts` 返回类型与全局组件属性后，存量错误从 3,218 降到 1,980，仍列 P1 首项**；CI 配置已补 pytest/ruff step，并已在 GitHub Actions runner 实跑成功（run `42630095384`，3 jobs 全绿；type-check 为报告型步骤）。
+- **代码质量**：P0 第一批已执行——版本统一 0.8.0、pytest 配置（102 passed）、ruff 语法门禁通过、ESLint/Prettier 基线（0 errors/3,362 warnings）、25 个 `.bak` 与 17 个零引用 Vue 组件已删、`AiAssistant` 悬浮按钮残留已清（`rg "float-btn"` 0）、`npm run build:prod` exit 0。**type-check 工具已修复；P1 第一批修 `request.ts` 返回类型与全局组件属性后，存量错误从 3,218 降到 1,951，仍列 P1 首项**；CI 配置已补 pytest/ruff step，并已在 GitHub Actions runner 实跑成功（run `42630095384`，3 jobs 全绿；type-check 为报告型步骤）。
 - **评审风险**：LLM 评审不会读完全部代码，它看「根目录配置 + README + 可执行命令 + 大文件/坏味道搜索 + 死代码/版本 + 口径一致性」。先把 P0 门禁接电，比继续加功能更划算。
 
 ## 建议阅读顺序
