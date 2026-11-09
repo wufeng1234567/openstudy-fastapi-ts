@@ -1,0 +1,2926 @@
+{
+  "pages": [
+    {
+      "id": 123,
+      "title": "二维离散型随机变量",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 47,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图13"
+      }
+    },
+    {
+      "id": 124,
+      "title": "联合分布律",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 47,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图13"
+      }
+    },
+    {
+      "id": 125,
+      "title": "协方差",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 47,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图13"
+      }
+    },
+    {
+      "id": 126,
+      "title": "随机变量函数的协方差",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 47,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图13"
+      }
+    },
+    {
+      "id": 127,
+      "title": "全概率公式",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 35,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图1"
+      }
+    },
+    {
+      "id": 128,
+      "title": "贝叶斯公式",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 35,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图1"
+      }
+    },
+    {
+      "id": 129,
+      "title": "机器人语音对话接听",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 102,
+        "sourceName": "人工智能实操.docx · 图12"
+      }
+    },
+    {
+      "id": 130,
+      "title": "次品率",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 35,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图1"
+      }
+    },
+    {
+      "id": 131,
+      "title": "人工优先模式",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 102,
+        "sourceName": "人工智能实操.docx · 图12"
+      }
+    },
+    {
+      "id": 132,
+      "title": "条件概率",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 35,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图1"
+      }
+    },
+    {
+      "id": 133,
+      "title": "机器人优先模式",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 102,
+        "sourceName": "人工智能实操.docx · 图12"
+      }
+    },
+    {
+      "id": 134,
+      "title": "互斥完备事件组",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 35,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图1"
+      }
+    },
+    {
+      "id": 135,
+      "title": "空闲人工客服判断",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 102,
+        "sourceName": "人工智能实操.docx · 图12"
+      }
+    },
+    {
+      "id": 136,
+      "title": "先验概率",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 35,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图1"
+      }
+    },
+    {
+      "id": 137,
+      "title": "机器人客服接待能力判断",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 102,
+        "sourceName": "人工智能实操.docx · 图12"
+      }
+    },
+    {
+      "id": 138,
+      "title": "后验概率",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 35,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图1"
+      }
+    },
+    {
+      "id": 139,
+      "title": "人工接待处理事务",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 102,
+        "sourceName": "人工智能实操.docx · 图12"
+      }
+    },
+    {
+      "id": 140,
+      "title": "加权求和",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 35,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图1"
+      }
+    },
+    {
+      "id": 141,
+      "title": "机器人处理事务",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 102,
+        "sourceName": "人工智能实操.docx · 图12"
+      }
+    },
+    {
+      "id": 142,
+      "title": "事务处理结束",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 102,
+        "sourceName": "人工智能实操.docx · 图12"
+      }
+    },
+    {
+      "id": 143,
+      "title": "训练数据基础知识",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 103,
+        "sourceName": "人工智能实操.docx · 图13"
+      }
+    },
+    {
+      "id": 144,
+      "title": "数据采集的业务规范",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 103,
+        "sourceName": "人工智能实操.docx · 图13"
+      }
+    },
+    {
+      "id": 145,
+      "title": "优化数据采集过程",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 103,
+        "sourceName": "人工智能实操.docx · 图13"
+      }
+    },
+    {
+      "id": 146,
+      "title": "预处理后数据审核",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 103,
+        "sourceName": "人工智能实操.docx · 图13"
+      }
+    },
+    {
+      "id": 147,
+      "title": "数据采集培训讲义大纲",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 103,
+        "sourceName": "人工智能实操.docx · 图13"
+      }
+    },
+    {
+      "id": 148,
+      "title": "智能体核心闭环",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 1,
+        "sourceName": "智能体知识演示文档.md · 图1"
+      }
+    },
+    {
+      "id": 149,
+      "title": "感知",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 1,
+        "sourceName": "智能体知识演示文档.md · 图1"
+      }
+    },
+    {
+      "id": 150,
+      "title": "决策",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 1,
+        "sourceName": "智能体知识演示文档.md · 图1"
+      }
+    },
+    {
+      "id": 151,
+      "title": "行动",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 1,
+        "sourceName": "智能体知识演示文档.md · 图1"
+      }
+    },
+    {
+      "id": 152,
+      "title": "反馈",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 1,
+        "sourceName": "智能体知识演示文档.md · 图1"
+      }
+    },
+    {
+      "id": 153,
+      "title": "记忆/状态",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 1,
+        "sourceName": "智能体知识演示文档.md · 图1"
+      }
+    },
+    {
+      "id": 154,
+      "title": "持续观察判断行动",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 1,
+        "sourceName": "智能体知识演示文档.md · 图1"
+      }
+    },
+    {
+      "id": 155,
+      "title": "学习助手",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 2,
+        "sourceName": "智能体知识演示文档.md · 图2"
+      }
+    },
+    {
+      "id": 156,
+      "title": "企业知识库",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 2,
+        "sourceName": "智能体知识演示文档.md · 图2"
+      }
+    },
+    {
+      "id": 157,
+      "title": "自动化办公",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 2,
+        "sourceName": "智能体知识演示文档.md · 图2"
+      }
+    },
+    {
+      "id": 158,
+      "title": "智能客服",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 2,
+        "sourceName": "智能体知识演示文档.md · 图2"
+      }
+    },
+    {
+      "id": 159,
+      "title": "根据错题规划复习",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 2,
+        "sourceName": "智能体知识演示文档.md · 图2"
+      }
+    },
+    {
+      "id": 160,
+      "title": "生成练习与讲解",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 2,
+        "sourceName": "智能体知识演示文档.md · 图2"
+      }
+    },
+    {
+      "id": 161,
+      "title": "检索内部资料",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 2,
+        "sourceName": "智能体知识演示文档.md · 图2"
+      }
+    },
+    {
+      "id": 162,
+      "title": "基于出处回答",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 2,
+        "sourceName": "智能体知识演示文档.md · 图2"
+      }
+    },
+    {
+      "id": 163,
+      "title": "读取表格与邮件",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 2,
+        "sourceName": "智能体知识演示文档.md · 图2"
+      }
+    },
+    {
+      "id": 164,
+      "title": "执行多步流程",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 2,
+        "sourceName": "智能体知识演示文档.md · 图2"
+      }
+    },
+    {
+      "id": 165,
+      "title": "理解用户意图",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 2,
+        "sourceName": "智能体知识演示文档.md · 图2"
+      }
+    },
+    {
+      "id": 166,
+      "title": "调用订单/售后工具",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 2,
+        "sourceName": "智能体知识演示文档.md · 图2"
+      }
+    },
+    {
+      "id": 167,
+      "title": "二维随机变量",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 40,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图6"
+      }
+    },
+    {
+      "id": 168,
+      "title": "联合密度函数",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 40,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图6"
+      }
+    },
+    {
+      "id": 169,
+      "title": "归一化条件",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 40,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图6"
+      }
+    },
+    {
+      "id": 170,
+      "title": "边缘概率密度",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 40,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图6"
+      }
+    },
+    {
+      "id": 171,
+      "title": "联合密度的积分求概率",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 40,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图6"
+      }
+    },
+    {
+      "id": 172,
+      "title": "数据定义",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 108,
+        "sourceName": "人工智能实操.docx · 图18"
+      }
+    },
+    {
+      "id": 173,
+      "title": "数据标注工具介绍",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 108,
+        "sourceName": "人工智能实操.docx · 图18"
+      }
+    },
+    {
+      "id": 174,
+      "title": "数据标注培训讲义大纲",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 108,
+        "sourceName": "人工智能实操.docx · 图18"
+      }
+    },
+    {
+      "id": 175,
+      "title": "数据标注流程图",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 108,
+        "sourceName": "人工智能实操.docx · 图18"
+      }
+    },
+    {
+      "id": 176,
+      "title": "离散型随机变量",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 36,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图2"
+      }
+    },
+    {
+      "id": 177,
+      "title": "分布函数",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 36,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图2"
+      }
+    },
+    {
+      "id": 178,
+      "title": "方差",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 36,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图2"
+      }
+    },
+    {
+      "id": 179,
+      "title": "随机变量函数的方差",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 36,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图2"
+      }
+    },
+    {
+      "id": 180,
+      "title": "方差的性质",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 36,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图2"
+      }
+    },
+    {
+      "id": 181,
+      "title": "概率合并",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 36,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图2"
+      }
+    },
+    {
+      "id": 182,
+      "title": "期望",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 36,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图2"
+      }
+    },
+    {
+      "id": 183,
+      "title": "二阶矩与四阶矩",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 36,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图2"
+      }
+    },
+    {
+      "id": 184,
+      "title": "联合分布列",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 44,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图10"
+      }
+    },
+    {
+      "id": 185,
+      "title": "不放回抽样",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 44,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图10"
+      }
+    },
+    {
+      "id": 186,
+      "title": "0-1随机变量",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 44,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图10"
+      }
+    },
+    {
+      "id": 187,
+      "title": "随机变量",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 44,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图10"
+      }
+    },
+    {
+      "id": 188,
+      "title": "概率计算",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 44,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图10"
+      }
+    },
+    {
+      "id": 189,
+      "title": "事件概率P(X≤Y)",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 44,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图10"
+      }
+    },
+    {
+      "id": 190,
+      "title": "闹钟槽位设计",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 101,
+        "sourceName": "人工智能实操.docx · 图11"
+      }
+    },
+    {
+      "id": 191,
+      "title": "槽位描述",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 101,
+        "sourceName": "人工智能实操.docx · 图11"
+      }
+    },
+    {
+      "id": 192,
+      "title": "槽位类型",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 101,
+        "sourceName": "人工智能实操.docx · 图11"
+      }
+    },
+    {
+      "id": 193,
+      "title": "必填槽位",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 101,
+        "sourceName": "人工智能实操.docx · 图11"
+      }
+    },
+    {
+      "id": 194,
+      "title": "非必填槽位",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 101,
+        "sourceName": "人工智能实操.docx · 图11"
+      }
+    },
+    {
+      "id": 195,
+      "title": "字段名",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 101,
+        "sourceName": "人工智能实操.docx · 图11"
+      }
+    },
+    {
+      "id": 196,
+      "title": "提醒时间",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 101,
+        "sourceName": "人工智能实操.docx · 图11"
+      }
+    },
+    {
+      "id": 197,
+      "title": "重复周期",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 101,
+        "sourceName": "人工智能实操.docx · 图11"
+      }
+    },
+    {
+      "id": 198,
+      "title": "内容",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 101,
+        "sourceName": "人工智能实操.docx · 图11"
+      }
+    },
+    {
+      "id": 199,
+      "title": "提醒方式",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 101,
+        "sourceName": "人工智能实操.docx · 图11"
+      }
+    },
+    {
+      "id": 200,
+      "title": "数据预处理",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 104,
+        "sourceName": "人工智能实操.docx · 图14"
+      }
+    },
+    {
+      "id": 201,
+      "title": "预处理后的数据审核",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 104,
+        "sourceName": "人工智能实操.docx · 图14"
+      }
+    },
+    {
+      "id": 202,
+      "title": "数据采集培训讲义",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 104,
+        "sourceName": "人工智能实操.docx · 图14"
+      }
+    },
+    {
+      "id": 203,
+      "title": "供货比例",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 37,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图3"
+      }
+    },
+    {
+      "id": 204,
+      "title": "概率密度函数",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 46,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图12"
+      }
+    },
+    {
+      "id": 205,
+      "title": "数据处理规范",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 105,
+        "sourceName": "人工智能实操.docx · 图15"
+      }
+    },
+    {
+      "id": 206,
+      "title": "分段函数",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 46,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图12"
+      }
+    },
+    {
+      "id": 207,
+      "title": "业务数据汇总与整理归类",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 105,
+        "sourceName": "人工智能实操.docx · 图15"
+      }
+    },
+    {
+      "id": 208,
+      "title": "数学期望",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 46,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图12"
+      }
+    },
+    {
+      "id": 209,
+      "title": "预处理数据审核",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 105,
+        "sourceName": "人工智能实操.docx · 图15"
+      }
+    },
+    {
+      "id": 210,
+      "title": "E(X)",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 46,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图12"
+      }
+    },
+    {
+      "id": 211,
+      "title": "数据处理流程优化",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 105,
+        "sourceName": "人工智能实操.docx · 图15"
+      }
+    },
+    {
+      "id": 212,
+      "title": "连续型随机变量的期望计算",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 46,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图12"
+      }
+    },
+    {
+      "id": 213,
+      "title": "数据处理流程图",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 105,
+        "sourceName": "人工智能实操.docx · 图15"
+      }
+    },
+    {
+      "id": 214,
+      "title": "数据处理培训讲义大纲",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 105,
+        "sourceName": "人工智能实操.docx · 图15"
+      }
+    },
+    {
+      "id": 215,
+      "title": "图片模糊",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 117,
+        "sourceName": "人工智能实操.docx · 图27"
+      }
+    },
+    {
+      "id": 216,
+      "title": "图片重复",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 117,
+        "sourceName": "人工智能实操.docx · 图27"
+      }
+    },
+    {
+      "id": 217,
+      "title": "图片格式错误",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 117,
+        "sourceName": "人工智能实操.docx · 图27"
+      }
+    },
+    {
+      "id": 218,
+      "title": "图片数据错误",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 117,
+        "sourceName": "人工智能实操.docx · 图27"
+      }
+    },
+    {
+      "id": 219,
+      "title": "图片数据四类问题",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 117,
+        "sourceName": "人工智能实操.docx · 图27"
+      }
+    },
+    {
+      "id": 220,
+      "title": "系统可靠性",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 41,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图7"
+      }
+    },
+    {
+      "id": 221,
+      "title": "串联系统",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 41,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图7"
+      }
+    },
+    {
+      "id": 222,
+      "title": "并联系统",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 41,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图7"
+      }
+    },
+    {
+      "id": 223,
+      "title": "混联系统",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 41,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图7"
+      }
+    },
+    {
+      "id": 224,
+      "title": "可靠性框图",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 41,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图7"
+      }
+    },
+    {
+      "id": 225,
+      "title": "密度函数归一性",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 45,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图11"
+      }
+    },
+    {
+      "id": 226,
+      "title": "三角形区域D",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 45,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图11"
+      }
+    },
+    {
+      "id": 227,
+      "title": "区域概率计算",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 45,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图11"
+      }
+    },
+    {
+      "id": 228,
+      "title": "边缘分布",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 45,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图11"
+      }
+    },
+    {
+      "id": 229,
+      "title": "边缘密度函数",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 45,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图11"
+      }
+    },
+    {
+      "id": 230,
+      "title": "随机变量独立性",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 45,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图11"
+      }
+    },
+    {
+      "id": 231,
+      "title": "指数型联合密度",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 45,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图11"
+      }
+    },
+    {
+      "id": 232,
+      "title": "离散型二维随机变量",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 39,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图5"
+      }
+    },
+    {
+      "id": 233,
+      "title": "Z=max{X,Y}的分布律",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 39,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图5"
+      }
+    },
+    {
+      "id": 234,
+      "title": "随机变量的独立性",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 39,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图5"
+      }
+    },
+    {
+      "id": 235,
+      "title": "边缘分布律",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 39,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图5"
+      }
+    },
+    {
+      "id": 236,
+      "title": "独立性判定",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 39,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图5"
+      }
+    },
+    {
+      "id": 237,
+      "title": "连续型随机变量",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 43,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图9"
+      }
+    },
+    {
+      "id": 238,
+      "title": "概率密度函数的归一性",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 43,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图9"
+      }
+    },
+    {
+      "id": 239,
+      "title": "指数分布",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 43,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图9"
+      }
+    },
+    {
+      "id": 240,
+      "title": "由概率密度求概率",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 43,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图9"
+      }
+    },
+    {
+      "id": 241,
+      "title": "边框标注概论",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 116,
+        "sourceName": "人工智能实操.docx · 图26"
+      }
+    },
+    {
+      "id": 242,
+      "title": "边框标注工具介绍",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 116,
+        "sourceName": "人工智能实操.docx · 图26"
+      }
+    },
+    {
+      "id": 243,
+      "title": "边框标注质量标准",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 116,
+        "sourceName": "人工智能实操.docx · 图26"
+      }
+    },
+    {
+      "id": 244,
+      "title": "边框标注演示",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 116,
+        "sourceName": "人工智能实操.docx · 图26"
+      }
+    },
+    {
+      "id": 245,
+      "title": "边框标注实战",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 116,
+        "sourceName": "人工智能实操.docx · 图26"
+      }
+    },
+    {
+      "id": 246,
+      "title": "培训流程排序",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 116,
+        "sourceName": "人工智能实操.docx · 图26"
+      }
+    },
+    {
+      "id": 247,
+      "title": "数据业务培训",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 116,
+        "sourceName": "人工智能实操.docx · 图26"
+      }
+    },
+    {
+      "id": 248,
+      "title": "免费参赛原则",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 118,
+        "sourceName": "关于举办华为开发者大赛福建赛区赛事的通知（盖章版）20260924(1).pdf · 图1"
+      }
+    },
+    {
+      "id": 249,
+      "title": "厦门工学院",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 118,
+        "sourceName": "关于举办华为开发者大赛福建赛区赛事的通知（盖章版）20260924(1).pdf · 图1"
+      }
+    },
+    {
+      "id": 250,
+      "title": "赛事保障服务",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 118,
+        "sourceName": "关于举办华为开发者大赛福建赛区赛事的通知（盖章版）20260924(1).pdf · 图1"
+      }
+    },
+    {
+      "id": 251,
+      "title": "大赛官方平台",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 118,
+        "sourceName": "关于举办华为开发者大赛福建赛区赛事的通知（盖章版）20260924(1).pdf · 图1"
+      }
+    },
+    {
+      "id": 252,
+      "title": "最终解释权",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 118,
+        "sourceName": "关于举办华为开发者大赛福建赛区赛事的通知（盖章版）20260924(1).pdf · 图1"
+      }
+    },
+    {
+      "id": 253,
+      "title": "赛区咨询联系方式",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 118,
+        "sourceName": "关于举办华为开发者大赛福建赛区赛事的通知（盖章版）20260924(1).pdf · 图1"
+      }
+    },
+    {
+      "id": 254,
+      "title": "华为开发者大赛组委会",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 118,
+        "sourceName": "关于举办华为开发者大赛福建赛区赛事的通知（盖章版）20260924(1).pdf · 图1"
+      }
+    },
+    {
+      "id": 255,
+      "title": "福建省人工智能学会",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 118,
+        "sourceName": "关于举办华为开发者大赛福建赛区赛事的通知（盖章版）20260924(1).pdf · 图1"
+      }
+    },
+    {
+      "id": 256,
+      "title": "赛事信息发布机制",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 118,
+        "sourceName": "关于举办华为开发者大赛福建赛区赛事的通知（盖章版）20260924(1).pdf · 图1"
+      }
+    },
+    {
+      "id": 257,
+      "title": "分布律",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 42,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图8"
+      }
+    },
+    {
+      "id": 258,
+      "title": "概率分布表",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 42,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图8"
+      }
+    },
+    {
+      "id": 259,
+      "title": "参数求解",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 38,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图4"
+      }
+    },
+    {
+      "id": 260,
+      "title": "密度归一化条件",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 38,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图4"
+      }
+    },
+    {
+      "id": 261,
+      "title": "由密度求分布函数",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 38,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图4"
+      }
+    },
+    {
+      "id": 262,
+      "title": "由分布函数求尾概率",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 38,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图4"
+      }
+    },
+    {
+      "id": 263,
+      "title": "条件概率计算公式",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 38,
+        "sourceName": "（40学时）概率论与数理统计-复习题更新 (1).docx · 图4"
+      }
+    },
+    {
+      "id": 264,
+      "title": "数据处理",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 106,
+        "sourceName": "人工智能实操.docx · 图16"
+      }
+    },
+    {
+      "id": 265,
+      "title": "业务数据汇总",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 106,
+        "sourceName": "人工智能实操.docx · 图16"
+      }
+    },
+    {
+      "id": 266,
+      "title": "整理归类",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 106,
+        "sourceName": "人工智能实操.docx · 图16"
+      }
+    },
+    {
+      "id": 267,
+      "title": "数据审核",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 106,
+        "sourceName": "人工智能实操.docx · 图16"
+      }
+    },
+    {
+      "id": 268,
+      "title": "预处理数据",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 106,
+        "sourceName": "人工智能实操.docx · 图16"
+      }
+    },
+    {
+      "id": 269,
+      "title": "模型复杂度过高",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 115,
+        "sourceName": "人工智能实操.docx · 图25"
+      }
+    },
+    {
+      "id": 270,
+      "title": "训练数据不足",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 115,
+        "sourceName": "人工智能实操.docx · 图25"
+      }
+    },
+    {
+      "id": 271,
+      "title": "训练数据中存在大量错误",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 115,
+        "sourceName": "人工智能实操.docx · 图25"
+      }
+    },
+    {
+      "id": 272,
+      "title": "减少模型复杂度",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 115,
+        "sourceName": "人工智能实操.docx · 图25"
+      }
+    },
+    {
+      "id": 273,
+      "title": "增加训练数据",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 115,
+        "sourceName": "人工智能实操.docx · 图25"
+      }
+    },
+    {
+      "id": 274,
+      "title": "清洗训练数据",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 115,
+        "sourceName": "人工智能实操.docx · 图25"
+      }
+    },
+    {
+      "id": 275,
+      "title": "加入Dropout层",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 115,
+        "sourceName": "人工智能实操.docx · 图25"
+      }
+    },
+    {
+      "id": 276,
+      "title": "能量转化",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 33,
+        "sourceName": "高中物理-力学基础讲义.docx · 图3"
+      }
+    },
+    {
+      "id": 277,
+      "title": "小球下滑",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 33,
+        "sourceName": "高中物理-力学基础讲义.docx · 图3"
+      }
+    },
+    {
+      "id": 278,
+      "title": "动能",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 33,
+        "sourceName": "高中物理-力学基础讲义.docx · 图3"
+      }
+    },
+    {
+      "id": 279,
+      "title": "重力势能",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 33,
+        "sourceName": "高中物理-力学基础讲义.docx · 图3"
+      }
+    },
+    {
+      "id": 280,
+      "title": "内能",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 33,
+        "sourceName": "高中物理-力学基础讲义.docx · 图3"
+      }
+    },
+    {
+      "id": 281,
+      "title": "机械能",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 33,
+        "sourceName": "高中物理-力学基础讲义.docx · 图3"
+      }
+    },
+    {
+      "id": 282,
+      "title": "柱状图",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 33,
+        "sourceName": "高中物理-力学基础讲义.docx · 图3"
+      }
+    },
+    {
+      "id": 283,
+      "title": "数据训练理论知识",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 107,
+        "sourceName": "人工智能实操.docx · 图17"
+      }
+    },
+    {
+      "id": 284,
+      "title": "标注数据审核",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 107,
+        "sourceName": "人工智能实操.docx · 图17"
+      }
+    },
+    {
+      "id": 285,
+      "title": "数据清洗规范制定",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 110,
+        "sourceName": "人工智能实操.docx · 图20"
+      }
+    },
+    {
+      "id": 286,
+      "title": "文本数据清洗方法",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 110,
+        "sourceName": "人工智能实操.docx · 图20"
+      }
+    },
+    {
+      "id": 287,
+      "title": "视觉数据清洗方法",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 110,
+        "sourceName": "人工智能实操.docx · 图20"
+      }
+    },
+    {
+      "id": 288,
+      "title": "语音数据清洗方法",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 110,
+        "sourceName": "人工智能实操.docx · 图20"
+      }
+    },
+    {
+      "id": 289,
+      "title": "数据清洗培训讲义大纲流程图",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 110,
+        "sourceName": "人工智能实操.docx · 图20"
+      }
+    },
+    {
+      "id": 290,
+      "title": "后三项顺序可变",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 109,
+        "sourceName": "人工智能实操.docx · 图19"
+      }
+    },
+    {
+      "id": 291,
+      "title": "华为开发者大赛福建赛区",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 119,
+        "sourceName": "关于举办华为开发者大赛福建赛区赛事的通知（盖章版）20260924(1).pdf · 图2"
+      }
+    },
+    {
+      "id": 292,
+      "title": "赛事免费参赛",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 119,
+        "sourceName": "关于举办华为开发者大赛福建赛区赛事的通知（盖章版）20260924(1).pdf · 图2"
+      }
+    },
+    {
+      "id": 293,
+      "title": "赛事 Token 承担",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 119,
+        "sourceName": "关于举办华为开发者大赛福建赛区赛事的通知（盖章版）20260924(1).pdf · 图2"
+      }
+    },
+    {
+      "id": 294,
+      "title": "GitCode 代码上传",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 119,
+        "sourceName": "关于举办华为开发者大赛福建赛区赛事的通知（盖章版）20260924(1).pdf · 图2"
+      }
+    },
+    {
+      "id": 295,
+      "title": "开发者作品展览馆",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 119,
+        "sourceName": "关于举办华为开发者大赛福建赛区赛事的通知（盖章版）20260924(1).pdf · 图2"
+      }
+    },
+    {
+      "id": 296,
+      "title": "厦门工学院承办保障",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 119,
+        "sourceName": "关于举办华为开发者大赛福建赛区赛事的通知（盖章版）20260924(1).pdf · 图2"
+      }
+    },
+    {
+      "id": 297,
+      "title": "大赛官方平台信息发布",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 119,
+        "sourceName": "关于举办华为开发者大赛福建赛区赛事的通知（盖章版）20260924(1).pdf · 图2"
+      }
+    },
+    {
+      "id": 298,
+      "title": "组委会最终解释权",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 119,
+        "sourceName": "关于举办华为开发者大赛福建赛区赛事的通知（盖章版）20260924(1).pdf · 图2"
+      }
+    },
+    {
+      "id": 299,
+      "title": "主办单位公章落款",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 119,
+        "sourceName": "关于举办华为开发者大赛福建赛区赛事的通知（盖章版）20260924(1).pdf · 图2"
+      }
+    },
+    {
+      "id": 300,
+      "title": "速度-时间图像",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 31,
+        "sourceName": "高中物理-力学基础讲义.docx · 图1"
+      }
+    },
+    {
+      "id": 301,
+      "title": "匀加速直线运动",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 31,
+        "sourceName": "高中物理-力学基础讲义.docx · 图1"
+      }
+    },
+    {
+      "id": 302,
+      "title": "匀速直线运动",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 31,
+        "sourceName": "高中物理-力学基础讲义.docx · 图1"
+      }
+    },
+    {
+      "id": 303,
+      "title": "位移",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 31,
+        "sourceName": "高中物理-力学基础讲义.docx · 图1"
+      }
+    },
+    {
+      "id": 304,
+      "title": "小车运动",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 31,
+        "sourceName": "高中物理-力学基础讲义.docx · 图1"
+      }
+    },
+    {
+      "id": 305,
+      "title": "make",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 48,
+        "sourceName": "8ecc-453d-9fa0-cd1f307cc5be.png · 图1"
+      }
+    },
+    {
+      "id": 306,
+      "title": "终端",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 48,
+        "sourceName": "8ecc-453d-9fa0-cd1f307cc5be.png · 图1"
+      }
+    },
+    {
+      "id": 307,
+      "title": "gcc",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 48,
+        "sourceName": "8ecc-453d-9fa0-cd1f307cc5be.png · 图1"
+      }
+    },
+    {
+      "id": 308,
+      "title": "多文件编译",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 48,
+        "sourceName": "8ecc-453d-9fa0-cd1f307cc5be.png · 图1"
+      }
+    },
+    {
+      "id": 309,
+      "title": "目标文件",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 48,
+        "sourceName": "8ecc-453d-9fa0-cd1f307cc5be.png · 图1"
+      }
+    },
+    {
+      "id": 310,
+      "title": "链接",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 48,
+        "sourceName": "8ecc-453d-9fa0-cd1f307cc5be.png · 图1"
+      }
+    },
+    {
+      "id": 311,
+      "title": "清理构建产物",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 48,
+        "sourceName": "8ecc-453d-9fa0-cd1f307cc5be.png · 图1"
+      }
+    },
+    {
+      "id": 312,
+      "title": "可执行程序",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 48,
+        "sourceName": "8ecc-453d-9fa0-cd1f307cc5be.png · 图1"
+      }
+    },
+    {
+      "id": 313,
+      "title": "机器人对话配置",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 100,
+        "sourceName": "人工智能实操.docx · 图10"
+      }
+    },
+    {
+      "id": 314,
+      "title": "XML",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 100,
+        "sourceName": "人工智能实操.docx · 图10"
+      }
+    },
+    {
+      "id": 315,
+      "title": "category",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 100,
+        "sourceName": "人工智能实操.docx · 图10"
+      }
+    },
+    {
+      "id": 316,
+      "title": "pattern",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 100,
+        "sourceName": "人工智能实操.docx · 图10"
+      }
+    },
+    {
+      "id": 317,
+      "title": "template",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 100,
+        "sourceName": "人工智能实操.docx · 图10"
+      }
+    },
+    {
+      "id": 318,
+      "title": "关键词匹配",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 100,
+        "sourceName": "人工智能实操.docx · 图10"
+      }
+    },
+    {
+      "id": 319,
+      "title": "景区项目介绍回复模板",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 100,
+        "sourceName": "人工智能实操.docx · 图10"
+      }
+    },
+    {
+      "id": 320,
+      "title": "变上限积分函数",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 34,
+        "sourceName": "题库测试.docx · 图1"
+      }
+    },
+    {
+      "id": 321,
+      "title": "变上限积分求导",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 34,
+        "sourceName": "题库测试.docx · 图1"
+      }
+    },
+    {
+      "id": 322,
+      "title": "二阶导数与凹凸性",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 34,
+        "sourceName": "题库测试.docx · 图1"
+      }
+    },
+    {
+      "id": 323,
+      "title": "单调性判定",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 34,
+        "sourceName": "题库测试.docx · 图1"
+      }
+    },
+    {
+      "id": 324,
+      "title": "拐点",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 34,
+        "sourceName": "题库测试.docx · 图1"
+      }
+    },
+    {
+      "id": 325,
+      "title": "带皮亚诺余项的麦克劳林公式",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 34,
+        "sourceName": "题库测试.docx · 图1"
+      }
+    },
+    {
+      "id": 326,
+      "title": "麦克劳林展开到x⁵项",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 34,
+        "sourceName": "题库测试.docx · 图1"
+      }
+    },
+    {
+      "id": 327,
+      "title": "函数极限",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 34,
+        "sourceName": "题库测试.docx · 图1"
+      }
+    },
+    {
+      "id": 328,
+      "title": "等价无穷小替换",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 34,
+        "sourceName": "题库测试.docx · 图1"
+      }
+    },
+    {
+      "id": 329,
+      "title": "泰勒展开求极限",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 34,
+        "sourceName": "题库测试.docx · 图1"
+      }
+    },
+    {
+      "id": 330,
+      "title": "e^{-t²}的积分函数",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 34,
+        "sourceName": "题库测试.docx · 图1"
+      }
+    },
+    {
+      "id": 331,
+      "title": "高阶无穷小比较",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 34,
+        "sourceName": "题库测试.docx · 图1"
+      }
+    },
+    {
+      "id": 332,
+      "title": "交叉抽样审核",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 113,
+        "sourceName": "人工智能实操.docx · 图23"
+      }
+    },
+    {
+      "id": 333,
+      "title": "标注审核",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 113,
+        "sourceName": "人工智能实操.docx · 图23"
+      }
+    },
+    {
+      "id": 334,
+      "title": "优化方案",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 113,
+        "sourceName": "人工智能实操.docx · 图23"
+      }
+    },
+    {
+      "id": 335,
+      "title": "抽样数量",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 113,
+        "sourceName": "人工智能实操.docx · 图23"
+      }
+    },
+    {
+      "id": 336,
+      "title": "返工",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 113,
+        "sourceName": "人工智能实操.docx · 图23"
+      }
+    },
+    {
+      "id": 337,
+      "title": "斜面",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 32,
+        "sourceName": "高中物理-力学基础讲义.docx · 图2"
+      }
+    },
+    {
+      "id": 338,
+      "title": "物块",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 32,
+        "sourceName": "高中物理-力学基础讲义.docx · 图2"
+      }
+    },
+    {
+      "id": 339,
+      "title": "受力分析",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 32,
+        "sourceName": "高中物理-力学基础讲义.docx · 图2"
+      }
+    },
+    {
+      "id": 340,
+      "title": "重力",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 32,
+        "sourceName": "高中物理-力学基础讲义.docx · 图2"
+      }
+    },
+    {
+      "id": 341,
+      "title": "支持力",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 32,
+        "sourceName": "高中物理-力学基础讲义.docx · 图2"
+      }
+    },
+    {
+      "id": 342,
+      "title": "摩擦力",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 32,
+        "sourceName": "高中物理-力学基础讲义.docx · 图2"
+      }
+    },
+    {
+      "id": 343,
+      "title": "受力分解",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 32,
+        "sourceName": "高中物理-力学基础讲义.docx · 图2"
+      }
+    },
+    {
+      "id": 344,
+      "title": "牛顿第二定律",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 32,
+        "sourceName": "高中物理-力学基础讲义.docx · 图2"
+      }
+    },
+    {
+      "id": 345,
+      "title": "算法测试流程",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 98,
+        "sourceName": "人工智能实操.docx · 图8"
+      }
+    },
+    {
+      "id": 346,
+      "title": "明确算法测试标准",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 98,
+        "sourceName": "人工智能实操.docx · 图8"
+      }
+    },
+    {
+      "id": 347,
+      "title": "算法测试集数据准备",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 98,
+        "sourceName": "人工智能实操.docx · 图8"
+      }
+    },
+    {
+      "id": 348,
+      "title": "挑选算法模型评估指标",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 98,
+        "sourceName": "人工智能实操.docx · 图8"
+      }
+    },
+    {
+      "id": 349,
+      "title": "算法功能测试",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 98,
+        "sourceName": "人工智能实操.docx · 图8"
+      }
+    },
+    {
+      "id": 350,
+      "title": "算法性能测试",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 98,
+        "sourceName": "人工智能实操.docx · 图8"
+      }
+    },
+    {
+      "id": 351,
+      "title": "算法指标结果分析",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 98,
+        "sourceName": "人工智能实操.docx · 图8"
+      }
+    },
+    {
+      "id": 352,
+      "title": "编写算法测试报告",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 98,
+        "sourceName": "人工智能实操.docx · 图8"
+      }
+    },
+    {
+      "id": 353,
+      "title": "实时检验流程图",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 93,
+        "sourceName": "人工智能实操.docx · 图3"
+      }
+    },
+    {
+      "id": 354,
+      "title": "实时检查",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 93,
+        "sourceName": "人工智能实操.docx · 图3"
+      }
+    },
+    {
+      "id": 355,
+      "title": "数据A",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 93,
+        "sourceName": "人工智能实操.docx · 图3"
+      }
+    },
+    {
+      "id": 356,
+      "title": "分段数据Z",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 93,
+        "sourceName": "人工智能实操.docx · 图3"
+      }
+    },
+    {
+      "id": 357,
+      "title": "是否合格判断",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 93,
+        "sourceName": "人工智能实操.docx · 图3"
+      }
+    },
+    {
+      "id": 358,
+      "title": "标注",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 93,
+        "sourceName": "人工智能实操.docx · 图3"
+      }
+    },
+    {
+      "id": 359,
+      "title": "已完成数据集",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 93,
+        "sourceName": "人工智能实操.docx · 图3"
+      }
+    },
+    {
+      "id": 360,
+      "title": "质检员",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 93,
+        "sourceName": "人工智能实操.docx · 图3"
+      }
+    },
+    {
+      "id": 361,
+      "title": "数据标注",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 112,
+        "sourceName": "人工智能实操.docx · 图22"
+      }
+    },
+    {
+      "id": 362,
+      "title": "目标检测",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 112,
+        "sourceName": "人工智能实操.docx · 图22"
+      }
+    },
+    {
+      "id": 363,
+      "title": "标注目标单一",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 112,
+        "sourceName": "人工智能实操.docx · 图22"
+      }
+    },
+    {
+      "id": 364,
+      "title": "标注目标扩充",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 112,
+        "sourceName": "人工智能实操.docx · 图22"
+      }
+    },
+    {
+      "id": 365,
+      "title": "边框标签标注",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 112,
+        "sourceName": "人工智能实操.docx · 图22"
+      }
+    },
+    {
+      "id": 366,
+      "title": "标注审核机制",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 112,
+        "sourceName": "人工智能实操.docx · 图22"
+      }
+    },
+    {
+      "id": 367,
+      "title": "流程优化",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 112,
+        "sourceName": "人工智能实操.docx · 图22"
+      }
+    },
+    {
+      "id": 368,
+      "title": "交通场景",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 112,
+        "sourceName": "人工智能实操.docx · 图22"
+      }
+    },
+    {
+      "id": 369,
+      "title": "流程图绘制",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 97,
+        "sourceName": "人工智能实操.docx · 图7"
+      }
+    },
+    {
+      "id": 370,
+      "title": "道路地面标线采集流程",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 111,
+        "sourceName": "人工智能实操.docx · 图21"
+      }
+    },
+    {
+      "id": 371,
+      "title": "业务流程优化",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 111,
+        "sourceName": "人工智能实操.docx · 图21"
+      }
+    },
+    {
+      "id": 372,
+      "title": "采集目标确定",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 111,
+        "sourceName": "人工智能实操.docx · 图21"
+      }
+    },
+    {
+      "id": 373,
+      "title": "采集方法",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 111,
+        "sourceName": "人工智能实操.docx · 图21"
+      }
+    },
+    {
+      "id": 374,
+      "title": "数据存储",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 111,
+        "sourceName": "人工智能实操.docx · 图21"
+      }
+    },
+    {
+      "id": 375,
+      "title": "数据采集审批",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 111,
+        "sourceName": "人工智能实操.docx · 图21"
+      }
+    },
+    {
+      "id": 376,
+      "title": "采集方法单一效率低",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 111,
+        "sourceName": "人工智能实操.docx · 图21"
+      }
+    },
+    {
+      "id": 377,
+      "title": "网络爬虫采集",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 111,
+        "sourceName": "人工智能实操.docx · 图21"
+      }
+    },
+    {
+      "id": 378,
+      "title": "向相关部门申请数据",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 111,
+        "sourceName": "人工智能实操.docx · 图21"
+      }
+    },
+    {
+      "id": 379,
+      "title": "法律法规遵守",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 111,
+        "sourceName": "人工智能实操.docx · 图21"
+      }
+    },
+    {
+      "id": 380,
+      "title": "删除模糊数据",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 114,
+        "sourceName": "人工智能实操.docx · 图24"
+      }
+    },
+    {
+      "id": 381,
+      "title": "全样检验",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 91,
+        "sourceName": "人工智能实操.docx · 图1"
+      }
+    },
+    {
+      "id": 382,
+      "title": "删除错误数据",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 114,
+        "sourceName": "人工智能实操.docx · 图24"
+      }
+    },
+    {
+      "id": 383,
+      "title": "已完成标注数据",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 91,
+        "sourceName": "人工智能实操.docx · 图1"
+      }
+    },
+    {
+      "id": 384,
+      "title": "删除重复数据",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 114,
+        "sourceName": "人工智能实操.docx · 图24"
+      }
+    },
+    {
+      "id": 385,
+      "title": "数据命名统一",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 114,
+        "sourceName": "人工智能实操.docx · 图24"
+      }
+    },
+    {
+      "id": 386,
+      "title": "数据格式统一",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 114,
+        "sourceName": "人工智能实操.docx · 图24"
+      }
+    },
+    {
+      "id": 387,
+      "title": "全样检查",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 91,
+        "sourceName": "人工智能实操.docx · 图1"
+      }
+    },
+    {
+      "id": 388,
+      "title": "已合格数据集",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 91,
+        "sourceName": "人工智能实操.docx · 图1"
+      }
+    },
+    {
+      "id": 389,
+      "title": "全样检验流程图",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 91,
+        "sourceName": "人工智能实操.docx · 图1"
+      }
+    },
+    {
+      "id": 390,
+      "title": "关键词触发回复",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 99,
+        "sourceName": "人工智能实操.docx · 图9"
+      }
+    },
+    {
+      "id": 391,
+      "title": "chat-bot项目",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 99,
+        "sourceName": "人工智能实操.docx · 图9"
+      }
+    },
+    {
+      "id": 392,
+      "title": "配置界面截图保存",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 99,
+        "sourceName": "人工智能实操.docx · 图9"
+      }
+    },
+    {
+      "id": 393,
+      "title": "数据标注全样检验",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 92,
+        "sourceName": "人工智能实操.docx · 图2"
+      }
+    },
+    {
+      "id": 394,
+      "title": "数据标注员",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 92,
+        "sourceName": "人工智能实操.docx · 图2"
+      }
+    },
+    {
+      "id": 395,
+      "title": "数据质检",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 96,
+        "sourceName": "人工智能实操.docx · 图6"
+      }
+    },
+    {
+      "id": 396,
+      "title": "质检员全样检查",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 92,
+        "sourceName": "人工智能实操.docx · 图2"
+      }
+    },
+    {
+      "id": 397,
+      "title": "明确质检标准",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 96,
+        "sourceName": "人工智能实操.docx · 图6"
+      }
+    },
+    {
+      "id": 398,
+      "title": "合格判定",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 92,
+        "sourceName": "人工智能实操.docx · 图2"
+      }
+    },
+    {
+      "id": 399,
+      "title": "设置质检比例",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 96,
+        "sourceName": "人工智能实操.docx · 图6"
+      }
+    },
+    {
+      "id": 400,
+      "title": "进行数据质检",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 96,
+        "sourceName": "人工智能实操.docx · 图6"
+      }
+    },
+    {
+      "id": 401,
+      "title": "返工重新标注",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 92,
+        "sourceName": "人工智能实操.docx · 图2"
+      }
+    },
+    {
+      "id": 402,
+      "title": "质检不合格",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 96,
+        "sourceName": "人工智能实操.docx · 图6"
+      }
+    },
+    {
+      "id": 403,
+      "title": "标注质检闭环流程",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 92,
+        "sourceName": "人工智能实操.docx · 图2"
+      }
+    },
+    {
+      "id": 404,
+      "title": "重新清洗",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 96,
+        "sourceName": "人工智能实操.docx · 图6"
+      }
+    },
+    {
+      "id": 405,
+      "title": "质检合格",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 96,
+        "sourceName": "人工智能实操.docx · 图6"
+      }
+    },
+    {
+      "id": 406,
+      "title": "提交验收",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 96,
+        "sourceName": "人工智能实操.docx · 图6"
+      }
+    },
+    {
+      "id": 407,
+      "title": "验收",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 96,
+        "sourceName": "人工智能实操.docx · 图6"
+      }
+    },
+    {
+      "id": 408,
+      "title": "质检",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 94,
+        "sourceName": "人工智能实操.docx · 图4"
+      }
+    },
+    {
+      "id": 409,
+      "title": "标注员",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 94,
+        "sourceName": "人工智能实操.docx · 图4"
+      }
+    },
+    {
+      "id": 410,
+      "title": "分段数据",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 94,
+        "sourceName": "人工智能实操.docx · 图4"
+      }
+    },
+    {
+      "id": 411,
+      "title": "数据清洗质量检查流程",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 95,
+        "sourceName": "人工智能实操.docx · 图5"
+      }
+    },
+    {
+      "id": 412,
+      "title": "质检合格提交验收",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 95,
+        "sourceName": "人工智能实操.docx · 图5"
+      }
+    },
+    {
+      "id": 413,
+      "title": "质检不合格返回给清洗人员",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 95,
+        "sourceName": "人工智能实操.docx · 图5"
+      }
+    },
+    {
+      "id": 414,
+      "title": "流程图绘制与截图保存",
+      "source": {
+        "sourceType": "image",
+        "sourceId": 95,
+        "sourceName": "人工智能实操.docx · 图5"
+      }
+    }
+  ],
+  "entityIds": [
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    11,
+    12,
+    13,
+    14,
+    18,
+    19,
+    24,
+    26,
+    29,
+    30,
+    31,
+    44,
+    49,
+    59,
+    60,
+    61,
+    62,
+    75,
+    76,
+    136,
+    137,
+    138,
+    143,
+    761,
+    762,
+    763,
+    764,
+    765,
+    766,
+    767,
+    768,
+    769,
+    770,
+    771,
+    772,
+    773,
+    774,
+    775,
+    776,
+    777,
+    778,
+    779,
+    780,
+    781,
+    782,
+    783,
+    784,
+    785,
+    786,
+    787,
+    788,
+    789,
+    790,
+    791,
+    792,
+    793,
+    794,
+    795,
+    796,
+    797,
+    798,
+    799,
+    800,
+    801,
+    802,
+    803,
+    804,
+    805,
+    806,
+    807,
+    808,
+    809,
+    810,
+    811,
+    812,
+    813,
+    814,
+    815,
+    816,
+    817,
+    818,
+    819,
+    820,
+    821,
+    822,
+    823,
+    824,
+    825,
+    826,
+    827,
+    828,
+    829,
+    830,
+    831,
+    832,
+    833,
+    834,
+    835,
+    836,
+    837,
+    838,
+    839,
+    840,
+    841,
+    842,
+    843,
+    844,
+    845,
+    846,
+    847,
+    848,
+    849,
+    850,
+    851,
+    852,
+    853,
+    854,
+    855,
+    856,
+    857,
+    858,
+    859,
+    860,
+    861,
+    862,
+    863,
+    864,
+    865,
+    866,
+    867,
+    868,
+    869,
+    870,
+    871,
+    872,
+    873,
+    874,
+    875,
+    876,
+    877,
+    878,
+    879,
+    880,
+    881,
+    882,
+    883,
+    884,
+    885,
+    886,
+    887,
+    888,
+    889,
+    890,
+    891,
+    892,
+    893,
+    894,
+    895,
+    896,
+    897,
+    898,
+    899,
+    900,
+    901,
+    902,
+    903,
+    904,
+    905,
+    906,
+    907,
+    908,
+    909,
+    910,
+    911,
+    912,
+    913,
+    914,
+    915,
+    916,
+    917,
+    918,
+    919,
+    920,
+    921,
+    922,
+    923,
+    924,
+    925,
+    926,
+    927,
+    928,
+    929,
+    930,
+    931,
+    932,
+    933,
+    934,
+    935,
+    936,
+    937,
+    938,
+    939,
+    940,
+    941,
+    942,
+    943,
+    944,
+    945,
+    946,
+    947,
+    948,
+    949,
+    950,
+    951,
+    952,
+    953,
+    954,
+    955,
+    956,
+    957,
+    958,
+    959,
+    960,
+    961,
+    962,
+    963,
+    964,
+    965,
+    966,
+    967,
+    968,
+    969,
+    970,
+    971,
+    972,
+    973,
+    974,
+    975,
+    976,
+    977,
+    978,
+    979,
+    980,
+    981,
+    982,
+    983,
+    984,
+    985,
+    986,
+    987,
+    988,
+    989,
+    990,
+    991,
+    992,
+    993,
+    994,
+    995,
+    996,
+    997,
+    998,
+    999,
+    1000,
+    1001,
+    1002,
+    1003,
+    1004,
+    1005,
+    1006,
+    1007,
+    1008,
+    1009,
+    1010,
+    1011,
+    1012,
+    1013,
+    1014,
+    1015,
+    1016,
+    1017,
+    1018,
+    1019,
+    1020,
+    1021,
+    1022,
+    1023
+  ]
+}

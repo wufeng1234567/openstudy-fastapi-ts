@@ -575,7 +575,8 @@ async def describe_asset(
         await db.commit()
         # 图片也会进入资料夹知识图谱：用描述/OCR 文本抽取实体并生成主题页。
         try:
-            if int(row.kb_id or 0) > 0:
+            # 文档内图片属于文档实体集；只有 doc_id 为空的独立图片才单独建图片实体集。
+            if int(row.kb_id or 0) > 0 and int(row.doc_id or 0) == 0:
                 from app.services.rag.source_graph_service import sync_text_source
 
                 await sync_text_source(

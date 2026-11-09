@@ -83,6 +83,9 @@ async def _source_descriptors(db: AsyncSession, *, user_id: int, kb_id: int) -> 
         )
     ).scalars().all()
     for image in images:
+        # 文档/PDF 内部图片属于文档实体集，不能单独成为一个图片实体集。
+        if int(image.doc_id or 0) > 0:
+            continue
         text = " ".join(
             str(item or "")
             for item in (image.caption, image.ocr_text, " ".join(image.keywords or []))
