@@ -55,7 +55,7 @@
 | 覆盖率基线 | ✅ | 19%；CI 已接入 `--cov` 报告 |
 | console/any 清理 | 🟡 | `console.log` Top3 文件 54 处已删除（全前端 129～155 → 56 处）；`any` 仍待分组清理，lint warning 3,200 |
 | 写工具确认元数据 | ⏳ | 待逐个核对 `write_operation` / `needs_confirmation` / `undo_plan` |
-| P2 笔记导入资料夹（后端） | ✅ 第一片 | `note_kb_link` 表/服务/4 端点 + `source_graph_state` 接入 + Agent `note_kb_link` 工具（29 tools）；前端入口待接 |
+| P2 笔记导入资料夹 | ✅ 完成 | `note_kb_link` 表/服务/4 端点 + `source_graph_state` 接入 + Agent `note_kb_link` 工具（29 tools）+ 笔记详情「加入资料夹」入口 |
 
 ---
 
@@ -75,5 +75,4 @@
 - [x] `console.log` 清理 Top3 文件（全前端 129～155 → 56）
 - [ ] 写工具元数据核对完成
 - [ ] GitHub Actions 实际跑一次
-- [x] P2 第一片：笔记导入资料夹后端表/服务/4 端点
-- [ ] P2 下一片：笔记导入前端入口 + Agent 工具
+- [x] P2 笔记导入资料夹：后端 + Agent 工具 + 前端「加入资料夹」入口

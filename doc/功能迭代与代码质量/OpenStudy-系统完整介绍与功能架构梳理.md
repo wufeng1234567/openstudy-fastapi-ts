@@ -426,7 +426,7 @@ flowchart TB
 - 笔记-题目、笔记-题库关联表；`content_reference` 记录笔记引用文档/主题页，供知识图谱反向同步。
 - 富文本 `TiptapEditor`，图片可插入画廊资产；笔记详情可由 `MindMap` 渲染本地思维导图。
 - Agent `note_manage` 支持列/读/创建/编辑/删除/草稿，写操作走确认卡。
-- **笔记导入资料夹：后端已实现（P2 2026-11-09），前端与 Agent 待接。** 已新增 `note_kb_link` 表、`note_kb_link_service` 与 4 个端点（列表/关联/取消/知识点预览）；关联后后台调用 `source_graph_service.sync_text_source` 抽实体/关系，`source_graph_state_service` 也把显式关联笔记纳入来源集。仍缺：笔记详情/资料夹设置的前端入口、Agent `note_kb_link` 工具。
+- **笔记导入资料夹：已完成（P2 2026-11-09）。** 新增 `note_kb_link` 表、`note_kb_link_service`、4 个端点（列表/关联/取消/知识点预览）、Agent `note_kb_link` 工具，以及笔记详情页「加入资料夹」入口；关联后后台调用 `source_graph_service.sync_text_source` 抽实体/关系，`source_graph_state_service` 也把显式关联笔记纳入来源集。
 
 ### 3.10 学习统计 / 学情诊断 / 规划建议
 
@@ -565,9 +565,9 @@ flowchart TB
 
 **状态：本轮新增，基本成立。** 题库关联不复制题目，只建立逻辑引用；大题库按 20 题一块、最多 3 路并行抽取，并保留最多 24 个核心知识点/60 条关系。但后台抽取失败会被静默吞掉（`question_bank_link.py:41-43`），且当前只有 1 条关联记录，使用率极低。
 
-#### 闭环 F：资料夹 ↔ 笔记 → 知识点 → 建议（后端已实现，前端/Agent 待接）
+#### 闭环 F：资料夹 ↔ 笔记 → 知识点 → 建议（已完成）
 
-**状态：后端已实现，前端/Agent 待接。** `note_kb_link` 表、`note_kb_link_service`、4 个 API 端点已补；关联后后台调用 `sync_text_source` 抽实体/关系，并纳入 `source_graph_state` 来源集。仍缺：笔记详情/资料夹设置前端入口、Agent `note_kb_link` 工具。这是「信息来源处理」叙事下仍待产品化的一环。
+**状态：闭环成立。** `note_kb_link` 表 / service / 4 个 API / `source_graph_state` 来源集 / Agent `note_kb_link` 工具 / 笔记详情「加入资料夹」入口均已接通；关联后后台抽取实体与关系，供资料夹图谱与建议使用。
 
 ### 4.2 模块交互矩阵（主要数据流）
 
@@ -633,7 +633,7 @@ flowchart TB
 | **B24** | 图谱四套服务/五个端点并存，口径不统一 | `knowledge_map_service`、`knowledge_graph_service`、`study_graph_service`、`study_map_service`；`rag.py:1022/1152/1194/2953`、`study_plan.py:112` | 维护成本与评审认知成本高 |
 | **B25** | 实体/关系图前端入口死：`KnowledgeGraphSvgPanel.vue`（710 行）零引用；`getKnowledgeGraph` 只被它调用 | 全仓 grep `KnowledgeGraphSvgPanel` 0 引用 | 用户看不到实体图，只能看主题页图 |
 | **B26** | 题源锚点极少：748 题仅 6 条 `question_source`；两个主资料夹 `noQuestionSource=True` | DB 查询；`study_graph_service.py:481` | 图谱无法把知识点连到真实题目 |
-| **B27** | 笔记导入资料夹：后端已完成，前端/Agent 未接 | `app/models/note_kb_link.py`、`note_kb_link_service.py`、`api/v1/note_kb_link.py`；仍无 Agent 工具与前端入口 | 「笔记→资料夹→知识点」后端闭环已成立，产品入口待补 |
+| **B27** | 笔记导入资料夹 | `note_kb_link` 表/服务/4 API、`note_kb_link` Agent 工具、笔记详情「加入资料夹」入口 | 已闭合 |
 | **B28** | 体检规则/资料类型是学习材料导向：`learnability` 惩罚无练习；`material_type` 仅 5 类；GitHub README 被判「试卷/英语」 | `document_health_service.py:315-338`；`material_organizer.py:40-46`；本地库 doc 682 | 面向比赛通知/事件记录/行业报告时评分与分类会失真 |
 | **B29** | 图谱边 ID 跨请求不稳定：`_add_edge` 用 `e:{kind}:{len(edges)+1}` | `study_map_service.py:327`；建议 evidence 与前端 `adviceTraceLines` 按 edgeId 对齐 | 同一图两次请求 edgeId 不同，建议引用漂移 |
 | **B30** | 六类统一图没接前端画布：`KnowledgeWikiPanel` 用 `getWikiGraph`（page-only），`getStudyMap` 只用于来源下拉 | `KnowledgeWikiPanel.vue:2008` vs `:1856`；`adviceTraceLines:741-762` 丢弃非 topic 步骤 | 用户看到的图比后端能力少一半 |

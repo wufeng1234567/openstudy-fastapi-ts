@@ -551,7 +551,7 @@ node tests/check_agent_dsfree.mjs
 3. 合并 OCR 双实现、上传/预览组件族；建 `useFileUpload`、`useOcr` 等 composable。
 4. `any` 减量从 `permission.ts`、`utils/index.ts` 开始，每文件小步类型化。
 5. **图谱四套服务收口**：统一 `GraphNode/GraphEdge` 契约；`knowledge_map_service` 下线或标 deprecated；`knowledge_graph` 补实体图入口或删除 `KnowledgeGraphSvgPanel`；`study_map` 的六类图接到前端画布并明确主视图/建议图分工；边 ID 改为内容派生；页/链接查询加 limit 或物化快照。
-6. **笔记导入资料夹**：✅ 后端 `note_kb_link` 表 + 4 端点 + service + `source_graph_state` 接入已完成；⏳ Agent 工具与前端入口待补。
+6. **笔记导入资料夹**：✅ 已完成：`note_kb_link` 表 + 4 端点 + service + `source_graph_state` + Agent 工具 + 笔记详情「加入资料夹」入口。
 7. **资料诊疗室 Agent 化**：补 `document_health`、`document_smart_report`、`material_organize_preview` 三工具，挂 `kb`/`general` 角色。
 8. 建立 `docs/quality/`：质量报告、死代码台账、覆盖率趋势、评审指南。
 

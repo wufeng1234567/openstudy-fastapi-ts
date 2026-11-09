@@ -18,6 +18,9 @@
           @click="goEditor(noteData.noteId)">
           编辑
         </el-button>
+        <el-button v-if="canManageLinks" class="folder-btn" size="small" plain @click="openKbImport">
+          加入资料夹
+        </el-button>
       </div>
     </div>
 
@@ -171,6 +174,20 @@
       </div>
     </div>
 
+    <el-dialog v-model="kbImportVisible" title="加入资料夹" width="480px" append-to-body class="kb-import-dialog">
+      <div v-loading="kbImportLoading" class="kb-import-body">
+        <el-empty v-if="!kbImportLoading && !kbImportKbs.length" description="暂无资料夹" />
+        <template v-else>
+          <label v-for="kb in kbImportKbs" :key="kb.kbId" class="kb-import-item">
+            <el-checkbox :model-value="kb.linked" @change="toggleKbLink(kb)" />
+            <span class="kb-import-name">{{ kb.name || '未命名资料夹' }}</span>
+            <span v-if="kb.isDefault" class="kb-import-default">默认</span>
+          </label>
+        </template>
+        <p class="kb-import-tip">只建立逻辑关联，不复制笔记正文；关联后资料夹会读取笔记并抽取知识点。</p>
+      </div>
+    </el-dialog>
+
     <!-- 滚动按钮 -->
     <ScrollButton :bottom="40" :right="20" />
   </div>
@@ -184,6 +201,8 @@ import { ElMessage, ElIcon } from 'element-plus'
 import { ArrowLeft, ArrowRight, ArrowUp, Close, Collection, Edit, Download, DocumentCopy, Share, Star, StarFilled } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import { getPublicNote, listPublicNotes, likeNote, unlikeNote } from '@/api/notes/public'
+import { getWorkspaceOverview } from '@/api/ai/workspace'
+import { listKbNotes, linkKbNote, unlinkKbNote } from '@/api/ai/noteKbLink'
 import { ensureLogin } from '@/utils/loginGuard'
 import { useFrontPageCacheStore } from '@/store/modules/frontPageCache'
 import useUserStore from '@/store/modules/user'
@@ -240,7 +259,62 @@ const mindmapCollapse = ref<string[]>([])
 const imageViewerSrc = ref('')
 const isFetching = ref(false)  // 防重复请求锁
 
-// 导入知识库功能已移除
+// 加入资料夹（P2 笔记导入前端入口）
+const kbImportVisible = ref(false)
+const kbImportLoading = ref(false)
+const kbImportKbs = ref<any[]>([])
+
+async function openKbImport() {
+  if (!noteData.value.noteId) return
+  kbImportVisible.value = true
+  kbImportLoading.value = true
+  kbImportKbs.value = []
+  try {
+    const res: any = await getWorkspaceOverview()
+    const list = res.code === 200 ? (res.data?.knowledgeBases || []) : []
+    const flags = await Promise.all(
+      list.map(async (kb: any) => {
+        const kbId = Number(kb.kbId || kb.id || 0)
+        if (!kbId) return null
+        try {
+          const linkRes: any = await listKbNotes(kbId)
+          const linked = (linkRes.data?.linked || []).some(
+            (item: any) => Number(item.noteId || item.id) === Number(noteData.value.noteId)
+          )
+          return { ...kb, kbId, linked }
+        } catch {
+          return { ...kb, kbId, linked: false }
+        }
+      })
+    )
+    kbImportKbs.value = flags.filter(Boolean)
+  } catch (e: any) {
+    ElMessage.error('读取资料夹失败：' + (e?.message || e))
+  } finally {
+    kbImportLoading.value = false
+  }
+}
+
+async function toggleKbLink(kb: any) {
+  if (!noteData.value.noteId || !kb?.kbId) return
+  try {
+    if (kb.linked) {
+      const res: any = await unlinkKbNote(kb.kbId, Number(noteData.value.noteId))
+      if (res.code !== 200) throw new Error(res.msg || '取消关联失败')
+      kb.linked = false
+      ElMessage.success('已移出资料夹')
+    } else {
+      const res: any = await linkKbNote(kb.kbId, Number(noteData.value.noteId))
+      if (res.code !== 200) throw new Error(res.msg || '关联失败')
+      kb.linked = true
+      ElMessage.success('已加入资料夹，知识点抽取在后台进行')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '操作失败')
+  }
+}
+
+// 导入知识库功能已移除（旧入口；新入口见上方「加入资料夹」）
 let lastClickedNoteId = null
 
 const noteHtmlContent = ref('')
