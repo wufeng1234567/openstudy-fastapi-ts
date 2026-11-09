@@ -181,10 +181,12 @@ async def _load_bank_rows(
     if wanted:
         merged = {bid: item for bid, item in merged.items() if bid in wanted}
     if not include_legacy:
+        # 显式关联/传入的题库即使名字像旧考前计划，也要保留；不能因为旧命名
+        # 规则把用户在资料夹里主动关联的题库静默过滤掉。
         merged = {
             bid: item
             for bid, item in merged.items()
-            if not is_legacy_exam_bank(item["bankName"])
+            if bid in wanted or not is_legacy_exam_bank(item["bankName"])
         }
 
     counts = await _load_question_count(db, list(merged.keys()))
