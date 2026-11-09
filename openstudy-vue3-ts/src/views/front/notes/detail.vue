@@ -225,7 +225,7 @@ const router = useRouter()
 const route = useRoute()
 
 const loading = ref(false)
-const noteData = ref({})
+const noteData = ref<any>({})
 const error = ref(false)
 const likeLoading = ref(false)
 
