@@ -2260,6 +2260,15 @@ async def get_wiki_graph(db: AsyncSession, user_id: int, kb_id: int) -> dict:
         )
     ).scalars().all()
     page_ids = {int(page.id) for page in pages}
+    doc_ids = sorted({int(doc_id) for page in pages for doc_id in (page.source_doc_ids or []) if str(doc_id).isdigit()})
+    doc_names: dict[int, str] = {}
+    if doc_ids:
+        doc_rows = (
+            await db.execute(
+                select(RagDocument.id, RagDocument.file_name).where(RagDocument.id.in_(doc_ids))
+            )
+        ).all()
+        doc_names = {int(row.id): str(row.file_name or "资料") for row in doc_rows}
     learning_by_page = await _wiki_learning_map(db, int(user_id), pages)
     links = (
         await db.execute(
@@ -2278,22 +2287,38 @@ async def get_wiki_graph(db: AsyncSession, user_id: int, kb_id: int) -> dict:
     for link in links:
         degree[int(link.from_page_id)] = degree.get(int(link.from_page_id), 0) + 1
         degree[int(link.to_page_id)] = degree.get(int(link.to_page_id), 0) + 1
-    nodes = [
-        {
-            "id": str(page.id),
-            "pageId": int(page.id),
-            "title": page.title,
-            "pageType": page.page_type,
-            "aliases": page.aliases or [],
-            "docIds": page.source_doc_ids or [],
-            "summary": strip_wiki_tokens(page.summary),
-            "status": page.status,
-            "degree": degree.get(int(page.id), 0),
-            "sectionCount": len(page.sections or []),
-            "learning": learning_by_page.get(int(page.id)),
-        }
-        for page in pages
-    ]
+    nodes = []
+    for page in pages:
+        meta = page.generation_meta or {}
+        source_type = str(meta.get("sourceType") or "").strip()
+        try:
+            source_id = int(meta.get("sourceId") or 0)
+        except (TypeError, ValueError):
+            source_id = 0
+        source_name = str(meta.get("sourceName") or "").strip()
+        page_doc_ids = [int(x) for x in (page.source_doc_ids or []) if str(x).isdigit()]
+        if not source_type and page_doc_ids:
+            source_type = "document"
+            source_id = page_doc_ids[0]
+            source_name = doc_names.get(page_doc_ids[0], "")
+        nodes.append(
+            {
+                "id": str(page.id),
+                "pageId": int(page.id),
+                "title": page.title,
+                "pageType": page.page_type,
+                "aliases": page.aliases or [],
+                "docIds": page.source_doc_ids or [],
+                "sourceType": source_type or "unknown",
+                "sourceId": source_id,
+                "sourceName": source_name,
+                "summary": strip_wiki_tokens(page.summary),
+                "status": page.status,
+                "degree": degree.get(int(page.id), 0),
+                "sectionCount": len(page.sections or []),
+                "learning": learning_by_page.get(int(page.id)),
+            }
+        )
     edges = [
         {
             "id": int(link.id),

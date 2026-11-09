@@ -95,6 +95,8 @@
           <g :transform="`translate(${mapView.x} ${mapView.y}) scale(${mapView.scale})`">
             <path v-for="hull in mapHulls" :key="hull.key" :d="hull.path" class="kw-map-hull"
               :class="{ 'is-hovered': mapHoveredId && hull.ids.includes(String(mapHoveredId)) }" />
+            <text v-for="hull in mapHulls" :key="`label-${hull.key}`" :x="hull.labelX" :y="hull.labelY"
+              class="kw-map-hull-label">{{ hull.label }}</text>
             <line v-for="edge in mapEdges" :key="edge.key" :x1="edge.x1" :y1="edge.y1" :x2="edge.x2" :y2="edge.y2"
               :data-edge-source="edge.source" :data-edge-target="edge.target"
               class="kw-map-edge" :class="[`is-${edge.type}`, { 'is-active': isMapEdgeActive(edge), 'is-dimmed': isMapEdgeDimmed(edge), 'is-current-route': isRouteEdge(edge), 'is-hidden': mapDraggingId && edge.source !== mapDraggingId && edge.target !== mapDraggingId }]"
@@ -700,13 +702,31 @@ const mapComponents = computed(() => {
   const grouped = new Map<string, string[]>()
   for (const node of nodes) {
     const rawDocs = Array.isArray(node.docIds) ? node.docIds : []
-    const primaryDoc = rawDocs.length ? String(rawDocs[0]) : '__none__'
-    if (!grouped.has(primaryDoc)) grouped.set(primaryDoc, [])
-    grouped.get(primaryDoc)!.push(String(node.id))
+    // 以来源实体集为聚类边界：文档/图片/题库/笔记/网页各自一个实体集；
+    // 老页面没有 sourceType 时回退到第一个来源文档。
+    const entitySetKey = node.sourceType && node.sourceId
+      ? `${node.sourceType}:${node.sourceId}`
+      : rawDocs.length ? `document:${rawDocs[0]}` : '__none__'
+    if (!grouped.has(entitySetKey)) grouped.set(entitySetKey, [])
+    grouped.get(entitySetKey)!.push(String(node.id))
   }
   const components = [...grouped.values()].sort((a, b) => b.length - a.length || a[0].localeCompare(b[0]))
   return { components, byId }
 })
+
+function entitySetLabel(node: any) {
+  const type = String(node?.sourceType || '')
+  const typeLabel = {
+    document: '文档',
+    web: '网页',
+    image: '图片',
+    bank: '题库',
+    note: '笔记',
+    unknown: '来源'
+  }[type] || '来源'
+  const name = String(node?.sourceName || '').trim()
+  return name ? `${typeLabel}：${name}` : typeLabel
+}
 
 const adviceNodeTitles = computed(() => {
   const result: Record<string, string> = {}
@@ -1643,7 +1663,16 @@ const mapHulls = computed(() => {
     const ids = component.filter((id) => visibleIds.has(id))
     if (ids.length < 2) continue
     const points = ids.map((id) => byId.get(id)).filter(Boolean)
-    hulls.push({ key: ids[0], ids, path: clusterOutline(points) })
+    const minX = Math.min(...points.map((point: any) => Number(point.x || 0)))
+    const minY = Math.min(...points.map((point: any) => Number(point.y || 0)))
+    hulls.push({
+      key: ids[0],
+      ids,
+      label: entitySetLabel(byId.get(ids[0])),
+      labelX: minX - 6,
+      labelY: minY - 24,
+      path: clusterOutline(points)
+    })
   }
   return hulls
 })
@@ -2610,6 +2639,7 @@ onBeforeUnmount(() => {
 .kw-map.is-route-mode .kw-map-edge.is-current-route { stroke: #7e94bf; opacity: 0.82; }
 .kw-map-edge.is-dimmed { opacity: 0.08; }
 .kw-map-edge.is-hidden { display: none; }
+.kw-map-hull-label { fill: #7d8596; font-size: 10px; font-weight: 600; pointer-events: none; paint-order: stroke; stroke: #f8faff; stroke-width: 3px; stroke-linejoin: round; }
 .kw-map-advice-ray { stroke: #2f5fce; stroke-width: 2; opacity: .78; pointer-events: none; stroke-dasharray: 1; stroke-dashoffset: 1; animation: kw-advice-draw .58s ease-out forwards; filter: drop-shadow(0 0 3px rgba(47, 95, 206, .35)); }
 .kw-map-advice-dot { fill: #2f5fce; pointer-events: none; filter: drop-shadow(0 0 5px rgba(47, 95, 206, .8)); }
 .kw-map-advice-dot circle { pointer-events: none; }
