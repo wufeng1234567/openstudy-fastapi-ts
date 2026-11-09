@@ -364,6 +364,7 @@ import {
   onActivated,
   onDeactivated
 } from 'vue'
+import type { PropType } from 'vue'
 import { ElMessage } from 'element-plus'
 import { CopyDocument, Connection, Select, CloseBold, ArrowDown } from '@element-plus/icons-vue'
 import { renderAgentMarkdown } from '@/utils/markdown'
@@ -381,7 +382,7 @@ import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
 import ChatInputArea from '@/components/ChatInputArea/index.vue'
 
 const props = defineProps({
-  messages: { type: Array, default: () => [] },
+  messages: { type: Array as PropType<any[]>, default: () => [] },
   isGenerating: { type: Boolean, default: false },
   /**
    * 是否正在**恢复历史**（刷新页面后拉会话内容的那段时间）

@@ -1147,7 +1147,7 @@ import { textToHtml, getPlainText } from '@/utils/questionUtils'
 import useUserStore from '@/store/modules/user'
 
 const userStore = useUserStore()
-const userId = computed(() => userStore.id || userStore.userId)
+const userId = computed(() => userStore.id)
 
 
 // 题型定义

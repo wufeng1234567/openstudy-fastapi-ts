@@ -294,7 +294,7 @@ const isExpandAll = ref(false);
 const refreshTable = ref(true);
 const iconSelectRef = ref(null);
 
-const data = reactive({
+const data = reactive<any>({
   form: {},
   queryParams: {
     menuName: undefined,

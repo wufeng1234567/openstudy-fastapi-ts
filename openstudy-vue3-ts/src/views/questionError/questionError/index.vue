@@ -539,7 +539,7 @@ const questionTitle = ref("")
 // 题库相关变量
 const bankName = ref("")
 
-const data = reactive({
+const data = reactive<any>({
   form: {},
   queryParams: {
     pageNum: 1,

@@ -329,7 +329,7 @@ function expressionChange() {
     isShow.value = true;
 }
 // 用于计算某位数字在数组中的索引
-function getIndex(arr, value) {
+function getIndex(arr: number[], value: number): number {
     if (value <= arr[0] || value > arr[arr.length - 1]) {
         return 0;
     } else {
@@ -339,6 +339,7 @@ function getIndex(arr, value) {
             }
         }
     }
+    return 0;
 }
 // 获取"年"数组
 function getYearArr(rule, year) {

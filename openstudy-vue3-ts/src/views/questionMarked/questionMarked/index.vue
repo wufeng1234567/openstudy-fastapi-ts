@@ -490,7 +490,7 @@ const bankName = ref("")
 
 const commonTags = ref(['难题', '重点', '易错', '技巧', '高频', '基础', '进阶', '综合', '经典', '压轴'])
 
-const data = reactive({
+const data = reactive<any>({
   form: {},
   queryParams: {
     pageNum: 1,

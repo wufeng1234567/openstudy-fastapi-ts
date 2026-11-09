@@ -173,7 +173,7 @@ const multiple = ref(true)
 const total = ref(0)
 const title = ref("")
 
-const data = reactive({
+const data = reactive<any>({
   form: {},
   queryParams: {
     pageNum: 1,
@@ -252,7 +252,7 @@ function handleAdd() {
 }
 
 /** 修改按钮操作 */
-function handleUpdate(row) {
+function handleUpdate(row: any) {
   reset()
   const _id = row.id || ids.value
   getWords(_id).then(response => {
@@ -264,7 +264,7 @@ function handleUpdate(row) {
 
 /** 提交按钮 */
 function submitForm() {
-  proxy.$refs["wordsRef"].validate(valid => {
+  proxy.$refs["wordsRef"].validate((valid: any) => {
     if (valid) {
       if (form.value.id != null) {
         updateWords(form.value).then(response => {
@@ -284,7 +284,7 @@ function submitForm() {
 }
 
 /** 删除按钮操作 */
-function handleDelete(row) {
+function handleDelete(row: any) {
   const _ids = row.id || ids.value
   proxy.$modal.confirm('是否确认删除单词编号为"' + _ids + '"的数据项？').then(function() {
     return delWords(_ids)

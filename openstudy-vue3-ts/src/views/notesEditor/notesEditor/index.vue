@@ -325,7 +325,7 @@ const treeProps = {
   isLeaf: 'isLeaf'
 };
 
-const currentNote = reactive({
+const currentNote = reactive<any>({
   id: null,
   userId: null,
   categoryId: null,

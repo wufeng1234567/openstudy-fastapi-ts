@@ -279,6 +279,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, toRefs } from 'vue'
+import type { PropType } from 'vue'
 import { parseTime } from '@/utils/ruoyi'
 // 题干渲染（2026-10-27）：卡片预览也要认公式
 import { renderMarkdownWithLatex } from '@/utils/latex'
@@ -291,11 +292,11 @@ import {
 const props = defineProps({
   // 数据相关
   questions: {
-    type: Array,
+    type: Array as PropType<any[]>,
     default: () => []
   },
   questionBanks: {
-    type: Array,
+    type: Array as PropType<any[]>,
     default: () => []
   },
   loading: {

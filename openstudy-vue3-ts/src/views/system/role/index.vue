@@ -279,7 +279,7 @@ const dataScopeOptions = ref([
   { value: "5", label: "仅本人数据权限" }
 ]);
 
-const data = reactive({
+const data = reactive<any>({
   form: {},
   queryParams: {
     pageNum: 1,

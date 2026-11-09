@@ -195,7 +195,7 @@ const selectedBankId = ref(null)
  *   · 历史上的第三个 tab「Agent 搭建」早已迁到 `/front/agent/chat`。
  */
 
-const basicForm = reactive({
+const basicForm = reactive<any>({
   bankName: '',
   subject: '',
   coverImage: '',
@@ -210,7 +210,7 @@ const basicRules = {
   subject: [{ required: true, message: '请选择或输入科目', trigger: 'change' }]
 }
 
-const publishForm = reactive({
+const publishForm = reactive<any>({
   visibility: 'public',
   allowFork: true
 })

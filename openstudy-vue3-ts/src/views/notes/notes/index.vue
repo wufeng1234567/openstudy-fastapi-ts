@@ -369,7 +369,7 @@ const editorToolbars = ref([
 // 可用标签（从现有笔记中提取）
 const availableTags = ref(['学习', '工作', 'Java', 'Vue', '笔记', '计划', '总结', '技术'])
 
-const data = reactive({
+const data = reactive<any>({
   form: {},
   queryParams: {
     pageNum: 1,
