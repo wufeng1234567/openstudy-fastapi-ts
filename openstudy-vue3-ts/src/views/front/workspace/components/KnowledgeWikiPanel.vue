@@ -1836,7 +1836,7 @@ async function build() {
       kbId: Number(props.activeKbId),
       // 默认只补未完成/stale 页面；已有 ready 页面不重复生成。
       force: false,
-      limit: 120
+      limit: 30
     })
     if (res.code !== 200) {
       ElMessage.error(res.msg || '知识百科生成失败')
