@@ -46,7 +46,7 @@
 |---|---:|
 | 后端 `app/` Python 文件 | 247 个 |
 | 后端 `app/` 物理行数 | 96,111 行 |
-| 后端测试目录 | 28 个 `test_*.py` + 59 个 `_probe_*` + 12 个 `e2e_*`；pytest 100 passed |
+| 后端测试目录 | 28 个 `test_*.py` + 59 个 `_probe_*` + 12 个 `e2e_*`；pytest 102 passed |
 | 前端 `src/` 文件 | 437 个（276 `.vue` + 161 `.ts`） |
 | 前端 `src/` 物理行数 | 179,276 行 |
 | 已挂载后端路由模块 | 42 个（`api/v1` 下 43 个 `.py`，含 `__init__.py`） |
@@ -630,7 +630,7 @@ flowchart TB
 | **B21** | 资料体检 P0 只在排序枚举里，实际只产 P1/P2 | `document_health_service.py:532` 有 `P0:0`，全文无 `_issue(..., "P0", ...)` | 对外写「P0/P1/P2 三级问题」会夸大 |
 | **B22** | 智能报告降级标志边界不诚实：LLM 返回合法 JSON 但零有效改进项时用模板补齐，仍标 `llmFallback: False` | `document_smart_report_service.py:158-159, 171` | 报告来源标注可能误导 |
 | **B23** | 题库知识点抽取后台失败被 `except Exception: pass` 静默吞掉 | `question_bank_link.py:41-43` | 关联成功但图谱可能为空，前端无感 |
-| **B24** | 图谱四套服务/五个端点并存，口径不统一 | `knowledge_map_service`、`knowledge_graph_service`、`study_graph_service`、`study_map_service`；`rag.py:1022/1152/1194/2953`、`study_plan.py:112` | 维护成本与评审认知成本高 |
+| **B24** | 图谱四套服务/五个端点并存；已建共享 `GraphNode/GraphEdge` 契约并先接入 `study_map` | `graph_contract.py`；`knowledge_map_service`、`knowledge_graph_service`、`study_graph_service`、`study_map_service` | 口径统一进行中，旧三套迁移/下线仍待 P2 |
 | **B25** | 实体/关系图前端入口死：`KnowledgeGraphSvgPanel.vue`（710 行）零引用；`getKnowledgeGraph` 只被它调用 | 全仓 grep `KnowledgeGraphSvgPanel` 0 引用 | 用户看不到实体图，只能看主题页图 |
 | **B26** | 题源锚点极少：748 题仅 6 条 `question_source`；两个主资料夹 `noQuestionSource=True` | DB 查询；`study_graph_service.py:481` | 图谱无法把知识点连到真实题目 |
 | **B27** | 笔记导入资料夹 | `note_kb_link` 表/服务/4 API、`note_kb_link` Agent 工具、笔记详情「加入资料夹」入口 | 已闭合 |
@@ -906,7 +906,7 @@ run_agent_stream
 | lint | ✅ P0 已加 `ruff.toml` | ✅ P0 已加 ESLint / Prettier |
 | format | ✅ Prettier 基线（warn-only） | ✅ Prettier |
 | type-check | ❌ 无 mypy | 🟡 工具已修复（TS 5.3.3 + 8GB heap），P1 第一批后存量 1,980 条错误 |
-| test | ✅ 100 个 pytest 用例通过；✅ pytest.ini/conftest | 自研 `check_agent_dsfree.mjs`；无 vitest/jest |
+| test | ✅ 102 个 pytest 用例通过；✅ pytest.ini/conftest | 自研 `check_agent_dsfree.mjs`；无 vitest/jest |
 | CI | ✅ 3 jobs 全绿（run `42626308647`）；pytest/ruff 已接电 | ✅ type-check 为报告型步骤，存量错误仍 1,980 |
 | pre-commit | ❌ 无 | ❌ 无 |
 
@@ -936,7 +936,7 @@ run_agent_stream
 
 ### 7.3 测试现状
 
-- `pytest tests`（P0 后）：**100 passed in 9.12s，exit 0**；新增 `pytest.ini` / `tests/conftest.py` / `asyncio_mode=auto`。
+- `pytest tests`（P0 后）：**102 passed in 9.12s，exit 0**；新增 `pytest.ini` / `tests/conftest.py` / `asyncio_mode=auto`。
 - 6 个 script-style 文件（`test_agent_rag_tools.py`、`test_context_memory.py`）已加入 `collect_ignore`，仍可用 `python tests/<file>.py` 手动运行；`test_notice.py` 与 `_scratch/` 干扰已清理。
 - CI **不跑 pytest**（`.github/workflows/ci.yml:54-73` 只有 compileall + import app）。
 - 前端 `npm run type-check` 实测 exit 1：`vue-tsc 1.8.27` 与 `typescript 5.9.3` 不兼容。
@@ -1061,7 +1061,7 @@ run_agent_stream
 ## 附录 D：审计方法与证据
 
 - 静态：`git log/diff/status`、`rg`/`grep`、文件行数统计、Python AST 函数长度分析、`ruff check app --statistics`。
-- 运行（P0 后）：`pytest tests`（100 passed / exit 0）、`ruff check app --select E9,F63,F7,F82`（All checks passed）、`npm run lint`（0 errors / 3,362 warnings）、`npm run type-check`（可执行，P1 第一批后仍报 1,980 条存量错误）、`npm run build:prod`（exit 0）。
+- 运行（P0 后）：`pytest tests`（102 passed / exit 0）、`ruff check app --select E9,F63,F7,F82`（All checks passed）、`npm run lint`（0 errors / 3,362 warnings）、`npm run type-check`（可执行，P1 第一批后仍报 1,980 条存量错误）、`npm run build:prod`（exit 0）。
 - 数据库只读：`openstudy_v2_pgsql`（本地测试库）表计数与图谱服务直接调用；`wiki_service.get_wiki_graph` / `study_map_service.build_study_map` 实测 0.03～0.27 秒。
 - 子代理审计：前端入口（Hy4）、资料诊疗/题库闭环（Hy4）、智能图谱（MiniMax-M3.1-Flash）、文档纠偏（MiniMax-M3.1-Flash）；主代理复核关键结论并补齐交叉证据。
 - 限制：本报告不替代运行时全量回归；标「待验证」的动态菜单、后台页面入口、部分工具回执字段需在真实环境进一步确认。

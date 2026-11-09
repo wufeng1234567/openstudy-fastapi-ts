@@ -12,7 +12,7 @@
 
 | 目标任务 | 状态 | 证据 |
 |---|---|---|
-| 证据数字统一：29 个 Agent 工具、100 pytest、3,214 lint warnings、1,980 type-check errors、19% coverage | ✅ | 全文相关数字已统一；`quality-report.md` 可复核 |
+| 证据数字统一：29 个 Agent 工具、102 pytest、3,214 lint warnings、1,980 type-check errors、19% coverage | ✅ | 全文相关数字已统一；`quality-report.md` 可复核 |
 | 10 步可执行评审清单 | ✅ | 第 2 节由 7 步扩为 10 步，新增死代码/口径一致性/AI 工具留痕三步 |
 | 评审证据索引 | ✅ | `quality-report.md`、`OpenStudy-代码质量审计与无用代码清理清单.md` 交叉引用 |
 | Q12–Q14 答辩问答 | ✅ | 新增 type-check 存量、笔记导入资料夹、图谱四套服务三问 |

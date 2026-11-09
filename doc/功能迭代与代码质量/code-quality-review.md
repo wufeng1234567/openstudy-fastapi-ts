@@ -8,7 +8,7 @@
 
 **结论：有条件通过（P0/P1/P2 当前可交付基线通过；不能宣布 type-check 清零）。**
 
-- P0 质量门禁：版本统一、pytest 100 passed、ruff 语法门禁、ESLint/Prettier 基线、死代码清理、悬浮助手残留、裸 except、可验证构建均已完成。
+- P0 质量门禁：版本统一、pytest 102 passed、ruff 语法门禁、ESLint/Prettier 基线、死代码清理、悬浮助手残留、裸 except、可验证构建均已完成。
 - P1 结构债务：工具中文标签 29/29、分页样板清零、4 个 ORM 模型迁出、角色白名单、覆盖率基线、写工具 `write_operation` 元数据已完成；type-check 仍有 1,980 条存量错误，`any` 仍是 warn-only 基线。
 - P2：笔记导入资料夹表/服务/4 API/Agent 工具/前端入口已闭环；图谱四套服务收口、巨型文件拆分仍未完成。
 - 证据报告中的数字、路径、状态必须与当前 HEAD 对齐；本轮已修正 `quality-report.md` 的旧基线、旧路由数和“未提交”表述。

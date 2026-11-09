@@ -11,7 +11,7 @@
 
 | 检查项 | 命令 | 结果 | 结论 |
 |---|---|---|---|
-| 后端单测 | `pytest tests` | **100 passed, 1 warning in 7.96s** | ✅ |
+| 后端单测 | `pytest tests` | **102 passed, 1 warning in 7.96s** | ✅ |
 | 后端覆盖率基线 | `pytest tests --cov=app/services --cov-report=term-missing` | **19%**（20,620 / 25,327 行未覆盖） | ✅ 仅报告 |
 | 后端语法/未定义名 | `ruff check app --select E9,F63,F7,F82` | **All checks passed** | ✅ |
 | 后端字节码 | `python -m compileall -q app` | **exit 0** | ✅ |
@@ -31,7 +31,7 @@
 | P0 项 | 状态 | 证据 |
 |---|---|---|
 | 版本统一 | ✅ | `VERSION` / `pyproject.toml` / `package.json` / `main.py` 全部 0.8.0 |
-| pytest 配置 | ✅ | `pytest.ini`、`tests/conftest.py`、`asyncio_mode=auto`；100 passed |
+| pytest 配置 | ✅ | `pytest.ini`、`tests/conftest.py`、`asyncio_mode=auto`；102 passed |
 | ruff 配置 | ✅ | `ruff.toml`；语法门禁 All checks passed |
 | ESLint / Prettier | ✅ | `eslint.config.js`、`.prettierrc.json`；lint 0 errors |
 | 仓库卫生 | ✅ 第一批 | 删除 `300`、`audit_ws_summary.json`、`type-errors.txt`、`ts_errors.txt`、25 个 `.bak`；`.gitignore` 补齐 |
@@ -49,7 +49,7 @@
 |---|---|---|
 | type-check 高杠杆收敛 | 🟡 | `request.ts` 返回类型契约 + `vue-globals.d.ts`；3,218 → 1,980 |
 | Agent 工具中文标签 | ✅ | `AgentToolResult` / `AgentConfirmCard` 29/29 |
-| Agent 工具契约测试 | ✅ | `tests/test_agent_tool_contract.py`；pytest 100 passed |
+| Agent 工具契约测试 | ✅ | `tests/test_agent_tool_contract.py`；pytest 102 passed |
 | 分页 helper | ✅ | `app/utils/pagination.py`；`api/v1` 的 `count_query = select(func.count())...` 模板清零 |
 | ORM 分层 | ✅ | 4 个模型迁入 `app/models/`：`carousel` / `chat_message` / `leave_message` / `sensitive_word` |
 | 工具角色白名单 | ✅ 5/7 | 5 个工具已分配；仅 2 个英语工具仍在 general |

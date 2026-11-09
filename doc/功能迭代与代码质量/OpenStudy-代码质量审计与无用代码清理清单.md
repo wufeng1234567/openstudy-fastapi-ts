@@ -18,7 +18,7 @@
 |---|---|---|
 | 统一版本号 | ✅ 完成 | `VERSION` 0.8.0、`openstudy-fastapi/pyproject.toml` 0.8.0；`package.json`/`main.py` 原为 0.8.0 |
 | 修复 type-check 工具链 | ⚠️ 部分完成 | `vue-tsc` 不再因 TS 5.9 崩溃（锁 TypeScript 5.3.3、Node heap 8GB）；但首次运行暴露 **3,218 条存量类型错误**（strict 口径）；P1 第一批修 `request.ts` 返回类型与全局组件属性后降到 **1,980 条**，尚未达到 exit 0，列为 P1 首项 |
-| pytest 配置 + 裸 pytest 可跑 | ✅ 完成 | 新增 `pytest.ini`（`testpaths=tests`、`asyncio_mode=auto`）与 `tests/conftest.py`；`pytest tests` → **100 passed, 9.12s**；6 个 script-style 文件（`test_agent_rag_tools.py`、`test_context_memory.py`）已加入 `collect_ignore`，仍可 `python tests/<file>.py` 运行 |
+| pytest 配置 + 裸 pytest 可跑 | ✅ 完成 | 新增 `pytest.ini`（`testpaths=tests`、`asyncio_mode=auto`）与 `tests/conftest.py`；`pytest tests` → **102 passed, 9.12s**；6 个 script-style 文件（`test_agent_rag_tools.py`、`test_context_memory.py`）已加入 `collect_ignore`，仍可 `python tests/<file>.py` 运行 |
 | ruff 配置 + 语法门禁 | ✅ 完成 | 新增 `ruff.toml`；`ruff check app --select E9,F63,F7,F82` → **All checks passed**；5 处裸 `except` 已改为 `except Exception` + loguru；4 个 F821 用 `TYPE_CHECKING` 修复 |
 | ESLint/Prettier 基线 | ✅ 完成 | 新增 `eslint.config.js`、`.prettierrc.json`、`requirements-dev.txt`；`npm run lint` → **0 errors / 3,362 warnings**（存量债务以 warning 呈现） |
 | 仓库卫生 | ✅ 完成（第一批） | 删除 `300`、`audit_ws_summary.json`、`type-errors.txt`、`ts_errors.txt`；删除 25 个 `.bak`；`.gitignore` 补 `_scratch*/`、`300`、`audit_ws_summary.json`、`doc/competition/码道架构图/` |
@@ -41,7 +41,7 @@
 | 分页 helper | ✅ 完成（api/v1） | 新增 `app/utils/pagination.py`（`paginate` / `select_count`）；`api/v1` 的 `count_query = select(func.count())...` 模板已全部清零，`notes/questions/system/words/...` 均迁移 |
 | ORM 分层 | ✅ 完成（4 个） | `Carousel` / `LeaveMessage` / `SensitiveWord` / `ChatMessage` 从 `api/v1` 迁入 `app/models/{carousel,leave_message,sensitive_word,chat_message}.py`，`database.register_all_models()` 统一注册 |
 | 工具角色白名单 | ✅ 完成 5/7 | `document_compose`/`document_compare`/`chat_file_manage`→kb，`mind_map`→note，`review_sheet`→stats；仅 2 个英语工具仍只在 general |
-| Agent 工具契约测试 | ✅ 新增 | `tests/test_agent_tool_contract.py` 校验 29 个工具的 name/description/parameters/label/description_zh、角色白名单引用和产物工具 `write_operation`；`pytest tests` 现为 **100 passed** |
+| Agent 工具契约测试 | ✅ 新增 | `tests/test_agent_tool_contract.py` 校验 29 个工具的 name/description/parameters/label/description_zh、角色白名单引用和产物工具 `write_operation`；`pytest tests` 现为 **102 passed** |
 | 写工具元数据 | ✅ 完成 | `document_compose` / `document_compare` / `micro_course_generate` / `review_sheet` / `study_plan` 已声明 `write_operation=True`（文件产物/快照，不强制确认） |
 | P2 笔记导入工具 | ✅ 完成 | `note_kb_link` 表/服务/4 API + Agent 工具 + 笔记详情「加入资料夹」入口 |
 | 调试残留清理 | ✅ 第一批 | `QuestionBuilder.vue` 25 处、`PracticeComponent.vue` 14 处、`CommentModal.vue` 15 处 `console.log` 已删除；全前端从 129～155 处降到 **56 处 / 14 文件** |
@@ -58,7 +58,7 @@
 | 架构清晰度 | 6.5 / 10 | 目录分层清楚；P1 已迁出 4 个内联 ORM 模型，但 API 层仍有大量内联查询、图谱四套服务并存 |
 | 代码可读性 | 6.5 / 10 | 注释/docstring 质量高；超大文件/超长函数拉低 |
 | 可维护性 | 5.5 / 10 | 重复样板、死代码、双源依赖、双锁文件、旧链路未下线 |
-| 测试资产 | 8.0 / 10 | P0 后 `pytest tests` 100 passed；已加 pytest.ini/conftest/CI step；仍无覆盖率门禁 |
+| 测试资产 | 8.0 / 10 | P0 后 `pytest tests` 102 passed；已加 pytest.ini/conftest/CI step；仍无覆盖率门禁 |
 | 工具链/门禁 | 6.0 / 10 | P0 已加 ruff/eslint/prettier/pytest + CI step；type-check 存量 1,980 错误仍未清零 |
 | 仓库卫生 | 7.0 / 10 | P0 已删 300/audit/type-errors/ts_errors/25 个 `.bak`；既有历史未跟踪项仍在（见 P1） |
 | 文档一致性 | 5.0 / 10 | 文档丰富；版本双轨、README 落后、子 README 仍是 Spring Boot |
@@ -302,7 +302,7 @@
 3. `/rag/study-map` 的六类节点能力（document/web/note/image）没有真正作为主图谱展示，只在建议 trace 和来源选择里用到——`KnowledgeWikiPanel.vue:2008` 的画布用 `getWikiGraph`（page-only），`getStudyMap` 只在 `:1856` 用来列「可更新来源」。
 4. **边 ID 已稳定（P2 修复）**：`study_map_service._add_edge` 已改为 `e:{kind}:{sha1(source->target)[:16]}`，同一 source/target/kind 的边 ID 可跨请求复现，不再依赖插入顺序；`tests/test_study_map_service.py` 已加回归断言。
 5. **规模化硬墙**：`build_study_graph` / `get_wiki_graph` 页/链接查询无 LIMIT；`_has_pages` 为 O(来源×页)；无物化图快照。30 万页级不可行。
-6. 建议收口为「一个统一图服务 + 一个页面图投影 + 一个实体图投影」，边 ID 改为 `(source,target,kind)` 内容派生，旧端点保留兼容层或明确标记 deprecated。
+6. 🟡 已先落地共享契约 `graph_contract.py`（节点/边字段、`stable_edge_id`、去重 `add_edge`），`study_map_service` 已接入；「一个统一图服务 + 一个页面图投影 + 一个实体图投影」和旧端点 deprecate 仍待后续。
 
 **这不是「无用代码」但属于「重复实现」，是 LLM 评审会指出的架构问题。**
 
@@ -384,8 +384,8 @@
 
 | 项 | 结果 |
 |---|---|
-| `pytest tests` | **100 passed in 9.39s，exit 0**（P0 后） |
-| 裸 `pytest` | **100 passed**（pytest.ini 的 testpaths=tests；6 个 script-style 文件已 collect_ignore） |
+| `pytest tests` | **102 passed in 9.39s，exit 0**（P0 后） |
+| 裸 `pytest` | **102 passed**（pytest.ini 的 testpaths=tests；6 个 script-style 文件已 collect_ignore） |
 | 历史裸 pytest 报错来源 | `test_notice.py:2` 引用不存在的 `async_session`；`_scratch/` 下 5 个临时测试 import 失败（均已清理） |
 | pytest 配置 | ❌ 无 `pytest.ini` / `conftest.py` / 覆盖率配置 |
 | CI | ❌ 不跑 pytest（`ci.yml:54-73` 仅 compileall + import） |
@@ -432,7 +432,7 @@ node tests/check_agent_dsfree.mjs
 - README 0.8.0 段落未覆盖 2026-11-08～09 的规划建议/实体集/题库关联/资料智能报告；
 - `openstudy-vue3-ts/README.md:22` 仍写 Spring Boot 3；
 - `package.json:19-22` repository 指向 RuoYi 上游；
-- `doc/代码质量提升实施方案.md` 是 2026-10-21 的历史方案，基线已过时（当时 156 个文件、无 pytest），与当前 245 个 py、100 个 pytest 测试不符；建议更新或重命名为「历史方案」。
+- `doc/代码质量提升实施方案.md` 是 2026-10-21 的历史方案，基线已过时（当时 156 个文件、无 pytest），与当前 245 个 py、102 个 pytest 测试不符；建议更新或重命名为「历史方案」。
 
 ---
 
@@ -531,7 +531,7 @@ node tests/check_agent_dsfree.mjs
 7. **加 lint 基线**：`ruff.toml`（先开 `E9/F63/F7/F82/F401/F841/E722`，ignore `B008/E501/E402`）；前端加 ESLint flat config + Prettier，先 `warn` 不阻塞。
 8. **5 处裸 except 清零**：`auth.py:101`、`ai.py:405`、`notes.py:1103/1138`、`notice_front.py:68`。
 
-**验收标准（修订后）**：`git status` 仅剩用户文件；`pytest tests` 100 passed；`ruff check app --select E9,F63,F7,F82` exit 0；`npm run lint` 0 errors；`npm run build:prod` exit 0；VERSION 全一致；全仓 grep `float-btn` 0 命中。**`npm run type-check` 仍会失败（3,218 条存量错误），列入 P1 首个专项，不伪装为 P0 已完成。**
+**验收标准（修订后）**：`git status` 仅剩用户文件；`pytest tests` 102 passed；`ruff check app --select E9,F63,F7,F82` exit 0；`npm run lint` 0 errors；`npm run build:prod` exit 0；VERSION 全一致；全仓 grep `float-btn` 0 命中。**`npm run type-check` 仍会失败（3,218 条存量错误），列入 P1 首个专项，不伪装为 P0 已完成。**
 
 ### P1（1～2 周，结构化改进，需测试保护）— 下一步
 
@@ -551,7 +551,7 @@ node tests/check_agent_dsfree.mjs
 2. `questions.py` / `rag.py` 业务下沉 service，路由只留参数/权限/响应。
 3. 合并 OCR 双实现、上传/预览组件族；建 `useFileUpload`、`useOcr` 等 composable。
 4. `any` 减量从 `permission.ts`、`utils/index.ts` 开始，每文件小步类型化。
-5. **图谱四套服务收口**：统一 `GraphNode/GraphEdge` 契约；`knowledge_map_service` 下线或标 deprecated；`knowledge_graph` 补实体图入口或删除 `KnowledgeGraphSvgPanel`；`study_map` 的六类图接到前端画布并明确主视图/建议图分工；边 ID 改为内容派生；页/链接查询加 limit 或物化快照。
+5. **图谱四套服务收口**：🟡 已新增 `app/services/rag/graph_contract.py`（`GraphNode/GraphEdge` + `stable_edge_id` + `add_edge`），`study_map_service` 已使用稳定边 ID；`knowledge_map_service` / `knowledge_graph_service` / `study_graph_service` 仍未迁完，前端六类图未接画布、页/链接查询 limit 未补，P2 继续。
 6. **笔记导入资料夹**：✅ 已完成：`note_kb_link` 表 + 4 端点 + service + `source_graph_state` + Agent 工具 + 笔记详情「加入资料夹」入口。
 7. **资料诊疗室 Agent 化**：补 `document_health`、`document_smart_report`、`material_organize_preview` 三工具，挂 `kb`/`general` 角色。
 8. 建立 `docs/quality/`：质量报告、死代码台账、覆盖率趋势、评审指南。
@@ -571,7 +571,7 @@ cd openstudy-vue3-ts; npm run type-check
 
 # 后端测试（P0 后）
 cd openstudy-fastapi; .\.venv\Scripts\python.exe -m pytest tests
-# → 100 passed in 9.39s, exit 0
+# → 102 passed in 9.39s, exit 0
 
 # ruff 语法门禁（P0 后）
 .\.venv\Scripts\python.exe -m ruff check app --select E9,F63,F7,F82

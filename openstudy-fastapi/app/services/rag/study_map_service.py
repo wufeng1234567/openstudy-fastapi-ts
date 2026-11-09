@@ -16,7 +16,6 @@ note:{noteId} image:{docId}
 
 from __future__ import annotations
 
-import hashlib
 from collections import defaultdict
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
@@ -28,6 +27,7 @@ from app.models.content import ContentReference, RagImageAsset
 from app.models.note import Note
 from app.models.rag import DOC_PARSED, DOC_VECTORIZED, RagDocument
 from app.models.wiki import RagWikiPage
+from app.services.rag.graph_contract import stable_edge_id
 from app.services import question_bank_link_service
 from app.services.rag import study_graph_service
 
@@ -323,10 +323,10 @@ def _add_edge(
     if key in seen:
         return
     seen.add(key)
-    edge_id = hashlib.sha1(f"{source}->{target}".encode("utf-8")).hexdigest()[:16]
+    edge_id = stable_edge_id(kind, source, target)
     edges.append(
         {
-            "id": f"e:{kind}:{edge_id}",
+            "id": edge_id,
             "source": source,
             "target": target,
             "kind": kind,

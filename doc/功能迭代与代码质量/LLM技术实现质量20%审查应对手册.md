@@ -14,7 +14,7 @@
 
 | 级别 | 目标任务 | 验收标准 |
 |---|---|---|
-| P0 | 证据数字统一：29 个 Agent 工具、100 pytest、3,362 lint warnings、1,980 type-check errors、19% coverage | 全文搜索无 28 工具/102 tests/3,218 errors 等旧数字；与 `quality-report.md` 一致 |
+| P0 | 证据数字统一：29 个 Agent 工具、102 pytest、3,362 lint warnings、1,980 type-check errors、19% coverage | 全文搜索无 28 工具/102 tests/3,218 errors 等旧数字；与 `quality-report.md` 一致 |
 | P1 | 把第 2 节 7 步检查扩成 10 步可执行清单：根目录/README/scripts/命令/大文件/坏味道/测试/版本/死代码/口径一致性 | 每一步都有「看什么 → 怎么跑 → 期望结果 → 不通过怎么解释」 |
 | P1 | 增加评审模拟脚本入口与证据文件索引 | 评审可依次打开 `quality-report.md`、测试/构建命令、P0/P1/P2 台账 |
 | P2 | 增加答辩 Q12–Q14：type-check 存量、笔记导入资料夹、图谱四套服务 | 每个问题都有事实数字、边界说明、下一步动作，不空泛 |
@@ -100,7 +100,7 @@ type-errors.txt
 ### 第 4 步：实际跑「最显眼的命令」
 
 - 跑 `npm run type-check` → **不再崩溃**（TypeScript 已锁 5.3.3、Node heap 8GB），但会报出 **1,980 条存量类型错误**（P1 第一批收敛后；初始 3,218）；
-- 跑 `pytest tests` → **100 passed**（P0 后）；
+- 跑 `pytest tests` → **102 passed**（P0 后）；
 - 跑 `npm run lint` → **0 errors / 3,362 warnings**（warn-only 基线）；
 - 跑 `npm run build:prod` → 成功（exit 0）。
 
@@ -192,7 +192,7 @@ rg "favorites\.py|notice_repo" app
 | 2 | README/架构文档 | 🟡 丰富但过时 | 前端 README 写 Spring Boot 3；README 32 模块/20+ 工具与实际不符 | 统一 README 数据、加 `ARCHITECTURE.md` | 高 |
 | 3 | lint/format | ✅ P0 已配置 | ruff.toml / eslint.config.js / .prettierrc.json 已加；lint 0 errors/3,362 warnings | P1 按规则清 warning | 极高 |
 | 4 | type-check | 🟡 工具已修复，存量 1,980 条错误 | TS 已锁 5.3.3、Node heap 8GB；不再崩溃，但类型错误需 P1 批处理 | 按 `request.ts`/全局类型/文件分批收紧 | 极高 |
-| 5 | test 可跑 + CI | ✅ 本地 100 passed；CI 已补 pytest step | `pytest.ini` + `asyncio_mode=auto`；CI 未在 runner 实跑 | 跑一次 GitHub Actions 并截图 | 高 |
+| 5 | test 可跑 + CI | ✅ 本地 102 passed；CI 已补 pytest step | `pytest.ini` + `asyncio_mode=auto`；CI 未在 runner 实跑 | 跑一次 GitHub Actions 并截图 | 高 |
 | 6 | 异常处理 | ✅ P0 已清零裸 except | `auth.py/ai.py/notes.py/notice_front.py` 已改 `except Exception` + loguru | 保持 | 高 |
 | 7 | 类型纪律 | 🟡 strict 开但 any 多 | 约 1,379～1,958 处 any | ESLint `no-explicit-any: warn` + `noUnusedLocals` | 中 |
 | 8 | 死代码 | ✅ P0 已删第一批 | 17 孤儿组件、generator 1,340 行、旧首页/dictation/chats、AiAssistant 悬浮残留、25 个 `.bak` 已删；`rg "float-btn"` 0 | 保留清理台账；P1 继续扫尾 | 高 |
@@ -400,7 +400,7 @@ LLM 评审喜欢**能被 grep/打开/引用**的文件。建议在 `doc/功能�
 
 **不要回答「我们代码质量很高不需要」。** 正确回答：
 
-> 「之前是快速迭代，工程门禁确实是短板。P0 已经把 `ruff.toml`、ESLint/Prettier、`pytest.ini` 和 CI 的 pytest step 补上：`pytest tests` 实测 100 passed，`ruff check --select E9,F63,F7,F82` 通过，`npm run lint` 是 0 errors/3,362 warnings 的 warn-only 基线。目标不是一次清掉所有存量，而是让新代码不再恶化、存量按 P1/P2 清单递减。」
+> 「之前是快速迭代，工程门禁确实是短板。P0 已经把 `ruff.toml`、ESLint/Prettier、`pytest.ini` 和 CI 的 pytest step 补上：`pytest tests` 实测 102 passed，`ruff check --select E9,F63,F7,F82` 通过，`npm run lint` 是 0 errors/3,362 warnings 的 warn-only 基线。目标不是一次清掉所有存量，而是让新代码不再恶化、存量按 P1/P2 清单递减。」
 
 ### Q2：为什么 `questions.py` / `workspace/index.vue` 这么大？
 
@@ -412,7 +412,7 @@ LLM 评审喜欢**能被 grep/打开/引用**的文件。建议在 `doc/功能�
 
 ### Q4：测试是不是只是摆设？
 
-> 「不是。P0 后 `pytest tests` 是 100 passed、9 秒、不依赖真实 LLM；`test_wiki_service.py`、`test_study_map_service.py` 等覆盖纯函数/服务边界。原来的问题是测试没有进 CI、没有 pytest.ini，裸 pytest 会被根目录 `test_notice.py` 和 `_scratch` 干扰——这两处已清理，CI 也加了 pytest step。」
+> 「不是。P0 后 `pytest tests` 是 102 passed、9 秒、不依赖真实 LLM；`test_wiki_service.py`、`test_study_map_service.py` 等覆盖纯函数/服务边界。原来的问题是测试没有进 CI、没有 pytest.ini，裸 pytest 会被根目录 `test_notice.py` 和 `_scratch` 干扰——这两处已清理，CI 也加了 pytest step。」
 
 ### Q5：死代码为什么这么多？是不是没人维护？
 
