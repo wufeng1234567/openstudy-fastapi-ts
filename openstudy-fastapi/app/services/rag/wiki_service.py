@@ -809,6 +809,7 @@ async def build_wiki_pages(
     *,
     force: bool = False,
     limit: int = DEFAULT_BUILD_LIMIT,
+    doc_ids: Optional[Sequence[int]] = None,
     progress_cb: Optional[Callable[[int, int, int, str], Awaitable[None]]] = None,
 ) -> dict:
     """把实体图整理成可读主题页。
@@ -829,6 +830,9 @@ async def build_wiki_pages(
             )
         )
     ).scalars().all()
+    if doc_ids:
+        wanted_doc_ids = {int(item) for item in doc_ids if str(item).isdigit() or isinstance(item, int)}
+        docs = [doc for doc in docs if int(doc.id) in wanted_doc_ids]
     if not docs:
         raise ValueError("当前资料夹没有可整理成知识百科的资料")
     doc_names = {int(doc.id): str(doc.file_name or "资料") for doc in docs}

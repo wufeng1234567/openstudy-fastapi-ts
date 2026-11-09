@@ -1,0 +1,272 @@
+[
+  {
+    "id": 93,
+    "title": "WinSxS",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 94,
+    "title": "npm",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 95,
+    "title": "核心组成",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      669
+    ]
+  },
+  {
+    "id": 96,
+    "title": "AVD",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 97,
+    "title": "Rust工具链",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 98,
+    "title": "方案 B：彻底根治",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 99,
+    "title": "WSL/Docker 迁 D",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 100,
+    "title": "Gradle/Android 迁 D",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 101,
+    "title": "新项目一律建在 D 盘",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 102,
+    "title": "Cargo注册表",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 103,
+    "title": "ram.img",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 104,
+    "title": "wsl --export",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 105,
+    "title": "wsl --unregister",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 106,
+    "title": "wsl --import",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 107,
+    "title": "Pixel_9_Pro.avd",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 108,
+    "title": "JetBrains",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 109,
+    "title": "管理员 PowerShell",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 110,
+    "title": "SetEnvironmentVariable",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 111,
+    "title": "D:\\Temp",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 112,
+    "title": "pnpm",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 113,
+    "title": "搬家不丢弃原则",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 114,
+    "title": "Rust项目target",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 115,
+    "title": "Flutter/Dart缓存",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 116,
+    "title": "Windows Update缓存",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 117,
+    "title": "传递优化文件",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 118,
+    "title": "Windows错误报告",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 119,
+    "title": "Windows 更新清理",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 120,
+    "title": "D:\\wsl\\Ubuntu",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 121,
+    "title": "pip",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  },
+  {
+    "id": 122,
+    "title": "传递优化",
+    "generated_by": "llm",
+    "status": "ready",
+    "source_doc_ids": [
+      668
+    ]
+  }
+]

@@ -206,6 +206,16 @@ export function buildWikiPages(data: { kbId: number; force?: boolean; limit?: nu
   }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
 }
 
+/** 按来源实体集增量更新：只处理未处理或内容变化的来源 */
+export function buildWikiIncremental(data: { kbId: number; limit?: number }) {
+  return request({
+    url: '/rag/wiki/build/incremental',
+    method: 'post',
+    data,
+    timeout: 60000
+  }) as unknown as Promise<{ code: number; msg?: string; data?: any }>
+}
+
 /** 按单个来源（文档/图片/题库/网页）增量更新知识百科 */
 export function buildWikiSource(data: { kbId: number; sourceType: 'document' | 'image' | 'bank' | 'web'; sourceId: number; limit?: number }) {
   return request({

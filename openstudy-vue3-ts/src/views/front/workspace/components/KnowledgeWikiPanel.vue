@@ -331,7 +331,11 @@
         </section>
 
         <footer class="kw-detail__foot">
-          基于 {{ activePage.sourceDocIds?.length || 0 }} 份资料生成 · {{ formatTime(activePage.updateTime) }}
+          <span>基于 {{ activePage.sourceDocIds?.length || 0 }} 份资料生成 · {{ formatTime(activePage.updateTime) }}</span>
+          <button v-if="activePage.sourceDocIds?.length" type="button" class="kw-detail__reupdate"
+            :disabled="buildActive" @click="updateActivePageSource">
+            重新更新这个来源
+          </button>
         </footer>
       </div>
       </div>
@@ -450,7 +454,7 @@ import KnowledgeWikiEditor from './KnowledgeWikiEditor.vue'
 import {
   addWikiPageLink,
   attachWikiImage,
-  buildWikiPages,
+  buildWikiIncremental,
   buildWikiSource,
   detachWikiImage,
   getLatestWikiBuildJob,
@@ -1770,6 +1774,37 @@ function onBuildCommand(command: string) {
   }
 }
 
+async function updateActivePageSource() {
+  if (!props.activeKbId || !activePage.value?.sourceDocIds?.length || buildActive.value) return
+  const sourceId = Number(activePage.value.sourceDocIds[0])
+  if (!sourceId) return
+  wikiUpdateSubmitting.value = true
+  try {
+    const res: any = await buildWikiSource({
+      kbId: Number(props.activeKbId),
+      sourceType: 'document',
+      sourceId,
+      limit: 30
+    })
+    if (res.code !== 200) {
+      ElMessage.error(res.msg || '重新更新失败')
+      return
+    }
+    if (res.data?.jobId) {
+      buildJob.value = res.data
+      ElMessage.info(res.msg || '已开始重新更新这个来源')
+      startBuildPolling(res.data.jobId)
+    } else {
+      await reload()
+      ElMessage.success(res.msg || '这个来源已更新')
+    }
+  } catch (error: any) {
+    ElMessage.error('重新更新失败：' + (error?.message || error))
+  } finally {
+    wikiUpdateSubmitting.value = false
+  }
+}
+
 async function openWikiUpdate(type: typeof wikiUpdateType.value) {
   wikiUpdateType.value = type
   wikiUpdateVisible.value = true
@@ -1832,10 +1867,8 @@ async function build() {
   building.value = true
   buildPollFailures = 0
   try {
-    const res = await buildWikiPages({
+    const res = await buildWikiIncremental({
       kbId: Number(props.activeKbId),
-      // 默认只补未完成/stale 页面；已有 ready 页面不重复生成。
-      force: false,
       limit: 30
     })
     if (res.code !== 200) {
@@ -1843,6 +1876,10 @@ async function build() {
       return
     }
     const data = res.data || {}
+    if (data.skipped) {
+      ElMessage.success(res.msg || '没有需要更新的来源')
+      return
+    }
     if (data.jobId) {
       buildJob.value = data
       if (data.status === 'running') {
@@ -2723,7 +2760,9 @@ onBeforeUnmount(() => {
 .kw-related__item { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; border: 1px solid #e6ebf4; border-radius: 8px; background: #fff; color: #4b5563; cursor: pointer; font-size: 11px; }
 .kw-related__item:hover { border-color: #cbd9f2; background: #f7f9ff; }
 .kw-related__item span { color: #9aa1af; font-size: 9px; }
-.kw-detail__foot { padding-top: 5px; color: #a0a6b2; font-size: 10px; }
+.kw-detail__foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 5px; color: #a0a6b2; font-size: 10px; }
+.kw-detail__reupdate { flex: none; padding: 3px 7px; border: 1px solid #c9d9f8; border-radius: 5px; background: #f4f7ff; color: #2f5fce; cursor: pointer; font-size: 10px; }
+.kw-detail__reupdate:disabled { opacity: .5; cursor: not-allowed; }
 .kw-image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
 .kw-image-card { overflow: hidden; border: 1px solid #e8edf5; border-radius: 8px; background: #fbfcfe; }
 .kw-image-card :deep(.el-image) { display: block; width: 100%; height: 110px; }

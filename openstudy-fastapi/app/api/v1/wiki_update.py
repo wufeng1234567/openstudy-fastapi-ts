@@ -16,6 +16,8 @@ from app.core.response import error, success
 from app.core.security import get_current_user
 from app.database import get_db
 from app.models.wiki import RagWikiPage
+from app.services import source_graph_state_service
+from app.services.rag import source_graph_service
 
 router = APIRouter(prefix="/rag")
 
@@ -29,6 +31,83 @@ class WikiSelectiveBuildRequest(BaseModel):
     sourceType: str = "document"
     sourceId: int = 0
     limit: int = 120
+
+
+class WikiIncrementalBuildRequest(BaseModel):
+    kbId: int = 0
+    limit: int = 30
+
+
+async def _run_incremental_sources(job_id: int, user_id: int, kb_id: int, states: list, limit: int) -> None:
+    """后台按来源执行增量更新；每个来源独立 session，失败不拖垮其他来源。"""
+    from app.database import async_session_factory
+    from app.services.rag.wiki_build_job_service import _update_job
+    from app.services.rag.wiki_service import build_wiki_pages
+
+    failed = 0
+    for index, state in enumerate(states):
+        source_type = str(state.get("sourceType") or "")
+        source_id = int(state.get("sourceId") or 0)
+        source_name = str(state.get("sourceName") or "来源")
+        try:
+            async with async_session_factory() as db:
+                if source_type in {"document", "web"}:
+                    await build_wiki_pages(
+                        db,
+                        int(user_id),
+                        int(kb_id),
+                        force=False,
+                        limit=max(1, min(int(limit or 30), 30)),
+                        doc_ids=[source_id],
+                    )
+                elif source_type == "bank":
+                    await source_graph_service.sync_bank_graph(
+                        db,
+                        user_id=int(user_id),
+                        kb_id=int(kb_id),
+                        bank_id=source_id,
+                        source_name=source_name,
+                    )
+                elif source_type in {"image", "note"}:
+                    text = await source_graph_state_service.source_text(
+                        db, source_type=source_type, source_id=source_id
+                    )
+                    if not text.strip():
+                        raise ValueError("来源没有可抽取的文本")
+                    await source_graph_service.sync_text_source(
+                        db,
+                        user_id=int(user_id),
+                        kb_id=int(kb_id),
+                        source_type=source_type,
+                        source_id=source_id,
+                        source_name=source_name,
+                        text=text,
+                    )
+                await source_graph_state_service.mark_state(
+                    db, state_id=int(state["stateId"]), status="done"
+                )
+                await db.commit()
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            try:
+                async with async_session_factory() as db:
+                    await source_graph_state_service.mark_state(
+                        db,
+                        state_id=int(state["stateId"]),
+                        status="failed",
+                        error=str(exc)[:480],
+                    )
+                    await db.commit()
+            except Exception:
+                pass
+        await _update_job(
+            job_id,
+            done=index + 1,
+            total=max(1, len(states)),
+            failed=failed,
+            current_title=source_name,
+            status="running" if index + 1 < len(states) else "done",
+        )
 
 
 async def _mark_source_pages_stale(db: AsyncSession, *, user_id: int, kb_id: int, source_id: int) -> int:
@@ -51,6 +130,51 @@ async def _mark_source_pages_stale(db: AsyncSession, *, user_id: int, kb_id: int
     if touched:
         await db.commit()
     return touched
+
+
+@router.post("/wiki/build/incremental")
+async def build_wiki_incremental(
+    data: WikiIncrementalBuildRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """只处理未处理或内容变化的来源；已处理来源不会重新交给 LLM。"""
+    try:
+        pending = await source_graph_state_service.sync_states(
+            db,
+            user_id=_uid(current_user),
+            kb_id=int(data.kbId or 0),
+        )
+        await db.commit()
+        if not pending:
+            return success(
+                {"jobId": 0, "status": "done", "total": 0, "done": 0, "failed": 0, "skipped": True},
+                "没有需要更新的来源",
+            )
+
+        from app.services.rag.wiki_build_job_service import create_build_job
+
+        limit = max(1, min(int(data.limit or 30), 30))
+        job, created = await create_build_job(
+            db,
+            _uid(current_user),
+            int(data.kbId or 0),
+            force=False,
+            limit=len(pending),
+        )
+        if created:
+            background_tasks.add_task(
+                _run_incremental_sources,
+                job["jobId"],
+                _uid(current_user),
+                int(data.kbId or 0),
+                pending,
+                limit,
+            )
+        return success(job, "已开始按来源增量更新" if created else "知识百科任务进行中")
+    except Exception as exc:  # noqa: BLE001
+        return error(f"增量更新失败：{exc}")
 
 
 @router.post("/wiki/build/selective")
