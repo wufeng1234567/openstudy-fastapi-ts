@@ -99,11 +99,11 @@ export function generateStudyAdvice(params: StudyAdviceParams) {
   }) as unknown as Promise<{ code: number; msg?: string; data: any }>
 }
 
-export function listStudyPlanHistory(limit = 20, keyword = '') {
+export function listStudyPlanHistory(limit = 20, keyword = '', seedNodeId = '') {
   return request({
     url: '/rag/study-plan/history',
     method: 'get',
-    params: { limit, keyword: keyword || undefined }
+    params: { limit, keyword: keyword || undefined, seedNodeId: seedNodeId || undefined }
   }) as unknown as Promise<{ code: number; msg?: string; data: any }>
 }
 

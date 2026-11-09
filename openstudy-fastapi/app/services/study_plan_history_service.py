@@ -128,6 +128,7 @@ async def list_snapshots(
     user_id: int,
     limit: int = 20,
     keyword: str = "",
+    seed_node_id: str = "",
 ) -> List[Dict[str, Any]]:
     query = select(StudyPlanSnapshot).where(
         StudyPlanSnapshot.user_id == int(user_id),
@@ -144,6 +145,13 @@ async def list_snapshots(
             ).limit(max(1, min(int(limit or 20), 100)))
         )
     ).scalars().all()
+    seed = str(seed_node_id or "").strip()
+    if seed:
+        rows = [
+            row
+            for row in rows
+            if str((row.scope_json or {}).get("seedNodeId") or "") == seed
+        ]
     return [_serialize(row, include_payload=False) for row in rows]
 
 

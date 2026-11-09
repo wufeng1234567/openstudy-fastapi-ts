@@ -301,12 +301,13 @@ async def create_study_history(
 async def list_study_history(
     limit: int = Query(20, ge=1, le=100),
     keyword: str = Query(""),
+    seedNodeId: str = Query(""),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
         items = await study_plan_history_service.list_snapshots(
-            db, user_id=_uid(current_user), limit=limit, keyword=keyword
+            db, user_id=_uid(current_user), limit=limit, keyword=keyword, seed_node_id=seedNodeId
         )
         return success({"items": items})
     except Exception as exc:  # noqa: BLE001
