@@ -74,6 +74,18 @@ jobs:
 
       - name: 后端单元测试与覆盖率基线（仅报告，不设阈值）
         working-directory: openstudy-fastapi
+        env:
+          DB_DRIVER: postgres
+          PG_HOST: localhost
+          PG_PORT: "5432"
+          PG_NAME: openstudy_ci
+          PG_USER: root
+          PG_PASSWORD: ci-test-password
+          REDIS_HOST: localhost
+          REDIS_PORT: "6379"
+          JWT_SECRET: ci-only-not-a-real-secret
+          AI_RATE_LIMIT_ENABLED: "false"
+          EMBEDDING_BACKEND: local
         run: python -m pytest tests -q --cov=app/services --cov-report=term-missing
 
       - name: 后端 lint 门禁（语法/未定义名）
