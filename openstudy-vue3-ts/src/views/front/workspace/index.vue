@@ -990,6 +990,7 @@
 
     <el-dialog v-model="bankKnowledgeVisible" :title="`题库知识点 · ${bankKnowledgeTitle}`" width="720px" append-to-body>
       <div v-loading="bankKnowledgeLoading" class="kbp-bank-knowledge">
+        <p v-if="bankKnowledge.summary" class="kbp-bank-knowledge__summary">{{ bankKnowledge.summary }}</p>
         <section class="kbp-bank-knowledge__section">
           <h4>知识点</h4>
           <div v-if="bankKnowledge.entities?.length" class="kbp-bank-knowledge__chips">
@@ -1868,7 +1869,7 @@ const bankImportLoadingId = ref(0)
 const bankKnowledgeVisible = ref(false)
 const bankKnowledgeLoading = ref(false)
 const bankKnowledgeTitle = ref('')
-const bankKnowledge = ref<any>({ entities: [], relations: [], questions: [] })
+const bankKnowledge = ref<any>({ summary: '', entities: [], relations: [], questions: [] })
 
 /* ===================== 加载 ===================== */
 
@@ -3609,7 +3610,7 @@ async function openBankKnowledge(bank: any) {
   const bankId = Number(bank?.bankId || bank?.id || 0)
   if (!kb || !bankId || bankKnowledgeLoading.value) return
   bankKnowledgeTitle.value = String(bank.bankName || bank.name || '题库知识点')
-  bankKnowledge.value = { entities: [], relations: [], questions: [] }
+  bankKnowledge.value = { summary: '', entities: [], relations: [], questions: [] }
   bankKnowledgeVisible.value = true
   bankKnowledgeLoading.value = true
   try {
@@ -5686,6 +5687,7 @@ onBeforeUnmount(() => {
 }
 
 .kbp-bank-knowledge { display: flex; max-height: 560px; flex-direction: column; gap: 16px; overflow-y: auto; }
+.kbp-bank-knowledge__summary { margin: 0; padding: 9px 11px; border-radius: 7px; background: #f4f7ff; color: #4b5563; font-size: 11.5px; line-height: 1.6; }
 .kbp-bank-knowledge__section h4 { margin: 0 0 8px; color: var(--os-text-1, #253247); font-size: 13px; }
 .kbp-bank-knowledge__section h4 span { color: var(--os-text-4, #9ca3af); font-size: 10.5px; font-weight: 400; }
 .kbp-bank-knowledge__chips { display: flex; flex-wrap: wrap; gap: 6px; }

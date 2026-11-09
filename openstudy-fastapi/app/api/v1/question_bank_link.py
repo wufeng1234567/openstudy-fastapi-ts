@@ -111,6 +111,8 @@ async def get_bank_knowledge(
         ).all()
         return success(
             {
+                "summary": result.get("summary") or "",
+                "questionCount": result.get("questionCount") or 0,
                 "entities": result.get("entities") or [],
                 "relations": result.get("relations") or [],
                 "questions": [

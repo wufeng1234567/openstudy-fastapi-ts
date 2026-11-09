@@ -96,6 +96,7 @@ async def extract_entities_from_text(
 
         prompt = f"""你是一个知识图谱抽取器。请从下面的「{source_name}」内容中抽取知识点、实体和它们的关系。
 不要把题目原文、选项或整段话当成实体；实体应是可学习的概念/定理/方法/术语。
+这是题库来源：请做“知识点总结”，只保留能覆盖这组题目的核心知识点，最多 12 个，不要逐题罗列实体。
 只依据给定内容，不要靠常识补关系。
 输出严格 JSON：
 {{"entities":[{{"name":"实体名","type":"概念","description":"一句话解释"}}],"relations":[{{"source":"实体1","target":"实体2","type":"前置/包含/应用/相关","description":"依据"}}]}}
@@ -150,6 +151,8 @@ async def extract_bank_entities(
     texts = [text for text in texts if text]
     all_entities: Dict[str, Dict[str, Any]] = {}
     all_relations: Dict[tuple, Dict[str, Any]] = {}
+    entity_hits: Dict[str, int] = {}
+    relation_hits: Dict[tuple, int] = {}
     errors: List[str] = []
 
     async def _extract_chunk(text: str) -> Dict[str, Any]:
@@ -195,14 +198,54 @@ async def extract_bank_entities(
         if result.get("degraded", {}).get("error"):
             errors.append(str(result["degraded"]["error"]))
         for item in result.get("entities") or []:
-            all_entities[str(item.get("name") or "")] = item
+            name = str(item.get("name") or "").strip()
+            if not name:
+                continue
+            entry = all_entities.setdefault(name, {**item, "mentionCount": 0})
+            entry["mentionCount"] = int(entry.get("mentionCount") or 0) + 1
+            if len(str(item.get("description") or "")) > len(str(entry.get("description") or "")):
+                entry["description"] = item.get("description") or ""
+            entity_hits[name] = entity_hits.get(name, 0) + 1
         for item in result.get("relations") or []:
             key = (str(item.get("source") or ""), str(item.get("target") or ""), str(item.get("type") or ""))
             all_relations[key] = item
+            relation_hits[key] = relation_hits.get(key, 0) + 1
+
+    # 题库是“总结型”来源：按跨题块命中次数和关系度排序，只保留核心知识点，
+    # 不把每道题抽出的实体全部堆进图谱。
+    relation_degree: Dict[str, int] = {}
+    for source, target, _ in all_relations:
+        relation_degree[source] = relation_degree.get(source, 0) + 1
+        relation_degree[target] = relation_degree.get(target, 0) + 1
+    ranked_entities = sorted(
+        all_entities.values(),
+        key=lambda item: (
+            int(item.get("mentionCount") or 0) * 2 + relation_degree.get(str(item.get("name") or ""), 0),
+            len(str(item.get("description") or "")),
+        ),
+        reverse=True,
+    )
+    top_entities = ranked_entities[:24]
+    kept_names = {str(item.get("name") or "") for item in top_entities}
+    top_relations = [
+        item
+        for key, item in sorted(all_relations.items(), key=lambda pair: relation_hits.get(pair[0], 0), reverse=True)
+        if str(item.get("source") or "") in kept_names and str(item.get("target") or "") in kept_names
+    ][:60]
+    top_names = [str(item.get("name") or "") for item in top_entities[:8] if str(item.get("name") or "")]
+    summary = f"题库主要聚焦：{'、'.join(top_names)}。" if top_names else ""
     return {
-        "entities": list(all_entities.values())[:80],
-        "relations": list(all_relations.values())[:120],
-        "degraded": {"error": errors[0] if errors else "", "chunks": len(texts), "parallel": bool(use_llm and len(texts) > 1)},
+        "summary": summary,
+        "questionCount": len(rows),
+        "entities": top_entities,
+        "relations": top_relations,
+        "degraded": {
+            "error": errors[0] if errors else "",
+            "chunks": len(texts),
+            "parallel": bool(use_llm and len(texts) > 1),
+            "rawEntityCount": len(all_entities),
+            "keptEntityCount": len(top_entities),
+        },
     }
 
 

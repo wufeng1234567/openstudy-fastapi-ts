@@ -82,6 +82,7 @@ async def build_wiki_selective(
                 {
                     "mode": "bank",
                     "bankId": int(data.sourceId),
+                    "summary": result.get("summary") or "",
                     "entities": result.get("entities") or [],
                     "relations": result.get("relations") or [],
                     "degraded": result.get("degraded") or {},
