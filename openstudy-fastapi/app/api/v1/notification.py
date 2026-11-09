@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.core.security import get_current_user
 from app.core.response import success
+from app.utils.pagination import paginate as paginate_query
 from app.models.notification import UserNotification
 
 router = APIRouter()
@@ -56,13 +57,13 @@ async def my_notification_list(
     if onlyUnread:
         query = query.where(UserNotification.is_read == 0)
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
-    query = query.order_by(UserNotification.create_time.desc())
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-    result = await db.execute(query)
-    rows = list(result.scalars().all())
+    total, rows = await paginate_query(
+        db,
+        query.order_by(UserNotification.create_time.desc()),
+        page_num=pageNum,
+        page_size=pageSize,
+    )
+    rows = list(rows)
 
     return success({
         "total": total or 0,

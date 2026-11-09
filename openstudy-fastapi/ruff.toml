@@ -1,0 +1,12 @@
+target-version = "py311"
+line-length = 120
+
+exclude = [".venv", "__pycache__", "data", "htmlcov", "_scratch*"]
+
+[lint]
+select = ["E9", "F63", "F7", "F82", "F401", "F841", "E722"]
+ignore = ["E501", "E402", "B008", "B904"]
+
+[lint.per-file-ignores]
+"tests/**" = ["F401", "F841", "E722"]
+"test_*.py" = ["F401", "F841", "E722"]

@@ -65,8 +65,8 @@ async def list_all_notices(
                 remark_obj = json.loads(remark)
                 if remark_obj.get("toUserId") and remark_obj["toUserId"] != user_id:
                     is_current_user_notice = False
-        except:
-            pass
+        except Exception as exc:  # noqa: BLE001 - remark 可能不是 JSON，按当前用户通知处理
+            logger.warning("通知 remark 不是合法 JSON，按当前用户通知处理: {}", exc)
 
         if not remark or is_current_user_notice:
             formatted_notice = {

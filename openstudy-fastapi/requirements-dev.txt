@@ -1,0 +1,6 @@
+# Local/CI quality toolchain (kept separate from runtime requirements).
+-r requirements.txt
+pytest==8.4.2
+pytest-asyncio==0.24.0
+pytest-cov==7.1.0
+ruff==0.17.1

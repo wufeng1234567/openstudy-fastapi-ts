@@ -22,6 +22,7 @@ from decimal import Decimal
 from app.database import get_db
 from app.core.security import get_current_user
 from app.core.response import success, paginate, error
+from app.utils.pagination import paginate as paginate_query
 from app.models.question import (
     QuestionBank, QuestionMain, QuestionSource, QuestionSub,
     UserBankFavorite, UserQuestionFavorite, UserQuestionError, UserQuestionMarked,
@@ -575,16 +576,14 @@ async def list_banks(
     # 可见性：别人的私密题库不出现在列表里（分享给我的除外）
     query = query.where(await _visibility_condition(db, current_user.get("user_id")))
 
-    # 计算总数
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
     # 分页
-    query = query.order_by(QuestionBank.create_time.desc())
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(query)
-    banks = list(result.scalars().all())
+    total, banks = await paginate_query(
+        db,
+        query.order_by(QuestionBank.create_time.desc()),
+        page_num=pageNum,
+        page_size=pageSize,
+    )
+    banks = list(banks)
 
     return paginate(total, [format_bank(b) for b in banks])
 
@@ -2000,14 +1999,13 @@ async def list_favorite_banks(
             UserBankFavorite.last_study_time <= _end_of_date(lastStudyTime),
         )
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
-    query = query.order_by(UserBankFavorite.create_time.desc())
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(query)
-    favorites = list(result.scalars().all())
+    total, favorites = await paginate_query(
+        db,
+        query.order_by(UserBankFavorite.create_time.desc()),
+        page_num=pageNum,
+        page_size=pageSize,
+    )
+    favorites = list(favorites)
 
     # 批量获取题库详情（避免 N+1）
     bank_ids = [f.bank_id for f in favorites]
@@ -2536,14 +2534,13 @@ async def list_favorite_questions(
             UserQuestionFavorite.next_review_time <= _end_of_date(nextReviewTime),
         )
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
-    query = query.order_by(UserQuestionFavorite.create_time.desc())
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(query)
-    favorites = list(result.scalars().all())
+    total, favorites = await paginate_query(
+        db,
+        query.order_by(UserQuestionFavorite.create_time.desc()),
+        page_num=pageNum,
+        page_size=pageSize,
+    )
+    favorites = list(favorites)
 
     # 批量获取题目/题库详情（避免 N+1）
     question_ids = [f.question_id for f in favorites]
@@ -3147,14 +3144,13 @@ async def list_error_questions(
     if endErrorTime:
         query = query.where(UserQuestionError.error_time <= _end_of_date(endErrorTime))
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
-    query = query.order_by(UserQuestionError.last_error_time.desc())
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(query)
-    errors = list(result.scalars().all())
+    total, errors = await paginate_query(
+        db,
+        query.order_by(UserQuestionError.last_error_time.desc()),
+        page_num=pageNum,
+        page_size=pageSize,
+    )
+    errors = list(errors)
 
     # 批量获取题目详情（避免 N+1）
     question_ids = [e.question_id for e in errors]
@@ -3583,14 +3579,13 @@ async def list_marked_questions(
     if endCreateTime:
         query = query.where(UserQuestionMarked.create_time <= _end_of_date(endCreateTime))
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
-    query = query.order_by(UserQuestionMarked.create_time.desc())
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(query)
-    marked = list(result.scalars().all())
+    total, marked = await paginate_query(
+        db,
+        query.order_by(UserQuestionMarked.create_time.desc()),
+        page_num=pageNum,
+        page_size=pageSize,
+    )
+    marked = list(marked)
 
     # 批量获取题目详情（避免 N+1）
     question_ids = [m.question_id for m in marked]

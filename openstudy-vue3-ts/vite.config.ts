@@ -1,6 +1,17 @@
 import { defineConfig, loadEnv } from 'vite'
+import fs from 'node:fs'
 import path from 'path'
 import createVitePlugins from './vite/plugins'
+
+// Windows 上系统 TEMP 有时没有删除权限，esbuild 构建结束清理临时文件会报
+// "remove D:\Temp\esbuild-...: Access is denied"。把本次构建的临时目录固定到
+// 项目内 `.tmp-build/`（已加入 .gitignore），保证本地与 CI 都能稳定收尾。
+if (process.platform === 'win32') {
+  const localTemp = path.resolve(process.cwd(), '.tmp-build')
+  fs.mkdirSync(localTemp, { recursive: true })
+  process.env.TEMP = localTemp
+  process.env.TMP = localTemp
+}
 
 export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd())

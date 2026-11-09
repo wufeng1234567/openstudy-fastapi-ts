@@ -11,6 +11,7 @@ from datetime import datetime
 from app.database import get_db
 from app.core.security import get_current_user, require_admin
 from app.core.response import success, paginate, error
+from app.utils.pagination import paginate as paginate_query
 from app.models.config import SysConfig
 from app.models.question import QuestionMain
 from app.utils.excel_util import export_to_excel
@@ -67,14 +68,13 @@ async def list_configs(
     if configType:
         query = query.where(SysConfig.config_type == configType)
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
-    query = query.order_by(SysConfig.config_id.asc())
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(query)
-    configs = list(result.scalars().all())
+    total, configs = await paginate_query(
+        db,
+        query.order_by(SysConfig.config_id.asc()),
+        page_num=pageNum,
+        page_size=pageSize,
+    )
+    configs = list(configs)
 
     return paginate(total, [format_config(c) for c in configs])
 
@@ -769,14 +769,13 @@ async def list_roles(
     if status:
         query = query.where(SysRole.status == status)
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
-    query = query.order_by(SysRole.role_sort.asc())
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(query)
-    roles = list(result.scalars().all())
+    total, roles = await paginate_query(
+        db,
+        query.order_by(SysRole.role_sort.asc()),
+        page_num=pageNum,
+        page_size=pageSize,
+    )
+    roles = list(roles)
 
     return paginate(total, [_format_role(r) for r in roles])
 

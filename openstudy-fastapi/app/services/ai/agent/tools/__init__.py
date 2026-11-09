@@ -31,6 +31,7 @@ from app.services.ai.agent.tools.memory_manage import MemoryManageTool
 from app.services.ai.agent.tools.memory_search import MemorySearchTool
 from app.services.ai.agent.tools.micro_course_manage import MicroCourseTool
 from app.services.ai.agent.tools.note_manage import NoteManageTool
+from app.services.ai.agent.tools.note_kb_link import NoteKbLinkTool
 from app.services.ai.agent.tools.question_manage import QuestionManageTool
 from app.services.ai.agent.tools.question_mark_manage import QuestionFlagManageTool
 from app.services.ai.agent.tools.review_sheet import ReviewSheetTool
@@ -49,6 +50,7 @@ from app.services.ai.agent.tools.mind_map import MindMapTool
 registry.register(AgentManageTool())
 registry.register(BankManageTool())
 registry.register(NoteManageTool())
+registry.register(NoteKbLinkTool())
 registry.register(QuestionManageTool())
 registry.register(KnowledgeSearchTool())
 # —— 0.6.x 知识百科：主题页 CRUD 与画廊图片关联。
@@ -164,6 +166,7 @@ __all__ = [
     "MemorySearchTool",
     "MicroCourseTool",
     "NoteManageTool",
+    "NoteKbLinkTool",
     "QuestionFlagManageTool",
     "QuestionManageTool",
     "ReviewSheetTool",

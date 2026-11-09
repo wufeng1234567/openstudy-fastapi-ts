@@ -9,6 +9,7 @@ from typing import Optional
 from app.database import get_db
 from app.core.security import get_current_user, is_admin_user
 from app.core.response import success, paginate, error
+from app.utils.pagination import paginate as paginate_query
 from app.models.courses import Course
 from app.utils.excel_util import export_to_excel
 from datetime import datetime
@@ -48,14 +49,13 @@ async def list_courses(
     if status:
         query = query.where(Course.status == status)
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
-    query = query.order_by(Course.create_time.desc())
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(query)
-    courses = list(result.scalars().all())
+    total, courses = await paginate_query(
+        db,
+        query.order_by(Course.create_time.desc()),
+        page_num=pageNum,
+        page_size=pageSize,
+    )
+    courses = list(courses)
 
     return paginate(total, [format_course(c) for c in courses])
 

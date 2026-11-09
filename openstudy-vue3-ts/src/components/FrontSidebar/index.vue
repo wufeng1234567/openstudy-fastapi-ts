@@ -856,17 +856,6 @@ watch(
   background: var(--os-bg-hover);
 }
 
-.sb-assistant-slot {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-}
-
-.sb-assistant-slot--collapsed {
-  display: none;
-}
-
 .sb-brand {
   flex: 1;
   min-width: 0;

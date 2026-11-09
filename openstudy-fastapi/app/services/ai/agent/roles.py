@@ -199,7 +199,7 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
         key="note",
         name="笔记专家",
         description="帮你写笔记、改笔记、给笔记归类，还能把笔记挂到题目上",
-        tools=("note_manage",),
+        tools=("note_manage", "mind_map", "note_kb_link"),
         capability=(
             "Study notes. Use it when the user wants to write something down, tidy up "
             "or reorganise their notes, look them up, or link a note to a question."
@@ -235,6 +235,11 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
             # 2026-10-22：知识库专家也要能「先找文件再处理」——
             # 用户说「把我空间里那份资料存进知识库」时用得上
             "workspace_search",
+            # 2026-11-09 P1：资料域的文档编排/对比/对话附件不应只在 general 下可用
+            "document_compose",
+            "document_compare",
+            "chat_file_manage",
+            "note_kb_link",
         ),
         capability=(
             "The user's own materials (document collections). Use it when the user wants "
@@ -299,7 +304,7 @@ OFFICIAL_ROLES: Dict[str, RoleSpec] = {
         #    能读错题清单的工具，只能回一句"我没有错题本相关权限"——看起来像权限 bug，
         #    实际是**角色工具白名单缺项**。
         #    白名单是"允许用"，不是"必须用"：这里只放开读，写操作由下面的 persona 约束。
-        tools=("learning_stats", "bank_share_manage", "question_flag_manage"),
+        tools=("learning_stats", "bank_share_manage", "question_flag_manage", "review_sheet"),
         capability=(
             "The user's own learning numbers and sharing records. Use it for questions "
             "like 'how am I doing', 'how many did I get wrong', 'what's my accuracy', "

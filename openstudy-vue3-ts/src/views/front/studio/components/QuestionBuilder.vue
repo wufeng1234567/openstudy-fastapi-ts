@@ -1169,22 +1169,12 @@ const typePopoverRef = ref<HTMLElement | null>(null)
 const toggleTypePopover = (e?: Event) => {
   const before = typePopoverVisible.value
   typePopoverVisible.value = !typePopoverVisible.value
-  console.log('[TypePopover] toggle 触发', {
-    事件类型: e?.type,
-    目标元素: (e?.target as HTMLElement)?.tagName + '.' + (e?.target as HTMLElement)?.className?.toString()?.slice(0, 40),
-    当前台按钮DOM: typePopoverTriggerRef.value ? '存在' : '不存在',
-    之前状态: before,
-    之后状态: typePopoverVisible.value
-  })
 }
 
 // 点击外部关闭悬浮层
 const handleOutsideClick = (e: MouseEvent) => {
   const target = e.target as Node
   if (!typePopoverVisible.value) {
-    console.log('[TypePopover][Outside] mousedown 触发，但悬浮层当前未打开，忽略', {
-      目标元素: (target as HTMLElement)?.tagName + '.' + (target as HTMLElement)?.className?.toString()?.slice(0, 40)
-    })
     return
   }
   const triggerEl = typePopoverTriggerRef.value
@@ -1192,49 +1182,27 @@ const handleOutsideClick = (e: MouseEvent) => {
   // 判断点击是否在悬浮层和触发按钮之外
   const inTrigger = triggerEl ? triggerEl.contains(target) : false
   const inPopover = popoverEl ? popoverEl.contains(target) : false
-  console.log('[TypePopover][Outside] mousedown 触发，悬浮层已打开', {
-    目标元素: (target as HTMLElement)?.tagName + '.' + (target as HTMLElement)?.className?.toString()?.slice(0, 40),
-    '在按钮内?': inTrigger,
-    '在悬浮层内?': inPopover,
-    '按钮DOM': triggerEl ? triggerEl.className : 'NULL',
-    '悬浮层DOM': popoverEl ? popoverEl.className : 'NULL'
-  })
   if (!inTrigger && !inPopover) {
     typePopoverVisible.value = false
-    console.log('[TypePopover][Outside] 关闭悬浮层')
   }
 }
 
 // 监听悬浮层 visible 变化（无论何时改变都打印）
 watch(typePopoverVisible, (newVal, oldVal) => {
-  console.log('[TypePopover] visible 变化:', oldVal, '→', newVal)
   if (newVal) {
     // 打开后下一帧检查 DOM 是否真的渲染
     nextTick(() => {
       const el = typePopoverRef.value
       if (!el) {
-        console.log('[TypePopover] 已打开但 DOM 未找到（ref 为 null）')
         return
       }
       const rect = el.getBoundingClientRect()
       const style = window.getComputedStyle(el)
-      console.log('[TypePopover] DOM 已渲染', {
-        display: style.display,
-        visibility: style.visibility,
-        opacity: style.opacity,
-        position: style.position,
-        zIndex: style.zIndex,
-        rect: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
-        可视口宽: window.innerWidth,
-        可视口高: window.innerHeight,
-        在视口内: rect.x >= 0 && rect.y >= 0 && rect.x + rect.width <= window.innerWidth && rect.y + rect.height <= window.innerHeight
-      })
     })
   }
 })
 
 onMounted(() => {
-  console.log('[TypePopover] 组件已挂载，监听 document mousedown')
   document.addEventListener('mousedown', handleOutsideClick)
 })
 onBeforeUnmount(() => {
@@ -2792,10 +2760,8 @@ const extractJsonFromAiResponse = (text) => {
 
   try {
     const direct = JSON.parse(text)
-    console.log('【extractJson】直接解析成功')
     return direct
   } catch (e) {
-    console.log('【extractJson】直接解析失败，开始清理，原文长度:', text.length)
   }
 
   let cleaned = text
@@ -2804,8 +2770,6 @@ const extractJsonFromAiResponse = (text) => {
     .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
     .trim()
 
-  console.log('【extractJson】清理后长度:', cleaned.length)
-  console.log('【extractJson】清理后前300字符:', cleaned.substring(0, 300))
 
   let start = cleaned.indexOf('[')
   let end = cleaned.lastIndexOf(']')
@@ -2815,11 +2779,9 @@ const extractJsonFromAiResponse = (text) => {
     end = cleaned.lastIndexOf('}')
   }
 
-  console.log('【extractJson】JSON边界: start=', start, 'end=', end)
 
   if (start !== -1 && end !== -1 && end > start) {
     cleaned = cleaned.substring(start, end + 1)
-    console.log('【extractJson】提取后长度:', cleaned.length)
   }
 
   cleaned = cleaned.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":')
@@ -2827,7 +2789,6 @@ const extractJsonFromAiResponse = (text) => {
 
   try {
     const result = JSON.parse(cleaned)
-    console.log('【extractJson】清理后解析成功')
     return result
   } catch (e) {
     console.warn('【extractJson】清理后解析失败:', e.message)
@@ -2835,8 +2796,6 @@ const extractJsonFromAiResponse = (text) => {
       text.indexOf('[') !== -1 ? text.indexOf('[') : text.indexOf('{'),
       text.lastIndexOf(']') !== -1 ? text.lastIndexOf(']') + 1 : text.lastIndexOf('}') + 1
     )
-    console.log('【extractJson】fallback 长度:', fallback.length)
-    console.log('【extractJson】fallback 前300字符:', fallback.substring(0, 300))
     try {
       return JSON.parse(fallback)
     } catch (e2) {
@@ -3388,26 +3347,18 @@ const handleAiGenerate = async () => {
 }
 
 const finishAiGenerate = (rawData, isComposite) => {
-  console.log('【finishAiGenerate】收到 rawData 类型:', typeof rawData)
-  console.log('【finishAiGenerate】收到 rawData:', typeof rawData === 'string' ? rawData.substring(0, 500) : JSON.stringify(rawData).substring(0, 500))
 
   let actualData = rawData
   if (rawData && typeof rawData === 'object' && rawData.msg !== undefined) {
     actualData = rawData.msg
-    console.log('【finishAiExtract】从 msg 提取，类型:', typeof actualData)
   }
 
   let parsed = actualData
   if (typeof actualData === 'string') {
     rawJsonContent.value = actualData
-    console.log('【finishAiGenerate】开始解析字符串，长度:', actualData.length)
-    console.log('【finishAiGenerate】前200字符:', actualData.substring(0, 200))
-    console.log('【finishAiGenerate】后200字符:', actualData.substring(Math.max(0, actualData.length - 200)))
     parsed = extractJsonFromAiResponse(actualData)
-    console.log('【finishAiGenerate】解析结果:', parsed)
   } else {
     rawJsonContent.value = JSON.stringify(actualData, null, 2)
-    console.log('【finishAiGenerate】actualData 是对象，已转 JSON 字符串')
   }
 
   if (!parsed) {

@@ -1,12 +1,15 @@
-﻿"""
+"""
 菜单模型
 """
 
 from datetime import datetime
-from typing import Optional, List
+from typing import TYPE_CHECKING, Optional, List
 from sqlalchemy import BigInteger, String, Integer, DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.role import SysRole
 
 
 class SysMenu(Base):

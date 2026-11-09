@@ -73,34 +73,33 @@ def register_all_models() -> None:
         ai_config,
         ai_rate_limit_log,
         bank_share,
+        carousel,
         # 2026-10-27 聊天上传文件的持久化（chat_upload_file / chat_upload_image）
+        chat_message,
         chat_upload,
         content,
         knowledge_graph,
         config,
         courses,
         dict,
+        leave_message,
         menu,
         monitor,
         note,
+        note_kb_link,
         note_question,
         note_question_bank,
         notice,
         notification,
         question,
         question_bank_link,
+        sensitive_word,
         source_graph_state,
         role,
         study_plan,
         user,
         words,
     )
-    # ⚠️ 这 4 个模块把 ORM 模型内联定义在 api/v1 里（历史写法），不在 app/models 下。
-    #    不导入它们 → 对应的表不会被 create_all 建出来。
-    #    MySQL 上因为表早已存在所以一直没暴露，迁移到新 PG 库会直接报
-    #    `relation "carousel" does not exist`（以及另三张）。
-    from app.api.v1 import carousel, chat, leave_message, sensitive_word  # noqa: F401
-
     # RAG 四表是 **PG 专有**（vector(1024) / tsvector 生成列 MySQL 都没有）。
     # 只在 PG 下导入，否则用 DB_DRIVER=mysql 回滚时 create_all 会直接报 DDL 错误。
     if IS_POSTGRES:

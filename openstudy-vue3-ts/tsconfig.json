@@ -18,8 +18,7 @@
     "paths": {
       "@/*": ["src/*"]
     },
-    "types": ["node", "vite/client", "element-plus/global"],
-    "ignoreDeprecations": "6.0"
+    "types": ["node", "vite/client", "element-plus/global"]
   },
   "include": [
     "src/**/*.ts",

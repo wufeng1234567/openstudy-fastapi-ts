@@ -256,6 +256,7 @@ const TOOL_LABELS: Record<string, string> = {
   bank_manage: '题库管理',
   question_manage: '题目管理',
   note_manage: '笔记管理',
+  note_kb_link: '笔记资料夹',
   question_flag_manage: '题目标记',
   memory_manage: '记忆管理',
   learning_stats: '学习统计',
@@ -269,6 +270,19 @@ const TOOL_LABELS: Record<string, string> = {
   // 0.6.x 知识百科：主题页 CRUD 与画廊图片关联
   wiki_manage: '知识百科',
   agent_manage: '智能体管理',
+  document_compose: '文档编排',
+  document_compare: '文档对比',
+  english_practice: '英语练习',
+  english_wordbook: '英语词库',
+  micro_course_generate: '生成微课',
+  review_sheet: '复习卷',
+  chat_file_manage: '对话文件',
+  mind_map: '思维导图',
+  study_graph: '知识图谱',
+  study_plan: '规划建议',
+  bank_export: '题库导出',
+  workspace_search: '找资料',
+  web_search: '网页搜索',
   delegate_task: '请专家帮忙'
 }
 
@@ -323,7 +337,23 @@ const ACTION_LABELS: Record<string, string> = {
   receive: '领取分享',
   copy: '复制题库',
   // delegate_task（指挥家派发专家）
-  delegate: '派发'
+  delegate: '派发',
+  compare: '对比文档',
+  tidy_table: '整理表格',
+  stats: '统计',
+  recent: '最近记录',
+  review: '复习',
+  due: '待复习',
+  start: '开始练习',
+  list_images: '图片列表',
+  get_parsed: '读取解析',
+  get_image: '查看图片',
+  question_map: '题→页映射',
+  page: '主题页',
+  bank: '题库',
+  unlink: '取消关联',
+  knowledge: '预览知识点',
+  generate: '生成'
 }
 
 /** 原始标识符（bank_manage.delete）—— 只进 title，方便排查问题时看 */

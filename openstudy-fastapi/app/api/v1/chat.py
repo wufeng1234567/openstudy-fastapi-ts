@@ -3,39 +3,15 @@
 """
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, update, delete, and_, or_
+from sqlalchemy import select, func, update, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from app.database import get_db
 from app.core.security import get_current_user
 from app.core.response import success, error
-from datetime import datetime
+from app.models.chat_message import ChatMessage
 
 router = APIRouter(prefix="/system/chat")
-
-# 聊天模型
-from sqlalchemy import BigInteger, String, Text, DateTime, Integer
-from sqlalchemy.orm import Mapped, mapped_column
-from app.database import Base
-
-
-class ChatMessage(Base):
-    __tablename__ = "chat_message"
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    sender_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    sender_name: Mapped[Optional[str]] = mapped_column(String(100))
-    sender_nickname: Mapped[Optional[str]] = mapped_column(String(100))
-    sender_avatar: Mapped[Optional[str]] = mapped_column(String(255))
-    receiver_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    receiver_name: Mapped[Optional[str]] = mapped_column(String(100))
-    receiver_nickname: Mapped[Optional[str]] = mapped_column(String(100))
-    receiver_avatar: Mapped[Optional[str]] = mapped_column(String(255))
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    is_read: Mapped[Optional[int]] = mapped_column(Integer, default=0)
-    is_deleted: Mapped[Optional[int]] = mapped_column(Integer, default=0)
-    create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    hidden_by: Mapped[Optional[str]] = mapped_column(String(500))
 
 
 def format_message(msg):
@@ -246,7 +222,6 @@ async def list_conversations(
 
     # 查找所有与当前用户有消息往来的用户
     # 获取每个对话的最后一条消息
-    from sqlalchemy import case
 
     # 子查询：获取每个对话用户的最后消息时间
     sent_query = select(

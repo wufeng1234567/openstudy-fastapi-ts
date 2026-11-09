@@ -3,6 +3,7 @@
 """
 
 from fastapi import APIRouter, Depends, Request
+from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
@@ -98,7 +99,8 @@ async def captcha_image(db: AsyncSession = Depends(get_db)):
     # 绘制验证码文字
     try:
         font = ImageFont.truetype("arial.ttf", 38)
-    except:
+    except Exception as exc:  # noqa: BLE001 - 字体缺失只影响验证码观感，可降级
+        logger.warning("验证码字体加载失败，使用 PIL 默认字体: {}", exc)
         font = ImageFont.load_default()
 
     for i, char in enumerate(code):

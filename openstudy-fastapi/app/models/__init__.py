@@ -13,5 +13,7 @@ from app.models.knowledge_graph import RagGraphEntity, RagGraphRelation
 from app.models.study_plan import StudyPlanSnapshot
 # 资料夹 ↔ 题库逻辑关联（不复制题库，只做引用）
 from app.models.question_bank_link import QuestionBankKbLink
+# 资料夹 ↔ 笔记逻辑关联（P2 补齐）
+from app.models.note_kb_link import NoteKbLink
 # 资料夹来源实体集处理状态（增量更新）
 from app.models.source_graph_state import SourceGraphState

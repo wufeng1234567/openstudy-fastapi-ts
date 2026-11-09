@@ -5,28 +5,13 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional
 from app.database import get_db
 from app.core.security import get_current_user, require_admin
-from app.core.response import success, paginate, error
-from datetime import datetime
+from app.core.response import success, paginate
+from app.utils.pagination import paginate as paginate_query
+from app.models.leave_message import LeaveMessage
 
 router = APIRouter()
-
-from sqlalchemy import BigInteger, String, Text, DateTime
-from sqlalchemy.orm import Mapped, mapped_column
-from app.database import Base
-
-
-class LeaveMessage(Base):
-    __tablename__ = "leave_message"
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    user_id: Mapped[Optional[int]] = mapped_column(BigInteger)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    reply_content: Mapped[Optional[str]] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(String(1), default="0")
-    create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
 def format_message(msg):
@@ -50,14 +35,13 @@ async def list_messages(
     user_id = current_user.get("user_id")
     query = select(LeaveMessage).where(LeaveMessage.user_id == user_id)
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
-    query = query.order_by(LeaveMessage.create_time.desc())
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(query)
-    messages = list(result.scalars().all())
+    total, messages = await paginate_query(
+        db,
+        query.order_by(LeaveMessage.create_time.desc()),
+        page_num=pageNum,
+        page_size=pageSize,
+    )
+    messages = list(messages)
 
     return paginate(total, [format_message(m) for m in messages])
 
@@ -72,14 +56,13 @@ async def admin_list_messages(
     """管理端留言列表（2026-10-28：挂 require_admin，此前任意登录用户可读全站留言）"""
     query = select(LeaveMessage)
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
-    query = query.order_by(LeaveMessage.create_time.desc())
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(query)
-    messages = list(result.scalars().all())
+    total, messages = await paginate_query(
+        db,
+        query.order_by(LeaveMessage.create_time.desc()),
+        page_num=pageNum,
+        page_size=pageSize,
+    )
+    messages = list(messages)
 
     return paginate(total, [format_message(m) for m in messages])
 

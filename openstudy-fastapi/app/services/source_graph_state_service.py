@@ -19,7 +19,7 @@ from app.models.question import QuestionBank, QuestionMain
 from app.models.rag import DOC_VECTORIZED, RagDocument
 from app.models.source_graph_state import SourceGraphState
 from app.models.wiki import RagWikiPage
-from app.services import question_bank_link_service
+from app.services import note_kb_link_service, question_bank_link_service
 
 
 def _hash(value: str) -> str:
@@ -148,7 +148,12 @@ async def _source_descriptors(db: AsyncSession, *, user_id: int, kb_id: int) -> 
             )
         )
     ).all()
-    for note_id, _ in note_refs:
+    # 兼容旧 ContentReference 旁路 + P2 新增的 note_kb_link 显式导入。
+    note_ids = {int(note_id) for note_id, _ in note_refs if int(note_id or 0) > 0}
+    note_ids.update(
+        await note_kb_link_service.linked_note_ids(db, user_id=uid, kb_id=kid)
+    )
+    for note_id in sorted(note_ids):
         note = await db.get(Note, int(note_id))
         if not note:
             continue

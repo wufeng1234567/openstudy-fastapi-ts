@@ -402,7 +402,8 @@ async def generate_composite_sync(
                 filtered = await ai_generate_service._filter_sensitive([result])
                 result = filtered[0] if filtered else result
             return success(result)
-        except:
+        except Exception as exc:  # noqa: BLE001 - 模型偶尔返回非 JSON 文本，直接透传即可
+            logger.warning("AI 生成结果不是合法 JSON，按纯文本返回: {}", exc)
             return success(response.content)
     except Exception as e:
         return error(str(e))

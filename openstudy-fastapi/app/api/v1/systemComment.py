@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.core.security import get_current_user
 from app.core.response import success, paginate, error
+from app.utils.pagination import paginate as paginate_query
 from app.models.note import Note, NoteComment
 from app.models.user import SysUser
 
@@ -134,13 +135,13 @@ async def list_comments_admin(
     if endTime:
         query = query.where(NoteComment.create_time <= _end_of_date(endTime))
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
-    query = query.order_by(NoteComment.create_time.desc(), NoteComment.id.desc())
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-    result = await db.execute(query)
-    comments = list(result.scalars().all())
+    total, comments = await paginate_query(
+        db,
+        query.order_by(NoteComment.create_time.desc(), NoteComment.id.desc()),
+        page_num=pageNum,
+        page_size=pageSize,
+    )
+    comments = list(comments)
 
     rows = await _enrich_comments(db, comments)
     return paginate(total, rows)

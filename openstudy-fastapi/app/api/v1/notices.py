@@ -22,6 +22,7 @@ from loguru import logger
 from app.database import get_db
 from app.core.security import get_current_user, require_admin
 from app.core.response import success, paginate, error
+from app.utils.pagination import paginate as paginate_query
 from app.models.notice import SysNotice, SysNoticeRead, SysNoticeDelete
 from app.models.user import SysUser
 from app.models.notification import UserNotification
@@ -231,19 +232,17 @@ async def list_notices(
     if notice_type:
         query = query.where(SysNotice.notice_type == notice_type)
 
-    # 计算总数
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
     # 分页（用 is_(None) 做跨 MySQL/PG 的 NULLS LAST）
-    query = query.order_by(
-        SysNotice.create_time.is_(None),
-        SysNotice.create_time.desc(),
+    total, notices = await paginate_query(
+        db,
+        query.order_by(
+            SysNotice.create_time.is_(None),
+            SysNotice.create_time.desc(),
+        ),
+        page_num=pageNum,
+        page_size=pageSize,
     )
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(query)
-    notices = list(result.scalars().all())
+    notices = list(notices)
 
     # 获取用户已读的公告ID
     user_id = current_user.get("user_id")

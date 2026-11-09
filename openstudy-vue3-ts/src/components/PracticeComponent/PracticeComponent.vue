@@ -848,7 +848,6 @@ function startExamTimer() {
   if (props.moduleType !== 'mock') return
   // 如果已经显示考试结果，不启动计时器
   if (showExamResult.value) {
-    console.log(`[EXAM] 跳过启动计时器（已显示考试结果）`)
     return
   }
 
@@ -865,10 +864,8 @@ function startExamTimer() {
     if (now < endTime) {
       // 还有剩余时间，继续倒计时
       remainingTime.value = Math.ceil((endTime - now) / 1000)
-      console.log(`[EXAM] 恢复考试计时器, 剩余: ${remainingTime.value}秒`)
     } else {
       // 时间已到，静默清除存储，不弹窗（用户离开期间时间已过）
-      console.log(`[EXAM] 离开期间时间已过，静默清除`)
       remainingTime.value = 0
       clearExamStorage()
       // 不调用 handleTimeUp，让用户重新开始
@@ -881,7 +878,6 @@ function startExamTimer() {
     localStorage.setItem(EXAM_END_TIME_KEY, String(endTime))
     localStorage.setItem(EXAM_BANK_ID_KEY, String(props.bankId))
     remainingTime.value = totalSeconds
-    console.log(`[EXAM] 启动考试计时器, 总时间: ${totalSeconds}秒`)
   }
 
   // 启动定时器更新显示
@@ -907,7 +903,6 @@ function startExamTimer() {
 
 function stopExamTimer() {
   if (examTimer.value) {
-    console.log(`[EXAM] 停止计时器`)
     clearInterval(examTimer.value)
     examTimer.value = null
   }
@@ -921,12 +916,10 @@ function clearExamStorage() {
 function handleTimeUp() {
   // 如果已经显示弹窗或已显示考试结果，不再重复处理
   if (isTimeUpDialogShowing || showExamResult.value) {
-    console.log(`[EXAM] 跳过 handleTimeUp（弹窗已显示或已显示结果）`)
     return
   }
 
   isTimeUpDialogShowing = true
-  console.log(`[EXAM] handleTimeUp 被调用`)
 
   ElMessageBox.alert('考试时间已到，系统将自动提交试卷！', '时间到', {
     confirmButtonText: '确定',
@@ -935,12 +928,10 @@ function handleTimeUp() {
     closeOnClickModal: false,
     closeOnPressEscape: false
   }).then(() => {
-    console.log(`[EXAM] 用户点击确定，提交试卷`)
     isTimeUpDialogShowing = false
     // skipConfirm：时间已到，用户没有选择权，不再弹第二次确认
     handleSubmitExam({ skipConfirm: true })
   }).catch(() => {
-    console.log(`[EXAM] 弹窗被关闭，提交试卷`)
     isTimeUpDialogShowing = false
     handleSubmitExam({ skipConfirm: true })
   })
@@ -970,12 +961,10 @@ function unbindVisibility() {
 function handleVisibilityChange() {
   if (document.hidden) {
     // 页面隐藏，停止定时器（但不清除结束时间）
-    console.log(`[EXAM] 页面隐藏，暂停定时器`)
     stopExamTimer()
   } else {
     // 页面显示，恢复定时器（复用 startExamTimer 逻辑）
     if (props.moduleType === 'mock' && !showExamResult.value) {
-      console.log(`[EXAM] 页面显示，恢复定时器`)
       startExamTimer()
     }
   }
@@ -1064,7 +1053,6 @@ watch(() => props.bankId, (newId, oldId) => {
 })
 
 watch(showExamResult, (val) => {
-  console.log(`[EXAM] showExamResult 变化: ${val}, moduleType: ${props.moduleType}`)
   if (val) {
     stopExamTimer()
     isTimeUpDialogShowing = false
@@ -3292,7 +3280,6 @@ const handleSubmitExam = (options: { skipConfirm?: boolean } = {}) => {
 
 // 结束考试：清空模拟考试缓存并关闭
 const handleFinishExam = () => {
-  console.log(`[EXAM] handleFinishExam 被调用`)
   // 重置考试结果状态
   showExamResult.value = false
   totalScore.value = 0
@@ -3309,7 +3296,6 @@ const handleFinishExam = () => {
   forceOverview.value = false
   // 清空模拟考试的答题状态缓存
   clearAnswerStateCache('mock')
-  console.log(`[EXAM] 缓存已清空，准备关闭页面`)
   // 关闭页面
   emit('close')
 }

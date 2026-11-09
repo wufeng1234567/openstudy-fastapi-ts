@@ -508,77 +508,6 @@ const handlePaste = async (e: ClipboardEvent) => {
   chatAttachments.value = next
 }
 
-/* ===================== 悬浮按钮拖拽 ===================== */
-const isDragging = ref(false)
-const dragStart = { x: 0, y: 0 }
-const btnPos = ref({ x: 0, y: 0 })
-const btnStyle = ref<Record<string, string>>({})
-let lastDragEndAt = 0
-let dragMoved = false
-let dragStartClient = { x: 0, y: 0 }
-
-const updateBtnStyle = (transition = '') => {
-  btnStyle.value = {
-    left: btnPos.value.x + 'px',
-    top: btnPos.value.y + 'px',
-    right: 'auto',
-    bottom: 'auto',
-    ...(transition ? { transition } : {})
-  }
-}
-
-const initPosition = () => {
-  btnPos.value = { x: window.innerWidth - 76, y: window.innerHeight - 130 }
-  updateBtnStyle()
-}
-
-const startDrag = (e: MouseEvent) => {
-  isDragging.value = true
-  dragMoved = false
-  dragStartClient = { x: e.clientX, y: e.clientY }
-  dragStart.x = e.clientX - btnPos.value.x
-  dragStart.y = e.clientY - btnPos.value.y
-  document.body.style.userSelect = 'none'
-}
-
-const onDrag = (e: MouseEvent) => {
-  if (!isDragging.value) return
-  // 位移小于阈值不算拖拽，避免“鼠标轻微抖动导致点击被吞掉”
-  if (!dragMoved) {
-    const dx = Math.abs(e.clientX - dragStartClient.x)
-    const dy = Math.abs(e.clientY - dragStartClient.y)
-    if (dx < 4 && dy < 4) return
-    dragMoved = true
-  }
-  e.preventDefault()
-  const size = 52
-  btnPos.value = {
-    x: Math.max(10, Math.min(window.innerWidth - size - 10, e.clientX - dragStart.x)),
-    y: Math.max(10, Math.min(window.innerHeight - size - 10, e.clientY - dragStart.y))
-  }
-  updateBtnStyle('none')
-}
-
-const stopDrag = () => {
-  // 只有真正拖动过，才做吸边并标记“刚拖拽过”（否则会把单击也当成拖拽）
-  if (isDragging.value && dragMoved) {
-    const size = 52
-    const centerX = btnPos.value.x + size / 2
-    btnPos.value.x = centerX < window.innerWidth / 2 ? 20 : window.innerWidth - size - 20
-    updateBtnStyle('left 0.25s ease')
-    lastDragEndAt = Date.now()
-  }
-  isDragging.value = false
-  dragMoved = false
-  document.body.style.userSelect = ''
-}
-
-const onFloatClick = () => {
-  // 刚拖拽过就不触发“打开抽屉”
-  if (Date.now() - lastDragEndAt < 300) return
-  visible.value = true
-}
-
 /* ===================== 抽屉宽度拖拽 ===================== */
 const DRAWER_SIZE_KEY = 'openstudy_ai_drawer_size'
 const DRAWER_MIN = 320
@@ -1268,7 +1197,6 @@ onMounted(async () => {
     _pasteBound = true
     document.addEventListener('paste', handlePaste)
   }
-  initPosition()
   window.addEventListener('openstudy:open-assistant', openAssistant)
   window.addEventListener('openstudy:ask-assistant', openAssistant)
   await loadSessions()
@@ -1279,16 +1207,10 @@ onMounted(async () => {
   } else {
     await newSession()
   }
-  window.addEventListener('mousemove', onDrag)
-  window.addEventListener('mouseup', stopDrag)
-  window.addEventListener('resize', initPosition)
   document.addEventListener('mousedown', onDocMousedown)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('mousemove', onDrag)
-  window.removeEventListener('mouseup', stopDrag)
-  window.removeEventListener('resize', initPosition)
   window.removeEventListener('openstudy:open-assistant', openAssistant)
   window.removeEventListener('openstudy:ask-assistant', openAssistant)
   document.removeEventListener('mousedown', onDocMousedown)
@@ -1374,60 +1296,6 @@ onUnmounted(() => {
     position: relative;
     overflow: hidden;
     padding: 0;
-  }
-
-  /* ========== 悬浮按钮 ==========
-     与 DSH 的浮层语言一致：**近黑实心圆 + 白色图标**、无毛玻璃、无描边，
-     只在 hover 时抬一点阴影。旧版是"白底毛玻璃 + 灰图标"，在浅色页面里像块补丁。 */
-  .assistant-entry {
-    display: inline-flex;
-    width: 28px;
-    height: 28px;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    border: 0;
-    border-radius: 7px;
-    color: var(--os-text-3);
-    background: transparent;
-    cursor: pointer;
-    transition: background-color 0.15s ease, color 0.15s ease;
-  }
-
-  .assistant-entry:hover {
-    color: var(--os-accent);
-    background: var(--os-bg-hover);
-  }
-
-  .float-btn {
-    position: fixed;
-    left: auto;
-    right: 24px;
-    bottom: 32px;
-    width: 44px;
-    height: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    background: var(--os-primary);
-    border: none;
-    color: #fff;
-    cursor: grab;
-    box-shadow: 0 4px 14px rgba(15, 17, 21, 0.18);
-    transition: background-color 0.2s ease, box-shadow 0.2s ease;
-    z-index: 1000;
-    user-select: none;
-
-    &:hover {
-      background: var(--os-primary-hover);
-      color: #fff;
-      box-shadow: 0 8px 22px rgba(15, 17, 21, 0.24);
-    }
-
-    &:active {
-      cursor: grabbing;
-    }
   }
 
   /* ========== 抽屉宽度拖拽手柄 ========== */

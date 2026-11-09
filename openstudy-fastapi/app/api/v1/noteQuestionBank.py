@@ -19,6 +19,7 @@ from typing import Optional
 from app.database import get_db
 from app.core.security import get_current_user
 from app.core.response import success, paginate, error
+from app.utils.pagination import paginate as paginate_query
 from app.models.note_question_bank import NoteQuestionBank
 from app.models.question import QuestionBank
 from app.models.note import Note
@@ -92,14 +93,13 @@ async def list_note_question_bank(
     if userId is not None:
         query = query.where(NoteQuestionBank.user_id == userId)
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
-    query = query.order_by(NoteQuestionBank.create_time.desc())
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(query)
-    links = list(result.scalars().all())
+    total, links = await paginate_query(
+        db,
+        query.order_by(NoteQuestionBank.create_time.desc()),
+        page_num=pageNum,
+        page_size=pageSize,
+    )
+    links = list(links)
 
     return paginate(total, [format_note_bank(l) for l in links])
 

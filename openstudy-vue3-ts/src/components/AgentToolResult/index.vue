@@ -441,6 +441,7 @@ const TOOL_LABELS: Record<string, string> = {
   bank_manage: '题库管理',
   question_manage: '题目管理',
   note_manage: '笔记管理',
+  note_kb_link: '笔记资料夹',
   // 2026-09-21：收藏 / 错题 / 斩题三工具合并成一个 question_flag_manage（按 flag_type 分）
   question_flag_manage: '题目标记',
   memory_manage: '记忆管理',
@@ -464,6 +465,16 @@ const TOOL_LABELS: Record<string, string> = {
   wiki_manage: '知识百科',
   // 用户自定义智能体的管理工具（agent_manage.py）
   agent_manage: '智能体管理',
+  // 产物/读写能力（2026-11-09 P1 基线和后端注册表对齐）
+  document_compose: '文档编排',
+  document_compare: '文档对比',
+  english_practice: '英语练习',
+  english_wordbook: '英语词库',
+  micro_course_generate: '生成微课',
+  review_sheet: '复习卷',
+  chat_file_manage: '对话文件',
+  mind_map: '思维导图',
+  study_graph: '知识图谱',
   // 指挥家「派发专家」的元工具：对用户只该说「请专家帮忙」，不该露出 delegate_task
   delegate_task: '请专家帮忙'
 }
@@ -539,6 +550,24 @@ const ACTION_LABELS: Record<string, string> = {
   copy: '复制题库',
   // bank_export（导出成文件；两个版本的文案不同，让用户在卡片上一眼分清）
   export: '导出文件',
+  // document_compare / english / chat_file / study_graph / mind_map（P1 标签对齐）
+  compare: '对比文档',
+  tidy_table: '整理表格',
+  stats: '统计',
+  recent: '最近记录',
+  review: '复习',
+  due: '待复习',
+  start: '开始练习',
+  list_images: '图片列表',
+  get_parsed: '读取解析',
+  get_image: '查看图片',
+  question_map: '题→页映射',
+  page: '主题页',
+  bank: '题库',
+  generate: '生成',
+  // note_kb_link
+  unlink: '取消关联',
+  knowledge: '预览知识点',
   // delegate_task（指挥家派发专家）
   delegate: '派发'
 }

@@ -10,23 +10,10 @@ from app.database import get_db
 from app.core.security import require_admin
 from app.core.response import success, paginate, error
 from app.utils.excel_util import export_to_excel
-from datetime import datetime
+from app.utils.pagination import paginate as paginate_query
+from app.models.sensitive_word import SensitiveWord
 
 router = APIRouter(prefix="/sensitiveWord/sensitiveWord")
-
-from sqlalchemy import BigInteger, String, Integer, DateTime
-from sqlalchemy.orm import Mapped, mapped_column
-from app.database import Base
-
-
-class SensitiveWord(Base):
-    __tablename__ = "sys_sensitive_word"
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    word: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
-    level: Mapped[int] = mapped_column(Integer, default=1)
-    status: Mapped[str] = mapped_column(String(1), default="0")
-    create_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
 def format_word(item):
@@ -54,14 +41,13 @@ async def list_sensitive_words(
     if status:
         query = query.where(SensitiveWord.status == status)
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
-    query = query.order_by(SensitiveWord.create_time.desc())
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(query)
-    items = list(result.scalars().all())
+    total, items = await paginate_query(
+        db,
+        query.order_by(SensitiveWord.create_time.desc()),
+        page_num=pageNum,
+        page_size=pageSize,
+    )
+    items = list(items)
 
     return paginate(total, [format_word(i) for i in items])
 

@@ -245,21 +245,15 @@ const handleClose = () => {
 
 async function focusOnComment(commentId) {
   if (focusLocked.value) {
-    console.log(`[CommentModal] focusOnComment(${commentId}) 被锁定，跳过`)
     return
   }
   focusLocked.value = true
-  console.log(`[CommentModal] focusOnComment(${commentId}) 开始, commentList长度=${commentList.value.length}`)
 
   try {
-    console.log(`[CommentModal] 调用 getCommentThread(${commentId})...`)
     const threadRes = await getCommentThread(commentId)
-    console.log(`[CommentModal] getCommentThread返回:`, threadRes)
     let threadData = JSON.parse(JSON.stringify(threadRes.data || threadRes))
-    console.log(`[CommentModal] 获取评论线程成功:`, threadData.id, 'parentId:', threadData.parentId, '数据:', threadData)
 
     if (!threadData || !threadData.id) {
-      console.log(`[CommentModal] threadData为空或没有id`)
       ElMessage.warning('未找到对应评论')
       return
     }
@@ -325,27 +319,22 @@ async function focusOnComment(commentId) {
       threadReplyTarget.value = null
       threadComment.value = threadData
       threadLoading.value = false
-      console.log(`[CommentModal] 查看对话弹窗已打开, 评论ID: ${commentId}`)
 
       await nextTick()
       setTimeout(() => {
         const el = document.querySelector('.comment-item.target-highlight')
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-          console.log(`[CommentModal] 已滚动到评论: ${commentId}`)
         }
       }, 300)
     } else {
       // 一级评论：在评论列表中定位
-      console.log(`[CommentModal] 一级评论，查找对应页码...`)
       const targetPage = await findCommentPage(commentId)
-      console.log(`[CommentModal] 目标页码=${targetPage}`)
       if (targetPage) {
         currentPage.value = targetPage
         cacheStore.setPage(targetPage)
       }
       await prepare()
-      console.log(`[CommentModal] 加载评论列表, 数量=${commentList.value.length}`)
 
       let found = null
       for (const comment of commentList.value) {
@@ -360,7 +349,6 @@ async function focusOnComment(commentId) {
       }
 
       if (!found) {
-        console.log(`[CommentModal] 当前页未找到，重新获取评论数据...`)
         const res = await getCommentThread(commentId)
         const data = res.data || res
         if (data) {
@@ -374,7 +362,6 @@ async function focusOnComment(commentId) {
         }
       }
 
-      console.log(`[CommentModal] found=${found ? '有' : '无'}`)
       if (found) {
         markHighlight(found, commentId)
       }
@@ -382,10 +369,8 @@ async function focusOnComment(commentId) {
       await nextTick()
       setTimeout(() => {
         const el = document.querySelector('.comment-item.target-highlight')
-        console.log(`[CommentModal] 查找高亮元素: ${el ? '找到' : '未找到'}`)
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-          console.log(`[CommentModal] 已滚动到评论: ${commentId}`)
         }
       }, 300)
     }

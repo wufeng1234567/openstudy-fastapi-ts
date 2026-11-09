@@ -54,6 +54,9 @@ Thumbs.db
 tests/**/coverage/
 tests/e2e/reports
 selenium-debug.log
+.coverage
+.coverage.*
+htmlcov/
 
 # Build
 dist/
@@ -100,7 +103,14 @@ openstudy-fastapi/data/
 
 # 本地调试 / 变异测试产物（临时生成，不入库）
 # 2026-10-09 从索引清理：_scratch_mut 曾有 502 个文件被误跟踪
+_scratch*/
+openstudy-fastapi/_scratch*/
 _scratch_mut/
+# 一次性审计产物（不要再留到根目录）
+300
+audit_ws_summary.json
+# 竞赛展示图片/临时生成物：本地保留，不入库
+doc/competition/码道架构图/
 _probe_*.txt
 _probe_*.json
 # 浏览器自动化（CDP）跑测试时常在仓库根目录留下 tmpXXXXXXX 临时文件，

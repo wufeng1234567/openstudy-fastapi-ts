@@ -13,6 +13,7 @@ from app.core.response import success, paginate, error
 from app.models.note import Note, NoteCategory, NoteComment, UserNoteLike
 from app.utils.excel_util import export_to_excel
 from app.utils.html_sanitize import sanitize_note_html
+from app.utils.pagination import paginate as paginate_query
 from datetime import datetime, timedelta, time
 
 router = APIRouter()
@@ -239,14 +240,13 @@ async def list_notes(
     if status:
         query = query.where(Note.status == status)
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
-    query = query.order_by(Note.create_time.desc())
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(query)
-    notes = list(result.scalars().all())
+    total, notes = await paginate_query(
+        db,
+        query.order_by(Note.create_time.desc()),
+        page_num=pageNum,
+        page_size=pageSize,
+    )
+    notes = list(notes)
 
     # 批量查询关联题库(避免 N+1)
     banks_map = await _fetch_linked_banks_map(db, [n.note_id for n in notes])
@@ -369,9 +369,6 @@ async def list_public_notes(
             for r_start, r_end in ranges
         ]))
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
     # 排序：create_time（默认）/ click_count（浏览量）/ content_length（内容长度）
     # ⚠️ content_length 必须同时统计 content 与 markdown_content：
     #    前台编辑器只写 markdown_content，content 为 NULL，只按 content 排序时
@@ -392,10 +389,8 @@ async def list_public_notes(
     else:
         query = query.order_by(order_column.desc())
 
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(query)
-    notes = list(result.scalars().all())
+    total, notes = await paginate_query(db, query, page_num=pageNum, page_size=pageSize)
+    notes = list(notes)
 
     # 批量查询关联题库(避免 N+1)
     banks_map = await _fetch_linked_banks_map(db, [n.note_id for n in notes])
@@ -1039,14 +1034,13 @@ async def list_categories(
     user_id = current_user.get("user_id")
     query = select(NoteCategory).where(NoteCategory.user_id == user_id)
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
-    query = query.order_by(NoteCategory.order_num.asc())
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(query)
-    categories = list(result.scalars().all())
+    total, categories = await paginate_query(
+        db,
+        query.order_by(NoteCategory.order_num.asc()),
+        page_num=pageNum,
+        page_size=pageSize,
+    )
+    categories = list(categories)
 
     return paginate(total, [format_category(c) for c in categories])
 
@@ -1100,7 +1094,8 @@ async def create_category(
     # 尝试从请求体获取数据
     try:
         body = await request.json()
-    except:
+    except Exception as exc:  # noqa: BLE001 - 兼容空 body / 非 JSON 请求
+        logger.warning("解析笔记分类创建请求体失败，按空对象处理: {}", exc)
         body = {}
 
     # 从查询参数或请求体获取数据
@@ -1135,7 +1130,8 @@ async def update_category(
     """更新笔记分类（仅本人可改）"""
     try:
         body = await request.json()
-    except:
+    except Exception as exc:  # noqa: BLE001 - 兼容空 body / 非 JSON 请求
+        logger.warning("解析笔记分类更新请求体失败，按空对象处理: {}", exc)
         body = {}
 
     cid = body.get("categoryId") or body.get("category_id") or body.get("id")
@@ -1206,14 +1202,13 @@ async def list_comments(
         NoteComment.status == 0,
     )
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
-    query = query.order_by(NoteComment.create_time.desc())
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(query)
-    comments = list(result.scalars().all())
+    total, comments = await paginate_query(
+        db,
+        query.order_by(NoteComment.create_time.desc()),
+        page_num=pageNum,
+        page_size=pageSize,
+    )
+    comments = list(comments)
 
     # 批量获取用户信息（包括回复目标用户）
     from app.models.user import SysUser
@@ -1411,14 +1406,13 @@ async def list_replies(
         NoteComment.status == 0,
     )
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
-    query = query.order_by(NoteComment.create_time.asc())
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(query)
-    replies = list(result.scalars().all())
+    total, replies = await paginate_query(
+        db,
+        query.order_by(NoteComment.create_time.asc()),
+        page_num=pageNum,
+        page_size=pageSize,
+    )
+    replies = list(replies)
 
     # 批量获取用户信息（包括回复目标用户）
     from app.models.user import SysUser
@@ -1561,14 +1555,13 @@ async def list_favorite_notes(
         )
     )
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
-    query = query.order_by(UserNoteFavorite.create_time.desc())
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(query)
-    favorites = list(result.scalars().all())
+    total, favorites = await paginate_query(
+        db,
+        query.order_by(UserNoteFavorite.create_time.desc()),
+        page_num=pageNum,
+        page_size=pageSize,
+    )
+    favorites = list(favorites)
 
     # 作者信息批量查询，收藏列表也显示真实作者而不是“匿名用户”
     from app.models.user import SysUser

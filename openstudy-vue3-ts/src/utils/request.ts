@@ -284,4 +284,22 @@ export function download(url: string, params: any, filename: string, config?: an
   })
 }
 
-export default service
+/**
+ * The response interceptor returns `res.data` (the business envelope), not
+ * `AxiosResponse`.  The original `AxiosInstance` type still advertises
+ * `Promise<AxiosResponse<T>>`, which caused hundreds of false type errors in
+ * API modules (`.code` / `.rows` / `.total` on AxiosResponse).  Keep the
+ * runtime instance private and expose the correct call signature here.
+ */
+export interface RequestInstance {
+  <T = any>(config: AxiosRequestConfig): Promise<T>
+  get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
+  post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+  put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+  delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
+  patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+}
+
+const request = service as unknown as RequestInstance
+
+export default request

@@ -9,6 +9,7 @@ from typing import Optional, List
 from app.database import get_db
 from app.core.security import get_current_user
 from app.core.response import success, paginate, error
+from app.utils.pagination import paginate as paginate_query
 from app.models.words import WordBook, Word
 from app.utils.excel_util import export_to_excel
 from datetime import datetime
@@ -112,19 +113,18 @@ async def list_word_books(
     if bookName:
         query = query.where(WordBook.book_name.ilike(f"%{bookName}%"))
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
     # ⚠️ 必须带第二排序键（2026-10-23 修）：
     #    只按 `create_time` 排序时，**同一秒建的两本书顺序不稳定** ——
     #    PostgreSQL 对并列行不保证返回顺序，翻页时同一行可能在第 1 页和第 2 页
     #    各出现一次，另有一行永远翻不到。
     #    加 `book_id` 兜底后排序是全序，翻页结果可复现。
-    query = query.order_by(WordBook.create_time.desc(), WordBook.book_id.desc())
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(query)
-    books = list(result.scalars().all())
+    total, books = await paginate_query(
+        db,
+        query.order_by(WordBook.create_time.desc(), WordBook.book_id.desc()),
+        page_num=pageNum,
+        page_size=pageSize,
+    )
+    books = list(books)
 
     return paginate(total, [format_word_book(b) for b in books])
 
@@ -293,16 +293,15 @@ async def list_words(
     if word:
         query = query.where(Word.word.ilike(f"%{word}%"))
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query)
-
     # ⚠️ 同上：`sort_order` 可能重复（批量导入时都是 0），必须有第二排序键兜底，
     #    否则翻页会出现「同一词出现在两页」或「有的词永远看不到」。
-    query = query.order_by(Word.sort_order.asc(), Word.word_id.asc())
-    query = query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(query)
-    words = list(result.scalars().all())
+    total, words = await paginate_query(
+        db,
+        query.order_by(Word.sort_order.asc(), Word.word_id.asc()),
+        page_num=pageNum,
+        page_size=pageSize,
+    )
+    words = list(words)
 
     return paginate(total, [format_word(w) for w in words])
 
