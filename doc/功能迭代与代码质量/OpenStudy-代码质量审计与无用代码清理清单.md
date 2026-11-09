@@ -29,7 +29,7 @@
 
 1. **type-check 存量 1,980 条错误（初始 3,218）**：多数集中在 RuoYi 后台页（system/monitor/questionMarked/questionError 等）与历史组件；需要按文件批处理，先修 `request.ts` 返回类型、全局 `ComponentCustomProperties`、`ref({})` 泛型，再逐模块收紧。
 2. **ESLint 3,362 条 warnings**：当前为 warn-only 基线，P1 按规则分组清理（`no-explicit-any`、`no-console`、`vue/require-valid-default-prop` 等）。
-3. **CI 完整验证**：GitHub Actions runner 已实跑成功（run `42625043297`，3 jobs 全绿）；前置修复了干净 clone 的 uploadPath 建目录、pytest 的 PG env、空库 schema 初始化；type-check 作为报告型步骤保留，未清零。
+3. **CI 完整验证**：GitHub Actions runner 已实跑成功（run `42626308647`，3 jobs 全绿）；前置修复了干净 clone 的 uploadPath 建目录、pytest 的 PG env、空库 schema 初始化；type-check 作为报告型步骤保留，未清零。
 4. **Git 提交**：本轮代码/文档已提交并推送；最新提交 `fb430ee`，工作区只剩用户文件 `智能体核心知识梳理.docx`、`智能整理测试集/` 未跟踪。
 
 ### 0.1 P1 第一批执行记录（2026-11-09）
