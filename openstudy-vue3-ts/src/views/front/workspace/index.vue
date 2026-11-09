@@ -1019,10 +1019,12 @@
             <span v-else>示例 {{ filteredBankKnowledgeQuestions.length }} 道</span>
           </h4>
           <div v-if="filteredBankKnowledgeQuestions.length" class="kbp-bank-knowledge__questions">
-            <article v-for="question in filteredBankKnowledgeQuestions" :key="question.id">
+            <article v-for="question in filteredBankKnowledgeQuestions" :key="question.id"
+              class="kbp-bank-knowledge__question" @click="openBankQuestion(question)">
               <b>#{{ question.id }}</b>
               <p>{{ question.text }}</p>
               <em v-if="question.analysis">解析：{{ question.analysis }}</em>
+              <span class="kbp-bank-knowledge__jump">查看题目 →</span>
             </article>
           </div>
           <p v-else class="kbp-bank-knowledge__empty">
@@ -1032,6 +1034,34 @@
       </div>
       <template #footer>
         <el-button @click="bankKnowledgeVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="questionJumpVisible" title="题目详情" width="720px" append-to-body>
+      <div v-loading="questionJumpLoading" class="kbp-question-jump">
+        <template v-if="questionJumpData">
+          <div class="kbp-question-jump__meta">
+            <el-tag size="small" type="info" effect="plain">题目 #{{ questionJumpData.id }}</el-tag>
+            <el-tag v-if="questionJumpData.questionType" size="small" effect="plain">题型 {{ questionJumpData.questionType }}</el-tag>
+          </div>
+          <LatexRenderer class="kbp-question-jump__stem" :content="questionJumpData.questionText || questionJumpData.content || ''" />
+          <div v-if="questionJumpData.options" class="kbp-question-jump__options">
+            <pre>{{ formatQuestionOptions(questionJumpData.options) }}</pre>
+          </div>
+          <div v-if="questionJumpData.answer" class="kbp-question-jump__answer">
+            <b>答案</b>
+            <LatexRenderer :content="questionJumpData.answer" />
+          </div>
+          <div v-if="questionJumpData.analysis" class="kbp-question-jump__answer">
+            <b>解析</b>
+            <LatexRenderer :content="questionJumpData.analysis" />
+          </div>
+        </template>
+        <p v-else-if="!questionJumpLoading" class="kbp-bank-knowledge__empty">题目详情加载失败。</p>
+      </div>
+      <template #footer>
+        <el-button @click="goBankPractice">去题库练习</el-button>
+        <el-button @click="questionJumpVisible = false">关闭</el-button>
       </template>
     </el-dialog>
   </div>
@@ -1883,6 +1913,10 @@ const bankKnowledgeVisible = ref(false)
 const bankKnowledgeLoading = ref(false)
 const bankKnowledgeTitle = ref('')
 const bankKnowledge = ref<any>({ summary: '', entities: [], relations: [], questions: [] })
+const bankKnowledgeBankId = ref(0)
+const questionJumpVisible = ref(false)
+const questionJumpLoading = ref(false)
+const questionJumpData = ref<any>(null)
 const selectedBankEntityName = ref('')
 const selectedBankEntity = computed(() =>
   (bankKnowledge.value.entities || []).find((entity: any) => String(entity.name) === selectedBankEntityName.value)
@@ -3632,11 +3666,46 @@ function selectBankKnowledgeEntity(name: string) {
   selectedBankEntityName.value = selectedBankEntityName.value === name ? '' : name
 }
 
+function formatQuestionOptions(value: any) {
+  if (!value) return ''
+  if (Array.isArray(value)) {
+    return value.map((item: any, index: number) => `${String.fromCharCode(65 + index)}. ${item?.label ?? item?.content ?? item}`).join('\n')
+  }
+  if (typeof value === 'object') {
+    return Object.entries(value).map(([key, item]: any) => `${key}. ${item?.label ?? item?.content ?? item}`).join('\n')
+  }
+  return String(value)
+}
+
+async function openBankQuestion(question: any) {
+  const questionId = Number(question?.id || 0)
+  if (!questionId || questionJumpLoading.value) return
+  questionJumpData.value = null
+  questionJumpVisible.value = true
+  questionJumpLoading.value = true
+  try {
+    const res: any = await getQuestionMain(questionId)
+    if (res.code === 200) questionJumpData.value = res.data || null
+    else ElMessage.error(res.msg || '题目详情加载失败')
+  } catch (e: any) {
+    ElMessage.error('题目详情加载失败：' + (e?.message || e))
+  } finally {
+    questionJumpLoading.value = false
+  }
+}
+
+function goBankPractice() {
+  if (bankKnowledgeBankId.value) {
+    router.push(`/front/questionPractice/${bankKnowledgeBankId.value}?from=bankKnowledge`)
+  }
+}
+
 async function openBankKnowledge(bank: any) {
   const kb = activeKb.value
   const bankId = Number(bank?.bankId || bank?.id || 0)
   if (!kb || !bankId || bankKnowledgeLoading.value) return
   bankKnowledgeTitle.value = String(bank.bankName || bank.name || '题库知识点')
+  bankKnowledgeBankId.value = bankId
   bankKnowledge.value = { summary: '', entities: [], relations: [], questions: [] }
   selectedBankEntityName.value = ''
   bankKnowledgeVisible.value = true
@@ -5728,6 +5797,16 @@ onBeforeUnmount(() => {
 .kbp-bank-knowledge__relations em { color: #9aa3b2; font-style: normal; }
 .kbp-bank-knowledge__questions { display: flex; flex-direction: column; gap: 8px; }
 .kbp-bank-knowledge__questions article { padding: 9px 10px; border: 1px solid #e8edf5; border-radius: 7px; background: #fafbfe; }
+.kbp-bank-knowledge__question { cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+.kbp-bank-knowledge__question:hover { border-color: #c7d8f1; background: #f7faff; }
+.kbp-bank-knowledge__jump { display: inline-block; margin-top: 6px; color: #2f5fce; font-size: 10.5px; }
+.kbp-question-jump { min-height: 120px; }
+.kbp-question-jump__meta { display: flex; gap: 6px; margin-bottom: 10px; }
+.kbp-question-jump__stem { color: #253247; font-size: 13px; line-height: 1.7; }
+.kbp-question-jump__options { margin-top: 10px; padding: 8px 10px; border-radius: 7px; background: #f7f9fc; color: #4b5563; font-size: 11px; }
+.kbp-question-jump__options pre { margin: 0; white-space: pre-wrap; font: inherit; }
+.kbp-question-jump__answer { margin-top: 10px; padding: 9px 10px; border-radius: 7px; background: #f7f9fc; color: #4b5563; font-size: 12px; line-height: 1.6; }
+.kbp-question-jump__answer b { display: block; margin-bottom: 4px; color: #253247; font-size: 11px; }
 .kbp-bank-knowledge__questions b { color: #2f5fce; font-size: 10.5px; }
 .kbp-bank-knowledge__questions p { margin: 4px 0 0; color: #4b5563; font-size: 11.5px; line-height: 1.55; white-space: pre-wrap; }
 .kbp-bank-knowledge__questions em { display: block; margin-top: 5px; color: #9aa3b2; font-size: 10.5px; font-style: normal; line-height: 1.5; }
