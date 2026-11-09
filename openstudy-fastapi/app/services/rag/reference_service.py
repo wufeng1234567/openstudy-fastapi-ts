@@ -183,6 +183,45 @@ async def create_reference(
     )
     db.add(row)
     await db.commit()
+
+    # 笔记被引用进知识百科页面时，把笔记正文也同步进实体图；失败不影响引用本身。
+    if st == "note" and tt == "wiki_page":
+        try:
+            from app.models.note import Note
+            from app.models.wiki import RagWikiPage
+            from app.services.rag.source_graph_service import sync_text_source
+
+            note = (
+                await db.execute(select(Note).where(Note.note_id == int(source_id), Note.user_id == uid))
+            ).scalar_one_or_none()
+            page = (
+                await db.execute(
+                    select(RagWikiPage).where(
+                        RagWikiPage.id == int(target_id),
+                        RagWikiPage.user_id == uid,
+                    )
+                )
+            ).scalar_one_or_none()
+            if note and page:
+                text = "\n".join(
+                    item
+                    for item in (note.title, note.markdown_content, note.content, note.tags)
+                    if str(item or "").strip()
+                )
+                await sync_text_source(
+                    db,
+                    user_id=uid,
+                    kb_id=int(page.kb_id),
+                    source_type="note",
+                    source_id=int(note.note_id),
+                    source_name=str(note.title or "笔记"),
+                    text=text,
+                )
+        except Exception as graph_error:  # noqa: BLE001
+            from loguru import logger
+
+            logger.warning("[reference] note graph sync failed: {}", graph_error)
+
     return await get_reference(db, uid, row.id)
 
 
