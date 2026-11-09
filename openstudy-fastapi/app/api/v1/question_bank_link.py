@@ -12,6 +12,7 @@ from app.core.security import get_current_user
 from app.database import get_db
 from app.models.question import QuestionMain
 from app.services import question_bank_link_service, source_entity_service
+from app.services.rag import source_graph_service
 
 router = APIRouter(prefix="/rag")
 
@@ -24,19 +25,18 @@ class LinkBankRequest(BaseModel):
     bankId: int = 0
 
 
-async def _extract_bank_knowledge(user_id: int, bank_id: int) -> None:
+async def _extract_bank_knowledge(user_id: int, kb_id: int, bank_id: int) -> None:
     """后台抽取题库知识点，避免阻塞关联操作。"""
     from app.database import async_session_factory
 
     async with async_session_factory() as db:
         try:
-            await source_entity_service.extract_bank_entities(
+            await source_graph_service.sync_bank_graph(
                 db,
                 user_id=int(user_id),
+                kb_id=int(kb_id),
                 bank_id=int(bank_id),
-                limit=200,
-                chunk_size=20,
-                use_llm=True,
+                source_name="题库",
             )
         except Exception:
             # 抽取失败不反向影响关联关系，后续可在更新知识百科里重试。
@@ -75,6 +75,7 @@ async def link_kb_question_bank(
         background_tasks.add_task(
             _extract_bank_knowledge,
             _uid(current_user),
+            int(kb_id),
             int(data.bankId or 0),
         )
         return success(bank, "题库已关联，知识点抽取在后台进行")

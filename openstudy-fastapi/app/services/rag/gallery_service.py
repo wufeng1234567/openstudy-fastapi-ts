@@ -573,6 +573,28 @@ async def describe_asset(
         row.described_at = datetime.now()
         row.update_time = datetime.now()
         await db.commit()
+        # 图片也会进入资料夹知识图谱：用描述/OCR 文本抽取实体并生成主题页。
+        try:
+            if int(row.kb_id or 0) > 0:
+                from app.services.rag.source_graph_service import sync_text_source
+
+                await sync_text_source(
+                    db,
+                    user_id=int(user_id),
+                    kb_id=int(row.kb_id),
+                    source_type="image",
+                    source_id=int(row.id),
+                    source_name=str(row.file_name or "图片"),
+                    text="\n".join(
+                        item
+                        for item in (row.caption, row.ocr_text, " ".join(row.keywords or []))
+                        if str(item or "").strip()
+                    ),
+                )
+        except Exception as graph_error:  # noqa: BLE001
+            from loguru import logger
+
+            logger.warning("[gallery] image graph sync failed: {}", graph_error)
         return _asset_dict(row)
     except Exception as exc:  # noqa: BLE001 - 单张失败不拖垮整批
         row.description_status = "failed"

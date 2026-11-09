@@ -65,29 +65,28 @@ async def build_wiki_selective(
         return error("sourceType 只支持 document / image / bank / web")
     if source_type == "bank":
         # 题库没有 wiki 页；按题目块抽取知识点/实体关系，供知识图谱使用。
-        from app.services import source_entity_service
+        from app.services.rag import source_graph_service
 
         if int(data.sourceId or 0) <= 0:
             return error("请选择一个具体题库")
         try:
-            result = await source_entity_service.extract_bank_entities(
+            stats = await source_graph_service.sync_bank_graph(
                 db,
                 user_id=_uid(current_user),
+                kb_id=int(data.kbId or 0),
                 bank_id=int(data.sourceId),
-                limit=200,
-                chunk_size=20,
-                use_llm=True,
+                source_name="题库",
             )
             return success(
                 {
                     "mode": "bank",
                     "bankId": int(data.sourceId),
-                    "summary": result.get("summary") or "",
-                    "entities": result.get("entities") or [],
-                    "relations": result.get("relations") or [],
-                    "degraded": result.get("degraded") or {},
+                    "summary": "题库知识点已写入知识图谱和知识百科",
+                    "entities": [],
+                    "relations": [],
+                    "stats": stats,
                 },
-                f"题库知识点已抽取：{len(result.get('entities') or [])} 个知识点",
+                f"题库知识点已同步：{stats.get('entities', 0)} 个知识点、{stats.get('pages', 0)} 个主题页",
             )
         except Exception as exc:  # noqa: BLE001
             return error(f"题库知识点抽取失败：{exc}")
