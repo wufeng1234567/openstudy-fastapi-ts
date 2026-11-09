@@ -210,6 +210,7 @@ async def _write_practice_log(
     bank_id: int,
     answer: Any,
     grade: Dict[str, Any],
+    sync_error: bool = True,
 ) -> Optional[int]:
     """写一条答题流水 + 同步收藏/错题；简答题 pending 不写错题本。"""
     if grade.get("pending"):
@@ -246,7 +247,7 @@ async def _write_practice_log(
         q_fav.last_review_time = now
 
     error_id = None
-    if not grade.get("isCorrect"):
+    if sync_error and not grade.get("isCorrect"):
         err = (
             await db.execute(
                 select(UserQuestionError).where(
@@ -370,14 +371,29 @@ async def answer_practice_session(
     grade = grade_question(question, payload.answer, _score_for(session, int(question.id)))
     old = (session.answers or {}).get(str(question.id)) or {}
     answers = dict(session.answers or {})
-    answers[str(question.id)] = {
+    answer_entry = {
         "answer": _norm_answer(payload.answer),
         "isCorrect": grade.get("isCorrect"),
         "pending": bool(grade.get("pending")),
         "scoreAwarded": grade.get("scoreAwarded"),
         "maxScore": grade.get("maxScore"),
+        "errorSynced": bool(old.get("errorSynced")),
     }
+    answers[str(question.id)] = answer_entry
     session.answers = answers
+
+    # 暂存/逐题模式也要实时进错题本；同一题只同步一次，交卷时不再重复计数。
+    if grade.get("isCorrect") is False and not answer_entry["errorSynced"]:
+        await _write_practice_log(
+            db,
+            user_id=uid,
+            question=question,
+            bank_id=session.bank_id,
+            answer=payload.answer,
+            grade=grade,
+        )
+        answer_entry["errorSynced"] = True
+        session.answers = answers
 
     # 用存储后的所有答案重算计数，避免改答案时计数漂移（只做轻量判分，不写流水）
     grades: List[Dict[str, Any]] = []
@@ -459,6 +475,7 @@ async def submit_practice_session(
             items.append(grade)
             grades.append(grade)
             if not already_submitted:
+                sync_error = not bool(stored.get("errorSynced"))
                 await _write_practice_log(
                     db,
                     user_id=uid,
@@ -466,7 +483,11 @@ async def submit_practice_session(
                     bank_id=session.bank_id,
                     answer=answer,
                     grade=grade,
+                    sync_error=sync_error,
                 )
+                if sync_error and not grade.get("pending"):
+                    stored["errorSynced"] = True
+                    session.answers = dict(answers)
         else:
             score_override = _score_for(session, int(qid))
             payload_question = question_payload(question, reveal=False, score_override=score_override)
