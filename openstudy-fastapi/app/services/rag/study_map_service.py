@@ -16,6 +16,7 @@ note:{noteId} image:{docId}
 
 from __future__ import annotations
 
+import hashlib
 from collections import defaultdict
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
@@ -322,9 +323,10 @@ def _add_edge(
     if key in seen:
         return
     seen.add(key)
+    edge_id = hashlib.sha1(f"{source}->{target}".encode("utf-8")).hexdigest()[:16]
     edges.append(
         {
-            "id": f"e:{kind}:{len(edges) + 1}",
+            "id": f"e:{kind}:{edge_id}",
             "source": source,
             "target": target,
             "kind": kind,

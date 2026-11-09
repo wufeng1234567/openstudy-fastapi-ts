@@ -46,7 +46,7 @@
 |---|---:|
 | 后端 `app/` Python 文件 | 247 个 |
 | 后端 `app/` 物理行数 | 96,111 行 |
-| 后端测试目录 | 28 个 `test_*.py` + 59 个 `_probe_*` + 12 个 `e2e_*`；pytest 99 passed |
+| 后端测试目录 | 28 个 `test_*.py` + 59 个 `_probe_*` + 12 个 `e2e_*`；pytest 100 passed |
 | 前端 `src/` 文件 | 437 个（276 `.vue` + 161 `.ts`） |
 | 前端 `src/` 物理行数 | 179,276 行 |
 | 已挂载后端路由模块 | 42 个（`api/v1` 下 43 个 `.py`，含 `__init__.py`） |
@@ -400,7 +400,7 @@ flowchart TB
 3. **题源锚点几乎为空**：748 道题只有 6 条 `question_source` 锚点（0.8%），且 6 条 `chunk_id` 全为 NULL；`study_map` 的 `degraded.noQuestionSource=true` 在默认调用中恒真。更严重的是，`study_map_service` 在 `kb_id>0` 时用 `linked_bank_ids` 覆盖题库集合，而全库只有 1 条 `question_bank_kb_link`，导致 kb604 默认图只显示 1 个题库（旧 `build_study_graph` 返回 6 个）。
 4. **笔记节点恒为 0**：`content_reference` 只有 2 条 live，其中 note 相关的 1 条 `source_id=664` 指向已删除文档（悬空引用）；`note→doc` 引用 0 条。`study_map` 的 `noteCount` 在 6 次实测中全部为 0，尽管库里有 34 条有效笔记。
 5. **23 个题库来源页是「薄页」**：`generated_by='source:bank'` 的 23 页 `source_doc_ids=[]`、`source_refs=[]`，正文仅 32–38 字符；它们不是伪造（有 `entity_ids` + `generation_meta`），但让「`source_doc_ids=[]` 即不可信」的判据失效，也拉低知识百科整体质量。
-6. **边 ID 跨请求不稳定（最严重缺陷）**：`_add_edge` 用 `f"e:{kind}:{len(edges)+1}"` 生成边 ID，依赖插入顺序；而建议 evidence 与前端连线 key 都按 edgeId 对齐 → 同一图两次请求 edgeId 可能不同，建议引用会漂移。节点 ID 是稳定的（`topic:{pageId}` 等），这点做对了。
+6. **边 ID 已稳定（P2 修复）**：`_add_edge` 已改为 `e:{kind}:{sha1(source->target)[:16]}`，同一组 source/target/kind 跨请求可复现；建议 evidence 与前端连线 key 可直接按 edgeId 对齐，不再漂移。节点 ID 仍是稳定的（`topic:{pageId}` 等）。
 7. **规模化不可行**：`build_study_graph` / `get_wiki_graph` 的页面与链接查询**没有 LIMIT**，`_trim_to_limit` 的 80 节点裁剪发生在构图之后，救不了 IO；`source_graph_state_service._has_pages` 对每个来源都全量扫页，是 O(来源×页)；没有物化图快照。30 万页级不可行，当前只适合中等规模资料夹。
 8. **图谱服务四套并存**：4 个服务、5 个端点，口径不统一（详见 2.4、4.4 B24）。
 9. **轨迹语义质量弱**：kb604 的 6 步 trace 全部是 `mention` 边（正文互引），呈「Gradle → C盘 → TEMP → Rust」的无语义链；原因是 `prerequisiteEdgeCount=0` 时退到优先级最高的 `mention`。建议可解释性有真实 edgeId，但路径本身不够「教学」。
@@ -635,7 +635,7 @@ flowchart TB
 | **B26** | 题源锚点极少：748 题仅 6 条 `question_source`；两个主资料夹 `noQuestionSource=True` | DB 查询；`study_graph_service.py:481` | 图谱无法把知识点连到真实题目 |
 | **B27** | 笔记导入资料夹 | `note_kb_link` 表/服务/4 API、`note_kb_link` Agent 工具、笔记详情「加入资料夹」入口 | 已闭合 |
 | **B28** | 体检规则/资料类型是学习材料导向：`learnability` 惩罚无练习；`material_type` 仅 5 类；GitHub README 被判「试卷/英语」 | `document_health_service.py:315-338`；`material_organizer.py:40-46`；本地库 doc 682 | 面向比赛通知/事件记录/行业报告时评分与分类会失真 |
-| **B29** | 图谱边 ID 跨请求不稳定：`_add_edge` 用 `e:{kind}:{len(edges)+1}` | `study_map_service.py:327`；建议 evidence 与前端 `adviceTraceLines` 按 edgeId 对齐 | 同一图两次请求 edgeId 不同，建议引用漂移 |
+| **B29** | 图谱边 ID 已稳定：`_add_edge` 改为 `e:{kind}:{sha1(source->target)[:16]}` | `study_map_service._add_edge`；`tests/test_study_map_service.py` 回归覆盖 | 同一组 source/target/kind 跨请求可复现，不再漂移 |
 | **B30** | 六类统一图没接前端画布：`KnowledgeWikiPanel` 用 `getWikiGraph`（page-only），`getStudyMap` 只用于来源下拉 | `KnowledgeWikiPanel.vue:2008` vs `:1856`；`adviceTraceLines:741-762` 丢弃非 topic 步骤 | 用户看到的图比后端能力少一半 |
 | **B31** | 23 个 `source:bank` 页 `source_doc_ids=[]`、`source_refs=[]`、正文 32–38 字符 | `source_graph_service._sync_entities:129-176`；DB 查询 | 「无来源不生成」判据失效，知识百科质量被稀释 |
 
@@ -906,8 +906,8 @@ run_agent_stream
 | lint | ✅ P0 已加 `ruff.toml` | ✅ P0 已加 ESLint / Prettier |
 | format | ✅ Prettier 基线（warn-only） | ✅ Prettier |
 | type-check | ❌ 无 mypy | 🟡 工具已修复（TS 5.3.3 + 8GB heap），P1 第一批后存量 1,980 条错误 |
-| test | ✅ 99 个 pytest 用例通过；✅ pytest.ini/conftest | 自研 `check_agent_dsfree.mjs`；无 vitest/jest |
-| CI | ✅ 3 jobs 全绿（run `42621589258`）；pytest/ruff 已接电 | ✅ type-check 为报告型步骤，存量错误仍 1,980 |
+| test | ✅ 100 个 pytest 用例通过；✅ pytest.ini/conftest | 自研 `check_agent_dsfree.mjs`；无 vitest/jest |
+| CI | ✅ 3 jobs 全绿（run `42625043297`）；pytest/ruff 已接电 | ✅ type-check 为报告型步骤，存量错误仍 1,980 |
 | pre-commit | ❌ 无 | ❌ 无 |
 
 ### 7.2 代码规范现状
@@ -936,7 +936,7 @@ run_agent_stream
 
 ### 7.3 测试现状
 
-- `pytest tests`（P0 后）：**99 passed in 9.12s，exit 0**；新增 `pytest.ini` / `tests/conftest.py` / `asyncio_mode=auto`。
+- `pytest tests`（P0 后）：**100 passed in 9.12s，exit 0**；新增 `pytest.ini` / `tests/conftest.py` / `asyncio_mode=auto`。
 - 6 个 script-style 文件（`test_agent_rag_tools.py`、`test_context_memory.py`）已加入 `collect_ignore`，仍可用 `python tests/<file>.py` 手动运行；`test_notice.py` 与 `_scratch/` 干扰已清理。
 - CI **不跑 pytest**（`.github/workflows/ci.yml:54-73` 只有 compileall + import app）。
 - 前端 `npm run type-check` 实测 exit 1：`vue-tsc 1.8.27` 与 `typescript 5.9.3` 不兼容。
@@ -1061,7 +1061,7 @@ run_agent_stream
 ## 附录 D：审计方法与证据
 
 - 静态：`git log/diff/status`、`rg`/`grep`、文件行数统计、Python AST 函数长度分析、`ruff check app --statistics`。
-- 运行（P0 后）：`pytest tests`（99 passed / exit 0）、`ruff check app --select E9,F63,F7,F82`（All checks passed）、`npm run lint`（0 errors / 3,362 warnings）、`npm run type-check`（可执行，P1 第一批后仍报 1,980 条存量错误）、`npm run build:prod`（exit 0）。
+- 运行（P0 后）：`pytest tests`（100 passed / exit 0）、`ruff check app --select E9,F63,F7,F82`（All checks passed）、`npm run lint`（0 errors / 3,362 warnings）、`npm run type-check`（可执行，P1 第一批后仍报 1,980 条存量错误）、`npm run build:prod`（exit 0）。
 - 数据库只读：`openstudy_v2_pgsql`（本地测试库）表计数与图谱服务直接调用；`wiki_service.get_wiki_graph` / `study_map_service.build_study_map` 实测 0.03～0.27 秒。
 - 子代理审计：前端入口（Hy4）、资料诊疗/题库闭环（Hy4）、智能图谱（MiniMax-M3.1-Flash）、文档纠偏（MiniMax-M3.1-Flash）；主代理复核关键结论并补齐交叉证据。
 - 限制：本报告不替代运行时全量回归；标「待验证」的动态菜单、后台页面入口、部分工具回执字段需在真实环境进一步确认。
