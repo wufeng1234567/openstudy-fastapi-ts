@@ -1,7 +1,7 @@
 /**
  * Global Vue component properties injected by `main.ts`.
  *
- * These are RuoYi-compatible helpers used by legacy admin pages. Declaring
+ * These are global helpers used by legacy admin pages. Declaring
  * them here removes `Property '$modal' does not exist` class errors without
  * weakening `strict` for the rest of the project.
  */

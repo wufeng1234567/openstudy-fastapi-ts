@@ -220,7 +220,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, toRefs, getCurrentInstance, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import type { PropType } from 'vue'
-import { parseTime } from '@/utils/ruoyi'
+import { parseTime } from '@/utils/legacy'
 import {
   Refresh, StarFilled, Document,
   User, Comment, Clock, View, Delete, Collection,

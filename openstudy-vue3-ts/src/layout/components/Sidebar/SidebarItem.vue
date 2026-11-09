@@ -27,7 +27,7 @@
 import { ref } from 'vue'  // ✅ 添加这行
 import { isExternal } from '@/utils/validate'
 import AppLink from './Link'
-import { getNormalPath } from '@/utils/ruoyi'
+import { getNormalPath } from '@/utils/legacy'
 
 const props = defineProps({
   // route object

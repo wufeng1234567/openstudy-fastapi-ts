@@ -36,7 +36,7 @@ const LEGACY_STORAGE_KEY = 'practice-settings'
  * ⚠️⚠️ 这里踩过一个坑，务必看清（2026-10-22）
  *
  * 第一版我写的是 `JSON.parse(localStorage.getItem('user')).id` —— 想当然地以为
- * 登录后会像 RuoYi 原版那样把用户信息持久化到 localStorage。
+ * 登录后会把用户信息持久化到 localStorage。
  * **实际这个项目根本不写 `user` 这个键**（`store/modules/user.ts` 里没有任何
  * `localStorage.setItem('user', ...)`），于是它永远是 `null`，
  * 所有用户的数据都被塞进 `practice-settings_0` 匿名区 —— 等于**没做隔离**。

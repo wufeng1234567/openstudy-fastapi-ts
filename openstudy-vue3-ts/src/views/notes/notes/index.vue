@@ -318,7 +318,7 @@
 defineOptions({ name: 'Notes' })
 import { listNote, getNote, delNote, addNote, updateNote } from "@/api/notes/note"
 import { uploadImage } from "@/api/common/common"
-import { parseTime } from "@/utils/ruoyi"
+import { parseTime } from "@/utils/legacy"
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 import { CircleCheck, Folder } from '@element-plus/icons-vue'

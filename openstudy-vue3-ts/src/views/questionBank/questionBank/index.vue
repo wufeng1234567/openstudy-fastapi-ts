@@ -116,7 +116,7 @@
 defineOptions({ name: 'QuestionBank' })
 
 import { listQuestionBank, getQuestionBank, delQuestionBank, addQuestionBank, updateQuestionBank } from '@/api/questionBank/questionBank'
-import { parseTime } from '@/utils/ruoyi'
+import { parseTime } from '@/utils/legacy'
 
 const { proxy } = getCurrentInstance()
 const { common_status } = proxy.useDict('common_status')

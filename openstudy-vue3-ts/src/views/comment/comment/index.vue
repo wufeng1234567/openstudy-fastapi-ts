@@ -175,7 +175,7 @@
 defineOptions({ name: 'Comment' })
 
 import { listComment, getComment, updateComment, delComment } from '@/api/system/comment'
-import { parseTime } from '@/utils/ruoyi'
+import { parseTime } from '@/utils/legacy'
 
 const { proxy } = getCurrentInstance()
 

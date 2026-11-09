@@ -1,7 +1,7 @@
 import { createWebHashHistory, createRouter } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 
-/** 扩展的路由记录类型（RuoYi 框架在路由上挂载的自定义字段） */
+/** 扩展的路由记录类型（管理端框架在路由上挂载的自定义字段） */
 export type AppRouteRecordRaw = RouteRecordRaw & {
   hidden?: boolean
   permissions?: string[]

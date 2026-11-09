@@ -48,7 +48,7 @@ export function parseTime(time: TimeInput, pattern?: string): string | null {
     if (key === 'a') { return ['日', '一', '二', '三', '四', '五', '六'][value] }
     // ⚠️ 必须用 `padStart` 补零，**不能**写成 `Number('0' + value)`：
     //    后者把 `'02'` 又转回数字 `2`，于是 `17:02:07` 会渲染成 `17:2:7`、`2026-09-16` 变成
-    //    `2026-9-16`（上游 RuoYi 原版就是 `value.toString().padStart(2, '0')`，TS 迁移时写错了）。
+    //    `2026-9-16`（旧版就是 `value.toString().padStart(2, '0')`，TS 迁移时写错了）。
     //    年份是 4 位，`padStart(2)` 不会动它。
     return String(value).padStart(2, '0')
   })

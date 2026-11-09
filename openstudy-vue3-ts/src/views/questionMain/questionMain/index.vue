@@ -369,7 +369,7 @@ import { listQuestionBankAll, addQuestionBank, updateQuestionBank, delQuestionBa
 import { addData as addDictData, updateData as updateDictData, delData as delDictData } from '@/api/system/dict/data'
 import { getDicts } from '@/api/system/dict/data'
 import useDictStore from '@/store/modules/dict'
-import { parseTime } from '@/utils/ruoyi'
+import { parseTime } from '@/utils/legacy'
 import { Delete, Plus, Close, Setting } from '@element-plus/icons-vue'
 // 公式输入（2026-10-27）：数学题的题干/选项/答案/解析都含 LaTeX，
 // 纯文本框只能显示源码。MathInput 挂「ƒx」按钮，点开是符号面板。

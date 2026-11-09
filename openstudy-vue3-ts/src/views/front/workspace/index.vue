@@ -1113,7 +1113,7 @@ import {
 import { Plus } from '@element-plus/icons-vue'
 import { Download, Search, Share } from '@element-plus/icons-vue'
 import { saveAs } from 'file-saver'
-import { blobValidate } from '@/utils/ruoyi'
+import { blobValidate } from '@/utils/legacy'
 import {
   ensureMarkdownImageFiles,
   missingMarkdownImageFiles,

@@ -17,18 +17,18 @@
 | P0 项 | 状态 | 验收证据 |
 |---|---|---|
 | 统一版本号 | ✅ 完成 | `VERSION` 0.8.0、`openstudy-fastapi/pyproject.toml` 0.8.0；`package.json`/`main.py` 原为 0.8.0 |
-| 修复 type-check 工具链 | ⚠️ 部分完成 | `vue-tsc` 不再因 TS 5.9 崩溃（锁 TypeScript 5.3.3、Node heap 8GB）；但首次运行暴露 **3,218 条存量类型错误**（strict 口径）；P1 第一批修 `request.ts` 返回类型与全局组件属性后降到 **1,951 条**，尚未达到 exit 0，列为 P1 首项 |
+| 修复 type-check 工具链 | ⚠️ 部分完成 | `vue-tsc` 不再因 TS 5.9 崩溃（锁 TypeScript 5.3.3、Node heap 8GB）；但首次运行暴露 **3,218 条存量类型错误**（strict 口径）；P1 第一批修 `request.ts` 返回类型与全局组件属性后降到 **1,823 条**，尚未达到 exit 0，列为 P1 首项 |
 | pytest 配置 + 裸 pytest 可跑 | ✅ 完成 | 新增 `pytest.ini`（`testpaths=tests`、`asyncio_mode=auto`）与 `tests/conftest.py`；`pytest tests` → **102 passed, 9.12s**；6 个 script-style 文件（`test_agent_rag_tools.py`、`test_context_memory.py`）已加入 `collect_ignore`，仍可 `python tests/<file>.py` 运行 |
 | ruff 配置 + 语法门禁 | ✅ 完成 | 新增 `ruff.toml`；`ruff check app --select E9,F63,F7,F82` → **All checks passed**；5 处裸 `except` 已改为 `except Exception` + loguru；4 个 F821 用 `TYPE_CHECKING` 修复 |
-| ESLint/Prettier 基线 | ✅ 完成 | 新增 `eslint.config.js`、`.prettierrc.json`、`requirements-dev.txt`；`npm run lint` → **0 errors / 3,362 warnings**（存量债务以 warning 呈现） |
+| ESLint/Prettier 基线 | ✅ 完成 | 新增 `eslint.config.js`、`.prettierrc.json`、`requirements-dev.txt`；`npm run lint` → **0 errors / 3,277 warnings**（存量债务以 warning 呈现） |
 | 仓库卫生 | ✅ 完成（第一批） | 删除 `300`、`audit_ws_summary.json`、`type-errors.txt`、`ts_errors.txt`；删除 25 个 `.bak`；`.gitignore` 补 `_scratch*/`、`300`、`audit_ws_summary.json`、`doc/competition/码道架构图/` |
 | 悬浮助手残留 | ✅ 完成 | 删除 `AiAssistant` 悬浮按钮拖拽逻辑（约 70 行）与 `.float-btn` 死样式（约 30 行）、`FrontSidebar` 死样式；全仓 `rg "float-btn"` → **0** |
-| 死代码清理 | ✅ 完成（第一批） | 删除 17 个零引用 Vue 组件/页面 + 旧首页/dictation/chats + `utils/generator`（1,340 行）+ `PageWithFilter` + 后端 `favorites.py`/`notice_repo.py`/旧检查脚本；前端 `.vue` 从 276 降到 254，构建通过 |
+| 死代码清理 | ✅ 完成（第一批） | 删除 17 个零引用 Vue 组件/页面 + 旧首页/dictation/chats + `utils/generator`（1,340 行）+ `PageWithFilter` + 后端 `favorites.py`/`notice_repo.py`/旧检查脚本；前端 `.vue` 从 276 降到 237，构建通过 |
 
 **仍然未完成、留给 P1：**
 
-1. **type-check 存量 1,951 条错误（初始 3,218）**：多数集中在 RuoYi 后台页（system/monitor/questionMarked/questionError 等）与历史组件；需要按文件批处理，先修 `request.ts` 返回类型、全局 `ComponentCustomProperties`、`ref({})` 泛型，再逐模块收紧。
-2. **ESLint 3,362 条 warnings**：当前为 warn-only 基线，P1 按规则分组清理（`no-explicit-any`、`no-console`、`vue/require-valid-default-prop` 等）。
+1. **type-check 存量 1,823 条错误（初始 3,218）**：多数集中在 RuoYi 后台页（system/monitor/questionMarked/questionError 等）与历史组件；需要按文件批处理，先修 `request.ts` 返回类型、全局 `ComponentCustomProperties`、`ref({})` 泛型，再逐模块收紧。
+2. **ESLint 3,277 条 warnings**：当前为 warn-only 基线，P1 按规则分组清理（`no-explicit-any`、`no-console`、`vue/require-valid-default-prop` 等）。
 3. **CI 完整验证**：GitHub Actions runner 已实跑成功（run `42630095384`，3 jobs 全绿）；前置修复了干净 clone 的 uploadPath 建目录、pytest 的 PG env、空库 schema 初始化；type-check 作为报告型步骤保留，未清零。
 4. **Git 提交**：本轮代码/文档已提交并推送；最新提交 `fb430ee`，工作区只剩用户文件 `智能体核心知识梳理.docx`、`智能整理测试集/` 未跟踪。
 
@@ -36,7 +36,7 @@
 
 | P1 项 | 状态 | 证据 |
 |---|---|---|
-| type-check 高杠杆收敛 | 🟡 进行中 | `src/utils/request.ts` 增加 `RequestInstance` 返回类型契约（响应拦截器实际返回 `res.data`）；`src/types/vue-globals.d.ts` 补 `$modal/download/parseTime/resetForm`；strict 错误 3,218 → **1,951** |
+| type-check 高杠杆收敛 | 🟡 进行中 | `src/utils/request.ts` 增加 `RequestInstance` 返回类型契约（响应拦截器实际返回 `res.data`）；`src/types/vue-globals.d.ts` 补 `$modal/download/parseTime/resetForm`；strict 错误 3,218 → **1,823** |
 | Agent 工具中文标签 | ✅ 完成 | `AgentToolResult` 补 `document_compose/document_compare/english_practice/english_wordbook/micro_course_generate/review_sheet/chat_file_manage/mind_map/study_graph`；`AgentConfirmCard` 补 13 个缺失工具标签，覆盖 29/29 |
 | 分页 helper | ✅ 完成（api/v1） | 新增 `app/utils/pagination.py`（`paginate` / `select_count`）；`api/v1` 的 `count_query = select(func.count())...` 模板已全部清零，`notes/questions/system/words/...` 均迁移 |
 | ORM 分层 | ✅ 完成（4 个） | `Carousel` / `LeaveMessage` / `SensitiveWord` / `ChatMessage` 从 `api/v1` 迁入 `app/models/{carousel,leave_message,sensitive_word,chat_message}.py`，`database.register_all_models()` 统一注册 |
@@ -59,7 +59,7 @@
 | 代码可读性 | 6.5 / 10 | 注释/docstring 质量高；超大文件/超长函数拉低 |
 | 可维护性 | 5.5 / 10 | 重复样板、死代码、双源依赖、双锁文件、旧链路未下线 |
 | 测试资产 | 8.0 / 10 | P0 后 `pytest tests` 102 passed；已加 pytest.ini/conftest/CI step；仍无覆盖率门禁 |
-| 工具链/门禁 | 6.0 / 10 | P0 已加 ruff/eslint/prettier/pytest + CI step；type-check 存量 1,951 错误仍未清零 |
+| 工具链/门禁 | 6.0 / 10 | P0 已加 ruff/eslint/prettier/pytest + CI step；type-check 存量 1,823 错误仍未清零 |
 | 仓库卫生 | 7.0 / 10 | P0 已删 300/audit/type-errors/ts_errors/25 个 `.bak`；既有历史未跟踪项仍在（见 P1） |
 | 文档一致性 | 5.0 / 10 | 文档丰富；版本双轨、README 落后、子 README 仍是 Spring Boot |
 
@@ -69,7 +69,7 @@
 
 | 20% 子项 | 当前可得分 | 主要依据 | 最该补的证据 |
 |---|---:|---|---|
-| 工具使用是否规范（工程工具链） | 7 / 10 | P0 已加 ruff/eslint/prettier/pytest + CI step；type-check 存量 1,951 错误未清 | P1 类型批处理 + 清 warning |
+| 工具使用是否规范（工程工具链） | 7 / 10 | P0 已加 ruff/eslint/prettier/pytest + CI step；type-check 存量 1,823 错误未清 | P1 类型批处理 + 清 warning |
 | 工具使用是否规范（AI 编码工具留痕） | 8 / 10 | `doc/dev-process/` 日志/会话/memory/工具调用记录齐全 | README 质量节、证据索引 |
 | 代码可读性与可维护性 | 7 / 10 | 注释、docstring、类型标注好；超大文件/死代码/重复样板 | 死代码清理 + P1 结构优化 |
 | 综合（按 20 分折算） | **约 11～12 / 20** | 有测试/文档/架构，但门禁缺失、type-check 崩、死代码多 | 完成 P0 可到 15～16 / 20 |
@@ -98,7 +98,7 @@
 | 项 | 状态 | 证据 |
 |---|---|---|
 | scripts | ⚠️ 只有 dev/build/preview/type-check/check:dsfree；无 lint/format/test | `package.json:8-18` |
-| type-check | 🟡 **P0 已修复工具链**：锁 `typescript@5.3.3` + Node heap 8GB，不再崩溃；P1 第一批后存量 1,951 条错误 | `npm run type-check` 可执行，当前仍 exit 2；错误清单见 P1 |
+| type-check | 🟡 **P0 已修复工具链**：锁 `typescript@5.3.3` + Node heap 8GB，不再崩溃；P1 第一批后存量 1,823 条错误 | `npm run type-check` 可执行，当前仍 exit 2；错误清单见 P1 |
 | tsconfig | ✅ `strict:true`、`noImplicitAny`、`strictNullChecks` | `tsconfig.json:6-8`；但缺 `noUnusedLocals/noUnusedParameters` |
 | ESLint / Prettier | ❌ 无 | 全仓无配置 |
 | 锁文件 | ⚠️ `package-lock.json` 与 `pnpm-lock.yaml` 并存；CI 用 `npm ci`，本地 node_modules 是 pnpm 布局 | 双锁文件 |
@@ -134,7 +134,7 @@
 
 ### 3.2 17 个零引用 Vue 组件/页面（P0 候选）
 
-> **执行状态：已删除。** 删除前均经全仓 grep/import 检查，无任何 `.vue`/`.ts`/router 引用（除自身）；删除后 `.vue` 从 276 降到 254，`npm run build:prod` exit 0。
+> **执行状态：已删除。** 删除前均经全仓 grep/import 检查，无任何 `.vue`/`.ts`/router 引用（除自身）；删除后 `.vue` 从 276 降到 237，`npm run build:prod` exit 0。
 
 以下保留原始清单作为证据台账：
 
@@ -510,8 +510,8 @@ node tests/check_agent_dsfree.mjs
 
 **P0 后仍然最容易被抓的 5 个点：**
 
-1. `npm run type-check` 从「必崩」变成「能跑但 1,951 条存量错误」——比之前诚实，但离绿还有距离；
-2. `npm run lint` 是 0 errors / 3,362 warnings 的 warn-only 基线，warning 数量会被评审追问；
+1. `npm run type-check` 从「必崩」变成「能跑但 1,823 条存量错误」——比之前诚实，但离绿还有距离；
+2. `npm run lint` 是 0 errors / 3,277 warnings 的 warn-only 基线，warning 数量会被评审追问；
 3. `package-lock.json` 被前端 .gitignore 忽略，CI 目前用 `npm install` 兜底，锁文件口径未完全统一；
 4. 后台动态菜单页（system/monitor/courses 等）仍有历史类型错误与「教师/学生」字段，需产品确认去留；
 5. 「说没有悬浮助手/建议不是任务/笔记没做」曾经与代码残留不一致——本轮已清到 `rg "float-btn"` 0，但旧文档若未同步会再次制造矛盾。
@@ -566,7 +566,7 @@ Get-Content VERSION
 Select-String -Path openstudy-fastapi/app/main.py -Pattern 'version="'
 Select-String -Path openstudy-vue3-ts/package.json -Pattern '"version"'
 
-# 前端类型检查（P0 后：不再崩溃，但仍有 1,951 条存量错误）
+# 前端类型检查（P0 后：不再崩溃，但仍有 1,823 条存量错误）
 cd openstudy-vue3-ts; npm run type-check
 
 # 后端测试（P0 后）

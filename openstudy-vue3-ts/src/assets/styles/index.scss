@@ -4,7 +4,7 @@
 @import './element-ui.scss';
 @import './sidebar.scss';
 @import './btn.scss';
-@import './ruoyi.scss';
+@import './legacy.scss';
 
 // DSH 同源设计系统（令牌 + 组件覆写 + 通用版式）
 // 必须放在最后：它把上面这些历史样式统一收口到一套色板 / 圆角 / 描边。
