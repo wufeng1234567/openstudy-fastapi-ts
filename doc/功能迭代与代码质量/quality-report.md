@@ -16,7 +16,7 @@
 | 后端语法/未定义名 | `ruff check app --select E9,F63,F7,F82` | **All checks passed** | ✅ |
 | 后端字节码 | `python -m compileall -q app` | **exit 0** | ✅ |
 | 应用装配 | `python -c "from app.main import app"` | **routes: 545** | ✅ |
-| 前端 lint | `npm run lint` | **0 errors / 3,214 warnings** | ✅ warn-only 基线 |
+| 前端 lint | `npm run lint` | **0 errors / 3,215 warnings** | ✅ warn-only 基线 |
 | 前端构建 | `npm run build:prod` | **exit 0** | ✅ |
 | 前端类型检查 | `npm run type-check` | **exit 2；2,993 条存量错误** | 🟡 工具已修复，未清零 |
 | GitHub Actions | run `42615921856` | **3 jobs 全绿**（type-check 为报告型） | ✅ runner 实跑 |
@@ -54,7 +54,7 @@
 | ORM 分层 | ✅ | 4 个模型迁入 `app/models/`：`carousel` / `chat_message` / `leave_message` / `sensitive_word` |
 | 工具角色白名单 | ✅ 5/7 | 5 个工具已分配；仅 2 个英语工具仍在 general |
 | 覆盖率基线 | ✅ | 19%；CI 已接入 `--cov` 报告 |
-| console/any 清理 | 🟡 | `console.log` Top3 文件 54 处已删除（全前端 129～155 → 56 处）；`any` 仍待分组清理，lint warning 3,214 |
+| console/any 清理 | 🟡 | `console.log` Top3 文件 54 处已删除（全前端 129～155 → 56 处）；`any` 仍待分组清理，lint warning 3,215 |
 | 写工具确认元数据 | ✅ | `document_compose`/`document_compare`/`micro_course_generate`/`review_sheet`/`study_plan` 已声明 `write_operation=True`；契约测试覆盖 |
 | P2 笔记导入资料夹 | ✅ 完成 | `note_kb_link` 表/服务/4 端点 + `source_graph_state` 接入 + Agent `note_kb_link` 工具（29 tools）+ 笔记详情「加入资料夹」入口 |
 
@@ -63,7 +63,7 @@
 ## 4. 重要边界（评审时必须如实说明）
 
 1. **type-check 不是绿门禁**：`npm run type-check` 仍 exit 2，2,993 条错误主要是历史 RuoYi 页面/巨型组件；不能对外声称「类型检查通过」。
-2. **lint 是 warn-only 基线**：3,214 warnings 是存量债务台账，不是 0 告警。
+2. **lint 是 warn-only 基线**：3,215 warnings 是存量债务台账，不是 0 告警。
 3. **覆盖率只有 19%**：这是基线数字，不是质量目标；不设阈值。
 4. **CI 已在 GitHub Actions runner 实跑成功**：run `42615921856`，后端/前端/仓库卫生 3 jobs 全绿；其中 type-check 是 `continue-on-error` 的报告步骤，不代表类型检查已通过。
 5. **本轮代码/文档已提交并推送**：最新提交 `fb430ee`；工作区只剩用户文件 `智能体核心知识梳理.docx`、`智能整理测试集/` 未跟踪。

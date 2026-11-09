@@ -20,7 +20,7 @@
 | 修复 type-check 工具链 | ⚠️ 部分完成 | `vue-tsc` 不再因 TS 5.9 崩溃（锁 TypeScript 5.3.3、Node heap 8GB）；但首次运行暴露 **3,218 条存量类型错误**（strict 口径）；P1 第一批修 `request.ts` 返回类型与全局组件属性后降到 **2,993 条**，尚未达到 exit 0，列为 P1 首项 |
 | pytest 配置 + 裸 pytest 可跑 | ✅ 完成 | 新增 `pytest.ini`（`testpaths=tests`、`asyncio_mode=auto`）与 `tests/conftest.py`；`pytest tests` → **99 passed, 9.12s**；6 个 script-style 文件（`test_agent_rag_tools.py`、`test_context_memory.py`）已加入 `collect_ignore`，仍可 `python tests/<file>.py` 运行 |
 | ruff 配置 + 语法门禁 | ✅ 完成 | 新增 `ruff.toml`；`ruff check app --select E9,F63,F7,F82` → **All checks passed**；5 处裸 `except` 已改为 `except Exception` + loguru；4 个 F821 用 `TYPE_CHECKING` 修复 |
-| ESLint/Prettier 基线 | ✅ 完成 | 新增 `eslint.config.js`、`.prettierrc.json`、`requirements-dev.txt`；`npm run lint` → **0 errors / 3,214 warnings**（存量债务以 warning 呈现） |
+| ESLint/Prettier 基线 | ✅ 完成 | 新增 `eslint.config.js`、`.prettierrc.json`、`requirements-dev.txt`；`npm run lint` → **0 errors / 3,215 warnings**（存量债务以 warning 呈现） |
 | 仓库卫生 | ✅ 完成（第一批） | 删除 `300`、`audit_ws_summary.json`、`type-errors.txt`、`ts_errors.txt`；删除 25 个 `.bak`；`.gitignore` 补 `_scratch*/`、`300`、`audit_ws_summary.json`、`doc/competition/码道架构图/` |
 | 悬浮助手残留 | ✅ 完成 | 删除 `AiAssistant` 悬浮按钮拖拽逻辑（约 70 行）与 `.float-btn` 死样式（约 30 行）、`FrontSidebar` 死样式；全仓 `rg "float-btn"` → **0** |
 | 死代码清理 | ✅ 完成（第一批） | 删除 17 个零引用 Vue 组件/页面 + 旧首页/dictation/chats + `utils/generator`（1,340 行）+ `PageWithFilter` + 后端 `favorites.py`/`notice_repo.py`/旧检查脚本；前端 `.vue` 从 276 降到 254，构建通过 |
@@ -28,7 +28,7 @@
 **仍然未完成、留给 P1：**
 
 1. **type-check 存量 2,993 条错误（初始 3,218）**：多数集中在 RuoYi 后台页（system/monitor/questionMarked/questionError 等）与历史组件；需要按文件批处理，先修 `request.ts` 返回类型、全局 `ComponentCustomProperties`、`ref({})` 泛型，再逐模块收紧。
-2. **ESLint 3,214 条 warnings**：当前为 warn-only 基线，P1 按规则分组清理（`no-explicit-any`、`no-console`、`vue/require-valid-default-prop` 等）。
+2. **ESLint 3,215 条 warnings**：当前为 warn-only 基线，P1 按规则分组清理（`no-explicit-any`、`no-console`、`vue/require-valid-default-prop` 等）。
 3. **CI 完整验证**：GitHub Actions runner 已实跑成功（run `42615921856`，3 jobs 全绿）；前置修复了干净 clone 的 uploadPath 建目录、pytest 的 PG env、空库 schema 初始化；type-check 作为报告型步骤保留，未清零。
 4. **Git 提交**：本轮代码/文档已提交并推送；最新提交 `fb430ee`，工作区只剩用户文件 `智能体核心知识梳理.docx`、`智能整理测试集/` 未跟踪。
 
@@ -511,7 +511,7 @@ node tests/check_agent_dsfree.mjs
 **P0 后仍然最容易被抓的 5 个点：**
 
 1. `npm run type-check` 从「必崩」变成「能跑但 2,993 条存量错误」——比之前诚实，但离绿还有距离；
-2. `npm run lint` 是 0 errors / 3,214 warnings 的 warn-only 基线，warning 数量会被评审追问；
+2. `npm run lint` 是 0 errors / 3,215 warnings 的 warn-only 基线，warning 数量会被评审追问；
 3. `package-lock.json` 被前端 .gitignore 忽略，CI 目前用 `npm install` 兜底，锁文件口径未完全统一；
 4. 后台动态菜单页（system/monitor/courses 等）仍有历史类型错误与「教师/学生」字段，需产品确认去留；
 5. 「说没有悬浮助手/建议不是任务/笔记没做」曾经与代码残留不一致——本轮已清到 `rg "float-btn"` 0，但旧文档若未同步会再次制造矛盾。

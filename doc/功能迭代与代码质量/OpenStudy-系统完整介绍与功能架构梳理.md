@@ -1061,7 +1061,7 @@ run_agent_stream
 ## 附录 D：审计方法与证据
 
 - 静态：`git log/diff/status`、`rg`/`grep`、文件行数统计、Python AST 函数长度分析、`ruff check app --statistics`。
-- 运行（P0 后）：`pytest tests`（99 passed / exit 0）、`ruff check app --select E9,F63,F7,F82`（All checks passed）、`npm run lint`（0 errors / 3,214 warnings）、`npm run type-check`（可执行，P1 第一批后仍报 2,993 条存量错误）、`npm run build:prod`（exit 0）。
+- 运行（P0 后）：`pytest tests`（99 passed / exit 0）、`ruff check app --select E9,F63,F7,F82`（All checks passed）、`npm run lint`（0 errors / 3,215 warnings）、`npm run type-check`（可执行，P1 第一批后仍报 2,993 条存量错误）、`npm run build:prod`（exit 0）。
 - 数据库只读：`openstudy_v2_pgsql`（本地测试库）表计数与图谱服务直接调用；`wiki_service.get_wiki_graph` / `study_map_service.build_study_map` 实测 0.03～0.27 秒。
 - 子代理审计：前端入口（Hy4）、资料诊疗/题库闭环（Hy4）、智能图谱（MiniMax-M3.1-Flash）、文档纠偏（MiniMax-M3.1-Flash）；主代理复核关键结论并补齐交叉证据。
 - 限制：本报告不替代运行时全量回归；标「待验证」的动态菜单、后台页面入口、部分工具回执字段需在真实环境进一步确认。
