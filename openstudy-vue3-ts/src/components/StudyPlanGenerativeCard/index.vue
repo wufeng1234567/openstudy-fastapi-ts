@@ -24,7 +24,7 @@
 
     <div class="spgc__phases">
       <span v-for="phase in advice?.phases || []" :key="phase.id">
-        {{ phase.title }}<em>{{ phase.estimatedMinutes || 0 }}′</em>
+        {{ phase.title }}<em>约 {{ phase.estimatedMinutes || 0 }} 分钟</em>
       </span>
     </div>
 

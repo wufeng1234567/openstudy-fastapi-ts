@@ -141,7 +141,7 @@ async function playTrace(current: any) {
   phase.value = 'thinking'
 }
 
-async function generate(instruction = '', parentId = 0) {
+async function generate(instruction = '', parentId = 0, animateTrace = true) {
   if (isBusy.value) return
   if (!selectedNode.value?.id) {
     drawer.value = true
@@ -153,15 +153,15 @@ async function generate(instruction = '', parentId = 0) {
   trace.value = null
   snapshotId.value = 0
   phase.value = 'reading'
-  // 生成时先收起抽屉，把画面留给图谱轨迹动画。
-  drawer.value = false
+  // 首次生成播放轨迹动画；从“继续调整”进入时只展示思考动画，不重新跑连线。
+  drawer.value = !animateTrace
   try {
     const params = buildParams(instruction)
     const traceRes: any = await prepareStudyTrace(params)
     if (seq !== runSeq) return
     if (traceRes.code !== 200 || !traceRes.data) throw new Error(traceRes.msg || '轨迹生成失败')
     trace.value = traceRes.data.trace || {}
-    syncState()
+    if (animateTrace) syncState()
     const advicePromise = generateStudyAdvice({
       ...params,
       traceId: trace.value.traceId || '',
@@ -169,9 +169,14 @@ async function generate(instruction = '', parentId = 0) {
       save: true,
       useLlm: true
     })
-    await playTrace(trace.value)
-    // 轨迹播放完毕后再自动打开抽屉，展示完整建议（或思考骨架）。
-    drawer.value = true
+    if (animateTrace) {
+      await playTrace(trace.value)
+      // 轨迹播放完毕后再自动打开抽屉，展示完整建议（或思考骨架）。
+      drawer.value = true
+    } else {
+      phase.value = 'thinking'
+      drawer.value = true
+    }
     const adviceRes: any = await advicePromise
     if (seq !== runSeq) return
     if (adviceRes.code !== 200 || !adviceRes.data) throw new Error(adviceRes.msg || '建议生成失败')
@@ -180,7 +185,7 @@ async function generate(instruction = '', parentId = 0) {
     rememberGraphTitles(adviceRes.data.graph)
     phase.value = 'ready'
     await loadHistory()
-    syncState()
+    if (animateTrace) syncState()
   } catch (e: any) {
     if (seq !== runSeq) return
     phase.value = 'idle'
@@ -190,7 +195,8 @@ async function generate(instruction = '', parentId = 0) {
 
 function adjust(instruction: string) {
   if (!instruction.trim()) return
-  void generate(instruction, snapshotId.value)
+  // 调整已有建议不重播图谱连线，直接显示 OpenStudy 思考并生成新建议。
+  void generate(instruction, snapshotId.value, false)
 }
 
 async function open() {

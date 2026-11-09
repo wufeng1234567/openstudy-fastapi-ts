@@ -31,14 +31,14 @@
 
       <div class="sap__meta">
         <span>{{ advice.phases?.length || 0 }} 个阶段</span>
-        <span>{{ totalMinutes }} 分钟</span>
+        <span>预计共 {{ totalDurationText }}</span>
         <span v-if="advice.scope?.nodeIds?.length">{{ advice.scope.nodeIds.length }} 个节点</span>
       </div>
 
       <section v-for="phase in advice.phases || []" :key="phase.id" class="sap__phase">
         <div class="sap__phase-head">
           <b>{{ phase.title }}</b>
-          <span>{{ phase.estimatedMinutes || 0 }}′</span>
+          <span>约 {{ phase.estimatedMinutes || 0 }} 分钟</span>
         </div>
         <p class="sap__phase-goal">{{ phase.goal }}</p>
         <div class="sap__nodes">
@@ -69,7 +69,6 @@
           <button type="button" @click="emit('adjust', '更基础一点，先补前置概念')">更基础</button>
           <button type="button" @click="emit('adjust', '时间减半，只保留最关键的节点')">时间减半</button>
           <button type="button" @click="emit('adjust', '加入题库，用真实薄弱题验证')">加入题库</button>
-          <button type="button" @click="emit('adjust', '换一个起点，重新看关联关系')">换个起点</button>
         </div>
         <div class="sap__custom">
           <el-input v-model="custom" size="small" clearable placeholder="用一句话调整，例如：每天只能 20 分钟" @keyup.enter="submitCustom" />
@@ -214,6 +213,13 @@ async function exportAdvice(command: string) {
 const totalMinutes = computed(() =>
   (props.advice?.phases || []).reduce((sum: number, phase: any) => sum + Number(phase.estimatedMinutes || 0), 0)
 )
+const totalDurationText = computed(() => {
+  const minutes = Number(totalMinutes.value || 0)
+  if (minutes < 60) return `${minutes} 分钟`
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return rest ? `${hours} 小时 ${rest} 分钟` : `${hours} 小时`
+})
 
 function nodeTitle(id: string) {
   const raw = String(id || '')
