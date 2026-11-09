@@ -302,7 +302,7 @@
 3. `/rag/study-map` 的六类节点能力（document/web/note/image）没有真正作为主图谱展示，只在建议 trace 和来源选择里用到——`KnowledgeWikiPanel.vue:2008` 的画布用 `getWikiGraph`（page-only），`getStudyMap` 只在 `:1856` 用来列「可更新来源」。
 4. **边 ID 已稳定（P2 修复）**：`study_map_service._add_edge` 已改为 `e:{kind}:{sha1(source->target)[:16]}`，同一 source/target/kind 的边 ID 可跨请求复现，不再依赖插入顺序；`tests/test_study_map_service.py` 已加回归断言。
 5. **规模化硬墙**：`build_study_graph` / `get_wiki_graph` 页/链接查询无 LIMIT；`_has_pages` 为 O(来源×页)；无物化图快照。30 万页级不可行。
-6. 🟡 已先落地共享契约 `graph_contract.py`（节点/边字段、`stable_edge_id`、去重 `add_edge`），`study_map_service` 已接入；「一个统一图服务 + 一个页面图投影 + 一个实体图投影」和旧端点 deprecate 仍待后续。
+6. 🟡 已先落地共享契约 `graph_contract.py`（节点/边字段、`stable_edge_id`、去重 `add_edge`），`study_map_service` + `knowledge_map_service` 已接入；「一个统一图服务 + 一个页面图投影 + 一个实体图投影」和旧端点 deprecate 仍待后续。
 
 **这不是「无用代码」但属于「重复实现」，是 LLM 评审会指出的架构问题。**
 
@@ -551,7 +551,7 @@ node tests/check_agent_dsfree.mjs
 2. `questions.py` / `rag.py` 业务下沉 service，路由只留参数/权限/响应。
 3. 合并 OCR 双实现、上传/预览组件族；建 `useFileUpload`、`useOcr` 等 composable。
 4. `any` 减量从 `permission.ts`、`utils/index.ts` 开始，每文件小步类型化。
-5. **图谱四套服务收口**：🟡 已新增 `app/services/rag/graph_contract.py`（`GraphNode/GraphEdge` + `stable_edge_id` + `add_edge`），`study_map_service` 已使用稳定边 ID；`knowledge_map_service` / `knowledge_graph_service` / `study_graph_service` 仍未迁完，前端六类图未接画布、页/链接查询 limit 未补，P2 继续。
+5. **图谱四套服务收口**：🟡 已新增 `app/services/rag/graph_contract.py`（`GraphNode/GraphEdge` + `stable_edge_id` + `add_edge`），`study_map_service` / `knowledge_map_service` 已使用稳定边 ID；`knowledge_graph_service` / `study_graph_service` 仍未迁完，前端六类图未接画布、页/链接查询 limit 未补，P2 继续。
 6. **笔记导入资料夹**：✅ 已完成：`note_kb_link` 表 + 4 端点 + service + `source_graph_state` + Agent 工具 + 笔记详情「加入资料夹」入口。
 7. **资料诊疗室 Agent 化**：补 `document_health`、`document_smart_report`、`material_organize_preview` 三工具，挂 `kb`/`general` 角色。
 8. 建立 `docs/quality/`：质量报告、死代码台账、覆盖率趋势、评审指南。

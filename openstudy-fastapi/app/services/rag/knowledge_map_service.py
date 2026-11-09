@@ -23,6 +23,7 @@ from app.models.content import ContentReference, RagImageAsset
 from app.models.note import Note
 from app.models.question import QuestionSource
 from app.models.rag import RagDocument, RagKnowledgeBase
+from app.services.rag.graph_contract import stable_edge_id
 from app.services.rag.section_outline import content_sections
 
 GROUP_COLORS = [
@@ -207,6 +208,7 @@ async def build_knowledge_map(
             nodes.append(section)
             edges.append(
                 {
+                    "id": stable_edge_id("hierarchy", node_id, str(section["id"])),
                     "source": node_id,
                     "target": section["id"],
                     "type": "hierarchy",
@@ -228,7 +230,15 @@ async def build_knowledge_map(
                     "searchText": f"{doc.file_name} 题目 题库 {q_count}",
                 }
             )
-            edges.append({"source": node_id, "target": qid, "type": "question_source", "label": "出题"})
+            edges.append(
+                {
+                    "id": stable_edge_id("question_source", node_id, qid),
+                    "source": node_id,
+                    "target": qid,
+                    "type": "question_source",
+                    "label": "出题",
+                }
+            )
         if i_count:
             iid = f"images:{int(doc.id)}"
             nodes.append(
@@ -244,7 +254,15 @@ async def build_knowledge_map(
                     "searchText": f"{doc.file_name} 图片 图库 {i_count}",
                 }
             )
-            edges.append({"source": node_id, "target": iid, "type": "image_source", "label": "配图"})
+            edges.append(
+                {
+                    "id": stable_edge_id("image_source", node_id, iid),
+                    "source": node_id,
+                    "target": iid,
+                    "type": "image_source",
+                    "label": "配图",
+                }
+            )
 
     # 笔记：只把有真实引用的笔记放进图里，避免“所有笔记都挂上去”变成噪声。
     notes = (
@@ -309,7 +327,15 @@ async def build_knowledge_map(
         )
         for did in doc_ids:
             if did in doc_node_ids:
-                edges.append({"source": doc_node_ids[did], "target": nid, "type": "reference", "label": "被引用"})
+                edges.append(
+                    {
+                        "id": stable_edge_id("reference", doc_node_ids[did], nid),
+                        "source": doc_node_ids[did],
+                        "target": nid,
+                        "type": "reference",
+                        "label": "被引用",
+                    }
+                )
 
     # 过滤掉没有入边的笔记节点（可能 note_links 的 doc 不在当前筛选范围）。
     linked_ids = {edge["target"] for edge in edges}
