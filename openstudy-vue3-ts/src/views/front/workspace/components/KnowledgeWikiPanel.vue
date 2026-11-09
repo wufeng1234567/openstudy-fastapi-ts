@@ -1544,9 +1544,18 @@ function stopMapAnimation() {
   mapSimNodes = []
 }
 
+const MAP_SIMULATION_NODE_LIMIT = 80
+
 function startMapAnimation() {
   stopMapAnimation()
   if (view.value !== 'map' || detailVisible.value || !mapNodes.value.length) return
+  // 大图禁用初始力导向：几百个节点时 O(n²) 模拟会持续触发重绘，
+  // 静态布局已经足够可读，优先保证拖拽/缩放的帧率。
+  if (mapNodes.value.length > MAP_SIMULATION_NODE_LIMIT) {
+    mapSimAlpha = 0
+    mapSimNodes = []
+    return
+  }
   mapSimNodes = mapNodes.value.map((node: any) => ({
     id: String(node.id),
     x: Number(node.x),
@@ -2645,6 +2654,7 @@ onBeforeUnmount(() => {
 .kw-map.is-route-mode .kw-map-edge.is-current-route { stroke: #7e94bf; opacity: 0.82; }
 .kw-map-edge.is-dimmed { opacity: 0.08; }
 .kw-map-edge.is-hidden { display: none; }
+.kw-map__svg > g { will-change: transform; }
 .kw-map-hull-label { fill: #7d8596; font-size: 10px; font-weight: 600; pointer-events: none; paint-order: stroke; stroke: #f8faff; stroke-width: 3px; stroke-linejoin: round; }
 .kw-map-advice-ray { stroke: #2f5fce; stroke-width: 2; opacity: .78; pointer-events: none; stroke-dasharray: 1; stroke-dashoffset: 1; animation: kw-advice-draw .58s ease-out forwards; filter: drop-shadow(0 0 3px rgba(47, 95, 206, .35)); }
 .kw-map-advice-dot { fill: #2f5fce; pointer-events: none; filter: drop-shadow(0 0 5px rgba(47, 95, 206, .8)); }
