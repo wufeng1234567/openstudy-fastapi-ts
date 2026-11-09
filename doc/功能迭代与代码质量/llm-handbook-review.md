@@ -22,7 +22,7 @@
 
 1. **可宣称**：手册已覆盖 LLM 评审最可能检查的 10 个动作，并给出可复跑证据。
 2. **不可宣称**：`npm run type-check` 仍失败（2,993 条存量错误），不能写成“类型检查通过”。
-3. **可宣称**：GitHub Actions 已在真实 runner 跑过（run `42615921856`，3 jobs 全绿）；但 type-check step 是报告型 `continue-on-error`，不能宣称“类型检查通过”。
+3. **可宣称**：GitHub Actions 已在真实 runner 跑过（run `42618690202`，3 jobs 全绿）；但 type-check step 是报告型 `continue-on-error`，不能宣称“类型检查通过”。
 4. **P2 图谱四套服务收口、巨型文件拆分**仍是工程债务，不应写成已合并。
 5. 本手册的定位是“对外答辩口径”，不替代 `quality-report.md` 的原始命令输出。
 
@@ -30,4 +30,4 @@
 
 - 每次新增功能后回到第 8–10 步，更新死代码/口径/证据三节；
 - 若 type-check 降到 2,000 以下，把 Q12 的目标数字改为“<2,000”并附新输出；
-- 已补 runner 运行记录：`42615921856`，3 jobs 全绿，type-check 为报告型步骤。
+- 已补 runner 运行记录：`42618690202`，3 jobs 全绿，type-check 为报告型步骤。
