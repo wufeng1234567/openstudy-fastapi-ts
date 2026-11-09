@@ -233,21 +233,6 @@
           </div>
         </header>
 
-        <div v-if="activePage.learning" class="kw-detail__learning">
-          <div class="kw-detail__learning-head">
-            <span>学习状态</span>
-            <b :class="`is-${activePage.learning.level}`">{{ activePage.learning.label }}</b>
-          </div>
-          <div class="kw-detail__learning-bar">
-            <i :class="`is-${activePage.learning.level}`" :style="{ width: `${activePage.learning.masteryScore}%` }"></i>
-          </div>
-          <div class="kw-detail__learning-meta">
-            <span>读过 {{ activePage.learning.viewCount }} 次</span>
-            <span>练过 {{ activePage.learning.practiceCount }} 题</span>
-            <span v-if="activePage.learning.practiceCount">正确率 {{ activePage.learning.accuracy }}%</span>
-          </div>
-        </div>
-
         <div v-if="activePage.status === 'stale'" class="kw-detail__warning">
           资料已经更新，这一页的内容可能过期。请回到知识百科点击「更新知识百科」重新整理。
         </div>
