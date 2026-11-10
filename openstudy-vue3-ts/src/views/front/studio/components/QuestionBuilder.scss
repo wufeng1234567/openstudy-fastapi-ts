@@ -1,0 +1,1910 @@
+/* AI 模型行：下拉框 + 管理模型 + 深度思考开关 横向并排、垂直居中 */
+.ai-model-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.question-builder {
+  display: flex;
+  /*
+   * ⚠️ 从 `stretch` 改成 `flex-start`（2026-10-20 修「左侧下方大面积空白」）
+   *
+   * `stretch` 会让两栏**互相拉高**：右栏（题目编辑，内容可能很长）
+   * 把自己撑高后，左栏也被拉到同样高度 —— 于是左栏"10 道题"下面
+   * 拖出一大片空白，分页器还被 `margin-top:auto` 顶到最底下，
+   * 用户必须滚到底才能看到分页。
+   *
+   * 改成 `flex-start` 后：**两栏各按自己内容的高度**排布，
+   * 谁长谁短互不影响。左栏该多高就多高，空白自然消失。
+   *
+   * 代价：两栏底部可能不齐平（右栏短时下方留白）。
+   * 权衡后可以接受 —— 右栏底部是空背景，而左侧留白会遮住分页，
+   * 后者的伤害大得多。
+   *
+   * 另外给两栏各自加 `align-self` 兜底（见 .question-panel / .edit-panel），
+   * 避免将来有人改回 stretch 又复发。
+   */
+  align-items: flex-start;
+  gap: 12px;
+  /*
+   * 原来写死 `min-height: 600px`：题目为 0 条时，双栏仍撑满 600px 空白，
+   * 左栏那条 `border-right` 跟着拉到底 —— 题量大时没问题，空的时候很突兀
+   * （用户 2026-10-18 截图反馈「页尾一条竖线」）。
+   * 现在按内容自适应：有题目时自然长，空列表时就一小块。
+   */
+  min-height: 0;
+  width: 100%;
+
+  :deep(.el-button) {
+    border-radius: 8px;
+  }
+
+  :deep(.el-tag) {
+    border-radius: 4px;
+  }
+
+  /* ========== 题型库触发按钮 ========== */
+  .type-popover-trigger {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+
+    .btn-type-lib {
+      position: relative;
+      background: #fff;
+      border: 1px solid var(--os-border);
+      color: var(--os-text-2);
+      transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out), color var(--ds-duration-fast) var(--ds-ease-in-out);
+
+      &:hover {
+        color: var(--os-accent);
+        border-color: #c6e2ff;
+        background: #ecf5ff;
+      }
+
+      &.is-filtering {
+        color: var(--os-accent);
+        border-color: var(--os-accent);
+        background: #ecf5ff;
+      }
+
+      .trigger-badge {
+        position: absolute;
+        top: -8px;
+        right: -8px;
+
+        :deep(.el-badge__content) {
+          font-size: 10px;
+          min-width: 16px;
+          height: 16px;
+          line-height: 16px;
+          padding: 0 4px;
+        }
+      }
+    }
+  }
+
+  /* ========== 一键恢复按钮 ========== */
+  .btn-restore {
+    flex-shrink: 0;
+    background: #fff;
+    border: 1px solid var(--os-border);
+    color: var(--os-text-2);
+    transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out), color var(--ds-duration-fast) var(--ds-ease-in-out);
+
+    &:hover {
+      color: #e6a23c;
+      border-color: #f3d19e;
+      background: #fdf6ec;
+    }
+  }
+
+  /* ========== 题型库悬浮层 ========== */
+  .type-popover {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 16px;
+    width: 240px;
+    background: #fff;
+    border: 1px solid var(--os-border);
+    border-radius: var(--os-radius);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    padding: 12px;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+
+    .popover-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--os-text);
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--os-border);
+      flex-shrink: 0;
+
+      .popover-title { flex-shrink: 0; }
+
+      .popover-close {
+        margin-left: auto;
+        cursor: pointer;
+        color: #9ca3af;
+        font-size: 16px;
+        transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out), color var(--ds-duration-fast) var(--ds-ease-in-out);
+        padding: 2px;
+
+        &:hover {
+          color: var(--os-accent);
+          transform: rotate(90deg);
+        }
+      }
+    }
+
+    .type-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+
+      .type-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        background: #f8f9fa;
+        border-radius: 6px;
+        cursor: grab;
+        transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out), color var(--ds-duration-fast) var(--ds-ease-in-out);
+        border: 1px solid var(--os-border);
+        color: #6b7280;
+        user-select: none;
+
+        &:hover {
+          background: var(--os-bg-hover);
+          border-color: var(--os-border-strong);
+          color: #4b5563;
+        }
+
+        &.type-filtered {
+          background: var(--os-accent);
+          color: white;
+          border-color: var(--os-accent);
+          box-shadow: none;
+
+          .el-icon { color: white; }
+          .type-count { background: rgba(255,255,255,0.3); color: white; }
+        }
+
+        .el-icon {
+          font-size: 16px;
+          flex-shrink: 0;
+        }
+
+        span {
+          font-size: 12px;
+          font-weight: 500;
+        }
+
+        .type-count {
+          margin-left: auto;
+          background: var(--os-border);
+          color: #6b7280;
+          padding: 0 5px;
+          border-radius: 8px;
+          font-size: 10px;
+          min-width: 16px;
+          text-align: center;
+          line-height: 16px;
+        }
+      }
+    }
+
+    .type-hint {
+      margin-top: 8px;
+      font-size: 11px;
+      color: #9ca3af;
+      text-align: center;
+      padding: 4px;
+      background: var(--dsw-static-neutral-bluish-50);
+      border-radius: 4px;
+    }
+  }
+
+  /* 悬浮层过渡动画 */
+  .type-popover-enter-active,
+  .type-popover-leave-active {
+    transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out), color var(--ds-duration-fast) var(--ds-ease-in-out);
+    transform-origin: top left;
+  }
+  .type-popover-enter-from,
+  .type-popover-leave-to {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.95);
+  }
+
+  /* ========== 中间：题目列表 ========== */
+  .question-panel {
+    flex: 1;
+    min-width: 260px;
+    /*
+     * 自兜底：即使有人把父级改回 `align-items: stretch`，
+     * 左栏也不会被右栏拉高（见 .question-builder 的注释）。
+     */
+    align-self: flex-start;
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--os-border-soft);
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0 18px 0 0;
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    position: relative;
+
+    .panel-header {
+      flex-shrink: 0;
+      display: flex;
+      /* 不换行：保证右侧操作区永远和标题在同一行 */
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--os-border);
+      position: relative;
+
+      .panel-title {
+        /* 普通 flex 项：占满剩余空间，宽度不够时收缩并按省略号截断 */
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        /* 空间充足时视觉上仍居中，保持原有观感 */
+        text-align: center;
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--os-text);
+        pointer-events: none;
+      }
+
+      /* 隐藏的测量元素：始终包含完整标题文案，用来判断能否完整显示 */
+      .title-measure {
+        position: absolute;
+        left: 0;
+        top: 0;
+        visibility: hidden;
+        white-space: nowrap;
+        font-size: 16px;
+        font-weight: 600;
+        pointer-events: none;
+      }
+
+      .panel-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-left: auto;
+        flex-shrink: 0;
+      }
+    }
+
+    .question-list {
+      padding-right: 4px;
+
+      .question-item {
+        padding: 10px 14px;
+        background: var(--dsw-static-neutral-bluish-50);
+        border-radius: var(--os-radius-sm);
+        margin-bottom: 8px;
+        cursor: pointer;
+        transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out);
+        border: 1px solid transparent;
+
+        &:hover {
+          background: var(--os-bg-hover);
+        }
+
+        &.active {
+          border-color: var(--os-accent);
+          background: #f0f7ff;
+          box-shadow: none;
+        }
+
+        .question-header {
+          display: flex;
+          align-items: center;
+          margin-bottom: 6px;
+
+          .question-index {
+            width: 22px;
+            height: 22px;
+            background: var(--os-border);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+            color: #6b7280;
+            margin-right: 8px;
+          }
+
+          .question-type {
+            flex: 1;
+            font-size: 12px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            display: inline-block;
+            width: fit-content;
+
+            &.type-single { background: #e8f5e9; color: #2e7d32; }
+            &.type-multiple { background: #e3f2fd; color: #1565c0; }
+            &.type-judge { background: #fff3e0; color: #e65100; }
+            &.type-fill { background: #f3e5f5; color: #7b1fa2; }
+            &.type-essay { background: #fce4ec; color: #c62828; }
+            &.type-composite { background: #e0f2f1; color: #00695c; }
+          }
+
+          .drag-handle {
+            cursor: grab;
+            color: #9ca3af;
+          }
+        }
+
+        .question-preview {
+          font-size: 13px;
+          color: var(--os-text);
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          word-break: break-all;
+        }
+
+        .question-actions {
+          text-align: right;
+          margin-top: 4px;
+        }
+      }
+    }
+
+    .empty-tip {
+      padding: 40px 0;
+      text-align: center;
+      color: #9ca3af;
+      font-size: 14px;
+    }
+
+    .question-pagination {
+      flex-shrink: 0;
+      padding-top: 10px;
+      border-top: 1px solid var(--os-border);
+      /*
+       * ⚠️ 原来是 `margin-top: auto`（2026-10-20 修「左侧下方大面积空白」）
+       *
+       * 用户口径：「左侧是题目 一页显示10题 但是右侧的题目编辑页面又太大
+       *   导致左侧题目下方有大面积空白产生 用户只有滚动到底部才能看到分页组件」
+       *
+       * 根因：`.question-panel` 是 flex column，`margin-top: auto`
+       * 会把分页器**顶到容器最底部**。而左右两栏通过父级
+       * `align-items: stretch` 等高 —— 右栏（题目编辑）内容很长时，
+       * 左栏被一起拉高，于是"10 道题 + 分页器"之间出现一大片空白，
+       * 分页还被推到视口之外，必须往下滚才看得见。
+       *
+       * 改成 `margin-top: 0`：分页器**紧跟最后一题**，空白消失，
+       * 分页始终在列表正下方不远处 —— 不用滚动到底也能看到。
+       *
+       * 为什么不用"自动算一页几题来填满"（用户提的备选方案）：
+       *   那个方案要测量卡片高度、减去头部/分页/内边距，再反推 pageSize。
+       *   但卡片高度随题型（有无选项/解析长度）、字体、浏览器缩放、
+       *   窗口宽度（右栏 360/440/480 三档）都在变 —— 任何一处变动
+       *   就会算错，且错了会表现为"一页只有 3 题"或"永远多出一行滚动"，
+       *   属于**难测且频繁复发**的 bug。改 CSS 是根治，且零维护。
+       */
+      margin-top: 0;
+      display: flex;
+      justify-content: center;
+
+      :deep(.el-pagination) {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px 4px;
+        width: 100%;
+
+        .el-pagination__total {
+          order: 1;
+          margin: 0;
+          font-size: 12px;
+          white-space: nowrap;
+        }
+
+        .el-pagination__sizes {
+          order: 2;
+          margin: 0;
+
+          .el-select {
+            width: 80px;
+          }
+        }
+
+        .el-pager {
+          order: 3;
+          display: flex;
+          align-items: center;
+          gap: 2px;
+          flex-wrap: nowrap;
+
+          li {
+            min-width: 28px;
+            height: 28px;
+            line-height: 28px;
+            font-size: 13px;
+          }
+        }
+
+        .btn-prev,
+        .btn-next {
+          order: 4;
+          min-width: 28px;
+          height: 28px;
+          line-height: 28px;
+          padding: 0;
+          margin: 0;
+        }
+
+        .el-pagination__jump {
+          order: 5;
+          margin: 0;
+          font-size: 12px;
+          white-space: nowrap;
+        }
+      }
+    }
+  }
+
+  /* ========== 右侧：题目编辑 ========== */
+  .edit-panel {
+    flex: 0 0 440px;
+    width: 440px;
+    min-width: 440px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0 0 0 18px;
+    display: flex;
+    flex-direction: column;
+    /*
+     * 高度由**自身内容**决定（2026-10-20 起父级改为 `align-items: flex-start`）。
+     *
+     * 历史：这里先后写过 `min-height: 700px` → `320px`，
+     * 两次都是"右侧凭空多出一块空白"（空列表时尤其明显，用户 2026-10-18 反馈
+     * 「发布设置那边太多空白」）。真正的原因就是**给容器设了最小高度**。
+     * 所以现在不设 min-height，让内容决定；右侧"点击左侧题目进行编辑"那句
+     * 自带一点上下留白，不至于塌成一条线。
+     *
+     * 2026-10-20 补充：父级已是 `flex-start`，这里显式声明 `align-self`
+     * 防止有人改回 `stretch` 时右栏又去撑高左栏（那会导致左栏空白复发）。
+     */
+    align-self: flex-start;
+    min-height: 0;
+    height: auto;
+
+    .panel-title {
+      flex-shrink: 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--os-text);
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--os-border);
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+
+      .el-button {
+        border-radius: 8px;
+      }
+    }
+
+    .edit-form {
+      padding-right: 4px;
+
+      .el-form-item {
+        margin-bottom: 14px;
+      }
+
+      .json-hint {
+        font-size: 12px;
+        color: #9ca3af;
+        margin-top: 4px;
+      }
+
+      .options-visual-editor {
+        .option-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 8px;
+          flex-wrap: wrap;
+
+          .option-letter {
+            width: 24px;
+            font-weight: bold;
+            color: var(--os-accent);
+          }
+
+          :deep(.el-input__wrapper) {
+            border-radius: 8px;
+          }
+        }
+      }
+
+      .sub-questions-container {
+        border: 1px solid var(--os-border);
+        border-radius: 8px;
+        padding: 10px;
+        background: var(--dsw-static-neutral-bluish-50);
+
+        .sub-toolbar {
+          display: flex;
+          gap: 8px;
+          margin-bottom: 10px;
+          align-items: center;
+          flex-wrap: wrap;
+
+          .sub-hint {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-left: 8px;
+          }
+        }
+
+        .sub-list {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+
+          .sub-question-card {
+            background: white;
+            border-radius: 8px;
+            padding: 10px;
+            border: 1px solid var(--os-border);
+
+            .sub-header {
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              margin-bottom: 8px;
+              flex-wrap: wrap;
+
+              .drag-handle {
+                cursor: grab;
+                color: #9ca3af;
+              }
+
+              .sub-index {
+                font-weight: 500;
+                font-size: 13px;
+              }
+            }
+
+            .sub-body {
+              display: flex;
+              flex-direction: column;
+              gap: 8px;
+
+              .sub-options-label,
+              .sub-answer-label {
+                font-size: 13px;
+                font-weight: 500;
+                margin-bottom: 4px;
+              }
+
+              .sub-answer-control {
+                margin-top: 4px;
+              }
+
+              .sub-score-area {
+                margin-top: 10px;
+                padding-top: 8px;
+                border-top: 1px dashed #e4e7ed;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex-wrap: wrap;
+
+                .score-label {
+                  font-size: 13px;
+                  font-weight: 500;
+                  color: var(--os-text-2);
+                }
+
+                .score-unit {
+                  font-size: 12px;
+                  color: var(--os-text-3);
+                }
+              }
+            }
+          }
+        }
+
+        .empty-sub {
+          text-align: center;
+          color: #999;
+          padding: 20px;
+        }
+      }
+    }
+
+    .empty-tip {
+      padding: 80px 0;
+      text-align: center;
+      color: #bbb;
+      font-size: 14px;
+    }
+
+    .question-tiptap-wrapper {
+      width: 100%;
+
+      /* 公式按钮条（2026-10-27） */
+      .tiptap-math-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+        flex-wrap: wrap;
+      }
+
+      .tip-math-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 10px;
+        font-size: 12px;
+        color: #409eff;
+        background: #f2f8ff;
+        border: 1px solid #cfe3fb;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: all 0.12s;
+
+        &:hover {
+          background: #e4f1ff;
+          border-color: #409eff;
+        }
+      }
+
+      .tip-fx {
+        font-style: italic;
+        font-weight: 600;
+      }
+
+      .tip-math-hint {
+        font-size: 11px;
+        color: #9aa4b2;
+      }
+
+      :deep(.tiptap-editor) {
+        min-height: 120px;
+        border-radius: 8px;
+      }
+
+      :deep(.editor-content) {
+        padding: 10px 14px;
+        min-height: 80px;
+      }
+    }
+
+    .composite-tiptap {
+      :deep(.tiptap-editor) {
+        min-height: 180px;
+      }
+    }
+
+    .sub-tiptap-wrapper {
+      margin-bottom: 8px;
+
+      :deep(.tiptap-editor) {
+        min-height: 80px;
+        border-radius: 8px;
+        border-color: var(--os-border);
+      }
+
+      :deep(.editor-toolbar) {
+        padding: 4px 6px;
+
+        .toolbar-btn {
+          width: 26px;
+          height: 26px;
+        }
+      }
+
+      :deep(.editor-content) {
+        padding: 8px 12px;
+        min-height: 50px;
+        font-size: 14px;
+      }
+    }
+  }
+
+  /* ========== 响应式设计 ========== */
+
+  @media screen and (min-width: 1600px) {
+    .edit-panel {
+      flex: 0 0 480px;
+      width: 480px;
+      min-width: 480px;
+    }
+  }
+
+  @media screen and (min-width: 1280px) and (max-width: 1599px) {
+    .edit-panel {
+      flex: 0 0 440px;
+      width: 440px;
+      min-width: 440px;
+    }
+  }
+
+  @media screen and (min-width: 900px) and (max-width: 1279px) {
+    .edit-panel {
+      flex: 0 0 360px;
+      width: 360px;
+      min-width: 360px;
+    }
+  }
+
+  @media screen and (max-width: 899px) {
+    flex-wrap: wrap;
+
+    .question-panel {
+      flex: 1 1 100%;
+      width: 100%;
+      min-width: 100%;
+      padding-right: 0;
+    }
+
+    .edit-panel {
+      flex: 1 1 100%;
+      width: 100%;
+      min-width: 100%;
+      margin-top: 16px;
+    }
+
+    /* 390px 实测：panel-header 不换行时「搜索题目 / AI 生成」被右边缘裁掉 45px。 */
+    .question-panel .panel-header {
+      flex-wrap: wrap;
+    }
+
+    .question-panel .panel-header .panel-title {
+      flex: 1 1 100%;
+      text-align: left;
+    }
+
+    .question-panel .panel-header .panel-actions {
+      flex: 1 1 100%;
+      margin-left: 0;
+      flex-wrap: wrap;
+
+      .el-input {
+        flex: 1 1 150px;
+        width: auto;
+      }
+    }
+  }
+}
+
+.options-editor {
+  .option-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+
+    .option-letter {
+      width: 24px;
+      font-weight: bold;
+      color: var(--os-accent);
+    }
+  }
+}
+
+.ai-generate-dialog {
+  :deep(.el-dialog) {
+    border-radius: var(--os-radius);
+  }
+
+  :deep(.el-dialog__body) {
+    padding: 20px 24px;
+  }
+}
+
+.form-hint {
+  font-size: 12px;
+  color: var(--os-text-3);
+  margin-top: 4px;
+}
+
+/* ============================================================================
+ * 素材出题（questionType === 'custom'）
+ * ============================================================================
+ * 视觉基调：**不像"上传控件"，而像"素材清单"**。
+ *   用户此刻的心智是"我要用哪些材料出题"，所以重点是让他一眼确认
+ *   「我已经放了什么」。上传区做成低存在感的虚线框，已解析的文档才是主体。
+ */
+.material-block {
+  width: 100%;
+}
+
+.material-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+/* 知识库下拉里的单行：名称在左、篇数在右 */
+.kb-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.kb-option__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kb-option__meta {
+  flex: none;
+  font-size: 12px;
+  color: var(--os-text-4, #9ca3af);
+}
+
+.material-link {
+  color: var(--os-accent, #409eff);
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+/* 上传区：克制。它是"添加素材"的入口，不该比素材列表更抢眼 */
+.material-upload {
+  :deep(.el-upload) {
+    width: 100%;
+  }
+
+  :deep(.el-upload-dragger) {
+    padding: 16px;
+    border-radius: var(--os-radius, 8px);
+    border: 1px dashed var(--os-border, rgba(0, 0, 0, 0.12));
+    background: var(--os-bg-subtle, #fafafa);
+  }
+
+  :deep(.el-upload-dragger:hover) {
+    border-color: var(--os-primary, #409eff);
+    background: var(--os-bg-hover, #f5f6f7);
+  }
+}
+
+.material-upload__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.material-upload__icon {
+  font-size: 20px;
+  color: var(--os-text-4, #9ca3af);
+}
+
+.material-upload__text {
+  font-size: 13px;
+  color: var(--os-text-2);
+}
+
+.material-upload__hint {
+  font-size: 12px;
+  color: var(--os-text-4, #9ca3af);
+}
+
+/* 已解析文档清单 */
+.material-doc-list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.material-doc {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--os-radius-sm, 6px);
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.06));
+  background: var(--os-bg, #fff);
+  font-size: 13px;
+}
+
+.material-doc__icon {
+  flex: none;
+  color: var(--os-text-3);
+}
+
+.material-doc__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--os-text);
+}
+
+.material-doc__meta {
+  flex: none;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--os-text-4, #9ca3af);
+}
+
+/*
+ * 图片素材缩略图（2026-10-20）
+ *
+ * 32px 见方、圆角、可点击放大（点击行为由 el-image 的 preview-src-list 提供，
+ * 与站内其它图片预览是同一套，不另造弹窗）。
+ * 用 `object-fit: cover`（模板里 fit="cover"）保证缩略图不变形。
+ */
+.material-doc__thumb {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--os-radius-sm, 4px);
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.06));
+  cursor: zoom-in;
+  background: var(--os-bg-subtle, #fafafa);
+}
+
+.material-doc__thumb-err {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--os-text-4, #9ca3af);
+}
+
+/*
+ * 文档名可点击（打开预览）
+ *
+ * 只改可点击态的下划线与颜色，不改变尺寸 ——
+ * 列表行高本来就被缩略图/图标撑到 32px，加下划线不会引起抖动。
+ */
+.material-doc__name--clickable {
+  cursor: pointer;
+
+  &:hover {
+    color: var(--os-accent, #409eff);
+    text-decoration: underline;
+  }
+}
+
+/*
+ * 文档预览对话框
+ *
+ * 与站内既有的「文档解析结果」保持同一形态（见模板注释），
+ * 所以这里只补必要的间距，不重做视觉。
+ */
+.material-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.material-preview-body {
+  :deep(.el-textarea__inner) {
+    font-family: var(--os-font-code, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--os-text);
+    background: var(--os-bg-subtle, #fafafa);
+  }
+}
+
+/*
+ * 解析等待提示（2026-10-20 用户反馈「上传 PDF/Word 没有等待提示」）
+ *
+ * 设计要点：
+ *   · **整行占位**而不是一行小字 —— 它表示"正在做一件可能十几秒的事"，
+ *     视觉重量要和这个时长匹配；
+ *   · 顶部一行放「文件名 + 阶段」，用户能确认在处理哪份、到哪一步；
+ *   · 中间是条纹流动的进度条（不确定进度，用 el-progress 的 striped-flow）；
+ *   · 底部一句解释，让用户理解"为什么文档慢、图片快"，避免怀疑卡死。
+ *
+ * 颜色全部用中性灰（不是 loading 蓝）：这是"等待"不是"成功/警告"。
+ */
+.material-parsing-box {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.06));
+  border-radius: var(--os-radius, 8px);
+  background: var(--os-bg-subtle, #fafafa);
+}
+
+.material-parsing-box__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--os-text-2);
+  margin-bottom: 8px;
+}
+
+.material-parsing-box__name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
+}
+
+.material-parsing-box__stage {
+  margin-left: auto;
+  flex: none;
+  font-size: 12px;
+  color: var(--os-text-4, #9ca3af);
+}
+
+.material-parsing-box__bar {
+  margin-bottom: 6px;
+
+  :deep(.el-progress-bar__outer) {
+    background: var(--os-border-soft, rgba(0, 0, 0, 0.06));
+  }
+}
+
+.material-parsing-box__hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--os-text-4, #9ca3af);
+}
+
+/*
+ * 素材折叠面板（全局附加项，2026-10-20）
+ *
+ * 视觉上要"轻"：它是可选增强，不能看起来像必填区块。
+ * 用一条细边框 + 中性底色，和下面的「AI 模型」同层但更弱。
+ */
+.material-collapse {
+  margin-bottom: 18px;
+  border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.06));
+  border-radius: var(--os-radius, 8px);
+  background: var(--os-bg-subtle, #fafafa);
+  overflow: hidden;
+
+  :deep(.el-collapse-item__header) {
+    padding: 0 12px;
+    height: 42px;
+    border-bottom: none;
+    background: transparent;
+    font-size: 13px;
+  }
+
+  :deep(.el-collapse-item__wrap) {
+    background: transparent;
+    border-bottom: none;
+  }
+
+  :deep(.el-collapse-item__content) {
+    padding: 0 12px 12px;
+  }
+}
+
+.material-collapse__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--os-text-2);
+}
+
+.material-collapse__icon {
+  color: var(--os-text-4, #9ca3af);
+}
+
+/* 收起时也要能看到"已挂了多少素材" —— 见 materialSummaryText 的注释 */
+.material-collapse__badge {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--os-accent-soft, #e8f0fe);
+  color: var(--os-accent-strong, #1a56db);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.material-field {
+  margin-bottom: 14px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.material-field__label {
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--os-text-2);
+}
+
+/* 题型下拉里的"自定义出题"：主文案 + 右侧小注解 */
+.opt-with-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.opt-hint {
+  font-size: 12px;
+  color: var(--os-text-4, #9ca3af);
+}
+
+.prompt-history {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--dsw-static-neutral-bluish-50);
+  border-radius: 8px;
+
+  .history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .history-title {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--os-text-2);
+    font-weight: 500;
+  }
+
+  .history-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+
+    .history-tag-wrapper {
+      position: relative;
+      display: inline-block;
+      transition: transform 0.2s ease;
+
+      &:hover {
+        transform: translateY(-2px);
+      }
+
+      .history-tag {
+        cursor: pointer;
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        padding-right: 24px;
+        transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out), color var(--ds-duration-fast) var(--ds-ease-in-out);
+        border: 1px solid transparent;
+
+        &:hover {
+          background: #ecf5ff !important;
+          border-color: var(--os-accent) !important;
+          color: var(--os-accent) !important;
+        }
+      }
+
+      .history-tag-delete {
+        position: absolute;
+        top: 50%;
+        right: 6px;
+        transform: translateY(-50%);
+        width: 18px;
+        height: 18px;
+        background: transparent;
+        color: var(--os-text-3);
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        opacity: 0;
+        transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out), color var(--ds-duration-fast) var(--ds-ease-in-out);
+
+        .el-icon {
+          font-size: 12px;
+        }
+
+        &:hover {
+          background: #f56c6c;
+          color: white;
+        }
+      }
+
+      &:hover .history-tag-delete {
+        opacity: 1;
+      }
+    }
+  }
+}
+
+.ai-fixed-dialog {
+  :deep(.el-dialog) {
+    display: flex;
+    flex-direction: column;
+    max-height: 85vh;
+    overflow: hidden;
+  }
+
+  :deep(.el-dialog__header) {
+    flex-shrink: 0;
+  }
+
+  :deep(.el-dialog__body) {
+    flex: 1;
+    overflow: hidden;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  :deep(.el-dialog__footer) {
+    flex-shrink: 0;
+    padding: 16px 24px;
+    border-top: 1px solid #e4e7ed;
+    background: #fff;
+  }
+
+  .dialog-scroll-area {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 8px;
+
+    &::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    &::-webkit-scrollbar-track {
+      background: var(--dsw-static-neutral-bluish-50);
+      border-radius: 3px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: var(--os-border);
+      border-radius: 3px;
+
+      &:hover {
+        background: #c0c4cc;
+      }
+    }
+  }
+}
+
+.stream-container-new {
+  margin-top: 20px;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  background: #fafbfc;
+  overflow: hidden;
+
+  .stream-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: var(--dsw-static-neutral-bluish-50);
+    border-bottom: 1px solid #e4e7ed;
+
+    .stream-status-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .stream-actions-right {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+
+      &.generating {
+        background: #67c23a;
+        animation: soft-pulse 1.5s infinite;
+      }
+
+      &.completed {
+        background: #67c23a;
+      }
+    }
+
+    .status-text {
+      font-size: 13px;
+      color: var(--os-text-2);
+      font-weight: 500;
+    }
+  }
+
+  .stream-body-new {
+    position: relative;
+    padding: 16px 18px;
+    max-height: 350px;
+    overflow-y: auto;
+    background: #fff;
+
+    &::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    &::-webkit-scrollbar-track {
+      background: var(--dsw-static-neutral-bluish-50);
+      border-radius: 3px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: var(--os-border);
+      border-radius: 3px;
+
+      &:hover {
+        background: #c0c4cc;
+      }
+    }
+  }
+
+  /*
+   * 深度思考卡片（2026-10-20）
+   *
+   * 视觉上要**明显区别于题目正文**，否则用户会以为这些推理就是要导入的题。
+   * 做法：浅灰底 + 斜体 + 等宽、左侧一条竖线（引用感），
+   * 与下方 `pre` 里的 JSON 形成"这是过程 / 那才是结果"的层次。
+   *
+   * 高度上限 180px：思考可能上千字，撑满会让正文完全看不见。
+   */
+  /*
+   * 等待占位（2026-10-20 加秒数）
+   *
+   * 实测模型推理启动约 2.5s（直连后端也一样，是模型侧耗时，非代理缓冲）。
+   * 这段时间必须让用户看到"它在动 + 已经等了多久"，
+   * 否则就是"点了没反应"。
+   */
+  .generating-tip {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 28px 16px;
+    color: var(--os-text-3);
+    font-size: 13px;
+
+    .el-icon {
+      font-size: 18px;
+      color: var(--os-text-4, #9ca3af);
+    }
+  }
+
+  .generating-tip__text {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+
+  .generating-tip__sec {
+    font-variant-numeric: tabular-nums; /* 数字等宽，秒数跳动时不会左右抖 */
+    font-weight: 600;
+    color: var(--os-text-2);
+  }
+
+  .generating-tip__hint {
+    font-size: 12px;
+    color: var(--os-text-4, #9ca3af);
+  }
+
+  .think-box {
+    margin-bottom: 12px;
+    border: 1px solid var(--os-border-soft, rgba(0, 0, 0, 0.06));
+    border-left: 3px solid var(--os-text-4, #9ca3af);
+    border-radius: var(--os-radius-sm, 4px);
+    background: var(--os-bg-subtle, #fafafa);
+    overflow: hidden;
+  }
+
+  .think-box__head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 12px;
+    color: var(--os-text-3);
+
+    &:hover {
+      background: rgba(0, 0, 0, 0.02);
+    }
+  }
+
+  .think-box__icon {
+    transition: transform 0.2s;
+    font-size: 12px;
+
+    &.is-open {
+      transform: rotate(0deg);
+    }
+
+    &:not(.is-open) {
+      transform: rotate(-90deg);
+    }
+  }
+
+  .think-box__title {
+    font-weight: 500;
+    color: var(--os-text-2);
+  }
+
+  .think-box__len {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--os-text-4, #9ca3af);
+  }
+
+  .think-box__body {
+    max-height: 180px;
+    overflow-y: auto;
+    padding: 0 10px 10px;
+    font-size: 12px;
+    line-height: 1.7;
+    font-style: italic;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--os-text-3);
+
+    &::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: var(--os-border);
+      border-radius: 2px;
+    }
+  }
+
+  .stream-content {
+    margin: 0;
+    font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 14px;
+    line-height: 1.8;
+    color: #1a1a1a;
+    white-space: pre-wrap;
+    word-break: break-word;
+
+    &.streaming {
+      border-left: 3px solid var(--os-accent);
+      padding-left: 12px;
+      animation: stream-pulse 1.5s ease-in-out infinite;
+    }
+  }
+
+  @keyframes stream-pulse {
+
+    0%,
+    100% {
+      border-left-color: var(--os-accent);
+    }
+
+    50% {
+      border-left-color: #a0cfff;
+    }
+  }
+
+  @keyframes soft-pulse {
+
+    0%,
+    100% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: 0.5;
+    }
+  }
+
+  .pretty-preview {
+    padding: 4px 0;
+
+    .preview-question-card {
+      background: #fff;
+      border-radius: var(--os-radius);
+      padding: 16px;
+      margin-bottom: 16px;
+      border: 1px solid #e4e7ed;
+      box-shadow: none;
+      transition: box-shadow 0.2s;
+
+      &:hover {
+        box-shadow: none;
+      }
+
+      .preview-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 14px;
+
+        .preview-index {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 26px;
+          height: 26px;
+          background: linear-gradient(135deg, var(--os-accent), #66b1ff);
+          color: white;
+          border-radius: 8px;
+          font-weight: bold;
+          font-size: 13px;
+          box-shadow: none;
+        }
+
+        .preview-score {
+          margin-left: auto;
+          color: var(--os-text-3);
+          font-size: 13px;
+          font-weight: 500;
+        }
+
+        /*
+         * 混排里的组合题卡片（2026-10-20 方案 B）
+         *
+         * 需要在**同一份列表**里与普通题区分开，否则用户分不清
+         * "这一条是要读材料的大题"还是"一道单选"。
+         * 用小标题 + 左侧色条 + 子题缩进来表达层级，
+         * 不改变普通题的任何视觉。
+         */
+        .preview-subcount {
+          font-size: 12px;
+          color: var(--os-text-4, #9ca3af);
+          margin-left: 6px;
+        }
+
+        .preview-passage-label {
+          font-size: 12px;
+          font-weight: 500;
+          color: var(--os-text-3);
+          margin-bottom: 6px;
+        }
+
+        .preview-sublist {
+          margin-top: 12px;
+          padding-left: 12px;
+          border-left: 2px solid var(--os-border-soft, rgba(0, 0, 0, 0.06));
+        }
+
+        .preview-subitem {
+          margin-bottom: 14px;
+
+          &:last-child {
+            margin-bottom: 0;
+          }
+        }
+
+        .preview-subitem__head {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-bottom: 6px;
+        }
+
+        .preview-sublabel {
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--os-text-2);
+        }
+
+        .preview-empty-hint {
+          font-size: 12px;
+          color: var(--os-text-4, #9ca3af);
+          padding: 6px 0;
+        }
+      }
+
+      .preview-body {
+        .preview-question {
+          font-weight: 500;
+          font-size: 15px;
+          margin-bottom: 16px;
+          line-height: 1.7;
+          color: #303133;
+        }
+
+        .preview-options {
+          margin-bottom: 14px;
+
+          .preview-option {
+            display: flex;
+            align-items: center;
+            padding: 10px 14px;
+            margin-bottom: 8px;
+            background: #f8fafc;
+            border-radius: 8px;
+            border: 1px solid #ebeef5;
+            transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out), border-color var(--ds-duration-fast) var(--ds-ease-in-out), color var(--ds-duration-fast) var(--ds-ease-in-out);
+
+            &.is-correct {
+              background: #f0f9eb;
+              border-color: #b3e19d;
+              border-left: 4px solid #67c23a;
+            }
+
+            .option-letter {
+              font-weight: 700;
+              margin-right: 14px;
+              color: var(--os-text-2);
+              min-width: 20px;
+            }
+
+            .option-text {
+              flex: 1;
+              color: #303133;
+            }
+
+            .correct-icon {
+              margin-left: 8px;
+              color: #67c23a;
+              font-size: 16px;
+            }
+          }
+        }
+
+        .preview-answer {
+          margin-bottom: 14px;
+          padding: 10px 14px;
+          background: #f0f7ff;
+          border-radius: 8px;
+
+          .answer-label {
+            font-weight: 600;
+            color: #303133;
+            margin-right: 8px;
+          }
+
+          .answer-value {
+            color: var(--os-accent);
+            font-weight: 500;
+          }
+        }
+
+        .preview-analysis {
+          color: var(--os-text-3);
+          font-size: 13px;
+          padding-top: 14px;
+          margin-top: 4px;
+          border-top: 1px dashed #e4e7ed;
+
+          .analysis-label {
+            font-weight: 600;
+            color: var(--os-text-2);
+            margin-right: 8px;
+          }
+
+          .analysis-text {
+            line-height: 1.6;
+          }
+        }
+      }
+    }
+
+    .composite-preview {
+      .composite-passage {
+        background: #f9fafc;
+        padding: 18px;
+        border-radius: var(--os-radius);
+        margin-bottom: 24px;
+        border: 1px solid #e4e7ed;
+
+        .passage-title {
+          display: flex;
+          align-items: center;
+          font-weight: 700;
+          margin-bottom: 14px;
+          color: #303133;
+          font-size: 15px;
+        }
+
+        .passage-content {
+          line-height: 1.9;
+          white-space: pre-wrap;
+          color: #303133;
+          font-size: 14px;
+        }
+      }
+
+      .sub-questions-list {
+        .sub-title {
+          display: flex;
+          align-items: center;
+          font-weight: 700;
+          margin-bottom: 18px;
+          color: #303133;
+          font-size: 15px;
+        }
+
+        .sub-question-card {
+          background: #fff;
+          border-radius: var(--os-radius);
+          padding: 16px;
+          margin-bottom: 16px;
+          border: 1px solid #e4e7ed;
+          box-shadow: none;
+
+          .sub-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 14px;
+
+            .sub-index {
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              width: 26px;
+              height: 26px;
+              background: linear-gradient(135deg, #e6a23c, #ebb563);
+              color: white;
+              border-radius: 8px;
+              font-weight: bold;
+              font-size: 13px;
+            }
+
+            .sub-score {
+              margin-left: auto;
+              color: var(--os-text-3);
+              font-size: 13px;
+              font-weight: 500;
+            }
+          }
+
+          .sub-question {
+            font-weight: 500;
+            font-size: 14px;
+            margin-bottom: 16px;
+            line-height: 1.7;
+            color: #303133;
+          }
+
+          .sub-options {
+            margin-bottom: 14px;
+
+            .preview-option {
+              display: flex;
+              align-items: center;
+              padding: 10px 14px;
+              margin-bottom: 8px;
+              background: #f8fafc;
+              border-radius: 8px;
+              border: 1px solid #ebeef5;
+
+              &.is-correct {
+                background: #f0f9eb;
+                border-color: #b3e19d;
+                border-left: 4px solid #67c23a;
+              }
+
+              .option-letter {
+                font-weight: 700;
+                margin-right: 14px;
+                color: var(--os-text-2);
+                min-width: 20px;
+              }
+
+              .option-text {
+                flex: 1;
+              }
+
+              .correct-icon {
+                margin-left: 8px;
+                color: #67c23a;
+              }
+            }
+          }
+
+          .sub-answer {
+            margin-bottom: 14px;
+            padding: 10px 14px;
+            background: #f0f7ff;
+            border-radius: 8px;
+
+            .answer-label {
+              font-weight: 600;
+              color: #303133;
+              margin-right: 8px;
+            }
+
+            .answer-value {
+              color: var(--os-accent);
+              font-weight: 500;
+            }
+          }
+
+          .sub-analysis {
+            color: var(--os-text-3);
+            font-size: 13px;
+            padding-top: 14px;
+            border-top: 1px dashed #e4e7ed;
+
+            .analysis-label {
+              font-weight: 600;
+              color: var(--os-text-2);
+              margin-right: 8px;
+            }
+
+            .analysis-text {
+              line-height: 1.6;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  .context-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    background: var(--dsw-static-neutral-bluish-50);
+    border-radius: 8px;
+
+    .context-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+
+      .context-bank-name {
+        font-weight: 500;
+        color: #303133;
+      }
+    }
+  }
+
+  .kb-context-bar {
+    margin-top: 8px;
+  }
+
+  .kb-hint {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--os-text-3);
+    margin-top: 6px;
+    margin-bottom: 16px;
+    padding: 8px 12px;
+    background: var(--dsw-static-neutral-bluish-50);
+    border-radius: 8px;
+  }
+}
