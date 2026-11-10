@@ -57,6 +57,8 @@ class RagImageAsset(Base):
     source_type: Mapped[str] = mapped_column(String(20), nullable=False, default="document")
     url: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     file_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    #: 图片的短名称（列表/图谱优先展示）；caption 是完整描述，详情页查看。
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     source_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
 
     #: 预留统一视觉语义：photo / diagram / table / formula / screenshot

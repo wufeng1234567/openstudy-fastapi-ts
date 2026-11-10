@@ -509,6 +509,7 @@
       :active-kb-name="activeKb?.name"
       v-model:search-query="workspaceSearch"
       :filters="workspaceFilters"
+      :focus-asset-key="galleryFocusAssetKey"
       @stats="onGalleryStats"
       @use-image="onGalleryUseImage"
       @locate="onGalleryLocate"
@@ -1241,6 +1242,7 @@ const viewMode = ref<'list' | 'shelf' | 'gallery' | 'wiki'>(
 )
 const canTeleport = ref(false)
 const workspaceSearch = ref('')
+const galleryFocusAssetKey = ref('')
 const workspaceFilterOpen = ref(false)
 const workspaceFilterActive = ref(false)
 const workspaceFilterRef = ref<any>(null)
@@ -1560,9 +1562,14 @@ const {
   wikiSearchSubmitKey
 })
 
-function onWikiOpenSource(payload: { kind: string; id: number; title?: string }) {
+function onWikiOpenSource(payload: { kind: string; id: number; title?: string; assetKey?: string }) {
   const kind = String(payload?.kind || '')
   const id = Number(payload?.id || 0)
+  if (kind === 'image') {
+    galleryFocusAssetKey.value = String(payload?.assetKey || '')
+    viewMode.value = 'gallery'
+    return
+  }
   if (!id) return
   if (kind === 'document' || kind === 'web') {
     const doc = findDocRecord(id)

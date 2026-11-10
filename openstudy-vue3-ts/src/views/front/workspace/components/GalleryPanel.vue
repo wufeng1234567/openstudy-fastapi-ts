@@ -86,8 +86,8 @@
           </div>
         </div>
         <div class="gallery-card__body">
-          <p class="gallery-card__caption" :class="{ 'is-muted': !item.caption }">
-            {{ item.caption || '还没有描述，点开补一张索引' }}
+          <p class="gallery-card__caption" :class="{ 'is-muted': !item.displayName }">
+            {{ item.displayName || item.fileName || '未命名图片' }}
           </p>
           <div class="gallery-card__source">
             <span class="gallery-card__source-name" :title="item.sourceName">{{ item.sourceName }}</span>
@@ -127,7 +127,7 @@
         <header class="gallery-detail__head">
           <div>
             <span class="gallery-kicker">IMAGE ASSET</span>
-            <h3>{{ detail.fileName || '图片资产' }}</h3>
+            <h3>{{ detail.displayName || detail.fileName || '图片资产' }}</h3>
           </div>
           <button type="button" class="gallery-detail__close" @click="detailVisible = false">×</button>
         </header>
@@ -240,6 +240,7 @@ const props = defineProps<{
   activeKbName?: string
   searchQuery?: string
   filters?: Record<string, any>
+  focusAssetKey?: string
 }>()
 
 const emit = defineEmits<{
@@ -655,8 +656,22 @@ watch(
   }
 )
 
+async function focusRequestedAsset() {
+  const key = String(props.focusAssetKey || '')
+  if (!key) return
+  if (!items.value.length) await reload()
+  const item = displayItems.value.find((candidate: any) => String(candidate.assetKey) === key)
+  if (item) await openDetail(item)
+}
+
+watch(
+  () => props.focusAssetKey,
+  () => { void focusRequestedAsset() }
+)
+
 onMounted(async () => {
   await reload()
+  await focusRequestedAsset()
   await resumeDescribeJob()
 })
 

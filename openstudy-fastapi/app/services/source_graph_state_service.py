@@ -94,7 +94,7 @@ async def _source_descriptors(db: AsyncSession, *, user_id: int, kb_id: int) -> 
             {
                 "sourceType": "image",
                 "sourceId": int(image.id),
-                "sourceName": str(image.file_name or "图片"),
+                "sourceName": str(image.display_name or image.file_name or "图片"),
                 "contentHash": _hash(f"{image.asset_key}|{text}"),
             }
         )

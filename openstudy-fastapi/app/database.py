@@ -248,6 +248,21 @@ async def init_db():
 
         await conn.run_sync(_ensure_rag_document_columns)
 
+        # 兼容历史库：图片资产增加短名称列；caption 保留完整描述，列表优先显示 display_name。
+        def _ensure_rag_image_asset_columns(sync_conn):
+            from sqlalchemy import inspect, text
+            inspector = inspect(sync_conn)
+            if "rag_image_asset" not in inspector.get_table_names():
+                return
+            columns = {c["name"] for c in inspector.get_columns("rag_image_asset")}
+            if "display_name" not in columns:
+                sync_conn.execute(text(
+                    "ALTER TABLE rag_image_asset ADD COLUMN display_name VARCHAR(120) NOT NULL DEFAULT ''"
+                ))
+                logger.info("rag_image_asset.display_name 列已补齐")
+
+        await conn.run_sync(_ensure_rag_image_asset_columns)
+
         # 兼容历史库：rag_document_chunk 也需要索引版本列。旧 chunks 全部回填为 1，
         # 与旧文档的默认 index_version=1 对齐；之后正文更新才会递增。
         def _ensure_rag_chunk_columns(sync_conn):

@@ -167,6 +167,41 @@ async def recover_stale_documents(max_age_minutes: int = 15) -> dict:
     return {"recovered": len(rows)}
 
 
+async def _process_document_images(db: AsyncSession, doc: RagDocument) -> None:
+    """把文档内图片加入画廊，并尝试生成图片级知识点。
+
+    处理顺序：同步图片资产 -> LLM 名称/描述 -> 图片文本抽取 topic 页面。
+    图片没有描述或没有抽取出实体时只保留画廊资产，不伪造知识点。
+    """
+    from app.services.rag import gallery_service, source_graph_service
+
+    await gallery_service.sync_image_assets(db, int(doc.user_id))
+    described = await gallery_service.describe_assets(
+        db,
+        int(doc.user_id),
+        doc_id=int(doc.id),
+        limit=40,
+    )
+    for item in described.get("items") or []:
+        asset_id = int(item.get("id") or 0)
+        text = "\n".join(
+            str(value or "")
+            for value in (item.get("caption"), item.get("ocrText"), " ".join(item.get("keywords") or []))
+        ).strip()
+        if asset_id <= 0 or not text:
+            continue
+        await source_graph_service.sync_text_source(
+            db,
+            user_id=int(doc.user_id),
+            kb_id=int(doc.kb_id),
+            source_type="image",
+            source_id=asset_id,
+            source_name=str(item.get("displayName") or item.get("fileName") or "图片"),
+            text=text,
+        )
+    await db.commit()
+
+
 async def _run(db: AsyncSession, doc: RagDocument) -> dict:
     raw = (doc.raw_content or "").strip()
     if not raw:
@@ -210,6 +245,14 @@ async def _run(db: AsyncSession, doc: RagDocument) -> dict:
         )
     except Exception as graph_error:  # noqa: BLE001
         logger.warning(f"[rag.pipeline] id={doc.id} 知识图谱自动更新失败：{graph_error}")
+
+    # 文档内图片：先进入画廊索引，再生成简短名称/描述，并从图片文本抽取图片级知识点。
+    # 图片级知识点会生成 topic 页面；文档图片本身不会作为独立图片节点进入图谱。
+    try:
+        await _process_document_images(db, doc)
+    except Exception as image_error:  # noqa: BLE001 - 图片增强不能影响文档解析
+        logger.warning(f"[rag.pipeline] id={doc.id} 文档图片处理失败：{image_error}")
+        await db.rollback()
 
     # 文档变化后，已经生成的主题页可能过期；标记为 stale，避免它继续参与 RAG。
     try:

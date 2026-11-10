@@ -20,7 +20,7 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content import ContentReference, RagImageAsset
@@ -84,6 +84,7 @@ def _short_image_caption(value: Any, limit: int = 18) -> str:
 def _image_asset_title(asset: RagImageAsset, doc: Optional[RagDocument]) -> tuple[str, str]:
     """单张图片节点用图片内容命名；LLM 缺名时按文档名-图N/文件名兜底。"""
     doc_name = _safe_text(getattr(doc, "file_name", "") or "", 80)
+    display_name = _short_image_caption(getattr(asset, "display_name", "") or "", 18)
     raw_caption = (
         getattr(asset, "caption", "")
         or getattr(asset, "ocr_text", "")
@@ -91,6 +92,9 @@ def _image_asset_title(asset: RagImageAsset, doc: Optional[RagDocument]) -> tupl
     )
     caption = _short_image_caption(raw_caption, 18)
     seq = _image_seq(asset)
+    if display_name and display_name not in {"图片", "截图", "image", "图片描述"}:
+        subtitle = f"{doc_name} · 图{seq}" if doc_name else "独立图片"
+        return display_name, subtitle
     if caption and caption not in {"图片", "截图", "image", "图片描述"}:
         subtitle = f"{doc_name} · 图{seq}" if doc_name else f"独立图片 · 第{seq}张"
         return caption, subtitle
@@ -284,19 +288,14 @@ async def _load_notes(
 async def _load_images(
     db: AsyncSession, user_id: int, kb_id: int, doc_ids: Sequence[int]
 ) -> List[RagImageAsset]:
-    conditions = [RagImageAsset.user_id == int(user_id)]
-    doc_filters = []
-    if doc_ids:
-        doc_filters.append(RagImageAsset.doc_id.in_([int(x) for x in doc_ids]))
+    # 文档内图片只用于画廊和图片级知识点抽取，不作为独立图片节点；
+    # 只有独立图片（doc_id 为空）才进入图谱的图片实体集。
+    conditions = [
+        RagImageAsset.user_id == int(user_id),
+        RagImageAsset.doc_id.is_(None),
+    ]
     if int(kb_id or 0) > 0:
-        doc_filters.append(
-            and_(
-                RagImageAsset.doc_id.is_(None),
-                RagImageAsset.kb_id == int(kb_id),
-            )
-        )
-    if doc_filters:
-        conditions.append(or_(*doc_filters))
+        conditions.append(RagImageAsset.kb_id == int(kb_id))
     return list(
         (
             await db.execute(
@@ -650,6 +649,7 @@ async def build_study_map(
                     )
                 ).scalars().all()
                 image_page_ids: Dict[int, Set[int]] = defaultdict(set)
+                image_source_ids: Set[int] = set()
                 for page in page_rows:
                     meta = page.generation_meta or {}
                     image_sources = []
@@ -662,8 +662,22 @@ async def build_study_map(
                     )
                     for source in image_sources:
                         source_id = _safe_int(source.get("sourceId"))
-                        if source_id in image_node_ids:
+                        if source_id:
+                            image_source_ids.add(source_id)
                             image_page_ids[source_id].add(int(page.id))
+                image_doc_by_id: Dict[int, int] = {}
+                if image_source_ids:
+                    image_assets = (
+                        await db.execute(
+                            select(RagImageAsset).where(
+                                RagImageAsset.user_id == int(user_id),
+                                RagImageAsset.id.in_(sorted(image_source_ids)),
+                            )
+                        )
+                    ).scalars().all()
+                    image_doc_by_id = {
+                        int(asset.id): _safe_int(asset.doc_id) for asset in image_assets if _safe_int(asset.doc_id) > 0
+                    }
                 refs = (
                     await db.execute(
                         select(ContentReference).where(
@@ -684,18 +698,31 @@ async def build_study_map(
                         image_page_ids[image_id_by_asset_key[asset_key]].add(int(ref.target_id))
                 for image_id, page_ids in image_page_ids.items():
                     image_node = image_node_ids.get(int(image_id))
-                    if not image_node:
+                    if image_node:
+                        for page_id in page_ids:
+                            _add_edge(
+                                edges,
+                                seen_edges,
+                                source=image_node,
+                                target=_topic_id(page_id),
+                                kind="image_knowledge",
+                                label="图片知识点",
+                                evidence={"table": "rag_wiki_page / content_reference", "assetId": int(image_id), "pageId": int(page_id)},
+                            )
                         continue
-                    for page_id in page_ids:
-                        _add_edge(
-                            edges,
-                            seen_edges,
-                            source=image_node,
-                            target=_topic_id(page_id),
-                            kind="image_knowledge",
-                            label="图片知识点",
-                            evidence={"table": "rag_wiki_page / content_reference", "assetId": int(image_id), "pageId": int(page_id)},
-                        )
+                    # 文档内图片：图片本身不入图，图片抽取出的知识主题回连到所属文档。
+                    doc_id = image_doc_by_id.get(int(image_id))
+                    if doc_id and doc_id in doc_by_id:
+                        for page_id in page_ids:
+                            _add_edge(
+                                edges,
+                                seen_edges,
+                                source=_topic_id(page_id),
+                                target=_doc_id(doc_id),
+                                kind="image_document_knowledge",
+                                label="图片知识点来源",
+                                evidence={"table": "rag_image_asset / rag_wiki_page", "assetId": int(image_id), "docId": int(doc_id), "pageId": int(page_id)},
+                            )
 
         # 笔记：ContentReference 和 note_kb_link 都是真实来源；
         # 被用户显式关联到资料夹的笔记即使还没有主题页，也要作为来源节点出现。

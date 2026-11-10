@@ -159,7 +159,7 @@
               <div class="kw-graph-relations__title">连线方向：源 → 目标</div>
               <div><i class="is-doc-image"></i><span>文档 → 图片 · 包含图片</span></div>
               <div><i class="is-image-knowledge"></i><span>图片 → 知识主题 · 图片知识点</span></div>
-              <div><i class="is-topic-doc"></i><span>知识主题 → 资料 · 文档知识点</span></div>
+              <div><i class="is-topic-doc"></i><span>知识主题 → 资料 · 文档/图片知识点</span></div>
               <div><i class="is-bank-topic"></i><span>知识主题 → 题库 · 题源关系</span></div>
             </div>
             <div class="kw-graph-panel__divider"></div>
@@ -499,7 +499,7 @@ const emit = defineEmits<{
   (e: 'locate', payload: { docId: number; chunkId?: number; chunkIndex?: number }): void
   (e: 'ask', prompt: string): void
   (e: 'search-selected', payload: { pageId: number }): void
-  (e: 'open-source', payload: { kind: string; id: number; title?: string; doc?: any }): void
+  (e: 'open-source', payload: { kind: string; id: number; title?: string; doc?: any; assetKey?: string }): void
 }>()
 
 const PAGE_TYPE_META = [
@@ -1595,9 +1595,20 @@ function selectMapNode(node: any, openDetail = true) {
   if (!openDetail) return
   const pageId = Number(node.pageId)
   if (!pageId) {
+    const kind = normalizeEntityKind(node.kind)
+    if (kind === 'image' && node.ref?.assetKey) {
+      emit('open-source', Object.freeze({
+        kind: 'image',
+        id: 0,
+        assetKey: String(node.ref.assetKey),
+        title: node.title,
+        doc: node
+      }))
+      return
+    }
     const sourceId = Number(node.ref?.docId || node.ref?.noteId || node.ref?.bankId || node.ref?.pageId || 0)
     if (sourceId) {
-      emit('open-source', Object.freeze({ kind: normalizeEntityKind(node.kind), id: sourceId, title: node.title, doc: node }))
+      emit('open-source', Object.freeze({ kind, id: sourceId, title: node.title, doc: node }))
     }
     return
   }
@@ -3006,6 +3017,7 @@ onBeforeUnmount(() => {
 .kw-map-edge.is-mention { stroke: #77bfae; }
 .kw-map-edge.is-document_image { stroke: #3b7cff; stroke-width: 1.35; opacity: .78; }
 .kw-map-edge.is-image_knowledge { stroke: #d95757; stroke-width: 1.35; stroke-dasharray: 4 3; opacity: .8; }
+.kw-map-edge.is-image_document_knowledge { stroke: #8c6bd1; stroke-width: 1.2; stroke-dasharray: 2 3; opacity: .72; }
 .kw-map-edge.is-source_doc { stroke: #2f9e8f; stroke-width: 1.15; opacity: .65; }
 .kw-map-edge.is-cross { stroke: #d38a42; stroke-width: 1.1; stroke-dasharray: 4 3; opacity: 0.62; }
 .kw-map-edge.is-active { stroke: #7e94bf; stroke-width: 1.5; opacity: 0.85; }

@@ -84,6 +84,7 @@ def _infer_kind(file_name: str, url: str) -> str:
 
 def _asset_dict(row: RagImageAsset, usage_count: int = 0, reference_count: int = 0) -> Dict[str, Any]:
     return {
+        "id": int(row.id),
         "assetKey": row.asset_key,
         "sourceType": row.source_type,
         "sourceName": row.source_name,
@@ -92,6 +93,7 @@ def _asset_dict(row: RagImageAsset, usage_count: int = 0, reference_count: int =
         "url": row.url,
         "rawUrl": row.url,
         "fileName": row.file_name,
+        "displayName": row.display_name or row.file_name,
         "kind": row.kind or "image",
         "sectionIndex": row.section_index,
         "sectionTitle": row.section_title or "",
@@ -145,6 +147,7 @@ async def sync_image_assets(db: AsyncSession, user_id: int) -> None:
                     source_type="document",
                     url=str(url or ""),
                     file_name=f"{doc.file_name} · 图{int(seq) + 1}",
+                    display_name=f"{doc.file_name}-图{int(seq) + 1}",
                     source_name=doc.file_name or "未命名资料",
                     kind=_infer_kind(doc.file_name or "", str(url or "")),
                     section_index=meta["sectionIndex"],
@@ -160,6 +163,8 @@ async def sync_image_assets(db: AsyncSession, user_id: int) -> None:
                 row.doc_id = doc.id
                 row.url = str(url or "")
                 row.file_name = f"{doc.file_name} · 图{int(seq) + 1}"
+                if not row.display_name:
+                    row.display_name = f"{doc.file_name}-图{int(seq) + 1}"
                 row.source_name = doc.file_name or "未命名资料"
                 row.section_index = meta["sectionIndex"]
                 row.section_title = meta["sectionTitle"]
@@ -190,6 +195,7 @@ async def sync_image_assets(db: AsyncSession, user_id: int) -> None:
                 source_type="chat",
                 url=image.url or "",
                 file_name=image.image_name or f"聊天图片 {image.id}",
+                display_name=image.image_name or f"图片 {image.id}",
                 source_name="聊天图片",
                 kind=_infer_kind(image.image_name or "", image.url or ""),
                 section_title="",
@@ -201,6 +207,8 @@ async def sync_image_assets(db: AsyncSession, user_id: int) -> None:
         else:
             row.url = image.url or row.url
             row.file_name = image.image_name or row.file_name
+            if not row.display_name:
+                row.display_name = image.image_name or row.file_name
             row.source_name = "聊天图片"
 
     # 已被删除的聊天图 / 文档图：不删索引（描述可能还有价值），但标成不可用由列表过滤。
@@ -215,6 +223,7 @@ def _matches_q(row: RagImageAsset, q: str) -> bool:
             row.caption or "",
             row.ocr_text or "",
             row.file_name or "",
+            row.display_name or "",
             row.source_name or "",
             row.section_title or "",
             " ".join(str(x) for x in (row.keywords or [])),
@@ -499,16 +508,17 @@ def _description_prompt(row: RagImageAsset) -> str:
     return (
         "你是学习资料的图片索引助手。请只根据图片本身和给定上下文，生成可检索的图片索引。\n"
         "要求：\n"
-        "1. caption 用中文给出不超过 18 个汉字的图片名称，说清楚“是什么/表达什么”，不要写空话、不要以“一张”开头；\n"
-        "2. ocrText 只抄写图片中清晰可见的文字/公式，看不清就留空，禁止编造；\n"
-        "3. kind 从 photo / diagram / table / formula / screenshot 中选一个；\n"
-        "4. keywords 给 3 到 6 个短词，便于搜索；\n"
-        "5. 只输出一个 JSON 对象，不要 Markdown。\n\n"
+        "1. name 用中文给出不超过 12 个汉字的短名称，用于列表/图谱展示，不要写空话、不要以“一张”开头；\n"
+        "2. caption 用中文一句话描述这张图“是什么、表达什么”，供详情页阅读；\n"
+        "3. ocrText 只抄写图片中清晰可见的文字/公式，看不清就留空，禁止编造；\n"
+        "4. kind 从 photo / diagram / table / formula / screenshot 中选一个；\n"
+        "5. keywords 给 3 到 6 个短词，便于搜索；\n"
+        "6. 只输出一个 JSON 对象，不要 Markdown。\n\n"
         f"来源资料：{row.source_name or '未知'}\n"
         f"所在章节：{row.section_title or '未识别'}\n"
         f"图片附近文字：{row.surrounding_text or '无'}\n"
         f"已有 OCR：{row.ocr_text or '无'}\n\n"
-        '输出格式：{"caption":"...","ocrText":"...","kind":"diagram","keywords":["..."]}'
+        '输出格式：{"name":"智能体能力结构","caption":"...","ocrText":"...","kind":"diagram","keywords":["..."]}'
     )
 
 
@@ -559,6 +569,11 @@ async def describe_asset(
             user_id=int(user_id),
         )
         parsed = _parse_json_payload(response.content or "")
+        raw_name = str(parsed.get("name") or "").strip()
+        if raw_name:
+            row.display_name = re.sub(r"\s+", " ", raw_name).strip("《》\"'“”‘’（）()[]【】")[:120]
+        elif not row.display_name:
+            row.display_name = row.file_name or "图片"
         row.caption = str(parsed.get("caption") or "").strip()
         row.ocr_text = str(parsed.get("ocrText") or parsed.get("ocr_text") or "").strip()
         kind = str(parsed.get("kind") or "").strip().lower()
