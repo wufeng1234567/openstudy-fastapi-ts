@@ -1517,7 +1517,11 @@ const {
   onGalleryLocate,
   onMapOpenDoc,
   onGraphLocate,
-  onWikiAsk
+  onWikiAsk,
+  onGalleryStats,
+  onMapStats,
+  onWorkspaceSearchEnter,
+  onWikiSearchSelected
 } = useWorkspaceNavigation({
   kbs,
   activeKb,
@@ -1525,7 +1529,12 @@ const {
   openNotePicker,
   showAnatomy,
   showHealth,
-  router
+  router,
+  galleryStats,
+  mapStats,
+  viewMode,
+  workspaceSearch,
+  wikiSearchSubmitKey
 })
 
 /* 试试 AI 怎么找 */
@@ -2413,27 +2422,6 @@ async function rollbackOrganizePreview() {
   } catch (e: any) {
     ElMessage.error('回退失败：' + (e?.message || e))
   }
-}
-
-function onGalleryStats(payload: { total?: number }) {
-  galleryStats.total = Number(payload?.total || 0)
-}
-
-function onWorkspaceSearchEnter() {
-  if (viewMode.value === 'wiki') wikiSearchSubmitKey.value += 1
-}
-
-function onMapStats(payload: { total?: number }) {
-  mapStats.total = Number(payload?.total || 0)
-}
-
-/** 图谱搜索选中节点后收起搜索建议并清空输入框。 */
-function onWikiSearchSelected() {
-  workspaceSearch.value = ''
-  nextTick(() => {
-    const input = document.querySelector<HTMLInputElement>('.kbp-global-search input')
-    input?.blur()
-  })
 }
 
 function selectKb(kbId: number) {

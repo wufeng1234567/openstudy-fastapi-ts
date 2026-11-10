@@ -1,6 +1,7 @@
 /** 资料夹页面的画廊/图谱导航动作（从 index.vue 抽离）。 */
 
 import { ElMessage } from 'element-plus'
+import { nextTick } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
 import type { Router } from 'vue-router'
 
@@ -12,6 +13,11 @@ export function useWorkspaceNavigation(options: {
   showAnatomy: (doc: any, opts?: any) => void
   showHealth: (doc: any) => void
   router: Router
+  galleryStats: { total: number }
+  mapStats: { total: number }
+  viewMode: Ref<string>
+  workspaceSearch: Ref<string>
+  wikiSearchSubmitKey: Ref<number>
 }) {
   function findDocRecord(docId: number) {
     for (const kb of options.kbs.value) {
@@ -68,12 +74,36 @@ export function useWorkspaceNavigation(options: {
     options.router.push({ path: '/front/agent/chat', state: { seedQuestion: text } })
   }
 
+  function onGalleryStats(payload: { total?: number }) {
+    options.galleryStats.total = Number(payload?.total || 0)
+  }
+
+  function onMapStats(payload: { total?: number }) {
+    options.mapStats.total = Number(payload?.total || 0)
+  }
+
+  function onWorkspaceSearchEnter() {
+    if (options.viewMode.value === 'wiki') options.wikiSearchSubmitKey.value += 1
+  }
+
+  function onWikiSearchSelected() {
+    options.workspaceSearch.value = ''
+    nextTick(() => {
+      const input = document.querySelector<HTMLInputElement>('.kbp-global-search input')
+      input?.blur()
+    })
+  }
+
   return {
     findDocRecord,
     onGalleryUseImage,
     onGalleryLocate,
     onMapOpenDoc,
     onGraphLocate,
-    onWikiAsk
+    onWikiAsk,
+    onGalleryStats,
+    onMapStats,
+    onWorkspaceSearchEnter,
+    onWikiSearchSelected
   }
 }
