@@ -207,81 +207,19 @@
     -->
     <div v-if="viewMode === 'list' && !isCascadeMode && (loading || (kbs.length && !loadFailed))" class="kbp-body">
       <!-- ============ 左：知识库列表 ============ -->
-      <aside class="kbp-side">
-        <div class="kbp-side__head">
-          <span class="kbp-side__title">全部资料</span>
-          <el-button size="small" :icon="Plus" :disabled="creating" @click="promptCreate">
-            新建
-          </el-button>
-        </div>
-
-        <div class="kbp-side__search">
-          <el-input v-model="folderKeyword" size="small" clearable placeholder="搜索资料夹" :prefix-icon="Search" />
-        </div>
-
-        <div class="kbp-side__list" v-loading="loading">
-          <button
-            v-for="kb in filteredKbs"
-            :key="kb.kbId"
-            type="button"
-            class="kbp-kb"
-            :class="{ 'is-active': kb.kbId === activeKbId, 'is-blocked': kb.disabled === 1 }"
-            @click="selectKb(kb.kbId)"
-            @contextmenu.prevent.stop="openKbMenu($event, kb)"
-          >
-            <span class="kbp-kb__icon">
-              <OsIcon :name="kb.isDefault ? 'folder' : 'database'" :size="16" />
-            </span>
-            <span class="kbp-kb__main">
-              <span class="kbp-kb__name-row">
-                <span class="kbp-kb__name">{{ kb.name }}</span>
-                <span v-if="kb.isDefault" class="kbp-kb__tag">默认</span>
-                <span v-if="kb.disabled === 1" class="kbp-kb__tag is-blocked">已屏蔽</span>
-                <span v-if="kb.sourceType === 'share'" class="kbp-kb__tag is-share">来自分享</span>
-              </span>
-              <span class="kbp-kb__meta">
-                {{ kb.docCount }} 份资料<template v-if="kb.disabled !== 1"> · 可检索</template>
-              </span>
-            </span>
-            <!-- 只保留一个「更多」按钮，具体动作统一进冒泡菜单，和文档行保持一致 -->
-            <span class="kbp-kb__ops">
-              <span class="kbp-kb__op" title="更多操作" @click.stop="openKbMenu($event, kb)">
-                <OsIcon name="more" :size="14" />
-              </span>
-            </span>
-          </button>
-
-          <div v-if="!loading && !filteredKbs.length" class="kbp-side__empty">
-            <p>{{ folderKeyword ? '没有匹配的资料夹' : '还没有资料' }}</p>
-            <span>{{ folderKeyword ? '换个关键词试试' : '建一个资料夹来放课件和真题' }}</span>
-            <el-button v-if="!folderKeyword" size="small" type="primary" :icon="Plus" @click="promptCreate">
-              新建资料夹
-            </el-button>
-          </div>
-        </div>
-
-        <!-- 资料夹右键 / 更多操作：全局只保留一个冒泡菜单，打开新的会先关闭旧的 -->
-        <div v-if="kbMenu.visible" class="kbp-context-menu"
-          :style="{ left: `${kbMenu.x}px`, top: `${kbMenu.y}px` }" @click.stop>
-          <button type="button" class="kbp-context-item" @click="handleKbCommand('rename', kbMenu.kb)">
-            <OsIcon name="pen-line" :size="14" />
-            重命名
-          </button>
-          <button type="button" class="kbp-context-item" @click="handleKbCommand('share', kbMenu.kb)">
-            <el-icon><Share /></el-icon>
-            分享资料夹
-          </button>
-          <button type="button" class="kbp-context-item" @click="handleKbCommand('toggle-disabled', kbMenu.kb)">
-            <OsIcon :name="kbMenu.kb?.disabled === 1 ? 'eye' : 'eye-off'" :size="14" />
-            {{ kbMenu.kb?.disabled === 1 ? '恢复检索' : '屏蔽检索' }}
-          </button>
-          <button v-if="Number(kbMenu.kb?.isDefault || 0) !== 1" type="button" class="kbp-context-item is-danger"
-            @click="handleKbCommand('delete', kbMenu.kb)">
-            <OsIcon name="trash" :size="14" />
-            删除资料夹
-          </button>
-        </div>
-      </aside>
+      <WorkspaceSidebar
+        :loading="loading"
+        :creating="creating"
+        :filtered-kbs="filteredKbs"
+        :active-kb-id="activeKbId"
+        :folder-keyword="folderKeyword"
+        :kb-menu="kbMenu"
+        @create="promptCreate"
+        @select="selectKb"
+        @open-menu="openKbMenu"
+        @command="handleKbCommand"
+        @update:folder-keyword="folderKeyword = $event"
+      />
 
       <!-- ============ 右：当前库的文档 ============ -->
       <section class="kbp-main">
@@ -1081,6 +1019,7 @@ import OrganizeDiffDialog from './components/OrganizeDiffDialog.vue'
 import DocumentClinicDialog from './components/DocumentClinicDialog.vue'
 import GalleryPanel from './components/GalleryPanel.vue'
 import KnowledgeWikiPanel from './components/KnowledgeWikiPanel.vue'
+import WorkspaceSidebar from './components/WorkspaceSidebar.vue'
 import VersionHistoryDialog from './components/VersionHistoryDialog.vue'
 import ShareKnowledgeDialog from './components/ShareKnowledgeDialog.vue'
 import ReceiveKnowledgeDialog from './components/ReceiveKnowledgeDialog.vue'
@@ -3530,4 +3469,4 @@ onBeforeUnmount(() => {
 })
 </script>
 
-<style scoped lang="scss" src="./index.scss"></style>
+<style lang="scss" src="./index.scss"></style>
