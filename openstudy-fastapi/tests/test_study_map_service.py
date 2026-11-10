@@ -1,8 +1,11 @@
 """统一图谱的纯规则测试（不连数据库）。"""
 
+from types import SimpleNamespace
+
 from app.services.rag.study_map_service import (
     _add_edge,
     _build_groups,
+    _image_asset_title,
     _parse_source_types,
     _topic_id,
     _trim_to_limit,
@@ -91,3 +94,34 @@ def test_groups_cover_six_entity_kinds():
         "note:5",
         "image:6",
     }
+
+
+def test_image_asset_title_prefers_caption_then_document_fallback():
+    doc = SimpleNamespace(file_name="智能体实操.docx")
+    captioned = SimpleNamespace(
+        id=1,
+        asset_key="doc:9:0",
+        caption="一张智能体工具调用流程图",
+        ocr_text="",
+        keywords=[],
+        file_name="doc:9:0",
+    )
+    assert _image_asset_title(captioned, doc)[0] == "一张智能体工具调用流程图"
+    fallback = SimpleNamespace(
+        id=2,
+        asset_key="doc:9:2",
+        caption="",
+        ocr_text="",
+        keywords=[],
+        file_name="",
+    )
+    assert _image_asset_title(fallback, doc)[0] == "智能体实操.docx-图3"
+    standalone = SimpleNamespace(
+        id=3,
+        asset_key="chat:88",
+        caption="",
+        ocr_text="",
+        keywords=[],
+        file_name="独立架构图.png",
+    )
+    assert _image_asset_title(standalone, None)[0] == "独立架构图.png"

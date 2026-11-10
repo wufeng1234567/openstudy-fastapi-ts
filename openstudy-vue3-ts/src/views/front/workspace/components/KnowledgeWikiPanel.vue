@@ -86,10 +86,10 @@
         <div class="kw-map-purpose">知识图谱：先看懂知识结构，再让系统帮你排下一步。</div>
         <svg class="kw-map__svg" :viewBox="mapViewBox" preserveAspectRatio="xMidYMid meet" aria-label="知识图谱：知识主题与六类来源实体集">
           <defs>
-            <marker id="kw-arrow" viewBox="0 0 10 6" refX="10" refY="3" markerWidth="8" markerHeight="6" orient="auto">
-              <path d="M0,0 L10,3 L0,6 L2,3 Z" fill="#aeb5c0" />
+            <marker id="kw-arrow" viewBox="0 0 10 6" refX="10" refY="3" markerWidth="10" markerHeight="7" orient="auto">
+              <path d="M0,0 L10,3 L0,6 L2,3 Z" fill="#9aa9c0" />
             </marker>
-            <marker id="kw-arrow-hl" viewBox="0 0 10 6" refX="10" refY="3" markerWidth="8" markerHeight="6" orient="auto">
+            <marker id="kw-arrow-hl" viewBox="0 0 10 6" refX="10" refY="3" markerWidth="10" markerHeight="7" orient="auto">
               <path d="M0,0 L10,3 L0,6 L2,3 Z" fill="#7e94bf" />
             </marker>
           </defs>
@@ -101,7 +101,9 @@
             <line v-for="edge in mapEdges" :key="edge.key" :x1="edge.x1" :y1="edge.y1" :x2="edge.x2" :y2="edge.y2"
               :data-edge-source="edge.source" :data-edge-target="edge.target"
               class="kw-map-edge" :class="[`is-${edge.type}`, { 'is-cross': edge.cross, 'is-active': isMapEdgeActive(edge), 'is-dimmed': isMapEdgeDimmed(edge), 'is-current-route': isRouteEdge(edge), 'is-hidden': mapDraggingId && edge.source !== mapDraggingId && edge.target !== mapDraggingId }]"
-              :marker-end="mapShowArrows ? (isMapEdgeActive(edge) ? 'url(#kw-arrow-hl)' : 'url(#kw-arrow)') : undefined" />
+              :marker-end="mapShowArrows ? (isMapEdgeActive(edge) ? 'url(#kw-arrow-hl)' : 'url(#kw-arrow)') : undefined">
+              <title>{{ mapEdgeTitle(edge) }}</title>
+            </line>
             <line v-for="line in adviceVisibleLines" :key="`advice-${line.key}`" :x1="line.x1" :y1="line.y1" :x2="line.x2" :y2="line.y2"
               pathLength="1" class="kw-map-advice-ray" />
             <circle v-if="adviceActiveLine" :key="`advice-dot-${adviceActiveLine.key}`" r="3" class="kw-map-advice-dot">
@@ -151,6 +153,14 @@
                 <span>{{ item.label }}</span>
                 <em>{{ mapTypeCounts[item.type] || 0 }}</em>
               </button>
+            </div>
+            <div class="kw-graph-panel__divider"></div>
+            <div class="kw-graph-relations">
+              <div class="kw-graph-relations__title">连线方向：源 → 目标</div>
+              <div><i class="is-doc-image"></i><span>文档 → 图片 · 包含图片</span></div>
+              <div><i class="is-image-knowledge"></i><span>图片 → 知识主题 · 图片知识点</span></div>
+              <div><i class="is-topic-doc"></i><span>知识主题 → 资料 · 文档知识点</span></div>
+              <div><i class="is-bank-topic"></i><span>知识主题 → 题库 · 题源关系</span></div>
             </div>
             <div class="kw-graph-panel__divider"></div>
             <div class="kw-graph-panel__actions">
@@ -581,6 +591,7 @@ const galleryItems = ref<any[]>([])
 const mapCanvasRef = ref<HTMLElement | null>(null)
 const mapGraph = ref<any>({ nodes: [], edges: [], groups: [] })
 const mapSize = reactive({ width: 1200, height: 760 })
+const mapLayoutScale = computed(() => Math.min(1.8, Math.max(1, Math.min(mapSize.width / 1200, mapSize.height / 760))))
 const mapViewBox = computed(() => `0 0 ${mapSize.width} ${mapSize.height}`)
 const mapView = reactive({ x: 0, y: 0, scale: 1 })
 const mapHoveredId = ref<string | null>(null)
@@ -922,8 +933,11 @@ const mapNodes = computed(() => {
     .filter((component) => component.ids.length)
   const width = Number(mapSize.width || 1200)
   const height = Number(mapSize.height || 760)
+  const layoutScale = Number(mapLayoutScale.value || 1)
   // 右侧实体集面板占约 220px；节点布局只使用左侧可用区域，避免来源组被面板盖住。
   const usableWidth = Math.max(640, width - 230)
+  const topicSpacingX = Math.round(52 * layoutScale)
+  const topicSpacingY = Math.round(48 * layoutScale)
   const kindCenters: Record<string, { x: number; y: number }> = {
     topic: { x: usableWidth * 0.5, y: height * 0.5 },
     document: { x: usableWidth * 0.14, y: height * 0.64 },
@@ -941,13 +955,17 @@ const mapNodes = computed(() => {
       y: 80 + (Math.floor(componentIndex / 3) + 0.5) * Math.max(1, (height - 160) / Math.max(1, Math.ceil(visibleComponents.length / 3)))
     }
     const center = kindCenters[component.kind] || fallbackCenter
-    const radius = component.kind === 'topic'
+    const radius = (component.kind === 'topic'
       ? Math.min(240, 70 + Math.sqrt(members.length) * 22)
-      : Math.min(130, 48 + Math.sqrt(members.length) * 16)
+      : Math.min(130, 48 + Math.sqrt(members.length) * 16)) * Math.min(1.35, layoutScale)
     const topicCols = component.kind === 'topic'
       ? Math.max(4, Math.ceil(Math.sqrt(members.length * 0.75)))
       : 0
     const topicRows = topicCols ? Math.ceil(members.length / topicCols) : 0
+    const sourceCols = component.kind !== 'topic' && members.length > 6
+      ? Math.ceil(Math.sqrt(members.length))
+      : 0
+    const sourceRows = sourceCols ? Math.ceil(members.length / sourceCols) : 0
     const orbit = members.filter((node) => node !== hub)
     const hubOnCenter = members.length > 1
     let orbitIndex = 0
@@ -959,8 +977,14 @@ const mapNodes = computed(() => {
       if (component.kind === 'topic' && topicCols) {
         const col = memberIndex % topicCols
         const row = Math.floor(memberIndex / topicCols)
-        x = center.x + (col - (topicCols - 1) / 2) * 52
-        y = center.y + (row - (topicRows - 1) / 2) * 48
+        x = center.x + (col - (topicCols - 1) / 2) * topicSpacingX
+        y = center.y + (row - (topicRows - 1) / 2) * topicSpacingY
+      } else if (sourceCols) {
+        const col = memberIndex % sourceCols
+        const row = Math.floor(memberIndex / sourceCols)
+        const sourceSpacing = 34 * layoutScale
+        x = center.x + (col - (sourceCols - 1) / 2) * sourceSpacing
+        y = center.y + (row - (sourceRows - 1) / 2) * sourceSpacing
       } else if (members.length > 1 && !(hubOnCenter && node === hub)) {
         const count = orbit.length
         const angle = -Math.PI / 2 + (Math.PI * 2 * orbitIndex) / Math.max(1, count)
@@ -984,7 +1008,7 @@ const mapNodes = computed(() => {
         pageType: normalizePageType(node.pageType),
         x: resolvedX,
         y: resolvedY,
-        r: Math.max(kind === 'topic' ? 5 : 9, Math.min(kind === 'topic' ? 14 : 16, 4 + Math.sqrt(Math.max(0, degree)) * 1.35)),
+        r: Math.max(kind === 'topic' ? 5 : 9, Math.min(kind === 'topic' ? 14 : 16, 4 + Math.sqrt(Math.max(0, degree)) * 1.35)) * Math.min(1.35, layoutScale),
         color: entityTypeMeta(kind).color
       })
     }
@@ -1015,6 +1039,7 @@ const mapEdges = computed(() => {
         x2: target.x - ux * endPad,
         y2: target.y - uy * endPad,
         type: edge.type || 'related',
+        label: edge.label || edge.type || '关系',
         cross: isCrossSourceEdge(edge)
       }
     })
@@ -1028,7 +1053,10 @@ const visibleLabelIds = computed(() => {
       const kind = normalizeEntityKind(node.kind)
       if (isMapSelected(node) || isRouteNode(node) || mapHoveredId.value === String(node.id)) return true
       if (adviceLitPageIds.value.includes(String(node.pageId))) return true
-      if (kind !== 'topic') return true
+      if (kind !== 'topic') {
+        const component = mapComponents.value.components.find((item) => item.ids.includes(String(node.id)))
+        return !(component?.kind === 'image' && component.ids.length > 8)
+      }
       return mapView.scale >= 1.25 || Number(node.degree || 0) >= 12
     })
     .sort((a: any, b: any) => {
@@ -1054,6 +1082,13 @@ const visibleLabelIds = computed(() => {
   }
   return result
 })
+
+function mapEdgeTitle(edge: any) {
+  const source = mapNodes.value.find((node: any) => String(node.id) === String(edge.source))
+  const target = mapNodes.value.find((node: any) => String(node.id) === String(edge.target))
+  const label = String(edge.label || edge.type || '关系')
+  return `${label}：${source?.title || edge.source} → ${target?.title || edge.target}`
+}
 
 const learningLegend = [
   { level: 'unread', label: '未学', color: '#cbd3df' },
@@ -1462,7 +1497,13 @@ function isMapEdgeDimmed(edge: any) {
 }
 
 function showMapLabel(node: any) {
-  return visibleLabelIds.value.has(String(node.id))
+  if (!visibleLabelIds.value.has(String(node.id))) return false
+  if (normalizeEntityKind(node.kind) === 'topic') return true
+  const component = mapComponents.value.components.find((item) => item.ids.includes(String(node.id)))
+  if (component?.kind === 'image' && component.ids.length > 8) {
+    return isMapSelected(node) || mapHoveredId.value === String(node.id)
+  }
+  return true
 }
 
 function mapNodeLabel(node: any) {
@@ -1819,7 +1860,7 @@ function startMapAnimation() {
   mapAnimFrame = requestAnimationFrame(tick)
 }
 
-function clusterOutline(points: any[]) {
+function clusterOutline(points: any[], padding = 28) {
   if (!points.length) return ''
   const cx = points.reduce((sum, point) => sum + Number(point.x || 0), 0) / points.length
   const cy = points.reduce((sum, point) => sum + Number(point.y || 0), 0) / points.length
@@ -1832,10 +1873,10 @@ function clusterOutline(points: any[]) {
       const dx = Number(point.x || 0) - cx
       const dy = Number(point.y || 0) - cy
       const projected = Math.cos(angle) * dx + Math.sin(angle) * dy
-      const radius = Number(point.r || 0) + 28
+      const radius = Number(point.r || 0) + padding
       distance = Math.max(distance, projected + radius)
     }
-    distance = Math.max(48, distance)
+    distance = Math.max(40, distance)
     radial.push({
       x: cx + Math.cos(angle) * distance,
       y: cy + Math.sin(angle) * distance
@@ -1881,7 +1922,7 @@ const mapHulls = computed(() => {
       label: component.label,
       labelX: minX - 6,
       labelY: minY - 24,
-      path: clusterOutline(points)
+      path: clusterOutline(points, 28 * Math.min(1.35, mapLayoutScale.value))
     })
   }
   return hulls
@@ -2213,8 +2254,9 @@ function fitMapView() {
   const maxY = Math.max(...ys)
   const padding = 64
   const availableWidth = Math.max(640, mapSize.width - 230)
+  const maxFitScale = Math.max(1.1, Math.min(2.2, mapLayoutScale.value * 1.2))
   const scale = Math.min(
-    1.1,
+    maxFitScale,
     Math.max(
       0.35,
       Math.min(
@@ -2915,6 +2957,9 @@ onBeforeUnmount(() => {
 .kw-map-edge.is-contrast { stroke: #d38e7d; stroke-dasharray: 3 5; }
 .kw-map-edge.is-related { stroke: #c7d0e0; }
 .kw-map-edge.is-mention { stroke: #77bfae; }
+.kw-map-edge.is-document_image { stroke: #3b7cff; stroke-width: 1.35; opacity: .78; }
+.kw-map-edge.is-image_knowledge { stroke: #d95757; stroke-width: 1.35; stroke-dasharray: 4 3; opacity: .8; }
+.kw-map-edge.is-source_doc { stroke: #2f9e8f; stroke-width: 1.15; opacity: .65; }
 .kw-map-edge.is-cross { stroke: #d38a42; stroke-width: 1.1; stroke-dasharray: 4 3; opacity: 0.62; }
 .kw-map-edge.is-active { stroke: #7e94bf; stroke-width: 1.5; opacity: 0.85; }
 .kw-map.is-route-mode .kw-map-edge { opacity: 0.36; }
@@ -2979,6 +3024,14 @@ onBeforeUnmount(() => {
 .kw-graph-type i { width: 7px; height: 7px; flex: none; border-radius: 50%; }
 .kw-graph-type em { margin-left: auto; color: #a0a6b2; font-size: 8px; font-style: normal; }
 .kw-graph-panel__divider { height: 1px; margin: 0 -9px; background: #edf0f5; }
+.kw-graph-relations { display: flex; flex-direction: column; gap: 4px; color: #8a91a0; font-size: 8.5px; line-height: 1.35; }
+.kw-graph-relations__title { margin-bottom: 1px; color: #6d7788; font-weight: 600; }
+.kw-graph-relations div { display: flex; align-items: center; gap: 5px; }
+.kw-graph-relations i { width: 16px; height: 0; flex: none; border-top: 1.5px solid #b9c7dc; }
+.kw-graph-relations i.is-doc-image { border-color: #3b7cff; }
+.kw-graph-relations i.is-image-knowledge { border-color: #d95757; border-top-style: dashed; }
+.kw-graph-relations i.is-topic-doc { border-color: #2f9e8f; }
+.kw-graph-relations i.is-bank-topic { border-color: #2f9e8f; border-top-style: dotted; }
 .kw-graph-panel__actions { display: flex; flex-direction: column; gap: 1px; }
 .kw-graph-action { display: flex; align-items: center; gap: 4px; width: 100%; padding: 3px 1px; border: 0; color: #6b7280; background: transparent; cursor: pointer; font: inherit; font-size: 9.5px; line-height: 1.35; text-align: left; transition: color .15s ease; }
 .kw-graph-action:hover, .kw-graph-action.is-active { color: #2f5fce; }

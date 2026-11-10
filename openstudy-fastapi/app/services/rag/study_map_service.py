@@ -11,7 +11,7 @@
 ID 规约
 =======
 topic:{pageId} bank:{bankId} doc:{docId} web:{docId}
-note:{noteId} image:{docId}
+note:{noteId} image:{imageAssetId}
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content import ContentReference, RagImageAsset
@@ -61,22 +61,30 @@ def _safe_text(value: Any, limit: int = 160) -> str:
     return text if len(text) <= limit else f"{text[: limit - 1]}…"
 
 
-def _image_group_title(doc: Any, assets: Sequence[RagImageAsset]) -> tuple[str, str]:
-    """图片组节点用“图片内容/来源”命名，不只显示“N 张图”。"""
+def _image_seq(asset: RagImageAsset) -> int:
+    try:
+        return int(str(asset.asset_key or "").rsplit(":", 1)[-1]) + 1
+    except (TypeError, ValueError):
+        return 1
+
+
+def _image_asset_title(asset: RagImageAsset, doc: Optional[RagDocument]) -> tuple[str, str]:
+    """单张图片节点用图片内容命名；LLM 缺名时按文档名-图N/文件名兜底。"""
     doc_name = _safe_text(getattr(doc, "file_name", "") or "", 80)
-    for asset in assets:
-        caption = _safe_text(
-            getattr(asset, "caption", "")
-            or getattr(asset, "ocr_text", "")
-            or " ".join(getattr(asset, "keywords", []) or []),
-            48,
-        )
-        if caption and caption not in {"图片", "截图", "image", "图片描述"}:
-            subtitle = f"{doc_name} · {len(assets)} 张配图" if doc_name else f"{len(assets)} 张配图"
-            return caption, subtitle
+    caption = _safe_text(
+        getattr(asset, "caption", "")
+        or getattr(asset, "ocr_text", "")
+        or " ".join(getattr(asset, "keywords", []) or []),
+        56,
+    )
+    seq = _image_seq(asset)
+    if caption and caption not in {"图片", "截图", "image", "图片描述"}:
+        subtitle = f"{doc_name} · 图{seq}" if doc_name else f"独立图片 · 第{seq}张"
+        return caption, subtitle
     if doc_name:
-        return f"{doc_name} 配图", f"{len(assets)} 张配图"
-    return "资料配图", f"{len(assets)} 张配图"
+        return f"{doc_name}-图{seq}", f"{doc_name} · 图{seq}"
+    file_name = _safe_text(getattr(asset, "file_name", "") or "", 80)
+    return file_name or f"图片 {int(asset.id or 0)}", "独立图片"
 
 
 def _parse_source_types(value: Optional[Iterable[str] | str]) -> Set[str]:
@@ -260,28 +268,34 @@ async def _load_notes(
     )
 
 
-async def _load_image_groups(
-    db: AsyncSession, user_id: int, doc_ids: Sequence[int]
-) -> Dict[int, List[RagImageAsset]]:
-    if not doc_ids:
-        return {}
-    rows = (
-        await db.execute(
-            select(RagImageAsset)
-            .where(
-                RagImageAsset.user_id == int(user_id),
-                RagImageAsset.doc_id.in_([int(x) for x in doc_ids]),
+async def _load_images(
+    db: AsyncSession, user_id: int, kb_id: int, doc_ids: Sequence[int]
+) -> List[RagImageAsset]:
+    conditions = [RagImageAsset.user_id == int(user_id)]
+    doc_filters = []
+    if doc_ids:
+        doc_filters.append(RagImageAsset.doc_id.in_([int(x) for x in doc_ids]))
+    if int(kb_id or 0) > 0:
+        doc_filters.append(
+            and_(
+                RagImageAsset.doc_id.is_(None),
+                RagImageAsset.kb_id == int(kb_id),
             )
-            .order_by(RagImageAsset.id.asc())
-            .limit(MAX_IMAGES)
         )
-    ).scalars().all()
-    grouped: Dict[int, List[RagImageAsset]] = defaultdict(list)
-    for row in rows:
-        doc_id = _safe_int(row.doc_id)
-        if doc_id > 0:
-            grouped[doc_id].append(row)
-    return grouped
+    if doc_filters:
+        conditions.append(or_(*doc_filters))
+    return list(
+        (
+            await db.execute(
+                select(RagImageAsset)
+                .where(*conditions)
+                .order_by(RagImageAsset.id.asc())
+                .limit(MAX_IMAGES)
+            )
+        )
+        .scalars()
+        .all()
+    )
 
 
 def _reference_links(ref: ContentReference) -> tuple[int, int, int]:
@@ -372,6 +386,12 @@ async def build_study_map(
     wanted = _parse_source_types(source_types)
     if not wanted:
         wanted = set(DEFAULT_SOURCE_TYPES)
+    if "image" in wanted:
+        # 图片资产索引是图谱图片节点的真实来源；这里做一次幂等同步，
+        # 避免用户没有先打开画廊时看不到文档图片。
+        from app.services.rag import gallery_service
+
+        await gallery_service.sync_image_assets(db, int(user_id))
     include_doc = bool({"document", "web", "note", "image"} & wanted)
     include_wiki = "wiki" in wanted
     include_bank = "bank" in wanted
@@ -483,7 +503,7 @@ async def build_study_map(
             source=source_id,
             target=target_id,
             kind=str(edge.get("type") or edge.get("kind") or "related"),
-            label="题源锚点" if edge.get("type") == "question_source" else "主题关系",
+            label="题源关系" if edge.get("type") == "question_source" else "主题关系",
             weight=_safe_int(edge.get("weight")),
             evidence={"table": "rag_wiki_page_link / question_source", "id": edge.get("id")},
         )
@@ -537,60 +557,132 @@ async def build_study_map(
                     source=_topic_id(page_id),
                     target=doc_node,
                     kind="source_doc",
-                    label="来源资料",
+                    label="文档知识点",
                     evidence={"table": "rag_wiki_page.source_doc_ids", "docId": doc_id},
                 )
 
-        # 文档 → 图片组
-        image_groups = await _load_image_groups(db, int(user_id), list(doc_by_id.keys()))
-        for doc_id, assets in image_groups.items():
-            if "image" not in wanted:
-                continue
-            node_id = _image_id(doc_id)
-            if node_id not in {str(n["id"]) for n in nodes}:
+        # 图片：每张 RagImageAsset 一个独立节点；图片可以属于文档，也可以是独立图片。
+        if "image" in wanted:
+            images = await _load_images(
+                db, int(user_id), int(kb_id or 0), list(doc_by_id.keys())
+            )
+            image_node_ids: Dict[int, str] = {}
+            image_by_asset_key: Dict[str, str] = {}
+            image_id_by_asset_key: Dict[str, int] = {}
+            for asset in images:
+                doc_id = _safe_int(asset.doc_id)
                 doc = doc_by_id.get(doc_id)
-                image_title, image_subtitle = _image_group_title(doc, assets)
-                image_summary = "；".join(
-                    [
-                        text
-                        for text in (
-                            _safe_text(asset.caption or asset.ocr_text, 80)
-                            for asset in assets[:3]
-                        )
-                        if text
-                    ]
-                ) or image_subtitle
+                if doc_id > 0 and doc is None:
+                    continue
+                node_id = f"image:{int(asset.id)}"
+                image_node_ids[int(asset.id)] = node_id
+                image_by_asset_key[str(asset.asset_key or "")] = node_id
+                image_id_by_asset_key[str(asset.asset_key or "")] = int(asset.id)
+                image_title, image_subtitle = _image_asset_title(asset, doc)
+                image_summary = _safe_text(asset.caption or asset.ocr_text, 120) or image_subtitle
                 nodes.append(
                     {
                         "id": node_id,
                         "kind": "image",
                         "title": image_title,
                         "subtitle": image_subtitle,
-                        "groupId": f"kb:{_safe_int(getattr(doc, 'kb_id', 0))}",
+                        "groupId": "image",
                         "source": "image",
-                        "ref": {"pageId": 0, "bankId": 0, "docId": int(doc_id), "noteId": 0, "assetKey": ""},
-                        "metrics": {"degree": 1, "imageCount": len(assets)},
+                        "ref": {
+                            "pageId": 0,
+                            "bankId": 0,
+                            "docId": doc_id,
+                            "noteId": 0,
+                            "assetKey": str(asset.asset_key or ""),
+                        },
+                        "metrics": {
+                            "degree": 0,
+                            "imageCount": 1,
+                            "descriptionStatus": str(asset.description_status or "pending"),
+                        },
                         "detail": {
                             "summary": image_summary,
-                            "captions": [_safe_text(asset.caption, 40) for asset in assets[:5]],
-                            "imageKinds": sorted({str(asset.kind or "image") for asset in assets}),
+                            "caption": str(asset.caption or ""),
+                            "ocrText": str(asset.ocr_text or ""),
+                            "keywords": list(asset.keywords or []),
+                            "imageKinds": [str(asset.kind or "image")],
+                            "descriptionStatus": str(asset.description_status or "pending"),
                         },
                     }
                 )
-            doc_node = (
-                _web_id(doc_id)
-                if str(getattr(doc_by_id.get(doc_id), "source_url", "") or "").strip()
-                else _doc_id(doc_id)
-            )
-            _add_edge(
-                edges,
-                seen_edges,
-                source=doc_node,
-                target=node_id,
-                kind="image_source",
-                label="配图",
-                evidence={"table": "rag_image_asset", "docId": doc_id},
-            )
+                if doc_id > 0 and doc is not None:
+                    doc_node = (
+                        _web_id(doc_id)
+                        if str(doc.source_url or "").strip()
+                        else _doc_id(doc_id)
+                    )
+                    _add_edge(
+                        edges,
+                        seen_edges,
+                        source=doc_node,
+                        target=node_id,
+                        kind="document_image",
+                        label="包含图片",
+                        evidence={"table": "rag_image_asset", "assetId": int(asset.id), "docId": doc_id},
+                    )
+
+            # 图片 -> 知识点：① generation_meta.sourceType=image；② 页面显式引用了图片。
+            if core_page_ids:
+                page_rows = (
+                    await db.execute(
+                        select(RagWikiPage).where(
+                            RagWikiPage.user_id == int(user_id),
+                            RagWikiPage.id.in_([int(x) for x in core_page_ids]),
+                        )
+                    )
+                ).scalars().all()
+                image_page_ids: Dict[int, Set[int]] = defaultdict(set)
+                for page in page_rows:
+                    meta = page.generation_meta or {}
+                    image_sources = []
+                    if str(meta.get("sourceType") or "") == "image":
+                        image_sources.append(meta)
+                    image_sources.extend(
+                        item
+                        for item in (meta.get("sources") or [])
+                        if isinstance(item, dict) and str(item.get("sourceType") or "") == "image"
+                    )
+                    for source in image_sources:
+                        source_id = _safe_int(source.get("sourceId"))
+                        if source_id in image_node_ids:
+                            image_page_ids[source_id].add(int(page.id))
+                refs = (
+                    await db.execute(
+                        select(ContentReference).where(
+                            ContentReference.user_id == int(user_id),
+                            ContentReference.deleted == 0,
+                            ContentReference.target_type == "wiki_page",
+                            ContentReference.target_id.in_([int(x) for x in core_page_ids]),
+                        )
+                    )
+                ).scalars().all()
+                for ref in refs:
+                    asset_key = ""
+                    if ref.source_type == "document_image":
+                        asset_key = f"doc:{int(ref.source_id)}:{ref.source_sub_id or ''}"
+                    elif ref.source_type == "chat_image":
+                        asset_key = f"chat:{int(ref.source_id)}"
+                    if asset_key in image_id_by_asset_key:
+                        image_page_ids[image_id_by_asset_key[asset_key]].add(int(ref.target_id))
+                for image_id, page_ids in image_page_ids.items():
+                    image_node = image_node_ids.get(int(image_id))
+                    if not image_node:
+                        continue
+                    for page_id in page_ids:
+                        _add_edge(
+                            edges,
+                            seen_edges,
+                            source=image_node,
+                            target=_topic_id(page_id),
+                            kind="image_knowledge",
+                            label="图片知识点",
+                            evidence={"table": "rag_wiki_page / content_reference", "assetId": int(image_id), "pageId": int(page_id)},
+                        )
 
         # 笔记：ContentReference 和 note_kb_link 都是真实来源；
         # 被用户显式关联到资料夹的笔记即使还没有主题页，也要作为来源节点出现。
@@ -651,6 +743,13 @@ async def build_study_map(
         if str(edge.get("source") or "") in node_ids and str(edge.get("target") or "") in node_ids
     ]
     nodes, edges = _trim_to_limit(nodes, edges, seed_node_id=seed_node_id, limit=max(8, int(limit or MAX_NODES)))
+    degree_by_id: Dict[str, int] = defaultdict(int)
+    for edge in edges:
+        degree_by_id[str(edge.get("source") or "")] += 1
+        degree_by_id[str(edge.get("target") or "")] += 1
+    for node in nodes:
+        metrics = node.setdefault("metrics", {})
+        metrics["degree"] = max(int(metrics.get("degree") or 0), degree_by_id.get(str(node["id"]), 0))
 
     stats = {
         "topicCount": sum(1 for n in nodes if n["kind"] == "topic"),

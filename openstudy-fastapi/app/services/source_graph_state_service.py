@@ -8,15 +8,15 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content import ContentReference, RagImageAsset
 from app.models.note import Note
 from app.models.question import QuestionBank, QuestionMain
-from app.models.rag import DOC_VECTORIZED, RagDocument
+from app.models.rag import RagDocument
 from app.models.source_graph_state import SourceGraphState
 from app.models.wiki import RagWikiPage
 from app.services import note_kb_link_service, question_bank_link_service
@@ -83,9 +83,7 @@ async def _source_descriptors(db: AsyncSession, *, user_id: int, kb_id: int) -> 
         )
     ).scalars().all()
     for image in images:
-        # 文档/PDF 内部图片属于文档实体集，不能单独成为一个图片实体集。
-        if int(image.doc_id or 0) > 0:
-            continue
+        # 文档图片也可以成为一个独立图片实体集；只有真正有描述/OCR 文本的图片才处理。
         text = " ".join(
             str(item or "")
             for item in (image.caption, image.ocr_text, " ".join(image.keywords or []))
