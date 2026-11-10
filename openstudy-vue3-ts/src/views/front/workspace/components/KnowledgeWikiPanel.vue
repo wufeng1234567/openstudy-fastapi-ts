@@ -201,7 +201,7 @@
             </button>
           </template>
         </aside>
-        <div v-if="!adviceMode" class="kw-graph-hint"><span>点知识主题查看主题页，点来源节点查看资料/题库/笔记 · 右侧可开启规划建议</span></div>
+        <div v-if="!adviceMode" class="kw-graph-hint"><span>悬停/点击节点查看相关连线 · 点知识主题查看主题页，点来源节点查看资料/题库/笔记 · 右侧可开启规划建议</span></div>
       </div>
       <KnowledgeAdviceHost
         ref="adviceHostRef"
@@ -1041,6 +1041,10 @@ const mapNodes = computed(() => {
 })
 
 const mapEdges = computed(() => {
+  // 首屏不画线：只有悬停/选中某个节点，或处于学习路线时才显示相关连线。
+  // 这样 100+ 节点的资料夹不会一进来就因为几百条 SVG 线卡住。
+  const focusId = mapHoveredId.value || mapSelectedNodeId.value
+  if (!focusId && !routeActive.value) return []
   const positions = new Map(mapNodes.value.map((node: any) => [String(node.id), node]))
   const imageIds = new Set(
     allMapNodes.value
@@ -1082,7 +1086,11 @@ const mapEdges = computed(() => {
   for (const edge of edges) {
     if (!unique.has(edge.key)) unique.set(edge.key, edge)
   }
-  return [...unique.values()]
+  const visible = [...unique.values()]
+  if (focusId) {
+    return visible.filter((edge: any) => edge.source === focusId || edge.target === focusId)
+  }
+  return visible
 })
 
 const visibleLabelIds = computed(() => {
@@ -1512,6 +1520,7 @@ function onMapNodeLeave(node: any) {
 
 function isMapSelected(node: any) {
   if (mapSelectedNodeId.value) return String(node.id) === mapSelectedNodeId.value
+  if (mapSelectedPageId.value == null) return false
   return Number(node.pageId) === Number(mapSelectedPageId.value)
 }
 
