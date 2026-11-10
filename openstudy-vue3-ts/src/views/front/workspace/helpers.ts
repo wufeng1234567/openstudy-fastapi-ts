@@ -8,6 +8,21 @@ export type WorkspaceView = 'list' | 'shelf' | 'gallery' | 'wiki'
 
 export const WORKSPACE_VIEWS: WorkspaceView[] = ['list', 'shelf', 'gallery', 'wiki']
 
+export function readWorkspaceView(fromQuery: string, storageKey: string): WorkspaceView {
+  if ((WORKSPACE_VIEWS as readonly string[]).includes(fromQuery)) {
+    return fromQuery as WorkspaceView
+  }
+  try {
+    const saved = localStorage.getItem(storageKey) || ''
+    if ((WORKSPACE_VIEWS as readonly string[]).includes(saved)) {
+      return saved as WorkspaceView
+    }
+  } catch {
+    // localStorage 不可用时退回默认资料夹
+  }
+  return 'list'
+}
+
 export function documentTypeKey(doc: any): string {
   const ext =
     String(doc?.fileType || doc?.fileName || '')

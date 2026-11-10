@@ -1124,6 +1124,7 @@ import {
   documentStatusKey,
   documentTypeKey,
   facetText,
+  readWorkspaceView,
   reprocessPercent
 } from './helpers'
 
@@ -1326,23 +1327,9 @@ const WORKSPACE_VIEW_KEY = 'openstudy.workspace.viewMode'
 const WORKSPACE_KB_KEY = 'openstudy.workspace.activeKbId'
 const WORKSPACE_VIEWS = ['list', 'shelf', 'gallery', 'wiki'] as const
 
-function readWorkspaceView(): 'list' | 'shelf' | 'gallery' | 'wiki' {
-  const fromQuery = typeof route.query.view === 'string' ? route.query.view : ''
-  if ((WORKSPACE_VIEWS as readonly string[]).includes(fromQuery)) {
-    return fromQuery as 'list' | 'shelf' | 'gallery' | 'wiki'
-  }
-  try {
-    const saved = localStorage.getItem(WORKSPACE_VIEW_KEY) || ''
-    if ((WORKSPACE_VIEWS as readonly string[]).includes(saved)) {
-      return saved as 'list' | 'shelf' | 'gallery' | 'wiki'
-    }
-  } catch {
-    // localStorage 不可用时退回默认资料夹
-  }
-  return 'list'
-}
-
-const viewMode = ref<'list' | 'shelf' | 'gallery' | 'wiki'>(readWorkspaceView())
+const viewMode = ref<'list' | 'shelf' | 'gallery' | 'wiki'>(
+  readWorkspaceView(typeof route.query.view === 'string' ? route.query.view : '', WORKSPACE_VIEW_KEY)
+)
 const canTeleport = ref(false)
 const workspaceSearch = ref('')
 const workspaceFilterOpen = ref(false)
