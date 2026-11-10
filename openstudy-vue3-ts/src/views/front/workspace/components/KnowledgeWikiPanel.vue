@@ -17,7 +17,7 @@
       <div class="kw-context-actions">
         <div class="kw-switch">
           <button type="button" :class="{ 'is-active': view === 'pages' }" @click="view = 'pages'">主题页</button>
-          <button type="button" :class="{ 'is-active': view === 'map' }" :disabled="!activeKbId" @click="switchMap">知识图谱</button>
+          <button type="button" :class="{ 'is-active': view === 'map' }" :disabled="!activeKbId" @click="switchMap()">知识图谱</button>
         </div>
         <el-dropdown trigger="click" :disabled="!activeKbId || buildActive" @command="onBuildCommand">
           <button type="button" class="kw-toolbar-btn is-primary" :disabled="!activeKbId || buildActive">
@@ -2134,8 +2134,9 @@ async function reload() {
     Object.assign(stats, res.data?.stats || {})
     emit('stats', { total: pages.value.length })
     if (view.value === 'map') {
-      // 刷新后仍停留在知识图谱：页面数据回来后再拉一次图数据。
-      await switchMap()
+      // 刷新后仍停留在知识图谱：有旧图时保留当前视角，只更新数据；
+      // 只有第一次进入图谱才做首次 fit。
+      await switchMap(Boolean(mapGraph.value.nodes?.length) && mapReady.value)
     } else if (!pages.value.length) {
       view.value = 'pages'
     }
@@ -2435,15 +2436,17 @@ function fitMapView() {
   mapView.y = mapSize.height / 2 - ((minY + maxY) / 2) * scale
 }
 
-async function switchMap() {
+async function switchMap(preserveView = false) {
   if (!Number(props.activeKbId)) return
   view.value = 'map'
-  mapReady.value = false
-  resetMapNodeOffsets()
-  mapImageExpanded.value = false
-  mapView.x = 0
-  mapView.y = 0
-  mapView.scale = 1
+  if (!preserveView) {
+    mapReady.value = false
+    mapImageExpanded.value = false
+    resetMapNodeOffsets()
+    mapView.x = 0
+    mapView.y = 0
+    mapView.scale = 1
+  }
   try {
     const res: any = await getStudyMap({
       kbId: Number(props.activeKbId),
@@ -2480,15 +2483,16 @@ async function switchMap() {
       groups: raw.groups || []
     }
     await nextTick()
-    // 等两帧让右侧面板/画布尺寸稳定后再 fit，并在 ready 前隐藏 SVG，
-    // 避免首屏先以 scale=1 渲染、随后又自动缩放的闪动。
-    await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-    })
-    syncMapSize()
-    fitMapView()
+    if (!preserveView) {
+      // 等两帧让右侧面板/画布尺寸稳定后再 fit，并在 ready 前隐藏 SVG，
+      // 避免首屏先以 scale=1 渲染、随后又自动缩放的闪动。
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      })
+      syncMapSize()
+      fitMapView()
+    }
     mapReady.value = true
-    if (String(props.searchQuery || '').trim()) focusMapSearch()
     startMapAnimation()
   } catch {
     // 图谱失败时保持主题页入口，不影响阅读。
@@ -3122,8 +3126,8 @@ onBeforeUnmount(() => {
 .kw-page--graph .kw-map { flex: 1; min-height: 0; height: 100%; border: 0; border-radius: 0; background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.1) 1px, transparent 0), #fbfcfe; background-size: 20px 20px; }
 .kw-map.is-route-mode { background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.1) 1px, transparent 0), #fbfcfe; background-size: 20px 20px; }
 .kw-map:active { cursor: grabbing; }
-.kw-map__svg { width: 100%; height: 590px; opacity: 0; transition: opacity .12s ease; }
-.kw-map.is-map-ready .kw-map__svg { opacity: 1; }
+.kw-map__svg { width: 100%; height: 590px; opacity: 0; visibility: hidden; transition: opacity .12s ease; }
+.kw-map.is-map-ready .kw-map__svg { opacity: 1; visibility: visible; }
 .kw-page--graph .kw-map__svg { height: 100%; }
 .kw-map-purpose { position: absolute; z-index: 7; top: 14px; left: 16px; padding: 6px 9px; border: 1px solid rgba(15, 23, 42, 0.05); border-radius: 6px; color: #7d8596; background: rgba(255, 255, 255, 0.86); font-size: 11px; pointer-events: none; }
 .kw-map-hull { fill: #f1f3f7; fill-opacity: 0.72; stroke: #e5e8ef; stroke-width: 1; vector-effect: non-scaling-stroke; transition: fill 0.2s ease, stroke 0.2s ease; }
