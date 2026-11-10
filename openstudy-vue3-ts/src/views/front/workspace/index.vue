@@ -1128,6 +1128,7 @@ import {
 import { createTurndownService, htmlToEditorMarkdown, markdownToEditorHtml } from './editorMarkdown'
 import { computeOrganizeReport, countOrganizePlans, planStatusText, planStatusType } from './organizeHelpers'
 import { useImageInsertion } from './useImageInsertion'
+import { useWorkspaceNavigation } from './useWorkspaceNavigation'
 
 /* ===================== 状态 ===================== */
 
@@ -1509,6 +1510,22 @@ const {
 } = useImageInsertion({
   userId: () => userStore.id,
   onUsageChanged: () => loadAssetUsage()
+})
+
+const {
+  onGalleryUseImage,
+  onGalleryLocate,
+  onMapOpenDoc,
+  onGraphLocate,
+  onWikiAsk
+} = useWorkspaceNavigation({
+  kbs,
+  activeKb,
+  openQuestionPicker,
+  openNotePicker,
+  showAnatomy,
+  showHealth,
+  router
 })
 
 /* 试试 AI 怎么找 */
@@ -2398,15 +2415,6 @@ async function rollbackOrganizePreview() {
   }
 }
 
-function findDocRecord(docId: number) {
-  for (const kb of kbs.value) {
-    const found = (kb.files || []).find((doc: any) => Number(doc.docId) === Number(docId))
-    if (found) return found
-  }
-  const fromActive = (activeKb.value?.files || []).find((doc: any) => Number(doc.docId) === Number(docId))
-  return fromActive || null
-}
-
 function onGalleryStats(payload: { total?: number }) {
   galleryStats.total = Number(payload?.total || 0)
 }
@@ -2426,53 +2434,6 @@ function onWikiSearchSelected() {
     const input = document.querySelector<HTMLInputElement>('.kbp-global-search input')
     input?.blur()
   })
-}
-
-function onGalleryUseImage(img: any) {
-  if (!img) return
-  if (img.target === 'question') openQuestionPicker(img)
-  else openNotePicker(img)
-}
-
-function onGalleryLocate(payload: { docId: number; offset: number; targetText?: string }) {
-  const doc = findDocRecord(payload.docId)
-  if (!doc) {
-    ElMessage.warning('没有找到这张图对应的资料，可能已经被移动或删除')
-    return
-  }
-  showAnatomy(doc, { offset: payload.offset, targetText: payload.targetText || '' })
-}
-
-function onMapOpenDoc(payload: { docId: number; offset?: number; targetText?: string }) {
-  const doc = findDocRecord(payload.docId)
-  if (!doc) {
-    ElMessage.warning('没有找到这份资料，可能已经被移动或删除')
-    return
-  }
-  if (payload.offset != null) {
-    showAnatomy(doc, { offset: payload.offset, targetText: payload.targetText || '' })
-  } else {
-    showHealth(doc)
-  }
-}
-
-function onGraphLocate(payload: { docId: number; chunkId?: number; chunkIndex?: number }) {
-  const doc = findDocRecord(payload.docId)
-  if (!doc) {
-    ElMessage.warning('没有找到这条证据对应的资料，可能已经被移动或删除')
-    return
-  }
-  showAnatomy(doc, {
-    chunkId: payload.chunkId,
-    chunkIndex: payload.chunkIndex,
-    targetText: ''
-  })
-}
-
-function onWikiAsk(prompt: string) {
-  const text = String(prompt || '').trim()
-  if (!text) return
-  router.push({ path: '/front/agent/chat', state: { seedQuestion: text } })
 }
 
 function selectKb(kbId: number) {
