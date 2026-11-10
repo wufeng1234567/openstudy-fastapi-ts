@@ -1126,6 +1126,7 @@ import {
   reprocessPercent
 } from './helpers'
 import { createTurndownService, htmlToEditorMarkdown, markdownToEditorHtml } from './editorMarkdown'
+import { computeOrganizeReport, countOrganizePlans, planStatusText, planStatusType } from './organizeHelpers'
 import { useImageInsertion } from './useImageInsertion'
 
 /* ===================== 状态 ===================== */
@@ -1622,18 +1623,7 @@ const anatomyImages = computed(() =>
 )
 
 /** 整理报告 / 待确认队列：只统计整理计划，不要把普通上传中的文档算成“整理记录”。 */
-const organizeReport = computed(() => {
-  const plans = organizePlans.value || []
-  const pendingPlans = plans.filter((p: any) => p.status === 'ready')
-  const failedPlans = plans.filter((p: any) => p.status === 'failed')
-  return {
-    total: plans.length,
-    ready: plans.filter((p: any) => p.status === 'applied').length,
-    pending: pendingPlans.length,
-    failed: failedPlans.length,
-    pendingFiles: [...pendingPlans, ...failedPlans]
-  }
-})
+const organizeReport = computed(() => computeOrganizeReport(organizePlans.value))
 
 /** 当前资料夹的图片墙：把所有文档的 imageMap 摊平成资产卡 */
 const kbImages = computed(() => {
@@ -1987,25 +1977,7 @@ async function deleteOrganizeRecord(plan: any) {
 }
 
 function organizePlanCount(status: string) {
-  return organizePlans.value.filter((p) => p.status === status).length
-}
-
-function planStatusText(status: string) {
-  return ({
-    running: '进行中',
-    ready: '待确认',
-    applied: '已应用',
-    rejected: '未通过',
-    failed: '失败',
-    rolled_back: '已回退'
-  } as Record<string, string>)[status] || status
-}
-
-function planStatusType(status: string) {
-  if (status === 'applied') return 'success'
-  if (status === 'failed' || status === 'rejected') return 'danger'
-  if (status === 'ready') return 'warning'
-  return 'info'
+  return countOrganizePlans(organizePlans.value, status)
 }
 
 async function openOrganizePlan(plan: any) {
