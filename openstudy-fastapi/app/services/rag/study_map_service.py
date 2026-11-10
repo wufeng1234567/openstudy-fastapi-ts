@@ -61,6 +61,24 @@ def _safe_text(value: Any, limit: int = 160) -> str:
     return text if len(text) <= limit else f"{text[: limit - 1]}…"
 
 
+def _image_group_title(doc: Any, assets: Sequence[RagImageAsset]) -> tuple[str, str]:
+    """图片组节点用“图片内容/来源”命名，不只显示“N 张图”。"""
+    doc_name = _safe_text(getattr(doc, "file_name", "") or "", 80)
+    for asset in assets:
+        caption = _safe_text(
+            getattr(asset, "caption", "")
+            or getattr(asset, "ocr_text", "")
+            or " ".join(getattr(asset, "keywords", []) or []),
+            48,
+        )
+        if caption and caption not in {"图片", "截图", "image", "图片描述"}:
+            subtitle = f"{doc_name} · {len(assets)} 张配图" if doc_name else f"{len(assets)} 张配图"
+            return caption, subtitle
+    if doc_name:
+        return f"{doc_name} 配图", f"{len(assets)} 张配图"
+    return "资料配图", f"{len(assets)} 张配图"
+
+
 def _parse_source_types(value: Optional[Iterable[str] | str]) -> Set[str]:
     if value is None:
         return set(DEFAULT_SOURCE_TYPES)
@@ -530,17 +548,33 @@ async def build_study_map(
                 continue
             node_id = _image_id(doc_id)
             if node_id not in {str(n["id"]) for n in nodes}:
+                doc = doc_by_id.get(doc_id)
+                image_title, image_subtitle = _image_group_title(doc, assets)
+                image_summary = "；".join(
+                    [
+                        text
+                        for text in (
+                            _safe_text(asset.caption or asset.ocr_text, 80)
+                            for asset in assets[:3]
+                        )
+                        if text
+                    ]
+                ) or image_subtitle
                 nodes.append(
                     {
                         "id": node_id,
                         "kind": "image",
-                        "title": f"{len(assets)} 张图",
-                        "subtitle": "资料图片",
-                        "groupId": f"kb:{_safe_int(getattr(doc_by_id.get(doc_id), 'kb_id', 0))}",
+                        "title": image_title,
+                        "subtitle": image_subtitle,
+                        "groupId": f"kb:{_safe_int(getattr(doc, 'kb_id', 0))}",
                         "source": "image",
                         "ref": {"pageId": 0, "bankId": 0, "docId": int(doc_id), "noteId": 0, "assetKey": ""},
                         "metrics": {"degree": 1, "imageCount": len(assets)},
-                        "detail": {"captions": [_safe_text(asset.caption, 40) for asset in assets[:5]]},
+                        "detail": {
+                            "summary": image_summary,
+                            "captions": [_safe_text(asset.caption, 40) for asset in assets[:5]],
+                            "imageKinds": sorted({str(asset.kind or "image") for asset in assets}),
+                        },
                     }
                 )
             doc_node = (

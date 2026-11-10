@@ -926,11 +926,11 @@ const mapNodes = computed(() => {
   const usableWidth = Math.max(640, width - 230)
   const kindCenters: Record<string, { x: number; y: number }> = {
     topic: { x: usableWidth * 0.5, y: height * 0.5 },
-    document: { x: usableWidth * 0.15, y: height * 0.62 },
-    bank: { x: usableWidth * 0.85, y: height * 0.62 },
-    web: { x: usableWidth * 0.15, y: height * 0.2 },
-    note: { x: usableWidth * 0.5, y: height * 0.87 },
-    image: { x: usableWidth * 0.85, y: height * 0.2 }
+    document: { x: usableWidth * 0.14, y: height * 0.64 },
+    bank: { x: usableWidth * 0.86, y: height * 0.64 },
+    web: { x: usableWidth * 0.14, y: height * 0.15 },
+    note: { x: usableWidth * 0.5, y: height * 0.92 },
+    image: { x: usableWidth * 0.86, y: height * 0.15 }
   }
   const result: any[] = []
   visibleComponents.forEach((component, componentIndex) => {
@@ -943,9 +943,9 @@ const mapNodes = computed(() => {
     const center = kindCenters[component.kind] || fallbackCenter
     const radius = component.kind === 'topic'
       ? Math.min(240, 70 + Math.sqrt(members.length) * 22)
-      : Math.min(150, 54 + Math.sqrt(members.length) * 20)
+      : Math.min(130, 48 + Math.sqrt(members.length) * 16)
     const topicCols = component.kind === 'topic'
-      ? Math.max(4, Math.ceil(Math.sqrt(members.length * 1.1)))
+      ? Math.max(4, Math.ceil(Math.sqrt(members.length * 0.75)))
       : 0
     const topicRows = topicCols ? Math.ceil(members.length / topicCols) : 0
     const orbit = members.filter((node) => node !== hub)
@@ -1735,6 +1735,13 @@ const MAP_SIMULATION_NODE_LIMIT = 80
 function startMapAnimation() {
   stopMapAnimation()
   if (view.value !== 'map' || detailVisible.value || !mapNodes.value.length) return
+  // 六类实体集使用预先计算的稳定分区布局；初始力导向会让不同实体集互相挤压，
+  // 第一屏看起来像“几个图叠在一起”，因此分组图不再启动自动力导向。
+  if (mapComponents.value.components.length >= 2) {
+    mapSimAlpha = 0
+    mapSimNodes = []
+    return
+  }
   // 大图禁用初始力导向：几百个节点时 O(n²) 模拟会持续触发重绘，
   // 静态布局已经足够可读，优先保证拖拽/缩放的帧率。
   if (mapNodes.value.length > MAP_SIMULATION_NODE_LIMIT) {
