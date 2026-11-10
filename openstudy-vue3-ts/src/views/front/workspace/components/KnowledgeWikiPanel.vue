@@ -599,7 +599,7 @@ const mapGraph = ref<any>({ nodes: [], edges: [], groups: [] })
 const mapSize = reactive({ width: 1200, height: 760 })
 const mapReady = ref(false)
 const mapSwitching = ref(false)
-const MAP_VIEW_CACHE_PREFIX = 'openstudy_wiki_map_view:v2:'
+const MAP_VIEW_CACHE_PREFIX = 'openstudy_wiki_map_view:v3:'
 const mapLayoutScale = computed(() => Math.min(1.8, Math.max(1, Math.min(mapSize.width / 1200, mapSize.height / 760))))
 const mapViewBox = computed(() => `0 0 ${mapSize.width} ${mapSize.height}`)
 const mapView = reactive({ x: 0, y: 0, scale: 1 })
@@ -2412,6 +2412,17 @@ function onMapResize() {
   syncMapSize()
   fitMapView()
 }
+
+watch(mapCanvasRef, (element) => {
+  if (!element) return
+  // 直接以图谱视图刷新时，组件首次渲染的 ref 可能比 onMounted 的 switchMap 更早出现；
+  // 再等两帧量一次，确保默认 mapSize=1200×760 不会覆盖真实画布尺寸。
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (!mapCanvasRef.value) return
+    syncMapSize()
+    if (mapReady.value) fitMapView()
+  }))
+})
 
 function mapViewCacheKey() {
   return `${MAP_VIEW_CACHE_PREFIX}${Number(props.activeKbId || 0)}`
