@@ -956,8 +956,10 @@ const mapNodes = computed(() => {
     note: { x: usableWidth * 0.52, y: height * 0.94 },
     image: { x: usableWidth * 0.90, y: height * 0.15 }
   }
-  const result: any[] = []
-  visibleComponents.forEach((component, componentIndex) => {
+  const nodePadding = 28 * Math.min(1.35, layoutScale)
+  // 组间留白是硬间隔，不用“看起来差不多”；窗口小也至少保留 48px。
+  const groupGap = Math.max(96, 120 * layoutScale)
+  const groupLayouts = visibleComponents.map((component, componentIndex) => {
     const collapseImages = component.kind === 'image' && !mapImageExpanded.value && component.ids.length > 8
     const members = collapseImages
       ? [{
@@ -978,10 +980,7 @@ const mapNodes = computed(() => {
       x: 80 + ((componentIndex % 3) + 0.5) * Math.max(1, (usableWidth - 160) / 3),
       y: 80 + (Math.floor(componentIndex / 3) + 0.5) * Math.max(1, (height - 160) / Math.max(1, Math.ceil(visibleComponents.length / 3)))
     }
-    const center = kindCenters[component.kind] || fallbackCenter
-    const radius = (component.kind === 'topic'
-      ? Math.min(260, 72 + Math.sqrt(members.length) * 24)
-      : Math.min(170, 62 + Math.sqrt(members.length) * 22)) * Math.min(1.45, layoutScale)
+    const center = { ...(kindCenters[component.kind] || fallbackCenter) }
     const topicCols = component.kind === 'topic'
       ? Math.max(4, Math.ceil(Math.sqrt(members.length * 0.75)))
       : 0
@@ -990,6 +989,76 @@ const mapNodes = computed(() => {
       ? Math.ceil(Math.sqrt(members.length))
       : 0
     const sourceRows = sourceCols ? Math.ceil(members.length / sourceCols) : 0
+    const orbitRadius = (component.kind === 'topic'
+      ? Math.min(260, 72 + Math.sqrt(members.length) * 24)
+      : Math.min(170, 62 + Math.sqrt(members.length) * 22)) * Math.min(1.45, layoutScale)
+    const maxNodeRadius = component.kind === 'topic' ? 14 : 16
+    let halfWidth = maxNodeRadius + nodePadding
+    let halfHeight = maxNodeRadius + nodePadding
+    if (component.kind === 'topic' && topicCols) {
+      halfWidth = ((topicCols - 1) / 2) * topicSpacingX + maxNodeRadius + nodePadding
+      halfHeight = ((topicRows - 1) / 2) * topicSpacingY + maxNodeRadius + nodePadding
+    } else if (sourceCols) {
+      const sourceSpacing = 40 * layoutScale
+      halfWidth = ((sourceCols - 1) / 2) * sourceSpacing + maxNodeRadius + nodePadding
+      halfHeight = ((sourceRows - 1) / 2) * sourceSpacing + maxNodeRadius + nodePadding
+    } else if (members.length > 1) {
+      halfWidth = orbitRadius + maxNodeRadius + nodePadding
+      halfHeight = halfWidth
+    }
+    return {
+      component,
+      members,
+      hub,
+      center,
+      topicCols,
+      topicRows,
+      sourceCols,
+      sourceRows,
+      orbitRadius,
+      radius: Math.max(halfWidth, halfHeight)
+    }
+  })
+  // 组间分离：把每个实体集当成有半径的圆，用简单迭代把重叠的组推开。
+  // 这是实际几何计算，不再依赖某一组固定坐标，窗口变大/变小时组与组之间始终保留 gap。
+  for (let pass = 0; pass < 90; pass += 1) {
+    for (let i = 0; i < groupLayouts.length; i += 1) {
+      const a = groupLayouts[i]!
+      for (let j = i + 1; j < groupLayouts.length; j += 1) {
+        const b = groupLayouts[j]!
+        let dx = b.center.x - a.center.x
+        let dy = b.center.y - a.center.y
+        let distance = Math.hypot(dx, dy)
+        const minimum = a.radius + b.radius + groupGap
+        if (distance >= minimum) continue
+        if (distance < 0.01) {
+          dx = 1
+          dy = 0
+          distance = 1
+        }
+        const push = (minimum - distance) / 2
+        const ux = dx / distance
+        const uy = dy / distance
+        a.center.x -= ux * push
+        a.center.y -= uy * push
+        b.center.x += ux * push
+        b.center.y += uy * push
+      }
+    }
+    for (const layout of groupLayouts) {
+      layout.center.x = Math.min(
+        Math.max(layout.radius + 18, usableWidth - layout.radius - 18),
+        Math.max(layout.radius + 18, layout.center.x)
+      )
+      layout.center.y = Math.min(
+        Math.max(layout.radius + 18, height - layout.radius - 18),
+        Math.max(layout.radius + 18, layout.center.y)
+      )
+    }
+  }
+  const result: any[] = []
+  groupLayouts.forEach((layout) => {
+    const { component, members, hub, center, topicCols, topicRows, sourceCols, sourceRows, orbitRadius } = layout
     const orbit = members.filter((node) => node !== hub)
     const hubOnCenter = members.length > 1
     let orbitIndex = 0
@@ -1006,19 +1075,23 @@ const mapNodes = computed(() => {
       } else if (sourceCols) {
         const col = memberIndex % sourceCols
         const row = Math.floor(memberIndex / sourceCols)
-        const sourceSpacing = 34 * layoutScale
+        const sourceSpacing = 40 * layoutScale
         x = center.x + (col - (sourceCols - 1) / 2) * sourceSpacing
         y = center.y + (row - (sourceRows - 1) / 2) * sourceSpacing
       } else if (members.length > 1 && !(hubOnCenter && node === hub)) {
         const count = orbit.length
         const angle = -Math.PI / 2 + (Math.PI * 2 * orbitIndex) / Math.max(1, count)
         const jitter = Math.sin((Number(node.id) || orbitIndex + 1) * 12.9898) * 0.16
-        x = center.x + Math.cos(angle + jitter) * radius
-        y = center.y + Math.sin(angle + jitter) * radius
+        x = center.x + Math.cos(angle + jitter) * orbitRadius
+        y = center.y + Math.sin(angle + jitter) * orbitRadius
         orbitIndex += 1
       }
       const offset = mapNodeOffsets[String(node.id)]
-      const simulated = mapSimPositions[String(node.id)]
+      // 多实体集使用稳定的分区布局，禁止复用单组阶段产生的旧力导向坐标。
+      // 否则首次渲染和二次刷新时序不同，会把几组节点一起吸到旧坐标里。
+      const simulated = mapComponents.value.components.length < 2
+        ? mapSimPositions[String(node.id)]
+        : undefined
       const kind = normalizeEntityKind(node.kind || node.pageType)
       const offsetX = Number(offset?.x)
       const offsetY = Number(offset?.y)
@@ -1039,6 +1112,12 @@ const mapNodes = computed(() => {
   })
   return result
 })
+
+watch(
+  () => mapGraph.value,
+  () => resetMapNodeOffsets(),
+  { deep: false }
+)
 
 const mapEdges = computed(() => {
   // 首屏不画线：只有悬停/选中某个节点，或处于学习路线时才显示相关连线。
@@ -1986,7 +2065,7 @@ const mapHulls = computed(() => {
       label: component.label,
       labelX: minX - 6,
       labelY: minY - 24,
-      path: clusterOutline(points, 28 * Math.min(1.35, mapLayoutScale.value))
+      path: clusterOutline(points, 18 * Math.min(1.35, mapLayoutScale.value))
     })
   }
   return hulls
