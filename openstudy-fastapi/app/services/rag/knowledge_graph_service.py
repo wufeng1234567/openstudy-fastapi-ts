@@ -22,9 +22,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.knowledge_graph import RagGraphEntity, RagGraphRelation
 from app.models.rag import DOC_VECTORIZED, RagDocument, RagDocumentChunk
+from app.models.wiki import RagWikiPage, RagWikiPageLink
 from app.services.ai.base_client import ChatMessage, TextBlock
 from app.services.ai.db_config import chat_with_config
 from app.services.rag.hybrid_search import ChunkHit
+from app.services.rag.wiki_merge_service import apply_source_to_page
 
 ENTITY_TYPES = [
     "概念",
@@ -382,11 +384,57 @@ def _merge_unique(existing: Optional[list], new_values: Iterable[Any]) -> list:
     return out
 
 
+def _entity_merge_keys(row: RagGraphEntity) -> set[str]:
+    """实体归一键：标准名、已有别名、解释性后缀都参与，但按类型隔离。"""
+    entity_type = str(row.type or "").strip()
+    keys: set[str] = set()
+    candidates = [row.name, *(row.aliases or [])]
+    for value in candidates:
+        key = _canonical_key(value)
+        if len(key) >= 2:
+            keys.add(f"{entity_type}|{key}")
+    return keys
+
+
+def _connected_entity_groups(rows: Sequence[RagGraphEntity]) -> List[List[RagGraphEntity]]:
+    """并查集：通过共享名称/别名把同一类型的实体连成组。"""
+    by_id = {int(row.id): row for row in rows}
+    parent = {entity_id: entity_id for entity_id in by_id}
+
+    def find(value: int) -> int:
+        while parent[value] != value:
+            parent[value] = parent[parent[value]]
+            value = parent[value]
+        return value
+
+    def union(left: int, right: int) -> None:
+        root_left, root_right = find(left), find(right)
+        if root_left != root_right:
+            parent[root_right] = root_left
+
+    key_owner: Dict[str, int] = {}
+    for row in rows:
+        entity_id = int(row.id)
+        for key in _entity_merge_keys(row):
+            owner = key_owner.get(key)
+            if owner is None:
+                key_owner[key] = entity_id
+            else:
+                union(owner, entity_id)
+    grouped: Dict[int, List[RagGraphEntity]] = {}
+    for entity_id, row in by_id.items():
+        grouped.setdefault(find(entity_id), []).append(row)
+    return [group for group in grouped.values() if len(group) > 1]
+
+
 async def merge_duplicate_entities(db: AsyncSession, user_id: int, kb_id: int) -> int:
     """合并历史数据里的同义实体（如「智能体」与「智能体定义」）。
 
     合并时同时迁移关系的 source/target，若迁移后与已有关系重复，则合并
     chunk_ids/strength 后删除重复关系，保证不会出现悬空边。
+
+    别名归并只按「同类型」进行，避免把「模型（机器学习）」和「模型（思维）」误合并。
+    同时把主题页 `entity_ids` 中的旧实体 id 替换为 keeper，避免页面图出现两个同名节点。
     """
     rows = (
         await db.execute(
@@ -396,13 +444,24 @@ async def merge_duplicate_entities(db: AsyncSession, user_id: int, kb_id: int) -
             )
         )
     ).scalars().all()
-    groups: Dict[str, List[RagGraphEntity]] = {}
-    for row in rows:
-        groups.setdefault(_canonical_key(row.name), []).append(row)
+    groups = _connected_entity_groups(rows)
     merged_count = 0
-    for key, group in groups.items():
-        if len(group) < 2:
-            continue
+    pages = (
+        await db.execute(
+            select(RagWikiPage).where(
+                RagWikiPage.user_id == int(user_id),
+                RagWikiPage.kb_id == int(kb_id),
+            )
+        )
+    ).scalars().all()
+    pages_by_entity: Dict[int, RagWikiPage] = {}
+    for page in pages:
+        for entity_id in page.entity_ids or []:
+            try:
+                pages_by_entity[int(entity_id)] = page
+            except (TypeError, ValueError):
+                continue
+    for group in groups:
         group.sort(key=lambda item: (len(_norm_name(item.name)), -int(item.mention_count or 0)))
         keeper = group[0]
         for duplicate in group[1:]:
@@ -410,7 +469,10 @@ async def merge_duplicate_entities(db: AsyncSession, user_id: int, kb_id: int) -
                 continue
             keeper.doc_ids = _merge_unique(keeper.doc_ids, duplicate.doc_ids or [])
             keeper.chunk_ids = _merge_unique(keeper.chunk_ids, duplicate.chunk_ids or [])
-            keeper.aliases = _merge_unique(keeper.aliases, duplicate.aliases or [])
+            keeper.aliases = _merge_unique(
+                keeper.aliases,
+                [duplicate.name, *(duplicate.aliases or [])],
+            )
             keeper.mention_count = int(keeper.mention_count or 0) + int(duplicate.mention_count or 0)
             if not keeper.description or len(str(duplicate.description or "")) > len(str(keeper.description or "")):
                 keeper.description = duplicate.description or keeper.description
@@ -454,6 +516,72 @@ async def merge_duplicate_entities(db: AsyncSession, user_id: int, kb_id: int) -
                 else:
                     relation.source_id = new_source
                     relation.target_id = new_target
+            # 迁移主题页上的实体 id；已存在的同一主题页只保留 keeper。
+            for page in pages:
+                entity_ids = [int(item) for item in (page.entity_ids or []) if str(item).isdigit()]
+                if int(duplicate.id) not in entity_ids:
+                    continue
+                entity_ids = [int(keeper.id) if value == int(duplicate.id) else value for value in entity_ids]
+                page.entity_ids = sorted(set(entity_ids))
+            duplicate_page = pages_by_entity.get(int(duplicate.id))
+            keeper_page = pages_by_entity.get(int(keeper.id))
+            if (
+                duplicate_page
+                and keeper_page
+                and int(duplicate_page.id) != int(keeper_page.id)
+                and str(keeper_page.generated_by or "") not in {"manual", "agent"}
+            ):
+                meta = duplicate_page.generation_meta or {}
+                sources = meta.get("sources") if isinstance(meta.get("sources"), list) else []
+                if not sources and meta.get("sourceType"):
+                    sources = [
+                        {
+                            "sourceType": meta.get("sourceType"),
+                            "sourceId": meta.get("sourceId") or 0,
+                            "sourceName": meta.get("sourceName") or "",
+                        }
+                    ]
+                if not sources:
+                    sources = [{"sourceType": "", "sourceId": 0, "sourceName": ""}]
+                for source in sources:
+                    apply_source_to_page(
+                        keeper_page,
+                        title=str(duplicate_page.title or keeper_page.title),
+                        page_type=str(duplicate_page.page_type or keeper_page.page_type or "concept"),
+                        summary=str(duplicate_page.summary or ""),
+                        sections=list(duplicate_page.sections or []),
+                        source_refs=list(duplicate_page.source_refs or []),
+                        source_chunk_ids=list(duplicate_page.source_chunk_ids or []),
+                        entity_ids=[int(keeper.id)],
+                        source_type=str(source.get("sourceType") or ""),
+                        source_id=int(source.get("sourceId") or 0),
+                        source_name=str(source.get("sourceName") or ""),
+                    )
+                duplicate_page.status = "merged"
+                duplicate_page.merged_into_page_id = int(keeper_page.id)
+                duplicate_page.update_time = datetime.now()
+                links = (
+                    await db.execute(
+                        select(RagWikiPageLink).where(
+                            RagWikiPageLink.user_id == int(user_id),
+                            RagWikiPageLink.kb_id == int(kb_id),
+                            or_(
+                                RagWikiPageLink.from_page_id == int(duplicate_page.id),
+                                RagWikiPageLink.to_page_id == int(duplicate_page.id),
+                            ),
+                        )
+                    )
+                ).scalars().all()
+                for link in links:
+                    if int(link.from_page_id) == int(duplicate_page.id):
+                        link.from_page_id = int(keeper_page.id)
+                    if int(link.to_page_id) == int(duplicate_page.id):
+                        link.to_page_id = int(keeper_page.id)
+                pages_by_entity.pop(int(duplicate.id), None)
+                pages_by_entity[int(keeper.id)] = keeper_page
+            elif duplicate_page:
+                pages_by_entity.pop(int(duplicate.id), None)
+                pages_by_entity[int(keeper.id)] = duplicate_page
             await db.delete(duplicate)
             merged_count += 1
         keeper.normalized_name = _norm_name(keeper.name)

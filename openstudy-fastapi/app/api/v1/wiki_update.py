@@ -126,7 +126,14 @@ async def _run_incremental_sources(job_id: int, user_id: int, kb_id: int, states
     await asyncio.gather(*(process(state) for state in states))
 
 
-async def _mark_source_pages_stale(db: AsyncSession, *, user_id: int, kb_id: int, source_id: int) -> int:
+async def _mark_source_pages_stale(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    kb_id: int,
+    source_id: int,
+    source_type: str = "",
+) -> int:
     pages = (
         await db.execute(
             select(RagWikiPage).where(
@@ -140,7 +147,17 @@ async def _mark_source_pages_stale(db: AsyncSession, *, user_id: int, kb_id: int
         if str(page.generated_by or "") in {"manual", "agent"}:
             continue
         doc_ids = [int(item) for item in (page.source_doc_ids or []) if str(item).isdigit()]
-        if int(source_id) in doc_ids:
+        meta = page.generation_meta or {}
+        meta_matches = (
+            str(meta.get("sourceType") or "") == str(source_type or "")
+            and int(meta.get("sourceId") or 0) == int(source_id)
+        ) or any(
+            str(item.get("sourceType") or "") == str(source_type or "")
+            and int(item.get("sourceId") or 0) == int(source_id)
+            for item in (meta.get("sources") or [])
+            if isinstance(item, dict)
+        )
+        if int(source_id) in doc_ids or meta_matches:
             page.status = "stale"
             touched += 1
     if touched:
@@ -201,12 +218,10 @@ async def build_wiki_selective(
     db: AsyncSession = Depends(get_db),
 ):
     source_type = str(data.sourceType or "").strip().lower()
-    if source_type not in {"document", "image", "bank", "web"}:
-        return error("sourceType 只支持 document / image / bank / web")
+    if source_type not in {"document", "image", "bank", "web", "note"}:
+        return error("sourceType 只支持 document / image / bank / web / note")
     if source_type == "bank":
         # 题库没有 wiki 页；按题目块抽取知识点/实体关系，供知识图谱使用。
-        from app.services.rag import source_graph_service
-
         if int(data.sourceId or 0) <= 0:
             return error("请选择一个具体题库")
         try:
@@ -230,6 +245,37 @@ async def build_wiki_selective(
             )
         except Exception as exc:  # noqa: BLE001
             return error(f"题库知识点抽取失败：{exc}")
+    if source_type == "note":
+        from app.models.note import Note
+
+        if int(data.sourceId or 0) <= 0:
+            return error("请选择一个具体笔记")
+        note = await db.get(Note, int(data.sourceId))
+        if not note or int(note.user_id or 0) != _uid(current_user) or str(note.del_flag or "0") != "0":
+            return error("笔记不存在或不属于当前用户")
+        try:
+            text = await source_graph_state_service.source_text(
+                db, source_type="note", source_id=int(note.note_id)
+            )
+            if not text.strip():
+                return error("笔记正文为空，无法抽取知识点")
+            stats = await source_graph_service.sync_text_source(
+                db,
+                user_id=_uid(current_user),
+                kb_id=int(data.kbId or 0),
+                source_type="note",
+                source_id=int(note.note_id),
+                source_name=str(note.title or "笔记"),
+                text=text,
+            )
+            await db.commit()
+            return success(
+                {"mode": "note", "stats": stats},
+                f"笔记知识点已同步：{stats.get('entities', 0)} 个知识点、{stats.get('pages', 0)} 个主题页",
+            )
+        except Exception as exc:  # noqa: BLE001
+            await db.rollback()
+            return error(f"笔记知识点抽取失败：{exc}")
     if int(data.sourceId or 0) <= 0:
         return error("请选择一个具体来源")
     try:
@@ -238,6 +284,7 @@ async def build_wiki_selective(
             user_id=_uid(current_user),
             kb_id=int(data.kbId or 0),
             source_id=int(data.sourceId),
+            source_type=source_type,
         )
         from app.services.rag.wiki_build_job_service import create_build_job, run_build_job
 

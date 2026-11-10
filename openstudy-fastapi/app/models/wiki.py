@@ -70,6 +70,8 @@ class RagWikiPage(Base):
 
     #: draft / ready / stale / failed
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft")
+    #: 同义实体合并后，旧页面保留 redirect，避免学习记录/题源锚点/分享链接断链。
+    merged_into_page_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     generated_by: Mapped[str] = mapped_column(String(80), nullable=False, default="")
     generation_meta: Mapped[Optional[dict]] = mapped_column(JSON)

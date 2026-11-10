@@ -9,8 +9,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.knowledge_graph import RagGraphEntity, RagGraphRelation
 from app.models.wiki import RagWikiPage, RagWikiPageLink
 from app.services import source_entity_service
+from app.services.rag.wiki_merge_service import apply_source_to_page
 
 
 def _norm(value: Any) -> str:
@@ -144,7 +144,16 @@ async def _sync_entities(
             continue
         summary = _clean(entity.description, 600) or f"来自{source_name}的知识点"
         section_body = summary
-        sections = [{"heading": "核心知识点", "body": section_body, "sourceChunkIds": []}]
+        sections = [
+            {
+                "heading": "核心知识点",
+                "body": section_body,
+                "sourceChunkIds": [],
+                "sourceType": source_type,
+                "sourceId": int(source_id),
+                "sourceName": source_name,
+            }
+        ]
         if page is None:
             page = RagWikiPage(
                 user_id=int(user_id),
@@ -152,27 +161,26 @@ async def _sync_entities(
                 title=title,
                 normalized_title=normalized_title,
                 page_type="concept",
-                summary=summary,
-                content_md=f"## 核心知识点\n\n{section_body}\n",
-                sections=sections,
-                source_refs=[],
-                source_doc_ids=[],
-                source_chunk_ids=[],
-                entity_ids=[int(entity.id)],
-                status="ready",
                 version=1,
                 generated_by=f"source:{source_type}",
-                generation_meta={"sourceType": source_type, "sourceId": int(source_id), "sourceName": source_name},
             )
             db.add(page)
             await db.flush()
-        else:
-            page.summary = summary
-            page.content_md = f"## 核心知识点\n\n{section_body}\n"
-            page.sections = sections
-            page.entity_ids = list({*(page.entity_ids or []), int(entity.id)})
-            page.status = "ready"
-            page.update_time = datetime.now()
+        apply_source_to_page(
+            page,
+            title=title,
+            page_type="concept",
+            summary=summary,
+            sections=sections,
+            source_refs=[],
+            source_chunk_ids=[],
+            entity_ids=[int(entity.id)],
+            source_type=source_type,
+            source_id=int(source_id),
+            source_name=source_name,
+        )
+        if not str(page.generated_by or ""):
+            page.generated_by = f"source:{source_type}"
         page_by_name[name] = page
 
     # 页面关系来自真实抽取关系，不伪造。

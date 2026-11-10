@@ -20,7 +20,7 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content import ContentReference, RagImageAsset
@@ -28,7 +28,7 @@ from app.models.note import Note
 from app.models.rag import DOC_PARSED, DOC_VECTORIZED, RagDocument
 from app.models.wiki import RagWikiPage
 from app.services.rag.graph_contract import stable_edge_id
-from app.services import question_bank_link_service
+from app.services import note_kb_link_service, question_bank_link_service
 from app.services.rag import study_graph_service
 
 SOURCE_TYPES = ("wiki", "bank", "document", "web", "note", "image")
@@ -98,12 +98,12 @@ def _image_id(doc_id: Any) -> str:
 
 def _build_groups(nodes: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     specs = [
-        ("group:wiki", "topic", "知识百科"),
+        ("group:wiki", "topic", "知识主题"),
         ("group:bank", "bank", "题库"),
-        ("group:document", "document", "文档"),
+        ("group:document", "document", "资料"),
         ("group:web", "web", "网站"),
-        ("group:image", "image", "图片"),
         ("group:note", "note", "笔记"),
+        ("group:image", "image", "图片"),
     ]
     groups: List[Dict[str, Any]] = []
     for group_id, kind, title in specs:
@@ -408,6 +408,7 @@ async def build_study_map(
                 "detail": {
                     "summary": str(raw.get("summary") or ""),
                     "pageType": str(raw.get("pageType") or ""),
+                    "aliases": list(raw.get("aliases") or []),
                     "docIds": list(raw.get("docIds") or []),
                     "learning": raw.get("learning") or {},
                 },
@@ -557,7 +558,8 @@ async def build_study_map(
                 evidence={"table": "rag_image_asset", "docId": doc_id},
             )
 
-        # 笔记：只放有真实 ContentReference 的笔记
+        # 笔记：ContentReference 和 note_kb_link 都是真实来源；
+        # 被用户显式关联到资料夹的笔记即使还没有主题页，也要作为来源节点出现。
         if "note" in wanted:
             notes = await _load_notes(db, int(user_id))
             note_by_id = {int(note.note_id): note for note in notes}
@@ -570,10 +572,17 @@ async def build_study_map(
                         note_links[note_id].add(("doc", doc_id))
                     if page_id:
                         note_links[note_id].add(("topic", page_id))
-            for note_id, links in note_links.items():
+            linked_note_ids = set(
+                await note_kb_link_service.linked_note_ids(
+                    db, user_id=int(user_id), kb_id=int(kb_id)
+                )
+            )
+            all_note_ids = sorted(set(note_links) | linked_note_ids)
+            for note_id in all_note_ids:
                 note = note_by_id.get(note_id)
                 if not note:
                     continue
+                links = note_links.get(note_id, set())
                 node_id = _note_id(note_id)
                 nodes.append(
                     {
@@ -626,7 +635,7 @@ async def build_study_map(
     )
     groups = _build_groups(nodes)
     source_stats = [
-        {"type": "wiki", "label": "知识百科", "count": stats["topicCount"]},
+        {"type": "wiki", "label": "知识主题", "count": stats["topicCount"]},
         {"type": "bank", "label": "题库", "count": stats["bankCount"]},
         {"type": "document", "label": "资料", "count": stats["documentCount"]},
         {"type": "web", "label": "网页", "count": stats["webCount"]},

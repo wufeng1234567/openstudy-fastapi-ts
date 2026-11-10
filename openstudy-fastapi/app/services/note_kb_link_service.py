@@ -125,6 +125,19 @@ async def note_text(db: AsyncSession, *, user_id: int, note_id: int) -> str:
     return "\n".join(str(item or "") for item in (note.title, note.tags, note.markdown_content, note.content))
 
 
+async def note_title(db: AsyncSession, *, user_id: int, note_id: int) -> str:
+    note = (
+        await db.execute(
+            select(Note.title).where(
+                Note.note_id == int(note_id),
+                Note.user_id == int(user_id),
+                Note.del_flag == "0",
+            )
+        )
+    ).scalar_one_or_none()
+    return str(note or "笔记")
+
+
 __all__ = [
     "linked_note_ids",
     "list_linked_notes",
@@ -132,4 +145,5 @@ __all__ = [
     "link_note",
     "unlink_note",
     "note_text",
+    "note_title",
 ]

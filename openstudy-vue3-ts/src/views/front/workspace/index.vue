@@ -73,7 +73,7 @@
             v-model="workspaceSearch"
             class="kbp-global-search"
             :placeholder="workspaceSearchPlaceholder"
-            :show-filter="viewMode !== 'wiki'"
+            :show-filter="true"
             :filter-open="workspaceFilterOpen"
             :filter-active="workspaceFilterActive"
             @toggle-filter="toggleWorkspaceFilter"
@@ -275,6 +275,10 @@
                       <OsIcon name="database" :size="14" />
                       从题库导入
                     </el-dropdown-item>
+                    <el-dropdown-item command="note" :disabled="noteImporting">
+                      <OsIcon name="file-text" :size="14" />
+                      {{ noteImporting ? '导入中…' : '导入笔记' }}
+                    </el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -311,6 +315,23 @@
                   </div>
                   <button type="button" class="kbp-linked-bank__knowledge" @click="openBankKnowledge(bank)">查看知识点</button>
                   <button type="button" class="kbp-linked-bank__remove" @click="removeLinkedBank(bank)">取消关联</button>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="linkedNotes.length" class="kbp-linked-banks kbp-linked-notes">
+              <div class="kbp-linked-banks__head">
+                <span class="kbp-linked-banks__label"><OsIcon name="file-text" :size="14" /> 已关联笔记</span>
+                <span class="kbp-linked-banks__sub">笔记不复制，只做逻辑关联</span>
+              </div>
+              <div class="kbp-linked-bank-list">
+                <div v-for="note in linkedNotes" :key="note.noteId" class="kbp-linked-bank">
+                  <el-tag size="small" type="info" effect="plain">笔记</el-tag>
+                  <div class="kbp-linked-bank__main">
+                    <b>{{ note.title || '未命名笔记' }}</b>
+                    <span>{{ note.summary || '暂无摘要' }}</span>
+                  </div>
+                  <button type="button" class="kbp-linked-bank__remove" @click="unlinkLinkedNote(note)">取消关联</button>
                 </div>
               </div>
             </div>
@@ -415,6 +436,9 @@
                         <el-dropdown-item command="bank">
                           <OsIcon name="database" :size="14" /> 从题库导入
                         </el-dropdown-item>
+                        <el-dropdown-item command="note">
+                          <OsIcon name="file-text" :size="14" /> 导入笔记
+                        </el-dropdown-item>
                       </el-dropdown-menu>
                     </template>
                   </el-dropdown>
@@ -498,10 +522,13 @@
       :search-query="workspaceSearch"
       :search-submit-key="wikiSearchSubmitKey"
       :initial-page-id="wikiInitialPageId"
+      :filters="workspaceFilters"
+      :refresh-key="wikiRefreshKey"
       @stats="onMapStats"
       @locate="onGraphLocate"
       @ask="onWikiAsk"
       @search-selected="onWikiSearchSelected"
+      @open-source="onWikiOpenSource"
     />
 
     <!-- 全页空态：一个知识库都没有时，用一张完整引导替代整个两栏区 -->
@@ -926,6 +953,13 @@
       </template>
     </el-dialog>
 
+    <NoteImportDialog
+      v-model="noteImportVisible"
+      :kb-id="Number(activeKb?.kbId || 0)"
+      @imported="onNoteImported"
+      @busy="noteImporting = $event"
+    />
+
     <el-dialog v-model="bankKnowledgeVisible" :title="`题库知识点 · ${bankKnowledgeTitle}`" width="720px" append-to-body>
       <div v-loading="bankKnowledgeLoading" class="kbp-bank-knowledge">
         <p v-if="bankKnowledge.summary" class="kbp-bank-knowledge__summary">{{ bankKnowledge.summary }}</p>
@@ -1023,9 +1057,11 @@ import WorkspaceSidebar from './components/WorkspaceSidebar.vue'
 import VersionHistoryDialog from './components/VersionHistoryDialog.vue'
 import ShareKnowledgeDialog from './components/ShareKnowledgeDialog.vue'
 import ReceiveKnowledgeDialog from './components/ReceiveKnowledgeDialog.vue'
+import NoteImportDialog from './components/NoteImportDialog.vue'
 import { listQuestionMain, getQuestionMain, updateQuestionMain } from '@/api/questionMain/questionMain'
 import { listMyQuestionBank } from '@/api/questionBank/questionBank'
 import { listKbQuestionBanks, linkKbQuestionBank, unlinkKbQuestionBank, getKbQuestionBankKnowledge } from '@/api/ai/questionBankLink'
+import { listKbNotes, unlinkKbNote } from '@/api/ai/noteKbLink'
 import { listNote, getNote, updateNote } from '@/api/notes/note'
 import useUserStore from '@/store/modules/user'
 import useTopbarStore from '@/store/modules/topbar'
@@ -1212,6 +1248,7 @@ const workspaceFilters = reactive<Record<string, any>>({})
 const galleryStats = reactive({ total: 0 })
 const mapStats = reactive({ total: 0 })
 const wikiSearchSubmitKey = ref(0)
+const wikiRefreshKey = ref(0)
 const workspaceTabs = [
   { key: 'list' as const, label: '资料夹', icon: 'folder' },
   { key: 'shelf' as const, label: '书架', icon: 'book-open' },
@@ -1220,7 +1257,7 @@ const workspaceTabs = [
 ]
 const workspaceSearchPlaceholder = computed(() => {
   if (viewMode.value === 'gallery') return '搜索图片描述或文字…'
-  if (viewMode.value === 'wiki') return '搜索主题或概念…'
+  if (viewMode.value === 'wiki') return '搜索主题、资料、题库或笔记…'
   if (viewMode.value === 'shelf') return '搜索资料…'
   return '搜索资料夹或资料…'
 })
@@ -1232,7 +1269,7 @@ const workspaceCountLabel = computed(() => {
 })
 const workspaceFilterTitle = computed(() => {
   if (viewMode.value === 'gallery') return '图片筛选'
-  if (viewMode.value === 'wiki') return '主题筛选'
+  if (viewMode.value === 'wiki') return '知识筛选'
   return '资料筛选'
 })
 
@@ -1242,6 +1279,9 @@ const workspaceFilterDefault = computed(() => {
   }
   if (viewMode.value === 'gallery') {
     return { kind: [], descriptionStatus: [] }
+  }
+  if (viewMode.value === 'wiki') {
+    return { sourceType: [], pageType: [], learning: [] }
   }
   return {}
 })
@@ -1274,7 +1314,45 @@ const workspaceFilterGroups = computed(() => {
     ]
   }
   if (viewMode.value === 'wiki') {
-    return []
+    return [
+      {
+        key: 'sourceType',
+        label: '实体集类型',
+        type: 'checkbox',
+        options: [
+          { value: 'topic', label: '知识主题' },
+          { value: 'bank', label: '题库' },
+          { value: 'document', label: '资料' },
+          { value: 'web', label: '网页' },
+          { value: 'note', label: '笔记' },
+          { value: 'image', label: '图片' }
+        ]
+      },
+      {
+        key: 'pageType',
+        label: '主题页类型',
+        type: 'checkbox',
+        options: [
+          { value: 'summary', label: '摘要' },
+          { value: 'entity', label: '实体' },
+          { value: 'concept', label: '概念' },
+          { value: 'synthesis', label: '综合' },
+          { value: 'comparison', label: '对比' },
+          { value: 'overview', label: '总览' }
+        ]
+      },
+      {
+        key: 'learning',
+        label: '学习状态',
+        type: 'checkbox',
+        options: [
+          { value: 'unread', label: '未学' },
+          { value: 'reading', label: '已读' },
+          { value: 'practicing', label: '练习中' },
+          { value: 'mastered', label: '已掌握' }
+        ]
+      }
+    ]
   }
   return [
     {
@@ -1414,8 +1492,13 @@ watch(activeKbId, (kbId) => {
   } catch {
     // 忽略存储失败
   }
-  if (kbId) void loadLinkedBanks()
-  else linkedBanks.value = []
+  if (kbId) {
+    void loadLinkedBanks()
+    void loadLinkedNotes()
+  } else {
+    linkedBanks.value = []
+    linkedNotes.value = []
+  }
 })
 const standaloneImages = ref<any[]>([])
 const assetUsage = ref<Record<string, number>>({})
@@ -1452,6 +1535,7 @@ const {
 })
 
 const {
+  findDocRecord,
   onGalleryUseImage,
   onGalleryLocate,
   onMapOpenDoc,
@@ -1475,6 +1559,31 @@ const {
   workspaceSearch,
   wikiSearchSubmitKey
 })
+
+function onWikiOpenSource(payload: { kind: string; id: number; title?: string }) {
+  const kind = String(payload?.kind || '')
+  const id = Number(payload?.id || 0)
+  if (!id) return
+  if (kind === 'document' || kind === 'web') {
+    const doc = findDocRecord(id)
+    if (doc) showAnatomy(doc)
+    else ElMessage.warning('没有找到这份资料，可能已经被移动或删除')
+    return
+  }
+  if (kind === 'bank') {
+    const bank = linkedBanks.value.find((item: any) => Number(item.bankId || item.id) === id)
+    openBankKnowledge(bank || { bankId: id, bankName: payload.title || '题库' })
+    return
+  }
+  if (kind === 'note') {
+    router.push(`/front/notes/detail/${id}`)
+    return
+  }
+  if (kind === 'image') {
+    viewMode.value = 'gallery'
+    return
+  }
+}
 
 /* 试试 AI 怎么找 */
 const tryQuery = ref('')
@@ -1779,6 +1888,9 @@ const bankImportKeyword = ref('')
 const bankImportAvailable = ref<any[]>([])
 const linkedBanks = ref<any[]>([])
 const bankImportLoadingId = ref(0)
+const noteImportVisible = ref(false)
+const noteImporting = ref(false)
+const linkedNotes = ref<any[]>([])
 const bankKnowledgeVisible = ref(false)
 const bankKnowledgeLoading = ref(false)
 const bankKnowledgeTitle = ref('')
@@ -1832,7 +1944,7 @@ async function load(keepActive = true) {
       )
       selectedDocIds.value = selectedDocIds.value.filter((id) => aliveIds.has(id))
       await applyJumpQuery()
-      await loadLinkedBanks()
+      await Promise.all([loadLinkedBanks(), loadLinkedNotes()])
     } else {
       loadFailed.value = true
     }
@@ -2544,6 +2656,7 @@ function onUploadCommand(command: string) {
   else if (command === 'text') openTextImport()
   else if (command === 'url') openWebImport()
   else if (command === 'bank') openBankImport()
+  else if (command === 'note') openNoteImport()
 }
 
 async function onFilesPicked(e: Event) {
@@ -3188,6 +3301,57 @@ async function loadLinkedBanks() {
     if (res.code === 200) linkedBanks.value = res.data?.linked || []
   } catch {
     linkedBanks.value = []
+  }
+}
+
+async function loadLinkedNotes() {
+  const kb = activeKb.value
+  if (!kb || !Number(kb.kbId)) {
+    linkedNotes.value = []
+    return
+  }
+  try {
+    const res: any = await listKbNotes(Number(kb.kbId))
+    if (res.code === 200) linkedNotes.value = res.data?.linked || []
+  } catch {
+    linkedNotes.value = []
+  }
+}
+
+function openNoteImport() {
+  if (!activeKb.value || !Number(activeKb.value.kbId)) return
+  noteImportVisible.value = true
+}
+
+function onNoteImported() {
+  noteImporting.value = false
+  void loadLinkedNotes()
+  wikiRefreshKey.value += 1
+}
+
+async function unlinkLinkedNote(note: any) {
+  const kb = activeKb.value
+  const noteId = Number(note?.noteId || note?.id || 0)
+  if (!kb || !noteId) return
+  try {
+    await ElMessageBox.confirm(`确定取消关联笔记「${note.title || '未命名笔记'}」吗？`, '取消关联', {
+      confirmButtonText: '取消关联',
+      cancelButtonText: '保留',
+      type: 'warning'
+    })
+  } catch {
+    return
+  }
+  try {
+    const res: any = await unlinkKbNote(Number(kb.kbId), noteId)
+    if (res.code === 200) {
+      ElMessage.success('已取消关联')
+      await loadLinkedNotes()
+    } else {
+      ElMessage.error(res.msg || '取消关联失败')
+    }
+  } catch (error: any) {
+    ElMessage.error('取消关联失败：' + (error?.message || error))
   }
 }
 

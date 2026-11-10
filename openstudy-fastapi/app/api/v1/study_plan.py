@@ -116,7 +116,7 @@ async def get_study_map(
     sourceTypes: str = Query("wiki,bank"),
     seedNodeId: str = Query(""),
     depth: int = Query(2, ge=1, le=3),
-    limit: int = Query(80, ge=8, le=120),
+    limit: int = Query(120, ge=8, le=500),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

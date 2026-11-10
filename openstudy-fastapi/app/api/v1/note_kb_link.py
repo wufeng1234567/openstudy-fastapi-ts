@@ -33,13 +33,16 @@ async def _extract_note_knowledge(user_id: int, kb_id: int, note_id: int) -> Non
             text = await note_kb_link_service.note_text(db, user_id=int(user_id), note_id=int(note_id))
             if not text.strip():
                 return
+            title = await note_kb_link_service.note_title(
+                db, user_id=int(user_id), note_id=int(note_id)
+            )
             await source_graph_service.sync_text_source(
                 db,
                 user_id=int(user_id),
                 kb_id=int(kb_id),
                 source_type="note",
                 source_id=int(note_id),
-                source_name="笔记",
+                source_name=title or "笔记",
                 text=text,
             )
             await db.commit()

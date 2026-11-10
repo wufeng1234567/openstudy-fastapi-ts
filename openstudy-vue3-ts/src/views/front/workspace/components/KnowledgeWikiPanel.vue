@@ -1,15 +1,15 @@
 <template>
-  <section class="kw-page" :class="{ 'kw-page--graph': view === 'map' || view === 'study' }">
+  <section class="kw-page" :class="{ 'kw-page--graph': view === 'map' }">
     <Teleport to="#workspace-wiki-search-dropdown">
-      <div v-if="(view === 'map' || view === 'study') && graphSearchSuggestions.length" class="kw-graph-search-dropdown">
+      <div v-if="view === 'map' && graphSearchSuggestions.length" class="kw-graph-search-dropdown">
         <button v-for="item in graphSearchSuggestions" :key="item.pageId" type="button"
           class="kw-graph-search-item" @click="selectSearchSuggestion(item)">
-          <span class="kw-graph-search-item__dot" :style="{ background: pageTypeMeta(item.pageType).color }"></span>
+          <span class="kw-graph-search-item__dot" :style="{ background: entityTypeMeta(item.kind || item.pageType).color }"></span>
           <span class="kw-graph-search-item__main">
             <b>{{ item.title }}</b>
             <em>{{ item.summary || '打开主题页查看内容' }}</em>
           </span>
-          <span class="kw-graph-search-item__type">{{ pageTypeMeta(item.pageType).label }}</span>
+          <span class="kw-graph-search-item__type">{{ entityTypeMeta(item.kind || item.pageType).label }}</span>
         </button>
       </div>
     </Teleport>
@@ -17,8 +17,7 @@
       <div class="kw-context-actions">
         <div class="kw-switch">
           <button type="button" :class="{ 'is-active': view === 'pages' }" @click="view = 'pages'">主题页</button>
-          <button type="button" :class="{ 'is-active': view === 'map' }" :disabled="!pages.length" @click="switchMap">知识图谱</button>
-          <button type="button" :class="{ 'is-active': view === 'study' }" :disabled="!activeKbId" @click="switchStudyMap">六类图</button>
+          <button type="button" :class="{ 'is-active': view === 'map' }" :disabled="!activeKbId" @click="switchMap">知识图谱</button>
         </div>
         <el-dropdown trigger="click" :disabled="!activeKbId || buildActive" @command="onBuildCommand">
           <button type="button" class="kw-toolbar-btn is-primary" :disabled="!activeKbId || buildActive">
@@ -33,6 +32,7 @@
               <el-dropdown-item command="image">只更新图片</el-dropdown-item>
               <el-dropdown-item command="bank">只更新题库</el-dropdown-item>
               <el-dropdown-item command="web">只更新网页</el-dropdown-item>
+              <el-dropdown-item command="note">只更新笔记</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -53,7 +53,7 @@
 
     <div v-if="loading" class="kw-loading" v-loading="true"></div>
 
-    <template v-else-if="pages.length">
+    <template v-else-if="pages.length || (view === 'map' && mapGraph.nodes.length)">
       <div v-if="view === 'pages'" class="kw-grid">
         <article
           v-for="page in filteredPages"
@@ -84,7 +84,7 @@
         @wheel.prevent="onMapWheel" @pointerdown="onMapDown"
         @pointermove="onMapMove" @pointerup="onMapUp" @pointerleave="onMapUp">
         <div class="kw-map-purpose">知识图谱：先看懂知识结构，再让系统帮你排下一步。</div>
-        <svg class="kw-map__svg" viewBox="0 0 1000 640" aria-label="知识图谱：每个主题页一个节点">
+        <svg class="kw-map__svg" :viewBox="mapViewBox" preserveAspectRatio="xMidYMid meet" aria-label="知识图谱：知识主题与六类来源实体集">
           <defs>
             <marker id="kw-arrow" viewBox="0 0 10 6" refX="10" refY="3" markerWidth="8" markerHeight="6" orient="auto">
               <path d="M0,0 L10,3 L0,6 L2,3 Z" fill="#aeb5c0" />
@@ -100,7 +100,7 @@
               class="kw-map-hull-label">{{ hull.label }}</text>
             <line v-for="edge in mapEdges" :key="edge.key" :x1="edge.x1" :y1="edge.y1" :x2="edge.x2" :y2="edge.y2"
               :data-edge-source="edge.source" :data-edge-target="edge.target"
-              class="kw-map-edge" :class="[`is-${edge.type}`, { 'is-active': isMapEdgeActive(edge), 'is-dimmed': isMapEdgeDimmed(edge), 'is-current-route': isRouteEdge(edge), 'is-hidden': mapDraggingId && edge.source !== mapDraggingId && edge.target !== mapDraggingId }]"
+              class="kw-map-edge" :class="[`is-${edge.type}`, { 'is-cross': edge.cross, 'is-active': isMapEdgeActive(edge), 'is-dimmed': isMapEdgeDimmed(edge), 'is-current-route': isRouteEdge(edge), 'is-hidden': mapDraggingId && edge.source !== mapDraggingId && edge.target !== mapDraggingId }]"
               :marker-end="mapShowArrows ? (isMapEdgeActive(edge) ? 'url(#kw-arrow-hl)' : 'url(#kw-arrow)') : undefined" />
             <line v-for="line in adviceVisibleLines" :key="`advice-${line.key}`" :x1="line.x1" :y1="line.y1" :x2="line.x2" :y2="line.y2"
               pathLength="1" class="kw-map-advice-ray" />
@@ -115,7 +115,7 @@
             </circle>
 
             <g v-for="node in mapNodes" :key="node.id" class="kw-map-node" :data-node-id="String(node.id)"
-              :class="{ 'is-selected': isMapSelected(node), 'is-hovered': mapHoveredId === String(node.id), 'is-dimmed': isMapNodeDimmed(node), 'is-learned': Number(node.learning?.viewCount || 0) > 0, 'is-weak': Number(node.learning?.practiceCount || 0) > 0 && Number(node.learning?.accuracy || 0) < 60, 'is-route': isRouteNode(node), 'is-next-stop': isNextStopNode(node), 'is-advice-visited': adviceLitPageIds.includes(String(node.pageId)), 'is-advice-dimmed': adviceMode && adviceLitPageIds.length > 0 && !adviceLitPageIds.includes(String(node.pageId)) }"
+              :class="{ 'is-selected': isMapSelected(node), 'is-hovered': mapHoveredId === String(node.id), 'is-dimmed': isMapNodeDimmed(node), 'is-bridge': bridgeNodeIds.has(String(node.id)), 'is-learned': Number(node.learning?.viewCount || 0) > 0, 'is-weak': Number(node.learning?.practiceCount || 0) > 0 && Number(node.learning?.accuracy || 0) < 60, 'is-route': isRouteNode(node), 'is-next-stop': isNextStopNode(node), 'is-advice-visited': adviceLitPageIds.includes(String(node.pageId)), 'is-advice-dimmed': adviceMode && adviceLitPageIds.length > 0 && !adviceLitPageIds.includes(String(node.pageId)) }"
               :transform="`translate(${node.x} ${node.y})`"
               @mouseenter="onMapNodeEnter(node)" @mouseleave="onMapNodeLeave(node)"
               @pointerdown.stop="onMapNodeDown($event, node)" @pointerup.stop="onMapNodeUp"
@@ -129,7 +129,7 @@
                 :stroke="learningColor(node.learning)" transform="rotate(-90)" />
               <circle v-if="isMapSelected(node)" class="kw-map-node__active" :r="node.r + 7" :stroke="node.color" />
               <circle class="kw-map-node__dot" :r="node.r + (isMapSelected(node) || mapHoveredId === String(node.id) ? 3 : 0)" :fill="node.color" />
-              <text v-if="showMapLabel(node)" class="kw-map-node__label" text-anchor="middle" :y="node.r + 14">{{ node.title }}</text>
+              <text v-if="showMapLabel(node)" class="kw-map-node__label" text-anchor="middle" :y="node.r + 14">{{ mapNodeLabel(node) }}</text>
             </g>
           </g>
         </svg>
@@ -167,6 +167,10 @@
                 <OsIcon name="eye-off" :size="14" />
                 <span>{{ mapShowEntitySetLabels ? '隐藏实体集名称' : '显示实体集名称' }}</span>
               </button>
+              <button type="button" class="kw-graph-action" @click="resetGraphView">
+                <OsIcon name="refresh" :size="14" />
+                <span>适配视图</span>
+              </button>
               <button type="button" class="kw-graph-action" @click="showRouteGuide">
                 <OsIcon name="circle-help" :size="14" />
                 <span>使用说明</span>
@@ -181,7 +185,7 @@
             </button>
           </template>
         </aside>
-        <div v-if="!adviceMode" class="kw-graph-hint"><span>点节点查看主题页 · 右侧开启规划建议模式后可生成建议</span></div>
+        <div v-if="!adviceMode" class="kw-graph-hint"><span>点知识主题查看主题页，点来源节点查看资料/题库/笔记 · 右侧可开启规划建议</span></div>
       </div>
       <KnowledgeAdviceHost
         ref="adviceHostRef"
@@ -415,7 +419,7 @@
       <div v-loading="wikiUpdateLoading" class="kw-update-list">
         <button v-for="item in wikiUpdateOptions" :key="`${item.id}-${item.title}`" type="button"
           class="kw-update-item" :disabled="wikiUpdateSubmitting" @click="applyWikiUpdate(item)">
-          <span class="kw-update-item__type">{{ { document: '文档', image: '图片', bank: '题库', web: '网页' }[wikiUpdateType] }}</span>
+          <span class="kw-update-item__type">{{ { document: '文档', image: '图片', bank: '题库', web: '网页', note: '笔记' }[wikiUpdateType] }}</span>
           <span class="kw-update-item__main">
             <b>{{ item.title }}</b>
             <em>{{ item.subtitle || '更新这个来源对应的主题页' }}</em>
@@ -423,7 +427,7 @@
           <OsIcon name="chevron-right" :size="14" />
         </button>
         <div v-if="!wikiUpdateLoading && !wikiUpdateOptions.length" class="kw-update-empty">
-          这个资料夹暂时没有可更新的{{ { document: '文档', image: '图片', bank: '题库', web: '网页' }[wikiUpdateType] }}来源。
+          这个资料夹暂时没有可更新的{{ { document: '文档', image: '图片', bank: '题库', web: '网页', note: '笔记' }[wikiUpdateType] }}来源。
         </div>
       </div>
       <template #footer>
@@ -442,6 +446,7 @@ import OsIcon from '@/components/OsIcon/index.vue'
 import ResizableDrawer from '@/components/ResizableDrawer/index.vue'
 import { readStudyPlanConfig, saveStudyPlanConfig } from '@/utils/studyPlanState'
 import { getStudyMap } from '@/api/ai/studyPlan'
+import { listKbNotes } from '@/api/ai/noteKbLink'
 import KnowledgeAdviceHost from './KnowledgeAdviceHost.vue'
 import KnowledgeWikiEditor from './KnowledgeWikiEditor.vue'
 import {
@@ -454,7 +459,6 @@ import {
   getLearningRoute,
   getStudyPlan,
   getWikiBuildJob,
-  getWikiGraph,
   getWikiPage,
   listGalleryAssets,
   listWikiPages,
@@ -470,6 +474,8 @@ const props = defineProps<{
   searchQuery?: string
   searchSubmitKey?: number
   initialPageId?: number | null
+  filters?: Record<string, any>
+  refreshKey?: number
 }>()
 
 const emit = defineEmits<{
@@ -477,6 +483,7 @@ const emit = defineEmits<{
   (e: 'locate', payload: { docId: number; chunkId?: number; chunkIndex?: number }): void
   (e: 'ask', prompt: string): void
   (e: 'search-selected', payload: { pageId: number }): void
+  (e: 'open-source', payload: { kind: string; id: number; title?: string; doc?: any }): void
 }>()
 
 const PAGE_TYPE_META = [
@@ -487,18 +494,17 @@ const PAGE_TYPE_META = [
   { type: 'comparison', label: '对比', color: '#D95757' },
   { type: 'overview', label: '总览', color: '#8A94A6' }
 ]
-const STUDY_TYPE_META = [
+/** 知识图谱的六个实体集类型。 */
+const ENTITY_TYPE_META = [
   { type: 'topic', label: '知识主题', color: '#F08A24' },
   { type: 'bank', label: '题库', color: '#2F9E8F' },
   { type: 'document', label: '资料', color: '#3B7CFF' },
   { type: 'web', label: '网页', color: '#2D8CF0' },
   { type: 'note', label: '笔记', color: '#8A94A6' },
-  { type: 'image', label: '图片', color: '#D95757' },
-  { type: 'question', label: '题目', color: '#6B7280' }
+  { type: 'image', label: '图片', color: '#D95757' }
 ]
-const ALL_TYPE_META = [...PAGE_TYPE_META, ...STUDY_TYPE_META]
 const mapTypeVisible = reactive<Record<string, boolean>>(
-  Object.fromEntries(ALL_TYPE_META.map((item) => [item.type, true]))
+  Object.fromEntries(ENTITY_TYPE_META.map((item) => [item.type, true]))
 )
 
 const loading = ref(false)
@@ -506,7 +512,7 @@ const building = ref(false)
 const buildJob = ref<any>(null)
 const pages = ref<any[]>([])
 const wikiUpdateVisible = ref(false)
-const wikiUpdateType = ref<'document' | 'image' | 'bank' | 'web'>('document')
+const wikiUpdateType = ref<'document' | 'image' | 'bank' | 'web' | 'note'>('document')
 const wikiUpdateOptions = ref<any[]>([])
 const wikiUpdateLoading = ref(false)
 const wikiUpdateSubmitting = ref(false)
@@ -524,7 +530,7 @@ const WIKI_VIEW_KEY = 'openstudy.workspace.wikiView'
 const WIKI_LEARN_KEY = 'openstudy.workspace.wikiLearnMode'
 const WIKI_GUIDE_KEY = 'openstudy.workspace.routeGuideSeen'
 const WIKI_ROUTE_KEY = 'openstudy.workspace.routeQuery'
-function readWikiView(): 'pages' | 'map' | 'study' {
+function readWikiView(): 'pages' | 'map' {
   try {
     return localStorage.getItem(WIKI_VIEW_KEY) === 'map' ? 'map' : 'pages'
   } catch {
@@ -554,7 +560,7 @@ function readRouteQuery(): { strategy: 'weakness' | 'foundation' | 'explore'; ta
     return null
   }
 }
-const view = ref<'pages' | 'map' | 'study'>(readWikiView())
+const view = ref<'pages' | 'map'>(readWikiView())
 const adviceMode = ref(false)
 const adviceHostRef = ref<any>(null)
 const adviceLoading = ref(false)
@@ -572,7 +578,9 @@ const galleryLoading = ref(false)
 const galleryItems = ref<any[]>([])
 
 const mapCanvasRef = ref<HTMLElement | null>(null)
-const mapGraph = ref<any>({ nodes: [], edges: [] })
+const mapGraph = ref<any>({ nodes: [], edges: [], groups: [] })
+const mapSize = reactive({ width: 1200, height: 760 })
+const mapViewBox = computed(() => `0 0 ${mapSize.width} ${mapSize.height}`)
 const mapView = reactive({ x: 0, y: 0, scale: 1 })
 const mapHoveredId = ref<string | null>(null)
 const mapSelectedPageId = ref<number | null>(null)
@@ -604,12 +612,27 @@ let mapWheelPending: { x: number; y: number; scale: number } | null = null
 let mapOpenTimer: ReturnType<typeof setTimeout> | null = null
 let lastDetailPageId: number | null = null
 
+const graphSourceTypeFilter = computed(() => {
+  const value = props.filters?.sourceType
+  return Array.isArray(value) ? value.map(String) : []
+})
+const graphPageTypeFilter = computed(() => {
+  const value = props.filters?.pageType
+  return Array.isArray(value) ? value.map(String) : []
+})
+const graphLearningFilter = computed(() => {
+  const value = props.filters?.learning
+  return Array.isArray(value) ? value.map(String) : []
+})
+
 const filteredPages = computed(() => {
   const query = String(props.searchQuery || '').trim().toLowerCase()
-  if (!query) return pages.value
-  return pages.value.filter((page: any) =>
-    `${page.title || ''} ${page.summary || ''}`.toLowerCase().includes(query)
-  )
+  const pageTypes = graphPageTypeFilter.value
+  return pages.value.filter((page: any) => {
+    if (query && !`${page.title || ''} ${page.summary || ''}`.toLowerCase().includes(query)) return false
+    if (pageTypes.length && !pageTypes.includes(normalizePageType(page.pageType))) return false
+    return true
+  })
 })
 
 const linkTargets = computed(() =>
@@ -647,17 +670,14 @@ const buildProgress = computed(() => {
   return total ? Math.min(100, Math.round((done / total) * 100)) : 0
 })
 
-const pageTypeLegend = computed(() =>
-  PAGE_TYPE_META.filter((item) => item.type !== 'overview')
-)
-const activeLegend = computed(() => (view.value === 'study' ? STUDY_TYPE_META : pageTypeLegend.value))
+const activeLegend = computed(() => ENTITY_TYPE_META)
 
 const allMapNodes = computed(() => mapGraph.value?.nodes || [])
 const mapTypeCounts = computed(() => {
   const counts: Record<string, number> = {}
   for (const node of allMapNodes.value) {
-    const type = normalizePageType(node.pageType)
-    counts[type] = (counts[type] || 0) + 1
+    const kind = normalizeEntityKind(node.kind || node.pageType)
+    counts[kind] = (counts[kind] || 0) + 1
   }
   return counts
 })
@@ -684,7 +704,15 @@ const graphSearchSuggestions = computed(() => {
   if (searchSuppressed.value || !query || view.value !== 'map') return []
   return allMapNodes.value
     .filter((node: any) => {
-      const haystack = `${node.title || ''} ${node.summary || ''} ${(node.aliases || []).join(' ')}`.toLowerCase()
+      const detail = node.detail || {}
+      const haystack = [
+        node.title,
+        node.summary,
+        detail.summary,
+        node.subtitle,
+        ...(node.aliases || []),
+        ...(detail.aliases || [])
+      ].join(' ').toLowerCase()
       return haystack.includes(query)
     })
     .sort((a: any, b: any) => {
@@ -695,16 +723,27 @@ const graphSearchSuggestions = computed(() => {
     .slice(0, 8)
 })
 
+function normalizeEntityKind(value?: string) {
+  const type = String(value || '').trim()
+  if (type === 'wiki') return 'topic'
+  if (['topic', 'bank', 'document', 'web', 'note', 'image'].includes(type)) return type
+  return 'topic'
+}
+
 function normalizePageType(value?: string) {
   const type = String(value || '').trim()
-  if (!type) return 'concept'
-  if (type === 'topic') return view.value === 'study' ? 'topic' : 'concept'
+  if (!type || type === 'topic' || type === 'wiki') return 'concept'
   return type
+}
+
+function entityTypeMeta(value?: string) {
+  const kind = normalizeEntityKind(value)
+  return ENTITY_TYPE_META.find((item) => item.type === kind) || ENTITY_TYPE_META[0]
 }
 
 function pageTypeMeta(value?: string) {
   const type = normalizePageType(value)
-  return ALL_TYPE_META.find((item) => item.type === type) || PAGE_TYPE_META[2]
+  return PAGE_TYPE_META.find((item) => item.type === type) || PAGE_TYPE_META[2]
 }
 
 function pageTypeLabel(value?: string) {
@@ -714,57 +753,93 @@ function pageTypeLabel(value?: string) {
 const mapComponents = computed(() => {
   const nodes = allMapNodes.value
   const byId = new Map(nodes.map((node: any) => [String(node.id), node]))
-  // 以资料（文档）为聚类边界：同一份资料的主题页放在同一个灰色包裹区，
-  // 跨资料页面链接仍然作为边绘制，但不把两块灰色区域粘成一团。
+  const groups = Array.isArray(mapGraph.value?.groups) ? mapGraph.value.groups : []
+  if (groups.length) {
+    return {
+      components: groups
+        .map((group: any) => ({
+          key: String(group.id || group.kind),
+          kind: normalizeEntityKind(group.kind),
+          label: String(group.title || entityTypeMeta(group.kind).label),
+          ids: (group.nodeIds || []).map(String).filter((id: string) => byId.has(id))
+        }))
+        .filter((group: any) => group.ids.length),
+      byId
+    }
+  }
   const grouped = new Map<string, string[]>()
   for (const node of nodes) {
-    const rawDocs = Array.isArray(node.docIds) ? node.docIds : []
-    // 以来源实体集为聚类边界：文档/图片/题库/笔记/网页各自一个实体集；
-    // 老页面没有 sourceType 时回退到第一个来源文档。
-    const entitySetKey = node.sourceType && node.sourceId
-      ? `${node.sourceType}:${node.sourceId}`
-      : rawDocs.length ? `document:${rawDocs[0]}` : '__none__'
-    if (!grouped.has(entitySetKey)) grouped.set(entitySetKey, [])
-    grouped.get(entitySetKey)!.push(String(node.id))
+    const kind = normalizeEntityKind(node.kind || node.pageType)
+    if (!grouped.has(kind)) grouped.set(kind, [])
+    grouped.get(kind)!.push(String(node.id))
   }
-  const components = [...grouped.values()].sort((a, b) => b.length - a.length || a[0].localeCompare(b[0]))
-  return { components, byId }
+  return {
+    components: [...grouped.entries()].map(([kind, ids]) => ({
+      key: kind,
+      kind,
+      label: entityTypeMeta(kind).label,
+      ids
+    })),
+    byId
+  }
 })
 
 function entitySetLabel(node: any) {
-  const type = String(node?.sourceType || '')
-  const typeLabel = {
-    document: '文档',
-    web: '网页',
-    image: '图片',
-    bank: '题库',
-    note: '笔记',
-    unknown: '来源'
-  }[type] || '来源'
-  const name = String(node?.sourceName || '').trim()
+  const type = normalizeEntityKind(node?.kind || node?.sourceType)
+  const typeLabel = entityTypeMeta(type).label
+  const name = String(node?.title || node?.sourceName || '').trim()
   return name ? `${typeLabel}：${name}` : typeLabel
 }
 
+const groupKeyByNode = computed(() => {
+  const result = new Map<string, string>()
+  for (const component of mapComponents.value.components) {
+    for (const id of component.ids) result.set(String(id), component.key)
+  }
+  return result
+})
+
+function isCrossSourceEdge(edge: any) {
+  const source = allMapNodes.value.find((node: any) => String(node.id) === String(edge.source))
+  const target = allMapNodes.value.find((node: any) => String(node.id) === String(edge.target))
+  if (!source || !target) return false
+  if (normalizeEntityKind(source.kind) === 'topic' || normalizeEntityKind(target.kind) === 'topic') return false
+  return groupKeyByNode.value.get(String(edge.source)) !== groupKeyByNode.value.get(String(edge.target))
+}
+
+const bridgeNodeIds = computed(() => {
+  const result = new Set<string>()
+  for (const edge of mapGraph.value?.edges || []) {
+    if (!isCrossSourceEdge(edge)) continue
+    result.add(String(edge.source))
+    result.add(String(edge.target))
+  }
+  return result
+})
+
 const adviceNodeTitles = computed(() => {
   const result: Record<string, string> = {}
-  for (const node of mapNodes.value || []) result[String(node.pageId)] = String(node.title || '')
+  for (const node of mapNodes.value || []) {
+    result[String(node.id)] = String(node.title || '')
+    if (Number(node.pageId)) result[String(node.pageId)] = String(node.title || '')
+  }
   return result
 })
 
 const adviceTraceLines = computed(() => {
   const steps = adviceTrace.value?.steps || []
-  const position = new Map(mapNodes.value.map((node: any) => [String(node.pageId), node]))
+  const position = new Map(mapNodes.value.map((node: any) => [String(node.id), node]))
   return steps
     .map((step: any, index: number) => {
-      const fromId = String(step.from || '').replace(/^topic:/, '')
-      const toId = String(step.to || '').replace(/^topic:/, '')
-      const from = position.get(fromId)
-      const to = position.get(toId)
+      const rawFromId = String(step.from || '')
+      const rawToId = String(step.to || '')
+      const from = position.get(rawFromId) || position.get(`topic:${rawFromId}`)
+      const to = position.get(rawToId) || position.get(`topic:${rawToId}`)
       if (!from || !to) return null
       return {
-        key: `${fromId}-${toId}-${index}`,
-        fromPageId: fromId,
-        toPageId: toId,
+        key: `${rawFromId}-${rawToId}-${index}`,
+        fromPageId: String(from.pageId || from.id),
+        toPageId: String(to.pageId || to.id),
         x1: from.x,
         y1: from.y,
         x2: to.x,
@@ -823,40 +898,69 @@ onBeforeUnmount(() => {
 
 const mapNodes = computed(() => {
   const { components, byId } = mapComponents.value
+  const sourceTypes = graphSourceTypeFilter.value
+  const pageTypes = graphPageTypeFilter.value
+  const learningLevels = graphLearningFilter.value
   const visibleIds = new Set(
     allMapNodes.value
-      .filter((node: any) => routeActive.value || mapTypeVisible[normalizePageType(node.pageType)] !== false)
+      .filter((node: any) => routeActive.value || mapTypeVisible[normalizeEntityKind(node.kind || node.pageType)] !== false)
+      .filter((node: any) => !sourceTypes.length || sourceTypes.includes(normalizeEntityKind(node.kind || node.pageType)))
+      .filter((node: any) => {
+        if (!pageTypes.length || normalizeEntityKind(node.kind) !== 'topic') return true
+        return pageTypes.includes(normalizePageType(node.pageType))
+      })
+      .filter((node: any) => {
+        if (!learningLevels.length || normalizeEntityKind(node.kind) !== 'topic') return true
+        return learningLevels.includes(String(node.detail?.learning?.level || node.learning?.level || 'unread'))
+      })
       .filter((node: any) => routeActive.value || !mapHideUnlinked.value || mapConnectedNodeIds.value.has(String(node.id)))
       .map((node: any) => String(node.id))
   )
   const visibleComponents = components
-    .map((component) => component.filter((id) => visibleIds.has(id)))
-    .filter((component) => component.length)
-  const centerSets: Record<number, { x: number; y: number }[]> = {
-    1: [{ x: 500, y: 320 }],
-    2: [{ x: 340, y: 300 }, { x: 760, y: 485 }]
+    .map((component) => ({ ...component, ids: component.ids.filter((id: string) => visibleIds.has(id)) }))
+    .filter((component) => component.ids.length)
+  const width = Number(mapSize.width || 1200)
+  const height = Number(mapSize.height || 760)
+  // 右侧实体集面板占约 220px；节点布局只使用左侧可用区域，避免来源组被面板盖住。
+  const usableWidth = Math.max(640, width - 230)
+  const kindCenters: Record<string, { x: number; y: number }> = {
+    topic: { x: usableWidth * 0.5, y: height * 0.5 },
+    document: { x: usableWidth * 0.16, y: height * 0.62 },
+    bank: { x: usableWidth * 0.84, y: height * 0.62 },
+    web: { x: usableWidth * 0.16, y: height * 0.2 },
+    note: { x: usableWidth * 0.5, y: height * 0.87 },
+    image: { x: usableWidth * 0.84, y: height * 0.2 }
   }
-  // 只调整实体集中心位置，不改实体集内部的环状节点布局。
-  // 3 个以上实体集使用 3 列网格，给每个灰色包裹区留出足够边距。
-  const centers = centerSets[visibleComponents.length] || visibleComponents.map((_, index) => ({
-    x: 160 + (index % 3) * 420,
-    y: 210 + Math.floor(index / 3) * 420
-  }))
   const result: any[] = []
   visibleComponents.forEach((component, componentIndex) => {
-    const members = component.map((id) => byId.get(id)).filter(Boolean) as any[]
+    const members = component.ids.map((id: string) => byId.get(id)).filter(Boolean) as any[]
     const hub = [...members].sort((a, b) => Number(b.degree || 0) - Number(a.degree || 0))[0]
-    const center = centers[componentIndex] || centers[centers.length - 1]
-    const radius = Math.min(160, 54 + Math.sqrt(members.length) * 20)
+    const fallbackCenter = {
+      x: 80 + ((componentIndex % 3) + 0.5) * Math.max(1, (usableWidth - 160) / 3),
+      y: 80 + (Math.floor(componentIndex / 3) + 0.5) * Math.max(1, (height - 160) / Math.max(1, Math.ceil(visibleComponents.length / 3)))
+    }
+    const center = kindCenters[component.kind] || fallbackCenter
+    const radius = component.kind === 'topic'
+      ? Math.min(240, 70 + Math.sqrt(members.length) * 22)
+      : Math.min(150, 54 + Math.sqrt(members.length) * 20)
+    const topicCols = component.kind === 'topic'
+      ? Math.max(4, Math.ceil(Math.sqrt(members.length * 1.3)))
+      : 0
+    const topicRows = topicCols ? Math.ceil(members.length / topicCols) : 0
     const orbit = members.filter((node) => node !== hub)
     const hubOnCenter = members.length > 1
     let orbitIndex = 0
-    for (const node of members) {
+    for (let memberIndex = 0; memberIndex < members.length; memberIndex += 1) {
+      const node = members[memberIndex]
       const degree = Number(node.degree || 0)
-      const pageType = normalizePageType(node.pageType)
       let x = center.x
       let y = center.y
-      if (members.length > 1 && !(hubOnCenter && node === hub)) {
+      if (component.kind === 'topic' && topicCols) {
+        const col = memberIndex % topicCols
+        const row = Math.floor(memberIndex / topicCols)
+        x = center.x + (col - (topicCols - 1) / 2) * 42
+        y = center.y + (row - (topicRows - 1) / 2) * 40
+      } else if (members.length > 1 && !(hubOnCenter && node === hub)) {
         const count = orbit.length
         const angle = -Math.PI / 2 + (Math.PI * 2 * orbitIndex) / Math.max(1, count)
         const jitter = Math.sin((Number(node.id) || orbitIndex + 1) * 12.9898) * 0.16
@@ -866,14 +970,21 @@ const mapNodes = computed(() => {
       }
       const offset = mapNodeOffsets[String(node.id)]
       const simulated = mapSimPositions[String(node.id)]
+      const kind = normalizeEntityKind(node.kind || node.pageType)
+      const offsetX = Number(offset?.x)
+      const offsetY = Number(offset?.y)
+      const simulatedX = Number(simulated?.x)
+      const simulatedY = Number(simulated?.y)
+      const resolvedX = Number.isFinite(offsetX) ? offsetX : Number.isFinite(simulatedX) ? simulatedX : x
+      const resolvedY = Number.isFinite(offsetY) ? offsetY : Number.isFinite(simulatedY) ? simulatedY : y
       result.push({
         ...node,
-        pageType,
-        x: offset?.x ?? simulated?.x ?? x,
-        y: offset?.y ?? simulated?.y ?? y,
-        // 与 WeKnora 的 graphNodeRadius 同一条公式：叶子小、枢纽大。
-        r: Math.max(5, Math.min(20, 4 + Math.sqrt(Math.max(0, degree)) * 1.8)),
-        color: pageTypeMeta(pageType).color
+        kind,
+        pageType: normalizePageType(node.pageType),
+        x: resolvedX,
+        y: resolvedY,
+        r: Math.max(kind === 'topic' ? 8 : 12, Math.min(kind === 'topic' ? 24 : 18, 6 + Math.sqrt(Math.max(0, degree)) * 2.2)),
+        color: entityTypeMeta(kind).color
       })
     }
   })
@@ -902,7 +1013,8 @@ const mapEdges = computed(() => {
         y1: source.y + uy * startPad,
         x2: target.x - ux * endPad,
         y2: target.y - uy * endPad,
-        type: edge.type || 'related'
+        type: edge.type || 'related',
+        cross: isCrossSourceEdge(edge)
       }
     })
     .filter(Boolean)
@@ -1315,14 +1427,21 @@ function isMapEdgeDimmed(edge: any) {
 }
 
 function showMapLabel(node: any) {
+  if (normalizeEntityKind(node.kind) !== 'topic') return true
   return (
     isMapSelected(node) ||
     isRouteNode(node) ||
     adviceLitPageIds.value.includes(String(node.pageId)) ||
     mapHoveredId.value === String(node.id) ||
-    mapView.scale >= 1.05 ||
-    Number(node.degree || 0) >= 5
+    mapView.scale >= 1.3 ||
+    Number(node.degree || 0) >= 12
   )
+}
+
+function mapNodeLabel(node: any) {
+  const title = String(node?.title || '')
+  if (normalizeEntityKind(node?.kind) === 'topic') return title
+  return title.length > 14 ? `${title.slice(0, 14)}…` : title
 }
 
 function animateMapViewTo(targetX: number, targetY: number, targetScale = mapView.scale, duration = 360) {
@@ -1354,8 +1473,8 @@ function selectMapNode(node: any, openDetail = true) {
   // 用 rAF 做镜头移动，而不是瞬移；节点选中环和周围灰化同时生效。
   const targetScale = Math.max(0.9, Math.min(1.25, Number(mapView.scale) || 1))
   animateMapViewTo(
-    330 - Number(node.x) * targetScale,
-    320 - Number(node.y) * targetScale,
+    mapSize.width * 0.32 - Number(node.x) * targetScale,
+    mapSize.height * 0.5 - Number(node.y) * targetScale,
     targetScale,
     360
   )
@@ -1363,6 +1482,13 @@ function selectMapNode(node: any, openDetail = true) {
   mapOpenTimer = null
   if (!openDetail) return
   const pageId = Number(node.pageId)
+  if (!pageId) {
+    const sourceId = Number(node.ref?.docId || node.ref?.noteId || node.ref?.bankId || node.ref?.pageId || 0)
+    if (sourceId) {
+      emit('open-source', Object.freeze({ kind: normalizeEntityKind(node.kind), id: sourceId, title: node.title, doc: node }))
+    }
+    return
+  }
   mapOpenTimer = setTimeout(() => {
     mapOpenTimer = null
     openPage(pageId)
@@ -1508,8 +1634,10 @@ function onMapNodeMove(event: PointerEvent) {
   const dx = (event.clientX - mapNodeDrag.startX) / mapView.scale
   const dy = (event.clientY - mapNodeDrag.startY) / mapView.scale
   if (Math.abs(dx) + Math.abs(dy) > 4) mapNodeDrag.moved = true
-  mapNodeDrag.x = Math.max(30, Math.min(970, mapNodeDrag.origX + dx))
-  mapNodeDrag.y = Math.max(30, Math.min(610, mapNodeDrag.origY + dy))
+  // 不再限制在固定 1000×640 内：允许拖到任意方向，拖出视图后画布自动扩展，
+  // 实体集轮廓会跟随节点形成新的边界。
+  mapNodeDrag.x = Math.max(-4000, Math.min(4000, mapNodeDrag.origX + dx))
+  mapNodeDrag.y = Math.max(-4000, Math.min(4000, mapNodeDrag.origY + dy))
   // 拖拽过程中只写 DOM，不触发 Vue 的整图 computed 重算；松手后再落一次状态。
   if (!mapNodeDrag.raf) {
     mapNodeDrag.raf = requestAnimationFrame(() => {
@@ -1530,6 +1658,26 @@ function onMapNodeUp() {
   if (state.raf) cancelAnimationFrame(state.raf)
   if (state.moved) {
     mapNodeOffsets[state.nodeId] = { x: state.x, y: state.y }
+    // 拖出当前画布时扩展世界尺寸，保证节点与实体集轮廓不会被 viewBox 裁成直线。
+    const margin = 180
+    if (state.x > mapSize.width - margin) mapSize.width = Math.ceil(state.x + margin)
+    if (state.y > mapSize.height - margin) mapSize.height = Math.ceil(state.y + margin)
+    if (state.x < margin) {
+      const shift = margin - state.x
+      mapSize.width = Math.ceil(mapSize.width + shift)
+      Object.keys(mapNodeOffsets).forEach((key) => {
+        mapNodeOffsets[key] = { x: mapNodeOffsets[key].x + shift, y: mapNodeOffsets[key].y }
+      })
+      mapView.x += shift
+    }
+    if (state.y < margin) {
+      const shift = margin - state.y
+      mapSize.height = Math.ceil(mapSize.height + shift)
+      Object.keys(mapNodeOffsets).forEach((key) => {
+        mapNodeOffsets[key] = { x: mapNodeOffsets[key].x, y: mapNodeOffsets[key].y + shift }
+      })
+      mapView.y += shift
+    }
     // 拖拽结束后浏览器仍会补发一次 click；暂时压掉，避免误打开详情。
     suppressMapNodeClick = true
     window.setTimeout(() => { suppressMapNodeClick = false }, 80)
@@ -1639,44 +1787,45 @@ function startMapAnimation() {
 
 function clusterOutline(points: any[]) {
   if (!points.length) return ''
-  const samples = 20
-  const expanded = points.flatMap((p) => {
-    const radius = Number(p.r || 0) + 20
-    return Array.from({ length: samples }, (_, i) => ({
-      x: p.x + Math.cos((i * 2 * Math.PI) / samples) * radius,
-      y: p.y + Math.sin((i * 2 * Math.PI) / samples) * radius
-    }))
-  }).sort((a, b) => a.x - b.x || a.y - b.y)
-  const unique = expanded.filter((p, i) => !i || p.x !== expanded[i - 1].x || p.y !== expanded[i - 1].y)
-  const cross = (o: any, a: any, b: any) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
-  const half = (list: any[]) => {
-    const hull: any[] = []
-    for (const point of list) {
-      while (hull.length > 1 && cross(hull[hull.length - 2], hull[hull.length - 1], point) <= 0) hull.pop()
-      hull.push(point)
+  const cx = points.reduce((sum, point) => sum + Number(point.x || 0), 0) / points.length
+  const cy = points.reduce((sum, point) => sum + Number(point.y || 0), 0) / points.length
+  const samples = 48
+  const radial: { x: number; y: number }[] = []
+  for (let index = 0; index < samples; index += 1) {
+    const angle = (index * Math.PI * 2) / samples
+    let distance = 0
+    for (const point of points) {
+      const dx = Number(point.x || 0) - cx
+      const dy = Number(point.y || 0) - cy
+      const projected = Math.cos(angle) * dx + Math.sin(angle) * dy
+      const radius = Number(point.r || 0) + 28
+      distance = Math.max(distance, projected + radius)
     }
-    hull.pop()
-    return hull
+    distance = Math.max(48, distance)
+    radial.push({
+      x: cx + Math.cos(angle) * distance,
+      y: cy + Math.sin(angle) * distance
+    })
   }
-  const hull = [...half(unique), ...half([...unique].reverse())]
-  if (!hull.length) return ''
-  const at = (i: number) => hull[(i + hull.length) % hull.length]
-  const fmt = (p: any) => `${Math.round(p.x * 10) / 10},${Math.round(p.y * 10) / 10}`
-  const tangent = (from: any, to: any, length: number) => {
-    const dx = to.x - from.x
-    const dy = to.y - from.y
-    const norm = Math.hypot(dx, dy) || 1
-    return { x: (dx / norm) * length, y: (dy / norm) * length }
+  const fmt = (point: any) => `${Math.round(point.x * 10) / 10},${Math.round(point.y * 10) / 10}`
+  const at = (index: number) => radial[(index + radial.length) % radial.length]
+  const parts = [`M${fmt(radial[0])}`]
+  for (let index = 0; index < radial.length; index += 1) {
+    const current = at(index)
+    const next = at(index + 1)
+    const previous = at(index - 1)
+    const after = at(index + 2)
+    const control1 = {
+      x: current.x + (next.x - previous.x) / 6,
+      y: current.y + (next.y - previous.y) / 6
+    }
+    const control2 = {
+      x: next.x - (after.x - current.x) / 6,
+      y: next.y - (after.y - current.y) / 6
+    }
+    parts.push(`C${fmt(control1)} ${fmt(control2)} ${fmt(next)}`)
   }
-  const path = [`M${fmt(hull[0])}`]
-  hull.forEach((p, i) => {
-    const next = at(i + 1)
-    const reach = Math.hypot(next.x - p.x, next.y - p.y) * 0.36
-    const out = tangent(at(i - 1), next, reach)
-    const into = tangent(p, at(i + 2), reach)
-    path.push(`C${fmt({ x: p.x + out.x, y: p.y + out.y })} ${fmt({ x: next.x - into.x, y: next.y - into.y })} ${fmt(next)}`)
-  })
-  return path.join(' ') + ' Z'
+  return parts.join(' ') + ' Z'
 }
 
 const mapHulls = computed(() => {
@@ -1686,15 +1835,16 @@ const mapHulls = computed(() => {
   const visibleIds = new Set(byId.keys())
   const hulls: any[] = []
   for (const component of mapComponents.value.components) {
-    const ids = component.filter((id) => visibleIds.has(id))
-    if (ids.length < 2) continue
-    const points = ids.map((id) => byId.get(id)).filter(Boolean)
+    const ids = component.ids.filter((id: string) => visibleIds.has(id))
+    if (!ids.length) continue
+    const points = ids.map((id: string) => byId.get(id)).filter(Boolean)
+    if (!points.length) continue
     const minX = Math.min(...points.map((point: any) => Number(point.x || 0)))
     const minY = Math.min(...points.map((point: any) => Number(point.y || 0)))
     hulls.push({
-      key: ids[0],
+      key: component.key,
       ids,
-      label: entitySetLabel(byId.get(ids[0])),
+      label: component.label,
       labelX: minX - 6,
       labelY: minY - 24,
       path: clusterOutline(points)
@@ -1746,11 +1896,11 @@ async function reload() {
     pages.value = res.data?.pages || []
     Object.assign(stats, res.data?.stats || {})
     emit('stats', { total: pages.value.length })
-    if (!pages.value.length) {
-      view.value = 'pages'
-    } else if (view.value === 'map') {
+    if (view.value === 'map') {
       // 刷新后仍停留在知识图谱：页面数据回来后再拉一次图数据。
       await switchMap()
+    } else if (!pages.value.length) {
+      view.value = 'pages'
     }
   } catch (error: any) {
     ElMessage.error('知识百科加载失败：' + (error?.message || error))
@@ -1824,7 +1974,7 @@ function onBuildCommand(command: string) {
     void build()
     return
   }
-  if (['document', 'image', 'bank', 'web'].includes(command)) {
+  if (['document', 'image', 'bank', 'web', 'note'].includes(command)) {
     void openWikiUpdate(command as typeof wikiUpdateType.value)
   }
 }
@@ -1866,10 +2016,21 @@ async function openWikiUpdate(type: typeof wikiUpdateType.value) {
   wikiUpdateLoading.value = true
   wikiUpdateOptions.value = []
   try {
+    if (type === 'note') {
+      const res: any = await listKbNotes(Number(props.activeKbId || 0))
+      if (res.code !== 200) throw new Error(res.msg || '读取笔记来源失败')
+      wikiUpdateOptions.value = (res.data?.linked || []).map((note: any) => ({
+        id: Number(note.noteId || note.id || 0),
+        title: String(note.title || '未命名笔记'),
+        subtitle: String(note.summary || ''),
+        node: note
+      })).filter((item: any) => item.id > 0)
+      return
+    }
     const res: any = await getStudyMap({
       kbId: Number(props.activeKbId || 0),
       sourceTypes: [type],
-      limit: 120
+      limit: 300
     })
     if (res.code !== 200) throw new Error(res.msg || '读取来源失败')
     wikiUpdateOptions.value = (res.data?.nodes || [])
@@ -1980,7 +2141,29 @@ function toggleMapArrows() {
   mapShowArrows.value = !mapShowArrows.value
 }
 
+function resetGraphView() {
+  resetMapNodeOffsets()
+  nextTick(() => {
+    syncMapSize()
+    fitMapView()
+  })
+}
+
+function syncMapSize() {
+  const element = mapCanvasRef.value
+  if (!element) return
+  const rect = element.getBoundingClientRect()
+  if (rect.width > 0) mapSize.width = Math.max(720, Math.round(rect.width))
+  if (rect.height > 0) mapSize.height = Math.max(520, Math.round(rect.height))
+}
+
+function onMapResize() {
+  if (view.value !== 'map') return
+  syncMapSize()
+}
+
 function fitMapView() {
+  syncMapSize()
   const nodes = mapNodes.value
   if (!nodes.length) {
     mapView.x = 0
@@ -1994,87 +2177,72 @@ function fitMapView() {
   const maxX = Math.max(...xs)
   const minY = Math.min(...ys)
   const maxY = Math.max(...ys)
-  const padding = 90
+  const padding = 64
+  const availableWidth = Math.max(640, mapSize.width - 230)
   const scale = Math.min(
-    1.4,
+    1.1,
     Math.max(
-      0.4,
+      0.35,
       Math.min(
-        (1000 - padding * 2) / Math.max(120, maxX - minX + 100),
-        (640 - padding * 2) / Math.max(120, maxY - minY + 100)
+        (availableWidth - padding * 2) / Math.max(180, maxX - minX + 120),
+        (mapSize.height - padding * 2) / Math.max(180, maxY - minY + 120)
       )
     )
   )
   mapView.scale = scale
-  mapView.x = 500 - ((minX + maxX) / 2) * scale
-  mapView.y = 320 - ((minY + maxY) / 2) * scale
+  mapView.x = availableWidth / 2 - ((minX + maxX) / 2) * scale
+  mapView.y = mapSize.height / 2 - ((minY + maxY) / 2) * scale
 }
 
 async function switchMap() {
-  if (!pages.value.length || !Number(props.activeKbId)) return
+  if (!Number(props.activeKbId)) return
   view.value = 'map'
   resetMapNodeOffsets()
-  mapView.x = -70
-  mapView.y = 0
-  mapView.scale = 1
-  try {
-    const graphRes = await getWikiGraph(Number(props.activeKbId))
-    if (graphRes.code === 200) {
-      mapGraph.value = graphRes.data || { nodes: [], edges: [] }
-      await nextTick()
-      fitMapView()
-      if (String(props.searchQuery || '').trim()) focusMapSearch()
-      startMapAnimation()
-    }
-  } catch {
-    // 地图失败时保持主题页入口，不影响阅读。
-    view.value = 'pages'
-  }
-}
-
-/** 六类统一图：把 study_map 的 topic/bank/document/web/note/image 节点直接接到同一画布。 */
-async function switchStudyMap() {
-  if (!Number(props.activeKbId)) return
-  view.value = 'study'
-  resetMapNodeOffsets()
-  mapView.x = -70
+  mapView.x = 0
   mapView.y = 0
   mapView.scale = 1
   try {
     const res: any = await getStudyMap({
       kbId: Number(props.activeKbId),
       sourceTypes: ['wiki', 'bank', 'document', 'web', 'note', 'image'],
-      limit: 120
+      limit: 300
     })
-    if (res.code === 200) {
-      const raw = res.data || {}
-      mapGraph.value = {
-        nodes: (raw.nodes || []).map((node: any) => ({
-          ...node,
-          id: String(node.id),
-          pageId: Number(node.ref?.pageId || 0),
-          pageType: String(node.kind || 'topic'),
-          title: node.title || node.subtitle || '未命名',
-          summary: node.subtitle || '',
-          degree: Number(node.metrics?.degree || 1),
-          docIds: node.ref?.docId ? [Number(node.ref.docId)] : [],
-          sourceType: node.source || node.kind,
-          sourceId: node.ref?.docId || node.ref?.noteId || node.ref?.bankId || node.ref?.pageId || 0
-        })),
-        edges: (raw.edges || []).map((edge: any) => ({
-          ...edge,
-          id: String(edge.id || ''),
-          source: String(edge.source),
-          target: String(edge.target),
-          type: edge.kind || edge.type || 'related'
-        }))
-      }
-      await nextTick()
-      fitMapView()
-      startMapAnimation()
+    if (res.code !== 200) {
+      view.value = 'pages'
+      return
     }
+    const raw = res.data || {}
+    mapGraph.value = {
+      nodes: (raw.nodes || []).map((node: any) => ({
+        ...node,
+        id: String(node.id),
+        kind: normalizeEntityKind(node.kind),
+        pageId: Number(node.ref?.pageId || 0),
+        pageType: String(node.detail?.pageType || node.kind || 'topic'),
+        title: node.title || node.subtitle || '未命名',
+        summary: String(node.detail?.summary || node.subtitle || ''),
+        degree: Number(node.metrics?.degree || 0),
+        docIds: node.ref?.docId ? [Number(node.ref.docId)] : (node.detail?.docIds || []),
+        sourceType: node.source || node.kind,
+        sourceId: node.ref?.docId || node.ref?.noteId || node.ref?.bankId || node.ref?.pageId || 0,
+        aliases: node.detail?.aliases || []
+      })),
+      edges: (raw.edges || []).map((edge: any) => ({
+        ...edge,
+        id: String(edge.id || ''),
+        source: String(edge.source),
+        target: String(edge.target),
+        type: edge.kind || edge.type || 'related'
+      })),
+      groups: raw.groups || []
+    }
+    await nextTick()
+    fitMapView()
+    if (String(props.searchQuery || '').trim()) focusMapSearch()
+    startMapAnimation()
   } catch {
-    view.value = 'map'
+    // 图谱失败时保持主题页入口，不影响阅读。
+    view.value = 'pages'
   }
 }
 
@@ -2534,21 +2702,21 @@ function focusMapSearch(force = false) {
   const target = exact || (force ? graphSearchSuggestions.value[0] : null)
   if (!target) return
   // 搜索命中的节点可能被类型筛选隐藏；先恢复它的类型再选中。
-  mapTypeVisible[normalizePageType(target.pageType)] = true
+  mapTypeVisible[normalizeEntityKind(target.kind || target.pageType)] = true
   resetMapNodeOffsets()
   nextTick(() => {
-    const current = mapNodes.value.find((node: any) => Number(node.pageId) === Number(target.pageId))
+    const current = mapNodes.value.find((node: any) => String(node.id) === String(target.id))
     if (current) selectMapNode(current)
   })
 }
 
 function selectSearchSuggestion(item: any) {
   searchSuppressed.value = true
-  emit('search-selected', { pageId: Number(item.pageId) })
-  mapTypeVisible[normalizePageType(item.pageType)] = true
+  if (Number(item.pageId)) emit('search-selected', { pageId: Number(item.pageId) })
+  mapTypeVisible[normalizeEntityKind(item.kind || item.pageType)] = true
   resetMapNodeOffsets()
   nextTick(() => {
-    const current = mapNodes.value.find((node: any) => Number(node.pageId) === Number(item.pageId))
+    const current = mapNodes.value.find((node: any) => String(node.id) === String(item.id))
     if (current) selectMapNode(current)
   })
 }
@@ -2561,6 +2729,11 @@ watch(() => props.searchQuery, () => {
 
 watch(() => props.searchSubmitKey, () => {
   focusMapSearch(true)
+})
+
+watch(() => props.refreshKey, async () => {
+  if (view.value === 'map') await switchMap()
+  else await reload()
 })
 
 watch(view, (value) => {
@@ -2593,11 +2766,13 @@ async function openInitialPage() {
 watch(() => props.initialPageId, () => { void openInitialPage() })
 
 onMounted(async () => {
+  window.addEventListener('resize', onMapResize)
   await reload()
   await resumeBuildJob()
   await openInitialPage()
 })
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', onMapResize)
   stopBuildPolling()
   stopMapNodeDrag()
   stopMapAnimation()
@@ -2706,6 +2881,7 @@ onBeforeUnmount(() => {
 .kw-map-edge.is-contrast { stroke: #d38e7d; stroke-dasharray: 3 5; }
 .kw-map-edge.is-related { stroke: #c7d0e0; }
 .kw-map-edge.is-mention { stroke: #77bfae; }
+.kw-map-edge.is-cross { stroke: #d38a42; stroke-width: 1.1; stroke-dasharray: 4 3; opacity: 0.62; }
 .kw-map-edge.is-active { stroke: #7e94bf; stroke-width: 1.5; opacity: 0.85; }
 .kw-map.is-route-mode .kw-map-edge { opacity: 0.36; }
 .kw-map.is-route-mode .kw-map-edge.is-current-route { stroke: #7e94bf; opacity: 0.82; }
@@ -2746,6 +2922,8 @@ onBeforeUnmount(() => {
 .kw-map-learning-path.is-fallback { stroke: #c7d0e0; stroke-width: 1.5; stroke-dasharray: 5 4; opacity: .75; }
 .kw-map-node__label { fill: #4b5563; font-size: 11px; pointer-events: none; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
 .kw-map.is-route-mode .kw-map-node.is-route .kw-map-node__label { fill: #1f3f8f; font-weight: 700; }
+.kw-map-node.is-bridge .kw-map-node__dot { stroke: #d38a42; stroke-width: 2.4; }
+.kw-map-node.is-bridge .kw-map-node__label { fill: #a96322; }
 .kw-map-node.is-hovered .kw-map-node__dot { stroke: #253247; stroke-width: 2.5; }
 .kw-map-node.is-hovered .kw-map-node__label { fill: #1f2937; font-weight: 600; }
 @keyframes kw-node-pulse {

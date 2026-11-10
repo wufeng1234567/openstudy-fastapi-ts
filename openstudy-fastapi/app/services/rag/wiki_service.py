@@ -12,16 +12,16 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime
-from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Awaitable, Callable, Dict, Optional, Sequence
 
 from loguru import logger
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content import ContentReference, RagImageAsset
 from app.models.knowledge_graph import RagGraphEntity, RagGraphRelation
 from app.models.question import QuestionBank, QuestionMain, QuestionSource, UserPracticeLog
-from app.models.rag import DOC_VECTORIZED, RagDocument, RagDocumentChunk
+from app.models.rag import RagDocument, RagDocumentChunk
 from app.models.wiki import (
     RagWikiChunk,
     RagWikiPage,
@@ -35,6 +35,10 @@ from app.services.rag.embedding import embed_texts
 from app.services.rag.hybrid_search import ChunkHit
 from app.services.rag.rag_write_service import get_knowledge_base, sanitize_text
 from app.services.rag.tokenizer import query_tokens, tokenize
+from app.services.rag.wiki_merge_service import (
+    apply_source_to_page,
+    merge_generation_sources,
+)
 from app.services.rag.wiki_link_service import (
     WIKI_TOKEN_RE,
     extract_wiki_links,
@@ -956,7 +960,6 @@ async def build_wiki_pages(
                 raise ValueError("模型没有返回带真实来源的正文小节")
             summary = validated["summary"]
             sections = validated["sections"]
-            content_md = _render_markdown(summary, sections)
             source_chunk_ids = []
             for section in sections:
                 for chunk_id in section.get("sourceChunkIds", []):
@@ -968,58 +971,60 @@ async def build_wiki_pages(
                 for item in _source_refs(chunks, doc_names)
                 if int(item["chunkId"]) in cited_ids
             ]
-            page = existing or RagWikiPage(
-                user_id=int(user_id),
-                kb_id=int(kb_id),
-                title=_display_title(entity.name)[:255],
-                normalized_title=_normalize_title(entity.name),
-                page_type="topic",
-            )
             if existing:
                 # 快照必须在覆盖字段之前：保存旧标题/旧摘要/旧小节。
                 db.add(_page_revision_snapshot(existing, "before_ai_regenerate", "agent"))
-            page.title = _display_title(entity.name)[:255]
+                page = existing
+                page.version = int(page.version or 1) + 1
+            else:
+                page = RagWikiPage(
+                    user_id=int(user_id),
+                    kb_id=int(kb_id),
+                    title=_display_title(entity.name)[:255],
+                    normalized_title=_normalize_title(entity.name),
+                    page_type="topic",
+                    version=1,
+                )
+                db.add(page)
+                await db.flush()
             page.page_type = _page_type_for_entity(
                 entity, degree.get(int(entity.id), 0), relations
             )
-            page.aliases = list(
-                dict.fromkeys(
-                    [
-                        *[str(x).strip() for x in (entity.aliases or []) if str(x).strip()],
-                        *validated.get("aliases", []),
-                    ]
-                )
-            )[:8]
-            page.summary = summary
-            page.content_md = content_md
-            page.sections = sections
-            page.source_refs = source_refs
-            page.source_doc_ids = sorted({item["docId"] for item in source_refs})
-            page.source_chunk_ids = source_chunk_ids
-            entity_ids = {
-                int(item)
-                for item in (page.entity_ids or [])
-                if str(item).isdigit()
-            }
-            entity_ids.add(int(entity.id))
-            page.entity_ids = sorted(entity_ids)
-            page.status = WIKI_READY
             page.generated_by = "llm"
-            page.update_time = datetime.now()
-            page.generation_meta = {
-                "relationCount": len(relations),
-                "sourceChunkCount": len(chunks),
-                "pageType": page.page_type,
-                "aliases": page.aliases or [],
-                "generatedAt": datetime.now().isoformat(timespec="seconds"),
-            }
-            if existing:
-                page.version = int(page.version or 1) + 1
-            else:
-                db.add(page)
-                await db.flush()
+            source_doc_ids = sorted(
+                {int(item["docId"]) for item in source_refs if item.get("docId")}
+            )
+            primary_doc_id = source_doc_ids[0] if source_doc_ids else 0
+            apply_source_to_page(
+                page,
+                title=_display_title(entity.name)[:255],
+                page_type=page.page_type,
+                summary=summary,
+                sections=sections,
+                source_refs=source_refs,
+                source_chunk_ids=source_chunk_ids,
+                entity_ids=[int(entity.id)],
+                source_type="document",
+                source_id=primary_doc_id,
+                source_name=doc_names.get(primary_doc_id, "资料"),
+                aliases=[
+                    *[str(x).strip() for x in (entity.aliases or []) if str(x).strip()],
+                    *validated.get("aliases", []),
+                ],
+            )
+            # 多文档共同生成一页时，把所有来源都记到 generation_meta.sources，
+            # 供按来源更新/分组展示使用。
+            for extra_doc_id in source_doc_ids[1:]:
+                page.generation_meta = merge_generation_sources(
+                    page.generation_meta,
+                    source_type="document",
+                    source_id=int(extra_doc_id),
+                    source_name=doc_names.get(int(extra_doc_id), "资料"),
+                )
+            page.generation_meta["relationCount"] = len(relations)
+            page.generation_meta["sourceChunkCount"] = len(page.source_chunk_ids or [])
             await db.flush()
-            await _replace_wiki_chunks(db, page, sections)
+            await _replace_wiki_chunks(db, page, page.sections or [])
             # 每页独立提交：后面某一页失败时，前面已生成好的页面不能一起回滚。
             await db.commit()
             by_title[page.normalized_title] = page
@@ -1484,6 +1489,8 @@ async def get_wiki_page(db: AsyncSession, user_id: int, page_id: int) -> dict:
     ).scalar_one_or_none()
     if not page:
         raise ValueError("知识主题页不存在或无权访问")
+    if page.merged_into_page_id and int(page.merged_into_page_id) != int(page.id):
+        return await get_wiki_page(db, user_id, int(page.merged_into_page_id))
     related = (
         await db.execute(
             select(RagWikiPageLink).where(

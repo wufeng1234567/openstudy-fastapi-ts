@@ -2,6 +2,7 @@
 
 from app.services.rag.study_map_service import (
     _add_edge,
+    _build_groups,
     _parse_source_types,
     _topic_id,
     _trim_to_limit,
@@ -62,3 +63,31 @@ def test_edge_id_is_content_derived_and_stable():
         label="同源",
     )
     assert edges2[0]["id"] == edges[0]["id"]
+
+
+def test_groups_cover_six_entity_kinds():
+    nodes = [
+        {"id": "topic:1", "kind": "topic"},
+        {"id": "bank:2", "kind": "bank"},
+        {"id": "doc:3", "kind": "document"},
+        {"id": "web:4", "kind": "web"},
+        {"id": "note:5", "kind": "note"},
+        {"id": "image:6", "kind": "image"},
+    ]
+    groups = _build_groups(nodes)
+    assert [group["kind"] for group in groups] == [
+        "topic",
+        "bank",
+        "document",
+        "web",
+        "note",
+        "image",
+    ]
+    assert {node_id for group in groups for node_id in group["nodeIds"]} == {
+        "topic:1",
+        "bank:2",
+        "doc:3",
+        "web:4",
+        "note:5",
+        "image:6",
+    }

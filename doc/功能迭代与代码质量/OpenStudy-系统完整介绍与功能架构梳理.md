@@ -361,10 +361,10 @@ flowchart TB
 - **实体抽取（自动）**：文档上传并向量化成功后，`document_pipeline._run` 自动调用 `knowledge_graph_service.build_graph(doc_ids=[doc.id])`，从 chunk 抽实体与有向关系，写 `rag_graph_entity` / `rag_graph_relation`。失败只记日志，不影响文档解析状态。
 - **主题页生成**：`wiki_service.build_wiki_pages` 从实体/关系/来源 chunk 生成主题页，每个小节必须落回真实 chunk；不生成无来源小节（文档来源路径成立）。
 - **页面内链**：正文 `[[page:id|锚文本]]`，`wiki_link_service` 解析/归一化/补链；详情显示出链/反链；删除页面清理死链。
-- **页面图谱**：`GET /rag/wiki/graph` 返回主题页级节点与边（页面链接 + 正文内链即时投影），这是用户在「知识图谱」视图里真正看到的图。
-- **六类节点统一图**：`study_map_service.build_study_map` 请求期聚合 `topic / bank / document / web / note / image` 六类节点，所有节点来自真实表，没有真实关系不画假边；`study_advice_service.prepare_trace` 用它生成规划建议的 trace。
-- **来源实体集与增量**：`source_graph_service.py` + `source_graph_state_service.py` 把文档/网页/图片/题库/笔记按来源抽成实体集，记录 `contentHash` 与 `done/pending/failed`，增量只处理变化来源。
-- **用户可见的筛选**：图谱右侧是「主题页类型」图例（摘要/实体/概念/综合/对比/总览，`KnowledgeWikiPanel.vue:481-488`），不是 `sourceTypes` 六类筛选；`sourceTypes: ['wiki','bank','document','web','note','image']` 只是 `KnowledgeAdviceHost.vue:99-110` 写死的 API 参数，用户不可见、不可改。工具栏「按来源更新」下拉只有文档/图片/题库/网页四项，`wiki` 与 `note` 没有 UI 入口。
+- **页面图谱**：`GET /rag/wiki/graph` 保留用于主题页详情/页面链接兼容；知识图谱主画布已切换为 `GET /rag/study-map` 的统一六类图（2026-11-10）。
+- **六类节点统一图**：`study_map_service.build_study_map` 请求期聚合 `topic / bank / document / web / note / image` 六类节点，所有节点来自真实表，没有真实关系不画假边；`study_advice_service.prepare_trace` 与知识图谱主画布共用同一套数据。
+- **来源实体集与增量**：`source_graph_service.py` + `source_graph_state_service.py` 把文档/网页/图片/题库/笔记按来源抽成实体集，记录 `contentHash` 与 `done/pending/failed`，增量只处理变化来源；主题页更新已改为来源并集，不再覆盖旧来源。
+- **用户可见的筛选**：知识图谱使用 `SearchFilterInput + CommonFilterSidebar`，支持实体集类型（知识主题/题库/资料/网页/笔记/图片）、主题页类型和学习状态筛选；搜索框搜索主题、来源名称、摘要和别名。工具栏「按来源更新」已增加「只更新笔记」。
 
 #### 3.7.2 可用性结论：**能用（6/10），局部好用，整体还不是「好用」**
 
@@ -395,10 +395,10 @@ flowchart TB
 
 **为什么还不到「好用」：**
 
-1. **前端画布根本没渲染六类统一图**：`KnowledgeWikiPanel.vue:2008` 的画布数据来自 `getWikiGraph(kbId)`（纯 page+page_link 两类节点）；全前端 `getStudyMap` 只在 `:1856` 的「按来源更新」里用过一次，`nodes/edges` 从不渲染。后端有六类节点，用户看到的只是主题页图。
-2. **非 topic 轨迹步骤被静默丢弃**：建议 trace 若出现 `bank:` / `doc:` 步骤，`adviceTraceLines`（`KnowledgeWikiPanel.vue:741-762`）用 `replace(/^topic:/,'')` + `position.get(pageId)` 定位，canvas 上查不到 → 该步骤不画线。用户看到的「图谱」与「建议」背后其实是两张不同的图。
-3. **题源锚点几乎为空**：748 道题只有 6 条 `question_source` 锚点（0.8%），且 6 条 `chunk_id` 全为 NULL；`study_map` 的 `degraded.noQuestionSource=true` 在默认调用中恒真。更严重的是，`study_map_service` 在 `kb_id>0` 时用 `linked_bank_ids` 覆盖题库集合，而全库只有 1 条 `question_bank_kb_link`，导致 kb604 默认图只显示 1 个题库（旧 `build_study_graph` 返回 6 个）。
-4. **笔记节点恒为 0**：`content_reference` 只有 2 条 live，其中 note 相关的 1 条 `source_id=664` 指向已删除文档（悬空引用）；`note→doc` 引用 0 条。`study_map` 的 `noteCount` 在 6 次实测中全部为 0，尽管库里有 34 条有效笔记。
+1. **前端画布已接入六类统一图（2026-11-10 修复）**：`KnowledgeWikiPanel.vue` 的图谱主画布已改用 `getStudyMap`，请求六类 `sourceTypes`，渲染 `groups/node/edge`；独立「六类图」入口已删除，主题页/知识图谱双视图保留。
+2. **非 topic 轨迹步骤已可画线（2026-11-10 修复）**：`adviceTraceLines` 改为按完整 node id 定位，`topic/bank/document/note/image` 步骤都能落到画布；`adviceNodeTitles` 同时登记 node id 与 pageId。
+3. **题源锚点几乎为空**：748 道题只有 6 条 `question_source` 锚点（0.8%），且 6 条 `chunk_id` 全为 NULL；`study_map` 的 `degraded.noQuestionSource=true` 在默认调用中仍可能为真。这是数据桥接问题，不能靠前端画线解决。
+4. **笔记节点已可进入图谱（2026-11-10 修复）**：资料夹新增「导入笔记」，`study_map_service` 同时读取 `ContentReference` 与 `note_kb_link`；kb604 实测导入 1 篇笔记后 `noteCount=1`。历史 `content_reference` 的悬空数据仍需后续清理。
 5. **23 个题库来源页是「薄页」**：`generated_by='source:bank'` 的 23 页 `source_doc_ids=[]`、`source_refs=[]`，正文仅 32–38 字符；它们不是伪造（有 `entity_ids` + `generation_meta`），但让「`source_doc_ids=[]` 即不可信」的判据失效，也拉低知识百科整体质量。
 6. **边 ID 已稳定（P2 修复）**：`_add_edge` 已改为 `e:{kind}:{sha1(source->target)[:16]}`，同一组 source/target/kind 跨请求可复现；建议 evidence 与前端连线 key 可直接按 edgeId 对齐，不再漂移。节点 ID 仍是稳定的（`topic:{pageId}` 等）。
 7. **规模化不可行**：`build_study_graph` / `get_wiki_graph` 的页面与链接查询**没有 LIMIT**，`_trim_to_limit` 的 80 节点裁剪发生在构图之后，救不了 IO；`source_graph_state_service._has_pages` 对每个来源都全量扫页，是 O(来源×页)；没有物化图快照。30 万页级不可行，当前只适合中等规模资料夹。

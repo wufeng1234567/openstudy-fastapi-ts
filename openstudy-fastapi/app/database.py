@@ -277,6 +277,11 @@ async def init_db():
                 if "aliases" not in columns:
                     sync_conn.execute(text(f"ALTER TABLE {table} ADD COLUMN aliases JSON NULL"))
                     logger.info(f"{table}.aliases 列已补齐")
+                if table == "rag_wiki_page" and "merged_into_page_id" not in columns:
+                    sync_conn.execute(text(
+                        "ALTER TABLE rag_wiki_page ADD COLUMN merged_into_page_id BIGINT NULL"
+                    ))
+                    logger.info("rag_wiki_page.merged_into_page_id 列已补齐")
 
         await conn.run_sync(_ensure_wiki_aliases_columns)
 
