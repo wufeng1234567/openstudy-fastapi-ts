@@ -598,6 +598,8 @@ const IMAGE_CLUSTER_ID = 'image:cluster'
 const mapGraph = ref<any>({ nodes: [], edges: [], groups: [] })
 const mapSize = reactive({ width: 1200, height: 760 })
 const mapReady = ref(false)
+const mapSwitching = ref(false)
+const MAP_VIEW_CACHE_PREFIX = 'openstudy_wiki_map_view:v2:'
 const mapLayoutScale = computed(() => Math.min(1.8, Math.max(1, Math.min(mapSize.width / 1200, mapSize.height / 760))))
 const mapViewBox = computed(() => `0 0 ${mapSize.width} ${mapSize.height}`)
 const mapView = reactive({ x: 0, y: 0, scale: 1 })
@@ -2397,8 +2399,53 @@ function syncMapSize() {
 }
 
 function onMapResize() {
-  if (view.value !== 'map') return
+  if (view.value !== 'map' || !mapReady.value) return
+  const element = mapCanvasRef.value
+  if (!element) return
+  const rect = element.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0) return
+  // 浏览器显示/隐藏滚动条也会触发 window.resize，但不应改变图谱视角。
+  // 只有窗口或侧栏发生真正的大幅变化时才重新布局并 fit。
+  const widthChanged = Math.abs(rect.width - mapSize.width) >= 48
+  const heightChanged = Math.abs(rect.height - mapSize.height) >= 48
+  if (!widthChanged && !heightChanged) return
   syncMapSize()
+  fitMapView()
+}
+
+function mapViewCacheKey() {
+  return `${MAP_VIEW_CACHE_PREFIX}${Number(props.activeKbId || 0)}`
+}
+
+function readMapViewCache() {
+  try {
+    const raw = sessionStorage.getItem(mapViewCacheKey())
+    if (!raw) return null
+    const cached = JSON.parse(raw)
+    if (
+      Math.abs(Number(cached.width) - mapSize.width) > 1 ||
+      Math.abs(Number(cached.height) - mapSize.height) > 1 ||
+      Number(cached.nodes) !== Number(mapGraph.value.nodes?.length || 0)
+    ) return null
+    return cached
+  } catch {
+    return null
+  }
+}
+
+function saveMapViewCache() {
+  try {
+    sessionStorage.setItem(mapViewCacheKey(), JSON.stringify({
+      width: mapSize.width,
+      height: mapSize.height,
+      nodes: Number(mapGraph.value.nodes?.length || 0),
+      x: Number(mapView.x),
+      y: Number(mapView.y),
+      scale: Number(mapView.scale)
+    }))
+  } catch {
+    // sessionStorage 不可用时忽略，不影响图谱使用。
+  }
 }
 
 function fitMapView() {
@@ -2434,10 +2481,14 @@ function fitMapView() {
   mapView.scale = scale
   mapView.x = availableWidth / 2 - ((minX + maxX) / 2) * scale
   mapView.y = mapSize.height / 2 - ((minY + maxY) / 2) * scale
+  saveMapViewCache()
 }
 
 async function switchMap(preserveView = false) {
   if (!Number(props.activeKbId)) return
+  // 防止 onMounted 的 reload 和用户点击同时触发两套加载/两次 fit。
+  if (mapSwitching.value) return
+  mapSwitching.value = true
   view.value = 'map'
   if (!preserveView) {
     mapReady.value = false
@@ -2490,13 +2541,22 @@ async function switchMap(preserveView = false) {
         requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
       })
       syncMapSize()
-      fitMapView()
+      const cachedView = readMapViewCache()
+      if (cachedView) {
+        mapView.x = Number(cachedView.x)
+        mapView.y = Number(cachedView.y)
+        mapView.scale = Number(cachedView.scale)
+      } else {
+        fitMapView()
+      }
     }
     mapReady.value = true
     startMapAnimation()
   } catch {
     // 图谱失败时保持主题页入口，不影响阅读。
     view.value = 'pages'
+  } finally {
+    mapSwitching.value = false
   }
 }
 
