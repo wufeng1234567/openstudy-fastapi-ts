@@ -1119,6 +1119,13 @@ import {
   missingMarkdownImageFiles,
   pickMissingImagesFromDirectory
 } from '@/utils/markdownUpload'
+import {
+  delay,
+  documentStatusKey,
+  documentTypeKey,
+  facetText,
+  reprocessPercent
+} from './helpers'
 
 /* ===================== 状态 ===================== */
 
@@ -1363,24 +1370,6 @@ const workspaceCountLabel = computed(() => {
   if (viewMode.value === 'gallery') return `全部图片：共 ${galleryStats.total} 张`
   return `全部主题：共 ${mapStats.total} 个`
 })
-function documentTypeKey(doc: any): string {
-  const ext = String(doc?.fileType || doc?.fileName || '').toLowerCase().match(/\.([a-z0-9]+)$/)?.[1]
-    || String(doc?.fileType || '').toLowerCase()
-  if (['doc', 'docx'].includes(ext)) return 'word'
-  if (['ppt', 'pptx'].includes(ext)) return 'ppt'
-  if (['md', 'markdown', 'txt'].includes(ext)) return 'text'
-  if (['pdf'].includes(ext)) return 'pdf'
-  if (['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'].includes(ext)) return 'image'
-  return 'other'
-}
-
-function documentStatusKey(doc: any): string {
-  if (Number(doc?.disabled) === 1) return 'blocked'
-  if (Number(doc?.status) === 4) return 'failed'
-  if (Number(doc?.status) === 5) return 'ready'
-  return 'processing'
-}
-
 const workspaceFilterTitle = computed(() => {
   if (viewMode.value === 'gallery') return '图片筛选'
   if (viewMode.value === 'wiki') return '主题筛选'
@@ -2511,16 +2500,6 @@ async function rollbackOrganizePreview() {
   }
 }
 
-function facetText(facets: any): string {
-  if (!facets || typeof facets !== 'object') return '—'
-  const parts = []
-  if (facets.wordCount) parts.push(`${facets.wordCount} 字`)
-  if (facets.formulaCount) parts.push(`${facets.formulaCount} 公式`)
-  if (facets.imageCount) parts.push(`${facets.imageCount} 图片`)
-  if (facets.tableCount) parts.push(`${facets.tableCount} 表格`)
-  return parts.length ? parts.join(' / ') : '—'
-}
-
 function openQuestionPicker(img: any) {
   questionPickerImage.value = img
   questionKeyword.value = ''
@@ -3127,18 +3106,6 @@ function stopReprocessClock() {
     clearInterval(reprocessTimer)
     reprocessTimer = null
   }
-}
-
-function reprocessPercent(status: number): number {
-  if (status === 1) return 10
-  if (status === 2) return 32
-  if (status === 3) return 68
-  if (status === 5) return 100
-  return 0
-}
-
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 async function pollUploadedDocuments(docIds: number[]) {
