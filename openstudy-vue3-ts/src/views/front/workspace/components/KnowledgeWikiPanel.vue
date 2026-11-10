@@ -178,6 +178,11 @@
                 <OsIcon name="eye-off" :size="14" />
                 <span>{{ mapShowEntitySetLabels ? '隐藏实体集名称' : '显示实体集名称' }}</span>
               </button>
+              <button v-if="mapTypeCounts.image > 8" type="button" class="kw-graph-action"
+                :class="{ 'is-active': mapImageExpanded }" @click="mapImageExpanded = !mapImageExpanded">
+                <OsIcon name="layout-grid" :size="14" />
+                <span>{{ mapImageExpanded ? '收起图片节点' : `展开图片节点（${mapTypeCounts.image}）` }}</span>
+              </button>
               <button type="button" class="kw-graph-action" @click="resetGraphView">
                 <OsIcon name="refresh" :size="14" />
                 <span>适配视图</span>
@@ -589,6 +594,7 @@ const galleryLoading = ref(false)
 const galleryItems = ref<any[]>([])
 
 const mapCanvasRef = ref<HTMLElement | null>(null)
+const IMAGE_CLUSTER_ID = 'image:cluster'
 const mapGraph = ref<any>({ nodes: [], edges: [], groups: [] })
 const mapSize = reactive({ width: 1200, height: 760 })
 const mapLayoutScale = computed(() => Math.min(1.8, Math.max(1, Math.min(mapSize.width / 1200, mapSize.height / 760))))
@@ -596,6 +602,7 @@ const mapViewBox = computed(() => `0 0 ${mapSize.width} ${mapSize.height}`)
 const mapView = reactive({ x: 0, y: 0, scale: 1 })
 const mapHoveredId = ref<string | null>(null)
 const mapSelectedPageId = ref<number | null>(null)
+const mapImageExpanded = ref(false)
 const searchSuppressed = ref(false)
 const mapHideUnlinked = ref(false)
 const mapShowArrows = ref(true)
@@ -812,6 +819,7 @@ const groupKeyByNode = computed(() => {
 })
 
 function isCrossSourceEdge(edge: any) {
+  if (String(edge.type || '') === 'document_image') return false
   const source = allMapNodes.value.find((node: any) => String(node.id) === String(edge.source))
   const target = allMapNodes.value.find((node: any) => String(node.id) === String(edge.target))
   if (!source || !target) return false
@@ -934,8 +942,9 @@ const mapNodes = computed(() => {
   const width = Number(mapSize.width || 1200)
   const height = Number(mapSize.height || 760)
   const layoutScale = Number(mapLayoutScale.value || 1)
-  // 右侧实体集面板占约 220px；节点布局只使用左侧可用区域，避免来源组被面板盖住。
-  const usableWidth = Math.max(640, width - 230)
+  // 右侧实体集面板按分辨率占 220–320px；节点布局只使用左侧可用区域，避免来源组被面板盖住。
+  const panelReserve = Math.min(320, Math.max(220, width * 0.12))
+  const usableWidth = Math.max(640, width - panelReserve)
   const topicSpacingX = Math.round(52 * layoutScale)
   const topicSpacingY = Math.round(48 * layoutScale)
   const kindCenters: Record<string, { x: number; y: number }> = {
@@ -948,7 +957,21 @@ const mapNodes = computed(() => {
   }
   const result: any[] = []
   visibleComponents.forEach((component, componentIndex) => {
-    const members = component.ids.map((id: string) => byId.get(id)).filter(Boolean) as any[]
+    const collapseImages = component.kind === 'image' && !mapImageExpanded.value && component.ids.length > 8
+    const members = collapseImages
+      ? [{
+          id: IMAGE_CLUSTER_ID,
+          kind: 'image',
+          title: `图片资产（${component.ids.length}）`,
+          subtitle: '点击展开图片节点',
+          pageId: 0,
+          pageType: 'image',
+          degree: component.ids.length,
+          sourceType: 'image',
+          sourceId: 0,
+          color: entityTypeMeta('image').color
+        }]
+      : component.ids.map((id: string) => byId.get(id)).filter(Boolean) as any[]
     const hub = [...members].sort((a, b) => Number(b.degree || 0) - Number(a.degree || 0))[0]
     const fallbackCenter = {
       x: 80 + ((componentIndex % 3) + 0.5) * Math.max(1, (usableWidth - 160) / 3),
@@ -1018,10 +1041,20 @@ const mapNodes = computed(() => {
 
 const mapEdges = computed(() => {
   const positions = new Map(mapNodes.value.map((node: any) => [String(node.id), node]))
-  return (mapGraph.value?.edges || [])
+  const imageIds = new Set(
+    allMapNodes.value
+      .filter((node: any) => normalizeEntityKind(node.kind) === 'image')
+      .map((node: any) => String(node.id))
+  )
+  const collapseImages = !mapImageExpanded.value && imageIds.size > 8
+  const endpoint = (id: any) => collapseImages && imageIds.has(String(id)) ? IMAGE_CLUSTER_ID : String(id)
+  const edges = (mapGraph.value?.edges || [])
     .map((edge: any) => {
-      const source = positions.get(String(edge.source))
-      const target = positions.get(String(edge.target))
+      const sourceId = endpoint(edge.source)
+      const targetId = endpoint(edge.target)
+      if (sourceId === targetId) return null
+      const source = positions.get(sourceId)
+      const target = positions.get(targetId)
       if (!source || !target) return null
       const dx = target.x - source.x
       const dy = target.y - source.y
@@ -1031,9 +1064,9 @@ const mapEdges = computed(() => {
       const startPad = Number(source.r || 5) + 5
       const endPad = Number(target.r || 5) + 7
       return {
-        key: `${edge.source}-${edge.target}-${edge.type}`,
-        source: String(edge.source),
-        target: String(edge.target),
+        key: `${sourceId}-${targetId}-${edge.type}`,
+        source: sourceId,
+        target: targetId,
         x1: source.x + ux * startPad,
         y1: source.y + uy * startPad,
         x2: target.x - ux * endPad,
@@ -1043,7 +1076,12 @@ const mapEdges = computed(() => {
         cross: isCrossSourceEdge(edge)
       }
     })
-    .filter(Boolean)
+    .filter(Boolean) as any[]
+  const unique = new Map<string, any>()
+  for (const edge of edges) {
+    if (!unique.has(edge.key)) unique.set(edge.key, edge)
+  }
+  return [...unique.values()]
 })
 
 const visibleLabelIds = computed(() => {
@@ -1051,6 +1089,7 @@ const visibleLabelIds = computed(() => {
   const candidates = [...mapNodes.value]
     .filter((node: any) => {
       const kind = normalizeEntityKind(node.kind)
+      if (node.id === IMAGE_CLUSTER_ID) return true
       if (isMapSelected(node) || isRouteNode(node) || mapHoveredId.value === String(node.id)) return true
       if (adviceLitPageIds.value.includes(String(node.pageId))) return true
       if (kind !== 'topic') {
@@ -1497,6 +1536,7 @@ function isMapEdgeDimmed(edge: any) {
 }
 
 function showMapLabel(node: any) {
+  if (node.id === IMAGE_CLUSTER_ID) return true
   if (!visibleLabelIds.value.has(String(node.id))) return false
   if (normalizeEntityKind(node.kind) === 'topic') return true
   const component = mapComponents.value.components.find((item) => item.ids.includes(String(node.id)))
@@ -1534,6 +1574,10 @@ function animateMapViewTo(targetX: number, targetY: number, targetScale = mapVie
 }
 
 function selectMapNode(node: any, openDetail = true) {
+  if (node.id === IMAGE_CLUSTER_ID) {
+    mapImageExpanded.value = true
+    return
+  }
   stopMapAnimation()
   stopMapNodeDrag()
   mapSelectedPageId.value = Number(node.pageId)
@@ -2218,6 +2262,7 @@ function toggleMapArrows() {
 
 function resetGraphView() {
   resetMapNodeOffsets()
+  mapImageExpanded.value = false
   nextTick(() => {
     syncMapSize()
     fitMapView()
@@ -2253,7 +2298,8 @@ function fitMapView() {
   const minY = Math.min(...ys)
   const maxY = Math.max(...ys)
   const padding = 64
-  const availableWidth = Math.max(640, mapSize.width - 230)
+  const panelReserve = Math.min(320, Math.max(220, mapSize.width * 0.12))
+  const availableWidth = Math.max(640, mapSize.width - panelReserve)
   const maxFitScale = Math.max(1.1, Math.min(2.2, mapLayoutScale.value * 1.2))
   const scale = Math.min(
     maxFitScale,
@@ -2274,6 +2320,7 @@ async function switchMap() {
   if (!Number(props.activeKbId)) return
   view.value = 'map'
   resetMapNodeOffsets()
+  mapImageExpanded.value = false
   mapView.x = 0
   mapView.y = 0
   mapView.scale = 1
@@ -3009,7 +3056,7 @@ onBeforeUnmount(() => {
   0% { opacity: 0.8; transform: scale(1); }
   100% { opacity: 0; transform: scale(1.6); }
 }
-.kw-graph-panel { position: absolute; z-index: 8; top: 12px; right: 12px; display: flex; width: min(200px, calc(100vw - 32px)); max-height: calc(100% - 24px); flex-direction: column; gap: 5px; overflow-y: auto; padding: 8px 9px; border: 1px solid rgba(15, 23, 42, 0.08); border-radius: 9px; background: rgba(255, 255, 255, 0.94); box-shadow: 0 8px 22px rgba(29, 43, 70, 0.1); backdrop-filter: blur(10px); }
+.kw-graph-panel { position: absolute; z-index: 8; top: 12px; right: 12px; display: flex; width: clamp(190px, 18vw, 300px); max-height: calc(100% - 24px); flex-direction: column; gap: 5px; overflow-y: auto; padding: 8px 9px; border: 1px solid rgba(15, 23, 42, 0.08); border-radius: 9px; background: rgba(255, 255, 255, 0.94); box-shadow: 0 8px 22px rgba(29, 43, 70, 0.1); backdrop-filter: blur(10px); }
 .kw-graph-mode-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 2px 6px; color: #5f6b7d; font-size: 11px; font-weight: 600; }
 .kw-mode-switch { position: relative; width: 30px; height: 17px; flex: none; padding: 0; border: 0; border-radius: 99px; background: #dfe5ee; cursor: pointer; transition: background .18s ease; }
 .kw-mode-switch i { position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(20, 34, 60, .18); transition: left .18s ease; }

@@ -499,7 +499,7 @@ def _description_prompt(row: RagImageAsset) -> str:
     return (
         "你是学习资料的图片索引助手。请只根据图片本身和给定上下文，生成可检索的图片索引。\n"
         "要求：\n"
-        "1. caption 用中文说清楚这张图“是什么、表达什么”，不要写空话；\n"
+        "1. caption 用中文给出不超过 18 个汉字的图片名称，说清楚“是什么/表达什么”，不要写空话、不要以“一张”开头；\n"
         "2. ocrText 只抄写图片中清晰可见的文字/公式，看不清就留空，禁止编造；\n"
         "3. kind 从 photo / diagram / table / formula / screenshot 中选一个；\n"
         "4. keywords 给 3 到 6 个短词，便于搜索；\n"

@@ -68,15 +68,28 @@ def _image_seq(asset: RagImageAsset) -> int:
         return 1
 
 
+def _short_image_caption(value: Any, limit: int = 18) -> str:
+    text = _safe_text(value, 80)
+    for prefix in ("一张", "一幅", "一个"):
+        if text.startswith(prefix):
+            text = text[len(prefix):].strip()
+            break
+    for separator in ("，", "。", "；", "：", " "):
+        if separator in text:
+            text = text.split(separator, 1)[0].strip()
+            break
+    return _safe_text(text, limit)
+
+
 def _image_asset_title(asset: RagImageAsset, doc: Optional[RagDocument]) -> tuple[str, str]:
     """单张图片节点用图片内容命名；LLM 缺名时按文档名-图N/文件名兜底。"""
     doc_name = _safe_text(getattr(doc, "file_name", "") or "", 80)
-    caption = _safe_text(
+    raw_caption = (
         getattr(asset, "caption", "")
         or getattr(asset, "ocr_text", "")
-        or " ".join(getattr(asset, "keywords", []) or []),
-        56,
+        or " ".join(getattr(asset, "keywords", []) or [])
     )
+    caption = _short_image_caption(raw_caption, 18)
     seq = _image_seq(asset)
     if caption and caption not in {"图片", "截图", "image", "图片描述"}:
         subtitle = f"{doc_name} · 图{seq}" if doc_name else f"独立图片 · 第{seq}张"

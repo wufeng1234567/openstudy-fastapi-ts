@@ -106,7 +106,7 @@ def test_image_asset_title_prefers_caption_then_document_fallback():
         keywords=[],
         file_name="doc:9:0",
     )
-    assert _image_asset_title(captioned, doc)[0] == "一张智能体工具调用流程图"
+    assert _image_asset_title(captioned, doc)[0] == "智能体工具调用流程图"
     fallback = SimpleNamespace(
         id=2,
         asset_key="doc:9:2",
