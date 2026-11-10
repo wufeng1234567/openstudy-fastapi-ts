@@ -11,15 +11,7 @@
     :close-on-click-outside="true"
   >
     <div class="kah__drawer">
-      <NodeAdviceHistoryPreview
-        v-if="selectedNode && !advice && !isBusy"
-        :seed-node-id="selectedNode.id"
-        :node-title="selectedNode.title"
-        @load="loadHistoryItem"
-        @generate="generate()"
-      />
       <StudyAdvicePanel
-        v-else
         :advice="advice"
         :loading="isBusy"
         :phase="phase"
@@ -58,7 +50,6 @@ import {
   updateStudyPlanHistory
 } from '@/api/ai/studyPlan'
 import { readStudyPlanConfig } from '@/utils/studyPlanState'
-import NodeAdviceHistoryPreview from './NodeAdviceHistoryPreview.vue'
 import StudyAdvicePanel from '@/views/front/myQuestion/myStats/components/StudyAdvicePanel.vue'
 import StudyPlanHistoryDrawer from '@/views/front/myQuestion/myStats/components/StudyPlanHistoryDrawer.vue'
 
@@ -116,30 +107,36 @@ function syncState() {
   emit('update', { advice: advice.value, trace: trace.value, visitedPageIds: visited })
 }
 
+function selectAdviceNode(node: any) {
+  const nodeId = String(node?.id || '')
+  if (!nodeId) {
+    drawer.value = true
+    return false
+  }
+  selectedNode.value = { id: nodeId, title: String(node?.title || '当前节点') }
+  advice.value = null
+  trace.value = null
+  phase.value = 'idle'
+  drawer.value = true
+  return true
+}
+
 async function generateForPage(pageId: number) {
   if (!pageId) {
     drawer.value = true
     return
   }
-  return generateForNode({
+  if (!selectAdviceNode({
     id: `topic:${pageId}`,
     title: props.nodeTitles?.[String(pageId)] || '当前主题'
-  })
+  })) return
+  await nextTick()
+  await generate()
 }
 
 async function generateForNode(node: any) {
-  const nodeId = String(node?.id || '')
-  if (!nodeId) {
-    drawer.value = true
-    return
-  }
-  selectedNode.value = { id: nodeId, title: String(node?.title || '当前节点') }
-  advice.value = null
-  trace.value = null
-  phase.value = 'reading'
-  drawer.value = true
-  await nextTick()
-  await generate()
+  // 点击节点只选中起点，不自动生成；用户点“以此生成建议”后再调用 generate()。
+  selectAdviceNode(node)
 }
 
 function rememberGraphTitles(graph: any) {
