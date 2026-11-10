@@ -1019,6 +1019,24 @@ const mapNodes = computed(() => {
       radius: Math.max(halfWidth, halfHeight)
     }
   })
+  // 如果当前窗口宽度不足以容纳最大的两组，就扩展虚拟画布；再由 fitMapView 统一缩放。
+  // 这样宁可整体缩小一点，也不会把组强行压到互相重叠。
+  let maxPairRadius = 0
+  for (let i = 0; i < groupLayouts.length; i += 1) {
+    for (let j = i + 1; j < groupLayouts.length; j += 1) {
+      maxPairRadius = Math.max(maxPairRadius, groupLayouts[i]!.radius + groupLayouts[j]!.radius)
+    }
+  }
+  const layoutWidth = Math.max(
+    usableWidth,
+    Math.ceil(maxPairRadius * 2 + groupGap + 36)
+  )
+  if (layoutWidth > usableWidth) {
+    const ratio = layoutWidth / usableWidth
+    groupLayouts.forEach((layout) => {
+      layout.center.x = Math.round(layout.center.x * ratio)
+    })
+  }
   // 组间分离：把每个实体集当成有半径的圆，用简单迭代把重叠的组推开。
   // 这是实际几何计算，不再依赖某一组固定坐标，窗口变大/变小时组与组之间始终保留 gap。
   for (let pass = 0; pass < 90; pass += 1) {
@@ -1047,7 +1065,7 @@ const mapNodes = computed(() => {
     }
     for (const layout of groupLayouts) {
       layout.center.x = Math.min(
-        Math.max(layout.radius + 18, usableWidth - layout.radius - 18),
+        Math.max(layout.radius + 18, layoutWidth - layout.radius - 18),
         Math.max(layout.radius + 18, layout.center.x)
       )
       layout.center.y = Math.min(
@@ -2403,7 +2421,8 @@ function fitMapView() {
   const scale = Math.min(
     maxFitScale,
     Math.max(
-      0.35,
+      // 组间距优先；空间不足时允许图谱略超出视口后拖拽/缩放，不把整张图缩成看不清的小点。
+      0.75,
       Math.min(
         (availableWidth - padding * 2) / Math.max(180, maxX - minX + 120),
         (mapSize.height - padding * 2) / Math.max(180, maxY - minY + 120)
