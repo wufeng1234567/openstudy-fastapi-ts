@@ -19,7 +19,7 @@ from app.core.security import get_current_user
 from app.database import get_db
 from app.models.wiki import RagWikiPage
 from app.services import source_graph_state_service
-from app.services.rag import source_graph_service
+from app.services.rag import gallery_service, source_graph_service
 
 router = APIRouter(prefix="/rag")
 
@@ -174,6 +174,8 @@ async def build_wiki_incremental(
 ):
     """只处理未处理或内容变化的来源；已处理来源不会重新交给 LLM。"""
     try:
+        # 先幂等同步图片资产，否则从未打开过画廊的文档图片不会被资料更新识别。
+        await gallery_service.sync_image_assets(db, _uid(current_user))
         pending = await source_graph_state_service.sync_states(
             db,
             user_id=_uid(current_user),
@@ -220,6 +222,8 @@ async def build_wiki_selective(
     source_type = str(data.sourceType or "").strip().lower()
     if source_type not in {"document", "image", "bank", "web", "note"}:
         return error("sourceType 只支持 document / image / bank / web / note")
+    if source_type == "image":
+        await gallery_service.sync_image_assets(db, _uid(current_user))
     if source_type == "bank":
         # 题库没有 wiki 页；按题目块抽取知识点/实体关系，供知识图谱使用。
         if int(data.sourceId or 0) <= 0:

@@ -256,12 +256,13 @@ const items = ref<any[]>([])
 const sources = ref<Array<{ key: string; label: string; count: number }>>([
   { key: 'all', label: '全部图片', count: 0 },
   { key: 'document', label: '文档图片', count: 0 },
+  { key: 'upload', label: '独立图片', count: 0 },
   { key: 'chat', label: '聊天图片', count: 0 }
 ])
 const stats = reactive({ total: 0, described: 0, pending: 0, failed: 0, used: 0 })
 const query = ref(props.searchQuery || '')
 const scope = ref<'current' | 'all'>('current')
-const sourceFilter = ref<'all' | 'document' | 'chat'>('all')
+const sourceFilter = ref<'all' | 'document' | 'upload' | 'chat'>('all')
 const docFilter = ref<number | null>(null)
 const documentOptions = ref<Array<{ docId: number; fileName: string; count: number }>>([])
 const describing = ref(false)
@@ -383,7 +384,7 @@ function setScope(next: 'current' | 'all') {
   reload()
 }
 
-function setSource(source: 'all' | 'document' | 'chat') {
+function setSource(source: 'all' | 'document' | 'upload' | 'chat') {
   sourceFilter.value = source
   if (source === 'chat') docFilter.value = null
   reload()

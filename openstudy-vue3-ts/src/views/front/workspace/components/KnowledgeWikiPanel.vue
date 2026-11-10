@@ -602,6 +602,7 @@ const mapViewBox = computed(() => `0 0 ${mapSize.width} ${mapSize.height}`)
 const mapView = reactive({ x: 0, y: 0, scale: 1 })
 const mapHoveredId = ref<string | null>(null)
 const mapSelectedPageId = ref<number | null>(null)
+const mapSelectedNodeId = ref<string | null>(null)
 const mapImageExpanded = ref(false)
 const searchSuppressed = ref(false)
 const mapHideUnlinked = ref(false)
@@ -1495,10 +1496,6 @@ function neighborIdsFor(id: string | null) {
   return result
 }
 
-const mapSelectedNodeId = computed(() => {
-  const selected = mapNodes.value.find((node: any) => Number(node.pageId) === Number(mapSelectedPageId.value))
-  return selected ? String(selected.id) : null
-})
 const mapFocusId = computed(() => mapHoveredId.value || mapSelectedNodeId.value)
 const mapNeighborIds = computed(() => neighborIdsFor(mapFocusId.value))
 
@@ -1514,6 +1511,7 @@ function onMapNodeLeave(node: any) {
 }
 
 function isMapSelected(node: any) {
+  if (mapSelectedNodeId.value) return String(node.id) === mapSelectedNodeId.value
   return Number(node.pageId) === Number(mapSelectedPageId.value)
 }
 
@@ -1581,6 +1579,7 @@ function selectMapNode(node: any, openDetail = true) {
   stopMapAnimation()
   stopMapNodeDrag()
   mapSelectedPageId.value = Number(node.pageId)
+  mapSelectedNodeId.value = String(node.id)
   // 把选中节点移到画布左侧中央，右侧留给详情抽屉。
   // 用 rAF 做镜头移动，而不是瞬移；节点选中环和周围灰化同时生效。
   const targetScale = Math.max(0.9, Math.min(1.25, Number(mapView.scale) || 1))
@@ -1627,8 +1626,9 @@ function onMapNodeClick(node: any) {
   if (adviceMode.value) {
     const pageId = Number(node.pageId)
     // 再次点击同一个节点 = 取消选中，恢复图谱原状。
-    if (Number(mapSelectedPageId.value) === pageId) {
+    if (mapSelectedNodeId.value === String(node.id) || (pageId > 0 && Number(mapSelectedPageId.value) === pageId)) {
       mapSelectedPageId.value = null
+      mapSelectedNodeId.value = null
       detailVisible.value = false
       adviceHostRef.value?.clear?.()
       adviceTrace.value = null
@@ -1639,7 +1639,7 @@ function onMapNodeClick(node: any) {
     // 建议模式只选中节点并把它移到视野中央，不打开知识百科详情抽屉。
     detailVisible.value = false
     selectMapNode(node, false)
-    adviceHostRef.value?.generateForPage?.(pageId)
+    adviceHostRef.value?.generateForNode?.(node)
     return
   }
   selectMapNode(node)
@@ -2166,7 +2166,7 @@ async function openWikiUpdate(type: typeof wikiUpdateType.value) {
     wikiUpdateOptions.value = (res.data?.nodes || [])
       .filter((node: any) => String(node.kind) === type)
       .map((node: any) => ({
-        id: Number(node.ref?.docId || node.ref?.bankId || 0),
+        id: Number(node.ref?.assetId || node.ref?.docId || node.ref?.bankId || 0),
         title: String(node.title || '未命名来源'),
         subtitle: String(node.subtitle || ''),
         node
@@ -2387,6 +2387,7 @@ function closeDetail() {
   }
   detailVisible.value = false
   mapSelectedPageId.value = null
+  mapSelectedNodeId.value = null
   mapHoveredId.value = null
 }
 
@@ -2395,6 +2396,7 @@ watch(detailVisible, (visible) => {
   const viewedPageId = lastDetailPageId
   lastDetailPageId = null
   mapSelectedPageId.value = null
+  mapSelectedNodeId.value = null
   mapHoveredId.value = null
   if (view.value === 'map') nextTick(startMapAnimation)
   if (

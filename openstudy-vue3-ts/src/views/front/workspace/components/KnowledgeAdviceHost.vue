@@ -12,7 +12,7 @@
   >
     <div class="kah__drawer">
       <NodeAdviceHistoryPreview
-        v-if="selectedNode && !advice"
+        v-if="selectedNode && !advice && !isBusy"
         :seed-node-id="selectedNode.id"
         :node-title="selectedNode.title"
         @load="loadHistoryItem"
@@ -121,10 +121,25 @@ async function generateForPage(pageId: number) {
     drawer.value = true
     return
   }
-  selectedNode.value = { id: `topic:${pageId}`, title: props.nodeTitles?.[String(pageId)] || '当前主题' }
+  return generateForNode({
+    id: `topic:${pageId}`,
+    title: props.nodeTitles?.[String(pageId)] || '当前主题'
+  })
+}
+
+async function generateForNode(node: any) {
+  const nodeId = String(node?.id || '')
+  if (!nodeId) {
+    drawer.value = true
+    return
+  }
+  selectedNode.value = { id: nodeId, title: String(node?.title || '当前节点') }
   advice.value = null
   trace.value = null
+  phase.value = 'reading'
   drawer.value = true
+  await nextTick()
+  await generate()
 }
 
 function rememberGraphTitles(graph: any) {
@@ -163,8 +178,8 @@ async function generate(instruction = '', parentId = 0, animateTrace = true) {
   trace.value = null
   snapshotId.value = 0
   phase.value = 'reading'
-  // 首次生成播放轨迹动画；从“继续调整”进入时只展示思考动画，不重新跑连线。
-  drawer.value = !animateTrace
+  // 从点击节点开始就打开抽屉展示“生成中”，不要先闪一下历史记录。
+  drawer.value = true
   try {
     const params = buildParams(instruction)
     const traceRes: any = await prepareStudyTrace(params)
@@ -306,7 +321,7 @@ function clear() {
 
 onMounted(loadHistory)
 
-defineExpose({ generateForPage, open, clear })
+defineExpose({ generateForPage, generateForNode, open, clear })
 </script>
 
 <style scoped>

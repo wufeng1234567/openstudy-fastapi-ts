@@ -20,12 +20,14 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import uuid
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, UploadFile
 from fastapi.responses import Response, StreamingResponse
+from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,6 +43,7 @@ from app.services.rag import (
     rag_query_service,
     rag_write_service,
     reference_service,
+    source_graph_service,
     workspace_service,
 )
 from app.services.rag.rag_write_service import RagConflict, RagNotFound
@@ -360,6 +363,77 @@ class TextImport(BaseModel):
     fileName: Optional[str] = "未命名文档.txt"
 
 
+async def _create_standalone_image_asset(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    kb_id: int,
+    filename: str,
+    raw: bytes,
+):
+    """把用户直接上传的图片落成 kb 级独立图片资产（不创建文档）。"""
+    from app.models.content import RagImageAsset
+    from app.utils.file_util import save_bytes
+
+    saved = save_bytes(raw, filename, sub_dir="upload")
+    display_name = Path(filename).stem.strip() or "图片"
+    asset = RagImageAsset(
+        user_id=int(user_id),
+        kb_id=int(kb_id),
+        doc_id=None,
+        asset_key=f"upload:{uuid.uuid4().hex}",
+        source_type="upload",
+        url=str(saved.get("fileUrl") or ""),
+        file_name=str(filename),
+        display_name=display_name[:120],
+        source_name="独立图片",
+        kind="image",
+        description_status="pending",
+    )
+    db.add(asset)
+    await db.flush()
+    return asset
+
+
+async def _describe_standalone_image(asset_key: str, user_id: int) -> None:
+    """上传独立图片后后台生成短名称/描述，并抽取其中可能存在的知识点。"""
+    from sqlalchemy import select
+    from app.models.content import RagImageAsset
+
+    async with async_session_factory() as db:
+        try:
+            await gallery_service.describe_asset(db, int(user_id), asset_key)
+            await db.commit()
+            row = (
+                await db.execute(
+                    select(RagImageAsset).where(
+                        RagImageAsset.user_id == int(user_id),
+                        RagImageAsset.asset_key == str(asset_key),
+                    )
+                )
+            ).scalar_one_or_none()
+            if not row:
+                return
+            text = "\n".join(
+                str(value or "")
+                for value in (row.caption, row.ocr_text, " ".join(row.keywords or []))
+            ).strip()
+            if text and int(row.kb_id or 0) > 0:
+                await source_graph_service.sync_text_source(
+                    db,
+                    user_id=int(user_id),
+                    kb_id=int(row.kb_id),
+                    source_type="image",
+                    source_id=int(row.id),
+                    source_name=str(row.display_name or row.file_name or "图片"),
+                    text=text,
+                )
+                await db.commit()
+        except Exception as exc:  # noqa: BLE001 - 后台增强失败不阻断上传
+            await db.rollback()
+            logger.warning(f"[rag.upload] 独立图片描述/知识点抽取失败 {asset_key}: {exc}")
+
+
 @router.post("/document/upload")
 async def upload_document(
     background: BackgroundTasks,
@@ -394,12 +468,37 @@ async def upload_document(
     assets = _batch_image_assets(payloads)
     referenced_images = _referenced_markdown_image_names(payloads)
     documents: list[dict] = []
+    images: list[dict] = []
     failed: list[dict] = []
     for filename, raw in payloads:
         ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
         if ext in _IMAGE_FILE_EXTS and Path(filename).name in referenced_images:
             # 这张图是 Markdown 的随文插图，已进入 markdown 文档的 imageMap，
             # 不再单独建一份“图片文档”。
+            continue
+        if ext in _IMAGE_FILE_EXTS:
+            # 用户直接上传的独立图片：进入资料夹画廊，不创建文档，不产生文档节点。
+            try:
+                asset = await _create_standalone_image_asset(
+                    db,
+                    user_id=uid,
+                    kb_id=kb_id,
+                    filename=filename,
+                    raw=raw,
+                )
+            except Exception as e:  # noqa: BLE001
+                failed.append({"fileName": filename, "error": str(e)[:300]})
+                continue
+            background.add_task(_describe_standalone_image, str(asset.asset_key), uid)
+            images.append(
+                {
+                    "assetId": int(asset.id),
+                    "assetKey": str(asset.asset_key),
+                    "kbId": int(kb_id),
+                    "fileName": filename,
+                    "displayName": str(asset.display_name or Path(filename).stem),
+                }
+            )
             continue
         try:
             doc, image_map, content_length, _, ocr_applied = await _create_uploaded_document(
@@ -419,19 +518,22 @@ async def upload_document(
             )
         )
 
-    if not documents:
+    if not documents and not images:
         reason = failed[0]["error"] if failed else "没有可上传的文件"
         return error(f"上传失败：{reason}", code=400)
     if len(payloads) == 1 and not failed:
+        if images:
+            return success(images[0], "独立图片上传成功，正在生成图片名称和描述")
         return success(documents[0], "上传成功，正在后台处理")
     return success(
         {
             "documents": documents,
+            "images": images,
             "failed": failed,
-            "count": len(documents),
+            "count": len(documents) + len(images),
             "totalSize": sum(len(raw) for _, raw in payloads),
         },
-        f"已上传 {len(documents)} 份" + (f"，{len(failed)} 份失败" if failed else ""),
+        f"已上传 {len(documents) + len(images)} 项" + (f"，{len(failed)} 项失败" if failed else ""),
     )
 
 
@@ -2847,7 +2949,7 @@ async def list_gallery_assets(
     scope: str = Query("all", pattern="^(all|current)$"),
     kbId: Optional[int] = Query(None, gt=0),
     docId: Optional[int] = Query(None, gt=0),
-    source: str = Query("all", pattern="^(all|document|chat)$"),
+    source: str = Query("all", pattern="^(all|document|upload|chat)$"),
     status: str = Query("all", pattern="^(all|pending|processing|done|failed)$"),
     q: str = Query("", max_length=120),
     limit: int = Query(200, ge=1, le=500),

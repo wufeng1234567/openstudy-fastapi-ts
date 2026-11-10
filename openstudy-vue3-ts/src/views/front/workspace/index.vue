@@ -2726,8 +2726,11 @@ async function uploadFiles(list: File[]) {
       const documents = Array.isArray(res.data?.documents)
         ? res.data.documents
         : (res.data?.docId ? [res.data] : [])
+      const images = Array.isArray(res.data?.images)
+        ? res.data.images
+        : (res.data?.assetKey ? [res.data] : [])
       const failed = Array.isArray(res.data?.failed) ? res.data.failed : []
-      ok = documents.length
+      ok = documents.length + images.length
       fail = failed.length
       for (const item of failed) {
         ElMessage.error(`${item.fileName || '文件'}：${item.error || '上传失败'}`)
@@ -2756,8 +2759,15 @@ async function uploadFiles(list: File[]) {
       ElMessage.error(res.msg || '上传失败')
     }
     if (ok) {
-      ElMessage.success(`已上传 ${ok} 份${fail ? `，${fail} 份失败` : ''}，正在后台解析并建立索引`)
-      uploadTip.value = '上传完成：正在解析、提取图片/公式并建立索引；不会自动执行智能整理，整理需要你手动点击「整理」。'
+      const imageCount = images.length
+      const documentCount = ok - imageCount
+      if (documentCount) {
+        ElMessage.success(`已上传 ${documentCount} 份资料${fail ? `，${fail} 份失败` : ''}，正在后台解析并建立索引`)
+      }
+      if (imageCount) {
+        ElMessage.success(`已上传 ${imageCount} 张独立图片，正在生成图片名称和描述`)
+      }
+      uploadTip.value = '上传完成：资料正在解析、提取图片/公式并建立索引；独立图片已加入画廊并生成名称/描述。'
       await load()
       // 后台流水线不是瞬时的：按文档状态轮询，直到解析完成/失败，避免只刷新一次后停在旧状态。
       if (uploadedDocIds.length) pollUploadedDocuments(uploadedDocIds)

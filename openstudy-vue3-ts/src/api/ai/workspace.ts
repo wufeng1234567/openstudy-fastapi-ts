@@ -80,7 +80,7 @@ export interface GalleryQuery {
   scope?: 'all' | 'current'
   kbId?: number | null
   docId?: number | null
-  source?: 'all' | 'document' | 'chat'
+  source?: 'all' | 'document' | 'upload' | 'chat'
   status?: 'all' | 'pending' | 'processing' | 'done' | 'failed'
   q?: string
   limit?: number

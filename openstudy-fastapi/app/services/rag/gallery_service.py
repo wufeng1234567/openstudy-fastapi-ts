@@ -338,6 +338,7 @@ async def list_gallery(
     source_counts = {
         "document": sum(1 for row in scoped if row.source_type == "document"),
         "chat": sum(1 for row in scoped if row.source_type == "chat"),
+        "upload": sum(1 for row in scoped if row.source_type == "upload"),
     }
 
     filtered = []
@@ -373,6 +374,7 @@ async def list_gallery(
         "sources": [
             {"key": "all", "label": "全部图片", "count": stats_total},
             {"key": "document", "label": "文档图片", "count": source_counts["document"]},
+            {"key": "upload", "label": "独立图片", "count": source_counts["upload"]},
             {"key": "chat", "label": "聊天图片", "count": source_counts["chat"]},
         ],
         "documents": document_options,
@@ -486,7 +488,11 @@ async def get_asset_detail(db: AsyncSession, user_id: int, asset_key: str) -> Di
     payload = _asset_dict(row, usage_count=len(usage_items), reference_count=len(reference_items))
     payload["usages"] = usage_items
     payload["references"] = reference_items
-    payload["sourceTypeLabel"] = "聊天图片" if row.source_type == "chat" else "文档图片"
+    payload["sourceTypeLabel"] = (
+        "聊天图片" if row.source_type == "chat"
+        else "独立图片" if row.source_type == "upload"
+        else "文档图片"
+    )
     payload["canLocate"] = bool(row.doc_id and row.offset is not None)
     return payload
 

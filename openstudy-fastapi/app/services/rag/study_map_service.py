@@ -605,6 +605,7 @@ async def build_study_map(
                             "bankId": 0,
                             "docId": doc_id,
                             "noteId": 0,
+                            "assetId": int(asset.id),
                             "assetKey": str(asset.asset_key or ""),
                         },
                         "metrics": {
