@@ -946,15 +946,15 @@ const mapNodes = computed(() => {
   // 右侧实体集面板按分辨率占 220–320px；节点布局只使用左侧可用区域，避免来源组被面板盖住。
   const panelReserve = Math.min(320, Math.max(220, width * 0.12))
   const usableWidth = Math.max(640, width - panelReserve)
-  const topicSpacingX = Math.round(52 * layoutScale)
-  const topicSpacingY = Math.round(48 * layoutScale)
+  const topicSpacingX = Math.round(60 * layoutScale)
+  const topicSpacingY = Math.round(58 * layoutScale)
   const kindCenters: Record<string, { x: number; y: number }> = {
-    topic: { x: usableWidth * 0.5, y: height * 0.5 },
-    document: { x: usableWidth * 0.14, y: height * 0.64 },
-    bank: { x: usableWidth * 0.86, y: height * 0.64 },
-    web: { x: usableWidth * 0.14, y: height * 0.15 },
-    note: { x: usableWidth * 0.5, y: height * 0.92 },
-    image: { x: usableWidth * 0.86, y: height * 0.15 }
+    topic: { x: usableWidth * 0.52, y: height * 0.5 },
+    document: { x: usableWidth * 0.10, y: height * 0.64 },
+    bank: { x: usableWidth * 0.90, y: height * 0.64 },
+    web: { x: usableWidth * 0.10, y: height * 0.15 },
+    note: { x: usableWidth * 0.52, y: height * 0.94 },
+    image: { x: usableWidth * 0.90, y: height * 0.15 }
   }
   const result: any[] = []
   visibleComponents.forEach((component, componentIndex) => {
@@ -980,8 +980,8 @@ const mapNodes = computed(() => {
     }
     const center = kindCenters[component.kind] || fallbackCenter
     const radius = (component.kind === 'topic'
-      ? Math.min(240, 70 + Math.sqrt(members.length) * 22)
-      : Math.min(130, 48 + Math.sqrt(members.length) * 16)) * Math.min(1.35, layoutScale)
+      ? Math.min(260, 72 + Math.sqrt(members.length) * 24)
+      : Math.min(170, 62 + Math.sqrt(members.length) * 22)) * Math.min(1.45, layoutScale)
     const topicCols = component.kind === 'topic'
       ? Math.max(4, Math.ceil(Math.sqrt(members.length * 0.75)))
       : 0
