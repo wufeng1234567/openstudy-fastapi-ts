@@ -80,7 +80,7 @@
         </div>
       </div>
 
-      <div v-else ref="mapCanvasRef" class="kw-map" :class="{ 'is-advice-focus': adviceMode && !!mapSelectedPageId }"
+      <div v-else ref="mapCanvasRef" class="kw-map" :class="{ 'is-advice-focus': adviceMode && !!mapSelectedPageId, 'is-map-ready': mapReady }"
         @wheel.prevent="onMapWheel" @pointerdown="onMapDown"
         @pointermove="onMapMove" @pointerup="onMapUp" @pointerleave="onMapUp">
         <div class="kw-map-purpose">知识图谱：先看懂知识结构，再让系统帮你排下一步。</div>
@@ -597,6 +597,7 @@ const mapCanvasRef = ref<HTMLElement | null>(null)
 const IMAGE_CLUSTER_ID = 'image:cluster'
 const mapGraph = ref<any>({ nodes: [], edges: [], groups: [] })
 const mapSize = reactive({ width: 1200, height: 760 })
+const mapReady = ref(false)
 const mapLayoutScale = computed(() => Math.min(1.8, Math.max(1, Math.min(mapSize.width / 1200, mapSize.height / 760))))
 const mapViewBox = computed(() => `0 0 ${mapSize.width} ${mapSize.height}`)
 const mapView = reactive({ x: 0, y: 0, scale: 1 })
@@ -2437,6 +2438,7 @@ function fitMapView() {
 async function switchMap() {
   if (!Number(props.activeKbId)) return
   view.value = 'map'
+  mapReady.value = false
   resetMapNodeOffsets()
   mapImageExpanded.value = false
   mapView.x = 0
@@ -2478,7 +2480,14 @@ async function switchMap() {
       groups: raw.groups || []
     }
     await nextTick()
+    // 等两帧让右侧面板/画布尺寸稳定后再 fit，并在 ready 前隐藏 SVG，
+    // 避免首屏先以 scale=1 渲染、随后又自动缩放的闪动。
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    })
+    syncMapSize()
     fitMapView()
+    mapReady.value = true
     if (String(props.searchQuery || '').trim()) focusMapSearch()
     startMapAnimation()
   } catch {
@@ -3113,7 +3122,8 @@ onBeforeUnmount(() => {
 .kw-page--graph .kw-map { flex: 1; min-height: 0; height: 100%; border: 0; border-radius: 0; background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.1) 1px, transparent 0), #fbfcfe; background-size: 20px 20px; }
 .kw-map.is-route-mode { background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.1) 1px, transparent 0), #fbfcfe; background-size: 20px 20px; }
 .kw-map:active { cursor: grabbing; }
-.kw-map__svg { width: 100%; height: 590px; }
+.kw-map__svg { width: 100%; height: 590px; opacity: 0; transition: opacity .12s ease; }
+.kw-map.is-map-ready .kw-map__svg { opacity: 1; }
 .kw-page--graph .kw-map__svg { height: 100%; }
 .kw-map-purpose { position: absolute; z-index: 7; top: 14px; left: 16px; padding: 6px 9px; border: 1px solid rgba(15, 23, 42, 0.05); border-radius: 6px; color: #7d8596; background: rgba(255, 255, 255, 0.86); font-size: 11px; pointer-events: none; }
 .kw-map-hull { fill: #f1f3f7; fill-opacity: 0.72; stroke: #e5e8ef; stroke-width: 1; vector-effect: non-scaling-stroke; transition: fill 0.2s ease, stroke 0.2s ease; }
