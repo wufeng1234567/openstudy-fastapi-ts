@@ -2044,7 +2044,7 @@ async function switchStudyMap() {
     const res: any = await getStudyMap({
       kbId: Number(props.activeKbId),
       sourceTypes: ['wiki', 'bank', 'document', 'web', 'note', 'image'],
-      limit: 200
+      limit: 120
     })
     if (res.code === 200) {
       const raw = res.data || {}
