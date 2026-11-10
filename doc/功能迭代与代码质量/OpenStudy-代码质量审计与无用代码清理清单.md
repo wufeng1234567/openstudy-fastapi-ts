@@ -547,7 +547,7 @@ node tests/check_agent_dsfree.mjs
 
 ### P2（2～4 周，债务减量）— 后续
 
-1. 🟡 巨型文件拆分：`loop.py` 的小工具/事件文案已拆到 `app/services/ai/agent/loop_helpers.py`（2,676→2,551 行）；`workspace/index.vue`（6,512 行）与 `QuestionBuilder.vue`（5,396 行）仍待继续拆组件/组合式函数。
+1. 🟡 巨型文件拆分：`loop.py` 的小工具/事件文案已拆到 `loop_helpers.py`（2,676→2,551）；`workspace/index.vue` 的纯展示/视图解析辅助已抽到 `workspace/helpers.ts`（6,512→6,466）；`QuestionBuilder.vue`（5,396）仍待拆。
 2. `questions.py` / `rag.py` 业务下沉 service，路由只留参数/权限/响应。
 3. 合并 OCR 双实现、上传/预览组件族；建 `useFileUpload`、`useOcr` 等 composable。
 4. `any` 减量从 `permission.ts`、`utils/index.ts` 开始，每文件小步类型化。
