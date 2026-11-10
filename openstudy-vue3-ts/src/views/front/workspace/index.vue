@@ -1076,8 +1076,6 @@ import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
 import SearchFilterInput from '@/components/SearchFilterInput/index.vue'
 import CommonFilterSidebar from '@/components/CommonFilterSidebar/index.vue'
-import { marked } from 'marked'
-import TurndownService from 'turndown'
 import { getWorkspaceOverview, uploadToWorkspace, searchWorkspace, searchWorkspaceCascade, listWorkspaceStandaloneImages, getAssetUsageSummary, recordAssetUsage, previewWorkspaceOrganize, getWorkspaceOrganizePlan, getWorkspaceOrganizeRecord, listWorkspaceOrganizePlans, applyWorkspaceOrganize, deleteWorkspaceOrganizeRecord, rollbackWorkspacePlan, setDocumentSearchable, createContentReference } from '@/api/ai/workspace'
 import OrganizeDiffDialog from './components/OrganizeDiffDialog.vue'
 import DocumentClinicDialog from './components/DocumentClinicDialog.vue'
@@ -1127,6 +1125,7 @@ import {
   readWorkspaceView,
   reprocessPercent
 } from './helpers'
+import { createTurndownService, htmlToEditorMarkdown, markdownToEditorHtml } from './editorMarkdown'
 import { useImageInsertion } from './useImageInsertion'
 
 /* ===================== 状态 ===================== */
@@ -1253,77 +1252,9 @@ let organizePoll: ReturnType<typeof setTimeout> | null = null
 let organizeStartedAt = 0
 
 /* 富文本编辑：Tiptap HTML ↔ Markdown，保留原有图片标记 */
-const turndownService = new TurndownService({
-  headingStyle: 'atx',
-  bulletListMarker: '-',
-  codeBlockStyle: 'fenced'
-})
-turndownService.addRule('os-image-marker', {
-  filter: (node: any) => node.nodeName === 'IMG' && !!node.getAttribute('data-os-image'),
-  replacement: (_content: string, node: any) => `【图${node.getAttribute('data-os-image')}】`
-})
-turndownService.addRule('os-math', {
-  filter: (node: any) => node.nodeName === 'SPAN' && !!node.getAttribute('data-os-math'),
-  replacement: (_content: string, node: any) => {
-    try {
-      return decodeURIComponent(node.getAttribute('data-os-math') || '')
-    } catch {
-      return node.textContent || ''
-    }
-  }
-})
-turndownService.addRule('markdown-table', {
-  filter: (node: any) => node.nodeName === 'TABLE',
-  replacement: (_content: string, node: any) => {
-    const rows = [...node.querySelectorAll('tr')].map((row: any) =>
-      [...row.querySelectorAll('th,td')].map((cell: any) =>
-        String(cell.textContent || '').replace(/\|/g, '\\|').replace(/\n+/g, ' ').trim()
-      )
-    )
-    if (!rows.length) return ''
-    const width = Math.max(...rows.map((row: string[]) => row.length))
-    const normalized = rows.map((row: string[]) => {
-      const padded = [...row]
-      while (padded.length < width) padded.push('')
-      return padded
-    })
-    const header = normalized[0]
-    const body = normalized.slice(1)
-    const lines = [
-      `| ${header.join(' | ')} |`,
-      `| ${header.map(() => '---').join(' | ')} |`,
-      ...body.map((row: string[]) => `| ${row.join(' | ')} |`)
-    ]
-    return `\n\n${lines.join('\n')}\n\n`
-  }
-})
+const turndownService = createTurndownService()
 
-function markdownToEditorHtml(markdown: string): string {
-  // Tiptap 的 MathNode 会把整个 LaTeX 片段作为原子节点保存，避免 Markdown
-  // 往返把 `\overline` 之类的反斜杠当转义符吃掉。
-  const protectedMath = String(markdown || '').replace(
-    /\$\$[\s\S]*?\$\$|\$[^$\n]+?\$/g,
-    (formula) => `<span data-os-math="${encodeURIComponent(formula)}"></span>`
-  )
-  const withImages = protectedMath.replace(/【图(\d+)】/g, (_m, n) => {
-    const url = editorImageMap.value[String(n)]
-    return url ? `<img data-os-image="${n}" src="${anatomyImageUrl(url)}" />` : `【图${n}】`
-  }).replace(
-    /!\[([^\]]*)\]\(([^)\s]+)\)/g,
-    (_all, alt, url) => `<img src="${String(url).replace(/"/g, '&quot;')}" alt="${String(alt).replace(/"/g, '&quot;')}" />`,
-  )
-  try {
-    return marked.parse(withImages, { gfm: true, breaks: true }) as string
-  } catch {
-    return `<p>${withImages.replace(/</g, '&lt;')}</p>`
-  }
-}
-
-function htmlToEditorMarkdown(html: string): string {
-  return turndownService.turndown(html || '').trim()
-}
-
-const editorMarkdown = computed(() => htmlToEditorMarkdown(editorHtml.value))
+const editorMarkdown = computed(() => htmlToEditorMarkdown(turndownService, editorHtml.value))
 const WORKSPACE_VIEW_KEY = 'openstudy.workspace.viewMode'
 const WORKSPACE_KB_KEY = 'openstudy.workspace.activeKbId'
 const WORKSPACE_VIEWS = ['list', 'shelf', 'gallery', 'wiki'] as const
@@ -2134,7 +2065,7 @@ async function openEditor(doc: any) {
     }
     editorContent.value = res.data?.content || ''
     editorImageMap.value = res.data?.imageMap || {}
-    editorHtml.value = markdownToEditorHtml(editorContent.value)
+    editorHtml.value = markdownToEditorHtml(editorContent.value, editorImageMap.value, anatomyImageUrl)
   } catch (e: any) {
     editorVisible.value = false
     ElMessage.error('读取正文失败：' + (e?.message || e))
