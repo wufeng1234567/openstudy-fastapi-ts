@@ -129,7 +129,8 @@
                 :stroke="learningColor(node.learning)" transform="rotate(-90)" />
               <circle v-if="isMapSelected(node)" class="kw-map-node__active" :r="node.r + 7" :stroke="node.color" />
               <circle class="kw-map-node__dot" :r="node.r + (isMapSelected(node) || mapHoveredId === String(node.id) ? 3 : 0)" :fill="node.color" />
-              <text v-if="showMapLabel(node)" class="kw-map-node__label" text-anchor="middle" :y="node.r + 14">{{ mapNodeLabel(node) }}</text>
+              <text v-if="showMapLabel(node)" class="kw-map-node__label" text-anchor="middle"
+                :y="node.r + 14" :style="{ fontSize: `${11 / Math.max(0.8, mapView.scale)}px` }">{{ mapNodeLabel(node) }}</text>
             </g>
           </g>
         </svg>
@@ -925,11 +926,11 @@ const mapNodes = computed(() => {
   const usableWidth = Math.max(640, width - 230)
   const kindCenters: Record<string, { x: number; y: number }> = {
     topic: { x: usableWidth * 0.5, y: height * 0.5 },
-    document: { x: usableWidth * 0.16, y: height * 0.62 },
-    bank: { x: usableWidth * 0.84, y: height * 0.62 },
-    web: { x: usableWidth * 0.16, y: height * 0.2 },
+    document: { x: usableWidth * 0.15, y: height * 0.62 },
+    bank: { x: usableWidth * 0.85, y: height * 0.62 },
+    web: { x: usableWidth * 0.15, y: height * 0.2 },
     note: { x: usableWidth * 0.5, y: height * 0.87 },
-    image: { x: usableWidth * 0.84, y: height * 0.2 }
+    image: { x: usableWidth * 0.85, y: height * 0.2 }
   }
   const result: any[] = []
   visibleComponents.forEach((component, componentIndex) => {
@@ -944,7 +945,7 @@ const mapNodes = computed(() => {
       ? Math.min(240, 70 + Math.sqrt(members.length) * 22)
       : Math.min(150, 54 + Math.sqrt(members.length) * 20)
     const topicCols = component.kind === 'topic'
-      ? Math.max(4, Math.ceil(Math.sqrt(members.length * 1.3)))
+      ? Math.max(4, Math.ceil(Math.sqrt(members.length * 1.1)))
       : 0
     const topicRows = topicCols ? Math.ceil(members.length / topicCols) : 0
     const orbit = members.filter((node) => node !== hub)
@@ -958,8 +959,8 @@ const mapNodes = computed(() => {
       if (component.kind === 'topic' && topicCols) {
         const col = memberIndex % topicCols
         const row = Math.floor(memberIndex / topicCols)
-        x = center.x + (col - (topicCols - 1) / 2) * 42
-        y = center.y + (row - (topicRows - 1) / 2) * 40
+        x = center.x + (col - (topicCols - 1) / 2) * 52
+        y = center.y + (row - (topicRows - 1) / 2) * 48
       } else if (members.length > 1 && !(hubOnCenter && node === hub)) {
         const count = orbit.length
         const angle = -Math.PI / 2 + (Math.PI * 2 * orbitIndex) / Math.max(1, count)
@@ -983,7 +984,7 @@ const mapNodes = computed(() => {
         pageType: normalizePageType(node.pageType),
         x: resolvedX,
         y: resolvedY,
-        r: Math.max(kind === 'topic' ? 8 : 12, Math.min(kind === 'topic' ? 24 : 18, 6 + Math.sqrt(Math.max(0, degree)) * 2.2)),
+        r: Math.max(kind === 'topic' ? 5 : 9, Math.min(kind === 'topic' ? 14 : 16, 4 + Math.sqrt(Math.max(0, degree)) * 1.35)),
         color: entityTypeMeta(kind).color
       })
     }
@@ -1018,6 +1019,40 @@ const mapEdges = computed(() => {
       }
     })
     .filter(Boolean)
+})
+
+const visibleLabelIds = computed(() => {
+  const result = new Set<string>()
+  const candidates = [...mapNodes.value]
+    .filter((node: any) => {
+      const kind = normalizeEntityKind(node.kind)
+      if (isMapSelected(node) || isRouteNode(node) || mapHoveredId.value === String(node.id)) return true
+      if (adviceLitPageIds.value.includes(String(node.pageId))) return true
+      if (kind !== 'topic') return true
+      return mapView.scale >= 1.25 || Number(node.degree || 0) >= 12
+    })
+    .sort((a: any, b: any) => {
+      const priority = (node: any) => {
+        if (isMapSelected(node) || mapHoveredId.value === String(node.id)) return 0
+        if (normalizeEntityKind(node.kind) !== 'topic') return 1
+        return 2
+      }
+      return priority(a) - priority(b) || Number(b.degree || 0) - Number(a.degree || 0)
+    })
+  const occupied: Array<{ left: number; right: number; top: number; bottom: number }> = []
+  for (const node of candidates) {
+    const title = mapNodeLabel(node)
+    if (!title) continue
+    const screenX = Number(node.x) * Number(mapView.scale) + Number(mapView.x)
+    const screenY = Number(node.y) * Number(mapView.scale) + Number(mapView.y) + Number(node.r) + 14
+    const width = Math.max(34, title.length * 11)
+    const box = { left: screenX - width / 2, right: screenX + width / 2, top: screenY - 12, bottom: screenY + 4 }
+    const overlaps = occupied.some((item) => !(box.right < item.left || box.left > item.right || box.bottom < item.top || box.top > item.bottom))
+    if (overlaps) continue
+    occupied.push(box)
+    result.add(String(node.id))
+  }
+  return result
 })
 
 const learningLegend = [
@@ -1427,21 +1462,13 @@ function isMapEdgeDimmed(edge: any) {
 }
 
 function showMapLabel(node: any) {
-  if (normalizeEntityKind(node.kind) !== 'topic') return true
-  return (
-    isMapSelected(node) ||
-    isRouteNode(node) ||
-    adviceLitPageIds.value.includes(String(node.pageId)) ||
-    mapHoveredId.value === String(node.id) ||
-    mapView.scale >= 1.3 ||
-    Number(node.degree || 0) >= 12
-  )
+  return visibleLabelIds.value.has(String(node.id))
 }
 
 function mapNodeLabel(node: any) {
   const title = String(node?.title || '')
-  if (normalizeEntityKind(node?.kind) === 'topic') return title
-  return title.length > 14 ? `${title.slice(0, 14)}…` : title
+  const limit = normalizeEntityKind(node?.kind) === 'topic' ? 12 : 14
+  return title.length > limit ? `${title.slice(0, limit)}…` : title
 }
 
 function animateMapViewTo(targetX: number, targetY: number, targetScale = mapView.scale, duration = 360) {
@@ -2875,7 +2902,7 @@ onBeforeUnmount(() => {
 .kw-map-purpose { position: absolute; z-index: 7; top: 14px; left: 16px; padding: 6px 9px; border: 1px solid rgba(15, 23, 42, 0.05); border-radius: 6px; color: #7d8596; background: rgba(255, 255, 255, 0.86); font-size: 11px; pointer-events: none; }
 .kw-map-hull { fill: #f1f3f7; fill-opacity: 0.72; stroke: #e5e8ef; stroke-width: 1; vector-effect: non-scaling-stroke; transition: fill 0.2s ease, stroke 0.2s ease; }
 .kw-map-hull.is-hovered { fill: #ebeef5; stroke: #dce2ed; }
-.kw-map-edge { stroke: #c7d0e0; stroke-width: 0.8; opacity: 0.42; vector-effect: non-scaling-stroke; transition: stroke 0.2s, stroke-width 0.2s, stroke-opacity 0.2s; }
+.kw-map-edge { stroke: #b9c7dc; stroke-width: 1; opacity: 0.6; vector-effect: non-scaling-stroke; transition: stroke 0.2s, stroke-width 0.2s, stroke-opacity 0.2s; }
 .kw-map-edge.is-part_of { stroke: #c7d0e0; }
 .kw-map-edge.is-prerequisite { stroke: #73a6dd; stroke-dasharray: 4 4; }
 .kw-map-edge.is-contrast { stroke: #d38e7d; stroke-dasharray: 3 5; }
