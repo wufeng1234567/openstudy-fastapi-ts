@@ -1,7 +1,7 @@
 <template>
-  <section class="kw-page" :class="{ 'kw-page--graph': view === 'map' }">
+  <section class="kw-page" :class="{ 'kw-page--graph': view === 'map' || view === 'study' }">
     <Teleport to="#workspace-wiki-search-dropdown">
-      <div v-if="view === 'map' && graphSearchSuggestions.length" class="kw-graph-search-dropdown">
+      <div v-if="(view === 'map' || view === 'study') && graphSearchSuggestions.length" class="kw-graph-search-dropdown">
         <button v-for="item in graphSearchSuggestions" :key="item.pageId" type="button"
           class="kw-graph-search-item" @click="selectSearchSuggestion(item)">
           <span class="kw-graph-search-item__dot" :style="{ background: pageTypeMeta(item.pageType).color }"></span>
@@ -18,6 +18,7 @@
         <div class="kw-switch">
           <button type="button" :class="{ 'is-active': view === 'pages' }" @click="view = 'pages'">主题页</button>
           <button type="button" :class="{ 'is-active': view === 'map' }" :disabled="!pages.length" @click="switchMap">知识图谱</button>
+          <button type="button" :class="{ 'is-active': view === 'study' }" :disabled="!activeKbId" @click="switchStudyMap">六类图</button>
         </div>
         <el-dropdown trigger="click" :disabled="!activeKbId || buildActive" @command="onBuildCommand">
           <button type="button" class="kw-toolbar-btn is-primary" :disabled="!activeKbId || buildActive">
@@ -142,7 +143,7 @@
           </div>
           <template v-if="!adviceMode">
             <div class="kw-graph-panel__legend">
-              <button v-for="item in pageTypeLegend" :key="item.type" type="button" class="kw-graph-type"
+              <button v-for="item in activeLegend" :key="item.type" type="button" class="kw-graph-type"
                 :class="{ 'is-disabled': mapTypeVisible[item.type] === false }"
                 @click="toggleMapType(item.type)">
                 <i :style="{ background: item.color }"></i>
@@ -486,8 +487,18 @@ const PAGE_TYPE_META = [
   { type: 'comparison', label: '对比', color: '#D95757' },
   { type: 'overview', label: '总览', color: '#8A94A6' }
 ]
+const STUDY_TYPE_META = [
+  { type: 'topic', label: '知识主题', color: '#F08A24' },
+  { type: 'bank', label: '题库', color: '#2F9E8F' },
+  { type: 'document', label: '资料', color: '#3B7CFF' },
+  { type: 'web', label: '网页', color: '#2D8CF0' },
+  { type: 'note', label: '笔记', color: '#8A94A6' },
+  { type: 'image', label: '图片', color: '#D95757' },
+  { type: 'question', label: '题目', color: '#6B7280' }
+]
+const ALL_TYPE_META = [...PAGE_TYPE_META, ...STUDY_TYPE_META]
 const mapTypeVisible = reactive<Record<string, boolean>>(
-  Object.fromEntries(PAGE_TYPE_META.map((item) => [item.type, true]))
+  Object.fromEntries(ALL_TYPE_META.map((item) => [item.type, true]))
 )
 
 const loading = ref(false)
@@ -513,7 +524,7 @@ const WIKI_VIEW_KEY = 'openstudy.workspace.wikiView'
 const WIKI_LEARN_KEY = 'openstudy.workspace.wikiLearnMode'
 const WIKI_GUIDE_KEY = 'openstudy.workspace.routeGuideSeen'
 const WIKI_ROUTE_KEY = 'openstudy.workspace.routeQuery'
-function readWikiView(): 'pages' | 'map' {
+function readWikiView(): 'pages' | 'map' | 'study' {
   try {
     return localStorage.getItem(WIKI_VIEW_KEY) === 'map' ? 'map' : 'pages'
   } catch {
@@ -543,7 +554,7 @@ function readRouteQuery(): { strategy: 'weakness' | 'foundation' | 'explore'; ta
     return null
   }
 }
-const view = ref<'pages' | 'map'>(readWikiView())
+const view = ref<'pages' | 'map' | 'study'>(readWikiView())
 const adviceMode = ref(false)
 const adviceHostRef = ref<any>(null)
 const adviceLoading = ref(false)
@@ -639,6 +650,7 @@ const buildProgress = computed(() => {
 const pageTypeLegend = computed(() =>
   PAGE_TYPE_META.filter((item) => item.type !== 'overview')
 )
+const activeLegend = computed(() => (view.value === 'study' ? STUDY_TYPE_META : pageTypeLegend.value))
 
 const allMapNodes = computed(() => mapGraph.value?.nodes || [])
 const mapTypeCounts = computed(() => {
@@ -685,13 +697,14 @@ const graphSearchSuggestions = computed(() => {
 
 function normalizePageType(value?: string) {
   const type = String(value || '').trim()
-  if (type === 'topic' || !type) return 'concept'
+  if (!type) return 'concept'
+  if (type === 'topic') return view.value === 'study' ? 'topic' : 'concept'
   return type
 }
 
 function pageTypeMeta(value?: string) {
   const type = normalizePageType(value)
-  return PAGE_TYPE_META.find((item) => item.type === type) || PAGE_TYPE_META[2]
+  return ALL_TYPE_META.find((item) => item.type === type) || PAGE_TYPE_META[2]
 }
 
 function pageTypeLabel(value?: string) {
@@ -2016,6 +2029,52 @@ async function switchMap() {
   } catch {
     // 地图失败时保持主题页入口，不影响阅读。
     view.value = 'pages'
+  }
+}
+
+/** 六类统一图：把 study_map 的 topic/bank/document/web/note/image 节点直接接到同一画布。 */
+async function switchStudyMap() {
+  if (!Number(props.activeKbId)) return
+  view.value = 'study'
+  resetMapNodeOffsets()
+  mapView.x = -70
+  mapView.y = 0
+  mapView.scale = 1
+  try {
+    const res: any = await getStudyMap({
+      kbId: Number(props.activeKbId),
+      sourceTypes: ['wiki', 'bank', 'document', 'web', 'note', 'image'],
+      limit: 200
+    })
+    if (res.code === 200) {
+      const raw = res.data || {}
+      mapGraph.value = {
+        nodes: (raw.nodes || []).map((node: any) => ({
+          ...node,
+          id: String(node.id),
+          pageId: Number(node.ref?.pageId || 0),
+          pageType: String(node.kind || 'topic'),
+          title: node.title || node.subtitle || '未命名',
+          summary: node.subtitle || '',
+          degree: Number(node.metrics?.degree || 1),
+          docIds: node.ref?.docId ? [Number(node.ref.docId)] : [],
+          sourceType: node.source || node.kind,
+          sourceId: node.ref?.docId || node.ref?.noteId || node.ref?.bankId || node.ref?.pageId || 0
+        })),
+        edges: (raw.edges || []).map((edge: any) => ({
+          ...edge,
+          id: String(edge.id || ''),
+          source: String(edge.source),
+          target: String(edge.target),
+          type: edge.kind || edge.type || 'related'
+        }))
+      }
+      await nextTick()
+      fitMapView()
+      startMapAnimation()
+    }
+  } catch {
+    view.value = 'map'
   }
 }
 
