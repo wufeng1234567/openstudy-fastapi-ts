@@ -13,10 +13,13 @@ venv/
 ENV/
 env/
 
-# FastAPI
+# FastAPI / local secrets
 .env
-.env.local
-.env.production
+.env.*
+!.env.example
+# Local Git tokens (GitHub / Gitee / GitCode)
+*token*.txt
+*.token
 
 # Node.js
 node_modules/
