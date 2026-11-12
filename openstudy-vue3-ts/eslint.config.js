@@ -62,7 +62,9 @@ export default [
       'vue/attributes-order': 'off',
       'vue/max-attributes-per-line': 'off',
       'vue/singleline-html-element-content-newline': 'off',
-      'vue/html-self-closing': 'off'
+      'vue/html-self-closing': 'off',
+      // 大文件拆分的护栏：先以 warning 暴露存量，后续每个模块拆完再把阈值收紧。
+      'max-lines': ['warn', { max: 1000, skipBlankLines: true, skipComments: true }]
     }
   }
 ]

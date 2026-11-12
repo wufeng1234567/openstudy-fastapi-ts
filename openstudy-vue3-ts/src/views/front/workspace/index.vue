@@ -222,244 +222,41 @@
       />
 
       <!-- ============ 右：当前库的文档 ============ -->
-      <section class="kbp-main">
-        <template v-if="activeKb">
-          <div class="kbp-main__head">
-            <div class="kbp-main__title-row">
-              <span class="kbp-main__title">{{ activeKb.name }}</span>
-              <el-tag v-if="activeKb.isDefault" size="small" type="info" effect="plain">默认</el-tag>
-              <el-tag v-if="activeKb.disabled === 1" size="small" type="warning" effect="plain">
-                已屏蔽，不参与检索
-              </el-tag>
-            </div>
-            <div class="kbp-main__actions">
-              <el-button size="small" text @click="openShare(activeKb)">
-                <el-icon><Share /></el-icon>
-                分享资料夹
-              </el-button>
-              <el-button v-if="selectedDocCount" size="small" plain type="danger" :disabled="busy"
-                @click="removeSelectedDocs">
-                <OsIcon name="trash" :size="14" />
-                删除（{{ selectedDocCount }}）
-              </el-button>
-              <el-button size="small" text @click="openOrganizeReport">
-                <OsIcon name="alert" :size="14" />
-                整理记录
-                <span v-if="organizeReport.pending || organizeReport.failed" class="kbp-report-dot">
-                  {{ organizeReport.pending + organizeReport.failed }}
-                </span>
-              </el-button>
-              <el-dropdown class="kbp-upload-dropdown" trigger="click" :disabled="busy"
-                @command="onUploadCommand">
-                <button type="button" class="kbp-upload" :class="{ 'is-disabled': busy }" :disabled="busy"
-                  title="上传文档：可在文件选择窗口按住 Ctrl 多选 Markdown、图片等文件">
-                  <OsIcon name="arrow-up" :size="14" />
-                  <span>{{ uploading ? '上传中…' : '上传文档' }}</span>
-                  <OsIcon name="chevron-down" :size="12" />
-                </button>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item command="file">
-                      <OsIcon name="arrow-up" :size="14" />
-                      选择文件（Ctrl 可多选）
-                    </el-dropdown-item>
-                    <el-dropdown-item command="text" :disabled="importing">
-                      <OsIcon name="file-text" :size="14" />
-                      {{ importing ? '导入中…' : '粘贴文本' }}
-                    </el-dropdown-item>
-                    <el-dropdown-item command="url" :disabled="importing">
-                      <OsIcon name="globe" :size="14" />
-                      从网页导入
-                    </el-dropdown-item>
-                    <el-dropdown-item command="bank" :disabled="bankImporting">
-                      <OsIcon name="database" :size="14" />
-                      从题库导入
-                    </el-dropdown-item>
-                    <el-dropdown-item command="note" :disabled="noteImporting">
-                      <OsIcon name="file-text" :size="14" />
-                      {{ noteImporting ? '导入中…' : '导入笔记' }}
-                    </el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
-            </div>
-          </div>
-
-          <!-- 拖拽上传：整块文档区都是投放目标 -->
-          <div
-            class="kbp-drop"
-            :class="{ 'is-over': dragOver }"
-            @dragover.prevent="dragOver = true"
-            @dragleave.prevent="dragOver = false"
-            @drop.prevent="onDrop"
-          >
-            <div v-if="dragOver" class="kbp-drop__mask">
-              <OsIcon name="arrow-up" :size="26" />
-              <span>松手就传到「{{ activeKb.name }}」</span>
-            </div>
-
-            <div v-if="uploadTip" class="kbp-tip">{{ uploadTip }}</div>
-
-            <div v-if="linkedBanks.length" class="kbp-linked-banks">
-              <div class="kbp-linked-banks__head">
-                <span class="kbp-linked-banks__label"><OsIcon name="database" :size="14" /> 已关联题库</span>
-                <span class="kbp-linked-banks__sub">题库不复制，只做逻辑关联</span>
-              </div>
-              <div class="kbp-linked-bank-list">
-                <div v-for="bank in linkedBanks" :key="bank.bankId || bank.id" class="kbp-linked-bank">
-                  <el-tag size="small" type="success" effect="plain">题库</el-tag>
-                  <div class="kbp-linked-bank__main">
-                    <b>{{ bank.bankName || bank.name }}</b>
-                    <span>{{ bank.subject || '未设置科目' }} · {{ bank.questionCount || bank.totalQuestions || 0 }} 道题</span>
-                    <em v-if="bank.description">{{ bank.description }}</em>
-                  </div>
-                  <button type="button" class="kbp-linked-bank__knowledge" @click="openBankKnowledge(bank)">查看知识点</button>
-                  <button type="button" class="kbp-linked-bank__remove" @click="removeLinkedBank(bank)">取消关联</button>
-                </div>
-              </div>
-            </div>
-
-            <div v-if="linkedNotes.length" class="kbp-linked-banks kbp-linked-notes">
-              <div class="kbp-linked-banks__head">
-                <span class="kbp-linked-banks__label"><OsIcon name="file-text" :size="14" /> 已关联笔记</span>
-                <span class="kbp-linked-banks__sub">笔记不复制，只做逻辑关联</span>
-              </div>
-              <div class="kbp-linked-bank-list">
-                <div v-for="note in linkedNotes" :key="note.noteId" class="kbp-linked-bank">
-                  <el-tag size="small" type="info" effect="plain">笔记</el-tag>
-                  <div class="kbp-linked-bank__main">
-                    <b>{{ note.title || '未命名笔记' }}</b>
-                    <span>{{ note.summary || '暂无摘要' }}</span>
-                  </div>
-                  <button type="button" class="kbp-linked-bank__remove" @click="unlinkLinkedNote(note)">取消关联</button>
-                </div>
-              </div>
-            </div>
-
-            <div class="kbp-docs" v-loading="docsLoading">
-              <div v-for="doc in visibleFiles" :key="doc.docId" class="kbp-doc"
-                :data-doc-id="doc.docId"
-                :class="{ 'is-jump-target': jumpTargetDocId === Number(doc.docId) }"
-                @click="showAnatomy(doc)">
-                <div class="kbp-doc__check" @click.stop>
-                  <el-checkbox :model-value="selectedDocIds.includes(Number(doc.docId))"
-                    @change="toggleDocSelected(Number(doc.docId))" />
-                </div>
-                <div class="kbp-doc__icon">
-                  <OsIcon name="file-text" :size="17" />
-                </div>
-                <div class="kbp-doc__main">
-                  <div class="kbp-doc__name-row">
-                    <span class="kbp-doc__name" :title="doc.fileName">{{ doc.fileName }}</span>
-                    <el-tag v-if="Number(doc.version || 1) > 1" type="success" size="small" effect="plain">
-                      v{{ doc.version }}
-                    </el-tag>
-                    <el-tag :type="doc.disabled === 1 ? 'warning' : docTagType(doc.status)" size="small" effect="plain">
-                      {{ doc.disabled === 1 ? '已屏蔽' : doc.statusText }}
-                    </el-tag>
-                    <span v-if="doc.sourceType === 'share'" class="kbp-kb__tag is-share">来自分享</span>
-                  </div>
-                  <div class="kbp-doc__meta">
-                    <span>{{ doc.sizeText }}</span>
-                    <span v-if="doc.chunkCount">· {{ doc.chunkCount }} 个片段</span>
-                    <span v-if="doc.imageCount">· {{ doc.imageCount }} 张图</span>
-                    <span v-if="doc.note" class="kbp-doc__note">· {{ doc.note }}</span>
-                    <a v-if="doc.sourceUrl" class="kbp-doc__source" :href="doc.sourceUrl" target="_blank"
-                      rel="noopener noreferrer" @click.stop>来源网页</a>
-                    <span class="kbp-doc__time">{{ doc.createTime }}</span>
-                  </div>
-                  <div v-if="doc.status === 4 && doc.errorMsg" class="kbp-doc__err">
-                    {{ doc.errorMsg }}
-                  </div>
-                </div>
-                <div class="kbp-doc__ops" @click.stop>
-                  <span
-                    class="kbp-doc__op"
-                    :class="{ 'is-blocked': doc.disabled === 1 }"
-                    :title="doc.disabled === 1 ? '已屏蔽，点击恢复这份资料的检索' : '可检索，点击屏蔽这份资料'"
-                    @click="toggleDocSearchable(doc)"
-                  >
-                    <OsIcon :name="doc.disabled === 1 ? 'eye-off' : 'eye'" :size="14" />
-                  </span>
-                  <button type="button" class="kbp-doc__op kbp-doc__clinic"
-                    data-tip="资料诊疗室" aria-label="资料诊疗室"
-                    @click="openClinic(doc)">
-                    <OsIcon name="activity" :size="14" />
-                  </button>
-                  <span class="kbp-doc__op" title="智能整理" @click="startOrganize(doc)">
-                    <OsIcon name="sparkles" :size="14" />
-                  </span>
-                  <el-dropdown trigger="click" @command="(command: string) => handleDocMore(doc, command)">
-                    <span class="kbp-doc__op" title="更多操作">
-                      <OsIcon name="more" :size="14" />
-                    </span>
-                    <template #dropdown>
-                      <el-dropdown-menu>
-                        <el-dropdown-item command="micro">生成微课</el-dropdown-item>
-                        <el-dropdown-item command="share">分享资料</el-dropdown-item>
-                        <el-dropdown-item command="markdown">导出 Markdown</el-dropdown-item>
-                        <el-dropdown-item command="docx">导出 Word</el-dropdown-item>
-                        <el-dropdown-item command="reprocess">重新解析并向量化</el-dropdown-item>
-                        <el-dropdown-item command="delete" divided>删除资料</el-dropdown-item>
-                      </el-dropdown-menu>
-                    </template>
-                  </el-dropdown>
-                </div>
-              </div>
-
-              <div v-if="!docsLoading && !visibleFiles.length" class="kbp-docs__empty">
-                <div class="kbp-empty__art">
-                  <OsIcon name="inbox" :size="30" />
-                </div>
-                <p class="kbp-empty__title">{{ workspaceSearch ? '没有匹配的资料' : '这个资料夹还是空的' }}</p>
-                <span class="kbp-empty__desc">
-                  {{ workspaceSearch ? '换个关键词，或清空搜索再看全部资料。' : '把课件、真题、笔记传进来，智能体出题时就能翻到它们' }}
-                </span>
-                <div class="kbp-empty__actions">
-                  <el-dropdown trigger="click" :disabled="busy" @command="onUploadCommand">
-                    <button type="button" class="kbp-empty__btn is-primary" :disabled="busy">
-                      <OsIcon name="arrow-up" :size="14" />
-                      <span>上传文档</span>
-                      <OsIcon name="chevron-down" :size="12" />
-                    </button>
-                    <template #dropdown>
-                      <el-dropdown-menu>
-                        <el-dropdown-item command="file">
-                          <OsIcon name="arrow-up" :size="14" /> 选择文件（Ctrl 可多选）
-                        </el-dropdown-item>
-                        <el-dropdown-item command="text">
-                          <OsIcon name="file-text" :size="14" /> 粘贴文本
-                        </el-dropdown-item>
-                        <el-dropdown-item command="url">
-                          <OsIcon name="globe" :size="14" /> 从网页导入
-                        </el-dropdown-item>
-                        <el-dropdown-item command="bank">
-                          <OsIcon name="database" :size="14" /> 从题库导入
-                        </el-dropdown-item>
-                        <el-dropdown-item command="note">
-                          <OsIcon name="file-text" :size="14" /> 导入笔记
-                        </el-dropdown-item>
-                      </el-dropdown-menu>
-                    </template>
-                  </el-dropdown>
-                </div>
-                <span class="kbp-empty__formats">
-                  支持 Word / PDF / Markdown / TXT，带公式和图片也能读；也可以直接粘贴文本
-                </span>
-              </div>
-            </div>
-          </div>
-
-        </template>
-
-        <div v-else-if="!loading" class="kbp-main__empty">
-          <div class="kbp-empty__art">
-            <OsIcon name="folder" :size="30" />
-          </div>
-          <p class="kbp-empty__title">左边选一个资料夹</p>
-          <span class="kbp-empty__desc">选中后这里会显示它里面的资料</span>
-        </div>
-      </section>
+      <WorkspaceFilePanel
+        :active-kb="activeKb"
+        :loading="loading"
+        :busy="busy"
+        :uploading="uploading"
+        :importing="importing"
+        :bank-importing="bankImporting"
+        :note-importing="noteImporting"
+        :upload-tip="uploadTip"
+        :selected-doc-count="selectedDocCount"
+        :selected-doc-ids="selectedDocIds"
+        :organize-report="organizeReport"
+        :linked-banks="linkedBanks"
+        :linked-notes="linkedNotes"
+        :docs-loading="docsLoading"
+        :visible-files="visibleFiles"
+        :jump-target-doc-id="jumpTargetDocId"
+        :doc-tag-type="docTagType"
+        :workspace-search="workspaceSearch"
+        @open-share="openShare"
+        @remove-selected="removeSelectedDocs"
+        @open-organize-report="openOrganizeReport"
+        @upload-command="onUploadCommand"
+        @drop="onDrop"
+        @open-bank-knowledge="openBankKnowledge"
+        @remove-linked-bank="removeLinkedBank"
+        @unlink-linked-note="unlinkLinkedNote"
+        @toggle-doc="toggleDocSelected"
+        @show-anatomy="showAnatomy"
+        @toggle-searchable="toggleDocSearchable"
+        @open-clinic="openClinic"
+        @start-organize="startOrganize"
+        @doc-more="handleDocMore"
+        @pick="onPick"
+      />
     </div>
 
     <!-- 完整书架视图 -->
@@ -1049,12 +846,13 @@ import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
 import SearchFilterInput from '@/components/SearchFilterInput/index.vue'
 import CommonFilterSidebar from '@/components/CommonFilterSidebar/index.vue'
-import { getWorkspaceOverview, uploadToWorkspace, searchWorkspace, searchWorkspaceCascade, listWorkspaceStandaloneImages, getAssetUsageSummary, recordAssetUsage, previewWorkspaceOrganize, getWorkspaceOrganizePlan, getWorkspaceOrganizeRecord, listWorkspaceOrganizePlans, applyWorkspaceOrganize, deleteWorkspaceOrganizeRecord, rollbackWorkspacePlan, setDocumentSearchable, createContentReference } from '@/api/ai/workspace'
+import { getWorkspaceOverview, uploadToWorkspace, searchWorkspace, listWorkspaceStandaloneImages, getAssetUsageSummary, recordAssetUsage, previewWorkspaceOrganize, getWorkspaceOrganizePlan, getWorkspaceOrganizeRecord, listWorkspaceOrganizePlans, applyWorkspaceOrganize, deleteWorkspaceOrganizeRecord, rollbackWorkspacePlan, setDocumentSearchable, createContentReference } from '@/api/ai/workspace'
 import OrganizeDiffDialog from './components/OrganizeDiffDialog.vue'
 import DocumentClinicDialog from './components/DocumentClinicDialog.vue'
 import GalleryPanel from './components/GalleryPanel.vue'
 import KnowledgeWikiPanel from './components/KnowledgeWikiPanel.vue'
 import WorkspaceSidebar from './components/WorkspaceSidebar.vue'
+import WorkspaceFilePanel from './components/WorkspaceFilePanel.vue'
 import VersionHistoryDialog from './components/VersionHistoryDialog.vue'
 import ShareKnowledgeDialog from './components/ShareKnowledgeDialog.vue'
 import ReceiveKnowledgeDialog from './components/ReceiveKnowledgeDialog.vue'
@@ -1095,8 +893,6 @@ import {
 } from '@/utils/markdownUpload'
 import {
   delay,
-  documentStatusKey,
-  documentTypeKey,
   facetText,
   readWorkspaceView,
   reprocessPercent
@@ -1105,6 +901,8 @@ import { createTurndownService, htmlToEditorMarkdown, markdownToEditorHtml } fro
 import { computeOrganizeReport, countOrganizePlans, planStatusText, planStatusType } from './organizeHelpers'
 import { useImageInsertion } from './useImageInsertion'
 import { useWorkspaceNavigation } from './useWorkspaceNavigation'
+import { useWorkspaceFilters } from './useWorkspaceFilters'
+import { useWorkspaceCascade } from './useWorkspaceCascade'
 
 /* ===================== 状态 ===================== */
 
@@ -1257,196 +1055,38 @@ const workspaceTabs = [
   { key: 'gallery' as const, label: '画廊', icon: 'layout-grid' },
   { key: 'wiki' as const, label: '知识百科', icon: 'book-open' }
 ]
-const workspaceSearchPlaceholder = computed(() => {
-  if (viewMode.value === 'gallery') return '搜索图片描述或文字…'
-  if (viewMode.value === 'wiki') return '搜索主题、资料、题库或笔记…'
-  if (viewMode.value === 'shelf') return '搜索资料…'
-  return '搜索资料夹或资料…'
-})
-const workspaceCountLabel = computed(() => {
-  if (viewMode.value === 'list') return `全部资料夹：共 ${stats.kbCount} 个资料夹`
-  if (viewMode.value === 'shelf') return `全部资料：共 ${stats.docCount} 份资料`
-  if (viewMode.value === 'gallery') return `全部图片：共 ${galleryStats.total} 张`
-  return `全部主题：共 ${mapStats.total} 个`
-})
-const workspaceFilterTitle = computed(() => {
-  if (viewMode.value === 'gallery') return '图片筛选'
-  if (viewMode.value === 'wiki') return '知识筛选'
-  return '资料筛选'
-})
-
-const workspaceFilterDefault = computed(() => {
-  if (viewMode.value === 'list' || viewMode.value === 'shelf') {
-    return { fileType: [], status: [] }
-  }
-  if (viewMode.value === 'gallery') {
-    return { kind: [], descriptionStatus: [] }
-  }
-  if (viewMode.value === 'wiki') {
-    return { sourceType: [], pageType: [], learning: [] }
-  }
-  return {}
+const {
+  workspaceSearchPlaceholder,
+  workspaceCountLabel,
+  workspaceFilterTitle,
+  workspaceFilterDefault,
+  workspaceFilterGroups,
+  visibleFiles
+} = useWorkspaceFilters({
+  viewMode,
+  activeKb,
+  workspaceSearch,
+  workspaceFilters,
+  stats,
+  galleryStats,
+  mapStats
 })
 
-const workspaceFilterGroups = computed(() => {
-  if (viewMode.value === 'gallery') {
-    return [
-      {
-        key: 'kind',
-        label: '图片类型',
-        type: 'checkbox',
-        options: [
-          { value: 'photo', label: '照片' },
-          { value: 'diagram', label: '示意图' },
-          { value: 'table', label: '表格' },
-          { value: 'formula', label: '公式' },
-          { value: 'screenshot', label: '截图' }
-        ]
-      },
-      {
-        key: 'descriptionStatus',
-        label: '描述状态',
-        type: 'checkbox',
-        options: [
-          { value: 'done', label: '已描述' },
-          { value: 'pending', label: '待描述' },
-          { value: 'failed', label: '失败' }
-        ]
-      }
-    ]
-  }
-  if (viewMode.value === 'wiki') {
-    return [
-      {
-        key: 'sourceType',
-        label: '实体集类型',
-        type: 'checkbox',
-        options: [
-          { value: 'topic', label: '知识主题' },
-          { value: 'bank', label: '题库' },
-          { value: 'document', label: '资料' },
-          { value: 'web', label: '网页' },
-          { value: 'note', label: '笔记' },
-          { value: 'image', label: '图片' }
-        ]
-      },
-      {
-        key: 'pageType',
-        label: '主题页类型',
-        type: 'checkbox',
-        options: [
-          { value: 'summary', label: '摘要' },
-          { value: 'entity', label: '实体' },
-          { value: 'concept', label: '概念' },
-          { value: 'synthesis', label: '综合' },
-          { value: 'comparison', label: '对比' },
-          { value: 'overview', label: '总览' }
-        ]
-      },
-      {
-        key: 'learning',
-        label: '学习状态',
-        type: 'checkbox',
-        options: [
-          { value: 'unread', label: '未学' },
-          { value: 'reading', label: '已读' },
-          { value: 'practicing', label: '练习中' },
-          { value: 'mastered', label: '已掌握' }
-        ]
-      }
-    ]
-  }
-  return [
-    {
-      key: 'fileType',
-      label: '资料类型',
-      type: 'checkbox',
-      options: [
-        { value: 'word', label: 'Word' },
-        { value: 'pdf', label: 'PDF' },
-        { value: 'ppt', label: 'PPT' },
-        { value: 'text', label: 'Markdown / TXT' },
-        { value: 'image', label: '图片' }
-      ]
-    },
-    {
-      key: 'status',
-      label: '处理状态',
-      type: 'checkbox',
-      options: [
-        { value: 'ready', label: '可检索' },
-        { value: 'processing', label: '处理中' },
-        { value: 'failed', label: '失败' },
-        { value: 'blocked', label: '已屏蔽' }
-      ]
-    }
-  ]
+const {
+  isCascadeMode,
+  cascadeLoading,
+  cascadeResults,
+  resetCascade,
+  runCascade,
+  scheduleCascade,
+  openCascadeFolder,
+  openCascadeDocument
+} = useWorkspaceCascade({
+  viewMode,
+  workspaceSearch,
+  activeKbId,
+  showAnatomy
 })
-
-const visibleFiles = computed(() => {
-  const files = activeKb.value?.files || []
-  const query = workspaceSearch.value.trim().toLowerCase()
-  const types = Array.isArray(workspaceFilters.fileType) ? workspaceFilters.fileType : []
-  const statuses = Array.isArray(workspaceFilters.status) ? workspaceFilters.status : []
-  return files.filter((doc: any) => {
-    if (query && !`${doc.fileName || ''} ${doc.note || ''}`.toLowerCase().includes(query)) return false
-    if (types.length && !types.includes(documentTypeKey(doc))) return false
-    if (statuses.length && !statuses.includes(documentStatusKey(doc))) return false
-    return true
-  })
-})
-const isCascadeMode = computed(
-  () => (viewMode.value === 'list' || viewMode.value === 'shelf') && !!workspaceSearch.value.trim()
-)
-const cascadeLoading = ref(false)
-const cascadeResults = ref<any>({ query: '', totalFolders: 0, totalDocs: 0, folders: [] })
-let cascadeTimer: ReturnType<typeof setTimeout> | undefined
-
-function resetCascade() {
-  cascadeResults.value = { query: '', totalFolders: 0, totalDocs: 0, folders: [] }
-}
-
-async function runCascade() {
-  const query = workspaceSearch.value.trim()
-  if (!query || !isCascadeMode.value) {
-    resetCascade()
-    return
-  }
-  cascadeLoading.value = true
-  try {
-    const res = await searchWorkspaceCascade(query, 50, 20)
-    if (res.code === 200) {
-      cascadeResults.value = res.data || { query, totalFolders: 0, totalDocs: 0, folders: [] }
-    } else {
-      ElMessage.error(res.msg || '搜索失败')
-    }
-  } catch (error: any) {
-    ElMessage.error('搜索失败：' + (error?.message || error))
-  } finally {
-    cascadeLoading.value = false
-  }
-}
-
-function scheduleCascade() {
-  window.clearTimeout(cascadeTimer)
-  if (!isCascadeMode.value) {
-    resetCascade()
-    return
-  }
-  cascadeTimer = window.setTimeout(runCascade, 240)
-}
-
-function openCascadeFolder(folder: any) {
-  if (!folder?.kbId) return
-  activeKbId.value = Number(folder.kbId)
-  workspaceSearch.value = ''
-  viewMode.value = 'list'
-}
-
-function openCascadeDocument(doc: any) {
-  if (!doc?.docId) return
-  showAnatomy({ docId: Number(doc.docId), fileName: doc.fileName || '未命名资料' })
-}
 
 function toggleWorkspaceFilter() {
   workspaceFilterRef.value?.toggleCollapse?.()

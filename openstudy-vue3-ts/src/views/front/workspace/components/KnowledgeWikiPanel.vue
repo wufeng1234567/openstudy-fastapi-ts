@@ -455,6 +455,8 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { ENTITY_TYPE_META, entityTypeMeta, normalizeEntityKind, normalizePageType, pageTypeLabel } from '../knowledgeGraphMeta'
+import { clusterOutline } from '../knowledgeGraphGeometry'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
@@ -502,23 +504,6 @@ const emit = defineEmits<{
   (e: 'open-source', payload: { kind: string; id: number; title?: string; doc?: any; assetKey?: string }): void
 }>()
 
-const PAGE_TYPE_META = [
-  { type: 'summary', label: '摘要', color: '#3B7CFF' },
-  { type: 'entity', label: '实体', color: '#2F9E8F' },
-  { type: 'concept', label: '概念', color: '#F08A24' },
-  { type: 'synthesis', label: '综合', color: '#2D8CF0' },
-  { type: 'comparison', label: '对比', color: '#D95757' },
-  { type: 'overview', label: '总览', color: '#8A94A6' }
-]
-/** 知识图谱的六个实体集类型。 */
-const ENTITY_TYPE_META = [
-  { type: 'topic', label: '知识主题', color: '#F08A24' },
-  { type: 'bank', label: '题库', color: '#2F9E8F' },
-  { type: 'document', label: '资料', color: '#3B7CFF' },
-  { type: 'web', label: '网页', color: '#2D8CF0' },
-  { type: 'note', label: '笔记', color: '#8A94A6' },
-  { type: 'image', label: '图片', color: '#D95757' }
-]
 const mapTypeVisible = reactive<Record<string, boolean>>(
   Object.fromEntries(ENTITY_TYPE_META.map((item) => [item.type, true]))
 )
@@ -745,33 +730,6 @@ const graphSearchSuggestions = computed(() => {
     })
     .slice(0, 8)
 })
-
-function normalizeEntityKind(value?: string) {
-  const type = String(value || '').trim()
-  if (type === 'wiki') return 'topic'
-  if (['topic', 'bank', 'document', 'web', 'note', 'image'].includes(type)) return type
-  return 'topic'
-}
-
-function normalizePageType(value?: string) {
-  const type = String(value || '').trim()
-  if (!type || type === 'topic' || type === 'wiki') return 'concept'
-  return type
-}
-
-function entityTypeMeta(value?: string) {
-  const kind = normalizeEntityKind(value)
-  return ENTITY_TYPE_META.find((item) => item.type === kind) || ENTITY_TYPE_META[0]
-}
-
-function pageTypeMeta(value?: string) {
-  const type = normalizePageType(value)
-  return PAGE_TYPE_META.find((item) => item.type === type) || PAGE_TYPE_META[2]
-}
-
-function pageTypeLabel(value?: string) {
-  return pageTypeMeta(value).label
-}
 
 const mapComponents = computed(() => {
   const nodes = allMapNodes.value
@@ -2024,48 +1982,6 @@ function startMapAnimation() {
   mapAnimFrame = requestAnimationFrame(tick)
 }
 
-function clusterOutline(points: any[], padding = 28) {
-  if (!points.length) return ''
-  const cx = points.reduce((sum, point) => sum + Number(point.x || 0), 0) / points.length
-  const cy = points.reduce((sum, point) => sum + Number(point.y || 0), 0) / points.length
-  const samples = 48
-  const radial: { x: number; y: number }[] = []
-  for (let index = 0; index < samples; index += 1) {
-    const angle = (index * Math.PI * 2) / samples
-    let distance = 0
-    for (const point of points) {
-      const dx = Number(point.x || 0) - cx
-      const dy = Number(point.y || 0) - cy
-      const projected = Math.cos(angle) * dx + Math.sin(angle) * dy
-      const radius = Number(point.r || 0) + padding
-      distance = Math.max(distance, projected + radius)
-    }
-    distance = Math.max(40, distance)
-    radial.push({
-      x: cx + Math.cos(angle) * distance,
-      y: cy + Math.sin(angle) * distance
-    })
-  }
-  const fmt = (point: any) => `${Math.round(point.x * 10) / 10},${Math.round(point.y * 10) / 10}`
-  const at = (index: number) => radial[(index + radial.length) % radial.length]
-  const parts = [`M${fmt(radial[0])}`]
-  for (let index = 0; index < radial.length; index += 1) {
-    const current = at(index)
-    const next = at(index + 1)
-    const previous = at(index - 1)
-    const after = at(index + 2)
-    const control1 = {
-      x: current.x + (next.x - previous.x) / 6,
-      y: current.y + (next.y - previous.y) / 6
-    }
-    const control2 = {
-      x: next.x - (after.x - current.x) / 6,
-      y: next.y - (after.y - current.y) / 6
-    }
-    parts.push(`C${fmt(control1)} ${fmt(control2)} ${fmt(next)}`)
-  }
-  return parts.join(' ') + ' Z'
-}
 
 const mapHulls = computed(() => {
   const nodes = mapNodes.value
