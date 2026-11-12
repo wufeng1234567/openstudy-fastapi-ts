@@ -48,6 +48,23 @@ if !errorlevel! equ 0 (
     echo [OK] Port %PORT% is free
 )
 
+rem ---- Ensure local Postgres/Redis containers (OpenStudy dev) ----
+rem The backend returns 500 through the Vite proxy when these are down.
+where docker >nul 2>&1
+if !errorlevel! equ 0 (
+    docker info >nul 2>&1
+    if !errorlevel! neq 0 (
+        if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" (
+            echo [INFO] Starting Docker Desktop...
+            start "" "%ProgramFiles%\Docker\Docker\Docker Desktop.exe"
+            timeout /t 15 /nobreak >nul
+        )
+    )
+    echo [INFO] Ensuring pgsql / redis-stack containers are running...
+    docker start pgsql redis-stack >nul 2>&1
+    timeout /t 3 /nobreak >nul
+)
+
 echo.
 echo [INFO] Starting FastAPI backend on port %PORT% ...
 echo         API:  http://localhost:%PORT%
