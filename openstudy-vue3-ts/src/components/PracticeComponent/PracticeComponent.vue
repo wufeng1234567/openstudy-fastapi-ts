@@ -393,7 +393,6 @@ import useUserStore from '@/store/modules/user'
 import {
   createDraftSaver,
   loadDraft,
-  clearDraft,
   type DraftSaveState
 } from '@/utils/practiceDraft'
 import AiAnalysisDialog from '@/components/AiAnalysisDialog/index.vue'
@@ -434,7 +433,6 @@ import {
   debugEnterModule,
   debugLeaveModule,
   debugWatchTrigger,
-  debugStateSnapshot
 } from '@/utils/practiceDebug'
 
 const props = defineProps({
@@ -665,14 +663,12 @@ const isFirstLoaded = ref(false)
 
 const {
   remainingTime,
-  examTimer,
   formattedRemainingTime,
   isTimeWarning,
   isTimeDanger,
   startExamTimer,
   stopExamTimer,
   clearExamStorage,
-  handleTimeUp,
   bindVisibility,
   unbindVisibility
 } = usePracticeExamTimer({
@@ -1581,12 +1577,10 @@ const {
   correctCount,
   wrongCount,
   accuracy,
-  displayOptions,
   fetchQuestions,
   resetAndFetchQuestions,
   // 随机题单：练完一轮/提交后清掉，下一轮重新随机
   clearRandomPlan,
-  resetAnswers,
   goToQuestion,
   nextQuestion,
   prevQuestion,
@@ -1597,7 +1591,6 @@ const {
   handleAnswerSubmission,
   resetPractice,
   showAllAnalysis,
-  collectQuestion,
   markQuestion,
   addNote,
   reportQuestion,
@@ -1607,13 +1600,11 @@ const {
   practiceSessionId,
   applyServerGrade,
   ensurePracticeSession,
-  pendingCount,
   updateOnlyWrong,
   updateQuestionCount,
   // 模拟考试组卷要用：把整份卷子灌进题目流（见 handleMockStart 的注释）
   processQuestions,
   updateQuestionOffset,
-  applyQuestionLimits,
   loadBatchWithoutReset,
   updateQuestionCountAndSlice,
   saveCurrentAnswerState,
@@ -2454,130 +2445,25 @@ watch(currentQuestionIndex, () => {
  *    判分 / 换题 / 换波后都会静默写盘（600ms 节流），离开页面时还会 `flush()`
  *    立刻落一次 —— 手动按钮调用的 `flush()` 与自动保存是同一个动作，纯属多余入口。
  */
-const draftState = ref<DraftSaveState>('idle')
-/** 上次成功保存的时间（当前界面不展示，保留给"最近保存于"类文案或排障） */
-const draftSavedAt = ref<number>(0)
-
-/*
- * `userStore` / `currentUserId` 在**上面「模拟考试会话」一节**定义（早于本节）。
- * 这里不要再声明一次 —— 会直接报 `Identifier 'currentUserId' has already been declared`。
- */
-
-/**
- * 把"每题 id → 作答"的关联写进暂存
- *
- * 为什么用 questionId 而不是数组下标：随机练习 / 重新进入时题目顺序会变，
- * 用下标恢复会把答案按错位置贴上去（张冠李戴）。
- */
-function buildDraftSnapshot() {
-  const ids: Array<number | string> = []
-  const answersById: Record<string, any> = {}
-  const judgedById: Record<string, boolean> = {}
-  const correctById: Record<string, boolean> = {}
-  const fillById: Record<string, Record<string, any>> = {}
-  const essayById: Record<string, Record<string, any>> = {}
-
-  const list = questions.value || []
-  list.forEach((q: any, idx: number) => {
-    if (!q) return
-    const qid = q.id ?? q.questionId ?? idx
-    ids.push(qid)
-    const ans = answers.value?.[idx]
-
-    /*
-     * 「这一题到底答过没有」的判据
-     * ------------------------------------------------------------------
-     * ⚠️ 别只判 `!== null && !== ''`（2026-10-18 踩到）：
-     *    组合题（readingComprehension / cloze）在 `answers` 里存的是**对象**
-     *    （`resetAnswers` 会给它们初始化成 `{}`）。空对象 `{}` 既不是 null 也不是 ''，
-     *    于是被当成"答过"，暂存里就会塞进一堆没作答的组合题 id ——
-     *    恢复时它们会覆盖成"已作答"的错误状态。
-     */
-    const hasAnswer =
-      ans === null || ans === undefined
-        ? false
-        : typeof ans === 'object'
-          ? Array.isArray(ans)
-            ? ans.length > 0
-            : Object.keys(ans).length > 0 // 组合题：有子答案才算答过
-          : ans !== ''
-
-    if (hasAnswer) {
-      answersById[String(qid)] = ans
-    }
-    if (q.answered) judgedById[String(qid)] = true
-    if (q.correct === true || q.correct === false) correctById[String(qid)] = !!q.correct
-  })
-
-  // 组合题子题答案：`subFillBlankAnswers` 的 key 是 `${qid}_${subIndex}` 这类拼接
-  Object.keys(subFillBlankAnswers.value || {}).forEach((k) => {
-    const [qid, sub] = String(k).split('_')
-    if (!qid || sub === undefined) return
-    const v = (subFillBlankAnswers.value as any)[k]
-    if (v === null || v === undefined || v === '') return
-    ;(fillById[qid] ||= {})[sub] = v
-  })
-  Object.keys(subEssayAnswers.value || {}).forEach((k) => {
-    const [qid, sub] = String(k).split('_')
-    if (!qid || sub === undefined) return
-    const v = (subEssayAnswers.value as any)[k]
-    if (v === null || v === undefined || v === '') return
-    ;(essayById[qid] ||= {})[sub] = v
-  })
-
-  const cur = currentQuestion.value
-  const curId = cur ? cur.id ?? cur.questionId ?? null : null
-
-  return {
-    bankId: props.bankId,
-    moduleType: props.moduleType,
-    questionIds: ids,
-    answers: answersById,
-    judged: judgedById,
-    correct: correctById,
-    subFillBlank: fillById,
-    subEssay: essayById,
-    currentQuestionId: curId,
-    batchIndex: Math.floor((questionOffset.value || 0) / Math.max(1, moduleSettings.value.questionCount || 10)),
-    batchSize: moduleSettings.value.questionCount || 10,
-    submittedBatches: hasSubmittedCurrentBatch.value ? [(questionOffset.value || 0)] : [],
-    stats: {
-      correct: correctCount.value || 0,
-      wrong: wrongCount.value || 0,
-      elapsedMs: 0
-    }
-  }
-}
-
-/**
- * 自动保存的失败提示
- *
- * 只在 `failed` 时弹一次轻提示 —— 这是**静默保存唯一的例外**：
- * 其余状态（saving / saved）对用户完全不可见。
- *
- * 为什么不弹"已保存"：用户每答一题都弹一条，比什么都烦。
- * 静默保存的价值就在于"不用被打断"，只在它真的失败时才值得打断。
- */
-const handleDraftStateChange = (s: DraftSaveState, at?: number) => {
-  draftState.value = s
-  if (s === 'saved' && at) draftSavedAt.value = at
-  if (s === 'failed') {
-    ElMessage.warning('进度自动保存失败：浏览器存储不可用或空间不足')
-  }
-}
-
-/**
- * 保存器
- *
- * 只负责**静默**自动保存，不再对外提供手动入口。
- * `flush()` 仍然被 `onUnmounted` 与切走页面时调用（离开前保证落盘）。
- */
-const draftSaver = createDraftSaver({
+const {
+  draftState,
+  draftSavedAt,
+  buildDraftSnapshot,
+  draftSaver
+} = usePracticeDraft({
   getUserId: currentUserId,
   getBankId: () => props.bankId,
   getModuleType: () => props.moduleType,
-  buildSnapshot: buildDraftSnapshot as any,
-  onStateChange: handleDraftStateChange
+  getQuestions: () => questions.value,
+  getAnswers: () => answers.value,
+  getSubFillBlank: () => subFillBlankAnswers.value,
+  getSubEssay: () => subEssayAnswers.value,
+  getCurrentQuestion: () => currentQuestion.value,
+  getQuestionOffset: () => questionOffset.value,
+  getQuestionCount: () => moduleSettings.value.questionCount || 10,
+  getHasSubmittedCurrentBatch: () => hasSubmittedCurrentBatch.value,
+  getCorrectCount: () => correctCount.value,
+  getWrongCount: () => wrongCount.value
 })
 
 /*
