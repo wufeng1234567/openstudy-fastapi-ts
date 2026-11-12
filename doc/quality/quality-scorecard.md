@@ -23,6 +23,7 @@
 | CI 存在 | ✅ 3 jobs；lint/test/build/hygiene/版本检查 | `.github/workflows/ci.yml` |
 | CI 强门禁 | 🟡 type-check 非阻塞；后端 ruff 只跑语法子集 | 继续 P1 |
 | 一条命令验证 | ✅ `scripts/verify-quality.bat` | 输出 type-check 错误数，不伪装 |
+| Vue composable import 检查 | ✅ `scripts/check_composable_imports.py` | 248 个 Vue 文件扫描通过；防止 `useXxx` 未 import 的 setup 崩溃 |
 | 依赖锁 | ✅ 前端唯一 `package-lock.json` + CI `npm ci`；后端 requirements 未锁 hash | P1 继续 |
 | 密钥/垃圾检查 | ✅ CI 检查 `.env`、node_modules、生成物、硬编码密钥 | 已脱管历史生成物 |
 
