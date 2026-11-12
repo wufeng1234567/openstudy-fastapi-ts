@@ -819,157 +819,29 @@ const viewerSrc = ref('')
 const hasSubmittedCurrentBatch = ref(false)
 const isFirstLoaded = ref(false)
 
-const examTimeLimit = computed(() => moduleSettings.value.examTimeLimit || 60)
-const remainingTime = ref(0)
-const examTimer = ref<ReturnType<typeof setInterval> | null>(null)
-const EXAM_END_TIME_KEY = 'openstudy_exam_end_time'
-const EXAM_BANK_ID_KEY = 'openstudy_exam_bank_id'
-
-// 全局标志，防止多个弹窗
-let isTimeUpDialogShowing = false
-
-/**
- * 是否曾经离场（deactivate）过
- *
- * 只服务 `onActivated`：KeepAlive 下它在首次挂载时也会触发，
- * 需要靠这个标志把「首次挂载」和「离场后回场」区分开（见 `onActivated` 的注释）。
- */
-let hasBeenDeactivated = false
-
-const formattedRemainingTime = computed(() => {
-  const minutes = Math.floor(remainingTime.value / 60)
-  const seconds = remainingTime.value % 60
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+const {
+  remainingTime,
+  examTimer,
+  formattedRemainingTime,
+  isTimeWarning,
+  isTimeDanger,
+  startExamTimer,
+  stopExamTimer,
+  clearExamStorage,
+  handleTimeUp,
+  bindVisibility,
+  unbindVisibility
+} = usePracticeExamTimer({
+  getModuleType: () => props.moduleType,
+  getBankId: () => props.bankId,
+  examTimeLimit,
+  showExamResult,
+  onTimeUp: () => handleSubmitExam({ skipConfirm: true })
 })
 
-const isTimeWarning = computed(() => remainingTime.value > 0 && remainingTime.value <= 300)
-const isTimeDanger = computed(() => remainingTime.value > 0 && remainingTime.value <= 60)
 
-function startExamTimer() {
-  if (props.moduleType !== 'mock') return
-  // 如果已经显示考试结果，不启动计时器
-  if (showExamResult.value) {
-    return
-  }
-
-  // 先停止现有定时器，防止重复启动
-  stopExamTimer()
-
-  // 检查是否有保存的考试结束时间（同一个题库）
-  const savedEndTime = localStorage.getItem(EXAM_END_TIME_KEY)
-  const savedBankId = localStorage.getItem(EXAM_BANK_ID_KEY)
-  const now = Date.now()
-
-  if (savedEndTime && savedBankId === String(props.bankId)) {
-    const endTime = parseInt(savedEndTime)
-    if (now < endTime) {
-      // 还有剩余时间，继续倒计时
-      remainingTime.value = Math.ceil((endTime - now) / 1000)
-    } else {
-      // 时间已到，静默清除存储，不弹窗（用户离开期间时间已过）
-      remainingTime.value = 0
-      clearExamStorage()
-      // 不调用 handleTimeUp，让用户重新开始
-      return
-    }
-  } else {
-    // 新的考试，设置结束时间
-    const totalSeconds = examTimeLimit.value * 60
-    const endTime = now + totalSeconds * 1000
-    localStorage.setItem(EXAM_END_TIME_KEY, String(endTime))
-    localStorage.setItem(EXAM_BANK_ID_KEY, String(props.bankId))
-    remainingTime.value = totalSeconds
-  }
-
-  // 启动定时器更新显示
-  examTimer.value = setInterval(() => {
-    const currentTime = Date.now()
-    const endTime = parseInt(localStorage.getItem(EXAM_END_TIME_KEY) || '')
-
-    if (!endTime || currentTime >= endTime) {
-      // 停止定时器
-      stopExamTimer()
-      clearExamStorage()
-      remainingTime.value = 0
-
-      // 只有在页面可见且没有弹窗显示时才弹窗提示
-      if (!document.hidden && !isTimeUpDialogShowing) {
-        handleTimeUp()
-      }
-    } else {
-      remainingTime.value = Math.ceil((endTime - currentTime) / 1000)
-    }
-  }, 1000)
-}
-
-function stopExamTimer() {
-  if (examTimer.value) {
-    clearInterval(examTimer.value)
-    examTimer.value = null
-  }
-}
-
-function clearExamStorage() {
-  localStorage.removeItem(EXAM_END_TIME_KEY)
-  localStorage.removeItem(EXAM_BANK_ID_KEY)
-}
-
-function handleTimeUp() {
-  // 如果已经显示弹窗或已显示考试结果，不再重复处理
-  if (isTimeUpDialogShowing || showExamResult.value) {
-    return
-  }
-
-  isTimeUpDialogShowing = true
-
-  ElMessageBox.alert('考试时间已到，系统将自动提交试卷！', '时间到', {
-    confirmButtonText: '确定',
-    type: 'warning',
-    showClose: false,
-    closeOnClickModal: false,
-    closeOnPressEscape: false
-  }).then(() => {
-    isTimeUpDialogShowing = false
-    // skipConfirm：时间已到，用户没有选择权，不再弹第二次确认
-    handleSubmitExam({ skipConfirm: true })
-  }).catch(() => {
-    isTimeUpDialogShowing = false
-    handleSubmitExam({ skipConfirm: true })
-  })
-}
-
-// 页面可见性变化处理
-/*
- * ⚠️ `visibilitychange` 的绑定必须**幂等**（2026-10-28）。
- *
- * 组件在 `<KeepAlive>` 里时，Vue 在**首次挂载**时会依次触发 `onMounted` 和
- * `onActivated`。两个钩子里都 `addEventListener` 的话，同一个 handler 会被注册
- * 两次 —— 一次事件调两遍 `handleVisibilityChange`，而卸载时只 `remove` 掉一个，
- * 另一个永久泄漏。所以统一走这两个函数，用 `visibilityBound` 记账。
- */
-let visibilityBound = false
-function bindVisibility() {
-  if (visibilityBound) return
-  document.addEventListener('visibilitychange', handleVisibilityChange)
-  visibilityBound = true
-}
-function unbindVisibility() {
-  if (!visibilityBound) return
-  document.removeEventListener('visibilitychange', handleVisibilityChange)
-  visibilityBound = false
-}
-
-function handleVisibilityChange() {
-  if (document.hidden) {
-    // 页面隐藏，停止定时器（但不清除结束时间）
-    stopExamTimer()
-  } else {
-    // 页面显示，恢复定时器（复用 startExamTimer 逻辑）
-    if (props.moduleType === 'mock' && !showExamResult.value) {
-      startExamTimer()
-    }
-  }
-}
+const examTimeLimit = computed(() => moduleSettings.value.examTimeLimit || 60)
+let hasBeenDeactivated = false
 
 watch(() => props.moduleType, (newType, oldType) => {
   // 调试日志

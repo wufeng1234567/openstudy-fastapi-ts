@@ -28,7 +28,9 @@
 
 已完成第一步：
 
-- `practiceQuestionUtils.ts`：题型归一、模拟组卷、题干清洗、选项归一化（`PracticeComponent.vue` 从 3469 行降到 3402 行）。
+- `practiceQuestionUtils.ts`：题型归一、模拟组卷、题干清洗、选项归一化；
+- `usePracticeExamTimer.ts`：考试倒计时、时间到处理、页面可见性生命周期；
+- `PracticeComponent.vue` 从 3469 行降到约 3290 行。
 
 下一批继续：
 
