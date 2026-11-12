@@ -384,6 +384,12 @@ import FavoriteButton from '@/components/FavoriteButton/FavoriteButton.vue'
  * 浮球不再出现。判据复用同一个 util，保证"到底在滚谁"始终只有一份答案。
  */
 import { usePracticeScrollHost } from './usePracticeScrollHost'
+import { usePracticeExamTimer } from './usePracticeExamTimer'
+import { usePracticeDraft } from './usePracticeDraft'
+import { usePracticeAnswerFlow } from './usePracticeAnswerFlow'
+import { usePracticeMockSession } from './usePracticeMockSession'
+import { usePracticeMockResult } from './usePracticeMockResult'
+import { usePracticeMockHistory } from './usePracticeMockHistory'
 // 「只刷错题」空态要用线性图标（全站统一走 OsIcon，不用 Element Plus 实心图标）
 import OsIcon from '@/components/OsIcon/index.vue'
 import ImageViewer from './ImageViewer.vue'
@@ -1690,119 +1696,25 @@ async function handleMockStart(cfg: MockExamConfig) {
  *   配置页是从 `store.getMockExamConfig()` 读的。不写回的话，用户重考完
  *   再回配置页，看到的是改之前的旧配置 —— 与刚才实际考的卷子对不上。
  */
-function handleMockAgain(preset?: MockExamConfig) {
-  /*
-   * 取配置的优先级：
-   *   显式传入的 preset > 本场冻结的快照 > store 当前配置
-   *
-   * 中间那层 `activeMockConfig` 是"刚交完卷"这一路的关键 ——
-   * 即使 store 被改过，重考仍与本场保持一致。
-   */
-  const source = preset || activeMockConfig.value || store.getMockExamConfig()
-  const snapshot: MockExamConfig = JSON.parse(JSON.stringify(source))
-
-  currentExamRecord.value = null
-  /*
-   * ⚠️ `historyRecord` 必须一起清（2026-10-22）。
-   *
-   * 它是"当前看的是不是历史回看"的标记。如果重考时不清，
-   * 下一场交卷后总结页会因为 `readonly = !!historyRecord` 仍为真，
-   * 而把按钮显示成「返回记录」—— 用户刚考完却找不到"再考一次"。
-   */
-  historyRecord.value = null
-  showExamResult.value = false
-  totalScore.value = 0
-
-  // 写回 store：配置页要能反映"我刚才考的就是这套"
-  store.saveMockExamConfig(snapshot)
-
-  /*
-   * 直接开考，不停在配置页。
-   *
-   * 按钮叫「再考一次」，预期就是立刻开始第二遍；配置已经定好，
-   * 再让用户看一眼表单、多点一次「开始考试」，纯属多一步。
-   *
-   * 想改配置再考的用户仍有出口：点「离开」回题库重进即可。
-   */
-  handleMockStart(snapshot)
-}
-
-/** 从历史记录打开一条（回看） */
-function handleOpenHistoryRecord(r: MockExamRecord) {
-  historyRecord.value = r
-  currentExamRecord.value = r
-  mockPhase.value = 'summary'
-}
-
-/**
- * 总结页点「再考一次」——按来源决定沿用哪份配置
- *
- * 为什么要在这里分流，而不是让 `ExamSummary` 自己判断：
- * 组件只负责"用户点了要重考"，**用哪份配置是业务知识**，
- * 应该由持有记录的父组件决定。组件里再判断一次来源，
- * 等于把同一套规则分散到两个文件，日后必然改漏一边。
- */
-function handleMockRetryFromSummary() {
-  /*
-   * 历史回看：必须用**那条记录自己的 config 快照**。
-   *
-   * 这是本次需求的核心 —— 用户从考试记录里点「再考一次」，
-   * 期望的是"把那一场原样再考一遍"：同样的题型、同样的每题分值、
-   * 同样的时长和及格线。如果用 store 里当前配置，而用户在这之后
-   * 又调过设置，重考出来的就是另一张卷子，承诺落空。
-   *
-   * 记录里没有 config（更早版本写的旧数据）时退回 store 配置，
-   * 不因为老数据缺字段就整个功能不可用。
-   */
-  if (historyRecord.value) {
-    const snap = historyRecord.value.config
-    if (snap) {
-      handleMockAgain(snap)
-      return
-    }
-    // 旧记录没有 config 快照 → 降级为当前配置，并让用户知道
-    proxy.$modal.msgInfo('这条记录没有保存当时的考试配置，将按当前设置重新组卷')
-  }
-  handleMockAgain()
-}
-
-/** 历史回看时点「返回记录」→ 回考试记录列表 */
-function handleMockBackToHistory() {
-  historyRecord.value = null
-  currentExamRecord.value = null
-  mockPhase.value = 'history'
-}
-
-/**
- * 实时切换「选项乱序」（2026-10-22）
- *
- * 需求口径：这三个入口的答题卡上，用户点开关就要**当场打乱/还原选项**，
- * 而不是"改了设置、下次进来才生效"。
- *
- * ⚠️ 关键取舍：切换后**要不要清空已选答案**？
- *    不清 —— 用户可能答了几题才发现想打乱。清掉等于把进度删了，这是最不能接受的。
- *    但打乱后选项下标变了，原来选"第 2 个"现在指向别的选项文案 ——
- *    这会让"用户以为自己选的 A 变成了 B"。
- *
- *    处理办法：`useQuestionPractice.displayOptions` 打乱时用的是**稳定的随机种子**
- *    （见那里的注释），同一道题在同一会话内重复打乱得到同一个顺序；
- *    且答案按**选项内容**而非下标存储于 `answers`（单选/多选存的是原始下标，
- *    经 `selectOption` 归一）。因此切换开关**只影响显示顺序**，不改变已选内容的语义。
- *
- *    这里只做三件事：写 store、清乱序缓存（让下次进入重新打乱）、提示用户。
- */
-function handleToggleShuffle(val: boolean) {
-  if (moduleTypeSafe.value === 'mock') return
-  /*
-   * 只写 store —— 打乱由 `QuestionDisplay` 的 `displayOptions` 负责。
-   *
-   * `moduleSettings` 是 `store.getModuleSettings()` 的 computed，
-   * 写进 store 后它会重算，`shuffle-options` prop 随之变化，
-   * `QuestionDisplay` 里的 computed 立刻重新洗牌或还原 —— 实时生效，无需刷新。
-   */
-  store.saveModuleSettings(props.moduleType, { shuffleOptions: val })
-  proxy.$modal.msgSuccess(val ? '已打乱选项顺序' : '已恢复选项原始顺序')
-}
+const {
+  handleMockAgain,
+  handleOpenHistoryRecord,
+  handleMockRetryFromSummary,
+  handleMockBackToHistory,
+  handleToggleShuffle
+} = usePracticeMockHistory({
+  activeMockConfig,
+  currentExamRecord,
+  historyRecord,
+  showExamResult,
+  totalScore,
+  mockPhase,
+  store,
+  proxy,
+  moduleTypeSafe,
+  getModuleType: () => props.moduleType,
+  handleMockStart
+})
 
 /*
  * ⚠️ 这里原本有个 `handleMockSummaryBack`，逻辑是
