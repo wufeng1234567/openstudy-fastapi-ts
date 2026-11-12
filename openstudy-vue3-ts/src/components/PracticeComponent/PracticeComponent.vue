@@ -398,6 +398,7 @@ import { usePracticeMockSetup } from './usePracticeMockSetup'
 import { usePracticeAnalysis } from './usePracticeAnalysis'
 import { usePracticeRouteWatches } from './usePracticeRouteWatches'
 import { usePracticeLifecycle } from './usePracticeLifecycle'
+import { usePracticeSubmission } from './usePracticeSubmission'
 // 「只刷错题」空态要用线性图标（全站统一走 OsIcon，不用 Element Plus 实心图标）
 import OsIcon from '@/components/OsIcon/index.vue'
 import ImageViewer from './ImageViewer.vue'
@@ -1350,6 +1351,30 @@ const {
   setQuestionOffset: (value) => { questionOffset.value = value }
 })
 
+const { handleSubmitExam, handleFinishExam } = usePracticeSubmission({
+  isMockFlow,
+  activeMockConfig,
+  practiceSessionId,
+  questions,
+  answers,
+  totalQuestions,
+  answeredCount,
+  totalScore,
+  showExamResult,
+  hasSubmittedCurrentBatch,
+  forceOverview,
+  proxy,
+  emit,
+  ensurePracticeSession,
+  handleMockSubmit,
+  applyServerGrade,
+  showAllAnalysis,
+  loadRecentSession,
+  clearExamStorage,
+  stopExamTimer,
+  clearAnswerStateCache
+})
+
 usePracticeLifecycle({
   getModuleType: () => props.moduleType,
   getBankId: () => props.bankId,
@@ -1482,110 +1507,6 @@ watch(
  *   确认框的文案尽量"可决策"：说清楚未答数量和后果（交卷后不能修改），
  *   而不是干巴巴一句"确定交卷吗"。
  */
-const handleSubmitExam = (options: { skipConfirm?: boolean } = {}) => {
-  const doSubmit = async () => {
-    /*
-     * 模拟考试走独立的判分与结果页（2026-10-22）。
-     *
-     * 分歧点：原来的 `Math.round(correct/total*100)` 是"按题数算百分比"，
-     * 而模拟考试的分值是按题型配置的（单选 2 分、多选 4 分……），
-     * 还可能有多选漏选按比例给分 —— 用"题数百分比"当分数是错的。
-     * 所以 mock 交给 `handleMockSubmit`，其余模块保持原逻辑不变。
-     */
-    if (isMockFlow.value && activeMockConfig.value) {
-      await handleMockSubmit()
-      return
-    }
-    try {
-      if (!practiceSessionId.value) await ensurePracticeSession()
-      if (!practiceSessionId.value) {
-        proxy.$modal.msgError('练习会话不存在，无法交卷，请刷新后重试')
-        return
-      }
-      // 考试模式不做逐题上报：交卷时把本地答案按题目 id 一并交给服务端
-      const localAnswers = Object.fromEntries(
-        questions.value.map((q: any, i: number) => [String(q.id), answers.value[i]])
-      )
-      const res: any = await submitPracticeSession(practiceSessionId.value, undefined, localAnswers)
-      if (res?.code !== 200) {
-        proxy.$modal.msgError(res?.msg || '交卷失败，请重试')
-        return
-      }
-      // 用服务端返回的逐题判分刷新本地题目对象，结算页/答题卡都读同一份结果
-      const items: any[] = Array.isArray(res.data?.items) ? res.data.items : []
-      const byId = new Map<string, any>(questions.value.map((q: any) => [String(q.id), q]))
-      items.forEach((item: any) => {
-        const q = byId.get(String(item.questionId))
-        if (q) applyServerGrade(q, item)
-      })
-      totalScore.value = Math.round(Number(res.data?.percentage ?? 0))
-      showAllAnalysis()
-      showExamResult.value = true
-      loadRecentSession()
-      clearExamStorage()
-      stopExamTimer()
-      if (Number(res.data?.pendingCount || 0) > 0) {
-        proxy.$modal.msgInfo(`本次有 ${res.data.pendingCount} 道简答题待自评，不计入自动正确率`)
-      }
-    } catch (e: any) {
-      console.error('[practice] 交卷失败', e)
-      proxy.$modal.msgError('交卷失败，请检查网络后重试')
-    }
-  }
-
-  // 时间到 → 直接判分（用户没有选择权，见上面的注释）
-  if (options.skipConfirm) {
-    doSubmit()
-    return
-  }
-
-  /*
-   * 主动交卷 → 确认。
-   *
-   * 用 `totalQuestions - answeredCount` 算未答数量：
-   * 这两个都是"当前这一波/整场"的口径，和答题卡上显示的数字一致，
-   * 不会出现"提示说 3 道没答、答题卡显示 2 道"这种自相矛盾。
-   */
-  const unanswered = Math.max(0, totalQuestions.value - answeredCount.value)
-  const tip = unanswered > 0
-    ? `还有 ${unanswered} 道题没有作答。\n交卷后不能修改答案，确定现在交卷吗？`
-    : '所有题目都已作答。\n交卷后不能修改答案，确定交卷吗？'
-
-  ElMessageBox.confirm(tip, '确认交卷', {
-    confirmButtonText: '确认交卷',
-    cancelButtonText: '继续答题',
-    type: unanswered > 0 ? 'warning' : 'info',
-    // 交卷是重要动作，先别让用户误关（点空白处不关闭）
-    closeOnClickModal: false
-  })
-    .then(() => doSubmit())
-    .catch(() => {
-      // 用户选择继续答题 → 什么都不做，保持当前进度
-    })
-}
-
-// 结束考试：清空模拟考试缓存并关闭
-const handleFinishExam = () => {
-  // 重置考试结果状态
-  showExamResult.value = false
-  totalScore.value = 0
-  hasSubmittedCurrentBatch.value = false
-  /*
-   * 结算结束 → 撤掉那一层"临时整体浏览"（2026-10-21）。
-   *
-   * `forceOverview` 是结算为了展示瀑布流临时打开的（见它的定义处）。
-   * 不复位的话，即使 `moduleSettings.isOverviewMode` 一直是 false，
-   * `isOverviewActive` 也会恒为 true —— 用户「结束」完再进这个模块，
-   * 或切到别的题继续练，看到的仍是瀑布流，他的偏好被这层临时态盖住了。
-   * 这里只动本地态，不碰 store。
-   */
-  forceOverview.value = false
-  // 清空模拟考试的答题状态缓存
-  clearAnswerStateCache('mock')
-  // 关闭页面
-  emit('close')
-}
-
 watch(() => moduleSettings.value.questionCount, (val) => {
   // 如果正在重置中，跳过（防止二次触发）
   if (isResetting.value) return
