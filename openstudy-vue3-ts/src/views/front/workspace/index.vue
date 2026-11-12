@@ -540,76 +540,30 @@
       @restored="onDocumentVersionRestored"
     />
 
-    <!-- 粘贴文本 -->
-    <el-dialog v-model="textImportVisible" title="粘贴文本" width="640px" append-to-body @closed="resetTextImport">
-      <div class="kbp-import">
-        <p class="kbp-import__hint">
-          把正文直接粘进来就行，不用先存成文件。导入后智能体一样能检索到。
-        </p>
-        <el-input
-          v-model="textImportContent"
-          type="textarea"
-          :rows="10"
-          placeholder="把课件文字、笔记、错题解析粘在这里…"
-        />
-        <div class="kbp-import__row">
-          <span class="kbp-import__label">起个名字</span>
-          <el-input v-model="textImportFileName" placeholder="例如：概率论第四章笔记" maxlength="80" />
-        </div>
-      </div>
-      <template #footer>
-        <el-button @click="textImportVisible = false">取消</el-button>
-        <el-button type="primary" :loading="importing" @click="submitTextImport">导入</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 从网页导入：一个输入框同时支持「粘贴网址」和「关键词搜索」 -->
-    <el-dialog v-model="webImportVisible" title="从网页导入" width="680px" append-to-body @closed="resetWebImport">
-      <div class="kbp-web">
-        <p class="kbp-web__hint">
-          粘贴一个公开网页链接直接导入；或输入关键词，让系统搜索后由你挑选。
-        </p>
-        <div class="kbp-web__search">
-          <el-input
-            v-model="webImportQuery"
-            clearable
-            placeholder="粘贴网址，或输入关键词搜索网页"
-            @keyup.enter="submitWebImport"
-          />
-          <el-button type="primary" :loading="webSearching || webImporting" @click="submitWebImport">
-            {{ webImportIsUrl ? '导入网址' : '搜索网页' }}
-          </el-button>
-        </div>
-        <div v-if="webImportQuery.trim() && !webImportIsUrl && !webResults.length && !webSearching" class="kbp-web__empty">
-          还没有搜索结果。输入关键词后点「搜索网页」。
-        </div>
-        <div v-if="webResults.length" class="kbp-web__results">
-          <div v-for="item in webResults" :key="item.url" class="kbp-web__item">
-            <div class="kbp-web__main">
-              <a class="kbp-web__title" :href="item.url" target="_blank" rel="noopener noreferrer">
-                [{{ item.index }}] {{ item.title }}
-              </a>
-              <div class="kbp-web__meta">
-                <span>{{ item.siteName }}</span>
-                <span v-if="item.date">· {{ item.date }}</span>
-              </div>
-              <p>{{ item.snippet || item.summary }}</p>
-            </div>
-            <el-button size="small" plain :loading="webImporting" @click="importWebResult(item)">导入</el-button>
-          </div>
-        </div>
-        <div class="kbp-web__note">
-          <span class="kbp-import__label">备注（可选）</span>
-          <el-input v-model="webImportNote" maxlength="200" placeholder="例如：这节课要用的参考资料" />
-        </div>
-        <p class="kbp-web__foot">
-          导入后会走和上传文件相同的分块、向量化、知识百科与知识图谱流程，智能体可以直接检索。
-        </p>
-      </div>
-      <template #footer>
-        <el-button @click="webImportVisible = false">关闭</el-button>
-      </template>
-    </el-dialog>
+    <WorkspaceTextWebDialogs
+      :text-import-visible="textImportVisible"
+      :text-import-content="textImportContent"
+      :text-import-file-name="textImportFileName"
+      :importing="importing"
+      :web-import-visible="webImportVisible"
+      :web-import-query="webImportQuery"
+      :web-import-note="webImportNote"
+      :web-searching="webSearching"
+      :web-importing="webImporting"
+      :web-results="webResults"
+      :web-import-is-url="webImportIsUrl"
+      @update:text-import-visible="textImportVisible = $event"
+      @update:text-import-content="textImportContent = $event"
+      @update:text-import-file-name="textImportFileName = $event"
+      @update:web-import-visible="webImportVisible = $event"
+      @update:web-import-query="webImportQuery = $event"
+      @update:web-import-note="webImportNote = $event"
+      @reset-text="resetTextImport"
+      @reset-web="resetWebImport"
+      @submit-text="submitTextImport"
+      @submit-web="submitWebImport"
+      @import-web="importWebResult"
+    />
 
     <!-- 从题库导入：只做资料夹与题库的逻辑关联，不复制题目 -->
     <el-dialog v-model="bankImportVisible" title="从题库导入" width="700px" append-to-body>
@@ -761,6 +715,7 @@ import WorkspaceSidebar from './components/WorkspaceSidebar.vue'
 import WorkspaceFilePanel from './components/WorkspaceFilePanel.vue'
 import WorkspaceChrome from './components/WorkspaceChrome.vue'
 import WorkspaceCascade from './components/WorkspaceCascade.vue'
+import WorkspaceTextWebDialogs from './components/WorkspaceTextWebDialogs.vue'
 import VersionHistoryDialog from './components/VersionHistoryDialog.vue'
 import ShareKnowledgeDialog from './components/ShareKnowledgeDialog.vue'
 import ReceiveKnowledgeDialog from './components/ReceiveKnowledgeDialog.vue'
