@@ -16,7 +16,7 @@
 
 | 行数 | 文件 | 风险/备注 |
 |---:|---|---|
-| 2,785 | `src/views/front/workspace/components/KnowledgeWikiPanel.vue` | 图谱/百科双视图，P2 拆分 |
+| 2,738 | `src/views/front/workspace/components/KnowledgeWikiPanel.vue` | 图谱/百科双视图，P2 拆分 |
 | 1,627 | `src/views/front/studio/components/QuestionBuilder.vue` | 模板约 1,100 行，优先拆 AI 弹窗和编辑器 |
 | 2,102 | `src/composables/useAgentChat.ts` | Agent 会话状态机，业务复杂 |
 | 2,161 | `src/composables/useQuestionPractice.ts` | 练习状态核心 |
