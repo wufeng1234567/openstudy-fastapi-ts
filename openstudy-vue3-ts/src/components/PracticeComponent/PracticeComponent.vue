@@ -1542,142 +1542,21 @@ watch(
  * ⚠️ 这里直接调接口而不是复用 `allQuestionsData`：后者可能只装了"某一波"的切片，
  *    也可能因为「只刷错题」被过滤过 —— 用它算上限会给出错误的可选范围。
  */
-async function loadMockAvailability(): Promise<void> {
-  try {
-    const res: any = await listQuestionMainAll({ bankId: props.bankId, status: '0', withAnswer: false })
-    const data: any[] = Array.isArray(res?.data) ? res.data
-      : Array.isArray(res?.result) ? res.result : []
-    const counter: Record<string, number> = {}
-    for (const q of data) {
-      const t = normalizeType(q.questionType ?? q.question_type)
-      counter[t] = (counter[t] || 0) + 1
-    }
-    mockAvailable.value = counter
-    /*
-     * 顺手把最新配置里"超出题库实际题量"的题数收回来。
-     * 不收的话：用户上次设了单选 70 道，换到一个只有 10 道单选的题库，
-     * 点开始会组出一份 10 道的卷子但界面写着 70 —— 直接对不上。
-     */
-    const cfg = store.getMockExamConfig()
-    let changed = false
-    for (const row of cfg.typeRows) {
-      const cap = counter[row.type] || 0
-      if (row.count > cap) { row.count = cap; changed = true }
-    }
-    if (changed) store.saveMockExamConfig(cfg)
-  } catch (e) {
-    console.warn('[mock] 读取题库题量失败', e)
-    mockAvailable.value = {}
-  }
-}
-
-/**
- * 按配置组卷
- *
- * 规则：
- *   · 每个题型独立随机抽 `count` 道（题库不够就抽多少算多少，不报错）；
- *   · 抽完后整体打乱：真实考试不会把同一题型排在一起，混排更像"一份卷子"；
- *   · 每道题挂上 `_mockScore`（该题满分）与 `_mockType`，供判分使用。
- *
- * ⚠️ 分值写在题目对象上（`_mockScore`）而不是另开一张表：
- *    题目对象本来就贯穿"渲染 → 作答 → 判分"整条链路，挂在它身上最不容易丢。
- *    下划线前缀与 `guard.params_payload` 的"内部字段"约定一致，不会被误当业务字段。
- */
-/*
- * `correctAnswerOf` / `judgeMockItem` 已搬到 `@/utils/mockExamJudge`（见顶部 import 处的说明）。
- * 本文件不要再就地定义同名函数 —— 一旦出现局部定义，import 会被静默遮蔽，
- * 「改了 util 但页面行为不变」这种问题极难排查。
- */
-
-/** 取完整题干（不截断，用于错题回看） */
-/** 点击「开始考试」 */
-async function handleMockStart(cfg: MockExamConfig) {
-  activeMockConfig.value = JSON.parse(JSON.stringify(cfg))
-  examStartAt.value = Date.now()
-  /*
-   * 记录本场考试的**绝对结束时间**，并立即写进计时器用的存储。
-   *
-   * 这个值有两个消费方，必须一致：
-   *   · `startExamTimer()`（倒计时读 `EXAM_END_TIME_KEY`）；
-   *   · 会话持久化（`mockSessionEndAt` → `persistMockSession`）。
-   * 以前只有前者，所以刷新后"计时器记得、卷子没了"。
-   */
-  mockSessionEndAt = examStartAt.value + (Number(cfg.timeLimit) || 60) * 60000
-  localStorage.setItem(EXAM_END_TIME_KEY, String(mockSessionEndAt))
-  localStorage.setItem(EXAM_BANK_ID_KEY, String(props.bankId))
-
-  // 重新按配置组卷（不能复用配置页那次统计的结果，用户可能刚改过）
-  try {
-    const res: any = await listQuestionMainAll({ bankId: props.bankId, status: '0', withAnswer: false })
-    const pool: any[] = Array.isArray(res?.data) ? res.data
-      : Array.isArray(res?.result) ? res.result : []
-    if (!pool.length) {
-      proxy.$modal.msgWarning('这个题库还没有题目，无法开始考试')
-      mockPhase.value = 'setup'
-      return
-    }
-    const paper = buildMockPaper(cfg, pool)
-    if (!paper.length) {
-      proxy.$modal.msgWarning('按当前配置没有抽到题目，请调整题型题数')
-      mockPhase.value = 'setup'
-      return
-    }
-    // 模拟考试也走服务端会话：题目不带答案，交卷由后端按本场分值快照判分
-    const sessionRes: any = await startPracticeSession({
-      bankId: props.bankId,
-      moduleType: 'mock',
-      questionIds: paper.map((q: any) => q.id),
-      scores: Object.fromEntries(paper.map((q: any) => [String(q.id), Number(q._mockScore) || 0]))
-    })
-    if (sessionRes?.code !== 200 || !sessionRes?.data?.sessionId) {
-      proxy.$modal.msgError(sessionRes?.msg || '创建考试会话失败，请重试')
-      mockPhase.value = 'setup'
-      return
-    }
-    practiceSessionId.value = String(sessionRes.data.sessionId)
-    /*
-     * 把整份卷子一次性塞进 allQuestionsData，并让 questionOffset 归零。
-     *
-     * 为什么不走分波（questionCount 切片）：
-     *   模拟考试的"题数"是由配置决定的整卷，不该再被"每波 10 题"这个刷题偏好切片，
-     *   否则用户设了 40 题却只做到 10 题就必须点"继续下一波"，不像考试。
-     *   这里直接用 `processQuestions` 处理全量，再把切片宽度放到整卷长度。
-     *
-     * ⚠️ 偏移量必须一起归零：`questionOffset` 是**按全库题数**记的分波进度，
-     *    用户在别的模式刷到第 3 波再回来考试时它还是 20 —— 于是卷子从第 21 条
-     *    开始取，前 20 条直接没了（表现为"交卷只有几道题"）。
-     */
-    /*
-     * 模拟考试是**整卷**场景：偏移量恒为 0。
-     *
-     * ⚠️ 这里原来在 `.then` 里把 `prevOffset` 还原回去，与上面那句
-     *    `updateQuestionOffset(0)`（以及它头顶"偏移量必须一起归零"的注释）
-     *    直接矛盾。虽然 `questions` 是直接赋值、显示上不受影响，但
-     *    `jumpToNextBatch` / `handlePrevBatch` 读的就是被还原的那个值 ——
-     *    整卷场景下它必须一直是 0，所以还原这一步直接删掉。
-     */
-    updateQuestionOffset(0)
-    updateQuestionCount(paper.length)
-    /*
-     * ⚠️ 必须 `await`（2026-10-28 修，审核发现 F8）：
-     *    `processQuestions` 内部还有 `loadQuestionStatus()` 等网络请求，
-     *    不等它就往下走，会在题目还没渲染出来的时候就把 `mockPhase` 切成
-     *    `running` 并 `startExamTimer()` —— 慢网络/大题库下用户先看到一张空卷，
-     *    而考试时间已经在走了。
-     */
-    await processQuestions(paper)
-  } catch (e) {
-    console.error('[mock] 组卷失败', e)
-    proxy.$modal.msgError('组卷失败，请重试')
-    mockPhase.value = 'setup'
-    return
-  }
-
-  mockPhase.value = 'running'
-  // 进入考卷后再启动计时（配置页不该消耗考试时间）
-  await nextTick()
-  startExamTimer()
-}
+const { loadMockAvailability, handleMockStart } = usePracticeMockSetup({
+  mockAvailable,
+  activeMockConfig,
+  examStartAt,
+  mockPhase,
+  practiceSessionId,
+  store,
+  proxy,
+  getBankId: () => props.bankId,
+  updateQuestionOffset,
+  updateQuestionCount,
+  processQuestions,
+  startExamTimer,
+  setMockSessionEndAt: (value) => { mockSessionEndAt = value }
+})
 
 /**
  * 从总结页点「再考一次」
