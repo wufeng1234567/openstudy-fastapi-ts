@@ -2,6 +2,23 @@
 
 目标：把超过 1000 行的前端文件按职责拆成可复用的 composable、纯工具模块和展示组件，先处理业务核心链路，再逐步覆盖题库、英语、笔记和智能体页面。
 
+## 线性执行队列（当前目标）
+
+按文件行数从大到小逐个处理，当前文件未完成前不跳到下一个：
+
+| 顺序 | 文件 | 当前行数 | 状态 |
+|---:|---|---:|---|
+| 1 | `views/front/workspace/index.vue` | 2810 | 进行中 |
+| 2 | `components/PracticeComponent/PracticeComponent.vue` | 2928 | 待处理 |
+| 3 | `views/front/studio/components/QuestionBuilder.vue` | 2854 | 待处理 |
+| 4 | `views/front/workspace/components/KnowledgeWikiPanel.vue` | 2853 | 待处理 |
+| 5 | `views/front/english/listening/index.vue` | 2034 | 待处理 |
+| 6 | `views/front/english/ocr/index.vue` | 1395 | 待处理 |
+| 7 | `views/front/agent/chat.vue` | 1383 | 待处理 |
+| 8 | 其余 >1000 行文件 | — | 按行数继续 |
+
+> `workspace/index.vue` 当前已拆出 `WorkspaceChrome.vue`、`WorkspaceCascade.vue`、`useWorkspaceUpload.ts`；继续拆整理、编辑、刨析和导入模块。
+
 ## 拆分原则
 
 1. **纯函数进 `*.ts`**：颜色/类型映射、状态文案、几何计算等不依赖 Vue 实例的逻辑；
