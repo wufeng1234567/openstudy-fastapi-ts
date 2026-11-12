@@ -1012,41 +1012,11 @@ let scrollDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let scrollLock = false
 const questionStreamRef = ref<HTMLElement | null>(null)
 
-const typeLabelMap: Record<string, string> = {
-  single: '单选题', multiple: '多选题', truefalse: '判断题',
-  fillblank: '填空题', essay: '问答题', readingComprehension: '组合题', cloze: '完形填空'
-}
-
-const questionGroups = computed(() => {
-  const groupMap: Record<string, any> = {}
-  const qs = questions.value
-
-  qs.forEach((q, i) => {
-    const label = typeLabelMap[q.type] || '其他'
-    if (!groupMap[label]) {
-      groupMap[label] = {
-        typeLabel: label,
-        typeName: q.type,
-        startIndex: i,
-        endIndex: i,
-        items: []
-      }
-    }
-    groupMap[label].endIndex = i
-    groupMap[label].items.push({ ...q, index: i })
-  })
-
-  return Object.values(groupMap)
+const { typeLabelMap, questionGroups, answeredCount, remainingCount } = usePracticeQuestionMeta({
+  questions,
+  answers,
+  totalQuestions
 })
-
-const answeredCount = computed(() => answers.value.filter((a: any) => {
-  if (a === null || a === undefined) return false
-  if (typeof a === 'string') return a.trim().length > 0
-  if (Array.isArray(a)) return a.length > 0
-  if (typeof a === 'object') return Object.keys(a).length > 0
-  return true
-}).length)
-const remainingCount = computed(() => totalQuestions.value - answeredCount.value)
 
 const toggleOverview = () => {
   /*
