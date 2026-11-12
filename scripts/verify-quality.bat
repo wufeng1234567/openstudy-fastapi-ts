@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 set "ROOT=%~dp0.."
 set "FAIL=0"
 
@@ -40,9 +40,10 @@ if not exist "node_modules" (
   if errorlevel 1 set "FAIL=1"
 
   echo [6/6] frontend type-check ^(report-only; known historical debt^)
-  call npm run type-check
-  set "TC_EXIT=%ERRORLEVEL%"
-  echo [INFO] type-check exit %TC_EXIT% ^(not treated as a green gate yet^)
+  call npm run type-check > "..\_tc_verify.log" 2>&1
+  set "TC_EXIT=!ERRORLEVEL!"
+  for /f %%C in ('findstr /C:"error TS" "..\_tc_verify.log" ^| find /c /v ""') do set "TC_COUNT=%%C"
+  echo [INFO] type-check exit !TC_EXIT!; error TS lines: !TC_COUNT! ^(not treated as a green gate yet^)
 )
 popd
 
