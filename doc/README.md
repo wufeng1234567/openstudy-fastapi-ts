@@ -7,6 +7,7 @@
 
 | 想确认 | 打开 | 一句话结论 |
 |---|---|---|
+| 架构与边界 | [ARCHITECTURE.md](../ARCHITECTURE.md) | Vue3/FastAPI/Postgres；Agent/RAG 主链路与已知债务 |
 | 系统是什么、功能全貌 | [OpenStudy-系统完整介绍与功能架构梳理.md](功能迭代与代码质量/OpenStudy-系统完整介绍与功能架构梳理.md) | 信息来源处理系统，不是单一刷题站 |
 | 技术实现质量如何 | [quality-report.md](功能迭代与代码质量/quality-report.md) | pytest/ruff/lint/build 可复跑；type-check 存量债务如实披露 |
 | 20% 评分怎么整改 | [OpenStudy-技术实现质量20%-P0-P2执行方案.md](功能迭代与代码质量/OpenStudy-技术实现质量20%-P0-P2执行方案.md) | P0 证据/卫生 → P1 结构/文档 → P2 债务减量 |
