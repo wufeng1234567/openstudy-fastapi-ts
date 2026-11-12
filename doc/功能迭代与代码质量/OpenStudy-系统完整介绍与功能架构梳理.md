@@ -35,7 +35,7 @@
 | 模块智能体覆盖率 | 6.0 / 10 | 29 个工具覆盖核心学习域；资料诊疗室、智能报告、题库关联、知识库分享等仍无工具 |
 | 智能图谱可用性 | 6.0 / 10 | 真实数据、真实边、百毫秒级响应；但前端画布没渲染六类统一图、题源锚点极少、笔记来源为空、边 ID 跨请求不稳定 |
 | 代码可读性/可维护性 | 5.5 / 10 | 注释与类型基础好，但超大文件、超长函数、死代码、重复样板明显 |
-| 工程质量门禁 | 6.0 / 10 | P0 已加 ruff/ESLint/Prettier/pytest/CI step；type-check 工具修复，P1 第一批后仍有 1,823 条存量错误 |
+| 工程质量门禁 | 6.0 / 10 | P0 已加 ruff/ESLint/Prettier/pytest/CI step；type-check 工具修复，P1 第一批后仍有 1,808 条存量错误 |
 | 文档与版本一致性 | 5.0 / 10 | 文档数量多但版本双轨、README 落后于代码、子 README 仍是 Spring Boot 叙事 |
 
 **一句话：功能是「能做」，智能体是「能办事」，信息来源处理已经有骨架；但工程质量还是「手工坊」，智能图谱是「能用但不算好用」，笔记导入资料夹还没做。当前最值得做的不是继续堆功能，而是把质量门禁接电、把无用代码清掉、把智能体覆盖到资料诊疗室与图谱。**
@@ -46,7 +46,7 @@
 |---|---:|
 | 后端 `app/` Python 文件 | 247 个 |
 | 后端 `app/` 物理行数 | 96,111 行 |
-| 后端测试目录 | 28 个 `test_*.py` + 59 个 `_probe_*` + 12 个 `e2e_*`；pytest 102 passed |
+| 后端测试目录 | 28 个 `test_*.py` + 59 个 `_probe_*` + 12 个 `e2e_*`；pytest 109 tests collected / exit 0 |
 | 前端 `src/` 文件 | 437 个（276 `.vue` + 161 `.ts`） |
 | 前端 `src/` 物理行数 | 179,276 行 |
 | 已挂载后端路由模块 | 42 个（`api/v1` 下 43 个 `.py`，含 `__init__.py`） |
@@ -905,9 +905,9 @@ run_agent_stream
 | 包管理 | `requirements.txt` + `pyproject.toml` 双源，版本已漂移 | `package-lock.json` + `pnpm-lock.yaml` 双锁文件 |
 | lint | ✅ P0 已加 `ruff.toml` | ✅ P0 已加 ESLint / Prettier |
 | format | ✅ Prettier 基线（warn-only） | ✅ Prettier |
-| type-check | ❌ 无 mypy | 🟡 工具已修复（TS 5.3.3 + 8GB heap），P1 第一批后存量 1,823 条错误 |
-| test | ✅ 102 个 pytest 用例通过；✅ pytest.ini/conftest | 自研 `check_agent_dsfree.mjs`；无 vitest/jest |
-| CI | ✅ 3 jobs 全绿（run `42630095384`）；pytest/ruff 已接电 | ✅ type-check 为报告型步骤，存量错误仍 1,823 |
+| type-check | ❌ 无 mypy | 🟡 工具已修复（TS 5.3.3 + 8GB heap），P1 第一批后存量 1,808 条错误 |
+| test | ✅ 109 个 pytest 用例通过；✅ pytest.ini/conftest | 自研 `check_agent_dsfree.mjs`；无 vitest/jest |
+| CI | ✅ 3 jobs 全绿（run `42630095384`）；pytest/ruff 已接电 | ✅ type-check 为报告型步骤，存量错误仍 1,808 |
 | pre-commit | ❌ 无 | ❌ 无 |
 
 ### 7.2 代码规范现状
@@ -936,7 +936,7 @@ run_agent_stream
 
 ### 7.3 测试现状
 
-- `pytest tests`（P0 后）：**102 passed in 9.12s，exit 0**；新增 `pytest.ini` / `tests/conftest.py` / `asyncio_mode=auto`。
+- `pytest tests`（P0 后）：**109 tests collected / exit 0**；新增 `pytest.ini` / `tests/conftest.py` / `asyncio_mode=auto`。
 - 6 个 script-style 文件（`test_agent_rag_tools.py`、`test_context_memory.py`）已加入 `collect_ignore`，仍可用 `python tests/<file>.py` 手动运行；`test_notice.py` 与 `_scratch/` 干扰已清理。
 - CI **不跑 pytest**（`.github/workflows/ci.yml:54-73` 只有 compileall + import app）。
 - 前端 `npm run type-check` 实测 exit 1：`vue-tsc 1.8.27` 与 `typescript 5.9.3` 不兼容。
@@ -1061,7 +1061,7 @@ run_agent_stream
 ## 附录 D：审计方法与证据
 
 - 静态：`git log/diff/status`、`rg`/`grep`、文件行数统计、Python AST 函数长度分析、`ruff check app --statistics`。
-- 运行（P0 后）：`pytest tests`（102 passed / exit 0）、`ruff check app --select E9,F63,F7,F82`（All checks passed）、`npm run lint`（0 errors / 3,277 warnings）、`npm run type-check`（可执行，P1 第一批后仍报 1,823 条存量错误）、`npm run build:prod`（exit 0）。
+- 运行（P0 后）：`pytest tests`（109 tests collected / exit 0）、`ruff check app --select E9,F63,F7,F82`（All checks passed）、`npm run lint`（0 errors / 3,506 warnings）、`npm run type-check`（可执行，P1 第一批后仍报 1,808 条存量错误）、`npm run build:prod`（exit 0）。
 - 数据库只读：`openstudy_v2_pgsql`（本地测试库）表计数与图谱服务直接调用；`wiki_service.get_wiki_graph` / `study_map_service.build_study_map` 实测 0.03～0.27 秒。
 - 子代理审计：前端入口（Hy4）、资料诊疗/题库闭环（Hy4）、智能图谱（MiniMax-M3.1-Flash）、文档纠偏（MiniMax-M3.1-Flash）；主代理复核关键结论并补齐交叉证据。
 - 限制：本报告不替代运行时全量回归；标「待验证」的动态菜单、后台页面入口、部分工具回执字段需在真实环境进一步确认。

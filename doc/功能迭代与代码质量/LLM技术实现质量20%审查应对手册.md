@@ -5,6 +5,7 @@
 > 本文回答两个问题：**同行 LLM 会怎么检查？我们怎么应对？**
 > 基线：`main @ 58f12c7`（2026-11-09）。配套证据见 `OpenStudy-代码质量审计与无用代码清理清单.md`。
 > 本轮修订重点：补充「产品口径 vs 代码实现」一致性检查、智能图谱可用性答辩口径、资料诊疗室/智能报告/笔记导入的资料域问答，并纠正旧文档的「全局悬浮助手」写法。
+> **2026-11-12 状态更新：** 当前实测为 pytest 109 tests / lint 0 errors 3,506 warnings / type-check 1,808 errors / build exit 0（详见 `quality-report.md` 第 0 节）。本文保留 2026-11-09 方法论；如个别历史数字与 `quality-report.md` 冲突，以质量报告为准。Q3、Q4、Q8、Q9、Q10、Q12、Q13 已按当前事实修正。
 
 ---
 
@@ -408,11 +409,11 @@ LLM 评审喜欢**能被 grep/打开/引用**的文件。建议在 `doc/功能�
 
 ### Q3：`VERSION` 为什么和 README 不一致？
 
-> 「这是版本管理疏漏：VERSION 和 pyproject 停留在 0.7.1，README/package/main 已是 0.8.0。P0 第一条就是统一版本源；后续由构建/发布脚本读取单一 VERSION，不再手写多处。」
+> 「这是历史疏漏，已在 P0 修正：`VERSION`、`pyproject.toml`、`package.json`、`app/main.py` 当前均为 0.8.0。后续由 `scripts/verify-quality.bat` 和 CI 的版本一致性检查守住单一版本源，不再手写多处。」
 
 ### Q4：测试是不是只是摆设？
 
-> 「不是。P0 后 `pytest tests` 是 102 passed、9 秒、不依赖真实 LLM；`test_wiki_service.py`、`test_study_map_service.py` 等覆盖纯函数/服务边界。原来的问题是测试没有进 CI、没有 pytest.ini，裸 pytest 会被根目录 `test_notice.py` 和 `_scratch` 干扰——这两处已清理，CI 也加了 pytest step。」
+> 「不是。P0 后 `pytest tests` 实跑 exit 0，当前 collect 109 tests、不依赖真实 LLM；`test_wiki_service.py`、`test_study_map_service.py` 等覆盖纯函数/服务边界。原来的问题是测试没有进 CI、没有 pytest.ini，裸 pytest 会被根目录 `test_notice.py` 和 `_scratch` 干扰——这两处已清理，CI 也加了 pytest step。」
 
 ### Q5：死代码为什么这么多？是不是没人维护？
 
@@ -433,11 +434,11 @@ LLM 评审喜欢**能被 grep/打开/引用**的文件。建议在 `doc/功能�
 
 ### Q9：既然没有悬浮助手，为什么代码里还有 `.float-btn`？
 
-> 「对，UI 已经没有悬浮助手了：入口在侧边栏左上角品牌行的 `assistant-entry`，点击打开右侧 `AiAssistant` 抽屉；收起态只保留展开按钮。代码里 `AiAssistant/index.vue:511-580` 的拖拽逻辑和 `:1402-1431` 的 `.float-btn { position: fixed; ... }` 是历史残留，属于我们本轮 P0 要清理的无用代码——这也正好说明我们的审计不是只写文档，而是真的在对照代码找残留。清理验收标准之一就是全仓 `rg "float-btn"` 0 命中。」
+> 「对，UI 没有悬浮助手：入口在侧边栏左上角品牌行的 `assistant-entry`，点击打开右侧 `AiAssistant` 抽屉；收起态只保留展开按钮。`AiAssistant` 的拖拽逻辑和 `.float-btn` 样式已作为 P0 死代码清理，全仓 `rg "float-btn"` 当前为 0 命中；这正好说明审计不是只写文档，而是真的对照代码找残留。」
 
 ### Q10：笔记能导入资料夹吗？
 
-> 「**暂时还没做。** 没有 `note_kb_link` 表、没有导入/解绑/知识点预览端点、没有 Agent `note_import` 工具；现有只是『笔记↔题库/题目』关联，以及『笔记→知识百科主题页』的通用 `ContentReference` 旁路。前端 `notes/detail.vue:243` 也明确写着『导入知识库功能已移除』。我们把它列进 P2：新增 `note_kb_link` 表 + 4 端点 + service + Agent 工具 + 前端入口，复用现成的 `extract_entities_from_text` / `sync_text_source`，不复制笔记正文。题库导入资料夹已经做了，两者不要混为一谈。」
+> 「**已完成 P2 首条闭环。** 当前有 `note_kb_link` 表、`note_kb_link_service`、4 个 API（列表/关联/取消关联/知识点预览）、Agent `note_kb_link` 工具，以及笔记详情『加入资料夹』入口；关联后后台用 `sync_text_source` 抽实体与关系，不复制笔记正文。它与『笔记↔题库/题目』关联是两件事，不要混为一谈。详见 Q13。」
 
 ### Q11：智能报告是不是每次都调用大模型？有没有历史？
 
@@ -445,7 +446,7 @@ LLM 评审喜欢**能被 grep/打开/引用**的文件。建议在 `doc/功能�
 
 ### Q12：`npm run type-check` 为什么还有几千条错误？
 
-> 「先说结论：**工具已修复，但类型债务未清零**。旧问题是 `vue-tsc 1.8.27 + TypeScript 5.9.3` 直接崩溃；现在锁 TypeScript 5.3.3、Node heap 8GB，命令能完整跑完，暴露的是真实存量错误（当前 **1,823 条**，初始 3,218）。主要集中在 RuoYi 后台页（system/monitor/questionMarked/questionError 等）、历史组件的 `ref({})` 推断和 `catch (error)` 的 unknown 类型；我们不会把『能跑』说成『已通过』，P1 按文件批处理，下一步目标先降到 2,000 以下。」
+> 「先说结论：**工具已修复，但类型债务未清零**。旧问题是 `vue-tsc 1.8.27 + TypeScript 5.9.3` 直接崩溃；现在锁 TypeScript 5.3.3、Node heap 8GB，命令能完整跑完，暴露的是真实存量错误（2026-11-12 实测 **1,808 条**，初始 3,218）。主要集中在 RuoYi 后台页（system/monitor/questionMarked/questionError 等）、历史组件的 `ref({})` 推断和 `catch (error)` 的 unknown 类型；我们不会把『能跑』说成『已通过』，P1 按文件批处理。」
 
 ### Q13：笔记导入资料夹做到什么程度？
 
