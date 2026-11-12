@@ -8,7 +8,7 @@
 
 | 顺序 | 文件 | 当前行数 | 状态 |
 |---:|---|---:|---|
-| 1 | `views/front/workspace/index.vue` | 1066 | 进行中 |
+| 1 | `views/front/workspace/index.vue` | 1003 | 进行中 |
 | 2 | `components/PracticeComponent/PracticeComponent.vue` | 2928 | 待处理 |
 | 3 | `views/front/studio/components/QuestionBuilder.vue` | 2854 | 待处理 |
 | 4 | `views/front/workspace/components/KnowledgeWikiPanel.vue` | 2853 | 待处理 |
@@ -47,7 +47,7 @@
 | `views/front/workspace/index.vue` | `useWorkspaceCascade.ts` | 全库级联搜索、结果与打开动作 |
 | `views/front/workspace/components/KnowledgeWikiPanel.vue` | `knowledgeGraphMeta.ts` | 六类实体元数据、类型归一化与页面类型映射 |
 
-`workspace/index.vue` 已从 3430 行降到 **1066 行**：顶部导航/搜索筛选栏拆为 `WorkspaceChrome.vue`，级联搜索结果拆为 `WorkspaceCascade.vue`，上传/批量删除/上传轮询拆为 `useWorkspaceUpload.ts`，文档刨析状态/分段逻辑拆为 `useWorkspaceAnatomy.ts`，导入/题库关联/笔记关联拆为 `useWorkspaceImports.ts`，编辑器状态/打开/导出拆为 `useWorkspaceEditor.ts`，文本/网页导入弹窗拆为 `WorkspaceTextWebDialogs.vue`，题库导入/题库知识点/题目详情弹窗拆为 `WorkspaceBankDialogs.vue`，后台任务进度栏拆为 `WorkspaceTaskBars.vue`，智能整理流程拆为 `useWorkspaceOrganize.ts`，AI 检索/高亮/命中片段拆为 `useWorkspaceTrySearch.ts`，资料夹动作拆为 `useWorkspaceKbActions.ts`，重新解析任务拆为 `useWorkspaceReprocess.ts`，图片插入题目/笔记弹窗拆为 `WorkspaceImagePickerDialogs.vue`，编辑器保存/版本恢复的结果处理并入 `useWorkspaceEditor.ts`，代码已按 `views/components/composables/utils/styles` 分目录；`KnowledgeWikiPanel.vue` 从 3240 行降到 2853 行。剩余部分继续按以下顺序拆。
+`workspace/index.vue` 已从 3430 行降到 **1003 行**：顶部导航/搜索筛选栏拆为 `WorkspaceChrome.vue`，级联搜索结果拆为 `WorkspaceCascade.vue`，上传/批量删除/上传轮询拆为 `useWorkspaceUpload.ts`，文档刨析状态/分段逻辑拆为 `useWorkspaceAnatomy.ts`，导入/题库关联/笔记关联拆为 `useWorkspaceImports.ts`，编辑器状态/打开/导出拆为 `useWorkspaceEditor.ts`，文本/网页导入弹窗拆为 `WorkspaceTextWebDialogs.vue`，题库导入/题库知识点/题目详情弹窗拆为 `WorkspaceBankDialogs.vue`，后台任务进度栏拆为 `WorkspaceTaskBars.vue`，智能整理流程拆为 `useWorkspaceOrganize.ts`，AI 检索/高亮/命中片段拆为 `useWorkspaceTrySearch.ts`，资料夹动作拆为 `useWorkspaceKbActions.ts`，重新解析任务拆为 `useWorkspaceReprocess.ts`，图片插入题目/笔记弹窗拆为 `WorkspaceImagePickerDialogs.vue`，整理记录/正文编辑器弹窗拆为 `WorkspaceReportEditorDialogs.vue`，编辑器保存/版本恢复的结果处理并入 `useWorkspaceEditor.ts`，代码已按 `views/components/composables/utils/styles` 分目录；`KnowledgeWikiPanel.vue` 从 3240 行降到 2853 行。剩余部分继续按以下顺序拆。
 
 ### 样式模块化
 

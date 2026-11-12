@@ -2,15 +2,12 @@
   知识库（整页）
   ============================================================================
   2026-10-22 由「我的空间」升级而来。
-
   为什么是现在这个样子
   --------------------
   用户原话：「把我的空间改名知识库 就行然后他的具体功能升级为 目前知识库抽屉的那种
              就是统一管理各种知识库 每个知识库包含各种文档」。
-
   所以这个页面 = 原来的**知识库抽屉**（`components/KnowledgeBasePanel`）的能力，
   从抽屉里搬出来，变成一个有侧栏、有主区、能常驻浏览的完整页面：
-
       左：知识库列表（新建 / 改名 / 删除 / 屏蔽）
       右：选中库的文档（上传文件/粘贴文本 / 看状态 / 删除 / 重解析 / 看刨析）
       顶：全站统计（几个库、几份资料、多少可检索、占多大）
@@ -61,7 +58,6 @@
       @reset-filters="handleWorkspaceFilterReset"
       @receive="receiveDialogVisible = true"
     />
-
     <!-- 智能整理：即使关闭预览弹窗，后台进度也要可见、可再次打开 -->
     <WorkspaceTaskBars
       :organize-task="organizeTask"
@@ -69,7 +65,6 @@
       :reprocess-elapsed="reprocessElapsed"
       @open-organize="organizeVisible = true"
     />
-
     <WorkspaceCascade
       :is-cascade-mode="isCascadeMode"
       :loading="cascadeLoading"
@@ -79,7 +74,6 @@
       @open-folder="openCascadeFolder"
       @open-document="openCascadeDocument"
     />
-
     <!--
       ⚠️ 一个知识库都没有时**不渲染两栏区**（v-if）。
          否则会出现「左边：还没有知识库 / 右边：左边选一个知识库」这种
@@ -283,35 +277,28 @@
       :api="{ loadQuestionPicker, insertImageIntoQuestion, loadNotePicker, insertImageIntoNote }"
     />
 
-    <!-- 整理记录：展示真实整理计划历史，而不是只有文档状态统计 -->
-    <el-dialog v-model="organizeReportVisible" title="整理记录" width="760px" append-to-body>
-      <div class="kbp-report" v-loading="organizePlansLoading">
-        <div class="kbp-report__stats">
-          <div><b>{{ organizePlans.length }}</b><span>整理次数</span></div>
-          <div><b>{{ organizePlanCount('applied') }}</b><span>已应用</span></div>
-          <div><b>{{ organizePlanCount('ready') }}</b><span>待确认</span></div>
-          <div><b>{{ organizePlanCount('failed') }}</b><span>失败</span></div>
-        </div>
-        <div v-if="organizePlans.length" class="kbp-report__list">
-          <div v-for="plan in organizePlans" :key="plan.planId" class="kbp-report__row">
-            <div class="kbp-report__main">
-              <span class="kbp-report__name" :title="plan.docName">{{ plan.docName }}</span>
-              <span class="kbp-report__meta">
-                {{ plan.createTime }} · {{ plan.mode === 'deep' ? '智能整理' : '旧版整理' }}
-              </span>
-            </div>
-            <span class="kbp-report__changes">{{ plan.changed }} 处变更</span>
-            <el-tag :type="planStatusType(plan.status)" size="small" effect="plain">
-              {{ planStatusText(plan.status) }}
-            </el-tag>
-            <el-button v-if="!plan.legacy" text size="small" @click="openOrganizePlan(plan)">查看变更</el-button>
-            <el-button v-else text size="small" @click="openOrganizePlan(plan)">查看历史</el-button>
-            <el-button text size="small" type="danger" @click.stop="deleteOrganizeRecord(plan)">删除</el-button>
-          </div>
-        </div>
-        <div v-else class="kbp-anatomy__empty">还没有整理记录。</div>
-      </div>
-    </el-dialog>
+    <WorkspaceReportEditorDialogs
+      v-model:organize-report-visible="organizeReportVisible"
+      v-model:editor-visible="editorVisible"
+      v-model:editor-html="editorHtml"
+      v-model:editor-preview="editorPreview"
+      v-model:versions-visible="versionsVisible"
+      :organize-plans="organizePlans"
+      :organize-plans-loading="organizePlansLoading"
+      :editor-loading="editorLoading"
+      :editor-doc="editorDoc"
+      :editor-saving="editorSaving"
+      :editor-markdown="editorMarkdown"
+      :api="{
+        organizePlanCount,
+        planStatusType,
+        planStatusText,
+        openOrganizePlan,
+        deleteOrganizeRecord,
+        exportCurrent,
+        saveEditor
+      }"
+    />
 
     <!-- 单文档智能整理：快速/深度预览 -->
     <OrganizeDiffDialog
@@ -331,41 +318,6 @@
       @rerun="rerunOrganize"
       @recheck="recheckOrganize"
     />
-
-    <!-- 二次编辑：Word / Markdown 共用的正文编辑器 -->
-    <el-dialog v-model="editorVisible" :title="`编辑资料 · ${editorDoc?.fileName || ''}`" width="1040px" top="5vh" append-to-body>
-      <div class="kbp-editor" v-loading="editorLoading">
-        <div class="kbp-editor__bar">
-          <el-tag type="info" effect="plain">富文本 · Word / Markdown 兼容</el-tag>
-          <span>支持加粗、标题、列表、表格和插入图片；保存后重新解析并建立检索索引。</span>
-          <el-button text size="small" @click="versionsVisible = true">版本对照</el-button>
-          <el-button text size="small" @click="editorPreview = !editorPreview">
-            {{ editorPreview ? '继续编辑' : '预览排版' }}
-          </el-button>
-        </div>
-        <TiptapEditor
-          v-if="!editorPreview"
-          v-model="editorHtml"
-          class="kbp-editor__rich"
-          placeholder="在这里编辑正文，支持富文本、公式和插入图片。"
-        />
-        <div v-else class="kbp-editor__preview">
-          <LatexRenderer :content="editorMarkdown" />
-        </div>
-      </div>
-      <template #footer>
-        <div class="kbp-editor__footer">
-          <div>
-            <el-button @click="exportCurrent('markdown')">导出 Markdown</el-button>
-            <el-button @click="exportCurrent('docx')">导出 Word</el-button>
-          </div>
-          <div>
-            <el-button @click="editorVisible = false">取消</el-button>
-            <el-button type="primary" :loading="editorSaving" @click="saveEditor">保存并重新解析</el-button>
-          </div>
-        </div>
-      </template>
-    </el-dialog>
 
     <!-- 版本对照：时间线 + 左右 diff + 体检变化；只挂在编辑器内 -->
     <VersionHistoryDialog
@@ -439,8 +391,6 @@ import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } 
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import OsIcon from '@/components/OsIcon/index.vue'
-import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
-import TiptapEditor from '@/components/TiptapEditor/index.vue'
 import { getWorkspaceOverview, listWorkspaceStandaloneImages, getAssetUsageSummary } from '@/api/ai/workspace'
 import OrganizeDiffDialog from './components/OrganizeDiffDialog.vue'
 import DocumentClinicDialog from './components/DocumentClinicDialog.vue'
@@ -453,6 +403,7 @@ import WorkspaceCascade from './components/WorkspaceCascade.vue'
 import WorkspaceTextWebDialogs from './components/WorkspaceTextWebDialogs.vue'
 import WorkspaceBankDialogs from './components/WorkspaceBankDialogs.vue'
 import WorkspaceImagePickerDialogs from './components/WorkspaceImagePickerDialogs.vue'
+import WorkspaceReportEditorDialogs from './components/WorkspaceReportEditorDialogs.vue'
 import WorkspaceTaskBars from './components/WorkspaceTaskBars.vue'
 import VersionHistoryDialog from './components/VersionHistoryDialog.vue'
 import ShareKnowledgeDialog from './components/ShareKnowledgeDialog.vue'
@@ -569,12 +520,9 @@ const {
   organizeError,
   organizeApplied,
   organizeRecordView,
-  organizePlanId,
   organizeChanges,
   organizeSuggestions,
-  organizeDocTarget,
   organizeTask,
-  deepOrganizeOptions,
   organizeReport,
   refreshOrganizePlans,
   openOrganizeReport,
@@ -793,22 +741,11 @@ function onWikiOpenSource(payload: { kind: string; id: number; title?: string; a
 const {
   tryQuery,
   tryPanelRef,
-  trying,
   tried,
   tryHits,
   tryPage,
-  tryPageHits,
-  tryReason,
-  lowConfidence,
-  trySearchedQuery,
   clearTryResults,
-  onTryInput,
-  doTry,
-  openHit,
-  highlight,
   highlightQuery,
-  cleanMathForSnippet,
-  buildHitSnippet,
   docTagType
 } = useWorkspaceTrySearch({ activeKb, showAnatomy })
 
@@ -824,9 +761,7 @@ const {
   editorLoading,
   editorSaving,
   editorDoc,
-  editorContent,
   editorHtml,
-  editorImageMap,
   editorPreview,
   versionsVisible,
   editorMarkdown,
@@ -854,7 +789,6 @@ const {
   bankImportLoading,
   bankImporting,
   bankImportKeyword,
-  bankImportAvailable,
   linkedBanks,
   bankImportLoadingId,
   noteImportVisible,
@@ -864,12 +798,10 @@ const {
   bankKnowledgeLoading,
   bankKnowledgeTitle,
   bankKnowledge,
-  bankKnowledgeBankId,
   questionJumpVisible,
   questionJumpLoading,
   questionJumpData,
   selectedBankEntityName,
-  selectedBankEntity,
   filteredBankKnowledgeQuestions,
   filteredBankImportBanks,
   openTextImport,
@@ -878,9 +810,7 @@ const {
   openWebImport,
   resetWebImport,
   submitWebImport,
-  runWebSearch,
   importWebResult,
-  importWebUrl,
   loadLinkedBanks,
   loadLinkedNotes,
   openNoteImport,
