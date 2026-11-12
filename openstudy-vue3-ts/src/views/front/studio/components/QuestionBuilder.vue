@@ -1137,6 +1137,7 @@ import { useDsDeepThinkSync } from '@/composables/useDsDeepThinkSync'
 import { listAiConfig } from '@/api/system/aiConfig'
 import aiModelManager from '@/components/AiModelManager/index.vue'
 import QuestionFullEditor from './QuestionFullEditor.vue'
+import { useQuestionBuilderAiForm } from './useQuestionBuilderAiForm'
 import ScrollButton from '@/components/ScrollButton/ScrollButton.vue'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
 import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
@@ -1743,99 +1744,10 @@ const selectedSubType = ref('single')
 
 // AI 生成相关
 const aiDialogVisible = ref(false)
-const deepThink = ref(localStorage.getItem('openstudy_ai_thinking') === '1')  // 深度思考开关（跟随全局偏好）
+
+const { aiForm, deepThink, selectedConfigId, onModelSelect, aiRules, createDefaultAiForm } = useQuestionBuilderAiForm()
 
 const aiFormRef = ref(null)
-
-/**
- * AI 出题表单的默认值（**唯一来源**）
- *
- * ⚠️ 为什么要有这个工厂函数（2026-10-20 踩了坑才抽出来）：
- *   这个表单的字面量原来在文件里出现**两次** ——
- *   一次是 `aiForm` 的声明，一次是 `openAiDialog()` 里的整体替换。
- *   我加「素材出题」字段时只改了声明，忘了 `openAiDialog`，
- *   于是每次打开弹窗，新字段都被那次赋值**静默抹掉**：
- *     源码里有 `kbIds`、运行时 `Object.keys(aiForm)` 却没有。
- *   现象极像"dev server 给了旧代码"，害我查了一小时的构建缓存。
- *
- *   抽成工厂后，加字段只需要改这里一处，从根上消除这份重复。
- *   以后**不要**再在别处手写这个对象字面量。
- */
-const createDefaultAiForm = () => ({
-  questionType: 'single',
-  knowledgePoint: '',
-  count: 3,
-  model: '',
-  compositeRequirement: '',
-  wordCount: 200,
-  subCount: 5,
-  /*
-   * ↓ 素材出题（`questionType === 'custom'`）用到的字段
-   *
-   * kbIds / customRequirement 与上面的 knowledgePoint 是**并列的输入渠道**，
-   * 不要合并：生成时它们会拼成不同段落注入提示词
-   * （素材 → 作为 source_context；补充要求 → 追加在用户指令后面）。
-   */
-  /** 选中的知识库 id（多选，可空） */
-  kbIds: [],
-  /** 自由补充要求（难度/范围/风格…，可空） */
-  customRequirement: ''
-})
-
-const aiForm = ref(createDefaultAiForm())
-
-// 选中的 AI 配置 id（区分同名系统/用户模型）；由 AiModelSelector 的 @select 提供
-const selectedConfigId = ref(null)
-const onModelSelect = (cfg) => { selectedConfigId.value = cfg?.configId ?? null }
-
-// ⚠️ 两点都别改错：
-// 1) 必须写在 `aiForm` 声明**之后** —— useDsDeepThinkSync 内部建立 watch 时会
-//    同步求值一次这个 getter，写反了会撞 TDZ
-//    （`Cannot access 'aiForm' before initialization`）→ 组件直接白屏。
-// 2) 脚本里必须写 `aiForm.value.model`（模板里才有自动解包），
-//    写成 `aiForm.model` 永远拿到 undefined → ds-free 的深度思考同步会静默失效。
-// 这类顺序/取值问题 SFC 编译查不出来，动这块代码时务必人工确认。
-useDsDeepThinkSync(() => aiForm.value.model, deepThink, 'openstudy_ai_thinking')
-
-const aiRules = computed(() => {
-  if (aiForm.value.questionType === 'composite') {
-    return {
-      questionType: [{ required: true, message: '请选择题型', trigger: 'change' }],
-      compositeRequirement: [
-        { required: true, message: '请输入文章主题或出题要求', trigger: 'blur' },
-        { max: 200, message: '不能超过200个字符', trigger: 'blur' }
-      ]
-    }
-  }
-  /*
-   * 自定义出题（custom）：校验「出题需求」，不校验知识点/数量。
-   *
-   * ⚠️ 它现在是**唯一必填项** —— 用户必须说清要什么。
-   *    而「参考素材」（知识库/文档）**完全不校验**：那是附加项
-   *    （2026-10-20 用户明确纠正："知识库也好 文档也好 都是一个附加选项
-   *     而非强迫选项"）。我上一版把素材做成必填，是错的。
-   *
-   *    所以这里只需要一条规则，也不要 count —— 自定义出题的题数
-   *    由需求描述决定（用户可能分别要 3+2+5），再塞一个"数量"只会造成困惑。
-   */
-  if (aiForm.value.questionType === 'custom') {
-    return {
-      questionType: [{ required: true, message: '请选择题型', trigger: 'change' }],
-      customRequirement: [
-        { required: true, message: '请描述你要出什么题', trigger: 'blur' },
-        { max: 500, message: '不能超过500个字符', trigger: 'blur' }
-      ]
-    }
-  }
-  return {
-    questionType: [{ required: true, message: '请选择题型', trigger: 'change' }],
-    knowledgePoint: [
-      { required: true, message: '请输入知识点', trigger: 'blur' },
-      { max: 200, message: '不能超过200个字符', trigger: 'blur' }
-    ],
-    count: [{ required: true, message: '请选择数量', trigger: 'change' }]
-  }
-})
 
 const onAiTypeChange = () => {
   /*
