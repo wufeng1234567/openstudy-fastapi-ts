@@ -29,3 +29,17 @@ export function statusLabel(status: string) {
     } as Record<string, string>
   )[status] || '待描述'
 }
+
+export function hasGalleryFilter(
+  query: string,
+  sourceFilter: string,
+  docFilter: number | null,
+  filters: Record<string, any>
+): boolean {
+  return (
+    !!query.trim() ||
+    sourceFilter !== 'all' ||
+    docFilter != null ||
+    Object.values(filters || {}).some((value) => Array.isArray(value) && value.length > 0)
+  )
+}

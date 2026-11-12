@@ -55,7 +55,8 @@
 - `english/ocr/index.vue` → 上传/识别/校对；
 - `agent/chat.vue` / `components/AiChatStream` / `AgentToolResult` → 消息流、工具卡、会话列表；已完成 `agentToolResultSummary.ts`、`aiChatStreamUtils.ts` 纯展示工具；
 - `notes/*` → 列表、详情、编辑器；
-- `workspace/components/GalleryPanel.vue` → 已拆出 `GalleryDetailDrawer.vue` 和 `galleryUtils.ts`，主文件从 1273 行降到约 1002 行。
+- `workspace/components/GalleryPanel.vue` → 已拆出 `GalleryDetailDrawer.vue` 和 `galleryUtils.ts`，主文件从 1273 行降到 1000 行；
+- `myQuestion/myStats/index.vue` → 已拆出 `useStatsCharts.ts`，主文件从 1327 行降到约 1184 行。
 
 ## 当前阈值
 

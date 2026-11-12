@@ -156,6 +156,8 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { MagicStick, Picture } from '@element-plus/icons-vue'
 import GalleryViewer from './GalleryViewer.vue'
+import GalleryDetailDrawer from './GalleryDetailDrawer.vue'
+import { displayUrl, hasGalleryFilter, kindLabel, statusLabel } from './galleryUtils'
 import {
   createContentReference,
   describeGalleryAssets,
@@ -230,12 +232,8 @@ const jobProgress = computed(() => {
   const done = Number(describeJob.value?.done || 0)
   return total ? Math.min(100, Math.round((done / total) * 100)) : 0
 })
-const hasFilter = computed(
-  () =>
-    !!query.value.trim() ||
-    sourceFilter.value !== 'all' ||
-    docFilter.value != null ||
-    Object.values(props.filters || {}).some((value) => Array.isArray(value) && value.length > 0)
+const hasFilter = computed(() =>
+  hasGalleryFilter(query.value, sourceFilter.value, docFilter.value, props.filters || {})
 )
 
 function applyData(data: any) {
