@@ -922,35 +922,7 @@ const {
 /* ===================== 单文档刨析 ===================== */
 /** 共享刨析查看器：打开、切文档、高亮定位都由组件内部处理 */
 const clinicRef = ref<InstanceType<typeof DocumentClinicDialog> | null>(null)
-const {
-  anatomyVisible,
-  anatomyLoading,
-  anatomyFullscreen,
-  anatomyDocName,
-  anatomyContent,
-  anatomyHighlight,
-  anatomyTargetChunkId,
-  anatomyTargetChunkIndex,
-  anatomyTargetChunkCount,
-  anatomyTargetText,
-  anatomyScrollTargetOffset,
-  anatomyExcludedRanges,
-  anatomyImageMap,
-  anatomyTree,
-  anatomyOutlineReason,
-  anatomyStats,
-  anatomyImageUrl,
-  copyImageMarkdown,
-  anatomyImages,
-  anatomyOutlineItems,
-  anatomyQuestionGroups,
-  scrollAnatomyToOffset,
-  onAnatomyImageLoad,
-  jumpToQuestionGroup,
-  isAnatomyExcluded,
-  blankExcludedText,
-  anatomySegments
-} = useWorkspaceAnatomy()
+const { anatomyImageUrl } = useWorkspaceAnatomy()
 
 const {
   editorVisible,
