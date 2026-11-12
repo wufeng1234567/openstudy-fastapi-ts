@@ -1169,202 +1169,6 @@ const handleMarkedChange = (index: number) => {
  */
 
 /** 这类题型"选一个就能定论"，可以即时判；其余需要用户确认后再判 */
-function isInstantJudgeType(type: string | undefined) {
-  return type === 'single' || type === 'truefalse'
-}
-
-/**
- * 已提交（已确认答案）的题目
- *
- * ⚠️ 从"仅浏览模式"改为**两种模式共用**（2026-10-22）：
- *    原来它叫 `overviewCommitted`，只在浏览模式那条分支上传给 QuestionDisplay，
- *    于是逐题模式既没有确认按钮、点选项也不判分 —— 功能是缺的。
- *    key 是**题目下标**（波内下标），换波时整体清空（见 `resetPractice` 等路径），
- *    与 `answers` 的下标语义保持一致。
- */
-const committedQuestions = ref<Record<number, boolean>>({})
-
-/**
- * 这道题是否需要「确认答案」才比对
- *
- * 两种模式共用同一套判据（用户要求"和浏览模式的刷题逻辑保持一致"）：
- *   · 单选 / 判断              → false，点完即判、不显示按钮；
- *   · 多选 / 填空 / 简答        → true，显示按钮，点了才判；
- *   · 组合题                   → 有子题才需要（子题逐个作答，最后统一确认）。
- */
-function needsSubmit(q: any): boolean {
-  if (!q) return false
-  if (isInstantJudgeType(q.type)) return false
-  if (q.type === 'composite') {
-    return Array.isArray(q.subQuestions) && q.subQuestions.length > 0
-  }
-  return true
-}
-
-/**
- * 用户点「确认答案」→ 真正判题（两种模式共用）
- *
- * 同时把 `committedQuestions[qIndex]` 置真：QuestionDisplay 据此把
- * 「确认答案」换成解析（它已经通过 `showAnalysisImmediately` 拿到结果）。
- *
- * ⚠️ 空答案不判（`ElMessage` 提示返回）：否则用户只是随手点一下确认，
- *    就会得到"答错"并写入错题记录 —— 这是真实的数据污染。
- */
-function handleCommitAnswer(qIndex: number) {
-  if (currentQuestionIndex.value !== qIndex) {
-    currentQuestionIndex.value = qIndex
-  }
-  const q = questions.value[qIndex]
-  const val = answers.value[qIndex]
-  const isEmpty =
-    val === null || val === undefined || val === '' ||
-    (Array.isArray(val) && val.length === 0)
-  if (isEmpty) {
-    ElMessage.warning(q?.type === 'essay' ? '请先写下你的答案' : '请先作答再确认')
-    return
-  }
-  committedQuestions.value[qIndex] = true
-  handleAnswerSubmission(qIndex)
-}
-
-const handleOverviewSelect = (qIndex: number, optIdx: number) => {
-  if (currentQuestionIndex.value !== qIndex) {
-    if (currentQuestion.value && !['readingComprehension', 'cloze'].includes(currentQuestion.value.type) && selectedAnswer.value !== null && answers.value[currentQuestionIndex.value] === null) {
-      handleAnswerSubmission(currentQuestionIndex.value)
-    }
-    currentQuestionIndex.value = qIndex
-  }
-  selectedAnswer.value = answers.value[qIndex] ?? (questions.value[qIndex]?.type === 'multiple' ? [] : null)
-  selectOption(optIdx)
-  answers.value[qIndex] = selectedAnswer.value
-  if (questions.value[qIndex]) {
-    questions.value[qIndex].answered = true
-  }
-  // 单选/判断：即时判（原行为）；多选：等用户点「确认答案」
-  if (!isExamMode.value && isInstantJudgeType(questions.value[qIndex]?.type)) {
-    // 记下"已确认"，让 QuestionDisplay 收起确认按钮、直接展示解析
-    committedQuestions.value[qIndex] = true
-    handleAnswerSubmission(qIndex)
-  } else if (!isExamMode.value && committedQuestions.value[qIndex]) {
-    // 已确认的多选题又改了选项 → 撤销确认，让「确认答案」重新出现
-    // （否则解析停在旧结果、按钮不再出现，用户没法重新比对）
-    committedQuestions.value[qIndex] = false
-    const q = questions.value[qIndex]
-    if (q) {
-      q.showAnalysis = false
-      q.answered = false
-      q.correct = false
-    }
-  }
-}
-
-const handleOverviewUpdateAnswer = (qIndex: number, value: any) => {
-  if (currentQuestionIndex.value !== qIndex) {
-    currentQuestionIndex.value = qIndex
-  }
-  selectedAnswer.value = value
-  answers.value[qIndex] = value
-  if (questions.value[qIndex]) {
-    questions.value[qIndex].answered = true
-  }
-  // 填空/简答是"边写边改"，**不能**每次输入都判题（原来这里会立刻判错）。
-  // 只有单选/判断这类"一下就定"的题型才即时判。
-  if (!isExamMode.value && isInstantJudgeType(questions.value[qIndex]?.type)) {
-    committedQuestions.value[qIndex] = true
-    handleAnswerSubmission(qIndex)
-  } else if (!isExamMode.value && committedQuestions.value[qIndex]) {
-    // 已确认的填空/简答又被编辑 → 撤销确认，「确认答案」重新出现
-    // （理由同 handleOverviewSelect：否则解析停在旧结果、用户无法重新比对）
-    committedQuestions.value[qIndex] = false
-    const q = questions.value[qIndex]
-    if (q) {
-      q.showAnalysis = false
-      q.answered = false
-      q.correct = false
-    }
-  }
-}
-
-const handleOverviewSelectSubOption = (qIndex: number, subIndex: number, optIdx: number) => {
-  if (currentQuestionIndex.value !== qIndex) {
-    currentQuestionIndex.value = qIndex
-  }
-  selectSubOption(subIndex, optIdx)
-  answers.value = [...answers.value]
-}
-
-const handleOverviewUpdateSubFillBlank = (qIndex: number, subIndex: number, value: any) => {
-  if (currentQuestionIndex.value !== qIndex) {
-    currentQuestionIndex.value = qIndex
-  }
-  updateSubFillBlankAnswer(subIndex, value)
-  // 组合题子题（填空）：同样不即时判，等用户点「提交答案」
-}
-
-const handleOverviewUpdateSubEssay = (qIndex: number, subIndex: number, value: any) => {
-  if (currentQuestionIndex.value !== qIndex) {
-    currentQuestionIndex.value = qIndex
-  }
-  updateSubEssayAnswer(subIndex, value)
-  // 组合题子题（简答）：不即时判
-}
-
-const jumpToNextBatch = () => {
-  hasSubmittedCurrentBatch.value = false
-  showExamResult.value = false
-  totalScore.value = 0
-  /*
-   * 清空"已确认答案"标记（2026-10-22）
-   *
-   * key 是**波内下标**，换波后下标 0 已经是另一道题；
-   * 不清空的话，新一波的第 1 题会继承上一波第 1 题的"已确认"状态，
-   * 表现为：多选/填空题一出现就是"已判分 + 显示解析"的样子，
-   * 而且「确认答案」按钮不会显示 —— 用户完全没法作答。
-   */
-  committedQuestions.value = {}
-  const count = moduleSettings.value.questionCount || 10
-  questionOffset.value = questionOffset.value + count
-  loadBatchWithoutReset()
-  if (props.moduleType === 'mock') {
-    startExamTimer()
-  }
-  setTimeout(() => {
-    if (isOverviewActive.value) {
-      const firstCard = document.querySelector('.overview-question-card')
-      if (firstCard) {
-        firstCard.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }
-    } else {
-      goToQuestion(0)
-    }
-  }, 150)
-}
-
-/**
- * 「继续下一波」—— 只做一件事：切到下一波
- * ============================================================================
- * 用户 2026-10-18：「感觉太麻烦了，给我直接简化掉，简化更好的」。
- *
- * 旧实现（约 70 行）串了三层弹窗：
- *   未答题 → 「是否继续提交」→ 「是否继续刷下一波」→ 再决定 jumpToNextBatch 还是
- *   handleSubmitExam；而 handleSubmitExam 会把 showExamResult 置为 true，
- *   底部按钮随即变成「结束」—— 于是第一波也会显示「结束」（用户报的 bug）。
- *
- * 现在这条链彻底删掉。语义回到最直白的：
- *   · 「继续下一波」= 往前走一波，别的什么都不做；
- *   · 「提交」= 进结算（由 handleSubmit 负责，那里有一次未答提醒）；
- *   · 「回到上一波」= handlePrevBatch。
- * 三个按钮各自只对应一个动作，不再互相触发弹窗。
- */
-const handleContinuePractice = () => {
-  // 结算态下不该走到这里（那时按钮是「结束」），兜底先收起结果页
-  if (showExamResult.value) {
-    showExamResult.value = false
-    totalScore.value = 0
-  }
-  jumpToNextBatch()
-}
-
 const handlePrevBatch = () => {
   hasSubmittedCurrentBatch.value = false
   showExamResult.value = false
@@ -1612,6 +1416,41 @@ const {
 } = useQuestionPractice(props, { proxy }, {
   questionCount: moduleSettings.value.questionCount,
   onlyWrong: moduleSettings.value.onlyWrong
+})
+
+const {
+  committedQuestions,
+  isInstantJudgeType,
+  needsSubmit,
+  handleCommitAnswer,
+  handleOverviewSelect,
+  handleOverviewUpdateAnswer,
+  handleOverviewSelectSubOption,
+  handleOverviewUpdateSubFillBlank,
+  handleOverviewUpdateSubEssay,
+  jumpToNextBatch
+} = usePracticeAnswerFlow({
+  currentQuestion,
+  currentQuestionIndex,
+  questions,
+  answers,
+  selectedAnswer,
+  isExamMode,
+  isOverviewActive,
+  moduleSettings,
+  questionOffset,
+  hasSubmittedCurrentBatch,
+  showExamResult,
+  totalScore,
+  selectOption,
+  selectSubOption,
+  updateSubFillBlankAnswer,
+  updateSubEssayAnswer,
+  handleAnswerSubmission,
+  loadBatchWithoutReset,
+  startExamTimer,
+  isMock: () => props.moduleType === 'mock',
+  goToQuestion
 })
 
 /* ==================== 「已确认答案」标记的生命周期 ==================== */
