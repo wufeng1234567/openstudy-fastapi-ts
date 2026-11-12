@@ -210,7 +210,7 @@ openstudy-fastapi-ts/
 │   └── tests/
 ├── openstudy-vue3-ts/          # Vue 3 + TypeScript 前端
 │   └── src/
-├── doc/                        # 方案、实施记录、部署与截图
+├── doc/                        # 文档索引、架构、质量证据、方案与部署
 ├── deploy/db-init/             # 数据库初始化 SQL
 └── docker-compose.yml
 ```
@@ -220,12 +220,33 @@ openstudy-fastapi-ts/
 | 文档 | 内容 |
 |---|---|
 | [CHANGELOG.md](CHANGELOG.md) | 版本记录与历史发布说明 |
+| [文档总索引](doc/README.md) | 按“想确认什么”组织的全部文档入口 |
 | [OpenStudy 系统完整介绍](doc/功能迭代与代码质量/OpenStudy-系统完整介绍与功能架构梳理.md) | 产品定位、功能全景、边界与成熟度 |
 | [知识图谱图片-文档-知识点关系方案](doc/planning/知识图谱图片-文档-知识点关系方案.md) | 图片、文档、知识点与图谱关系 |
 | [知识图谱图片-文档-知识点关系实施记录](doc/planning/知识图谱图片-文档-知识点关系-实施记录.md) | 实施细节、验证指标与截图 |
 | [知航活计划实施记录](doc/planning/知航活计划-统一学习闭环-实施记录.md) | 规划建议与学习计划统一闭环 |
 | [部署说明](doc/deploy/SKILL.md) | Docker / Linux / Windows / 公网访问 |
 | [常见问题](doc/deploy/TROUBLESHOOTING.md) | 部署排查 |
+| [质量证据索引](doc/功能迭代与代码质量/README.md) | 质量文档、死代码、测试与复跑命令 |
+| [质量验收报告](doc/功能迭代与代码质量/quality-report.md) | 可复核的 pytest/ruff/lint/build/type-check 结果与债务边界 |
+| [技术实现质量 P0–P2 方案](doc/功能迭代与代码质量/OpenStudy-技术实现质量20%-P0-P2执行方案.md) | 比赛 20% 评分对应的整改路线与完整工程结构 |
+
+## 质量与工程证据
+
+> 复核日期：2026-11-12。只报真实结果；type-check 的存量错误不伪装成绿门禁。
+
+```powershell
+# 后端（openstudy-fastapi）
+.\.venv\Scripts\python.exe -m pytest tests -q
+.\.venv\Scripts\python.exe -m ruff check app --select E9,F63,F7,F82
+
+# 前端（openstudy-vue3-ts）
+npm run lint
+npm run build:prod
+npm run type-check   # 报告型：当前 1,808 条存量 error TS，exit 2
+```
+
+当前结果：后端 pytest exit 0（collect 109 tests）、ruff 语法门禁 All checks passed；前端 build exit 0、lint 0 errors/3,506 warnings；type-check 仍有 1,808 条存量错误，属于公开债务。详细证据见 [quality-report.md](doc/功能迭代与代码质量/quality-report.md)。
 
 ## 当前边界
 
