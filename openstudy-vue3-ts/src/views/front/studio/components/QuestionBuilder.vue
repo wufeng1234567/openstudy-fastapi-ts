@@ -1140,6 +1140,7 @@ import QuestionFullEditor from './QuestionFullEditor.vue'
 import { useQuestionBuilderAiForm } from './useQuestionBuilderAiForm'
 import { useQuestionBuilderList } from './useQuestionBuilderList'
 import { useQuestionBuilderMaterials } from './useQuestionBuilderMaterials'
+import { useQuestionBuilderEditor } from './useQuestionBuilderEditor'
 import ScrollButton from '@/components/ScrollButton/ScrollButton.vue'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
 import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
@@ -1820,59 +1821,12 @@ const {
  * 解析顺序：逐题的 `type` → `questionType` → 回落到 `aiForm.questionType`
  * （固定题型时前两者通常不存在，回落即原行为，不会改变已有体验）。
  */
-const previewTypeOf = (q: any): string => {
-  /*
-   * 组合题的识别要**看结构兜底**（2026-10-20 方案 B）。
-   *
-   * 混排出题时模型可能不给 `type: "composite"`，但一定给了 passage + 子题数组。
-   * 只看 type 会导致这种题被当成普通题渲染 → 材料和小题全部消失，
-   * 用户看到一道题干是空的单选题。所以结构特征也要认。
-   */
-  if (Array.isArray(q?.subQuestions) && q.subQuestions.length > 0) return 'composite'
-  if (q?.content && Array.isArray(q?.questions) && q.questions.length > 0) return 'composite'
-
-  const t = String(q?.type || q?.questionType || '').trim()
-  // 'custom' 不是真实题型，不能拿它去匹配渲染分支
-  if (t && t !== 'custom') return t
-  const fallback = String(aiForm.value.questionType || '').trim()
-  return fallback && fallback !== 'custom' ? fallback : 'single'
-}
-
-// 获取指定题型的数量
-const getTypeCount = (type) => {
-  return questions.value.filter(q => q.type === type).length
-}
-
-const filterQuestions = () => { }
-
-const cloneQuestion = (typeItem) => {
-  const newId = Date.now() + Math.random()
-  let base = {
-    id: newId,
-    type: typeItem.type,
-    title: '',
-    analysis: '',
-    score: 5,
-    content: ''
-  }
-  if (typeItem.type === 'composite') {
-    base.subQuestions = []
-    base.content = ''
-  } else if (typeItem.type === 'single' || typeItem.type === 'multiple') {
-    base.options = ['选项A', '选项B']
-    base.optionsJson = JSON.stringify(base.options)
-    base.answer = typeItem.type === 'single' ? 0 : []
-  } else if (typeItem.type === 'judge') {
-    base.answer = false
-  } else {
-    base.answer = ''
-  }
-  questions.value.push(base)
-  currentId.value = newId
-  return base
-}
-
-const selectQuestion = (id) => { currentId.value = id }
+const { previewTypeOf, getTypeCount, cloneQuestion, selectQuestion } = useQuestionBuilderEditor({
+  questions,
+  currentId,
+  questionTypes,
+  aiForm
+})
 
 const openFullEditor = () => {
   if (!currentQuestion.value) {
