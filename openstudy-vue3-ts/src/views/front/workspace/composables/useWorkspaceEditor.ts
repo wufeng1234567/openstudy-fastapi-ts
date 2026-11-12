@@ -4,7 +4,7 @@ import { ElMessage } from 'element-plus'
 import { saveAs } from 'file-saver'
 import { getDocumentContent, exportDocument } from '@/api/ai/rag'
 import { blobValidate } from '@/utils/legacy'
-import { createTurndownService, htmlToEditorMarkdown, markdownToEditorHtml } from './editorMarkdown'
+import { createTurndownService, htmlToEditorMarkdown, markdownToEditorHtml } from '../utils/editorMarkdown'
 
 /** 资料正文编辑器：状态、打开、导出与微课跳转。 */
 export function useWorkspaceEditor(options: { anatomyImageUrl: (url: string) => string }) {
@@ -94,3 +94,4 @@ export function useWorkspaceEditor(options: { anatomyImageUrl: (url: string) => 
     openMicroCourse
   }
 }
+

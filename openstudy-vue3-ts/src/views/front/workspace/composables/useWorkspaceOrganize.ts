@@ -9,7 +9,7 @@ import {
   previewWorkspaceOrganize,
   rollbackWorkspacePlan
 } from '@/api/ai/workspace'
-import { computeOrganizeReport, countOrganizePlans } from './organizeHelpers'
+import { computeOrganizeReport, countOrganizePlans } from '../utils/organizeHelpers'
 
 /** 单文档智能整理：预览、轮询、应用、回退和整理记录。 */
 export function useWorkspaceOrganize(options: {
@@ -350,3 +350,4 @@ export function useWorkspaceOrganize(options: {
     rollbackOrganizePreview
   }
 }
+

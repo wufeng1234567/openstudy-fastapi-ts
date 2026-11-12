@@ -455,8 +455,8 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { ENTITY_TYPE_META, entityTypeMeta, normalizeEntityKind, normalizePageType, pageTypeLabel } from '../knowledgeGraphMeta'
-import { clusterOutline } from '../knowledgeGraphGeometry'
+import { ENTITY_TYPE_META, entityTypeMeta, normalizeEntityKind, normalizePageType, pageTypeLabel } from '../utils/knowledgeGraphMeta'
+import { clusterOutline } from '../utils/knowledgeGraphGeometry'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
@@ -3027,6 +3027,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped src="./KnowledgeWikiPanel.style1.css"></style>
+
 
 
 

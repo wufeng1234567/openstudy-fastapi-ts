@@ -6,7 +6,7 @@ import {
   missingMarkdownImageFiles,
   pickMissingImagesFromDirectory
 } from '@/utils/markdownUpload'
-import { delay } from './helpers'
+import { delay } from '../utils/helpers'
 
 /** 文档上传、批量删除和上传后的后台状态轮询。 */
 export function useWorkspaceUpload(options: {
@@ -244,3 +244,4 @@ export function useWorkspaceUpload(options: {
     removeDoc
   }
 }
+

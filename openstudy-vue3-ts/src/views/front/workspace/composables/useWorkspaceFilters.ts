@@ -1,6 +1,6 @@
 import { computed } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
-import { documentStatusKey, documentTypeKey } from './helpers'
+import { documentStatusKey, documentTypeKey } from '../utils/helpers'
 
 export type WorkspaceViewMode = 'list' | 'shelf' | 'gallery' | 'wiki'
 
@@ -170,3 +170,4 @@ export function useWorkspaceFilters(options: WorkspaceFilterOptions) {
     visibleFiles
   }
 }
+

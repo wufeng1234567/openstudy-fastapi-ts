@@ -641,15 +641,26 @@ import {
   facetText,
   readWorkspaceView,
   reprocessPercent
-} from './helpers'
-import { createTurndownService, htmlToEditorMarkdown, markdownToEditorHtml } from './editorMarkdown'
-import { computeOrganizeReport, countOrganizePlans, planStatusText, planStatusType } from './organizeHelpers'
-import { useImageInsertion } from './useImageInsertion'
-import { useWorkspaceNavigation } from './useWorkspaceNavigation'
-import { useWorkspaceFilters } from './useWorkspaceFilters'
-import { useWorkspaceCascade } from './useWorkspaceCascade'
+} from './utils/helpers'
+import { createTurndownService, htmlToEditorMarkdown, markdownToEditorHtml } from './utils/editorMarkdown'
+import { computeOrganizeReport, countOrganizePlans, planStatusText, planStatusType } from './utils/organizeHelpers'
+import { useImageInsertion } from './composables/useImageInsertion'
+import { useWorkspaceNavigation } from './composables/useWorkspaceNavigation'
+import { useWorkspaceFilters } from './composables/useWorkspaceFilters'
+import { useWorkspaceCascade } from './composables/useWorkspaceCascade'
+import { useWorkspaceUpload } from './composables/useWorkspaceUpload'
+import { useWorkspaceAnatomy } from './composables/useWorkspaceAnatomy'
+import { useWorkspaceImports } from './composables/useWorkspaceImports'
+import { useWorkspaceEditor } from './composables/useWorkspaceEditor'
+import { useWorkspaceOrganize } from './composables/useWorkspaceOrganize'
+import { useWorkspaceKbActions } from './composables/useWorkspaceKbActions'
+import { useWorkspaceTrySearch } from './composables/useWorkspaceTrySearch'
 
 /* ===================== 状态 ===================== */
+
+const WORKSPACE_VIEW_KEY = 'openstudy.workspace.viewMode'
+const WORKSPACE_KB_KEY = 'openstudy.workspace.activeKbId'
+const WORKSPACE_VIEWS = ['list', 'shelf', 'gallery', 'wiki'] as const
 
 const userStore = useUserStore()
 const route = useRoute()
@@ -1664,60 +1675,6 @@ async function askFromHealth(doc: any, issue: any) {
   }
 }
 
-async function showAnatomyLegacy(doc: any, opts?: { highlight?: string; chunkId?: number; chunkIndex?: number; chunkCount?: number; targetText?: string; offset?: number }) {
-  anatomyVisible.value = true
-  anatomyLoading.value = true
-  anatomyFullscreen.value = false
-  anatomyDocName.value = doc.fileName || '未命名资料'
-  anatomyHighlight.value = String(opts?.highlight || '')
-  anatomyTargetChunkId.value = opts?.chunkId ?? null
-  anatomyTargetChunkIndex.value = opts?.chunkIndex ?? null
-  anatomyTargetChunkCount.value = Number(opts?.chunkCount || doc.chunkCount || 0)
-  anatomyTargetText.value = String(opts?.targetText || '')
-  anatomyScrollTargetOffset.value = null
-  anatomyContent.value = ''
-  anatomyExcludedRanges.value = []
-  anatomyImageMap.value = {}
-  anatomyTree.value = null
-  anatomyOutlineReason.value = ''
-  anatomyStats.contentLength = 0
-  anatomyStats.imageCount = 0
-  anatomyStats.headingCount = 0
-  anatomyStats.chunkCount = Number(opts?.chunkCount || doc.chunkCount || 0)
-
-  try {
-    const [contentRes, outlineRes] = await Promise.all([
-      getDocumentContent(doc.docId),
-      getDocumentOutline(doc.docId)
-    ])
-
-    if (contentRes.code === 200) {
-      const data = contentRes.data || {}
-      anatomyContent.value = data.content || ''
-      anatomyExcludedRanges.value = data.excludedRanges || []
-      anatomyImageMap.value = data.imageMap || {}
-      anatomyStats.contentLength = Number(data.contentLength || anatomyContent.value.length || 0)
-      anatomyStats.imageCount = Object.keys(anatomyImageMap.value).length
-    }
-
-    if (outlineRes.code === 200) {
-      const data = outlineRes.data || {}
-      if (data.hasOutline && data.tree) {
-        anatomyTree.value = data.tree
-        anatomyStats.headingCount = Number(data.totalHeadings || data.count || 0)
-      } else {
-        anatomyOutlineReason.value = data.reason || '这份资料没有可提取的章节结构。'
-      }
-    }
-  } catch (e: any) {
-    ElMessage.error('读取资料原文失败：' + (e?.message || e))
-  } finally {
-    anatomyLoading.value = false
-    await nextTick()
-    applyAnatomyHighlight()
-  }
-}
-
 onMounted(() => {
   load(false)
   loadStandaloneImages()
@@ -1735,4 +1692,5 @@ onBeforeUnmount(() => {
 })
 </script>
 
-<style lang="scss" src="./index.scss"></style>
+<style lang="scss" src="./styles/index.scss"></style>
+
