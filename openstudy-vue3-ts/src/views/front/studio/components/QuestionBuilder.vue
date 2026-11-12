@@ -1133,7 +1133,6 @@ import { listKnowledgeBases } from '@/api/ai/rag'
 import { getBankContextInfo, clearBankConversation, generateQuestionsWithContext, generateQuestionsStreamFull, generateCompositeStreamFull } from '@/api/ai/ai'
 import AiThinkingToggle from '@/components/AiThinkingToggle/index.vue'
 import AiModelSelector from '@/components/AiModelSelector/index.vue'
-import { useDsDeepThinkSync } from '@/composables/useDsDeepThinkSync'
 import { listAiConfig } from '@/api/system/aiConfig'
 import aiModelManager from '@/components/AiModelManager/index.vue'
 import QuestionFullEditor from './QuestionFullEditor.vue'
@@ -1681,7 +1680,6 @@ const {
   materialPanelOpen,
   imagePreviewList,
   imagePreviewIndex,
-  hasMaterial,
   materialSummaryText,
   loadKnowledgeBases,
   handleMaterialFileChange,
@@ -2129,32 +2127,6 @@ const updatePreviewData = () => {
 
 // 修改题目题干
 // 修改选项
-const editOption = (qIndex, optIndex, newValue) => {
-  if (!editablePreviewData.value) return
-  if (Array.isArray(editablePreviewData.value)) {
-    editablePreviewData.value[qIndex].options[optIndex] = newValue
-  }
-  updatePreviewData()
-}
-
-// 修改正确答案
-const editAnswer = (qIndex, newAnswer) => {
-  if (!editablePreviewData.value) return
-  if (Array.isArray(editablePreviewData.value)) {
-    editablePreviewData.value[qIndex].correctAnswer = newAnswer
-  }
-  updatePreviewData()
-}
-
-// 修改解析
-const editAnalysis = (qIndex, newAnalysis) => {
-  if (!editablePreviewData.value) return
-  if (Array.isArray(editablePreviewData.value)) {
-    editablePreviewData.value[qIndex].analysis = newAnalysis
-  }
-  updatePreviewData()
-}
-
 // 导入生成的题目
 const importGeneratedQuestions = () => {
   if (!pendingImportData.value) {
@@ -2204,41 +2176,9 @@ import {
   mapAiTypeToInternal,
   normalizeAiQuestion
 } from './questionBuilderAi'
-import { formatSubAnswer, getSubTypeName, getSubTypeTagType, isSubOptionCorrect, truncateText } from './questionBuilderUtils'
+import { getSubTypeName, getSubTypeTagType, truncateText } from './questionBuilderUtils'
 
 // 普通 API 调用（非流式）
-const generateQuestionsNormal = async (params, isComposite) => {
-  if (isComposite) {
-    // 组合题接口
-    const res = await generateReadingComprehensionSync({
-      requirement: params.requirement,
-      questionCount: params.subCount || 5,
-      wordCount: params.wordCount || 300,
-      model: params.model,
-      configId: selectedConfigId.value || undefined
-    })
-    // 注意：你的 request 可能直接返回 data，也可能返回完整响应
-    // 根据实际情况调整
-    return res.data || res
-  } else {
-    // 普通题型接口
-    const res = await generateQuestionsSync({
-      knowledgePoint: params.knowledgePoint,
-      questionType: params.questionType,
-      count: params.count,
-      model: params.model,
-      configId: selectedConfigId.value || undefined,
-      userId: userId.value,
-      thinking: deepThink.value
-    })
-    return res.data || res
-  }
-}
-
-
-
-
-
 const handleAiGenerate = async () => {
   /*
    * ⚠️ 这里**没有**素材必填校验（2026-10-20 用户纠正）。
