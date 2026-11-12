@@ -5,6 +5,21 @@
 > 用途：给 LLM 评审/答辩提供可直接复核的命令、输出与当前债务边界。
 > 结论口径：**不把 type-check 的 1,823 条存量错误说成已清零；P0 门禁除 type-check 外可复跑，P1 已在结构债务上推进。**
 
+## 0. 2026-11-12 当前复核（优先于下方历史基线）
+
+> 代码基线：`main @ 9e5ba24`（含本轮 `.gitignore` 卫生提交；质量文档改动待提交）
+> 说明：下方 1–5 节保留 2026-11-09 历史基线，本节是当前可复跑结果。
+
+| 检查项 | 命令 | 本次结果 | 结论 |
+|---|---|---|---|
+| 后端字节码 | `python -m compileall -q app` | exit 0 | ✅ |
+| 后端语法/未定义名 | `ruff check app --select E9,F63,F7,F82` | All checks passed | ✅ |
+| 后端测试 | `pytest tests -q` | exit 0；collect 109 tests（旧报告 102） | ✅ |
+| 前端 lint | `npm run lint` | 0 errors / 3,506 warnings | 🟡 warn-only |
+| 前端类型检查 | `npm run type-check` | exit 2；1,808 条 `error TS`（旧报告 1,823） | 🟡 存量债务 |
+| 前端构建 | `npm run build:prod` | exit 0；3,978 modules | ✅ |
+| 工作区 | `git status --short` | 仅 `.gitignore` / 本轮质量文档改动；无用户素材被跟踪 | 🟡 待提交 |
+
 ---
 
 ## 1. 当前验收结果
