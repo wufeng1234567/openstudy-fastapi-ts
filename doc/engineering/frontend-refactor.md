@@ -20,7 +20,7 @@
 | `views/front/workspace/index.vue` | `useWorkspaceCascade.ts` | 全库级联搜索、结果与打开动作 |
 | `views/front/workspace/components/KnowledgeWikiPanel.vue` | `knowledgeGraphMeta.ts` | 六类实体元数据、类型归一化与页面类型映射 |
 
-`workspace/index.vue` 已从 3430 行降到 **2999 行**：顶部导航/搜索筛选栏拆为 `WorkspaceChrome.vue`，级联搜索结果拆为 `WorkspaceCascade.vue`；`KnowledgeWikiPanel.vue` 从 3240 行降到 2853 行。剩余部分继续按以下顺序拆。
+`workspace/index.vue` 已从 3430 行降到 **2810 行**：顶部导航/搜索筛选栏拆为 `WorkspaceChrome.vue`，级联搜索结果拆为 `WorkspaceCascade.vue`，上传/批量删除/上传轮询拆为 `useWorkspaceUpload.ts`；`KnowledgeWikiPanel.vue` 从 3240 行降到 2853 行。剩余部分继续按以下顺序拆。
 
 ### 样式模块化
 
