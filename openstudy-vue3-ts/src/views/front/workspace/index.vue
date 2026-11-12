@@ -259,86 +259,29 @@
     <ShareKnowledgeDialog v-model="docShareDialogVisible" :doc="shareDoc" />
     <ReceiveKnowledgeDialog v-model="receiveDialogVisible" />
 
-    <!-- 图片资产 → 插入题目解析 -->
-    <el-dialog v-model="questionPickerVisible" title="插入题目解析" width="820px" append-to-body>
-      <div class="kbp-question-picker">
-        <div class="kbp-question-picker__toolbar">
-          <el-input v-model="questionKeyword" clearable placeholder="搜索题目题干"
-            @keyup.enter="loadQuestionPicker(1)" />
-          <el-select v-model="questionBankFilter" clearable filterable placeholder="全部题库"
-            class="kbp-question-picker__bank" @change="loadQuestionPicker(1)">
-            <el-option v-for="bank in questionBanks" :key="bank.bankId" :label="bank.bankName" :value="bank.bankId" />
-          </el-select>
-          <el-button type="primary" @click="loadQuestionPicker(1)">搜索</el-button>
-          <span class="kbp-question-picker__image">
-            当前图片：{{ questionPickerImage?.docName }} · 图 {{ questionPickerImage?.seq }}
-          </span>
-        </div>
-        <p class="kbp-question-picker__hint">只显示你创建的题库中的题目，可按题库筛选，确保有编辑权限。</p>
-        <el-table :data="questionRows" v-loading="questionPickerLoading" max-height="420" size="small">
-          <el-table-column label="题目" min-width="360">
-            <template #default="{ row }">
-              <span class="kbp-question-picker__text">
-                {{ String(row.questionText || row.content || '未命名题目').slice(0, 100) }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column label="所属题库" width="160">
-            <template #default="{ row }">
-              <span class="kbp-question-picker__bank-name">{{ row.bankName || '—' }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="题型" width="90">
-            <template #default="{ row }">{{ row.questionTypeText || row.questionType || '-' }}</template>
-          </el-table-column>
-          <el-table-column label="操作" width="120">
-            <template #default="{ row }">
-              <el-button size="small" type="primary" :loading="questionInsertingId === row.id"
-                @click="insertImageIntoQuestion(row)">
-                插入解析
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <el-pagination v-model:current-page="questionPage" :page-size="QUESTION_PAGE_SIZE"
-          :total="questionTotal" layout="prev, pager, next" small
-          @current-change="loadQuestionPicker" />
-      </div>
-    </el-dialog>
-
-    <!-- 图片资产 → 加入笔记 -->
-    <el-dialog v-model="notePickerVisible" title="加入笔记" width="820px" append-to-body>
-      <div class="kbp-question-picker">
-        <div class="kbp-question-picker__toolbar">
-          <el-input v-model="noteKeyword" clearable placeholder="搜索笔记标题"
-            @keyup.enter="loadNotePicker(1)" />
-          <el-button type="primary" @click="loadNotePicker(1)">搜索</el-button>
-          <span class="kbp-question-picker__image">
-            当前图片：{{ notePickerImage?.docName }} · 图 {{ notePickerImage?.seq }}
-          </span>
-        </div>
-        <el-table :data="noteRows" v-loading="notePickerLoading" max-height="420" size="small">
-          <el-table-column label="笔记" min-width="420">
-            <template #default="{ row }">
-              <span class="kbp-question-picker__text">
-                {{ String(row.title || row.noteTitle || '未命名笔记').slice(0, 100) }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="120">
-            <template #default="{ row }">
-              <el-button size="small" type="primary" :loading="noteInsertingId === row.id"
-                @click="insertImageIntoNote(row)">
-                加入笔记
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <el-pagination v-model:current-page="notePage" :page-size="NOTE_PAGE_SIZE"
-          :total="noteTotal" layout="prev, pager, next" small
-          @current-change="loadNotePicker" />
-      </div>
-    </el-dialog>
+    <WorkspaceImagePickerDialogs
+      v-model:question-picker-visible="questionPickerVisible"
+      v-model:question-keyword="questionKeyword"
+      v-model:question-bank-filter="questionBankFilter"
+      v-model:question-page="questionPage"
+      v-model:note-picker-visible="notePickerVisible"
+      v-model:note-keyword="noteKeyword"
+      v-model:note-page="notePage"
+      :question-banks="questionBanks"
+      :question-picker-image="questionPickerImage"
+      :question-rows="questionRows"
+      :question-picker-loading="questionPickerLoading"
+      :question-inserting-id="questionInsertingId"
+      :question-total="questionTotal"
+      :note-picker-image="notePickerImage"
+      :note-rows="noteRows"
+      :note-picker-loading="notePickerLoading"
+      :note-inserting-id="noteInsertingId"
+      :note-total="noteTotal"
+      :question-page-size="10"
+      :note-page-size="10"
+      :api="{ loadQuestionPicker, insertImageIntoQuestion, loadNotePicker, insertImageIntoNote }"
+    />
 
     <!-- 整理记录：展示真实整理计划历史，而不是只有文档状态统计 -->
     <el-dialog v-model="organizeReportVisible" title="整理记录" width="760px" append-to-body>
@@ -494,13 +437,11 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import OsIcon from '@/components/OsIcon/index.vue'
 import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
-import SearchFilterInput from '@/components/SearchFilterInput/index.vue'
-import CommonFilterSidebar from '@/components/CommonFilterSidebar/index.vue'
-import { getWorkspaceOverview, uploadToWorkspace, searchWorkspace, listWorkspaceStandaloneImages, getAssetUsageSummary, recordAssetUsage, previewWorkspaceOrganize, getWorkspaceOrganizePlan, getWorkspaceOrganizeRecord, listWorkspaceOrganizePlans, applyWorkspaceOrganize, deleteWorkspaceOrganizeRecord, rollbackWorkspacePlan, setDocumentSearchable, createContentReference } from '@/api/ai/workspace'
+import { getWorkspaceOverview, listWorkspaceStandaloneImages, getAssetUsageSummary } from '@/api/ai/workspace'
 import OrganizeDiffDialog from './components/OrganizeDiffDialog.vue'
 import DocumentClinicDialog from './components/DocumentClinicDialog.vue'
 import GalleryPanel from './components/GalleryPanel.vue'
@@ -511,53 +452,16 @@ import WorkspaceChrome from './components/WorkspaceChrome.vue'
 import WorkspaceCascade from './components/WorkspaceCascade.vue'
 import WorkspaceTextWebDialogs from './components/WorkspaceTextWebDialogs.vue'
 import WorkspaceBankDialogs from './components/WorkspaceBankDialogs.vue'
+import WorkspaceImagePickerDialogs from './components/WorkspaceImagePickerDialogs.vue'
 import WorkspaceTaskBars from './components/WorkspaceTaskBars.vue'
 import VersionHistoryDialog from './components/VersionHistoryDialog.vue'
 import ShareKnowledgeDialog from './components/ShareKnowledgeDialog.vue'
 import ReceiveKnowledgeDialog from './components/ReceiveKnowledgeDialog.vue'
 import NoteImportDialog from './components/NoteImportDialog.vue'
-import { listQuestionMain, getQuestionMain, updateQuestionMain } from '@/api/questionMain/questionMain'
-import { listMyQuestionBank } from '@/api/questionBank/questionBank'
-import { listKbQuestionBanks, linkKbQuestionBank, unlinkKbQuestionBank, getKbQuestionBankKnowledge } from '@/api/ai/questionBankLink'
-import { listKbNotes, unlinkKbNote } from '@/api/ai/noteKbLink'
-import { listNote, getNote, updateNote } from '@/api/notes/note'
 import useUserStore from '@/store/modules/user'
 import useTopbarStore from '@/store/modules/topbar'
-import {
-  KB_FILE_ACCEPT,
-  createKnowledgeBase,
-  deleteDocument,
-  deleteKnowledgeBase,
-  getDocumentContent,
-  getDocumentOutline,
-  getDocumentStatus,
-  getDocumentStatusBatch,
-  updateDocumentContent,
-  exportDocument,
-  importDocumentText,
-  importDocumentUrl,
-  reprocessDocument,
-  searchPublicWeb,
-  updateKnowledgeBase,
-  uploadDocument
-} from '@/api/ai/rag'
-import { Plus } from '@element-plus/icons-vue'
-import { Download, Search, Share } from '@element-plus/icons-vue'
-import { saveAs } from 'file-saver'
-import { blobValidate } from '@/utils/legacy'
-import {
-  ensureMarkdownImageFiles,
-  missingMarkdownImageFiles,
-  pickMissingImagesFromDirectory
-} from '@/utils/markdownUpload'
-import {
-  delay,
-  facetText,
-  readWorkspaceView,
-  reprocessPercent
-} from './utils/helpers'
-import { createTurndownService, htmlToEditorMarkdown, markdownToEditorHtml } from './utils/editorMarkdown'
-import { computeOrganizeReport, countOrganizePlans, planStatusText, planStatusType } from './utils/organizeHelpers'
+import { KB_FILE_ACCEPT } from '@/api/ai/rag'
+import { readWorkspaceView } from './utils/helpers'
 import { useImageInsertion } from './composables/useImageInsertion'
 import { useWorkspaceNavigation } from './composables/useWorkspaceNavigation'
 import { useWorkspaceFilters } from './composables/useWorkspaceFilters'
@@ -648,8 +552,6 @@ const busy = computed(() => uploading.value || importing.value)
 const {
   reprocessTask,
   reprocessElapsed,
-  stopReprocessClock,
-  pollReprocess,
   reprocess,
   runReindex
 } = useWorkspaceReprocess({ load })
@@ -681,10 +583,7 @@ const {
   openOrganizePlan,
   startOrganize,
   stopOrganizeClock,
-  beginOrganize,
-  pollOrganizePlan,
   applyOrganizePreview,
-  freshOrganizeDoc,
   rerunOrganize,
   recheckOrganize,
   rollbackOrganizePreview
@@ -705,7 +604,6 @@ const workspaceSearch = ref('')
 const galleryFocusAssetKey = ref('')
 const workspaceFilterOpen = ref(false)
 const workspaceFilterActive = ref(false)
-const workspaceFilterRef = ref<any>(null)
 const workspaceChromeRef = ref<any>(null)
 const workspaceFilters = reactive<Record<string, any>>({})
 const galleryStats = reactive({ total: 0 })
@@ -740,7 +638,6 @@ const {
   cascadeLoading,
   cascadeResults,
   resetCascade,
-  runCascade,
   scheduleCascade,
   openCascadeFolder,
   openCascadeDocument
@@ -828,7 +725,6 @@ const {
   notePage,
   noteInsertingId,
   openQuestionPicker,
-  loadQuestionBanks,
   loadQuestionPicker,
   insertImageIntoQuestion,
   openNotePicker,
@@ -843,7 +739,6 @@ const {
   findDocRecord,
   onGalleryUseImage,
   onGalleryLocate,
-  onMapOpenDoc,
   onGraphLocate,
   onWikiAsk,
   onGalleryStats,
@@ -942,41 +837,6 @@ const {
   onDocumentVersionRestored,
   saveEditor
 } = useWorkspaceEditor({ anatomyImageUrl, load, runReindex })
-
-/** 当前资料夹的图片墙：把所有文档的 imageMap 摊平成资产卡 */
-const kbImages = computed(() => {
-  const out: Array<{ url: string; rawUrl: string; docName: string; seq: number; assetKey: string }> = []
-  for (const doc of activeKb.value?.files || []) {
-    for (const [seq, url] of Object.entries(doc.imageMap || {})) {
-      const raw = String(url || '')
-      const full = anatomyImageUrl(raw)
-      if (full) {
-        out.push({
-          url: full,
-          rawUrl: raw,
-          docName: doc.fileName,
-          seq: Number(seq) + 1,
-          assetKey: `doc:${doc.docId}:${seq}`
-        })
-      }
-    }
-  }
-  // 聊天里直接粘贴/上传的图片：已由 chat_upload_image 持久化，这里只展示
-  standaloneImages.value.forEach((img, idx) => {
-    const raw = String(img.url || '')
-    const full = anatomyImageUrl(raw)
-    if (full) {
-      out.push({
-        url: full,
-        rawUrl: raw,
-        docName: '聊天图片',
-        seq: idx + 1,
-        assetKey: `chat:${img.imageId}`
-      })
-    }
-  })
-  return out
-})
 
 const {
   importing,
@@ -1170,9 +1030,6 @@ const {
   openDocShare,
   handleKbCommand,
   promptCreate,
-  promptRename,
-  removeKb,
-  toggleDisabled,
   toggleDocSearchable
 } = useWorkspaceKbActions({
   activeKbId,
@@ -1243,21 +1100,8 @@ function showHealth(doc: any) {
   clinicRef.value?.open(doc, 'health')
 }
 
-function showSmartReport(doc: any) {
-  if (!doc?.docId) return
-  clinicRef.value?.open(doc, 'report')
-}
-
 function startOrganizeFromHealth(doc: any) {
   startOrganize(doc)
-}
-
-function locateHealthSection(doc: any, section: any) {
-  // 用后端给出的精确字符偏移定位，excerpt 只作为兜底（空白规范化后不保证能在原文命中）。
-  showAnatomy(doc, {
-    offset: Number(section?.start || 0),
-    targetText: String(section?.title || '')
-  })
 }
 
 async function askFromHealth(doc: any, issue: any) {
