@@ -5,6 +5,7 @@
 | 想确认 | 文件 |
 |---|---|
 | 20% 评分项逐项自评 | [quality-scorecard.md](quality-scorecard.md) |
+| 超大文件/类型/lint 债务登记 | [technical-debt-register.md](technical-debt-register.md) |
 | 当前质量验收、pytest/ruff/lint/build/type-check 结果 | [quality-report.md](../功能迭代与代码质量/quality-report.md) |
 | 测试策略、分层与覆盖率路线 | [test-strategy.md](test-strategy.md) |
 | 已删除/已脱管/待决策的死代码台账 | [dead-code-ledger.md](../功能迭代与代码质量/dead-code-ledger.md) |
