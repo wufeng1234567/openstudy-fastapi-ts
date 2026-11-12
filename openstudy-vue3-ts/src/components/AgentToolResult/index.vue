@@ -359,6 +359,7 @@
 
 <script setup lang="ts">
 import { DATA_SUMMARIES, FILLER_MESSAGES, MAX_SUMMARY_CHARS, clip, labelOf, summarizeData } from './agentToolResultSummary'
+import { useAgentToolJumps } from './useAgentToolJumps'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { COLLAPSE_BAR_STYLE } from '@/composables/useCollapseBar'
 import axios from 'axios'
