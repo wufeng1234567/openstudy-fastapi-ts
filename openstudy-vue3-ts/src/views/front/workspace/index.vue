@@ -250,92 +250,6 @@
     </div>
 
     <!-- 单文档刨析：结构 / 正文与图片 / 图片资产轨 -->
-    <el-dialog v-model="anatomyVisible" :title="`原文阅读 · ${anatomyDocName}`" width="1100px" append-to-body
-      class="kbp-anatomy-dialog">
-      <div v-loading="anatomyLoading" class="kbp-anatomy">
-        <div class="kbp-anatomy__stats">
-          <span><b>{{ anatomyStats.contentLength }}</b> 字</span>
-          <span><b>{{ anatomyStats.imageCount }}</b> 张图</span>
-          <span><b>{{ anatomyStats.headingCount }}</b> 个标题</span>
-          <span><b>{{ anatomyStats.chunkCount }}</b> 个分块</span>
-        </div>
-
-        <div class="kbp-anatomy__grid">
-          <section class="kbp-anatomy__outline">
-            <h4>资料结构</h4>
-            <div v-if="anatomyQuestionGroups.length" class="kbp-anatomy__question-groups">
-              <div class="kbp-anatomy__question-groups-label">按题型整理</div>
-              <div v-for="group in anatomyQuestionGroups" :key="group.name" class="kbp-anatomy__question-group"
-                @click="jumpToQuestionGroup(group)">
-                <span>{{ group.name }}</span>
-                <b>{{ group.count }} 题</b>
-              </div>
-            </div>
-            <div v-if="anatomyOutlineItems.length" class="kbp-anatomy__outline-list">
-              <div v-for="(item, idx) in anatomyOutlineItems" :key="idx" class="kbp-anatomy__outline-item"
-                :style="{ paddingLeft: `${12 + item.level * 14}px` }">
-                {{ item.name }}
-              </div>
-            </div>
-            <div v-else-if="!anatomyQuestionGroups.length" class="kbp-anatomy__empty">
-              {{ anatomyOutlineReason || '这份资料没有可提取的章节结构。' }}
-            </div>
-          </section>
-
-          <section class="kbp-anatomy__content">
-            <h4 class="kbp-anatomy__content-head">
-              <span>正文与图片</span>
-              <button type="button" class="kbp-anatomy__fullscreen" title="全屏查看正文与图片"
-                @click="openAnatomyFullscreen">全屏观看</button>
-            </h4>
-            <div v-if="anatomySegments.length" class="kbp-anatomy__content-inner">
-              <template v-for="(seg, si) in anatomySegments" :key="si">
-                <div v-if="seg.type === 'image'" class="kbp-anatomy__segment"
-                  :data-raw-start="seg.start" :data-raw-end="seg.end">
-                  <el-image :src="seg.url" fit="contain" class="kbp-anatomy__inline-image"
-                    :preview-src-list="[seg.url]" preview-teleported @load="onAnatomyImageLoad" />
-                </div>
-                <div v-else class="kbp-anatomy__segment"
-                  :data-raw-start="seg.start" :data-raw-end="seg.end">
-                  <LatexRenderer :content="seg.text" class="kbp-anatomy__rendered" />
-                </div>
-              </template>
-            </div>
-            <div v-else class="kbp-anatomy__empty">没有可展示的正文，可能还在解析中。</div>
-          </section>
-
-          <section class="kbp-anatomy__assets">
-            <h4>图片资产 <span>{{ anatomyImages.length }}</span></h4>
-            <div v-if="anatomyImages.length" class="kbp-anatomy__image-grid">
-              <div v-for="(img, idx) in anatomyImages" :key="img.key" class="kbp-anatomy__image-card">
-                <el-image :src="img.url" fit="cover" :preview-src-list="[img.url]" preview-teleported />
-                <span>图 {{ idx + 1 }}</span>
-                <button type="button" class="kbp-anatomy__copy" @click="copyImageMarkdown(img.url, anatomyDocName, idx + 1)">
-                  复制
-                </button>
-              </div>
-            </div>
-            <div v-else class="kbp-anatomy__empty">这份资料里没有提取到图片。</div>
-          </section>
-        </div>
-      </div>
-    </el-dialog>
-
-    <!-- 资料正文全屏观看：保留刨析的结构/图片资产信息，正文单独放大 -->
-    <el-dialog v-model="anatomyFullscreen" :title="`资料正文 · ${anatomyDocName}`" fullscreen append-to-body
-      class="kbp-anatomy-fullscreen-dialog">
-      <div class="kbp-anatomy-fullscreen__body">
-        <div v-if="anatomySegments.length">
-          <template v-for="(seg, si) in anatomySegments" :key="`full-${si}`">
-            <el-image v-if="seg.type === 'image'" :src="seg.url" fit="contain"
-              class="kbp-anatomy__inline-image" :preview-src-list="[seg.url]" preview-teleported />
-            <LatexRenderer v-else :content="seg.text" class="kbp-anatomy__rendered" />
-          </template>
-        </div>
-        <div v-else class="kbp-anatomy__empty">没有可展示的正文，可能还在解析中。</div>
-      </div>
-    </el-dialog>
-
     <!-- 统一入口：资料体检 / 原文阅读 / 智能报告共用一套工作台 -->
     <DocumentClinicDialog ref="clinicRef" :show-edit="true" @organize="startOrganizeFromHealth"
       @ask="askFromHealth" @edit="openEditor" />
@@ -1052,8 +966,10 @@ const {
   openEditor,
   exportDoc,
   exportCurrent,
-  openMicroCourse
-} = useWorkspaceEditor({ anatomyImageUrl })
+  openMicroCourse,
+  onDocumentVersionRestored,
+  saveEditor
+} = useWorkspaceEditor({ anatomyImageUrl, load, runReindex })
 
 /** 当前资料夹的图片墙：把所有文档的 imageMap 摊平成资产卡 */
 const kbImages = computed(() => {
@@ -1253,86 +1169,6 @@ async function loadAssetUsage() {
   }
 }
 
-async function onDocumentVersionRestored() {
-  const doc = editorDoc.value
-  if (!doc?.docId) return
-  versionsVisible.value = false
-  editorVisible.value = false
-  reprocessTask.active = true
-  reprocessTask.docId = doc.docId
-  reprocessTask.fileName = doc.fileName
-  reprocessTask.statusText = '历史版本已恢复，正在重新解析…'
-  reprocessTask.percent = 10
-  reprocessTask.error = ''
-  reprocessElapsed.value = 0
-  stopReprocessClock()
-  reprocessTimer = setInterval(() => {
-    reprocessElapsed.value += 1
-  }, 1000)
-  try {
-    await load()
-    const result = await pollReprocess(doc.docId)
-    reprocessTask.active = false
-    stopReprocessClock()
-    await load()
-    if (result.ok) {
-      ElMessage.success(`「${doc.fileName}」已恢复，并重新建立索引`)
-    } else {
-      ElMessage.error(`历史版本已恢复，但重新解析失败：${result.message}`)
-    }
-  } catch (e: any) {
-    reprocessTask.active = false
-    stopReprocessClock()
-    ElMessage.error('恢复后重新解析失败：' + (e?.message || e))
-  }
-}
-
-async function saveEditor() {
-  const doc = editorDoc.value
-  if (!doc?.docId) return
-  const markdown = editorMarkdown.value
-  if (!markdown.trim()) {
-    ElMessage.warning('正文不能为空')
-    return
-  }
-  editorSaving.value = true
-  try {
-    const res: any = await updateDocumentContent(doc.docId, markdown)
-    if (res.code !== 200) {
-      ElMessage.error(res.msg || '保存失败')
-      return
-    }
-    editorVisible.value = false
-    reprocessTask.active = true
-    reprocessTask.docId = doc.docId
-    reprocessTask.fileName = doc.fileName
-    reprocessTask.statusText = '正文已保存，正在重新解析…'
-    reprocessTask.percent = 10
-    reprocessTask.error = ''
-    reprocessElapsed.value = 0
-    stopReprocessClock()
-    reprocessTimer = setInterval(() => {
-      reprocessElapsed.value += 1
-    }, 1000)
-    await load()
-    const result = await pollReprocess(doc.docId)
-    reprocessTask.active = false
-    stopReprocessClock()
-    await load()
-    if (result.ok) {
-      ElMessage.success(
-        `「${doc.fileName}」已保存并重新向量化${result.chunkCount ? `，共 ${result.chunkCount} 个分块` : ''}`
-      )
-    } else {
-      ElMessage.error(`「${doc.fileName}」保存成功，但重新解析失败：${result.message}`)
-    }
-  } catch (e: any) {
-    ElMessage.error('保存失败：' + (e?.message || e))
-  } finally {
-    editorSaving.value = false
-  }
-}
-
 function handleDocMore(doc: any, command: string) {
   if (command === 'micro') {
     openMicroCourse(doc)
@@ -1420,83 +1256,6 @@ const {
   openNoteImport
 })
 
-function clearAnatomyMarks(root: HTMLElement) {
-  root.querySelectorAll('mark.kbp-search-mark').forEach((mark) => {
-    const parent = mark.parentNode
-    if (!parent) return
-    parent.replaceChild(document.createTextNode(mark.textContent || ''), mark)
-    ;(parent as Element).normalize?.()
-  })
-}
-
-/** 在刨析正文的真实 DOM 上标黄；只包普通文本节点，绝不碰 KaTeX 内部 */
-function applyAnatomyHighlight() {
-  const roots = [
-    document.querySelector('.kbp-anatomy__content-inner'),
-    document.querySelector('.kbp-anatomy-fullscreen__body')
-  ].filter(Boolean) as HTMLElement[]
-  roots.forEach(clearAnatomyMarks)
-
-  const phrase = anatomyHighlight.value.trim()
-  if (!phrase) return
-  const needle = phrase.toLowerCase()
-
-  for (const root of roots) {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-    const nodes: Node[] = []
-    let node: Node | null
-    while ((node = walker.nextNode())) nodes.push(node)
-
-    for (const textNode of nodes) {
-      const parent = textNode.parentElement
-      if (!parent || parent.closest('.katex, .katex-mathml, .katex-html, .latex-error, .kbp-search-mark')) continue
-      let current: Text | null = textNode as Text
-      while (current && current.nodeValue) {
-        const idx = current.nodeValue.toLowerCase().indexOf(needle)
-        if (idx < 0) break
-        const matchNode = current.splitText(idx)
-        const afterNode = matchNode.splitText(needle.length)
-        const mark = document.createElement('mark')
-        mark.className = 'kbp-search-mark'
-        mark.textContent = matchNode.nodeValue
-        matchNode.parentNode?.replaceChild(mark, matchNode)
-        current = afterNode
-      }
-    }
-  }
-
-  const rawTarget = anatomyTargetText.value.trim()
-  const target = rawTarget.replace(/【图\d+】/g, '').trim()
-  const source = anatomyContent.value || ''
-  let targetOffset: number | null = null
-  if (source) {
-    let idx = rawTarget ? source.indexOf(rawTarget) : -1
-    if (idx < 0 && target) idx = source.indexOf(target)
-    if (idx < 0 && target) idx = source.indexOf(target.slice(0, Math.min(80, target.length)))
-    if (idx < 0 && target) idx = source.indexOf(target.slice(0, 30))
-    if (idx >= 0) targetOffset = idx
-  }
-
-  // 图片会改变 scrollHeight；优先用带原始字符偏移的 DOM 段落锚点定位。
-  if (targetOffset != null && scrollAnatomyToOffset(targetOffset)) return
-
-  const totalChunks = anatomyTargetChunkCount.value || anatomyStats.chunkCount
-  if (targetOffset == null && anatomyTargetChunkIndex.value != null && totalChunks > 0 && source) {
-    const estimated = source.length * ((Number(anatomyTargetChunkIndex.value) + 0.5) / totalChunks)
-    if (scrollAnatomyToOffset(estimated)) return
-  }
-
-  const first = document.querySelector('.kbp-anatomy mark.kbp-search-mark')
-  first?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-}
-
-async function openAnatomyFullscreen() {
-  anatomyFullscreen.value = true
-  await nextTick()
-  applyAnatomyHighlight()
-}
-
-/* ===================== 资料诊疗室（体检 / 刨析 / 装配统一入口） ===================== */
 function openClinic(doc: any) {
   if (!doc?.docId) return
   clinicRef.value?.open(doc, 'health')

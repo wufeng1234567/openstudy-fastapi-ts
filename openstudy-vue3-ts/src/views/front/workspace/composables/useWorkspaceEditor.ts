@@ -2,12 +2,16 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { saveAs } from 'file-saver'
-import { getDocumentContent, exportDocument } from '@/api/ai/rag'
+import { getDocumentContent, exportDocument, updateDocumentContent } from '@/api/ai/rag'
 import { blobValidate } from '@/utils/legacy'
 import { createTurndownService, htmlToEditorMarkdown, markdownToEditorHtml } from '../utils/editorMarkdown'
 
 /** 资料正文编辑器：状态、打开、导出与微课跳转。 */
-export function useWorkspaceEditor(options: { anatomyImageUrl: (url: string) => string }) {
+export function useWorkspaceEditor(options: {
+  anatomyImageUrl: (url: string) => string
+  load: () => Promise<void>
+  runReindex: (doc: any, statusText: string) => Promise<{ ok: boolean; message: string; chunkCount?: number }>
+}) {
   const router = useRouter()
   const editorVisible = ref(false)
   const editorLoading = ref(false)
@@ -77,6 +81,45 @@ export function useWorkspaceEditor(options: { anatomyImageUrl: (url: string) => 
     router.push({ path: '/front/microCourse', query: { docId: String(doc.docId) } })
   }
 
+  async function onDocumentVersionRestored() {
+    const doc = editorDoc.value
+    if (!doc?.docId) return
+    versionsVisible.value = false
+    editorVisible.value = false
+    const result = await options.runReindex(doc, '历史版本已恢复，正在重新解析…')
+    if (result.ok) ElMessage.success(`「${doc.fileName}」已恢复，并重新建立索引`)
+    else ElMessage.error(`历史版本已恢复，但重新解析失败：${result.message}`)
+  }
+
+  async function saveEditor() {
+    const doc = editorDoc.value
+    if (!doc?.docId) return
+    const markdown = editorMarkdown.value
+    if (!markdown.trim()) {
+      ElMessage.warning('正文不能为空')
+      return
+    }
+    editorSaving.value = true
+    try {
+      const res: any = await updateDocumentContent(doc.docId, markdown)
+      if (res.code !== 200) {
+        ElMessage.error(res.msg || '保存失败')
+        return
+      }
+      editorVisible.value = false
+      const result = await options.runReindex(doc, '正文已保存，正在重新解析…')
+      if (result.ok) {
+        ElMessage.success(`「${doc.fileName}」已保存并重新向量化${result.chunkCount ? `，共 ${result.chunkCount} 个分块` : ''}`)
+      } else {
+        ElMessage.error(`「${doc.fileName}」保存成功，但重新解析失败：${result.message}`)
+      }
+    } catch (e: any) {
+      ElMessage.error('保存失败：' + (e?.message || e))
+    } finally {
+      editorSaving.value = false
+    }
+  }
+
   return {
     editorVisible,
     editorLoading,
@@ -91,7 +134,9 @@ export function useWorkspaceEditor(options: { anatomyImageUrl: (url: string) => 
     openEditor,
     exportDoc,
     exportCurrent,
-    openMicroCourse
+    openMicroCourse,
+    onDocumentVersionRestored,
+    saveEditor
   }
 }
 
