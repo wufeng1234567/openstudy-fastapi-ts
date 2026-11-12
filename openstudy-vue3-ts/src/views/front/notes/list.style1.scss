@@ -1,0 +1,587 @@
+.notes-list-container {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 22px 28px 48px;
+  box-sizing: border-box;
+  /* 筛选面板（position:absolute）的定位参考 */
+  position: relative;
+
+  /*
+   * ==================== 搜索行 ====================
+   * 一行：搜索框（内含「筛选」入口）+ 刷新 + 写笔记。
+   * 搜索框 flex:1 吃掉剩余宽度，两个按钮定宽靠右。
+   */
+  .search-bar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+
+    .search-input {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .refresh-btn {
+      flex: none;
+      border-radius: var(--os-radius-sm);
+      font-weight: 500;
+      padding: 8px 14px;
+      height: auto;
+      min-height: 32px;
+      background: #fff;
+      border: 1px solid var(--os-border);
+      color: var(--os-text-2);
+      transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+
+      &:hover {
+        background: var(--dsw-static-neutral-bluish-50);
+        border-color: var(--os-border-strong);
+        color: var(--os-text);
+        transform: none;
+      }
+
+      &:active {
+        transform: none;
+      }
+    }
+
+    .create-btn {
+      flex: none;
+      border-radius: var(--os-radius-sm);
+      font-weight: 500;
+      padding: 8px 16px;
+      height: auto;
+      min-height: 32px;
+      letter-spacing: 0.01em;
+
+      &:hover,
+      &:active {
+        transform: none;
+      }
+    }
+
+    /* 搜索历史：挂在搜索框正下方（SearchFilterInput 的 #dropdown 插槽） */
+    .search-history-dropdown {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      width: 400px;
+      max-width: 100%;
+      padding: 14px 16px;
+      background: #fff;
+      border: 1px solid var(--os-border-soft);
+      border-radius: var(--os-radius);
+      box-shadow: var(--os-shadow-2, 0 8px 24px rgba(0, 0, 0, 0.08));
+      z-index: 100;
+
+      .history-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+
+        .history-title {
+          font-size: 13px;
+          font-weight: 600;
+          color: var(--os-text);
+        }
+
+        .clear-history {
+          font-size: 12px;
+          color: var(--os-text-4);
+          cursor: pointer;
+          transition: color 0.2s;
+
+          &:hover {
+            color: var(--os-text-2);
+          }
+        }
+      }
+
+      .history-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+
+        .history-tag-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 5px 10px;
+          background: var(--os-bg-hover, #f3f4f6);
+          border: 1px solid var(--os-border-soft);
+          border-radius: var(--os-radius-sm);
+          font-size: 13px;
+          color: var(--os-text-3);
+          cursor: pointer;
+          transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+
+          &:hover {
+            background: var(--dsw-static-neutral-bluish-75);
+            border-color: var(--os-border);
+            color: var(--os-text-2);
+          }
+
+          .tag-text {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .tag-close {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--os-text-4);
+
+            &:hover {
+              color: var(--os-text-2);
+            }
+
+            .el-icon {
+              font-size: 12px;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  .notes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .pagination {
+    display: flex;
+    justify-content: center;
+    margin-top: 24px;
+
+    .el-pager li {
+      border-radius: 6px;
+
+      &.is-active {
+        background: #f3f4f6;
+        color: #1f2937;
+      }
+    }
+  }
+}
+
+/* ==================== 双栏布局 ====================
+ * 左：搜索行 + 笔记列表 + 分页；右：热榜卡片。
+ * 这两条规则原先被误删过（页面会变成上下堆叠），所以放在根容器里显式声明。
+ */
+.notes-list-container .content-layout {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.notes-list-container .left-column {
+  flex: 1;
+  min-width: 0;
+}
+
+.notes-list-container .right-column {
+  width: 280px;
+  flex-shrink: 0;
+}
+
+.right-column {
+  width: 280px;
+  flex-shrink: 0;
+}
+
+.note-item {
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+    border-color: #d1d5db;
+  }
+
+  .note-avatar {
+    flex-shrink: 0;
+  }
+
+  .note-content {
+    flex: 1;
+    min-width: 0;
+
+    .note-title {
+      margin: 0 0 6px 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: #1f2937;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .note-summary {
+      margin: 0 0 10px 0;
+      font-size: 13px;
+      color: #6b7280;
+      line-height: 1.5;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .note-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #9ca3af;
+
+      .separator {
+        color: #d1d5db;
+      }
+
+      .tags {
+        color: #947a4a;
+
+        .clickable-tag {
+          cursor: pointer;
+          border-radius: 4px;
+          padding: 0 6px;
+          height: 20px;
+          line-height: 20px;
+          font-size: 11px;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          background: #fefce8;
+          border-color: #e5e0c0;
+          color: #947a4a;
+          margin: 0 2px;
+
+          &:hover {
+            background: #fef3c7;
+            border-color: #d4c89a;
+            color: #7a6239;
+          }
+        }
+      }
+    }
+  }
+
+  .note-actions {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-left: 12px;
+
+    .edit-btn {
+      border-radius: 8px;
+      font-weight: 500;
+      padding: 6px 14px;
+      color: #6b7280;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+      &:hover {
+        background: #fff;
+        border-color: #409eff;
+        color: #409eff;
+        transform: translateY(-2px);
+      }
+
+      &:active {
+        transform: translateY(0);
+      }
+    }
+  }
+}
+
+.ranking-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 18px 18px 14px;
+  position: sticky;
+  top: 24px;
+
+  .ranking-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .ranking-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1f2937;
+    letter-spacing: 0.3px;
+  }
+
+  /* —— 今日 / 周榜 分段胶囊 —— */
+  .ranking-tabs {
+    display: inline-flex;
+    padding: 3px;
+    gap: 2px;
+    background: #f3f4f6;
+    border-radius: 9px;
+
+    .ranking-tab {
+      appearance: none;
+      border: none;
+      outline: none;
+      cursor: pointer;
+      padding: 4px 14px;
+      border-radius: 7px;
+      font-size: 12px;
+      line-height: 1.4;
+      color: #6b7280;
+      background: transparent;
+      font-weight: 500;
+      transition: color 0.22s ease, background 0.22s ease, box-shadow 0.22s ease;
+
+      &:hover {
+        color: #374151;
+      }
+
+      &:focus-visible {
+        box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.35);
+      }
+
+      &.active {
+        background: #fff;
+        color: #2563eb;
+        font-weight: 600;
+        box-shadow: 0 1px 3px rgba(17, 24, 39, 0.12);
+      }
+    }
+  }
+
+  .ranking-subtitle {
+    margin-top: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #f3f4f6;
+    font-size: 11px;
+    color: #9ca3af;
+    letter-spacing: 0.2px;
+  }
+
+  .ranking-list {
+    margin-top: 4px;
+    max-height: 460px;
+    overflow-y: auto;
+
+    .ranking-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 8px;
+      margin: 2px 0;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.2s ease, transform 0.2s ease;
+
+      &:hover {
+        background: #f8fafc;
+        transform: translateX(2px);
+
+        .ranking-title-text {
+          color: #2563eb;
+        }
+      }
+
+      .ranking-rank {
+        width: 24px;
+        height: 24px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 7px;
+
+        .medal {
+          font-size: 17px;
+          line-height: 1;
+        }
+
+        .rank-num {
+          font-size: 12px;
+          font-weight: 700;
+          color: #9ca3af;
+        }
+
+        // 4 名之后的数字排名给一个浅灰底块，对齐奖牌尺寸
+        &.rank-4,
+        &.rank-5,
+        &.rank-6,
+        &.rank-7,
+        &.rank-8,
+        &.rank-9,
+        &.rank-10 {
+          background: #f3f4f6;
+
+          .rank-num {
+            color: #6b7280;
+          }
+        }
+      }
+
+      // 前三甲行轻微底色强调
+      &.top-three {
+        .ranking-title-text {
+          font-weight: 600;
+        }
+      }
+
+      .ranking-title-text {
+        flex: 1;
+        min-width: 0;
+        font-size: 13px;
+        font-weight: 500;
+        color: #1f2937;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        transition: color 0.2s ease;
+      }
+
+      .ranking-clicks {
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        font-size: 12px;
+        font-weight: 600;
+        color: #f97316;
+
+        .hot-flame {
+          font-size: 11px;
+        }
+      }
+    }
+  }
+
+  /* —— 加载骨架 —— */
+  .ranking-skeleton {
+    margin-top: 8px;
+
+    .skeleton-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 8px;
+    }
+
+    .skeleton-rank {
+      width: 24px;
+      height: 24px;
+      border-radius: 7px;
+      flex-shrink: 0;
+    }
+
+    .skeleton-bar {
+      flex: 1;
+      height: 12px;
+      border-radius: 6px;
+    }
+
+    .skeleton-num {
+      width: 34px;
+      height: 12px;
+      border-radius: 6px;
+      flex-shrink: 0;
+    }
+
+    .skeleton-rank,
+    .skeleton-bar,
+    .skeleton-num {
+      background: linear-gradient(90deg, #f3f4f6 25%, #e9edf2 37%, #f3f4f6 63%);
+      background-size: 400% 100%;
+      animation: ranking-shimmer 1.3s ease-in-out infinite;
+    }
+  }
+
+  /* —— 空态 / 错误态 —— */
+  .ranking-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 28px 12px;
+
+    .state-empty-icon {
+      font-size: 26px;
+    }
+
+    .state-text {
+      font-size: 12px;
+      color: #9ca3af;
+    }
+  }
+}
+
+/* 榜单切换：列表淡入 + 轻微上移 */
+.rank-fade-enter-active {
+  transition: all 0.3s ease;
+}
+
+.rank-fade-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.rank-fade-leave-active {
+  transition: all 0.15s ease;
+}
+
+.rank-fade-leave-to {
+  opacity: 0;
+}
+
+@keyframes ranking-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.el-empty__description {
+  color: #9ca3af;
+}
+
+.user-link {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+
+  &:hover {
+    color: #409eff;
+    border-bottom: 1px dashed #409eff;
+  }
+}
+
+.user-link.user-avatar {
+  border-bottom: none;
+
+  &:hover {
+    transform: scale(1.08);
+    box-shadow: 0 2px 8px rgba(64, 158, 255, 0.3);
+  }
+}

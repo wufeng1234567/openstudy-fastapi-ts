@@ -1,0 +1,18 @@
+.gallery-doc-filter-popper {
+  width: 320px !important;
+  max-width: calc(100vw - 24px) !important;
+}
+.gallery-doc-filter-popper .el-select-dropdown {
+  width: 100% !important;
+}
+.gallery-doc-filter-popper .el-select-dropdown__item {
+  overflow: hidden;
+  padding: 0 12px;
+  font-size: 12px;
+  line-height: 32px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gallery-doc-filter-popper .el-select-dropdown__item.is-selected {
+  font-weight: 600;
+}

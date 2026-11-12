@@ -1,0 +1,89 @@
+.chat-document-reader .reader-panel {
+  height: 100% !important;
+  min-height: 0 !important;
+  gap: 0 !important;
+  padding: 0 !important;
+}
+.chat-document-reader .reader-toolbar {
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 16px 20px 10px !important;
+  border-bottom: 0 !important;
+}
+.chat-document-reader .reader-toolbar__title {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+}
+.chat-document-reader .reader-toolbar__title b {
+  max-width: 280px !important;
+}
+.chat-document-reader .reader-toolbar__tools {
+  flex: 0 0 auto !important;
+  gap: 4px !important;
+}
+.chat-document-reader .reader-toolbar__tools .el-button {
+  padding: 5px 8px !important;
+  font-size: 11px !important;
+}
+.chat-document-reader .reader-search {
+  width: 170px !important;
+}
+.chat-document-reader .reader-stats {
+  flex: 0 0 auto !important;
+  gap: 14px !important;
+  padding: 0 20px 10px !important;
+  border-bottom: 1px solid #f0f3f8 !important;
+}
+.chat-document-reader .reader-body {
+  flex: 1 1 auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  grid-template-columns: 210px minmax(0, 1fr) !important;
+  gap: 14px !important;
+  padding: 14px 20px 18px !important;
+}
+.chat-document-reader .reader-body.is-toc-collapsed {
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 0 !important;
+}
+.chat-document-reader .reader-body.is-toc-collapsed .reader-toc {
+  display: none !important;
+}
+.chat-document-reader .reader-toc {
+  display: flex !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  flex-direction: column !important;
+}
+.chat-document-reader .reader-toc__list {
+  flex: 1 1 auto !important;
+  max-height: none !important;
+  overflow: auto !important;
+}
+.chat-document-reader .reader-main {
+  height: 100% !important;
+  max-height: none !important;
+}
+.chat-document-reader .reader-article {
+  max-width: 720px !important;
+  padding: 22px 28px 52px !important;
+}
+.chat-document-reader .reader-section__title {
+  font-size: 18px !important;
+}
+.chat-document-reader .reader-section__title--sub {
+  font-size: 15px !important;
+}
+.chat-document-reader .reader-close {
+  margin-left: 2px !important;
+  color: #8b95a5 !important;
+}
+.chat-document-reader .reader-close:hover {
+  color: #2f5fce !important;
+  background: #eef2ff !important;
+}
+.chat-document-reader .reader-loading {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}

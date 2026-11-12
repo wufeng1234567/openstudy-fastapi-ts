@@ -20,7 +20,17 @@
 | `views/front/workspace/index.vue` | `useWorkspaceCascade.ts` | 全库级联搜索、结果与打开动作 |
 | `views/front/workspace/components/KnowledgeWikiPanel.vue` | `knowledgeGraphMeta.ts` | 六类实体元数据、类型归一化与页面类型映射 |
 
-`workspace/index.vue` 已从 3430 行降到 3085 行；`KnowledgeWikiPanel.vue` 从 3240 行降到 3161 行。剩余部分继续按以下顺序拆。
+`workspace/index.vue` 已从 3430 行降到 3085 行；`KnowledgeWikiPanel.vue` 从 3240 行降到 2853 行。剩余部分继续按以下顺序拆。
+
+### 样式模块化
+
+对 11 个大文件做了原样抽取：把内联 `<style>` 拆成同目录 `*.styleN.scss` / `*.styleN.css`，保留原有 `scoped`/全局作用域，逻辑和模板不变。收益最大的文件：
+
+- `notes/detail.vue`：1204 → 566 行；
+- `notes/list.vue`：1190 → 685 行；
+- `myStats/index.vue`：1327 → 656 行；
+- `GalleryPanel.vue`：1273 → 541 行；
+- `AiChatStream/index.vue`：2067 → 980 行。
 
 ## 后续批次
 
@@ -31,7 +41,7 @@
 - `practiceQuestionUtils.ts`：题型归一、模拟组卷、题干清洗、选项归一化；
 - `usePracticeExamTimer.ts`：考试倒计时、时间到处理、页面可见性生命周期；
 - `usePracticeScrollHost.ts`：滚动宿主探测、回到顶部/跳到底部、尺寸监听；
-- `PracticeComponent.vue` 从 3469 行降到约 3143 行。
+- `PracticeComponent.vue` 从 3469 行降到约 2928 行。
 
 下一批继续：
 
@@ -51,12 +61,12 @@
 按页面域拆：
 
 - `studio/QuestionBuilder.vue` → 题目编辑器、题目预览、资料选题；已完成 `questionBuilderUtils.ts` 纯展示工具，主文件从 2892 行降到约 2854 行；
-- `english/listening/index.vue` → 听写控制、播放器、结果统计；已完成 `listeningUtils.ts` 纯工具（数组洗牌、延时、URL 种子签名），主文件从 2850 行降到约 2806 行；
-- `english/ocr/index.vue` → 上传/识别/校对；
-- `agent/chat.vue` / `components/AiChatStream` / `AgentToolResult` → 消息流、工具卡、会话列表；已完成 `agentToolResultSummary.ts`、`aiChatStreamUtils.ts` 纯展示工具；
-- `notes/*` → 列表、详情、编辑器；已完成 `notesUtils.ts` 纯展示工具，`notes/detail.vue` 从 1204 行降到约 1170 行；
-- `workspace/components/GalleryPanel.vue` → 已拆出 `GalleryDetailDrawer.vue` 和 `galleryUtils.ts`，主文件从 1273 行降到 1000 行；
-- `myQuestion/myStats/index.vue` → 已拆出 `useStatsCharts.ts`，主文件从 1327 行降到约 1184 行。
+- `english/listening/index.vue` → 听写控制、播放器、结果统计；已完成 `listeningUtils.ts` 纯工具（数组洗牌、延时、URL 种子签名），主文件从 2850 行降到约 2034 行；
+- `english/ocr/index.vue` → 上传/识别/校对；样式已外置，主文件从 2120 行降到约 1395 行；
+- `agent/chat.vue` / `components/AiChatStream` / `AgentToolResult` → 消息流、工具卡、会话列表；已完成 `agentToolResultSummary.ts`、`aiChatStreamUtils.ts` 纯展示工具；`AiChatStream` 降到约 980 行，`AgentToolResult` 降到约 1237 行；
+- `notes/*` → 列表、详情、编辑器；已完成 `notesUtils.ts` 纯展示工具，`notes/detail.vue` 降到约 566 行，`notes/list.vue` 降到约 685 行；
+- `workspace/components/GalleryPanel.vue` → 已拆出 `GalleryDetailDrawer.vue` 和 `galleryUtils.ts`，主文件从 1273 行降到约 541 行；
+- `myQuestion/myStats/index.vue` → 已拆出 `useStatsCharts.ts`，主文件从 1327 行降到约 656 行。
 
 ## 当前阈值
 

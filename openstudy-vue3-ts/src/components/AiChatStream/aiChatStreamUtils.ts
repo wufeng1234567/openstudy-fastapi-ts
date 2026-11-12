@@ -37,3 +37,47 @@ export function expertGroupTitle(experts: any): string {
   const running = list.some((e: any) => e?.status === 'running')
   return running ? `专家协同中（${n} 位）` : `专家协同完成（${n} 位）`
 }
+
+export function isLastAssistantEmpty(messages: any[], idx: number): boolean {
+  for (let i = messages.length - 1; i > idx; i--) {
+    const t = messages[i].type
+    if (
+      messages[i].role === 'assistant' &&
+      t !== 'tool_confirm' &&
+      t !== 'tool_result' &&
+      t !== 'agent_note' &&
+      t !== 'experts'
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
+export function noteIcon(kind: string): string {
+  if (kind === 'correct') return '↻'
+  if (kind === 'error') return '✕'
+  return '!'
+}
+
+/** 取某一轮 `turn_end` 之前的 assistant 正文。 */
+export function getTurnAnswerText(list: any[], turnId: string | number | undefined): string {
+  let end = -1
+  for (let i = list.length - 1; i >= 0; i--) {
+    const m = list[i]
+    if (m && m.type === 'turn_end' && String(m.turnId) === String(turnId)) {
+      end = i
+      break
+    }
+  }
+  if (end < 0) return ''
+  const parts: string[] = []
+  for (let i = end - 1; i >= 0; i--) {
+    const m = list[i]
+    if (m && m.type === 'turn_end') break
+    if (m && m.role === 'assistant' && !m.type && String(m.content || '').trim()) {
+      parts.unshift(String(m.content))
+    }
+  }
+  return parts.join('\n\n')
+}
