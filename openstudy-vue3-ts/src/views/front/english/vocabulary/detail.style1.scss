@@ -1,0 +1,464 @@
+.wd-page {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 20px 20px 60px;
+}
+
+/* ---------- 头部 ---------- */
+.wd-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.wd-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 10px;
+  flex: none;
+  font-size: 13px;
+  font-family: inherit;
+  border: 1px solid var(--os-border, #e5e7eb);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--os-text-2, #4b5563);
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--os-accent, #2563eb);
+    color: var(--os-accent, #2563eb);
+  }
+}
+
+.wd-head__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.wd-head__title {
+  margin: 0 0 4px;
+  font-size: 21px;
+  font-weight: 700;
+  color: var(--os-text, #111827);
+}
+
+.wd-head__desc {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--os-text-3, #9ca3af);
+}
+
+.wd-head__ops {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+
+.wd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 13px;
+  font-size: 13px;
+  font-family: inherit;
+  border-radius: 8px;
+  border: 1px solid var(--os-border, #e5e7eb);
+  background: #fff;
+  color: var(--os-text, #111827);
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover {
+    border-color: var(--os-accent, #2563eb);
+    color: var(--os-accent, #2563eb);
+  }
+
+  &.is-primary {
+    background: var(--os-text, #111827);
+    border-color: var(--os-text, #111827);
+    color: #fff;
+
+    &:hover {
+      background: #000;
+      border-color: #000;
+      color: #fff;
+    }
+  }
+}
+
+/* ---------- 学习进度 + 开始听写（2026-10-26） ---------- */
+/*
+ * 一条独立的横条，夹在头部和搜索栏之间。
+ * 左半边是记忆曲线进度（三段进度条 + 数字），右半边是练习入口。
+ *
+ * 用 `flex-wrap: wrap`：窄屏时右侧按钮组会掉到下一行，
+ * 而不是把进度条压成一条线 —— 这是"不要拥挤"的兜底。
+ */
+.wd-learn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--os-border, #eef0f3);
+  border-radius: 12px;
+  background: var(--os-bg-soft, #fafbfc);
+}
+
+.wd-learn__progress {
+  flex: 1;
+  min-width: 220px;
+}
+
+/* 三段进度条：绿=已掌握 蓝=学习中 灰=未学 */
+.wd-learn__bar {
+  display: flex;
+  width: 100%;
+  height: 7px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #e5e7eb;
+
+  .seg {
+    display: block;
+    height: 100%;
+    transition: width 0.3s ease;
+
+    &.is-mastered {
+      background: #10b981;
+    }
+    &.is-learning {
+      background: #3b82f6;
+    }
+    &.is-new {
+      background: #d1d5db;
+    }
+  }
+}
+
+.wd-learn__meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--os-text-3, #9ca3af);
+
+  .m {
+    b {
+      font-weight: 600;
+      color: var(--os-text, #111827);
+    }
+
+    /* 用小圆点传达颜色，比整段上色克制 */
+    &:before {
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      margin-right: 5px;
+      border-radius: 50%;
+      vertical-align: 1px;
+    }
+
+    &.is-mastered:before {
+      background: #10b981;
+    }
+    &.is-learning:before {
+      background: #3b82f6;
+    }
+    &.is-new:before {
+      background: #d1d5db;
+    }
+  }
+}
+
+/* 今日待复习：整条里唯一的高亮 —— 它是"该行动了"的信号 */
+.wd-learn__due {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #fef3c7;
+  color: #b45309;
+  font-size: 11.5px;
+
+  b {
+    font-weight: 700;
+  }
+}
+
+.wd-learn__ops {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  flex-wrap: wrap;
+}
+
+/* ---------- 工具条 ---------- */
+.wd-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.wd-search {
+  max-width: 300px;
+}
+
+.wd-count {
+  font-size: 12.5px;
+  color: var(--os-text-3, #9ca3af);
+
+  b {
+    color: var(--os-text, #111827);
+    font-weight: 600;
+  }
+}
+
+/* ---------- 批量操作工具栏（2026-10-26） ---------- */
+.wd-bulk {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+
+  .wd-bulk__info {
+    font-size: 13px;
+    color: #1e40af;
+
+    b {
+      font-weight: 600;
+    }
+  }
+
+  .wd-bulk__ops {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+}
+
+/* 勾选行的视觉反馈：一眼看出哪几条被选中 */
+.wd-item.is-checked {
+  background: #f0f7ff;
+  border-color: #bfdbfe;
+}
+
+.wd-item__check {
+  display: flex;
+  align-items: center;
+  padding-top: 2px;
+  flex: none;
+  cursor: pointer;
+
+  input {
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+    accent-color: #3b82f6;
+  }
+}
+
+/* ---------- 列表 ---------- */
+.wd-body {
+  min-height: 220px;
+}
+
+.wd-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wd-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+
+  &:hover {
+    border-color: var(--os-border, #e5e7eb);
+    background: var(--os-bg-subtle, #fafafa);
+  }
+
+  &:hover .wd-item__ops {
+    opacity: 1;
+  }
+}
+
+.wd-item__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.wd-item__word-row {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.wd-item__word {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--os-text, #111827);
+}
+
+.wd-item__say {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--os-text-3, #9ca3af);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--os-bg-hover, #f3f4f6);
+    color: var(--os-accent, #2563eb);
+  }
+}
+
+.wd-item__phonetic {
+  font-size: 12.5px;
+  color: var(--os-text-3, #9ca3af);
+}
+
+.wd-item__trans {
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--os-text-2, #4b5563);
+}
+
+.wd-item__example {
+  margin-top: 5px;
+  padding-left: 9px;
+  border-left: 2px solid var(--os-border, #e5e7eb);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--os-text-3, #9ca3af);
+}
+
+.wd-item__ops {
+  display: flex;
+  gap: 2px;
+  flex: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.wd-item__op {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--os-text-3, #9ca3af);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--os-bg-hover, #f3f4f6);
+    color: var(--os-text, #111827);
+  }
+
+  &.is-danger:hover {
+    background: #fee2e2;
+    color: #ef4444;
+  }
+}
+
+.wd-pager {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+/* ---------- 空态 ---------- */
+.wd-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 60px 20px;
+  text-align: center;
+  border: 1px dashed var(--os-border, #e5e7eb);
+  border-radius: 14px;
+  background: var(--os-bg-subtle, #fafafa);
+}
+
+.wd-empty__art {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 2px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid var(--os-border-light, #f1f3f5);
+  color: var(--os-text-3, #9ca3af);
+}
+
+.wd-empty__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--os-text-2, #4b5563);
+}
+
+.wd-empty__desc {
+  max-width: 340px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--os-text-3, #9ca3af);
+}
+
+.wd-empty__actions {
+  margin-top: 6px;
+}
+
+@media (max-width: 720px) {
+  .wd-head {
+    flex-wrap: wrap;
+  }
+
+  .wd-head__ops {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .wd-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .wd-search {
+    max-width: none;
+  }
+}

@@ -1,0 +1,9 @@
+.reader-search-mark { padding: 0 2px; border-radius: 2px; background: #fff3c4; color: inherit; }
+.reader-search-mark.reader-jump-highlight {
+  background: #ffe58f;
+  box-shadow: 0 0 0 3px rgba(255, 214, 102, .28);
+}
+.reader-image.reader-jump-image {
+  border-radius: 8px;
+  box-shadow: 0 0 0 4px rgba(255, 214, 102, .34);
+}

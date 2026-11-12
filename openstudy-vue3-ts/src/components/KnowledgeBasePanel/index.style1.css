@@ -1,0 +1,830 @@
+/* ========== 统一搜索框 ========== */
+.kb-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 0 10px;
+  height: 34px;
+  border: 1px solid #e5e7eb;
+  border-radius: 9px;
+  background: #fff;
+  transition: border-color 0.15s ease;
+}
+
+.kb-search:focus-within {
+  border-color: #4f6ef7;
+}
+
+.kb-search-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  color: #9aa5b5;
+}
+
+.kb-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  font-size: 12.5px;
+  color: #1f2d3d;
+  background: transparent;
+}
+
+/* 「搜索资料」钉在输入框右侧：让「输入 → 提交」在同一个框里完成，
+   不必先看下面那行提示再找按钮。 */
+.kb-search-go {
+  flex: none;
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+  border-radius: 7px;
+}
+
+.kb-search-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  font-size: 12px;
+  color: #9aa5b5;
+  cursor: pointer;
+}
+
+.kb-search-clear:hover {
+  background: #eef2f8;
+  color: #4a5a72;
+}
+
+/* 作用域提示：搜索词非空、但还没提交时出现 */
+.kb-scope {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 0 2px;
+  font-size: 12px;
+  color: #9aa5b5;
+}
+
+.kb-scope-hint {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ========== 搜索结果 ========== */
+.kb-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kb-results-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kb-results-title {
+  font-size: 12.5px;
+  color: #4a5a72;
+}
+
+.kb-results-title b {
+  color: #4f6ef7;
+  font-weight: 650;
+}
+
+.kb-results-scope {
+  margin-left: 6px;
+  font-size: 11.5px;
+  color: #b6bdc9;
+}
+
+/*
+ * 低置信提示（2026-10-22）
+ *
+ * 向量检索总会凑够 top_k 条，两路都没有关键词命中时这些只是"最像的"。
+ * 用琥珀色而不是红色：它不是错误，只是提醒"别把这些当成答案"。
+ */
+.kb-lowconf {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #92400e;
+}
+
+.kb-lowconf .el-icon {
+  flex: none;
+  margin-top: 2px;
+  color: #d97706;
+}
+
+/* 结果按**文档**分组：一组 = 一篇文档，组内是它命中的若干段 */
+.kb-hit-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.kb-hit-group {
+  border: 1px solid #e8eef8;
+  border-radius: 10px;
+  background: #fbfcfe;
+  overflow: hidden;
+}
+/* 组头 = 文档名 + 所属库 + 命中段数：用底色与下面片段拉开层次，一眼看清「这组是什么」 */
+.kb-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  background: #f4f7fc;
+  border-bottom: 1px solid #e8eef8;
+}
+.kb-group-icon {
+  flex: none;
+  font-size: 14px;
+  color: #6b8fd4;
+}
+.kb-group-title {
+  flex: 1;
+  min-width: 0;
+}
+.kb-group-doc {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1f2d3d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kb-group-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: #9aa5b5;
+}
+.kb-group-open {
+  flex: none;
+  padding: 3px;
+  border-radius: 6px;
+  color: #9aa5b5;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.kb-group-open:hover {
+  background: #e7eefc;
+  color: #3b7ddd;
+}
+
+/* 组内片段：外层已经是卡片，这里不再套一层边框，改用细分隔线 */
+.kb-hit-group .kb-hit {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  border-top: 1px solid #f2f6fb;
+}
+.kb-hit-group .kb-hit:hover {
+  background: #f8fbff;
+}
+.kb-hit-group .kb-hit.open {
+  background: #fff;
+}
+
+.kb-hit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kb-hit {
+  border: 1px solid #eef2f7;
+  border-radius: 10px;
+  background: #fbfcfe;
+  padding: 9px 11px;
+  transition: border-color 0.15s ease;
+}
+
+.kb-hit:hover {
+  border-color: #d9e4f5;
+}
+
+.kb-hit.open {
+  background: #fff;
+  border-color: #c6e2ff;
+}
+
+.kb-hit-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.kb-hit-idx {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border-radius: 5px;
+  background: #eef2ff;
+  color: #4f6ef7;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 18px;
+  text-align: center;
+}
+
+.kb-hit-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.kb-hit-doc {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1f2d3d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kb-hit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: #9aa5b5;
+}
+
+.kb-hit-kb {
+  color: #4f6ef7;
+}
+
+.kb-hit-score {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #b6bdc9;
+  font-variant-numeric: tabular-nums;
+}
+
+.kb-hit-body {
+  margin-top: 7px;
+  font-size: 12px;
+  line-height: 1.75;
+  color: #4a5a72;
+  white-space: pre-wrap;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.kb-hit.open .kb-hit-body {
+  display: block;
+  -webkit-line-clamp: unset;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.kb-hit-body :deep(mark) {
+  background: #fff3c4;
+  color: inherit;
+  padding: 0 1px;
+  border-radius: 2px;
+}
+
+.kb-hit-ops {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 7px;
+  font-size: 11.5px;
+  color: #9aa5b5;
+}
+
+.kb-hit-more {
+  margin-left: auto;
+  color: #4f6ef7;
+  cursor: pointer;
+}
+
+.kb-hit-more:hover {
+  text-decoration: underline;
+}
+/* ========== 面板容器 ========== */
+/* 嵌进宿主的容器里（抽屉 body / tab 内容区）：撑满、自己管滚动 */
+.kb-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+/* ========== 抽屉 ========== */
+.kb-body {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.kb-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.kb-head-left {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.kb-title {
+  font-size: 15px;
+  font-weight: 650;
+  color: #1f2d3d;
+}
+
+.kb-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #9aa5b5;
+}
+
+.kb-head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.kb-close {
+  cursor: pointer;
+  color: #9aa5b5;
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.kb-close:hover {
+  background: #f1f5f9;
+  color: #4a5a72;
+}
+
+.kb-main {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 18px 18px;
+}
+
+/* ========== 列表没取到 ========== */
+/* 「列表没取到」的横幅：与「一个库都没有」的空态文案是两件事，不能共用 */
+.kb-load-failed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  border: 1px solid #f0d9a8;
+  border-radius: 7px;
+  background: #fffaf0;
+  font-size: 12px;
+  color: #8a6d3b;
+}
+
+.kb-load-failed span {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ========== 知识库搜索 ========== */
+/* 搜索框在列表**外面**（见模板注释），所以它自己那行用 flex 排，
+   不用绝对定位 —— 绝对定位的清除按钮在窄屏/多行时会跑位 */
+
+/* ========== 范围选择条（勾选库 = 收窄检索范围） ========== */
+/* 贴在搜索框正下方，是「回车会搜哪儿」的可操作答案：
+   不勾 = 搜全部（默认），勾了 = 只搜这些。所以它必须比列表更显眼一点，
+   否则用户会把它当成一段说明文字划过去，继续误读检索范围。 */
+.kb-pick-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 2px;
+  padding: 7px 10px;
+  /* 本块在 .kb-list-wrap（max-height + overflow-y:auto）内部，库多了会跟着滚走 ——
+     而「已选几个 / 是否只搜勾选的库」必须在勾选当下一直看得见，所以钉在顶部。 */
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  border: 1px solid #e6edf7;
+  border-radius: 9px;
+  background: #f7f9fc;
+  font-size: 12px;
+}
+.kb-pick-hint {
+  flex: 1;
+  min-width: 0;
+  color: #7a8798;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 选了库 = 范围被收窄，这是**有后果**的状态，用主色点出来 */
+.kb-pick-hint.on {
+  color: #3b7ddd;
+  font-weight: 550;
+}
+/* 「全部勾上 / 取消勾选」在右侧，不能被提示文字挤到换行或变形 */
+.kb-pick-bar .el-button {
+  flex: none;
+}
+
+/* ========== 知识库列表 ========== */
+.kb-list-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* 库多了（十几个）时列表**自己滚**：不让它把文档区与「试检索」输入框整个推出视口 ——
+     否则用户要把所有知识库滚完才摸得到检索按钮。
+     ⚠️ 用 `max-height` 自己给出确定上界，**不依赖**抽屉高度（`.el-drawer__body` 在本 SFC 之外，
+        它怎么解析在离线下没法验证），所以这里也不需要 `:deep()`。 */
+  max-height: 40vh;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.kb-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid #eef2f7;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.kb-item:hover {
+  background: #f8fafc;
+  border-color: #dfe6f0;
+}
+
+.kb-item.active {
+  background: #eef4ff;
+  border-color: #bcd0f7;
+}
+
+.kb-item-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.kb-item-name {
+  font-size: 13.5px;
+  color: #1f2d3d;
+  font-weight: 550;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kb-item-meta {
+  display: flex;
+  gap: 10px;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: #9aa5b5;
+}
+
+/* 「已屏蔽」状态：**常驻**可见，不参与上面的 .kb-item-ops 悬停机制 ——
+   用户要能一眼看出「哪些库智能体现在看不到」，那是他开这个开关的目的 */
+.kb-item-blocked {
+  padding: 0 5px;
+  border-radius: 4px;
+  background: #f1f3f5;
+  color: #8a94a6;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+/* 被屏蔽的库：名字压暗，但**不隐藏、不置灰到点不动** —— 它还要能被选中、能取消屏蔽。
+   ⚠️ 这里故意不覆盖 background：`.kb-item.active`（选中态）在后面，两边特异性相同、
+   靠源码顺序决胜，加一条 background 会把选中高亮吃掉。所以状态只由名字颜色 + 上面那枚标签表达。 */
+.kb-item.blocked .kb-item-name {
+  color: #9aa5b5;
+}
+
+/* 屏蔽开关：必须常驻可见 → 放在 .kb-item-ops **外面**（那里 `opacity: 0`，悬停才显形） */
+.kb-block {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.kb-item-ops {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.kb-item:hover .kb-item-ops {
+  opacity: 1;
+}
+
+.kb-op {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: #9aa5b5;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.kb-op:hover {
+  background: #eef2f8;
+  color: #4a5a72;
+}
+
+.kb-op.danger:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.kb-empty {
+  padding: 28px 16px;
+  text-align: center;
+}
+
+.kb-empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #33415c;
+}
+
+.kb-empty-desc {
+  margin: 8px auto 14px;
+  max-width: 340px;
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: #9aa5b5;
+}
+
+/* ========== 文档区 ========== */
+.kb-docs {
+  margin-top: 16px;
+  border-top: 1px solid #eef2f7;
+  padding-top: 14px;
+}
+
+.kb-docs-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kb-docs-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #1f2d3d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kb-docs-hint {
+  font-size: 11.5px;
+  color: #b6bdc9;
+}
+
+.kb-upload-dropdown {
+  margin-left: auto;
+}
+
+.kb-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border: none;
+  border-radius: 8px;
+  background: #4f6ef7;
+  color: #fff;
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.kb-upload-btn:hover {
+  background: #3f5ce0;
+}
+
+.kb-upload-btn.disabled {
+  background: #b6bdc9;
+  cursor: not-allowed;
+}
+
+.kb-upload-btn input {
+  display: none;
+}
+
+.kb-upload-caret {
+  margin-left: 2px;
+  font-size: 11px;
+}
+
+/* 「粘贴文本」入口：.kb-upload-btn 的平级姊妹按钮（次级观感）。
+   这里**只加自己的规则**，不动上传按钮的任何声明 —— 上传那条样式是既有的、
+   用户已经看惯的；两个按钮靠 .kb-docs-head 的 gap 排在一起。 */
+.kb-import-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border: 1px solid #bcd0f7;
+  border-radius: 8px;
+  background: #fff;
+  color: #4f6ef7;
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.kb-import-btn:hover {
+  background: #eef4ff;
+}
+
+/* 忙（上传中 / 导入中）时两个入口一起变灰，观感与 .kb-upload-btn.disabled 对齐 */
+.kb-import-btn.disabled,
+.kb-import-btn:disabled {
+  border-color: #dfe6f0;
+  background: #f5f7fa;
+  color: #b6bdc9;
+  cursor: not-allowed;
+}
+
+.kb-tip {
+  margin-top: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #2563eb;
+  background: #f2f7ff;
+  border: 1px solid #d8e5ff;
+  border-radius: 7px;
+}
+
+.kb-doc-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 60px;
+}
+
+.kb-doc {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #eef2f7;
+  border-radius: 9px;
+}
+
+.kb-doc-check {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+
+.kb-doc-check :deep(.el-checkbox) {
+  margin-right: 0;
+}
+
+.kb-batch-delete {
+  flex: none;
+}
+
+.kb-doc-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.kb-doc-name {
+  font-size: 13px;
+  color: #33415c;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kb-doc-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: #9aa5b5;
+}
+
+.kb-doc-chunks.is-warn {
+  color: #b45309;
+}
+
+.kb-doc-chunks.is-error {
+  color: #b91c1c;
+}
+
+.kb-doc-ops {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.kb-doc-empty {
+  padding: 18px 0;
+  text-align: center;
+  font-size: 12.5px;
+  color: #b6bdc9;
+}
+
+/* ========== 资料结构树（2026-10-26 v3）========== */
+.kb-outline-body {
+  /* 给一个确定的最小高度，避免加载时对话框高度跳动 */
+  min-height: 200px;
+}
+
+.kb-outline-empty {
+  padding: 40px 24px;
+  line-height: 1.8;
+}
+
+.kb-outline-empty p {
+  margin: 0;
+  max-width: 520px;
+  display: inline-block;
+  text-align: left;
+  color: #8b95a5;
+}
+
+/* ========== 试检索 ========== */
+
+/* ========== 粘贴文本 ========== */
+.kb-import {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kb-import-hint {
+  padding: 8px 10px;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+  background: #f8fafc;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: #6b7280;
+}
+
+/* el-input 的根节点就在这两类上（textarea 也一样），显式撑满弹窗宽度 */
+.kb-import-name,
+.kb-import-text {
+  width: 100%;
+}
+
+.kb-import-count {
+  text-align: right;
+  font-size: 11.5px;
+  color: #b6bdc9;
+}

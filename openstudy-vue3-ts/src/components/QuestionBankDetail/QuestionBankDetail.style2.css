@@ -1,0 +1,36 @@
+.export-dropdown-popper .el-dropdown-menu__item.export-group-label,
+.el-dropdown-menu__item.export-group-label {
+  font-size: 12px;
+  color: #9ca3af;
+  cursor: default;
+  padding-top: 6px;
+  padding-bottom: 2px;
+  min-height: auto;
+  line-height: 1.4;
+}
+
+/* disabled 的 el-dropdown-item 默认会变半透明，分组标题不该"看起来坏了" */
+.el-dropdown-menu__item.export-group-label.is-disabled {
+  color: #9ca3af;
+  opacity: 1;
+}
+
+/*
+ * 抵消 el-row 的 gutter 负外边距（2026-10-27 修）
+ *
+ * ⚠️ 实测：`<el-row :gutter="20">` 会给自身加 `margin: 0 -10px`，
+ *    而这两个区块的父容器没有对应内边距抵消 ——
+ *    于是内容比容器宽 **10px**，`scrollWidth > clientWidth`，
+ *    浏览器给内容区挂一条横向滚动条。
+ *
+ *    四种视口下都恒定多 10px（与视口宽度无关），
+ *    这正是"负边距没被抵消"的典型特征。
+ *
+ * 修法：给区块加与 gutter 等量的左右内边距（10px = gutter/2），
+ *      这样 row 的负外边距正好落进内边距里，不再撑破容器。
+ */
+.my-learning,
+.special-practice {
+  padding-left: 10px;
+  padding-right: 10px;
+}

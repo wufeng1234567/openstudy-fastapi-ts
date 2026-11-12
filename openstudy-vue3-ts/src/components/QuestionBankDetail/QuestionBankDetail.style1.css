@@ -1,0 +1,762 @@
+.bank-detail-container {
+  padding: 20px;
+}
+
+/* --- 头部 --- */
+.bank-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 20px;
+  margin-bottom: 30px;
+  border-bottom: 1px solid #f0f0f0;
+  position: relative;
+  min-height: 80px;
+}
+
+/* 左侧：返回 */
+.header-left {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.back-link {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.back-link:hover {
+  color: #333;
+}
+
+/* 中间：标题 - 绝对居中 */
+.header-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.bank-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.bank-name {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #1f2937;
+  white-space: nowrap;
+}
+
+.bank-stats {
+  display: flex;
+  gap: 20px;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 右侧：操作按钮 */
+.header-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  flex: 1;
+}
+
+/* 导出下拉的分组标题（「含答案与解析」/「无答案（学生卷）」）：
+   ⚠️ 不能写在这个 scoped 块里 —— `el-dropdown-menu` 会 teleport 到 body，
+   scoped 的 `[data-v-xxx]` 属性加不到那些节点上。实际样式见文件末尾的非 scoped 块。 */
+
+.action-link {
+  color: #6b7280;
+  font-weight: 400;
+}
+
+.action-link:hover {
+  color: #409EFF;
+}
+
+.fav-wrapper {
+  display: flex;
+  align-items: center;
+}
+
+.fav-wrapper :deep(.el-button) {
+  border: none;
+  background: transparent !important;
+  padding: 0;
+}
+
+/* 响应式适配 */
+@media (max-width: 768px) {
+  .bank-header {
+    flex-direction: column;
+    align-items: flex-start;
+    min-height: auto;
+    gap: 12px;
+  }
+
+  .header-center {
+    position: static;
+    transform: none;
+    width: 100%;
+    align-items: flex-start;
+    padding: 8px 0;
+  }
+
+  .bank-info {
+    align-items: flex-start;
+  }
+
+  .bank-name {
+    font-size: 20px;
+  }
+
+  .bank-stats {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .header-left {
+    width: 100%;
+  }
+
+  .header-right {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
+/* 左侧：返回 */
+.back-link {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: color 0.2s;
+  flex-shrink: 0;
+}
+
+.back-link:hover {
+  color: #333;
+}
+
+/* 中间：标题居中 */
+.bank-title {
+  display: flex;
+  justify-content: center;
+  flex: 1;
+  padding: 0 20px;
+}
+
+.bank-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.bank-name {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.bank-stats {
+  display: flex;
+  gap: 20px;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 右侧：操作按钮 */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.action-link {
+  color: #6b7280;
+  font-weight: 400;
+}
+
+.action-link:hover {
+  color: #409EFF;
+}
+
+.fav-wrapper {
+  display: flex;
+  align-items: center;
+}
+
+.fav-wrapper :deep(.el-button) {
+  border: none;
+  background: transparent !important;
+  padding: 0;
+}
+
+.header-left-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+}
+
+/* 返回按钮独立一行，靠左上角 */
+.back-link {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: color 0.2s;
+  margin-bottom: 8px;
+}
+
+.back-link:hover {
+  color: #333;
+}
+
+.bank-title {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.bank-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bank-name {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.bank-stats {
+  display: flex;
+  gap: 20px;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 12px;
+  align-self: flex-end;
+}
+
+.action-link {
+  color: #6b7280;
+  font-weight: 400;
+}
+
+.action-link:hover {
+  color: #409EFF;
+}
+
+.fav-wrapper {
+  display: flex;
+  align-items: center;
+}
+
+.fav-wrapper :deep(.el-button) {
+  border: none;
+  background: transparent !important;
+  padding: 0;
+}
+
+.header-left-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.back-link {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.back-link:hover {
+  color: #333;
+}
+
+.bank-title {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.bank-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.bank-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bank-name {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.bank-stats {
+  display: flex;
+  gap: 20px;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.action-link {
+  color: #6b7280;
+  font-weight: 400;
+}
+
+.action-link:hover {
+  color: #409EFF;
+}
+
+.fav-wrapper {
+  display: flex;
+  align-items: center;
+}
+
+.fav-wrapper :deep(.el-button) {
+  border: none;
+  background: transparent !important;
+  padding: 0;
+}
+
+/* --- 我的学习 --- */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.section-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 18px;
+  color: #1f2937;
+}
+
+.section-title .el-icon {
+  color: #6b7280;
+}
+
+.section-subtitle {
+  color: #9ca3af;
+  font-size: 13px;
+  margin-left: 28px;
+}
+
+.rounded-btn {
+  border-radius: 8px !important;
+}
+
+.learning-card {
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  margin-bottom: 20px;
+}
+
+.learning-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  border-color: #d1d5db;
+}
+
+.learning-card.empty-card {
+  opacity: 0.8;
+}
+
+.learning-card.empty-card:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.card-content {
+  display: flex;
+  align-items: center;
+  padding: 20px;
+}
+
+.card-icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 16px;
+  font-size: 24px;
+  color: white;
+  flex-shrink: 0;
+}
+
+.card-icon.mistake {
+  background-color: #f56c6c;
+}
+
+.card-icon.favorite {
+  background-color: #e6a23c;
+}
+
+.card-icon.marked {
+  background-color: #f59e0b;
+}
+
+.card-icon.note {
+  background-color: #67c23a;
+}
+
+.card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.card-title {
+  font-size: 14px;
+  color: #909399;
+  margin-bottom: 4px;
+}
+
+.card-count {
+  font-size: 32px;
+  font-weight: 600;
+  color: #303133;
+  line-height: 1;
+}
+
+.card-count.zero {
+  color: #c0c4cc;
+}
+
+.card-unit {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 2px;
+}
+
+/* 卡片底部 - 去掉背景，左对齐，灰色文字 */
+.card-footer {
+  background: transparent;
+  border-top: none;
+  padding: 12px 20px 8px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* ✅ 改为 center 实现水平居中 */
+  gap: 4px;
+  color: #6b7280;
+  font-size: 13px;
+  transition: color 0.2s;
+}
+
+.card-footer:hover {
+  color: #409EFF;
+}
+
+/* 紧凑模式适配 */
+.learning-card.compact-mode .card-content {
+  flex-direction: column;
+  padding: 16px;
+  justify-content: center;
+  align-items: center;
+}
+
+.learning-card.compact-mode .card-icon {
+  margin-right: 0;
+  margin-bottom: 12px;
+  width: 48px;
+  height: 48px;
+}
+
+.learning-card.compact-mode .card-info-compact {
+  text-align: center;
+}
+
+.learning-card.compact-mode .card-count-compact {
+  font-size: 24px;
+  font-weight: 700;
+  color: #303133;
+  line-height: 1;
+}
+
+.learning-card.compact-mode .card-count-compact.zero {
+  color: #c0c4cc;
+}
+
+/* --- 专项练习 --- */
+.practice-card {
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid #e4e7ed;
+  border-radius: 16px;
+  margin-bottom: 20px;
+  min-height: 200px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.practice-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  border-color: #d1d5db;
+}
+
+.practice-icon-wrapper {
+  margin-bottom: 12px;
+}
+
+.practice-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: white;
+  margin: 0 auto;
+  flex-shrink: 0;
+}
+
+.practice-icon.sequential {
+  background-color: rgba(64, 158, 255, 0.9);
+}
+
+.practice-icon.random {
+  background-color: rgba(245, 108, 108, 0.9);
+}
+
+.practice-icon.custom {
+  background-color: rgba(103, 194, 58, 0.9);
+}
+
+/*
+ * 「错题练习」（2026-10-20 由「自定义练习」改造而来）
+ *
+ * 用**紫色**而不是复用 custom 的绿色：
+ *   四个入口现在分别是 蓝（顺序）/ 红（随机）/ 紫（错题）/ 橙（模拟考试），
+ *   色相彼此拉开，一眼能靠颜色定位。复用绿色会让用户以为是同一个入口换了名字。
+ */
+.practice-icon.wrong {
+  background-color: rgba(147, 51, 234, 0.9);
+}
+
+/* 「暂无错题」时的弱化文案 —— 与「N 道错题」同一行，但不当成正常数据 */
+.practice-meta .is-empty {
+  color: var(--os-text-4, #9ca3af);
+}
+
+.practice-icon.exam {
+  background-color: rgba(230, 162, 60, 0.9);
+}
+
+.practice-content {
+  text-align: center;
+  width: 100%;
+}
+
+.practice-content h4 {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  color: #303133;
+}
+
+.practice-content p {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  color: #909399;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+.practice-meta {
+  font-size: 12px;
+  color: #c0c4cc;
+}
+
+.practice-card.compact-mode {
+  min-height: auto;
+  padding: 16px;
+}
+
+.practice-card.compact-mode .practice-icon {
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
+}
+
+.practice-card.compact-mode .practice-content p {
+  display: none;
+}
+
+/* --- 响应式 --- */
+@media (max-width: 768px) {
+  .bank-header {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .header-left-wrapper {
+    flex-direction: row;
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .bank-title {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .bank-stats {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .learning-card,
+  .practice-card {
+    margin-bottom: 16px;
+  }
+}
+
+/* 动画 */
+.learning-card,
+.practice-card {
+  animation: fadeIn 0.5s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+:deep(.el-progress-bar__inner) {
+  background-color: #409EFF;
+}
+
+/* ===== 分享 / 复制 ===== */
+.bank-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bank-title-row .bank-name {
+  margin: 0;
+}

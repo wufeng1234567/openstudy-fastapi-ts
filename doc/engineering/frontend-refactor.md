@@ -24,13 +24,16 @@
 
 ### 样式模块化
 
-对 11 个大文件做了原样抽取：把内联 `<style>` 拆成同目录 `*.styleN.scss` / `*.styleN.css`，保留原有 `scoped`/全局作用域，逻辑和模板不变。收益最大的文件：
+对全部大文件做了原样抽取：把内联 `<style>` 拆成同目录 `*.styleN.scss` / `*.styleN.css`，保留原有 `scoped`/全局作用域，逻辑和模板不变。收益最大的文件：
 
 - `notes/detail.vue`：1204 → 566 行；
 - `notes/list.vue`：1190 → 685 行；
 - `myStats/index.vue`：1327 → 656 行；
 - `GalleryPanel.vue`：1273 → 541 行；
-- `AiChatStream/index.vue`：2067 → 980 行。
+- `AiChatStream/index.vue`：2067 → 980 行；
+- `AgentToolResult/index.vue`：2007 → 957 行。
+
+二次扫描后，当前 Vue 文件中只剩 12 个仍超过 1000 行：`workspace/index.vue`、`PracticeComponent.vue`、`QuestionBuilder.vue`、`KnowledgeWikiPanel.vue`、`english/listening`、`english/ocr`、`agent/chat`、`AiAssistant`、`MyQuestion`、`KnowledgeBasePanel`、`questionMarked`、`questionError`。
 
 ## 后续批次
 

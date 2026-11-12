@@ -1058,33 +1058,4 @@ function handleExport() {
 getList()
 </script>
 
-<style scoped>
-.el-rate {
-  --el-rate-icon-size: 20px;
-}
-
-:deep(.el-table .cell) {
-  line-height: 1.5;
-}
-
-:deep(.el-table .el-tag) {
-  margin: 2px;
-}
-
-.validation-status {
-  margin-top: 5px;
-  font-size: 12px;
-}
-
-.validation-success {
-  color: #67c23a;
-}
-
-.validation-error {
-  color: #f56c6c;
-}
-
-.validation-loading {
-  color: #909399;
-}
-</style>
+<style scoped src="./index.style1.css"></style>

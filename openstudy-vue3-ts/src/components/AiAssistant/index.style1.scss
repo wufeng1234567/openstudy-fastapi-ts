@@ -1,0 +1,435 @@
+.ai-assistant {
+
+  /* 抽屉内容铺满，去掉 Element Plus 默认内边距 */
+  :deep(.el-drawer) {
+    overflow: visible;
+  }
+
+  /* 拖拽调宽时：关掉内部交互与重绘，进一步保证跟手（Element Plus 官方也有 is-dragging 约定） */
+  :deep(.el-drawer.is-dragging) {
+    user-select: none;
+    /*
+     * 干掉抽屉自带的大面积阴影：Element Plus 的 `--el-box-shadow-dark` 是三层大模糊
+     * （48px 级），抽屉高近一屏 → 宽度一变，整条阴影区域**每帧重绘**，是拖拽卡顿的大头。
+     *
+     * ⚠️ 必须用 inset 阴影、**不要用 border**：`box-sizing: border-box` 下 border 会吃掉
+     *    1px 内容宽，会让消息重新折行（哪怕只差 1px），平白多一次全量重排。
+     */
+    box-shadow: inset 1px 0 0 var(--el-border-color-lighter, #e4e7ed);
+
+    .assistant-container {
+      pointer-events: none;
+    }
+  }
+
+  /*
+   * 长会话拖拽跟手的**关键**：让离屏消息跳过布局
+   *
+   * 宽度一变，普通元素连「看不见的」消息也要重新折行 —— 几百条消息时，
+   * 单帧几十毫秒基本都花在这儿。拖拽期间临时开 `content-visibility: auto`，
+   * 离屏消息直接跳过布局，每帧只处理可视区那几条。
+   *
+   * ⚠️ 两个坑（第一次就踩了，务必别改回去）：
+   *
+   *  ① **高度必须可信**：`.message` 上**常驻** `contain-intrinsic-size: auto 90px`。
+   *     `auto` 关键字会让浏览器记住每条消息**上一次真实渲染的高度**，于是「跳过布局」时
+   *     用的还是真实高度 → 总高度几乎不变（只是不再重新计算）。
+   *     没有 `content-visibility` 在场时，这条属性**完全无副作用**，所以可以常驻。
+   *
+   *  ② **绝不要动 `overflow-anchor`**：滚动锚定是浏览器自己「高度突变时保住可视位置」的机制。
+   *     上次我为了省一点锚点重算写成 `overflow-anchor: none`，结果 scrollTop 被钳制 →
+   *     松手后滚动条「跳到很上方」。现在改由 JS 记录/复原锚点兜底
+   *     （见 `captureScrollAnchor` / `restoreScrollAnchor`），不依赖浏览器行为。
+   */
+  :deep(.el-drawer .message) {
+    contain-intrinsic-size: auto 90px;
+  }
+
+  :deep(.el-drawer.is-dragging .message) {
+    content-visibility: auto;
+  }
+
+  :deep(.el-drawer__body) {
+    position: relative;
+    overflow: hidden;
+    padding: 0;
+  }
+
+  /* ========== 抽屉宽度拖拽手柄 ========== */
+  .drawer-resize-handle {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 10px;
+    cursor: col-resize;
+    z-index: 10;
+
+    &::after {
+      content: '';
+      position: absolute;
+      left: 4px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 32px;
+      border-radius: 2px;
+      background: transparent;
+      transition: background 0.15s;
+    }
+
+    &:hover::after {
+      background: #c0c4cc;
+    }
+  }
+
+  /* ========== 整体容器 ========== */
+  .assistant-container {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #fff;
+  }
+
+  /* ========== 头部 ========== */
+  .assistant-header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 14px 16px 10px;
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      color: #1f2937;
+      white-space: nowrap;
+      /* 标题随模式变长（OpenStudy-Agent 比「OpenStudy 助手」长），抽屉可以拖到很窄（MIN 320px）
+         → 允许左侧被压缩、标题省略号，别把右侧的模型选择器和图标挤出去 */
+      min-width: 0;
+
+      .el-icon {
+        flex-shrink: 0;
+      }
+
+      .header-title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+      /* 空间不够时让左边的标题去省略号，右侧的模型选择器与图标保持完整 */
+      flex-shrink: 0;
+
+      .action-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        cursor: pointer;
+        color: #909399;
+        font-size: 16px;
+        transition: color 0.2s ease;
+
+        &:hover,
+        &.active {
+          color: #409eff;
+        }
+      }
+
+      .close-icon:hover {
+        color: #303133;
+      }
+    }
+  }
+
+  /* ========== 智能体写操作开关（输入区工具栏右侧，发送键左边） ========== */
+  .agent-autoconfirm {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .ac-text {
+    font-size: 12px;
+    color: #6b7280;
+    white-space: nowrap;
+  }
+
+  /* ========== 历史会话悬浮面板 ========== */
+  .session-popover {
+    position: absolute;
+    top: 52px;
+    right: 12px;
+    width: 264px;
+    max-height: 62%;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    z-index: 30;
+    overflow: hidden;
+
+    .session-popover-header {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #1f2937;
+      border-bottom: 1px solid #e5e7eb;
+
+      .session-count {
+        font-weight: 400;
+        color: #9ca3af;
+      }
+    }
+
+    .session-list {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 6px;
+    }
+
+    .session-item {
+      position: relative;
+      padding: 8px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s ease;
+
+      &:hover {
+        background: #f3f4f6;
+      }
+
+      &.active {
+        background: #ecf5ff;
+      }
+
+      .session-title {
+        padding-right: 20px;
+        font-size: 13px;
+        color: #1f2937;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .session-meta {
+        margin-top: 3px;
+        display: flex;
+        gap: 10px;
+        font-size: 11px;
+        color: #9ca3af;
+      }
+
+      .session-delete {
+        position: absolute;
+        top: 8px;
+        right: 6px;
+        display: none;
+        color: #9ca3af;
+      }
+
+      &:hover .session-delete {
+        display: inline-flex;
+      }
+
+      .session-delete:hover {
+        color: #f56c6c;
+      }
+    }
+  }
+
+  /* ========== Tabs ========== */
+  .assistant-tabs {
+    flex-shrink: 0;
+    display: flex;
+    gap: 4px;
+    padding: 0 16px;
+    border-bottom: 1px solid #e5e7eb;
+
+    .tab-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 8px 14px;
+      font-size: 13px;
+      color: #6b7280;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s ease;
+
+      &:hover {
+        color: #409eff;
+      }
+
+      &.active {
+        color: #409eff;
+        border-bottom-color: #409eff;
+        font-weight: 600;
+      }
+
+      /* 自检运行中的小红点：切到别的 tab 也能看见它在跑 */
+      .tab-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #f56c6c;
+        animation: sc-pulse 1.2s ease-in-out infinite;
+      }
+    }
+  }
+
+  @keyframes sc-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.25;
+    }
+  }
+
+  /* ========== 内容区 ========== */
+  .assistant-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ========== 我的题库 ========== */
+  .banks-panel {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 16px;
+
+    .bank-list {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+    }
+
+    .bank-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      background: #fafafa;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+
+      &:hover {
+        background: #f0f7ff;
+        border-color: #c6e2ff;
+      }
+
+      .bank-name {
+        margin-bottom: 4px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #1f2937;
+      }
+
+      .bank-meta {
+        display: flex;
+        gap: 10px;
+        font-size: 12px;
+        color: #9ca3af;
+      }
+
+      .bank-arrow {
+        flex-shrink: 0;
+        color: #c0c4cc;
+      }
+    }
+  }
+
+  /* ========== 我的知识库 ========== */
+  /* 面板自己管滚动与内边距（见 KnowledgeBasePanel 的 .kb-panel / .kb-main），
+     这里只负责把它撑满内容区 —— 高度链断掉的话 .kb-main 的 overflow-y 就不生效 */
+  .knowledge-panel {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ========== 欢迎卡片 ========== */
+  .welcome-card {
+    padding: 20px 8px;
+    text-align: center;
+
+    .welcome-icon {
+      font-size: 40px;
+    }
+
+    .welcome-title {
+      margin-top: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      color: #1f2937;
+    }
+
+    .welcome-desc {
+      margin-top: 6px;
+      font-size: 13px;
+      color: #9ca3af;
+    }
+
+    .quick-actions {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .quick-item {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px;
+      font-size: 13px;
+      color: #4b5563;
+      background: #f8f9fa;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+
+      &:hover {
+        color: #409eff;
+        border-color: #c6e2ff;
+        background: #ecf5ff;
+      }
+    }
+  }
+}

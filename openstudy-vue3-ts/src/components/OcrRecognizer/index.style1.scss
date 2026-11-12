@@ -1,0 +1,299 @@
+.image-section {
+    .upload-wrapper {
+        .ocr-upload {
+            width: 100%;
+        }
+
+        .upload-area {
+            width: 100%;
+            min-height: 200px;
+            background: #fafafa;
+            border-radius: 16px;
+            border: 2px dashed #e4e7ed;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+            &:hover {
+                border-color: #b3d8ff;
+                background: #f0f7ff;
+            }
+
+            .upload-text {
+                font-size: 15px;
+                color: #666;
+                margin-top: 8px;
+            }
+
+            .upload-hint {
+                font-size: 12px;
+                color: #bbb;
+                margin-top: 4px;
+            }
+        }
+
+        .image-preview {
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid #e4e7ed;
+            background: #fafafa;
+
+            .preview-container {
+                padding: 12px;
+
+                .preview-toolbar {
+                    display: flex;
+                    align-items: center;
+                    justify-content: flex-end;
+                    margin-bottom: 12px;
+
+                    .zoom-text {
+                        font-size: 13px;
+                        color: #666;
+                        font-weight: 500;
+                        background: #f0f0f0;
+                        padding: 4px 10px;
+                        border-radius: 8px;
+                    }
+                }
+
+                .draggable-container {
+                    width: 100%;
+                    height: 280px;
+                    overflow: hidden;
+                    border-radius: 12px;
+                    background: #f5f5f5;
+                    position: relative;
+
+                    .dblclick-hint {
+                        position: absolute;
+                        top: 12px;
+                        right: 12px;
+                        display: flex;
+                        align-items: center;
+                        gap: 6px;
+                        padding: 6px 12px;
+                        background: rgba(64, 158, 255, 0.15);
+                        border-radius: 8px;
+                        font-size: 12px;
+                        color: #409eff;
+                        z-index: 5;
+                        pointer-events: none;
+                    }
+
+                    .preview-image {
+                        width: 100%;
+                        height: 100%;
+                        transition: transform 0.05s ease;
+                        transform-origin: center center;
+
+                        :deep(img) {
+                            object-fit: contain;
+                            pointer-events: none;
+                        }
+                    }
+                }
+            }
+
+            .preview-actions {
+                display: flex;
+                gap: 12px;
+                justify-content: center;
+                padding: 16px;
+                background: #fff;
+                border-top: 1px solid #e4e7ed;
+
+                .el-button {
+                    flex: 1;
+                    max-width: 120px;
+                    border-radius: 8px;
+                }
+            }
+        }
+    }
+}
+
+// 流式识别中
+.stream-loading {
+    margin-top: 16px;
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e4e7ed;
+    overflow: hidden;
+
+    .stream-loading-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        background: #f0f7ff;
+        border-bottom: 1px solid #e4e7ed;
+        font-size: 13px;
+        font-weight: 500;
+        color: #409eff;
+
+        .is-loading { animation: rotating 1s linear infinite; }
+    }
+
+    .stream-loading-body {
+        max-height: 200px;
+        overflow-y: auto;
+        padding: 12px;
+
+        pre {
+            margin: 0;
+            font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: #333;
+        }
+    }
+}
+
+.result-section {
+    margin-top: 16px;
+
+    .result-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+
+            .copy-btn {
+                color: #909399;
+                padding: 6px;
+                border-radius: 6px;
+                transition: all 0.2s;
+
+                &:hover {
+                    color: #409eff;
+                    background: #ecf5ff;
+                }
+            }
+        }
+    }
+
+    // JSON 视图
+    .json-view {
+        .json-content {
+            background: #f8fafc;
+            color: #1e293b;
+            padding: 16px;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', 'Monaco', 'Consolas', monospace;
+            font-size: 13px;
+            line-height: 1.7;
+            white-space: pre-wrap;
+            word-break: break-all;
+            overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+    }
+
+    .word-list {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        max-height: 350px;
+        overflow-y: auto;
+        padding: 4px;
+
+        .word-card {
+            background: #fff;
+            border-radius: 16px;
+            padding: 16px;
+            border: 1px solid #e4e7ed;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+
+            .card-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 12px;
+
+                .word-index {
+                    width: 28px;
+                    height: 28px;
+                    background: linear-gradient(135deg, #409eff, #66b1ff);
+                    color: #fff;
+                    border-radius: 8px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 14px;
+                    font-weight: 600;
+                }
+
+                .header-center {
+                    flex: 1;
+                    display: flex;
+                    justify-content: center;
+
+                    .word-type-badge {
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        width: 28px;
+                        height: 28px;
+                        background: #f0f0f0;
+                        border-radius: 8px;
+                        color: #666;
+                    }
+                }
+            }
+
+            .card-body {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+
+                .word-input :deep(.el-input__wrapper) {
+                    border-radius: 8px;
+                    background: #fff;
+                }
+            }
+
+            .card-footer {
+                margin-top: 16px;
+                display: flex;
+                justify-content: flex-end;
+
+                .el-button {
+                    border-radius: 8px;
+                }
+            }
+        }
+    }
+}
+
+.empty-state,
+.loading-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 0;
+    color: #bbb;
+    gap: 12px;
+}
+
+.loading-state {
+    color: #409eff;
+}
+
+@keyframes rotating {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}

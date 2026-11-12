@@ -1,0 +1,554 @@
+.os-sidebar {
+  position: relative;
+  width: var(--os-sidebar-w);
+  flex-shrink: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 12px;
+  box-sizing: border-box;
+  border-radius: 0;
+  background: var(--os-bg-sidebar);
+  color: var(--os-text);
+  font-size: 14px;
+  overflow: hidden;
+  transition: width var(--ds-duration-base) var(--ds-ease-in-out),
+    padding var(--ds-duration-base) var(--ds-ease-in-out);
+
+  &.is-resizing {
+    transition: none;
+  }
+
+  &.is-collapsed {
+    width: var(--os-sidebar-w-collapsed);
+    padding: 6px 10px;
+  }
+}
+
+/* 右边缘拖拽手柄：8px 命中区 + hover 才显形的细线 */
+.sb-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  z-index: 20;
+  cursor: col-resize;
+  background: transparent;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: 2px;
+    width: 3px;
+    height: 32px;
+    transform: translateY(-50%);
+    border-radius: 2px;
+    background: transparent;
+    transition: background 0.15s;
+  }
+
+  &:hover::after {
+    background: var(--dsw-static-neutral-bluish-300);
+  }
+}
+
+/* ==================== ① 品牌 ==================== */
+.sb-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 60px;
+  padding: 8px 0 8px 4px;
+  margin-bottom: 4px;
+  flex-shrink: 0;
+
+  .is-collapsed & {
+    height: 44px;
+    padding: 0;
+    justify-content: center;
+    margin-bottom: 10px;
+  }
+}
+
+.sb-head-actions {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.assistant-entry {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  color: var(--os-text-3);
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.assistant-entry:hover {
+  color: var(--os-accent);
+  background: var(--os-bg-hover);
+}
+
+.sb-brand {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+/* 品牌标由 `OsLogo` 组件渲染（与 favicon 同一套几何），这里不再自己画 */
+
+.sb-name {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--os-text);
+  white-space: nowrap;
+}
+
+.sb-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  padding: 0;
+  border: none;
+  border-radius: var(--os-radius-sm);
+  background: transparent;
+  color: var(--os-text-3);
+  cursor: pointer;
+  transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out),
+    color var(--ds-duration-fast) var(--ds-ease-in-out);
+
+  &:hover {
+    background: var(--os-bg-hover);
+    color: var(--os-text);
+  }
+}
+
+.sb-rail-toggle {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  color: var(--os-text-2);
+}
+
+/* ==================== ② 新建对话 ==================== */
+.sb-new {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  height: 38px;
+  margin: 0 0 10px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  border: 0.5px solid var(--os-border-strong);
+  border-radius: var(--os-radius);
+  background: #fff;
+  color: var(--os-text);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out);
+
+  &:hover {
+    background: var(--dsw-static-neutral-bluish-75);
+  }
+
+  .is-collapsed & {
+    width: 38px;
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
+
+    &:hover {
+      background: var(--os-bg-hover);
+    }
+  }
+}
+
+.sb-new__label {
+  white-space: nowrap;
+}
+
+/* ==================== ② 功能入口 ==================== */
+/*
+ * 中段滚动容器（功能区 + 会话列表）
+ *
+ * 只有这一条滚动条：菜单展开多长都能滚到，会话列表也在这条线上。
+ * `min-height: 0` 是关键 —— 没有它，flex 子项的最小内容高度会让容器撑破父级
+ * （这正是"展开我的学习后各段被挤压"的机制）。
+ */
+.sb-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    border-width: 2px;
+  }
+}
+
+/* 功能入口区：自然高度，滚动交给外层 `.sb-scroll` */
+.sb-features {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: none;
+}
+
+.sb-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.sb-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.sb-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 9px;
+  border: none;
+  border-radius: var(--os-radius);
+  background: transparent;
+  color: var(--os-text-2);
+  font-size: 14px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out),
+    color var(--ds-duration-fast) var(--ds-ease-in-out);
+
+  &:hover {
+    background: var(--os-bg-hover);
+    color: var(--os-text);
+  }
+
+  &.is-active {
+    background: var(--dsw-specific-sidebar-nav-item-active);
+    color: var(--os-text);
+    font-weight: 500;
+  }
+
+  .is-collapsed & {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    justify-content: center;
+  }
+}
+
+.sb-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  color: inherit;
+  opacity: 0.9;
+
+  .is-active > & {
+    opacity: 1;
+    color: var(--os-text);
+  }
+}
+
+.sb-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-pip {
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  width: 3px;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 2px;
+  background: var(--os-accent);
+}
+
+.sb-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: var(--os-radius-sm);
+  background: transparent;
+  color: var(--os-text-4);
+  cursor: pointer;
+  transition: transform var(--ds-duration-fast) var(--ds-ease-in-out),
+    background-color var(--ds-duration-fast) var(--ds-ease-in-out),
+    color var(--ds-duration-fast) var(--ds-ease-in-out);
+
+  &:hover {
+    background: var(--os-bg-hover);
+    color: var(--os-text-2);
+  }
+
+  &.is-open {
+    transform: rotate(90deg);
+  }
+}
+
+/* 二级：细竖线 + 缩进 */
+.sb-children {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 2px 0 4px 27px;
+  padding-left: 10px;
+  border-left: 1px solid var(--os-border-soft);
+}
+
+.sb-child {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 9px;
+  border: none;
+  border-radius: var(--os-radius-sm);
+  background: transparent;
+  color: var(--os-text-3);
+  font-size: 13px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out),
+    color var(--ds-duration-fast) var(--ds-ease-in-out);
+
+  &:hover {
+    background: var(--os-bg-hover);
+    color: var(--os-text);
+  }
+
+  &.is-active {
+    background: var(--os-bg-active);
+    color: var(--os-text);
+    font-weight: 500;
+  }
+}
+
+/* ==================== ③ 智能对话（会话列表） ==================== */
+/*
+ * 关键点：这一段 `flex: 1; min-height: 0`，内部列表 `overflow-y: auto`。
+ * 只有列表滚动，品牌 / 功能入口 / 底部始终固定可见。
+ */
+/*
+ * 会话区：跟着外层 `.sb-scroll` 一起滚，自己不再滚动。
+ * （两层滚动条会互相打架：内层滚到顶继续滚时，外层才动，手感很怪。）
+ */
+.sb-conv {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  /* 与上面的功能入口用留白分隔（不用分割线，DSH 的做法） */
+  margin-top: 16px;
+  padding-bottom: 4px;
+}
+
+.sb-conv__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  height: 26px;
+  padding: 0 4px 0 9px;
+  flex-shrink: 0;
+}
+
+.sb-conv__title {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--os-text-4);
+  user-select: none;
+}
+
+.sb-conv__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--os-text-4);
+  cursor: pointer;
+  transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out),
+    color var(--ds-duration-fast) var(--ds-ease-in-out);
+
+  &:hover,
+  &.is-on {
+    background: var(--os-bg-hover);
+    color: var(--os-text-2);
+  }
+}
+
+.sb-conv__search {
+  flex-shrink: 0;
+  padding: 2px 2px 6px;
+}
+
+/* 会话列表：不再自己滚动（统一由外层 `.sb-scroll` 滚），只是纵向排列 */
+.sb-conv__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 2px 4px;
+}
+
+.sb-conv__item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 7px 24px 7px 9px;
+  box-sizing: border-box;
+  border: none;
+  border-radius: var(--os-radius-sm);
+  background: transparent;
+  color: var(--os-text-2);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--ds-duration-fast) var(--ds-ease-in-out),
+    color var(--ds-duration-fast) var(--ds-ease-in-out);
+
+  &:hover {
+    background: var(--os-bg-hover);
+    color: var(--os-text);
+  }
+
+  &.is-active {
+    background: var(--os-bg-active);
+    color: var(--os-text);
+    font-weight: 500;
+  }
+
+  &:hover .sb-conv__del,
+  &.is-active .sb-conv__del {
+    opacity: 1;
+  }
+}
+
+.sb-conv__name {
+  font-size: 13px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-conv__meta {
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--os-text-4);
+  font-weight: 400;
+}
+
+.sb-conv__del {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  color: var(--os-text-4);
+  opacity: 0;
+  transition: opacity var(--ds-duration-fast) var(--ds-ease-in-out),
+    background-color var(--ds-duration-fast) var(--ds-ease-in-out),
+    color var(--ds-duration-fast) var(--ds-ease-in-out);
+
+  &:hover {
+    background: var(--os-bg-hover);
+    color: var(--os-danger);
+  }
+}
+
+.sb-conv__empty {
+  margin: 10px 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--os-text-4);
+  word-break: break-word;
+}
+
+/* 收起态：只有一枚「回到智能对话」的图标 */
+.sb-rail-conv {
+  display: flex;
+  flex-direction: column;
+  margin-top: 10px;
+}
+
+/* ==================== ④ 底部 ==================== */
+.sb-foot {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 8px;
+  margin-top: 6px;
+
+  .is-collapsed & {
+    align-items: center;
+  }
+}

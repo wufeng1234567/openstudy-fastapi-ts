@@ -946,98 +946,11 @@ defineExpose({
 })
 </script>
 
-<style scoped>
-.reader-panel { position: relative; display: flex; flex-direction: column; gap: 10px; min-height: 520px; }
-.reader-panel:fullscreen,
-.reader-panel.is-fullscreen-fallback {
-  position: fixed;
-  inset: 0;
-  z-index: 3000;
-  min-height: 100vh;
-  overflow: auto;
-  padding: 14px 18px;
-  background: #fff;
-}
-.reader-panel:fullscreen .reader-body,
-.reader-panel.is-fullscreen-fallback .reader-body {
-  min-height: calc(100vh - 150px);
-}
-.reader-panel:fullscreen .reader-main,
-.reader-panel.is-fullscreen-fallback .reader-main {
-  max-height: calc(100vh - 170px);
-}
-.reader-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 0 2px 10px; border-bottom: 1px solid #edf0f5; }
-.reader-toolbar__title { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
-.reader-toolbar__kicker { flex: none; color: #4f6bed; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
-.reader-toolbar__title b { overflow: hidden; color: #1f2937; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
-.reader-toolbar__tools { display: flex; flex: none; align-items: center; gap: 6px; }
-.reader-search { width: 150px; }
-.reader-search__count { color: #9aa1af; font-size: 10px; white-space: nowrap; }
-.reader-stats { display: flex; gap: 16px; color: #9aa1af; font-size: 10px; }
-.reader-stats b { color: #4f6bed; font-size: 12px; }
-.reader-stats__ai { margin-left: auto; }
-.reader-loading { min-height: 460px; }
-.reader-body { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 16px; min-height: 540px; }
-.reader-body.is-toc-collapsed { grid-template-columns: 34px minmax(0, 1fr); }
-.reader-toc { min-width: 0; border: 1px solid #e8edf5; border-radius: 9px; background: #fbfcfe; }
-.reader-toc__head { display: flex; align-items: center; justify-content: space-between; padding: 10px 11px; border-bottom: 1px solid #edf0f5; color: #6b7280; font-size: 12px; font-weight: 600; }
-.reader-toc__head button { border: 0; color: #9aa1af; background: transparent; cursor: pointer; font-size: 18px; line-height: 1; }
-.reader-toc__search { margin: 8px; width: calc(100% - 16px); }
-.reader-toc__list { max-height: 470px; padding: 2px 5px 8px; overflow: auto; }
-.reader-toc__item { display: flex; width: 100%; align-items: center; gap: 6px; padding-top: 6px; padding-bottom: 6px; border: 0; border-left: 2px solid transparent; color: #697386; background: transparent; cursor: pointer; font-size: 11.5px; line-height: 1.45; text-align: left; }
-.reader-toc__item:hover { color: #2f5fce; background: #f3f6fc; }
-.reader-toc__item.is-active { border-left-color: #4f6bed; color: #2f5fce; background: #eef2ff; font-weight: 600; }
-.reader-toc__dot { width: 3px; height: 3px; flex: none; border-radius: 50%; background: currentColor; opacity: .45; }
-.reader-toc__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.reader-toc__empty, .reader-toc__hint { padding: 8px 10px; color: #9aa1af; font-size: 10px; line-height: 1.6; }
-.reader-toc__hint { margin-top: 4px; border-top: 1px dashed #e8edf5; }
-.reader-main { min-width: 0; max-height: 600px; overflow: auto; scroll-behavior: smooth; border: 1px solid #e8edf5; border-radius: 9px; background: #fff; }
-.reader-article { max-width: 820px; margin: 0 auto; padding: 28px 46px 60px; }
-.reader-section { scroll-margin-top: 14px; }
-.reader-section + .reader-section { margin-top: 26px; padding-top: 22px; border-top: 1px solid #f0f2f6; }
-.reader-section__title { margin: 0 0 12px; color: #1f2937; font-size: 20px; line-height: 1.35; }
-.reader-section__title--sub { font-size: 16px; }
-.reader-text { color: #374151; font-size: 14px; line-height: 1.9; }
-.reader-text :deep(.latex-content) { font-size: 14px; line-height: 1.9; }
-.reader-image { margin: 14px 0; text-align: center; }
-.reader-image :deep(.el-image) { max-width: 100%; max-height: 420px; border-radius: 6px; }
-.reader-image-drawer__bar { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 10px; color: #9aa1af; font-size: 11px; }
-.reader-image-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.reader-image-card { overflow: hidden; border: 1px solid #e8edf5; border-radius: 7px; background: #fbfcfe; }
-.reader-image-card :deep(.el-image) { display: block; width: 100%; height: 100px; cursor: pointer; }
-.reader-image-card__foot { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 5px 7px; color: #9aa1af; font-size: 10px; }
-.reader-image-card__foot span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.reader-image-card__foot button { border: 0; color: #4f6bed; background: transparent; cursor: pointer; font-size: 10px; }
-.reader-empty { padding: 30px 12px; color: #9aa1af; font-size: 12px; text-align: center; }
-.reader-selection { position: absolute; z-index: 20; display: flex; gap: 2px; padding: 3px; border: 1px solid #dce4f2; border-radius: 7px; background: #fff; box-shadow: 0 4px 14px rgba(36, 61, 118, .13); }
-.reader-selection button { padding: 4px 7px; border: 0; border-radius: 4px; color: #4b5563; background: transparent; cursor: pointer; font-size: 10px; white-space: nowrap; }
-.reader-selection button:hover { color: #2f5fce; background: #eef2ff; }
-.reader-related { min-height: 80px; }
-.reader-related__item { padding: 10px 0; border-bottom: 1px solid #edf0f5; }
-.reader-related__title { color: #1f2937; font-size: 13px; font-weight: 600; }
-.reader-related__item p { margin: 5px 0; color: #6b7280; font-size: 11px; line-height: 1.6; }
-.reader-related__item span { color: #9aa1af; font-size: 10px; }
-.reader-search-mark { padding: 0 2px; border-radius: 2px; background: #fff3c4; color: inherit; }
-.reader-search-mark.reader-jump-highlight {
-  background: #ffe58f;
-  box-shadow: 0 0 0 3px rgba(255, 214, 102, .28);
-}
-@media (max-width: 900px) { .reader-body { grid-template-columns: 1fr; } .reader-body.is-toc-collapsed { grid-template-columns: 1fr; } .reader-toc { max-height: 220px; } .reader-toc__list { max-height: 160px; } .reader-article { padding: 20px 20px 40px; } .reader-toolbar { align-items: flex-start; flex-direction: column; } .reader-toolbar__tools { flex-wrap: wrap; } }
-</style>
+<style scoped src="./DocumentAnatomyPanel.style1.css"></style>
 
 <!--
   ⚠️ 不能放进上面的 scoped 块：`<mark>` 是 highlightSearch 运行时 createElement 出来的，
   不会带 Vue 的 `data-v-xxx` 作用域属性。scoped 的 `.reader-search-mark[data-v-xxx]`
   对动态节点不生效，浏览器只能用 `<mark>` 默认的纯黄色，背景/边框也不会按设计显示。
 -->
-<style>
-.reader-search-mark { padding: 0 2px; border-radius: 2px; background: #fff3c4; color: inherit; }
-.reader-search-mark.reader-jump-highlight {
-  background: #ffe58f;
-  box-shadow: 0 0 0 3px rgba(255, 214, 102, .28);
-}
-.reader-image.reader-jump-image {
-  border-radius: 8px;
-  box-shadow: 0 0 0 4px rgba(255, 214, 102, .34);
-}
-</style>
+<style src="./DocumentAnatomyPanel.style2.css"></style>
