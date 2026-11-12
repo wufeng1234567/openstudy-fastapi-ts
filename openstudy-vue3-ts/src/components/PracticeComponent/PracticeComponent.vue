@@ -376,12 +376,6 @@ import PracticeSettings from './PracticeSettings.vue'
 import MarkedButton from '@/components/MarkedButton/MarkedButton.vue'
 import FavoriteButton from '@/components/FavoriteButton/FavoriteButton.vue'
 /*
- * 滚动宿主探测（2026-10-22）
- *
- * 练习页原来在右下角渲染 `<ScrollButton>` 浮球。用户指出「浮球 + 悬浮助手 +
- * 右侧答题卡」三样东西挤在一起、不简洁，错开摆放也救不回来。
- * 现在滚动入口收进答题卡内部（静态的「回到顶部 / 跳到底部」两个文本按钮），
- * 浮球不再出现。判据复用同一个 util，保证"到底在滚谁"始终只有一份答案。
  */
 import { usePracticeScrollHost } from './usePracticeScrollHost'
 import { usePracticeExamTimer } from './usePracticeExamTimer'
@@ -405,7 +399,6 @@ import { usePracticeSubmitAction } from './usePracticeSubmitAction'
 import { usePracticeViewWatchers } from './usePracticeViewWatchers'
 import { usePracticeWatchers } from './usePracticeWatchers'
 import { usePracticeMockState } from './usePracticeMockState'
-// 「只刷错题」空态要用线性图标（全站统一走 OsIcon，不用 Element Plus 实心图标）
 import OsIcon from '@/components/OsIcon/index.vue'
 import ImageViewer from './ImageViewer.vue'
 import { useQuestionPractice } from '@/composables/useQuestionPractice'
@@ -414,35 +407,18 @@ import useUserStore from '@/store/modules/user'
 import {
 } from '@/utils/practiceDraft'
 import AiAnalysisDialog from '@/components/AiAnalysisDialog/index.vue'
-// 模拟考试的三个新界面（2026-10-22）
 import MockExamSetup from './MockExamSetup.vue'
 import ExamSummary from './ExamSummary.vue'
 import MockExamHistory from './MockExamHistory.vue'
 import type { MockExamConfig, MockExamRecord } from '@/types'
-// 模拟考试组卷要拉全量题目（见 loadMockAvailability / handleMockStart）
 import { submitPracticeSession, listPracticeSessions, getPracticeSession } from '@/api/questionMain/questionMain'
 /*
- * 模拟考试的判分（2026-10-28 从本文件搬出去）
- *
- * ⚠️ 搬走的唯一目的：**让它能被单测直接 import**。
- *    `judgeMockItem` 原来是本文件 `<script setup>` 里的局部函数，测试拿不到它，
- *    只能在浏览器里点一遍 UI 才能验 —— 慢且脆；或者在测试里抄一份公式，
- *    那验的是副本，改了实现测试照样绿（假测试）。
- *    判分算错是用户当场就能发现的错，必须有参数化的纯函数级测试兜住。
- *    实现与注释都在 `utils/mockExamJudge.ts`（逐字搬移 + F7 的漏选公式修正）。
  */
-// 服务端判分后不再在前端使用 judgeMockItem；保留该工具供独立单测，
-// PracticeComponent 只负责渲染服务端返回的逐题结果。
 /*
- * 模拟考试「进行中会话」的持久化（2026-10-22）
- *
- * 用户 bug：考试中刷新页面 → 卷子消失、回到配置页。
- * 详见 `utils/mockExamSession.ts` 顶部的根因分析。
  */
 import {
 } from '@/utils/mockExamSession'
 
-// 调试日志工具
 import {
   debugEnterModule,
   debugLeaveModule,
@@ -453,13 +429,6 @@ const props = defineProps({
   bankId: { type: Number, required: true },
   bankName: { type: String, default: '题库' },
   /*
-   * 练习模块类型
-   *
-   * ⚠️ 允许 null（`type: [String, Object]` 不写 `required`）：
-   *    页面刚挂载时路由参数可能还没解析出来，父级会先传 `null`。
-   *    原来声明成 `type: String, required: true`，于是控制台每次进练习页都刷
-   *    `Invalid prop: type check failed for prop "moduleType"`（2026-10-18 实测）。
-   *    组件内部用 `moduleTypeSafe` 归一化成 `'sequential'` 兜底，再往下传。
    */
   moduleType: {
     type: String,
@@ -471,11 +440,6 @@ const props = defineProps({
 const emit = defineEmits(['close'])
 
 /**
- * 归一化后的模块类型（永不为 null）
- *
- * 路由参数未就绪时父级会传 `null`；子组件（PracticeHeader / AnswerCard /
- * QuestionNavigation）的 prop 都声明成 `type: String`，传 `null` 会刷类型警告。
- * 统一用这个值往下传，组件内部逻辑也用它，避免"有时是 null 有时是字符串"。
  */
 const moduleTypeSafe = computed(() => (props.moduleType || 'sequential') as string)
 
@@ -493,52 +457,18 @@ const isLastQuestion = computed(() => currentQuestionIndex.value === totalQuesti
 
 
 /**
- * 本波第一题在整个题库里的**序号偏移**
- * ------------------------------------------------------------------
- * 题号要跨波顺延（用户 2026-10-18：「点下一波还是 1 到 20，应该要顺延」）。
- *
- * `questions` 是 `allQuestionsData` 的切片（`[questionOffset, +count)`），
- * 所以波内下标 `i` 对应的全局序号是 `questionOffset + i + 1`。
- *
- * ⚠️ 直接等于 `questionOffset`，不要再加判断分支：
- *    第一波 offset=0 → 1 开始；第二波 offset=20 → 21 开始。所有展示处共用它，
- *    避免"卡片顺延了、答题卡没顺延"这种不一致。
  */
 const numberBase = computed(() => Number(questionOffset.value) || 0)
 /**
- * 是否已经是**最后一波**
- *
- * 语义：这一波之后没有更多题了。
- * 例：100 题、每波 20 题、当前第 5 波（offset=80）→ 80+20=100 ≤ 100 → 是最后一波。
- *
- * ⚠️ 用 `<=` 而不是 `<`：正好整除时（100/20）最后一波的末尾 offset+total 恰好 == 总题数，
- *    必须是"最后一波"；用 `<` 会把它判成"还有下一波"，于是最后一波还显示"继续下一波"、
- *    点进去是空波。之前这里是 `<=`，保持正确，勿改回。
  */
 const isLastBatch = computed(() => allQuestionsData.value.length <= questionOffset.value + totalQuestions.value)
 
 /**
- * 是否还能「继续下一波」
- *
- * 用户 2026-10-18 的分波规则：
- *   · 最后一波结尾 → **不显示**「继续下一波」，只显示「回到上一波」+「提交」；
- *   · 其余情况（含第一波）→ 显示「继续下一波」。
  */
 const canGoNextBatch = computed(() => !isLastBatch.value)
 
 
 /* ============================================================================
- * 模拟考试的三个阶段（2026-10-22）
- * ============================================================================
- *   setup   → 考试配置页（选题型、题数、分值、时长、及格分）
- *   running → 正在作答（原来的刷题界面）
- *   summary → 交卷后的结果页（得分环 + 对错饼图 + 错题明细）
- *   history → 历史记录列表（从配置页进）
- *
- * 为什么用状态机而不是"再加几个布尔"：
- *   这三态互斥，且任何一态显示时其他两态必须完全让位（不能让"配置页"和"考卷"
- *   同时挂在 DOM 上 —— 那会导致计时器在配置页就开始跑）。
- *   三个独立布尔迟早会出现两个同时为真。
  */
 type MockPhase = 'setup' | 'running' | 'summary' | 'history'
 const {
@@ -615,9 +545,7 @@ const {
   selectedAnswer,
   answers,
   loading,
-  // 「只刷错题」但当前题库没有可练错题时的说明（空串 = 正常）
   noWrongQuestionsReason,
-  // 「没有题可练」的类型：noWrong（没错题）/ finished（本轮刷完）—— 决定空态文案与动作
   noQuestionsKind,
   subFillBlankAnswers,
   subEssayAnswers,
@@ -631,7 +559,6 @@ const {
   accuracy,
   fetchQuestions,
   resetAndFetchQuestions,
-  // 随机题单：练完一轮/提交后清掉，下一轮重新随机
   clearRandomPlan,
   goToQuestion,
   nextQuestion,
@@ -654,7 +581,6 @@ const {
   ensurePracticeSession,
   updateOnlyWrong,
   updateQuestionCount,
-  // 模拟考试组卷要用：把整份卷子灌进题目流（见 handleMockStart 的注释）
   processQuestions,
   updateQuestionOffset,
   loadBatchWithoutReset,
@@ -754,38 +680,12 @@ const {
 /* ==================== 「已确认答案」标记的生命周期 ==================== */
 
 /**
- * 这批题目换了 → 清空确认标记（2026-10-22）
- *
- * `committedQuestions` 的 key 是**波内下标**，它只在"同一批题目"内部有意义。
- * 但这些标记在以下路径上都可能残留：
- *   · 换波（`jumpToNextBatch` / `handlePrevBatch`）；
- *   · 重新练习（`handleEmptyRestart` → `resetAndFetchQuestions`）；
- *   · 改设置后重拉、切题库、切模块。
- *
- * 不清空的后果很具体：新一批题目的第 1 题会继承上一批第 1 题的"已确认"，
- * 于是多选/填空题一出现就是"已判分 + 解析展开"的样子，
- * 而且「确认答案」按钮**不显示** → 用户完全没法作答。
- *
- * 为什么用 watch 题目流、而不是在每个调用点手动清：
- *   重拉题目的入口有 5+ 处（上面列的那些），逐个加必然漏。
- *   这里盯住 `questions` 的**身份变化**（用首题 id 判断，不是长度），
- *   一次性覆盖全部路径。`jumpToNextBatch` 里那次显式清空可以保留 ——
- *   watch 是异步的，而换波后紧接着就会渲染，早清一步更稳。
  */
 /* ============================================================================
- * 模拟考试：组卷 / 判分 / 生成记录（2026-10-22）
- * ============================================================================
- * 这一块整体是「新增的一段独立逻辑」，只在 moduleType === 'mock' 时启用，
- * 不影响其他三个刷题入口的任何行为。
  */
 
 /** 题型归一：后端数字题型 → 前端字符串（与 useQuestionPractice 的映射保持一致） */
 /**
- * 拉一份全量题目并按题型统计可选题量
- *
- * 配置页要显示「/ 262 道」这样的上限提示，必须先把题库拿到手。
- * ⚠️ 这里直接调接口而不是复用 `allQuestionsData`：后者可能只装了"某一波"的切片，
- *    也可能因为「只刷错题」被过滤过 —— 用它算上限会给出错误的可选范围。
  */
 const { loadMockAvailability, handleMockStart } = usePracticeMockSetup({
   mockAvailable,
@@ -804,21 +704,6 @@ const { loadMockAvailability, handleMockStart } = usePracticeMockSetup({
 })
 
 /**
- * 从总结页点「再考一次」
- *
- * @param preset 要沿用的配置。不传就按"本场快照 / store 当前配置"兜底。
- *
- * 两种来源的区别（2026-10-22 用户明确要求「方便用户使用」）：
- *
- *   · 刚交完卷 → 沿用这一场的配置 `activeMockConfig`，天然一致。
- *   · 从考试记录回看 → 沿用那条记录的 `config` 快照。**不能**读 store 里
- *     当前的配置：用户可能后来改过（那次考的是 5 道单选×2 分，现在设置里
- *     是 20 道×2 分），直接拿 store 就会"重考"出一张完全不同的卷子，
- *     与按钮叫「再考一次」的承诺不符。
- *
- * ⚠️ 无论哪种来源，都要把这份配置**写回 store**：
- *   配置页是从 `store.getMockExamConfig()` 读的。不写回的话，用户重考完
- *   再回配置页，看到的是改之前的旧配置 —— 与刚才实际考的卷子对不上。
  */
 const {
   handleMockAgain,
@@ -841,15 +726,6 @@ const {
 })
 
 /*
- * ⚠️ 这里原本有个 `handleMockSummaryBack`，逻辑是
- *     「historyRecord 有值就回历史列表，否则重新开考」。
- *   它被「再考一次」按钮调用，于是从历史详情进来的用户点「再考一次」
- *   会被送回考试记录列表 —— 文案说重考，行为是回列表，严重不符预期。
- *
- *   现在拆成两个语义明确的事件（见 ExamSummary 的 readonly prop）：
- *     · retry           → handleMockAgain（真的重新开考）
- *     · back-to-history → handleMockBackToHistory（回列表）
- *   不要再合并回一个函数，那样又会把两个动作搅在一起。
  */
 
 /* ==================== 模拟考试会话的持久化与恢复 ==================== */
@@ -858,12 +734,6 @@ const {
 let mockSessionEndAt = 0
 
 /*
- * ⚠️ `userStore` / `currentUserId` 必须在这之前定义
- *
- * 它们在下面「页面暂存」一节里也用到，但 `persistMockSession` /
- * `restoreMockSession` 出现得更早（会话恢复要在进模块的 watch 里就执行）。
- * 若仍写在后面，运行时一进 mock 模块就踩 TDZ：
- *   ReferenceError: Cannot access 'currentUserId' before initialization
  */
 const userStore = useUserStore()
 
@@ -939,11 +809,6 @@ const { handleMockSubmit } = usePracticeMockResult({
 })
 
 /**
- * 把「当前进行中的考试」写进 localStorage
- *
- * ⚠️ 只在 `mockPhase === 'running'` 时写。配置页 / 结果页 / 历史页都不该有会话：
- *   · 配置页还没开考，没有"进行中的考试"；
- *   · 结果页的考试已经结束（记录进了历史），留着会话会让下次进来错误地恢复。
  */
 /**
  * 考试进行中，作答变化 → 落一次会话
