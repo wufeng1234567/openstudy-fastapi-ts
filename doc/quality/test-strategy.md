@@ -14,7 +14,7 @@
 | 前端 lint | `npm run lint` | 0 errors / 3,506 warnings |
 | 前端构建 | `npm run build:prod` | exit 0 |
 | 前端 type-check | `npm run type-check` | exit 2 / 1,808 error TS（报告型，不是通过） |
-| 前端单测 | — | 尚未建立（P1） |
+| 前端单测 | `npm run test:unit` | 2 个 Node 测试、29 项断言通过（mindmap 15 + table 14），exit 0 |
 
 ## 2. 分层目标
 
@@ -34,7 +34,7 @@ openstudy-vue3-ts/tests/
 2. 新增前端 Vitest 配置与 3 个纯函数/composable 测试；
 3. Playwright 只做 3 条 smoke：登录、资料空间打开、练习页打开；
 4. CI 把 `npm run build:prod`、`pytest tests -q` 设为 blocking；type-check 继续显式报告型；
-5. 覆盖率先报告，P2 再设 30% 阈值。
+5. 覆盖率先报告，P2 再设 30% 阈值；当前前端已有 2 个纯函数/渲染测试脚本，继续补 Vitest。
 
 ## 4. 约束
 

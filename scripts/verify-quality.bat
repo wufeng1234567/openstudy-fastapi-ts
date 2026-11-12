@@ -12,15 +12,15 @@ if not exist ".venv\Scripts\python.exe" (
   echo [FAIL] backend venv not found: openstudy-fastapi\.venv
   set "FAIL=1"
 ) else (
-  echo [1/6] backend compileall
+  echo [1/7] backend compileall
   ".venv\Scripts\python.exe" -m compileall -q app
   if errorlevel 1 set "FAIL=1"
 
-  echo [2/6] backend ruff syntax gate
+  echo [2/7] backend ruff syntax gate
   ".venv\Scripts\python.exe" -m ruff check app --select E9,F63,F7,F82
   if errorlevel 1 set "FAIL=1"
 
-  echo [3/6] backend pytest
+  echo [3/7] backend pytest
   ".venv\Scripts\python.exe" -m pytest tests -q
   if errorlevel 1 set "FAIL=1"
 )
@@ -31,15 +31,19 @@ if not exist "node_modules" (
   echo [FAIL] frontend node_modules not found
   set "FAIL=1"
 ) else (
-  echo [4/6] frontend lint
+  echo [4/7] frontend lint
   call npm run lint
   if errorlevel 1 set "FAIL=1"
 
-  echo [5/6] frontend build
+  echo [5/7] frontend unit tests
+  call npm run test:unit
+  if errorlevel 1 set "FAIL=1"
+
+  echo [6/7] frontend build
   call npm run build:prod
   if errorlevel 1 set "FAIL=1"
 
-  echo [6/6] frontend type-check ^(report-only; known historical debt^)
+  echo [7/7] frontend type-check ^(report-only; known historical debt^)
   call npm run type-check > "..\_tc_verify.log" 2>&1
   set "TC_EXIT=!ERRORLEVEL!"
   for /f %%C in ('findstr /C:"error TS" "..\_tc_verify.log" ^| find /c /v ""') do set "TC_COUNT=%%C"

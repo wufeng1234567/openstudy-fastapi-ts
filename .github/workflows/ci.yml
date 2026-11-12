@@ -129,6 +129,10 @@ jobs:
         working-directory: openstudy-vue3-ts
         run: npm run lint
 
+      - name: 前端单元测试
+        working-directory: openstudy-vue3-ts
+        run: npm run test:unit
+
       - name: 类型检查（已知存量债务，仅报告）
         # 2026-11-12 实测约 1,808 条历史错误；先作为非阻塞证据记录，
         # 等 P1 压到阈值后再改为 blocking，避免 CI 因历史债务长期不可用。
