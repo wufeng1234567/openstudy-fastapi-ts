@@ -1850,77 +1850,20 @@ function openImageViewer(src: string) {
   viewerVisible.value = true
 }
 
-function openAiAnalysis() {
-  const questionId = currentQuestion.value?.id
-  if (!questionId) return
-  analysisTargetQuestion.value = currentQuestion.value
-  if (analysisCache.value.has(questionId)) {
-    currentAnalysisContent.value = analysisCache.value.get(questionId) as string
-  } else {
-    currentAnalysisContent.value = ''
-  }
-  showAnalysisDialog.value = true
-}
-
-function openAiAnalysisForQuestion(question: any) {
-  const questionId = question?.id
-  if (!questionId) return
-  analysisTargetQuestion.value = question
-  if (analysisCache.value.has(questionId)) {
-    currentAnalysisContent.value = analysisCache.value.get(questionId) as string
-  } else {
-    currentAnalysisContent.value = ''
-  }
-  showAnalysisDialog.value = true
-}
-
-function getQuestionTypeName(type: string) {
-  const typeMap: Record<string, string> = {
-    single: '单选题', multiple: '多选题', truefalse: '判断题',
-    fillblank: '填空题', essay: '简答题', readingComprehension: '组合题', cloze: '组合题'
-  }
-  return typeMap[type] || type
-}
-
-function formatOptionsForAnalysis(question: any) {
-  if (!question || !question.options) return ''
-  if (Array.isArray(question.options)) return JSON.stringify(question.options)
-  return question.options
-}
-
-// 获取用于 AI 解析的题目文本
-function getAnalysisQuestionText(question: any) {
-  if (!question) return ''
-
-  // 对于组合题（阅读理解、完形填空），需要包含主内容
-  if (question.type === 'readingComprehension' || question.type === 'cloze') {
-    const parts: string[] = []
-    if (question.mainTitle) parts.push(question.mainTitle)
-    if (question.mainContent) parts.push(question.mainContent)
-    if (parts.length > 0) return parts.join('\n\n')
-  }
-
-  // 普通题目：优先使用 question 字段，其次尝试 questionText
-  return question.question || question.questionText || question.title || ''
-}
-
-const analysisCache = ref(new Map<any, string>())
-const currentAnalysisContent = ref('')
-const isAnalysisGenerating = ref(false)
-const analysisTargetQuestion = ref<any>(null)
-
-function updateAnalysisCache(questionId: any, content: string) {
-  analysisCache.value.set(questionId, content)
-}
-
-function setAnalysisGenerating(generating: boolean) {
-  isAnalysisGenerating.value = generating
-}
-
-function handleAnalysisClose() {
-  showAnalysisDialog.value = false
-  isAnalysisGenerating.value = false
-}
+const {
+  analysisCache,
+  currentAnalysisContent,
+  isAnalysisGenerating,
+  analysisTargetQuestion,
+  openAiAnalysis,
+  openAiAnalysisForQuestion,
+  getQuestionTypeName,
+  formatOptionsForAnalysis,
+  getAnalysisQuestionText,
+  updateAnalysisCache,
+  setAnalysisGenerating,
+  handleAnalysisClose
+} = usePracticeAnalysis({ currentQuestion, showAnalysisDialog })
 
 /**
  * 填空 / 简答输入（逐题模式）
