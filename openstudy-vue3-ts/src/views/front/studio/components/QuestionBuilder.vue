@@ -1138,6 +1138,7 @@ import { listAiConfig } from '@/api/system/aiConfig'
 import aiModelManager from '@/components/AiModelManager/index.vue'
 import QuestionFullEditor from './QuestionFullEditor.vue'
 import { useQuestionBuilderAiForm } from './useQuestionBuilderAiForm'
+import { useQuestionBuilderList } from './useQuestionBuilderList'
 import ScrollButton from '@/components/ScrollButton/ScrollButton.vue'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
 import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
@@ -1658,86 +1659,6 @@ const clearPromptHistory = () => {
 
 
 
-// 过滤后的题目列表（支持多选题型筛选 + 关键词搜索）
-const allFilteredQuestions = computed(() => {
-  const keyword = searchKeyword.value.toLowerCase()
-  const filters = activeTypeFilters.value
-
-  return questions.value.filter((q) => {
-    // 多选题型筛选
-    if (!filters.has('all') && !filters.has(q.type)) return false
-    // 关键词搜索
-    if (keyword) {
-      const title = getPlainText(q?.title).toLowerCase()
-      const typeName = getTypeName(q?.type)
-      return title.includes(keyword) || typeName.includes(keyword)
-    }
-    return true
-  })
-})
-
-const filteredQuestions = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  const end = start + pageSize.value
-  return allFilteredQuestions.value.slice(start, end)
-})
-
-watch(searchKeyword, () => { currentPage.value = 1 })
-watch(allFilteredQuestions, (newList) => {
-  const maxPage = Math.ceil(newList.length / pageSize.value) || 1
-  if (currentPage.value > maxPage) currentPage.value = maxPage
-})
-
-const handlePageChange = (page) => { currentPage.value = page }
-const handleSizeChange = (size) => {
-  pageSize.value = size
-  currentPage.value = 1
-}
-// ===================== 标题自适应：数量放不下时只显示「题目列表」 =====================
-// 标题与左右按钮同处一行且不换行；这里实测完整标题所需宽度，
-// 放不下就隐藏数量，避免被截断或被右侧按钮遮挡。
-const panelHeaderRef = ref<HTMLElement | null>(null)
-const panelTitleRef = ref<HTMLElement | null>(null)
-const titleMeasureRef = ref<HTMLElement | null>(null)
-const showTitleCount = ref(true)
-
-let titleFitObserver: ResizeObserver | null = null
-
-const updateTitleFit = () => {
-  const titleEl = panelTitleRef.value
-  const measureEl = titleMeasureRef.value
-  if (!titleEl || !measureEl) return
-  const available = titleEl.getBoundingClientRect().width
-  const needed = measureEl.getBoundingClientRect().width
-  // 直接比较实际像素宽度（含小数），避免取整误差
-  showTitleCount.value = needed <= available
-}
-
-const stopTitleFitObserver = () => {
-  if (titleFitObserver) {
-    titleFitObserver.disconnect()
-    titleFitObserver = null
-  }
-}
-
-const startTitleFitObserver = () => {
-  stopTitleFitObserver()
-  if (typeof ResizeObserver === 'undefined') return
-  titleFitObserver = new ResizeObserver(() => updateTitleFit())
-  if (panelHeaderRef.value) titleFitObserver.observe(panelHeaderRef.value)
-  if (panelTitleRef.value) titleFitObserver.observe(panelTitleRef.value)
-  updateTitleFit()
-}
-
-// 题目数量变化（0/0 -> 5/10）时文案宽度会变，需要重新判断
-watch(
-  () => `${allFilteredQuestions.value.length}/${questions.value.length}`,
-  () => { nextTick(() => updateTitleFit()) }
-)
-
-onMounted(() => { nextTick(() => startTitleFitObserver()) })
-onBeforeUnmount(() => { stopTitleFitObserver() })
-
 const currentQuestion = computed(() => questions.value.find((q) => q?.id === currentId.value))
 
 const selectedSubType = ref('single')
@@ -2160,6 +2081,24 @@ const getTypeName = (type) => {
   const found = questionTypes.value.find(t => t.type === type)
   return found?.name || type
 }
+
+const {
+  allFilteredQuestions,
+  filteredQuestions,
+  handlePageChange,
+  handleSizeChange,
+  panelHeaderRef,
+  panelTitleRef,
+  titleMeasureRef,
+  showTitleCount
+} = useQuestionBuilderList({
+  questions,
+  searchKeyword,
+  activeTypeFilters,
+  currentPage,
+  pageSize,
+  getTypeName: (type) => getTypeName(type)
+})
 
 /**
  * 预览里**这一道题**的真实题型
