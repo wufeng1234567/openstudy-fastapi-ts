@@ -367,7 +367,7 @@ import {
 	onMounted, onUnmounted, onActivated, onDeactivated
 } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { InfoFilled, RefreshRight, MagicStick } from '@element-plus/icons-vue'
+import { MagicStick } from '@element-plus/icons-vue'
 import PracticeHeader from './PracticeHeader.vue'
 import QuestionDisplay from './QuestionDisplay.vue'
 import AnswerCard from './AnswerCard.vue'
@@ -397,19 +397,15 @@ import { useQuestionPractice } from '@/composables/useQuestionPractice'
 import usePracticeSettingsStore from '@/store/modules/practiceSettings'
 import useUserStore from '@/store/modules/user'
 import {
-  createDraftSaver,
-  loadDraft,
-  type DraftSaveState
 } from '@/utils/practiceDraft'
 import AiAnalysisDialog from '@/components/AiAnalysisDialog/index.vue'
 // 模拟考试的三个新界面（2026-10-22）
 import MockExamSetup from './MockExamSetup.vue'
 import ExamSummary from './ExamSummary.vue'
 import MockExamHistory from './MockExamHistory.vue'
-import type { MockExamConfig, MockExamRecord, MockExamItemDetail } from '@/types'
-import { buildMockPaper, fullStem, normalizeOptionList, normalizeType, plainText } from './practiceQuestionUtils'
+import type { MockExamConfig, MockExamRecord } from '@/types'
 // 模拟考试组卷要拉全量题目（见 loadMockAvailability / handleMockStart）
-import { listQuestionMainAll, submitPracticeSession, startPracticeSession, listPracticeSessions, getPracticeSession } from '@/api/questionMain/questionMain'
+import { submitPracticeSession, listPracticeSessions, getPracticeSession } from '@/api/questionMain/questionMain'
 /*
  * 模拟考试的判分（2026-10-28 从本文件搬出去）
  *
@@ -429,9 +425,6 @@ import { listQuestionMainAll, submitPracticeSession, startPracticeSession, listP
  * 详见 `utils/mockExamSession.ts` 顶部的根因分析。
  */
 import {
-  loadMockSession,
-  saveMockSession,
-  clearMockSession
 } from '@/utils/mockExamSession'
 
 // 调试日志工具
@@ -482,45 +475,11 @@ const isPracticeMode = computed(() => moduleSettings.value.practiceMode === 'pra
 const showAnalysisImmediately = computed(() => !isExamMode.value || showExamResult.value)
 const canGoPrevBatch = computed(() => questionOffset.value > 0 && (isExamMode.value || isPracticeMode.value))
 const isLastQuestion = computed(() => currentQuestionIndex.value === totalQuestions.value - 1)
-/** 最近一次已交卷练习（用于刷新/重新进入后的成绩回看） */
-const recentSession = ref<any>(null)
-
-async function loadRecentSession() {
-  try {
-    const res: any = await listPracticeSessions(10)
-    const list: any[] = Array.isArray(res?.data) ? res.data : []
-    recentSession.value = list.find((s: any) =>
-      String(s.bankId) === String(props.bankId) &&
-      s.status === 'submitted' &&
-      (moduleTypeSafe.value === 'mock' ? s.moduleType === 'mock' : s.moduleType !== 'mock')
-    ) || null
-  } catch {
-    recentSession.value = null
-  }
-}
-
-async function openRecentSession() {
-  if (!recentSession.value?.sessionId) return
-  try {
-    const res: any = await getPracticeSession(recentSession.value.sessionId)
-    if (res?.code !== 200) {
-      proxy.$modal.msgError(res?.msg || '读取练习成绩失败')
-      return
-    }
-    const d = res.data || {}
-    const lines = (d.items || []).map((it: any, i: number) => {
-      const label = it.isCorrect === true ? '正确' : (it.pending ? '待自评' : (it.answered ? '错误' : '未答'))
-      return `${i + 1}. ${label}（${Number(it.scoreAwarded || 0)}/${Number(it.maxScore || 0)} 分）`
-    })
-    proxy.$modal.alert(
-      `上次练习成绩：${d.score}/${d.totalScore} 分（${d.percentage}%）\n` +
-      `答对 ${d.correctCount} · 答错 ${d.wrongCount} · 待自评 ${d.pendingCount}\n\n${lines.join('\n')}`,
-      '上次练习成绩'
-    )
-  } catch (e: any) {
-    proxy.$modal.msgError('读取练习成绩失败')
-  }
-}
+const { recentSession, loadRecentSession, openRecentSession } = usePracticeRecentSession({
+  getBankId: () => props.bankId,
+  getModuleTypeSafe: () => moduleTypeSafe.value,
+  proxy
+})
 
 /**
  * 本波第一题在整个题库里的**序号偏移**
