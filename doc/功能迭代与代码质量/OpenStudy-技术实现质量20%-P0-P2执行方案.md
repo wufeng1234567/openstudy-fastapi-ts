@@ -359,7 +359,14 @@ doc/
 - ✅ 前端已有 `npm run test:unit`：2 个 Node 测试、29 项断言通过（mindmap 15 + table 14）；
 - ✅ `.pre-commit-config.yaml`、测试目录约定、`doc/operations/rollback.md` 已落盘；
 - ✅ CI 已加入前端单元测试与版本一致性检查；
-- 🟡 真实 Vitest/Playwright、覆盖率阈值、`npm ci`/锁文件单一化仍在 P1。
+- ✅ 前端唯一 `package-lock.json` + CI `npm ci`；`pnpm-lock.yaml` 已退出 Git；
+- 🟡 真实 Vitest/Playwright、覆盖率阈值仍在 P1。
+
+### P2 执行记录（2026-11-12）
+
+- ✅ `QuestionBuilder.vue` 从 2,337 行降到 **2,203 行**：AI 结果解析/预览/导入/丢弃抽入 `useQuestionBuilderAiResult.ts`；build 通过，studio 页面 `.question-panel`/`.edit-panel` 正常，console/pageerror 0；
+- 🟡 `KnowledgeWikiPanel.vue` 2,853 行、`useAgentChat.ts` 2,180 行、`useQuestionPractice.ts` 2,161 行仍待拆；
+- 🟡 后端 `questions.py`、`rag.py`、`wiki_service.py`、`loop.py` 仍超 2,000 行，按技术债务登记继续。
 
 ---
 
