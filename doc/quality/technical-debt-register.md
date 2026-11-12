@@ -34,7 +34,7 @@
 |---:|---|---|
 | 3,084 | `app/api/v1/questions.py` | 路由/业务混杂，P2 下沉 service |
 | 2,665 | `app/api/v1/rag.py` | 资料/RAG 巨型路由 |
-| 2,318 | `app/services/rag/wiki_service.py` | 百科服务 |
+| 2,133 | `app/services/rag/wiki_service.py` | 百科服务 |
 | 2,300 | `app/services/ai/agent/loop.py` | Agent 循环，已拆部分 helper |
 | 1,976 | `app/services/rag/workspace_service.py` | 资料空间服务 |
 | 1,817 | `app/services/bank_export_service.py` | 题库导出 |
