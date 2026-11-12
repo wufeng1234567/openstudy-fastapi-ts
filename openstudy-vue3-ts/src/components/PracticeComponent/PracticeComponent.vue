@@ -570,6 +570,8 @@ const activeMockConfig = ref<MockExamConfig | null>(null)
 const {
   containerRef,
   scrollable,
+  ensureScrollHost,
+  syncScrollState,
   bindPracticeScrollHost,
   unbindPracticeScrollHost,
   scheduleScrollHostBinding,

@@ -9,7 +9,7 @@
 | 顺序 | 文件 | 当前行数 | 状态 |
 |---:|---|---:|---|
 | 1 | `views/front/workspace/index.vue` | 1000 | 完成 |
-| 2 | `components/PracticeComponent/PracticeComponent.vue` | 1562 | 进行中 |
+| 2 | `components/PracticeComponent/PracticeComponent.vue` | 1565 | 进行中 |
 | 3 | `views/front/studio/components/QuestionBuilder.vue` | 2854 | 待处理 |
 | 4 | `views/front/workspace/components/KnowledgeWikiPanel.vue` | 2853 | 待处理 |
 | 5 | `views/front/english/listening/index.vue` | 2034 | 待处理 |

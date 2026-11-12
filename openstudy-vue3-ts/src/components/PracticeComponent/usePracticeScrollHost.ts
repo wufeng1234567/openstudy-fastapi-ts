@@ -107,6 +107,7 @@ export function usePracticeScrollHost() {
   return {
     containerRef,
     scrollable,
+    ensureScrollHost,
     syncScrollState,
     bindPracticeScrollHost,
     unbindPracticeScrollHost,
