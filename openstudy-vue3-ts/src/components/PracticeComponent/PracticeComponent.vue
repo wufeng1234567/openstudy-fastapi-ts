@@ -641,145 +641,6 @@ const {
 const examTimeLimit = computed(() => moduleSettings.value.examTimeLimit || 60)
 let hasBeenDeactivated = false
 
-watch(showExamResult, (val) => {
-  if (val) {
-    stopExamTimer()
-    isTimeUpDialogShowing = false
-  } else if (props.moduleType === 'mock') {
-    isTimeUpDialogShowing = false
-    startExamTimer()
-  }
-})
-
-onMounted(() => {
-  // 调试日志
-  debugEnterModule(props.moduleType, props.bankId)
-
-  if (!isFirstLoaded.value && props.bankId && props.bankId > 0) {
-    isFirstLoaded.value = true
-    fetchQuestions().then(() => {
-      // 题目就绪后再尝试恢复暂存（顺序很重要：没有题目就没法按 id 对齐答案）
-      try {
-        restoreDraftIfAny()
-      } catch (e) {
-        console.warn('[practice] 恢复暂存失败', e)
-      }
-    })
-  }
-  if (props.moduleType === 'mock' && !showExamResult.value) {
-    startExamTimer()
-  }
-  // 服务端成绩回看：刷新/换设备后仍能看到上一次已交卷成绩
-  loadRecentSession()
-
-  // 添加页面可见性变化监听（幂等，见 bindVisibility 的注释）
-  bindVisibility()
-
-  /*
-   * 绑定滚动宿主（答题卡里的「回到顶部 / 跳到底部」依赖它）
-   *
-   * 三次尝试的原因见 `bindPracticeScrollHost` 的注释：
-   * 首次挂载时外壳内容区可能还没撑开，那时只能退回 window（不滚），
-   * 等布局稳定再解析一次才能真正落到 `.os-content` 上。
-   * 定时器存进 `scrollHostRetryTimers`，卸载时统一清掉。
-   */
-  scheduleScrollHostBinding()
-})
-
-onUnmounted(() => {
-  // 调试日志
-  debugLeaveModule(props.moduleType, props.bankId)
-
-  // 保存答题状态
-  saveCurrentAnswerState()
-
-  /*
-   * 离开页面时**立即**落一次暂存（不走节流）。
-   * 用户可能直接关标签/点走，节流窗口内那次还悬着 —— 这里同步 flush 保证不丢。
-   */
-  try {
-    draftSaver.flush()
-  } catch {
-    /* 暂存失败不该影响离开页面 */
-  }
-  draftSaver.cancel()
-
-  stopExamTimer()
-
-  // 移除页面可见性变化监听（幂等，见 bindVisibility 的注释）
-  unbindVisibility()
-
-  // 解绑滚动宿主（含重试定时器）
-  unbindPracticeScrollHost(true)
-})
-
-/*
- * ⚠️⚠️ 路由离场（**keep-alive**）的收尾与恢复（2026-10-28 修，审核发现 F1）
- * ============================================================================
- * 刷题页被两层 keep-alive 包着：
- *   · `views/questionPractice/questionPractice/index.vue` 里是裸 `<keep-alive>`；
- *   · `layout/front.vue` 里是 `<keep-alive :include="cachedViews">`，而
- *     `FrontQuestionPractice` 被显式注册进了 `cachedViews`。
- *
- * 于是「离开刷题页」**只会 deactivate，不会 unmount** —— 上面的 `onUnmounted`
- * 一次都不会跑。修之前，模拟考试的倒计时（`setInterval`）会带着整场考试
- * 继续在后台跑：走到 0 之后 `handleTimeUp()` 判断 `!document.hidden`
- * （用户此时在别的页面，document 当然可见）→ 在**无关的页面上**弹出
- * 「考试时间已到，系统将自动提交试卷！」→ 用户点确定就静默交卷并写进历史。
- * `visibilitychange` 监听同样一直挂着，从不解绑。
- *
- * 所以这里补一对 deactivated / activated，与 `onUnmounted` 同口径收尾：
- *   · 离场：停计时 + 摘监听 + 落一次暂存 + 解绑滚动宿主；
- *   · 回场：重新绑监听 / 滚动宿主，模拟考试进行中则续跑倒计时。
- *
- * 倒计时**不需要**重新计时：`startExamTimer()` 读的是 localStorage 里的
- * **绝对结束时间**（`openstudy_exam_end_time`），天然满足两个场景：
- *   · 离场期间没超时 → 按剩余时间续跑（考试是绝对deadline，离场不该"暂停"）；
- *   · 离场期间已超时 → `startExamTimer` 内部静默清存储并把 `remainingTime`
- *     归 0，**不弹窗、不自动交卷**（用户没在看这场考试，不该被远程交卷）。
- */
-onDeactivated(() => {
-  debugLeaveModule(props.moduleType, props.bankId)
-
-  // 离开页面时立即落一次暂存（不走节流），与 onUnmounted 同口径
-  try {
-    draftSaver.flush()
-  } catch {
-    /* 暂存失败不该影响离开页面 */
-  }
-  draftSaver.cancel()
-
-  stopExamTimer()
-
-  unbindVisibility()
-
-  unbindPracticeScrollHost(true)
-
-  hasBeenDeactivated = true
-})
-
-onActivated(() => {
-  /*
-   * ⚠️ KeepAlive 下 `onActivated` 在**首次挂载时也会触发**（紧随 `onMounted`），
-   *    不能在这里无条件再起一次倒计时 —— 那会和 `onMounted` 里的那次重复。
-   *    只有"真的离场过再回来"才需要续跑。
-   */
-  const isReentry = hasBeenDeactivated
-  hasBeenDeactivated = false
-
-  debugEnterModule(props.moduleType, props.bankId)
-
-  bindVisibility()
-
-  bindPracticeScrollHost()
-
-  // 离场后回场 + 模拟考试进行中 → 续跑
-  // （绝对结束时间还在就按剩余时间走；已过则 startExamTimer 内部静默清掉）
-  if (isReentry && props.moduleType === 'mock' && !showExamResult.value) {
-    startExamTimer()
-  }
-})
-
 const highlightedIndex = ref(0)
 const markedQuestions = ref<number[]>([])
 const markedQuestionsSet = computed(() => {
@@ -1474,6 +1335,28 @@ const {
   loadBatchWithoutReset,
   goToQuestion,
   setQuestionOffset: (value) => { questionOffset.value = value }
+})
+
+usePracticeLifecycle({
+  getModuleType: () => props.moduleType,
+  getBankId: () => props.bankId,
+  isFirstLoaded,
+  showExamResult,
+  setTimeUpDialogShowing: (value) => { isTimeUpDialogShowing = value },
+  fetchQuestions,
+  restoreDraftIfAny,
+  loadRecentSession,
+  startExamTimer,
+  stopExamTimer,
+  draftSaver,
+  saveCurrentAnswerState,
+  bindVisibility,
+  unbindVisibility,
+  bindPracticeScrollHost,
+  scheduleScrollHostBinding,
+  unbindPracticeScrollHost,
+  debugEnterModule,
+  debugLeaveModule
 })
 
 usePracticeRouteWatches({
