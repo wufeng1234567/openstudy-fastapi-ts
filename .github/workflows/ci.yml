@@ -119,11 +119,11 @@ jobs:
         with:
           node-version: "20"
           cache: npm
-          cache-dependency-path: openstudy-vue3-ts/package.json
+          cache-dependency-path: openstudy-vue3-ts/package-lock.json
 
       - name: 装依赖
         working-directory: openstudy-vue3-ts
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: 前端 lint（0 errors 基线）
         working-directory: openstudy-vue3-ts

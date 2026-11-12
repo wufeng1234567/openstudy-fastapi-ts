@@ -25,5 +25,5 @@ tests/check_agent_dsfree_result.json
 *.sln
 *.local
 
-package-lock.json
 yarn.lock
+pnpm-lock.yaml
