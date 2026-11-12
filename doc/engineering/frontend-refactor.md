@@ -54,7 +54,8 @@
 - `english/listening/index.vue` → 听写控制、播放器、结果统计；已完成 `listeningUtils.ts` 纯工具（数组洗牌、延时、URL 种子签名），主文件从 2850 行降到约 2806 行；
 - `english/ocr/index.vue` → 上传/识别/校对；
 - `agent/chat.vue` / `components/AiChatStream` / `AgentToolResult` → 消息流、工具卡、会话列表；已完成 `agentToolResultSummary.ts`、`aiChatStreamUtils.ts` 纯展示工具；
-- `notes/*` → 列表、详情、编辑器。
+- `notes/*` → 列表、详情、编辑器；
+- `workspace/components/GalleryPanel.vue` → 已拆出 `GalleryDetailDrawer.vue` 和 `galleryUtils.ts`，主文件从 1273 行降到约 1002 行。
 
 ## 当前阈值
 
