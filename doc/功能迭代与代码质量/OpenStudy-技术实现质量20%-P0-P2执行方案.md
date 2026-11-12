@@ -353,6 +353,14 @@ doc/
 - ✅ 新增 `doc/README.md` 文档总索引、`dead-code-ledger.md`，根 README 增加质量证据区；
 - 🟡 CI 已增加 frontend lint 与已跟踪生成物断言；`npm ci`/锁文件单一化仍待 P1。
 
+### P1 执行记录（2026-11-12）
+
+- ✅ 文档总索引、功能地图、API/数据模型、测试策略、质量/运维入口、ADR 已建立；
+- ✅ 前端已有 `npm run test:unit`：2 个 Node 测试、29 项断言通过（mindmap 15 + table 14）；
+- ✅ `.pre-commit-config.yaml`、测试目录约定、`doc/operations/rollback.md` 已落盘；
+- ✅ CI 已加入前端单元测试与版本一致性检查；
+- 🟡 真实 Vitest/Playwright、覆盖率阈值、`npm ci`/锁文件单一化仍在 P1。
+
 ---
 
 ## 6. 待拍板事项
