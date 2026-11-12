@@ -459,6 +459,7 @@ import { ENTITY_TYPE_META, entityTypeMeta, normalizeEntityKind, normalizePageTyp
 import { clusterOutline } from '../utils/knowledgeGraphGeometry'
 import { useWikiPanelFilters } from './useWikiPanelFilters'
 import { useWikiPanelFormatters } from './useWikiPanelFormatters'
+import { useWikiMapViewCache } from './wikiMapViewCache'
 import { WIKI_VIEW_KEY, WIKI_LEARN_KEY, WIKI_GUIDE_KEY, WIKI_ROUTE_KEY, readWikiView, readWikiLearnMode, readRouteQuery } from './wikiPanelStorage'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -563,10 +564,15 @@ const mapGraph = ref<any>({ nodes: [], edges: [], groups: [] })
 const mapSize = reactive({ width: 1200, height: 760 })
 const mapReady = ref(false)
 const mapSwitching = ref(false)
-const MAP_VIEW_CACHE_PREFIX = 'openstudy_wiki_map_view:v3:'
 const mapLayoutScale = computed(() => Math.min(1.8, Math.max(1, Math.min(mapSize.width / 1200, mapSize.height / 760))))
 const mapViewBox = computed(() => `0 0 ${mapSize.width} ${mapSize.height}`)
 const mapView = reactive({ x: 0, y: 0, scale: 1 })
+const { mapViewCacheKey, readMapViewCache, saveMapViewCache } = useWikiMapViewCache({
+  activeKbId: props.activeKbId,
+  mapSize,
+  mapGraph,
+  mapView
+})
 const mapHoveredId = ref<string | null>(null)
 const mapSelectedPageId = ref<number | null>(null)
 const mapSelectedNodeId = ref<string | null>(null)
@@ -2212,41 +2218,6 @@ watch(mapCanvasRef, (element) => {
     if (mapReady.value) fitMapView()
   }))
 })
-
-function mapViewCacheKey() {
-  return `${MAP_VIEW_CACHE_PREFIX}${Number(props.activeKbId || 0)}`
-}
-
-function readMapViewCache() {
-  try {
-    const raw = sessionStorage.getItem(mapViewCacheKey())
-    if (!raw) return null
-    const cached = JSON.parse(raw)
-    if (
-      Math.abs(Number(cached.width) - mapSize.width) > 1 ||
-      Math.abs(Number(cached.height) - mapSize.height) > 1 ||
-      Number(cached.nodes) !== Number(mapGraph.value.nodes?.length || 0)
-    ) return null
-    return cached
-  } catch {
-    return null
-  }
-}
-
-function saveMapViewCache() {
-  try {
-    sessionStorage.setItem(mapViewCacheKey(), JSON.stringify({
-      width: mapSize.width,
-      height: mapSize.height,
-      nodes: Number(mapGraph.value.nodes?.length || 0),
-      x: Number(mapView.x),
-      y: Number(mapView.y),
-      scale: Number(mapView.scale)
-    }))
-  } catch {
-    // sessionStorage 不可用时忽略，不影响图谱使用。
-  }
-}
 
 function fitMapView() {
   syncMapSize()
