@@ -8,6 +8,8 @@
 | 想确认 | 打开 | 一句话结论 |
 |---|---|---|
 | 架构与边界 | [ARCHITECTURE.md](../ARCHITECTURE.md) | Vue3/FastAPI/Postgres；Agent/RAG 主链路与已知债务 |
+| 开发规范 | [CONTRIBUTING.md](../CONTRIBUTING.md) | 本地运行、提交、测试与质量门禁 |
+| 安全规范 | [SECURITY.md](../SECURITY.md) | 密钥、漏洞报告、权限与 PII 边界 |
 | 系统是什么、功能全貌 | [OpenStudy-系统完整介绍与功能架构梳理.md](功能迭代与代码质量/OpenStudy-系统完整介绍与功能架构梳理.md) | 信息来源处理系统，不是单一刷题站 |
 | 功能在哪、由谁实现 | [feature-map.md](feature-map.md) | 15 个功能域 → 入口 → 后端 → 证据 |
 | API 与数据模型 | [architecture/api-data-model.md](architecture/api-data-model.md) | 42 路由域、80 表、29 工具契约 |
