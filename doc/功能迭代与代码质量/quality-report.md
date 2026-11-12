@@ -18,7 +18,7 @@
 | 前端 lint | `npm run lint` | 0 errors / 3,506 warnings | 🟡 warn-only |
 | 前端类型检查 | `npm run type-check` | exit 2；1,808 条 `error TS`（旧报告 1,808） | 🟡 存量债务 |
 | 前端构建 | `npm run build:prod` | exit 0；3,978 modules | ✅ |
-| 工作区 | `git status --short` | 仅 `.gitignore` / 本轮质量文档改动；无用户素材被跟踪 | 🟡 待提交 |
+| 工作区 | `git status --short` | 干净；用户本地素材已被 `.gitignore` 忽略 | ✅ |
 
 ---
 
@@ -49,7 +49,7 @@
 | pytest 配置 | ✅ | `pytest.ini`、`tests/conftest.py`、`asyncio_mode=auto`；109 passed |
 | ruff 配置 | ✅ | `ruff.toml`；语法门禁 All checks passed |
 | ESLint / Prettier | ✅ | `eslint.config.js`、`.prettierrc.json`；lint 0 errors |
-| 仓库卫生 | 🟡 第一批 + 待脱管 | 已删除 `300`、`audit_ws_summary.json`、`type-errors.txt`、`ts_errors.txt`、25 个 `.bak`；`.gitignore` 已补；`tests/_evidence` 与竞赛预览仍待完成 `git rm --cached` |
+| 仓库卫生 | ✅ 第一批 + 已脱管 | 删除 `300`、`audit_ws_summary.json`、`type-errors.txt`、`ts_errors.txt`、25 个 `.bak`；`.gitignore` 补齐；`tests/_evidence`、`_ui_evidence`、竞赛预览、临时文件已 `git rm --cached` |
 | 悬浮助手残留 | ✅ | 全仓 `rg "float-btn"` → 0 |
 | 裸 `except:` | ✅ | 5 处已改 `except Exception` + loguru |
 | 死代码清理 | ✅ 第一批 | 17 个零引用 Vue 组件/页面 + 旧首页/dictation/chats + `utils/generator` + 旧后端脚本；`git diff --stat` 共 −14,124 行 |
