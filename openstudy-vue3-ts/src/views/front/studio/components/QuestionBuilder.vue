@@ -1123,14 +1123,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, shallowRef, computed, watch, nextTick, onMounted, onBeforeUnmount, markRaw } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount, markRaw } from 'vue'
 import draggable from 'vuedraggable'
-import { Rank, InfoFilled, Delete, Search, MagicStick, Plus, Loading, Close, CircleCheck, Check, QuestionFilled, EditPen, ChatDotRound, FolderOpened, DocumentCopy, ArrowDown, Clock, VideoPause, VideoPlay, Setting, FullScreen, Grid, RefreshLeft, Upload, Document, Picture } from '@element-plus/icons-vue'
-import { generateQuestionsSync, generateReadingComprehensionSync } from '@/api/ai/ai'
-import { ElMessage, ElNotification, ElMessageBox } from 'element-plus'
-// 素材出题（questionType='custom'）要用知识库列表：拉用户自己的库供选择
-import { listKnowledgeBases } from '@/api/ai/rag'
-import { getBankContextInfo, clearBankConversation, generateQuestionsWithContext, generateQuestionsStreamFull, generateCompositeStreamFull } from '@/api/ai/ai'
+import { Rank, InfoFilled, Delete, Search, MagicStick, Plus, Loading, Close, CircleCheck, Check, QuestionFilled, EditPen, ChatDotRound, FolderOpened, DocumentCopy, ArrowDown, Clock, Setting, FullScreen, Grid, RefreshLeft, Upload, Document, Picture } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { getBankContextInfo, clearBankConversation, generateQuestionsStreamFull, generateCompositeStreamFull } from '@/api/ai/ai'
 import AiThinkingToggle from '@/components/AiThinkingToggle/index.vue'
 import AiModelSelector from '@/components/AiModelSelector/index.vue'
 import { listAiConfig } from '@/api/system/aiConfig'
