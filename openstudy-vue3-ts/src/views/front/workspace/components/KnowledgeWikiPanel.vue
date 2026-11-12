@@ -458,6 +458,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { ENTITY_TYPE_META, entityTypeMeta, normalizeEntityKind, normalizePageType, pageTypeLabel } from '../utils/knowledgeGraphMeta'
 import { clusterOutline } from '../utils/knowledgeGraphGeometry'
 import { useWikiPanelFilters } from './useWikiPanelFilters'
+import { WIKI_VIEW_KEY, WIKI_LEARN_KEY, WIKI_GUIDE_KEY, WIKI_ROUTE_KEY, readWikiView, readWikiLearnMode, readRouteQuery } from './wikiPanelStorage'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
@@ -528,40 +529,6 @@ const linkForm = reactive<{ targetPageId: number | null; anchorText: string; sec
   sectionIndex: -1
 })
 const router = useRouter()
-const WIKI_VIEW_KEY = 'openstudy.workspace.wikiView'
-const WIKI_LEARN_KEY = 'openstudy.workspace.wikiLearnMode'
-const WIKI_GUIDE_KEY = 'openstudy.workspace.routeGuideSeen'
-const WIKI_ROUTE_KEY = 'openstudy.workspace.routeQuery'
-function readWikiView(): 'pages' | 'map' {
-  try {
-    return localStorage.getItem(WIKI_VIEW_KEY) === 'map' ? 'map' : 'pages'
-  } catch {
-    return 'pages'
-  }
-}
-function readWikiLearnMode(): boolean {
-  try {
-    return localStorage.getItem(WIKI_LEARN_KEY) !== '0'
-  } catch {
-    return true
-  }
-}
-function readRouteQuery(): { strategy: 'weakness' | 'foundation' | 'explore'; targetPageId: number | null } | null {
-  try {
-    const raw = sessionStorage.getItem(WIKI_ROUTE_KEY)
-    if (!raw) return null
-    const value = JSON.parse(raw)
-    const strategy = ['weakness', 'foundation', 'explore'].includes(value?.strategy)
-      ? value.strategy
-      : 'weakness'
-    return {
-      strategy,
-      targetPageId: Number(value?.targetPageId) || null
-    }
-  } catch {
-    return null
-  }
-}
 const view = ref<'pages' | 'map'>(readWikiView())
 const adviceMode = ref(false)
 const adviceHostRef = ref<any>(null)
