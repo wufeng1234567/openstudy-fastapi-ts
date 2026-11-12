@@ -351,7 +351,7 @@ doc/
 - ✅ 新增 `ARCHITECTURE.md`、`CONTRIBUTING.md`、`SECURITY.md`、`Makefile`、`.editorconfig`、`.gitattributes`；
 - ✅ 新增 `scripts/verify-quality.bat`；实测后端 compile/ruff/pytest、前端 lint/build 通过，type-check 报告 1,808 条；
 - ✅ 新增 `doc/README.md` 文档总索引、`dead-code-ledger.md`，根 README 增加质量证据区；
-- 🟡 CI 已增加 frontend lint 与已跟踪生成物断言；`npm ci`/锁文件单一化仍待 P1。
+- ✅ CI 已增加 frontend lint 与已跟踪生成物断言；前端改为唯一 `package-lock.json` + `npm ci`（`pnpm-lock.yaml` 已退出 Git 跟踪）。
 
 ### P1 执行记录（2026-11-12）
 
