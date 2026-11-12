@@ -608,6 +608,7 @@
 </template>
 
 <script setup lang="ts">
+import { buildUrlSeedSignature, shuffleArray, sleep } from './listeningUtils'
 defineOptions({ name: 'FrontEnglishListening' })
 import { ref, computed, onMounted, onActivated, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -1607,30 +1608,11 @@ const speakWithLang = (text: string, lang: string) => {
 }
 
 // 数组随机打乱
-const shuffleArray = (array) => {
-    const newArray = [...array]
-    for (let i = newArray.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1))
-            ;[newArray[i], newArray[j]] = [newArray[j], newArray[i]]
-    }
-    return newArray
-}
-
-/**
- * 停止当前语音播放
- *
- * 2026-10-23 改：原实现只在 `speechSynthesis.speaking` 为 true 时才 cancel()。
- * 但 Chrome 里队列可能处于「pending 却没进入 speaking」的卡住状态，
- * 此时不 cancel 就永远解锁不了。现在无条件 cancel()，并把排队回调作废。
- */
 const stopSpeaking = () => {
     stopSpeak()
 }
 
 // 延时函数
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
-
-// 提交答案
 const submitAnswer = () => {
     if (!userAnswer.value.trim()) {
         ElMessage.warning('请输入答案')
@@ -2003,35 +1985,6 @@ let urlSeedSignature: string | null = null
  *
  * 只纳入**决定种子内容**的字段：`words` / `scope` / `bookId` / `mode`。
  * `auto` 只是"是否自动开练"的开关，不参与签名（同一批词 auto 与否是同一批词）。
- */
-function buildUrlSeedSignature(q: Record<string, any>): string {
-    return [
-        String(q.words || ''),
-        String(q.scope || ''),
-        String(q.bookId || ''),
-        String(q.mode || '')
-    ].join('|')
-}
-
-/**
- * 消费「预置题目」—— 两种来源
- * ============================================================================
- *
- * **① URL 参数（2026-10-26 新增）**
- *    智能体 `english_practice(action=start)` 返回的 jumpUrl 长这样：
- *
- *      /front/english/listening?auto=1&bookId=128&mode=dictation
- *                              &scope=due&words=abandon,benefit,campaign
- *
- *    `auto=1` 表示"进来就直接开练"，用户不用再点一次「开始听写」。
- *    这条路径是**跨页面跳转**，所以必须走 URL —— sessionStorage 在
- *    router.push 时也能用，但 URL 可分享、可刷新、可回退，语义更对。
- *
- * **② sessionStorage（原有的错词重练）**
- *    统计页点「用这些错词练一轮」时写入，见 statistics/index.vue。
- *
- * 两者统一处理：都转成 `seedWords` + 可选的 `bookId/mode`，
- * 然后交给 `startPractice` 走同一套选词逻辑。
  */
 async function consumeSeedWords() {
     if (seedConsumed) return

@@ -51,7 +51,7 @@
 按页面域拆：
 
 - `studio/QuestionBuilder.vue` → 题目编辑器、题目预览、资料选题；已完成 `questionBuilderUtils.ts` 纯展示工具，主文件从 2892 行降到约 2854 行；
-- `english/listening/index.vue` → 听写控制、播放器、结果统计；
+- `english/listening/index.vue` → 听写控制、播放器、结果统计；已完成 `listeningUtils.ts` 纯工具（数组洗牌、延时、URL 种子签名），主文件从 2850 行降到约 2806 行；
 - `english/ocr/index.vue` → 上传/识别/校对；
 - `agent/chat.vue` / `components/AiChatStream` / `AgentToolResult` → 消息流、工具卡、会话列表；已完成 `agentToolResultSummary.ts`、`aiChatStreamUtils.ts` 纯展示工具；
 - `notes/*` → 列表、详情、编辑器。
