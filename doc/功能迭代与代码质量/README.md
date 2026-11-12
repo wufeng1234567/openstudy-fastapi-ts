@@ -17,6 +17,7 @@
 | [llm-handbook-review.md](llm-handbook-review.md) | LLM 答辩手册的目标任务完成审查、数字一致性与使用边界 | 答辩/评审 |
 | [ruoyi-cleanup-report.md](ruoyi-cleanup-report.md) | RuoYi-Vue3 历史组件删除、品牌资产替换与保留边界 | 开发/重构 |
 | [OpenStudy-技术实现质量20%-P0-P2执行方案.md](OpenStudy-技术实现质量20%-P0-P2执行方案.md) | 比赛 20% 评分对应的 P0/P1/P2 整改方案、完整工程结构与证据地图 | 答辩/技术负责人 |
+| [dead-code-ledger.md](dead-code-ledger.md) | 已清理/已脱管/待决策的死代码与仓库垃圾台账 | 评委/开发 |
 
 ## 30 秒结论
 

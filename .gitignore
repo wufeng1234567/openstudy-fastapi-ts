@@ -135,6 +135,9 @@ openstudy-fastapi/pip-unpack-*/
 # 前端本地探测产物
 openstudy-vue3-ts/tests/.tmp_*
 openstudy-vue3-ts/tests/_served.js
+
+# 孤儿锁文件（startup-scripts 无 package.json）
+startup-scripts/package-lock.json
 _probe_*.txt
 _probe_*.json
 # 浏览器自动化（CDP）跑测试时常在仓库根目录留下 tmpXXXXXXX 临时文件，
