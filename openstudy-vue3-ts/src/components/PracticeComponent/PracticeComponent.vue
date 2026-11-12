@@ -1972,96 +1972,28 @@ const currentUserId = () => {
   return id === undefined || id === null || id === '' ? null : id
 }
 
+const { persistMockSession } = usePracticeMockSession({
+  isMockFlow,
+  mockPhase,
+  activeMockConfig,
+  questions,
+  answers,
+  subFillBlankAnswers,
+  subEssayAnswers,
+  currentQuestion,
+  practiceSessionId,
+  examStartAt,
+  getUserId: currentUserId,
+  getBankId: () => props.bankId,
+  getMockSessionEndAt: () => mockSessionEndAt
+})
+
 /**
  * 把「当前进行中的考试」写进 localStorage
  *
  * ⚠️ 只在 `mockPhase === 'running'` 时写。配置页 / 结果页 / 历史页都不该有会话：
  *   · 配置页还没开考，没有"进行中的考试"；
  *   · 结果页的考试已经结束（记录进了历史），留着会话会让下次进来错误地恢复。
- */
-function persistMockSession() {
-  if (!isMockFlow.value || mockPhase.value !== 'running') return
-  const cfg = activeMockConfig.value
-  if (!cfg) return
-
-  const list = questions.value || []
-  if (!list.length) return
-
-  /*
-   * 答案按**题目 id** 存，不按数组下标。
-   *
-   * 为什么：恢复时要按 id 回题库重新取题（题目正文以题库为准），
-   * 顺序虽然由会话里的 questionIds 保证，但用 id 做 key 更抗"顺序被意外改动"。
-   * 与 `buildDraftSnapshot` 的做法保持一致。
-   */
-  const answersById: Record<string, any> = {}
-  list.forEach((q: any, i: number) => {
-    const qid = q?.id ?? q?.questionId
-    if (qid === undefined || qid === null) return
-    const ans = answers.value?.[i]
-    if (ans === null || ans === undefined || ans === '') return
-    if (Array.isArray(ans) && ans.length === 0) return
-    if (typeof ans === 'object' && !Array.isArray(ans) && Object.keys(ans).length === 0) return
-    answersById[String(qid)] = ans
-  })
-
-  // 组合题子题答案：key 形如 `${qid}_${subIndex}`
-  const fillById: Record<string, Record<string, any>> = {}
-  const essayById: Record<string, Record<string, any>> = {}
-  Object.keys(subFillBlankAnswers.value || {}).forEach((k) => {
-    const [qid, sub] = String(k).split('_')
-    if (!qid || sub === undefined) return
-    const v = (subFillBlankAnswers.value as any)[k]
-    if (v === null || v === undefined || v === '') return
-    ;(fillById[qid] ||= {})[sub] = v
-  })
-  Object.keys(subEssayAnswers.value || {}).forEach((k) => {
-    const [qid, sub] = String(k).split('_')
-    if (!qid || sub === undefined) return
-    const v = (subEssayAnswers.value as any)[k]
-    if (v === null || v === undefined || v === '') return
-    ;(essayById[qid] ||= {})[sub] = v
-  })
-
-  const cur = currentQuestion.value
-  const curId = cur ? (cur.id ?? cur.questionId ?? null) : null
-
-  saveMockSession(currentUserId(), {
-    bankId: props.bankId,
-    config: JSON.parse(JSON.stringify(cfg)),
-    questionIds: list.map((q: any) => q?.id ?? q?.questionId),
-    scores: list.map((q: any) => Number(q?._mockScore) || 0),
-    types: list.map((q: any) => String(q?._mockType || q?.type || '')),
-    answers: answersById,
-    subFillBlank: fillById,
-    subEssay: essayById,
-    practiceSessionId: practiceSessionId.value || undefined,
-    currentQuestionId: curId,
-    startedAt: examStartAt.value || Date.now(),
-    endAt: mockSessionEndAt || (examStartAt.value + (Number(cfg.timeLimit) || 60) * 60000)
-  })
-}
-
-/**
- * 恢复进行中的考试
- *
- * @returns 是否成功恢复到 `running` 阶段
- *
- * ⚠️ 这是"考试中刷新不丢卷子"的核心。必须做对的几件事：
- *
- *   1. **按 id 回题库重取题目**，而不是把整份题目对象存在 localStorage：
- *      题库里的题干/选项可能刚被老师改过，用旧快照会让用户看到过期内容。
- *      会话里只记 id 顺序 + 分值 + 题型。
- *
- *   2. **分值 / 题型必须用会话里的快照覆盖**（`_mockScore` / `_mockType`）：
- *      否则判分会退回"套用当前配置"，而用户可能已经改过配置 ——
- *      那就会出现"按新配置判旧卷子"的错乱。
- *
- *   3. **计时必须接续 `endAt`**，绝不重新计满时长：
- *      用户考了 40 分钟、剩 20 分钟时刷新，如果重新给 60 分钟，
- *      等于白送 40 分钟，考试失去意义。
- *
- *   4. **定位回原来那道题**，让用户接着做。
  */
 async function restoreMockSession(): Promise<boolean> {
   const session = loadMockSession(currentUserId(), props.bankId)
