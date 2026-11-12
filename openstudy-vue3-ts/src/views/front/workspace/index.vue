@@ -971,50 +971,27 @@ function onWikiOpenSource(payload: { kind: string; id: number; title?: string; a
   }
 }
 
-/* 试试 AI 怎么找 */
-const tryQuery = ref('')
-const tryPanelRef = ref<HTMLElement | null>(null)
-const trying = ref(false)
-const tried = ref(false)
-const tryHits = ref<any[]>([])
-const tryPage = ref(1)
-const TRY_PAGE_SIZE = 10
-const tryPageHits = computed(() => {
-  const start = (tryPage.value - 1) * TRY_PAGE_SIZE
-  return tryHits.value.slice(start, start + TRY_PAGE_SIZE)
-})
-/** 后端给的「为什么没结果」人话原因（如「没有可检索的知识库」），有就优先显示 */
-const tryReason = ref('')
-/**
- * 结果可能不相关（后端 `lowConfidence`）
- *
- * 判据 = 向量路和关键词路都没命中，只是向量返回了"最像的几条"。
- * 这时不能装作搜到了，也不能直接吞掉结果（可能是换词提问）——
- * 折中：照常列出来，但在上面加一条明确提示。
- */
-const lowConfidence = ref(false)
-/**
- * **本次检索用的词**（高亮依据）
- *
- * 单独存一份、而不是直接用 `tryQuery`：输入框是随时可改的，
- * 结果列表却对应"上一次点找找看时"的那个词。两者混用会导致
- * 用户一改输入框，已有结果的高亮就乱跳。
- */
-const trySearchedQuery = ref('')
-
-/** 清空 AI 检索的结果区域：点击面板外、清空输入时都应调用。 */
-function clearTryResults() {
-  tryHits.value = []
-  tryPage.value = 1
-  tried.value = false
-  tryReason.value = ''
-  lowConfidence.value = false
-  trySearchedQuery.value = ''
-}
-
-function onTryInput() {
-  if (!tryQuery.value.trim()) clearTryResults()
-}
+const {
+  tryQuery,
+  tryPanelRef,
+  trying,
+  tried,
+  tryHits,
+  tryPage,
+  tryPageHits,
+  tryReason,
+  lowConfidence,
+  trySearchedQuery,
+  clearTryResults,
+  onTryInput,
+  doTry,
+  openHit,
+  highlight,
+  highlightQuery,
+  cleanMathForSnippet,
+  buildHitSnippet,
+  docTagType
+} = useWorkspaceTrySearch({ activeKb, showAnatomy })
 
 /* 分块 */
 
@@ -1368,29 +1345,27 @@ function selectKb(kbId: number) {
   tryQuery.value = ''
 }
 
-function openShare(kb: any) {
-  closeKbMenu()
-  shareKbId.value = Number(kb?.kbId) || null
-  shareDialogVisible.value = true
-}
-
-function openKbMenu(event: MouseEvent, kb: any) {
-  const target = event.currentTarget as HTMLElement
-  const rect = target.getBoundingClientRect()
-  const menuWidth = 188
-  const menuHeight = kb?.isDefault ? 150 : 188
-  const x = Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)
-  const y = Math.min(rect.bottom + 4, window.innerHeight - menuHeight - 8)
-  kbMenu.kb = kb
-  kbMenu.x = Math.max(8, x)
-  kbMenu.y = Math.max(8, y)
-  kbMenu.visible = true
-}
-
-function closeKbMenu() {
-  kbMenu.visible = false
-  kbMenu.kb = null
-}
+const {
+  openShare,
+  openKbMenu,
+  closeKbMenu,
+  openDocShare,
+  handleKbCommand,
+  promptCreate,
+  promptRename,
+  removeKb,
+  toggleDisabled,
+  toggleDocSearchable
+} = useWorkspaceKbActions({
+  activeKbId,
+  creating,
+  kbMenu,
+  shareKbId,
+  shareDialogVisible,
+  docShareDialogVisible,
+  shareDoc,
+  load
+})
 
 function onGlobalClick(event: Event) {
   closeKbMenu()
@@ -1409,122 +1384,6 @@ onBeforeUnmount(() => {
   document.removeEventListener('click', onGlobalClick)
   window.removeEventListener('scroll', onGlobalClick, true)
 })
-
-function openDocShare(doc: any) {
-  shareDoc.value = { docId: Number(doc.docId), fileName: String(doc.fileName || '未命名文档') }
-  docShareDialogVisible.value = true
-}
-
-function handleKbCommand(command: string, kb: any) {
-  if (!kb) return
-  closeKbMenu()
-  if (command === 'rename') return promptRename(kb)
-  if (command === 'share') return openShare(kb)
-  if (command === 'toggle-disabled') return toggleDisabled(kb)
-  if (command === 'delete' && !kb.isDefault) return removeKb(kb)
-}
-
-/* ===================== 知识库增删改 ===================== */
-
-async function promptCreate() {
-  try {
-    const r: any = await ElMessageBox.prompt('给资料夹起个名字', '新建资料夹', {
-      confirmButtonText: '创建',
-      cancelButtonText: '取消',
-      inputPlaceholder: '例如：概率论、数据结构期末',
-      inputValidator: (v: string) => (v && v.trim() ? true : '名字不能为空')
-    })
-    creating.value = true
-    const res: any = await createKnowledgeBase({ name: r.value.trim() })
-    if (res.code === 200) {
-      ElMessage.success('资料夹已创建')
-      await load()
-      if (res.data?.kbId) activeKbId.value = res.data.kbId
-    } else {
-      ElMessage.error(res.msg || '创建失败')
-    }
-  } catch (e: any) {
-    if (e !== 'cancel') ElMessage.error('创建失败：' + (e?.message || e))
-  } finally {
-    creating.value = false
-  }
-}
-
-async function promptRename(kb: any) {
-  try {
-    const r: any = await ElMessageBox.prompt('改成什么名字？', '重命名资料夹', {
-      confirmButtonText: '保存',
-      cancelButtonText: '取消',
-      inputValue: kb.name,
-      inputValidator: (v: string) => (v && v.trim() ? true : '名字不能为空')
-    })
-    const res: any = await updateKnowledgeBase(kb.kbId, { name: r.value.trim() })
-    if (res.code === 200) {
-      ElMessage.success('已重命名')
-      await load()
-    } else {
-      ElMessage.error(res.msg || '重命名失败')
-    }
-  } catch (e: any) {
-    if (e !== 'cancel') ElMessage.error('重命名失败：' + (e?.message || e))
-  }
-}
-
-async function removeKb(kb: any) {
-  try {
-    await ElMessageBox.confirm(
-      `确定删除「${kb.name}」吗？里面的 ${kb.docCount} 份资料会一起删掉，不能恢复。`,
-      '删除资料夹',
-      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
-    )
-  } catch {
-    return
-  }
-  try {
-    const res: any = await deleteKnowledgeBase(kb.kbId)
-    if (res.code === 200) {
-      ElMessage.success('已删除')
-      if (activeKbId.value === kb.kbId) activeKbId.value = null
-      await load(false)
-    } else {
-      ElMessage.error(res.msg || '删除失败')
-    }
-  } catch (e: any) {
-    ElMessage.error('删除失败：' + (e?.message || e))
-  }
-}
-
-async function toggleDisabled(kb: any) {
-  const next = kb.disabled === 1 ? 0 : 1
-  try {
-    const res: any = await updateKnowledgeBase(kb.kbId, { disabled: next })
-    if (res.code === 200) {
-      ElMessage.success(next === 1 ? '已屏蔽，智能体不会再检索它' : '已恢复检索')
-      await load()
-    } else {
-      ElMessage.error(res.msg || '操作失败')
-    }
-  } catch (e: any) {
-    if (e?.__repeatSubmit) return
-    ElMessage.error('操作失败：' + (e?.message || e))
-  }
-}
-
-async function toggleDocSearchable(doc: any) {
-  const next = doc.disabled !== 1
-  try {
-    const res: any = await setDocumentSearchable(doc.docId, next)
-    if (res.code === 200) {
-      ElMessage.success(next ? '已恢复这份资料的检索' : '已屏蔽这份资料，智能体不会检索它')
-      await load()
-    } else {
-      ElMessage.error(res.msg || '操作失败')
-    }
-  } catch (e: any) {
-    if (e?.__repeatSubmit) return
-    ElMessage.error('操作失败：' + (e?.message || e))
-  }
-}
 
 /* ===================== 文档上传 ===================== */
 
@@ -1857,145 +1716,6 @@ async function showAnatomyLegacy(doc: any, opts?: { highlight?: string; chunkId?
     await nextTick()
     applyAnatomyHighlight()
   }
-}
-
-/* ===================== 试试 AI 怎么找 ===================== */
-
-/**
- * 语义检索
- *
- * ⚠️ 必须把当前选中的库传过去（`kbIds`）。
- * 不传的话后端会搜"该用户的全部知识库"，用户明明在「数据结构」库里，
- * 却在结果里看到「cpp」库的文件 —— 那才是真正的困惑来源。
- */
-async function doTry() {
-  const q = tryQuery.value.trim()
-  if (!q) {
-    ElMessage.warning('先输入一句描述')
-    return
-  }
-  const kb = activeKb.value
-  if (!kb) return
-
-  trying.value = true
-  tried.value = false
-  tryReason.value = ''
-  tryHits.value = []
-  tryPage.value = 1
-  lowConfidence.value = false
-  trySearchedQuery.value = q
-  try {
-    const res: any = await searchWorkspace(q, 50, [kb.kbId])
-    if (res.code === 200) {
-      tryHits.value = res.data.hits || []
-      tryReason.value = res.data.reason || ''
-      lowConfidence.value = !!res.data.lowConfidence
-      tried.value = true
-    } else {
-      ElMessage.error(res.msg || '查找失败')
-    }
-  } catch (e: any) {
-    ElMessage.error('查找失败：' + (e?.message || e))
-  } finally {
-    trying.value = false
-  }
-}
-
-/** 打开命中片段：只保留一个动作——进资料刨析并高亮定位 */
-function openHit(hit: any) {
-  const doc = activeKb.value?.files.find((f: any) => Number(f.docId) === Number(hit.docId))
-  showAnatomy(
-    {
-      ...(doc || {}),
-      docId: hit.docId,
-      fileName: hit.docName || hit.fileName || doc?.fileName || '未命名资料'
-    },
-    { highlight: trySearchedQuery.value, chunkIndex: hit.chunkIndex, chunkId: hit.chunkId, chunkCount: Number(doc?.chunkCount || 0), targetText: String(hit.content || '') }
-  )
-}
-
-/**
- * 命中关键词高亮（与知识库面板 `KnowledgeBasePanel.highlight` 同一套做法）
- *
- * 三条要点，都是踩过的坑：
- *   1. **先转义、再插标记**。片段是文档正文，可能含尖括号甚至故意的 HTML；
- *      顺序反了就是把用户内容当代码执行（XSS）。标记 `<mark>` 由我们自己拼，
- *      正文里的 `<` `>` 已经变成实体，所以安全。
- *   2. **高亮词取「本次检索用的那个词」**（`trySearchedQuery`），不是输入框当前值 ——
- *      用户搜完再去改输入框，结果列表不该跟着乱跳。
- *   3. 正则元字符要转义，否则搜 `C++` 这种词会直接抛异常。
- */
-function highlight(content: string): string {
-  const escaped = String(content || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-
-  const terms = trySearchedQuery.value.trim().split(/\s+/).filter((t) => t.length > 0)
-  if (!terms.length) return escaped
-
-  // 长词优先：「数据结构」要先于「数据」匹配，否则会被切成两段高亮
-  terms.sort((a, b) => b.length - a.length)
-  const pattern = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
-  try {
-    return escaped.replace(new RegExp(`(${pattern})`, 'gi'), '<mark>$1</mark>')
-  } catch {
-    return escaped
-  }
-}
-
-function highlightQuery(content: string, query: string): string {
-  const escaped = String(content || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-  const term = String(query || '').trim()
-  if (!term) return escaped
-  const pattern = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  try {
-    return escaped.replace(new RegExp(`(${pattern})`, 'gi'), '<mark>$1</mark>')
-  } catch {
-    return escaped
-  }
-}
-
-function cleanMathForSnippet(input: string): string {
-  return String(input || '')
-    .replace(/\$([^$]+)\$/g, (_, body) => body
-      .replace(/\\overline\{([^{}]+)\}/g, '$1')
-      .replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, '($1)/($2)')
-      .replace(/\\[a-zA-Z]+\{([^{}]*)\}/g, '$1')
-      .replace(/\\[a-zA-Z]+/g, '')
-      .replace(/[{}]/g, ''))
-    .replace(/【图\d+】/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-/** 搜索命中片段：优先截取用户搜索词附近，而不是永远截正文开头 */
-function buildHitSnippet(content: string): string {
-  const text = cleanMathForSnippet(content)
-  const q = trySearchedQuery.value.trim()
-  if (!text || !q) return text.slice(0, 180)
-  const lower = text.toLowerCase()
-  let pos = lower.indexOf(q.toLowerCase())
-  if (pos < 0) {
-    const first = q.split(/\s+/).find((t) => t.length > 0) || ''
-    pos = first ? lower.indexOf(first.toLowerCase()) : -1
-  }
-  if (pos < 0) return text.slice(0, 180)
-  const start = Math.max(0, pos - 46)
-  const end = Math.min(text.length, pos + q.length + 110)
-  return `${start > 0 ? '…' : ''}${text.slice(start, end)}${end < text.length ? '…' : ''}`
-}
-
-/* ===================== 工具 ===================== */
-
-function docTagType(status: number) {
-  if (status === 5) return 'success'
-  if (status === 4) return 'danger'
-  if (status === 2) return 'warning'
-  return 'info'
 }
 
 onMounted(() => {
