@@ -515,7 +515,6 @@ const isLastBatch = computed(() => allQuestionsData.value.length <= questionOffs
  */
 const canGoNextBatch = computed(() => !isLastBatch.value)
 
-const showSettings = ref(false)
 
 /* ============================================================================
  * 模拟考试的三个阶段（2026-10-22）
@@ -612,12 +611,6 @@ const examStartAt = ref<number>(0)
  * 详见 `openSettings()` 与 `handleSettingsSave()` 的注释 —— 这两个函数是配套的，
  * 改动其一时必须同步另一个，否则「只刷错题」会再次变成"开关点了没反应"。
  */
-const settingsSnapshot = reactive({
-  onlyWrong: false,
-  questionCount: 10 as number | string,
-  isOverviewMode: false
-})
-
 const showExamResult = ref(false)
 const totalScore = ref(0)
 const showAnalysisDialog = ref(false)
@@ -999,66 +992,6 @@ const handlePrevBatch = () => {
 }
 
 /**
- * 设置弹窗保存后的生效逻辑
- *
- * ⚠️⚠️ 这里连踩两个坑，改之前先读完（2026-10-20）：
- *
- * **坑一：原来只处理「题数变化」，完全没管「只刷错题」。**
- *   用户口径：「顺序模式下 设置只练错题 没有这个提示」——
- *   实际提示条出现了，但**题目还是全库的**（1/10 而不是 1/5 道错题）。
- *   表现上就是"开关没生效"。
- *
- * **坑二：不能用 `moduleSettings.value` 判断"值变没变"。**
- *   `PracticeSettings.handleSave()` 的执行顺序是
- *       ① `store.saveModuleSettings(...)`   ← 先把新值写进 store
- *       ② `emit('save', ...)`               ← 才通知父组件
- *   于是本函数拿到的 `moduleSettings.value.onlyWrong` **已经是新值**，
- *   `onlyWrongChanged` 恒为 false → 重载逻辑永远不执行。
- *   （我第一版就是这么写的，探针显示"保存后题量没变"，排查了一轮才发现。）
- *
- * 正解：由**打开设置弹窗的那一刻**把旧值记下来，保存回来时跟这份快照比。
- * `settingsSnapshot` 在 `openSettings()` 里写入，是这一判断的唯一可靠来源。
- *
- * 修法：`onlyWrong` 变化时走 `resetAndFetchQuestions()` —— 那个函数正是为此存在：
- * 清空 questions/allQuestionsData、同步最新设置（含 onlyWrong）、再从接口重拉。
- * 不能复用 `updateOnlyWrong()` + `fetchQuestions()`：后者开头有
- *   `if (questions.value.length > 0) return`
- * 题已在内存里就直接提前返回，永远不会重新拉取。
- */
-const handleSettingsSave = (data: { moduleType: string; settings: any }) => {
-  const { settings } = data
-  // 与「打开弹窗时」的快照对比，而不是与已被 store 更新的当前值对比（见上面坑二）
-  const prevOnlyWrong = !!settingsSnapshot.onlyWrong
-  const prevCount = settingsSnapshot.questionCount
-  const onlyWrongChanged = !!settings.onlyWrong !== prevOnlyWrong
-  const countChanged = settings.questionCount !== prevCount
-
-  if (onlyWrongChanged) {
-    // 错题集和全库是两个不同的题目集合，必须整体重拉（不能只切片）
-    resetAndFetchQuestions()
-    return
-  }
-  if (countChanged) {
-    updateQuestionCountAndSlice(settings.questionCount)
-  }
-}
-
-/**
- * 打开设置弹窗
- *
- * ⚠️ 必须在这里**快照**当前设置：`PracticeSettings.handleSave` 会先写 store 再 emit，
- * 父组件收到事件时读到的已经是新值，无法据此判断"变了什么"。
- * 详见 `handleSettingsSave` 的注释。
- */
-const openSettings = () => {
-  const s = moduleSettings.value
-  settingsSnapshot.onlyWrong = !!s.onlyWrong
-  settingsSnapshot.questionCount = s.questionCount
-  settingsSnapshot.isOverviewMode = !!s.isOverviewMode
-  showSettings.value = true
-}
-
-/**
  * 点「提交」→ 进入结算页
  * ============================================================================
  * 用户 2026-10-18 的需求：
@@ -1225,6 +1158,12 @@ const {
 } = useQuestionPractice(props, { proxy }, {
   questionCount: moduleSettings.value.questionCount,
   onlyWrong: moduleSettings.value.onlyWrong
+})
+
+const { showSettings, settingsSnapshot, handleSettingsSave, openSettings } = usePracticeSettings({
+  moduleSettings,
+  resetAndFetchQuestions,
+  updateQuestionCountAndSlice
 })
 
 const {
