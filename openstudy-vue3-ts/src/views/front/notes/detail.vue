@@ -194,6 +194,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatTime, getBankId, getBankName, getQuestionText, getTagList, truncate } from './notesUtils'
 defineOptions({ name: 'FrontNotesDetail' })
 import { ref, computed, onMounted, onActivated, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -348,20 +349,6 @@ const MAX_VISIBLE_BANKS = 3
 const visibleBanks = computed(() => linkedBanks.value.slice(0, MAX_VISIBLE_BANKS))
 const hiddenBanks = computed(() => linkedBanks.value.slice(MAX_VISIBLE_BANKS))
 
-// 截断文本
-const truncate = (text: string, len: number) => {
-  if (!text) return ''
-  const str = String(text)
-  return str.length > len ? str.slice(0, len) + '...' : str
-}
-
-// 获取题目展示文本（兼容多种字段名）
-const getQuestionText = (q: any) => {
-  if (!q) return ''
-  const raw = q.questionText || q.content || q.questionContent || ''
-  return getPlainText(raw)
-}
-
 // 加载关联题库
 const loadLinkedBanks = async (noteId: any) => {
   if (!noteId) {
@@ -440,36 +427,9 @@ const goToBank = (bankId: any) => {
   router.push({ path: '/front/studio/create', query: { bankId } })
 }
 
-// 获取题库名称（兼容字段）
-const getBankName = (bank: any) => {
-  return bank.bankName || bank.name || `题库${bank.bankId || bank.bankId}`
-}
-
-// 获取题库 ID（兼容字段）
-const getBankId = (bank: any) => {
-  return bank.questionBankId || bank.bankId || bank.bankId
-}
-
 watch(() => noteData.value.markdownContent, (newMd) => {
   noteHtmlContent.value = newMd ? marked.parse(newMd) : ''
 }, { immediate: true })
-
-const formatTime = (time) => {
-  if (!time) return ''
-  const date = new Date(time)
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-const getTagList = (tags) => {
-  if (!tags) return []
-  if (typeof tags === 'string') {
-    return tags.split(',').filter(t => t.trim())
-  }
-  return tags
-}
 
 const exportNote = () => {
   const title = noteData.value.title || '笔记'
