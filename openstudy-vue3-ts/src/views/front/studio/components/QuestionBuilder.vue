@@ -1655,10 +1655,6 @@ const clearPromptHistory = () => {
   ElMessage.success('历史记录已清空')
 }
 
-const truncateText = (text, maxLength) => {
-  if (!text) return ''
-  return text.length > maxLength ? text.substring(0, maxLength) + '...' : text
-}
 
 
 // 过滤后的题目列表（支持多选题型筛选 + 关键词搜索）
@@ -2417,50 +2413,9 @@ const isOptionCorrect = (question, optIdx) => {
   return false
 }
 
-// 获取子题题型显示名称
-const getSubTypeName = (type) => {
-  const map = {
-    single: '单选题',
-    multiple: '多选题',
-    judge: '判断题',
-    fill: '填空题',
-    essay: '简答题'
-  }
-  return map[type] || type
-}
-
 // 获取子题题型标签类型（Element Plus Tag 的 type）
-const getSubTypeTagType = (type) => {
-  const map = {
-    single: 'primary',
-    multiple: 'success',
-    judge: 'warning',
-    fill: 'info',
-    essay: ''
-  }
-  return map[type] || 'info'
-}
-
-
-
 // 判断子题选项是否正确（用于组合题子题预览）
-const isSubOptionCorrect = (sub, optIdx) => {
-  if (sub.type === 'single') {
-    return sub.correctAnswer === optIdx
-  } else if (sub.type === 'multiple') {
-    return Array.isArray(sub.correctAnswer) && sub.correctAnswer.includes(optIdx)
-  }
-  return false
-}
-
 // 格式化子题答案显示（用于组合题子题预览）
-const formatSubAnswer = (sub) => {
-  if (sub.type === 'judge') {
-    return sub.correctAnswer ? '正确' : '错误'
-  }
-  return sub.correctAnswer
-}
-
 const formatAnswer = (question) => {
   if (aiForm.value.questionType === 'judge') {
     return question.correctAnswer ? '正确' : '错误'
@@ -2761,6 +2716,7 @@ import {
   mapAiTypeToInternal,
   normalizeAiQuestion
 } from './questionBuilderAi'
+import { formatSubAnswer, getSubTypeName, getSubTypeTagType, isSubOptionCorrect, truncateText } from './questionBuilderUtils'
 
 // 普通 API 调用（非流式）
 const generateQuestionsNormal = async (params, isComposite) => {
