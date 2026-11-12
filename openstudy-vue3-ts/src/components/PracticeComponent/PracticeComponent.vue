@@ -1673,110 +1673,6 @@ async function handleMockStart(cfg: MockExamConfig) {
   startExamTimer()
 }
 
-/** 交卷：服务端判分 + 生成记录 + 切到总结页 */
-async function handleMockSubmit() {
-  const cfg = activeMockConfig.value
-  if (!cfg) return
-  if (!practiceSessionId.value) {
-    proxy.$modal.msgError('考试会话不存在，无法交卷，请刷新后重试')
-    return
-  }
-
-  const durationSec = examStartAt.value
-    ? Math.max(0, Math.round((Date.now() - examStartAt.value) / 1000))
-    : 0
-  let serverData: any
-  try {
-    // 模拟考试同样没有逐题上报，交卷时整卷答案一次带上
-    const localAnswers = Object.fromEntries(
-      questions.value.map((q: any, i: number) => [String(q.id), answers.value[i]])
-    )
-    const res: any = await submitPracticeSession(practiceSessionId.value, durationSec, localAnswers)
-    if (res?.code !== 200) {
-      proxy.$modal.msgError(res?.msg || '交卷失败，请重试')
-      return
-    }
-    serverData = res.data || {}
-  } catch (e: any) {
-    console.error('[mock] 服务端交卷失败', e)
-    proxy.$modal.msgError('交卷失败，请检查网络后重试')
-    return
-  }
-
-  const serverItems: any[] = Array.isArray(serverData.items) ? serverData.items : []
-  const items: MockExamItemDetail[] = serverItems.map((item: any, i: number) => {
-    const q = item.question || {}
-    const type = normalizeType(q.questionType) as any
-    const subResults: any[] = Array.isArray(item.subResults) ? item.subResults : []
-    const detail: any = {
-      questionId: item.questionId,
-      index: i + 1,
-      type,
-      stem: fullStem(q),
-      userAnswer: item.userAnswer,
-      correctAnswer: item.correctAnswer,
-      isCorrect: item.isCorrect === true,
-      gotScore: Number(item.scoreAwarded) || 0,
-      fullScore: Number(item.maxScore) || 0,
-      analysis: String(item.analysis || '') || undefined
-    }
-    if (Array.isArray(q.options) && q.options.length) {
-      detail.options = normalizeOptionList(q.options)
-    }
-    const subs = Array.isArray(q.subQuestions) ? q.subQuestions : []
-    if (subs.length) {
-      detail.subItems = subs.map((sq: any, si: number) => {
-        const subResult = subResults.find((r: any) => Number(r.subIndex) === si)
-        return {
-          index: si + 1,
-          type: normalizeType(sq.questionType) as any,
-          question: String(sq.questionText || `问题 ${si + 1}`),
-          options: Array.isArray(sq.options) && sq.options.length ? normalizeOptionList(sq.options) : undefined,
-          userAnswer: undefined,
-          correctAnswer: subResult?.correctAnswer
-        }
-      })
-    }
-    return detail as MockExamItemDetail
-  })
-
-  const gotScore = Number(serverData.score) || 0
-  const fullScore = Number(serverData.totalScore) || 0
-  const record: MockExamRecord = {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    bankId: props.bankId,
-    bankName: props.bankName,
-    submittedAt: Date.now(),
-    config: JSON.parse(JSON.stringify(cfg)),
-    totalQuestions: items.length,
-    correctCount: Number(serverData.correctCount) || 0,
-    wrongCount: Number(serverData.wrongCount) || 0,
-    gotScore: Math.round(gotScore * 10) / 10,
-    fullScore,
-    // 满分拿不到时不能给“通过”结论（历史 bug：0 >= 0 被判及格）
-    passed: fullScore > 0 && gotScore >= (Number(cfg.passScore) || 0),
-    durationSec,
-    items
-  }
-
-  currentExamRecord.value = record
-  store.addMockExamRecord(record)
-
-  // 收尾：停计时、清考试存储、清会话、展开解析
-  stopExamTimer()
-  clearExamStorage()
-  clearMockSession(currentUserId(), props.bankId)
-  mockSessionEndAt = 0
-  practiceSessionId.value = ''
-  showAllAnalysis()
-  totalScore.value = Math.round(record.gotScore)
-  showExamResult.value = true
-  mockPhase.value = 'summary'
-  if (Number(serverData.pendingCount || 0) > 0) {
-    proxy.$modal.msgInfo(`本场有 ${serverData.pendingCount} 道简答题待自评，不计入自动得分`)
-  }
-}
-
 /**
  * 从总结页点「再考一次」
  *
@@ -1993,6 +1889,27 @@ const { persistMockSession, restoreMockSession } = usePracticeMockSession({
   updateQuestionCount,
   processQuestions,
   startExamTimer
+})
+
+const { handleMockSubmit } = usePracticeMockResult({
+  activeMockConfig,
+  practiceSessionId,
+  examStartAt,
+  questions,
+  answers,
+  currentExamRecord,
+  totalScore,
+  showExamResult,
+  mockPhase,
+  getBankId: () => props.bankId,
+  getBankName: () => props.bankName,
+  store,
+  proxy,
+  getUserId: currentUserId,
+  stopExamTimer,
+  clearExamStorage,
+  setMockSessionEndAt: (value) => { mockSessionEndAt = value },
+  showAllAnalysis
 })
 
 /**
