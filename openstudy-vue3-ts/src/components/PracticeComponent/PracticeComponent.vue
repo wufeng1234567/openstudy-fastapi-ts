@@ -399,6 +399,7 @@ import { usePracticeAnalysis } from './usePracticeAnalysis'
 import { usePracticeRouteWatches } from './usePracticeRouteWatches'
 import { usePracticeLifecycle } from './usePracticeLifecycle'
 import { usePracticeSubmission } from './usePracticeSubmission'
+import { usePracticeStream } from './usePracticeStream'
 // 「只刷错题」空态要用线性图标（全站统一走 OsIcon，不用 Element Plus 实心图标）
 import OsIcon from '@/components/OsIcon/index.vue'
 import ImageViewer from './ImageViewer.vue'
@@ -651,149 +652,10 @@ let hasBeenDeactivated = false
 
 const highlightedIndex = ref(0)
 const markedQuestions = ref<number[]>([])
-const markedQuestionsSet = computed(() => {
-  const set = new Set<number>()
-  // 后端斩题状态（ID-based）
-  backendMarkedSet.value.forEach(id => set.add(Number(id)))
-  // 本地 UI 标记（index-based → 转换为 ID）
-  markedQuestions.value.forEach(idx => {
-    const q = questions.value[idx]
-    if (q && q.id != null) set.add(Number(q.id))
-  })
-  return set
-})
-let scrollDebounceTimer: ReturnType<typeof setTimeout> | null = null
-let scrollLock = false
 const questionStreamRef = ref<HTMLElement | null>(null)
 
 
 
-const toggleOverview = () => {
-  /*
-   * 用户主动点「整体浏览 / 逐题模式」= 明确的偏好选择，**要持久化**。
-   *
-   * 与结算里的 `forceOverview` 区分开：
-   *   · 这里    → 写 store（用户的长期偏好，下次进来还该是这个视图）；
-   *   · 结算时  → 只置 `forceOverview`（一次性，不改偏好）。
-   * 两条路径以前共用一个 computed setter，于是"临时展示"也被持久化了。
-   */
-  if (isOverviewActive.value) {
-    store.saveModuleSettings(props.moduleType, { overviewScrollIndex: highlightedIndex.value })
-  }
-  const next = !isOverviewActive.value
-  // 用户手动切换后，结算留下的临时态就该让位给用户的真实选择
-  forceOverview.value = false
-  overviewMode.value = next
-}
-
-const scrollToQuestion = (index: number) => {
-  if (!questionStreamRef.value) return
-  scrollLock = true
-  highlightedIndex.value = index
-  const children = questionStreamRef.value.children
-  if (children && children[index]) {
-    ;(children[index] as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }
-  setTimeout(() => { scrollLock = false }, 600)
-}
-
-const onStreamScroll = () => {
-  if (scrollLock) return
-  if (scrollDebounceTimer) clearTimeout(scrollDebounceTimer)
-  scrollDebounceTimer = setTimeout(() => {
-    if (!questionStreamRef.value) return
-    const scrollTop = questionStreamRef.value.scrollTop
-    if (scrollTop !== undefined) {
-      const idx = Math.round(scrollTop / 120)
-      if (idx >= 0 && idx < questions.value.length) {
-        highlightedIndex.value = idx
-      }
-    }
-  }, 200)
-}
-
-const handleMarkedChange = (index: number) => {
-  const q = questions.value[index]
-  const qid = q && q.id != null ? Number(q.id) : null
-  const set = new Set(markedQuestions.value)
-  if (set.has(index)) {
-    set.delete(index)
-    if (qid != null) backendMarkedSet.value.delete(qid)
-  } else {
-    set.add(index)
-    if (qid != null) backendMarkedSet.value.add(qid)
-  }
-  markedQuestions.value = [...set]
-  store.saveModuleSettings(props.moduleType, { markedQuestions: markedQuestions.value })
-}
-
-/*
- * ==================== 作答 → 判题（两种模式共用） ====================
- *
- * 用户 2026-10-18 报的 bug2：
- *   浏览模式下**单选**点一下就出答案（这是设计初衷），
- *   但**多选 / 填空 / 简答**也被同样对待：
- *     · 多选：刚点第一个选项就判了（必然错），没法选第二个；
- *     · 填空：输入第一个字符就提交了，后面全被"判错"；
- *     · 简答：同样，写一个字就判。
- *
- * 修法：按题型分流。
- *   · `single` / `truefalse` → 选完**立即判**（保留初衷，不用多点一次）；
- *   · `multiple` / `fillblank` / `essay` / 组合题子题 → 只记录答案，
- *     等用户在题目下方点「确认答案」才判（见 `handleCommitAnswer`）。
- *
- * ⚠️ 这段判据**两种模式共用**（2026-10-22 修正）：
- *    上一版只有浏览模式接了这套逻辑，逐题模式既没有确认按钮、
- *    点选项也不判分（判分要等点「下一题」），属于功能缺失。
- *    现在 `needsSubmit` / `committedQuestions` / `handleCommitAnswer`
- *    同时服务逐题与浏览两条模板分支。
- *
- * 为什么用"是否即时判"的判定函数、而不是在模板里散写条件：
- *   同一套判断在 4 个入口（选项 / 子选项 / 填空 / 简答）都要用，
- *   QuestionDisplay 也要用它决定显示"确认答案"按钮还是直接出解析。
- */
-
-/** 这类题型"选一个就能定论"，可以即时判；其余需要用户确认后再判 */
-const handlePrevBatch = () => {
-  hasSubmittedCurrentBatch.value = false
-  showExamResult.value = false
-  totalScore.value = 0
-  const count = moduleSettings.value.questionCount || 10
-  const newOffset = questionOffset.value - count
-  questionOffset.value = Math.max(0, newOffset)
-  loadBatchWithoutReset()
-  setTimeout(() => {
-    if (isOverviewActive.value) {
-      const firstCard = document.querySelector('.overview-question-card')
-      if (firstCard) {
-        firstCard.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }
-    } else {
-      goToQuestion(0)
-    }
-  }, 150)
-}
-
-/**
- * 点「提交」→ 进入结算页
- * ============================================================================
- * 用户 2026-10-18 的需求：
- *   「用户做完当前题库后点击"提交"，进入结算页面。结算页面以当前浏览模式
- *     （瀑布流题目模式）作为主窗口展示；右侧答题卡标记错题并可跳转；
- *     所有题目解析自动展开。」
- *
- * 改前的行为（已废弃）：提交时先弹「是否继续刷下一波」的确认框，
- * 分波导航靠弹窗完成 —— 既打断阅读，也和"页内按钮"的分波规则冲突
- * （浏览模式底部已经有「继续下一波 / 提交」按钮了，不该再问一遍）。
- *
- * 现在的行为：
- *   · 只做一次「有未答题」的提醒（这是有价值的防误提交），确认后直接进结算；
- *   · 结算 = 切到瀑布流（overviewMode）+ showExamResult + 全部解析展开；
- *   · 刷题模式下解析本来就在答完时更新，这里再 `showAllAnalysis()` 保证全覆盖。
- *
- * ⚠️ 逐题模式提交后也会切到瀑布流结算 —— 这是"结算页以浏览模式展示"的落点，
- *    不是把用户的练习模式永久改掉（`handleFinishExam` / 重新练习会复位）。
- */
 const handleSubmit = () => {
   const unanswered = totalQuestions.value - answeredCount.value
 
@@ -977,6 +839,26 @@ const {
   resetPractice,
   clearAnswerStateCache,
   resetAndFetchQuestions
+})
+
+const { markedQuestionsSet, toggleOverview, scrollToQuestion, onStreamScroll, handleMarkedChange, handlePrevBatch } = usePracticeStream({
+  questions,
+  markedQuestions,
+  backendMarkedSet,
+  highlightedIndex,
+  questionStreamRef,
+  isOverviewActive,
+  forceOverview,
+  overviewMode,
+  hasSubmittedCurrentBatch,
+  showExamResult,
+  totalScore,
+  moduleSettings,
+  questionOffset,
+  store,
+  getModuleType: () => props.moduleType,
+  loadBatchWithoutReset,
+  goToQuestion
 })
 
 const {
