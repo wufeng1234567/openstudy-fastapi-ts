@@ -390,6 +390,14 @@ import { usePracticeAnswerFlow } from './usePracticeAnswerFlow'
 import { usePracticeMockSession } from './usePracticeMockSession'
 import { usePracticeMockResult } from './usePracticeMockResult'
 import { usePracticeMockHistory } from './usePracticeMockHistory'
+import { usePracticeRecentSession } from './usePracticeRecentSession'
+import { usePracticeQuestionMeta } from './usePracticeQuestionMeta'
+import { usePracticeSettings } from './usePracticeSettings'
+import { usePracticeOverview } from './usePracticeOverview'
+import { usePracticeMockSetup } from './usePracticeMockSetup'
+import { usePracticeAnalysis } from './usePracticeAnalysis'
+import { usePracticeRouteWatches } from './usePracticeRouteWatches'
+import { usePracticeLifecycle } from './usePracticeLifecycle'
 // 「只刷错题」空态要用线性图标（全站统一走 OsIcon，不用 Element Plus 实心图标）
 import OsIcon from '@/components/OsIcon/index.vue'
 import ImageViewer from './ImageViewer.vue'
@@ -475,11 +483,7 @@ const isPracticeMode = computed(() => moduleSettings.value.practiceMode === 'pra
 const showAnalysisImmediately = computed(() => !isExamMode.value || showExamResult.value)
 const canGoPrevBatch = computed(() => questionOffset.value > 0 && (isExamMode.value || isPracticeMode.value))
 const isLastQuestion = computed(() => currentQuestionIndex.value === totalQuestions.value - 1)
-const { recentSession, loadRecentSession, openRecentSession } = usePracticeRecentSession({
-  getBankId: () => props.bankId,
-  getModuleTypeSafe: () => moduleTypeSafe.value,
-  proxy
-})
+
 
 /**
  * 本波第一题在整个题库里的**序号偏移**
@@ -619,6 +623,8 @@ const viewerSrc = ref('')
 const hasSubmittedCurrentBatch = ref(false)
 const isFirstLoaded = ref(false)
 
+const examTimeLimit = computed(() => moduleSettings.value.examTimeLimit || 60)
+
 const {
   remainingTime,
   formattedRemainingTime,
@@ -638,7 +644,6 @@ const {
 })
 
 
-const examTimeLimit = computed(() => moduleSettings.value.examTimeLimit || 60)
 let hasBeenDeactivated = false
 
 const highlightedIndex = ref(0)
@@ -658,11 +663,7 @@ let scrollDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let scrollLock = false
 const questionStreamRef = ref<HTMLElement | null>(null)
 
-const { typeLabelMap, questionGroups, answeredCount, remainingCount } = usePracticeQuestionMeta({
-  questions,
-  answers,
-  totalQuestions
-})
+
 
 const toggleOverview = () => {
   /*
@@ -882,6 +883,12 @@ const handleSubmit = () => {
 
 const { proxy } = getCurrentInstance() as any
 
+const { recentSession, loadRecentSession, openRecentSession } = usePracticeRecentSession({
+  getBankId: () => props.bankId,
+  getModuleTypeSafe: () => moduleTypeSafe.value,
+  proxy
+})
+
 const {
   questions,
   currentQuestionIndex,
@@ -937,6 +944,12 @@ const {
 } = useQuestionPractice(props, { proxy }, {
   questionCount: moduleSettings.value.questionCount,
   onlyWrong: moduleSettings.value.onlyWrong
+})
+
+const { typeLabelMap, questionGroups, answeredCount, remainingCount } = usePracticeQuestionMeta({
+  questions,
+  answers,
+  totalQuestions
 })
 
 const { showSettings, settingsSnapshot, handleSettingsSave, openSettings } = usePracticeSettings({
