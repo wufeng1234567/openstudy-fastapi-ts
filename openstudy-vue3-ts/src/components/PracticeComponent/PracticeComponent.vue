@@ -641,88 +641,6 @@ const {
 const examTimeLimit = computed(() => moduleSettings.value.examTimeLimit || 60)
 let hasBeenDeactivated = false
 
-watch(() => props.moduleType, (newType, oldType) => {
-  // 调试日志
-  debugWatchTrigger('moduleType', newType, newType, oldType)
-
-  // 当 moduleType 从有效值变为 undefined（路由过渡）时，保存旧模块状态
-  if (newType === undefined && oldType && oldType !== 'null') {
-    // 路由过渡，保存旧模块状态
-    saveCurrentAnswerState(oldType)
-    return
-  }
-
-  if (newType === 'mock' && !showExamResult.value) {
-    startExamTimer()
-  } else {
-    stopExamTimer()
-    remainingTime.value = 0
-    clearExamStorage()
-  }
-
-  // 只在模式切换时重置（新值有效，且不是首次加载）
-  // oldType 为 undefined 表示路由切换过渡，也需要触发重置
-  if (newType && newType !== oldType && oldType !== null) {
-    debugLeaveModule(oldType || 'unknown', props.bankId)
-    debugEnterModule(newType, props.bankId)
-    // 传入旧的 moduleType，用于保存旧模块的答题状态
-    resetAndFetchQuestions(oldType)
-  }
-})
-
-/**
- * 切换题库时**必须重置**（2026-10-22）
- *
- * ⚠️ 这是真实 bug 的修复，不是预防性加固：
- *   路由是 `/front/questionPractice/:bankId/:moduleType`，刷题页外层套了
- *   裸 `<keep-alive>`（`views/questionPractice/questionPractice/index.vue`），
- *   所以「从题库 A 换到题库 B」时 —— **只变路由参数，组件实例被复用**。
- *
- *   于是三处逻辑全部失效：
- *     · `onMounted` 不再执行（`isFirstLoaded` 已是 true，没人再调 `fetchQuestions`）；
- *     · `watch(moduleType)` 不触发（多数情况下 A/B 用的是同一个 mode）；
- *     · 即使有谁调了 `fetchQuestions()`，它内部第一道判断是
- *       `if (questions.value.length > 0) return` —— 此刻 `questions` 里装的
- *       正是**题库 A 的题**，于是直接返回，什么都不拉。
- *
- *   用户看到的结果：点题库 B，标题/URL 都变成 B 了，题目还是 A 的。
- *
- * 为什么不能只靠 `:key` 强制重建组件：
- *   那会连带丢掉 keep-alive 的意义（返回题库列表再进来时进度全没），
- *   而「同一题库再次进入保留进度」是刻意设计（见 `restoreAnswerState` /
- *   `practiceDraft` 的注释）。所以这里做**精准重置**：换题库才重置，
- *   同题库来回切仍然走缓存。
- */
-watch(() => props.bankId, (newId, oldId) => {
-  // 首次挂载时 oldId 为 undefined，交给 onMounted 处理，不要重复拉
-  if (oldId === undefined || oldId === null) return
-  if (!newId || Number(newId) <= 0) return
-  // 同值不处理（数字/字符串混用时会误判，统一 Number 比较）
-  if (Number(newId) === Number(oldId)) return
-
-  debugWatchTrigger('bankId', String(newId), String(newId), String(oldId))
-
-  // 1) 计时器与考试态属于「上一个题库」，必须停掉，否则 B 题库会显示 A 的倒计时
-  stopExamTimer()
-  remainingTime.value = 0
-  clearExamStorage()
-  showExamResult.value = false
-  hasSubmittedCurrentBatch.value = false
-
-  /*
-   * 2) 「已从暂存恢复过」的闸门要重新打开。
-   *    `restoreDraftIfAny()` 里有 `if (draftRestoredOnce) return`，它是按组件
-   *    实例（不是按题库）记的 —— 不重置的话，B 题库的暂存永远恢复不出来。
-   */
-  resetDraftRestored()
-
-  // 3) 重置题目与作答，再去拉 B 题库的数据。
-  //    ⚠️ 必须把 oldId 传进去：此刻 `props.bankId` 已经是新题库，
-  //    `resetAndFetchQuestions` 内部会先 `saveCurrentAnswerState`，
-  //    不带 oldId 就会把旧题库的题存进新题库的缓存 key（见该函数的注释）。
-  resetAndFetchQuestions(props.moduleType, oldId)
-})
-
 watch(showExamResult, (val) => {
   if (val) {
     stopExamTimer()
@@ -1556,6 +1474,23 @@ const {
   loadBatchWithoutReset,
   goToQuestion,
   setQuestionOffset: (value) => { questionOffset.value = value }
+})
+
+usePracticeRouteWatches({
+  getModuleType: () => props.moduleType,
+  getBankId: () => props.bankId,
+  showExamResult,
+  hasSubmittedCurrentBatch,
+  remainingTime,
+  saveCurrentAnswerState,
+  resetAndFetchQuestions,
+  resetDraftRestored,
+  startExamTimer,
+  stopExamTimer,
+  clearExamStorage,
+  debugWatchTrigger,
+  debugLeaveModule,
+  debugEnterModule
 })
 
 /*
