@@ -344,11 +344,20 @@ doc/
 - README 首屏 6 个证据链接全部可打开；
 - 文档中 lint/type-check/commit 数字只有一个版本。
 
+### P0 执行记录（2026-11-12）
+
+- ✅ `.gitignore` 已加入小红书素材、本地整理资料、竞赛预览、pip/前端临时产物规则；
+- ✅ `git rm --cached` 已脱管 `_evidence`、`_ui_evidence`、竞赛预览、临时文件；`git ls-files` 生成物检查为 0；
+- ✅ 新增 `ARCHITECTURE.md`、`CONTRIBUTING.md`、`SECURITY.md`、`Makefile`、`.editorconfig`、`.gitattributes`；
+- ✅ 新增 `scripts/verify-quality.bat`；实测后端 compile/ruff/pytest、前端 lint/build 通过，type-check 报告 1,808 条；
+- ✅ 新增 `doc/README.md` 文档总索引、`dead-code-ledger.md`，根 README 增加质量证据区；
+- 🟡 CI 已增加 frontend lint 与已跟踪生成物断言；`npm ci`/锁文件单一化仍待 P1。
+
 ---
 
 ## 6. 待拍板事项
 
 1. `doc/screenshots/` 是否全部保留在 Git：建议只保留 README 实际引用的 6 张，其余移 Release/本地；
 2. `doc/competition` 的 PDF/PPT 是否作为提交物保留：建议保留成品，忽略预览/缓存；
-3. 是否把现有 `doc/` 全量迁移到 `doc/`：建议先新增 `doc/index.md` 做入口，不一次性搬 588 个路径，避免断链；
+3. 是否把现有 `doc/` 全量迁移到 `doc/quality` 或 `doc/architecture`：建议先新增 `doc/README.md` 做入口，不一次性搬 588 个路径，避免断链；
 4. `type-check` 短期是否允许报告型：建议保留 `continue-on-error` 但在 README/quality-report 明示“非绿门禁”，下一阶段再改 blocking。
