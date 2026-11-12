@@ -402,6 +402,7 @@ import MockExamSetup from './MockExamSetup.vue'
 import ExamSummary from './ExamSummary.vue'
 import MockExamHistory from './MockExamHistory.vue'
 import type { MockExamConfig, MockExamRecord, MockExamItemDetail } from '@/types'
+import { buildMockPaper, fullStem, normalizeOptionList, normalizeType, plainText } from './practiceQuestionUtils'
 // 模拟考试组卷要拉全量题目（见 loadMockAvailability / handleMockStart）
 import { listQuestionMainAll, submitPracticeSession, startPracticeSession, listPracticeSessions, getPracticeSession } from '@/api/questionMain/questionMain'
 /*
@@ -1986,19 +1987,6 @@ watch(
  */
 
 /** 题型归一：后端数字题型 → 前端字符串（与 useQuestionPractice 的映射保持一致） */
-function normalizeType(raw: any): string {
-  switch (Number(raw)) {
-    case 1: return 'single'
-    case 2: return 'multiple'
-    case 3: return 'truefalse'
-    case 4: return 'fillblank'
-    case 5: return 'essay'
-    case 6: return 'readingComprehension'
-    case 7: return 'cloze'
-    default: return String(raw || 'unknown')
-  }
-}
-
 /**
  * 拉一份全量题目并按题型统计可选题量
  *
@@ -2047,37 +2035,6 @@ async function loadMockAvailability(): Promise<void> {
  *    题目对象本来就贯穿"渲染 → 作答 → 判分"整条链路，挂在它身上最不容易丢。
  *    下划线前缀与 `guard.params_payload` 的"内部字段"约定一致，不会被误当业务字段。
  */
-function buildMockPaper(cfg: MockExamConfig, pool: any[]): any[] {
-  const byType = new Map<string, any[]>()
-  for (const q of pool) {
-    const t = normalizeType(q.questionType ?? q.question_type)
-    if (!byType.has(t)) byType.set(t, [])
-    byType.get(t)!.push(q)
-  }
-
-  const picked: any[] = []
-  for (const row of cfg.typeRows) {
-    const list = byType.get(row.type) || []
-    if (!list.length || row.count <= 0) continue
-    const shuffled = [...list]
-    // Fisher-Yates：比 sort(() => Math.random() - 0.5) 分布更均匀
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
-    }
-    for (const q of shuffled.slice(0, row.count)) {
-      picked.push({ ...q, _mockScore: Number(row.score) || 0, _mockType: row.type })
-    }
-  }
-
-  // 整体混排
-  for (let i = picked.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[picked[i], picked[j]] = [picked[j], picked[i]]
-  }
-  return picked
-}
-
 /*
  * `correctAnswerOf` / `judgeMockItem` 已搬到 `@/utils/mockExamJudge`（见顶部 import 处的说明）。
  * 本文件不要再就地定义同名函数 —— 一旦出现局部定义，import 会被静默遮蔽，
@@ -2085,37 +2042,6 @@ function buildMockPaper(cfg: MockExamConfig, pool: any[]): any[] {
  */
 
 /** 取完整题干（不截断，用于错题回看） */
-function fullStem(q: any): string {
-  const raw = String(q?.content ?? q?.questionText ?? q?.question ?? '')
-  return raw
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-/** 取纯文本（用于组合题的阅读材料） */
-function plainText(raw: any): string {
-  if (!raw) return ''
-  return String(raw)
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-/** 把选项数组归一成字符串数组（后端可能是 [{label,text}] 或纯字符串） */
-function normalizeOptionList(opts: any): any[] {
-  if (!Array.isArray(opts)) return []
-  return opts.map((o: any) => {
-    if (o === null || o === undefined) return ''
-    if (typeof o === 'object') {
-      // 兼容 { label, text } / { key, value } 等结构
-      const v = o.text ?? o.value ?? o.content ?? o.label ?? o.key ?? ''
-      return typeof v === 'string' ? v : String(v)
-    }
-    return String(o)
-  })
-}
-
 /** 点击「开始考试」 */
 async function handleMockStart(cfg: MockExamConfig) {
   activeMockConfig.value = JSON.parse(JSON.stringify(cfg))

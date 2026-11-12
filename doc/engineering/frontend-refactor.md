@@ -24,18 +24,24 @@
 
 ## 后续批次
 
-### 第二批：KnowledgeWikiPanel
+### 第二批：PracticeComponent
 
-- `useKnowledgeGraphLayout.ts`：`mapNodes`、`mapEdges`、`mapHulls`、布局碰撞和标签避让；
-- `KnowledgeWikiDetailDrawer.vue`：主题页详情、出链/反链、来源；
-- `KnowledgeWikiGraphPanel.vue`：图谱右侧筛选和操作面板。
+已完成第一步：
 
-### 第三批：PracticeComponent
+- `practiceQuestionUtils.ts`：题型归一、模拟组卷、题干清洗、选项归一化（`PracticeComponent.vue` 从 3469 行降到 3402 行）。
+
+下一批继续：
 
 - `PracticeQuestionPanel.vue`：题干、选项、作答区；
 - `PracticeAnswerCard.vue`：答题卡（已有 `AnswerCard.vue`，继续收敛）；
 - `PracticeSummary.vue`：结果页（已有 `ExamSummary.vue`，继续收敛）；
 - `useQuestionPractice.ts` 再拆出 `usePracticeSession.ts`、`usePracticeSubmit.ts`。
+
+### 第三批：KnowledgeWikiPanel
+
+- `useKnowledgeGraphLayout.ts`：`mapNodes`、`mapEdges`、`mapHulls`、布局碰撞和标签避让；
+- `KnowledgeWikiDetailDrawer.vue`：主题页详情、出链/反链、来源；
+- `KnowledgeWikiGraphPanel.vue`：图谱右侧筛选和操作面板。
 
 ### 第四批：题库、英语、笔记、智能体
 
