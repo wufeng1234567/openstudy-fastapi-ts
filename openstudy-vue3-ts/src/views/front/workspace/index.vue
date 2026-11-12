@@ -36,77 +36,31 @@
       @change="onFilesPicked"
     />
     <!-- 路由导航属于最顶层：通过 Teleport 注入布局顶栏，而不是留在内容区 -->
-    <Teleport v-if="canTeleport" to="#os-workspace-nav">
-      <div class="kbp-workspace-nav">
-        <div class="kbp-nav-row">
-          <nav class="kbp-crumbs" aria-label="当前位置">
-            <button type="button" class="kbp-crumbs__root" @click="viewMode = 'list'">我的资料</button>
-            <span class="kbp-crumbs__sep">/</span>
-            <span class="kbp-crumbs__current">{{ activeKb?.name || '全部资料' }}</span>
-          </nav>
-
-          <nav class="kbp-tabs" role="tablist" aria-label="资料视图">
-            <button
-              v-for="tab in workspaceTabs"
-              :key="tab.key"
-              type="button"
-              class="kbp-tab"
-              :class="{ 'is-active': viewMode === tab.key }"
-              role="tab"
-              :aria-selected="viewMode === tab.key"
-              @click="viewMode = tab.key"
-            >
-              <OsIcon :name="tab.icon" :size="15" />
-              <span>{{ tab.label }}</span>
-            </button>
-          </nav>
-        </div>
-      </div>
-    </Teleport>
-
-    <!-- 第二层：当前视图的全局计数 + 全局搜索；不再重复堆统计信息 -->
-    <div class="kbp-context-bar">
-      <div class="kbp-context-count">{{ workspaceCountLabel }}</div>
-      <div class="kbp-context-tools">
-        <div class="kbp-search-wrap">
-          <SearchFilterInput
-            v-model="workspaceSearch"
-            class="kbp-global-search"
-            :placeholder="workspaceSearchPlaceholder"
-            :show-filter="true"
-            :filter-open="workspaceFilterOpen"
-            :filter-active="workspaceFilterActive"
-            @toggle-filter="toggleWorkspaceFilter"
-            @enter="onWorkspaceSearchEnter"
-          >
-            <template #dropdown>
-              <div v-if="viewMode === 'wiki'" id="workspace-wiki-search-dropdown"></div>
-            </template>
-          </SearchFilterInput>
-          <CommonFilterSidebar
-            ref="workspaceFilterRef"
-            :key="viewMode"
-            :title="workspaceFilterTitle"
-            hide-trigger
-            :filter-groups="workspaceFilterGroups"
-            :filter-form="workspaceFilters"
-            :default-filter="workspaceFilterDefault"
-            :default-collapsed="true"
-            :style="{ '--filter-top': '38px', '--filter-left': '0px' }"
-            @filter-change="handleWorkspaceFilterChange"
-            @reset-filters="handleWorkspaceFilterReset"
-            @collapse-change="workspaceFilterOpen = $event"
-            @active-change="workspaceFilterActive = $event"
-          />
-        </div>
-        <div v-if="viewMode === 'gallery'" id="workspace-gallery-describe" class="kbp-gallery-describe-slot"></div>
-        <div v-if="viewMode === 'wiki'" id="workspace-wiki-toolbar" class="kbp-wiki-toolbar"></div>
-        <el-button v-if="viewMode !== 'wiki'" size="small" text class="kbp-receive-share" @click="receiveDialogVisible = true">
-          <el-icon><Download /></el-icon>
-          获取资料分享
-        </el-button>
-      </div>
-    </div>
+    <WorkspaceChrome
+      ref="workspaceChromeRef"
+      :can-teleport="canTeleport"
+      :view-mode="viewMode"
+      :active-kb-name="activeKb?.name"
+      :tabs="workspaceTabs"
+      :count-label="workspaceCountLabel"
+      :search="workspaceSearch"
+      :search-placeholder="workspaceSearchPlaceholder"
+      :filter-open="workspaceFilterOpen"
+      :filter-active="workspaceFilterActive"
+      :filter-title="workspaceFilterTitle"
+      :filter-groups="workspaceFilterGroups"
+      :filter-form="workspaceFilters"
+      :filter-default="workspaceFilterDefault"
+      @update:view-mode="viewMode = $event"
+      @update:search="workspaceSearch = $event"
+      @update:filter-open="workspaceFilterOpen = $event"
+      @update:filter-active="workspaceFilterActive = $event"
+      @toggle-filter="toggleWorkspaceFilter"
+      @enter="onWorkspaceSearchEnter"
+      @filter-change="handleWorkspaceFilterChange"
+      @reset-filters="handleWorkspaceFilterReset"
+      @receive="receiveDialogVisible = true"
+    />
 
     <!-- 智能整理：即使关闭预览弹窗，后台进度也要可见、可再次打开 -->
     <div v-if="organizeTask.active" class="kbp-reprocess kbp-reprocess--organize">
@@ -139,63 +93,15 @@
       </div>
     </div>
 
-    <!-- 跨资料夹级联搜索：资料夹名命中与内部文档名/备注/正文命中同时呈现 -->
-    <section v-if="isCascadeMode" class="kbp-cascade" v-loading="cascadeLoading">
-      <header class="kbp-cascade__head">
-        <div>
-          <div class="kbp-cascade__kicker">级联搜索 · 资料夹 + 内部文档</div>
-          <h2>“{{ workspaceSearch }}”的搜索结果</h2>
-        </div>
-        <div class="kbp-cascade__summary">
-          {{ cascadeResults.totalFolders }} 个资料夹 · {{ cascadeResults.totalDocs }} 份资料命中
-        </div>
-      </header>
-
-      <div v-if="cascadeResults.folders?.length" class="kbp-cascade__folders">
-        <article v-for="folder in cascadeResults.folders" :key="folder.kbId" class="kbp-cascade-folder">
-          <button type="button" class="kbp-cascade-folder__head" @click="openCascadeFolder(folder)">
-            <span class="kbp-cascade-folder__icon"><OsIcon name="folder" :size="17" /></span>
-            <span class="kbp-cascade-folder__main">
-              <span class="kbp-cascade-folder__name" v-html="highlightQuery(folder.name, cascadeResults.query)"></span>
-              <span v-if="folder.matchedByName" class="kbp-cascade-folder__tag">资料夹名称命中</span>
-            </span>
-            <span class="kbp-cascade-folder__meta">
-              {{ folder.docCount }} 份资料
-              <template v-if="folder.matchedDocCount">· {{ folder.matchedDocCount }} 份文档命中</template>
-            </span>
-            <OsIcon name="chevron-right" :size="15" />
-          </button>
-
-          <div v-if="folder.documents?.length" class="kbp-cascade-docs">
-            <button
-              v-for="doc in folder.documents"
-              :key="doc.docId"
-              type="button"
-              class="kbp-cascade-doc"
-              @click="openCascadeDocument(doc)"
-            >
-              <span class="kbp-cascade-doc__icon"><OsIcon name="file-text" :size="15" /></span>
-              <span class="kbp-cascade-doc__main">
-                <span class="kbp-cascade-doc__top">
-                  <b v-html="highlightQuery(doc.fileName, cascadeResults.query)"></b>
-                  <span v-for="field in doc.matchedBy" :key="field" class="kbp-cascade-doc__hit">{{ field }}命中</span>
-                </span>
-                <span v-if="doc.snippet" class="kbp-cascade-doc__snippet" v-html="highlightQuery(doc.snippet, cascadeResults.query)"></span>
-                <span v-else-if="doc.note" class="kbp-cascade-doc__snippet">{{ doc.note }}</span>
-              </span>
-              <span class="kbp-cascade-doc__meta">{{ doc.sizeText }} · {{ doc.createTime }}</span>
-            </button>
-          </div>
-          <div v-else class="kbp-cascade-folder__hint">资料夹名称命中，内部暂无文档正文命中。</div>
-        </article>
-      </div>
-
-      <div v-else-if="!cascadeLoading" class="kbp-cascade__empty">
-        <div class="kbp-empty__art"><OsIcon name="search" :size="28" /></div>
-        <h3>没有找到“{{ workspaceSearch }}”</h3>
-        <p>可以换个关键词，资料夹名称和文档正文会一起搜索。</p>
-      </div>
-    </section>
+    <WorkspaceCascade
+      :is-cascade-mode="isCascadeMode"
+      :loading="cascadeLoading"
+      :search="workspaceSearch"
+      :result="cascadeResults"
+      :highlight-query="highlightQuery"
+      @open-folder="openCascadeFolder"
+      @open-document="openCascadeDocument"
+    />
 
     <!--
       ⚠️ 一个知识库都没有时**不渲染两栏区**（v-if）。
@@ -853,6 +759,8 @@ import GalleryPanel from './components/GalleryPanel.vue'
 import KnowledgeWikiPanel from './components/KnowledgeWikiPanel.vue'
 import WorkspaceSidebar from './components/WorkspaceSidebar.vue'
 import WorkspaceFilePanel from './components/WorkspaceFilePanel.vue'
+import WorkspaceChrome from './components/WorkspaceChrome.vue'
+import WorkspaceCascade from './components/WorkspaceCascade.vue'
 import VersionHistoryDialog from './components/VersionHistoryDialog.vue'
 import ShareKnowledgeDialog from './components/ShareKnowledgeDialog.vue'
 import ReceiveKnowledgeDialog from './components/ReceiveKnowledgeDialog.vue'
@@ -1044,6 +952,7 @@ const galleryFocusAssetKey = ref('')
 const workspaceFilterOpen = ref(false)
 const workspaceFilterActive = ref(false)
 const workspaceFilterRef = ref<any>(null)
+const workspaceChromeRef = ref<any>(null)
 const workspaceFilters = reactive<Record<string, any>>({})
 const galleryStats = reactive({ total: 0 })
 const mapStats = reactive({ total: 0 })
@@ -1089,7 +998,7 @@ const {
 })
 
 function toggleWorkspaceFilter() {
-  workspaceFilterRef.value?.toggleCollapse?.()
+  workspaceChromeRef.value?.toggleCollapse?.()
 }
 
 function handleWorkspaceFilterChange(value: Record<string, any>) {
