@@ -125,8 +125,12 @@ jobs:
         working-directory: openstudy-vue3-ts
         run: npm install --no-audit --no-fund
 
+      - name: 前端 lint（0 errors 基线）
+        working-directory: openstudy-vue3-ts
+        run: npm run lint
+
       - name: 类型检查（已知存量债务，仅报告）
-        # type-check 仍有约 2,993 条历史错误；先作为非阻塞证据记录，
+        # 2026-11-12 实测约 1,808 条历史错误；先作为非阻塞证据记录，
         # 等 P1 压到阈值后再改为 blocking，避免 CI 因历史债务长期不可用。
         continue-on-error: true
         working-directory: openstudy-vue3-ts
@@ -134,7 +138,7 @@ jobs:
 
       - name: 构建
         working-directory: openstudy-vue3-ts
-        run: npx vite build
+        run: npm run build:prod
 
   repo-hygiene:
     name: 仓库卫生检查
@@ -166,3 +170,11 @@ jobs:
             exit 1
           fi
           echo "✅ 未发现硬编码密钥"
+
+      - name: 禁止跟踪生成物
+        run: |
+          if git ls-files | grep -E '(_evidence/|_ui_evidence/|码道架构图|_preview/|\.tmp_p_|_served\.js)'; then
+            echo "::error::仓库里出现了已声明忽略的生成物"
+            exit 1
+          fi
+          echo "✅ 无已跟踪生成物"
