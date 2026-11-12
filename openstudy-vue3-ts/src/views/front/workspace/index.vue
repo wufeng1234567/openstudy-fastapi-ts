@@ -916,15 +916,6 @@ const organizeTask = reactive({
   statusText: '',
   percent: 0
 })
-const editorVisible = ref(false)
-const editorLoading = ref(false)
-const editorSaving = ref(false)
-const editorDoc = ref<any>(null)
-const editorContent = ref('')
-const editorHtml = ref('')
-const editorImageMap = ref<Record<string, string>>({})
-const editorPreview = ref(false)
-const versionsVisible = ref(false)
 const deepOrganizeOptions = reactive({
   structure: true,
   imageLinking: true,
@@ -936,13 +927,6 @@ let organizePoll: ReturnType<typeof setTimeout> | null = null
 let organizeStartedAt = 0
 
 /* 富文本编辑：Tiptap HTML ↔ Markdown，保留原有图片标记 */
-const turndownService = createTurndownService()
-
-const editorMarkdown = computed(() => htmlToEditorMarkdown(turndownService, editorHtml.value))
-const WORKSPACE_VIEW_KEY = 'openstudy.workspace.viewMode'
-const WORKSPACE_KB_KEY = 'openstudy.workspace.activeKbId'
-const WORKSPACE_VIEWS = ['list', 'shelf', 'gallery', 'wiki'] as const
-
 const viewMode = ref<'list' | 'shelf' | 'gallery' | 'wiki'>(
   readWorkspaceView(typeof route.query.view === 'string' ? route.query.view : '', WORKSPACE_VIEW_KEY)
 )
@@ -1220,6 +1204,23 @@ const {
   blankExcludedText,
   anatomySegments
 } = useWorkspaceAnatomy()
+
+const {
+  editorVisible,
+  editorLoading,
+  editorSaving,
+  editorDoc,
+  editorContent,
+  editorHtml,
+  editorImageMap,
+  editorPreview,
+  versionsVisible,
+  editorMarkdown,
+  openEditor,
+  exportDoc,
+  exportCurrent,
+  openMicroCourse
+} = useWorkspaceEditor({ anatomyImageUrl })
 
 /** 整理报告 / 待确认队列：只统计整理计划，不要把普通上传中的文档算成“整理记录”。 */
 const organizeReport = computed(() => computeOrganizeReport(organizePlans.value))
@@ -1509,33 +1510,6 @@ async function openOrganizePlan(plan: any) {
   }
 }
 
-async function openEditor(doc: any) {
-  if (!doc?.docId) return
-  editorDoc.value = doc
-  editorPreview.value = false
-  editorContent.value = ''
-  editorHtml.value = ''
-  editorImageMap.value = {}
-  editorVisible.value = true
-  editorLoading.value = true
-  try {
-    const res: any = await getDocumentContent(doc.docId)
-    if (res.code !== 200) {
-      ElMessage.error(res.msg || '读取正文失败')
-      editorVisible.value = false
-      return
-    }
-    editorContent.value = res.data?.content || ''
-    editorImageMap.value = res.data?.imageMap || {}
-    editorHtml.value = markdownToEditorHtml(editorContent.value, editorImageMap.value, anatomyImageUrl)
-  } catch (e: any) {
-    editorVisible.value = false
-    ElMessage.error('读取正文失败：' + (e?.message || e))
-  } finally {
-    editorLoading.value = false
-  }
-}
-
 async function onDocumentVersionRestored() {
   const doc = editorDoc.value
   if (!doc?.docId) return
@@ -1616,10 +1590,6 @@ async function saveEditor() {
   }
 }
 
-function openMicroCourse(doc: any) {
-  router.push({ path: '/front/microCourse', query: { docId: String(doc.docId) } })
-}
-
 function handleDocMore(doc: any, command: string) {
   if (command === 'micro') {
     openMicroCourse(doc)
@@ -1629,33 +1599,6 @@ function handleDocMore(doc: any, command: string) {
   if (command === 'markdown' || command === 'docx') return exportDoc(doc, command)
   if (command === 'reprocess') return reprocess(doc)
   if (command === 'delete') return removeDoc(doc)
-}
-
-async function exportDoc(doc: any, format: 'markdown' | 'docx', content?: string) {
-  if (!doc?.docId) return
-  try {
-    const blob: any = await exportDocument(doc.docId, format, content)
-    if (!(blob instanceof Blob) || blob.size === 0 || !blobValidate(blob)) {
-      let msg = '导出失败'
-      try {
-        const parsed = JSON.parse(await blob.text())
-        msg = parsed?.msg || parsed?.message || msg
-      } catch { /* 非 JSON 错误体 */ }
-      ElMessage.error(msg)
-      return
-    }
-    const stem = String(doc.fileName || '资料').replace(/\.[^.]+$/, '')
-    saveAs(new Blob([blob]), `${stem}.${format === 'docx' ? 'docx' : 'md'}`)
-    ElMessage.success(`正在导出${format === 'docx' ? ' Word' : ' Markdown'}`)
-  } catch (e: any) {
-    ElMessage.error('导出失败：' + (e?.message || e))
-  }
-}
-
-function exportCurrent(format: 'markdown' | 'docx') {
-  if (editorDoc.value) {
-    exportDoc(editorDoc.value, format, editorMarkdown.value)
-  }
 }
 
 function startOrganize(doc: any) {
