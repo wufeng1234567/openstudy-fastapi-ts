@@ -543,7 +543,6 @@ const {
   showHealth
 })
 
-/* 富文本编辑：Tiptap HTML ↔ Markdown，保留原有图片标记 */
 const viewMode = ref<'list' | 'shelf' | 'gallery' | 'wiki'>(
   readWorkspaceView(typeof route.query.view === 'string' ? route.query.view : '', WORKSPACE_VIEW_KEY)
 )
@@ -749,9 +748,7 @@ const {
   docTagType
 } = useWorkspaceTrySearch({ activeKb, showAnatomy })
 
-/* 分块 */
 
-/* ===================== 单文档刨析 ===================== */
 /** 共享刨析查看器：打开、切文档、高亮定位都由组件内部处理 */
 const clinicRef = ref<InstanceType<typeof DocumentClinicDialog> | null>(null)
 const { anatomyImageUrl } = useWorkspaceAnatomy()
