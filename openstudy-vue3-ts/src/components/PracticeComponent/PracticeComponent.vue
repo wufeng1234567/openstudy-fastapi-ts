@@ -1972,7 +1972,7 @@ const currentUserId = () => {
   return id === undefined || id === null || id === '' ? null : id
 }
 
-const { persistMockSession } = usePracticeMockSession({
+const { persistMockSession, restoreMockSession } = usePracticeMockSession({
   isMockFlow,
   mockPhase,
   activeMockConfig,
@@ -1981,11 +1981,18 @@ const { persistMockSession } = usePracticeMockSession({
   subFillBlankAnswers,
   subEssayAnswers,
   currentQuestion,
+  currentQuestionIndex,
+  questionOffset,
   practiceSessionId,
   examStartAt,
   getUserId: currentUserId,
   getBankId: () => props.bankId,
-  getMockSessionEndAt: () => mockSessionEndAt
+  getMockSessionEndAt: () => mockSessionEndAt,
+  setMockSessionEndAt: (value) => { mockSessionEndAt = value },
+  updateQuestionOffset,
+  updateQuestionCount,
+  processQuestions,
+  startExamTimer
 })
 
 /**
@@ -1995,169 +2002,6 @@ const { persistMockSession } = usePracticeMockSession({
  *   · 配置页还没开考，没有"进行中的考试"；
  *   · 结果页的考试已经结束（记录进了历史），留着会话会让下次进来错误地恢复。
  */
-async function restoreMockSession(): Promise<boolean> {
-  const session = loadMockSession(currentUserId(), props.bankId)
-  if (!session) return false
-
-  try {
-    const res: any = await listQuestionMainAll({ bankId: props.bankId, status: '0', withAnswer: false })
-    const pool: any[] = Array.isArray(res?.data) ? res.data
-      : Array.isArray(res?.result) ? res.result : []
-
-    /*
-     * 按会话里的 id 顺序重建卷子。
-     *
-     * ⚠️ 找不到的题（被删除 / 下架）要**跳过但不整体失败**：
-     *    题库里删过一题就整场考试无法恢复，代价过大。
-     *    跳过后卷子题数变少，但用户仍能完成并交卷；
-     *    比"直接扔回配置页、前面答的全白费"好得多。
-     */
-    const byId = new Map<string, any>()
-    pool.forEach((q: any) => {
-      const qid = q?.id ?? q?.questionId
-      if (qid !== undefined && qid !== null) byId.set(String(qid), q)
-    })
-
-    const rebuilt: any[] = []
-    session.questionIds.forEach((qid, idx) => {
-      const q = byId.get(String(qid))
-      if (!q) return // 题目已不存在 → 跳过
-      rebuilt.push({
-        ...q,
-        /*
-         * 覆盖分值与题型：判分必须按**本场快照**，不能按当前配置。
-         * 字段名与 `buildMockPaper` 一致（`_mockScore` / `_mockType`），
-         * 这样 `judgeMockItem` / `toMockItemDetail` 无需改动。
-         */
-        _mockScore: Number(session.scores?.[idx]) || 0,
-        _mockType: session.types?.[idx] || q.type
-      })
-    })
-
-    if (!rebuilt.length) {
-      // 一道题都找不回来 → 会话没有意义，清掉并回配置页
-      clearMockSession(currentUserId(), props.bankId)
-      return false
-    }
-
-    // 恢复时优先复用原来的服务端会话（答案已在本地快照里，交卷时会一并提交）；
-    // 只有会话确实失效/已交卷时才新建，避免每次刷新都堆一个孤儿 ongoing 会话。
-    let restoredSessionId = ''
-    if (session.practiceSessionId) {
-      try {
-        const oldSession: any = await getPracticeSession(session.practiceSessionId)
-        if (oldSession?.code === 200 && oldSession.data?.status === 'ongoing') {
-          restoredSessionId = String(session.practiceSessionId)
-        }
-      } catch {
-        // 旧会话不可用 → 下面新建
-      }
-    }
-    if (!restoredSessionId) {
-      const sessionRes: any = await startPracticeSession({
-        bankId: props.bankId,
-        moduleType: 'mock',
-        questionIds: rebuilt.map((q: any) => q.id),
-        scores: Object.fromEntries(rebuilt.map((q: any) => [String(q.id), Number(q._mockScore) || 0]))
-      })
-      if (sessionRes?.code !== 200 || !sessionRes?.data?.sessionId) {
-        throw new Error(sessionRes?.msg || '恢复考试会话失败')
-      }
-      restoredSessionId = String(sessionRes.data.sessionId)
-    }
-    practiceSessionId.value = restoredSessionId
-
-    // 冻结本场配置（后续判分 / 重考都用它）
-    activeMockConfig.value = JSON.parse(JSON.stringify(session.config))
-
-    // 恢复计时基准：用会话里记的 endAt，不重新计时
-    mockSessionEndAt = Number(session.endAt) || 0
-    examStartAt.value = Number(session.startedAt) || Date.now()
-    /*
-     * 倒计时沿用已有的 localStorage 机制：`startExamTimer()` 会读
-     * `EXAM_END_TIME_KEY` 并按 `endAt - now` 算剩余秒数。
-     * 这里把会话的 endAt 写进去，保证它与会话严格一致
-     * （否则两套时间源可能因为用户改配置而错位）。
-     */
-    localStorage.setItem(EXAM_END_TIME_KEY, String(mockSessionEndAt))
-    localStorage.setItem(EXAM_BANK_ID_KEY, String(props.bankId))
-
-    // 灌入卷子（与开考时同一套处理路径，保证题目结构与判分预期一致）
-    const prevOffset = questionOffset.value
-    updateQuestionOffset(0)
-    updateQuestionCount(rebuilt.length)
-    await processQuestions(rebuilt)
-    updateQuestionOffset(prevOffset)
-
-    /*
-     * 回填答案（按题目 id 对齐，不按下标）
-     *
-     * 注意必须用 **rebuilt 的下标**（重建后的顺序），不能直接用会话里的顺序下标 ——
-     * 万一有题被跳过，两个顺序就错位了。
-     */
-    const idxById = new Map<string, number>()
-    rebuilt.forEach((q: any, i: number) => {
-      const qid = q?.id ?? q?.questionId
-      if (qid !== undefined && qid !== null) idxById.set(String(qid), i)
-    })
-
-    const nextAnswers = [...answers.value]
-    Object.keys(session.answers || {}).forEach((qid) => {
-      const i = idxById.get(String(qid))
-      if (i === undefined) return
-      nextAnswers[i] = session.answers[qid]
-    })
-    answers.value = nextAnswers
-
-    // 组合题子题答案回填
-    Object.keys(session.subFillBlank || {}).forEach((qid) => {
-      const i = idxById.get(String(qid))
-      if (i === undefined) return
-      Object.keys(session.subFillBlank[qid] || {}).forEach((sub) => {
-        ;(subFillBlankAnswers.value as any)[`${qid}_${sub}`] = session.subFillBlank[qid][sub]
-      })
-    })
-    Object.keys(session.subEssay || {}).forEach((qid) => {
-      const i = idxById.get(String(qid))
-      if (i === undefined) return
-      Object.keys(session.subEssay[qid] || {}).forEach((sub) => {
-        ;(subEssayAnswers.value as any)[`${qid}_${sub}`] = session.subEssay[qid][sub]
-      })
-    })
-
-    /*
-     * 标记"答过"（答题卡要显示已答状态）
-     *
-     * 考试模式下不判对错（交卷才判），所以只置 `answered`，不碰 `correct`。
-     */
-    rebuilt.forEach((q: any, i: number) => {
-      const ans = answers.value?.[i]
-      if (ans === null || ans === undefined || ans === '') return
-      if (Array.isArray(ans) && ans.length === 0) return
-      if (typeof ans === 'object' && !Array.isArray(ans) && Object.keys(ans).length === 0) return
-      q.answered = true
-    })
-
-    // 定位回原来那道题
-    if (session.currentQuestionId !== undefined && session.currentQuestionId !== null) {
-      const i = idxById.get(String(session.currentQuestionId))
-      if (i !== undefined && i >= 0) {
-        currentQuestionIndex.value = i
-      }
-    }
-
-    mockPhase.value = 'running'
-    await nextTick()
-    startExamTimer()
-    return true
-  } catch (e) {
-    console.error('[mock] 恢复考试会话失败', e)
-    // 恢复失败就当没有会话：清掉脏数据，避免下次又在这里失败
-    clearMockSession(currentUserId(), props.bankId)
-    return false
-  }
-}
-
 /**
  * 考试进行中，作答变化 → 落一次会话
  *
