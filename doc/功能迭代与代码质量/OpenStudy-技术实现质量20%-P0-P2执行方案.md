@@ -133,7 +133,7 @@ LLM 评审不会逐行读完 17 万行代码。它主要做：
    - `doc/feature-map.md`：15 个功能域 → 路由 → 服务 → 测试/截图证据；
    - `doc/architecture/api-data-model.md`：545 routes、80 ORM 表、29 Agent 工具契约、认证约定；
    - `doc/architecture/adr/0001...`：向量库/embedding、RAG、迁移方案等关键决策；
-   - `doc/quality/test-strategy.md`：pytest 102/109、覆盖率 19%、前端测试规划；
+   - `doc/quality/test-strategy.md`：pytest 109、覆盖率 19%（历史值，需修 coverage 复跑）、前端测试规划；
    - `doc/operations/deploy.md`：compose、启动脚本、环境变量、备份/恢复、回滚。
 
 2. **文档与代码口径统一**
