@@ -354,6 +354,7 @@
 </template>
 
 <script setup lang="ts">
+import { expertGroupTitle, expertHeadline, progressHeadline, stepState, visibleSteps } from './aiChatStreamUtils'
 import {
   ref,
   watch,
@@ -446,23 +447,6 @@ const loadingText = computed(() => (props.thinking ? '深度思考中' : 'AI 思
  * 优先级：进行中的步骤 > 最后一条步骤 > 通用文案。
  * 目标：用户一眼看到"它现在在做什么"，而不是一句抽象的"思考中"。
  */
-function progressHeadline(msg: any): string {
-  const steps: any[] = Array.isArray(msg?.steps) ? msg.steps : []
-  if (steps.length) {
-    const running = steps.find((s) => s.state === 'running')
-    if (running?.message) return String(running.message)
-    const last = steps[steps.length - 1]
-    if (last?.message) return String(last.message)
-  }
-  return msg?.content || '正在处理…'
-}
-
-/**
- * 专家工作组各行的**展开态**（默认收起 → 符合"专家思维链默认不显示、想看可点开"）。
- *
- * key = `${消息下标}:${行下标}`：消息只 append、下标稳定，用它做 key 足够；
- * 刷新后消息整份重建 → 展开态重置（收起），符合"默认不看"的预期。
- */
 const expertOpen = ref<Set<string>>(new Set())
 const expertKey = (msg: any, rowIdx: number) => {
   const mi = (props.messages as any[]).indexOf(msg)
@@ -490,29 +474,6 @@ const expertUserToggled = ref<Set<string>>(new Set())
  *   · 失败     → 「执行失败」+ 原因首句
  *   · 成功但空 → 「已完成（没有返回结论）」—— 让异常一眼可见，而不是伪装成正常
  */
-const expertHeadline = (ex: any) => {
-  const s = String(ex?.summary || '').replace(/\s+/g, ' ').trim()
-  if (ex?.status === 'fail') return s ? `执行失败：${s}` : '执行失败'
-  if (s) return s
-  return ex?.status === 'ok' ? '已完成（没有返回结论）' : '已完成'
-}
-
-/**
- * 某个专家行是否展开
- * ----------------------------------------------------------------------------
- * 用户 2026-10-18：「专家并行的时候 会自己自动展开里面的内容 需要修改
- * 由用户自己决定是否展开」。
- *
- * 原先的默认值是这样的：
- *   `return !!(done && String(ex.summary || '').trim())`
- * 也就是——专家一完成、只要有结论摘要，就**自动展开正文**。
- * 单个专家时还不明显，但并行派发时几个专家几乎同时完成，
- * 于是整屏内容"啪"地一起展开，把对话流冲得没法看。
- *
- * 现在默认**一律折叠**：是否展开完全由用户点击决定。
- * 收起态的摘要仍然可见（见 `expertHeadline`），所以不会出现
- * "看不到专家说了什么" —— 那正是当初加自动展开想解决的问题。
- */
 const isExpertOpen = (msg: any, rowIdx: number) => {
   const k = expertKey(msg, rowIdx)
   // 用户点过就完全听用户的
@@ -539,31 +500,11 @@ const toggleExpert = (msg: any, rowIdx: number) => {
  * `round`（「第 N 轮思考」）与 `start`（「开始处理任务」）这类内部噪声 ——
  * 用户只关心「它在调什么工具、成没成」，不关心子代理内部思考了几轮。
  */
-const visibleSteps = (ex: any) => {
-  const all = Array.isArray(ex?.steps) ? ex.steps : []
-  const kept = all.filter((st: any) => ['tool_call', 'tool_result', 'error'].includes(String(st?.phase || '')))
-  const src = kept.length ? kept : all
-  return src.slice(-4)
-}
-
 /** 步骤状态 → 圆点配色：`error` 或 `success:false` 记失败，`success:true` 记完成，其余进行中 */
-const stepState = (st: any) => {
-  if (st?.phase === 'error' || st?.success === false) return 'fail'
-  if (st?.success === true) return 'ok'
-  return 'running'
-}
-
 /**
  * 工作组标题：还在跑 → 「专家协同中（N 位）」；全部结束 → 「专家协同完成（N 位）」。
  * 避免专家已全做完、标题却还挂着「协同中」自相矛盾。
  */
-const expertGroupTitle = (experts: any) => {
-  const list = Array.isArray(experts) ? experts : []
-  const n = list.length
-  const running = list.some((e: any) => e?.status === 'running')
-  return running ? `专家协同中（${n} 位）` : `专家协同完成（${n} 位）`
-}
-
 const emit = defineEmits([
   'update:messages',
   'send',

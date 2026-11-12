@@ -358,6 +358,7 @@
 </template>
 
 <script setup lang="ts">
+import { DATA_SUMMARIES, FILLER_MESSAGES, MAX_SUMMARY_CHARS, clip, labelOf, summarizeData } from './agentToolResultSummary'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { COLLAPSE_BAR_STYLE } from '@/composables/useCollapseBar'
@@ -577,89 +578,6 @@ const STATUS_WORDS: Record<string, string> = {
   ok: '完成',
   fail: '失败',
   cancelled: '已取消'
-}
-
-const labelOf = (map: Record<string, string>, key: string) => map[key] || key
-
-/**
- * 这些文案等于「没说话」，不能当卡片主行。
- *
- * 后端多数工具只在 `data` 里给结构化结果、**不给 message**，
- * 而前端的兜底是 `result?.message || (success ? 'OK' : '失败')`（agentDsFree），
- * 于是卡片主行就变成一句信息量为零的 "OK" —— 用户看到的就是 `✓ OK bank_manage.list`。
- */
-const FILLER_MESSAGES = new Set([
-  'ok',
-  'ok.',
-  'success',
-  'success.',
-  'done',
-  'done.',
-  '成功',
-  '已完成',
-  '完成',
-  '失败'
-])
-
-/**
- * 从 `data` 里凑一句人话；凑不出返回空串。
- *
- * ⚠️ 顺序有讲究：**数组 / 具名字段排在通用计数之前**。
- *    `bank_manage.list` 的返回是 `{count, banks}`，先命中 `banks` 才能说出
- *    「共 3 个题库」，先命中 `count` 就只能说「共 3 条」，等于白说。
- */
-const DATA_SUMMARIES: [string, (n: number) => string][] = [
-  ['banks', (n) => `共 ${n} 个题库`],
-  ['questions', (n) => `共 ${n} 道题目`],
-  ['notes', (n) => `共 ${n} 篇笔记`],
-  ['categories', (n) => `共 ${n} 个笔记分类`],
-  ['imported', (n) => `已导入 ${n} 道题目`],
-  ['deleted', (n) => `已删除 ${n} 项`],
-  ['items', (n) => `共 ${n} 条结果`],
-  ['count', (n) => `共 ${n} 条`],
-  ['total', (n) => `共 ${n} 条`]
-]
-
-/** 摘要最长多少字（题干可能很长，卡片主行不该被它撑到三行） */
-const MAX_SUMMARY_CHARS = 80
-
-const clip = (text: string) => {
-  const s = (text || '').trim()
-  return s.length > MAX_SUMMARY_CHARS ? `${s.slice(0, MAX_SUMMARY_CHARS)}…` : s
-}
-
-function summarizeData(data: any): string {
-  if (!data || typeof data !== 'object') return ''
-  // `diagnose` / `diagnose_report` 的结论句：它们不是数组、也没有 named 字段，
-  // 但后端专门给了 `headline`（算法算出的那句话）。不特判的话卡片主行会退化成
-  // 「学情诊断完成」，等于把最有信息量的那句话扔掉。
-  if (typeof data.headline === 'string' && data.headline.trim()) {
-    return clip(data.headline)
-  }
-  for (const [key, render] of DATA_SUMMARIES) {
-    const value = data[key]
-    const isList = Array.isArray(value)
-    const n = isList ? value.length : typeof value === 'number' ? value : null
-    if (n === null) continue
-    // ⚠️ 数组长度 ≠ 总数：`question_manage.list` 默认只回 20 条，题库可能有 30 道。
-    //    这时后端会一并给出 `total`（真总量），按数组长度说「共 20 道题目」就是错的。
-    if (isList && typeof data.total === 'number' && data.total > n) {
-      return `${render(data.total)}（本次返回 ${n} 条）`
-    }
-    return render(n)
-  }
-  // 单个对象（bank_manage.detail 的 bank / question_manage.detail 的 question /
-  // note_manage.detail 的 note）→ 报它的名字或题干，比干巴巴一句「查看详情完成」有用得多
-  const named =
-    data.bankName ||
-    data.bank_name ||
-    data.name ||
-    data.note?.title ||
-    data.title ||
-    data.bank?.bankName ||
-    data.question?.questionText ||
-    data.keyword
-  return named ? clip(String(named)) : ''
 }
 
 const summary = computed(() => {
