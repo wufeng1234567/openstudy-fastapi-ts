@@ -221,6 +221,7 @@ openstudy-fastapi-ts/
 |---|---|
 | [CHANGELOG.md](CHANGELOG.md) | 版本记录与历史发布说明 |
 | [文档总索引](doc/README.md) | 按“想确认什么”组织的全部文档入口 |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | 一页架构、分层边界、主链路与已知债务 |
 | [OpenStudy 系统完整介绍](doc/功能迭代与代码质量/OpenStudy-系统完整介绍与功能架构梳理.md) | 产品定位、功能全景、边界与成熟度 |
 | [知识图谱图片-文档-知识点关系方案](doc/planning/知识图谱图片-文档-知识点关系方案.md) | 图片、文档、知识点与图谱关系 |
 | [知识图谱图片-文档-知识点关系实施记录](doc/planning/知识图谱图片-文档-知识点关系-实施记录.md) | 实施细节、验证指标与截图 |
