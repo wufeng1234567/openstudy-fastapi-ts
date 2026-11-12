@@ -400,6 +400,7 @@ import { usePracticeRouteWatches } from './usePracticeRouteWatches'
 import { usePracticeLifecycle } from './usePracticeLifecycle'
 import { usePracticeSubmission } from './usePracticeSubmission'
 import { usePracticeStream } from './usePracticeStream'
+import { usePracticeInput } from './usePracticeInput'
 // 「只刷错题」空态要用线性图标（全站统一走 OsIcon，不用 Element Plus 实心图标）
 import OsIcon from '@/components/OsIcon/index.vue'
 import ImageViewer from './ImageViewer.vue'
@@ -1440,6 +1441,22 @@ const {
   handleAnalysisClose
 } = usePracticeAnalysis({ currentQuestion, showAnalysisDialog })
 
+const { handleUpdateAnswer, handleSelectOption } = usePracticeInput({
+  selectedAnswer,
+  currentQuestionIndex,
+  answers,
+  questions,
+  currentQuestion,
+  totalQuestions,
+  isExamMode,
+  committedQuestions,
+  isInstantJudgeType,
+  handleAnswerSubmission,
+  selectOption,
+  moduleSettings,
+  nextQuestion
+})
+
 /**
  * 填空 / 简答输入（逐题模式）
  *
@@ -1454,125 +1471,6 @@ const {
  * 写 `answers` 而不是只在确认时写，还有一个原因：`buildDraftSnapshot`
  * 会据此判断"这题答过没有"，进而决定要不要写进暂存。
  */
-function handleUpdateAnswer(value: any) {
-  selectedAnswer.value = value
-  const qIndex = currentQuestionIndex.value
-  if (qIndex >= 0 && qIndex < answers.value.length) {
-    answers.value[qIndex] = value
-  }
-  /*
-   * 注意：这里**不判分**。填空/简答是"边写边改"，
-   * 每敲一个字就比对会立刻判错（历史 bug），必须等用户点「确认答案」。
-   */
-  /*
-   * 但**已确认过的**要撤销确认：「确认答案」重新出现，
-   * 解析复位。否则用户改完答案后解析还停在旧结果、
-   * 按钮也不会再出现，等于永远没法重新比对（实测发现的死角）。
-   */
-  if (!isExamMode.value && committedQuestions.value[qIndex]) {
-    committedQuestions.value[qIndex] = false
-    const q = questions.value[qIndex]
-    if (q) {
-      q.showAnalysis = false
-      q.answered = false
-      q.correct = false
-    }
-  }
-}
-
-function handleSelectOption(index: number) {
-  selectOption(index)
-
-  /*
-   * 把刚选的值同步进 `answers`（2026-10-22）
-   * ==================================================================
-   * ⚠️ 这是"静默自动保存"能成立的前提，之前漏了这一句。
-   *
-   * `selectOption()` 只改 `selectedAnswer`（当前题的临时选择），
-   * 真正写进 `answers[qIndex]` 的是 `handleAnswerSubmission()` —— 而它只在
-   * 「下一题 / 上一题 / 跳题」时才被调用。于是存在一个真实的数据丢失窗口：
-   *
-   *     用户点 A  →  selectedAnswer = 0，answers[0] 仍是 null
-   *               →  自动保存快照读 answers → 存进去的是 {}
-   *               →  用户直接刷新 / 关掉页面  →  刚才那一下白选了
-   *
-   * 实测复现过：点「A. 堆」后 `answers` 仍是 `[null, null, ...]`，
-   * localStorage 里 `answers: {}`，刷新后选中态也没有了。
-   *
-   * 所以这里立即同步一次。副作用是良性的：
-   *   · 单选题下它就是"我选了但还没判"的中间态，与界面表现一致；
-   *   · 判分逻辑仍然由后面的 `handleAnswerSubmission` 负责，这里不判；
-   *   · 考试模式下同样需要 —— 考试中途刷新本就该保住已选答案。
-   */
-  const qIndex = currentQuestionIndex.value
-  if (qIndex >= 0 && qIndex < answers.value.length) {
-    answers.value[qIndex] = selectedAnswer.value
-  }
-
-  if (isExamMode.value) return
-
-  /*
-   * 单选 / 判断：**点一次就出答案**（2026-10-22 用户明确要求）
-   * ==================================================================
-   * 原来这里只同步 `answers`，判分要等用户点「下一题」才发生 ——
-   * 表现就是"点了选项什么都没发生，看不到对错，也没有解析"，
-   * 而浏览模式下同样的点击会立刻出答案。两种模式行为不一致，属于遗漏。
-   *
-   * 现在与浏览模式完全对齐：
-   *   · 单选 / 判断 → 选完立即判（`isInstantJudgeType`）；
-   *   · 多选 / 填空 / 简答 / 组合 → 不判，等用户点「确认答案」
-   *     （见 `handleCommitAnswer`，按钮由 `needsSubmit` 控制显示）。
-   * 同时记 `committedQuestions`，让 QuestionDisplay 收起确认按钮、展示解析。
-   */
-  if (isInstantJudgeType(currentQuestion.value?.type)) {
-    committedQuestions.value[qIndex] = true
-    handleAnswerSubmission(qIndex)
-  } else if (committedQuestions.value[qIndex]) {
-    /*
-     * 已确认过的多选/填空/简答，用户又改了答案 → **撤销"已确认"**
-     * ==================================================================
-     * 不撤销的话会出现一个死角（实测发现）：
-     *   多选题确认后显示解析 → 用户发现选错了，再点一个选项 →
-     *   答案变了，但解析还停在旧结果上，而且「确认答案」按钮**不会再出现**
-     *   （因为 `committed` 仍为 true）→ 用户永远没法重新比对。
-     *
-     * 撤销后按钮重新出现，状态回到"已作答但未确认"，
-     * 与"刚选完还没确认"完全一致 —— 心智模型统一。
-     * `showAnalysis` 也一并复位，否则解析区会继续显示上一次的判定。
-     */
-    committedQuestions.value[qIndex] = false
-    const q = questions.value[qIndex]
-    if (q) {
-      q.showAnalysis = false
-      q.answered = false
-      q.correct = false
-    }
-  }
-
-  /*
-   * ⚠️ 自动跳下一题的逻辑必须留在下面 `autoNextOnCorrect` 的闸门之后，
-   *    不要因为上面新增的同步而提前 return（会破坏"答对自动翻页"）。
-   */
-  if (!moduleSettings.value.autoNextOnCorrect) return
-
-  const q = currentQuestion.value
-  if (!q) return
-
-  if (q.type === 'single' || q.type === 'truefalse') {
-    if (selectedAnswer.value === q.correctAnswer && currentQuestionIndex.value < totalQuestions.value - 1) {
-      nextQuestion()
-    }
-  } else if (q.type === 'multiple') {
-    const selected = Array.isArray(selectedAnswer.value) ? selectedAnswer.value : []
-    const correct = Array.isArray(q.correctAnswer) ? q.correctAnswer : []
-    if (selected.length === correct.length && selected.every(v => correct.includes(v))) {
-      if (currentQuestionIndex.value < totalQuestions.value - 1) {
-        nextQuestion()
-      }
-    }
-  }
-}
-
 defineExpose({})
 </script>
 
