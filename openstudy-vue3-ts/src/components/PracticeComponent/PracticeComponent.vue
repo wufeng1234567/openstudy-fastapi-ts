@@ -869,132 +869,6 @@ onActivated(() => {
   }
 })
 
-const overviewMode = computed({
-  get: () => moduleSettings.value.isOverviewMode || false,
-  set: (val) => store.saveModuleSettings(props.moduleType, { isOverviewMode: val })
-})
-
-/* ==================== 滚动锚点：跟随展示内容变化重算 ==================== */
-
-/**
- * ⚠️ 这两个 watch 必须放在 `isOverviewActive` / `forceOverview` **之后**。
- *    它们是 `ref`/`computed`，声明前引用会踩 TDZ（Cannot access before initialization）。
- *    见下方 `isOverviewActive` 的定义位置 —— 滚动相关的 watch 已挪到那里。
- */
-
-/**
- * 「临时」打开整体浏览（结算用），**不写进持久化偏好**
- * ============================================================================
- * ⚠️⚠️ 这是「修好的 bug 又回复了」的真正根源（2026-10-21）。
- *
- * 原来的结算代码写的是：
- *     if (!overviewMode.value) { overviewMode.value = true }
- * 注释还写着"这里**临时**打开，不改 `moduleSettings.isOverviewMode`"。
- * 但 `overviewMode` 是 **computed，且带 setter**：
- *     set: (val) => store.saveModuleSettings(props.moduleType, { isOverviewMode: val })
- * 一赋值就直接落 localStorage 了 —— 注释的意图和代码的实际行为完全不同。
- *
- * 后果（用户可见）：
- *   点过一次「提交」→ `isOverviewMode` 被永久置 true →
- *   下次（以及以后每次）进这个模块都直接是整体浏览视图 →
- *   而空态当时只写在"逐题模式"那条分支里 → **空白页**。
- *   于是"我这边验证过空态是好的"，用户那边永远是空白 —— 因为他的
- *   localStorage 里已经被上一次结算写成了 `isOverviewMode: true`。
- *
- * 正确做法：用一个**独立的本地区状态** `forceOverview` 叠加在用户偏好之上。
- *   · 结算时置 `forceOverview = true`（只影响本次会话的渲染，不落盘）；
- *   · `isOverviewActive` = 用户偏好 OR 本次强制；
- *   · 模板用 `isOverviewActive` 判断走哪个分支，用户的偏好设置保持原样。
- */
-const forceOverview = ref(false)
-const isOverviewActive = computed(() => moduleSettings.value.isOverviewMode || forceOverview.value)
-
-/**
- * 滚动相关的 watch **位置说明**
- * ----------------------------------------------------------------------------
- * 它们依赖 `isOverviewActive`、`questions`、`currentQuestionIndex`，
- * 后两者来自下面的 `useQuestionPractice(...)` 解构，必须等它执行完才存在。
- * 所以 watch 写在解构之后（见本文件 `/* 滚动锚点：跟随展示内容变化重算 *\/` 那一段），
- * 不要挪回上面 —— 会踩 TDZ。
- */
-
-/**
- * 「当前没有题可练」——空态的总开关
- * ============================================================================
- * ⚠️⚠️ 这个 computed 存在的唯一原因，就是**让空态不再依赖 `overviewMode`**
- * （2026-10-21 修的 bug，用户口径：「刚刚给你修复好的 bug 又回复了
- *   顺序模式下的只刷错题 没有兜底 ui」）。
- *
- * 上一轮把空态写在逐题分支（`v-else`）内部，而模板结构是：
- *     <template v-if="overviewMode"> …整体浏览… </template>   ← 没有空态
- *     <template v-else>            …逐题…     </template>   ← 空态在这里
- * 于是只要 `overviewMode` 为 true，空态就是**不存在的代码路径**。
- *
- * 而 `overviewMode` 极易被打开（两个入口，都不是用户主动选的）：
- *   ① 结算里 `overviewMode.value = true` 一赋值就**持久化**（见上面
- *      `forceOverview` 的注释 —— 这条是真正的元凶，已修）；
- *   ② 用户自己在答题卡上点「整体浏览」也会持久化（这个是用户选择，合理）。
- * 所以"我这边明明修好了、空态也能看到"，到用户那里就是空白页。
- *
- * 判据用 `questions.length === 0` 而不是 `totalQuestions`：
- * 后者是 computed，在 `allQuestionsData` 也被清空时行为不稳定；
- * `questions` 是模板直接渲染的源，长度 0 = 一定渲染不出题目。
- * 再与 `noWrongQuestionsReason` 相与，保证只有**明确的"没有题"**才显示空态：
- * 加载中（loading 遮罩盖住）、第一次进入尚未取到数据等瞬时状态都不会误判成空态。
- */
-const isEmptyState = computed(
-  () => !!noWrongQuestionsReason.value && questions.value.length === 0
-)
-
-/**
- * 空态里的「重新练习」/「关闭只刷错题」——必须**真的能离开空态**
- * ============================================================================
- * ⚠️ 为什么不能直接绑 `resetPractice` / `openSettings`（2026-10-21）：
- *
- * `resetPractice()`（composable 里）只做三件事：清随机题单、清乱序缓存、
- * `questionOffset = 0` + `resetAnswers()`。
- * 它**不看 `noWrongQuestionsReason`，也不重新取题**。所以：
- *   · 在「本轮刷完」空态里点它 → 空态还在（因为它没去重新拉题），
- *     用户的感觉就是"按钮点了没反应"。这正是必须重拉的原因 ——
- *     "刷完"是 `offset` 推到了数组末尾，原地重置 offset 并不会让
- *     `questions` 重新有内容（`processQuestions` 才是那条路径）。
- *   · 在「没有错题」空态里点「关闭只刷错题」更糟：`openSettings()` 只是
- *     **打开设置弹窗**，用户看到的是一个弹窗，而不是"关掉后立刻有题练"。
- *     按钮写的是「关闭『只刷错题』」，行为却是"打开设置"，名不副实。
- *
- * 所以这两个入口都走 `resetAndFetchQuestions()`：
- *   它会「同步最新设置（含 onlyWrong）→ 清空全部题目状态 → 重新从接口拉取」，
- *   正好是"离开空态、回到正常刷题"需要的全部动作。
- *   「关闭只刷错题」还要先**把设置真的关掉**（写 store），再重拉 ——
- *   只重拉不改设置的话，拉回来还是那个空错题集，等于什么都没做。
- */
-const handleEmptyRestart = () => {
-  /*
-   * 三步，缺一步都会让用户觉得"按钮没反应"或"重练了还是旧卷子"：
-   *   ① `resetPractice()` —— 清随机题单 + 清乱序缓存 + offset 归零 + 清答案
-   *      + 清空态标记。少了它，随机模式重练出来的还是同一份题单，
-   *      只是答案被清空了；
-   *   ② `clearAnswerStateCache()` —— 丢掉这个模块的答题状态缓存。
-   *      少了它，`resetAndFetchQuestions` 会走 `restoreAnswerState()` 直接把
-   *      **上一次的题目和作答**恢复回来，用户看到的是自己刚做完的那份卷子；
-   *   ③ `resetAndFetchQuestions()` —— 真正重拉题目。
-   * 另外撤掉结算留下的临时整体浏览态：用户点「重新练习」是想逐题重做，
-   * 不该因为上一次结算而停在瀑布流。
-   */
-  resetPractice()
-  clearAnswerStateCache(props.moduleType)
-  forceOverview.value = false
-  resetAndFetchQuestions()
-}
-
-const handleEmptyTurnOffOnlyWrong = () => {
-  // ① 真的把「只刷错题」关掉并落盘（store action 内部会 saveToStorage）
-  store.saveModuleSettings(props.moduleType, { onlyWrong: false })
-  // ② 再整体重拉：resetAndFetchQuestions 会重新读设置 → onlyWrong=false
-  resetAndFetchQuestions()
-  // ③ 给一句明确反馈，否则用户不知道刚才那一下按钮做了什么
-  ElMessage.success('已关闭「只刷错题」，正在加载全部题目')
-}
 const highlightedIndex = ref(0)
 const markedQuestions = ref<number[]>([])
 const markedQuestionsSet = computed(() => {
@@ -1351,6 +1225,24 @@ const {
 } = useQuestionPractice(props, { proxy }, {
   questionCount: moduleSettings.value.questionCount,
   onlyWrong: moduleSettings.value.onlyWrong
+})
+
+const {
+  overviewMode,
+  forceOverview,
+  isOverviewActive,
+  isEmptyState,
+  handleEmptyRestart,
+  handleEmptyTurnOffOnlyWrong
+} = usePracticeOverview({
+  moduleSettings,
+  store,
+  getModuleType: () => props.moduleType,
+  noWrongQuestionsReason,
+  questions,
+  resetPractice,
+  clearAnswerStateCache,
+  resetAndFetchQuestions
 })
 
 const {
