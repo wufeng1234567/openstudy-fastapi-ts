@@ -7,6 +7,7 @@
 | Linux 服务器 / Windows Docker / 免 Docker 手动安装 / 公网访问 | [deploy/SKILL.md](../deploy/SKILL.md) |
 | 部署经验与踩坑 | [deploy/DEPLOY-EXPERIENCE.md](../deploy/DEPLOY-EXPERIENCE.md) |
 | 故障排查 | [deploy/TROUBLESHOOTING.md](../deploy/TROUBLESHOOTING.md) |
+| 回滚 Runbook | [rollback.md](rollback.md) |
 | 数据备份/恢复脚本 | [backup-sql.sh](../../backup-sql.sh)、[restore-sql.sh](../../restore-sql.sh) |
 
 ## 已知缺口（P1）

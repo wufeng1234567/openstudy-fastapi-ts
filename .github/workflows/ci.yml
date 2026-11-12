@@ -178,3 +178,11 @@ jobs:
             exit 1
           fi
           echo "✅ 无已跟踪生成物"
+
+      - name: 版本一致性
+        run: |
+          version="$(tr -d '\r\n' < VERSION)"
+          grep -q "version = \"$version\"" openstudy-fastapi/pyproject.toml
+          grep -q "version=\"$version\"" openstudy-fastapi/app/main.py
+          grep -q "\"version\": \"$version\"" openstudy-vue3-ts/package.json
+          echo "✅ VERSION / pyproject / main.py / package.json = $version"

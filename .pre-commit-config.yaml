@@ -1,0 +1,30 @@
+# Lightweight checks that keep repository hygiene and syntax honest.
+# Requires `pre-commit` locally: pip install pre-commit && pre-commit install
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-added-large-files
+        args: ["--maxkb=2048"]
+      - id: detect-private-key
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.1
+    hooks:
+      - id: ruff
+        args: ["--select", "E9,F63,F7,F82"]
+        files: ^openstudy-fastapi/.*\.py$
+
+  - repo: local
+    hooks:
+      - id: frontend-lint
+        name: frontend eslint (warn-only baseline)
+        entry: npm run lint
+        language: system
+        files: ^openstudy-vue3-ts/src/.*\.(ts|js|vue)$
+        pass_filenames: false
