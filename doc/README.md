@@ -9,6 +9,10 @@
 |---|---|---|
 | 架构与边界 | [ARCHITECTURE.md](../ARCHITECTURE.md) | Vue3/FastAPI/Postgres；Agent/RAG 主链路与已知债务 |
 | 系统是什么、功能全貌 | [OpenStudy-系统完整介绍与功能架构梳理.md](功能迭代与代码质量/OpenStudy-系统完整介绍与功能架构梳理.md) | 信息来源处理系统，不是单一刷题站 |
+| 功能在哪、由谁实现 | [feature-map.md](feature-map.md) | 15 个功能域 → 入口 → 后端 → 证据 |
+| API 与数据模型 | [architecture/api-data-model.md](architecture/api-data-model.md) | 42 路由域、80 表、29 工具契约 |
+| 测试策略 | [quality/test-strategy.md](quality/test-strategy.md) | 109 pytest 现状、分层目标与覆盖率路线 |
+| 架构决策 | [adr/README.md](adr/README.md) | FastAPI/自研 Agent、PG/pgvector、图谱契约 |
 | 技术实现质量如何 | [quality-report.md](功能迭代与代码质量/quality-report.md) | pytest/ruff/lint/build 可复跑；type-check 存量债务如实披露 |
 | 20% 评分怎么整改 | [OpenStudy-技术实现质量20%-P0-P2执行方案.md](功能迭代与代码质量/OpenStudy-技术实现质量20%-P0-P2执行方案.md) | P0 证据/卫生 → P1 结构/文档 → P2 债务减量 |
 | 死代码清理依据 | [OpenStudy-代码质量审计与无用代码清理清单.md](功能迭代与代码质量/OpenStudy-代码质量审计与无用代码清理清单.md) | 删除清单、引用核查、清理路线 |
