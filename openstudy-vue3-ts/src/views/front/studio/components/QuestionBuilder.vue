@@ -1127,13 +1127,12 @@ import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount, markRaw } f
 import draggable from 'vuedraggable'
 import { Rank, InfoFilled, Delete, Search, MagicStick, Plus, Loading, Close, CircleCheck, Check, QuestionFilled, EditPen, ChatDotRound, FolderOpened, DocumentCopy, ArrowDown, Clock, Setting, FullScreen, Grid, RefreshLeft, Upload, Document, Picture } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getBankContextInfo, clearBankConversation } from '@/api/ai/ai'
 import AiThinkingToggle from '@/components/AiThinkingToggle/index.vue'
 import AiModelSelector from '@/components/AiModelSelector/index.vue'
-import { listAiConfig } from '@/api/system/aiConfig'
 import aiModelManager from '@/components/AiModelManager/index.vue'
 import QuestionFullEditor from './QuestionFullEditor.vue'
 import { useQuestionBuilderAiForm } from './useQuestionBuilderAiForm'
+import { useQuestionBuilderAiConfig } from './useQuestionBuilderAiConfig'
 import { useQuestionBuilderPromptHistory } from './useQuestionBuilderPromptHistory'
 import { useQuestionBuilderList } from './useQuestionBuilderList'
 import { useQuestionBuilderMaterials } from './useQuestionBuilderMaterials'
@@ -1245,6 +1244,18 @@ const handleRestore = async () => {
 
 // 使用 props
 const currentBankId = computed(() => props.bankId)
+const {
+  bankContextInfo,
+  historyCount,
+  clearingContext,
+  userAiConfigs,
+  aiModelManagerVisible,
+  aiModelManagerRef,
+  loadUserAiConfigs,
+  openAiModelManager,
+  loadBankContextInfo,
+  handleClearContext
+} = useQuestionBuilderAiConfig({ currentBankId })
 
 // 视图模式：'raw' 显示原始JSON文本，'pretty' 显示美化卡片
 const viewMode = ref('pretty')
@@ -1415,84 +1426,6 @@ function onStemMathInsert(latex: string) {
 
 // 当前题库ID（从父组件传入或路由获取）
 // const currentBankId = ref(null)
-
-
-// 题库上下文信息
-const bankContextInfo = ref({
-  bankName: '',
-  totalQuestions: 0
-})
-const historyCount = ref(0)
-const clearingContext = ref(false)
-
-// AI 模型配置相关
-const userAiConfigs = ref<any[]>([])
-const aiModelManagerVisible = ref(false)
-const aiModelManagerRef = ref(null)
-
-const loadUserAiConfigs = async () => {
-  try {
-    // available = 系统提供的官方模型 + 我自己添加的模型（用于校验用户选的模型是否可用）
-    const res = await listAiConfig('available')
-    if (res.code === 200 && res.rows) {
-      userAiConfigs.value = res.rows
-    }
-  } catch (error) {
-    console.error('加载用户AI配置失败:', error)
-  }
-}
-
-const openAiModelManager = () => {
-  aiModelManagerVisible.value = true
-  nextTick(() => {
-    if (aiModelManagerRef.value) {
-      aiModelManagerRef.value.refresh()
-    }
-  })
-}
-
-// 加载题库上下文信息
-const loadBankContextInfo = async () => {
-  if (!currentBankId.value) return
-  try {
-    const res = await getBankContextInfo(currentBankId.value)
-    if (res.code === 200 && res.data) {
-      bankContextInfo.value = {
-        bankName: res.data.bankName || '未知题库',
-        totalQuestions: res.data.totalQuestions || 0
-      }
-      historyCount.value = res.data.historyCount || 0
-    }
-  } catch (error) {
-    console.error('加载题库上下文失败:', error)
-  }
-}
-
-// 清空上下文
-const handleClearContext = async () => {
-  if (!currentBankId.value) return
-  try {
-    await ElMessageBox.confirm('确定清空该题库的AI对话上下文吗？', '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
-    clearingContext.value = true
-    const res = await clearBankConversation(currentBankId.value)
-    if (res.code === 200) {
-      ElMessage.success('上下文已清空')
-      historyCount.value = 0
-    } else {
-      ElMessage.error(res.msg || '清空失败')
-    }
-  } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('清空失败')
-    }
-  } finally {
-    clearingContext.value = false
-  }
-}
 
 
 // 监听题目列表变化，自动选中第一题
