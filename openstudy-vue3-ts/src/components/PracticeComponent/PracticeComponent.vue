@@ -383,7 +383,7 @@ import FavoriteButton from '@/components/FavoriteButton/FavoriteButton.vue'
  * 现在滚动入口收进答题卡内部（静态的「回到顶部 / 跳到底部」两个文本按钮），
  * 浮球不再出现。判据复用同一个 util，保证"到底在滚谁"始终只有一份答案。
  */
-import { readScrollPosition, resolveScrollHost, scrollHostTo, type ScrollHost } from '@/utils/scrollHost'
+import { usePracticeScrollHost } from './usePracticeScrollHost'
 // 「只刷错题」空态要用线性图标（全站统一走 OsIcon，不用 Element Plus 实心图标）
 import OsIcon from '@/components/OsIcon/index.vue'
 import ImageViewer from './ImageViewer.vue'
@@ -600,171 +600,15 @@ const activeMockConfig = ref<MockExamConfig | null>(null)
  */
 
 /** 页面根节点，作为"向上找滚动宿主"的起点 */
-const containerRef = ref<HTMLElement | null>(null)
-
-/** 当前像素级可滚量（>0 才需要锚点；0 表示这一屏根本不溢出） */
-const scrollMax = ref(0)
-
-/**
- * 是否需要滚动锚点
- *
- * 阈值 80px 而不是 0：这是"用户得滚好一会儿"的量级。
- * 逐题模式下普通单选题只有几十像素的抖动溢出（图片、解析边距），
- * 那种情况给两个按钮反而是噪音 —— 用户会觉得"这么点高度也值得跳？"。
- * 整体浏览（瀑布流）动辄几千像素，必然越过阈值。
- *
- * ⚠️ 只维护 `scrollMax`，**不再追踪 `scrollTop`**（2026-10-22）：
- *    第一版还算了 `atScrollTop` / `atScrollBottom` 去置灰按钮，
- *    但后台标签页里 Chrome 根本不派发 scroll 事件，状态永远停在初始值，
- *    于是「回到顶部」永久 disabled、点了毫无反应。
- *    按钮可用性只要依赖滚动事件，就必然有这种失败模式；
- *    而回到顶部 / 跳到底部本身是幂等动作，置灰没有任何收益，已整体去掉。
- */
-const scrollable = computed(() => scrollMax.value > 80)
-
-/** 真正在滚的宿主（元素或 window），懒解析并缓存 */
-let scrollHost: ScrollHost | null = null
-let lastScrollSyncAt = 0
-let scrollHostResizeObserver: ResizeObserver | null = null
-let scrollHostMutationObserver: MutationObserver | null = null
-let scrollHostRetryTimers: Array<ReturnType<typeof setTimeout>> = []
-
-/**
- * 读一次可滚量并落入响应式状态
- *
- * 只取 `max`：`top` 已经没有消费方了（见 `scrollable` 的注释）。
- */
-function syncScrollState() {
-  const { max } = readScrollPosition(scrollHost)
-  scrollMax.value = max
-}
-
-/**
- * 滚动 / 尺寸变化时的同步（时间戳节流）
- *
- * ⚠️⚠️ 这里**不能用 `requestAnimationFrame` + 布尔锁**，这是踩过的坑（2026-10-22）：
- *
- *   上一版写法：
- *       if (raf) return
- *       raf = requestAnimationFrame(() => { raf = 0; sync() })
- *
- *   一旦某一次 rAF 被浏览器**节流或丢弃**（后台标签、窗口被遮挡、省电模式都会），
- *   回调不执行 → `raf` 永远非 0 → 之后每一次调用都在第一行被 return，
- *   **永久死锁**，状态就停在旧值再也不更新。
- *
- *   实测症状：整体浏览模式真实溢出 5172px，但 `scrollMax` 卡在切模式之前的 31px，
- *   于是 `scrollable` 恒为 false、锚点整行不渲染 —— 而且滚多少下都救不回来。
- *
- * 现在只用时间戳节流：不需要任何回调复位，无论事件怎么丢都不会锁死。
- * 60ms ≈ 16fps，足够跟手，也避免每次 scroll 都强制同步布局。
- */
-const SCROLL_SYNC_INTERVAL = 60
-function onPracticeScroll() {
-  const now = performance.now()
-  if (now - lastScrollSyncAt < SCROLL_SYNC_INTERVAL) return
-  lastScrollSyncAt = now
-  syncScrollState()
-}
-
-/**
- * 确保滚动宿主已绑定（**幂等**）
- *
- * 与上一版的关键差别：宿主还活着（`isConnected`）且**确实能滚**时不再拆了重绑。
- * 原因是两种展示模式（逐题 / 整体浏览）只替换页面**内部**的 DOM，
- * 真正在滚的外壳 `.os-content` 始终是同一个元素 —— 每次切模式都拆监听，
- * 等于白白制造一个"监听真空期"，期间的尺寸变化全部丢失。
- *
- * ⚠️ 但「当前宿主不溢出」时必须重探，这条不能省：
- *    逐题模式碰上很短的题目时 `.os-content` 可能完全不溢出（overflow = 0），
- *    此时 `resolveScrollHost` 会退回 `window`；而 window 在整页高度 = 视口时
- *    永远不滚。若不在切到瀑布流后重新探测，锚点就**永远不会出现**。
- */
-function ensureScrollHost() {
-  const current = scrollHost
-  const alive = current === window || (current instanceof HTMLElement && current.isConnected)
-  if (alive) {
-    // 还活着，但要确认它现在真的能滚；能滚就直接复用监听
-    const { max } = readScrollPosition(current)
-    if (max > 4) return
-  }
-
-  detachScrollHost()
-  scrollHost = resolveScrollHost(containerRef.value)
-  lastScrollSyncAt = 0
-  syncScrollState()
-
-  if (scrollHost && scrollHost !== window) {
-    const el = scrollHost as HTMLElement
-    el.addEventListener('scroll', onPracticeScroll, { passive: true })
-    /*
-     * 内容尺寸/结构变化不会触发 scroll（切题、展开解析、图片加载、切换展示模式
-     * 都会改变高度）→ 用两个 observer 补齐，否则会出现"内容变长了但按钮还不出现"。
-     */
-    if (typeof ResizeObserver !== 'undefined') {
-      scrollHostResizeObserver = new ResizeObserver(onPracticeScroll)
-      scrollHostResizeObserver.observe(el)
-      if (el.firstElementChild) scrollHostResizeObserver.observe(el.firstElementChild as HTMLElement)
-    }
-    if (typeof MutationObserver !== 'undefined') {
-      scrollHostMutationObserver = new MutationObserver(onPracticeScroll)
-      scrollHostMutationObserver.observe(el, { childList: true, subtree: true })
-    }
-  } else {
-    window.addEventListener('scroll', onPracticeScroll, { passive: true })
-  }
-  window.addEventListener('resize', onPracticeScroll)
-}
-
-/** 拆掉监听（不动重试定时器；重试定时器由 unmount 统一清） */
-function detachScrollHost() {
-  if (scrollHost) {
-    if (scrollHost === window) window.removeEventListener('scroll', onPracticeScroll)
-    else (scrollHost as HTMLElement).removeEventListener('scroll', onPracticeScroll)
-  }
-  window.removeEventListener('resize', onPracticeScroll)
-  scrollHostResizeObserver?.disconnect()
-  scrollHostResizeObserver = null
-  scrollHostMutationObserver?.disconnect()
-  scrollHostMutationObserver = null
-  scrollHost = null
-}
-
-/**
- * 绑定入口（挂载时 / 延时重试）
- *
- * 首次挂载时外壳内容区可能还没撑开（每层都"不溢出"），只能退回 window，
- * 而 window 在整页高度 = 视口时根本不动 —— 那正是历史上"滚动按钮永不出现"的成因。
- * 所以除了 onMounted，还要在两次延时后再解析一次。
- */
-function bindPracticeScrollHost() {
-  detachScrollHost()
-  ensureScrollHost()
-  syncScrollState()
-}
-
-/** 解绑 */
-function unbindPracticeScrollHost(clearRetry = true) {
-  detachScrollHost()
-  if (clearRetry) {
-    scrollHostRetryTimers.forEach(t => clearTimeout(t))
-    scrollHostRetryTimers = []
-  }
-}
-
-/** 滚到顶部（答题卡 emit 的 `scroll-top`） */
-function handleScrollTop() {
-  scrollHostTo(scrollHost, 0)
-}
-
-/**
- * 滚到底部
- *
- * ⚠️ 目标值取**当前**的 max，不缓存：整体浏览模式下最后一波题可能刚渲染完，
- *    max 在点下去那一刻才准确。用旧值会停在"离底部还差一屏"的位置。
- */
-function handleScrollBottom() {
-  scrollHostTo(scrollHost, readScrollPosition(scrollHost).max)
-}
+const {
+  containerRef,
+  scrollable,
+  bindPracticeScrollHost,
+  unbindPracticeScrollHost,
+  scheduleScrollHostBinding,
+  handleScrollTop,
+  handleScrollBottom
+} = usePracticeScrollHost()
 
 /**
  * 选项是否打乱（下发给 `QuestionDisplay` / `AnswerCard`）
@@ -967,11 +811,7 @@ onMounted(() => {
    * 等布局稳定再解析一次才能真正落到 `.os-content` 上。
    * 定时器存进 `scrollHostRetryTimers`，卸载时统一清掉。
    */
-  requestAnimationFrame(bindPracticeScrollHost)
-  scrollHostRetryTimers.push(
-    setTimeout(bindPracticeScrollHost, 300),
-    setTimeout(bindPracticeScrollHost, 1200)
-  )
+  scheduleScrollHostBinding()
 })
 
 onUnmounted(() => {
