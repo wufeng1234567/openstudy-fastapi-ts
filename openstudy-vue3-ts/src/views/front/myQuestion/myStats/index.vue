@@ -273,6 +273,7 @@ import SegmentedTabs from '@/components/SegmentedTabs/index.vue'
 import EnglishStatistics from '@/views/front/english/statistics/index.vue'
 import WeeklyReportPanel from './components/WeeklyReportPanel.vue'
 import LegacyExamPlanPanel from './components/LegacyExamPlanPanel.vue'
+import { useStatsCharts } from './useStatsCharts'
 // 学情诊断面板（2026-10-26 v3）：把后端逐题诊断画成页内图表，而不是下载 PDF
 import DiagnosisPanel from './components/DiagnosisPanel.vue'
 

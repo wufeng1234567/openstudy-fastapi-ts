@@ -114,6 +114,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: 前端 composable import 检查
+        run: python3 scripts/check_composable_imports.py
+
       - name: 安装 Node
         uses: actions/setup-node@v4
         with:
