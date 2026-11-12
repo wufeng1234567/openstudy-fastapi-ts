@@ -114,6 +114,27 @@ _scratch_mut/
 audit_ws_summary.json
 # 竞赛展示图片/临时生成物：本地保留，不入库
 doc/competition/码道架构图/
+
+# 小红书配图与压缩包：仅本地展示素材，不进入 Git
+doc/小红书配图/
+doc/OpenStudy-小红书配图.zip
+
+# 本地整理资料与测试集：不进入 Git（如要归档，移动到 doc/internal/）
+智能体核心知识梳理.docx
+智能整理测试集/
+
+# 竞赛预览与可再生产物
+doc/competition/_preview/
+
+# 后端 pip 临时目录
+openstudy-fastapi/pip-build-tracker-*/
+openstudy-fastapi/pip-ephem-wheel-cache-*/
+openstudy-fastapi/pip-install-*/
+openstudy-fastapi/pip-unpack-*/
+
+# 前端本地探测产物
+openstudy-vue3-ts/tests/.tmp_*
+openstudy-vue3-ts/tests/_served.js
 _probe_*.txt
 _probe_*.json
 # 浏览器自动化（CDP）跑测试时常在仓库根目录留下 tmpXXXXXXX 临时文件，
