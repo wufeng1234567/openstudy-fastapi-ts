@@ -404,6 +404,7 @@ import { usePracticeInput } from './usePracticeInput'
 import { usePracticeSubmitAction } from './usePracticeSubmitAction'
 import { usePracticeViewWatchers } from './usePracticeViewWatchers'
 import { usePracticeWatchers } from './usePracticeWatchers'
+import { usePracticeMockState } from './usePracticeMockState'
 // 「只刷错题」空态要用线性图标（全站统一走 OsIcon，不用 Element Plus 实心图标）
 import OsIcon from '@/components/OsIcon/index.vue'
 import ImageViewer from './ImageViewer.vue'
@@ -540,38 +541,27 @@ const canGoNextBatch = computed(() => !isLastBatch.value)
  *   三个独立布尔迟早会出现两个同时为真。
  */
 type MockPhase = 'setup' | 'running' | 'summary' | 'history'
-const mockPhase = ref<MockPhase>('setup')
+const {
+  mockPhase,
+  isMockFlow,
+  showMockSetupUI,
+  showMockSummaryUI,
+  activeMockConfig,
+  effectiveShuffleOptions,
+  mockAvailable,
+  currentExamRecord,
+  historyRecord,
+  examStartAt,
+  showExamResult,
+  totalScore,
+  showAnalysisDialog,
+  viewerVisible,
+  viewerSrc,
+  hasSubmittedCurrentBatch,
+  isFirstLoaded,
+  examTimeLimit
+} = usePracticeMockState({ moduleTypeSafe, moduleSettings })
 
-/** 是否处于模拟考试流程（决定模板走哪一套 UI） */
-const isMockFlow = computed(() => moduleTypeSafe.value === 'mock')
-/** 是否应显示考试配置/历史/总结，而不是考卷 */
-const showMockSetupUI = computed(
-  () => isMockFlow.value && (mockPhase.value === 'setup' || mockPhase.value === 'history')
-)
-const showMockSummaryUI = computed(() => isMockFlow.value && mockPhase.value === 'summary')
-
-/**
- * 本次考试的配置（开考时从 store 载入并冻结）
- *
- * ⚠️ 必须**冻结快照**：考试进行中用户可能去设置页改配置，
- *    若判分时再读 store，就会出现"按新配置判旧卷子"的错乱。
- */
-const activeMockConfig = ref<MockExamConfig | null>(null)
-
-/* ==================== 滚动状态（答题卡内的「回到顶部 / 跳到底部」） ==================== */
-
-/**
- * 为什么把滚动状态放在 `PracticeComponent` 而不是 `AnswerCard` 里
- * ----------------------------------------------------------------------------
- * 因为**真正在滚的不是答题卡**：实测练习页滚的是外壳 `.os-content`
- * （scrollHeight 4938 / clientHeight 948），而 `.overview-question-stream`
- * 与答题卡自身都不滚。子组件若"从自己往上找"，第一个可滚祖先就是错的。
- *
- * 所以：探测 + 监听 + 执行滚动都留在本组件（它持有页面根节点 `containerRef`），
- * `AnswerCard` 只接收布尔值、只 emit 意图 —— 纯展示，不做 DOM 查询。
- */
-
-/** 页面根节点，作为"向上找滚动宿主"的起点 */
 const {
   containerRef,
   scrollable,
@@ -583,55 +573,6 @@ const {
   handleScrollTop,
   handleScrollBottom
 } = usePracticeScrollHost()
-
-/**
- * 选项是否打乱（下发给 `QuestionDisplay` / `AnswerCard`）
- *
- * 两种模式的「乱序」来源不同，不能混用一个值：
- *   · 模拟考试：由**本次考试的配置**决定（用户开考时在配置页勾的），
- *     且它在开考瞬间就冻结了 —— 考试中途改全局设置不该影响进行中的卷子。
- *   · 其余三个入口：读全局设置，用户在答题卡面板里随时可开关、实时生效。
- *
- * ⚠️ 必须定义在 `activeMockConfig` **之后**：computed 的 getter 虽然延迟执行，
- *    但声明顺序错了在首次渲染时就会踩到 TDZ（Cannot access before initialization）。
- */
-const effectiveShuffleOptions = computed(() => {
-  if (isMockFlow.value) return !!activeMockConfig.value?.shuffleOptions
-  return !!moduleSettings.value.shuffleOptions
-})
-
-/** 各题型的可选题量（配置页显示"最多能抽几道"用） */
-const mockAvailable = ref<Record<string, number>>({})
-
-/** 交卷后的结果（总结页与历史页共用） */
-const currentExamRecord = ref<MockExamRecord | null>(null)
-
-/** 从历史记录打开的那一条（与 currentExamRecord 分开：历史是只读回看） */
-const historyRecord = ref<MockExamRecord | null>(null)
-
-/** 考试开始时间（算用时） */
-const examStartAt = ref<number>(0)
-
-
-/**
- * 「打开设置弹窗那一刻」的设置快照
- *
- * ⚠️ 存在的唯一原因：`PracticeSettings.handleSave()` 是**先写 store 再 emit**，
- * 父组件收到 `save` 事件时 `moduleSettings` 已经是新值，没法据此判断"用户改了什么"。
- * 所以在打开弹窗时把旧值记下来，保存时跟这份快照比。
- *
- * 详见 `openSettings()` 与 `handleSettingsSave()` 的注释 —— 这两个函数是配套的，
- * 改动其一时必须同步另一个，否则「只刷错题」会再次变成"开关点了没反应"。
- */
-const showExamResult = ref(false)
-const totalScore = ref(0)
-const showAnalysisDialog = ref(false)
-const viewerVisible = ref(false)
-const viewerSrc = ref('')
-const hasSubmittedCurrentBatch = ref(false)
-const isFirstLoaded = ref(false)
-
-const examTimeLimit = computed(() => moduleSettings.value.examTimeLimit || 60)
 
 const {
   remainingTime,
