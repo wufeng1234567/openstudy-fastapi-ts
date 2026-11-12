@@ -1141,7 +1141,6 @@ import { useQuestionBuilderAiForm } from './useQuestionBuilderAiForm'
 import { useQuestionBuilderList } from './useQuestionBuilderList'
 import { useQuestionBuilderMaterials } from './useQuestionBuilderMaterials'
 import { useQuestionBuilderEditor } from './useQuestionBuilderEditor'
-import ScrollButton from '@/components/ScrollButton/ScrollButton.vue'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
 import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
 // 公式编辑（2026-10-27）：Tiptap 是富文本编辑器，不能直接塞输入框组件，
@@ -1917,25 +1916,9 @@ const isCompositePreview = computed(() => {
   return data && !Array.isArray(data) && data.passage && data.questions
 })
 
-const isOptionCorrect = (question, optIdx) => {
-  if (aiForm.value.questionType === 'single') {
-    return question.correctAnswer === optIdx
-  } else if (aiForm.value.questionType === 'multiple') {
-    return Array.isArray(question.correctAnswer) && question.correctAnswer.includes(optIdx)
-  }
-  return false
-}
-
 // 获取子题题型标签类型（Element Plus Tag 的 type）
 // 判断子题选项是否正确（用于组合题子题预览）
 // 格式化子题答案显示（用于组合题子题预览）
-const formatAnswer = (question) => {
-  if (aiForm.value.questionType === 'judge') {
-    return question.correctAnswer ? '正确' : '错误'
-  }
-  return question.correctAnswer
-}
-
 const syncOptionsJson = (q) => { q.optionsJson = JSON.stringify(q.options) }
 
 const addSubQuestionBySelectedType = () => {
@@ -2145,14 +2128,6 @@ const updatePreviewData = () => {
 }
 
 // 修改题目题干
-const editQuestionTitle = (index, newTitle) => {
-  if (!editablePreviewData.value) return
-  if (Array.isArray(editablePreviewData.value)) {
-    editablePreviewData.value[index].question = newTitle
-  }
-  updatePreviewData()
-}
-
 // 修改选项
 const editOption = (qIndex, optIndex, newValue) => {
   if (!editablePreviewData.value) return

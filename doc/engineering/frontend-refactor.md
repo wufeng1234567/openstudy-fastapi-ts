@@ -10,7 +10,7 @@
 |---:|---|---:|---|
 | 1 | `views/front/workspace/index.vue` | 1000 | 完成 |
 | 2 | `components/PracticeComponent/PracticeComponent.vue` | 1000 | 完成 |
-| 3 | `views/front/studio/components/QuestionBuilder.vue` | 2414 | 进行中 |
+| 3 | `views/front/studio/components/QuestionBuilder.vue` | 2392 | 进行中 |
 | 4 | `views/front/workspace/components/KnowledgeWikiPanel.vue` | 2853 | 待处理 |
 | 5 | `views/front/english/listening/index.vue` | 2034 | 待处理 |
 | 6 | `views/front/english/ocr/index.vue` | 1395 | 待处理 |
