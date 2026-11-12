@@ -12,6 +12,8 @@
 | 功能在哪、由谁实现 | [feature-map.md](feature-map.md) | 15 个功能域 → 入口 → 后端 → 证据 |
 | API 与数据模型 | [architecture/api-data-model.md](architecture/api-data-model.md) | 42 路由域、80 表、29 工具契约 |
 | 测试策略 | [quality/test-strategy.md](quality/test-strategy.md) | 109 pytest 现状、分层目标与覆盖率路线 |
+| 质量证据总入口 | [quality/README.md](quality/README.md) | 质量报告、测试策略、死代码台账 |
+| 部署/回滚 | [operations/README.md](operations/README.md) | 现有部署文档入口；回滚 Runbook 待 P1 |
 | 架构决策 | [adr/README.md](adr/README.md) | FastAPI/自研 Agent、PG/pgvector、图谱契约 |
 | 技术实现质量如何 | [quality-report.md](功能迭代与代码质量/quality-report.md) | pytest/ruff/lint/build 可复跑；type-check 存量债务如实披露 |
 | 20% 评分怎么整改 | [OpenStudy-技术实现质量20%-P0-P2执行方案.md](功能迭代与代码质量/OpenStudy-技术实现质量20%-P0-P2执行方案.md) | P0 证据/卫生 → P1 结构/文档 → P2 债务减量 |
