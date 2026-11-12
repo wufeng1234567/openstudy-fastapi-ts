@@ -401,6 +401,9 @@ import { usePracticeLifecycle } from './usePracticeLifecycle'
 import { usePracticeSubmission } from './usePracticeSubmission'
 import { usePracticeStream } from './usePracticeStream'
 import { usePracticeInput } from './usePracticeInput'
+import { usePracticeSubmitAction } from './usePracticeSubmitAction'
+import { usePracticeViewWatchers } from './usePracticeViewWatchers'
+import { usePracticeWatchers } from './usePracticeWatchers'
 // 「只刷错题」空态要用线性图标（全站统一走 OsIcon，不用 Element Plus 实心图标）
 import OsIcon from '@/components/OsIcon/index.vue'
 import ImageViewer from './ImageViewer.vue'
@@ -657,96 +660,6 @@ const questionStreamRef = ref<HTMLElement | null>(null)
 
 
 
-const handleSubmit = () => {
-  const unanswered = totalQuestions.value - answeredCount.value
-
-  const enterSettlement = () => {
-    hasSubmittedCurrentBatch.value = true
-
-    /*
-     * 「提交」= 这一轮练习结束 → 丢掉随机题单，下一轮重新随机
-     *
-     * ⚠️ 为什么在这里清（2026-10-20）：
-     *   随机练习现在是「一次随机、题单固定」（用户 2026-10-20 的方案）。
-     *   题单固定的前提是"这一轮还没做完"。用户点了提交/交卷，说明这一轮结束了，
-     *   下次再进就该拿到**新的**随机题单，而不是重做刚才那一套。
-     *
-     *   只对随机模式有意义；其它模式没有题单，调用了也只是删掉一个不存在的键，
-     *   所以不做模式判断 —— 少一个分支，少一处漏判断的机会。
-     *
-     * ⚠️ 不要在这里清"上一轮做过哪些题"（`os_recent_practice_*`）：
-     *   那是下一轮"新题优先"的依据。`clearRandomPlan()` 只清题单，正合适。
-     */
-    clearRandomPlan()
-
-    /*
-     * 结算页固定用瀑布流展示 —— 但**绝不能写进用户偏好**
-     *
-     * ⚠️⚠️ 这里原来写的是 `overviewMode.value = true`，注释还宣称"临时打开、
-     *   不改 `moduleSettings.isOverviewMode`"。事实是 `overviewMode` 是带 setter
-     *   的 computed，setter 直接 `saveModuleSettings(...)` 落 localStorage ——
-     *   注释的意图和代码行为完全相反，这就是「空态修好了又消失」的元凶：
-     *   用户点一次「提交」→ 偏好被永久改成浏览模式 → 以后每次进都走浏览分支
-     *   （那条分支上没有空态）→ 空白页。
-     *
-     * 正确做法：只置**本地区**的 `forceOverview`，渲染时由 `isOverviewActive`
-     * 与用户偏好取或。用户的 `isOverviewMode` 一个字节都不动。
-     */
-    forceOverview.value = true
-
-    /*
-     * 进入结算：判分 + 全部解析展开
-     *
-     * ⚠️ `skipConfirm: true`（2026-10-20）：
-     *   这里是**练习态**的「提交」，`handleSubmit` 已经做过一次
-     *   "有未答题"的确认（那是练习态的防误提交），这里再弹一次考试式的
-     *   "交卷后不能修改"就重复了，而且语义也不对（练习本来就能重练）。
-     *   考试态的确认由 `AnswerCard` 的「交卷」按钮走 —> handleSubmitExam() 自己弹。
-     */
-    handleSubmitExam({ skipConfirm: true })
-
-    // 滚动到第一题，让用户从头核对（瀑布流里错题跳转由答题卡负责）
-    nextTick(() => {
-      setTimeout(() => {
-        const firstCard = document.querySelector('.overview-question-card')
-        if (firstCard) firstCard.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }, 120)
-    })
-  }
-
-  // 模拟考试（mock）：沿用原来的"确认交卷"语义
-  if (props.moduleType === 'mock') {
-    let msg = '确定要交卷吗？'
-    if (unanswered > 0) msg = `您还有 ${unanswered} 题未作答，确定要交卷吗？`
-    ElMessageBox.confirm(msg, '确认提交', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
-      .then(enterSettlement)
-      .catch(() => {
-        /* 用户取消：什么都不做，留在当前题 */
-      })
-    return
-  }
-
-  // 练习模式 / 考试模式：有未答题时提醒一次，确认后进结算
-  if (unanswered > 0) {
-    ElMessageBox.confirm(`您还有 ${unanswered} 题未作答，是否提交并查看解析？`, '提示', {
-      confirmButtonText: '提交并查看解析',
-      cancelButtonText: '继续答题',
-      type: 'warning'
-    })
-      .then(enterSettlement)
-      .catch(() => {
-        /* 继续答题 */
-      })
-    return
-  }
-
-  enterSettlement()
-}
-
 const { proxy } = getCurrentInstance() as any
 
 const { recentSession, loadRecentSession, openRecentSession } = usePracticeRecentSession({
@@ -918,53 +831,6 @@ const {
  *   一次性覆盖全部路径。`jumpToNextBatch` 里那次显式清空可以保留 ——
  *   watch 是异步的，而换波后紧接着就会渲染，早清一步更稳。
  */
-watch(
-  () => questions.value.map((q: any) => q?.id).join(','),
-  () => {
-    committedQuestions.value = {}
-  }
-)
-
-/* ==================== 滚动锚点：跟随展示内容变化重算 ==================== */
-
-/**
- * 什么时候需要重新同步滚动状态
- * ----------------------------------------------------------------------------
- * 用户明确指出练习页有**两种模式**，两者的可滚量完全不同：
- *   · 逐题模式（一题一屏）→ 通常不溢出，锚点整行不出现；
- *   · 整体浏览（瀑布流）  → 几乎总是溢出，锚点必须有。
- *
- * ⚠️ 这里只调 `ensureScrollHost()`（幂等）+ `syncScrollState()`，
- *    **不**再拆监听：两种模式只替换页面内部的 DOM，真正在滚的外壳
- *    `.os-content` 是同一个元素。上一版每次都 `detach` 再靠 rAF 重绑，
- *    结果 rAF 被节流时监听永久丢失、状态卡死（详见 `onPracticeScroll` 的注释）。
- *
- * `questions.length` 也纳入：切题库 / 换波 / 换题量都会改变内容高度。
- * 用 `flush: 'post'` 是必须的：DOM 还没打完补丁时量出来的高度是旧的。
- */
-watch(
-  [() => isOverviewActive.value, () => questions.value.length],
-  () => {
-    ensureScrollHost()
-    syncScrollState()
-  },
-  { flush: 'post' }
-)
-
-/**
- * 切题时也要重算
- *
- * 逐题模式下换一道题，内容高度可能从"不溢出"变成"溢出"（长题干 / 组合题），
- * 这时锚点才应该出现。不做这一步，用户必须切一下模式或滚一下才会更新。
- */
-watch(
-  () => currentQuestionIndex.value,
-  () => {
-    syncScrollState()
-  },
-  { flush: 'post' }
-)
-
 /* ============================================================================
  * 模拟考试：组卷 / 判分 / 生成记录（2026-10-22）
  * ============================================================================
@@ -1045,37 +911,6 @@ const {
  *   不要再合并回一个函数，那样又会把两个动作搅在一起。
  */
 
-// 进入 mock 模块时的初始化：拉题量、复位阶段（或恢复进行中的考试）
-watch(
-  () => [props.moduleType, props.bankId],
-  async () => {
-    if (moduleTypeSafe.value !== 'mock') return
-    historyRecord.value = null
-    currentExamRecord.value = null
-    showExamResult.value = false
-    totalScore.value = 0
-
-    /*
-     * ⚠️ 这里**不能无条件** `mockPhase.value = 'setup'`（2026-10-22 修的 bug）
-     *
-     * 原来这一行是本 bug 的第一根因：用户考试中刷新页面，
-     * 组件重建 → watch 立即执行 → 阶段被打回 setup → 看到的是配置页，
-     * 而卷子、答案、配置全都只存在组件内存里，已经随刷新一起没了。
-     *
-     * 现在先尝试恢复"进行中的考试会话"：
-     *   · 有且未过期 → 恢复卷子并直接进考试（`restoreMockSession` 内部处理计时的接续）；
-     *   · 没有 / 已过期 → 才回到配置页。
-     * 注意 `loadMockAvailability()` 两种情况都要跑：配置页要用它显示各题型可用题数。
-     */
-    const restored = await restoreMockSession()
-    if (!restored) {
-      mockPhase.value = 'setup'
-    }
-    await loadMockAvailability()
-  },
-  { immediate: true }
-)
-
 /* ==================== 模拟考试会话的持久化与恢复 ==================== */
 
 /** 当前会话的结束时间戳（恢复 / 开考时确定，保存快照时复用） */
@@ -1120,6 +955,27 @@ const { persistMockSession, restoreMockSession } = usePracticeMockSession({
   startExamTimer
 })
 
+usePracticeViewWatchers({
+  questions,
+  committedQuestions,
+  isOverviewActive,
+  currentQuestionIndex,
+  moduleTypeSafe,
+  getModuleType: () => props.moduleType,
+  getBankId: () => props.bankId,
+  historyRecord,
+  currentExamRecord,
+  showExamResult,
+  totalScore,
+  mockPhase,
+  ensureScrollHost,
+  syncScrollState,
+  restoreMockSession,
+  loadMockAvailability
+})
+
+
+
 const { handleMockSubmit } = usePracticeMockResult({
   activeMockConfig,
   practiceSessionId,
@@ -1159,21 +1015,6 @@ const { handleMockSubmit } = usePracticeMockResult({
  * 而丢一次作答的代价很高（刷新后这题答案没了）。写入的是几百字节的 JSON，
  * 每点一下写一次的代价可以忽略。
  */
-watch(
-  [() => JSON.stringify(answers.value), () => JSON.stringify(subFillBlankAnswers.value), () => JSON.stringify(subEssayAnswers.value)],
-  () => {
-    if (mockPhase.value !== 'running') return
-    persistMockSession()
-  }
-)
-
-/** 换题也落一次：记住"我刚才在做哪道"，刷新后回到这题 */
-watch(currentQuestionIndex, () => {
-  if (mockPhase.value !== 'running') return
-  persistMockSession()
-})
-
-
 /* ===================== 页面暂存（练习进度） =====================
  *
  * 与 keep-alive 的分工见 `utils/practiceDraft.ts` 顶部说明：
@@ -1236,6 +1077,31 @@ const {
   setQuestionOffset: (value) => { questionOffset.value = value }
 })
 
+usePracticeWatchers({
+  answers,
+  subFillBlankAnswers,
+  subEssayAnswers,
+  currentQuestionIndex,
+  questionOffset,
+  hasSubmittedCurrentBatch,
+  questions,
+  mockPhase,
+  showExamResult,
+  draftRestored,
+  moduleTypeSafe,
+  moduleSettings,
+  isResetting,
+  isOverviewActive,
+  questionStreamRef,
+  highlightedIndex,
+  persistMockSession,
+  draftSaver,
+  restoreDraftIfAny,
+  updateQuestionCountAndSlice,
+  updateOnlyWrong,
+  fetchQuestions
+})
+
 const { handleSubmitExam, handleFinishExam } = usePracticeSubmission({
   isMockFlow,
   activeMockConfig,
@@ -1258,6 +1124,16 @@ const { handleSubmitExam, handleFinishExam } = usePracticeSubmission({
   clearExamStorage,
   stopExamTimer,
   clearAnswerStateCache
+})
+
+const { handleSubmit } = usePracticeSubmitAction({
+  totalQuestions,
+  answeredCount,
+  hasSubmittedCurrentBatch,
+  forceOverview,
+  getModuleType: () => props.moduleType,
+  clearRandomPlan,
+  handleSubmitExam
 })
 
 usePracticeLifecycle({
@@ -1333,46 +1209,6 @@ usePracticeRouteWatches({
  *   · `hasSubmittedCurrentBatch` → 本波是否提交（考试模式恢复时要知道）。
  * 全部走 `schedule()`（节流），所以连着敲字也只会在停顿后写一次。
  */
-watch(
-  () => [
-    JSON.stringify(answers.value),
-    currentQuestionIndex.value,
-    questionOffset.value,
-    hasSubmittedCurrentBatch.value,
-    JSON.stringify(subFillBlankAnswers.value),
-    JSON.stringify(subEssayAnswers.value)
-  ],
-  () => {
-    // 结算/成绩页不写（那是结果态，不是「进行中的练习」）
-    if (showExamResult.value) return
-    // 恢复还没完成时不要写：否则会用"空答案"把暂存覆盖掉（最致命的一种数据丢失）
-    if (!draftRestored.value) return
-    /*
-     * 模拟考试的进度由 `persistMockSession` 负责，**不写练习草稿**（2026-10-22）。
-     * 两套机制各存各的：草稿按"波次"切片，考试是整卷，混写会互相破坏
-     * （详见 `restoreDraftIfAny` 顶部那段说明）。
-     */
-    if (moduleTypeSafe.value === 'mock') return
-    draftSaver.schedule()
-  }
-)
-
-/**
- * 兜底：题目首次就绪时尝试恢复
- *
- * 为什么不只依赖 onMounted 里那次：提交流程里 `fetchQuestions()` 有多条触发路径
- * （切换模块、设置变更、重新练习），onMounted 里的 `.then` 不一定是「题目第一次可用」
- * 的那一刻。这里盯住 `questions.length` 从 0 变正数，任何路径都能覆盖到。
- */
-watch(
-  () => questions.value.length,
-  (n, old) => {
-    if (n > 0 && (!old || old === 0)) {
-      restoreDraftIfAny()
-    }
-  }
-)
-
 /**
  * 交卷（判分 + 出成绩）
  * ============================================================================
@@ -1392,35 +1228,6 @@ watch(
  *   确认框的文案尽量"可决策"：说清楚未答数量和后果（交卷后不能修改），
  *   而不是干巴巴一句"确定交卷吗"。
  */
-watch(() => moduleSettings.value.questionCount, (val) => {
-  // 如果正在重置中，跳过（防止二次触发）
-  if (isResetting.value) return
-  updateQuestionCountAndSlice(val)
-})
-
-watch(() => moduleSettings.value.onlyWrong, (val) => {
-  // 如果正在重置中，跳过（防止二次触发）
-  if (isResetting.value) return
-  updateOnlyWrong(val)
-  fetchQuestions()
-})
-
-watch(isOverviewActive, (val) => {
-  if (val) {
-    const savedIndex = moduleSettings.value.overviewScrollIndex || 0
-    if (savedIndex > 0 && questionStreamRef.value) {
-      setTimeout(() => {
-        if (!questionStreamRef.value) return
-        const children = questionStreamRef.value.children
-        if (children && children[savedIndex]) {
-          ;(children[savedIndex] as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' })
-        }
-        highlightedIndex.value = savedIndex
-      }, 100)
-    }
-  }
-})
-
 function openImageViewer(src: string) {
   viewerSrc.value = src
   viewerVisible.value = true
