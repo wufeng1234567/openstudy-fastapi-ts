@@ -756,7 +756,7 @@ watch(() => props.bankId, (newId, oldId) => {
    *    `restoreDraftIfAny()` 里有 `if (draftRestoredOnce) return`，它是按组件
    *    实例（不是按题库）记的 —— 不重置的话，B 题库的暂存永远恢复不出来。
    */
-  draftRestoredOnce = false
+  resetDraftRestored()
 
   // 3) 重置题目与作答，再去拉 B 题库的数据。
   //    ⚠️ 必须把 oldId 传进去：此刻 `props.bankId` 已经是新题库，
@@ -2064,7 +2064,10 @@ const {
   draftState,
   draftSavedAt,
   buildDraftSnapshot,
-  draftSaver
+  draftSaver,
+  draftRestored,
+  resetDraftRestored,
+  restoreDraftIfAny
 } = usePracticeDraft({
   getUserId: currentUserId,
   getBankId: () => props.bankId,
@@ -2078,7 +2081,13 @@ const {
   getQuestionCount: () => moduleSettings.value.questionCount || 10,
   getHasSubmittedCurrentBatch: () => hasSubmittedCurrentBatch.value,
   getCorrectCount: () => correctCount.value,
-  getWrongCount: () => wrongCount.value
+  getWrongCount: () => wrongCount.value,
+  getModuleTypeSafe: () => moduleTypeSafe.value,
+  getAllQuestionsData: () => allQuestionsData.value,
+  isPracticeMode: () => isPracticeMode.value,
+  loadBatchWithoutReset,
+  goToQuestion,
+  setQuestionOffset: (value) => { questionOffset.value = value }
 })
 
 /*
@@ -2105,167 +2114,6 @@ const {
  * 只有在答案还是空的时候才回填。
  */
 /** 是否已经从暂存恢复过（避免重复提示 / 重复覆盖） */
-let draftRestoredOnce = false
-
-function restoreDraftIfAny(retry = 0) {
-  if (draftRestoredOnce) return
-
-  /*
-   * ⚠️ 模拟考试**不走练习草稿**（2026-10-22）
-   *
-   * 两套持久化机制会互相踩：
-   *   · 练习草稿（`os_practice_draft_*`）：按"波次"切片恢复，会改 `questionOffset`；
-   *   · 考试会话（`os_mock_session_*`）：整卷恢复，`questionOffset` 恒为 0。
-   *
-   * 若让草稿在 mock 模块也跑，它会：
-   *   ① 按 `draft.batchIndex` 把 `questionOffset` 改掉 → 整卷被切片、题目错位；
-   *   ② 用草稿里的旧答案覆盖掉刚从会话恢复出来的答案。
-   * 表现就是"恢复出来的卷子题号乱了、答案对不上"。
-   *
-   * 所以这里直接返回：模拟考试的进度由 `restoreMockSession` 独自负责。
-   */
-  if (moduleTypeSafe.value === 'mock') {
-    draftRestoredOnce = true
-    return
-  }
-
-  const draft = loadDraft(currentUserId(), props.bankId, props.moduleType)
-  if (!draft) {
-    draftRestoredOnce = true
-    return
-  }
-
-  /*
-   * 先回到"当时那一波"，再对齐答案
-   * ------------------------------------------------------------------
-   * ⚠️ 顺序非常重要（2026-10-18 实测踩到）：
-   *    `questions` 是 `allQuestionsData` 的**切片**（[questionOffset, +count)），
-   *    不是全量。若用户上次做到第 3 波，而这次进来停在第 1 波，
-   *    切片里的题目完全不同 → 按 questionId 一条也对不上 → 看起来"没恢复"。
-   *    所以必须先把 questionOffset 拨回暂存里记录的批位置。
-   */
-  const batchSize = Math.max(1, Number(draft.batchSize) || moduleSettings.value.questionCount || 10)
-  const wantOffset = Math.max(0, Number(draft.batchIndex || 0) * batchSize)
-  if (wantOffset !== (questionOffset.value || 0) && allQuestionsData.value.length > wantOffset) {
-    questionOffset.value = wantOffset
-    loadBatchWithoutReset()
-  }
-
-  /*
-   * 关于 `draft.questionIds` 和"恢复题目顺序"
-   * =================================================================
-   * 上一版（同一天早些时候）我在这里做过「按快照重排 allQuestionsData」，
-   * 用来修"刷新题号变、题目不变"。**现已移除**，原因：
-   *
-   *   那是治标。病根是「随机顺序每次刷新都会重算」，所以只能事后用快照把顺序掰回去，
-   *   两个数据源（题单快照 vs 重新洗牌）互相拉扯，迟早还会出别的问题。
-   *
-   *   用户给的方案是治本：「随机只随机一次，没练完就一直用这份」——
-   *   顺序本身持久化了（见 `useQuestionPractice.buildRandomPlan` / `loadRandomPlan`），
-   *   刷新后重新加载拿到的**就是同一份题单**，顺序天然一致，
-   *   于是下面按 `currentQuestionId` 定位也天然正确，不需要任何重排补丁。
-   *
-   *   `questionIds` 仍然保留在草稿结构里：它记录"这份题单当时包含哪些题"，
-   *   在有多个题库入口或将来做"跨设备继续"时是有意义的元数据。
-   *   只是现在**不再需要**靠它来纠正顺序了。
-   */
-
-  const list = questions.value || []
-  if (!list.length) {
-    /*
-     * 题目还没到（`fetchQuestions()` 是异步的，且可能有别的入口先触发了加载）。
-     * 这里轮询等待，而不是"一次拿不到就放弃" —— 放弃会让用户看到空白的作答题，
-     * 以为进度丢了（2026-10-18 实测踩到）。
-     * 最多等约 3 秒（20 × 150ms），之后安静退出。
-     */
-    if (retry < 20) {
-      setTimeout(() => restoreDraftIfAny(retry + 1), 150)
-    }
-    return
-  }
-
-  // 建 id → 下标 的索引（用字符串比较，避免 number/string 类型差异）
-  const idxById = new Map<string, number>()
-  list.forEach((q: any, i: number) => {
-    const qid = q?.id ?? q?.questionId ?? i
-    idxById.set(String(qid), i)
-  })
-
-  let restoredCount = 0
-
-  Object.keys(draft.answers || {}).forEach((qid) => {
-    const i = idxById.get(String(qid))
-    if (i === undefined) return
-    const val = draft.answers[qid]
-    // 用户已经当场答过的不要覆盖（例如恢复前手快点了选项）
-    const cur = answers.value?.[i]
-    if (cur !== null && cur !== undefined && cur !== '') return
-    answers.value[i] = val
-    restoredCount += 1
-  })
-
-  // 已判状态与对错（刷题模式下答完即判，恢复后解析应该还在）
-  Object.keys(draft.judged || {}).forEach((qid) => {
-    const i = idxById.get(String(qid))
-    if (i === undefined) return
-    const q = list[i]
-    if (!q) return
-    q.answered = true
-    if (draft.correct && typeof draft.correct[qid] === 'boolean') {
-      q.correct = draft.correct[qid]
-    }
-    // 刷题模式：恢复出来的题要能直接看到解析
-    if (isPracticeMode.value) q.showAnalysis = true
-  })
-
-  // 组合题子题答案
-  Object.keys(draft.subFillBlank || {}).forEach((qid) => {
-    const subs = draft.subFillBlank[qid] || {}
-    Object.keys(subs).forEach((sub) => {
-      const k = `${qid}_${sub}`
-      if (!(k in (subFillBlankAnswers.value || {}))) {
-        ;(subFillBlankAnswers.value as any)[k] = subs[sub]
-      }
-    })
-  })
-  Object.keys(draft.subEssay || {}).forEach((qid) => {
-    const subs = draft.subEssay[qid] || {}
-    Object.keys(subs).forEach((sub) => {
-      const k = `${qid}_${sub}`
-      if (!(k in (subEssayAnswers.value || {}))) {
-        ;(subEssayAnswers.value as any)[k] = subs[sub]
-      }
-    })
-  })
-
-  /*
-   * 定位到上次那一题（按 id，不按数组下标）
-   *
-   * ⚠️ 随机模式也**要跳**（2026-10-20 最终结论，推翻了我当天早些时候的判断）：
-   *   当时我以为"随机模式不跳、回到第一题"更像随机，但这会让用户
-   *   **看不出进度被恢复了** —— 明明做到第 5 题，刷新后回到第 1 题，
-   *   还要自己往下翻，体验比"跳回上次那题"差。
-   *
-   *   现在顺序是持久化的（随机题单存 localStorage），题号与题目的对应关系
-   *   刷新后不变，所以按 id 跳回去**不会**出现"题号变、题目不变"——
-   *   那个老 bug 的根因（每次刷新重排）已经没了。
-   *   既然顺序稳定，"上次那一题"就是一个确定的、唯一的位置，跳过去是对的。
-   */
-  if (draft.currentQuestionId !== undefined && draft.currentQuestionId !== null) {
-    const i = idxById.get(String(draft.currentQuestionId))
-    if (i !== undefined) goToQuestion(i)
-  }
-
-  if (restoredCount > 0) {
-    draftRestoredOnce = true
-    // 进度恢复保持静默：不再弹「已恢复上次练习进度」提示，避免打扰用户。
-    draftState.value = 'saved'
-    draftSavedAt.value = draft.savedAt
-  } else {
-    draftRestoredOnce = true
-  }
-}
-
 /**
  * 静默暂存：作答 / 判分 / 换题 / 换波 后自动写一次
  * 为什么 watch 这么多个源而不是"只在作答时存"：
@@ -2289,7 +2137,7 @@ watch(
     // 结算/成绩页不写（那是结果态，不是「进行中的练习」）
     if (showExamResult.value) return
     // 恢复还没完成时不要写：否则会用"空答案"把暂存覆盖掉（最致命的一种数据丢失）
-    if (!draftRestoredOnce) return
+    if (!draftRestored.value) return
     /*
      * 模拟考试的进度由 `persistMockSession` 负责，**不写练习草稿**（2026-10-22）。
      * 两套机制各存各的：草稿按"波次"切片，考试是整卷，混写会互相破坏
