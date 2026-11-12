@@ -1137,6 +1137,7 @@ import { useQuestionBuilderAiForm } from './useQuestionBuilderAiForm'
 import { useQuestionBuilderList } from './useQuestionBuilderList'
 import { useQuestionBuilderMaterials } from './useQuestionBuilderMaterials'
 import { useQuestionBuilderEditor } from './useQuestionBuilderEditor'
+import { useQuestionBuilderAiResult } from './useQuestionBuilderAiResult'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
 import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
 // 公式编辑（2026-10-27）：Tiptap 是富文本编辑器，不能直接塞输入框组件，
@@ -2125,55 +2126,23 @@ const updatePreviewData = () => {
 // 修改题目题干
 // 修改选项
 // 导入生成的题目
-const importGeneratedQuestions = () => {
-  if (!pendingImportData.value) {
-    ElMessage.warning('没有可导入的题目')
-    return
-  }
-
-  const { isComposite, parsed, questionType } = pendingImportData.value
-
-  // 临时设置 aiForm.questionType
-  const originalType = aiForm.value.questionType
-  aiForm.value.questionType = questionType
-
-  processParsedData(isComposite, parsed)
-
-  aiForm.value.questionType = originalType
-
-  ElMessage.success(`成功导入 ${generatedCount.value} 道题目`)
-
-  // 清空待导入数据和预览
-  pendingImportData.value = null
-  parsedQuestionsForPreview.value = null
-  editablePreviewData.value = null
-  rawJsonContent.value = ''
-}
-
-// 丢弃生成的题目
-const discardGeneratedQuestions = () => {
-  parsedQuestionsForPreview.value = null
-  editablePreviewData.value = null
-  pendingImportData.value = null
-  rawJsonContent.value = ''
-  ElMessage.info('已丢弃生成的题目')
-}
-
-
-
-
-
-
-
-
-import {
-  convertAiQuestionToInternal,
-  convertCompositeFromAi,
-  extractJsonFromAiResponse,
-  mapAiTypeToInternal,
-  normalizeAiQuestion
-} from './questionBuilderAi'
-import { getSubTypeName, getSubTypeTagType, truncateText } from './questionBuilderUtils'
+const {
+  finishAiGenerate,
+  importGeneratedQuestions,
+  discardGeneratedQuestions
+} = useQuestionBuilderAiResult({
+  aiForm,
+  parsedQuestionsForPreview,
+  editablePreviewData,
+  pendingImportData,
+  rawJsonContent,
+  generatedCount,
+  viewMode,
+  aiGenerating,
+  questions,
+  currentId,
+  savePromptToHistory
+})
 
 // 普通 API 调用（非流式）
 const handleAiGenerate = async () => {
@@ -2418,138 +2387,6 @@ const handleAiGenerate = async () => {
     aiGenerating.value = false
   }
 }
-
-const finishAiGenerate = (rawData, isComposite) => {
-
-  let actualData = rawData
-  if (rawData && typeof rawData === 'object' && rawData.msg !== undefined) {
-    actualData = rawData.msg
-  }
-
-  let parsed = actualData
-  if (typeof actualData === 'string') {
-    rawJsonContent.value = actualData
-    parsed = extractJsonFromAiResponse(actualData)
-  } else {
-    rawJsonContent.value = JSON.stringify(actualData, null, 2)
-  }
-
-  if (!parsed) {
-    ElMessage.error('AI 返回数据解析失败，请查看原始 JSON')
-    aiGenerating.value = false
-    return
-  }
-
-  if (isComposite) {
-    if (!parsed.passage || !parsed.questions || !Array.isArray(parsed.questions)) {
-      ElMessage.error('AI 返回的组合题数据格式不正确')
-      aiGenerating.value = false
-      return
-    }
-  } else {
-    if (!Array.isArray(parsed)) {
-      if (parsed && typeof parsed === 'object' && (parsed.question || parsed.questionText)) {
-        parsed = [parsed]
-      } else {
-        ElMessage.error('AI 返回的题目数据格式不正确')
-        aiGenerating.value = false
-        return
-      }
-    }
-  }
-
-  // 统一 AI 字段名（questionText -> question，answer -> correctAnswer）
-  if (isComposite) {
-    parsed.questions = (parsed.questions || []).map(q => normalizeAiQuestion(q, 2, q.type || q.questionType))
-  } else {
-    /*
-     * ⚠️ 题型要**逐题取**，不能统一用 `aiForm.questionType`（2026-10-20 修）。
-     *
-     * 原因：自定义出题（custom）一次会返回**多种题型**，每题的 `type` 才是真实题型。
-     * 若这里统一传 `'custom'`，`normalizeAiQuestion` 拿它去归一化答案、
-     * 预览也按它渲染 —— 结果就是每道题都显示 `custom`、答案与解析全空
-     * （因为 `'custom'` 不是任何真实题型的处理分支）。
-     *
-     * 固定题型场景下 `q.type` 通常不存在，自然回落到 `aiForm.questionType`，行为不变。
-     */
-    const fallbackType = aiForm.value.questionType
-    parsed = Array.isArray(parsed)
-      ? parsed.map(q => normalizeAiQuestion(q, 5, q.type || q.questionType || fallbackType))
-      : normalizeAiQuestion(parsed, 5, parsed.type || parsed.questionType || fallbackType)
-  }
-
-  generatedCount.value = isComposite ? parsed.questions?.length || 0 : (Array.isArray(parsed) ? parsed.length : 1)
-  editablePreviewData.value = JSON.parse(JSON.stringify(parsed))
-  parsedQuestionsForPreview.value = parsed
-  pendingImportData.value = { isComposite, parsed: editablePreviewData.value, questionType: aiForm.value.questionType }
-  viewMode.value = 'pretty'
-  savePromptToHistory()
-  ElMessage.success(`成功生成 ${generatedCount.value} 道题目，请确认后导入`)
-  aiGenerating.value = false
-}
-
-
-
-
-
-const processParsedData = (isComposite, parsed) => {
-  if (isComposite) {
-    let composite = null
-    if (parsed.passage && parsed.questions) composite = convertCompositeFromAi(parsed)
-    else if (typeof parsed.passage === 'string' && !Array.isArray(parsed)) {
-      const questions = parsed.questions || []
-      composite = convertCompositeFromAi({ passage: parsed.passage, questions })
-    } else if (Array.isArray(parsed)) {
-      ElMessage.warning('AI 未返回文章内容，将仅导入子题')
-      composite = { id: Date.now() + Math.random(), type: 'composite', title: '组合题（请手动填写材料）', content: '', analysis: '', score: 10, subQuestions: [] }
-      parsed.forEach((q, idx) => {
-        const subType = mapAiTypeToInternal(q.type || 'single')
-        const sub = { id: Date.now() + Math.random() + idx, type: subType, question: textToHtml(q.question || q.questionText || ''), score: 2, analysis: q.analysis || '', sortOrder: idx }
-        if (subType === 'single' || subType === 'multiple') {
-          let opts = q.options || []
-          if (typeof opts === 'string') try { opts = JSON.parse(opts) } catch { opts = [] }
-          opts = opts.map(opt => String(opt).trim()).filter(opt => opt)
-          if (opts.length === 0) opts = ['选项A', '选项B']
-          sub.options = opts; sub.optionsJson = JSON.stringify(opts)
-          let ans = q.correctAnswer ?? q.answer
-          if (subType === 'single') {
-            if (typeof ans === 'string' && /[A-Za-z]/.test(ans)) ans = ans.toUpperCase().charCodeAt(0) - 65
-            else if (typeof ans === 'number') ans = ans
-            else ans = 0
-            sub.answer = ans >= 0 && ans < opts.length ? ans : 0
-          } else {
-            let arr = Array.isArray(ans) ? ans : typeof ans === 'string' ? ans.split(',').map(s => s.trim()) : []
-            sub.answer = arr.map(item => {
-              if (typeof item === 'string' && /[A-Za-z]/.test(item)) return item.toUpperCase().charCodeAt(0) - 65
-              return typeof item === 'number' ? item : 0
-            }).filter(idx => idx >= 0 && idx < opts.length)
-          }
-        } else if (subType === 'judge') {
-          let ans = q.correctAnswer ?? q.answer
-          sub.answer = typeof ans === 'boolean' ? ans : ['true', '正确', '对'].includes(String(ans).toLowerCase())
-        } else { sub.answer = q.correctAnswer || q.answer || '' }
-        composite.subQuestions.push(sub)
-      })
-    } else { ElMessage.error('组合题格式不正确'); return }
-    if (composite) { questions.value.push(composite); currentId.value = composite.id; ElMessage.success('成功生成 1 道组合题') }
-  } else {
-    const questionArray = Array.isArray(parsed) ? parsed : [parsed]
-    let addedCount = 0
-    for (const q of questionArray) {
-      try {
-        const newQuestion = convertAiQuestionToInternal(q, aiForm.value.questionType)
-        questions.value.push(newQuestion)
-        addedCount++
-      } catch { console.warn('转换单题失败') }
-    }
-    if (addedCount > 0) {
-      // ElMessage.success(`成功生成并添加了 ${ addedCount } 道题目`)
-      if (questions.value.length > 0) currentId.value = questions.value[questions.value.length - 1]?.id
-    } else ElMessage.warning('没有成功添加任何题目')
-  }
-}
-
-
 
 loadPromptHistory()
 defineExpose({ questions, openAiDialog })
