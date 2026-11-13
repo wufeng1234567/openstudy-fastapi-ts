@@ -398,3 +398,24 @@
 新增模块：
 - `question_query_scope.py` / `rag_download_response.py`
 - `agentChatSourceRefs.ts`
+
+## Batch 18（2026-11-13，已完成）
+
+- 基线 commit：`84097be`
+- 快照目录：`_scratch_refactor_batch18_84097be/`
+- 授权：hy4 = questions.py + rag.py；minimax3.1f = loop.py
+- 测试：compileall / ruff / questions+rag+loop 导入 / 13 项定向 pytest
+- 备注：loop.py 的纯辅助面进一步收敛；本轮为 `state.corrections` 自增保留原顺序
+- 提交：`[pending]`
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `app/api/v1/questions.py` | 2,654 | 2,595 | -59 |
+| `app/api/v1/rag.py` | 2,282 | 2,281 | -1 |
+| `app/services/ai/agent/loop.py` | 1,886 | 1,872 | -14 |
+
+新增模块：
+- `question_record_filters.py` / `rag_upload_context.py`
+- `loop_tool_events.py`

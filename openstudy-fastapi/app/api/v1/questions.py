@@ -69,6 +69,7 @@ from .question_lookup_formatters import (
 from .question_list_filters import apply_favorite_bank_filters, apply_favorite_question_filters
 from .question_batch_check import batch_check_result
 from .question_query_scope import apply_owner_scope
+from .question_record_filters import apply_error_filters, apply_marked_filters
 
 
 # ========== 辅助函数 ==========
@@ -2332,29 +2333,13 @@ async def list_error_questions(
 
     query = apply_owner_scope(query, UserQuestionError, is_admin=is_admin, current_id=current_id, user_id=userId)
 
-    # 默认只查活跃记录，除非显式指定 status
-    if status is not None:
-        query = query.where(UserQuestionError.status == status)
-    else:
-        query = query.where(UserQuestionError.status == 1)
-
-    # 动态过滤条件
-    if questionId is not None:
-        query = query.where(UserQuestionError.question_id == questionId)
-    if bankId is not None:
-        query = query.where(UserQuestionError.bank_id == bankId)
-    if errorCount is not None:
-        query = query.where(UserQuestionError.error_count == errorCount)
-    if notes:
-        query = query.where(UserQuestionError.notes.ilike(f"%{notes}%"))
-    if difficultyRating is not None:
-        query = query.where(UserQuestionError.difficulty_rating == difficultyRating)
-    if isMastered is not None:
-        query = query.where(UserQuestionError.is_mastered == isMastered)
-    if beginErrorTime:
-        query = query.where(UserQuestionError.error_time >= _begin_of_date(beginErrorTime))
-    if endErrorTime:
-        query = query.where(UserQuestionError.error_time <= _end_of_date(endErrorTime))
+    query = apply_error_filters(
+        query,
+        status=status, questionId=questionId, bankId=bankId, errorCount=errorCount,
+        notes=notes, difficultyRating=difficultyRating, isMastered=isMastered,
+        begin_error_time=_begin_of_date(beginErrorTime) if beginErrorTime else None,
+        end_error_time=_end_of_date(endErrorTime) if endErrorTime else None,
+    )
 
     total, errors = await paginate_query(
         db,
@@ -2642,27 +2627,13 @@ async def export_errors(
 
     query = apply_owner_scope(query, UserQuestionError, is_admin=is_admin, current_id=current_id, user_id=userId)
 
-    if status is not None:
-        query = query.where(UserQuestionError.status == status)
-    else:
-        query = query.where(UserQuestionError.status == 1)
-
-    if questionId is not None:
-        query = query.where(UserQuestionError.question_id == questionId)
-    if bankId is not None:
-        query = query.where(UserQuestionError.bank_id == bankId)
-    if errorCount is not None:
-        query = query.where(UserQuestionError.error_count == errorCount)
-    if notes:
-        query = query.where(UserQuestionError.notes.ilike(f"%{notes}%"))
-    if difficultyRating is not None:
-        query = query.where(UserQuestionError.difficulty_rating == difficultyRating)
-    if isMastered is not None:
-        query = query.where(UserQuestionError.is_mastered == isMastered)
-    if beginErrorTime:
-        query = query.where(UserQuestionError.error_time >= beginErrorTime)
-    if endErrorTime:
-        query = query.where(UserQuestionError.error_time <= _end_of_date(endErrorTime))
+    query = apply_error_filters(
+        query,
+        status=status, questionId=questionId, bankId=bankId, errorCount=errorCount,
+        notes=notes, difficultyRating=difficultyRating, isMastered=isMastered,
+        begin_error_time=beginErrorTime if beginErrorTime else None,
+        end_error_time=_end_of_date(endErrorTime) if endErrorTime else None,
+    )
 
     query = query.order_by(UserQuestionError.last_error_time.desc())
 
@@ -2714,34 +2685,15 @@ async def list_marked_questions(
     query = select(UserQuestionMarked)
     query = apply_owner_scope(query, UserQuestionMarked, is_admin=is_admin, current_id=current_id, user_id=userId)
 
-    # 默认只看有效斩题，除非显式指定 markedStatus（后台可查已失效记录）
-    if markedStatus is not None:
-        query = query.where(UserQuestionMarked.marked_status == markedStatus)
-    else:
-        query = query.where(UserQuestionMarked.marked_status == 1)
-
-    if questionId is not None:
-        query = query.where(UserQuestionMarked.question_id == questionId)
-    if bankId is not None:
-        query = query.where(UserQuestionMarked.bank_id == bankId)
-    if markedType is not None:
-        query = query.where(UserQuestionMarked.marked_type == markedType)
-    if difficultyLevel is not None:
-        query = query.where(UserQuestionMarked.difficulty_level == difficultyLevel)
-    if isMastered is not None:
-        query = query.where(UserQuestionMarked.is_mastered == isMastered)
-    if errorTimesBeforeMark is not None:
-        query = query.where(UserQuestionMarked.error_times_before_mark == errorTimesBeforeMark)
-    if reviewCount is not None:
-        query = query.where(UserQuestionMarked.review_count == reviewCount)
-    if notes:
-        query = query.where(UserQuestionMarked.notes.ilike(f"%{notes}%"))
-    if tags:
-        query = query.where(UserQuestionMarked.tags.ilike(f"%{tags}%"))
-    if beginCreateTime:
-        query = query.where(UserQuestionMarked.create_time >= _begin_of_date(beginCreateTime))
-    if endCreateTime:
-        query = query.where(UserQuestionMarked.create_time <= _end_of_date(endCreateTime))
+    query = apply_marked_filters(
+        query,
+        markedStatus=markedStatus, questionId=questionId, bankId=bankId,
+        markedType=markedType, difficultyLevel=difficultyLevel, isMastered=isMastered,
+        errorTimesBeforeMark=errorTimesBeforeMark, reviewCount=reviewCount,
+        notes=notes, tags=tags,
+        begin_create_time=_begin_of_date(beginCreateTime) if beginCreateTime else None,
+        end_create_time=_end_of_date(endCreateTime) if endCreateTime else None,
+    )
 
     total, marked = await paginate_query(
         db,
@@ -3071,29 +3023,14 @@ async def export_marked(
 
     query = apply_owner_scope(query, UserQuestionMarked, is_admin=is_admin, current_id=current_id, user_id=userId)
 
-    if markedStatus is not None:
-        query = query.where(UserQuestionMarked.marked_status == markedStatus)
-    else:
-        query = query.where(UserQuestionMarked.marked_status == 1)
-
-    if questionId is not None:
-        query = query.where(UserQuestionMarked.question_id == questionId)
-    if bankId is not None:
-        query = query.where(UserQuestionMarked.bank_id == bankId)
-    if markedType is not None:
-        query = query.where(UserQuestionMarked.marked_type == markedType)
-    if difficultyLevel is not None:
-        query = query.where(UserQuestionMarked.difficulty_level == difficultyLevel)
-    if isMastered is not None:
-        query = query.where(UserQuestionMarked.is_mastered == isMastered)
-    if notes:
-        query = query.where(UserQuestionMarked.notes.ilike(f"%{notes}%"))
-    if tags:
-        query = query.where(UserQuestionMarked.tags.ilike(f"%{tags}%"))
-    if beginCreateTime:
-        query = query.where(UserQuestionMarked.create_time >= _begin_of_date(beginCreateTime))
-    if endCreateTime:
-        query = query.where(UserQuestionMarked.create_time <= _end_of_date(endCreateTime))
+    query = apply_marked_filters(
+        query,
+        markedStatus=markedStatus, questionId=questionId, bankId=bankId,
+        markedType=markedType, difficultyLevel=difficultyLevel, isMastered=isMastered,
+        notes=notes, tags=tags,
+        begin_create_time=_begin_of_date(beginCreateTime) if beginCreateTime else None,
+        end_create_time=_end_of_date(endCreateTime) if endCreateTime else None,
+    )
 
     query = query.order_by(UserQuestionMarked.create_time.desc())
 

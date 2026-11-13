@@ -62,7 +62,7 @@ from app.services.rag.rag_write_service import RagConflict, RagNotFound
 router = APIRouter(prefix="/rag")
 from .rag_helpers import (
     MAX_BATCH_UPLOAD_BYTES, MAX_UPLOAD_BYTES, MAX_UPLOAD_FILES, _IMAGE_FILE_EXTS,
-    _uid, _read_upload_files, _batch_image_assets, _referenced_markdown_image_names, _upload_doc_payload, _create_uploaded_document, _fail
+    _uid, _read_upload_files, _upload_doc_payload, _create_uploaded_document, _fail
 )
 from .rag_formatters import _attach_kb_names, _group_hits_by_file
 from .rag_payload_formatters import _upload_failure, _standalone_image_payload, _pptx_filename, _doc_status_payload
@@ -75,6 +75,7 @@ from .rag_document_formatters import outline_payload, outline_rebuild_payload, w
 from .rag_upload_formatters import upload_summary_payload
 from .rag_query_params import parse_csv_ints
 from .rag_download_response import document_download_response
+from .rag_upload_context import prepare_upload_assets
 
 # ============================================================ 知识库
 
@@ -257,8 +258,7 @@ async def upload_document(
     if size_error:
         return error(size_error, code=400)
 
-    assets = _batch_image_assets(payloads)
-    referenced_images = _referenced_markdown_image_names(payloads)
+    assets, referenced_images = prepare_upload_assets(payloads)
     documents: list[dict] = []
     images: list[dict] = []
     failed: list[dict] = []
@@ -2021,8 +2021,7 @@ async def upload_to_workspace(
     if size_error:
         return error(size_error, code=400)
 
-    assets = _batch_image_assets(payloads)
-    referenced_images = _referenced_markdown_image_names(payloads)
+    assets, referenced_images = prepare_upload_assets(payloads)
     documents: list[dict] = []
     failed: list[dict] = []
     for filename, raw in payloads:

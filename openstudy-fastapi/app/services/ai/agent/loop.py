@@ -90,7 +90,6 @@ from app.services.file_parser import IMAGE_MARKER_TMPL, build_marked_document
 # ---------------------------------------------------------------------------
 from app.services.ai.agent.loop_events import (
     error_event,
-    self_correct_event,
     text_event,
     thinking_event,
     tool_result_cancelled_event,
@@ -98,6 +97,10 @@ from app.services.ai.agent.loop_events import (
     tool_start_event,
     warning_event,
     waiting_event,
+)
+
+from app.services.ai.agent.loop_tool_events import (
+    tool_self_correction_event,
 )
 
 from app.services.ai.agent.loop_tool_result import (
@@ -1560,11 +1563,7 @@ async def run_agent_stream(
                 )
                 lc_messages.append(tool_result_message(result, call_id))
                 state.corrections += 1
-                yield _event(
-                    self_correct_event(
-                        state.corrections, tool_name, result.get("error", "")
-                    )
-                )
+                yield tool_self_correction_event(state.corrections, tool_name, result.get("error", ""))
                 continue
 
             # 工具闸门（内联路径的**执行侧**）——拦两类：①用户屏蔽的工具；②**角色外**工具。
@@ -1584,11 +1583,7 @@ async def run_agent_stream(
                     )
                 lc_messages.append(tool_result_message(result, call_id))
                 state.corrections += 1
-                yield _event(
-                    self_correct_event(
-                        state.corrections, tool_name, result.get("error", "")
-                    )
-                )
+                yield tool_self_correction_event(state.corrections, tool_name, result.get("error", ""))
                 # 也发一条 `tool_result`（失败态）：让用户在时间线里**看得见**「它想调用
                 # 一个我关掉的工具」。没有这一条，界面上就是「它说了句话然后什么都不干」。
                 # 「没有前置 `tool_start` 的 tool_result」在本循环里已是既有形态 ——
@@ -1616,11 +1611,7 @@ async def run_agent_stream(
                 state.corrections += 1
                 state.errors.extend(errors)
                 lc_messages.append(tool_result_message(result, call_id))
-                yield _event(
-                    self_correct_event(
-                        state.corrections, tool_name, "；".join(errors)
-                    )
-                )
+                yield tool_self_correction_event(state.corrections, tool_name, "；".join(errors))
                 logger.info("[agent] 参数校验失败，回灌模型重试: {}", errors)
                 continue
 
@@ -1821,11 +1812,7 @@ async def run_agent_stream(
                 state.corrections += 1
                 reason = str(result.get("error") or "工具执行失败")
                 state.errors.append(reason)
-                yield _event(
-                    self_correct_event(
-                        state.corrections, tool_name, reason
-                    )
-                )
+                yield tool_self_correction_event(state.corrections, tool_name, reason)
 
             compressed = guard.compress_result(tool_name, result)
             message = str(result.get("message") or result.get("error") or "")
