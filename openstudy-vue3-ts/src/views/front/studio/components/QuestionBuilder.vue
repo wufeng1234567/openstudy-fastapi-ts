@@ -1153,6 +1153,7 @@ import ImageViewer from '@/components/PracticeComponent/components/ImageViewer.v
 // 所以挂一个「ƒx」按钮，点开符号面板后把公式插到 Tiptap 光标处。
 import MathEditor from '@/components/MathEditor/index.vue'
 import { textToHtml, getPlainText } from '@/utils/questionUtils'
+import { truncateText } from './questionBuilderUtils'
 
 // 题型库悬浮层状态（显隐、点击外部关闭、生命周期监听已抽到同目录 composable）
 const { typePopoverVisible, typePopoverTriggerRef, typePopoverRef, toggleTypePopover } = useQuestionBuilderTypePopover()
