@@ -626,3 +626,11 @@
 - 测试：build 4,032 modules / unit 29 项 / type-check exit 2（未清零）
 - 备注：Crontab 余 1 条 formatDate 参数数未改；所有修改均为编译期类型标注
 - 提交：`95261a7`（GitHub/Gitee/GitCode 三远端已同步）
+## Batch 32（2026-11-13，已完成）
+
+- 基线 commit：`e8d5623`；快照：`_scratch_refactor_batch32_e8d5623/`
+- 类型债务批次：system/user（37 条）、CommentModal（37 条）、front/notes/list（34 条）；minimax 负责前两个，hy4 负责 notes/list
+- 结果：`npm run type-check` 1,272 → **1,169 条**（-103）；`npm run lint` 4,064 → **4,131 warnings**（+67，warn-only）
+- 测试：build 4,032 modules / unit 29 项 / type-check exit 2（未清零）
+- 备注：system/user 余约 4 条（含 `getUser()` 少传参，未猜参数）；CommentModal 余约 1 条
+- 提交：`8f5d72b`（GitHub/Gitee/GitCode 三远端已同步）
