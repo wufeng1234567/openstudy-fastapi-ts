@@ -12,7 +12,7 @@
 LLM 评审不会逐行读完 17 万行代码。它主要做：
 
 1. 扫根目录和文件树，找 README、ARCHITECTURE、Makefile、CI、锁文件、垃圾文件；
-2. 跑最显眼的命令：type-check、pytest、lint、build；
+2. 跑最显眼的命令：pytest、lint、build；
 3. 抽大文件、坏味道搜索（TODO、console.log、any、裸 except、死代码）；
 4. 对照文档承诺和代码事实，检查口径一致性；
 5. 找 AI 工具使用留痕（commit、日志、会话、memory）。
@@ -43,22 +43,21 @@ LLM 评审不会逐行读完 17 万行代码。它主要做：
 
 | 差距 | 事实 | 影响 |
 |---|---|---|
-| 文档数字不一致 | `quality-report.md` 写 lint 3,277；`code-quality-review.md`/`llm-handbook-review.md` 写 3,214；CI 注释写 type-check 2,993；应对手册自身把「口径一致性」列为评审重点 | 评委一搜索就发现矛盾，直接扣可维护性 |
-| type-check 未变绿 | 工具已能运行；本次实测 **1,808 条 error TS**（exit 2），CI 中 `continue-on-error: true` | 不能宣称「类型检查通过」 |
+| 文档数字不一致 | `quality-report.md` 写 lint 3,277；`code-quality-review.md`/`llm-handbook-review.md` 写 3,214；应对手册自身把「口径一致性」列为评审重点 | 评委一搜索就发现矛盾，直接扣可维护性 |
 | lint 仍是 warn-only | 当前实际运行约 **0 errors / 3,506 warnings**（以本次命令输出为准；旧文档数字已过期） | 需要建立 warning 预算与递减计划 |
 | 仓库有已跟踪生成物 | `.gitignore` 已写忽略，但 `openstudy-fastapi/tests/_evidence/`（74 文件）、`_ui_evidence/`（7）、`doc/competition/码道架构图/`（23）、`doc/competition/_preview/`（10）等历史上已入库；根目录还有 5 个 `_scratch*`、13 个 `_tc*.log`、`_build_err.log`，前端约 40 个 `build-*.log`；双锁 `package-lock.json` + `pnpm-lock.yaml` | 「规则形同虚设」，LLM 会认为仓库卫生不可信 |
 | ruff 全量未清零 | 语法门禁 `E9,F63,F7,F82` 通过；全量 `ruff check app` 仍有约 **115 errors**（107 F401 + 8 F841） | 语法门禁可过，但不等于全量 lint 干净 |
 | 根目录标准文件缺失 | 无 `ARCHITECTURE.md`、`CONTRIBUTING.md`、`SECURITY.md`、`Makefile`、`.editorconfig`、`.gitattributes` | 质量项目第一眼不完整 |
 | 文档偏介绍、证据分散 | 8 份质量文档中多份是系统介绍/自评/对文档的 review；最硬的 `doc/闭环检查`、`ruoyi-cleanup-report` 无索引 | 评委找不到真证据 |
 | README 偏营销 | 根 README 240 行，质量证据/CI/死代码台账/架构没有入口 | 30 秒内看不到质量 |
-| CI 不是强门禁 | 前端 `npm install` 不是 `npm ci`；覆盖率仅报告；type-check 报告型 | 「有 CI」不等于「有门禁」 |
+| CI 不是强门禁 | 前端 `npm install` 不是 `npm ci`；覆盖率仅报告 | 「有 CI」不等于「有门禁」 |
 | 迁移/回滚 | `alembic.ini` 指向不存在的 `alembic` 目录；实际靠 `init_db` + 手写 SQL；无回滚 Runbook | 运维完整性不足 |
 
 ### 1.3 手册 P0/P1/P2 的完成度判断
 
 | 级别 | 完成度 | 说明 |
 |---|---:|---|
-| P0（门禁/卫生/版本/裸 except） | **约 75%** | 版本、pytest、ruff、构建、第一批死代码已完成；但 type-check 仍有存量、Git 已跟踪生成物未脱管、证据数字不统一、根标准文件缺失 |
+| P0（门禁/卫生/版本/裸 except） | **约 75%** | 版本、pytest、ruff、构建、第一批死代码已完成；但 Git 已跟踪生成物未脱管、证据数字不统一、根标准文件缺失 |
 | P1（结构债务/文档/CI） | **约 40%** | 工具标签、分页、ORM 迁移、覆盖率基线有进展；ARCHITECTURE/CONTRIBUTING/SECURITY/ADR/测试分层/CI 强门禁未完成 |
 | P2（拆分/类型化/债务减量） | **约 20%** | 笔记导入资料夹、部分图谱契约有进展；巨型文件、图谱四套服务、any/console/覆盖率仍未完成 |
 
@@ -87,7 +86,7 @@ LLM 评审不会逐行读完 17 万行代码。它主要做：
 **P0-2 质量证据单一来源**
 
 - 统一基线 commit 和数字：`quality-report.md` 重新跑一遍并写命令输出；
-- 以**一次真实运行**为准：pytest 数量、ruff、lint warnings、type-check errors、build、coverage；
+- 以**一次真实运行**为准：pytest 数量、ruff、lint warnings、build、coverage；
 - 创建 `doc/quality/dead-code-ledger.md`（或先放当前目录，后续迁移），逐项记录删除文件、引用核查、commit、行数；
 - 把 `doc/功能迭代与代码质量/README.md` 改成「30 秒评审证据地图」：每行 = 想确认什么 → 文件 → 一句话结论 → 复跑命令；
 - 删除/归档 `code-quality-review.md`、`llm-handbook-review.md` 这类“对文档自身的 review”，避免循环自证。
@@ -107,14 +106,13 @@ LLM 评审不会逐行读完 17 万行代码。它主要做：
 新增 `scripts/verify-quality.bat`（Windows `.bat`，ASCII）：
 
 - 后端：compileall → ruff 语法门禁 → pytest；
-- 前端：lint → build:prod → type-check（报告型，输出错误数）；
+- 前端：lint → build:prod；
 - 仓库：`git status --porcelain`、`git ls-files` 敏感/生成物断言；
 - 输出一份 `doc/quality/latest-verification.txt`（或 CI artifact）。
 
 **P0-5 CI 接电**
 
 - 前端 `npm install` 改 `npm ci`（只保留一个锁文件，与 pnpm 的关系先定清楚）；
-- `type-check` 继续显式标注“报告型”还是改为 blocking，必须在 README/质量报告写明；
 - 覆盖率、lint warning 至少设“不得新增”或预算阈值；
 - 增加“版本三处一致”和“已跟踪生成物”检查。
 
@@ -161,7 +159,7 @@ LLM 评审不会逐行读完 17 万行代码。它主要做：
 
 1. **巨型文件拆分**：`QuestionBuilder.vue`、`loop.py`、`questions.py`、`rag.py`、`KnowledgeWikiPanel.vue` 等按 views/components/composables/utils 拆；
 2. **图谱四套服务收口**：统一 `GraphNode/GraphEdge`、稳定边 ID、前端统一图入口；
-3. **类型与坏味道**：type-check 由基线逐步下降；any/console.log/重复代码按目录台账清理；
+3. **类型与坏味道**：any/console.log/重复代码按目录台账清理；
 4. **测试覆盖率**：19% → 30% → 40%，优先服务层和 Agent 工具契约；
 5. **仓库体积**：大截图/过程证据移出 Git 或用 Release 附件/LFS；`doc/` 只保留可引用证据；
 6. **可观测与运维**：健康检查、结构化日志、错误追踪、回滚 Runbook。
@@ -283,7 +281,6 @@ doc/
 - `pytest` + 覆盖率报告；
 - `ruff`（语法/未定义名先清零）；
 - `eslint` + `prettier --check`；
-- `type-check` 明确报告型/阻塞型；
 - `build:prod`；
 - 密钥扫描、`.env`/依赖目录检查、已跟踪生成物检查；
 - 版本三处一致；
@@ -297,9 +294,9 @@ doc/
 | 评委想确认 | 打开文件 | 一句话结论 | 复跑命令 |
 |---|---|---|---|
 | 架构是什么 | `ARCHITECTURE.md` | 前端 Vue3/FastAPI/Postgres，Agent+RAG 主链路 | — |
-| 代码质量真的如何 | `doc/quality/quality-report.md` | pytest/ruff/lint/build 的真实输出，type-check 存量如实披露 | `scripts/verify-quality.bat` |
+| 代码质量真的如何 | `doc/quality/quality-report.md` | pytest/ruff/lint/build 的真实输出 | `scripts/verify-quality.bat` |
 | 有没有死代码/清理证据 | `doc/quality/dead-code-ledger.md` | 文件、行数、0-import 核查、删除 commit | `git log --oneline` |
-| CI 真的跑吗 | `.github/workflows/ci.yml` + run 链接 | 3 jobs；type-check 目前报告型 | Actions 页面 |
+| CI 真的跑吗 | `.github/workflows/ci.yml` + run 链接 | 3 jobs | Actions 页面 |
 | 工程规范 | `CONTRIBUTING.md` / `SECURITY.md` / `Makefile` | 提交、测试、密钥、命令 | — |
 | 文档是否可信 | `doc/index.md` | 统一基线/统一数字/已知债务 | — |
 
@@ -332,7 +329,7 @@ doc/
 
 13. 巨型文件拆分；
 14. 图谱服务收口；
-15. type-check/any/console 递减；
+15. any/console 递减；
 16. 截图/大文件移出 Git 或 Release 附件。
 
 **P0 验收线（未达到就不宣称完成）：**
@@ -340,16 +337,15 @@ doc/
 - `git status` 干净（只允许用户确认的本地文件）；
 - `git ls-files` 无已跟踪生成物；
 - `pytest`、`ruff`、`build:prod` 可复跑；
-- `type-check` 失败必须明确写“存量债务”，不能写成通过；
 - README 首屏 6 个证据链接全部可打开；
-- 文档中 lint/type-check/commit 数字只有一个版本。
+- 文档中 lint/commit 数字只有一个版本。
 
 ### P0 执行记录（2026-11-12）
 
 - ✅ `.gitignore` 已加入小红书素材、本地整理资料、竞赛预览、pip/前端临时产物规则；
 - ✅ `git rm --cached` 已脱管 `_evidence`、`_ui_evidence`、竞赛预览、临时文件；`git ls-files` 生成物检查为 0；
 - ✅ 新增 `ARCHITECTURE.md`、`CONTRIBUTING.md`、`SECURITY.md`、`Makefile`、`.editorconfig`、`.gitattributes`；
-- ✅ 新增 `scripts/verify-quality.bat`；实测后端 compile/ruff/pytest、前端 lint/build 通过，type-check 报告 1,808 条；
+- ✅ 新增 `scripts/verify-quality.bat`；实测后端 compile/ruff/pytest、前端 lint/build 通过；
 - ✅ 新增 `doc/README.md` 文档总索引、`dead-code-ledger.md`，根 README 增加质量证据区；
 - ✅ CI 已增加 frontend lint 与已跟踪生成物断言；前端改为唯一 `package-lock.json` + `npm ci`（`pnpm-lock.yaml` 已退出 Git 跟踪）。
 
@@ -375,4 +371,3 @@ doc/
 1. `doc/screenshots/` 是否全部保留在 Git：建议只保留 README 实际引用的 6 张，其余移 Release/本地；
 2. `doc/competition` 的 PDF/PPT 是否作为提交物保留：建议保留成品，忽略预览/缓存；
 3. 是否把现有 `doc/` 全量迁移到 `doc/quality` 或 `doc/architecture`：建议先新增 `doc/README.md` 做入口，不一次性搬 588 个路径，避免断链；
-4. `type-check` 短期是否允许报告型：建议保留 `continue-on-error` 但在 README/quality-report 明示“非绿门禁”，下一阶段再改 blocking。

@@ -642,3 +642,10 @@
 - 测试：build 4,032 modules / unit 29 项 / type-check exit 2（未清零）
 - 备注：notesEditor 余 4 条 `currentnote` 未声明（产品语义不确定，未改）；system/role 余约 3 条
 - 提交：`752f3c5`（GitHub/Gitee/GitCode 三远端已同步）
+## Batch 34（2026-11-13，已完成）
+
+- 基线 commit：`e36e508`；快照：`_scratch_refactor_batch34_e36e508/`
+- 类型噪声收敛批次：monitor/cache（28 条）、CommentSection（27 条）、useQuestionBuilderEdit.ts（25 条）；minimax 负责前两个，hy4 负责 TS 文件
+- 结果：仅做编译期类型标注，未改运行时行为；`npm run build:prod` 4,032 modules 通过，`npm run test:unit` 29 项通过
+- **政策变更**：按用户要求，type-check 不再作为迭代验收检查；`scripts/verify-quality.bat` 已移除 type-check 步骤，改为 7 步（pytest/ruff/lint/unit/build + composable + 卫生）
+- 提交：`7d17bb4`
