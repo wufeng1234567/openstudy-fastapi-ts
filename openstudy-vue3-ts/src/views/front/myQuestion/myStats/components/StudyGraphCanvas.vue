@@ -22,7 +22,8 @@
     <footer class="sgc__legend">
       <span><i class="is-topic"></i>知识主题</span>
       <span><i class="is-bank"></i>题库</span>
-      <span><i class="is-doc"></i>资料/网页</span>
+      <span><i class="is-doc"></i>资料</span>
+      <span><i class="is-web"></i>网页</span>
       <span><i class="is-note"></i>笔记</span>
       <span><i class="is-image"></i>图片</span>
       <em>实线=真实图谱关系 · 虚线=真实题源锚点</em>
@@ -34,6 +35,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
 import { FullScreen, Refresh } from '@element-plus/icons-vue'
+import { entityTypeMeta, normalizeEntityKind } from '@/views/front/workspace/utils/knowledgeGraphMeta'
 
 interface GraphNode {
   id: string
@@ -117,27 +119,17 @@ const visitedSet = computed(() => {
 })
 
 const nodeColor = (node: GraphNode) => {
-  if (node.kind === 'topic') {
-    const learning = node.detail?.learning || {}
-    const level = String(learning.level || '')
-    if (level === 'mastered') return '#2f9e8f'
-    if (level === 'practicing') return '#e6a23c'
-    if (level === 'reading') return '#5b8def'
-    return '#9aa7ba'
-  }
-  if (node.kind === 'bank') return '#7c6cf2'
-  if (node.kind === 'question') return '#9aa7ba'
-  if (node.kind === 'note') return '#2f9e8f'
-  if (node.kind === 'image') return '#c47a55'
-  if (node.kind === 'web') return '#5c8fa8'
-  return '#8b6bb1'
+  const kind = normalizeEntityKind(node.kind)
+  if (kind === 'topic') return entityTypeMeta('topic').color
+  return entityTypeMeta(kind).color
 }
 
 function nodeSize(node: GraphNode) {
   const degree = Number(node.metrics?.degree || 0)
-  if (node.kind === 'topic') return 15 + Math.min(9, Math.sqrt(degree + 1) * 2.4)
-  if (node.kind === 'bank') return 18
-  if (node.kind === 'question') return 9
+  const kind = normalizeEntityKind(node.kind)
+  if (kind === 'topic') return 15 + Math.min(9, Math.sqrt(degree + 1) * 2.4)
+  if (kind === 'bank') return 18
+  if (kind === 'question') return 9
   return 13
 }
 
@@ -293,10 +285,10 @@ function render() {
           [target.x, target.y]
         ],
         lineStyle: {
-          color: isActive ? '#2f5fce' : edge.kind === 'question_source' ? '#c7b9ee' : '#cfd9ea',
-          width: isActive ? 2.4 : edge.kind === 'question_source' ? 1.5 : 1.1,
+          color: isActive ? '#2f5fce' : edge.kind === 'question_source' ? '#8bbfb7' : '#9fb3cc',
+          width: isActive ? 2.4 : edge.kind === 'question_source' ? 1.5 : 1.2,
           type: edge.kind === 'question_source' ? 'dashed' : 'solid',
-          opacity: isActive ? 0.95 : dim ? 0.12 : 0.55,
+          opacity: isActive ? 1 : dim ? 0.12 : 0.72,
           curveness: 0.08
         },
         rawEdge: edge
@@ -320,7 +312,6 @@ function render() {
     .filter(Boolean) as any[]
 
   const nodeData = list
-    .filter((node) => node.kind !== 'bank')
     .map((node) => {
       const dim = isDimmed(node.id) && String(node.id) !== String(active?.to || '')
       const isActive = active && (String(node.id) === String(active.from) || String(node.id) === String(active.to))
@@ -331,9 +322,9 @@ function render() {
         symbolSize: nodeSize(node),
         rawNode: node,
         itemStyle: {
-          color: node.kind === 'topic' ? '#ffffff' : nodeColor(node),
-          borderColor: isActive ? '#2f5fce' : nodeColor(node),
-          borderWidth: isActive ? 3 : 1.6,
+          color: nodeColor(node),
+          borderColor: isActive ? '#253247' : '#ffffff',
+          borderWidth: isActive ? 2.5 : 1.5,
           opacity: dim ? 0.28 : 1,
           shadowBlur: isActive ? 18 : 0,
           shadowColor: 'rgba(47,95,206,.45)'
@@ -400,6 +391,16 @@ function render() {
         polyline: false,
         silent: true,
         z: 1,
+        effect: props.compact
+          ? {
+              show: true,
+              period: 2.4,
+              trailLength: 0.28,
+              symbol: 'circle',
+              symbolSize: 3,
+              color: '#6f8df2'
+            }
+          : undefined,
         data: edgeData
       },
       {
@@ -497,9 +498,10 @@ onBeforeUnmount(() => {
   min-width: 0;
   flex-direction: column;
   min-height: 420px;
-  border: 1px solid #e8edf5;
-  border-radius: 12px;
-  background: #fbfcff;
+  border: 1px solid #e6ebf4;
+  border-radius: 13px;
+  background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.1) 1px, transparent 0), #fbfcfe;
+  background-size: 20px 20px;
   overflow: hidden;
 }
 .sgc.is-fullscreen {
@@ -578,6 +580,12 @@ onBeforeUnmount(() => {
   height: 220px;
 }
 .sgc.is-compact .sgc__legend {
+  display: flex;
+  gap: 6px;
+  padding: 0 10px 7px;
+  font-size: 9px;
+}
+.sgc.is-compact .sgc__legend em {
   display: none;
 }
 .sgc.is-fullscreen .sgc__chart {
@@ -607,11 +615,12 @@ onBeforeUnmount(() => {
 }
 .sgc__legend span { display: inline-flex; align-items: center; gap: 4px; }
 .sgc__legend i { width: 8px; height: 8px; border-radius: 50%; }
-.sgc__legend i.is-topic { background: #9aa7ba; }
-.sgc__legend i.is-bank { border-radius: 3px; background: #7c6cf2; }
-.sgc__legend i.is-doc { background: #8b6bb1; }
-.sgc__legend i.is-note { background: #2f9e8f; }
-.sgc__legend i.is-image { background: #c47a55; }
+.sgc__legend i.is-topic { background: #f08a24; }
+.sgc__legend i.is-bank { border-radius: 3px; background: #2f9e8f; }
+.sgc__legend i.is-doc { background: #3b7cff; }
+.sgc__legend i.is-web { background: #2d8cf0; }
+.sgc__legend i.is-note { background: #8a94a6; }
+.sgc__legend i.is-image { background: #d95757; }
 .sgc__legend em { margin-left: auto; color: #a6adba; font-style: normal; }
 @media (max-width: 760px) {
   .sgc__chart { height: 300px; }

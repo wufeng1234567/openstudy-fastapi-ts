@@ -12,7 +12,6 @@ import { buildMapEdge } from './wikiMapGeometry'
 export function useWikiMapEdges(options: {
   mapHoveredId: any
   mapSelectedNodeId: any
-  routeActive: any
   mapNodes: any
   allMapNodes: any
   mapImageExpanded: any
@@ -21,15 +20,14 @@ export function useWikiMapEdges(options: {
   isCrossSourceEdge: (edge: any) => boolean
 }) {
   const {
-    mapHoveredId, mapSelectedNodeId, routeActive, mapNodes, allMapNodes,
+    mapHoveredId, mapSelectedNodeId, mapNodes, allMapNodes,
     mapImageExpanded, mapGraph, IMAGE_CLUSTER_ID, isCrossSourceEdge
   } = options
 
   const mapEdges = computed(() => {
-    // 首屏不画线：只有悬停/选中某个节点，或处于学习路线时才显示相关连线。
-    // 这样 100+ 节点的资料夹不会一进来就因为几百条 SVG 线卡住。
+    // 连线默认常显：节点之间的关系本身就是知识图谱的核心信息。
+    // 悬停/选中节点时仍会过滤到相关连线并高亮，避免焦点视图被其它边干扰。
     const focusId = mapHoveredId.value || mapSelectedNodeId.value
-    if (!focusId && !routeActive.value) return []
     const positions = new Map(mapNodes.value.map((node: any) => [String(node.id), node]))
     const imageIds = new Set(
       allMapNodes.value

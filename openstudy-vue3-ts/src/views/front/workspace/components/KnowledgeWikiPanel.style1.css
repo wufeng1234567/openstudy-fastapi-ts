@@ -90,7 +90,7 @@
 .kw-map-purpose { position: absolute; z-index: 7; top: 14px; left: 16px; padding: 6px 9px; border: 1px solid rgba(15, 23, 42, 0.05); border-radius: 6px; color: #7d8596; background: rgba(255, 255, 255, 0.86); font-size: 11px; pointer-events: none; }
 .kw-map-hull { fill: #f1f3f7; fill-opacity: 0.72; stroke: #e5e8ef; stroke-width: 1; vector-effect: non-scaling-stroke; transition: fill 0.2s ease, stroke 0.2s ease; }
 .kw-map-hull.is-hovered { fill: #ebeef5; stroke: #dce2ed; }
-.kw-map-edge { stroke: #b9c7dc; stroke-width: 1; opacity: 0.6; vector-effect: non-scaling-stroke; transition: stroke 0.2s, stroke-width 0.2s, stroke-opacity 0.2s; }
+.kw-map-edge { stroke: #9fb3cc; stroke-width: 1.2; opacity: 0.72; vector-effect: non-scaling-stroke; transition: stroke 0.2s, stroke-width 0.2s, stroke-opacity 0.2s; }
 .kw-map-edge.is-part_of { stroke: #c7d0e0; }
 .kw-map-edge.is-prerequisite { stroke: #73a6dd; stroke-dasharray: 4 4; }
 .kw-map-edge.is-contrast { stroke: #d38e7d; stroke-dasharray: 3 5; }
@@ -101,7 +101,7 @@
 .kw-map-edge.is-image_document_knowledge { stroke: #8c6bd1; stroke-width: 1.2; stroke-dasharray: 2 3; opacity: .72; }
 .kw-map-edge.is-source_doc { stroke: #2f9e8f; stroke-width: 1.15; opacity: .65; }
 .kw-map-edge.is-cross { stroke: #d38a42; stroke-width: 1.1; stroke-dasharray: 4 3; opacity: 0.62; }
-.kw-map-edge.is-active { stroke: #7e94bf; stroke-width: 1.5; opacity: 0.85; }
+.kw-map-edge.is-active { stroke: #5f7fbd; stroke-width: 1.8; opacity: 1; }
 .kw-map.is-route-mode .kw-map-edge { opacity: 0.36; }
 .kw-map.is-route-mode .kw-map-edge.is-current-route { stroke: #7e94bf; opacity: 0.82; }
 .kw-map-edge.is-dimmed { opacity: 0.08; }

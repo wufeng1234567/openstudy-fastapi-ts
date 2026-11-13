@@ -10,6 +10,12 @@
 
     <p class="spgc__summary">{{ advice?.summary }}</p>
 
+    <div v-if="graphStats" class="spgc__stats">
+      <span>题库 {{ graphStats.bankCount || 0 }}</span>
+      <span>已绑定 {{ graphStats.linkedBankCount || 0 }}</span>
+      <span>题源锚点 {{ graphStats.mappedQuestionCount || 0 }}</span>
+    </div>
+
     <StudyGraphCanvas
       class="spgc__graph"
       compact
@@ -57,6 +63,10 @@ const props = withDefaults(
 
 const router = useRouter()
 const visitedIds = computed(() => (props.trace?.visitedNodeIds || []).map(String))
+const graphStats = computed<Record<string, any> | null>(() => {
+  const stats = props.graph?.stats
+  return stats && typeof stats === 'object' ? stats : null
+})
 
 function openPage() {
   const url = props.jumpUrl || '/front/myQuestion/myStats?tab=plan'
@@ -71,15 +81,17 @@ function openPage() {
   gap: 8px;
   margin-top: 4px;
   padding: 10px;
-  border: 1px solid #e8edf5;
-  border-radius: 10px;
-  background: #fff;
+  border: 1px solid #e6ebf4;
+  border-radius: 13px;
+  background: #fbfcfe;
 }
 .spgc__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .spgc__kicker { color: #2f5fce; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
 .spgc__head h4 { margin: 4px 0 0; color: #253247; font-size: 14px; line-height: 1.4; }
 .spgc__meta { flex: none; color: #a0a8b6; font-size: 10px; }
 .spgc__summary { margin: 0; color: #7d8596; font-size: 11px; line-height: 1.55; }
+.spgc__stats { display: flex; flex-wrap: wrap; gap: 6px; }
+.spgc__stats span { padding: 2px 7px; border: 1px solid #e4ebf6; border-radius: 99px; color: #66758b; background: #fff; font-size: 10px; }
 .spgc__graph { margin: 2px 0; }
 .spgc__phases { display: flex; flex-wrap: wrap; gap: 5px; }
 .spgc__phases span { padding: 3px 7px; border: 1px solid #e4ebf6; border-radius: 99px; color: #5d6b82; background: #f8faff; font-size: 10px; }
