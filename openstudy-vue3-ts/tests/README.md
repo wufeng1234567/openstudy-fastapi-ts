@@ -1,6 +1,6 @@
 # OpenStudy Frontend Tests
 
-Current state: no Vitest unit suite or Playwright CI suite yet (P1 gap).
+Current state: `npm run test:unit` exists and passes 29 assertions (mindmap 15 + latex table 14); Playwright E2E is still a P1 gap.
 
 ## Target layout
 
@@ -17,11 +17,11 @@ Minimum P1 smoke:
 3. open `/front/questionPractice/1/practice/sequential` and render `.practice-container`;
 4. open `/front/studio/create` and render `.question-panel`.
 
-Commands (after dependencies are added):
+Commands:
 
 ```bat
 npm run test:unit
 npm run test:e2e
 ```
 
-Until then, `npm run build:prod` and the browser smoke script are the only frontend gates.
+Current frontend gates: `npm run test:unit`, `npm run build:prod`, and the browser smoke script.

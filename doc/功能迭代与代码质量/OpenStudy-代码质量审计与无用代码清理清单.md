@@ -366,7 +366,7 @@
 
 - `openstudy-vue3-ts/README.md:22` 仍写「与 Spring Boot 3 后端配合」，实际是 FastAPI。
 - `package.json:19-22` `repository` 仍指向 `https://gitee.com/y_project/RuoYi-Vue.git`。
-- `SstyleREADME.md` 是一个样式提示词文档，不是项目 README，建议移入 `doc/` 或删除。
+- `SstyleREADME.md` 已于 2026-11-13 删除（文件名拼写错误的一次性样式提示词，不是项目 README）。
 
 ### 5.6 前端「一切皆对话」的 UI 缺口
 

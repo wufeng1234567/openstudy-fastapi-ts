@@ -16,7 +16,7 @@
 | 测试策略 | [quality/test-strategy.md](quality/test-strategy.md) | 109 pytest 现状、分层目标与覆盖率路线 |
 | 质量证据总入口 | [quality/README.md](quality/README.md) | 质量报告、评分卡、测试策略、死代码台账 |
 | 20% 评分卡 | [quality/quality-scorecard.md](quality/quality-scorecard.md) | 工具规范 10 分 + 可维护性 10 分的现状与差距 |
-| P2 批次整改记录 | [engineering/refactor-batch-log.md](engineering/refactor-batch-log.md) | 3 文件批次快照、子代理授权与测试门禁 |
+| P2 批次整改记录 | [engineering/refactor-batch-log.md](engineering/refactor-batch-log.md) | 逐批次整改台账（当前至 Batch 34）、子代理授权与测试门禁 |
 | 技术债务登记 | [quality/technical-debt-register.md](quality/technical-debt-register.md) | 超大文件、type-check、lint、覆盖率债务清单 |
 | 部署/回滚 | [operations/README.md](operations/README.md) | 现有部署文档入口；回滚 Runbook 待 P1 |
 | 架构决策 | [adr/README.md](adr/README.md) | FastAPI/自研 Agent、PG/pgvector、图谱契约 |
@@ -40,7 +40,7 @@ doc/
 ├── competition/                    # 竞赛材料（成品保留；预览/缓存不入库）
 ├── screenshots/                    # 界面截图（只保留 README 引用资产入库）
 ├── demo/                           # 演示数据与讲稿
-├── internal/                       # 内部资料（默认不入库）
+├── internal/                       # 内部说明（随仓保留）
 └── legacy/                         # 历史项目归档（逐步移出主仓）
 ```
 
@@ -56,4 +56,4 @@ doc/
 - 新增质量数字只能写入 `quality-report.md` 一处，其他文档引用链接，不复制第二份；
 - 大型截图、临时导出、竞赛预览和本地素材不进入 Git；
 - 本索引新增/重命名文档时同步更新根 `README.md` 的“文档”与“质量与工程证据”区；
-- 历史文档不删除，移动到 `_archive/` 或 `legacy/` 并标注“历史快照”。
+- 历史文档不删除，移动到 `legacy/` 并标注“历史快照”。

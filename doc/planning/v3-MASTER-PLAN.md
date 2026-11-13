@@ -1,5 +1,7 @@
 # OpenStudy v3 迭代总体规划（探讨稿）
 
+> 状态：v3 探讨稿，已被当前 P0–P2 方案取代；文中教师/学生二分及冲突建议均已作废，仅作历史记录。
+
 > 生成时间：2026-10-26
 > 依据：1 次自读代码 + 4 个子代理独立审查 + 1 次红队复核 + **作者本人的 12 组实测**
 > 所有数字都是实跑出来的，不是估计。凡未核实的都标注了。
@@ -603,7 +605,7 @@ echarts 已经在 4 个页面跑着（`myStats` / `ExamSummary` / `english/stati
 | 作者自读 | `bank_export_service.py`（1253 行）、`file_parser.py`、`mathml_omml.py`、`useAgentChat.ts` | 本次会话 |
 | 作者实测 | 12 组：真实题库导出 6 次 / PDF 渲染成图 7 页 / docx 内部结构检查 4 次 / 公式识别测试 6 组 / H1-H4 复核 4 组 | `_scratch_v3/` |
 | 子代理 A | 技术可行性（含 python-docx 六项实测） | `doc/planning/v3-tech-feasibility.md` |
-| 子代理 B | 产品策略批判 | `doc/planning/v3-product-critique.md` |
+| 子代理 B | 产品策略批判（已归档） | `doc/legacy/planning/v3-product-critique.md` |
 | 子代理 C | 资产盘点（17 工具逐个核实） | `doc/planning/v3-asset-inventory.md` |
 | 子代理 D | 竞品对标 + 演示分镜 + 库选型 | `doc/planning/v3-competitive-and-demo.md` |
 | 红队 | 复核 4 处硬伤（3 处成立 1 处有误） | 本文件 §6 |

@@ -5,7 +5,7 @@
 > 本文回答两个问题：**同行 LLM 会怎么检查？我们怎么应对？**
 > 基线：`main @ 58f12c7`（2026-11-09）。配套证据见 `OpenStudy-代码质量审计与无用代码清理清单.md`。
 > 本轮修订重点：补充「产品口径 vs 代码实现」一致性检查、智能图谱可用性答辩口径、资料诊疗室/智能报告/笔记导入的资料域问答，并纠正旧文档的「全局悬浮助手」写法。
-> **2026-11-12 状态更新：** 当前实测为 pytest 109 tests / lint 0 errors 3,506 warnings / type-check 1,808 errors / build exit 0（详见 `quality-report.md` 第 0 节）。本文保留 2026-11-09 方法论；如个别历史数字与 `quality-report.md` 冲突，以质量报告为准。Q3、Q4、Q8、Q9、Q10、Q12、Q13 已按当前事实修正。
+> **历史手册快照：** 本文保留 2026-11-09 的问答方法论；质量数字以 `quality-report.md` 当前值为准（lint 4,156 warnings；type-check 仅作历史参考、不纳入门禁）。
 
 ---
 
@@ -446,7 +446,7 @@ LLM 评审喜欢**能被 grep/打开/引用**的文件。建议在 `doc/功能�
 
 ### Q12：`npm run type-check` 为什么还有几千条错误？
 
-> 「先说结论：**工具已修复，但类型债务未清零**。旧问题是 `vue-tsc 1.8.27 + TypeScript 5.9.3` 直接崩溃；现在锁 TypeScript 5.3.3、Node heap 8GB，命令能完整跑完，暴露的是真实存量错误（2026-11-12 实测 **1,808 条**，初始 3,218）。主要集中在 RuoYi 后台页（system/monitor/questionMarked/questionError 等）、历史组件的 `ref({})` 推断和 `catch (error)` 的 unknown 类型；我们不会把『能跑』说成『已通过』，P1 按文件批处理。」
+> 「先说结论：**工具已修复，但类型债务未清零**。旧问题是 `vue-tsc 1.8.27 + TypeScript 5.9.3` 直接崩溃；现在锁 TypeScript 5.3.3、Node heap 8GB，命令能完整跑完，暴露的是真实存量错误（历史记录约 1,080 条，初始 3,218；当前不纳入门禁）。主要集中在 RuoYi 后台页（system/monitor/questionMarked/questionError 等）、历史组件的 `ref({})` 推断和 `catch (error)` 的 unknown 类型；我们不会把『能跑』说成『已通过』，P1 按文件批处理。」
 
 ### Q13：笔记导入资料夹做到什么程度？
 

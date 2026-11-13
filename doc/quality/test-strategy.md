@@ -11,9 +11,9 @@
 | 语法/未定义名 | `ruff check app --select E9,F63,F7,F82` | pass |
 | 全量 ruff | `ruff check app --statistics` | 约 115 errors（107 F401 + 8 F841），待 P1 |
 | 覆盖率 | `pytest tests --cov=app/services --cov-report=term-missing` | 历史值 19%，当前复跑需修 coverage 写入 INTERNALERROR |
-| 前端 lint | `npm run lint` | 0 errors / 3,506 warnings |
+| 前端 lint | `npm run lint` | 0 errors / 4,156 warnings |
 | 前端构建 | `npm run build:prod` | exit 0 |
-| 前端 type-check | `npm run type-check` | exit 2 / 1,808 error TS（报告型，不是通过） |
+| 前端 type-check | `npm run type-check` | 历史参考：exit 2 / 1,080 error TS（不纳入门禁） |
 | 前端单测 | `npm run test:unit` | 2 个 Node 测试、29 项断言通过（mindmap 15 + table 14），exit 0 |
 
 ## 2. 分层目标

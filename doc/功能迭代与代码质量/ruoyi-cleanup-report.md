@@ -35,7 +35,7 @@
 - `src/utils/ruoyi.ts` → `src/utils/legacy.ts`，14 处 import 同步更新
 - `src/assets/styles/ruoyi.scss` → `src/assets/styles/legacy.scss`，`index.scss` 同步更新
 - `package.json` repository 改为 OpenStudy 仓库
-- README/SstyleREADME/环境注释/压缩插件注释/monitor job 提示中的 RuoYi 文案清理
+- README/SstyleREADME（已于 2026-11-13 清理）/环境注释/压缩插件注释/monitor job 提示中的 RuoYi 文案清理
 - `Copyright (c) 2019/2022 ruoyi` 头改为 OpenStudy
 - `LICENSE` 保留原始 MIT 版权声明（法律要求，不能删除），不属于 UI/品牌标识
 
@@ -45,7 +45,7 @@
 - `npm run lint`：0 errors / 3,277 warnings
 - `npm run build:prod`：exit 0
 - `npm run type-check`：1,823 条存量错误（删除历史组件后进一步下降）
-- `rg -i "ruoyi|若依|y_project" src package.json README.md SstyleREADME.md`：源码/文档品牌字样清零，仅 `LICENSE` 保留 MIT 原始版权
+- `rg -i "ruoyi|若依|y_project" src package.json README.md`：源码/文档品牌字样清零，仅 `LICENSE` 保留 MIT 原始版权。
 
 ## 四、保留边界
 

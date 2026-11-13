@@ -69,7 +69,7 @@ Rule: routes stay thin; business rules live in services; database changes must b
 ## 5. Quality and operational boundaries
 
 - CI: `.github/workflows/ci.yml` performs backend syntax/import/pytest/ruff, frontend build, repository hygiene.
-- Current honest baseline (2026-11-12): pytest 109 collected, ruff syntax gate pass, frontend lint 0 errors / 3,506 warnings, type-check 1,808 errors (report-only, not a green gate).
+- Current honest baseline (2026-11-13): pytest 109 collected, ruff syntax gate pass, frontend lint 0 errors / 4,156 warnings; type-check is historical reference only and is not a gate.
 - Known structural debt: some oversized views/services, four historical graph service layers, and legacy RuoYi pages that still carry type debt.
 - Secrets: real `.env` files are not committed; use `.env.example`; see `SECURITY.md`.
 

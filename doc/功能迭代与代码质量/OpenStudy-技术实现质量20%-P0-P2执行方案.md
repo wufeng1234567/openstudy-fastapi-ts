@@ -44,7 +44,7 @@ LLM 评审不会逐行读完 17 万行代码。它主要做：
 | 差距 | 事实 | 影响 |
 |---|---|---|
 | 文档数字不一致 | `quality-report.md` 写 lint 3,277；`code-quality-review.md`/`llm-handbook-review.md` 写 3,214；应对手册自身把「口径一致性」列为评审重点 | 评委一搜索就发现矛盾，直接扣可维护性 |
-| lint 仍是 warn-only | 当前实际运行约 **0 errors / 3,506 warnings**（以本次命令输出为准；旧文档数字已过期） | 需要建立 warning 预算与递减计划 |
+| lint 仍是 warn-only | 当前实际运行约 **0 errors / 4,156 warnings**（以质量报告当前值为准） | 需要建立 warning 预算与递减计划 |
 | 仓库有已跟踪生成物 | `.gitignore` 已写忽略，但 `openstudy-fastapi/tests/_evidence/`（74 文件）、`_ui_evidence/`（7）、`doc/competition/码道架构图/`（23）、`doc/competition/_preview/`（10）等历史上已入库；根目录还有 5 个 `_scratch*`、13 个 `_tc*.log`、`_build_err.log`，前端约 40 个 `build-*.log`；双锁 `package-lock.json` + `pnpm-lock.yaml` | 「规则形同虚设」，LLM 会认为仓库卫生不可信 |
 | ruff 全量未清零 | 语法门禁 `E9,F63,F7,F82` 通过；全量 `ruff check app` 仍有约 **115 errors**（107 F401 + 8 F841） | 语法门禁可过，但不等于全量 lint 干净 |
 | 根目录标准文件缺失 | 无 `ARCHITECTURE.md`、`CONTRIBUTING.md`、`SECURITY.md`、`Makefile`、`.editorconfig`、`.gitattributes` | 质量项目第一眼不完整 |

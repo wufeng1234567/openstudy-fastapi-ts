@@ -12,6 +12,6 @@
 
 ## 已知缺口（P1）
 
-- 没有正式 `rollback.md` Runbook；
+- 回滚 Runbook 已成文但尚未验证（依赖迁移版本化）；
 - `alembic.ini` 指向的迁移目录不存在，当前 schema 依赖 `init_db()` + 手写 SQL；
 - 数据库迁移必须补版本化与回滚验证后，才能把部署质量标为完整。
