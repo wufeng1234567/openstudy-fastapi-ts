@@ -181,7 +181,7 @@
 - 快照目录：`_scratch_refactor_batch7_c8bd1d4/`
 - 授权：hy4 = QuestionBuilder + KnowledgeWikiPanel；minimax3.1f = useQuestionPractice
 - 测试：build 4,012 modules / unit 29 项 / studio+wiki+practice+agent-chat smoke 通过
-- 提交：`[pending]`
+- 提交：`595d5b7`（Gitee/GitCode 已推送；GitHub 重试中）
 
 ### 结果（非空行口径）
 
