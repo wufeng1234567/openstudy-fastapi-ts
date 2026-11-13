@@ -565,7 +565,7 @@
 - 授权：minimax3.1f = rag.py + wiki_service；hy4 超时后由 minimax 接手 loop.py
 - 测试：compileall / ruff / rag+loop+wiki_service 导入 / 全量 pytest 109 passed
 - 备注：rag.py +6、loop.py +17 是本地 helper 的文档/签名成本，换 12 处取文档与 3 处 ToolContext 构造的收敛；wiki_service 复用已有 helper
-- 提交：`[pending]`
+- 提交：`296e07e`（GitHub/Gitee/GitCode 三远端已同步）
 
 ### 结果（非空行口径）
 
