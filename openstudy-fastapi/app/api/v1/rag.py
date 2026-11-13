@@ -65,6 +65,7 @@ from .rag_helpers import (
     MAX_BATCH_UPLOAD_BYTES, MAX_UPLOAD_BYTES, MAX_UPLOAD_FILES, _IMAGE_FILE_EXTS,
     _uid, _read_upload_files, _batch_image_assets, _referenced_markdown_image_names, _upload_doc_payload, _create_uploaded_document, _fail
 )
+from .rag_formatters import _attach_kb_names, _group_hits_by_file
 
 # ============================================================ 知识库
 
@@ -2748,17 +2749,7 @@ async def search_workspace(
             db, _uid(current_user), q, kb_ids, top_k=max(limit, 1)
         )
         hits = result.get("hits") or []
-        # `ChunkHit.to_dict()` 只有 kbId，没有库名；从本次检索范围里补一张 id→name 表
-        kb_names = {
-            int(k.get("kbId")): str(k.get("name") or "")
-            for k in (result.get("knowledgeBases") or [])
-            if k.get("kbId") is not None
-        }
-        for h in hits:
-            try:
-                h["kbName"] = kb_names.get(int(h.get("kbId")), "")
-            except (TypeError, ValueError):
-                h["kbName"] = ""
+        _attach_kb_names(hits, result.get("knowledgeBases") or [])
 
         return success(
             {
@@ -2773,35 +2764,3 @@ async def search_workspace(
         )
     except Exception as e:
         return _fail(e)
-
-
-def _group_hits_by_file(hits: list, limit: int) -> list:
-    """把分块命中按**文件**聚合，供页面列表展示。
-
-    为什么不直接返回分块：用户问「找下概率论那份资料」时想看的是**哪份文件**，
-    而不是十几条零散片段。文件级列表 + 命中段数，才是这个页面该给的东西。
-    组内保留第一段正文摘要，方便用户确认「就是这份」。
-    """
-    groups: dict[int, dict] = {}
-    order: list[int] = []
-
-    for h in hits:
-        doc_id = h.get("docId")
-        if doc_id is None:
-            continue
-        if doc_id not in groups:
-            content = str(h.get("content") or "")
-            groups[doc_id] = {
-                "docId": doc_id,
-                "kbId": h.get("kbId"),
-                "kbName": h.get("kbName") or "",
-                "fileName": h.get("docName") or h.get("fileName") or "未命名文档",
-                "score": float(h.get("score") or 0),
-                "hitCount": 0,
-                "snippet": content[:120] + ("…" if len(content) > 120 else ""),
-                "images": list(h.get("images") or [])[:3],
-            }
-            order.append(doc_id)
-        groups[doc_id]["hitCount"] += 1
-
-    return [groups[d] for d in order][:limit]

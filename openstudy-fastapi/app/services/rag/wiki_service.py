@@ -40,7 +40,6 @@ from app.services.rag.wiki_merge_service import (
     merge_generation_sources,
 )
 from app.services.rag.wiki_link_service import (
-    WIKI_TOKEN_RE,
     extract_wiki_links,
     linkify_content,
     normalize_wiki_tokens,
@@ -49,7 +48,7 @@ from app.services.rag.wiki_link_service import (
 )
 
 from app.services.rag.wiki_payload_helpers import (
-    MAX_SOURCE_CHUNKS, DEFAULT_BUILD_LIMIT, MAX_SECTIONS, MAX_SECTION_CHARS,
+    MAX_SOURCE_CHUNKS, DEFAULT_BUILD_LIMIT,
     WIKI_DRAFT, WIKI_READY, WIKI_STALE, WIKI_FAILED,
     _GENERIC_RELATIONS,
     build_learning_snapshot, _link_type_for_relation, _asset_source_ref,
@@ -57,6 +56,17 @@ from app.services.rag.wiki_payload_helpers import (
 
 
 from app.services.rag.wiki_helpers import (_page_type_for_entity, _clean_aliases, _clean, _normalize_title, _display_title, _parse_page_payload, _section_source_ids, _validate_page_payload, _render_markdown, _build_prompt)
+
+
+from app.services.rag.wiki_content_helpers import (
+    _asset_key_from_reference,
+    _cited_source_refs,
+    _find_anchor_position,
+    _manual_sections,
+    _page_revision_snapshot,
+    _source_refs,
+    _wiki_hit,
+)
 
 
 async def _load_entity_chunks(
@@ -158,40 +168,6 @@ async def _load_relations(
         )
     )
     return result
-
-
-def _source_refs(chunks: Sequence[RagDocumentChunk], doc_names: Dict[int, str]) -> list[dict]:
-    refs = []
-    for chunk in chunks:
-        refs.append(
-            {
-                "docId": int(chunk.doc_id),
-                "chunkId": int(chunk.id),
-                "docName": doc_names.get(int(chunk.doc_id), "资料"),
-                "chunkIndex": int(chunk.chunk_index),
-                "quote": _clean(chunk.content, 220),
-            }
-        )
-    return refs
-
-
-def _cited_source_refs(page: RagWikiPage) -> list[dict]:
-    """只展示正文小节真正引用的 chunk；生成上下文里未被引用的大段内容不算来源。"""
-    refs = list(page.source_refs or [])
-    cited = {int(x) for x in (page.source_chunk_ids or []) if str(x).isdigit()}
-    if not cited:
-        return refs
-    filtered = []
-    for item in refs:
-        if not isinstance(item, dict):
-            continue
-        try:
-            chunk_id = int(item.get("chunkId") or 0)
-        except (TypeError, ValueError):
-            continue
-        if chunk_id in cited:
-            filtered.append(item)
-    return filtered
 
 
 async def _replace_wiki_chunks(
@@ -1271,14 +1247,6 @@ async def get_wiki_page(db: AsyncSession, user_id: int, page_id: int) -> dict:
     }
 
 
-def _asset_key_from_reference(ref: ContentReference) -> str:
-    if ref.source_type == "document_image":
-        return f"doc:{int(ref.source_id)}:{ref.source_sub_id or ''}"
-    if ref.source_type == "chat_image":
-        return f"chat:{int(ref.source_id)}"
-    return ""
-
-
 async def _page_images(db: AsyncSession, user_id: int, page_id: int) -> list[dict]:
     """主题页关联的画廊图片（统一走 content_reference，不复制原图）。"""
     rows = (
@@ -1325,55 +1293,6 @@ async def _page_images(db: AsyncSession, user_id: int, page_id: int) -> list[dic
             }
         )
     return items
-
-
-def _page_revision_snapshot(page: RagWikiPage, change_type: str, created_by: str) -> RagWikiPageRevision:
-    return RagWikiPageRevision(
-        user_id=int(page.user_id),
-        kb_id=int(page.kb_id),
-        page_id=int(page.id),
-        version=int(page.version or 1),
-        title=page.title or "",
-        summary=page.summary or "",
-        content_md=page.content_md or "",
-        sections=page.sections or [],
-        source_refs=page.source_refs or [],
-        status=page.status or WIKI_READY,
-        change_type=change_type,
-        created_by=created_by,
-    )
-
-
-def _manual_sections(value: Any, allowed_chunk_ids: Optional[Sequence[int]] = None) -> list[dict]:
-    """清洗用户编辑/Agent 提交的小节。
-
-    手动编辑允许没有 chunk 来源（用户自己写的内容）；但模型传来的来源 id
-    只能落在页面已知来源 chunk 里，不能让模型把任意 id 写进页面。
-    """
-    allowed = {int(x) for x in (allowed_chunk_ids or []) if str(x).isdigit()}
-    out: list[dict] = []
-    for item in value or []:
-        if not isinstance(item, dict):
-            continue
-        heading = _clean(item.get("heading") or item.get("title"), 60)
-        body = _clean(item.get("body") or item.get("content") or item.get("text"), MAX_SECTION_CHARS)
-        if not heading or not body:
-            continue
-        raw_ids = item.get("sourceChunkIds") or item.get("chunkIds") or []
-        if not isinstance(raw_ids, list):
-            raw_ids = []
-        source_ids = []
-        for chunk_id in raw_ids:
-            try:
-                chunk_id = int(chunk_id)
-            except (TypeError, ValueError):
-                continue
-            if allowed and chunk_id in allowed and chunk_id not in source_ids:
-                source_ids.append(chunk_id)
-        out.append({"heading": heading, "body": body, "sourceChunkIds": source_ids})
-        if len(out) >= MAX_SECTIONS:
-            break
-    return out
 
 
 async def create_manual_wiki_page(
@@ -1533,23 +1452,6 @@ async def update_wiki_page(
     await _rebuild_links(db, int(user_id), int(page.kb_id), all_pages)
     await db.commit()
     return await get_wiki_page(db, user_id, int(page.id))
-
-
-def _find_anchor_position(text: str, anchor: str) -> int:
-    """在正文里找第一个不在已有 wiki 标记内的锚文本位置。"""
-    if not text or not anchor:
-        return -1
-    occupied = [(match.start(), match.end()) for match in WIKI_TOKEN_RE.finditer(text)]
-    start = 0
-    while start <= len(text) - len(anchor):
-        pos = text.find(anchor, start)
-        if pos < 0:
-            return -1
-        end = pos + len(anchor)
-        if not any(pos < span_end and end > span_start for span_start, span_end in occupied):
-            return pos
-        start = pos + 1
-    return -1
 
 
 async def add_wiki_page_link(
@@ -2124,29 +2026,3 @@ async def search_wiki_chunks(
     from app.services.rag.hybrid_search import reciprocal_rank_fusion
 
     return reciprocal_rank_fusion([vector_hits, keyword_hits], top_k=max(int(top_k), 1))
-
-
-def _wiki_hit(
-    chunk: RagWikiChunk,
-    page_title: str,
-    page_id: int,
-    page_status: str,
-    *,
-    vector_score: Optional[float] = None,
-    keyword_score: Optional[float] = None,
-) -> ChunkHit:
-    return ChunkHit(
-        chunk_id=int(chunk.id),
-        doc_id=0,
-        kb_id=int(chunk.kb_id),
-        chunk_index=int(chunk.section_index or 0),
-        content=chunk.content,
-        doc_name=f"知识百科《{page_title}》",
-        vector_score=vector_score,
-        keyword_score=keyword_score,
-        wiki_hit=True,
-        wiki_page_id=int(page_id),
-        wiki_page_title=page_title,
-        wiki_section=chunk.section_title,
-        wiki_stale=(page_status == WIKI_STALE),
-    )

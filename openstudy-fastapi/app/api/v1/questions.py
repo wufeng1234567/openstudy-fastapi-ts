@@ -13,11 +13,10 @@
 import copy
 
 from fastapi import APIRouter, Depends, Query, Request
-from pydantic import BaseModel
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from typing import Optional, List, Any, Dict
+from typing import Optional
 from decimal import Decimal
 from app.database import get_db
 from app.core.security import get_current_user
@@ -49,26 +48,9 @@ import json
 
 router = APIRouter()
 
-from .question_helpers import (_infer_subject, _generate_description, _score_to_float, _begin_of_date, _end_of_date, format_bank, format_sub_question, format_question, _format_error_record, _format_favorite_question, _fetch_banks_map, _apply_favorite_question_fields, _format_marked_record, _share_effective, _enrich_share_source, _format_favorite_bank, _fetch_questions_map, _get_question_type_text, _get_marked_type_text, _get_difficulty_text, _recalc_bank_total, _insert_sub_questions, _shared_bank_ids, _can_view_bank, _is_bank_owner, _visibility_condition, _deny_if_not_owner, _deny_path_owner, _deny_foreign_ids, _is_admin_user, _parse_dt, _parse_id_list)
-
-
-class QuestionBankSaveRequest(BaseModel):
-    """题库搭建一次性保存（单事务）。
-
-    前端「保存/发布」不再逐题发多个 HTTP：题库基本信息、题目新增/更新、
-    子题全量替换、显式删除旧题全部在本请求里完成。任一步失败整体回滚，
-    不会留下「新题写了一半、旧题已删」的半成品。
-    """
-    bankId: Optional[int] = None
-    bankName: str
-    subject: Optional[str] = None
-    description: Optional[str] = None
-    coverImage: Optional[str] = None
-    status: Optional[str] = "0"
-    isPublic: Optional[int] = 0
-    allowFork: Optional[int] = 1
-    questions: List[Dict[str, Any]] = []
-    deleteQuestionIds: List[int] = []
+from .question_helpers import (_infer_subject, _generate_description, _score_to_float, _begin_of_date, _end_of_date, format_bank, format_sub_question, format_question, _format_error_record, _format_favorite_question, _fetch_banks_map, _apply_favorite_question_fields, _format_marked_record, _share_effective, _enrich_share_source, _format_favorite_bank, _fetch_questions_map, _get_question_type_text, _get_marked_type_text, _get_difficulty_text, _recalc_bank_total, _insert_sub_questions, _shared_bank_ids, _can_view_bank, _is_bank_owner, _visibility_condition, _deny_if_not_owner, _deny_path_owner, _deny_foreign_ids, _is_admin_user, _parse_id_list)
+from .question_schemas import QuestionBankSaveRequest
+from .question_field_helpers import _apply_favorite_bank_fields, _apply_marked_fields
 
 
 # ========== 辅助函数 ==========
@@ -1730,29 +1712,6 @@ async def add_favorite_bank(
     return success({"favoriteId": favorite.favorite_id})
 
 
-def _apply_favorite_bank_fields(fav, payload):
-    """把请求体里的收藏业务字段写入 ORM 对象（新增/修改/恢复共用）
-
-    只覆盖请求里显式传入的字段，None 表示"不动该字段"，避免误清空。
-    """
-    if getattr(payload, "notes", None) is not None:
-        fav.notes = payload.notes
-    if getattr(payload, "tags", None) is not None:
-        fav.tags = payload.tags
-    if getattr(payload, "sortOrder", None) is not None:
-        fav.sort_order = payload.sortOrder
-    if getattr(payload, "isStarred", None) is not None:
-        fav.is_starred = payload.isStarred
-    if getattr(payload, "favoriteStatus", None) is not None:
-        fav.favorite_status = payload.favoriteStatus
-    if getattr(payload, "studyCount", None) is not None:
-        fav.study_count = payload.studyCount
-    if getattr(payload, "lastStudyTime", None) is not None:
-        # 允许传空字符串表示清空
-        fav.last_study_time = _parse_dt(payload.lastStudyTime) if payload.lastStudyTime else None
-    return fav
-
-
 @router.put("/favoriteBank/favoriteBank")
 async def update_favorite_bank(
     payload: FavoriteBankUpdate,
@@ -3245,40 +3204,6 @@ async def add_marked(
     await db.flush()
 
     return success({"markedId": marked.marked_id})
-
-
-def _apply_marked_fields(marked, payload, question=None):
-    """把请求体里的斩题业务字段写入 ORM 对象（新增/修改/恢复共用）
-
-    只覆盖请求里显式传入的字段，None 表示"不动该字段"，避免误清空。
-    """
-    if payload.notes is not None:
-        marked.notes = payload.notes
-    if getattr(payload, "tags", None) is not None:
-        marked.tags = payload.tags
-    if payload.markedType is not None:
-        marked.marked_type = payload.markedType
-    if payload.difficultyLevel is not None:
-        marked.difficulty_level = payload.difficultyLevel
-    if getattr(payload, "errorTimesBeforeMark", None) is not None:
-        marked.error_times_before_mark = payload.errorTimesBeforeMark
-    if getattr(payload, "correctTimesBeforeMark", None) is not None:
-        marked.correct_times_before_mark = payload.correctTimesBeforeMark
-    if getattr(payload, "reviewCount", None) is not None:
-        marked.review_count = payload.reviewCount
-    if getattr(payload, "lastReviewTime", None):
-        marked.last_review_time = _parse_dt(payload.lastReviewTime)
-    if getattr(payload, "nextReviewTime", None):
-        marked.next_review_time = _parse_dt(payload.nextReviewTime)
-    if getattr(payload, "isMastered", None) is not None:
-        marked.is_mastered = payload.isMastered
-    if getattr(payload, "masteryDate", None):
-        marked.mastery_date = _parse_dt(payload.masteryDate)
-    if getattr(payload, "markedStatus", None) is not None:
-        marked.marked_status = payload.markedStatus
-    if getattr(payload, "bankId", None) is not None:
-        marked.bank_id = payload.bankId
-    return marked
 
 
 @router.post("/questionMarked/questionMarked/batchCheck")

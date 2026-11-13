@@ -98,3 +98,31 @@
 新增模块：
 - `rag_schemas.py` / `wiki_payload_helpers.py`
 - `loop_support.py` / `loop_attachments.py` / `loop_confirm_policy.py`
+
+## Batch 4（2026-11-13，已完成）
+
+- 基线 commit：`81f2b44`
+- 快照目录：`_scratch_refactor_batch4_81f2b44/`（含原文件副本 + `baseline-sha256.txt`）
+- 授权：hy4 = questions.py + rag.py；minimax3.1f = wiki_service.py
+
+### 批次验收
+
+- [x] 基线快照（文件副本 + SHA256）
+- [x] 两个子代理任务已派发（hy4 / minimax3.1f）
+- [x] 三个文件全部修改完成
+- [x] 主代理 review diff（`git diff --check` 通过，修正一处 EOF 空行）
+- [x] 批次级自动测试（compileall / ruff / questions+rag+wiki 导入 / 13 项定向 pytest）
+- [ ] 提交并同步三仓库（本记录随批次提交）
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `app/api/v1/questions.py` | 3,084 | 3,018 | -66 |
+| `app/api/v1/rag.py` | 2,476 | 2,440 | -36 |
+| `app/services/rag/wiki_service.py` | 2,039 | 1,928 | -111 |
+
+新增模块：
+- `question_schemas.py` / `question_field_helpers.py`
+- `rag_formatters.py`
+- `wiki_content_helpers.py`
