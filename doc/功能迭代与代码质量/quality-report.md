@@ -17,7 +17,7 @@
 | 后端测试 | `pytest tests -q` | exit 0；**109 passed**（旧报告 102） | ✅ |
 | 前端 lint | `npm run lint` | 0 errors / 4,077 warnings | 🟡 warn-only |
 | 前端类型检查 | `npm run type-check` | exit 2；1,080 条 `error TS`（旧报告 1,808） | 🟡 存量债务 |
-| 前端构建 | `npm run build:prod` | exit 0；3,942 modules | ✅ |
+| 前端构建 | `npm run build:prod` | exit 0；3,943 modules | ✅ |
 | 前端单测 | `npm run test:unit` | 29 项断言通过（mindmap 15 + table 14） | ✅ |
 | 工作区 | `git status --short` | 干净；用户本地素材已被 `.gitignore` 忽略 | ✅ |
 

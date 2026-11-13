@@ -53,7 +53,7 @@
 
     <div v-if="loading" class="kw-loading" v-loading="true"></div>
 
-    <template v-else-if="pages.length || (view === 'map' && mapGraph.nodes.length)">
+    <template v-else-if="pages.length || (view === 'map' && allMapNodes.length)">
       <div v-if="view === 'pages'" class="kw-grid">
         <article
           v-for="page in filteredPages"
@@ -84,7 +84,7 @@
         @wheel.prevent="onMapWheel" @pointerdown="onMapDown"
         @pointermove="onMapMove" @pointerup="onMapUp" @pointerleave="onMapUp">
         <div class="kw-map-purpose">知识图谱：先看懂知识结构，再让系统帮你排下一步。</div>
-        <svg class="kw-map__svg" :viewBox="mapViewBox" preserveAspectRatio="xMidYMid meet" aria-label="知识图谱：知识主题与六类来源实体集">
+        <svg class="kw-map__svg" :viewBox="mapViewBox" preserveAspectRatio="xMidYMid meet" aria-label="知识图谱：知识主题节点">
           <defs>
             <marker id="kw-arrow" viewBox="0 0 10 6" refX="10" refY="3" markerWidth="10" markerHeight="7" orient="auto">
               <path d="M0,0 L10,3 L0,6 L2,3 Z" fill="#9aa9c0" />
@@ -178,11 +178,6 @@
                 <OsIcon name="eye-off" :size="14" />
                 <span>{{ mapShowEntitySetLabels ? '隐藏实体集名称' : '显示实体集名称' }}</span>
               </button>
-              <button v-if="mapTypeCounts.image > 8" type="button" class="kw-graph-action"
-                :class="{ 'is-active': mapImageExpanded }" @click="mapImageExpanded = !mapImageExpanded">
-                <OsIcon name="layout-grid" :size="14" />
-                <span>{{ mapImageExpanded ? '收起图片节点' : `展开图片节点（${mapTypeCounts.image}）` }}</span>
-              </button>
               <button type="button" class="kw-graph-action" @click="resetGraphView">
                 <OsIcon name="refresh" :size="14" />
                 <span>适配视图</span>
@@ -201,7 +196,7 @@
             </button>
           </template>
         </aside>
-        <div v-if="!adviceMode" class="kw-graph-hint"><span>悬停/点击节点查看相关连线 · 点知识主题查看主题页，点来源节点查看资料/题库/笔记 · 右侧可开启规划建议</span></div>
+        <div v-if="!adviceMode" class="kw-graph-hint"><span>悬停/点击节点查看相关连线 · 点知识主题打开详情，来源类型与资料/网页/图片/题库/笔记都在详情里 · 右侧可开启规划建议</span></div>
       </div>
       <KnowledgeAdviceHost
         ref="adviceHostRef"
@@ -240,6 +235,11 @@
               <span>{{ activePage.version || 1 }} 版</span>
               <span v-if="activePage.status === 'stale'" class="is-stale">待更新</span>
               <span v-if="activePage.generatedBy === 'manual'" class="is-manual">手动编辑</span>
+            </div>
+            <div v-if="activePageGraphSources.length" class="kw-detail__provenance">
+              <span v-for="group in activePageGraphSources" :key="group.kind" class="kw-provenance-chip">
+                <i :style="{ background: group.color }"></i>{{ group.label }} {{ group.count }}
+              </span>
             </div>
           </div>
           <div class="kw-detail__head-actions">
@@ -320,6 +320,16 @@
             </div>
           </div>
           <div v-else class="kw-image-empty">还没有关联画廊图片，可以从画廊选择。</div>
+        </section>
+
+        <section v-if="activePageGraphSources.length" class="kw-detail__block">
+          <div class="kw-detail__block-head"><span>图谱来源</span><b>主题节点关联到的实体</b></div>
+          <div class="kw-provenance-list">
+            <div v-for="group in activePageGraphSources" :key="group.kind" class="kw-provenance-row">
+              <span class="kw-provenance-row__label"><i :style="{ background: group.color }"></i>{{ group.label }}</span>
+              <span class="kw-provenance-row__titles">{{ group.titles.join('、') || '暂无名称' }}</span>
+            </div>
+          </div>
         </section>
 
         <section v-if="activePage.sources?.length" class="kw-detail__block">
@@ -468,6 +478,7 @@ import { useWikiGraphHulls } from './useWikiGraphHulls'
 import { useWikiLearningDisplay } from './useWikiLearningDisplay'
 import { useWikiMapEdges } from './useWikiMapEdges'
 import { useWikiMapNodes } from './useWikiMapNodes'
+import { layoutTopicGraph } from './topicGraphLayout'
 import { useWikiAdviceDisplay } from './useWikiAdviceDisplay'
 import { useWikiLabelVisibility } from './useWikiLabelVisibility'
 import {
@@ -577,6 +588,43 @@ const galleryItems = ref<any[]>([])
 const mapCanvasRef = ref<HTMLElement | null>(null)
 const IMAGE_CLUSTER_ID = 'image:cluster'
 const mapGraph = ref<any>({ nodes: [], edges: [], groups: [] })
+
+/** 当前主题节点在完整图谱里的来源类型（资料/网页/图片/题库/笔记）。 */
+const activePageGraphSources = computed(() => {
+  const page = activePage.value
+  if (!page) return []
+  const pageId = Number(page.pageId || page.id || 0)
+  if (!pageId) return []
+  const nodes = mapGraph.value?.nodes || []
+  const pageNode = nodes.find(
+    (node: any) => Number(node.pageId) === pageId || String(node.id) === `page:${pageId}`
+  )
+  if (!pageNode) return []
+  const byId = new Map(nodes.map((node: any) => [String(node.id), node]))
+  const groups = new Map<
+    string,
+    { kind: string; label: string; color: string; count: number; titles: string[] }
+  >()
+  for (const edge of mapGraph.value?.edges || []) {
+    const sourceId = String(edge.source || '')
+    const targetId = String(edge.target || '')
+    if (sourceId !== String(pageNode.id) && targetId !== String(pageNode.id)) continue
+    const otherId = sourceId === String(pageNode.id) ? targetId : sourceId
+    const other = byId.get(otherId)
+    if (!other) continue
+    const kind = normalizeEntityKind(other.kind || other.pageType)
+    if (kind === 'topic') continue
+    if (!groups.has(kind)) {
+      const meta = entityTypeMeta(kind)
+      groups.set(kind, { kind, label: meta.label, color: meta.color, count: 0, titles: [] })
+    }
+    const group = groups.get(kind)!
+    group.count += 1
+    const title = String(other.title || '').trim()
+    if (title && !group.titles.includes(title) && group.titles.length < 8) group.titles.push(title)
+  }
+  return [...groups.values()]
+})
 const mapSize = reactive({ width: 1200, height: 760 })
 const mapReady = ref(false)
 const mapSwitching = ref(false)
@@ -628,9 +676,14 @@ const buildProgress = computed(() => {
   return total ? Math.min(100, Math.round((done / total) * 100)) : 0
 })
 
-const activeLegend = computed(() => ENTITY_TYPE_META)
+const activeLegend = computed(() => ENTITY_TYPE_META.filter((item) => item.type === 'topic'))
 
-const allMapNodes = computed(() => mapGraph.value?.nodes || [])
+// 首层只画知识主题；资料/网页/图片/题库/笔记统一收进主题详情里的「来源」。
+const allMapNodes = computed(() =>
+  (mapGraph.value?.nodes || []).filter(
+    (node: any) => normalizeEntityKind(node.kind || node.pageType) === 'topic'
+  )
+)
 // 图谱派生展示数据（类型统计/连通性/分组/桥接/搜索建议/学习理由，抽到同目录 composable）
 const {
   mapTypeCounts, mapConnectedNodeIds, unlinkedCount, graphSearchSuggestions,
@@ -693,12 +746,26 @@ onBeforeUnmount(() => {
   adviceLineTimers.forEach((timer) => clearTimeout(timer))
 })
 
-// 图谱节点布局（抽到同目录 composable；逐字搬迁原 computed，拖拽/缩放手感不变）
-const { mapNodes } = useWikiMapNodes({
+// 图谱节点布局：先沿用已有过滤/分组，再用主题关系做一次静态力导向布局。
+const { mapNodes: baseMapNodes } = useWikiMapNodes({
   mapComponents, graphSourceTypeFilter, graphPageTypeFilter, graphLearningFilter,
   allMapNodes, routeActive, mapHideUnlinked, mapConnectedNodeIds,
   mapLayoutScale, mapImageExpanded, mapTypeVisible, mapSize,
   mapNodeOffsets, mapSimPositions, IMAGE_CLUSTER_ID
+})
+const mapNodes = computed(() => {
+  const baseById = new Map(baseMapNodes.value.map((node: any) => [String(node.id), node]))
+  return layoutTopicGraph(
+    baseMapNodes.value,
+    mapGraph.value?.edges || [],
+    mapSize.width,
+    mapSize.height
+  ).map((node: any) => {
+    // 用户拖拽过的节点保留手动位置，避免下一次图谱刷新把布局重置。
+    const offset = mapNodeOffsets[String(node.id)]
+    const base = baseById.get(String(node.id)) as any
+    return offset && base ? { ...node, x: base.x, y: base.y } : node
+  })
 })
 
 watch(
@@ -1227,9 +1294,9 @@ const MAP_SIMULATION_NODE_LIMIT = 80
 function startMapAnimation() {
   stopMapAnimation()
   if (view.value !== 'map' || detailVisible.value || !mapNodes.value.length) return
-  // 六类实体集使用预先计算的稳定分区布局；初始力导向会让不同实体集互相挤压，
-  // 第一屏看起来像“几个图叠在一起”，因此分组图不再启动自动力导向。
-  if (mapComponents.value.components.length >= 2) {
+  // 主题图已经由 topicGraphLayout 做过一次静态力导向布局；
+  // 不再每帧跑自动力导向，避免几百个主题时拖拽/缩放掉帧，也避免覆盖计算结果。
+  if (mapComponents.value.components.length >= 1) {
     mapSimAlpha = 0
     mapSimNodes = []
     return
