@@ -464,9 +464,9 @@ const router = useRouter()
  */
 
 // 响应式数据
-const uploadRef = ref(null)
+const uploadRef = ref<any>(null)
 const imageUrl = ref('')
-const selectedFile = ref(null)
+const selectedFile = ref<any>(null)
 const recognizing = ref(false)
 const batchAdding = ref(false)
 const recognizedList = ref<any[]>([])
@@ -588,7 +588,7 @@ const cacheStore = useFrontPageCacheStore()
 
 // 词库预览相关
 const showPreview = ref(true)
-const bookPreview = ref({
+const bookPreview = ref<any>({
     total: 0,
     items: []
 })
@@ -596,7 +596,7 @@ const bookPreview = ref({
 // 编辑器相关
 const editorVisible = ref(false)
 const editorImageUrl = ref('')
-const cropperRef = ref(null)
+const cropperRef = ref<any>(null)
 const defaultSize = ref({ width: 400, height: 400 })
 
 // 裁剪框配置 - 显示所有 8 个控制点
@@ -617,7 +617,7 @@ const stencilProps = ref({
 
 // 图片编辑相关
 const rotation = ref(0)  // 旋转角度：0, 90, 180, 270
-const editedImageFile = ref(null)  // 编辑后的图片文件
+const editedImageFile = ref<any>(null)  // 编辑后的图片文件
 
 
 // 旋转图片
@@ -656,7 +656,7 @@ const openEditor = () => {
         canvas.width = width
         canvas.height = height
 
-        ctx.drawImage(img, 0, 0, width, height)
+        ctx!.drawImage(img, 0, 0, width, height)
         editorImageUrl.value = canvas.toDataURL('image/jpeg', 0.9)
         editorVisible.value = true
     }
@@ -724,14 +724,14 @@ const exportImage = () => {
 
 
 // 旋转
-const rotate = (angle) => {
+const rotate = (angle: any) => {
     if (cropperRef.value) {
         cropperRef.value.rotate(angle)
     }
 }
 
 // 翻转
-const flip = (direction) => {
+const flip = (direction: any) => {
     if (cropperRef.value) {
         cropperRef.value.flip(true, direction === 'horizontal')
     }
@@ -745,7 +745,7 @@ const resetCropper = () => {
 }
 
 // 裁剪变化
-const onCropChange = (data) => {
+const onCropChange = (data: any) => {
     // 可以在这里实时获取裁剪区域
 }
 
@@ -763,8 +763,8 @@ const applyCrop = () => {
         imageUrl.value = editedUrl
 
         // 生成新文件用于上传
-        canvas.toBlob((blob) => {
-            editedImageFile.value = new File([blob], 'edited_image.jpg', { type: 'image/jpeg' })
+        canvas.toBlob((blob: any) => {
+            editedImageFile.value = new File([blob as Blob], 'edited_image.jpg', { type: 'image/jpeg' })
             selectedFile.value = editedImageFile.value
         }, 'image/jpeg', 0.9)
 
@@ -808,7 +808,7 @@ const resetZoom = () => {
 }
 
 // 开始拖拽
-const startDrag = (e) => {
+const startDrag = (e: any) => {
     isDragging.value = true
     startDragPosition.value = {
         x: e.clientX - imagePosition.value.x,
@@ -818,7 +818,7 @@ const startDrag = (e) => {
 }
 
 // 拖拽中
-const onDrag = (e) => {
+const onDrag = (e: any) => {
     if (!isDragging.value) return
     imagePosition.value = {
         x: e.clientX - startDragPosition.value.x,
@@ -832,7 +832,7 @@ const stopDrag = () => {
 }
 
 // 滚轮缩放
-const onWheel = (e) => {
+const onWheel = (e: any) => {
     e.preventDefault()
     const delta = e.deltaY > 0 ? -0.1 : 0.1
     const newScale = imageScale.value + delta
@@ -864,9 +864,9 @@ const applyRotation = () => {
         }
 
         // 平移并旋转
-        ctx.translate(canvas.width / 2, canvas.height / 2)
-        ctx.rotate(rotation.value * Math.PI / 180)
-        ctx.drawImage(img, -img.width / 2, -img.height / 2)
+        ctx!.translate(canvas.width / 2, canvas.height / 2)
+        ctx!.rotate(rotation.value * Math.PI / 180)
+        ctx!.drawImage(img, -img.width / 2, -img.height / 2)
 
         // 更新预览
         const rotatedUrl = canvas.toDataURL('image/jpeg', 0.9)
@@ -874,7 +874,7 @@ const applyRotation = () => {
 
         // 生成新文件用于上传
         canvas.toBlob((blob) => {
-            editedImageFile.value = new File([blob], 'rotated_image.jpg', { type: 'image/jpeg' })
+            editedImageFile.value = new File([blob as Blob], 'rotated_image.jpg', { type: 'image/jpeg' })
             selectedFile.value = editedImageFile.value
         }, 'image/jpeg', 0.9)
     }
@@ -1124,7 +1124,7 @@ const startRecognize = async () => {
 
 // ==================== 解析流式结果 ====================
 // AI 返回的内容可能包含 markdown 代码块标记，需要清理后解析 JSON
-const parseStreamResult = (content) => {
+const parseStreamResult = (content: any) => {
     if (!content) return
 
     try {
@@ -1147,7 +1147,7 @@ const parseStreamResult = (content) => {
 
 // ==================== 从 words 数组解析词条 ====================
 // 将 AI 返回的 JSON 数组转换为前端可编辑的词条格式
-const parseOcrResultFromWords = (words) => {
+const parseOcrResultFromWords = (words: any) => {
     if (!words || words.length === 0) {
         recognizedList.value = []
         return
@@ -1157,7 +1157,7 @@ const parseOcrResultFromWords = (words) => {
     // ⚠️ `bookId`（不是 wordBookId）：模板里的下拉绑的是 `word.bookId`，
     //    填成 wordBookId 会让每张卡片的词库选择框都是空的。
     // ⚠️ `wordType` 已去掉：`words` 表没有这一列。
-    recognizedList.value = words.map((item, index) => ({
+    recognizedList.value = words.map((item: any, index: any) => ({
         id: index,
         english: item.english || '',
         chinese: item.chinese || '',
@@ -1171,7 +1171,7 @@ const parseOcrResultFromWords = (words) => {
 
 // ==================== 解析 OCR 结果（兼容多种格式） ====================
 // 支持 JSON 格式和纯文本格式，优先使用 JSON
-const parseOcrResult = (text) => {
+const parseOcrResult = (text: any) => {
     if (!text) return
 
     recognizedList.value = []
@@ -1197,9 +1197,9 @@ const parseOcrResult = (text) => {
 
     // 2. 兜底：纯文本格式解析（兼容旧版 OCR 结果）
     // 按行分割，每行尝试提取英文和中文
-    const lines = text.split('\n').filter(line => line.trim() !== '')
+    const lines = text.split('\n').filter((line: any) => line.trim() !== '')
 
-    lines.forEach((line, index) => {
+    lines.forEach((line: any, index: any) => {
         let english = ''
         let chinese = ''
         let phonetic = ''
@@ -1270,12 +1270,12 @@ const parseOcrResult = (text) => {
 
 // ==================== 词条操作 ====================
 // 移除单个词条（从识别结果列表中删除）
-const removeWord = (index) => {
+const removeWord = (index: any) => {
     recognizedList.value.splice(index, 1)
 }
 
 // 添加单个单词到词库
-const addSingleWord = async (word, index) => {
+const addSingleWord = async (word: any, index: any) => {
     if (!word.bookId && !selectedBookId.value) {
         ElMessage.warning('请先选择词库')
         return
@@ -1407,7 +1407,7 @@ const loadBookOptions = async () => {
  *    如果直接往下走，`loadBookPreview('__create__')` 会拿一个非数字去请求后端 → 422。
  *    处理完把 `selectedBookId` 还原成原来那本，再打开新建弹窗。
  */
-const onBookChange = (bookId) => {
+const onBookChange = (bookId: any) => {
     if (bookId === '__create__') {
         // 还原选择：新建完才真正切换
         selectedBookId.value = previousBookId.value
@@ -1494,7 +1494,7 @@ const confirmCreateBook = async () => {
 }
 
 // 加载词库预览数据
-const loadBookPreview = async (bookId) => {
+const loadBookPreview = async (bookId: any) => {
     try {
         // ⚠️ 后端参数名是 `bookId`
         const response = await listWords({

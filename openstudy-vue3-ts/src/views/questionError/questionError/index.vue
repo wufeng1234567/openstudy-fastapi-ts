@@ -510,7 +510,7 @@ import { checkQuestionExists, getQuestionSimpleInfo, checkUserExists, checkQuest
 import { listQuestionBankAll } from "@/api/questionBank/questionBank"
 import dayjs from 'dayjs'
 
-const { proxy } = getCurrentInstance()
+const { proxy } = getCurrentInstance()!.proxy as any
 
 const questionErrorList = ref<any[]>([])
 const open = ref(false)
@@ -589,10 +589,10 @@ const { queryParams, form, rules } = toRefs(data)
 // 计算属性：标签数组与字符串转换
 const formTagsArray = computed({
   get() {
-    return form.value.tags ? form.value.tags.split(',').filter(tag => tag.trim()) : []
+    return form.value.tags ? form.value.tags.split(',').filter((tag: any) => tag.trim()) : []
   },
   set(value) {
-    form.value.tags = value.filter(tag => tag.trim()).join(',')
+    form.value.tags = value.filter((tag: any) => tag.trim()).join(',')
   }
 })
 
@@ -622,12 +622,12 @@ function validateUserId() {
   
   // 调用后端API验证用户是否存在
   checkUserExists(userId).then(response => {
-    if (response.code === 200 && response.data && response.data.exists) {
+    if (response.code === 200 && response.data && (response.data as any).exists) {
       userIdValid.value = true
       userIdError.value = ""
       // 如果有用户信息，显示用户名
-      if (response.data.userName) {
-        userName.value = `用户：${response.data.nickName || response.data.userName}`
+      if ((response.data as any).userName) {
+        userName.value = `用户：${(response.data as any).nickName || (response.data as any).userName}`
       } else {
         userName.value = "用户ID验证通过"
       }
@@ -674,27 +674,27 @@ function validateQuestionId() {
     console.log('题目验证响应:', response) // 调试信息
     if (response.code === 200 && response.data) {
       // 检查题目是否存在
-      if (response.data.exists === true || response.data.exists === 'true') {
+      if ((response.data as any).exists === true || (response.data as any).exists === 'true') {
         questionValid.value = true
         questionError.value = ""
         
         // 构建显示信息
-        if (response.data.questionText) {
+        if ((response.data as any).questionText) {
           questionTitle.value = `题目：${response.data.questionText.substring(0, 50)}${response.data.questionText.length > 50 ? '...' : ''} (ID: ${questionId})`
         } else {
           questionTitle.value = `题目ID: ${questionId} 验证成功`
         }
         
         // 自动填充题库信息
-        if (response.data.bankId) {
-          form.value.bankId = response.data.bankId
+        if ((response.data as any).bankId) {
+          form.value.bankId = (response.data as any).bankId
           // 加载题库名称
-          loadBankName(response.data.bankId)
+          loadBankName((response.data as any).bankId)
         }
         
         // 自动填充难度信息
-        if (response.data.difficulty) {
-          form.value.difficultyRating = response.data.difficulty
+        if ((response.data as any).difficulty) {
+          form.value.difficultyRating = (response.data as any).difficulty
         }
       } else {
         questionValid.value = false
@@ -717,7 +717,7 @@ function validateQuestionId() {
 }
 
 /** 加载题库名称 */
-function loadBankName(bankId) {
+function loadBankName(bankId: any) {
   if (!bankId) return
   
   listQuestionBankAll({}).then(response => {
@@ -766,7 +766,7 @@ function validateUserAndQuestion() {
   
   checkQuestionAndUser(questionId, userId).then(response => {
     if (response.code === 200 && response.data) {
-      const data = response.data
+      const data = response.data as any
       
       // 处理用户验证结果
       if (data.userValid === true) {
@@ -827,7 +827,7 @@ function validateUserAndQuestion() {
 // ==================== 其他方法 ====================
 
 /** 获取下次复习时间状态 */
-function getNextReviewStatus(nextReviewTime) {
+function getNextReviewStatus(nextReviewTime: any) {
   if (!nextReviewTime) return 'info'
   
   const now = dayjs()
@@ -934,8 +934,8 @@ function resetQuery() {
 }
 
 // 多选框选中数据
-function handleSelectionChange(selection) {
-  ids.value = selection.map(item => item.errorId)
+function handleSelectionChange(selection: any) {
+  ids.value = selection.map((item: any) => item.errorId)
   single.value = selection.length != 1
   multiple.value = !selection.length
 }
@@ -948,7 +948,7 @@ function handleAdd() {
 }
 
 /** 修改按钮操作 */
-function handleUpdate(row) {
+function handleUpdate(row: any) {
   reset()
   const _errorId = row.errorId || ids.value
   getQuestionError(_errorId).then(response => {
@@ -1021,8 +1021,8 @@ async function submitForm() {
     
   } catch (error) {
     console.error('提交失败:', error)
-    if (error.response && error.response.data && error.response.data.msg) {
-      proxy.$modal.msgError(error.response.data.msg)
+    if ((error as any).response && (error as any).response.data && error.response.data.msg) {
+      proxy.$modal.msgError((error as any).response.data.msg)
     } else {
       proxy.$modal.msgError('提交失败，请检查数据')
     }
@@ -1032,7 +1032,7 @@ async function submitForm() {
 }
 
 /** 删除按钮操作 */
-function handleDelete(row) {
+function handleDelete(row: any) {
   const _errorIds = row.errorId || ids.value
   const count = Array.isArray(_errorIds) ? _errorIds.length : 1
   

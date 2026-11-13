@@ -379,7 +379,7 @@ defineOptions({ name: 'FavoriteQuestion' })
 import { listFavoriteQuestion, getFavoriteQuestion, delFavoriteQuestion, addFavoriteQuestion, updateFavoriteQuestion,checkQuestionExists } from "@/api/favoriteQuestion/favoriteQuestion"
 import { listQuestionBankAll } from "@/api/questionBank/questionBank"  // 添加这行导入
 
-const { proxy } = getCurrentInstance()
+const { proxy } = getCurrentInstance()!
 
 const favoriteQuestionList = ref<any[]>([])
 const open = ref(false)
@@ -401,7 +401,7 @@ const questionTitle = ref("")          // 题目标题（验证成功后显示�
 const bankName = ref("")
 const bankLoading = ref(false)
 
-const data = reactive({
+const data = reactive<any>({
   form: {},
   queryParams: {
     pageNum: 1,
@@ -457,8 +457,8 @@ const data = reactive({
 const { queryParams, form, rules } = toRefs(data)
 
 // 获取状态标签类型
-function getStatusTagType(status) {
-  const map = {
+function getStatusTagType(status: any) {
+  const map: Record<string, string> = {
     0: 'info',    // 取消收藏
     1: 'success', // 正常收藏
     2: 'primary', // 已掌握
@@ -468,8 +468,8 @@ function getStatusTagType(status) {
 }
 
 // 获取状态文本
-function getStatusText(status) {
-  const map = {
+function getStatusText(status: any) {
+  const map: Record<string, string> = {
     0: '取消收藏',
     1: '正常收藏',
     2: '已掌握',
@@ -560,8 +560,8 @@ function resetQuery() {
 }
 
 // 多选框选中数据
-function handleSelectionChange(selection) {
-  ids.value = selection.map(item => item.favoriteId)
+function handleSelectionChange(selection: any) {
+  ids.value = selection.map((item: any) => item.favoriteId)
   single.value = selection.length != 1
   multiple.value = !selection.length
 }
@@ -576,7 +576,7 @@ function handleAdd() {
 
 
 /** 修改按钮操作 */
-function handleUpdate(row) {
+function handleUpdate(row: any) {
   reset()
   const _favoriteId = row.favoriteId || ids.value
   getFavoriteQuestion(_favoriteId).then(response => {
@@ -599,7 +599,7 @@ function handleUpdate(row) {
 
 /** 提交按钮 */
 function submitForm() {
-  proxy.$refs["favoriteQuestionRef"].validate(valid => {
+  proxy.$refs["favoriteQuestionRef"].validate((valid: any) => {
     if (valid) {
       if (form.value.favoriteId != null) {
         updateFavoriteQuestion(form.value).then(response => {
@@ -618,7 +618,7 @@ function submitForm() {
   })
 }
 /** 删除按钮操作 */
-function handleDelete(row) {
+function handleDelete(row: any) {
   const _favoriteIds = row.favoriteId || ids.value
   const count = Array.isArray(_favoriteIds) ? _favoriteIds.length : 1
   
@@ -655,7 +655,7 @@ function validateQuestionId() {
   questionTitle.value = ""
   bankName.value = ""  // 清除之前的题库名称
   
-  checkQuestionExists(questionId).then(response => {
+  checkQuestionExists(questionId).then((response: any) => {
     if (response.code === 200 && (response.data === true || (response.data && response.data.exists === true))) {
       questionValid.value = true
       
