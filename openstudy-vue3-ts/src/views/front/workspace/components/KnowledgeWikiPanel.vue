@@ -784,10 +784,16 @@ const mapNodes = computed(() => {
   return topicLayout.value
     .filter((node: any) => baseById.has(String(node.id)))
     .map((node: any) => {
-      // 用户拖拽过的节点保留手动位置，避免下一次图谱刷新把布局重置。
-      const offset = mapNodeOffsets[String(node.id)]
       const base = baseById.get(String(node.id)) as any
-      return offset && base ? { ...node, x: base.x, y: base.y } : node
+      if (!base) return node
+      // 布局只负责 x/y；半径、颜色、学习态和详情字段来自原 mapNodes。
+      const merged = { ...node, ...base }
+      const offset = mapNodeOffsets[String(node.id)]
+      if (!offset) {
+        merged.x = node.x
+        merged.y = node.y
+      }
+      return merged
     })
 })
 
