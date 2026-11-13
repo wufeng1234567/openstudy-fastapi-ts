@@ -1116,6 +1116,14 @@ function onMapNodeClick(node: any) {
     mapNodeDrag = null
     return
   }
+  // 同一节点再次点击：关闭详情、停止建议动画、回到未选中状态。
+  const samePage = Number(node.pageId) > 0 && Number(mapSelectedPageId.value) === Number(node.pageId)
+  const sameNode = String(mapSelectedNodeId.value || '') === String(node.id)
+  if (detailVisible.value && (samePage || sameNode)) {
+    stopAdviceAnimation()
+    closeDetail()
+    return
+  }
   selectMapNode(node)
 }
 
