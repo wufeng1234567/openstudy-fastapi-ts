@@ -335,3 +335,24 @@
 新增模块：
 - `useWikiAdviceDisplay.ts` / `useWikiLabelVisibility.ts`
 - `agentChatStatus.ts` / `questionPracticeState.ts`
+
+## Batch 15（2026-11-13，已完成）
+
+- 基线 commit：`5eeb302`
+- 快照目录：`_scratch_refactor_batch15_5eeb302/`
+- 授权：hy4 = questions.py + rag.py；minimax3.1f = wiki_service.py
+- 事故与修复：wiki_service.py 首次写盘被工具按字符拆分（74KB→205KB），已从快照恢复（SHA256 校验通过），minimax 重做时改为临时文件 + AST/行数/体积校验后替换。
+- 测试：compileall / ruff / questions+rag+wiki 导入 / 13 项定向 pytest
+- 提交：`[pending]`
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `app/api/v1/questions.py` | 2,777 | 2,692 | -85 |
+| `app/api/v1/rag.py` | 2,311 | 2,301 | -10 |
+| `app/services/rag/wiki_service.py` | 1,779 | 1,737 | -42 |
+
+新增模块：
+- `question_list_filters.py` / `rag_upload_formatters.py`
+- `wiki_page_state.py`

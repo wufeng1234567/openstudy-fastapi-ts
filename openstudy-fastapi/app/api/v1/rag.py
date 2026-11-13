@@ -72,6 +72,7 @@ from .rag_sse_formatters import (
 )
 from .rag_kb_formatters import kb_created_payload, kb_detail_payload, kb_updated_payload
 from .rag_document_formatters import outline_payload, outline_rebuild_payload, workspace_search_payload
+from .rag_upload_formatters import upload_summary_payload
 
 # ============================================================ 知识库
 
@@ -307,13 +308,7 @@ async def upload_document(
             return success(images[0], "独立图片上传成功，正在生成图片名称和描述")
         return success(documents[0], "上传成功，正在后台处理")
     return success(
-        {
-            "documents": documents,
-            "images": images,
-            "failed": failed,
-            "count": len(documents) + len(images),
-            "totalSize": sum(len(raw) for _, raw in payloads),
-        },
+        upload_summary_payload(documents, failed, payloads, images),
         f"已上传 {len(documents) + len(images)} 项" + (f"，{len(failed)} 项失败" if failed else ""),
     )
 
@@ -2079,12 +2074,7 @@ async def upload_to_workspace(
     if len(payloads) == 1 and not failed:
         return success(documents[0], "已放进工作空间，正在后台解析")
     return success(
-        {
-            "documents": documents,
-            "failed": failed,
-            "count": len(documents),
-            "totalSize": sum(len(raw) for _, raw in payloads),
-        },
+        upload_summary_payload(documents, failed, payloads),
         f"已上传 {len(documents)} 份" + (f"，{len(failed)} 份失败" if failed else ""),
     )
 

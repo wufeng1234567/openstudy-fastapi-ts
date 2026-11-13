@@ -66,6 +66,7 @@ from .question_check_formatters import (
 from .question_lookup_formatters import (
     simple_question_info_payload, favorite_bank_exists_payload, favorite_question_payload,
 )
+from .question_list_filters import apply_favorite_bank_filters, apply_favorite_question_filters
 
 
 # ========== 辅助函数 ==========
@@ -1412,31 +1413,12 @@ async def list_favorite_banks(
     else:
         query = query.where(UserBankFavorite.user_id == current_id)
 
-    # 默认只看有效收藏，除非显式指定 favoriteStatus（后台可查已失效记录）
-    if favoriteStatus is not None:
-        query = query.where(UserBankFavorite.favorite_status == favoriteStatus)
-    else:
-        query = query.where(UserBankFavorite.favorite_status == 1)
-
-    if bankId is not None:
-        query = query.where(UserBankFavorite.bank_id == bankId)
-    if bankName:
-        query = query.where(UserBankFavorite.bank_id.in_(
-            select(QuestionBank.id).where(QuestionBank.bank_name.ilike(f"%{bankName}%"))
-        ))
-    if notes:
-        query = query.where(UserBankFavorite.notes.ilike(f"%{notes}%"))
-    if tags:
-        query = query.where(UserBankFavorite.tags.ilike(f"%{tags}%"))
-    if isStarred is not None:
-        query = query.where(UserBankFavorite.is_starred == isStarred)
-    if studyCount is not None:
-        query = query.where(UserBankFavorite.study_count == studyCount)
-    if lastStudyTime:
-        query = query.where(
-            UserBankFavorite.last_study_time >= _begin_of_date(lastStudyTime),
-            UserBankFavorite.last_study_time <= _end_of_date(lastStudyTime),
-        )
+    query = apply_favorite_bank_filters(
+        query,
+        favoriteStatus=favoriteStatus, bankId=bankId, bankName=bankName,
+        notes=notes, tags=tags, isStarred=isStarred, studyCount=studyCount,
+        lastStudyTime=lastStudyTime
+    )
 
     total, favorites = await paginate_query(
         db,
@@ -1796,30 +1778,12 @@ async def export_favorite_banks(
     else:
         query = query.where(UserBankFavorite.user_id == current_id)
 
-    if favoriteStatus is not None:
-        query = query.where(UserBankFavorite.favorite_status == favoriteStatus)
-    else:
-        query = query.where(UserBankFavorite.favorite_status == 1)
-
-    if bankId is not None:
-        query = query.where(UserBankFavorite.bank_id == bankId)
-    if bankName:
-        query = query.where(UserBankFavorite.bank_id.in_(
-            select(QuestionBank.id).where(QuestionBank.bank_name.ilike(f"%{bankName}%"))
-        ))
-    if notes:
-        query = query.where(UserBankFavorite.notes.ilike(f"%{notes}%"))
-    if tags:
-        query = query.where(UserBankFavorite.tags.ilike(f"%{tags}%"))
-    if isStarred is not None:
-        query = query.where(UserBankFavorite.is_starred == isStarred)
-    if studyCount is not None:
-        query = query.where(UserBankFavorite.study_count == studyCount)
-    if lastStudyTime:
-        query = query.where(
-            UserBankFavorite.last_study_time >= _begin_of_date(lastStudyTime),
-            UserBankFavorite.last_study_time <= _end_of_date(lastStudyTime),
-        )
+    query = apply_favorite_bank_filters(
+        query,
+        favoriteStatus=favoriteStatus, bankId=bankId, bankName=bankName,
+        notes=notes, tags=tags, isStarred=isStarred, studyCount=studyCount,
+        lastStudyTime=lastStudyTime
+    )
 
     query = query.order_by(UserBankFavorite.create_time.desc())
     result = await db.execute(query)
@@ -1875,40 +1839,13 @@ async def list_favorite_questions(
     else:
         query = query.where(UserQuestionFavorite.user_id == current_id)
 
-    # 默认只看有效收藏，除非显式指定 favoriteStatus（后台可查已取消/待复习等状态）
-    if favoriteStatus is not None:
-        query = query.where(UserQuestionFavorite.favorite_status == favoriteStatus)
-    else:
-        query = query.where(UserQuestionFavorite.favorite_status == 1)
-
-    if questionId is not None:
-        query = query.where(UserQuestionFavorite.question_id == questionId)
-    if bankId is not None:
-        query = query.where(UserQuestionFavorite.bank_id == bankId)
-    if notes:
-        query = query.where(UserQuestionFavorite.notes.ilike(f"%{notes}%"))
-    if tags:
-        query = query.where(UserQuestionFavorite.tags.ilike(f"%{tags}%"))
-    if difficultyRating is not None:
-        query = query.where(UserQuestionFavorite.difficulty_rating == difficultyRating)
-    if errorTimes is not None:
-        query = query.where(UserQuestionFavorite.error_times == errorTimes)
-    if correctTimes is not None:
-        query = query.where(UserQuestionFavorite.correct_times == correctTimes)
-    if reviewCount is not None:
-        query = query.where(UserQuestionFavorite.review_count == reviewCount)
-    if isStarred is not None:
-        query = query.where(UserQuestionFavorite.is_starred == isStarred)
-    if lastReviewTime:
-        query = query.where(
-            UserQuestionFavorite.last_review_time >= _begin_of_date(lastReviewTime),
-            UserQuestionFavorite.last_review_time <= _end_of_date(lastReviewTime),
-        )
-    if nextReviewTime:
-        query = query.where(
-            UserQuestionFavorite.next_review_time >= _begin_of_date(nextReviewTime),
-            UserQuestionFavorite.next_review_time <= _end_of_date(nextReviewTime),
-        )
+    query = apply_favorite_question_filters(
+        query,
+        favoriteStatus=favoriteStatus, questionId=questionId, bankId=bankId,
+        notes=notes, tags=tags, difficultyRating=difficultyRating,
+        errorTimes=errorTimes, correctTimes=correctTimes, reviewCount=reviewCount,
+        isStarred=isStarred, lastReviewTime=lastReviewTime, nextReviewTime=nextReviewTime
+    )
 
     total, favorites = await paginate_query(
         db,
@@ -2275,39 +2212,13 @@ async def export_favorite_questions(
     else:
         query = query.where(UserQuestionFavorite.user_id == current_id)
 
-    if favoriteStatus is not None:
-        query = query.where(UserQuestionFavorite.favorite_status == favoriteStatus)
-    else:
-        query = query.where(UserQuestionFavorite.favorite_status == 1)
-
-    if questionId is not None:
-        query = query.where(UserQuestionFavorite.question_id == questionId)
-    if bankId is not None:
-        query = query.where(UserQuestionFavorite.bank_id == bankId)
-    if notes:
-        query = query.where(UserQuestionFavorite.notes.ilike(f"%{notes}%"))
-    if tags:
-        query = query.where(UserQuestionFavorite.tags.ilike(f"%{tags}%"))
-    if difficultyRating is not None:
-        query = query.where(UserQuestionFavorite.difficulty_rating == difficultyRating)
-    if errorTimes is not None:
-        query = query.where(UserQuestionFavorite.error_times == errorTimes)
-    if correctTimes is not None:
-        query = query.where(UserQuestionFavorite.correct_times == correctTimes)
-    if reviewCount is not None:
-        query = query.where(UserQuestionFavorite.review_count == reviewCount)
-    if isStarred is not None:
-        query = query.where(UserQuestionFavorite.is_starred == isStarred)
-    if lastReviewTime:
-        query = query.where(
-            UserQuestionFavorite.last_review_time >= _begin_of_date(lastReviewTime),
-            UserQuestionFavorite.last_review_time <= _end_of_date(lastReviewTime),
-        )
-    if nextReviewTime:
-        query = query.where(
-            UserQuestionFavorite.next_review_time >= _begin_of_date(nextReviewTime),
-            UserQuestionFavorite.next_review_time <= _end_of_date(nextReviewTime),
-        )
+    query = apply_favorite_question_filters(
+        query,
+        favoriteStatus=favoriteStatus, questionId=questionId, bankId=bankId,
+        notes=notes, tags=tags, difficultyRating=difficultyRating,
+        errorTimes=errorTimes, correctTimes=correctTimes, reviewCount=reviewCount,
+        isStarred=isStarred, lastReviewTime=lastReviewTime, nextReviewTime=nextReviewTime
+    )
 
     query = query.order_by(UserQuestionFavorite.create_time.desc())
     result = await db.execute(query)

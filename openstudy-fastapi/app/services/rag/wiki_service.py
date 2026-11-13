@@ -88,6 +88,11 @@ from app.services.rag.wiki_link_edit import (
     replace_link_with_text,
 )
 
+from app.services.rag.wiki_page_state import (
+    mark_page_manual,
+    refresh_page_derived,
+)
+
 
 async def _load_entity_chunks(
     db: AsyncSession, user_id: int, kb_id: int, entity: RagGraphEntity
@@ -758,15 +763,7 @@ async def build_wiki_pages(
     # 页面生成过程中遇到过 rollback，重新取一遍所有页面再建链接。
     # 先做内链归一化/补链，再把内链边写进页面图。
     linkify_stats = await linkify_wiki_pages(db, int(user_id), int(kb_id), add_missing=True)
-    all_pages = (
-        await db.execute(
-            select(RagWikiPage).where(
-                RagWikiPage.user_id == int(user_id),
-                RagWikiPage.kb_id == int(kb_id),
-                RagWikiPage.status.in_([WIKI_READY, WIKI_STALE]),
-            )
-        )
-    ).scalars().all()
+    all_pages = await _load_kb_pages(db, int(user_id), int(kb_id))
     links = await _rebuild_links(db, int(user_id), int(kb_id), all_pages)
     await db.commit()
     return {
@@ -1294,6 +1291,32 @@ async def create_manual_wiki_page(
     return await get_wiki_page(db, user_id, int(page.id))
 
 
+async def _load_kb_pages(db: AsyncSession, user_id: int, kb_id: int) -> list:
+    """该资料夹里「就绪 / 过期」的页面（重建页面链接图时的输入）。
+
+    ⚠ 这段查询原本在**六处**逐字重复 —— 现在收敛到一处，筛选口径不会再各处漂。
+    """
+    return (
+        await db.execute(
+            select(RagWikiPage).where(
+                RagWikiPage.user_id == int(user_id),
+                RagWikiPage.kb_id == int(kb_id),
+                RagWikiPage.status.in_([WIKI_READY, WIKI_STALE]),
+            )
+        )
+    ).scalars().all()
+
+
+async def _finalize_page_edit(db: AsyncSession, user_id: int, page: RagWikiPage) -> None:
+    """页面改动后的收尾：重建该资料夹的页面链接图并提交。
+
+    ⚠ 这三步原本在**四个入口**里**逐字相同** —— 现在收敛到一处。
+    """
+    all_pages = await _load_kb_pages(db, int(user_id), int(page.kb_id))
+    await _rebuild_links(db, int(user_id), int(page.kb_id), all_pages)
+    await db.commit()
+
+
 async def update_wiki_page(
     db: AsyncSession,
     user_id: int,
@@ -1373,27 +1396,14 @@ async def update_wiki_page(
     page.aliases = new_aliases
     page.summary = new_summary
     page.sections = new_sections
-    page.content_md = _render_markdown(new_summary, new_sections)
-    page.status = WIKI_READY
-    page.generated_by = change_type
-    page.version = int(page.version or 1) + 1
-    page.update_time = datetime.now()
+    refresh_page_derived(page, _render_markdown(new_summary, new_sections))
+    mark_page_manual(page, change_type)
     await db.flush()
     await _replace_wiki_chunks(db, page, new_sections)
     await db.commit()
     # 手动编辑可能新增/删除 [[标题]] 标记；只做归一化，不自动回填，尊重用户删链接。
     await linkify_wiki_pages(db, int(user_id), int(page.kb_id), add_missing=False)
-    all_pages = (
-        await db.execute(
-            select(RagWikiPage).where(
-                RagWikiPage.user_id == int(user_id),
-                RagWikiPage.kb_id == int(page.kb_id),
-                RagWikiPage.status.in_([WIKI_READY, WIKI_STALE]),
-            )
-        )
-    ).scalars().all()
-    await _rebuild_links(db, int(user_id), int(page.kb_id), all_pages)
-    await db.commit()
+    await _finalize_page_edit(db, int(user_id), page)
     return await get_wiki_page(db, user_id, int(page.id))
 
 
@@ -1445,23 +1455,11 @@ async def add_wiki_page_link(
     new_text = insert_link_marker(text, pos, int(target.id), anchor)
     db.add(_page_revision_snapshot(page, "before_manual_link", "user"))
     apply_block_text(page, chosen, new_text)
-    page.content_md = _render_markdown(str(page.summary or ""), page.sections or [])
-    page.version = int(page.version or 1) + 1
-    page.update_time = datetime.now()
+    refresh_page_derived(page, _render_markdown(str(page.summary or ""), page.sections or []))
     await db.flush()
     await db.commit()
     await linkify_wiki_pages(db, int(user_id), int(page.kb_id), add_missing=False)
-    all_pages = (
-        await db.execute(
-            select(RagWikiPage).where(
-                RagWikiPage.user_id == int(user_id),
-                RagWikiPage.kb_id == int(page.kb_id),
-                RagWikiPage.status.in_([WIKI_READY, WIKI_STALE]),
-            )
-        )
-    ).scalars().all()
-    await _rebuild_links(db, int(user_id), int(page.kb_id), all_pages)
-    await db.commit()
+    await _finalize_page_edit(db, int(user_id), page)
     return await get_wiki_page(db, user_id, int(page.id))
 
 
@@ -1496,22 +1494,10 @@ async def remove_wiki_page_link(
     new_text = replace_link_with_text(text, match_to_replace, label)
     db.add(_page_revision_snapshot(page, "before_manual_unlink", "user"))
     apply_block_text(page, chosen, new_text)
-    page.content_md = _render_markdown(str(page.summary or ""), page.sections or [])
-    page.version = int(page.version or 1) + 1
-    page.update_time = datetime.now()
+    refresh_page_derived(page, _render_markdown(str(page.summary or ""), page.sections or []))
     await db.flush()
     await db.commit()
-    all_pages = (
-        await db.execute(
-            select(RagWikiPage).where(
-                RagWikiPage.user_id == int(user_id),
-                RagWikiPage.kb_id == int(page.kb_id),
-                RagWikiPage.status.in_([WIKI_READY, WIKI_STALE]),
-            )
-        )
-    ).scalars().all()
-    await _rebuild_links(db, int(user_id), int(page.kb_id), all_pages)
-    await db.commit()
+    await _finalize_page_edit(db, int(user_id), page)
     return await get_wiki_page(db, user_id, int(page.id))
 
 
@@ -1528,15 +1514,7 @@ async def refresh_wiki_page_links(db: AsyncSession, user_id: int, page_id: int) 
     if not page:
         raise ValueError("知识主题页不存在或无权访问")
     stats = await linkify_wiki_pages(db, int(user_id), int(page.kb_id), add_missing=True)
-    all_pages = (
-        await db.execute(
-            select(RagWikiPage).where(
-                RagWikiPage.user_id == int(user_id),
-                RagWikiPage.kb_id == int(page.kb_id),
-                RagWikiPage.status.in_([WIKI_READY, WIKI_STALE]),
-            )
-        )
-    ).scalars().all()
+    all_pages = await _load_kb_pages(db, int(user_id), int(page.kb_id))
     links = await _rebuild_links(db, int(user_id), int(page.kb_id), all_pages)
     await db.commit()
     result = await get_wiki_page(db, user_id, int(page.id))
@@ -1603,26 +1581,13 @@ async def restore_wiki_revision(
     page.summary = revision.summary or ""
     page.sections = revision.sections or []
     page.source_refs = revision.source_refs or page.source_refs or []
-    page.content_md = revision.content_md or _render_markdown(page.summary, page.sections or [])
-    page.status = WIKI_READY
-    page.generated_by = "manual"
-    page.version = int(page.version or 1) + 1
-    page.update_time = datetime.now()
+    refresh_page_derived(page, revision.content_md or _render_markdown(page.summary, page.sections or []))
+    mark_page_manual(page, "manual")
     await db.flush()
     await _replace_wiki_chunks(db, page, page.sections or [])
     await db.commit()
     await linkify_wiki_pages(db, int(user_id), int(page.kb_id), add_missing=False)
-    all_pages = (
-        await db.execute(
-            select(RagWikiPage).where(
-                RagWikiPage.user_id == int(user_id),
-                RagWikiPage.kb_id == int(page.kb_id),
-                RagWikiPage.status.in_([WIKI_READY, WIKI_STALE]),
-            )
-        )
-    ).scalars().all()
-    await _rebuild_links(db, int(user_id), int(page.kb_id), all_pages)
-    await db.commit()
+    await _finalize_page_edit(db, int(user_id), page)
     return await get_wiki_page(db, user_id, int(page.id))
 
 
