@@ -16,10 +16,10 @@
 
 | 行数 | 文件 | 风险/备注 |
 |---:|---|---|
-| 2,586 | `src/views/front/workspace/components/KnowledgeWikiPanel.vue` | 图谱/百科双视图，P2 拆分 |
-| 1,475 | `src/views/front/studio/components/QuestionBuilder.vue` | 模板约 1,100 行，优先拆 AI 弹窗和编辑器 |
+| 2,553 | `src/views/front/workspace/components/KnowledgeWikiPanel.vue` | 图谱/百科双视图，P2 拆分 |
+| 1,382 | `src/views/front/studio/components/QuestionBuilder.vue` | 模板约 1,100 行，优先拆 AI 弹窗和编辑器 |
 | 1,537 | `src/composables/useAgentChat.ts` | Agent 会话状态机，业务复杂 |
-| 2,161 | `src/composables/useQuestionPractice.ts` | 练习状态核心 |
+| 1,515 | `src/composables/useQuestionPractice.ts` | 练习状态核心 |
 | 2,034 | `src/views/front/english/listening/index.vue` | 英语听力页 |
 | 1,745 | `src/api/ai/agentDsFree.ts` | Agent 工具元数据/客户端 |
 | 1,501 | `src/api/ai/ai.ts` | AI API 聚合 |

@@ -1126,7 +1126,6 @@
 import { ref, computed, watch } from 'vue'
 import draggable from 'vuedraggable'
 import { Rank, InfoFilled, Delete, Search, MagicStick, Plus, Loading, Close, Check, EditPen, FolderOpened, DocumentCopy, ArrowDown, Clock, Setting, FullScreen, Grid, RefreshLeft, Upload, Document, Picture } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import AiThinkingToggle from '@/components/AiThinkingToggle/index.vue'
 import AiModelSelector from '@/components/AiModelSelector/index.vue'
 import aiModelManager from '@/components/AiModelManager/index.vue'
@@ -1144,6 +1143,8 @@ import { useQuestionBuilderAiGenerate } from './useQuestionBuilderAiGenerate'
 import { useQuestionBuilderTypes } from './useQuestionBuilderTypes'
 import { useQuestionBuilderTypePopover } from './useQuestionBuilderTypePopover'
 import { useQuestionBuilderAiStream } from './useQuestionBuilderAiStream'
+import { useQuestionBuilderDialogActions } from './useQuestionBuilderDialogActions'
+import { useQuestionBuilderPreviewEdit } from './useQuestionBuilderPreviewEdit'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
 import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
 // 公式编辑（2026-10-27）：Tiptap 是富文本编辑器，不能直接塞输入框组件，
@@ -1171,25 +1172,6 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['reset'])
-
-// 一键恢复：先弹确认框，用户确认后才通知父组件执行恢复
-// 有当前题库时恢复该题库的原始数据（bankId 动态跟随用户切换的题库）；无题库时恢复初始状态
-const handleRestore = async () => {
-  const hasBank = !!props.bankId
-  const message = hasBank
-    ? '将丢弃当前未保存的修改，恢复至该题库的原始数据，是否继续？'
-    : '当前尚未绑定题库，将清空所有未保存的题目并恢复初始状态，是否继续？'
-  try {
-    await ElMessageBox.confirm(message, '一键恢复确认', {
-      confirmButtonText: '确认恢复',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
-    emit('reset')
-  } catch {
-    // 用户取消，不做任何操作
-  }
-}
 
 // 使用 props
 const currentBankId = computed(() => props.bankId)
@@ -1256,26 +1238,11 @@ const fullEditorVisible = ref(false)
 const viewerVisible = ref(false)
 const viewerSrc = ref('')
 
-const openImageViewer = (src) => {
-  viewerSrc.value = src
-  viewerVisible.value = true
-}
-
 /* ===== 公式编辑（2026-10-27）=====
    Tiptap 是富文本，公式以 `$...$` 源码形式存进 HTML（导出/练习时由统一管线渲染）。
    点「ƒx」→ 符号面板（鼠标操作）→ 确定后插到 Tiptap 光标处。 */
 const stemEditorRef = ref<any>(null)
 const mathEditorRef = ref<any>(null)
-
-function openMathForStem() {
-  mathEditorRef.value?.open('')
-}
-
-/** 面板确定：插到 Tiptap 光标处（组件内部会 focus 编辑区） */
-function onStemMathInsert(latex: string) {
-  if (!latex) return
-  stemEditorRef.value?.insertText(latex)
-}
 
 // 当前题库ID（从父组件传入或路由获取）
 // const currentBankId = ref(null)
@@ -1287,21 +1254,6 @@ watch(questions, (newQuestions) => {
     currentId.value = newQuestions[0].id
   }
 }, { immediate: true })
-
-// 复制原始 JSON
-const copyRawJson = async () => {
-  try {
-    await navigator.clipboard.writeText(rawJsonContent.value)
-    ElMessage.success('JSON 已复制')
-  } catch {
-    ElMessage.error('复制失败')
-  }
-}
-
-// 编辑材料内容
-const editPassage = () => {
-  editingPassage.value = true
-}
 
 /**
  * 点击历史记录 → 回填到对应输入框
@@ -1400,45 +1352,11 @@ const {
 
 const aiFormRef = ref(null)
 
-const onAiTypeChange = () => {
-  /*
-   * 切换题型时**不清空参考素材**（知识库 kbIds / 已解析文档 materialDocs）。
-   *
-   * 2026-10-20 用户明确要求「知识库和文档应该是一个全局共用 无论是哪种题型
-   * 都可以用到」—— 既然是全局附加项，它就不属于某一个题型，
-   * 切题型把它清掉在语义上是矛盾的（用户从单选切到判断，
-   * 难道"我刚才上传的讲义"就不算数了？）。
-   *
-   * 清空的是**题型专属的输入**：知识点 / 组合题要求。
-   * 那是"这一次要生成的内容"，换了题型确实该重填。
-   */
-  if (aiForm.value.questionType === 'composite') {
-    aiForm.value.compositeRequirement = ''
-    aiForm.value.wordCount = 200
-    aiForm.value.subCount = 5
-  } else if (aiForm.value.questionType === 'custom') {
-    // 自定义出题：需求描述由用户自己写，这里只清掉固定题型的知识点
-    aiForm.value.knowledgePoint = ''
-  } else {
-    aiForm.value.knowledgePoint = ''
-    aiForm.value.count = 3
-  }
-  // 清空预览数据
-  rawJsonContent.value = ''
-  parsedQuestionsForPreview.value = null
-  editablePreviewData.value = null
-}
-
-const onAiDialogClose = () => {
-  // 清空所有数据
-  rawJsonContent.value = ''
-  parsedQuestionsForPreview.value = null
-  editablePreviewData.value = null
-  pendingImportData.value = null
-  aiGenerating.value = false
-  viewMode.value = 'pretty'
-  aiDialogVisible.value = false
-}
+// 一键恢复 / AI 出题弹窗的题型切换与关闭重置（抽到同目录 composable）
+const { handleRestore, onAiTypeChange, onAiDialogClose } = useQuestionBuilderDialogActions({
+  props, emit, aiForm, rawJsonContent, parsedQuestionsForPreview,
+  editablePreviewData, pendingImportData, aiGenerating, viewMode, aiDialogVisible
+})
 
 /* ============================================================================
  * 素材出题（questionType === 'custom'）
@@ -1460,29 +1378,15 @@ const onAiDialogClose = () => {
  *   ⚠️ 代价是长文档会撑大提示词。所以下面有长度上限（`MATERIAL_MAX_CHARS`），
  *      超出时截断并**明确告知**用户截了多少，而不是静默丢内容。
  */
-const applyOptionsJson = () => {
-  const q = currentQuestion.value
-  if (!q) return
-  try {
-    const parsed = JSON.parse(q.optionsJson)
-    if (Array.isArray(parsed)) {
-      q.options = parsed.map(item => typeof item === 'string' ? item : item.text || item.value)
-      if (q.type === 'single' && q.answer >= q.options.length) q.answer = 0
-      if (q.type === 'multiple') q.answer = q.answer.filter(idx => idx < q.options.length)
-      showOptionsJsonDialog.value = false
-      ElMessage.success('选项已更新')
-    } else {
-      ElMessage.warning('JSON 必须是一个数组')
-    }
-  } catch (e) {
-    ElMessage.error('JSON 格式错误')
-  }
-}
-
-const onOptionChange = () => {
-  const q = currentQuestion.value
-  if (q) q.optionsJson = JSON.stringify(q.options)
-}
+// 预览/编辑区交互辅助（抽到同目录 composable）
+const {
+  openImageViewer, openMathForStem, onStemMathInsert, copyRawJson,
+  editPassage, applyOptionsJson, onOptionChange, updatePreviewData
+} = useQuestionBuilderPreviewEdit({
+  viewerVisible, viewerSrc, stemEditorRef, mathEditorRef, editingPassage,
+  showOptionsJsonDialog, currentQuestion, rawJsonContent,
+  parsedQuestionsForPreview, editablePreviewData
+})
 
 const {
   allFilteredQuestions,
@@ -1520,12 +1424,6 @@ const { previewTypeOf, getTypeCount, cloneQuestion, selectQuestion } = useQuesti
   questionTypes,
   aiForm
 })
-
-// 更新预览数据（当用户编辑时）
-const updatePreviewData = () => {
-  // 触发视图更新
-  parsedQuestionsForPreview.value = JSON.parse(JSON.stringify(editablePreviewData.value))
-}
 
 // 修改题目题干
 // 修改选项

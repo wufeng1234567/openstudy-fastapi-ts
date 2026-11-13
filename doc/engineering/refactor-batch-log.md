@@ -43,3 +43,31 @@
 - `useQuestionBuilderTypes.ts` / `useQuestionBuilderTypePopover.ts` / `useQuestionBuilderAiStream.ts`
 - `useWikiMapDisplay.ts`
 - `agentChatTypes.ts` / `agentChatTimeline.ts` / `agentChatReferences.ts` / `agentChatMetrics.ts`
+
+## Batch 2（2026-11-13，已完成）
+
+- 基线 commit：`35dd8b8`
+- 快照目录：`_scratch_refactor_batch2_35dd8b8/`（含原文件副本 + `baseline-sha256.txt`）
+- 授权：hy4 = QuestionBuilder + KnowledgeWikiPanel；minimax3.1f = useQuestionPractice
+
+### 批次验收
+
+- [x] 基线快照（文件副本 + SHA256）
+- [x] 两个子代理任务已派发（hy4 / minimax3.1f）
+- [x] 三个文件全部修改完成
+- [x] 主代理 review diff（`git diff --check` 通过）
+- [x] 批次级自动测试（build 4,005 modules / unit 29 项 / studio+practice smoke 通过；workspace 无 console/pageerror）
+- [ ] 提交并同步三仓库（本记录随批次提交）
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `QuestionBuilder.vue` | 1,475 | 1,382 | -93 |
+| `KnowledgeWikiPanel.vue` | 2,586 | 2,553 | -33 |
+| `useQuestionPractice.ts` | 2,161 | 1,515 | -646 |
+
+新增模块：
+- `useQuestionBuilderDialogActions.ts` / `useQuestionBuilderPreviewEdit.ts`
+- `useWikiPlanState.ts` / `useWikiMapViewControls.ts`
+- `questionPracticeTransform.ts` / `questionPracticeAnswer.ts` / `questionPracticeRandomPlan.ts`

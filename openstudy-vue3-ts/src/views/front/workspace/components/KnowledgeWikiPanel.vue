@@ -462,13 +462,15 @@ import { useWikiPanelFormatters } from './useWikiPanelFormatters'
 import { useWikiMapViewCache } from './wikiMapViewCache'
 import { useWikiMapLayout } from './useWikiMapLayout'
 import { useWikiMapDisplay } from './useWikiMapDisplay'
+import { useWikiPlanState } from './useWikiPlanState'
+import { useWikiMapViewControls } from './useWikiMapViewControls'
 import { WIKI_VIEW_KEY, WIKI_LEARN_KEY, WIKI_GUIDE_KEY, WIKI_ROUTE_KEY, readWikiView, readWikiLearnMode, readRouteQuery } from './wikiPanelStorage'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import ResizableDrawer from '@/components/ResizableDrawer/index.vue'
-import { readStudyPlanConfig, saveStudyPlanConfig } from '@/utils/studyPlanState'
+import { readStudyPlanConfig } from '@/utils/studyPlanState'
 import { getStudyMap } from '@/api/ai/studyPlan'
 import { listKbNotes } from '@/api/ai/noteKbLink'
 import KnowledgeAdviceHost from './KnowledgeAdviceHost.vue'
@@ -1271,25 +1273,8 @@ function applyLearningRoute(data: any) {
   }
 }
 
-/** 计划快照只存“可重建状态 + 当前视图”，不把前端勾选当完成态。 */
-function persistPlanState(plan: any) {
-  if (!plan) return
-  saveStudyPlanConfig({
-    kbId: Number(props.activeKbId || 0),
-    goal: plan.intent?.goal || routeStrategy.value,
-    examDate: plan.intent?.examDate || '',
-    horizonDays: Number(plan.window?.horizonDays || 7),
-    dailyMinutes: Number(plan.window?.dailyMinutes || 40),
-    restDays: Array.isArray(plan.window?.restDays) ? plan.window.restDays : [],
-    bankIds: Array.isArray(plan.intent?.bankIds) ? plan.intent.bankIds : [],
-    sinceMs: Number(plan.window?.sinceMs || 0),
-    planId: String(plan.planId || '')
-  })
-}
-
-function readPlanState(): any | null {
-  return readStudyPlanConfig(props.activeKbId)
-}
+// 学习计划快照读写（抽到同目录 composable）
+const { persistPlanState, readPlanState } = useWikiPlanState({ props, routeStrategy })
 
 /** 生成/重新生成学习计划；focusPageId 表示“以这一页为目标规划”。 */
 async function generateRoute(focusPageId?: number | null, sinceMs?: number) {
@@ -2089,37 +2074,14 @@ async function build() {
   }
 }
 
-function resetMapNodeOffsets() {
-  Object.keys(mapNodeOffsets).forEach((key) => delete mapNodeOffsets[key])
-  Object.keys(mapSimPositions).forEach((key) => delete mapSimPositions[key])
-  mapLearningPath.value = []
-  stopMapAnimation()
-}
-
-function toggleMapType(type: string) {
-  mapTypeVisible[type] = mapTypeVisible[type] === false
-  resetMapNodeOffsets()
-  nextTick(startMapAnimation)
-}
-
-function toggleHideUnlinked() {
-  mapHideUnlinked.value = !mapHideUnlinked.value
-  resetMapNodeOffsets()
-  nextTick(startMapAnimation)
-}
-
-function toggleMapArrows() {
-  mapShowArrows.value = !mapShowArrows.value
-}
-
-function resetGraphView() {
-  resetMapNodeOffsets()
-  mapImageExpanded.value = false
-  nextTick(() => {
-    syncMapSize()
-    fitMapView()
-  })
-}
+// 图谱视图开关与重置（抽到同目录 composable）
+const {
+  resetMapNodeOffsets, toggleMapType, toggleHideUnlinked, toggleMapArrows, resetGraphView
+} = useWikiMapViewControls({
+  mapNodeOffsets, mapSimPositions, mapLearningPath, mapTypeVisible,
+  mapHideUnlinked, mapShowArrows, mapImageExpanded,
+  stopMapAnimation, startMapAnimation, syncMapSize, fitMapView
+})
 
 async function switchMap(preserveView = false) {
   if (!Number(props.activeKbId)) return

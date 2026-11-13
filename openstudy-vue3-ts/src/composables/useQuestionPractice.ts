@@ -9,14 +9,42 @@ import {
   answerPracticeSession,
   submitPracticeSession
 } from '@/api/questionMain/questionMain'
-import { parseOptions } from '@/utils/questionUtils'
 // 修改导入，添加新的API方法
 import { listQuestionErrorAll, batchCheckError } from '@/api/questionError/questionError'
 import { addFavoriteQuestion, deleteFavoriteQuestionByUserAndQuestion, batchCheckFavorite } from '@/api/favoriteQuestion/favoriteQuestion'
 import { addQuestionMarked, deleteMarkedByUserAndQuestion, batchCheckMarked } from '@/api/questionMarked/questionMarked'
 import useUserStore from '@/store/modules/user'
 import usePracticeSettingsStore from '@/store/modules/practiceSettings'
-import type { TransformedQuestion, QuestionType } from '@/types'
+import type { TransformedQuestion } from '@/types'
+
+/*
+ * ── 抽离出去的**纯逻辑**模块（2026-11 可读性重构）────────────────────
+ *
+ * 本文件只留**练习状态机**（取题 → 转换 → 切片 → 作答 → 提交）与响应式状态；
+ * 下列模块都是无副作用的纯函数，可以独立理解与复用：
+ *   · `./questionPracticeTransform`  —— 原始题目 → `TransformedQuestion` 的转换规则
+ *   · `./questionPracticeAnswer`     —— 判分写回 / 答案格式化 / 错因备注与标签
+ *   · `./questionPracticeRandomPlan` —— 随机题单的持久化与「新题优先」算法
+ *
+ * ⚠️ 依赖方向单向（本文件 → 上面三个），它们**不反向依赖**本文件，
+ *    因此不会形成循环依赖。
+ */
+import {
+  toDisplayQuestions,
+  transformQuestionForDisplay
+} from './questionPracticeTransform'
+import {
+  applyServerGrade,
+  generateErrorNote,
+  generateErrorTags,
+  hasAnswerValue,
+  stringifyAnswerForLog
+} from './questionPracticeAnswer'
+import {
+  buildRandomPlan,
+  loadRandomPlan,
+  clearRandomPlan as clearStoredRandomPlan
+} from './questionPracticeRandomPlan'
 
 // 调试日志工具
 import {
@@ -160,33 +188,6 @@ export function useQuestionPractice(
     return false
   }
 
-  /** 把服务端判分结果写回题目对象，供解析区/答题卡/结算页共用 */
-  function applyServerGrade(q: any, data: any): void {
-    if (!q || !data) return
-    if (data.correctAnswer !== undefined && data.correctAnswer !== null) {
-      q.correctAnswer = data.correctAnswer
-    }
-    if (data.analysis !== undefined && data.analysis !== null) {
-      q.analysis = data.analysis
-    }
-    if (Array.isArray(data.subResults) && data.subResults.length) {
-      data.subResults.forEach((item: any) => {
-        const sub = q.subQuestions?.[Number(item.subIndex)]
-        if (!sub) return
-        if (item.correctAnswer !== undefined && item.correctAnswer !== null) {
-          sub.correctAnswer = item.correctAnswer
-        }
-        if (item.analysis !== undefined && item.analysis !== null) {
-          sub.analysis = item.analysis
-        }
-      })
-    }
-    q.correct = data.isCorrect === true
-    q.pending = data.pending === true
-    q.answered = true
-    q.showAnalysis = true
-  }
-
   // ✅ 答题上报：答对 / 答错都要上报（学习统计的唯一数据源）
   // 说明：原先只在答错时上报，导致后端 user_question_favorite.correct_times / error_times
   // 从未被写入，「正确率」「练习次数」恒为 0；后端也没有任何"答对了"的行为记录。
@@ -215,81 +216,6 @@ export function useQuestionPractice(
       // 静默失败，不影响答题流程
     }
   }
-
-  // 把各种形态的答案压成字符串写入流水（组合题传进来的是对象）
-  function stringifyAnswerForLog(userAnswer: any): string {
-    if (userAnswer === null || userAnswer === undefined) return ''
-    if (Array.isArray(userAnswer)) return userAnswer.join(',')
-    if (typeof userAnswer === 'object') {
-      try {
-        return JSON.stringify(userAnswer)
-      } catch {
-        return ''
-      }
-    }
-    return String(userAnswer)
-  }
-  // ✅ 新增：生成错因备注
-  function generateErrorNote(question: TransformedQuestion, userAnswer: any): string {
-    const questionType = question.type
-    const noteParts: string[] = []
-
-    if (questionType === 'fillblank' || questionType === 'essay') {
-      noteParts.push(`错误答案: "${userAnswer || '未填写'}"`)
-      noteParts.push(`正确答案: "${question.correctAnswer}"`)
-    } else if (questionType === 'single' || questionType === 'truefalse') {
-      const userChoice = question.options && question.options[userAnswer] ? question.options[userAnswer] : '未选择'
-      const correctChoice = question.options && question.options[question.correctAnswer] ? question.options[question.correctAnswer] : ''
-      noteParts.push(`错误选项: ${userChoice}`)
-      noteParts.push(`正确选项: ${correctChoice}`)
-    } else if (questionType === 'multiple') {
-      const userChoices = Array.isArray(userAnswer) && question.options
-        ? userAnswer.map((idx: number) => question.options[idx] || `选项${idx}`).join(', ')
-        : '未选择'
-      const correctChoices = Array.isArray(question.correctAnswer) && question.options
-        ? question.correctAnswer.map((idx: number) => question.options[idx] || `选项${idx}`).join(', ')
-        : ''
-      noteParts.push(`错误选项: ${userChoices}`)
-      noteParts.push(`正确选项: ${correctChoices}`)
-    }
-
-    return noteParts.join(' | ')
-  }
-
-  // ✅ 新增：生成错题标签
-  function generateErrorTags(questionType: string, userAnswer: any): string {
-    const tags = ['自动记录']
-
-    if (!userAnswer || (Array.isArray(userAnswer) && userAnswer.length === 0)) {
-      tags.push('未作答')
-    } else if (questionType === 'fillblank' || questionType === 'essay') {
-      tags.push('主观题错误')
-    } else {
-      tags.push('选择题错误')
-    }
-
-    // 根据题目类型添加标签
-    switch (questionType) {
-      case 'single':
-        tags.push('单选题')
-        break
-      case 'multiple':
-        tags.push('多选题')
-        break
-      case 'truefalse':
-        tags.push('判断题')
-        break
-      case 'fillblank':
-        tags.push('填空题')
-        break
-      case 'essay':
-        tags.push('问答题')
-        break
-    }
-
-    return tags.join(',')
-  }
-
 
   // 新增：处理单个题目（收藏页面用）
   function fetchSingleQuestion(questionId: number | string): void {
@@ -356,146 +282,16 @@ export function useQuestionPractice(
     return `os_recent_practice_${userStore.id || 0}_${props.bankId}_${props.moduleType}`
   }
 
-  function readIdSet(key: string): Set<string> {
-    try {
-      const raw = localStorage.getItem(key)
-      if (!raw) return new Set()
-      const arr = JSON.parse(raw)
-      return Array.isArray(arr) ? new Set(arr.map(String)) : new Set()
-    } catch {
-      // 隐私模式 / 配额满 / 数据损坏 → 当成没有历史，不影响练习
-      return new Set()
-    }
-  }
-
-  function writeIdList(key: string, ids: any[]): void {
-    try {
-      localStorage.setItem(key, JSON.stringify(ids))
-    } catch {
-      // 存不下就退化成"每次重新随机"，仍然能练
-    }
-  }
-
   /**
-   * 读取已持久化的随机题单
+   * 清掉随机题单（对外入口）
    *
-   * 返回 `null` 表示"没有可用题单，需要重新生成"。校验条件：
-   *   · 题单里的 id 必须**全部**能在当前题库数据里找到（否则题库改过了）
-   *   · 题单长度必须与当前「每次练习数量」的预期一致（否则设置改过了）
-   * 任一不满足就重建 —— 这是"题单失效"的唯一入口。
-   *
-   * ⚠️ 存储格式是**裸数组** `[3044,3045,3046]`（见 `writeIdList`）。
-   *    第一版这里写成 `plan.ids`（以为存的是 `{ids:[...]}` 对象），
-   *    于是永远读不到 → 每次加载都重建题单 → "随机只随机一次"完全没生效。
-   *    探针实测：刷新 3 次题单变了 3 次，才抓到这个错。
-   *    如果以后要加元数据（生成时间等）再改成对象，**读写必须同时改**。
+   * ⚠️ 对外签名保持**零参数**：`PracticeComponent` 与 `usePracticeSubmitAction`
+   *    按 `clearRandomPlan: () => void` 用，签名不能变。
+   *    存储键的算法留在本文件（依赖 `userStore.id` / `props`），
+   *    真正落盘的活儿在 `./questionPracticeRandomPlan`。
    */
-  function loadRandomPlan(data: any[], count: number | string): any[] | null {
-    try {
-      const raw = localStorage.getItem(randomPlanKey())
-      if (!raw) return null
-      const plan = JSON.parse(raw)
-      const planIds: any[] = Array.isArray(plan) ? plan : (Array.isArray(plan?.ids) ? plan.ids : [])
-      if (!planIds.length) return null
-
-      // 题目增删 → 题单作废（避免用户点进去发现"少了一道题"）
-      const byId = new Map<string, any>()
-      data.forEach((q) => {
-        const qid = q?.id ?? q?.questionId
-        if (qid !== undefined && qid !== null) byId.set(String(qid), q)
-      })
-      const restored: any[] = []
-      for (const id of planIds) {
-        const q = byId.get(String(id))
-        if (!q) return null   // 有题被删了 → 整体重建，不做部分拼接
-        restored.push(q)
-      }
-
-      /*
-       * 数量变了就重建。
-       *
-       * ⚠️ 这里比较的是**实际会用到的那一段**：`count='all'` 时要求题单覆盖全库，
-       *    否则要求题单长度 === count。用户把"每次 10 题"改成"每次 20 题"时，
-       *    旧题单只有 10 条 → 必须重建，否则页面上只有 10 道题却写着 20。
-       */
-      const want = count === 'all' ? data.length : Math.min(Number(count) || data.length, data.length)
-      if (restored.length !== want) return null
-
-      return restored
-    } catch {
-      return null
-    }
-  }
-
-  /** 生成并持久化一份新的随机题单 */
-  function buildRandomPlan(data: any[], count: number | string): any[] {
-    const lastRound = readIdSet(lastRoundKey())
-
-    // 分成「上一轮没练过」和「练过」两组，新题优先 —— 这是"更合理的随机"
-    const fresh: any[] = []
-    const done: any[] = []
-    data.forEach((q) => {
-      const qid = q?.id ?? q?.questionId
-      if (qid !== undefined && qid !== null && lastRound.has(String(qid))) {
-        done.push(q)
-      } else {
-        fresh.push(q)
-      }
-    })
-
-    const shuffleInPlace = (arr: any[]) => {
-      for (let i = arr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [arr[i], arr[j]] = [arr[j], arr[i]]
-      }
-      return arr
-    }
-
-    /*
-     * 先打乱整体，再把「新题」稳定地提到前面。
-     *
-     * 为什么不是直接 [打乱(fresh), 打乱(done)]：
-     *   那样会让"新题"永远占据最前面 N 个位置，一旦 count < fresh 数量，
-     *   排在后面的 fresh 题在**连续几轮**里都轮不到 —— 覆盖面反而变窄。
-     *   这里改为：整体随机后，把 fresh 集合内的题按随机顺序前置，
-     *   done 的题填在后面。因为在 buildRandomPlan 里 fresh/done 是按
-     *   "上一轮"划分的，每轮都会重算，所以不会有永久饿死的题。
-     */
-    const ordered = [...shuffleInPlace(fresh), ...shuffleInPlace(done)]
-
-    const want = count === 'all' ? ordered.length : Math.min(Number(count) || ordered.length, ordered.length)
-    const picked = ordered.slice(0, want)
-
-    // 落盘：题单本身 + "这一轮将要练的题"（供下一轮生成时避开）
-    writeIdList(randomPlanKey(), picked.map((q) => q?.id ?? q?.questionId).filter((x) => x !== undefined && x !== null))
-    writeIdList(lastRoundKey(), picked.map((q) => q?.id ?? q?.questionId).filter((x) => x !== undefined && x !== null))
-
-    /*
-     * 返回的是**完整顺序**（picked 在前，其余在后）。
-     *
-     * 为什么末尾还要带没被抽中的题：
-     *   `allQuestionsData` 是全库，`questions` 是它的前 count 条切片。
-     *   如果这里只返回 picked，用户把「每次练习数量」调大时（比如 10 → 全部）
-     *   就会没有题可取 —— 明明题库里有 100 道，页面却说总共 10 道。
-     *   把剩余题接在后面，既保证题单稳定，也不丢题。
-     */
-    const pickedIds = new Set(picked.map((q) => String(q?.id ?? q?.questionId)))
-    const rest = ordered.filter((q) => !pickedIds.has(String(q?.id ?? q?.questionId)))
-    return [...picked, ...rest]
-  }
-
-  /**
-   * 清掉随机题单（"重新练习" / 练完一轮时调用）
-   *
-   * ⚠️ 只清**题单**，不清 `lastRoundKey`（上一轮做过哪些题）——
-   *    那份记录正是下一轮"新题优先"的依据，清掉就退化成纯随机了。
-   */
-  function clearRandomPlan(): void {
-    try {
-      localStorage.removeItem(randomPlanKey())
-    } catch {
-      // 忽略：清不掉最多是沿用了旧题单，不影响功能
-    }
+  const clearRandomPlan = (): void => {
+    clearStoredRandomPlan(randomPlanKey())
   }
 
   // 通用题目处理函数 - 现在可被外部调用
@@ -573,8 +369,8 @@ export function useQuestionPractice(
         shuffled = shuffledCache.get(cacheKey) as any[]
       } else {
         // 先看有没有持久化的题单；没有（或已失效）才生成新的
-        const planned = loadRandomPlan(data, count)
-        shuffled = planned || buildRandomPlan(data, count)
+        const planned = loadRandomPlan(data, count, randomPlanKey())
+        shuffled = planned || buildRandomPlan(data, count, randomPlanKey(), lastRoundKey())
         debugShuffle(props.moduleType, [...data], shuffled)
         debugCacheWrite(props.moduleType, cacheKey, shuffled)
         shuffledCache.set(cacheKey, shuffled)
@@ -831,39 +627,6 @@ export function useQuestionPractice(
    */
   function clearNoQuestionsState(): void {
     noWrongQuestionsReason.value = ''
-  }
-
-  /**
-   * 把「后端原始题目数组」转成组件能渲染的 `TransformedQuestion[]`
-   *
-   * ⚠️⚠️ **任何给 `questions.value` 赋值的地方都必须经过它**（2026-10-20 修的 bug）。
-   *
-   * 现象（用户口径）：「只刷错题 会变成题型无法识别 全部都一样」，截图里每一道题
-   * 都显示「未知题型 / 暂不支持该题型」。
-   *
-   * 根因：`transformQuestionForDisplay()` 负责把 `questionType`(数字 1~7) 映射成
-   * 组件认识的 `type`('single'/'multiple'/…) 并整理 options 等字段。
-   * `processQuestions` 的分支是 `slicedData.map(transformQuestionForDisplay)`，
-   * 但我在修 bug1 时让错题分支改走 `applyQuestionLimits()` —— 而那个函数里是
-   * **裸赋值** `questions.value = shuffled / slice(...)`，
-   * 于是 `questions` 里躺的是后端原始对象：没有 `type`、没有整理过的 options，
-   * 组件拿不到题型 → 每道题都渲染成「未知题型」。
-   *
-   * 修法：把转换收进这一个函数，`applyQuestionLimits` 的四个赋值点全部改用它。
-   * 这样「哪里赋值」不再重要 —— 只要都走这里，就不会再漏一次。
-   */
-  function toDisplayQuestions(raw: any[]): TransformedQuestion[] {
-    return (raw || []).map((q) => {
-      const processed = transformQuestionForDisplay(q)
-      return {
-        ...processed,
-        // 每次都重置答题态：换波/换筛选之后，上一波的作答不能带过来
-        answered: false,
-        correct: false,
-        showAnalysis: false,
-        userAnswer: null
-      } as TransformedQuestion
-    })
   }
 
   function applyQuestionLimits(options: { resetOffset?: boolean } = {}): void {
@@ -1141,450 +904,6 @@ export function useQuestionPractice(
     }
 
     loading.value = false
-  }
-
-  /**
-   * 取组合题的子题数组（**字段名兼容**）
-   *
-   * ⚠️ 这里踩过坑（用户 2026-10-18 bug3「组合题只有题干、看不到子题」）：
-   *    前端原来只读 `q.questionSubList`，但后端 `format_question()` 返回的键叫
-   *    `subQuestions`（见 `app/api/v1/questions.py`）——**永远取不到**，
-   *    于是子题数组恒为空、`ReadingComprehensionDisplay` 的
-   *    `v-if="subQuestions.length > 0"` 整块不渲染，界面上就只剩题干。
-   *
-   *    三个候选键都兼容：`subQuestions`（后端现用）/ `questionSubList`（早期约定，写入时用）/
-   *    `question_sub_list`（蛇形接口）。取到第一个非空数组即返回。
-   */
-  function pickSubList(q: any): any[] {
-    if (!q) return []
-    const candidates = [q.subQuestions, q.questionSubList, q.question_sub_list]
-    for (const c of candidates) {
-      if (Array.isArray(c) && c.length > 0) return c
-    }
-    return []
-  }
-  // ✅ 关键：导出的通用转换函数 - 完整版
-  function transformQuestionForDisplay(q: any): TransformedQuestion {
-    let type: QuestionType = 'unknown'
-    switch (q.questionType || q.question_type) {
-      case 1:
-        type = 'single'
-        break
-      case 2:
-        type = 'multiple'
-        break
-      case 3:
-        type = 'truefalse'
-        break
-      case 4:
-        type = 'fillblank'
-        break
-      case 5:
-        type = 'essay'
-        break
-      case 6:
-        type = 'readingComprehension'
-        break
-      case 7:
-        type = 'cloze'
-        break
-      default:
-        type = 'unknown'
-    }
-
-    // 解析选项
-    let options: any[] = []
-    if (q.options) {
-      try {
-        // 优先使用 parseOptions 函数
-        if (typeof parseOptions === 'function') {
-          options = parseOptions(q.options, type)
-        } else {
-          // 备用方案：手动解析
-          if (typeof q.options === 'string') {
-            const trimmed = q.options.trim()
-            if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-              options = JSON.parse(trimmed)
-            } else if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-              const parsed = JSON.parse(trimmed)
-              options = Object.values(parsed).filter((val: any) => val !== null && val !== undefined)
-            } else {
-              options = trimmed.split(',').map((opt: string) => opt.trim())
-            }
-          } else if (Array.isArray(q.options)) {
-            options = q.options
-          } else if (typeof q.options === 'object') {
-            options = Object.values(q.options).filter((val: any) => val !== null && val !== undefined)
-          }
-        }
-      } catch (e) {
-        // 创建有意义的默认选项
-        if (type === 'single' || type === 'multiple') {
-          // 根据题目内容创建相关选项
-          const baseOptions = ['has studied', 'studies', 'is studying', 'study']
-          options = baseOptions
-        } else if (type === 'truefalse') {
-          options = ['正确', '错误']
-        }
-      }
-    } else {
-      // 创建有意义的默认选项
-      if (type === 'single' || type === 'multiple') {
-        // 根据题目内容创建相关选项
-        if (q.questionText && q.questionText.includes('English')) {
-          options = ['has studied', 'studies', 'is studying', 'study']
-        } else if (q.questionText && q.questionText.includes('If I')) {
-          options = ['am', 'was', 'were', 'be']
-        } else {
-          options = ['选项A', '选项B', '选项C', '选项D']
-        }
-      } else if (type === 'truefalse') {
-        options = ['正确', '错误']
-      }
-    }
-
-    // ✅ 改进：正确答案标准化
-    let correctAnswer: any = q.answer
-
-    if (type === 'truefalse') {
-      const ans = String(q.answer).trim().toLowerCase()
-      correctAnswer = ans === 't' || ans === 'true' || ans === '1' ? 0 : 1
-    } else if (type === 'single') {
-      if (typeof q.answer === 'string') {
-        const ansStr = q.answer.trim()
-        const letter = ansStr.toUpperCase()
-        if (letter.length === 1 && letter >= 'A' && letter <= 'Z') {
-          correctAnswer = letter.charCodeAt(0) - 65
-        } else {
-          const num = Number(ansStr)
-          if (!isNaN(num)) {
-            correctAnswer = num
-          } else {
-            correctAnswer = 0
-          }
-        }
-      } else {
-        correctAnswer = Number(q.answer) || 0
-      }
-    } else if (type === 'multiple') {
-      if (typeof q.answer === 'string') {
-        const ansStr = q.answer.trim()
-
-        if (ansStr.startsWith('[') && ansStr.endsWith(']')) {
-          try {
-            const parsed = JSON.parse(ansStr)
-            if (Array.isArray(parsed)) {
-              if (parsed.every((item: any) => typeof item === 'number')) {
-                correctAnswer = parsed
-              }
-              else if (parsed.every((item: any) => typeof item === 'string' && item.length === 1)) {
-                correctAnswer = parsed
-                  .map((s: string) => s.trim().toUpperCase())
-                  .filter((s: string) => s >= 'A' && s <= 'Z')
-                  .map((s: string) => s.charCodeAt(0) - 65)
-              } else {
-                correctAnswer = []
-              }
-            } else {
-              correctAnswer = []
-            }
-          } catch (e) {
-            correctAnswer = ansStr
-              .split(/[,，]/)
-              .map((s: string) => {
-                s = s.trim().toUpperCase()
-                if (s.length === 1 && s >= 'A' && s <= 'Z') {
-                  return s.charCodeAt(0) - 65
-                }
-                const num = Number(s)
-                return isNaN(num) ? null : num
-              })
-              .filter((n: number | null) => n !== null)
-          }
-        } else {
-          correctAnswer = ansStr
-            .split(/[,，]/)
-            .map((s: string) => {
-              s = s.trim().toUpperCase()
-              if (s.length === 1 && s >= 'A' && s <= 'Z') {
-                return s.charCodeAt(0) - 65
-              }
-              const num = Number(s)
-              return isNaN(num) ? null : num
-            })
-            .filter((n: number | null) => n !== null)
-        }
-      } else if (Array.isArray(q.answer)) {
-        correctAnswer = q.answer
-          .map((item: any) => {
-            if (typeof item === 'string') {
-              const s = item.trim().toUpperCase()
-              if (s.length === 1 && s >= 'A' && s <= 'Z') {
-                return s.charCodeAt(0) - 65
-              }
-              const num = Number(s)
-              return isNaN(num) ? null : num
-            }
-            return typeof item === 'number' ? item : null
-          })
-          .filter((n: number | null) => n !== null)
-      } else {
-        correctAnswer = []
-      }
-
-      if (!Array.isArray(correctAnswer)) {
-        correctAnswer = []
-      }
-    } else if (type === 'fillblank' || type === 'essay') {
-      // 填空题和问答题保持原始答案
-      correctAnswer = q.answer
-    }
-
-    // 处理阅读理解 & 完形填空
-    let subQuestions: any[] = []
-    let hasMainContent = false
-    let mainContent = ''
-    let mainTitle = ''
-
-    if (type === 'cloze') {
-      mainContent = q.content || ''
-      mainTitle = q.questionText || '完形填空'
-      hasMainContent = true
-
-      if (mainContent) {
-        mainContent = mainContent.replace(/\[\[(\d+)\]\]/g, '___$1___')
-      }
-
-      if (pickSubList(q).length > 0) {
-        subQuestions = pickSubList(q).map((sq: any, index: number) => {
-          let sqType = 'single'
-          switch (sq.questionType || sq.question_type) {
-            case 1:
-              sqType = 'single'
-              break
-            case 2:
-              sqType = 'multiple'
-              break
-            case 3:
-              sqType = 'truefalse'
-              break
-            case 4:
-              sqType = 'fillblank'
-              break
-            case 5:
-              sqType = 'essay'
-              break
-            default:
-              sqType = 'single'
-          }
-
-          // 解析子题选项
-          let sqOptions: any[] = []
-          if (sq.options) {
-            try {
-              if (typeof sq.options === 'string') {
-                const trimmed = sq.options.trim()
-                if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-                  sqOptions = JSON.parse(trimmed)
-                } else {
-                  sqOptions = trimmed.split(',').map((opt: string) => opt.trim())
-                }
-              } else if (Array.isArray(sq.options)) {
-                sqOptions = sq.options
-              }
-            } catch (e) {
-            }
-          }
-
-          // ✅ 改进：子题答案处理
-          let sqCorrectAnswer: any = sq.answer
-          if (sqType === 'truefalse') {
-            const ans = String(sq.answer).trim().toLowerCase()
-            sqCorrectAnswer = ans === 't' || ans === 'true' || ans === '1' ? 0 : 1
-          } else if (sqType === 'single') {
-            if (typeof sq.answer === 'string' && sq.answer.length === 1) {
-              const letter = sq.answer.toUpperCase()
-              if (letter >= 'A' && letter <= 'Z') {
-                sqCorrectAnswer = letter.charCodeAt(0) - 65
-              } else {
-                sqCorrectAnswer = Number(sq.answer) || 0
-              }
-            } else {
-              sqCorrectAnswer = Number(sq.answer) || 0
-            }
-          } else if (sqType === 'multiple') {
-            // 使用相同的多选题答案处理逻辑
-            if (typeof sq.answer === 'string') {
-              sqCorrectAnswer = sq.answer
-                .split(/[,，]/)
-                .map((s: string) => {
-                  s = s.trim().toUpperCase()
-                  if (s.length === 1 && s >= 'A' && s <= 'Z') {
-                    return s.charCodeAt(0) - 65
-                  }
-                  const num = Number(s)
-                  return isNaN(num) ? null : num
-                })
-                .filter((n: number | null) => n !== null)
-            } else if (Array.isArray(sq.answer)) {
-              sqCorrectAnswer = sq.answer
-            } else {
-              sqCorrectAnswer = []
-            }
-          } else if (sqType === 'fillblank' || sqType === 'essay') {
-            // ✅ 关键修复：填空题和问答题保持原始答案字符串
-            sqCorrectAnswer = sq.answer
-          }
-
-          return {
-            question: sq.questionText || sq.question_text || `第 ${index + 1} 空应填入：`,
-            type: sqType,
-            options: sqOptions,
-            analysis: sq.analysis,
-            correctAnswer: sqCorrectAnswer,
-            answered: false,
-            correct: false
-          }
-        })
-      }
-    }
-    else if (type === 'readingComprehension') {
-      mainContent = q.content || ''
-      mainTitle = q.questionText || '阅读理解'
-      hasMainContent = !!mainContent
-
-      if (pickSubList(q).length > 0) {
-        subQuestions = pickSubList(q).map((sq: any, index: number) => {
-          let sqType = 'single'
-          switch (sq.questionType || sq.question_type) {
-            case 1:
-              sqType = 'single'
-              break
-            case 2:
-              sqType = 'multiple'
-              break
-            case 3:
-              sqType = 'truefalse'
-              break
-            case 4:
-              sqType = 'fillblank'
-              break
-            case 5:
-              sqType = 'essay'
-              break
-            default:
-              sqType = 'single'
-          }
-
-          // 解析子题选项
-          let sqOptions: any[] = []
-          if (sq.options) {
-            try {
-              if (typeof sq.options === 'string') {
-                const trimmed = sq.options.trim()
-                if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-                  sqOptions = JSON.parse(trimmed)
-                } else {
-                  sqOptions = trimmed.split(',').map((opt: string) => opt.trim())
-                }
-              } else if (Array.isArray(sq.options)) {
-                sqOptions = sq.options
-              }
-            } catch (e) {
-            }
-          }
-
-          // ✅ 改进：子题答案处理
-          let sqCorrectAnswer: any = sq.answer
-          if (sqType === 'truefalse') {
-            const ans = String(sq.answer).trim().toLowerCase()
-            sqCorrectAnswer = ans === 't' || ans === 'true' || ans === '1' ? 0 : 1
-          } else if (sqType === 'single') {
-            if (typeof sq.answer === 'string' && sq.answer.length === 1) {
-              const letter = sq.answer.toUpperCase()
-              if (letter >= 'A' && letter <= 'Z') {
-                sqCorrectAnswer = letter.charCodeAt(0) - 65
-              } else {
-                sqCorrectAnswer = Number(sq.answer) || 0
-              }
-            } else {
-              sqCorrectAnswer = Number(sq.answer) || 0
-            }
-          } else if (sqType === 'multiple') {
-            if (typeof sq.answer === 'string') {
-              sqCorrectAnswer = sq.answer
-                .split(/[,，]/)
-                .map((s: string) => {
-                  s = s.trim().toUpperCase()
-                  if (s.length === 1 && s >= 'A' && s <= 'Z') {
-                    return s.charCodeAt(0) - 65
-                  }
-                  const num = Number(s)
-                  return isNaN(num) ? null : num
-                })
-                .filter((n: number | null) => n !== null)
-            } else if (Array.isArray(sq.answer)) {
-              sqCorrectAnswer = sq.answer
-            } else {
-              sqCorrectAnswer = []
-            }
-          } else if (sqType === 'fillblank' || sqType === 'essay') {
-            // ✅ 关键修复：填空题和问答题保持原始答案字符串
-            sqCorrectAnswer = sq.answer
-          }
-
-          return {
-            question: sq.questionText || sq.question_text || `问题 ${index + 1}`,
-            type: sqType,
-            options: sqOptions,
-            analysis: sq.analysis,
-            correctAnswer: sqCorrectAnswer,
-            answered: false,
-            correct: false
-          }
-        })
-      }
-    }
-
-    if (!hasMainContent) {
-      mainContent = ''
-      mainTitle = ''
-    }
-
-    const questionObj = {
-      id: q.id,
-      bankId: q.bankId, // ✅ 添加 bankId 字段，用于错题记录
-      difficulty: q.difficulty, // ✅ 添加难度字段
-      question: (type === 'readingComprehension' || type === 'cloze') ? '' : (q.questionText || q.question_text),
-      type,
-      options,
-      correctAnswer,
-      analysis: q.analysis || '',
-      /*
-       * 模拟考试的分值 / 题型标记必须**透传**过来（2026-10-22）。
-       *
-       * 本函数是白名单式重建对象 —— 不在这里显式列出的字段会被丢掉。
-       * 组卷时挂在原始题目上的 `_mockScore`（每题分值）和 `_mockType`
-       * 一旦丢失，判分时 `Number(q._mockScore) || 0` 全是 0，
-       * 于是"满分 0 分、0 分及格"。
-       * 其它模式没有这两个字段，透传 undefined 无副作用。
-       */
-      _mockScore: q._mockScore,
-      _mockType: q._mockType,
-      mainContent,
-      mainTitle,
-      hasMainContent,
-      subQuestions,
-      answered: false,
-      correct: false,
-      showAnalysis: false,
-      userAnswer: null,
-      // 添加额外的元数据，方便调试
-      _rawAnswer: q.answer,
-      _rawOptions: q.options
-    }
-
-    return questionObj
   }
 
   // 新增：重置所有数据并重新加载题目（用于模式切换）
@@ -2127,14 +1446,6 @@ export function useQuestionPractice(
     } finally {
       setTimeout(() => { submissionLock.value = false }, 100)
     }
-  }
-
-  function hasAnswerValue(value: any): boolean {
-    if (value === null || value === undefined) return false
-    if (typeof value === 'string') return value.trim().length > 0
-    if (Array.isArray(value)) return value.length > 0
-    if (typeof value === 'object') return Object.keys(value).some((k) => hasAnswerValue(value[k]))
-    return true
   }
 
   /**
