@@ -285,7 +285,7 @@ import { listNote, addNote, updateNote, delNote } from "@/api/notes/note";
 import { uploadImage } from "@/api/common/common";
 import useUserStore from "@/store/modules/user";
 
-const { proxy } = getCurrentInstance()!;
+const { proxy } = getCurrentInstance()!.proxy as any;
 const userStore = useUserStore();
 const userId = computed(() => userStore.id);
 

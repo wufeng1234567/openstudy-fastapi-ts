@@ -99,7 +99,7 @@ import CommonFilterSidebar from '@/components/CommonFilterSidebar/index.vue'
 import QuestionCard from './QuestionCard.vue'
 import AiAnalysisDialog from '@/components/AiAnalysisDialog/index.vue'
 
-const { proxy } = getCurrentInstance()!
+const { proxy } = getCurrentInstance() as any
 const router = useRouter()
 const route = useRoute()
 
