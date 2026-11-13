@@ -201,7 +201,7 @@
 - 快照目录：`_scratch_refactor_batch8_49a3632/`
 - 授权：hy4 = questions.py + rag.py；minimax3.1f = wiki_service.py
 - 测试：compileall / ruff / questions+rag+wiki 导入 / 13 项定向 pytest
-- 提交：`[pending]`
+- 提交：`5e3ad84`（Gitee/GitCode 已推送；GitHub 重试中）
 
 ### 结果（非空行口径）
 
