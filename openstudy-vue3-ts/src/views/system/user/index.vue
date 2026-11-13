@@ -310,7 +310,7 @@ import { getToken } from "@/utils/auth";
 import { changeUserStatus, listUser, resetUserPwd, delUser, getUser, updateUser, addUser, deptTreeSelect } from "@/api/system/user";
 
 const router = useRouter();
-const { proxy } = getCurrentInstance();
+const { proxy } = getCurrentInstance()!.proxy as any;
 const { sys_normal_disable, sys_user_sex } = proxy.useDict("sys_normal_disable", "sys_user_sex");
 
 const userList = ref<any[]>([]);
@@ -353,7 +353,7 @@ const columns = ref([
   { key: 6, label: `创建时间`, visible: true }
 ]);
 
-const data = reactive({
+const data = reactive<any>({
   form: {},
   queryParams: {
     pageNum: 1,
@@ -402,7 +402,7 @@ function resetQuery() {
   handleQuery();
 };
 /** 删除按钮操作 */
-function handleDelete(row) {
+function handleDelete(row: any) {
   const userIds = row.userId || ids.value;
   proxy.$modal.confirm('是否确认删除用户编号为"' + userIds + '"的数据项？').then(function () {
     return delUser(userIds);
@@ -418,7 +418,7 @@ function handleExport() {
   },`user_${new Date().getTime()}.xlsx`);
 };
 /** 用户状态修改  */
-function handleStatusChange(row) {
+function handleStatusChange(row: any) {
   let text = row.status === "0" ? "启用" : "停用";
   proxy.$modal.confirm('确认要"' + text + '""' + row.userName + '"用户吗?').then(function () {
     return changeUserStatus(row.userId, row.status);
@@ -429,7 +429,7 @@ function handleStatusChange(row) {
   });
 };
 /** 更多操作 */
-function handleCommand(command, row) {
+function handleCommand(command: any, row: any) {
   switch (command) {
     case "handleResetPwd":
       handleResetPwd(row);
@@ -442,27 +442,27 @@ function handleCommand(command, row) {
   }
 };
 /** 跳转角色分配 */
-function handleAuthRole(row) {
+function handleAuthRole(row: any) {
   const userId = row.userId;
   router.push("/system/user-auth/role/" + userId);
 };
 /** 重置密码按钮操作 */
-function handleResetPwd(row) {
+function handleResetPwd(row: any) {
   proxy.$prompt('请输入"' + row.userName + '"的新密码', "提示", {
     confirmButtonText: "确定",
     cancelButtonText: "取消",
     closeOnClickModal: false,
     inputPattern: /^.{5,20}$/,
     inputErrorMessage: "用户密码长度必须介于 5 和 20 之间",
-  }).then(({ value }) => {
+  }).then(({ value }: { value: any }) => {
     resetUserPwd(row.userId, value).then(response => {
       proxy.$modal.msgSuccess("修改成功，新密码是：" + value);
     });
   }).catch(() => {});
 };
 /** 选择条数  */
-function handleSelectionChange(selection) {
-  ids.value = selection.map(item => item.userId);
+function handleSelectionChange(selection: any) {
+  ids.value = selection.map((item: any) => item.userId);
   single.value = selection.length != 1;
   multiple.value = !selection.length;
 };
@@ -477,11 +477,11 @@ function importTemplate() {
   }, `user_template_${new Date().getTime()}.xlsx`);
 };
 /**文件上传中处理 */
-const handleFileUploadProgress = (event, file, fileList) => {
+const handleFileUploadProgress = (event: any, file: any, fileList: any) => {
   upload.isUploading = true;
 };
 /** 文件上传成功处理 */
-const handleFileSuccess = (response, file, fileList) => {
+const handleFileSuccess = (response: any, file: any, fileList: any) => {
   upload.open = false;
   upload.isUploading = false;
   proxy.$refs["uploadRef"].handleRemove(file);
@@ -527,7 +527,7 @@ function handleAdd() {
   });
 };
 /** 修改按钮操作 */
-function handleUpdate(row) {
+function handleUpdate(row: any) {
   reset();
   const userId = row.userId || ids.value;
   getUser(userId).then(response => {
@@ -543,7 +543,7 @@ function handleUpdate(row) {
 };
 /** 提交按钮 */
 function submitForm() {
-  proxy.$refs["userRef"].validate(valid => {
+  proxy.$refs["userRef"].validate((valid: any) => {
     if (valid) {
       if (form.value.userId != undefined) {
         updateUser(form.value).then(response => {

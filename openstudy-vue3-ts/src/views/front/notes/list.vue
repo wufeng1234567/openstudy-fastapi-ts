@@ -240,8 +240,8 @@ const filterOpen = ref(false)
 const filterActive = ref(false)
 const filterSidebarRef = ref<any>(null)
 // 筛选面板定位：靠它贴到搜索框正下方 + 对齐搜索框左缘
-const searchAreaRef = ref(null)
-const pageRef = ref(null)
+const searchAreaRef = ref<any>(null)
+const pageRef = ref<any>(null)
 const filterTop = ref(0)
 const filterLeft = ref(0)
 
@@ -252,7 +252,7 @@ const rankingLoading = ref(false)
 const rankingError = ref(false)
 let rankingReqSeq = 0
   // 各周期的中文说明，用于副标题与空态引导
-  const rankingPeriodMeta = {
+  const rankingPeriodMeta: Record<string, any> = {
     week: { label: '周榜', subtitle: '近 7 天发布 · 综合热度', empty: '近 7 天还没有新笔记' },
     month: { label: '月榜', subtitle: '近 30 天发布 · 综合热度', empty: '近 30 天还没有新笔记' },
     year: { label: '年榜', subtitle: '近 365 天发布 · 综合热度', empty: '近一年还没有新笔记' }
@@ -261,7 +261,7 @@ const rankingSubtitle = computed(() => rankingPeriodMeta[rankingPeriod.value]?.s
 const showSearchHistory = ref(false)
 const searchHistory = ref<any[]>([])
 
-let blurTimer = null
+let blurTimer: any = null
 
 /*
  * 搜索历史下拉 与 筛选面板 互斥
@@ -306,7 +306,7 @@ const saveHistory = () => {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(searchHistory.value))
 }
 
-const addHistory = (keyword) => {
+const addHistory = (keyword: any) => {
   if (!keyword || !keyword.trim()) return
   const trimmed = keyword.trim()
   const index = searchHistory.value.indexOf(trimmed)
@@ -320,7 +320,7 @@ const addHistory = (keyword) => {
   saveHistory()
 }
 
-const removeHistory = (keyword) => {
+const removeHistory = (keyword: any) => {
   const index = searchHistory.value.indexOf(keyword)
   if (index > -1) {
     searchHistory.value.splice(index, 1)
@@ -334,7 +334,7 @@ const clearHistory = () => {
   showSearchHistory.value = false
 }
 
-const selectHistory = (keyword) => {
+const selectHistory = (keyword: any) => {
   searchKeyword.value = keyword
   showSearchHistory.value = false
   pageNum.value = 1
@@ -343,20 +343,20 @@ const selectHistory = (keyword) => {
 
 const baseUrl = import.meta.env.VITE_APP_BASE_API || ''
 
-const getAvatarUrl = (avatar) => {
+const getAvatarUrl = (avatar: any) => {
   if (!avatar) return defAva
   if (avatar.startsWith('http')) return avatar
   return baseUrl + avatar
 }
 
-const getSummary = (content) => {
+const getSummary = (content: any) => {
   if (!content) return ''
   let plainText = content
 
   plainText = plainText.replace(/!\[([^\]]*)\]\([^)]+\)/g, '')
 
   const codeBlockRegex = /```(\w*)\n([\s\S]*?)```/g
-  plainText = plainText.replace(codeBlockRegex, (match, lang, code) => {
+  plainText = plainText.replace(codeBlockRegex, (match: any, lang: any, code: any) => {
     return code.trim()
   })
 
@@ -377,7 +377,7 @@ const getSummary = (content) => {
   return plainText
 }
 
-const formatTime = (time) => {
+const formatTime = (time: any) => {
   if (!time) return ''
   const date = new Date(time)
   const year = date.getFullYear()
@@ -386,7 +386,7 @@ const formatTime = (time) => {
   return `${year}-${month}-${day}`
 }
 
-const formatTags = (tags) => {
+const formatTags = (tags: any) => {
   if (!tags) return ''
   if (typeof tags === 'string') {
     return tags.split(',').slice(0, 3).join('、')
@@ -394,7 +394,7 @@ const formatTags = (tags) => {
   return tags.slice(0, 3).join('、')
 }
 
-const getTagList = (tags) => {
+const getTagList = (tags: any) => {
   if (!tags) return []
   if (typeof tags === 'string') {
     return tags.split(',').filter(t => t.trim())
@@ -407,7 +407,7 @@ const hotTags = ref<any[]>([])
 const fetchHotTags = async () => {
   try {
     const res = await getPublicNoteTags(20)
-    hotTags.value = (res.data || []).map(item => item.tag).filter(Boolean)
+    hotTags.value = (res.data || []).map((item: any) => item.tag).filter(Boolean)
   } catch (error) {
     console.error('获取热门标签失败:', error)
     hotTags.value = []
@@ -539,28 +539,28 @@ const fetchRanking = async () => {
 }
 
 // 切换今日 / 周榜：点已选中的不重复请求
-const switchRanking = (period) => {
+const switchRanking = (period: any) => {
   if (period === rankingPeriod.value && !rankingError.value) return
   rankingPeriod.value = period
   fetchRanking()
 }
 
 // 热度数字格式化：过万显示 x.xw
-const formatHot = (n) => {
+const formatHot = (n: any) => {
   const v = Number(n) || 0
   if (v >= 10000) return (v / 10000).toFixed(1).replace(/\.0$/, '') + 'w'
   return String(v)
 }
 
 // 单条热榜的展示热度：优先用后端综合热度，回退浏览量
-const itemHot = (item) => Number(item.hotScore ?? item.viewCount ?? item.clickCount ?? 0) || 0
+const itemHot = (item: any) => Number(item.hotScore ?? item.viewCount ?? item.clickCount ?? 0) || 0
 
 // 悬浮提示：展示热度构成
-const hotTip = (item) =>
+const hotTip = (item: any) =>
   `浏览 ${item.viewCount || 0} · 点赞 ${item.likeCount || 0} · 评论 ${item.commentCount || 0}`
 
 /* ---------- 搜索框（复用 SearchFilterInput 后，输入 / 回车 / 清空是三个事件） ---------- */
-let searchTimer = null
+let searchTimer: any = null
 
 const runSearch = () => {
   clearTimeout(searchTimer)
@@ -592,7 +592,7 @@ const handleSearchClear = () => {
   fetchNotes()
 }
 
-const handlePageChange = (page) => {
+const handlePageChange = (page: any) => {
   pageNum.value = page
   fetchNotes()
 }
@@ -652,7 +652,7 @@ const handleFilterActiveChange = (active: boolean) => {
 }
 
 /** 点标签直接参与筛选（笔记卡片上的标签仍可点，等同在面板里勾选它） */
-const selectTag = (tag) => {
+const selectTag = (tag: any) => {
   if (tag === '') {
     filterForm.value.tags = []
   } else {
@@ -676,17 +676,17 @@ const fetchPublicSections = async () => {
   }
 }
 
-const goDetail = (id) => {
+const goDetail = (id: any) => {
   cacheStore.setLastVisited('notes', `detail/${id}`)
   router.push(`/front/notes/detail/${id}`)
 }
 
-const goToProfile = (userId) => {
+const goToProfile = (userId: any) => {
   if (!userId) return
   router.push(`/front/profile/${userId}`)
 }
 
-const goEditor = async (id) => {
+const goEditor = async (id?: any) => {
   if (!(await ensureLogin('写笔记'))) return
   cacheStore.setLastVisited('notes', 'editor')
   if (id) {

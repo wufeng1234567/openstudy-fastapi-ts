@@ -76,16 +76,16 @@ const commentList = ref<any[]>([])
 const total = ref(0)
 const pageSize = 10
 const currentPage = ref(1)
-const inputRef = ref(null)
+const inputRef = ref<any>(null)
 
 const replyTarget = computed(() => cacheStore.replyTarget)
 
 // 查看对话弹窗
 const threadVisible = ref(false)
 const threadLoading = ref(false)
-const threadComment = ref(null)
-const threadReplyTarget = ref(null)
-const threadInputRef = ref(null)
+const threadComment = ref<any>(null)
+const threadReplyTarget = ref<any>(null)
+const threadInputRef = ref<any>(null)
 const focusLocked = ref(false)
 
 // 预加载评论数据（弹窗显示前调用，避免出现"暂无评论"闪烁）
@@ -123,13 +123,13 @@ watch(() => props.noteId, () => {
   }
 })
 
-const handlePageChange = (page) => {
+const handlePageChange = (page: any) => {
   currentPage.value = page
   cacheStore.setPage(page)
   prepare()
 }
 
-const handleReply = async (comment) => {
+const handleReply = async (comment: any) => {
   if (!(await ensureLogin('回复评论'))) return
   cacheStore.setReplyTarget({ id: comment.id, userId: comment.userId, userName: comment.userName || comment.name })
   nextTick(() => {
@@ -141,7 +141,7 @@ const handleCancelReply = () => {
   cacheStore.clearReplyTarget()
 }
 
-const openThreadDialog = async (comment) => {
+const openThreadDialog = async (comment: any) => {
   threadVisible.value = true
   threadLoading.value = true
   threadComment.value = null
@@ -156,7 +156,7 @@ const openThreadDialog = async (comment) => {
   }
 }
 
-const handleThreadReply = async (comment) => {
+const handleThreadReply = async (comment: any) => {
   if (!(await ensureLogin('回复评论'))) return
   threadReplyTarget.value = { id: comment.id, userId: comment.userId, userName: comment.userName || comment.name }
   nextTick(() => {
@@ -169,7 +169,7 @@ const handleThreadCancelReply = () => {
 }
 
 
-const handleThreadSubmit = async (content) => {
+const handleThreadSubmit = async (content: any) => {
   if (!(await ensureLogin('回复评论'))) return
   const target = threadReplyTarget.value || {
     id: threadComment.value?.id,
@@ -210,7 +210,7 @@ const handleThreadDeleteComment = async () => {
   emit('commentAdded')
 }
 
-const handleSubmit = async (content) => {
+const handleSubmit = async (content: any) => {
   if (!(await ensureLogin('发表评论'))) return
   const params = { noteId: noteId.value, content }
 
@@ -243,7 +243,7 @@ const handleClose = () => {
   emit('close')
 }
 
-async function focusOnComment(commentId) {
+async function focusOnComment(commentId: any) {
   if (focusLocked.value) {
     return
   }
@@ -258,16 +258,16 @@ async function focusOnComment(commentId) {
       return
     }
 
-    const findInTree = (tree, targetId) => {
+    const findInTree = (tree: any, targetId: any) => {
       if (!tree) return false
       if (tree.id === targetId) return true
       if (tree.children) {
-        return tree.children.some(child => findInTree(child, targetId))
+        return tree.children.some((child: any) => findInTree(child, targetId))
       }
       return false
     }
 
-    const markHighlight = (comment, targetId) => {
+    const markHighlight = (comment: any, targetId: any) => {
       if (comment.id === targetId) {
         comment._highlight = true
         comment._isNotificationTarget = true
@@ -286,7 +286,7 @@ async function focusOnComment(commentId) {
         await prepare()
       }
 
-      let foundRoot = null
+      let foundRoot: any = null
       for (const comment of commentList.value) {
         if (!comment.children || comment.children.length === 0) {
           try {
@@ -336,7 +336,7 @@ async function focusOnComment(commentId) {
       }
       await prepare()
 
-      let found = null
+      let found: any = null
       for (const comment of commentList.value) {
         if (comment.id === commentId) {
           found = comment
@@ -382,7 +382,7 @@ async function focusOnComment(commentId) {
   }
 }
 
-async function findCommentPage(commentId) {
+async function findCommentPage(commentId: any) {
   try {
     const totalCountRes = await listComments(noteId.value, 1, pageSize)
     const totalCount = totalCountRes.data?.total || totalCountRes.total || 0
@@ -392,7 +392,7 @@ async function findCommentPage(commentId) {
       const res = await listComments(noteId.value, page, pageSize)
       const data = res.data || res
       const list = data.list || []
-      if (list.some(c => c.id === commentId)) {
+      if (list.some((c: any) => c.id === commentId)) {
         return page
       }
     }
@@ -408,9 +408,9 @@ const clearThreadHighlight = () => {
   if (threadComment.value?._highlight) {
     threadComment.value._highlight = false
   }
-  const clearChildren = (comment) => {
+  const clearChildren = (comment: any) => {
     if (comment.children) {
-      comment.children.forEach(child => {
+      comment.children.forEach((child: any) => {
         child._highlight = false
         clearChildren(child)
       })
