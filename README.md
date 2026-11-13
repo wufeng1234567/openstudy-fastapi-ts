@@ -246,7 +246,7 @@ npm run lint
 npm run build:prod
 ```
 
-当前结果：后端 pytest exit 0（collect 109 tests）、ruff 语法门禁 All checks passed；前端 build exit 0、lint 0 errors/4,156 warnings。详细证据见 [quality-report.md](doc/功能迭代与代码质量/quality-report.md)。
+当前结果：后端 pytest exit 0（collect 109 tests）、ruff 语法门禁 All checks passed；前端 build exit 0、lint 0 errors/4,077 warnings。详细证据见 [quality-report.md](doc/功能迭代与代码质量/quality-report.md)。
 
 ## 当前边界
 

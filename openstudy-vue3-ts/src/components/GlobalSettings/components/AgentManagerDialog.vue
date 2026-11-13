@@ -81,7 +81,7 @@ import {
   type AgentConfig,
   type AgentConfigInput
 } from '@/api/ai/agent'
-import { fetchAgentToolsForUi } from '@/api/ai/agentDsFree'
+import { fetchAgentToolsForUi } from '@/api/ai/agentTools'
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{

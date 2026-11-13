@@ -13,9 +13,6 @@
        base_url = https://api.deepseek.com（OpenAI 兼容）
        需要 .env 里的 DEEPSEEK_API_KEY 或表里的 api_key
 
-  2) provider = deepseek-free —— DS 官网免费版反代（**已下线**）
-       统一走官方 API，该行只会被写成「停用」状态，不在下拉框出现。
-
 幂等：按 (provider, model) 查找，存在则更新，不存在则插入；不碰用户自定义的配置，
 也不删任何行。默认标记按 provider 维度唯一。
 """
@@ -124,20 +121,6 @@ async def seed() -> None:
         await _ensure_single_default(db, "deepseek", "deepseek-flash")
         print("+ DeepSeek 官方：deepseek-flash（默认）+ deepseek-v4-pro")
 
-        # ---------- 2. DS 免费（官网 Web 反代，已下线） ----------
-        # 统一走官方 API：该行只保留为「停用」状态，不提供任何凭据写入
-        await _upsert(
-            db,
-            provider="deepseek-free",
-            model="deepseek-free",
-            provider_name="DeepSeek Free",
-            remark="已停用：官网 Web 反代方案下线，统一走官方 API",
-            base_url="https://chat.deepseek.com",
-            is_enabled=0,
-        )
-        await _ensure_single_default(db, "deepseek-free", "deepseek-free")
-        print("+ deepseek-free：已停用（方案下线，统一走官方 API）")
-
         await db.commit()
 
         # ---------- 打印全表 ----------
@@ -146,11 +129,7 @@ async def seed() -> None:
         print(f"  {'id':<5}{'来源':<8}{'provider':<16}{'model':<22}{'默认':<6}{'启用':<6}凭证")
         for cfg in result.scalars().all():
             src = "用户" if cfg.user_id else "系统"
-            cred = ""
-            if cfg.provider == "deepseek-free":
-                cred = f"手机号={cfg.web_phone or '未填'} 密码={'已设' if cfg.web_password else '未设'}"
-            elif cfg.api_key:
-                cred = "API Key=已设"
+            cred = "API Key=已设" if cfg.api_key else ""
             print(
                 f"  {cfg.config_id:<5}{src:<8}{cfg.provider or '':<16}{cfg.model or '':<22}"
                 f"{'是' if cfg.is_default == 1 else '-':<6}"

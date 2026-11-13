@@ -319,9 +319,8 @@ export interface AgentStreamOptions {
    * 后端把它回显在 `meta` 事件里，并把**本轮产生的写操作**记在这个 id 下；
    * 用户点消息末尾那个「回退」组件时，前端拿同一个 id 调 `rollbackAgentTurn()`。
    *
-   * ⚠️ 粒度是「**一次提问**」，不是「一次 LLM 往返」：同一次提问里 ds-free 会发**多次**
-   *    `/ai/agent/execute`（每次工具调用一次），它们必须复用**同一个** id ——
-   *    每调一次就换 id 等于把同一轮的操作记成好几轮，用户点一次回退只能撤掉其中一段。
+   * ⚠️ 粒度是「**一次提问**」，不是「一次 LLM 往返」：同一轮里的多次请求必须复用
+   *    同一个 id，否则用户点一次回退只能撤掉其中一段。
    *    生成与下发见 `useAgentChat.send()`（一次 `send()` 一个 id）。
    * ⚠️ 可选字段，只为「老调用方（不传）」保持零改动：不传时请求体里是空串，
    *    后端按「没有轮次信息」处理（这一轮的操作就回退不了）。
@@ -342,8 +341,6 @@ export interface AgentStreamOptions {
    * 用它的人设提示词 + 工具白名单（+ 可选绑定模型）。见 `/ai/agent/configs`。
    */
   agentId?: number
-  /** 「注入历史记忆」开关（仅 ds-free-nb 有意义）：历史作为附件投递给 DS 网页，避免长历史灌输入框卡死。 */
-  injectHistory?: boolean
   signal?: AbortSignal
 }
 
@@ -354,20 +351,6 @@ export interface AgentStreamHandlers {
   onDone?: (event: AgentEvent | null) => void
   /** 出错（网络 / 后端 error 事件 / 主动中止不算） */
   onError?: (message: string) => void
-  /**
-   * ds-free（前端循环）专用：写操作需要用户二次确认时回调
-   *
-   * 返回 Promise<boolean> —— resolve(true) 才执行该工具。api 付费链路不需要它
-   *（后端 `run_agent_stream` 自己挂起并下发 `tool_confirm` 事件）。
-   */
-  onConfirm?: (info: {
-    tool: string
-    action?: string
-    params?: Record<string, any>
-    destructive?: boolean
-    message?: string
-    preview?: Record<string, any>
-  }) => Promise<boolean>
 }
 
 function normalizeUserId(userId?: string | number): number | undefined {
@@ -381,7 +364,6 @@ function normalizeUserId(userId?: string | number): number | undefined {
  *
  * 后端 `run_agent_stream` 遇到需要确认的写操作时会**挂起**并下发 `tool_confirm`
  * 事件；前端弹卡片，用户点击后调本接口唤醒它继续执行（或按取消跳过）。
- * ds-free 链路不需要它 —— 循环跑在前端，直接本地 resolve。
  *
  * `edited`（可选，需求二：可编辑草稿）：用户在确认卡片里改过的内容，仅建库导入草稿
  * （`question_manage.batch_import`）会用 —— 形状 `{ questions: [...], bank: {...} }`，
@@ -406,32 +388,6 @@ export async function confirmAgentTool(
   } catch (e) {
     console.warn('[agent] 确认应答失败', e)
     return false
-  }
-}
-
-/**
- * 调试：打开/显示本机 ds-free-nb 桥的 DS 浏览器窗口（当前登录态）。
- * 返回 true=已打开；false=失败（桥未运行等）。
- */
-export async function showDsBridge(): Promise<{ ok: boolean; message?: string }> {
-  try {
-    const response = await fetch(`${import.meta.env.VITE_APP_BASE_API}/ai/ds-bridge/show`, {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer ' + getToken(),
-        'Content-Type': 'application/json'
-      }
-    })
-    const data = await response.json().catch(() => null)
-    // 后端统一信封：成功 code=200，失败走 error()（code!=200）
-    const code = data && (data.code ?? data.status)
-    if (code && code !== 200) {
-      return { ok: false, message: (data && data.msg) || (data && data.message) || '打开失败' }
-    }
-    return { ok: true }
-  } catch (e) {
-    console.warn('[ds-bridge] show 失败', e)
-    return { ok: false, message: 'DS 桥未运行' }
   }
 }
 
@@ -628,9 +584,7 @@ export async function postAgentStream(
         // 多智能体协同：官方角色 key（空 = 后端规则路由）+ 用户自定义智能体 id（优先）。
         // `agentId` 用 `|| undefined` 去掉 0/空，避免被后端当成「指定了 0 号」。
         role: opts.role || '',
-        agentId: opts.agentId || undefined,
-        // 「注入历史记忆」开关（仅 ds-free-nb 有意义，后端按 provider 收口）
-        injectHistory: opts.injectHistory === true
+        agentId: opts.agentId || undefined
       }),
       signal: opts.signal
     })

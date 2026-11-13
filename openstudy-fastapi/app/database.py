@@ -161,7 +161,7 @@ async def init_db():
 
         await conn.run_sync(_backfill_notice_create_time)
 
-        # 兼容历史库：sys_ai_config 新增 DeepSeek 网页端反代凭据字段
+        # 兼容历史库：sys_ai_config 的模型类型字段
         def _ensure_ai_config_columns(sync_conn):
             from sqlalchemy import inspect, text
             inspector = inspect(sync_conn)
@@ -169,21 +169,6 @@ async def init_db():
                 return
             columns = {c["name"] for c in inspector.get_columns("sys_ai_config")}
             added = []
-            if "web_phone" not in columns:
-                sync_conn.execute(text(
-                    "ALTER TABLE sys_ai_config ADD COLUMN web_phone VARCHAR(50) NULL"
-                ))
-                added.append("web_phone")
-            if "web_password" not in columns:
-                sync_conn.execute(text(
-                    "ALTER TABLE sys_ai_config ADD COLUMN web_password VARCHAR(200) NULL"
-                ))
-                added.append("web_password")
-            if "web_area_code" not in columns:
-                sync_conn.execute(text(
-                    "ALTER TABLE sys_ai_config ADD COLUMN web_area_code VARCHAR(10) NULL"
-                ))
-                added.append("web_area_code")
             if "model_kind" not in columns:
                 sync_conn.execute(text(
                     "ALTER TABLE sys_ai_config ADD COLUMN model_kind VARCHAR(20) NULL"

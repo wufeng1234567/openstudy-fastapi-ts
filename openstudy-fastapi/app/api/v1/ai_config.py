@@ -68,7 +68,6 @@ def format_config(cfg: SysAiConfig, mask_key: bool = False) -> dict:
     mask_key=True 时把 api_key 置空 —— 非管理员看**系统行**时用，
     避免任何登录用户都能从接口里读到官方 API Key（前端本来就只做展示掩码，
     掩码前的原值在响应体里明文可见）。
-    ds-free 的密码字段一律只回传「是否已配置」。
     """
     return {
         "configId": cfg.config_id,
@@ -90,12 +89,6 @@ def format_config(cfg: SysAiConfig, mask_key: bool = False) -> dict:
         "thinkingMode": cfg.thinking_mode,
         "reasoningEffort": cfg.reasoning_effort,
         "contextLength": cfg.context_length,
-        # ds-free 专用：手机号只给管理员/配置所有者看；非管理员看系统配置时脱敏
-        "webPhone": "" if mask_key else cfg.web_phone,
-        "webAreaCode": cfg.web_area_code or "+86",
-        "webPasswordSet": bool(cfg.web_password),
-        "webPasswordMasked": "******" if cfg.web_password else "",
-        "needsCredentials": cfg.provider == "deepseek-free",
         "createTime": cfg.create_time.isoformat() if cfg.create_time else None,
         "updateTime": cfg.update_time.isoformat() if cfg.update_time else None,
     }
@@ -120,10 +113,6 @@ class AiConfigBody(BaseModel):
     thinkingMode: Optional[str] = None
     reasoningEffort: Optional[str] = None
     contextLength: Optional[str] = None
-    # ds-free（provider='deepseek-free'）专用凭据
-    webPhone: Optional[str] = None
-    webPassword: Optional[str] = None
-    webAreaCode: Optional[str] = None
 
 
 # ========== 查询类（注册在 /{config_id} 之前避免路径冲突） ==========
@@ -295,9 +284,6 @@ async def add_ai_config(
         model=model,
         api_key=body.apiKey,
         base_url=body.baseUrl or body.apiUrl,
-        web_phone=body.webPhone,
-        web_password=body.webPassword,
-        web_area_code=body.webAreaCode or "+86",
         is_default=1 if body.isDefault == 1 else 0,
         is_enabled=1 if body.isEnabled is None else body.isEnabled,
         status=body.status or "0",
@@ -375,13 +361,6 @@ async def update_ai_config(
         cfg.reasoning_effort = body.reasoningEffort
     if body.contextLength is not None:
         cfg.context_length = context_budget.normalize_context_length(body.contextLength)
-    # ds-free 凭据：密码留空或传掩码表示「不修改」
-    if body.webPhone is not None:
-        cfg.web_phone = body.webPhone
-    if body.webAreaCode is not None:
-        cfg.web_area_code = body.webAreaCode
-    if body.webPassword is not None and body.webPassword != "" and body.webPassword != "******":
-        cfg.web_password = body.webPassword
     cfg.update_time = datetime.now()
     cfg.update_by = current_user.get("user_name", "admin")
 
@@ -459,8 +438,7 @@ async def test_ai_connection(
 ):
     """测试模型连接
 
-    - provider='deepseek-free'：走网页端反代链路，用手机号+密码登录真实试聊一次
-    - 其它 provider：按 OpenAI 兼容格式请求 /chat/completions
+    - 按 OpenAI 兼容格式请求 /chat/completions
     """
     from app.services.ai.db_config import PROVIDER_BASE_URLS
 
@@ -473,26 +451,6 @@ async def test_ai_connection(
             return error("无权测试该模型配置，只能测试自己在「我的模型」里添加的模型")
 
     provider = body.provider or (cfg.provider if cfg else None)
-
-    # ---- 分支一：ds-free 网页端反代 ----
-    if provider == "deepseek-free":
-        phone = body.webPhone or (cfg.web_phone if cfg else None)
-        password = body.webPassword or ""
-        # 掩码 / 空 → 用库里已存的密码
-        if (not password or password == "******") and cfg:
-            password = cfg.web_password or ""
-        area_code = body.webAreaCode or (cfg.web_area_code if cfg else None) or "+86"
-
-        if not phone or not password:
-            return error("ds-free 需要手机号与密码，请在配置里填写")
-
-        from app.services.ai.deepseek_web_client import DeepSeekWebClient
-
-        client = DeepSeekWebClient(phone=phone, password=password, area_code=area_code)
-        result = await client.self_test()
-        if result.get("ok"):
-            return success(result)
-        return error(result.get("detail") or "ds-free 连通性测试失败")
 
     # ---- 分支二：OpenAI 兼容接口 ----
     if cfg:
@@ -550,10 +508,6 @@ async def fetch_provider_models(
             return error("配置不存在")
 
     provider = body.provider or (cfg.provider if cfg else None)
-
-    # ds-free 走网页端反代，没有标准 /models 列表，返回内置模型名
-    if provider == "deepseek-free":
-        return success({"models": [{"id": "ds-free-nb", "ownedBy": "deepseek-web"}], "baseUrl": ""})
 
     if cfg:
         base_url = (body.apiUrl or body.baseUrl or cfg.base_url or "").strip()

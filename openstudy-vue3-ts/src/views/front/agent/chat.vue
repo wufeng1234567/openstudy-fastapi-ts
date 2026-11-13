@@ -179,20 +179,6 @@
 
             <!-- 模型下拉框：按 DSH 的底部输入区排布，**放在右侧工具行**、
                  与发送按钮垂直居中对齐，且去掉自带描边（borderless）。 -->
-            <button v-if="showInjectHistory" type="button" class="tb-btn tb-inject"
-              :disabled="isGenerating || injectingHistory" @click="handleInjectHistory"
-              title="把当前会话的历史上下文作为附件发送给 DS 网页（用于长上下文续聊）">
-              <el-icon><UploadFilled /></el-icon>
-              <span>{{ injectingHistory ? '注入中…' : '注入历史' }}</span>
-            </button>
-            <!-- 「调试」按钮：仅 DS 桥模型露出。点击打开当前登录态的 DS 浏览器窗口（有头），
-                 便于直接看到卡在哪一步（附件上传 / 等回复）。 -->
-            <button v-if="showInjectHistory" type="button" class="tb-btn tb-inject"
-              :disabled="openingBridge" @click="handleOpenDsBridge"
-              title="打开当前登录态的 DS 浏览器窗口（调试用）">
-              <el-icon><View /></el-icon>
-              <span>{{ openingBridge ? '打开中…' : '调试' }}</span>
-            </button>
           </template>
           <!--
             输入框下方工具行（右半）：只留模型选择器。
@@ -347,9 +333,9 @@ import OsIcon from '@/components/OsIcon/index.vue'
 // 工具开关清单（设置 tab）：**静态 import**，不再用 `await import()` 动态加载 ——
 // 动态 import 会把「模块何时就绪」变成变量，是「刷新后先点别的 tab 再进设置，工具列表
 // 不加载」这类顺序敏感 bug 的温床（用户 2026-10-10 报）。静态 import 保证函数随时可用。
-import { fetchAgentToolsForUi } from '@/api/ai/agentDsFree'
+import { fetchAgentToolsForUi } from '@/api/ai/agentTools'
 import { useAgentChat, normalizeRestoredMessages } from '@/composables/useAgentChat'
-import { listSessions, createSession, deleteSession, getConversationHistory, saveConversationMessages, getAgentTimeline, attachmentPlaceholder, fillAttachmentMetas } from '@/api/ai/ai'
+import { listSessions, createSession, deleteSession, getConversationHistory, getAgentTimeline, attachmentPlaceholder, fillAttachmentMetas } from '@/api/ai/ai'
 import { getChatSuggestions, uploadToWorkspace } from '@/api/ai/workspace'
 import {
   listAgentConfigs,
@@ -359,7 +345,6 @@ import {
   listAgentExperts,
   setAgentExpertPref,
   setAgentExpertModel,
-  showDsBridge,
   type AgentConfig,
   type AgentConfigInput,
   type AgentExpert
@@ -372,8 +357,6 @@ import {
   countAttachments,
   flattenAttachments,
   hasFiles,
-  isDsFreeModel,
-  isInjectHistoryModel,
   mapToolLabels,
   normalizeHeroSuggestions,
   normalizeOutlineOffset,
@@ -468,23 +451,6 @@ const selectedConfigId = ref(null)
 const onModelSelect = (cfg) => { selectedConfigId.value = cfg?.configId ?? null }
 /** 写操作**默认自动执行**（仅删除需确认）——用户 2026-10-12 定案：取消「自动模式」开关。 */
 const autoConfirm = ref(true)
-/** 「注入历史上下文」按钮状态：仅「DS 免费（无浏览器）」= ds-free-nb 模型露出。 */
-const injectingHistory = ref(false)
-const showInjectHistory = computed(() => isInjectHistoryModel(model.value))
-
-/** 「调试」按钮状态：打开当前登录态的 DS 浏览器窗口（有头），便于排查卡在哪一步。 */
-const openingBridge = ref(false)
-const handleOpenDsBridge = async (): Promise<void> => {
-  if (openingBridge.value) return
-  openingBridge.value = true
-  try {
-    const r = await showDsBridge()
-    if (r.ok) ElMessage.success('已打开 DS 浏览器窗口（保持登录态）')
-    else ElMessage.error(r.message || '打开 DS 浏览器失败（桥未运行？）')
-  } finally {
-    openingBridge.value = false
-  }
-}
 
 /* ===================== 多智能体协同 ===================== */
 // 智能体选择：官方角色 + 我的自定义智能体。
@@ -810,9 +776,6 @@ watch(
   },
   { deep: false, immediate: true }
 )
-
-/** ds-free 由扩展代发、挂不了 tools，Agent 用不了 */
-const isDsFree = computed(() => isDsFreeModel(model.value))
 
 /* ===================== 附件 ===================== */
 const attachments = ref<{ images: Array<{ name: string; type: string; base64: string }>; files: Array<{ name: string; type: string; base64: string }> }>({
@@ -1171,7 +1134,7 @@ function autoCollectChatDocs(docs: Array<{ name: string; type: string; base64: s
   })
 }
 
-const handleSend = async ({ content, injectHistory = false }: { content: string; injectHistory?: boolean }) => {
+const handleSend = async ({ content }: { content: string }) => {
   if (isGenerating.value) return
   const text = (content || '').trim()
   const imgs = [...attachments.value.images]
@@ -1200,7 +1163,7 @@ const handleSend = async ({ content, injectHistory = false }: { content: string;
   )
   const metasReady = fillAttachmentMetas(metas, imgs, docs)
 
-  const answer = await send({
+  await send({
     message: text,
     // 传对象而不是 .map(i => i.base64)：下游要靠 name 给 DS 的图片附件起名
     images: imgs,
@@ -1216,84 +1179,16 @@ const handleSend = async ({ content, injectHistory = false }: { content: string;
     // 多智能体协同：选了「我的智能体」传 agentId（优先），选了官方角色传 role；
     // 都没选（'' = 自动）传空 → 后端按消息规则路由。
     role: selectedRole.value || undefined,
-    agentId: selectedAgentId.value,
-    // 仅 ds-free-nb：把当前会话历史作为附件投递给 DS 网页
-    injectHistory,
+    agentId: selectedAgentId.value
   })
 
-  /**
-   * 本轮的轮次 id —— **必须在 `await send(...)` 返回后、在下面那个 `await metasReady` 之前**抓在手里。
-   *
-   * 为什么非传不可：`ai_chat_message.turn_id` 是 `POST /ai/conversation/drop-turn` 的**唯一命中键**
-   * （服务端按 `(user_id, session_id, turn_id)` 删这一轮）。下面这条补写以前不带它 →
-   * 落库的行 `turn_id` 是空串 → 用户点回退时服务端**一行都匹配不到**、还回 `code:200`
-   * （`dropped: 0`），界面却把消息摘了、快照也重写 → 刷新一次这一轮又回来
-   * （用户 2026-09-23 报的「回退以后刷新，刚刚回退的对话内容还是存在」的第二半）。
-   * ⚠️ 必须是**这一轮**的 id，不许自己再生成一个：`send()` 开头就把 `currentTurnId`
-   * 置成了本轮 id，`await send(...)` resolve 时它的 `finally`（push `turn_end` 标记）已经跑完，
-   * 所以此刻取到的与轮末标记里的 `turnId` **逐字相同** —— 生成一个新的就与标记对不上，回退照样匹配不到。
-   * ⚠️ 先抓成局部量再进 `await`：下面的补写是在 `await metasReady` 之后才发请求的，
-   * 中间隔着一次 await，那时 `currentTurnId` 万一被下一次 `send()` 换掉了就传错轮次。
-   */
-  const turnIdOfThisSend = String(currentTurnId.value || '')
-
-  // ds-free 链路后端不落库（扩展代发），这里补写「提问 + 最终回复」保证历史可读
-  if (isDsFree.value && sessionId.value?.startsWith('asst_') && answer) {
-    try {
-      // 落库要拿到最终的预览块，不能写半截 —— 等补齐完再写
-      await metasReady
-      await saveConversationMessages(
-        sessionId.value,
-        {
-          userMessage: text || (imgs.length ? '[图片]' : '[附件]'),
-          assistantMessage: answer,
-          attachments: metas.map((a) => ({ ...a })),
-          // 这一轮的轮次标记：服务端靠它把「提问 + 回复」两行按轮找出来（见上面的说明）
-          turnId: turnIdOfThisSend
-        },
-        userId.value
-      )
-    } catch (e) {
-      console.warn('[agent] ds-free 历史落库失败', e)
-    }
-  }
+  await metasReady
 
   // 新会话的第一轮之后，后端才把标题写进去 → 刷新列表
   loadSessions()
   // 这一轮里「智能体专家」可能刚用 agent_manage 创建/改了智能体 →
   // 刷新「我的智能体」列表，否则新建的智能体要等重进页面才出现（用户 2026-10-12 报）。
   loadAgents()
-}
-
-/**
- * 「注入历史上下文」按钮（**一次性操作**，仅 ds-free-nb）：
- * 点击 → 把说明文字**自动填进输入框**，随即**自动发送**（走与手打完全相同的发送路径）。
- * 后端据 injectHistory=true 把当前会话历史拼进正文、并让桥把正文作为 .md 附件投递给 DS 网页。
- */
-const INJECT_HISTORY_MSG =
-  '以下附件是本会话的历史对话上下文。请阅读该附件，理解我们已经聊过的内容，然后等待我的下一条指令。'
-const handleInjectHistory = async (): Promise<void> => {
-  if (injectingHistory.value || isGenerating.value) return
-  if (!sessionId.value || !messages.value.some((m) => m.role === 'user' || m.role === 'assistant')) {
-    ElMessage.info('当前会话还没有历史内容可注入（先聊几句再注入）')
-    return
-  }
-  injectingHistory.value = true
-  try {
-    // 1) 填进输入框（用户可见，与手打一致）
-    chatRef.value?.setInputText?.(INJECT_HISTORY_MSG)
-    await nextTick()
-    // 2) 自动发送（走正常发送路径；带 injectHistory 标记）
-    await handleSend({ content: INJECT_HISTORY_MSG, injectHistory: true })
-    // 3) 清空输入框（正常发送后 ChatInputArea 会自清；这里直呼 handleSend 绕过了它，手动清）
-    chatRef.value?.setInputText?.('')
-    ElMessage.success('已把历史上下文作为附件注入给 DS 网页')
-  } catch (e) {
-    console.error('[inject-history] 失败', e)
-    ElMessage.error('注入历史上下文失败')
-  } finally {
-    injectingHistory.value = false
-  }
 }
 
 /* ===================== 生命周期 ===================== */

@@ -98,8 +98,6 @@ export interface AiStreamOptions {
   thinking?: boolean
   /** 采样温度。不传 = 后端默认 0.7；出题类沿用历史口径 0.8 */
   temperature?: number
-  /** 「注入历史记忆」开关（仅 ds-free-nb）：历史作为附件投递给 DS 网页 */
-  injectHistory?: boolean
   /**
    * 知识库取材（可选）：出题类场景选中「取材来源 = 我的知识库」时传入选中库 id。
    * 后端先检索这些库、把原文片段注入提示词，并要求模型据此出题并注明出处。
@@ -160,8 +158,6 @@ async function postAiStream(
         userId: normalizeUserId(opts.userId),
         thinking: opts.thinking,
         temperature: opts.temperature,
-        // 「注入历史记忆」开关（仅 ds-free-nb 有意义；后端按 provider 收口）
-        injectHistory: opts.injectHistory === true,
         // 知识库取材（出题类场景）：选中库 id 列表，后端检索原文后注入提示词
         kbIds: opts.kbIds || []
       }),
@@ -537,31 +533,6 @@ export function generateQuestionsWithContext(data: any) {
   })
 }
 
-/**
- * 助手系统提示词缓存（来自后端 /ai/prompts/assistant）
- *
- * ds-free 走前端直连、不经后端 assistant/stream，所以系统提示词要从后端取；
- * 缓存一次，避免每条消息都请求。
- */
-let _assistantPromptCache: string | null = null
-
-export async function fetchAssistantPrompt(): Promise<string> {
-  if (_assistantPromptCache !== null) return _assistantPromptCache
-  try {
-    const resp = await fetch(`${import.meta.env.VITE_APP_BASE_API}/ai/prompts/assistant`, {
-      headers: { 'Authorization': 'Bearer ' + getToken() }
-    })
-    if (!resp.ok) return ''
-    const json = await resp.json()
-    // 后端统一响应体：{ code, msg, data: { assistant } }
-    _assistantPromptCache = json?.data?.assistant || json?.assistant || ''
-    return _assistantPromptCache
-  } catch (e) {
-    console.warn('[ds-free] 获取后端助手提示词失败，将不带系统提示词:', e)
-    return ''
-  }
-}
-
 /** 把 userId 规整成后端要的整数（非数字 / 空值 → undefined，JSON 序列化时会被忽略） */
 function normalizeUserId(userId?: string | number): number | undefined {
   if (userId === null || userId === undefined || userId === '') return undefined
@@ -783,132 +754,19 @@ export async function assistantStream(
    * - scene / variables：场景与模板变量（见 {@link AiStreamOptions}）。
    *     不传 scene 时按 `assistant` 处理 —— 也只有该场景才会用 sessionId 落历史。
    * - images / files：附件数组 [{ name, type, base64 }]，base64 为**完整 data URL**。
-   *     · 选到 `deepseek-free` → 交给浏览器扩展，由 DS 网页端上传；
-   *     · 其它模型 → 走后端多模态通道，附件不再被忽略。
-   * - systemPrompt：系统提示词（仅 ds-free 需要，DS 网页版没有 system role）。
    * - provider：显式指定供应商（一般用 model 就够了）。
-   * - turnId：**本轮的轮次 id**。只有 ds-free 分支用它（补写历史要带上，
-   *   见 `saveConversationMessages` 的 `turnId`）；不传时**自己生成一个**，
-   *   两次补写共用同一个 —— 少了它，落库的行 `turn_id` 是空串，
-   *   用户点「回退」时服务端一行都匹配不到（`dropped: 0`，还带成功样式）。
    */
   extras?: {
     images?: any[]
     files?: any[]
-    systemPrompt?: string
     scene?: string
     variables?: Record<string, any>
     provider?: string
     configId?: number
-    turnId?: string
     /** 知识库取材（出题类场景）：选中的知识库 id 列表 */
     kbIds?: number[]
   }
 ): Promise<void> {
-  // ---- deepseek-free：走浏览器扩展（DeepSeek 官网 Web 版），完全不经过后端 ----
-  // 这个分支是**在用**的（从模型下拉框选到 model='deepseek-free' 就会走这里），
-  // 不是兜底死代码：聊天助手的「只发图片/文件、不写文字」能力依赖它。
-  if (model === 'deepseek-free') {
-    if (signal?.aborted) return
-
-    // 只给「真正的聊天会话」补写历史：会话 id 一律由后端生成（asst_ 前缀）。
-    // 出题类一次性生成（AI 搭建题库 / 批量出题…）不带 sessionId（默认为空串），
-    // 持久化整体跳过，不会往历史表里塞数据。
-    const persistSessionId =
-      typeof sessionId === 'string' && sessionId.startsWith('asst_') ? sessionId : ''
-
-    /**
-     * 本轮的轮次 id —— **一次提问一个**，下面两次补写（先写提问、后补回复）共用它。
-     *
-     * 为什么在这里算：两次补写都在本函数里发起，只有这里能保证「跨调用一致」
-     * （两次拿到的必须是同一个 id，否则回退只能删掉其中一行）。
-     * 调用方有 id（例如智能体链路那种「一次提问一个 id」的页面）就从 `extras.turnId`
-     * 传进来；没有（普通聊天链路，本来就没有轮次概念）就现生成一个 ——
-     * 落库的行至少要带上「属于哪一轮」这个信息，回退才有凭据。
-     */
-    const persistTurnId = String(extras?.turnId || '') || newPersistTurnId()
-
-    // 本轮的累积全文（扩展 SDK 的 onChunk 给的是增量，这里统一成「累积」）
-    let acc = ''
-
-    // 文档解析：DS 网页端只会读 Word / PDF 里的**文字**，文档内的插图会被直接丢掉。
-    // 这里先在前端把插图解析出来，当作图片附件一起上传，AI 才能真正「看到」图。
-    // （官方 API 链路不需要这么做：后端 chat_engine.extract_attachments() 已经抽了，
-    //   前端再传一遍会变成重复图片。）
-    // 同一份解析结果还会被压成预览块落库，供聊天记录里的「在线预览」使用。
-    const { map: docPreviews, docs: parsedDocs } = await parseDocsForPreview(extras?.files)
-    const dsImages = [...(extras?.images || []), ...(await collectDocImages(parsedDocs))]
-
-    // ① 提问先落库：ds-free 完全绕过后端，历史只能前端补写。若等回复结束再写，
-    //    一旦回复为空 / 超时 / 用户刷新页面，整轮都不见了 —— 用户看到的就是
-    //    「刷新后历史会话是空的」。这里发送即写，附件在写入时才生成缩略图。
-    const userSaved = persistSessionId
-      ? persistDsFreeUserTurn({
-          userId,
-          sessionId: persistSessionId,
-          userMessage: message,
-          images: extras?.images,
-          files: extras?.files,
-          docPreviews,
-          // 本轮 id：与下面补写回复那一次**必须逐字相同**（回退按它删整轮）
-          turnId: persistTurnId
-        })
-      : Promise.resolve()
-
-    try {
-      const { chatWithDSAccumulated, setDeepThink } = await import('@/utils/ds-proxy')
-      // 深度思考是 DS 页面上的开关，需要先同步过去再发消息
-      if (thinking !== undefined && thinking !== null) {
-        await setDeepThink(thinking)
-      }
-      const full = await chatWithDSAccumulated({
-        userMessage: message,
-        // 提示词注入：DS 网页版没有 system role，由封装层拼接在用户消息前。
-        // 提示词从后端取（单一事实来源），调用方也可用 extras.systemPrompt 覆盖。
-        systemPrompt: extras?.systemPrompt || (await fetchAssistantPrompt()),
-        // 图片附件：DS 官网现已默认支持，直传 data URL；
-        // 末尾追加「文档里的插图」，否则带图 Word 的图 AI 看不到。
-        images: dsImages,
-        // 文档附件（Word / PDF / md / txt 等）：走扩展的 fileDataList 通道
-        files: extras?.files || [],
-        onChunk: (text: string) => {
-          acc = text
-          onChunk?.(text)
-        }
-      })
-      if (!acc && full) {
-        acc = full
-        onChunk?.(full)
-      }
-      onComplete?.(acc)
-    } catch (error: any) {
-      onError?.(error)
-    } finally {
-      // ② 回复等「稳定」后再补写（成功 / 报错 / 中断都会走到这里）。
-      //    必须串在提问落库之后，否则回复行可能拿到比提问更小的 id，
-      //    历史里的顺序就会变成「先回复后提问」。
-      if (persistSessionId) {
-        void (async () => {
-          try {
-            await userSaved
-          } catch {
-            /* 提问落库失败已在内部告警，这里不阻断回复落库 */
-          }
-          await persistDsFreeAssistant({
-            userId,
-            sessionId: persistSessionId,
-            getText: () => acc,
-            // 用户点了「停止生成」时用「已停止生成」而不是「检查扩展」的说明
-            aborted: signal?.aborted === true,
-            // 与先写提问那一次同一个 id（这一行漏了，回退就只能删掉提问行）
-            turnId: persistTurnId
-          })
-        })()
-      }
-    }
-    return
-  }
-
   // ---- 官方 API（后端）分支：统一走 postAiStream ----
   // 不再区分「有附件走 POST / 纯文字走 GET」：附件位置、长文本（GET 会撞 URL 长度
   // 上限）、scene / variables 只有 POST 能完整表达。纯文字以前走 GET 只是为了
@@ -1029,50 +887,9 @@ export function deleteSession(sessionId: string | number, userId?: string | numb
 }
 
 /**
- * 补写一轮对话到会话历史（SQL，服务端原子写入）
- *
- * ds-free 的请求由浏览器扩展代发给 chat.deepseek.com，**完全不经过后端**，
- * 所以后端没有机会保存历史 —— 刷新页面后会话就是空的。
- * 前端会调用两次：发送后先写提问（+附件缩略图），回复稳定后再写回复；
- * 后端把「提问 + 回复」放在一个事务里，不会出现半截会话。
- */
-export function saveConversationMessages(
-  sessionId: string | number,
-  body: {
-    userMessage: string
-    assistantMessage: string
-    /** [{name, type, thumb}]，thumb 是小缩略图（不传原图） */
-    attachments?: any[]
-    /**
-     * **这一轮的轮次 id**（一次用户提问一个）—— 落进 `ai_chat_message.turn_id`
-     *
-     * 它是「回退这一轮对话」的唯一凭据：`POST /ai/conversation/drop-turn` 按
-     * `(user_id, sessionId, turnId)` 命中行，**行上没有它 = 一行都匹配不到**，
-     * 用户点回退时服务端只能回 `dropped: 0`（还带 `code:200` 的成功样式）。
-     *
-     * ⚠️ **先写提问、后补回复是两次调用，两次必须带同一个 id**（见 `persistDsFreeUserTurn`
-     *    的注释）；带成两个 id，回退时就只能撤掉其中一行。
-     * ⚠️ 后端 `SaveConversationBody` 收这个字段并透传给 `save_turn` —— 但**它是显式声明的
-     *    字段**（pydantic 默认忽略未知字段，字段名对不上会被静默丢掉，落库全是空串）。
-     * ⚠️ 可选是为了不改老调用方；**凡是有轮次概念的那条链路都必须传**。
-     */
-    turnId?: string
-  },
-  userId?: string | number
-) {
-  return request({
-    url: `/ai/conversation/${sessionId}/messages`,
-    method: 'post',
-    params: { userId },
-    data: body
-  })
-}
-
-/**
  * 保存智能体「完整时间线快照」（含工具调用卡片）
  *
- * `saveConversationMessages` 只存「提问 + 最终回复」两行，**不含工具卡片** —— 刷新后
- * 卡片全丢、只剩纯文本（用户说的「变成死数据」）。这里把前端 `useAgentChat` 的整条
+ * 时间线快照把前端 `useAgentChat` 的整条
  * 消息流按会话存一份 JSON，加载时优先用它复原，卡片样式与状态就都还在。
  */
 export function saveAgentTimeline(
@@ -1120,8 +937,7 @@ export interface AgentDropTurnResult {
    * 服务端「按 `(user_id, session_id, turn_id)` **不考虑 `del_flag`** 命中的行数」
    *
    * 它回答 `dropped` 回答不了的那个问题：**这一轮在服务端历史里有没有轮次标记**。
-   *   · `0` + `dropped: 0` → 那一轮的行 `turn_id` 是空串（ds-free 补写历史时前端还没带
-   *     `turnId` 的旧数据）→ 服务端**一行都匹配不到**；
+   *   · `0` + `dropped: 0` → 那一轮的行 `turn_id` 是空串（旧数据没有 `turnId`）→ 服务端**一行都匹配不到**；
    *   · `> 0` + `dropped: 0` → **已经删过了**（幂等重试的正常回执）。
    * 界面据此把这两件事分开说；但它**不是** `ok` 的判据，也**不改变任何一步**。
    * 老后端没这个字段时归 0（形状恒定，UI 不用写判空分支）。
@@ -1365,136 +1181,6 @@ export async function fillAttachmentMetas(
 }
 
 /**
- * 生成一个**轮次 id**（补写历史用）
- *
- * 形状 `t_<毫秒>_<随机 6 位>` —— 与 `composables/useAgentChat.ts` 的 `newTurnId()`
- * **逐字同形**（那边是「标准件」，这里是补写历史那条链路自己的那份）：
- *   · 毫秒时间戳 —— 日志 / 库里一眼看出先后；
- *   · 随机后缀 —— 同一毫秒内连发两次也不会撞车（撞了会把两轮的账本混成一炉）。
- *
- * 为什么 `api/ai/ai.ts` 不直接 import 那个函数：方向反了 —— `useAgentChat` import 本模块，
- * 反过来 import 会成环。两行纯函数各留一份，改形状时**两边一起改**。
- */
-function newPersistTurnId(): string {
-  return `t_${Date.now()}_${Math.random().toString(36).slice(2, 8).padEnd(6, '0')}`
-}
-
-/**
- * ds-free 专用：把「这一轮的提问」先写进历史（含附件缩略图）
- *
- * 返回 Promise 以便调用方串行化（保证回复行的 id 一定大于提问行）。
- *
- * ⚠️ `turnId` 必须与「稍后补写回复」那一次（`persistDsFreeAssistant`）**逐字相同**：
- *    后端按 `(user_id, sessionId, turnId)` 删除「这一轮对话」，两个 id 不带成一样，
- *    用户点一次回退就只能撤掉提问行或回复行之一。
- */
-async function persistDsFreeUserTurn(params: {
-  userId?: string | number
-  sessionId: string
-  userMessage: string
-  images?: any[]
-  files?: any[]
-  /** 已解析好的文档预览块（避免重复解析一遍） */
-  docPreviews?: DocPreviewMap
-  /** 本轮的轮次 id（落进 `ai_chat_message.turn_id`，回退按它命中） */
-  turnId?: string
-}): Promise<void> {
-  try {
-    const attachments = await buildAttachmentMetas(
-      params.images,
-      params.files,
-      params.docPreviews
-    )
-    await saveConversationMessages(
-      params.sessionId,
-      {
-        userMessage: params.userMessage || '',
-        assistantMessage: '',
-        attachments,
-        turnId: params.turnId || ''
-      },
-      params.userId
-    )
-  } catch (e) {
-    console.warn('[ds-free] 提问落库失败（不影响本次对话）:', e)
-  }
-}
-
-/** 回复文本为空时的占位说明（与前端气泡提示口径保持一致） */
-const DS_FREE_NO_REPLY_NOTE =
-  '（本次没有收到回复内容）请确认扩展侧的 chat.deepseek.com 已打开并登录，或在输入框里能正常发送，然后重试。'
-
-/**
- * ds-free 专用：等回复文本「稳定」后补写 AI 回复
- *
- * 为什么要等稳定：扩展侧的 DONE 有两个来源 —— SSE 的 [DONE]，以及
- * 「静默 30s」的兜底定时器（见扩展 bridge.js 的 _doneTimer）。后者有时会在
- * 流式还没真正结束时先 resolve，此时前端拿到的文本只有半截甚至为空；
- * 直接落库就会写出空回复 / 半截回复，用户刷新后看到的是「AI 回复没了」。
- *
- * 于是这里轮询 getText()，当文本连续 settleMs 不再变化（且非空）才写库。
- * settleMs 取 1200ms：扩展每 ~50ms 推一次分片，只要流还在跑就不可能稳定
- * 1.2s，所以「稳定」≈「流已结束」；比原来的 2500ms 更快落库，
- * 缩短用户「看到回复后立刻刷新页面」导致这轮丢失的窗口。
- *
- * 兜底：跑满 maxWaitMs 仍然一个字都没有时，**不再直接 return** ——
- * 之前那样会让历史里只剩用户提问（用户看到的就是「AI 回复存不上」）。
- * 现在补一条说明行，"提问 + 回复"成对出现，刷新后不会只剩半截会话。
- * 全程 fire-and-forget，失败只告警。
- */
-async function persistDsFreeAssistant(params: {
-  userId?: string | number
-  sessionId: string
-  getText: () => string
-  settleMs?: number
-  maxWaitMs?: number
-  /** 用户是否点了「停止生成」——决定一个字都没收到时写入哪种说明 */
-  aborted?: boolean
-  /**
-   * 本轮的轮次 id —— **与先写提问那次（`persistDsFreeUserTurn`）逐字相同**。
-   * 两次写的是同一轮的两行，回退按 `turnId` 把这一轮一起删掉（见那边的注释）。
-   */
-  turnId?: string
-}): Promise<void> {
-  const settleMs = params.settleMs ?? 1200
-  const maxWaitMs = params.maxWaitMs ?? 60000
-  const pollMs = 300
-  const startedAt = Date.now()
-
-  let last = ''
-  let lastChangeAt = Date.now()
-  while (Date.now() - startedAt < maxWaitMs) {
-    await new Promise((r) => setTimeout(r, pollMs))
-    const now = params.getText() || ''
-    if (now !== last) {
-      last = now
-      lastChangeAt = Date.now()
-      continue
-    }
-    // 文本已稳定且非空 → 认为回复结束
-    if (now && Date.now() - lastChangeAt >= settleMs) break
-  }
-
-  const text = (params.getText() || '').trim()
-  // 一个字都没拿到时也要留下助手这一行，否则历史里只剩提问（= 用户说的「回复没保存」）
-  const payload = text || (params.aborted ? '（已停止生成）' : DS_FREE_NO_REPLY_NOTE)
-  if (!text) {
-    console.warn('[ds-free] 本轮没有拿到回复文本，改为写入说明行（避免历史只剩提问）')
-  }
-
-  try {
-    await saveConversationMessages(
-      params.sessionId,
-      { userMessage: '', assistantMessage: payload, attachments: [], turnId: params.turnId || '' },
-      params.userId
-    )
-  } catch (e) {
-    console.warn('[ds-free] AI 回复落库失败（不影响本次对话）:', e)
-  }
-}
-
-
-/**
  * 题目智能解析（流式）
  * deepThink=true 时后端开启深度思考，但**只下发正式回答**（思考过程不下发），
  * 前端用「思考中」动画占位即可。
@@ -1517,54 +1203,6 @@ export async function analyzeQuestionStream(
   /** 精确指定选中的 AI 配置 id（区分同名的系统/用户模型） */
   configId?: number
 ): Promise<void> {
-  // ---- deepseek-free：走浏览器扩展（DeepSeek 官网 Web 版），完全不经过后端 ----
-  if (model === 'deepseek-free') {
-    const parts: string[] = [
-      '你是 OpenStudy 学习平台的题目解析助手。请对下面这道题给出详细、准确的中文解析。',
-      '',
-      '## 题目',
-      question
-    ]
-    if (questionType) parts.push('', `题型：${questionType}`)
-    if (options) parts.push('', '## 选项', options)
-    if (correctAnswer) parts.push('', '## 正确答案', correctAnswer)
-    if (subQuestions) parts.push('', '## 小题', subQuestions)
-    if (images && images.length) {
-      // DS 网页端扩展链路无法传多模态图片，提示用户改为官方/中转站模型
-      parts.push(
-        '',
-        `> 注：本题含 ${images.length} 张图片，当前「DS 网页版」通道无法识别图片；` +
-        '如需解析图片请切换到支持视觉的官方 / 中转站模型。'
-      )
-    }
-    parts.push(
-      '',
-      '## 输出要求',
-      '1. 先给出正确答案并说明判断依据；',
-      '2. 逐项分析每个选项为什么对 / 为什么错；',
-      '3. 指出本题涉及的知识点与常见易错点；',
-      '4. 用 Markdown 排版，不要复述题目原文。'
-    )
-
-    try {
-      const { chatWithDSAccumulated, setDeepThink } = await import('@/utils/ds-proxy')
-      // 深度思考是 DS 页面上的按钮，先同步再发
-      if (deepThink !== undefined && deepThink !== null) {
-        await setDeepThink(deepThink)
-      }
-      const full = await chatWithDSAccumulated({
-        userMessage: parts.join('\n'),
-        onChunk,
-        // 深度思考过程透传给「思考中」区域
-        onThinking: onReasoningChunk
-      })
-      onComplete?.(full)
-    } catch (error: any) {
-      onError?.(error)
-    }
-    return
-  }
-
   // 统一走后端 chat_engine（scene=analysis）：5 段式输出结构由后端
   // `prompts.py` 的 ANALYSIS_OUTPUT_SPEC 提供，这里只负责搬运参数。
   // deepThink → thinking：思考过程不下发，前端用「思考中」动画占位。

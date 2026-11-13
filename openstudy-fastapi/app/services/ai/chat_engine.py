@@ -106,11 +106,6 @@ class ChatTurn:
     #: 这是「基于我的资料出题」的入口 —— 见 `_retrieve_kb_context`。
     #: 空 / None = 不检索（跟随原有行为）。
     kb_ids: Optional[List[int]] = None
-    #: **是否把本轮正文投递为附件**（用户 2026-10-12 定案，仅 ds-free-nb 用）：
-    #: 前端「注入历史记忆」开关打开时为 True → 后端把当前会话历史拼进正文，
-    #: 并在请求里带 `asAttachment=true`，桥据此把正文写成 .md 附件上传（输入框只留短指令），
-    #: 避免长历史灌进 DS 输入框导致网页卡死。非 ds-free-nb 端忽略此字段。
-    inject_history: bool = False
 
     @property
     def persist(self) -> bool:
@@ -273,241 +268,6 @@ def _attachment_field(item: Any, key: str, default: str = "") -> str:
     return value if isinstance(value, str) else (default if value is None else str(value))
 
 
-async def _targets_ds_bridge(db: AsyncSession, turn: "ChatTurn") -> bool:
-    """本轮解析出的配置是不是「本机 DS 网页桥」（provider=ds-free-nb）。
-
-    用途：文档附件对桥要**原样上传**（DS 网页自己解析），不走路由后端的
-    `extract_attachments`（把文档拆成正文文本 + 内嵌图片）——否则重复投递、
-    且 DS 侧要处理超大文本 + 多图，容易长时间无响应。
-
-    解析不出配置（异常/无配置）时返回 False（保持旧行为，不影响其它 provider）。
-    """
-    try:
-        cfg = await db_config.resolve_config(db, turn.provider, turn.model, user_id=turn.user_id)
-        return bool(cfg and (cfg.provider or "").strip().lower() == "ds-free-nb")
-    except Exception:  # noqa: BLE001 - 判断失败按"不是桥"处理，绝不因此影响主流程
-        return False
-
-
-def _extract_raw_files(files: List[Any]) -> List[dict]:
-    """把本轮文档附件转成「原样上传」载荷 `[{name, mimeType, base64}]`。
-
-    与 `extract_attachments`（解析成文本）不同：这里是**文件本体**，供 ds-free-nb 桥
-    上传到 DS 网页，由网页自己解析（PDF/Word 等原生效果更好）。
-    只保留「有 name 且有 base64」的项；base64 支持裸串或 data URL（桥会再归一）。
-    """
-    out: List[dict] = []
-    for item in files or []:
-        name = (_attachment_field(item, "name") or "").strip()
-        b64 = _attachment_field(item, "base64")
-        mime = (_attachment_field(item, "type") or "").strip()
-        if not name or not b64:
-            continue
-        out.append({"name": name, "mimeType": mime or "application/octet-stream", "base64": b64})
-    return out
-
-
-def extract_attachments(files: List[Any], image_offset: int = 0) -> tuple:
-    """文档附件 → (可喂给模型的文本, 文档内嵌图片 data URL, 告警)
-
-    - 文本类附件（pdf / docx / txt / md…）用 `file_parser` 抽正文，按
-      `【附件：文件名】` 分段拼接，模型据此就能「读到」文件；
-    - 正文里的插图渲染成 `【图N】` 标记，**图片落在它原本所在的文字位置之间**，
-      图片列表顺序与标记编号一一对应 —— 模型才能把「如下图」和具体那张图对上；
-    - 解析不出来时收集告警，最终以 `> ⚠️` 追加在回复末尾，让用户看得见。
-
-    Args:
-        files: 文档附件列表（`{name, type, base64}`）
-        image_offset: 图片编号起始值 —— 用户另外上传了图片时，文档插图要顺延编号
-    """
-    from app.services.file_parser import build_marked_document, parse_file
-
-    sections: List[str] = []
-    image_urls: List[str] = []
-    warnings: List[str] = []
-
-    for item in files or []:
-        name = (_attachment_field(item, "name") or "file").strip() or "file"
-        try:
-            content, _mime = data_url_to_bytes(_attachment_field(item, "base64"))
-        except Exception as e:
-            warnings.append(f"附件 {name} 解码失败：{e}")
-            continue
-        try:
-            parsed = parse_file(name, content)
-        except Exception as e:
-            warnings.append(f"附件 {name} 解析失败：{e}")
-            continue
-
-        error = parsed.get("error")
-        marked, images = build_marked_document(parsed, image_offset + len(image_urls))
-        kept = images[:MAX_DOC_IMAGES]
-
-        if marked:
-            sections.append(f"【附件：{name}】\n{marked}")
-        if kept:
-            image_urls.extend(kept)
-            if not marked:
-                sections.append(
-                    f"【附件：{name}】\n（该附件没有可提取的文字，插图见下方图片）"
-                )
-            if len(images) > len(kept):
-                warnings.append(
-                    f"附件 {name}：插图较多，只把前 {MAX_DOC_IMAGES} 张交给模型"
-                )
-        if not marked and not kept:
-            warnings.append(f"附件 {name}：{error or '没有提取到可用的文字或图片'}")
-
-    return "\n\n".join(sections), image_urls, warnings
-
-
-
-# ============================================================
-# 主流程
-# ============================================================
-
-
-#: 知识库取材时，单段最大字符数（与 rag_query_service.MAX_CHUNK_CHARS 同口径）
-KB_CONTEXT_CHUNK_CHARS = 1200
-#: 知识库取材的总字符预算（与 rag_query_service.MAX_CONTEXT_CHARS 同口径）
-KB_CONTEXT_MAX_CHARS = 6000
-#: 知识库取材默认取回几条
-KB_CONTEXT_TOP_K = 5
-
-#: 知识库取材的超时（秒）——超过就放弃取材、直接出题
-#:
-#: 为什么是 20s 而不是更小：正常路径下（模型已预热）检索只要 ~0.15s，
-#: 留足 20s 是为了容忍大库首次查询、冷页缓存、DB 抖动等偶发慢，不至于动不动就放弃取材。
-#: 又必须封顶：`embed_query` 首次要加载 2.17GB 模型（实测冷启动 43.22s），
-#: 若预热的那个后台任务还没跑完，这 43s 会全部堆在用户面前 —— 且发生在
-#: **模型调用之前**，连"思考中"都看不到，体感就是"点了没反应"。
-#: 20s 是"给足正常波动、又不让用户等一分钟"的折中。
-KB_RETRIEVE_TIMEOUT_SEC = 20
-
-
-async def _retrieve_kb_context(
-    db: AsyncSession,
-    turn: ChatTurn,
-    query: str,
-    top_k: int = KB_CONTEXT_TOP_K,
-) -> tuple:
-    """按 `turn.kb_ids` 检索知识库，返回 `(材料文本, 命中图片 URL 列表)`。
-
-    用途：出题类场景（`question-generate` / `reading` / `composite`）用户选了
-    「取材来源 = 我的知识库」时，由这里取原文 → 交给 prompts 模板 → 模型据此出题。
-    命中片段若**夹带图片**（分块时按 `【图N】` 归属到 `chunk.meta_data`），
-    图片 URL 一并返回，由调用方转成多模态图块喂模型 —— 否则模型只看到文字、
-    看不到图里的公式/表格（这正是「知识库与图片」此前断裂之处）。
-
-    设计要点：
-      · **失败绝不抛**：检索挂了（embedding 不可用 / 库被删）不该让整轮出题失败，
-        只是「这次没有材料」，退化成纯 AI 生成并留下可见的提示。
-      · **带出处**：每段标 `【文档名 第N段】`，模型据此在解析里注明来源。
-      · **预算封顶**：避免把上下文撑爆（与 rag_query_service 同口径）。
-    """
-    from app.services.rag import rag_query_service as rqs
-
-    kb_ids = []
-    for value in (turn.kb_ids or []):
-        try:
-            kb_ids.append(int(value))
-        except (TypeError, ValueError):
-            continue
-    if not kb_ids or not (query or "").strip():
-        return "", []
-
-    try:
-        found = await rqs.search(db, turn.user_id or 0, query, kb_ids, top_k=top_k)
-    except Exception as e:  # noqa: BLE001 - 取材是增强项，失败只记日志
-        logger.warning("[chat_engine] 知识库取材失败（已跳过）: {}", e)
-        return "", []
-
-    hits = found.get("hits") or []
-    parts: List[str] = []
-    image_urls: List[str] = []
-    used = 0
-    for i, hit in enumerate(hits, start=1):
-        content = (hit.get("content") or "").strip()
-        # 该片段夹带的图：即使正文为空（纯图块）也要把图收上来，故先收图再判 content
-        for url in (hit.get("images") or []):
-            value = str(url or "").strip()
-            if value and value not in image_urls:
-                image_urls.append(value)
-        if not content:
-            continue
-        if len(content) > KB_CONTEXT_CHUNK_CHARS:
-            content = content[: KB_CONTEXT_CHUNK_CHARS - 1] + "…"
-        source = hit.get("source") or hit.get("docName") or f"文档#{hit.get('docId')}"
-        piece = f"【材料{i}｜来源：{source}】\n{content}"
-        if used + len(piece) > KB_CONTEXT_MAX_CHARS:
-            break
-        parts.append(piece)
-        used += len(piece)
-
-    if not parts and not image_urls:
-        logger.info("[chat_engine] 知识库取材：kb_ids={} 未检索到相关内容", kb_ids)
-        return "", []
-    logger.info(
-        "[chat_engine] 知识库取材：kb_ids={} → {} 段 / {} 字符 / {} 张图",
-        kb_ids, len(parts), used, len(image_urls),
-    )
-    return "\n\n".join(parts), image_urls
-
-
-async def _resolve_vision_safe_model(
-    db: AsyncSession,
-    turn: ChatTurn,
-    has_images: bool,
-    session_id: str,
-) -> tuple:
-    """图片存在时保证「选中的模型能识图」
-
-    pro（deepseek-v4-pro）这类仅文本模型收到图片会被上游直接打回，
-    整轮请求就白费了。这里按 `model_capabilities` 的口径回退到视觉模型。
-    前端在发送前也会做同样的切换并提示用户，本处是防御性兜底
-    （防止其它调用方直接带图请求仅文本模型）。
-    """
-    if not has_images:
-        return turn.model, turn.provider
-
-    try:
-        resolved = await db_config.resolve_config(
-            db, turn.provider, turn.model, user_id=turn.user_id, config_id=turn.config_id
-        )
-        if resolved is not None and not model_capabilities.supports_vision(resolved.model):
-            logger.info(
-                "AI 多模态：{} 不支持图片，自动改用 {}（scene={} session={}）",
-                resolved.model,
-                model_capabilities.DEFAULT_VISION_MODEL,
-                turn.scene,
-                session_id or "-",
-            )
-            return model_capabilities.DEFAULT_VISION_MODEL, None
-    except Exception as e:  # pragma: no cover - 兜底失败不阻断主流程
-        logger.warning("解析模型配置失败，按原样发起请求：{}", e)
-    return turn.model, turn.provider
-
-
-async def _save_assistant(
-    turn: ChatTurn, user_id: int, text: str, note: str, extra_note: str
-) -> None:
-    """把 AI 这一轮写进历史；失败只告警，绝不影响已经下发的流"""
-    if not turn.persist:
-        return
-    suffix = "；".join(p for p in (note, extra_note) if p)
-    content = (
-        f"{text}\n\n> ⚠️ {suffix}"
-        if (text and suffix)
-        else (text or (f"> ⚠️ {suffix}" if suffix else ""))
-    )
-    try:
-        await conversation_service.save_message(
-            user_id, turn.session_id, "assistant", content
-        )
-    except Exception as e:  # pragma: no cover
-        logger.exception("AI 回复落库失败 session={}: {}", turn.session_id, e)
-
-
 async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
     """执行一轮 AI 对话并按统一契约流式下发
 
@@ -516,12 +276,6 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
     user_id = turn.user_id or 0
     session_id = (turn.session_id or "").strip()
 
-    # 目标是不是「本机 DS 网页桥」（provider=ds-free-nb）？
-    # 是的话：**文档本体直接上传给 DS 网页**（由它原生解析 Word/PDF），后端**不再**
-    # 把文档拆成「正文文本 + 内嵌图片」——否则会重复投递、且 DS 要处理 25k 字+13 张图，
-    # 表现为长时间无响应（用户 2026-10-12 实测 180s 超时）。
-    send_files_to_bridge = await _targets_ds_bridge(db, turn)
-
     # ① 附件 → 正文文本 + 文档内嵌图片
     #    编号顺序必须是「用户上传的图片在前、文档插图在后」，
     #    所以 offset 用筛过的用户图片数量（不能直接用 len(turn.images)，里面可能有空串）
@@ -529,13 +283,9 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
     #    ⚠️ 丢到线程池里执行：文档解析是同步的，老版 .doc 还会借 Word COM 转换
     #       （1~3s，最坏 CONVERT_TIMEOUT_SECONDS）。直接在事件循环里跑会把整个后端冻住。
     user_images = [u for u in (turn.images or []) if u]
-    if send_files_to_bridge and turn.files:
-        # 走桥：文档本体原样上传，后端不解析（避免肢解成文本+图片）
-        file_text, doc_images, warnings = "", [], []
-    else:
-        file_text, doc_images, warnings = await asyncio.to_thread(
-            extract_attachments, turn.files, len(user_images)
-        )
+    file_text, doc_images, warnings = await asyncio.to_thread(
+        extract_attachments, turn.files, len(user_images)
+    )
     # ⚠️ 归一成 data URL：题目解析会把题干里 `<img src="/profile/upload/...">` 的相对
     #    路径直接作为 images 传来；OpenAI 兼容多模态端点不认相对路径（会 400）。
     #    data: / http(s) 的原样保留，相对路径读盘转 base64。
@@ -545,11 +295,6 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
     typed = (turn.prompt or "").strip()
     prompt_text = "\n\n".join(p for p in (typed, file_text) if p)
     if not prompt_text and image_urls:
-        prompt_text = DEFAULT_ATTACHMENT_PROMPT
-    # ⚠️ 走桥（ds-free-nb）时文档**原样上传给 DS 网页**、后端不解析 → `file_text` 恒空。
-    #    此时「只传了附件、正文为空」不能算"没有可发送内容"：附件本身就是内容。
-    _has_bridge_files = bool(send_files_to_bridge and turn.files)
-    if not prompt_text and _has_bridge_files:
         prompt_text = DEFAULT_ATTACHMENT_PROMPT
     # 「有没有内容」要连模板变量一起判断：出题类接口只传 variables
     # （knowledge_point / requirement / question），不传正文是正常用法。
@@ -566,26 +311,19 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
 
     # ③ 历史：先取上下文、再写本轮提问（反过来会把当前问题重复算进上下文）
     #
-    # ⚠️ ds-free-nb（本机无头桥）**特殊**：默认**不**注入历史——DS 网页自己维护会话上下文，
-    #    长历史灌进输入框会让网页卡死。只有在用户显式打开「注入历史记忆」开关
-    #    （`turn.inject_history=True`）时，才把历史拼进正文，**并标记走附件投递**。
-    #    其它 provider（API 端）保持原行为：有 session 就注入上下文。
-    to_bridge = send_files_to_bridge
-    inject_ctx = (not to_bridge) or bool(turn.inject_history)
     context = ""
     if turn.persist:
-        if inject_ctx:
-            # 历史预算按「该模型配置的上下文档位」定（200K/1M）—— 见 context_budget
-            ctx_max, ctx_single = await db_config.resolve_context_limits(
-                db,
-                provider=turn.provider,
-                model=turn.model,
-                user_id=turn.user_id,
-                config_id=turn.config_id,
-            )
-            context = await conversation_service.build_context_prompt(
-                user_id, session_id, max_chars=ctx_max, single_max_chars=ctx_single
-            )
+        # 历史预算按「该模型配置的上下文档位」定（200K/1M）—— 见 context_budget
+        ctx_max, ctx_single = await db_config.resolve_context_limits(
+            db,
+            provider=turn.provider,
+            model=turn.model,
+            user_id=turn.user_id,
+            config_id=turn.config_id,
+        )
+        context = await conversation_service.build_context_prompt(
+            user_id, session_id, max_chars=ctx_max, single_max_chars=ctx_single
+        )
         history_text = typed or conversation_service.ATTACHMENT_PLACEHOLDER
         await conversation_service.save_message(
             user_id,
@@ -594,8 +332,6 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
             history_text,
             attachments=[a for a in (turn.attachments or []) if a] or None,
         )
-    # 历史注入是否走附件：仅当目标是桥、且用户开了开关、且确有历史可注入
-    as_attachment = bool(to_bridge and turn.inject_history and context)
 
     # ③b 知识库取材：用户在出题类场景选了「取材来源 = 我的知识库」时，
     #     先检索出原文片段，作为 `source_context` 变量交给模板（模型据此出题）。
@@ -691,16 +427,6 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
     # ⑦ 流式下发；成功与失败两条路径都保证 assistant 行成对落库
     extra_note = "；".join(warnings)
     full_response = ""
-    # 原始文件附件（供 ds-free-nb 桥原样上传到 DS 网页，由网页自己解析）：
-    # 后端 file_parser 已把正文并进了 full_text（保底），这里**额外**把文件本体也带上，
-    # 让 DS 网页能做原生解析（PDF/Word 等效果更好）。
-    raw_files = _extract_raw_files(turn.files)
-    logger.info(
-        "[chat_engine] 本轮附件: turn.files={} 个 → raw_files={} 个 ({})",
-        len(turn.files or []),
-        len(raw_files),
-        ", ".join(f"{f['name']}({f['mimeType']},{len(f['base64'])})" for f in raw_files) or "-",
-    )
     try:
         async for item in db_config.stream_with_config(
             db,
@@ -714,8 +440,6 @@ async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
             # ⚠️ 必须带上，否则「个人中心 → 我的模型」里加的自定义模型永远选不中
             #   （无 user_id = 只可见系统行）
             user_id=turn.user_id,
-            files=raw_files,
-            as_attachment=as_attachment,
             # ── 深度思考增量（2026-10-20）─────────────────────────────
             #
             # 用户口径：「要能够让用户看到 llm 深度思考的部分 目前 ai 获取数据后

@@ -309,11 +309,7 @@ const form = reactive({
   remark: '',
   thinkingMode: 'auto',
   reasoningEffort: 'high',
-  contextLength: DEFAULT_CONTEXT_LENGTH,
-  // ds-free（官网 Web 反代）专用
-  webPhone: '',
-  webPassword: '',
-  webAreaCode: '+86'
+  contextLength: DEFAULT_CONTEXT_LENGTH
 })
 
 const rules = {
@@ -411,9 +407,9 @@ const fetchedModels = ref<Array<{ id: string; ownedBy?: string }>>([])
 const modelsBaseUrl = ref('')
 const modelFilter = ref('')
 
-// 能拉取的前提：选了 provider、填了 API Key；非 ds-free（它不支持 /models）。
+// 能拉取的前提：选了 provider、填了 API Key。
 const canFetchModels = computed(() => {
-  return !!form.provider && form.provider !== 'deepseek-free' && !!form.apiKey
+  return !!form.provider && !!form.apiKey
 })
 
 // 提交/请求时实际使用的地址：官方 Tab 用预置官方地址；中转站用用户填的
@@ -494,10 +490,7 @@ function resetForm() {
     remark: '',
     thinkingMode: 'auto',
     reasoningEffort: 'high',
-    contextLength: DEFAULT_CONTEXT_LENGTH,
-    webPhone: '',
-    webPassword: '',
-    webAreaCode: '+86'
+    contextLength: DEFAULT_CONTEXT_LENGTH
   })
 }
 

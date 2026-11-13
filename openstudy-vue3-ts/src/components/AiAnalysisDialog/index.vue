@@ -82,7 +82,6 @@ import { analyzeQuestionStream } from '@/api/ai/ai'
 import { ElMessage } from 'element-plus'
 import AiModelSelector from '@/components/AiModelSelector/index.vue'
 import AiThinkingToggle from '@/components/AiThinkingToggle/index.vue'
-import { useDsDeepThinkSync } from '@/composables/useDsDeepThinkSync'
 import { useSmoothAutoScroll } from '@/composables/useSmoothAutoScroll'
 import LoadingDots from '@/components/LoadingDots/index.vue'
 import useUserStore from '@/store/modules/user'
@@ -114,7 +113,6 @@ const selectedConfigId = ref(null)
 const onModelSelect = (cfg) => { selectedConfigId.value = cfg?.configId ?? null }
 const deepThink = ref(false)
 
-useDsDeepThinkSync(selectedModel, deepThink)
 const reasoningContent = ref('')
 
 const isGenerating = ref(false)
@@ -131,18 +129,8 @@ const { keepAtBottom } = useSmoothAutoScroll(contentRef)
 // 思考区：它现在是独立的限高滚动容器，需要自己的跟随实例
 const { keepAtBottom: keepReasoningAtBottom } = useSmoothAutoScroll(reasoningRef)
 
-// 深度思考开关
-//
-// ⚠️ 旧实现在开启时会把 provider 强制改成 'deepseek'（原注释：「reasoner 模型
-// 仅 DeepSeek 官方支持，开启时锁定 provider」）。这个前提**已不成立**：
-//   · ds-free 通过同步 DS 网页端的「深度思考」按钮同样支持思考
-//     （见 composables/useDsDeepThinkSync）
-//   · zhipu / siliconflow 的思考由后端 thinking 参数处理
-// 而且它会把用户选的 ds-free **直接改掉**（连下拉框都会跳回付费模型），
-// 表现为「一开深度思考就自动切到付费 API」。所以这里不再动 provider。
-const handleDeepThinkChange = (_val: boolean) => {
-    // 开关状态由 useDsDeepThinkSync 负责与 DS 网页端双向同步，此处无需额外处理。
-}
+// 深度思考开关由后端 thinking 参数处理，这里不再改写用户选择的 provider。
+const handleDeepThinkChange = (_val: boolean) => {}
 
 // 监听缓存变化
 watch(() => props.cachedContent, (newVal) => {

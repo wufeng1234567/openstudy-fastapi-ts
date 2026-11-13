@@ -37,10 +37,6 @@ PROVIDER_BASE_URLS = {
     "openai": "https://api.openai.com/v1",
 }
 
-# ds-free（DeepSeek 官网 Web 版）由前端浏览器扩展代发请求，后端不能直接服务
-DS_FREE_PROVIDER = "deepseek-free"
-
-
 def _visible_scope(user_id: Optional[int]):
     """「这条配置对该用户可见」的 SQL 条件
 
@@ -77,21 +73,13 @@ def _is_placeholder_key(key: str) -> bool:
 def has_credentials(config: SysAiConfig) -> bool:
     """这条配置有没有「能真正调用模型」的凭据
 
-    - ds-free 走网页端反代，本来就不需要 API Key，永远算有凭据；
-    - 其它 provider 必须有**真实的** api_key（排除占位符），或 .env 里的 DEEPSEEK_API_KEY。
+    - provider 必须有**真实的** api_key（排除占位符），或 .env 里的 DEEPSEEK_API_KEY。
     """
-    if config.provider == DS_FREE_PROVIDER:
-        return True
     api_key = (config.api_key or "").strip()
     if api_key and not _is_placeholder_key(api_key):
         return True
     env_key = (settings.DEEPSEEK_API_KEY or "").strip()
     return bool(env_key and not _is_placeholder_key(env_key))
-
-
-def is_servable_by_backend(config: SysAiConfig) -> bool:
-    """后端是否能直接服务这条配置（ds-free 由前端扩展处理 → 不能）"""
-    return config.provider != DS_FREE_PROVIDER
 
 
 def _no_credential_message(config: SysAiConfig) -> str:
@@ -412,8 +400,6 @@ def _build_llm(
     temperature: float = 0.7,
     max_tokens: int = 8000,
     thinking: Any = None,
-    files: Optional[list] = None,
-    as_attachment: bool = False,
 ) -> ChatOpenAI:
     """根据表配置动态构建 OpenAI 兼容客户端（支持深度思考开关）
 
@@ -444,21 +430,6 @@ def _build_llm(
         # 显式关闭：`thinking` 形状只发给认识的官方 deepseek，别家不塞脏参数
         if is_deepseek:
             extra_body["thinking"] = {"type": "disabled"}
-
-    # 文件附件：**只发给本机 DS 网页桥**（provider=ds-free-nb）。
-    # 桥收到 top-level `files` 后会把文件原样上传到 chat.deepseek.com，由 DS 网页自己解析
-    #（比后端 file_parser 更准）。其它 provider（OpenAI/DeepSeek 官方等）不认识该字段，
-    # 若也塞进去可能被拒，故**按 provider 收口**。
-    # ⚠️ langchain 会把 extra_body 合并到请求 JSON 的**顶层**，桥的 extractFileAttachments 读的正是顶层 `files`。
-    _is_bridge = (config.provider or "").strip().lower() == "ds-free-nb"
-    if files and _is_bridge:
-        extra_body["files"] = files
-        logger.info(f"[db_config] 附加文件附件 {len(files)} 个 → ds-free-nb 桥")
-    # 是否把**正文**投递为附件（用户开了「注入历史记忆」开关时；见 ChatTurn.inject_history）。
-    # 桥据此把正文写成 .md 附件上传，输入框只留短指令，避免长历史灌框卡死。
-    if as_attachment and _is_bridge:
-        extra_body["asAttachment"] = True
-        logger.info("[db_config] 本轮正文投递为附件（asAttachment=true）")
 
     # 缺 Key 时提前抛「人话」错误。
     # 否则 openai SDK 会抛英文的 "The api_key client option must be set either by
@@ -499,18 +470,12 @@ async def stream_with_config(
     user_id: Optional[int] = None,
     # configId：精确指定选中哪条配置（区分同名模型）
     config_id: Optional[int] = None,
-    files: Optional[list] = None,
-    as_attachment: bool = False,
     include_reasoning: bool = False,
 ) -> AsyncIterator:
     """流式输出：优先使用 sys_ai_config 表配置；表无配置时回退内置 dynamic_ai 路由
 
     model / provider 都为空时使用默认；model 优先于 provider。
     user_id 决定可见范围（系统模型 + 自己的自定义模型）。
-    files：**原始文件附件** `[{name, mimeType, base64}]`，仅对 ds-free-nb 桥生效
-           （桥把它们原样上传到 DS 网页，由网页解析）。
-    as_attachment：正文是否投递为附件（仅 ds-free-nb），见 ChatTurn.inject_history。
-
     include_reasoning（2026-10-20 新增）：
         False（默认）→ yield `str`，**只含正式回答**（原有行为，所有老调用方不受影响）。
         True          → yield `(kind, text)` 二元组：
@@ -532,19 +497,11 @@ async def stream_with_config(
     """
     config = await resolve_config(db, provider, model, user_id, config_id)
     if config:
-        # ds-free 走网页端反代，不是 OpenAI 兼容接口，单独分支
-        if config.provider == DS_FREE_PROVIDER:
-            logger.info("[db_config] Using ds-free web client")
-            async for kind, text in _stream_via_web_client(config, messages, include_reasoning=False):
-                if kind == "answer":
-                    yield ("answer", text) if include_reasoning else text
-            return
-
         logger.info(
             "[db_config] Using table config: config_id={} provider={} model={} has_key={}",
             config.config_id, config.provider, config.model, has_credentials(config),
         )
-        llm = _build_llm(config, temperature, max_tokens, thinking, files=files, as_attachment=as_attachment)
+        llm = _build_llm(config, temperature, max_tokens, thinking)
         async for chunk in llm.astream(_to_lc_messages(messages)):
             if include_reasoning:
                 # 思考正文由 `langchain_reasoning_patch` 注入到 additional_kwargs
@@ -591,28 +548,6 @@ def _reasoning_of(chunk: Any) -> str:
     return ""
 
 
-async def _stream_via_web_client(config: SysAiConfig, messages: List[ChatMessage], include_reasoning: bool = False):
-    """ds-free 已改由前端浏览器扩展实现，后端不再走 HTTP 反代。
-
-    当前架构（v2）：
-        ds-free = 浏览器扩展方案
-          前端 utils/ds-proxy.ts → window.DSProxy（扩展注入）
-            → 扩展 background 定位 chat.deepseek.com 标签页
-            → 该页 DOM 自动化发送；MAIN world 劫持自身 SSE 流读回复
-        因此 ds-free 的请求根本不该走到后端。
-
-    历史上这里用 DeepSeekWebClient 做过纯 HTTP 反代（能跑通，但需要每 24 小时
-    人工从浏览器导出 token/cookie，且依赖官方 wasm 解 PoW），已废弃。
-    代码保留在 app/services/ai/deepseek_web_client.py 与 pow_wasm/ 备查。
-    """
-    raise RuntimeError(
-        "ds-free 由前端浏览器扩展处理，请勿在后端调用。"
-        "如果这条错误出现在前端的模型下拉框选 ds-free 时，说明前端还没接上 "
-        "utils/ds-proxy.ts 里的 chatWithDS()。"
-    )
-    yield  # pragma: no cover  保持异步生成器语义
-
-
 async def chat_with_config(
     db: AsyncSession,
     messages: List[ChatMessage],
@@ -628,14 +563,6 @@ async def chat_with_config(
     """非流式输出：优先使用 sys_ai_config 表配置（model 优先于 provider）"""
     config = await resolve_config(db, provider, model, user_id, config_id)
     if config:
-        if config.provider == "deepseek-free":
-            logger.info("[db_config] Using ds-free web client (non-stream)")
-            answer = ""
-            async for kind, text in _stream_via_web_client(config, messages):
-                if kind == "answer":
-                    answer += text
-            return ChatResponse(content=answer)
-
         logger.info(f"[db_config] Using table config: provider={config.provider}, model={config.model}")
         llm = _build_llm(config, temperature, max_tokens, thinking)
         response = await llm.ainvoke(_to_lc_messages(messages))
@@ -650,15 +577,6 @@ async def chat_with_config(
 # ============================================================
 # Agent（Function Calling）专用
 # ============================================================
-
-
-def supports_tools(config: SysAiConfig) -> bool:
-    """该配置能否用于 Agent 的**原生 Function Calling**
-
-    ds-free 走浏览器扩展代发网页端请求，协议上挂不了 `tools` 参数 → 不能。
-    官方 API（DeepSeek / 智谱 / 硅基流动）都是 OpenAI 兼容且支持工具调用 → 能。
-    """
-    return is_servable_by_backend(config)
 
 
 async def resolve_agent_config(
@@ -680,12 +598,6 @@ async def resolve_agent_config(
             "请联系【管理员】进入后台「系统管理 → AI 模型配置」启用并配置一个官方模型；"
             "或到「个人中心 → 我的模型」添加你自己的模型。"
         )
-    if not supports_tools(config):
-        raise RuntimeError(
-            f"Agent 模式需要官方 API 模型，当前选中的「{config.provider_name or config.provider}」"
-            "是 DS 网页版（ds-free），它的请求由浏览器扩展代发、无法携带工具定义。"
-            "请在模型下拉框里切换到 deepseek-flash / deepseek-v4-pro 等官方模型。"
-        )
     if not has_credentials(config):
         raise RuntimeError(_no_credential_message(config))
     return config
@@ -700,8 +612,6 @@ async def build_agent_llm(
     user_id: Optional[int] = None,
     # configId：精确指定选中哪条配置（区分同名模型）
     config_id: Optional[int] = None,
-    files: Optional[list] = None,
-    as_attachment: bool = False,
 ):
     """构建 Agent 用的 ChatOpenAI（**不主动关闭深度思考**）
 
@@ -768,7 +678,7 @@ async def build_agent_llm(
         thinking_arg = True if has_effort else _OMIT_THINKING
 
     llm = _build_llm(
-        config, temperature=temperature, max_tokens=max_tokens, thinking=thinking_arg, files=files, as_attachment=as_attachment
+        config, temperature=temperature, max_tokens=max_tokens, thinking=thinking_arg
     )
     logger.info(
         "[db_config] Agent 客户端: config_id={} provider={} model={} thinking={}"

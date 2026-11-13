@@ -120,23 +120,6 @@ class Settings(BaseSettings):
     DEEPSEEK_API_KEY: str = ""
     SILICONFLOW_API_KEY: str = ""
 
-    # DeepSeek Web 模式（反代网页端 API）—— ⚠️ 已废弃，仅作历史开关保留
-    #    ds-free 现由浏览器扩展实现（apps/deepseek-proxy 代发 chat.deepseek.com），
-    #    后端不再注册反代客户端，这几个变量对运行时**没有任何影响**。
-    #    下面这些值只在直接调用 app/services/ai/deepseek_web_client.py 时才会被读取。
-    DEEPSEEK_WEB_ENABLED: bool = False
-    DEEPSEEK_WEB_PHONE: str = ""
-    DEEPSEEK_WEB_PASSWORD: str = ""
-    DEEPSEEK_WEB_AREA_CODE: str = "+86"
-    # ---- 浏览器会话材料导入（会话导入模式）----
-    # 以下值从 chat.deepseek.com 的 localStorage / Application 面板抄出，
-    # 属于用户自己的会话数据；填了就优先用它们，不再走脚本登录。
-    DEEPSEEK_WEB_TOKEN: str = ""
-    DEEPSEEK_WEB_COOKIE: str = ""
-    DEEPSEEK_WEB_HIF_DLIQ: str = ""
-    DEEPSEEK_WEB_HIF_LEIM: str = ""
-    DEEPSEEK_WEB_DEVICE_ID: str = ""
-
     # AI Default Settings
     AI_DEFAULT_PROVIDER: str = "deepseek"
     # 官方模型名：`deepseek-flash`（DeepSeek-V4.1-Flash） / `deepseek-v4-pro`

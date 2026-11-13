@@ -8,7 +8,7 @@
 | 项目 | 当前值 | 说明 | 下一步 |
 |---|---:|---|---|
 | 前端 type-check | **1,080 条 error TS，exit 2** | 历史 RuoYi 页面、`ref({})` 推断、`catch(error)` unknown 等 | 按文件分组，先收敛 `src/views/front` 活跃路径 |
-| 前端 ESLint | **0 errors / 4,156 warnings** | warn-only 基线，主要为 any/no-console/默认 prop | 建 warning 预算，按目录递减 |
+| 前端 ESLint | **0 errors / 4,077 warnings** | warn-only 基线，主要为 any/no-console/默认 prop | 建 warning 预算，按目录递减 |
 | 后端 ruff 全量 | **约 115 errors**（107 F401 + 8 F841） | 语法门禁 `E9,F63,F7,F82` 已过；全量未清零 | 先加 `__init__.py` re-export 规则，再逐文件清 F401/F841 |
 | 后端覆盖率 | **历史 19%** | 复跑 coverage 当前有 INTERNALERROR，数字需重跑后确认 | 修 coverage 写入路径，再设 30% 路线 |
 
@@ -21,7 +21,6 @@
 | 1,354 | `src/composables/useAgentChat.ts` | Agent 会话状态机，业务复杂 |
 | 1,426 | `src/composables/useQuestionPractice.ts` | 练习状态核心 |
 | 1,981 | `src/views/front/english/listening/index.vue` | 英语听力页 |
-| 1,734 | `src/api/ai/agentDsFree.ts` | Agent 工具元数据/客户端 |
 | 1,501 | `src/api/ai/ai.ts` | AI API 聚合 |
 | 1,372 | `src/views/front/english/ocr/index.vue` | OCR 页面 |
 | 1,375 | `src/views/front/agent/chat.vue` | 对话页 |

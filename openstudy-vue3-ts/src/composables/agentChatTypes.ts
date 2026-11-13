@@ -172,8 +172,6 @@ export interface AgentRunOptions {
   role?: string
   /** 用户自定义智能体 id（优先于 role） */
   agentId?: number
-  /** 「注入历史记忆」开关（仅 ds-free-nb 有意义）：历史作为附件投递给 DS 网页 */
-  injectHistory?: boolean
 }
 
 /**

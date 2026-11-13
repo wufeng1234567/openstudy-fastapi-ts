@@ -130,8 +130,6 @@ class AgentRequest:
     #: **用户自定义智能体 id**（`ai_agent_config.id`，阶段 2 落地）。非空时优先于 `role`。
     #: 现阶段仅透传占位，编排层暂不消费（避免阶段 1 引入未建的表依赖）。
     agent_id: Optional[int] = None
-    #: 「注入历史记忆」开关（仅 ds-free-nb 端有意义）：True = 注入历史且正文走附件投递。
-    inject_history: bool = False
 
     @property
     def persist(self) -> bool:

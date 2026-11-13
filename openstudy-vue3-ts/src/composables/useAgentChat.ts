@@ -6,9 +6,7 @@ import {
   rollbackAgentTurn,
   type AgentEvent
 } from '@/api/ai/agent'
-import { runDsFreeAgentStream } from '@/api/ai/agentDsFree'
 import { saveAgentTimeline, dropAgentTurn } from '@/api/ai/ai'
-import { running as selfCheckRunning } from '@/devtools/dfSelfCheck/store'
 import { stripMarkdown } from './agentChatText'
 export { stripMarkdown } from './agentChatText'
 
@@ -67,7 +65,6 @@ import {
   createRollbackOutcome,
   elapsedSeconds,
   expertDoneStatus,
-  newLocalConfirmId,
   sumTurnDurations,
   toolResultStatus,
   turnDurationMs,
@@ -94,9 +91,6 @@ export type {
   TurnRollbackState
 } from './agentChatTypes'
 export { normalizeRestoredMessages } from './agentChatTimeline'
-
-/** ds-free（DeepSeek 网页版）走前端工具调用循环，与 api-paid 后端循环共用同一套事件流 */
-export const isDsFreeModel = (model?: string) => model === 'deepseek-free'
 
 /**
  * Agent 对话状态机（工具调用过程**内联**进消息流）
@@ -303,9 +297,6 @@ export function useAgentChat() {
   const reset = () => {
     messages.value = []
     pendingPlaceholder = null
-    // 还挂着的确认一律按「取消」处理，避免 ds-free 循环里的 Promise 永远悬着
-    pendingConfirms.forEach((resolve) => resolve(false))
-    pendingConfirms.clear()
     openTextIndex = -1
     pendingReferences = []
     // 直接置空而不是调 closeReasoning：整条消息流都要清掉，没必要再往旧对象上写状态
@@ -527,28 +518,6 @@ export function useAgentChat() {
     pendingProgress = null
   }
 
-  /** 待用户确认的写操作（ds-free 前端循环的等待者；后端链路由 confirmId 走 HTTP 唤醒） */
-  const pendingConfirms = new Map<string, (approved: boolean) => void>()
-
-  /** 请求用户确认（ds-free 前端循环调用）→ 返回用户的决定 */
-  const requestConfirm = (info: {
-    tool: string
-    action?: string
-    params?: Record<string, any>
-    destructive?: boolean
-    message?: string
-    preview?: Record<string, any>
-  }): Promise<boolean> => {
-    closeText()
-    clearPlaceholder()
-    closeReasoning()
-    const confirmId = `newLocalConfirmId()`
-    messages.value.push(buildConfirmMessage(info, confirmId))
-    return new Promise<boolean>((resolve) => {
-      pendingConfirms.set(confirmId, resolve)
-    })
-  }
-
   /**
    * 把当前时间线**尽快**补写落库（best-effort）—— 确认卡片状态一变就调。
    *
@@ -577,14 +546,12 @@ export function useAgentChat() {
   /**
    * 用户点了「确认」/「取消」（页面调用）
    *
-   * - ds-free：前端循环在等 → 本地 resolve
-   * - api 付费：后端循环在挂起 → POST `/ai/agent/confirm` 唤醒
+   * 后端循环挂起确认，由 `POST /ai/agent/confirm` 唤醒。
    *
    * `decision` 兼容两种形状：
    *   · `boolean` —— 老调用方「确认 / 取消」，行为一个字不变；
    *   · `{ approved, edited }` —— 可编辑草稿卡片回传的改动（`edited` 只对
-   *     `question_manage.batch_import` 有意义，见 `confirmAgentTool`）。ds-free 本地循环
-   *     只吃 `approved`（前端不落库、暂不支持改动），`edited` 仅随 api 链路送服务端。
+   *     `question_manage.batch_import` 有意义，见 `confirmAgentTool`）。
    */
   const resolveConfirm = async (
     confirmId: string,
@@ -597,12 +564,6 @@ export function useAgentChat() {
       msg.status = decisionStatus(approved)
       // 状态一变就补写快照 —— 否则用户取消后、轮末之前刷新，磁盘上还是「待确认」那一版
       persistTimelineSoon()
-    }
-    const local = pendingConfirms.get(confirmId)
-    if (local) {
-      pendingConfirms.delete(confirmId)
-      local(approved)
-      return
     }
     // ⚠️ api 链路：**必须确认服务端真的收到了**决定，不能先乐观改卡片。
     //    用户 2026-10-17 报「点取消，卡片显示已取消，但 LLM 那边毫无反应」——
@@ -1012,15 +973,6 @@ export function useAgentChat() {
    */
   const send = async (opts: AgentRunOptions): Promise<string> => {
     if (isGenerating.value) return '';
-    // ds-free 自检运行中禁止发消息。
-    // 为什么拦在这里而不是各调用方：这是**唯一**通往后端循环 / 前端循环的入口，
-    // 改一处就覆盖了所有 useAgentChat 消费者（OS 助手抽屉、大屏智能体页…），
-    // 只改 AiAssistant 会漏掉别的页面 —— 那时两边会抢同一个 DS 标签页、
-    // 或者用户的消息被喂给自检的脚本化模型。
-    if (selfCheckRunning.value) {
-      pushNote('warning', 'ds-free 自检正在运行，先等它结束（或去「自检」页点中止）')
-      return ''
-    }
 
     // ---- 用户消息入流（附件一次性快照）----
     const imgs = [...(opts.images || [])]
@@ -1096,25 +1048,15 @@ export function useAgentChat() {
         userId: opts.userId,
         autoConfirm: opts.autoConfirm !== false,
         maxLoops: opts.maxLoops,
-        // 多智能体协同：官方角色 / 用户自定义智能体（后者优先）。透传给两条链路。
+        // 多智能体协同：官方角色 / 用户自定义智能体（后者优先）。
         role: opts.role,
         agentId: opts.agentId,
-        // 仅 ds-free-nb 有意义：注入历史并作为附件投递（后端按 provider 收口）
-        injectHistory: opts.injectHistory === true,
         signal: controller.signal
       }
-      // ds-free：前端工具调用循环（浏览器扩展代发，协议上挂不了原生 FC）
-      const answer = isDsFreeModel(opts.model)
-        ? await runDsFreeAgentStream(streamOpts, {
-            onEvent: handleEvent,
-            onError: (msg) => pushNote('error', msg),
-            // ds-free 的前端循环自己做二次确认（api 付费那条是后端挂起 + 本页调 confirm 接口）
-            onConfirm: requestConfirm
-          })
-        : await postAgentStream(streamOpts, {
-            onEvent: handleEvent,
-            onError: (msg) => pushNote('error', msg)
-          })
+      const answer = await postAgentStream(streamOpts, {
+        onEvent: handleEvent,
+        onError: (msg) => pushNote('error', msg)
+      })
       // 兜底：模型一个字都没给（例如只调了工具就停了）
       if (!messages.value.some((m) => m.role === 'assistant' && m.content && !m.type)) {
         pushNote('warning', '本次没有收到文字回复，请查看上方执行过程。')
@@ -1380,8 +1322,6 @@ export function useAgentChat() {
     // 中止时把还「待确认」的卡片收口成「已取消」：否则本轮 finally 的快照会把 running 的
     // 确认卡存下去，刷新后又冒出一张能点、却没人应答的卡片（用户报的 bug）。
     closeRunningConfirms(messages.value)
-    pendingConfirms.forEach((resolve) => resolve(false))
-    pendingConfirms.clear()
     clearPlaceholder()
     closeText()
     // 主动停止时也要收口，否则思考块留在「正在思考…」状态上不动

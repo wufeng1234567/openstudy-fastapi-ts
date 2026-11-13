@@ -41,10 +41,9 @@ psql -U root -d openstudy_v2_pgsql -f openstudy_v2_pgsql_deploy.sql
 
 ## 模型配置
 
-导入后 `sys_ai_config` 含三条：
+导入后 `sys_ai_config` 含两条：
 
 | config_id | provider | model | 说明 |
 | --- | --- | --- | --- |
 | 1 | `deepseek` | `deepseek-flash` | 默认对话模型（占位 Key） |
 | 2 | `deepseek` | `deepseek-v4-pro` | 高级模型（占位 Key） |
-| 3 | `ds-free-nb` | `ds-free-nb` | 本机 DS 网页无头桥（需先启动 `startup-scripts/ds-bridge`） |

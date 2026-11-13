@@ -9,13 +9,13 @@
 |---|---:|---|---|
 | 工程工具链：lint / format / test / CI + 结构检查 | 10 | **约 6.5 / 10** | `eslint.config.js`、`.prettierrc.json`、`pytest.ini`、`ruff.toml`、`ci.yml`、`scripts/verify-quality.bat`、`scripts/check_frontend_structure.py` |
 | 代码可读性与可维护性：目录、命名、分层、类型、重复、大文件、死代码 | 10 | **约 6 / 10** | `ARCHITECTURE.md`、`doc/feature-map.md`、`doc/engineering/frontend-refactor.md`、死代码台账 |
-| 合计 | 20 | **保守约 12.5 / 20** | 不把 type-check 1,080 条、lint 4,156 warnings 写成已清零 |
+| 合计 | 20 | **保守约 12.5 / 20** | 不把 type-check 1,080 条、lint 4,077 warnings 写成已清零 |
 
 ## 2. 工具使用规范（10 分）
 
 | 检查 | 状态 | 证据/说明 |
 |---|---|---|
-| lint 可跑 | ✅ 0 errors / 4,156 warnings（warn-only） | `npm run lint`；warning 是存量债务 |
+| lint 可跑 | ✅ 0 errors / 4,077 warnings（warn-only） | `npm run lint`；warning 是存量债务 |
 | format 可跑 | ✅ Prettier 配置在 | `npm run format:check` |
 | type-check 可跑 | 🟡 工具可跑，但 exit 2 / 1,080 errors | 不宣称通过；CI 为报告型 |
 | 后端测试可跑 | ✅ 109 tests collected，`pytest` exit 0 | `pytest.ini`、`tests/conftest.py` |
@@ -40,7 +40,7 @@
 | 大文件 | 🟡 `QuestionBuilder.vue` 等仍超 1,000 行 | P2 拆分计划 |
 | 死代码 | ✅ 第一批清理 + 台账 | `doc/功能迭代与代码质量/dead-code-ledger.md` |
 | 重复实现 | 🟡 OCR/图谱服务仍有历史重复 | P2 收口 |
-| 类型纪律 | 🟡 1,080 条 type errors、4,156 warnings | 公开债务 |
+| 类型纪律 | 🟡 1,080 条 type errors、4,077 warnings | 公开债务 |
 | 注释/文档一致性 | 🟡 历史文档已标注快照；仍需持续对齐 | 以 quality-report 为唯一数字源 |
 | 可运行证据 | ✅ build/pytest/lint 可复跑；type-check 如实披露 | `quality-report.md` |
 

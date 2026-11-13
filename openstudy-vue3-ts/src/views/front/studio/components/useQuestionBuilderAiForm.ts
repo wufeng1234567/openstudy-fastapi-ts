@@ -1,5 +1,4 @@
 import { computed, ref } from 'vue'
-import { useDsDeepThinkSync } from '@/composables/useDsDeepThinkSync'
 
 /** AI 出题表单的默认值、深度思考状态、模型选择和校验规则。 */
 export function useQuestionBuilderAiForm() {
@@ -20,7 +19,6 @@ export function useQuestionBuilderAiForm() {
   const onModelSelect = (cfg: any) => {
     selectedConfigId.value = cfg?.configId ?? null
   }
-  useDsDeepThinkSync(() => aiForm.value.model, deepThink, 'openstudy_ai_thinking')
 
   const aiRules = computed(() => {
     if (aiForm.value.questionType === 'composite') {

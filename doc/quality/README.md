@@ -15,6 +15,6 @@
 ## 当前边界
 
 - `npm run type-check` 的历史结果仅作参考，不再作为质量门禁；
-- `npm run lint` 当前 **0 errors / 4,156 warnings**，是 warn-only 基线；
+- `npm run lint` 当前 **0 errors / 4,077 warnings**，是 warn-only 基线；
 - coverage 19% 为历史基线，复跑需先修 coverage 写入 INTERNALERROR；
 - 不把上述债务写成“已清零”，也不把 `build:prod` 通过等同于类型检查通过。

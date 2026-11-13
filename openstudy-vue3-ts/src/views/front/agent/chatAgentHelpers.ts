@@ -2,8 +2,6 @@
 //
 // Agent 会话页的**纯逻辑 / 展示判定 / 格式化**（从 `chat.vue` 抽出）。
 //
-//   · `isInjectHistoryModel` —— 该不该露出「注入历史上下文」按钮
-//   · `isDsFreeModel`        —— 该模型是不是 ds-free（挂不了 tools）
 //   · `mapToolLabels`        —— 工具名 → 中文名对照表
 //   · `countAttachments`     —— 附件总数
 //   · `flattenAttachments`   —— 图片 + 文件合成一份列表
@@ -18,16 +16,6 @@
 //    的判定挪到了可独立读、可独立测的地方；请求的发起顺序、SSE 事件的处理
 //    顺序、附件的增删时机全部原样。
 import { UploadFilled } from '@element-plus/icons-vue'
-
-/** 该不该露出「注入历史上下文」按钮（仅「DS 免费（无浏览器）」） */
-export function isInjectHistoryModel(model: string): boolean {
-  return (model || '').trim() === 'ds-free-nb'
-}
-
-/** 该模型是不是 ds-free（由扩展代发、挂不了 tools） */
-export function isDsFreeModel(model: string): boolean {
-  return model === 'deepseek-free'
-}
 
 /** 工具名 → 中文名（界面对照；无则回落到 name 本身） */
 export function mapToolLabels(
