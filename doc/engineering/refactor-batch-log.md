@@ -377,3 +377,24 @@
 新增模块：
 - `question_batch_check.py` / `rag_query_params.py`
 - `loop_tool_result.py`
+
+## Batch 17（2026-11-13，已完成）
+
+- 基线 commit：`51812a5`
+- 快照目录：`_scratch_refactor_batch17_51812a5/`
+- 授权：hy4 = questions.py + rag.py；minimax3.1f = useAgentChat（原计划 KnowledgeWikiPanel，因 import 写入事故从快照恢复后改为 useAgentChat）
+- 事故与修复：KnowledgeWikiPanel 首次尝试把 import 插进函数体导致 build 失败；已从快照恢复原文件，并更换第三文件为 useAgentChat.ts。
+- 测试：build 4,025 modules / unit 29 项 / compileall / ruff / questions+rag 导入 / 13 项定向 pytest
+- 提交：`[pending]`
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `app/api/v1/questions.py` | 2,687 | 2,654 | -33 |
+| `app/api/v1/rag.py` | 2,294 | 2,282 | -12 |
+| `useAgentChat.ts` | 1,404 | 1,354 | -50 |
+
+新增模块：
+- `question_query_scope.py` / `rag_download_response.py`
+- `agentChatSourceRefs.ts`

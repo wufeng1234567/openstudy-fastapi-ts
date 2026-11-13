@@ -68,6 +68,7 @@ from .question_lookup_formatters import (
 )
 from .question_list_filters import apply_favorite_bank_filters, apply_favorite_question_filters
 from .question_batch_check import batch_check_result
+from .question_query_scope import apply_owner_scope
 
 
 # ========== 辅助函数 ==========
@@ -1408,11 +1409,7 @@ async def list_favorite_banks(
     is_admin = _is_admin_user(current_user)
 
     query = select(UserBankFavorite)
-    if is_admin:
-        if userId is not None:
-            query = query.where(UserBankFavorite.user_id == userId)
-    else:
-        query = query.where(UserBankFavorite.user_id == current_id)
+    query = apply_owner_scope(query, UserBankFavorite, is_admin=is_admin, current_id=current_id, user_id=userId)
 
     query = apply_favorite_bank_filters(
         query,
@@ -1773,11 +1770,7 @@ async def export_favorite_banks(
     is_admin = _is_admin_user(current_user)
     query = select(UserBankFavorite)
 
-    if is_admin:
-        if userId is not None:
-            query = query.where(UserBankFavorite.user_id == userId)
-    else:
-        query = query.where(UserBankFavorite.user_id == current_id)
+    query = apply_owner_scope(query, UserBankFavorite, is_admin=is_admin, current_id=current_id, user_id=userId)
 
     query = apply_favorite_bank_filters(
         query,
@@ -1834,11 +1827,7 @@ async def list_favorite_questions(
     is_admin = _is_admin_user(current_user)
 
     query = select(UserQuestionFavorite)
-    if is_admin:
-        if userId is not None:
-            query = query.where(UserQuestionFavorite.user_id == userId)
-    else:
-        query = query.where(UserQuestionFavorite.user_id == current_id)
+    query = apply_owner_scope(query, UserQuestionFavorite, is_admin=is_admin, current_id=current_id, user_id=userId)
 
     query = apply_favorite_question_filters(
         query,
@@ -2204,11 +2193,7 @@ async def export_favorite_questions(
     is_admin = _is_admin_user(current_user)
     query = select(UserQuestionFavorite)
 
-    if is_admin:
-        if userId is not None:
-            query = query.where(UserQuestionFavorite.user_id == userId)
-    else:
-        query = query.where(UserQuestionFavorite.user_id == current_id)
+    query = apply_owner_scope(query, UserQuestionFavorite, is_admin=is_admin, current_id=current_id, user_id=userId)
 
     query = apply_favorite_question_filters(
         query,
@@ -2345,13 +2330,7 @@ async def list_error_questions(
     is_admin = "admin" in (current_user.get("roles") or [])
     query = select(UserQuestionError)
 
-    if is_admin:
-        # 后台管理：传 userId 则按该用户筛选，不传则查看全部用户
-        if userId is not None:
-            query = query.where(UserQuestionError.user_id == userId)
-    else:
-        # 普通用户：只能看自己的错题
-        query = query.where(UserQuestionError.user_id == current_id)
+    query = apply_owner_scope(query, UserQuestionError, is_admin=is_admin, current_id=current_id, user_id=userId)
 
     # 默认只查活跃记录，除非显式指定 status
     if status is not None:
@@ -2661,11 +2640,7 @@ async def export_errors(
     is_admin = "admin" in (current_user.get("roles") or [])
     query = select(UserQuestionError)
 
-    if is_admin:
-        if userId is not None:
-            query = query.where(UserQuestionError.user_id == userId)
-    else:
-        query = query.where(UserQuestionError.user_id == current_id)
+    query = apply_owner_scope(query, UserQuestionError, is_admin=is_admin, current_id=current_id, user_id=userId)
 
     if status is not None:
         query = query.where(UserQuestionError.status == status)
@@ -2737,11 +2712,7 @@ async def list_marked_questions(
     is_admin = _is_admin_user(current_user)
 
     query = select(UserQuestionMarked)
-    if is_admin:
-        if userId is not None:
-            query = query.where(UserQuestionMarked.user_id == userId)
-    else:
-        query = query.where(UserQuestionMarked.user_id == current_id)
+    query = apply_owner_scope(query, UserQuestionMarked, is_admin=is_admin, current_id=current_id, user_id=userId)
 
     # 默认只看有效斩题，除非显式指定 markedStatus（后台可查已失效记录）
     if markedStatus is not None:
@@ -3098,11 +3069,7 @@ async def export_marked(
     is_admin = _is_admin_user(current_user)
     query = select(UserQuestionMarked)
 
-    if is_admin:
-        if userId is not None:
-            query = query.where(UserQuestionMarked.user_id == userId)
-    else:
-        query = query.where(UserQuestionMarked.user_id == current_id)
+    query = apply_owner_scope(query, UserQuestionMarked, is_admin=is_admin, current_id=current_id, user_id=userId)
 
     if markedStatus is not None:
         query = query.where(UserQuestionMarked.marked_status == markedStatus)

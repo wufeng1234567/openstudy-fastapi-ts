@@ -35,13 +35,6 @@ import {
 } from './agentChatTypes'
 import { slimTimeline, newTurnId } from './agentChatTimeline'
 import {
-  collectDocumentReferences,
-  collectGalleryReferences,
-  collectKnowledgeReferences,
-  collectWebReferences,
-  mergeKnowledgeReferences
-} from './agentChatReferences'
-import {
   applyMetricsDelta,
   createMetricsAccumulator,
   metricsSnapshotOf,
@@ -84,6 +77,8 @@ import {
   decisionStatus,
   findConfirmCard,
 } from './agentChatStatus'
+
+import { mergeSourceRefs } from './agentChatSourceRefs'
 
 /**
  * **对外出口保持不变** —— 类型与「快照复原」辅助仍旧从本文件 import，
@@ -691,29 +686,7 @@ export function useAgentChat() {
         m.errors = errs
         m.data = event.data
         m.content = detail || m.content
-        if (
-          event.success &&
-          ['knowledge_search', 'search_knowledge', 'workspace_search'].includes(event.tool || '')
-        ) {
-          const refs = collectKnowledgeReferences(event.data)
-          if (refs.length) pendingReferences = mergeKnowledgeReferences(pendingReferences, refs)
-        }
-        if (
-          event.success &&
-          event.tool === 'knowledge_base_manage' &&
-          ['read_document', 'get_document', 'read'].includes(String(event.action || event.data?.action || ''))
-        ) {
-          const refs = collectDocumentReferences(event.data)
-          if (refs.length) pendingReferences = mergeKnowledgeReferences(pendingReferences, refs)
-        }
-        if (event.success && event.tool === 'gallery_manage') {
-          const refs = collectGalleryReferences(event.data)
-          if (refs.length) pendingReferences = mergeKnowledgeReferences(pendingReferences, refs)
-        }
-        if (event.success && event.tool === 'web_search') {
-          const refs = collectWebReferences(event.data)
-          if (refs.length) pendingReferences = mergeKnowledgeReferences(pendingReferences, refs)
-        }
+        pendingReferences = mergeSourceRefs(pendingReferences, event)
         return
       }
     }
@@ -723,29 +696,7 @@ export function useAgentChat() {
     if (event.cancelled) return
     // 没找到对应卡片（事件丢了 / 顺序异常）：补一条，别让过程凭空消失
     messages.value.push(buildToolResultFallback(event, detail, errs))
-    if (
-      event.success &&
-      ['knowledge_search', 'search_knowledge', 'workspace_search'].includes(event.tool || '')
-    ) {
-      const refs = collectKnowledgeReferences(event.data)
-      if (refs.length) pendingReferences = mergeKnowledgeReferences(pendingReferences, refs)
-    }
-    if (
-      event.success &&
-      event.tool === 'knowledge_base_manage' &&
-      ['read_document', 'get_document', 'read'].includes(String(event.action || event.data?.action || ''))
-    ) {
-      const refs = collectDocumentReferences(event.data)
-      if (refs.length) pendingReferences = mergeKnowledgeReferences(pendingReferences, refs)
-    }
-    if (event.success && event.tool === 'gallery_manage') {
-      const refs = collectGalleryReferences(event.data)
-      if (refs.length) pendingReferences = mergeKnowledgeReferences(pendingReferences, refs)
-    }
-    if (event.success && event.tool === 'web_search') {
-      const refs = collectWebReferences(event.data)
-      if (refs.length) pendingReferences = mergeKnowledgeReferences(pendingReferences, refs)
-    }
+    pendingReferences = mergeSourceRefs(pendingReferences, event)
   }
 
   /**

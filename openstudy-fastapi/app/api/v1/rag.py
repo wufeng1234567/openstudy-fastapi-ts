@@ -74,6 +74,7 @@ from .rag_kb_formatters import kb_created_payload, kb_detail_payload, kb_updated
 from .rag_document_formatters import outline_payload, outline_rebuild_payload, workspace_search_payload
 from .rag_upload_formatters import upload_summary_payload
 from .rag_query_params import parse_csv_ints
+from .rag_download_response import document_download_response
 
 # ============================================================ 知识库
 
@@ -573,7 +574,7 @@ async def export_document(
     """导出当前正文为 Markdown 或 Word。"""
     try:
         doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
-        from app.services.document_export_service import content_disposition, export_document
+        from app.services.document_export_service import export_document
 
         body, filename, media_type = export_document(
             doc.file_name or "资料",
@@ -581,11 +582,7 @@ async def export_document(
             doc.image_map or {},
             format,
         )
-        return Response(
-            content=body,
-            media_type=media_type,
-            headers={"Content-Disposition": content_disposition(filename)},
-        )
+        return document_download_response(body, media_type, filename)
     except Exception as e:
         return _fail(e)
 
@@ -600,7 +597,7 @@ async def export_document_with_content(
     """导出编辑器里的当前内容（未保存也可以直接导出 Word/Markdown）。"""
     try:
         doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
-        from app.services.document_export_service import content_disposition, export_document
+        from app.services.document_export_service import export_document
 
         body, filename, media_type = export_document(
             doc.file_name or "资料",
@@ -608,11 +605,7 @@ async def export_document_with_content(
             doc.image_map or {},
             data.format,
         )
-        return Response(
-            content=body,
-            media_type=media_type,
-            headers={"Content-Disposition": content_disposition(filename)},
-        )
+        return document_download_response(body, media_type, filename)
     except Exception as e:
         return _fail(e)
 
@@ -1335,13 +1328,7 @@ async def export_workspace_study_prescription(
             fmt=data.format,
             meta=data.meta,
         )
-        from app.services.document_export_service import content_disposition
-
-        return Response(
-            content=body,
-            media_type=media_type,
-            headers={"Content-Disposition": content_disposition(filename)},
-        )
+        return document_download_response(body, media_type, filename)
     except Exception as e:
         return _fail(e)
 

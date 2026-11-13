@@ -18,7 +18,7 @@
 |---:|---|---|
 | 1,994 | `src/views/front/workspace/components/KnowledgeWikiPanel.vue` | 图谱/百科双视图，P2 拆分 |
 | 1,358 | `src/views/front/studio/components/QuestionBuilder.vue` | 模板约 1,100 行，优先拆 AI 弹窗和编辑器 |
-| 1,404 | `src/composables/useAgentChat.ts` | Agent 会话状态机，业务复杂 |
+| 1,354 | `src/composables/useAgentChat.ts` | Agent 会话状态机，业务复杂 |
 | 1,442 | `src/composables/useQuestionPractice.ts` | 练习状态核心 |
 | 2,034 | `src/views/front/english/listening/index.vue` | 英语听力页 |
 | 1,745 | `src/api/ai/agentDsFree.ts` | Agent 工具元数据/客户端 |
@@ -32,8 +32,8 @@
 
 | 行数 | 文件 | 风险/备注 |
 |---:|---|---|
-| 2,687 | `app/api/v1/questions.py` | 路由/业务混杂，P2 下沉 service |
-| 2,294 | `app/api/v1/rag.py` | 资料/RAG 巨型路由 |
+| 2,654 | `app/api/v1/questions.py` | 路由/业务混杂，P2 下沉 service |
+| 2,282 | `app/api/v1/rag.py` | 资料/RAG 巨型路由 |
 | 1,737 | `app/services/rag/wiki_service.py` | 百科服务 |
 | 1,886 | `app/services/ai/agent/loop.py` | Agent 循环，已拆部分 helper |
 | 1,976 | `app/services/rag/workspace_service.py` | 资料空间服务 |
