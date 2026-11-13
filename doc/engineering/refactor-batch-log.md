@@ -302,7 +302,7 @@
 - 快照目录：`_scratch_refactor_batch13_0c06706/`
 - 授权：hy4 = questions.py + rag.py；minimax3.1f = wiki_service.py
 - 测试：compileall / ruff / questions+rag+wiki 导入 / 13 项定向 pytest
-- 提交：`[pending]`
+- 提交：`5e912db`（Gitee/GitCode 已推送；GitHub 重试中）
 
 ### 结果（非空行口径）
 
