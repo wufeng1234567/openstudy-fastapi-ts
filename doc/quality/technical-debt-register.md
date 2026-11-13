@@ -7,8 +7,8 @@
 
 | 项目 | 当前值 | 说明 | 下一步 |
 |---|---:|---|---|
-| 前端 type-check | **1,499 条 error TS，exit 2** | 历史 RuoYi 页面、`ref({})` 推断、`catch(error)` unknown 等 | 按文件分组，先收敛 `src/views/front` 活跃路径 |
-| 前端 ESLint | **0 errors / 3,933 warnings** | warn-only 基线，主要为 any/no-console/默认 prop | 建 warning 预算，按目录递减 |
+| 前端 type-check | **1,384 条 error TS，exit 2** | 历史 RuoYi 页面、`ref({})` 推断、`catch(error)` unknown 等 | 按文件分组，先收敛 `src/views/front` 活跃路径 |
+| 前端 ESLint | **0 errors / 3,992 warnings** | warn-only 基线，主要为 any/no-console/默认 prop | 建 warning 预算，按目录递减 |
 | 后端 ruff 全量 | **约 115 errors**（107 F401 + 8 F841） | 语法门禁 `E9,F63,F7,F82` 已过；全量未清零 | 先加 `__init__.py` re-export 规则，再逐文件清 F401/F841 |
 | 后端覆盖率 | **历史 19%** | 复跑 coverage 当前有 INTERNALERROR，数字需重跑后确认 | 修 coverage 写入路径，再设 30% 路线 |
 

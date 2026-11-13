@@ -610,3 +610,11 @@
 - 测试：build 4,032 modules / unit 29 项 / type-check exit 2（未清零）
 - 备注：questionMarked 余 4 条局部 map 索引、OcrRecognizer 余 1 条 batchAddWords 参数数，均按“不改变行为”原则保留
 - 提交：`3be4750`（GitHub/Gitee/GitCode 三远端已同步）
+## Batch 30（2026-11-13，已完成）
+
+- 基线 commit：`af679c5`；快照：`_scratch_refactor_batch30_af679c5/`
+- 类型债务批次：english/ocr（44 条）、questionError（42 条）、favoriteQuestion（42 条）；minimax 负责前两个，hy4 负责 favoriteQuestion
+- 结果：`npm run type-check` 1,499 → **1,384 条**（-115）；`npm run lint` 3,933 → **3,992 warnings**（+59，warn-only）
+- 测试：build 4,032 modules / unit 29 项 / type-check exit 2（未清零）
+- 备注：questionError 余约 2 条未定位；所有修改均为编译期类型标注
+- 提交：`adf75bf`（GitHub/Gitee/GitCode 三远端已同步）
