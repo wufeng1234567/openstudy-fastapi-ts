@@ -322,7 +322,7 @@
 - 快照目录：`_scratch_refactor_batch14_cc62c0e/`
 - 授权：hy4 = KnowledgeWikiPanel；minimax3.1f = useAgentChat + useQuestionPractice
 - 测试：build 4,024 modules / unit 29 项 / wiki+practice+agent smoke 通过
-- 提交：`[pending]`
+- 提交：`7d61dc4`（Gitee/GitCode 已推送；GitHub 重试中）
 
 ### 结果（非空行口径）
 
