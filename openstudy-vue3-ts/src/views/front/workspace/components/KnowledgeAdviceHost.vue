@@ -296,12 +296,13 @@ async function loadHistoryItem(item: any) {
     return
   }
   runSeq++
-  // 先清空旧轨迹，确保再次载入历史时 parent 能重新触发连线动画。
+  // 历史规划是“查看已有结果”，不重播图谱遍历动画。
   advice.value = null
   trace.value = null
   await nextTick()
   advice.value = res.data.advice || null
-  trace.value = res.data.trace || null
+  // 保留 trace 会在父组件重新触发节点连线动画；历史查看直接展示建议。
+  trace.value = null
   rememberGraphTitles(res.data.graph)
   snapshotId.value = Number(res.data.id || 0)
   phase.value = 'ready'
@@ -316,8 +317,8 @@ async function loadHistoryItem(item: any) {
   const seedPageId = Number(seedRaw.replace(/^topic:/, ''))
   if (seedPageId) {
     selectedNode.value = { id: `topic:${seedPageId}`, title: props.nodeTitles?.[String(seedPageId)] || '' }
-    emit('focus-page', seedPageId)
   }
+  // trace 为空，syncState 只更新建议状态，不再触发连线动画。
   syncState()
 }
 

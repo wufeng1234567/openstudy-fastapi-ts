@@ -245,7 +245,12 @@
 .kw-detail__block { padding-top: 13px; border-top: 1px solid #edf0f5; }
 .kw-detail__block-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; color: #6b7280; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; }
 .kw-detail__block-head b { color: #2f5fce; font-weight: 600; }
-.kw-source { display: grid; width: 100%; grid-template-columns: auto auto 1fr; align-items: center; gap: 9px; margin-bottom: 6px; padding: 8px 9px; border: 1px solid #eef1f6; border-radius: 8px; background: #fbfcfe; color: #697386; cursor: pointer; font-size: 10.5px; text-align: left; }
+.kw-source-list { display: flex; flex-direction: column; gap: 6px; }
+.kw-source__type { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 5px; color: #2f5fce; background: #eef4ff; font-size: 10px; white-space: nowrap; }
+.kw-source__type i { width: 6px; height: 6px; border-radius: 50%; background: #3b7cff; }
+.kw-link-toggle { margin-left: auto; padding: 0 2px; border: 0; color: #2f5fce; background: transparent; cursor: pointer; font: inherit; font-size: 10px; }
+.kw-link-toggle:hover { color: #1f4fae; }
+.kw-source { display: grid; width: 100%; grid-template-columns: auto auto auto 1fr; align-items: center; gap: 9px; margin-bottom: 6px; padding: 8px 9px; border: 1px solid #eef1f6; border-radius: 8px; background: #fbfcfe; color: #697386; cursor: pointer; font-size: 10.5px; text-align: left; }
 .kw-source:hover { border-color: #d9e1f4; background: #f5f7fc; }
 .kw-source__name { overflow: hidden; color: #4b5563; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .kw-source__index { color: #9aa1af; white-space: nowrap; }

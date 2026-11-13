@@ -183,11 +183,6 @@
               <span v-if="activePage.status === 'stale'" class="is-stale">待更新</span>
               <span v-if="activePage.generatedBy === 'manual'" class="is-manual">手动编辑</span>
             </div>
-            <div v-if="activePageGraphSources.length" class="kw-detail__provenance">
-              <span v-for="group in activePageGraphSources" :key="group.kind" class="kw-provenance-chip">
-                <i :style="{ background: group.color }"></i>{{ group.label }} {{ group.count }}
-              </span>
-            </div>
           </div>
           <div class="kw-detail__head-actions">
             <el-button size="small" plain @click="openEditor">编辑</el-button>
@@ -213,7 +208,11 @@
             <b>{{ activePage.linkStats?.outPageCount || 0 }} 页出链 · {{ activePage.linkStats?.inPageCount || 0 }} 页反链</b>
             <el-button size="small" text type="primary" @click="openLinkDialog">添加页面链接</el-button>
             <el-button size="small" text type="primary" :loading="linkRefreshing" @click="refreshLinks">刷新链接</el-button>
+            <button type="button" class="kw-link-toggle" @click="linksExpanded = !linksExpanded">
+              {{ linksExpanded ? '收起' : `展开（${(groupedOutLinks.length || 0) + (groupedInLinks.length || 0)}）` }}
+            </button>
           </div>
+          <div v-show="linksExpanded">
           <div v-if="groupedOutLinks.length" class="kw-link-group">
             <div class="kw-link-group__label">本页链接到</div>
             <div class="kw-link-list">
@@ -243,6 +242,7 @@
           <div v-if="!groupedOutLinks.length && !groupedInLinks.length" class="kw-image-empty">
             正文里还没有页面链接。点击「添加页面链接」，或先在正文里写上目标主题名。
           </div>
+          </div>
         </section>
 
         <section class="kw-detail__block">
@@ -263,24 +263,23 @@
           <div v-else class="kw-image-empty">还没有关联画廊图片，可以从画廊选择。</div>
         </section>
 
-        <section v-if="activePageGraphSources.length" class="kw-detail__block">
-          <div class="kw-detail__block-head"><span>图谱来源</span><b>主题节点关联到的实体</b></div>
-          <div class="kw-provenance-list">
-            <div v-for="group in activePageGraphSources" :key="group.kind" class="kw-provenance-row">
+        <section v-if="activePageGraphSources.length || activePage.sources?.length" class="kw-detail__block">
+          <div class="kw-detail__block-head"><span>来源</span><b>主题节点关联到的实体</b></div>
+          <div v-if="activePageGraphSources.length" class="kw-provenance-list">
+            <div v-for="group in activePageGraphSources.filter((item) => item.kind !== 'document' || !activePage.sources?.length)" :key="group.kind" class="kw-provenance-row">
               <span class="kw-provenance-row__label"><i :style="{ background: group.color }"></i>{{ group.label }}</span>
               <span class="kw-provenance-row__titles">{{ group.titles.join('、') || '暂无名称' }}</span>
             </div>
           </div>
-        </section>
-
-        <section v-if="activePage.sources?.length" class="kw-detail__block">
-          <div class="kw-detail__block-head"><span>来源</span><b>{{ activePage.sourceDocIds?.length || 0 }} 份资料 · {{ activePage.sources.length }} 个片段</b></div>
-          <button v-for="source in activePage.sources" :key="`${source.docId}-${source.chunkId}`" type="button"
-            class="kw-source" @click="locateSource(source)">
-            <span class="kw-source__name">{{ source.docName }}</span>
-            <span class="kw-source__index">第 {{ Number(source.chunkIndex || 0) + 1 }} 段</span>
-            <span class="kw-source__quote">{{ source.quote }}</span>
-          </button>
+          <div v-if="activePage.sources?.length" class="kw-source-list">
+            <button v-for="source in activePage.sources" :key="`${source.docId}-${source.chunkId}`" type="button"
+              class="kw-source" @click="locateSource(source)">
+              <span class="kw-source__type"><i class="is-document"></i>资料</span>
+              <span class="kw-source__name">{{ source.docName }}</span>
+              <span class="kw-source__index">第 {{ Number(source.chunkIndex || 0) + 1 }} 段</span>
+              <span class="kw-source__quote">{{ source.quote }}</span>
+            </button>
+          </div>
         </section>
 
         <section v-if="activePage.related?.length" class="kw-detail__block">
@@ -522,6 +521,8 @@ const pageLoading = ref(false)
 const activePage = ref<any>(null)
 /** KNOWLEDGE PAGE 与规划建议面板在同一个右侧抽屉内切换。 */
 const detailPanel = ref<'page' | 'advice'>('page')
+/** 页面链接默认收起，避免长链接列表占满详情页。 */
+const linksExpanded = ref(false)
 const {
   graphSourceTypeFilter,
   graphPageTypeFilter,
@@ -1618,6 +1619,7 @@ function closeDetail() {
     mapOpenTimer = null
   }
   detailPanel.value = 'page'
+  linksExpanded.value = false
   detailVisible.value = false
   mapSelectedPageId.value = null
   mapSelectedNodeId.value = null
@@ -1697,6 +1699,7 @@ async function openPage(pageId: number) {
   mapSelectedPageId.value = Number(pageId)
   lastDetailPageId = Number(pageId)
   detailPanel.value = 'page'
+  linksExpanded.value = false
   detailVisible.value = true
   pageLoading.value = true
   activePage.value = null
