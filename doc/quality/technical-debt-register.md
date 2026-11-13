@@ -20,11 +20,11 @@
 | 1,358 | `src/views/front/studio/components/QuestionBuilder.vue` | 模板约 1,100 行，优先拆 AI 弹窗和编辑器 |
 | 1,354 | `src/composables/useAgentChat.ts` | Agent 会话状态机，业务复杂 |
 | 1,442 | `src/composables/useQuestionPractice.ts` | 练习状态核心 |
-| 2,034 | `src/views/front/english/listening/index.vue` | 英语听力页 |
+| 1,981 | `src/views/front/english/listening/index.vue` | 英语听力页 |
 | 1,745 | `src/api/ai/agentDsFree.ts` | Agent 工具元数据/客户端 |
 | 1,501 | `src/api/ai/ai.ts` | AI API 聚合 |
-| 1,395 | `src/views/front/english/ocr/index.vue` | OCR 页面 |
-| 1,383 | `src/views/front/agent/chat.vue` | 对话页 |
+| 1,372 | `src/views/front/english/ocr/index.vue` | OCR 页面 |
+| 1,375 | `src/views/front/agent/chat.vue` | 对话页 |
 | 1,157 | `src/components/AiAssistant/index.vue` | 助手抽屉 |
 | 1,151 | `src/utils/latex.ts` | 工具函数偏大 |
 

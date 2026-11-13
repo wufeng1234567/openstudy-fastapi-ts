@@ -440,3 +440,23 @@
 新增模块：
 - `question_query_builders.py` / `rag_value_errors.py`
 - `wiki_page_queries.py`
+
+## Batch 20（2026-11-13，已完成）
+
+- 基线 commit：`dde5ce0`
+- 快照目录：`_scratch_refactor_batch20_dde5ce0/`
+- 授权：hy4 = english/listening + english/ocr；minimax3.1f = agent/chat
+- 测试：build 4,028 modules / unit 29 项 / listening+ocr+agent smoke 通过（ocr 在 3168 临时 Vite `--force` 验证，3167 旧缓存 504 已确认非代码问题）
+- 提交：`[pending]`
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `english/listening/index.vue` | 2,034 | 1,981 | -53 |
+| `english/ocr/index.vue` | 1,395 | 1,372 | -23 |
+| `agent/chat.vue` | 1,383 | 1,375 | -8 |
+
+新增模块：
+- `useListeningCardDisplay.ts` / `ocrResultFormatters.ts`
+- `chatAgentHelpers.ts`

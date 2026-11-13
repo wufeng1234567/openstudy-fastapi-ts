@@ -368,6 +368,17 @@ import useUserStore from '@/store/modules/user'
 import useAgentUiStore from '@/store/modules/agentUi'
 import useAgentSessionStore from '@/store/modules/agentSession'
 
+import {
+  countAttachments,
+  flattenAttachments,
+  hasFiles,
+  isDsFreeModel,
+  isInjectHistoryModel,
+  mapToolLabels,
+  normalizeHeroSuggestions,
+  normalizeOutlineOffset,
+} from './chatAgentHelpers'
+
 /**
  * 「回到底部」悬浮按钮距消息区底边的高度。
  *
@@ -459,7 +470,7 @@ const onModelSelect = (cfg) => { selectedConfigId.value = cfg?.configId ?? null 
 const autoConfirm = ref(true)
 /** 「注入历史上下文」按钮状态：仅「DS 免费（无浏览器）」= ds-free-nb 模型露出。 */
 const injectingHistory = ref(false)
-const showInjectHistory = computed(() => (model.value || '').trim() === 'ds-free-nb')
+const showInjectHistory = computed(() => isInjectHistoryModel(model.value))
 
 /** 「调试」按钮状态：打开当前登录态的 DS 浏览器窗口（有头），便于排查卡在哪一步。 */
 const openingBridge = ref(false)
@@ -607,11 +618,7 @@ async function onExpertModelChange(e: AgentExpert, model: string) {
 }
 
 /** 工具名 → 中文名（界面对照；无则回落到 name 本身） */
-const toolLabelMap = computed(() => {
-  const m: Record<string, string> = {}
-  for (const t of toolOptions.value) m[t.name] = t.label || t.name
-  return m
-})
+const toolLabelMap = computed(() => mapToolLabels(toolOptions.value))
 
 async function loadToolOptions() {
   // ⚠️ 必须有加载态 + 失败态：原先无 try/catch，失败时 `toolOptions` 落成空数组，
@@ -771,7 +778,7 @@ function syncOutlineWindow() {
   const win = vm?.visibleMessages
   visibleMessagesForOutline.value = Array.isArray(win) ? win : messages.value
   const off = Number(vm?.windowOffset)
-  outlineWindowOffset.value = Number.isFinite(off) && off > 0 ? off : 0
+  outlineWindowOffset.value = normalizeOutlineOffset(off)
 }
 
 /**
@@ -788,7 +795,7 @@ function onChatWindowChange(payload?: { visible?: any[]; offset?: number }) {
   if (payload && Array.isArray(payload.visible)) {
     visibleMessagesForOutline.value = payload.visible
     const off = Number(payload.offset)
-    outlineWindowOffset.value = Number.isFinite(off) && off > 0 ? off : 0
+    outlineWindowOffset.value = normalizeOutlineOffset(off)
     return
   }
   // 兜底：事件没带载荷时回读实例
@@ -805,18 +812,18 @@ watch(
 )
 
 /** ds-free 由扩展代发、挂不了 tools，Agent 用不了 */
-const isDsFree = computed(() => model.value === 'deepseek-free')
+const isDsFree = computed(() => isDsFreeModel(model.value))
 
 /* ===================== 附件 ===================== */
 const attachments = ref<{ images: Array<{ name: string; type: string; base64: string }>; files: Array<{ name: string; type: string; base64: string }> }>({
   images: [],
   files: []
 })
-const attachmentCount = computed(() => attachments.value.images.length + attachments.value.files.length)
+const attachmentCount = computed(() => countAttachments(attachments.value))
 
 /** 上传器实例：引导卡「上传资料」要调它的 openPicker() 唤起文件选择框 */
 const attachRef = ref<InstanceType<typeof ChatFileUploader> | null>(null)
-const attachmentItems = computed(() => [...attachments.value.images, ...attachments.value.files])
+const attachmentItems = computed(() => flattenAttachments(attachments.value))
 
 const removeAttachment = (idx: number) => {
   const images = [...attachments.value.images]
@@ -835,13 +842,6 @@ const removeAttachment = (idx: number) => {
 const dragOver = ref(false)
 let dragDepth = 0
 
-/** 这次拖拽里有没有文件（拖文字/链接时不接管） */
-function hasFiles(e: DragEvent): boolean {
-  const t = e.dataTransfer
-  if (!t) return false
-  // types 在某些浏览器里拖文件时是 ['Files']，拖文字时是 ['text/plain']
-  return Array.from(t.types || []).includes('Files')
-}
 
 function onDragEnter(e: DragEvent) {
   if (!hasFiles(e) || isGenerating.value) return
@@ -1093,13 +1093,6 @@ const heroSuggestions = ref<any[]>(fallbackHeroSuggestions.map((item) => ({ ...i
 const heroSuggestionsLoading = ref(false)
 let heroSuggestionSeq = 0
 
-function normalizeHeroSuggestions(list: any[] = []): any[] {
-  return list.map((item, index) => ({
-    ...item,
-    label: item.label || item.text,
-    icon: item.action === 'upload' ? UploadFilled : suggestionIcons[index % suggestionIcons.length]
-  }))
-}
 
 async function refreshHeroSuggestions(docId?: number | string | null) {
   const seq = ++heroSuggestionSeq
@@ -1108,7 +1101,7 @@ async function refreshHeroSuggestions(docId?: number | string | null) {
     const res = await getChatSuggestions(docId)
     if (seq !== heroSuggestionSeq) return
     const list = Array.isArray(res?.data?.suggestions) ? res.data.suggestions : []
-    if (list.length) heroSuggestions.value = normalizeHeroSuggestions(list)
+    if (list.length) heroSuggestions.value = normalizeHeroSuggestions(list, suggestionIcons)
   } catch (error) {
     console.warn('[chat] 读取提问推测失败，保留默认问题', error)
   } finally {
