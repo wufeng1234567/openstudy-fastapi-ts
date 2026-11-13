@@ -460,3 +460,24 @@
 新增模块：
 - `useListeningCardDisplay.ts` / `ocrResultFormatters.ts`
 - `chatAgentHelpers.ts`
+
+## Batch 21（2026-11-13，已完成）
+
+- 基线 commit：`e3f4bd3`
+- 快照目录：`_scratch_refactor_batch21_e3f4bd3/`
+- 授权过程：hy4 原负责 agentDsFree + ai.ts 超时停止（未落盘）；minimax3.1f 完成 latex，并接手 agentDsFree + useQuestionPractice；useAgentChat 经扫描无可安全抽取块，保持原样，未计入 3 文件。
+- 测试：build 4,031 modules / unit 29 项 / practice+agent smoke 通过
+- 提交：`[pending]`
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `useQuestionPractice.ts` | 1,442 | 1,435 | -7 |
+| `agentDsFree.ts` | 1,745 | 1,734 | -11 |
+| `latex.ts` | 1,151 | 1,103 | -48 |
+
+新增模块：
+- `questionPracticeQuestionShape.ts`
+- `agentDsFreeResponse.ts`
+- `latexBraceScan.ts`

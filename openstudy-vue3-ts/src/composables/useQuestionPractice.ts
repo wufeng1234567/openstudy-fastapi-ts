@@ -85,6 +85,8 @@ import {
   debugCacheStatus
 } from '@/utils/practiceDebug'
 
+import { asUnansweredQuestion } from './questionPracticeQuestionShape'
+
 interface UseQuestionPracticeOptions {
   isFavoriteMode?: boolean
   singleQuestionId?: number | string | null
@@ -310,6 +312,21 @@ export function useQuestionPractice(
   }
 
   // 通用题目处理函数 - 现在可被外部调用
+  /**
+   * 「只刷错题」分支：过滤错题 → 没有就清空并返回 → 有就记一条调试日志
+   *
+   * ⚠ 这段原本在 `processQuestions` 里**逐字出现了两次**（乱序分支 / 顺序分支）——
+   *    现在收敛到一处，两条路径的「没错题就清空」口径不会再漂。
+   */
+  async function applyOnlyWrongBranch(): Promise<void> {
+    const ok = await filterOnlyWrongQuestions()
+    if (!ok) {
+      clearForNoWrongQuestions('这个题库里还没有你的错题')
+      return
+    }
+    debugProcessComplete(props.moduleType, questions.value, allQuestionsData.value)
+  }
+
   async function processQuestions(data: any[]): Promise<void> {
     /*
      * 一进来先清掉上一次的「没有题」标记。
@@ -402,13 +419,8 @@ export function useQuestionPractice(
       // ⚠️ 同顺序分支：只刷错题时**先过滤、后赋值 questions**，
       //    否则「0 条错题」的题库会先闪一屏全部题目（2026-10-20 修的 bug）。
       if (onlyWrong.value) {
-        const ok = await filterOnlyWrongQuestions()
-        if (!ok) {
-          clearForNoWrongQuestions('这个题库里还没有你的错题')
-          return
-        }
-        debugProcessComplete(props.moduleType, questions.value, allQuestionsData.value)
-        return
+        await applyOnlyWrongBranch()
+return
       }
 
       // 调试日志：设置 questions
@@ -416,13 +428,7 @@ export function useQuestionPractice(
 
       questions.value = slicedData.map((q) => {
         const processed = transformQuestionForDisplay(q)
-        return {
-          ...processed,
-          answered: false,
-          correct: false,
-          showAnalysis: false,
-          userAnswer: null
-        }
+        return asUnansweredQuestion(processed)
       })
 
       // 调试日志：处理完成
@@ -475,13 +481,8 @@ export function useQuestionPractice(
        */
       if (onlyWrong.value) {
         // 让 filterOnlyWrongQuestions 自己去收敛 allQuestionsData 并调用 applyQuestionLimits
-        const ok = await filterOnlyWrongQuestions()
-        if (!ok) {
-          clearForNoWrongQuestions('这个题库里还没有你的错题')
-          return
-        }
-        debugProcessComplete(props.moduleType, questions.value, allQuestionsData.value)
-        return
+        await applyOnlyWrongBranch()
+return
       }
 
       // 调试日志：设置 questions（顺序模式）
@@ -809,13 +810,7 @@ export function useQuestionPractice(
         }
       }
 
-      return {
-        ...processed,
-        answered: false,
-        correct: false,
-        showAnalysis: false,
-        userAnswer: null
-      }
+      return asUnansweredQuestion(processed)
     })
 
     // 重新构建 answers 数组，保留已答题目的答案

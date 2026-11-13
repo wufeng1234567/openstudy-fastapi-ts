@@ -3,6 +3,8 @@ import 'katex/dist/katex.min.css'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 
+import { scanBraceGroups } from './latexBraceScan'
+
 /**
  * 将文本中的 LaTeX 公式命令渲染为可显示 HTML
  * 支持嵌套括号（如 \overline{\mathrm{B}}）和多个连续的 {}{}{} 组（如 \frac{A}{k(k+1)}）
@@ -17,26 +19,7 @@ function renderLatexCommands(text: string): string {
     let pos = cmdRegex.lastIndex
     while (pos < text.length && text[pos] === ' ') pos++
 
-    const braceGroups: string[] = []
-    let scanPos = pos
-    while (scanPos < text.length && text[scanPos] === '{') {
-      let depth = 0
-      let end = -1
-      for (let i = scanPos; i < text.length; i++) {
-        if (text[i] === '{') depth++
-        else if (text[i] === '}') {
-          depth--
-          if (depth === 0) { end = i + 1; break }
-        }
-      }
-      if (end > 0) {
-        braceGroups.push(text.substring(scanPos, end))
-        scanPos = end
-        while (scanPos < text.length && text[scanPos] === ' ') scanPos++
-      } else {
-        break
-      }
-    }
+    const { groups: braceGroups, end: scanPos } = scanBraceGroups(text, pos)
 
     if (braceGroups.length > 0) {
       const end = scanPos
@@ -776,38 +759,7 @@ function findBareLatexCommands(text: string): Array<{ start: number; end: number
     //    原来的实现只找"紧跟着就是 `{`"，于是 `\sum_{i=1}^{n}i` 里的
     //    `\sum` 找不到任何花括号组 → 整条被当成普通文本漏掉，
     //    用户看到的是 `\sum_{i=1}^{n}i` 原文。
-    const braceGroups: string[] = []
-    let scanPos = pos
-    while (scanPos < text.length) {
-      // 允许一个可选的下标/上标标记
-      let cursor = scanPos
-      if (text[cursor] === '_' || text[cursor] === '^') {
-        cursor++
-        while (cursor < text.length && text[cursor] === ' ') cursor++
-      }
-      if (text[cursor] !== '{') break
-
-      let depth = 0
-      let end = -1
-      for (let i = cursor; i < text.length; i++) {
-        if (text[i] === '{') depth++
-        else if (text[i] === '}') {
-          depth--
-          if (depth === 0) {
-            end = i + 1
-            break
-          }
-        }
-      }
-      if (end > 0) {
-        // 把可能存在的 `_` / `^` 一起纳入（保留 LaTeX 语义）
-        braceGroups.push(text.substring(scanPos, end))
-        scanPos = end
-        while (scanPos < text.length && text[scanPos] === ' ') scanPos++
-      } else {
-        break
-      }
-    }
+    const { groups: braceGroups, end: scanPos } = scanBraceGroups(text, pos, true)
 
     if (braceGroups.length > 0) {
       found.push({ start: cmdStart, end: scanPos, latex: text.substring(cmdStart, scanPos) })

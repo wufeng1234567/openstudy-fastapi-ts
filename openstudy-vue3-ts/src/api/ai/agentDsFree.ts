@@ -33,6 +33,8 @@ import type {
 } from './agent'
 import { normalizeAgentImages } from './agent'
 
+import { serverReason } from './agentDsFreeResponse'
+
 const BASE = import.meta.env.VITE_APP_BASE_API
 
 /** tool_call 协议块标记（开 = 闭，方便用同一个常量） */
@@ -233,12 +235,6 @@ export async function saveAgentToolPref(
    * `{code:200, msg:'操作成功', data:null}` —— 那是一句**假成功**的话，
    * 拿来当理由显示给用户就等于把假成功写在界面上。
    */
-  const serverReason = (data: any): string => {
-    const code = Number(data?.code)
-    if (!Number.isFinite(code) || code === 200) return ''
-    const msg = typeof data?.msg === 'string' ? data.msg.trim() : ''
-    return msg ? `${msg}（服务端 code=${code}）` : ''
-  }
   try {
     const res = await fetch(`${BASE}/ai/agent/tools`, {
       method: 'PUT',
@@ -298,12 +294,6 @@ export async function saveAllToolPrefs(
   disabled: 0 | 1
 ): Promise<SaveAgentToolPrefResult> {
   const fail = (reason: string): SaveAgentToolPrefResult => ({ ok: false, payload: null, reason })
-  const serverReason = (data: any): string => {
-    const code = Number(data?.code)
-    if (!Number.isFinite(code) || code === 200) return ''
-    const msg = typeof data?.msg === 'string' ? data.msg.trim() : ''
-    return msg ? `${msg}（服务端 code=${code}）` : ''
-  }
   try {
     const res = await fetch(`${BASE}/ai/agent/tools`, {
       method: 'PUT',
