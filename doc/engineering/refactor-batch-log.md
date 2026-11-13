@@ -489,7 +489,7 @@
 - 授权过程：hy4 超时停止（未落盘）；minimax3.1f 完成 wiki_service 并接手 questions/rag
 - 测试：compileall / ruff / questions+rag+wiki 导入 / 13 项定向 pytest
 - 备注：`rag.py` 非空行 +6，是用带文档的 8 参数 helper 收敛上传收尾；questions.py 建题库两接口收敛
-- 提交：`[pending]`
+- 提交：`3d54840`（Gitee/GitCode 已推送；GitHub 重试中）
 
 ### 结果（非空行口径）
 
