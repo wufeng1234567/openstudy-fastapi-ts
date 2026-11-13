@@ -235,3 +235,23 @@
 新增模块：
 - `question_patch_helpers.py` / `rag_sse_formatters.py`
 - `wikiMapGeometry.ts`
+
+## Batch 10（2026-11-13，已完成）
+
+- 基线 commit：`256a8bd`
+- 快照目录：`_scratch_refactor_batch10_256a8bd/`
+- 授权：hy4 = QuestionBuilder + KnowledgeWikiPanel；minimax3.1f = useAgentChat
+- 测试：build 4,017 modules / unit 29 项 / studio+wiki+agent smoke 通过
+- 提交：`[pending]`
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `QuestionBuilder.vue` | 1,360 | 1,358 | -2 |
+| `KnowledgeWikiPanel.vue` | 2,270 | 2,241 | -29 |
+| `useAgentChat.ts` | 1,451 | 1,413 | -38 |
+
+新增模块：
+- `useQuestionBuilderContext.ts` / `useWikiMapEdges.ts`
+- `agentChatMessages.ts`

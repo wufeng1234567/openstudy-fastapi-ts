@@ -61,6 +61,14 @@ import {
   upsertStepById
 } from './agentChatEventShapes'
 import { locateTurnIn, sliceOutTurn } from './agentChatTurns'
+import {
+  buildAgentNote,
+  buildAssistantTextMessage,
+  buildToolConfirmMessage,
+  buildToolResultFallback,
+  buildToolResultMessage,
+  buildUserMessage,
+} from './agentChatMessages'
 
 /**
  * **对外出口保持不变** —— 类型与「快照复原」辅助仍旧从本文件 import，
@@ -630,11 +638,7 @@ export function useAgentChat() {
     closeProgress()
     clearPlaceholder()
     if (openTextIndex < 0 || openTextIndex >= messages.value.length) {
-      messages.value.push({
-        role: 'assistant',
-        content: chunk,
-        ...(pendingReferences.length ? { references: pendingReferences } : {})
-      })
+      messages.value.push(buildAssistantTextMessage(chunk, pendingReferences))
       openTextIndex = messages.value.length - 1
       return
     }
@@ -647,13 +651,7 @@ export function useAgentChat() {
     clearPlaceholder()
     closeText()
     closeReasoning()
-    messages.value.push({
-      role: 'assistant',
-      type: 'agent_note',
-      noteKind: kind,
-      content: text,
-      attempt
-    })
+    messages.value.push(buildAgentNote(kind, text, attempt))
   }
 
   const pushTool = (event: AgentEvent) => {
@@ -665,15 +663,7 @@ export function useAgentChat() {
     //    （表现为：多轮深度思考全挤在同一张卡片里，用户只看到一个越滚越长的思考块）。
     //    ds-free 那条「迟到增量」路径（纯文本、无工具）不受影响：它不会经过 pushTool。
     turnReasoning = null
-    messages.value.push({
-      role: 'assistant',
-      type: 'tool_result',
-      tool: event.tool || '',
-      action: event.action || event.params?.action || '',
-      content: event.message || `正在执行 ${event.tool}…`,
-      status: 'running',
-      params: event.params
-    })
+    messages.value.push(buildToolResultMessage(event))
   }
 
   /** 回填最后一条「同工具 + 运行中」的卡片 */
@@ -719,16 +709,7 @@ export function useAgentChat() {
     //    再补一条失败卡就是重复且错误的信息（用户 2026-10-16 报的就是这个）。
     if (event.cancelled) return
     // 没找到对应卡片（事件丢了 / 顺序异常）：补一条，别让过程凭空消失
-    messages.value.push({
-      role: 'assistant',
-      type: 'tool_result',
-      tool: event.tool || '',
-      action: event.action || '',
-      content: detail || `已执行 ${event.tool}`,
-      status: event.success ? 'ok' : 'fail',
-      errors: errs,
-      data: event.data
-    })
+    messages.value.push(buildToolResultFallback(event, detail, errs))
     if (
       event.success &&
       ['knowledge_search', 'search_knowledge', 'workspace_search'].includes(event.tool || '')
@@ -924,18 +905,7 @@ export function useAgentChat() {
         // 后端（api 付费链路）遇到需要确认的写操作 → 下发本事件并挂起，等用户点卡片
         closeText()
         clearPlaceholder()
-        messages.value.push({
-          role: 'assistant',
-          type: 'tool_confirm',
-          content: event.message || `即将执行 ${event.tool}`,
-          tool: event.tool || '',
-          action: event.action || '',
-          params: event.params,
-          preview: event.preview,
-          destructive: Boolean(event.destructive),
-          status: 'running',
-          confirmId: event.confirmId || ''
-        })
+        messages.value.push(buildToolConfirmMessage(event))
         break
 
       case 'tool_confirm_resolved': {
@@ -1059,11 +1029,7 @@ export function useAgentChat() {
               messages.value[openTextIndex].references = pendingReferences
             }
           } else {
-            messages.value.push({
-              role: 'assistant',
-              content: event.answer,
-              ...(pendingReferences.length ? { references: pendingReferences } : {})
-            })
+              messages.value.push(buildAssistantTextMessage(event.answer, pendingReferences))
             openTextIndex = messages.value.length - 1
           }
         }
@@ -1111,11 +1077,7 @@ export function useAgentChat() {
     // 回退接口要的是 `{sessionId, turnId}`，而 UI 手上只有 `turnId` —— 这里记一份，
     // 让 `rollbackTurn(turnId)` 一个参数就能用（见 `lastSessionId` 的注释）。
     lastSessionId.value = String(opts.sessionId || '')
-    messages.value.push({
-      role: 'user',
-      content: (opts.message || '').trim() || (imgs.length ? '[图片]' : '[附件]'),
-      ...(atts.length ? { attachments: atts } : {})
-    })
+    messages.value.push(buildUserMessage(opts.message || '', imgs.length > 0, atts))
     closeText()
     // 新一轮开始：上一个回合的思考块到此为止（迟到的增量只允许补进**本轮**那个块）
     turnReasoning = null

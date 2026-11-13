@@ -1123,7 +1123,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { watch } from 'vue'
 import draggable from 'vuedraggable'
 import { Rank, InfoFilled, Delete, Search, MagicStick, Plus, Loading, Close, Check, EditPen, FolderOpened, DocumentCopy, ArrowDown, Clock, Setting, FullScreen, Grid, RefreshLeft, Upload, Document, Picture } from '@element-plus/icons-vue'
 import AiThinkingToggle from '@/components/AiThinkingToggle/index.vue'
@@ -1146,17 +1146,13 @@ import { useQuestionBuilderAiStream } from './useQuestionBuilderAiStream'
 import { useQuestionBuilderDialogActions } from './useQuestionBuilderDialogActions'
 import { useQuestionBuilderPreviewEdit } from './useQuestionBuilderPreviewEdit'
 import { useQuestionBuilderState } from './useQuestionBuilderState'
+import { useQuestionBuilderContext } from './useQuestionBuilderContext'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
 import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
 // 公式编辑（2026-10-27）：Tiptap 是富文本编辑器，不能直接塞输入框组件，
 // 所以挂一个「ƒx」按钮，点开符号面板后把公式插到 Tiptap 光标处。
 import MathEditor from '@/components/MathEditor/index.vue'
 import { textToHtml, getPlainText } from '@/utils/questionUtils'
-import useUserStore from '@/store/modules/user'
-
-const userStore = useUserStore()
-const userId = computed(() => userStore.id)
-
 
 // 题型库悬浮层状态（显隐、点击外部关闭、生命周期监听已抽到同目录 composable）
 const { typePopoverVisible, typePopoverTriggerRef, typePopoverRef, toggleTypePopover } = useQuestionBuilderTypePopover()
@@ -1174,8 +1170,8 @@ const props = defineProps({
 
 const emit = defineEmits(['reset'])
 
-// 使用 props
-const currentBankId = computed(() => props.bankId)
+// 使用 props（上下文派生值抽到同目录 composable）
+const { userId, currentBankId } = useQuestionBuilderContext(props)
 const {
   bankContextInfo,
   historyCount,

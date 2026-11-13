@@ -466,8 +466,8 @@ import { useWikiMapViewControls } from './useWikiMapViewControls'
 import { useWikiGraphDerived } from './useWikiGraphDerived'
 import { useWikiGraphHulls } from './useWikiGraphHulls'
 import { useWikiLearningDisplay } from './useWikiLearningDisplay'
+import { useWikiMapEdges } from './useWikiMapEdges'
 import {
-  buildMapEdge,
   computeRepulsion,
   computeSpringForces,
   computeWheelZoom,
@@ -962,39 +962,10 @@ const { syncMapSize, fitMapView, onMapResize } = useWikiMapLayout({
   saveMapViewCache
 })
 
-const mapEdges = computed(() => {
-  // 首屏不画线：只有悬停/选中某个节点，或处于学习路线时才显示相关连线。
-  // 这样 100+ 节点的资料夹不会一进来就因为几百条 SVG 线卡住。
-  const focusId = mapHoveredId.value || mapSelectedNodeId.value
-  if (!focusId && !routeActive.value) return []
-  const positions = new Map(mapNodes.value.map((node: any) => [String(node.id), node]))
-  const imageIds = new Set(
-    allMapNodes.value
-      .filter((node: any) => normalizeEntityKind(node.kind) === 'image')
-      .map((node: any) => String(node.id))
-  )
-  const collapseImages = !mapImageExpanded.value && imageIds.size > 8
-  const endpoint = (id: any) => collapseImages && imageIds.has(String(id)) ? IMAGE_CLUSTER_ID : String(id)
-  const edges = (mapGraph.value?.edges || [])
-    .map((edge: any) => {
-      const sourceId = endpoint(edge.source)
-      const targetId = endpoint(edge.target)
-      if (sourceId === targetId) return null
-      const source = positions.get(sourceId)
-      const target = positions.get(targetId)
-      if (!source || !target) return null
-      return buildMapEdge(source, target, sourceId, targetId, edge, isCrossSourceEdge)
-    })
-    .filter(Boolean) as any[]
-  const unique = new Map<string, any>()
-  for (const edge of edges) {
-    if (!unique.has(edge.key)) unique.set(edge.key, edge)
-  }
-  const visible = [...unique.values()]
-  if (focusId) {
-    return visible.filter((edge: any) => edge.source === focusId || edge.target === focusId)
-  }
-  return visible
+// 图谱连线（抽到同目录 composable；纯惰性 computed，不含任何交互或计时）
+const { mapEdges } = useWikiMapEdges({
+  mapHoveredId, mapSelectedNodeId, routeActive, mapNodes, allMapNodes,
+  mapImageExpanded, mapGraph, IMAGE_CLUSTER_ID, isCrossSourceEdge
 })
 
 const visibleLabelIds = computed(() => {
