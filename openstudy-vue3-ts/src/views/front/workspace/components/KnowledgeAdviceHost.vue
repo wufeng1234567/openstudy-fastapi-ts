@@ -1,5 +1,19 @@
 <template>
+  <div v-if="embedded" class="kah__embedded">
+    <StudyAdvicePanel
+      :advice="advice"
+      :loading="isBusy"
+      :phase="phase"
+      :selected-node="selectedNode"
+      :node-titles="displayNodeTitles"
+      @generate="generate()"
+      @adjust="adjust"
+      @save="saveCurrent"
+      @history="openHistory"
+    />
+  </div>
   <ResizableDrawer
+    v-else
     v-model="drawer"
     direction="rtl"
     storage-key="openstudy_advice_drawer_size"
@@ -57,8 +71,10 @@ const props = withDefaults(
   defineProps<{
     activeKbId?: number | null
     nodeTitles?: Record<string, string>
+    /** 嵌入 Knowledge Page 抽屉时不再创建第二个 ResizableDrawer。 */
+    embedded?: boolean
   }>(),
-  { activeKbId: 0, nodeTitles: () => ({}) }
+  { activeKbId: 0, nodeTitles: () => ({}), embedded: false }
 )
 
 const emit = defineEmits<{
@@ -323,6 +339,7 @@ defineExpose({ generateForPage, generateForNode, open, clear })
 
 <style scoped>
 .kah__drawer { height: 100%; overflow-y: auto; overscroll-behavior: contain; padding: 10px; box-sizing: border-box; scrollbar-width: thin; scrollbar-color: #cfd8e6 transparent; }
+.kah__embedded { height: 100%; overflow-y: auto; padding: 6px 2px 16px; box-sizing: border-box; scrollbar-width: thin; scrollbar-color: #cfd8e6 transparent; }
 .kah__drawer::-webkit-scrollbar { width: 6px; }
 .kah__drawer::-webkit-scrollbar-thumb { border-radius: 99px; background: #cfd8e6; }
 </style>

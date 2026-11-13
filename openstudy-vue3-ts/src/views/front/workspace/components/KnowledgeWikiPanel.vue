@@ -132,36 +132,15 @@
             </g>
           </g>
         </svg>
-        <aside v-if="!graphPanelCollapsed" class="kw-graph-panel" @pointerdown.stop>
-          <button type="button" class="kw-graph-panel__collapse" title="收起操作面板" @click="graphPanelCollapsed = true">×</button>
-          <div class="kw-graph-panel__actions">
-            <button type="button" class="kw-graph-action" :class="{ 'is-active': !mapShowArrows }" @click="toggleMapArrows">
-              <OsIcon name="check" :size="14" />
-              <span>{{ mapShowArrows ? '隐藏箭头' : '显示箭头' }}</span>
-            </button>
-            <button type="button" class="kw-graph-action" @click="resetGraphView">
-              <OsIcon name="refresh" :size="14" />
-              <span>适配视图</span>
-            </button>
-            <button type="button" class="kw-graph-action" @click="showRouteGuide">
-              <OsIcon name="circle-help" :size="14" />
-              <span>使用说明</span>
-            </button>
-          </div>
-        </aside>
-        <button v-else type="button" class="kw-graph-panel-open" title="打开操作面板" @click="graphPanelCollapsed = false">
-          ☰
-        </button>
+        <KnowledgeGraphPanel
+          v-model:collapsed="graphPanelCollapsed"
+          :show-arrows="mapShowArrows"
+          @toggle-arrows="toggleMapArrows"
+          @reset-view="resetGraphView"
+          @show-guide="showRouteGuide"
+        />
         <div class="kw-graph-hint"><span>悬停/点击节点查看相关连线 · 点知识主题打开详情，来源类型与资料/网页/图片/题库/笔记都在详情里 · 规划建议入口在详情页</span></div>
       </div>
-      <KnowledgeAdviceHost
-        ref="adviceHostRef"
-        :active-kb-id="activeKbId"
-        :node-titles="adviceNodeTitles"
-        @update="onAdviceUpdate"
-        @focus-page="focusAdvicePage"
-        @busy="adviceLoading = $event"
-      />
     </template>
 
     <div v-else class="kw-empty">
@@ -179,6 +158,19 @@
       <div class="kw-detail-shell">
       <div v-if="pageLoading" class="kw-detail-loading" v-loading="true"></div>
       <div v-else-if="activePage" class="kw-detail">
+        <div class="kw-detail__mode-row">
+          <div class="kw-detail__mode-tabs">
+            <button type="button" :class="{ 'is-active': detailPanel === 'page' }" @click="detailPanel = 'page'">
+              KNOWLEDGE PAGE
+            </button>
+            <button type="button" :class="{ 'is-active': detailPanel === 'advice' }" @click="openAdviceForPage">
+              规划建议
+            </button>
+          </div>
+          <button type="button" class="kw-detail__close" title="关闭" @click="closeDetail">×</button>
+        </div>
+
+        <div v-show="detailPanel === 'page'" class="kw-detail__page-panel">
         <header class="kw-detail__head">
           <div>
             <div class="kw-kicker">KNOWLEDGE PAGE</div>
@@ -201,13 +193,6 @@
           <div class="kw-detail__head-actions">
             <el-button size="small" plain @click="openEditor">编辑</el-button>
             <el-button size="small" plain @click="openRevisions">历史版本</el-button>
-            <el-button size="small" plain :loading="adviceLoading" @click="openAdviceForPage">规划建议</el-button>
-            <el-button v-if="activePage.practice?.bankId" size="small" plain @click="goPractice">
-              去练 {{ activePage.practice.questionCount }} 题
-            </el-button>
-            <el-button v-else size="small" plain @click="askPage('practice')">生成练习</el-button>
-            <el-button size="small" type="primary" plain @click="askPage()">问 AI 这一页</el-button>
-            <button type="button" class="kw-detail__close" @click="closeDetail">×</button>
           </div>
         </header>
 
@@ -317,6 +302,18 @@
             重新更新这个来源
           </button>
         </footer>
+        </div>
+        <div v-show="detailPanel === 'advice'" class="kw-detail__advice">
+          <KnowledgeAdviceHost
+            ref="adviceHostRef"
+            embedded
+            :active-kb-id="activeKbId"
+            :node-titles="adviceNodeTitles"
+            @update="onAdviceUpdate"
+            @focus-page="focusAdvicePage"
+            @busy="adviceLoading = $event"
+          />
+        </div>
       </div>
       </div>
     </ResizableDrawer>
@@ -449,6 +446,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import ResizableDrawer from '@/components/ResizableDrawer/index.vue'
+import KnowledgeGraphPanel from './KnowledgeGraphPanel.vue'
 import { readStudyPlanConfig } from '@/utils/studyPlanState'
 import { getStudyMap } from '@/api/ai/studyPlan'
 import { listKbNotes } from '@/api/ai/noteKbLink'
@@ -523,6 +521,8 @@ const adviceLitPageIds = ref<string[]>([])
 const detailVisible = ref(false)
 const pageLoading = ref(false)
 const activePage = ref<any>(null)
+/** KNOWLEDGE PAGE 与规划建议面板在同一个右侧抽屉内切换。 */
+const detailPanel = ref<'page' | 'advice'>('page')
 const {
   graphSourceTypeFilter,
   graphPageTypeFilter,
@@ -922,7 +922,7 @@ async function planToPage(pageId: number) {
 function openAdviceForPage() {
   const pageId = Number(activePage.value?.pageId || activePage.value?.id || 0)
   if (!pageId) return
-  detailVisible.value = false
+  detailPanel.value = 'advice'
   nextTick(() => adviceHostRef.value?.generateForPage?.(pageId))
 }
 
@@ -1617,6 +1617,7 @@ function closeDetail() {
     clearTimeout(mapOpenTimer)
     mapOpenTimer = null
   }
+  detailPanel.value = 'page'
   detailVisible.value = false
   mapSelectedPageId.value = null
   mapSelectedNodeId.value = null
@@ -1695,6 +1696,7 @@ function updateMapNodeLearning(pageId: number, learning: any) {
 async function openPage(pageId: number) {
   mapSelectedPageId.value = Number(pageId)
   lastDetailPageId = Number(pageId)
+  detailPanel.value = 'page'
   detailVisible.value = true
   pageLoading.value = true
   activePage.value = null

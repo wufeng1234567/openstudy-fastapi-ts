@@ -80,10 +80,10 @@
 .kw-card__meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; color: #a0a6b2; font-size: 9.5px; }
 .kw-filter-empty { grid-column: 1 / -1; padding: 60px 0; color: #9aa1af; text-align: center; font-size: 12px; }
 .kw-page--graph { height: calc(100vh - 138px); min-height: 0; gap: 0; padding: 0; overflow: hidden; }
-.kw-map { position: relative; min-height: 590px; overflow: hidden; border: 1px solid #e6ebf4; border-radius: 13px; background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.1) 1px, transparent 0), #fbfcfe; background-size: 20px 20px; cursor: grab; touch-action: none; user-select: none; }
+.kw-map { position: relative; min-height: 590px; overflow: hidden; border: 1px solid #e6ebf4; border-radius: 13px; background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.1) 1px, transparent 0), #fbfcfe; background-size: 20px 20px; cursor: default; touch-action: none; user-select: none; }
 .kw-page--graph .kw-map { flex: 1; min-height: 0; height: 100%; border: 0; border-radius: 0; background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.1) 1px, transparent 0), #fbfcfe; background-size: 20px 20px; }
 .kw-map.is-route-mode { background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.1) 1px, transparent 0), #fbfcfe; background-size: 20px 20px; }
-.kw-map:active { cursor: grabbing; }
+.kw-map:active { cursor: default; }
 .kw-map__svg { width: 100%; height: 590px; opacity: 0; visibility: hidden; transition: opacity .12s ease; }
 .kw-map.is-map-ready .kw-map__svg { opacity: 1; visibility: visible; }
 .kw-page--graph .kw-map__svg { height: 100%; }
@@ -113,10 +113,10 @@
 .kw-map.is-advice-focus .kw-map-node:not(.is-selected):not(.is-advice-visited) { opacity: .18; }
 .kw-map.is-advice-focus .kw-map-node.is-advice-visited { opacity: 1; }
 @keyframes kw-advice-draw { to { stroke-dashoffset: 0; } }
-.kw-map-node { cursor: grab; transition: opacity 0.18s ease; }
+.kw-map-node { cursor: pointer; transition: opacity 0.18s ease; }
 .kw-map-node.is-advice-dimmed { opacity: .24; }
 .kw-map-node.is-advice-visited .kw-map-node__dot { stroke: #2f5fce; stroke-width: 2.8; filter: drop-shadow(0 0 5px rgba(47, 95, 206, .55)); }
-.kw-map-node:active { cursor: grabbing; }
+.kw-map-node:active { cursor: pointer; }
 .kw-map-node.is-dimmed { opacity: 0.2; }
 .kw-map.is-route-mode .kw-map-node.is-dimmed { opacity: 0.42; }
 .kw-map-node.is-selected { opacity: 1 !important; }
@@ -306,6 +306,11 @@
 .kw-update-item__main b { overflow: hidden; color: #253247; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .kw-update-item__main em { overflow: hidden; color: #9aa3b2; font-size: 10.5px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 .kw-update-empty { padding: 24px 0; color: #9aa3b2; font-size: 12px; text-align: center; }
+.kw-detail__mode-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid #eef1f6; }
+.kw-detail__mode-tabs { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: #f1f4fa; }
+.kw-detail__mode-tabs button { padding: 5px 10px; border: 0; border-radius: 6px; color: #8a94a6; background: transparent; cursor: pointer; font: inherit; font-size: 10px; font-weight: 600; letter-spacing: .02em; }
+.kw-detail__mode-tabs button.is-active { color: #2f5fce; background: #fff; box-shadow: 0 1px 3px rgba(29, 43, 70, .1); }
+.kw-detail__advice { min-height: 240px; padding-top: 8px; }
 .kw-detail__provenance { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
 .kw-provenance-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border: 1px solid #e5ebf5; border-radius: 99px; color: #697386; background: #f8faff; font-size: 10px; }
 .kw-provenance-chip i, .kw-provenance-row__label i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
