@@ -315,3 +315,23 @@
 新增模块：
 - `question_lookup_formatters.py` / `rag_document_formatters.py`
 - `wiki_link_edit.py`
+
+## Batch 14（2026-11-13，已完成）
+
+- 基线 commit：`cc62c0e`
+- 快照目录：`_scratch_refactor_batch14_cc62c0e/`
+- 授权：hy4 = KnowledgeWikiPanel；minimax3.1f = useAgentChat + useQuestionPractice
+- 测试：build 4,024 modules / unit 29 项 / wiki+practice+agent smoke 通过
+- 提交：`[pending]`
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `KnowledgeWikiPanel.vue` | 2,036 | 1,994 | -42 |
+| `useAgentChat.ts` | 1,405 | 1,404 | -1 |
+| `useQuestionPractice.ts` | 1,444 | 1,442 | -2 |
+
+新增模块：
+- `useWikiAdviceDisplay.ts` / `useWikiLabelVisibility.ts`
+- `agentChatStatus.ts` / `questionPracticeState.ts`

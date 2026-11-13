@@ -365,7 +365,7 @@ doc/
 ### P2 执行记录（2026-11-12）
 
 - ✅ `QuestionBuilder.vue` 从 2,337 行降到 **1,382 行**（Batch 1 + Batch 2）：AI 结果解析/预览/导入/丢弃抽入 `useQuestionBuilderAiResult.ts`，AI 生成执行链抽入 `useQuestionBuilderAiGenerate.ts`，提示词历史抽入 `useQuestionBuilderPromptHistory.ts`，AI 配置/资料上下文抽入 `useQuestionBuilderAiConfig.ts`，题目编辑动作抽入 `useQuestionBuilderEdit.ts`，AI 弹窗打开/快捷键抽入 `useQuestionBuilderAiDialog.ts`；build 通过，studio 页面 `.question-panel`/`.edit-panel` 正常，console/pageerror 0；
-- 🟡 `KnowledgeWikiPanel.vue` 2,036 行（Batch 1 + Batch 2）、`useAgentChat.ts` 1,405 行（Batch 1）、`useQuestionPractice.ts` 1,444 行（Batch 2）；
+- 🟡 `KnowledgeWikiPanel.vue` 1,994 行（Batch 1 + Batch 2）、`useAgentChat.ts` 1,404 行（Batch 1）、`useQuestionPractice.ts` 1,442 行（Batch 2）；
 - 🟡 后端 `questions.py` 2,777 行；`rag.py` 2,311 行；`wiki_service.py` 1,779 行；`loop.py` 1,893 行（Batch 3/4/6/8/9/11/13），按技术债务登记继续。
 
 ---

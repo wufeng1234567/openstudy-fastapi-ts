@@ -55,6 +55,10 @@ import {
   practiceSessionSignature,
 } from './questionPracticeStatus'
 import {
+  buildAnswerStateSnapshot,
+  markedIdsFromResponse,
+} from './questionPracticeState'
+import {
   answerStateCacheKey,
   buildInitialAnswers,
   computeBatchSliceEnd,
@@ -710,19 +714,13 @@ export function useQuestionPractice(
       ])
 
       if (favRes.code === 200 && favRes.data) {
-        favoritedQuestions.value = new Set(
-          Object.entries(favRes.data).filter(([, v]) => v).map(([k]) => Number(k))
-        )
+        favoritedQuestions.value = markedIdsFromResponse(favRes.data)
       }
       if (markedRes.code === 200 && markedRes.data) {
-        markedQuestions.value = new Set(
-          Object.entries(markedRes.data).filter(([, v]) => v).map(([k]) => Number(k))
-        )
+        markedQuestions.value = markedIdsFromResponse(markedRes.data)
       }
       if (errorRes.code === 200 && errorRes.data) {
-        errorQuestions.value = new Set(
-          Object.entries(errorRes.data).filter(([, v]) => v).map(([k]) => Number(k))
-        )
+        errorQuestions.value = markedIdsFromResponse(errorRes.data)
       }
     } catch (e) {
       // 静默失败，不影响刷题
@@ -899,17 +897,17 @@ export function useQuestionPractice(
     if (!bankId || !type || questions.value.length === 0) return
 
     const cacheKey = answerStateCacheKey(bankId, type)
-    const state = {
-      questions: [...questions.value],
-      allQuestionsData: [...allQuestionsData.value],
-      answers: [...answers.value],
+    const state = buildAnswerStateSnapshot({
+      questions: questions.value,
+      allQuestionsData: allQuestionsData.value,
+      answers: answers.value,
       currentQuestionIndex: currentQuestionIndex.value,
       selectedAnswer: selectedAnswer.value,
-      subFillBlankAnswers: { ...subFillBlankAnswers.value },
-      subEssayAnswers: { ...subEssayAnswers.value },
+      subFillBlankAnswers: subFillBlankAnswers.value,
+      subEssayAnswers: subEssayAnswers.value,
       questionOffset: questionOffset.value,
       questionCount: questionCount.value
-    }
+    })
 
     answerStateCache.set(cacheKey, state)
   }

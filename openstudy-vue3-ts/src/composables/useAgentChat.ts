@@ -79,6 +79,11 @@ import {
   toolResultStatus,
   turnDurationMs,
 } from './agentChatLifecycle'
+import {
+  closeRunningConfirms,
+  decisionStatus,
+  findConfirmCard,
+} from './agentChatStatus'
 
 /**
  * **对外出口保持不变** —— 类型与「快照复原」辅助仍旧从本文件 import，
@@ -592,11 +597,9 @@ export function useAgentChat() {
   ) => {
     const approved = typeof decision === 'boolean' ? decision : decision?.approved === true
     const edited = typeof decision === 'object' && decision ? decision.edited : undefined
-    const msg = messages.value.find(
-      (m) => m.type === 'tool_confirm' && m.confirmId === confirmId
-    )
+    const msg = findConfirmCard(messages.value, confirmId)
     if (msg) {
-      msg.status = approved ? 'ok' : 'fail'
+      msg.status = decisionStatus(approved)
       // 状态一变就补写快照 —— 否则用户取消后、轮末之前刷新，磁盘上还是「待确认」那一版
       persistTimelineSoon()
     }
@@ -920,11 +923,9 @@ export function useAgentChat() {
 
       case 'tool_confirm_resolved': {
         // 后端已收到用户决定 → 同步卡片状态
-        const m = messages.value.find(
-          (x) => x.type === 'tool_confirm' && x.confirmId === event.confirmId
-        )
+      const m = findConfirmCard(messages.value, event.confirmId)
         if (m) {
-          m.status = event.approved ? 'ok' : 'fail'
+          m.status = decisionStatus(event.approved)
           persistTimelineSoon()
         }
         break
@@ -1427,9 +1428,7 @@ export function useAgentChat() {
     isGenerating.value = false
     // 中止时把还「待确认」的卡片收口成「已取消」：否则本轮 finally 的快照会把 running 的
     // 确认卡存下去，刷新后又冒出一张能点、却没人应答的卡片（用户报的 bug）。
-    for (const m of messages.value) {
-      if (m.type === 'tool_confirm' && m.status === 'running') m.status = 'fail'
-    }
+    closeRunningConfirms(messages.value)
     pendingConfirms.forEach((resolve) => resolve(false))
     pendingConfirms.clear()
     clearPlaceholder()

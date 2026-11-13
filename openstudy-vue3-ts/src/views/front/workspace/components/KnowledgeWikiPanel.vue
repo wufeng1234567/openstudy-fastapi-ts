@@ -468,12 +468,13 @@ import { useWikiGraphHulls } from './useWikiGraphHulls'
 import { useWikiLearningDisplay } from './useWikiLearningDisplay'
 import { useWikiMapEdges } from './useWikiMapEdges'
 import { useWikiMapNodes } from './useWikiMapNodes'
+import { useWikiAdviceDisplay } from './useWikiAdviceDisplay'
+import { useWikiLabelVisibility } from './useWikiLabelVisibility'
 import {
   computeRepulsion,
   computeSpringForces,
   computeWheelZoom,
-  integrateNodes,
-  pickNonOverlappingLabelIds
+  integrateNodes
 } from './wikiMapGeometry'
 import { WIKI_VIEW_KEY, WIKI_LEARN_KEY, WIKI_GUIDE_KEY, WIKI_ROUTE_KEY, readWikiView, readWikiLearnMode, readRouteQuery } from './wikiPanelStorage'
 import { useRouter } from 'vue-router'
@@ -639,36 +640,10 @@ const {
 })
 const routeActive = computed(() => !!learningRoute.value?.stops?.length)
 
-const adviceNodeTitles = computed(() => {
-  const result: Record<string, string> = {}
-  for (const node of mapNodes.value || []) {
-    result[String(node.id)] = String(node.title || '')
-    if (Number(node.pageId)) result[String(node.pageId)] = String(node.title || '')
-  }
-  return result
-})
-
-const adviceTraceLines = computed(() => {
-  const steps = adviceTrace.value?.steps || []
-  const position = new Map(mapNodes.value.map((node: any) => [String(node.id), node]))
-  return steps
-    .map((step: any, index: number) => {
-      const rawFromId = String(step.from || '')
-      const rawToId = String(step.to || '')
-      const from = position.get(rawFromId) || position.get(`topic:${rawFromId}`)
-      const to = position.get(rawToId) || position.get(`topic:${rawToId}`)
-      if (!from || !to) return null
-      return {
-        key: `${rawFromId}-${rawToId}-${index}`,
-        fromPageId: String(from.pageId || from.id),
-        toPageId: String(to.pageId || to.id),
-        x1: from.x,
-        y1: from.y,
-        x2: to.x,
-        y2: to.y
-      }
-    })
-    .filter(Boolean) as any[]
+// 建议射线的节点标题 / 轨迹线（抽到同目录 composable；mapNodes 以惰性 getter 传入）
+const { adviceNodeTitles, adviceTraceLines } = useWikiAdviceDisplay({
+  adviceTrace,
+  getMapNodes: () => mapNodes.value
 })
 
 // 射线逐条发射：一条线走完，才出现下一条线的新亮点。
@@ -763,28 +738,10 @@ const { mapEdges } = useWikiMapEdges({
   mapImageExpanded, mapGraph, IMAGE_CLUSTER_ID, isCrossSourceEdge
 })
 
-const visibleLabelIds = computed(() => {
-  const candidates = [...mapNodes.value]
-    .filter((node: any) => {
-      const kind = normalizeEntityKind(node.kind)
-      if (node.id === IMAGE_CLUSTER_ID) return true
-      if (isMapSelected(node) || isRouteNode(node) || mapHoveredId.value === String(node.id)) return true
-      if (adviceLitPageIds.value.includes(String(node.pageId))) return true
-      if (kind !== 'topic') {
-        const component = mapComponents.value.components.find((item) => item.ids.includes(String(node.id)))
-        return !(component?.kind === 'image' && component.ids.length > 8)
-      }
-      return mapView.scale >= 1.25 || Number(node.degree || 0) >= 12
-    })
-    .sort((a: any, b: any) => {
-      const priority = (node: any) => {
-        if (isMapSelected(node) || mapHoveredId.value === String(node.id)) return 0
-        if (normalizeEntityKind(node.kind) !== 'topic') return 1
-        return 2
-      }
-      return priority(a) - priority(b) || Number(b.degree || 0) - Number(a.degree || 0)
-    })
-  return pickNonOverlappingLabelIds(candidates, mapNodeLabel, Number(mapView.scale), Number(mapView.x), Number(mapView.y))
+// 图谱标签可见性（抽到同目录 composable；display helpers 以惰性 getter 传入，保持原声明顺序）
+const { visibleLabelIds } = useWikiLabelVisibility({
+  mapNodes, mapHoveredId, adviceLitPageIds, mapComponents, mapView, IMAGE_CLUSTER_ID,
+  getDisplay: () => ({ isMapSelected, isRouteNode, mapNodeLabel })
 })
 
 // 学习态展示 computed（抽到同目录 composable；均为惰性纯展示，不含任何计时/轮询）
