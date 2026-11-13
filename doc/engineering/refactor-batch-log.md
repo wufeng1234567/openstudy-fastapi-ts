@@ -126,3 +126,31 @@
 - `question_schemas.py` / `question_field_helpers.py`
 - `rag_formatters.py`
 - `wiki_content_helpers.py`
+
+## Batch 5（2026-11-13，已完成）
+
+- 基线 commit：`1830ec4`
+- 快照目录：`_scratch_refactor_batch5_1830ec4/`（含原文件副本 + `baseline-sha256.txt`）
+- 授权：hy4 = KnowledgeWikiPanel；minimax3.1f = useAgentChat + useQuestionPractice
+
+### 批次验收
+
+- [x] 基线快照（文件副本 + SHA256）
+- [x] 两个子代理任务已派发（hy4 / minimax3.1f）
+- [x] 三个文件全部修改完成
+- [x] 主代理 review diff（`git diff --check` 通过）
+- [x] 批次级自动测试（build 4,010 modules / unit 29 项 / studio+workspace+practice smoke 通过；agent-chat 无 console/pageerror）
+- [ ] 提交并同步三仓库（本记录随批次提交）
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `KnowledgeWikiPanel.vue` | 2,553 | 2,413 | -140 |
+| `useAgentChat.ts` | 1,537 | 1,451 | -86 |
+| `useQuestionPractice.ts` | 1,515 | 1,485 | -30 |
+
+新增模块：
+- `useWikiGraphDerived.ts` / `useWikiGraphHulls.ts`
+- `agentChatEventShapes.ts` / `agentChatTurns.ts`
+- `questionPracticeRules.ts`

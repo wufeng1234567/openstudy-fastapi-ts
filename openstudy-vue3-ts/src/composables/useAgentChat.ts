@@ -27,7 +27,6 @@ export { stripMarkdown } from './agentChatText'
  */
 import {
   type AgentChatMessage,
-  type AgentExpertProgress,
   type AgentMetrics,
   type AgentProgressStep,
   type AgentRunOptions,
@@ -49,6 +48,19 @@ import {
   projectMetrics,
   restoreSessionAgg
 } from './agentChatMetrics'
+import {
+  buildConfirmMessage,
+  buildExpertDoneRow,
+  buildExpertRow,
+  buildProgressStep,
+  buildSubagentStep,
+  closeRunningSteps,
+  findExpertRow,
+  isUserVisibleProgressPhase,
+  trimSubagentSteps,
+  upsertStepById
+} from './agentChatEventShapes'
+import { locateTurnIn, sliceOutTurn } from './agentChatTurns'
 
 /**
  * **对外出口保持不变** —— 类型与「快照复原」辅助仍旧从本文件 import，
@@ -93,14 +105,6 @@ export const isDsFreeModel = (model?: string) => model === 'deepseek-free'
  * `roles.DELEGATE_TOOL_NAME` 逐字一致。
  */
 const DELEGATE_TOOL_NAME = 'delegate_task'
-
-/**
- * 每个专家行最多保留的**子代理步骤**条数（`subagent_event` 累积）。
- *
- * 一个子代理一轮可能跑几十次工具往返，事件量远超用户在卡片上想看的量。留最近若干条
- * 就够表达「它现在做到哪、刚做完什么」，也让落库快照不至于被步骤撑大。
- */
-const SUBAGENT_STEPS_LIMIT = 20
 
 export function useAgentChat() {
   const messages = ref<AgentChatMessage[]>([])
@@ -478,8 +482,8 @@ export function useAgentChat() {
    */
   let pendingProgress: AgentChatMessage | null = null
   const upsertProgressStep = (event: AgentEvent) => {
-    const id = String(event.id || '')
-    if (!id) return
+    const step = buildProgressStep(event)
+    if (!step) return
     // 复用同一条等待消息；没有就建一条
     if (!pendingProgress) pendingProgress = ensurePending()
     // ⚠️ 必须改**数组里的代理消息**的 `steps`（`pendingProgress` 是 push 进去的 raw 引用，
@@ -487,18 +491,7 @@ export function useAgentChat() {
     const mi = messages.value.indexOf(pendingProgress)
     const target = mi >= 0 ? messages.value[mi] : pendingProgress
     if (!target.steps) target.steps = []
-    const steps = target.steps as AgentProgressStep[]
-    const state: AgentProgressStep['state'] =
-      event.state === 'done' ? 'done' : event.state === 'failed' ? 'failed' : 'running'
-    const step: AgentProgressStep = {
-      id,
-      message: String(event.message || ''),
-      state,
-      icon: event.icon
-    }
-    const i = steps.findIndex((s) => s.id === id)
-    if (i >= 0) steps[i] = step
-    else steps.push(step)
+    upsertStepById(target.steps as AgentProgressStep[], step)
   }
 
   /**
@@ -509,9 +502,7 @@ export function useAgentChat() {
     if (!pendingProgress) return
     const mi = messages.value.indexOf(pendingProgress)
     const target = mi >= 0 ? messages.value[mi] : pendingProgress
-    for (const s of (target.steps as AgentProgressStep[]) || []) {
-      if (s.state === 'running') s.state = 'done'
-    }
+    closeRunningSteps(target.steps as AgentProgressStep[])
     // 同一条消息既充当占位也充当进度：收口后把两个引用都断开，
     // 后续 clearPlaceholder() 才能把它从消息流里摘干净。
     if (pendingPlaceholder === pendingProgress) pendingPlaceholder = null
@@ -534,18 +525,7 @@ export function useAgentChat() {
     clearPlaceholder()
     closeReasoning()
     const confirmId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-    messages.value.push({
-      role: 'assistant',
-      type: 'tool_confirm',
-      content: info.message || `即将执行 ${info.tool}`,
-      tool: info.tool,
-      action: info.action || '',
-      params: info.params,
-      preview: info.preview,
-      destructive: info.destructive,
-      status: 'running',
-      confirmId
-    })
+    messages.value.push(buildConfirmMessage(info, confirmId))
     return new Promise<boolean>((resolve) => {
       pendingConfirms.set(confirmId, resolve)
     })
@@ -797,14 +777,7 @@ export function useAgentChat() {
     closeReasoning()
     // 同 pushTool：专家开工标志着「本轮思考结束」，下一轮思考需新建块（勿并入第一块）
     turnReasoning = null
-    const ag = event.agent || {}
-    const row: AgentExpertProgress = {
-      index: Number(event.index ?? 0) || 0,
-      key: String(ag.id || ''),
-      name: String(ag.name || ag.id || '专家'),
-      status: 'running',
-      task: stripMarkdown(String(event.task || ''))
-    }
+    const row = buildExpertRow(event)
     const card = findExpertCard()
     if (card && Array.isArray(card.experts)) {
       card.experts.push(row)
@@ -826,16 +799,7 @@ export function useAgentChat() {
     if (card && Array.isArray(card.experts)) {
       // 优先按 index 精确回填——**且要求该行仍在 running**：后端已改 index 为「整轮全局唯一」，
       // 正常不会撞号；这里再挡一道，避免异常情况下把已完成的行重复回填、让真正的那行留在转圈。
-      let row = idx >= 0 ? card.experts.find((e) => e.index === idx && e.status === 'running') : undefined
-      if (!row) {
-        // index 缺失/越界/已回填过 → 回退到「按 key 找最近一个 running 行」
-        const key = String(ag.id || '')
-        row = [...card.experts].reverse().find((e) => e.key === key && e.status === 'running')
-      }
-      if (!row && idx >= 0) {
-        // 仍找不到：index 对应行已存在（已回填）时，直接按 index 取回来补（幂等，避免漏状态）
-        row = card.experts.find((e) => e.index === idx)
-      }
+      const row = findExpertRow(card.experts, idx, String(ag.id || ''))
       if (row) {
         row.status = event.success ? 'ok' : 'fail'
         row.summary = stripMarkdown(String(event.summary || ''))
@@ -847,15 +811,7 @@ export function useAgentChat() {
       role: 'assistant',
       type: 'experts',
       content: '',
-      experts: [
-        {
-          index: idx >= 0 ? idx : 0,
-          key: String(ag.id || ''),
-          name: String(ag.name || ag.id || '专家'),
-          status: event.success ? 'ok' : 'fail',
-          summary: stripMarkdown(String(event.summary || ''))
-        }
-      ]
+      experts: [buildExpertDoneRow(event)]
     })
   }
 
@@ -881,22 +837,14 @@ export function useAgentChat() {
     // 已完成的行不再接受进展（迟到的事件）：别让「对勾」后面又冒出「第 2 轮思考」。
     if (row.status !== 'running') return
     if (!Array.isArray(row.steps)) row.steps = []
-    row.steps.push({
-      phase: String(event.phase || ''),
-      message: String(event.message || ''),
-      tool: event.tool ? String(event.tool) : undefined,
-      success: typeof event.success === 'boolean' ? event.success : null,
-      round: Number(event.round) || 0
-    })
+    row.steps.push(buildSubagentStep(event))
     // 只留最近 N 条：长任务会有几十步，全留既费内存又没人看
-    if (row.steps.length > SUBAGENT_STEPS_LIMIT) {
-      row.steps.splice(0, row.steps.length - SUBAGENT_STEPS_LIMIT)
-    }
+    trimSubagentSteps(row.steps)
     // ⚠️ 任务行显示的进展文案**只认工具类**事件（`正在调用 XX…` / 工具结果）——
     //    `round`（「第 N 轮思考」）与 `start`（「开始处理任务」）是内部噪声，不该占据那一行
     //    （用户 2026-10-16 报「信息太多、看不懂」）。没有工具文案时保留上一条。
     const phase = String(event.phase || '')
-    if (event.message && ['tool_call', 'tool_result', 'error'].includes(phase)) {
+    if (event.message && isUserVisibleProgressPhase(phase)) {
       row.progress = String(event.message)
     }
   }
@@ -1344,38 +1292,8 @@ export function useAgentChat() {
     }
   }
 
-  /**
-   * 定位**某一轮**的消息在本地消息流里的范围（**不改 messages**）
-   *
-   * ## 一轮的范围怎么定（判据是 `turnId`，不是下标）
-   * 「这一轮」= 该轮的**用户消息** + 它之后的**一切**（工具卡 / 思考块 / 正文 / 提示），
-   * 直到那条 `type:'turn_end'` 标记为止 —— 标记是 `turnId` 唯一的落点，所以：
-   *   ① 先用 `type==='turn_end' && turnId===tid` 找到这一轮的**末尾**；
-   *   ② 再往回找最近的一条 `role==='user'` 当**开头**（`send()` 里先 push 用户消息，
-   *      所以一轮之内不会再出现第二条 user 消息）。
-   * ⚠️ 绝不能用「最后 N 条」之类的下标口径：用户回退的可能是**中间**那一轮
-   *   （每一轮都能点回退），按下标删会把别的轮次一起带走。
-   *
-   * ## 找不到标记时返回 `null`（**什么都不删**）
-   * 只有 `turn_end` 标记带 `turnId`；标记不在（老快照 / 被人手改过）就没有任何凭据
-   * 能证明哪些消息属于这一轮 —— 此时如实返回 `null`（上层据此报「提问正文拿不到」）、
-   * 一条不动，而不是猜一把删掉别人的轮次。
-   *
-   * ## 为什么是「先定位、后摘除」两个动作
-   * `rollbackTurn` 必须先算出「摘掉之后的那份列表」并**把它写进快照**，写成了才动本地
-   * （顺序反转：服务端 + 快照都成了，才轮到界面）。所以定位这一步**不许有副作用** ——
-   * 否则「快照没写成功」时本地已经被删了，用户看到消息没了、刷新又回来。
-   */
-  const locateTurn = (tid: string): { startIdx: number; endIdx: number; userText: string } | null => {
-    const endIdx = messages.value.findIndex((m) => m.type === 'turn_end' && m.turnId === tid)
-    if (endIdx < 0) return null
-    for (let i = endIdx - 1; i >= 0; i--) {
-      if (messages.value[i].role === 'user') {
-        return { startIdx: i, endIdx, userText: messages.value[i].content || '' }
-      }
-    }
-    return null
-  }
+  // 「某一轮」在消息流里的定位口径见 `./agentChatTurns` 的 `locateTurnIn`
+  // （判据是 turnId、找不到标记时一条都不许动 —— 完整注释在那里）。
 
   /**
    * 回退**某一轮**（一次用户提问）—— 用户在消息末尾那个回退组件上点一下时调用
@@ -1507,14 +1425,9 @@ export function useAgentChat() {
 
       // ---- ③ 先算出「摘掉这一轮之后的消息列表」（**这一步不改 `messages`**）----
       // 定位与摘除拆开，是因为下面那一步（写快照）失败时本地必须原封不动。
-      const plan = locateTurn(tid)
+      const plan = locateTurnIn(messages.value, tid)
       outcome.userText = plan ? plan.userText : ''
-      const afterTurn = plan
-        ? [
-            ...messages.value.slice(0, plan.startIdx),
-            ...messages.value.slice(plan.endIdx + 1)
-          ]
-        : [...messages.value]
+      const afterTurn = sliceOutTurn(messages.value, plan)
 
       // ---- ④ 先把快照写进库（**写成了才动本地**）----
       // 与 `send()` 的 finally 同一个接口、同一份 `slimTimeline` 产物：落库的是

@@ -456,7 +456,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ENTITY_TYPE_META, entityTypeMeta, normalizeEntityKind, normalizePageType, pageTypeLabel } from '../utils/knowledgeGraphMeta'
-import { clusterOutline } from '../utils/knowledgeGraphGeometry'
 import { useWikiPanelFilters } from './useWikiPanelFilters'
 import { useWikiPanelFormatters } from './useWikiPanelFormatters'
 import { useWikiMapViewCache } from './wikiMapViewCache'
@@ -464,6 +463,8 @@ import { useWikiMapLayout } from './useWikiMapLayout'
 import { useWikiMapDisplay } from './useWikiMapDisplay'
 import { useWikiPlanState } from './useWikiPlanState'
 import { useWikiMapViewControls } from './useWikiMapViewControls'
+import { useWikiGraphDerived } from './useWikiGraphDerived'
+import { useWikiGraphHulls } from './useWikiGraphHulls'
 import { WIKI_VIEW_KEY, WIKI_LEARN_KEY, WIKI_GUIDE_KEY, WIKI_ROUTE_KEY, readWikiView, readWikiLearnMode, readRouteQuery } from './wikiPanelStorage'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -619,116 +620,14 @@ const buildProgress = computed(() => {
 const activeLegend = computed(() => ENTITY_TYPE_META)
 
 const allMapNodes = computed(() => mapGraph.value?.nodes || [])
-const mapTypeCounts = computed(() => {
-  const counts: Record<string, number> = {}
-  for (const node of allMapNodes.value) {
-    const kind = normalizeEntityKind(node.kind || node.pageType)
-    counts[kind] = (counts[kind] || 0) + 1
-  }
-  return counts
+// 图谱派生展示数据（类型统计/连通性/分组/桥接/搜索建议/学习理由，抽到同目录 composable）
+const {
+  mapTypeCounts, mapConnectedNodeIds, unlinkedCount, graphSearchSuggestions,
+  mapComponents, groupKeyByNode, isCrossSourceEdge, bridgeNodeIds, learningReason
+} = useWikiGraphDerived({
+  allMapNodes, mapGraph, props, searchSuppressed, view, learningRoute
 })
-const mapConnectedNodeIds = computed(() => {
-  const ids = new Set(allMapNodes.value.map((node: any) => String(node.id)))
-  const connected = new Set<string>()
-  for (const edge of mapGraph.value?.edges || []) {
-    const source = String(edge.source || '')
-    const target = String(edge.target || '')
-    if (ids.has(source) && ids.has(target)) {
-      connected.add(source)
-      connected.add(target)
-    }
-  }
-  return connected
-})
-const unlinkedCount = computed(() =>
-  allMapNodes.value.filter((node: any) => !mapConnectedNodeIds.value.has(String(node.id))).length
-)
 const routeActive = computed(() => !!learningRoute.value?.stops?.length)
-
-const graphSearchSuggestions = computed(() => {
-  const query = String(props.searchQuery || '').trim().toLowerCase()
-  if (searchSuppressed.value || !query || view.value !== 'map') return []
-  return allMapNodes.value
-    .filter((node: any) => {
-      const detail = node.detail || {}
-      const haystack = [
-        node.title,
-        node.summary,
-        detail.summary,
-        node.subtitle,
-        ...(node.aliases || []),
-        ...(detail.aliases || [])
-      ].join(' ').toLowerCase()
-      return haystack.includes(query)
-    })
-    .sort((a: any, b: any) => {
-      const at = String(a.title || '').toLowerCase()
-      const bt = String(b.title || '').toLowerCase()
-      return Number(bt === query) - Number(at === query) || at.localeCompare(bt)
-    })
-    .slice(0, 8)
-})
-
-const mapComponents = computed(() => {
-  const nodes = allMapNodes.value
-  const byId = new Map(nodes.map((node: any) => [String(node.id), node]))
-  const groups = Array.isArray(mapGraph.value?.groups) ? mapGraph.value.groups : []
-  if (groups.length) {
-    return {
-      components: groups
-        .map((group: any) => ({
-          key: String(group.id || group.kind),
-          kind: normalizeEntityKind(group.kind),
-          label: String(group.title || entityTypeMeta(group.kind).label),
-          ids: (group.nodeIds || []).map(String).filter((id: string) => byId.has(id))
-        }))
-        .filter((group: any) => group.ids.length),
-      byId
-    }
-  }
-  const grouped = new Map<string, string[]>()
-  for (const node of nodes) {
-    const kind = normalizeEntityKind(node.kind || node.pageType)
-    if (!grouped.has(kind)) grouped.set(kind, [])
-    grouped.get(kind)!.push(String(node.id))
-  }
-  return {
-    components: [...grouped.entries()].map(([kind, ids]) => ({
-      key: kind,
-      kind,
-      label: entityTypeMeta(kind).label,
-      ids
-    })),
-    byId
-  }
-})
-
-const groupKeyByNode = computed(() => {
-  const result = new Map<string, string>()
-  for (const component of mapComponents.value.components) {
-    for (const id of component.ids) result.set(String(id), component.key)
-  }
-  return result
-})
-
-function isCrossSourceEdge(edge: any) {
-  if (String(edge.type || '') === 'document_image') return false
-  const source = allMapNodes.value.find((node: any) => String(node.id) === String(edge.source))
-  const target = allMapNodes.value.find((node: any) => String(node.id) === String(edge.target))
-  if (!source || !target) return false
-  if (normalizeEntityKind(source.kind) === 'topic' || normalizeEntityKind(target.kind) === 'topic') return false
-  return groupKeyByNode.value.get(String(edge.source)) !== groupKeyByNode.value.get(String(edge.target))
-}
-
-const bridgeNodeIds = computed(() => {
-  const result = new Set<string>()
-  for (const edge of mapGraph.value?.edges || []) {
-    if (!isCrossSourceEdge(edge)) continue
-    result.add(String(edge.source))
-    result.add(String(edge.target))
-  }
-  return result
-})
 
 const adviceNodeTitles = computed(() => {
   const result: Record<string, string> = {}
@@ -1144,29 +1043,6 @@ const visibleLabelIds = computed(() => {
   }
   return result
 })
-
-function learningReason(node: any) {
-  const routeStop = (learningRoute.value?.stops || []).find(
-    (stop: any) => Number(stop.pageId) === Number(node?.pageId ?? node?.id)
-  )
-  if (routeStop?.reason) return routeStop.reason
-  const learning = node?.learning || {}
-  const accuracy = Number(learning.accuracy || 0)
-  if (!Number(learning.viewCount || 0) && !Number(learning.practiceCount || 0)) {
-    return `还没读过 · 连接 ${Number(node?.degree || 0)} 个主题`
-  }
-  if (Number(learning.practiceCount || 0) && accuracy < 60) {
-    return `练习正确率 ${accuracy}% · 建议回看`
-  }
-  if (Number(learning.viewCount || 0) && !Number(learning.practiceCount || 0)) {
-    return '已读但还没练过'
-  }
-  if (Number(learning.practiceCount || 0) && accuracy < 80) {
-    return `正确率 ${accuracy}% · 再练一轮`
-  }
-  if (learning.level === 'mastered') return '已掌握 · 可快速复习'
-  return '按图谱连接继续探索'
-}
 
 const mapLearnSummary = computed(() => {
   const nodes = mapNodes.value
@@ -1815,30 +1691,8 @@ function startMapAnimation() {
 }
 
 
-const mapHulls = computed(() => {
-  const nodes = mapNodes.value
-  if (!nodes.length) return []
-  const byId = new Map(nodes.map((node: any) => [String(node.id), node]))
-  const visibleIds = new Set(byId.keys())
-  const hulls: any[] = []
-  for (const component of mapComponents.value.components) {
-    const ids = component.ids.filter((id: string) => visibleIds.has(id))
-    if (!ids.length) continue
-    const points = ids.map((id: string) => byId.get(id)).filter(Boolean)
-    if (!points.length) continue
-    const minX = Math.min(...points.map((point: any) => Number(point.x || 0)))
-    const minY = Math.min(...points.map((point: any) => Number(point.y || 0)))
-    hulls.push({
-      key: component.key,
-      ids,
-      label: component.label,
-      labelX: minX - 6,
-      labelY: minY - 24,
-      path: clusterOutline(points, 18 * Math.min(1.35, mapLayoutScale.value))
-    })
-  }
-  return hulls
-})
+// 分组外轮廓（抽到同目录 composable）
+const { mapHulls } = useWikiGraphHulls({ mapNodes, mapComponents, mapLayoutScale })
 
 async function reload() {
   loading.value = true

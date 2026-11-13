@@ -45,6 +45,13 @@ import {
   loadRandomPlan,
   clearRandomPlan as clearStoredRandomPlan
 } from './questionPracticeRandomPlan'
+import {
+  computeSliceWindow,
+  isAnswerCorrect,
+  isCompositeAnswered,
+  isCompositeType,
+  toggleSelection
+} from './questionPracticeRules'
 
 // 调试日志工具
 import {
@@ -768,7 +775,7 @@ export function useQuestionPractice(
     })
 
     answers.value = questions.value.map(q => {
-      if (['readingComprehension', 'cloze'].includes(q.type)) {
+      if (isCompositeType(q.type)) {
         return {}
       }
       return null
@@ -812,23 +819,11 @@ export function useQuestionPractice(
     })
 
     // 计算新的偏移量，保持在当前批次的起始位置
-    let newOffset = 0
-    if (newCount !== 'all' && typeof newCount === 'number') {
-      newOffset = Math.floor(questionOffset.value / newCount) * newCount
-    }
-    questionOffset.value = Math.max(0, newOffset)
+    const win = computeSliceWindow(allQuestionsData.value.length, newCount, questionOffset.value)
+    questionOffset.value = win.offset
 
     // 从 allQuestionsData 中重新切片
-    let sliceEnd: number
-    if (newCount === 'all') {
-      sliceEnd = allQuestionsData.value.length
-    } else if (typeof newCount === 'number') {
-      sliceEnd = Math.min(newOffset + newCount, allQuestionsData.value.length)
-    } else {
-      sliceEnd = Math.min(newOffset + 10, allQuestionsData.value.length)
-    }
-
-    const newData = allQuestionsData.value.slice(newOffset, sliceEnd)
+    const newData = allQuestionsData.value.slice(win.sliceStart, win.sliceEnd)
 
     // 处理新数据，保留已答题目的状态
     questions.value = newData.map(q => {
@@ -861,7 +856,7 @@ export function useQuestionPractice(
       if (existing && existing.answer !== undefined) {
         return existing.answer
       }
-      if (['readingComprehension', 'cloze'].includes(q.type)) {
+      if (isCompositeType(q.type)) {
         return {}
       }
       return null
@@ -882,7 +877,7 @@ export function useQuestionPractice(
       const ans = answers.value[targetIndex]
 
       // 对于阅读理解或完形填空，同步子题答案
-      if (['readingComprehension', 'cloze'].includes(q.type)) {
+      if (isCompositeType(q.type)) {
         selectedAnswer.value = null
         if (ans && ans.fillblank) {
           subFillBlankAnswers.value = { ...ans.fillblank }
@@ -1199,7 +1194,7 @@ export function useQuestionPractice(
     subEssayAnswers.value = {}
 
     answers.value = questions.value.map(q => {
-      if (['readingComprehension', 'cloze'].includes(q.type)) {
+      if (isCompositeType(q.type)) {
         return {}
       }
       return null
@@ -1218,7 +1213,7 @@ export function useQuestionPractice(
     const currentQ = questions.value[currentIndex]
 
     // 保存当前题目的答案
-    if (currentIndex !== index && currentQ && !['readingComprehension', 'cloze'].includes(currentQ.type) && selectedAnswer.value !== null && answers.value[currentIndex] === null) {
+    if (currentIndex !== index && currentQ && !isCompositeType(currentQ.type) && selectedAnswer.value !== null && answers.value[currentIndex] === null) {
       handleAnswerSubmission(currentIndex)
     }
 
@@ -1227,7 +1222,7 @@ export function useQuestionPractice(
     const ans = answers.value[index]
 
     // 对于阅读理解或完形填空，重置 selectedAnswer 并同步子题答案
-    if (['readingComprehension', 'cloze'].includes(q?.type)) {
+    if (isCompositeType(q?.type)) {
       selectedAnswer.value = null
 
       // ✅ 新增：同步子题答案到显示数据
@@ -1250,19 +1245,7 @@ export function useQuestionPractice(
 
     // 设置解析显示状态
     if (ans !== null && q) {
-      let isCorrect = false
-      const ca = q.correctAnswer
-      if (q.type === 'single' || q.type === 'truefalse') {
-        isCorrect = ans === ca
-      } else if (q.type === 'multiple') {
-        isCorrect =
-          Array.isArray(ans) &&
-          Array.isArray(ca) &&
-          ans.length === ca.length &&
-          ans.every((v: any) => ca.includes(v))
-      } else if (['fillblank', 'essay'].includes(q.type)) {
-        isCorrect = String(ans).trim().toLowerCase() === String(ca).trim().toLowerCase()
-      }
+      let isCorrect = isAnswerCorrect(q.type, ans, q.correctAnswer)
       q.showAnalysis = true
     }
   }
@@ -1287,13 +1270,7 @@ export function useQuestionPractice(
     const type = currentQuestion.value?.type
     if (type === 'multiple') {
       const arr = Array.isArray(selectedAnswer.value) ? [...selectedAnswer.value] : []
-      const i = arr.indexOf(index)
-      if (i > -1) {
-        arr.splice(i, 1)
-      } else {
-        arr.push(index)
-      }
-      selectedAnswer.value = arr
+      selectedAnswer.value = toggleSelection(arr, index)
     } else if (['single', 'truefalse'].includes(type)) {
       selectedAnswer.value = index
     }
@@ -1301,7 +1278,7 @@ export function useQuestionPractice(
 
   function selectSubOption(subIndex: number, optionIndex: number): void {
     const currentQ = currentQuestion.value
-    if (!currentQ || !['readingComprehension', 'cloze'].includes(currentQ.type)) return
+    if (!currentQ || !isCompositeType(currentQ.type)) return
     if (!currentQ.subQuestions[subIndex]) return
 
     if (!answers.value[currentQuestionIndex.value]) {
@@ -1332,7 +1309,7 @@ export function useQuestionPractice(
   // ✅ 修复：updateSubFillBlankAnswer 函数 - 完整版
   function updateSubFillBlankAnswer(subIndex: number, value: string): void {
     const currentQ = currentQuestion.value
-    if (!currentQ || !['readingComprehension', 'cloze'].includes(currentQ.type)) {
+    if (!currentQ || !isCompositeType(currentQ.type)) {
       return
     }
 
@@ -1360,7 +1337,7 @@ export function useQuestionPractice(
   // ✅ 修复：updateSubEssayAnswer 函数 - 完整版
   function updateSubEssayAnswer(subIndex: number, value: string): void {
     const currentQ = currentQuestion.value
-    if (!currentQ || !['readingComprehension', 'cloze'].includes(currentQ.type)) {
+    if (!currentQ || !isCompositeType(currentQ.type)) {
       return
     }
 
@@ -1389,17 +1366,9 @@ export function useQuestionPractice(
     const currentIndex = currentQuestionIndex.value
     const q = questions.value[currentIndex]
     const ans = answers.value[currentIndex]
-    if (!q || !['readingComprehension', 'cloze'].includes(q.type)) return
+    if (!q || !isCompositeType(q.type)) return
 
-    const allAnswered = q.subQuestions.every((subQ: any, idx: number) => {
-      if (subQ.type === 'fillblank') {
-        return ans && ans.fillblank && ans.fillblank[idx] !== undefined && ans.fillblank[idx] !== ''
-      } else if (subQ.type === 'essay') {
-        return ans && ans.essay && ans.essay[idx] !== undefined && ans.essay[idx] !== ''
-      } else {
-        return ans && ans[idx] !== undefined
-      }
-    })
+    const allAnswered = isCompositeAnswered(q.subQuestions, ans)
     q.answered = allAnswered
   }
 
@@ -1416,7 +1385,7 @@ export function useQuestionPractice(
     const q = questions.value[qIndex]
     if (!q) return
 
-    const composite = ['readingComprehension', 'cloze'].includes(q.type)
+    const composite = isCompositeType(q.type)
     const answer = composite ? answers.value[qIndex] : (answers.value[qIndex] ?? selectedAnswer.value)
     if (!hasAnswerValue(answer)) return
 
