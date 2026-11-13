@@ -406,7 +406,7 @@
 - 授权：hy4 = questions.py + rag.py；minimax3.1f = loop.py
 - 测试：compileall / ruff / questions+rag+loop 导入 / 13 项定向 pytest
 - 备注：loop.py 的纯辅助面进一步收敛；本轮为 `state.corrections` 自增保留原顺序
-- 提交：`[pending]`
+- 提交：`73ce76a`（Gitee/GitCode 已推送；GitHub 重试中）
 
 ### 结果（非空行口径）
 
