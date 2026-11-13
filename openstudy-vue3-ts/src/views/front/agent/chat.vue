@@ -892,6 +892,8 @@ watch(
   async (token) => {
     if (!token || token === lastNewChatToken) return
     lastNewChatToken = token
+    // 消费 pending；即使页面此刻还没完成挂载，挂载后也不会再重复新建。
+    agentUiStore.consumeNewChat()
     await newSession()
   }
 )
@@ -1217,6 +1219,14 @@ onMounted(async () => {
     //   （用户 2026-10-10 报）。飞行锁保证与后续 openPanel 的调用不重复请求。
     loadExperts()
     await loadSessions()
+
+    // 侧栏可能在聊天页挂载前就点了「新建对话」；优先消费这个信号，
+    // 不能再按「恢复最新会话」打开列表第一条。
+    if (agentUiStore.consumeNewChat()) {
+      lastNewChatToken = agentUiStore.newChatToken
+      await newSession()
+      return
+    }
 
   /*
    * 恢复「上次打开的那个会话」（用户 2026-10-18 报：

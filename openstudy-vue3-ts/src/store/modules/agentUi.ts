@@ -28,6 +28,8 @@ export type AgentPanelTab = 'settings' | 'kb'
 const useAgentUiStore = defineStore('agentUi', {
   state: () => ({
     newChatToken: 0,
+    /** 新建对话信号是否还没被聊天页消费（页面未挂载时点击也要保留） */
+    newChatPending: false,
     /** 请求开合「设置 / 知识库」抽屉（侧栏 + 对话页工具栏都发这个信号） */
     settingsToken: 0,
     /** 本次信号希望停在哪个 tab */
@@ -36,6 +38,14 @@ const useAgentUiStore = defineStore('agentUi', {
   actions: {
     requestNewChat() {
       this.newChatToken += 1
+      this.newChatPending = true
+    },
+
+    /** 聊天页消费一次新建对话信号；返回 true 表示本次应创建新会话 */
+    consumeNewChat(): boolean {
+      if (!this.newChatPending) return false
+      this.newChatPending = false
+      return true
     },
 
     /** 打开设置抽屉（默认停在「设置」tab） */
