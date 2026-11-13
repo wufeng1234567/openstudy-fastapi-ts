@@ -343,7 +343,7 @@
 - 授权：hy4 = questions.py + rag.py；minimax3.1f = wiki_service.py
 - 事故与修复：wiki_service.py 首次写盘被工具按字符拆分（74KB→205KB），已从快照恢复（SHA256 校验通过），minimax 重做时改为临时文件 + AST/行数/体积校验后替换。
 - 测试：compileall / ruff / questions+rag+wiki 导入 / 13 项定向 pytest
-- 提交：`[pending]`
+- 提交：`8893c0d`（Gitee/GitCode 已推送；GitHub 重试中）
 
 ### 结果（非空行口径）
 
