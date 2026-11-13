@@ -201,7 +201,7 @@
             </button>
           </template>
         </aside>
-        <div v-if="!adviceMode" class="kw-graph-hint"><span>知识关系常显，题库连线悬停/点击后出现并高亮 · 点知识主题查看主题页，点来源节点查看资料/题库/笔记 · 右侧可开启规划建议</span></div>
+        <div v-if="!adviceMode" class="kw-graph-hint"><span>悬停/点击节点查看相关连线 · 点知识主题查看主题页，点来源节点查看资料/题库/笔记 · 右侧可开启规划建议</span></div>
       </div>
       <KnowledgeAdviceHost
         ref="adviceHostRef"
@@ -734,7 +734,7 @@ const { syncMapSize, fitMapView, onMapResize } = useWikiMapLayout({
 
 // 图谱连线（抽到同目录 composable；纯惰性 computed，不含任何交互或计时）
 const { mapEdges } = useWikiMapEdges({
-  mapHoveredId, mapSelectedNodeId, mapNodes, allMapNodes,
+  mapHoveredId, mapSelectedNodeId, routeActive, mapNodes, allMapNodes,
   mapImageExpanded, mapGraph, IMAGE_CLUSTER_ID, isCrossSourceEdge
 })
 
