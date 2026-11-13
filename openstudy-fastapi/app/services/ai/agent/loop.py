@@ -157,6 +157,7 @@ from app.services.ai.agent.loop_stream_helpers import (
     build_human_text,
     build_vision_blocks,
 )
+from app.services.ai.agent.loop_validation_formatters import params_validation_failure
 
 #: 图片标记模板 —— 定义已挪到 `file_parser`
 #:
@@ -333,11 +334,7 @@ async def _prepare_tool_call(
     normalized = guard_.normalize_params(tool, params or {})
     errors, hints = guard_.validate_params(tool, normalized)
     if errors:
-        return tool, normalized, fail(
-            "参数校验失败：" + "；".join(errors),
-            "；".join(hints),
-            validationErrors=errors,
-        )
+        return tool, normalized, params_validation_failure(errors, hints)
     return tool, normalized, None
 
 
@@ -1603,11 +1600,7 @@ async def run_agent_stream(
             params = guard.normalize_params(tool, raw_args)
             errors, hints = guard.validate_params(tool, params)
             if errors:
-                result = fail(
-                    "参数校验失败：" + "；".join(errors),
-                    "；".join(hints),
-                    validationErrors=errors,
-                )
+                result = params_validation_failure(errors, hints)
                 state.corrections += 1
                 state.errors.extend(errors)
                 lc_messages.append(tool_result_message(result, call_id))

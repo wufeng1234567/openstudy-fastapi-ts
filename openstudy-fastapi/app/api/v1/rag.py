@@ -157,6 +157,18 @@ async def delete_knowledge_base(
 
 # ============================================================ 文档
 
+async def _document_health_report(doc):
+    """资料体检报告。
+
+    ⚠ 体检是**同步 CPU 计算**（可能几十万字符），必须放到线程池，
+    否则会阻塞事件循环 —— 这三处原本各写一遍「本地 import + to_thread」，
+    现在收敛到一处。
+    """
+    from app.services.document_health_service import build_document_health
+
+    return await asyncio.to_thread(build_document_health, doc)
+
+
 def _collect_uploaded_document(
     background: BackgroundTasks,
     documents: list[dict],
@@ -676,12 +688,11 @@ async def stream_workspace_study_pack(
     """
     try:
         from app.services.ai import chat_engine, prompts
-        from app.services.document_health_service import build_document_health
         from app.services.study_pack_service import build_study_pack_prompt
 
         uid = _uid(current_user)
         doc = await rag_write_service.get_document(db, uid, doc_id)
-        report = await asyncio.to_thread(build_document_health, doc)
+        report = await _document_health_report(doc)
         prompt, _selected = build_study_pack_prompt(
             doc_name=str(getattr(doc, "file_name", "") or "未命名资料"),
             raw=str(getattr(doc, "raw_content", "") or ""),
@@ -724,7 +735,6 @@ async def generate_workspace_study_prescription(
     """
     try:
         from app.services.ai import chat_engine, prompts
-        from app.services.document_health_service import build_document_health
         from app.services.study_prescription_service import (
             baseline_from_report,
             build_prescription_prompt,
@@ -733,7 +743,7 @@ async def generate_workspace_study_prescription(
 
         uid = _uid(current_user)
         doc = await rag_write_service.get_document(db, uid, doc_id)
-        report = await asyncio.to_thread(build_document_health, doc)
+        report = await _document_health_report(doc)
         prompt, selected = build_prescription_prompt(
             doc_name=str(getattr(doc, "file_name", "") or "未命名资料"),
             report=report,
@@ -1365,11 +1375,10 @@ async def get_workspace_document_health(
     前端资料诊疗室的「资料体检」页签和整理手术台都消费这份数据。
     """
     try:
-        from app.services.document_health_service import build_document_health
 
         doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
         # 体检是同步 CPU 计算（可能几十万字符），放到线程池，避免阻塞事件循环。
-        report = await asyncio.to_thread(build_document_health, doc)
+        report = await _document_health_report(doc)
         return success(report)
     except Exception as e:
         return _fail(e)

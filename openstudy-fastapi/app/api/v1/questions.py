@@ -77,6 +77,46 @@ from .question_query_builders import bank_by_id_query, question_by_id_query, use
 
 # ========== 题库 API
 
+async def _question_page_payload(
+    db: AsyncSession,
+    base,
+    current_user: dict,
+    total,
+    pageNum: int,
+    pageSize: int,
+    withAnswer: bool,
+) -> dict:
+    """分页取题 + 组装要回给前端的题目列表（带题库名，按权限决定是否露出答案）。
+
+    ⚠ 这段原本在**两个接口**里**逐字相同** —— 现在收敛到一处，
+    两条链路的「分页 + 权限露出」口径不会再漂。
+    """
+    data_query = base.options(selectinload(QuestionMain.sub_questions))
+    data_query = data_query.order_by(QuestionMain.sort_order, QuestionMain.id)
+    data_query = data_query.offset((pageNum - 1) * pageSize).limit(pageSize)
+
+    result = await db.execute(data_query)
+    questions = list(result.scalars().all())
+    bank_ids = {int(q.bank_id) for q in questions if q.bank_id}
+    bank_map = {}
+    if bank_ids:
+        bank_rows = (
+            await db.execute(select(QuestionBank.id, QuestionBank.bank_name, QuestionBank.user_id).where(QuestionBank.id.in_(bank_ids)))
+        ).all()
+        bank_map = {int(bid): (bname or "", int(owner or 0)) for bid, bname, owner in bank_rows}
+    rows = []
+    from app.services.question_grading_service import question_payload
+    can_reveal_any = _is_admin_user(current_user)
+    current_uid = int(current_user.get("user_id") or 0)
+    for q in questions:
+        bank_name, bank_owner = bank_map.get(int(q.bank_id), ("", 0))
+        reveal = bool(withAnswer and (can_reveal_any or bank_owner == current_uid))
+        item = format_question(q) if reveal else question_payload(q, reveal=False)
+        item["bankName"] = bank_name
+        rows.append(item)
+    return paginate(total, rows)
+
+
 async def _create_bank(db: AsyncSession, payload: QuestionBankCreate, bank_name: str, user_id: int) -> dict:
     """建题库：自动推断科目、自动生成描述，落库后返回格式化结果。
 
@@ -621,30 +661,7 @@ async def list_questions(
     total = await db.scalar(count_query)
 
     # 分页（按 sort_order, id 排序，与 SpringBoot 一致）
-    data_query = base.options(selectinload(QuestionMain.sub_questions))
-    data_query = data_query.order_by(QuestionMain.sort_order, QuestionMain.id)
-    data_query = data_query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(data_query)
-    questions = list(result.scalars().all())
-    bank_ids = {int(q.bank_id) for q in questions if q.bank_id}
-    bank_map = {}
-    if bank_ids:
-        bank_rows = (
-            await db.execute(select(QuestionBank.id, QuestionBank.bank_name, QuestionBank.user_id).where(QuestionBank.id.in_(bank_ids)))
-        ).all()
-        bank_map = {int(bid): (bname or "", int(owner or 0)) for bid, bname, owner in bank_rows}
-    rows = []
-    from app.services.question_grading_service import question_payload
-    can_reveal_any = _is_admin_user(current_user)
-    current_uid = int(current_user.get("user_id") or 0)
-    for q in questions:
-        bank_name, bank_owner = bank_map.get(int(q.bank_id), ("", 0))
-        reveal = bool(withAnswer and (can_reveal_any or bank_owner == current_uid))
-        item = format_question(q) if reveal else question_payload(q, reveal=False)
-        item["bankName"] = bank_name
-        rows.append(item)
-    return paginate(total, rows)
+    return await _question_page_payload(db, base, current_user, total, pageNum, pageSize, withAnswer)
 
 
 @router.get("/questionMain/questionMain/all")
@@ -726,30 +743,7 @@ async def search_questions(
     count_query = select(func.count()).select_from(base.subquery())
     total = await db.scalar(count_query)
 
-    data_query = base.options(selectinload(QuestionMain.sub_questions))
-    data_query = data_query.order_by(QuestionMain.sort_order, QuestionMain.id)
-    data_query = data_query.offset((pageNum - 1) * pageSize).limit(pageSize)
-
-    result = await db.execute(data_query)
-    questions = list(result.scalars().all())
-    bank_ids = {int(q.bank_id) for q in questions if q.bank_id}
-    bank_map = {}
-    if bank_ids:
-        bank_rows = (
-            await db.execute(select(QuestionBank.id, QuestionBank.bank_name, QuestionBank.user_id).where(QuestionBank.id.in_(bank_ids)))
-        ).all()
-        bank_map = {int(bid): (bname or "", int(owner or 0)) for bid, bname, owner in bank_rows}
-    rows = []
-    from app.services.question_grading_service import question_payload
-    can_reveal_any = _is_admin_user(current_user)
-    current_uid = int(current_user.get("user_id") or 0)
-    for q in questions:
-        bank_name, bank_owner = bank_map.get(int(q.bank_id), ("", 0))
-        reveal = bool(withAnswer and (can_reveal_any or bank_owner == current_uid))
-        item = format_question(q) if reveal else question_payload(q, reveal=False)
-        item["bankName"] = bank_name
-        rows.append(item)
-    return paginate(total, rows)
+    return await _question_page_payload(db, base, current_user, total, pageNum, pageSize, withAnswer)
 
 
 @router.get("/questionMain/questionMain/{question_id}")

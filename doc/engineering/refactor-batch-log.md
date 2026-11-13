@@ -500,3 +500,23 @@
 | `app/services/rag/wiki_service.py` | 1,668 | 1,643 | -25 |
 
 新增模块：无（均为文件内本地 helper）
+
+## Batch 23（2026-11-13，已完成）
+
+- 基线 commit：`894a22d`
+- 快照目录：`_scratch_refactor_batch23_894a22d/`
+- 授权：minimax3.1f = questions.py + rag.py；hy4 = loop.py
+- 事故与修复：questions.py 的 `_question_page_payload` 函数体首次生成时整体顶格（await outside function，compileall 失败）；已按快照内容补 4 空格缩进并复验 compile/ruff/import。
+- 测试：compileall / ruff / questions+rag+loop 导入 / 13 项定向 pytest
+- 提交：`[pending]`
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `app/api/v1/questions.py` | 2,579 | 2,571 | -8 |
+| `app/api/v1/rag.py` | 2,288 | 2,293 | +5 |
+| `app/services/ai/agent/loop.py` | 1,872 | 1,865 | -7 |
+
+新增模块：
+- `loop_validation_formatters.py`
