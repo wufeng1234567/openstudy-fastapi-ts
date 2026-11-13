@@ -1,5 +1,5 @@
 <template>
-  <aside ref="exportRoot" class="sap" :class="{ 'is-exporting': exporting }">
+  <aside ref="exportRoot" class="sap" :class="{ 'is-exporting': exporting, 'is-embedded': embedded }">
     <header class="sap__head">
       <div>
         <span class="sap__eyebrow">规划建议</span>
@@ -80,12 +80,28 @@
     </template>
 
     <div v-else class="sap__empty">
-      <div class="sap__empty-mark">◇</div>
-      <b>{{ selectedNode?.title ? `已选择「${selectedNode.title}」` : '还没有生成建议' }}</b>
-      <p>{{ selectedNode?.title ? '点下方按钮，让系统沿着真实图谱关系读一遍。' : '点图谱节点，或直接点「生成建议」。' }}</p>
-      <el-button size="small" type="primary" @click="emit('generate')">
-        {{ selectedNode?.title ? '以此生成建议' : '生成建议' }}
-      </el-button>
+      <template v-if="selectedNode?.title && history.length">
+        <div class="sap__history">
+          <div class="sap__history-head">
+            <b>「{{ selectedNode.title }}」的历史规划</b>
+            <span>{{ history.length }} 条</span>
+          </div>
+          <button v-for="item in history" :key="item.id" type="button" class="sap__history-item" @click="emit('load-history', item)">
+            <b>{{ item.title || '未命名规划' }}</b>
+            <span>{{ item.summary || '历史规划快照' }}</span>
+            <em>{{ item.createTime || '' }}</em>
+          </button>
+        </div>
+        <el-button size="small" plain @click="emit('generate')">重新生成建议</el-button>
+      </template>
+      <template v-else>
+        <div class="sap__empty-mark">◇</div>
+        <b>{{ selectedNode?.title ? `已选择「${selectedNode.title}」` : '还没有生成建议' }}</b>
+        <p>{{ selectedNode?.title ? '这个节点还没有历史规划；可以沿着真实图谱关系生成一份。' : '点图谱节点，或直接点「生成建议」。' }}</p>
+        <el-button size="small" type="primary" @click="emit('generate')">
+          {{ selectedNode?.title ? '以此生成建议' : '生成建议' }}
+        </el-button>
+      </template>
     </div>
   </aside>
 </template>
@@ -104,13 +120,17 @@ const props = withDefaults(
     phase?: string
     selectedNode?: any
     nodeTitles?: Record<string, string>
+    history?: any[]
+    embedded?: boolean
   }>(),
   {
     advice: null,
     loading: false,
     phase: 'idle',
     selectedNode: null,
-    nodeTitles: () => ({})
+    nodeTitles: () => ({}),
+    history: () => [],
+    embedded: false
   }
 )
 
@@ -119,6 +139,7 @@ const emit = defineEmits<{
   (e: 'save'): void
   (e: 'history'): void
   (e: 'generate'): void
+  (e: 'load-history', item: any): void
 }>()
 
 const custom = ref('')
@@ -247,6 +268,12 @@ function submitCustom() {
   border-radius: 12px;
   background: #fff;
 }
+.sap.is-embedded {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
 .sap__head {
   display: flex;
   align-items: flex-start;
@@ -343,6 +370,14 @@ function submitCustom() {
   color: #9aa3b2;
   text-align: center;
 }
+.sap__history { display: flex; width: 100%; flex-direction: column; gap: 7px; text-align: left; }
+.sap__history-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #5f6b7d; font-size: 12px; }
+.sap__history-head span { color: #9aa1af; font-size: 10px; font-weight: 400; }
+.sap__history-item { display: flex; flex-direction: column; gap: 3px; width: 100%; padding: 9px 10px; border: 1px solid #e8edf5; border-radius: 8px; background: #fff; color: #5f6b7d; cursor: pointer; text-align: left; }
+.sap__history-item:hover { border-color: #c9d8f2; background: #f8faff; }
+.sap__history-item b { color: #253247; font-size: 12px; }
+.sap__history-item span { overflow: hidden; color: #7d8596; font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
+.sap__history-item em { color: #a0a8b6; font-size: 9.5px; font-style: normal; }
 .sap__empty-mark { color: #c4d3ed; font-size: 24px; }
 .sap__empty b { color: #5f6b7d; font-size: 13px; }
 .sap__empty p { max-width: 240px; margin: 0 0 6px; font-size: 11px; line-height: 1.55; }

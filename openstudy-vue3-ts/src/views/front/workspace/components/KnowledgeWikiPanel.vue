@@ -161,7 +161,7 @@
         <div class="kw-detail__mode-row">
           <div class="kw-detail__mode-tabs">
             <button type="button" :class="{ 'is-active': detailPanel === 'page' }" @click="detailPanel = 'page'">
-              KNOWLEDGE PAGE
+              知识详情
             </button>
             <button type="button" :class="{ 'is-active': detailPanel === 'advice' }" @click="openAdviceForPage">
               规划建议
@@ -173,7 +173,6 @@
         <div v-show="detailPanel === 'page'" class="kw-detail__page-panel">
         <header class="kw-detail__head">
           <div>
-            <div class="kw-kicker">KNOWLEDGE PAGE</div>
             <h2>{{ activePage.title }}</h2>
             <div class="kw-detail__badges">
               <span class="kw-detail__type" :style="{ color: pageTypeMeta(activePage.pageType).color }">{{ pageTypeLabel(activePage.pageType) }}</span>
@@ -923,7 +922,8 @@ function openAdviceForPage() {
   const pageId = Number(activePage.value?.pageId || activePage.value?.id || 0)
   if (!pageId) return
   detailPanel.value = 'advice'
-  nextTick(() => adviceHostRef.value?.generateForPage?.(pageId))
+  // 进入建议页只展示该节点的历史规划，生成必须由用户再次点击「生成建议」。
+  nextTick(() => adviceHostRef.value?.showHistoryForPage?.(pageId))
 }
 
 function onAdviceUpdate(payload: any) {

@@ -214,12 +214,13 @@
 .kw-detail-shell { height: 100%; overflow-y: auto; padding: 24px 30px 40px; }
 .kw-detail { display: flex; min-height: 100%; flex-direction: column; gap: 18px; }
 .kw-detail__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 14px; border-bottom: 1px solid #edf0f5; }
+.kw-detail__head > div:first-child { min-width: 0; flex: 1; }
 .kw-detail__head h2 { margin: 6px 0 7px; color: #1f2937; font-size: 25px; line-height: 1.3; }
 .kw-detail__badges { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; color: #9aa1af; font-size: 10px; }
 .kw-detail__type { padding: 3px 7px; border-radius: 5px; color: #2f5fce; background: #eef4ff; font-weight: 600; }
 .kw-detail__badges .is-stale { color: #c47a55; }
 .kw-detail__badges .is-manual { color: #2f9e8f; }
-.kw-detail__head-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.kw-detail__head-actions { display: flex; align-items: flex-start; flex: 0 0 auto; flex-wrap: nowrap; gap: 6px; justify-content: flex-end; }
 .kw-detail__close { flex: none; padding: 0 4px; border: 0; color: #9aa1af; background: transparent; cursor: pointer; font-size: 24px; line-height: 1; }
 .kw-detail__warning { padding: 9px 11px; border: 1px solid #f0d9cc; border-radius: 8px; color: #a96545; background: #fff8f3; font-size: 11px; line-height: 1.6; }
 .kw-detail__learning { display: flex; flex-direction: column; gap: 5px; padding: 9px 11px; border: 1px solid #e7ebf3; border-radius: 8px; background: #fbfcfe; }

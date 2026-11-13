@@ -6,10 +6,13 @@
       :phase="phase"
       :selected-node="selectedNode"
       :node-titles="displayNodeTitles"
+      :history="history"
+      :embedded="embedded"
       @generate="generate()"
       @adjust="adjust"
       @save="saveCurrent"
       @history="openHistory"
+      @load-history="loadHistoryItem"
     />
   </div>
   <ResizableDrawer
@@ -135,6 +138,17 @@ function selectAdviceNode(node: any) {
   phase.value = 'idle'
   drawer.value = true
   return true
+}
+
+async function showHistoryForPage(pageId: number) {
+  if (!pageId) return
+  if (!selectAdviceNode({
+    id: `topic:${pageId}`,
+    title: props.nodeTitles?.[String(pageId)] || '当前主题'
+  })) return
+  // 进入规划建议面板时只加载该节点的历史快照，不自动生成。
+  history.value = []
+  await loadHistory(`topic:${pageId}`)
 }
 
 async function generateForPage(pageId: number) {
@@ -265,9 +279,10 @@ async function openHistory() {
   await loadHistory()
 }
 
-async function loadHistory() {
+async function loadHistory(seedNodeId = '') {
   try {
-    const res: any = await listStudyPlanHistory(20)
+    const seed = typeof seedNodeId === 'string' ? seedNodeId : ''
+    const res: any = await listStudyPlanHistory(20, '', seed)
     if (res.code === 200) history.value = res.data?.items || []
   } catch {
     history.value = []
@@ -334,7 +349,7 @@ function clear() {
 
 onMounted(loadHistory)
 
-defineExpose({ generateForPage, generateForNode, open, clear })
+defineExpose({ showHistoryForPage, generateForPage, generateForNode, open, clear })
 </script>
 
 <style scoped>
