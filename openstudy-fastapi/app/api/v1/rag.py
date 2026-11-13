@@ -66,6 +66,7 @@ from .rag_helpers import (
     _uid, _read_upload_files, _batch_image_assets, _referenced_markdown_image_names, _upload_doc_payload, _create_uploaded_document, _fail
 )
 from .rag_formatters import _attach_kb_names, _group_hits_by_file
+from .rag_payload_formatters import _upload_failure, _standalone_image_payload, _pptx_filename, _doc_status_payload
 
 # ============================================================ 知识库
 
@@ -309,25 +310,17 @@ async def upload_document(
                     raw=raw,
                 )
             except Exception as e:  # noqa: BLE001
-                failed.append({"fileName": filename, "error": str(e)[:300]})
+                failed.append(_upload_failure(filename, e))
                 continue
             background.add_task(_describe_standalone_image, str(asset.asset_key), uid)
-            images.append(
-                {
-                    "assetId": int(asset.id),
-                    "assetKey": str(asset.asset_key),
-                    "kbId": int(kb_id),
-                    "fileName": filename,
-                    "displayName": str(asset.display_name or Path(filename).stem),
-                }
-            )
+            images.append(_standalone_image_payload(asset, kb_id, filename))
             continue
         try:
             doc, image_map, content_length, _, ocr_applied = await _create_uploaded_document(
                 db, uid, kb_id, filename, raw, assets=assets, on_duplicate=onDuplicate
             )
         except Exception as e:  # noqa: BLE001 - 多文件允许部分成功
-            failed.append({"fileName": filename, "error": str(e)[:300]})
+            failed.append(_upload_failure(filename, e))
             continue
         background.add_task(document_pipeline.process_document, doc.id)
         documents.append(
@@ -1783,9 +1776,7 @@ async def download_micro_course_pptx(
         elif record:
             version = int(record.version or 1)
             display_title = str(record.title or display_title)
-        stem = re.sub(r"[\\/:*?\"<>|]", "_", display_title or "教学课件")
-        stem = re.sub(r"\.[A-Za-z0-9]{1,6}$", "", stem)
-        name = f"{stem}_第{version}版.pptx"
+        name = _pptx_filename(display_title, version)
         return Response(
             content=content,
             media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -1827,17 +1818,7 @@ async def get_document_status_batch(
             doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
         except Exception:
             continue
-        result.append(
-            {
-                "docId": doc.id,
-                "status": doc.status,
-                "statusText": DOC_STATUS_TEXT.get(doc.status, "未知"),
-                "chunkCount": doc.chunk_count,
-                "errorMsg": doc.error_msg,
-                "done": doc.status in (4, 5),
-                "ok": doc.status == 5,
-            }
-        )
+        result.append(_doc_status_payload(doc, DOC_STATUS_TEXT))
     return success(result)
 
 
@@ -1852,17 +1833,7 @@ async def get_document_status(
 
     try:
         doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
-        return success(
-            {
-                "docId": doc.id,
-                "status": doc.status,
-                "statusText": DOC_STATUS_TEXT.get(doc.status, "未知"),
-                "chunkCount": doc.chunk_count,
-                "errorMsg": doc.error_msg,
-                "done": doc.status in (4, 5),
-                "ok": doc.status == 5,
-            }
-        )
+        return success(_doc_status_payload(doc, DOC_STATUS_TEXT))
     except Exception as e:
         return _fail(e)
 
@@ -2171,7 +2142,7 @@ async def upload_to_workspace(
                 db, uid, kb.id, filename, raw, note or "", assets=assets
             )
         except Exception as e:  # noqa: BLE001 - 多文件允许部分成功
-            failed.append({"fileName": filename, "error": str(e)[:300]})
+            failed.append(_upload_failure(filename, e))
             continue
         background.add_task(document_pipeline.process_document, doc.id)
         documents.append(

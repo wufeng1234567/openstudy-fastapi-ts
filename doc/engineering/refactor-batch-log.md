@@ -154,3 +154,23 @@
 - `useWikiGraphDerived.ts` / `useWikiGraphHulls.ts`
 - `agentChatEventShapes.ts` / `agentChatTurns.ts`
 - `questionPracticeRules.ts`
+
+## Batch 6（2026-11-13，已完成）
+
+- 基线 commit：`f35a7ee`
+- 快照目录：`_scratch_refactor_batch6_f35a7ee/`
+- 授权：hy4 = questions.py + rag.py；minimax3.1f = loop.py
+- 测试：compileall / ruff / questions+rag+loop 导入 / 13 项定向 pytest
+- 提交：`[pending]`
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `app/api/v1/questions.py` | 3,018 | 2,944 | -74 |
+| `app/api/v1/rag.py` | 2,440 | 2,411 | -29 |
+| `app/services/ai/agent/loop.py` | 1,950 | 1,911 | -39 |
+
+新增模块：
+- `question_export_headers.py` / `rag_payload_formatters.py`
+- `loop_stream_helpers.py`

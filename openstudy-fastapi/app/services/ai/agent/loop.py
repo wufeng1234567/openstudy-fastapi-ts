@@ -131,6 +131,14 @@ from app.services.ai.agent.loop_confirm_policy import (
     coalesce_delete_tool_calls,
     needs_user_confirmation,
 )
+from app.services.ai.agent.loop_stream_helpers import (
+    _async_empty_list,
+    _disabled_fail,
+    _read_decision,
+    _resolve_turn_id,
+    build_human_text,
+    build_vision_blocks,
+)
 
 #: 图片标记模板 —— 定义已挪到 `file_parser`
 #:
@@ -141,21 +149,6 @@ from app.services.ai.agent.loop_confirm_policy import (
 #: 挪家的原因：聊天链路（`chat_engine`）也要用同一套标记，两处各写一份必然漂移。
 #: 这里直接 import 过来，`loop.IMAGE_MARKER_TMPL` / `loop.build_marked_document`
 #: 这两个既有引用照旧可用。
-
-def _resolve_turn_id(value: Optional[str]) -> str:
-    """本轮对话 id：优先用前端带上来的，缺省时兜一个 `auto_<hex>`。
-
-    ⚠️ 为什么不「干脆不记」：账本行的 `turn_id` 是回退的唯一取数键，空值既取不出来，
-    又**绝对不许**当通配符（空串会把整个会话的行扫进来一起撤）。
-    api 付费链路「一次请求 = 一轮」（轮边界 = 前端一次 `runStream`），所以兜底的
-    「一次请求一个 id」**恰好等于正确粒度**；ds-free 是一轮里多次请求共用 turnId，
-    没带上时兜底会退化成「一次工具调用一个 turn_id」—— 属于**安全退化**
-    （回退按钮那一轮只能退回最后一次调用，而不是扫进整轮）。前端接上 `turnId` 后即恢复。
-    """
-    text = str(value or "").strip()
-    if text:
-        return text[:64]
-    return f"auto_{uuid.uuid4().hex[:12]}"
 
 
 # ============================================================
@@ -197,19 +190,6 @@ async def persist_agent_images(data_urls: List[str]) -> List[str]:
 # ============================================================
 # 事件
 # ============================================================
-
-
-def _async_empty_list() -> Any:
-    """一个「立即完成、返回空列表」的 awaitable —— 供 `asyncio.gather` 占位用。
-
-    指挥家模式才需要读用户智能体通讯录；非指挥家模式下用它在 gather 里占位，
-    保持两个分支的代码结构一致（避免 if/else 各写一遍 gather）。
-    """
-
-    async def _inner() -> List[Any]:
-        return []
-
-    return _inner()
 
 
 async def _load_user_agent_briefing(user_id: int) -> List[Dict[str, str]]:
@@ -298,22 +278,6 @@ async def _execute_tool(
     if isinstance(result, dict):
         return result
     return {"success": True, "data": result}
-
-
-def _disabled_fail(tool_name: str) -> Dict[str, Any]:
-    """工具被用户屏蔽时的**统一失败信封**（执行侧两处出口共用一份文案）。
-
-    为什么要一个函数而不是各写一遍：`_prepare_tool_call`（ds-free 的 execute / preview）
-    与 `run_agent_stream` 的内联分支是两条独立代码路径，文案一旦各写一份就会漂 ——
-    而这段文字会**直接显示给用户**，也会原样回灌给模型。
-
-    `hint` 是必需的（见 backend-ai-chain 红线）：没有它，模型会以为是自己参数写错了，
-    拿同一组参数反复重试，白烧轮数。这里的 hint 明确说「是用户关掉的、别再调了」。
-    """
-    return fail(
-        f"「{tool_name}」已被用户在工具设置里屏蔽",
-        "用户明确屏蔽了这个工具，请不要再次调用它，直接用现有工具或直接回答",
-    )
 
 
 async def _prepare_tool_call(
@@ -554,13 +518,6 @@ async def _await_user_confirmation(
         # `_pending_decisions` 里，直到 200 条防御性清理才被冲掉（纯垃圾内存）。
         _pending_confirms.pop(confirm_id, None)
         _pending_decisions.pop(confirm_id, None)
-
-
-def _read_decision(decision: Any) -> Tuple[bool, Optional[Dict[str, Any]]]:
-    """把 `_pending_decisions` 里存的决定读成 `(approved, edited)`（容忍旧格式）"""
-    if isinstance(decision, dict):
-        return bool(decision.get("approved")), decision.get("edited")
-    return bool(decision), None
 
 
 def resolve_confirmation(
@@ -1254,13 +1211,7 @@ async def run_agent_stream(
             logger.warning("[agent] 用户消息落库失败: {}", e)
 
     # ---- 用户内容：标签包裹，明确「这是数据不是指令」----
-    human_parts: List[str] = []
-    if context:
-        human_parts.append(context)
-    human_parts.append(_wrap_tag(TAG_USER_REQUEST, typed))
-    if file_text:
-        human_parts.append(_wrap_tag(TAG_ATTACHMENTS, file_text))
-    human_text = "\n\n".join(human_parts)
+    human_text = build_human_text(context, typed, file_text)
 
     # ⚠️ 用户 2026-10-11：多模态组块要用 **`vision_images`（= 用户直传图 + 文档内嵌插图，
     #    均为原始 data URL）**，不能只遍历 `req.images`。
@@ -1276,10 +1227,7 @@ async def run_agent_stream(
     #       相对路径 `/profile/upload/...` 会被直接 400（`Unsupported image_url format`，
     #       用户 2026-10-11 实测）。落盘路径只用于**题目回插** `<img src>`（见 ctx.extra["image_urls"]）。
     if vision_images:
-        blocks: List[Any] = [{"type": "text", "text": human_text}]
-        for url in vision_images:
-            blocks.append({"type": "image_url", "image_url": {"url": url}})
-        lc_messages.append(HumanMessage(content=blocks))
+        lc_messages.append(HumanMessage(content=build_vision_blocks(human_text, vision_images)))
     else:
         lc_messages.append(HumanMessage(content=human_text))
 

@@ -51,6 +51,10 @@ router = APIRouter()
 from .question_helpers import (_infer_subject, _generate_description, _score_to_float, _begin_of_date, _end_of_date, format_bank, format_sub_question, format_question, _format_error_record, _format_favorite_question, _fetch_banks_map, _apply_favorite_question_fields, _format_marked_record, _share_effective, _enrich_share_source, _format_favorite_bank, _fetch_questions_map, _get_question_type_text, _get_marked_type_text, _get_difficulty_text, _recalc_bank_total, _insert_sub_questions, _shared_bank_ids, _can_view_bank, _is_bank_owner, _visibility_condition, _deny_if_not_owner, _deny_path_owner, _deny_foreign_ids, _is_admin_user, _parse_id_list)
 from .question_schemas import QuestionBankSaveRequest
 from .question_field_helpers import _apply_favorite_bank_fields, _apply_marked_fields
+from .question_export_headers import (
+    BANK_HEADERS, QUESTION_HEADERS, FAVORITE_BANK_HEADERS,
+    FAVORITE_QUESTION_HEADERS, ERROR_HEADERS, MARKED_HEADERS,
+)
 
 
 # ========== 辅助函数 ==========
@@ -558,15 +562,7 @@ async def export_banks(
         "createTime": b.create_time.isoformat() if b.create_time else "",
     } for b in banks]
 
-    headers = [
-        {"key": "id", "label": "题库ID"},
-        {"key": "bankName", "label": "题库名称"},
-        {"key": "subject", "label": "科目"},
-        {"key": "description", "label": "描述"},
-        {"key": "totalQuestions", "label": "题目总数"},
-        {"key": "isPublic", "label": "是否公开"},
-        {"key": "createTime", "label": "创建时间"},
-    ]
+    headers = BANK_HEADERS
 
     return export_to_excel(rows, headers, "questionBank")
 
@@ -1442,17 +1438,7 @@ async def export_questions(
         "sortOrder": q.sort_order,
     } for q in questions]
 
-    headers = [
-        {"key": "id", "label": "题目ID"},
-        {"key": "bankId", "label": "题库ID"},
-        {"key": "questionType", "label": "题型"},
-        {"key": "questionText", "label": "题干"},
-        {"key": "options", "label": "选项"},
-        {"key": "answer", "label": "答案"},
-        {"key": "analysis", "label": "解析"},
-        {"key": "difficulty", "label": "难度"},
-        {"key": "sortOrder", "label": "排序"},
-    ]
+    headers = QUESTION_HEADERS
 
     return export_to_excel(rows, headers, "questionMain")
 
@@ -1937,21 +1923,7 @@ async def export_favorite_banks(
             "createTime": fav.create_time.isoformat() if fav.create_time else "",
         })
 
-    headers = [
-        {"key": "favoriteId", "label": "收藏ID"},
-        {"key": "userId", "label": "用户ID"},
-        {"key": "bankId", "label": "题库ID"},
-        {"key": "bankName", "label": "题库名称"},
-        {"key": "subject", "label": "科目"},
-        {"key": "notes", "label": "收藏备注"},
-        {"key": "tags", "label": "标签"},
-        {"key": "sortOrder", "label": "排序"},
-        {"key": "isStarred", "label": "是否标星"},
-        {"key": "lastStudyTime", "label": "最后学习时间"},
-        {"key": "studyCount", "label": "学习次数"},
-        {"key": "favoriteStatus", "label": "收藏状态"},
-        {"key": "createTime", "label": "收藏时间"},
-    ]
+    headers = FAVORITE_BANK_HEADERS
 
     return export_to_excel(rows, headers, "favoriteBank")
 
@@ -2470,27 +2442,7 @@ async def export_favorite_questions(
                 "createTime": fav.create_time.isoformat() if fav.create_time else "",
             })
 
-    headers = [
-        {"key": "favoriteId", "label": "收藏ID"},
-        {"key": "userId", "label": "用户ID"},
-        {"key": "questionId", "label": "题目ID"},
-        {"key": "bankId", "label": "题库ID"},
-        {"key": "bankName", "label": "题库名称"},
-        {"key": "questionType", "label": "题型"},
-        {"key": "questionText", "label": "题干"},
-        {"key": "answer", "label": "答案"},
-        {"key": "notes", "label": "收藏备注"},
-        {"key": "tags", "label": "标签"},
-        {"key": "difficultyRating", "label": "难度评级"},
-        {"key": "errorTimes", "label": "错误次数"},
-        {"key": "correctTimes", "label": "正确次数"},
-        {"key": "reviewCount", "label": "复习次数"},
-        {"key": "lastReviewTime", "label": "最后复习时间"},
-        {"key": "nextReviewTime", "label": "下次复习时间"},
-        {"key": "isStarred", "label": "是否星标"},
-        {"key": "favoriteStatus", "label": "收藏状态"},
-        {"key": "createTime", "label": "收藏时间"},
-    ]
+    headers = FAVORITE_QUESTION_HEADERS
 
     return export_to_excel(rows, headers, "favoriteQuestion")
 
@@ -2992,17 +2944,7 @@ async def export_errors(
                 "notes": e.notes or "",
             })
 
-    headers = [
-        {"key": "errorId", "label": "错题ID"},
-        {"key": "questionId", "label": "题目ID"},
-        {"key": "questionText", "label": "题干"},
-        {"key": "questionType", "label": "题型"},
-        {"key": "answer", "label": "正确答案"},
-        {"key": "errorCount", "label": "错误次数"},
-        {"key": "isMastered", "label": "是否已掌握"},
-        {"key": "lastErrorTime", "label": "最近错误时间"},
-        {"key": "notes", "label": "备注"},
-    ]
+    headers = ERROR_HEADERS
 
     return export_to_excel(rows, headers, "questionError")
 
@@ -3461,22 +3403,6 @@ async def export_marked(
                 "createTime": m.create_time.isoformat() if m.create_time else "",
             })
 
-    headers = [
-        {"key": "markedId", "label": "斩题ID"},
-        {"key": "userId", "label": "用户ID"},
-        {"key": "questionId", "label": "题目ID"},
-        {"key": "questionText", "label": "题干"},
-        {"key": "questionType", "label": "题型"},
-        {"key": "answer", "label": "答案"},
-        {"key": "markedType", "label": "斩题类型"},
-        {"key": "difficultyLevel", "label": "难度等级"},
-        {"key": "errorTimesBeforeMark", "label": "错误次数"},
-        {"key": "reviewCount", "label": "复习次数"},
-        {"key": "isMastered", "label": "是否已掌握"},
-        {"key": "lastReviewTime", "label": "最后复习时间"},
-        {"key": "notes", "label": "备注"},
-        {"key": "tags", "label": "标签"},
-        {"key": "createTime", "label": "斩题时间"},
-    ]
+    headers = MARKED_HEADERS
 
     return export_to_excel(rows, headers, "questionMarked")
