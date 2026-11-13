@@ -87,6 +87,8 @@ import {
 
 import { asUnansweredQuestion } from './questionPracticeQuestionShape'
 
+import { pickArray } from './questionPracticeResponse'
+
 interface UseQuestionPracticeOptions {
   isFavoriteMode?: boolean
   singleQuestionId?: number | string | null
@@ -1044,12 +1046,7 @@ return
         // 练习入口不拿答案/解析；判分与参考答析由服务端会话在作答后返回
         withAnswer: false
       })
-      let data: any[] = []
-      if (Array.isArray(response.data)) {
-        data = response.data
-      } else if (Array.isArray(response.result)) {
-        data = response.result
-      }
+      const data = pickArray(response)
 
       // 调试日志：API返回数据
       debugFetchComplete(props.moduleType, data)
@@ -1100,12 +1097,7 @@ return
         status: "0",
         withAnswer: false
       })
-      let data: any[] = []
-      if (Array.isArray(response.data)) {
-        data = response.data
-      } else if (Array.isArray(response.result)) {
-        data = response.result
-      }
+      const data = pickArray(response)
 
       if (data.length === 0) {
         questions.value = []

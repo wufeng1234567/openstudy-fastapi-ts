@@ -753,6 +753,13 @@ const {
   routeActive, detailVisible, activePage, mapLearningPath
 })
 
+/** 清空「建议」相关的状态（轨迹 / 已访问页 / 已点亮的页） */
+function resetAdviceState(): void {
+  adviceTrace.value = null
+  adviceVisitedPageIds.value = []
+  adviceLitPageIds.value = []
+}
+
 function applyLearningRoute(data: any) {
   const plan = data?.plan || null
   if (plan) studyPlan.value = plan
@@ -857,9 +864,7 @@ function toggleAdviceMode() {
     view.value = 'map'
     detailVisible.value = false
   } else {
-    adviceTrace.value = null
-    adviceVisitedPageIds.value = []
-    adviceLitPageIds.value = []
+    resetAdviceState()
   }
 }
 
@@ -1041,9 +1046,7 @@ function onMapNodeClick(node: any) {
       mapSelectedNodeId.value = null
       detailVisible.value = false
       adviceHostRef.value?.clear?.()
-      adviceTrace.value = null
-      adviceVisitedPageIds.value = []
-      adviceLitPageIds.value = []
+      resetAdviceState()
       return
     }
     // 建议模式只选中节点并把它移到视野中央，不打开知识百科详情抽屉。

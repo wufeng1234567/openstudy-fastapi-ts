@@ -539,3 +539,22 @@
 | `app/api/v1/ai.py` | 1,731 | 1,723 | -8 |
 
 新增模块：无（均为文件内本地 helper）
+## Batch 25（2026-11-13，已完成）
+
+- 基线 commit：`9ce4c20`
+- 快照目录：`_scratch_refactor_batch25_9ce4c20/`
+- 授权：hy4 = QuestionBuilder.vue（评估后保持原样）；minimax3.1f = KnowledgeWikiPanel + useQuestionPractice，第三文件 wiki_service
+- 说明：QuestionBuilder 因 scoped SCSS 拆子组件会丢失样式、模板动态绑定过密，安全评估后不改；questions.py 的收藏题库查询因位于循环体内，4 稿均被 AST 守卫拦下，保持原样。
+- 测试：build 4,032 modules / unit 29 项 / wiki+practice smoke 通过 / compileall / ruff / 全量 pytest 109 passed
+- 提交：`[pending]`
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `KnowledgeWikiPanel.vue` | 1,994 | 1,996 | +2 |
+| `useQuestionPractice.ts` | 1,435 | 1,426 | -9 |
+| `app/services/rag/wiki_service.py` | 1,643 | 1,642 | -1 |
+
+新增模块：
+- `questionPracticeResponse.ts`

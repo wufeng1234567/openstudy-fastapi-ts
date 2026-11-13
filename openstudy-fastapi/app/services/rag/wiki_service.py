@@ -98,6 +98,22 @@ from app.services.rag.wiki_page_state import (
 )
 
 
+async def _load_kb_relations(db: AsyncSession, user_id: int, kb_id: int) -> list:
+    """该资料夹下的**关系边**（页面图谱的边）。
+
+    ⚠ 这段查询原本在**两处**逐字相同 —— 现在收敛到一处，
+    「关系边」的筛选口径（按 user + kb）不会再各处漂。
+    """
+    return (
+        await db.execute(
+            select(RagGraphRelation).where(
+                RagGraphRelation.user_id == int(user_id),
+                RagGraphRelation.kb_id == int(kb_id),
+            )
+        )
+    ).scalars().all()
+
+
 async def _load_entity_chunks(
     db: AsyncSession, user_id: int, kb_id: int, entity: RagGraphEntity
 ) -> list[RagDocumentChunk]:
@@ -379,14 +395,7 @@ async def linkify_wiki_pages(
 
     entities = await _load_kb_entities(db, int(user_id), int(kb_id))
     entity_by_id = {int(entity.id): entity for entity in entities}
-    relation_rows = (
-        await db.execute(
-            select(RagGraphRelation).where(
-                RagGraphRelation.user_id == int(user_id),
-                RagGraphRelation.kb_id == int(kb_id),
-            )
-        )
-    ).scalars().all()
+    relation_rows = await _load_kb_relations(db, int(user_id), int(kb_id))
     degree: dict[int, int] = {}
     page_relation_types: dict[int, list[dict]] = {}
     for relation in relation_rows:
@@ -542,14 +551,7 @@ async def build_wiki_pages(
     if not entities:
         raise ValueError("当前资料夹还没有实体，请先抽取知识图谱")
 
-    relations_all = (
-        await db.execute(
-            select(RagGraphRelation).where(
-                RagGraphRelation.user_id == int(user_id),
-                RagGraphRelation.kb_id == int(kb_id),
-            )
-        )
-    ).scalars().all()
+    relations_all = await _load_kb_relations(db, int(user_id), int(kb_id))
     degree: dict[int, int] = {}
     for rel in relations_all:
         degree[int(rel.source_id)] = degree.get(int(rel.source_id), 0) + 1
