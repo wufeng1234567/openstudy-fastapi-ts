@@ -222,7 +222,7 @@
 - 授权：hy4 = questions.py + rag.py；minimax3.1f = KnowledgeWikiPanel.vue
 - 测试：build 4,014 modules / unit 29 项 / wiki runtime 无报错 / compileall / ruff / 13 项定向 pytest
 - 备注：batch9 发现并修复 `export_bank_rows` 别名导入错误（`bank_rows as export_bank_rows`）
-- 提交：`[pending]`
+- 提交：`cb70c77`（Gitee/GitCode 已推送；GitHub 重试中）
 
 ### 结果（非空行口径）
 
