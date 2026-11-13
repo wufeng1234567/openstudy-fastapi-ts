@@ -174,3 +174,23 @@
 新增模块：
 - `question_export_headers.py` / `rag_payload_formatters.py`
 - `loop_stream_helpers.py`
+
+## Batch 7（2026-11-13，已完成）
+
+- 基线 commit：`c8bd1d4`
+- 快照目录：`_scratch_refactor_batch7_c8bd1d4/`
+- 授权：hy4 = QuestionBuilder + KnowledgeWikiPanel；minimax3.1f = useQuestionPractice
+- 测试：build 4,012 modules / unit 29 项 / studio+wiki+practice+agent-chat smoke 通过
+- 提交：`[pending]`
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `QuestionBuilder.vue` | 1,382 | 1,360 | -22 |
+| `KnowledgeWikiPanel.vue` | 2,413 | 2,339 | -74 |
+| `useQuestionPractice.ts` | 1,485 | 1,449 | -36 |
+
+新增模块：
+- `useQuestionBuilderState.ts` / `useWikiLearningDisplay.ts`
+- `questionPracticeBatch.ts`

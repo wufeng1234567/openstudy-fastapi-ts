@@ -1123,7 +1123,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { computed, watch } from 'vue'
 import draggable from 'vuedraggable'
 import { Rank, InfoFilled, Delete, Search, MagicStick, Plus, Loading, Close, Check, EditPen, FolderOpened, DocumentCopy, ArrowDown, Clock, Setting, FullScreen, Grid, RefreshLeft, Upload, Document, Picture } from '@element-plus/icons-vue'
 import AiThinkingToggle from '@/components/AiThinkingToggle/index.vue'
@@ -1145,6 +1145,7 @@ import { useQuestionBuilderTypePopover } from './useQuestionBuilderTypePopover'
 import { useQuestionBuilderAiStream } from './useQuestionBuilderAiStream'
 import { useQuestionBuilderDialogActions } from './useQuestionBuilderDialogActions'
 import { useQuestionBuilderPreviewEdit } from './useQuestionBuilderPreviewEdit'
+import { useQuestionBuilderState } from './useQuestionBuilderState'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
 import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
 // 公式编辑（2026-10-27）：Tiptap 是富文本编辑器，不能直接塞输入框组件，
@@ -1188,14 +1189,14 @@ const {
   handleClearContext
 } = useQuestionBuilderAiConfig({ currentBankId })
 
-// 视图模式：'raw' 显示原始JSON文本，'pretty' 显示美化卡片
-const viewMode = ref('pretty')
-const parsedQuestionsForPreview = ref<any>(null)
-const rawJsonContent = ref('') // 原始 JSON 内容
-
-// 题目列表
-const questions = ref<any[]>([])
-const currentId = ref(null)
+// 本地响应式状态（抽到同目录 composable；watch(questions) 的事件时序仍留在 SFC）
+const {
+  viewMode, parsedQuestionsForPreview, rawJsonContent, questions, currentId,
+  editablePreviewData, editingPassage, searchKeyword, currentPage, pageSize,
+  showOptionsJsonDialog, fullEditorVisible, viewerVisible, viewerSrc,
+  stemEditorRef, mathEditorRef, currentQuestion, selectedSubType,
+  aiDialogVisible, aiFormRef
+} = useQuestionBuilderState()
 
 // AI 生成相关状态（流式正文、思考跟随、等待计时已抽到同目录 composable）
 const {
@@ -1213,36 +1214,8 @@ const {
   currentGeneratingType
 } = useQuestionBuilderAiStream()
 
-// 可编辑预览数据（深拷贝，用于用户编辑）
-const editablePreviewData = ref<any>(null)
-
-
-// 编辑状态
-const editingPassage = ref(false)
-
-// 搜索与分页
-const searchKeyword = ref('')
-const currentPage = ref(1)
-const pageSize = ref(10)
-
 // 题型定义、名称映射与多选筛选（抽到同目录 composable；questionTypes / getTypeName 也在此返回）
 const { questionTypes, getTypeName, activeTypeFilters, setTypeFilter, isTypeSelected } = useQuestionBuilderTypes(currentPage)
-
-// 选项 JSON 高级编辑对话框
-const showOptionsJsonDialog = ref(false)
-
-// 全屏编辑弹窗
-const fullEditorVisible = ref(false)
-
-// 图片预览
-const viewerVisible = ref(false)
-const viewerSrc = ref('')
-
-/* ===== 公式编辑（2026-10-27）=====
-   Tiptap 是富文本，公式以 `$...$` 源码形式存进 HTML（导出/练习时由统一管线渲染）。
-   点「ƒx」→ 符号面板（鼠标操作）→ 确定后插到 Tiptap 光标处。 */
-const stemEditorRef = ref<any>(null)
-const mathEditorRef = ref<any>(null)
 
 // 当前题库ID（从父组件传入或路由获取）
 // const currentBankId = ref(null)
@@ -1273,8 +1246,6 @@ watch(questions, (newQuestions) => {
  *   （原注释写的是"只用于展示，点击时不强制切换"——那是只有两种输入时的
  *     旧权衡；现在三种输入的语义差异很大，不切反而更容易出错。）
  */
-const currentQuestion = computed(() => questions.value.find((q) => q?.id === currentId.value))
-const selectedSubType = ref('single')
 const {
   openFullEditor,
   handleFullEditorSave,
@@ -1306,8 +1277,6 @@ const {
 
 
 // AI 生成相关
-const aiDialogVisible = ref(false)
-
 const { aiForm, deepThink, selectedConfigId, onModelSelect, aiRules, createDefaultAiForm } = useQuestionBuilderAiForm()
 const {
   promptHistory,
@@ -1349,8 +1318,6 @@ const {
   copyDocPreviewContent,
   buildMaterialContext
 } = useQuestionBuilderMaterials({ aiForm })
-
-const aiFormRef = ref(null)
 
 // 一键恢复 / AI 出题弹窗的题型切换与关闭重置（抽到同目录 composable）
 const { handleRestore, onAiTypeChange, onAiDialogClose } = useQuestionBuilderDialogActions({

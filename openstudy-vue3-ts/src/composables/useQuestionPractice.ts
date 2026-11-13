@@ -52,6 +52,15 @@ import {
   isCompositeType,
   toggleSelection
 } from './questionPracticeRules'
+import {
+  answerStateCacheKey,
+  buildInitialAnswers,
+  computeBatchSliceEnd,
+  isShuffledMode,
+  resetQuestionFlags,
+  showAnalysisForAll,
+  shuffleArray
+} from './questionPracticeBatch'
 
 // 调试日志工具
 import {
@@ -365,7 +374,7 @@ export function useQuestionPractice(
        * `shuffledCache` 仍然保留：它解决的是**同一会话内**重复调用
        * processQuestions（如切换设置后重进）时不要重排。跨会话的稳定性由 localStorage 保证。
        */
-      const cacheKey = `${props.bankId}_${props.moduleType}`
+      const cacheKey = answerStateCacheKey(props.bankId, props.moduleType)
       let shuffled: any[]
 
       const hasCache = shuffledCache.has(cacheKey)
@@ -479,16 +488,7 @@ export function useQuestionPractice(
       // 调试日志：设置 questions（顺序模式）
       debugSetQuestions(props.moduleType, slicedData, 'processQuestions(sequential)')
 
-      questions.value = slicedData.map((q) => {
-        const processed = transformQuestionForDisplay(q)
-        return {
-          ...processed,
-          answered: false,
-          correct: false,
-          showAnalysis: false,
-          userAnswer: null
-        }
-      })
+      questions.value = toDisplayQuestions(slicedData)
 
       resetAnswers()
       await ensurePracticeSession()
@@ -650,7 +650,7 @@ export function useQuestionPractice(
      */
     clearNoQuestionsState()
     const count = questionCount.value
-    const shouldShuffle = props.moduleType === 'random' || props.moduleType === 'mock'
+    const shouldShuffle = isShuffledMode(props.moduleType)
     /*
      * ⚠️⚠️ 「只刷错题」时必须把偏移归零（2026-10-20 修的 bug1）。
      *
@@ -675,11 +675,7 @@ export function useQuestionPractice(
     const offset = questionOffset.value
 
     if (shouldShuffle) {
-      const shuffled = [...allQuestionsData.value]
-      for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
-      }
+      const shuffled = shuffleArray(allQuestionsData.value)
       // ⚠️ 必须 toDisplayQuestions，不能裸赋值（见该函数的注释）
       questions.value = toDisplayQuestions(
         count === 'all' ? shuffled : shuffled.slice(0, count as number)
@@ -752,34 +748,13 @@ export function useQuestionPractice(
       return
     }
 
-    let sliceEnd: number
-    if (count === 'all') {
-      sliceEnd = allQuestionsData.value.length
-    } else if (typeof count === 'number') {
-      sliceEnd = Math.min(offset + count, allQuestionsData.value.length)
-    } else {
-      sliceEnd = Math.min(offset + 10, allQuestionsData.value.length)
-    }
+    const sliceEnd = computeBatchSliceEnd(allQuestionsData.value.length, count, offset)
 
     // 对切片后的数据调用 transformQuestionForDisplay 转换
     const slicedData = allQuestionsData.value.slice(offset, sliceEnd)
-    questions.value = slicedData.map(q => {
-      const processed = transformQuestionForDisplay(q)
-      return {
-        ...processed,
-        answered: false,
-        correct: false,
-        showAnalysis: false,
-        userAnswer: null
-      }
-    })
+    questions.value = toDisplayQuestions(slicedData)
 
-    answers.value = questions.value.map(q => {
-      if (isCompositeType(q.type)) {
-        return {}
-      }
-      return null
-    })
+    answers.value = buildInitialAnswers(questions.value)
 
     currentQuestionIndex.value = 0
     selectedAnswer.value = null
@@ -928,7 +903,7 @@ export function useQuestionPractice(
     const bankId = bankIdOverride ?? props.bankId
     if (!bankId || !type || questions.value.length === 0) return
 
-    const cacheKey = `${bankId}_${type}`
+    const cacheKey = answerStateCacheKey(bankId, type)
     const state = {
       questions: [...questions.value],
       allQuestionsData: [...allQuestionsData.value],
@@ -948,7 +923,7 @@ export function useQuestionPractice(
   function restoreAnswerState(): boolean {
     if (!props.bankId || !props.moduleType) return false
 
-    const cacheKey = `${props.bankId}_${props.moduleType}`
+    const cacheKey = answerStateCacheKey(props.bankId, props.moduleType)
     const state = answerStateCache.get(cacheKey)
 
     if (!state) {
@@ -991,7 +966,7 @@ export function useQuestionPractice(
     if (!props.bankId || !moduleType) {
       return
     }
-    const cacheKey = `${props.bankId}_${moduleType}`
+    const cacheKey = answerStateCacheKey(props.bankId, moduleType)
     answerStateCache.delete(cacheKey)
   }
 
@@ -1193,18 +1168,9 @@ export function useQuestionPractice(
     subFillBlankAnswers.value = {}
     subEssayAnswers.value = {}
 
-    answers.value = questions.value.map(q => {
-      if (isCompositeType(q.type)) {
-        return {}
-      }
-      return null
-    })
+    answers.value = buildInitialAnswers(questions.value)
 
-    questions.value.forEach((q) => {
-      q.answered = false
-      q.correct = false
-      q.showAnalysis = false
-    })
+    resetQuestionFlags(questions.value)
   }
 
   // ✅ 修复：goToQuestion 函数 - 添加子题答案同步逻辑
@@ -1434,7 +1400,7 @@ export function useQuestionPractice(
     clearRandomPlan()
     practiceSessionId.value = ''
     practiceSessionSignature.value = ''
-    shuffledCache.delete(`${props.bankId}_${props.moduleType}`)
+    shuffledCache.delete(answerStateCacheKey(props.bankId, props.moduleType))
     questionOffset.value = 0
     resetAnswers()
     /*
@@ -1450,9 +1416,7 @@ export function useQuestionPractice(
   }
 
   function showAllAnalysis(): void {
-    questions.value.forEach(q => {
-      q.showAnalysis = true
-    })
+    showAnalysisForAll(questions.value)
   }
 
   function viewResult(): void {
