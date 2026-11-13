@@ -576,3 +576,21 @@
 | `app/services/rag/wiki_service.py` | 1,642 | 1,628 | -14 |
 
 新增模块：无（均为文件内本地 helper）
+## Batch 27（2026-11-13，已完成）
+
+- 基线 commit：`8cbcf21`
+- 快照目录：`_scratch_refactor_batch27_type_8cbcf21/`
+- 类型债务批次：classDiagram.vue（53 条）、TagsView（31 条）、TopNav（29 条）；hy4 首轮大文件超时未落盘，minimax 完成全部实际改动
+- 结果：`npm run type-check` 1,786 → **1,690 条**（真实减少 96 条；113 条目标错误因级联变化未全部 1:1 体现）
+- 代价：`npm run lint` 3,754 → **3,810 warnings**（类型修复引入 `as any` 等显式 any；warn-only，如实记录）
+- 测试：build 4,032 modules / unit 29 项 / type-check exit 2（存量未清零）
+- 文件行数：classDiagram 869、TagsView 326、TopNav 195，均与基线相同
+- 提交：`b562bc8`（GitHub/Gitee/GitCode 三远端已同步）
+
+### 结果
+
+| 文件 | 修正的已知类型错误 | 行数 |
+|---|---:|---:|
+| `src/views/front/tools/classDiagram.vue` | 53 | 869 |
+| `src/layout/components/TagsView/index.vue` | 31 | 326 |
+| `src/components/TopNav/index.vue` | 29 | 195 |
