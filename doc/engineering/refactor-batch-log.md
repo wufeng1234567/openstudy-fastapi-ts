@@ -467,7 +467,7 @@
 - 快照目录：`_scratch_refactor_batch21_e3f4bd3/`
 - 授权过程：hy4 原负责 agentDsFree + ai.ts 超时停止（未落盘）；minimax3.1f 完成 latex，并接手 agentDsFree + useQuestionPractice；useAgentChat 经扫描无可安全抽取块，保持原样，未计入 3 文件。
 - 测试：build 4,031 modules / unit 29 项 / practice+agent smoke 通过
-- 提交：`[pending]`
+- 提交：`c662c1e`（Gitee/GitCode 已推送；GitHub 重试中）
 
 ### 结果（非空行口径）
 
