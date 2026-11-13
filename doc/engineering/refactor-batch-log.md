@@ -71,3 +71,30 @@
 - `useQuestionBuilderDialogActions.ts` / `useQuestionBuilderPreviewEdit.ts`
 - `useWikiPlanState.ts` / `useWikiMapViewControls.ts`
 - `questionPracticeTransform.ts` / `questionPracticeAnswer.ts` / `questionPracticeRandomPlan.ts`
+
+## Batch 3（2026-11-13，已完成）
+
+- 基线 commit：`0082c2e`
+- 快照目录：`_scratch_refactor_batch3_0082c2e/`（含原文件副本 + `baseline-sha256.txt`）
+- 授权：hy4 = rag.py + wiki_service.py；minimax3.1f = loop.py
+
+### 批次验收
+
+- [x] 基线快照（文件副本 + SHA256）
+- [x] 两个子代理任务已派发（hy4 / minimax3.1f）
+- [x] 三个文件全部修改完成
+- [x] 主代理 review diff（`git diff --check` 通过）
+- [x] 批次级自动测试（compileall / ruff 语法门禁 / rag/wiki/loop 导入 / 22 项定向 pytest）
+- [ ] 提交并同步三仓库（本记录随批次提交）
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `app/api/v1/rag.py` | 2,665 | 2,476 | -189 |
+| `app/services/rag/wiki_service.py` | 2,133 | 2,039 | -94 |
+| `app/services/ai/agent/loop.py` | 2,300 | 1,950 | -350 |
+
+新增模块：
+- `rag_schemas.py` / `wiki_payload_helpers.py`
+- `loop_support.py` / `loop_attachments.py` / `loop_confirm_policy.py`
