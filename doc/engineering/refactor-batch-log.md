@@ -602,3 +602,11 @@
 - 测试：build 4,032 modules / unit 29 项 / type-check exit 2（未清零）
 - 备注：questionMarked 仍有约 38 条未覆盖（`response.data` 类型被推成 `true`，需逐接收者修）；notesEditor 的 `currentnote` 拼写问题属预存在运行时行为，未修
 - 提交：`f896af0`（GitHub/Gitee/GitCode 三远端已同步）
+## Batch 29（2026-11-13，已完成）
+
+- 基线 commit：`faa61a0`；快照：`_scratch_refactor_batch29_faa61a0/`
+- 类型债务批次：questionMarked（51 条）、OcrRecognizer（48 条）、MyQuestion（50 条）；hy4 负责 MyQuestion，minimax 负责前两个
+- 结果：`npm run type-check` 1,610 → **1,499 条**（-111）；`npm run lint` 3,856 → **3,933 warnings**（显式 any 增加 77，warn-only）
+- 测试：build 4,032 modules / unit 29 项 / type-check exit 2（未清零）
+- 备注：questionMarked 余 4 条局部 map 索引、OcrRecognizer 余 1 条 batchAddWords 参数数，均按“不改变行为”原则保留
+- 提交：`3be4750`（GitHub/Gitee/GitCode 三远端已同步）
