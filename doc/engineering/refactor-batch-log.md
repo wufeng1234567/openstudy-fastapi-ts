@@ -594,3 +594,11 @@
 | `src/views/front/tools/classDiagram.vue` | 53 | 869 |
 | `src/layout/components/TagsView/index.vue` | 31 | 326 |
 | `src/components/TopNav/index.vue` | 29 | 195 |
+## Batch 28（2026-11-13，已完成）
+
+- 基线 commit：`11a41d0`；快照：`_scratch_refactor_batch28_11a41d0/`
+- 类型债务批次：notesEditor（56 条）、questionMarked（56 条）、monitor/server（50 条）；hy4 负责 monitor/server，minimax 负责前两个
+- 结果：`npm run type-check` 1,690 → **1,610 条**（-80）；`npm run lint` 3,810 → **3,856 warnings**（显式 any 增加 46，warn-only）
+- 测试：build 4,032 modules / unit 29 项 / type-check exit 2（未清零）
+- 备注：questionMarked 仍有约 38 条未覆盖（`response.data` 类型被推成 `true`，需逐接收者修）；notesEditor 的 `currentnote` 拼写问题属预存在运行时行为，未修
+- 提交：`f896af0`（GitHub/Gitee/GitCode 三远端已同步）
