@@ -242,9 +242,9 @@ const uploadUrl = ref(baseUrl + '/common/upload')
 const uploadHeaders = ref({ Authorization: 'Bearer ' + getToken() })
 
 // 响应式数据
-const uploadRef = ref(null)
+const uploadRef = ref<any>(null)
 const imageUrl = ref('')
-const selectedFile = ref(null)
+const selectedFile = ref<any>(null)
 const recognizing = ref(false)
 const batchAdding = ref(false)
 const recognizedList = ref<any[]>([])
@@ -271,9 +271,9 @@ const formattedStreamJson = computed(() => {
 // 图片编辑相关
 const editorVisible = ref(false)
 const editorImageUrl = ref('')
-const cropperRef = ref(null)
+const cropperRef = ref<any>(null)
 const rotation = ref(0)
-const editedImageFile = ref(null)
+const editedImageFile = ref<any>(null)
 const imageScale = ref(1)
 const imagePosition = ref({ x: 0, y: 0 })
 const isDragging = ref(false)
@@ -297,8 +297,8 @@ const sizeRestrictionsAlgorithm = () => ({
 })
 
 // 获取类型文本
-const getTypeText = (type) => {
-    const map = { 'word': '单词', 'phrase': '词组', 'sentence': '句子' }
+const getTypeText = (type: any) => {
+    const map: Record<string, string> = { 'word': '单词', 'phrase': '词组', 'sentence': '句子' }
     return map[type] || '单词'
 }
 
@@ -325,7 +325,7 @@ const handleClosed = () => {
 }
 
 // 上传前校验并压缩图片
-const beforeUpload = (file) => {
+const beforeUpload = (file: any) => {
     const isImage = file.type.startsWith('image/')
     if (!isImage) {
         ElMessage.error('只能上传图片文件')
@@ -343,7 +343,7 @@ const beforeUpload = (file) => {
 }
 
 // 图片压缩函数
-const compressImage = (file) => {
+const compressImage = (file: any) => {
     return new Promise((resolve) => {
         const reader = new FileReader()
         reader.onload = (e) => {
@@ -366,11 +366,11 @@ const compressImage = (file) => {
 
                 canvas.width = width
                 canvas.height = height
-                ctx.drawImage(img, 0, 0, width, height)
+                ctx!.drawImage(img, 0, 0, width, height)
 
                 canvas.toBlob(
                     (blob) => {
-                        const compressedFile = new File([blob], file.name, {
+                        const compressedFile = new File([blob as Blob], file.name, {
                             type: 'image/jpeg',
                             lastModified: Date.now()
                         })
@@ -381,7 +381,7 @@ const compressImage = (file) => {
                     0.85
                 )
             }
-            img.src = e.target.result
+            img.src = e.target!.result as string
         }
         reader.readAsDataURL(file)
     })
@@ -400,7 +400,7 @@ const removeImage = () => {
     uploadRef.value?.clearFiles()
 }
 
-const handleUploadSuccess = (response) => {
+const handleUploadSuccess = (response: any) => {
     if (response.code === 200) {
         imageUrl.value = baseUrl + response.fileName
         rotation.value = 0
@@ -444,7 +444,7 @@ const startRecognize = async () => {
 }
 
 // 解析流式结果
-const parseStreamResult = (content) => {
+const parseStreamResult = (content: any) => {
     if (!content) return
     try {
         let jsonStr = content
@@ -473,8 +473,8 @@ const copyContent = async () => {
     }
 }
 
-const parseOcrResultFromWords = (words) => {
-    recognizedList.value = words.map((item, index) => ({
+const parseOcrResultFromWords = (words: any) => {
+    recognizedList.value = words.map((item: any, index: any) => ({
         id: index,
         english: item.english || '',
         chinese: item.chinese || '',
@@ -485,11 +485,11 @@ const parseOcrResultFromWords = (words) => {
 }
 
 // 文本解析兜底
-const parseOcrResult = (text) => {
+const parseOcrResult = (text: any) => {
     if (!text) return
-    const lines = text.split('\n').filter(line => line.trim())
-    const entries = []
-    lines.forEach((line, index) => {
+    const lines = text.split('\n').filter((line: any) => line.trim())
+    const entries: any[] = []
+    lines.forEach((line: any, index: any) => {
         let english = '', chinese = '', phonetic = ''
         const phoneticMatch = line.match(/\/[^/]+\//)
         if (phoneticMatch) { phonetic = phoneticMatch[0]; line = line.replace(phonetic, '').trim() }
@@ -501,10 +501,10 @@ const parseOcrResult = (text) => {
     recognizedList.value = entries
 }
 
-const removeWord = (index) => recognizedList.value.splice(index, 1)
+const removeWord = (index: any) => recognizedList.value.splice(index, 1)
 
 // 添加单个单词
-const addSingleWord = async (word, index) => {
+const addSingleWord = async (word: any, index: any) => {
     if (!props.wordBookId) {
         ElMessage.warning('请先选择词库')
         return
@@ -517,7 +517,7 @@ const addSingleWord = async (word, index) => {
 
     word.adding = true
 
-    const typeMap = { 'word': 1, 'phrase': 2, 'sentence': 3 }
+    const typeMap: Record<string, number> = { 'word': 1, 'phrase': 2, 'sentence': 3 }
     const wordData = {
         wordBookId: props.wordBookId,
         english: word.english,
@@ -563,7 +563,7 @@ const addAllWords = async () => {
 
     batchAdding.value = true
 
-    const typeMap = { 'word': 1, 'phrase': 2, 'sentence': 3 }
+    const typeMap: Record<string, number> = { 'word': 1, 'phrase': 2, 'sentence': 3 }
     const batchData = recognizedList.value.map(word => ({
         wordBookId: props.wordBookId,
         english: word.english,
@@ -598,8 +598,8 @@ const openEditor = () => {
 
 const closeEditor = () => { editorVisible.value = false }
 
-const rotate = (angle) => cropperRef.value?.rotate(angle)
-const flip = (direction) => cropperRef.value?.flip(true, direction === 'horizontal')
+const rotate = (angle: any) => cropperRef.value?.rotate(angle)
+const flip = (direction: any) => cropperRef.value?.flip(true, direction === 'horizontal')
 const zoomIn = () => cropperRef.value?.zoom(1.2)
 const zoomOut = () => cropperRef.value?.zoom(0.8)
 const resetCropper = () => cropperRef.value?.reset()
@@ -612,7 +612,7 @@ const applyCrop = () => {
     if (canvas) {
         const editedUrl = canvas.toDataURL('image/jpeg', 0.9)
         imageUrl.value = editedUrl
-        canvas.toBlob((blob) => {
+        canvas.toBlob((blob: any) => {
             editedImageFile.value = new File([blob], 'edited_image.jpg', { type: 'image/jpeg' })
             selectedFile.value = editedImageFile.value
         }, 'image/jpeg', 0.9)
@@ -671,30 +671,30 @@ const rotateImage = () => {
             canvas.width = img.width
             canvas.height = img.height
         }
-        ctx.translate(canvas.width / 2, canvas.height / 2)
+        ctx!.translate(canvas.width / 2, canvas.height / 2)
         ctx.rotate(rotation.value * Math.PI / 180)
         ctx.drawImage(img, -img.width / 2, -img.height / 2)
         const rotatedUrl = canvas.toDataURL('image/jpeg', 0.9)
         imageUrl.value = rotatedUrl
         canvas.toBlob((blob) => {
-            editedImageFile.value = new File([blob], 'rotated_image.jpg', { type: 'image/jpeg' })
+            editedImageFile.value = new File([blob as Blob], 'rotated_image.jpg', { type: 'image/jpeg' })
             selectedFile.value = editedImageFile.value
         }, 'image/jpeg', 0.9)
     }
 }
 
 // 拖拽缩放
-const startDrag = (e) => {
+const startDrag = (e: any) => {
     isDragging.value = true
     startDragPosition.value = { x: e.clientX - imagePosition.value.x, y: e.clientY - imagePosition.value.y }
     e.preventDefault()
 }
-const onDrag = (e) => {
+const onDrag = (e: any) => {
     if (!isDragging.value) return
     imagePosition.value = { x: e.clientX - startDragPosition.value.x, y: e.clientY - startDragPosition.value.y }
 }
 const stopDrag = () => { isDragging.value = false }
-const onWheel = (e) => {
+const onWheel = (e: any) => {
     e.preventDefault()
     const delta = e.deltaY > 0 ? -0.1 : 0.1
     const newScale = imageScale.value + delta

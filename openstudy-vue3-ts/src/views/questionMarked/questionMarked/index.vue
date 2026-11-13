@@ -460,7 +460,7 @@ import { checkQuestionExists, getQuestionSimpleInfo, checkUserExists, checkQuest
 import { listQuestionBankAll } from "@/api/questionBank/questionBank"
 import dayjs from 'dayjs'
 
-const { proxy } = getCurrentInstance()!
+const { proxy } = getCurrentInstance()!.proxy as any;
 
 const questionMarkedList = ref<any[]>([])
 const open = ref(false)
@@ -548,10 +548,10 @@ const { queryParams, form, rules } = toRefs(data)
 // 计算属性：标签数组与字符串转换
 const formTagsArray = computed({
   get() {
-    return form.value.tags ? form.value.tags.split(',').filter(tag => tag.trim()) : []
+    return form.value.tags ? form.value.tags.split(',').filter((tag: any) => tag.trim()) : []
   },
   set(value) {
-    form.value.tags = value.filter(tag => tag.trim()).join(',')
+    form.value.tags = value.filter((tag: any) => tag.trim()).join(',')
   }
 })
 
@@ -654,7 +654,7 @@ function validateQuestionId() {
         // 覆盖用户已保存的斩题难度，否则「修改」对话框一开一存难度就被改掉）
         if ((response.data as any).difficulty && !form.value.difficultyLevel) {
           // 将题目难度转换为斩题难度等级
-          const difficultyMap = {
+          const difficultyMap: Record<string, any> = {
             1: 1, // 简单
             2: 2, // 中等
             3: 3, // 困难
@@ -682,7 +682,7 @@ function validateQuestionId() {
 }
 
 /** 加载题库名称 */
-function loadBankName(bankId) {
+function loadBankName(bankId: any) {
   if (!bankId) return
   
   listQuestionBankAll({}).then(response => {
@@ -731,7 +731,7 @@ function validateUserAndQuestion() {
   
   checkQuestionAndUser(questionId, userId).then(response => {
     if (response.code === 200 && response.data) {
-      const data = response.data
+      const data = response.data as any
       
       // 处理用户验证结果
       if (data.userValid === true) {
@@ -770,7 +770,7 @@ function validateUserAndQuestion() {
         
         // 自动填充难度信息
         if (data.difficulty) {
-          const difficultyMap = {
+          const difficultyMap: Record<string, any> = {
             1: 1,
             2: 2,
             3: 3,
@@ -894,8 +894,8 @@ function resetQuery() {
 }
 
 // 多选框选中数据
-function handleSelectionChange(selection) {
-  ids.value = selection.map(item => item.markedId)
+function handleSelectionChange(selection: any) {
+  ids.value = selection.map((item: any) => item.markedId)
   single.value = selection.length != 1
   multiple.value = !selection.length
 }
@@ -908,7 +908,7 @@ function handleAdd() {
 }
 
 /** 修改按钮操作 */
-function handleUpdate(row) {
+function handleUpdate(row: any) {
   reset()
   const _markedId = row.markedId || ids.value
   getQuestionMarked(_markedId).then(response => {
@@ -998,7 +998,7 @@ async function submitForm() {
 }
 
 /** 删除按钮操作 */
-function handleDelete(row) {
+function handleDelete(row: any) {
   const _markedIds = row.markedId || ids.value
   const count = Array.isArray(_markedIds) ? _markedIds.length : 1
   
@@ -1024,13 +1024,13 @@ function handleExport() {
 }
 
 // 工具函数
-function getTagsArray(tags) {
+function getTagsArray(tags: any) {
   if (!tags) return []
-  return tags.split(',').filter(tag => tag.trim())
+  return tags.split(',').filter((tag: any) => tag.trim())
 }
 
 // 状态显示函数
-function getMarkedTypeText(value) {
+function getMarkedTypeText(value: any) {
   const map = {
     1: '错题',
     2: '难题',
@@ -1041,7 +1041,7 @@ function getMarkedTypeText(value) {
   return map[value] || '未知'
 }
 
-function getMarkedTypeTagType(value) {
+function getMarkedTypeTagType(value: any) {
   const map = {
     1: 'danger',    // 错题 - 红色
     2: 'warning',   // 难题 - 橙色
@@ -1052,7 +1052,7 @@ function getMarkedTypeTagType(value) {
   return map[value] || ''
 }
 
-function getDifficultyText(value) {
+function getDifficultyText(value: any) {
   const map = {
     1: '简单',
     2: '中等',
@@ -1062,7 +1062,7 @@ function getDifficultyText(value) {
   return map[value] || '未知'
 }
 
-function getDifficultyTagType(value) {
+function getDifficultyTagType(value: any) {
   const map = {
     1: 'success',   // 简单 - 绿色
     2: 'primary',   // 中等 - 蓝色
@@ -1073,7 +1073,7 @@ function getDifficultyTagType(value) {
 }
 
 /** 下次复习时间状态 */
-function getNextReviewStatus(nextReviewTime) {
+function getNextReviewStatus(nextReviewTime: any) {
   if (!nextReviewTime) return 'info'
   
   const now = dayjs()

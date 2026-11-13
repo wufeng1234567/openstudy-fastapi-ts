@@ -99,7 +99,7 @@ import CommonFilterSidebar from '@/components/CommonFilterSidebar/index.vue'
 import QuestionCard from './QuestionCard.vue'
 import AiAnalysisDialog from '@/components/AiAnalysisDialog/index.vue'
 
-const { proxy } = getCurrentInstance()
+const { proxy } = getCurrentInstance()!
 const router = useRouter()
 const route = useRoute()
 
@@ -107,7 +107,7 @@ const props = defineProps({
   questionType: {
     type: String,
     default: 'favorite',
-    validator: (value) => ['favorite', 'wrong', 'marked'].includes(value)
+    validator: (value: any) => ['favorite', 'wrong', 'marked'].includes(value)
   },
   headerTitle: {
     type: String,
@@ -198,7 +198,7 @@ const filterGroups = computed(() => {
       key: 'bankId',
       label: '所属题库',
       type: 'select',
-      options: props.questionBanks.map(b => ({ value: b.id, label: b.bankName }))
+      options: props.questionBanks.map((b: any) => ({ value: b.id, label: b.bankName }))
     })
   }
 
@@ -278,14 +278,14 @@ const detailDialogVisible = ref(false)
 const isFullscreen = ref(false)
 const uncollectLoading = ref<any>({})
 const filterSidebarRef = ref<any>(null)
-const headerRef = ref(null)
+const headerRef = ref<any>(null)
 const headerHeight = ref(0)
 // 内嵌筛选按钮状态：面板是否展开 / 是否有生效的筛选条件
 const filterOpen = ref(false)
 const filterActive = ref(false)
 
-const currentFavoriteQuestion = ref(null)
-const currentQuestionDetail = ref(null)
+const currentFavoriteQuestion = ref<any>(null)
+const currentQuestionDetail = ref<any>(null)
 const currentQuestionIndex = ref(0)
 const dialogQuestions = ref<any[]>([])
 
@@ -301,7 +301,7 @@ const searchQuery = reactive({
   userId: null
 })
 
-const filterForm = reactive({
+const filterForm = reactive<any>({
   bankId: null,
   isStarred: [],
   favoriteStatus: props.questionType === 'favorite' ? [1] : [],
@@ -317,7 +317,7 @@ const hasAutoAppliedFilter = ref(false)
 // AI 解析相关状态
 const showAiAnalysis = ref(false)
 const aiAnalysisCache = ref(new Map())
-const currentAiQuestion = ref({
+const currentAiQuestion = ref<any>({
   id: null,
   text: '',
   type: '',
@@ -376,7 +376,7 @@ watch(
 )
 
 const emptyText = computed(() => {
-  const textMap = {
+  const textMap: Record<string, string> = {
     favorite: '暂无收藏的题目',
     wrong: '暂无错题记录',
     marked: '暂无斩题记录'
@@ -395,7 +395,7 @@ const getCurrentUserId = () => {
   return userId
 }
 
-const getItemKey = (item) => {
+const getItemKey = (item: any) => {
   if (props.questionType === 'wrong') {
     return item.errorId || item.bankId
   }
@@ -557,7 +557,7 @@ watch(() => props.questionBanks, (newBanks) => {
   }
 }, { immediate: true })
 
-const applyBankIdFilter = async (bankId) => {
+const applyBankIdFilter = async (bankId: any) => {
   if (!bankId) {
     return
   }
@@ -648,7 +648,7 @@ const applySearchAndFilter = () => {
   questions.value = filtered.slice(startIndex, endIndex)
 }
 
-const handleViewDetail = async (item) => {
+const handleViewDetail = async (item: any) => {
   currentFavoriteQuestion.value = item
   currentQuestionIndex.value = 0
   dialogQuestions.value = [item]
@@ -736,7 +736,7 @@ const resetAnswerState = () => {
   answers.value = []
 }
 
-const handleSearch = (keyword) => {
+const handleSearch = (keyword: any) => {
   if (!searchQuery) {
     return
   }
@@ -776,7 +776,7 @@ const handleRefresh = () => {
   emit('refresh')
 }
 
-const handleFilterChange = (newFilter) => {
+const handleFilterChange = (newFilter: any) => {
   Object.assign(filterForm, newFilter)
   searchQuery.pageNum = 1
   applySearchAndFilter()
@@ -809,12 +809,12 @@ const toggleFilterSidebar = () => {
 }
 
 // 面板展开/收起同步到按钮态（事件值为「是否已收起」）
-const handleFilterCollapseChange = (collapsed) => {
+const handleFilterCollapseChange = (collapsed: any) => {
   filterOpen.value = !collapsed
 }
 
 // 是否有生效的筛选条件（按钮小圆点）
-const handleFilterActiveChange = (active) => {
+const handleFilterActiveChange = (active: any) => {
   filterActive.value = !!active
 }
 
@@ -862,7 +862,7 @@ const nextQuestionInDialog = () => {
   }
 }
 
-const loadQuestionForDialog = async (index) => {
+const loadQuestionForDialog = async (index: any) => {
   const item = dialogQuestions.value[index]
   if (item && props.apiConfig.detailApi) {
     try {
@@ -881,7 +881,7 @@ const loadQuestionForDialog = async (index) => {
   }
 }
 
-const toggleStar = async (item) => {
+const toggleStar = async (item: any) => {
   if (props.questionType === 'wrong' || props.questionType === 'marked') {
     proxy.$modal.msgInfo(`${props.questionType === 'wrong' ? '错题' : '斩题'}暂不支持标星`)
     return
@@ -913,7 +913,7 @@ const toggleStar = async (item) => {
   emit('toggle-star', item)
 }
 
-const handleUncollect = (item) => {
+const handleUncollect = (item: any) => {
   const userId = getCurrentUserId()
   if (!userId) {
     proxy.$modal.msgWarning('请先登录')
@@ -950,7 +950,7 @@ const handleUncollect = (item) => {
       }
       return props.apiConfig.deleteApi(id, { userId })
     }
-  }).then(result => {
+  }).then((result: any) => {
     if (result.code === 200) {
       const successMessage = props.questionType === 'wrong'
         ? '已移除错题'
@@ -970,7 +970,7 @@ const handleUncollect = (item) => {
     } else {
       proxy.$modal.msgError(result.msg || '操作失败')
     }
-  }).catch(error => {
+  }).catch((error: any) => {
     if (error !== 'cancel') {
       proxy.$modal.msgError('操作失败')
     }
@@ -984,33 +984,33 @@ const handleEmptyAction = () => {
   emit('empty-action')
 }
 
-const handleSizeChange = (val) => {
+const handleSizeChange = (val: any) => {
   searchQuery.pageSize = val
   searchQuery.pageNum = 1
   applySearchAndFilter()
 }
 
-const handleCurrentChange = (val) => {
+const handleCurrentChange = (val: any) => {
   searchQuery.pageNum = val
   applySearchAndFilter()
 }
 
-const selectOption = (index) => {
+const selectOption = (index: any) => {
   selectedAnswer.value = index
 }
 
-const selectSubOption = (subIndex, optionIndex) => {
+const selectSubOption = (subIndex: any, optionIndex: any) => {
   if (!answers.value[currentQuestionIndex.value]) {
     answers.value[currentQuestionIndex.value] = {}
   }
   answers.value[currentQuestionIndex.value][subIndex] = optionIndex
 }
 
-const updateSubFillBlankAnswer = (subIndex, value) => {
+const updateSubFillBlankAnswer = (subIndex: any, value: any) => {
   subFillBlankAnswers.value[subIndex] = value
 }
 
-const updateSubEssayAnswer = (subIndex, value) => {
+const updateSubEssayAnswer = (subIndex: any, value: any) => {
   subEssayAnswers.value[subIndex] = value
 }
 
@@ -1051,7 +1051,7 @@ const firstNonEmpty = (...vals: any[]) => {
 // 发给 ds-free（DeepSeek 网页版）的提示词里「## 题目」那一节整段是空的
 // —— 就是「题干缺失」。
 // 阅读理解 / 完形填空的正文在 mainContent 里（此时 question 是空串），一并兜住。
-const openAiAnalysis = (questionDetail) => {
+const openAiAnalysis = (questionDetail: any) => {
   const source = questionDetail || currentQuestionDetail.value
   if (!source) return
 
@@ -1115,8 +1115,8 @@ function normalizeAiSubQuestions(source: any): any[] {
 }
 
 // 获取题型名称（同时接受数字题型与转换器产出的字符串题型）
-const getQuestionTypeName = (type) => {
-  const typeMap = {
+const getQuestionTypeName = (type: any) => {
+  const typeMap: Record<string, string> = {
     1: '单选题',
     2: '多选题',
     3: '判断题',
@@ -1125,7 +1125,7 @@ const getQuestionTypeName = (type) => {
     6: '组合题',
     7: '组合题'
   }
-  const strMap = {
+  const strMap: Record<string, string> = {
     single: '单选题',
     multiple: '多选题',
     truefalse: '判断题',
@@ -1139,16 +1139,16 @@ const getQuestionTypeName = (type) => {
 }
 
 // 更新 AI 缓存
-const updateAiCache = ({ questionId, content }) => {
+const updateAiCache = ({ questionId, content }: any) => {
   aiAnalysisCache.value.set(questionId, content)
 }
 
 // ===== 外部跳转定位：滚动到指定题目卡片并打开详情 =====
 /** 待定位的题目 id（数据加载完成后才执行） */
-const pendingFocusId = ref(null)
+const pendingFocusId = ref<any>(null)
 
 /** 在列表中找到该题 → 翻到它所在页 → 滚动到卡片 → 打开详情弹窗 */
-const focusOnQuestion = async (id) => {
+const focusOnQuestion = async (id: any) => {
   if (!id) return
   const key = String(id)
 
