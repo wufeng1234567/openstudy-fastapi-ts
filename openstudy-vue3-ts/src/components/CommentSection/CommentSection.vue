@@ -59,7 +59,7 @@ const props = defineProps({
 })
 
 const route = useRoute()
-const modalRef = ref(null)
+const modalRef = ref<any>(null)
 const focusLocked = ref(false)
 const cacheStore = useCommentCacheStore()
 
@@ -70,13 +70,13 @@ const totalComments = ref(0)
 const initialLoading = ref(false)
 const showWriteInput = ref(false)
 const showModal = ref(false)
-const writeInputRef = ref(null)
+const writeInputRef = ref<any>(null)
 
 const previewThreadVisible = ref(false)
 const previewThreadLoading = ref(false)
-const previewThreadComment = ref(null)
-const threadReplyTarget = ref(null)
-const threadInputRef = ref(null)
+const previewThreadComment = ref<any>(null)
+const threadReplyTarget = ref<any>(null)
+const threadInputRef = ref<any>(null)
 
 /**
  * keep-alive 会把本组件的弹窗状态一起缓存下来：离开页面 / 换一篇笔记时若不主动关，
@@ -96,13 +96,13 @@ const closeOverlays = () => {
 //    而 handleFocusFromRoute 正处在 await 中间 → 弹窗会随实例一起被拆掉，点通知将不再弹。
 //    一次性参数的重放问题在源头解决：lastVisited 不再记录 focusComment。
 
-const onReplyFromPreview = async (comment) => {
+const onReplyFromPreview = async (comment: any) => {
   if (!(await ensureLogin('回复评论'))) return
   threadReplyTarget.value = { id: comment.id, userId: comment.userId, userName: comment.userName || comment.name }
   openPreviewThread(comment)
 }
 
-const openPreviewThread = async (comment) => {
+const openPreviewThread = async (comment: any) => {
   previewThreadVisible.value = true
   previewThreadLoading.value = true
   previewThreadComment.value = null
@@ -119,7 +119,7 @@ const openPreviewThread = async (comment) => {
   }
 }
 
-const handleThreadReply = (comment) => {
+const handleThreadReply = (comment: any) => {
   threadReplyTarget.value = { id: comment.id, userId: comment.userId, userName: comment.userName || comment.name }
   nextTick(() => {
     threadInputRef.value?.$el?.querySelector('textarea')?.focus()
@@ -130,7 +130,7 @@ const handleThreadCancelReply = () => {
   threadReplyTarget.value = null
 }
 
-const handleThreadSubmit = async (content) => {
+const handleThreadSubmit = async (content: any) => {
   if (!(await ensureLogin('回复评论'))) return
   const target = threadReplyTarget.value || {
     id: previewThreadComment.value?.id,
@@ -175,7 +175,7 @@ const focusWriteInput = async () => {
   showWriteInput.value = true
 }
 
-const handleSubmitComment = async (content) => {
+const handleSubmitComment = async (content: any) => {
   if (!(await ensureLogin('发表评论'))) return
   try {
     await createComment({ noteId: noteId.value, content })
@@ -197,7 +197,7 @@ const openModal = () => {
 const onCommentAdded = () => { fetchPreview() }
 
 // 核心：子组件自己读路由参数，预加载数据后显示弹窗
-const handleFocusFromRoute = async (newVal) => {
+const handleFocusFromRoute = async (newVal: any) => {
   console.log(`[CommentSection] handleFocusFromRoute=${newVal}, focusLocked=${focusLocked.value}, modalRef=${modalRef.value ? '有' : '无'}`)
   if (!newVal || focusLocked.value) return
   focusLocked.value = true
@@ -244,7 +244,7 @@ watch(() => route.query.focusComment, (newVal, oldVal) => {
 defineExpose({
   refresh: fetchPreview,
   resetFocus: () => { focusLocked.value = false },
-  focusOnComment: (commentId) => {
+  focusOnComment: (commentId: any) => {
     if (!commentId || focusLocked.value) return
     focusLocked.value = true
     showModal.value = true

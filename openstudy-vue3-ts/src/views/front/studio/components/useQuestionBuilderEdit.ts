@@ -21,8 +21,8 @@ const openFullEditor = () => {
   fullEditorVisible.value = true
 }
 
-const handleFullEditorSave = (updatedQuestion) => {
-  const index = questions.value.findIndex(q => q.id === currentId.value)
+const handleFullEditorSave = (updatedQuestion: any) => {
+  const index = questions.value.findIndex((q: any) => q.id === currentId.value)
   if (index !== -1) {
     questions.value[index] = { ...questions.value[index], ...updatedQuestion }
     currentId.value = updatedQuestion.id || currentId.value
@@ -30,8 +30,8 @@ const handleFullEditorSave = (updatedQuestion) => {
   ElMessage.success('题目已更新')
 }
 
-const removeQuestion = async (id) => {
-  const index = questions.value.findIndex(q => q.id === id)
+const removeQuestion = async (id: any) => {
+  const index = questions.value.findIndex((q: any) => q.id === id)
   if (index === -1) return
   const q = questions.value[index]
   try {
@@ -79,7 +79,7 @@ const addOption = () => {
   syncOptionsJson(q)
 }
 
-const removeOption = (index) => {
+const removeOption = (index: any) => {
   const q = currentQuestion.value
   if (!q) return
   if (q.options.length <= 2) {
@@ -91,7 +91,7 @@ const removeOption = (index) => {
     if (q.answer === index) q.answer = 0
     else if (q.answer > index) q.answer -= 1
   } else if (q.type === 'multiple') {
-    q.answer = q.answer.filter(idx => idx !== index).map(idx => idx > index ? idx - 1 : idx)
+    q.answer = q.answer.filter((idx: any) => idx !== index).map((idx: any) => idx > index ? idx - 1 : idx)
   }
   syncOptionsJson(q)
 }
@@ -105,7 +105,7 @@ const isCompositePreview = computed(() => {
 // 获取子题题型标签类型（Element Plus Tag 的 type）
 // 判断子题选项是否正确（用于组合题子题预览）
 // 格式化子题答案显示（用于组合题子题预览）
-const syncOptionsJson = (q) => { q.optionsJson = JSON.stringify(q.options) }
+const syncOptionsJson = (q: any) => { q.optionsJson = JSON.stringify(q.options) }
 
 const addSubQuestionBySelectedType = () => {
   if (!selectedSubType.value) {
@@ -116,8 +116,8 @@ const addSubQuestionBySelectedType = () => {
   currentQuestion.value.subQuestions.push(newSub)
 }
 
-const createEmptySub = (type) => {
-  const base = {
+const createEmptySub = (type: any) => {
+  const base: any = {
     id: Date.now() + Math.random(),
     type,
     question: '',
@@ -133,9 +133,9 @@ const createEmptySub = (type) => {
   return base
 }
 
-const removeSubQuestion = (index) => { currentQuestion.value.subQuestions.splice(index, 1) }
+const removeSubQuestion = (index: any) => { currentQuestion.value.subQuestions.splice(index, 1) }
 
-const onSubTypeChange = (sub) => {
+const onSubTypeChange = (sub: any) => {
   if (sub.type === 'single') {
     sub.answer = 0
     if (!sub.options) sub.options = ['选项A', '选项B']
@@ -155,7 +155,7 @@ const onSubTypeChange = (sub) => {
   }
 }
 
-const parseSubOptions = (sub) => {
+const parseSubOptions = (sub: any) => {
   if (!sub.optionsJson) return
   try {
     const parsed = JSON.parse(sub.optionsJson)
@@ -166,17 +166,17 @@ const parseSubOptions = (sub) => {
 }
 
 // 题型点击/拖拽判断
-let typeMouseDownPos = null
+let typeMouseDownPos: any = null
 let typeMouseDownTime = 0
 let isTypeDragging = false
 
-const onTypeMouseDown = (e, element) => {
+const onTypeMouseDown = (e: any, element: any) => {
   typeMouseDownPos = { x: e.clientX, y: e.clientY }
   typeMouseDownTime = Date.now()
   isTypeDragging = false
 }
 
-const onTypeMouseUp = (e, element) => {
+const onTypeMouseUp = (e: any, element: any) => {
   if (isTypeDragging) return  // 已经触发了拖拽，忽略
 
   const pos = typeMouseDownPos
@@ -195,8 +195,8 @@ const onTypeMouseUp = (e, element) => {
   typeMouseDownPos = null
 }
 
-let lastDraggedType = null
-const onTypeDragStart = (evt, typeItem) => {
+let lastDraggedType: any = null
+const onTypeDragStart = (evt: any, typeItem: any) => {
   lastDraggedType = typeItem.type
   isTypeDragging = true  // 标记正在拖拽
 }
