@@ -70,6 +70,7 @@ from .rag_config_formatters import build_rag_config_payload, REINDEX_HINT
 from .rag_sse_formatters import (
     SSE_STUDY_PACK_HEADERS, SSE_ORGANIZE_HEADERS, _sse_data, _organize_stage_payload,
 )
+from .rag_kb_formatters import kb_created_payload, kb_detail_payload, kb_updated_payload
 
 # ============================================================ 知识库
 
@@ -95,20 +96,7 @@ async def create_knowledge_base(
         kb = await rag_write_service.create_knowledge_base(
             db, _uid(current_user), data.name, data.description
         )
-        return success(
-            {
-                "kbId": kb.id,
-                "name": kb.name,
-                "description": kb.description,
-                "docCount": kb.doc_count,
-                "chunkCount": kb.chunk_count,
-                # 新库恒为启用；照样下发（同一份 `kb_disabled_flag`）是为了让
-                # 「凡是返回知识库对象的响应都带 disabled」这条口径没有例外 ——
-                # 少一处，前端那一行就可能绑到 undefined（见 kb_disabled_flag 的说明）。
-                "disabled": rag_write_service.kb_disabled_flag(kb),
-            },
-            "资料夹创建成功",
-        )
+        return success(kb_created_payload(kb), "资料夹创建成功")
     except Exception as e:
         return _fail(e)
 
@@ -121,24 +109,7 @@ async def get_knowledge_base(
 ):
     try:
         kb = await rag_write_service.get_knowledge_base(db, _uid(current_user), kb_id)
-        return success(
-            {
-                "kbId": kb.id,
-                "name": kb.name,
-                "description": kb.description,
-                "docCount": kb.doc_count,
-                "chunkCount": kb.chunk_count,
-                # ⚠️ 与 `_kb_brief`（列表）**必须同时有**：详情是手写出来的另一份，
-                #    只改一处就会出现「列表知道它被屏蔽了、详情不知道」。
-                #    归一走同一个函数（整数 0/1，永不 null / 字符串）—— 见
-                #    `rag_write_service.kb_disabled_flag` 的 el-switch 说明。
-                "disabled": rag_write_service.kb_disabled_flag(kb),
-                "embeddingModel": kb.embedding_model,
-                "chunkSize": kb.chunk_size,
-                "chunkOverlap": kb.chunk_overlap,
-                "createTime": kb.create_time.isoformat(sep=" ") if kb.create_time else None,
-            }
-        )
+        return success(kb_detail_payload(kb))
     except Exception as e:
         return _fail(e)
 
@@ -159,16 +130,7 @@ async def update_knowledge_base(
             description=data.description,
             disabled=data.disabled,
         )
-        # 回显 disabled：前端关掉开关后要立刻能从响应里确认状态，
-        # 而不是再发一次 GET 去猜（不 echo 的话「点了没反应」看不出是写失败还是没写）。
-        return success(
-            {
-                "kbId": kb.id,
-                "name": kb.name,
-                "disabled": rag_write_service.kb_disabled_flag(kb),
-            },
-            "更新成功",
-        )
+        return success(kb_updated_payload(kb), "更新成功")
     except Exception as e:
         return _fail(e)
 

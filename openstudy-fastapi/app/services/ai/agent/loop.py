@@ -88,6 +88,17 @@ from app.services.ai.agent.registry import ensure_tools_loaded, registry
 from app.services.file_parser import IMAGE_MARKER_TMPL, build_marked_document
 
 # ---------------------------------------------------------------------------
+from app.services.ai.agent.loop_events import (
+    error_event,
+    self_correct_event,
+    text_event,
+    thinking_event,
+    tool_result_cancelled_event,
+    tool_result_event,
+    tool_start_event,
+    warning_event,
+    waiting_event,
+)
 # 抽离出去的**纯辅助 / 常量 / 类型**模块（2026-11 可读性重构）
 #
 # 下面这些名字**原本就定义在 loop.py 里**，现在从配套模块 import 回来 ——
@@ -791,7 +802,7 @@ async def run_agent_stream(
 
     if not registry.names():
         # 注册表本身为空 = 服务端配置问题（工具没被 `tools/__init__.py` 注册）
-        yield _event({"type": "error", "message": "Agent 没有可用工具，请检查服务端配置"})
+        yield _event(error_event("Agent 没有可用工具，请检查服务端配置"))
         yield "[DONE]"
         return
 
@@ -828,7 +839,7 @@ async def run_agent_stream(
             as_attachment=_as_attachment,
         )
     except Exception as e:  # noqa: BLE001 - 配置类错误直接给用户看
-        yield _event({"type": "error", "message": str(e)})
+        yield _event(error_event(str(e)))
         yield "[DONE]"
         return
 
@@ -1031,7 +1042,7 @@ async def run_agent_stream(
             typed = DEFAULT_AGENT_PROMPT
         else:
             detail = f"（{'；'.join(warnings)}）" if warnings else "请输入你的需求，或上传文档 / 图片"
-            yield _event({"type": "error", "message": f"没有可发送的内容：{detail}"})
+            yield _event(error_event(f"没有可发送的内容：{detail}"))
             yield "[DONE]"
             return
     # 只传了附件（正文空）时给一句最小指令，否则 DS 的发送按钮可能保持禁用、
@@ -1422,11 +1433,11 @@ async def run_agent_stream(
                 # 先思考后正文才符合「先想再说」的阅读顺序（UI 那边也依赖这个顺序）。
                 reasoning = _reasoning_of(chunk)
                 if reasoning:
-                    yield _event({"type": "thinking", "content": reasoning})
+                    yield _event(thinking_event(reasoning))
                 text = chunk.content
                 if isinstance(text, str) and text:
                     full_text.append(text)
-                    yield _event({"type": "text", "content": text})
+                    yield _event(text_event(text))
                 if first_token_at is None and (reasoning or (isinstance(text, str) and text)):
                     first_token_at = time.perf_counter()
                 accumulated = chunk if accumulated is None else accumulated + chunk
@@ -1476,7 +1487,7 @@ async def run_agent_stream(
         except Exception as e:  # noqa: BLE001 - 模型调用失败
             reason = _friendly_llm_error(e)
             logger.exception("[agent] 模型调用失败: {}", reason)
-            yield _event({"type": "error", "message": reason})
+            yield _event(error_event(reason))
             break
 
         # 这一轮的 LLM 部分已结束 → 先把「轮数 / LLM 耗时 / 首 token 平均」推给前端
@@ -1494,13 +1505,10 @@ async def run_agent_stream(
         tool_calls, merged_note = coalesce_delete_tool_calls(tool_calls)
         if merged_note:
             yield _event(
-                {
-                    "type": "warning",
-                    "message": (
-                        f"已将 {merged_note['count']} 次单独删除合并为一次批量删除，"
-                        "请在卡片里勾选要删的条目"
-                    ),
-                }
+                warning_event(
+                    f"已将 {merged_note['count']} 次单独删除合并为一次批量删除，"
+                    "请在卡片里勾选要删的条目"
+                )
             )
 
         # 把「模型的这一轮」原样记进对话（含 tool_calls，否则下一轮上下文不完整）
@@ -1551,12 +1559,9 @@ async def run_agent_stream(
                 )
                 state.corrections += 1
                 yield _event(
-                    {
-                        "type": "self_correct",
-                        "attempt": state.corrections,
-                        "tool": tool_name,
-                        "reason": result.get("error", ""),
-                    }
+                    self_correct_event(
+                        state.corrections, tool_name, result.get("error", "")
+                    )
                 )
                 continue
 
@@ -1580,26 +1585,22 @@ async def run_agent_stream(
                 )
                 state.corrections += 1
                 yield _event(
-                    {
-                        "type": "self_correct",
-                        "attempt": state.corrections,
-                        "tool": tool_name,
-                        "reason": result.get("error", ""),
-                    }
+                    self_correct_event(
+                        state.corrections, tool_name, result.get("error", "")
+                    )
                 )
                 # 也发一条 `tool_result`（失败态）：让用户在时间线里**看得见**「它想调用
                 # 一个我关掉的工具」。没有这一条，界面上就是「它说了句话然后什么都不干」。
                 # 「没有前置 `tool_start` 的 tool_result」在本循环里已是既有形态 ——
                 # 用户取消那一条也是这么发的（见上面的 cancelled 分支）。
                 yield _event(
-                    {
-                        "type": "tool_result",
-                        "tool": tool_name,
-                        "action": raw_args.get("action"),
-                        "success": False,
-                        "message": result.get("error", ""),
-                        "data": result,
-                    }
+                    tool_result_event(
+                        tool_name,
+                        raw_args.get("action"),
+                        False,
+                        result.get("error", ""),
+                        result,
+                    )
                 )
                 continue
 
@@ -1618,12 +1619,9 @@ async def run_agent_stream(
                     ToolMessage(content=_dumps(result), tool_call_id=call_id)
                 )
                 yield _event(
-                    {
-                        "type": "self_correct",
-                        "attempt": state.corrections,
-                        "tool": tool_name,
-                        "reason": "；".join(errors),
-                    }
+                    self_correct_event(
+                        state.corrections, tool_name, "；".join(errors)
+                    )
                 )
                 logger.info("[agent] 参数校验失败，回灌模型重试: {}", errors)
                 continue
@@ -1640,9 +1638,9 @@ async def run_agent_stream(
                             tool_call_id=call_id,
                         )
                     )
-                    yield _event({"type": "warning", "message": loop_reason})
+                    yield _event(warning_event(loop_reason))
                     yield _event(
-                        {"type": "text", "content": f"\n\n（{loop_reason}）"}
+                        text_event(f"\n\n（{loop_reason}）")
                     )
                     aborted = True
                     break
@@ -1659,7 +1657,7 @@ async def run_agent_stream(
                         tool_call_id=call_id,
                     )
                 )
-                yield _event({"type": "warning", "message": loop_reason})
+                yield _event(warning_event(loop_reason))
                 continue
 
             preview: Dict[str, Any] = {}
@@ -1720,15 +1718,9 @@ async def run_agent_stream(
                         ctx, tool_name, params, created_banks
                     )
                     yield _event(
-                        {
-                            "type": "tool_result",
-                            "tool": tool_name,
-                            "action": params.get("action"),
-                            "success": False,
-                            "cancelled": True,
-                            "message": "已取消",
-                            "data": None,
-                        }
+                        tool_result_cancelled_event(
+                            tool_name, params.get("action"), "已取消"
+                        )
                     )
                     continue
 
@@ -1751,15 +1743,11 @@ async def run_agent_stream(
                             ToolMessage(content=_dumps(result), tool_call_id=call_id)
                         )
                         yield _event(
-                            {
-                                "type": "tool_result",
-                                "tool": tool_name,
-                                "action": params.get("action"),
-                                "success": False,
-                                "cancelled": True,
-                                "message": "已取消（未勾选任何对象）",
-                                "data": None,
-                            }
+                            tool_result_cancelled_event(
+                                tool_name,
+                                params.get("action"),
+                                "已取消（未勾选任何对象）",
+                            )
                         )
                         continue
 
@@ -1792,15 +1780,14 @@ async def run_agent_stream(
                 continue
 
             yield _event(
-                {
-                    "type": "tool_start",
-                    "tool": tool_name,
-                    "action": params.get("action"),
-                    "message": _tool_start_message(tool_name, params),
-                    "params": _safe_params(params),
-                    "preview": preview,
-                    "needsConfirmation": tool.needs_confirmation(params),
-                }
+                tool_start_event(
+                    tool_name,
+                    params.get("action"),
+                    _tool_start_message(tool_name, params),
+                    _safe_params(params),
+                    preview,
+                    tool.needs_confirmation(params),
+                )
             )
 
             # 只量**真正执行**的那一段（上面的「工具不存在」「参数校验不过」已 continue 走了，
@@ -1841,26 +1828,22 @@ async def run_agent_stream(
                 reason = str(result.get("error") or "工具执行失败")
                 state.errors.append(reason)
                 yield _event(
-                    {
-                        "type": "self_correct",
-                        "attempt": state.corrections,
-                        "tool": tool_name,
-                        "reason": reason,
-                    }
+                    self_correct_event(
+                        state.corrections, tool_name, reason
+                    )
                 )
 
             compressed = guard.compress_result(tool_name, result)
             message = str(result.get("message") or result.get("error") or "")
 
             yield _event(
-                {
-                    "type": "tool_result",
-                    "tool": tool_name,
-                    "action": result.get("action") or params.get("action"),
-                    "success": bool(result.get("success")),
-                    "message": message,
-                    "data": result,
-                }
+                tool_result_event(
+                    tool_name,
+                    result.get("action") or params.get("action"),
+                    bool(result.get("success")),
+                    message,
+                    result,
+                )
             )
             # 委派（delegate_task）**不会走到这里**：它在上面的收集分支已 `continue`，
             # 由本轮末尾的并发批次统一执行并回发 delegate_done（见 `delegate_jobs`）。
@@ -1967,14 +1950,13 @@ async def run_agent_stream(
                     content=_dumps(compressed), tool_call_id=item["callId"]
                 )
                 yield _event(
-                    {
-                        "type": "tool_result",
-                        "tool": roles_mod.DELEGATE_TOOL_NAME,
-                        "action": "delegate",
-                        "success": bool(res.get("success")),
-                        "message": message,
-                        "data": res,
-                    }
+                    tool_result_event(
+                        roles_mod.DELEGATE_TOOL_NAME,
+                        "delegate",
+                        bool(res.get("success")),
+                        message,
+                        res,
+                    )
                 )
                 yield _event(
                     {
@@ -2005,8 +1987,8 @@ async def run_agent_stream(
     # ---- ⑤ 轮数用尽：再要一次「不带工具」的收尾总结 ----
     if exhausted:
         notice = f"已达到最大工具调用轮数（{req.max_loops}），任务可能尚未全部完成"
-        yield _event({"type": "warning", "message": notice})
-        yield _event({"type": "waiting", "message": "正在整理执行结果…"})
+        yield _event(warning_event(notice))
+        yield _event(waiting_event("正在整理执行结果…"))
         try:
             # 这句是**系统补发**的指令，不是用户说的话 → 用 <system_instruction> 标签
             # 明确标注（与 <user_request> 区分），并显式重申语言策略。
@@ -2026,7 +2008,7 @@ async def run_agent_stream(
                 text = chunk.content
                 if isinstance(text, str) and text:
                     full_text.append(text)
-                    yield _event({"type": "text", "content": text})
+                    yield _event(text_event(text))
         except Exception as e:  # noqa: BLE001
             logger.warning("[agent] 收尾总结失败: {}", e)
 

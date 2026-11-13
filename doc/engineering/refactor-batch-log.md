@@ -255,3 +255,23 @@
 新增模块：
 - `useQuestionBuilderContext.ts` / `useWikiMapEdges.ts`
 - `agentChatMessages.ts`
+
+## Batch 11（2026-11-13，已完成）
+
+- 基线 commit：`ff12482`
+- 快照目录：`_scratch_refactor_batch11_ff12482/`
+- 授权：hy4 = questions.py + rag.py；minimax3.1f = loop.py
+- 测试：compileall / ruff / questions+rag+loop 导入 / 13 项定向 pytest
+- 提交：`[pending]`
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `app/api/v1/questions.py` | 2,819 | 2,799 | -20 |
+| `app/api/v1/rag.py` | 2,377 | 2,339 | -38 |
+| `app/services/ai/agent/loop.py` | 1,911 | 1,893 | -18 |
+
+新增模块：
+- `question_check_formatters.py` / `rag_kb_formatters.py`
+- `loop_events.py`

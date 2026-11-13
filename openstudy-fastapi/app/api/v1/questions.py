@@ -60,6 +60,9 @@ from .question_export_rows import (
     error_rows, marked_rows, FAVORITE_STATUS_TEXT,
 )
 from .question_patch_helpers import _apply_question_fields, _apply_error_optional_fields
+from .question_check_formatters import (
+    check_question_payload, check_user_payload, check_question_and_user_payload,
+)
 
 
 # ========== 辅助函数 ==========
@@ -1183,14 +1186,7 @@ async def check_question_exists(
 
     bank_name = bank.bank_name if bank else None
 
-    return success({
-        "exists": True,
-        "questionId": question.id,
-        "questionText": question.question_text,
-        "bankId": question.bank_id,
-        "bankName": bank_name,
-        "difficulty": question.difficulty,
-    })
+    return success(check_question_payload(question, bank_name))
 
 
 @router.get("/questionMain/questionMain/checkUserExists/{user_id}")
@@ -1216,12 +1212,7 @@ async def check_user_exists(
     if not user:
         return success({"exists": False, "userId": user_id})
 
-    return success({
-        "exists": True,
-        "userId": user.user_id,
-        "userName": user.user_name,
-        "nickName": user.nick_name,
-    })
+    return success(check_user_payload(user))
 
 
 @router.get("/questionMain/questionMain/simpleInfo/{question_id}")
@@ -1294,20 +1285,9 @@ async def check_question_and_user(
     )).scalar_one_or_none()
     user_exists = user is not None
 
-    return success({
-        "questionValid": question_exists,
-        "questionExists": question_exists,
-        "userValid": user_exists,
-        "userExists": user_exists,
-        "allValid": question_exists and user_exists,
-        "userId": user_id,
-        "userName": user.user_name if user else None,
-        "nickName": user.nick_name if user else None,
-        "questionId": question_id,
-        "questionText": question.question_text if question else None,
-        "bankId": question.bank_id if question else None,
-        "difficulty": question.difficulty if question else None,
-    })
+    return success(check_question_and_user_payload(
+        question_exists, user_exists, user, user_id, question_id, question
+    ))
 
 
 @router.post("/questionMain/questionMain/batchInfo")
