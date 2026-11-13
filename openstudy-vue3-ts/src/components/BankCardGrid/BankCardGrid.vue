@@ -808,4 +808,4 @@ const truncateText = (text, length = 50) => {
 }
 </script>
 
-<style scoped lang="scss" src="./BankCardGrid.style1.scss"></style>
+<style scoped lang="scss" src="./styles/BankCardGrid.style1.scss"></style>

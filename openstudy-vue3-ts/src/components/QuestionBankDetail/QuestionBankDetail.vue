@@ -608,7 +608,7 @@ function goBack() {
 }
 </script>
 
-<style scoped src="./QuestionBankDetail.style1.css"></style>
+<style scoped src="./styles/QuestionBankDetail.style1.css"></style>
 
 <!--
   导出下拉的分组标题样式：
@@ -616,4 +616,4 @@ function goBack() {
   scoped 的 `[data-v-xxx]` 属性不会加到那些节点上，规则对它们无效
   （与 LatexRenderer 的表格样式同一个道理）。
 -->
-<style src="./QuestionBankDetail.style2.css"></style>
+<style src="./styles/QuestionBankDetail.style2.css"></style>

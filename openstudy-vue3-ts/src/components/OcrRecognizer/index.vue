@@ -702,6 +702,6 @@ const onWheel = (e: any) => {
 }
 </script>
 
-<style scoped lang="scss" src="./index.style1.scss"></style>
+<style scoped lang="scss" src="./styles/index.style1.scss"></style>
 
-<style lang="scss" src="./index.style2.scss"></style>
+<style lang="scss" src="./styles/index.style2.scss"></style>

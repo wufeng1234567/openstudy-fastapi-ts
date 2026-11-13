@@ -704,4 +704,4 @@ defineExpose({
 })
 </script>
 
-<style lang="scss" src="./index.style1.scss"></style>
+<style lang="scss" src="./styles/index.style1.scss"></style>

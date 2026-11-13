@@ -51,6 +51,15 @@ components/<Feature>/
 
 所有相对 import、`@/components/...` 别名 import 与 `<style src>` 已同步更新；`npm run build:prod`、`npm run test:unit`、composable import guard 和练习页 runtime smoke 均通过。
 
+第二轮（同日）把其余同类问题一并清理：
+
+- 12 个单组件包的根层 `.css/.scss` 全部移入各自的 `styles/`；
+- `AgentToolResult` 的 `useAgentToolJumps.ts` 移入 `composables/`，`agentToolResultSummary.ts` 移入 `utils/`；
+- `AiChatStream`、`IconSelect`、`SvgIcon` 的根层工具 `.ts` 移入 `utils/`；
+- `GlobalSettings` 的 `AgentManagerDialog.vue` 移入 `components/`。
+
+现在 `src/components` 下每个功能包根层只保留一个公开入口（`index.vue` 或 `<Feature>.vue`），不再把子组件、composable、工具函数和样式全部堆在根层。
+
 ## 拆分原则
 
 1. **纯函数进 `*.ts`**：颜色/类型映射、状态文案、几何计算等不依赖 Vue 实例的逻辑；

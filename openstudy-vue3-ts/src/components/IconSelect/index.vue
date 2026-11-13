@@ -24,7 +24,7 @@
 </template>
 
 <script setup lang="ts">
-import icons from './requireIcons'
+import icons from './utils/requireIcons'
 
 const props = defineProps({
   activeIcon: {

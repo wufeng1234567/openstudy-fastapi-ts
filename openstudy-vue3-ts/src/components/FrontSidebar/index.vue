@@ -754,4 +754,4 @@ watch(
  */
 </script>
 
-<style scoped lang="scss" src="./index.style1.scss"></style>
+<style scoped lang="scss" src="./styles/index.style1.scss"></style>

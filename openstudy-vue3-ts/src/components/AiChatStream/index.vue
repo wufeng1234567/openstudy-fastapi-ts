@@ -354,7 +354,7 @@
 </template>
 
 <script setup lang="ts">
-import { expertGroupTitle, expertHeadline, getTurnAnswerText, isLastAssistantEmpty as isLastAssistantEmptyIn, noteIcon as noteIconOf, progressHeadline, stepState, visibleSteps } from './aiChatStreamUtils'
+import { expertGroupTitle, expertHeadline, getTurnAnswerText, isLastAssistantEmpty as isLastAssistantEmptyIn, noteIcon as noteIconOf, progressHeadline, stepState, visibleSteps } from './utils/aiChatStreamUtils'
 import {
   ref,
   watch,
@@ -1047,13 +1047,13 @@ defineExpose({
 })
 </script>
 
-<style scoped lang="scss" src="./index.style1.scss"></style>
+<style scoped lang="scss" src="./styles/index.style1.scss"></style>
 
-<style lang="scss" src="./index.style2.scss"></style>
+<style lang="scss" src="./styles/index.style2.scss"></style>
 
 <!--
   el-drawer 会 append-to-body；AiChatStream 的 scoped 选择器拿不到它内部的
   DocumentAnatomyPanel 节点。这里用 `.chat-document-reader` 限定在聊天阅读抽屉内，
   不影响资料诊疗室自身的阅读面板。
 -->
-<style src="./index.style3.css"></style>
+<style src="./styles/index.style3.css"></style>

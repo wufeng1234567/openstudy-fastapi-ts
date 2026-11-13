@@ -838,4 +838,4 @@ function restOf(item: any): any {
 }
 </script>
 
-<style scoped src="./index.style1.css"></style>
+<style scoped src="./styles/index.style1.css"></style>

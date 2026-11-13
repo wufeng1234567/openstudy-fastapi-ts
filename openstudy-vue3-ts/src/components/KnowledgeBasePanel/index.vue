@@ -1226,4 +1226,4 @@ const getKbCount = () => kbs.value.length
 defineExpose({ activate, refreshList, getKbCount })
 </script>
 
-<style scoped src="./index.style1.css"></style>
+<style scoped src="./styles/index.style1.css"></style>
