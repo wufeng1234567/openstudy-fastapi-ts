@@ -268,6 +268,207 @@ def _attachment_field(item: Any, key: str, default: str = "") -> str:
     return value if isinstance(value, str) else (default if value is None else str(value))
 
 
+def extract_attachments(files: List[Any], image_offset: int = 0) -> tuple:
+    """文档附件 → (可喂给模型的文本, 文档内嵌图片 data URL, 告警)
+
+    - 文本类附件（pdf / docx / txt / md…）用 `file_parser` 抽正文，按
+      `【附件：文件名】` 分段拼接，模型据此就能「读到」文件；
+    - 正文里的插图渲染成 `【图N】` 标记，**图片落在它原本所在的文字位置之间**，
+      图片列表顺序与标记编号一一对应 —— 模型才能把「如下图」和具体那张图对上；
+    - 解析不出来时收集告警，最终以 `> ⚠️` 追加在回复末尾，让用户看得见。
+
+    Args:
+        files: 文档附件列表（`{name, type, base64}`）
+        image_offset: 图片编号起始值 —— 用户另外上传了图片时，文档插图要顺延编号
+    """
+    from app.services.file_parser import build_marked_document, parse_file
+
+    sections: List[str] = []
+    image_urls: List[str] = []
+    warnings: List[str] = []
+
+    for item in files or []:
+        name = (_attachment_field(item, "name") or "file").strip() or "file"
+        try:
+            content, _mime = data_url_to_bytes(_attachment_field(item, "base64"))
+        except Exception as e:
+            warnings.append(f"附件 {name} 解码失败：{e}")
+            continue
+        try:
+            parsed = parse_file(name, content)
+        except Exception as e:
+            warnings.append(f"附件 {name} 解析失败：{e}")
+            continue
+
+        error = parsed.get("error")
+        marked, images = build_marked_document(parsed, image_offset + len(image_urls))
+        kept = images[:MAX_DOC_IMAGES]
+
+        if marked:
+            sections.append(f"【附件：{name}】\n{marked}")
+        if kept:
+            image_urls.extend(kept)
+            if not marked:
+                sections.append(
+                    f"【附件：{name}】\n（该附件没有可提取的文字，插图见下方图片）"
+                )
+            if len(images) > len(kept):
+                warnings.append(
+                    f"附件 {name}：插图较多，只把前 {MAX_DOC_IMAGES} 张交给模型"
+                )
+        if not marked and not kept:
+            warnings.append(f"附件 {name}：{error or '没有提取到可用的文字或图片'}")
+
+    return "\n\n".join(sections), image_urls, warnings
+
+
+
+# ============================================================
+# 主流程
+# ============================================================
+
+
+#: 知识库取材时，单段最大字符数（与 rag_query_service.MAX_CHUNK_CHARS 同口径）
+KB_CONTEXT_CHUNK_CHARS = 1200
+#: 知识库取材的总字符预算（与 rag_query_service.MAX_CONTEXT_CHARS 同口径）
+KB_CONTEXT_MAX_CHARS = 6000
+#: 知识库取材默认取回几条
+KB_CONTEXT_TOP_K = 5
+
+#: 知识库取材的超时（秒）——超过就放弃取材、直接出题
+#:
+#: 为什么是 20s 而不是更小：正常路径下（模型已预热）检索只要 ~0.15s，
+#: 留足 20s 是为了容忍大库首次查询、冷页缓存、DB 抖动等偶发慢，不至于动不动就放弃取材。
+#: 又必须封顶：`embed_query` 首次要加载 2.17GB 模型（实测冷启动 43.22s），
+#: 若预热的那个后台任务还没跑完，这 43s 会全部堆在用户面前 —— 且发生在
+#: **模型调用之前**，连"思考中"都看不到，体感就是"点了没反应"。
+#: 20s 是"给足正常波动、又不让用户等一分钟"的折中。
+KB_RETRIEVE_TIMEOUT_SEC = 20
+
+
+async def _retrieve_kb_context(
+    db: AsyncSession,
+    turn: ChatTurn,
+    query: str,
+    top_k: int = KB_CONTEXT_TOP_K,
+) -> tuple:
+    """按 `turn.kb_ids` 检索知识库，返回 `(材料文本, 命中图片 URL 列表)`。
+
+    用途：出题类场景（`question-generate` / `reading` / `composite`）用户选了
+    「取材来源 = 我的知识库」时，由这里取原文 → 交给 prompts 模板 → 模型据此出题。
+    命中片段若**夹带图片**（分块时按 `【图N】` 归属到 `chunk.meta_data`），
+    图片 URL 一并返回，由调用方转成多模态图块喂模型 —— 否则模型只看到文字、
+    看不到图里的公式/表格（这正是「知识库与图片」此前断裂之处）。
+
+    设计要点：
+      · **失败绝不抛**：检索挂了（embedding 不可用 / 库被删）不该让整轮出题失败，
+        只是「这次没有材料」，退化成纯 AI 生成并留下可见的提示。
+      · **带出处**：每段标 `【文档名 第N段】`，模型据此在解析里注明来源。
+      · **预算封顶**：避免把上下文撑爆（与 rag_query_service 同口径）。
+    """
+    from app.services.rag import rag_query_service as rqs
+
+    kb_ids = []
+    for value in (turn.kb_ids or []):
+        try:
+            kb_ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    if not kb_ids or not (query or "").strip():
+        return "", []
+
+    try:
+        found = await rqs.search(db, turn.user_id or 0, query, kb_ids, top_k=top_k)
+    except Exception as e:  # noqa: BLE001 - 取材是增强项，失败只记日志
+        logger.warning("[chat_engine] 知识库取材失败（已跳过）: {}", e)
+        return "", []
+
+    hits = found.get("hits") or []
+    parts: List[str] = []
+    image_urls: List[str] = []
+    used = 0
+    for i, hit in enumerate(hits, start=1):
+        content = (hit.get("content") or "").strip()
+        # 该片段夹带的图：即使正文为空（纯图块）也要把图收上来，故先收图再判 content
+        for url in (hit.get("images") or []):
+            value = str(url or "").strip()
+            if value and value not in image_urls:
+                image_urls.append(value)
+        if not content:
+            continue
+        if len(content) > KB_CONTEXT_CHUNK_CHARS:
+            content = content[: KB_CONTEXT_CHUNK_CHARS - 1] + "…"
+        source = hit.get("source") or hit.get("docName") or f"文档#{hit.get('docId')}"
+        piece = f"【材料{i}｜来源：{source}】\n{content}"
+        if used + len(piece) > KB_CONTEXT_MAX_CHARS:
+            break
+        parts.append(piece)
+        used += len(piece)
+
+    if not parts and not image_urls:
+        logger.info("[chat_engine] 知识库取材：kb_ids={} 未检索到相关内容", kb_ids)
+        return "", []
+    logger.info(
+        "[chat_engine] 知识库取材：kb_ids={} → {} 段 / {} 字符 / {} 张图",
+        kb_ids, len(parts), used, len(image_urls),
+    )
+    return "\n\n".join(parts), image_urls
+
+
+async def _resolve_vision_safe_model(
+    db: AsyncSession,
+    turn: ChatTurn,
+    has_images: bool,
+    session_id: str,
+) -> tuple:
+    """图片存在时保证「选中的模型能识图」
+
+    pro（deepseek-v4-pro）这类仅文本模型收到图片会被上游直接打回，
+    整轮请求就白费了。这里按 `model_capabilities` 的口径回退到视觉模型。
+    前端在发送前也会做同样的切换并提示用户，本处是防御性兜底
+    （防止其它调用方直接带图请求仅文本模型）。
+    """
+    if not has_images:
+        return turn.model, turn.provider
+
+    try:
+        resolved = await db_config.resolve_config(
+            db, turn.provider, turn.model, user_id=turn.user_id, config_id=turn.config_id
+        )
+        if resolved is not None and not model_capabilities.supports_vision(resolved.model):
+            logger.info(
+                "AI 多模态：{} 不支持图片，自动改用 {}（scene={} session={}）",
+                resolved.model,
+                model_capabilities.DEFAULT_VISION_MODEL,
+                turn.scene,
+                session_id or "-",
+            )
+            return model_capabilities.DEFAULT_VISION_MODEL, None
+    except Exception as e:  # pragma: no cover - 兜底失败不阻断主流程
+        logger.warning("解析模型配置失败，按原样发起请求：{}", e)
+    return turn.model, turn.provider
+
+
+async def _save_assistant(
+    turn: ChatTurn, user_id: int, text: str, note: str, extra_note: str
+) -> None:
+    """把 AI 这一轮写进历史；失败只告警，绝不影响已经下发的流"""
+    if not turn.persist:
+        return
+    suffix = "；".join(p for p in (note, extra_note) if p)
+    content = (
+        f"{text}\n\n> ⚠️ {suffix}"
+        if (text and suffix)
+        else (text or (f"> ⚠️ {suffix}" if suffix else ""))
+    )
+    try:
+        await conversation_service.save_message(
+            user_id, turn.session_id, "assistant", content
+        )
+    except Exception as e:  # pragma: no cover
+        logger.exception("AI 回复落库失败 session={}: {}", turn.session_id, e)
+
+
 async def stream_turn(db: AsyncSession, turn: ChatTurn) -> AsyncIterator[str]:
     """执行一轮 AI 对话并按统一契约流式下发
 

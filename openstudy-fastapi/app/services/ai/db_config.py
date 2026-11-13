@@ -137,7 +137,7 @@ async def get_default_config(
 
     # 先看「默认行」里有没有凭据齐全的；有就直接用
     for cfg in rows:
-        if is_servable_by_backend(cfg) and has_credentials(cfg):
+        if has_credentials(cfg):
             if rows and cfg is not rows[0]:
                 logger.warning(
                     "[db_config] 默认配置 config_id={} 不可用，改用 config_id={} provider={} model={}",
@@ -153,7 +153,7 @@ async def get_default_config(
         .order_by(SysAiConfig.is_default.desc(), SysAiConfig.user_id.asc().nullsfirst(), SysAiConfig.config_id.asc())
     )
     for cfg in fallback.scalars().all():
-        if is_servable_by_backend(cfg) and has_credentials(cfg):
+        if has_credentials(cfg):
             logger.warning(
                 "[db_config] 无可用默认行，回退到有凭据的 config_id={} provider={} model={}",
                 cfg.config_id, cfg.provider, cfg.model,
@@ -238,7 +238,7 @@ async def get_config_by_model(
         return None
 
     for cfg in rows:
-        if is_servable_by_backend(cfg) and has_credentials(cfg):
+        if has_credentials(cfg):
             return cfg
     return rows[0]
 
