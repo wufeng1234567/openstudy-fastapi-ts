@@ -242,7 +242,7 @@
 - 快照目录：`_scratch_refactor_batch10_256a8bd/`
 - 授权：hy4 = QuestionBuilder + KnowledgeWikiPanel；minimax3.1f = useAgentChat
 - 测试：build 4,017 modules / unit 29 项 / studio+wiki+agent smoke 通过
-- 提交：`[pending]`
+- 提交：`e4695d6`（Gitee/GitCode 已推送；GitHub 重试中）
 
 ### 结果（非空行口径）
 
