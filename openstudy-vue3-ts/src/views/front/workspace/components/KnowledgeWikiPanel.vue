@@ -201,7 +201,7 @@
             </button>
           </template>
         </aside>
-        <div v-if="!adviceMode" class="kw-graph-hint"><span>节点连线常显，悬停/点击可高亮相关关系 · 点知识主题查看主题页，点来源节点查看资料/题库/笔记 · 右侧可开启规划建议</span></div>
+        <div v-if="!adviceMode" class="kw-graph-hint"><span>知识关系常显，题库连线悬停/点击后出现并高亮 · 点知识主题查看主题页，点来源节点查看资料/题库/笔记 · 右侧可开启规划建议</span></div>
       </div>
       <KnowledgeAdviceHost
         ref="adviceHostRef"

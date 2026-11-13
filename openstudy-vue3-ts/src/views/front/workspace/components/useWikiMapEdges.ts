@@ -5,7 +5,7 @@ import { buildMapEdge } from './wikiMapGeometry'
 /**
  * 知识图谱的边（连线）纯展示 computed。
  *
- * 从 KnowledgeWikiPanel.vue 抽出：首屏不画线、图片节点折叠、按焦点/学习路线
+ * 从 KnowledgeWikiPanel.vue 抽出：题库连线首屏隐藏、图片节点折叠、按焦点
  * 过滤、按 key 去重。全部是惰性 computed，只读传入的 ref，不含任何
  * API、事件监听、拖拽/缩放或计时逻辑。返回的名字以原名解构回 SFC。
  */
@@ -44,6 +44,12 @@ export function useWikiMapEdges(options: {
         const source = positions.get(sourceId)
         const target = positions.get(targetId)
         if (!source || !target) return null
+        // 首屏不铺题库连线：题库节点很多，进页面先看知识结构；
+        // 悬停/选中后再显示与当前节点相关的题库关系。
+        const touchesBank = [source, target].some((node: any) =>
+          normalizeEntityKind(node.kind || node.pageType) === 'bank'
+        )
+        if (!focusId && touchesBank) return null
         return buildMapEdge(source, target, sourceId, targetId, edge, isCrossSourceEdge)
       })
       .filter(Boolean) as any[]
