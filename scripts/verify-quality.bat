@@ -31,19 +31,23 @@ if not exist "node_modules" (
   echo [FAIL] frontend node_modules not found
   set "FAIL=1"
 ) else (
-  echo [4/7] composable import check
+  echo [4/8] composable import check
   "%ROOT%\openstudy-fastapi\.venv\Scripts\python.exe" "%ROOT%\scripts\check_composable_imports.py"
   if errorlevel 1 set "FAIL=1"
 
-  echo [5/7] frontend lint
+  echo [5/8] frontend component structure check
+  "%ROOT%\openstudy-fastapi\.venv\Scripts\python.exe" "%ROOT%\scripts\check_frontend_structure.py"
+  if errorlevel 1 set "FAIL=1"
+
+  echo [6/8] frontend lint
   call npm run lint
   if errorlevel 1 set "FAIL=1"
 
-  echo [6/7] frontend unit tests
+  echo [7/8] frontend unit tests
   call npm run test:unit
   if errorlevel 1 set "FAIL=1"
 
-  echo [7/7] frontend build
+  echo [8/8] frontend build
   call npm run build:prod
   if errorlevel 1 set "FAIL=1"
 

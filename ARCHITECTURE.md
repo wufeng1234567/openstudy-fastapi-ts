@@ -40,6 +40,8 @@ src/
 
 Rule: `views` orchestrate, `components` render, `composables` own state/side effects, `utils` stay pure. Large views should be split rather than accumulating business logic.
 
+Feature packages under `src/components/<Feature>/` keep one public entry at the root, with child components, composables, utilities and styles in separate subfolders. The rule is enforced by `scripts/check_frontend_structure.py`; see `doc/engineering/frontend-refactor.md`.
+
 ## 3. Backend boundaries
 
 ```text

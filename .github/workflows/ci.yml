@@ -109,13 +109,16 @@ jobs:
         run: python -m ruff check app --select E9,F63,F7,F82
 
   frontend-build:
-    name: 前端类型检查与构建
+    name: 前端质量与构建
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: 前端 composable import 检查
         run: python3 scripts/check_composable_imports.py
+
+      - name: 前端组件目录结构检查
+        run: python3 scripts/check_frontend_structure.py
 
       - name: 安装 Node
         uses: actions/setup-node@v4
@@ -135,13 +138,6 @@ jobs:
       - name: 前端单元测试
         working-directory: openstudy-vue3-ts
         run: npm run test:unit
-
-      - name: 类型检查（已知存量债务，仅报告）
-        # 2026-11-12 实测约 1,808 条历史错误；先作为非阻塞证据记录，
-        # 等 P1 压到阈值后再改为 blocking，避免 CI 因历史债务长期不可用。
-        continue-on-error: true
-        working-directory: openstudy-vue3-ts
-        run: npm run type-check --if-present
 
       - name: 构建
         working-directory: openstudy-vue3-ts

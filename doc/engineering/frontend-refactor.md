@@ -49,7 +49,7 @@ components/<Feature>/
 - `CommentSection/`：`CommentSection.vue` 留在根层，4 个子组件进 `components/`，`mention.ts` 进 `utils/`；
 - `MyQuestion/`：`MyQuestion.vue` 留在根层，3 个子组件进 `components/`，样式进 `styles/`。
 
-所有相对 import、`@/components/...` 别名 import 与 `<style src>` 已同步更新；`npm run build:prod`、`npm run test:unit`、composable import guard 和练习页 runtime smoke 均通过。
+所有相对 import、`@/components/...` 别名 import 与 `<style src>` 已同步更新；`npm run build:prod`、`npm run test:unit`、composable import guard 和练习页 runtime smoke 均通过。目录规范由 `scripts/check_frontend_structure.py` 校验，并接入 `scripts/verify-quality.bat`。
 
 第二轮（同日）把其余同类问题一并清理：
 

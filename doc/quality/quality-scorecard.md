@@ -1,13 +1,13 @@
 # 技术实现质量 20% 评分卡
 
 > 用途：对照比赛评分项「工具使用是否规范、代码可读性与可维护性」做保守自评，不冒充官方评分。
-> 基线：2026-11-12；证据以 [quality-report.md](../功能迭代与代码质量/quality-report.md) 第 0 节和 `.github/workflows/ci.yml` 为准。
+> 基线：2026-11-13；证据以 [quality-report.md](../功能迭代与代码质量/quality-report.md) 第 0 节和 `.github/workflows/ci.yml` 为准。
 
 ## 1. 评分拆分
 
 | 子项 | 分值 | 当前判断 | 主要证据 |
 |---|---:|---|---|
-| 工程工具链：lint / format / type-check / test / CI | 10 | **约 6.5 / 10** | `eslint.config.js`、`.prettierrc.json`、`pytest.ini`、`ruff.toml`、`ci.yml`、`scripts/verify-quality.bat` |
+| 工程工具链：lint / format / test / CI + 结构检查 | 10 | **约 6.5 / 10** | `eslint.config.js`、`.prettierrc.json`、`pytest.ini`、`ruff.toml`、`ci.yml`、`scripts/verify-quality.bat`、`scripts/check_frontend_structure.py` |
 | 代码可读性与可维护性：目录、命名、分层、类型、重复、大文件、死代码 | 10 | **约 6 / 10** | `ARCHITECTURE.md`、`doc/feature-map.md`、`doc/engineering/frontend-refactor.md`、死代码台账 |
 | 合计 | 20 | **保守约 12.5 / 20** | 不把 type-check 1,080 条、lint 4,156 warnings 写成已清零 |
 
@@ -24,6 +24,8 @@
 | CI 强门禁 | 🟡 type-check 非阻塞；后端 ruff 只跑语法子集 | 继续 P1 |
 | 一条命令验证 | ✅ `scripts/verify-quality.bat` | 运行 pytest/ruff/lint/unit/build；type-check 不在该脚本中 |
 | Vue composable import 检查 | ✅ `scripts/check_composable_imports.py` | 248 个 Vue 文件扫描通过；防止 `useXxx` 未 import 的 setup 崩溃 |
+| 组件目录结构检查 | ✅ `scripts/check_frontend_structure.py` | 77 个组件包扫描通过；根层只留一个入口，子组件/工具/样式分层 |
+| 工具使用留痕 | ✅ `doc/dev-process/README.md` | 5 天日志、6 个会话、91 份决策/踩坑记录；索引完成的边界也如实说明 |
 | 依赖锁 | ✅ 前端唯一 `package-lock.json` + CI `npm ci`；后端 requirements 未锁 hash | P1 继续 |
 | 密钥/垃圾检查 | ✅ CI 检查 `.env`、node_modules、生成物、硬编码密钥 | 已脱管历史生成物 |
 
@@ -31,7 +33,7 @@
 
 | 检查 | 状态 | 证据/说明 |
 |---|---|---|
-| 目录分层 | ✅ `views/components/composables/utils/styles` 已写入规范，workspace/Practice 已按此拆分 | `ARCHITECTURE.md`、`doc/engineering/frontend-refactor.md` |
+| 目录分层 | ✅ `views/components/composables/utils/styles` 已写入规范，组件包已按四层拆分并受 guard 检查 | `ARCHITECTURE.md`、`doc/engineering/frontend-refactor.md`、`scripts/check_frontend_structure.py` |
 | 架构文档 | ✅ `ARCHITECTURE.md` | 分层、主链路、已知边界 |
 | 功能地图 | ✅ `doc/feature-map.md` | 15 功能域 → 入口 → 后端 |
 | API/数据模型 | ✅ `doc/architecture/api-data-model.md` | 42 路由域、80 表概览 |
