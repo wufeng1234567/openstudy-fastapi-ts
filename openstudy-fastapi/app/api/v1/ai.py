@@ -35,6 +35,29 @@ import json
 router = APIRouter(prefix="/ai")
 
 
+async def _generate_questions_for_request(db: AsyncSession, data, current_user: dict):
+    """按请求参数调用出题服务（统一入参口径）。
+
+    ⚠ 这段原本在**两个接口**里**逐字相同**（流式出题 / 非流式出题）——
+    现在收敛到一处，两条链路的出题入参口径不会再漂。
+    """
+    topic = data.topic or data.knowledgePoint or ""
+    question_type = data.questionType or data.question_type or "single"
+    return await ai_generate_service.generate_questions(
+        topic=topic,
+        question_type=question_type,
+        count=data.count,
+        difficulty=data.difficulty,
+        model=data.model,
+        provider=data.provider,
+        # configId：精确指定选中哪条配置（区分同名模型）
+        config_id=data.configId,
+        db=db,
+        thinking=data.thinking,
+        user_id=current_user.get("user_id"),
+    )
+
+
 def _sse_stream(gen):
     """构造**不缓冲**的流式响应（2026-10-20）
 
@@ -189,23 +212,9 @@ async def generate_questions(
 ):
     """AI 出题"""
     try:
-        topic = data.topic or data.knowledgePoint or ""
-        question_type = data.questionType or data.question_type or "single"
         bank_id = data.bank_id or data.bankId
 
-        questions = await ai_generate_service.generate_questions(
-            topic=topic,
-            question_type=question_type,
-            count=data.count,
-            difficulty=data.difficulty,
-            model=data.model,
-            provider=data.provider,
-            # configId：精确指定选中哪条配置（区分同名模型）
-            config_id=data.configId,
-            db=db,
-            thinking=data.thinking,
-            user_id=current_user.get("user_id"),
-        )
+        questions = await _generate_questions_for_request(db, data, current_user)
 
         # 如果指定了题库，保存到题库
         if bank_id and questions:
@@ -289,22 +298,8 @@ async def generate_questions_sync(
 ):
     """非流式生成题目"""
     try:
-        topic = data.topic or data.knowledgePoint or ""
-        question_type = data.questionType or data.question_type or "single"
 
-        questions = await ai_generate_service.generate_questions(
-            topic=topic,
-            question_type=question_type,
-            count=data.count,
-            difficulty=data.difficulty,
-            model=data.model,
-            provider=data.provider,
-            # configId：精确指定选中哪条配置（区分同名模型）
-            config_id=data.configId,
-            db=db,
-            thinking=data.thinking,
-            user_id=current_user.get("user_id"),
-        )
+        questions = await _generate_questions_for_request(db, data, current_user)
         return success(questions)
     except Exception as e:
         return error(str(e))

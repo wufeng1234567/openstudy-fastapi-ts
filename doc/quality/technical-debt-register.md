@@ -7,8 +7,8 @@
 
 | 项目 | 当前值 | 说明 | 下一步 |
 |---|---:|---|---|
-| 前端 type-check | **1,808 条 error TS，exit 2** | 历史 RuoYi 页面、`ref({})` 推断、`catch(error)` unknown 等 | 按文件分组，先收敛 `src/views/front` 活跃路径 |
-| 前端 ESLint | **0 errors / 3,506 warnings** | warn-only 基线，主要为 any/no-console/默认 prop | 建 warning 预算，按目录递减 |
+| 前端 type-check | **1,786 条 error TS，exit 2** | 历史 RuoYi 页面、`ref({})` 推断、`catch(error)` unknown 等 | 按文件分组，先收敛 `src/views/front` 活跃路径 |
+| 前端 ESLint | **0 errors / 3,754 warnings** | warn-only 基线，主要为 any/no-console/默认 prop | 建 warning 预算，按目录递减 |
 | 后端 ruff 全量 | **约 115 errors**（107 F401 + 8 F841） | 语法门禁 `E9,F63,F7,F82` 已过；全量未清零 | 先加 `__init__.py` re-export 规则，再逐文件清 F401/F841 |
 | 后端覆盖率 | **历史 19%** | 复跑 coverage 当前有 INTERNALERROR，数字需重跑后确认 | 修 coverage 写入路径，再设 30% 路线 |
 
@@ -36,9 +36,9 @@
 | 2,293 | `app/api/v1/rag.py` | 资料/RAG 巨型路由 |
 | 1,643 | `app/services/rag/wiki_service.py` | 百科服务 |
 | 1,865 | `app/services/ai/agent/loop.py` | Agent 循环，已拆部分 helper |
-| 1,976 | `app/services/rag/workspace_service.py` | 资料空间服务 |
-| 1,817 | `app/services/bank_export_service.py` | 题库导出 |
-| 1,731 | `app/api/v1/ai.py` | AI 路由 |
+| 1,972 | `app/services/rag/workspace_service.py` | 资料空间服务 |
+| 1,821 | `app/services/bank_export_service.py` | 题库导出 |
+| 1,723 | `app/api/v1/ai.py` | AI 路由 |
 
 ## 4. P2 执行顺序
 

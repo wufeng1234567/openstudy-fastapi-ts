@@ -64,17 +64,7 @@ async def get_or_create_workspace(db: AsyncSession, user_id: int) -> RagKnowledg
 
     幂等：并发情况下靠 `uk_kb_workspace_per_user` 部分唯一索引兜底。
     """
-    row = (
-        await db.execute(
-            select(RagKnowledgeBase).where(
-                and_(
-                    RagKnowledgeBase.user_id == user_id,
-                    RagKnowledgeBase.is_workspace == 1,
-                    RagKnowledgeBase.del_flag == "0",
-                )
-            )
-        )
-    ).scalar_one_or_none()
+    row = await _load_workspace_kb(db, user_id)
     if row:
         return row
 
@@ -94,17 +84,7 @@ async def get_or_create_workspace(db: AsyncSession, user_id: int) -> RagKnowledg
     except Exception:
         # 并发下可能已被另一个请求建好 —— 回滚后重查
         await db.rollback()
-        row = (
-            await db.execute(
-                select(RagKnowledgeBase).where(
-                    and_(
-                        RagKnowledgeBase.user_id == user_id,
-                        RagKnowledgeBase.is_workspace == 1,
-                        RagKnowledgeBase.del_flag == "0",
-                    )
-                )
-            )
-        ).scalar_one_or_none()
+        row = await _load_workspace_kb(db, user_id)
         if row:
             return row
         raise
@@ -148,6 +128,25 @@ def visible_image_map(doc: RagDocument) -> Dict[str, str]:
         if not hidden:
             visible[str(index)] = url
     return visible
+
+
+async def _load_workspace_kb(db: AsyncSession, user_id: int):
+    """取该用户的**工作空间知识库**（没有则返回 None）。
+
+    ⚠ 这段查询原本在**两处**逐字相同 —— 现在收敛到一处，
+    「工作空间知识库」的筛选口径不会再各处漂。
+    """
+    return (
+        await db.execute(
+            select(RagKnowledgeBase).where(
+                and_(
+                    RagKnowledgeBase.user_id == user_id,
+                    RagKnowledgeBase.is_workspace == 1,
+                    RagKnowledgeBase.del_flag == "0",
+                )
+            )
+        )
+    ).scalar_one_or_none()
 
 
 async def _files_of_kb(db: AsyncSession, kb_id: int) -> List[Dict[str, Any]]:

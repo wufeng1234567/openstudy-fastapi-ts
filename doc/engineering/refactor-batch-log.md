@@ -520,3 +520,22 @@
 
 新增模块：
 - `loop_validation_formatters.py`
+
+## Batch 24（2026-11-13，已完成）
+
+- 基线 commit：`5e004bc`
+- 快照目录：`_scratch_refactor_batch24_5e004bc/`
+- 授权：hy4 = workspace_service + bank_export_service（超时未落盘）；minimax3.1f = ai.py，并接手两个 service
+- 事故与修复：ai.py 的 `_generate_questions_for_request` helper 首次生成时函数体顶格（return outside function，compileall 失败）；已补 4 空格缩进并复验。
+- 测试：compileall / ruff / ai+workspace+bank_export 导入 / 全量 pytest 109 passed
+- 提交：`[pending]`
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `app/services/rag/workspace_service.py` | 1,976 | 1,972 | -4 |
+| `app/services/bank_export_service.py` | 1,817 | 1,821 | +4 |
+| `app/api/v1/ai.py` | 1,731 | 1,723 | -8 |
+
+新增模块：无（均为文件内本地 helper）

@@ -88,6 +88,20 @@ _ESCAPES_BY_LETTER = {
 _BACKSLASH = chr(92)
 
 
+def _table_grid(table_data: Dict[str, Any]):
+    """表格的表头 / 行 / 对齐方式，以及列数。
+
+    ⚠ 这段原本在**两处**逐字相同 —— 现在收敛到一处，
+    「表格网格」的取法不会再各处漂。
+    """
+    headers: List[str] = list(table_data.get("headers") or [])
+    rows: List[List[str]] = [list(r) for r in (table_data.get("rows") or [])]
+    aligns: List[str] = list(table_data.get("align") or [])
+
+    ncol = max([len(headers)] + [len(r) for r in rows]) if (headers or rows) else 0
+    return headers, rows, aligns, ncol
+
+
 def _build_pseudo_escape_re():
     """
     构造「控制字符 + 命令名剩余部分」的正则
@@ -1334,11 +1348,7 @@ def _docx_add_table(doc, table_data: TableData, *, indent_cm: float = 0.0) -> No
     """
     from docx.shared import Cm
 
-    headers: List[str] = list(table_data.get("headers") or [])
-    rows: List[List[str]] = [list(r) for r in (table_data.get("rows") or [])]
-    aligns: List[str] = list(table_data.get("align") or [])
-
-    ncol = max([len(headers)] + [len(r) for r in rows]) if (headers or rows) else 0
+    headers, rows, aligns, ncol = _table_grid(table_data)
     if ncol <= 0:
         return
 
@@ -1827,11 +1837,7 @@ def _pdf_add_table(story: List[Any], table_data: TableData, font: str, *,
     from reportlab.platypus import Table as RLTable
     from reportlab.platypus import TableStyle
 
-    headers: List[str] = list(table_data.get("headers") or [])
-    rows: List[List[str]] = [list(r) for r in (table_data.get("rows") or [])]
-    aligns: List[str] = list(table_data.get("align") or [])
-
-    ncol = max([len(headers)] + [len(r) for r in rows]) if (headers or rows) else 0
+    headers, rows, aligns, ncol = _table_grid(table_data)
     if ncol <= 0:
         return
 
