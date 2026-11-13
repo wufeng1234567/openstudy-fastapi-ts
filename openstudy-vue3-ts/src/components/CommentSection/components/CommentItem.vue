@@ -62,7 +62,7 @@ import { useCommentCacheStore } from '@/store/modules/commentCache'
 import { deleteComment } from '@/api/comment'
 import { listUserFront } from '@/api/system/user'
 import UserAvatar from '@/components/UserAvatar/index.vue'
-import { renderMentionsHtml } from './mention'
+import { renderMentionsHtml } from '../utils/mention'
 
 const props = defineProps({
   comment: { type: Object, required: true },

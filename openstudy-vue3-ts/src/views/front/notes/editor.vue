@@ -117,7 +117,7 @@ import { ArrowLeft, DocumentCopy, Download, Setting } from '@element-plus/icons-
 import { marked } from 'marked'
 import TurndownService from 'turndown'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
-import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
+import ImageViewer from '@/components/PracticeComponent/components/ImageViewer.vue'
 import ScrollButton from '@/components/ScrollButton/ScrollButton.vue'
 import NoteQuestionSelector from '@/components/NoteQuestionSelector/NoteQuestionSelector.vue'
 import { addNote, updateNote, getNote, getNoteDraft, saveNoteDraft, clearNoteDraft } from '@/api/notes/note'

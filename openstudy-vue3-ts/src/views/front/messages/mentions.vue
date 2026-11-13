@@ -56,7 +56,7 @@ import { Delete } from '@element-plus/icons-vue'
 import useUserStore from '@/store/modules/user'
 import { listAllNotice, markRead, markReadAll, deleteFrontNotice, deleteFrontNoticeBatch } from '@/api/system/notice'
 import { isUserNoticeFor, getUserNoticeType, getUserNoticeTypeLabel, parseNoticeRemark } from '@/utils/notice'
-import { plainMentions } from '@/components/CommentSection/mention'
+import { plainMentions } from '@/components/CommentSection/utils/mention'
 
 const router = useRouter()
 const userStore = useUserStore()

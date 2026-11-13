@@ -98,7 +98,7 @@
 import { computed, ref, watch } from 'vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import DocxPreview from '@/components/DocxPreview/index.vue'
-import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
+import ImageViewer from '@/components/PracticeComponent/components/ImageViewer.vue'
 import { COLLAPSE_BAR_STYLE } from '@/composables/useCollapseBar'
 
 defineOptions({ name: 'ChatFileAssetCard' })

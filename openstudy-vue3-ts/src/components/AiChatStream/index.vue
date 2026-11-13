@@ -379,7 +379,7 @@ import AgentTurnRollback from '@/components/AgentTurnRollback/index.vue'
 import AgentRollbackNotice from '@/components/AgentRollbackNotice/index.vue'
 import ScrollButton from '@/components/ScrollButton/ScrollButton.vue'
 import ChatAttachmentList from '@/components/ChatAttachmentList/index.vue'
-import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
+import ImageViewer from '@/components/PracticeComponent/components/ImageViewer.vue'
 import ChatInputArea from '@/components/ChatInputArea/index.vue'
 
 const props = defineProps({

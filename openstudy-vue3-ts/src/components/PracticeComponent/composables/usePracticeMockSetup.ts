@@ -1,5 +1,5 @@
 import { nextTick } from 'vue'
-import { buildMockPaper, normalizeType } from './practiceQuestionUtils'
+import { buildMockPaper, normalizeType } from '../utils/practiceQuestionUtils'
 import { listQuestionMainAll, startPracticeSession } from '@/api/questionMain/questionMain'
 import { EXAM_BANK_ID_KEY, EXAM_END_TIME_KEY } from './usePracticeExamTimer'
 

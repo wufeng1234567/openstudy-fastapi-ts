@@ -24,7 +24,7 @@ import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Close } from '@element-plus/icons-vue'
 import AtUserSelector from './AtUserSelector.vue'
-import { isNameChar } from './mention'
+import { isNameChar } from '../utils/mention'
 
 const props = defineProps({
   replyTarget: {

@@ -50,9 +50,9 @@ import { listComments, createComment, getCommentThread } from '@/api/comment'
 import OsIcon from '@/components/OsIcon/index.vue'
 import { ensureLogin } from '@/utils/loginGuard'
 import { useCommentCacheStore } from '@/store/modules/commentCache'
-import CommentItem from './CommentItem.vue'
-import CommentInput from './CommentInput.vue'
-import CommentModal from './CommentModal.vue'
+import CommentItem from './components/CommentItem.vue'
+import CommentInput from './components/CommentInput.vue'
+import CommentModal from './components/CommentModal.vue'
 
 const props = defineProps({
   noteId: { type: [Number, String], required: true },

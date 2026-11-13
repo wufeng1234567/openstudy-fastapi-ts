@@ -217,7 +217,7 @@ import TiptapEditor from '@/components/TiptapEditor/index.vue'
 // 思维导图（2026-10-26 v3）：把笔记的标题/列表层级画成结构图。
 // 用 echarts tree（项目已有依赖），不引 markmap/mermaid。
 import MindMap from '@/components/MindMap/index.vue'
-import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
+import ImageViewer from '@/components/PracticeComponent/components/ImageViewer.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 
 const cacheStore = useFrontPageCacheStore()

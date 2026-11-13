@@ -44,9 +44,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { FullScreen, InfoFilled, Warning, StarFilled, Document, Notebook, Clock, Flag } from '@element-plus/icons-vue'
-import QuestionDisplay from '@/components/PracticeComponent/QuestionDisplay.vue'
-import QuestionNavigation from '@/components/PracticeComponent/QuestionNavigation.vue'
-import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
+import QuestionDisplay from '@/components/PracticeComponent/components/QuestionDisplay.vue'
+import QuestionNavigation from '@/components/PracticeComponent/components/QuestionNavigation.vue'
+import ImageViewer from '@/components/PracticeComponent/components/ImageViewer.vue'
 
 // 图片预览状态
 const viewerVisible = ref(false)

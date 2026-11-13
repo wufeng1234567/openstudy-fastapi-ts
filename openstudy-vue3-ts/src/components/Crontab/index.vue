@@ -121,14 +121,14 @@
 </template>
 
 <script setup lang="ts">
-import CrontabSecond from "./second.vue"
-import CrontabMin from "./min.vue"
-import CrontabHour from "./hour.vue"
-import CrontabDay from "./day.vue"
-import CrontabMonth from "./month.vue"
-import CrontabWeek from "./week.vue"
-import CrontabYear from "./year.vue"
-import CrontabResult from "./result.vue"
+import CrontabSecond from "./components/second.vue"
+import CrontabMin from "./components/min.vue"
+import CrontabHour from "./components/hour.vue"
+import CrontabDay from "./components/day.vue"
+import CrontabMonth from "./components/month.vue"
+import CrontabWeek from "./components/week.vue"
+import CrontabYear from "./components/year.vue"
+import CrontabResult from "./components/result.vue"
 const { proxy } = getCurrentInstance()
 const emit = defineEmits(['hide', 'fill'])
 const props = defineProps({

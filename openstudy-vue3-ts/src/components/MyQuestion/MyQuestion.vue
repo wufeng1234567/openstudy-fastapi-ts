@@ -93,10 +93,10 @@ import { getCurrentInstance } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Star } from '@element-plus/icons-vue'
 
-import QuestionDetailDialog from './QuestionDetailDialog.vue'
-import QuestionHeader from './QuestionHeader.vue'
+import QuestionDetailDialog from './components/QuestionDetailDialog.vue'
+import QuestionHeader from './components/QuestionHeader.vue'
 import CommonFilterSidebar from '@/components/CommonFilterSidebar/index.vue'
-import QuestionCard from './QuestionCard.vue'
+import QuestionCard from './components/QuestionCard.vue'
 import AiAnalysisDialog from '@/components/AiAnalysisDialog/index.vue'
 
 const { proxy } = getCurrentInstance() as any
@@ -1230,4 +1230,4 @@ defineExpose({
 })
 </script>
 
-<style scoped lang="scss" src="./MyQuestion.style1.scss"></style>
+<style scoped lang="scss" src="./styles/MyQuestion.style1.scss"></style>

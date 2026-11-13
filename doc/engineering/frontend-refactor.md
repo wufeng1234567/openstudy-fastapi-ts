@@ -29,6 +29,28 @@
 
 `workspace` 已按此结构整理：`components/`、`composables/`、`utils/`、`styles/`。
 
+### 组件包目录规范（2026-11-13 执行）
+
+多文件组件包统一采用：
+
+```text
+components/<Feature>/
+  <Feature>.vue 或 index.vue   # 唯一公开入口，留在根层
+  components/                  # 子展示组件，只放 .vue
+  composables/                 # use* 状态/副作用
+  utils/                       # 无 Vue 依赖的纯函数、类型映射
+  styles/                      # .css/.scss
+```
+
+本次已规整：
+
+- `PracticeComponent/`：主组件留在根层；11 个子组件进 `components/`，23 个 `usePractice*.ts` 进 `composables/`，`practiceQuestionUtils.ts` 进 `utils/`，2 个样式进 `styles/`；
+- `Crontab/`：`index.vue` 留在根层，8 个日历子组件进 `components/`；
+- `CommentSection/`：`CommentSection.vue` 留在根层，4 个子组件进 `components/`，`mention.ts` 进 `utils/`；
+- `MyQuestion/`：`MyQuestion.vue` 留在根层，3 个子组件进 `components/`，样式进 `styles/`。
+
+所有相对 import、`@/components/...` 别名 import 与 `<style src>` 已同步更新；`npm run build:prod`、`npm run test:unit`、composable import guard 和练习页 runtime smoke 均通过。
+
 ## 拆分原则
 
 1. **纯函数进 `*.ts`**：颜色/类型映射、状态文案、几何计算等不依赖 Vue 实例的逻辑；

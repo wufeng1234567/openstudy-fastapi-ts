@@ -740,4 +740,4 @@ onBeforeUnmount(() => {
 })
 </script>
 
-<style scoped src="./ExamSummary.style1.css"></style>
+<style scoped src="../styles/ExamSummary.style1.css"></style>

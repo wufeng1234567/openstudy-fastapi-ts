@@ -197,7 +197,7 @@ import { ref, watch } from 'vue'
 import { Delete, Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
-import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
+import ImageViewer from '@/components/PracticeComponent/components/ImageViewer.vue'
 
 const props = defineProps({
   modelValue: {

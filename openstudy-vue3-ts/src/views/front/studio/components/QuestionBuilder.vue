@@ -1148,7 +1148,7 @@ import { useQuestionBuilderPreviewEdit } from './useQuestionBuilderPreviewEdit'
 import { useQuestionBuilderState } from './useQuestionBuilderState'
 import { useQuestionBuilderContext } from './useQuestionBuilderContext'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
-import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
+import ImageViewer from '@/components/PracticeComponent/components/ImageViewer.vue'
 // 公式编辑（2026-10-27）：Tiptap 是富文本编辑器，不能直接塞输入框组件，
 // 所以挂一个「ƒx」按钮，点开符号面板后把公式插到 Tiptap 光标处。
 import MathEditor from '@/components/MathEditor/index.vue'

@@ -316,7 +316,7 @@ import type { PropType } from 'vue'
 import useUserStore from '@/store/modules/user'
 import { ensureLogin } from '@/utils/loginGuard'
 import usePracticeSettingsStore from '@/store/modules/practiceSettings'
-import PracticeSettings from '@/components/PracticeComponent/PracticeSettings.vue'
+import PracticeSettings from '@/components/PracticeComponent/components/PracticeSettings.vue'
 import FavoriteButton from '@/components/FavoriteButton/FavoriteButton.vue'
 import {
   listFavoriteQuestionAll

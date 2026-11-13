@@ -82,7 +82,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
-import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
+import ImageViewer from '@/components/PracticeComponent/components/ImageViewer.vue'
 import { buildDocPreview, dataUrlToFile, isDocFile, parseDocFile } from '@/utils/doc-parse'
 
 /**

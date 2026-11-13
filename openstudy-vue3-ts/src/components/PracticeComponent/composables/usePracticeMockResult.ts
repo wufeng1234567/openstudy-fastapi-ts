@@ -1,5 +1,5 @@
 import type { MockExamItemDetail, MockExamRecord } from '@/types'
-import { normalizeOptionList, normalizeType, fullStem } from './practiceQuestionUtils'
+import { normalizeOptionList, normalizeType, fullStem } from '../utils/practiceQuestionUtils'
 import { submitPracticeSession } from '@/api/questionMain/questionMain'
 import { clearMockSession } from '@/utils/mockExamSession'
 
