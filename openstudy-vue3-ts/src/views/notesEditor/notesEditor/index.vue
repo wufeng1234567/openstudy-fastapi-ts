@@ -64,7 +64,7 @@
             <span class="tree-node-text">{{ data.label }}</span>
             <el-checkbox
               :model-value="selectedNodes.some(n => n.id === data.id)"
-              @change="(checked) => toggleSelection(data, checked)"
+              @change="(checked: any) => toggleSelection(data, checked)"
               :disabled="!isSelectable(data)"
               style="flex-shrink: 0; margin-right: -8px;"
               @click.stop
@@ -285,7 +285,7 @@ import { listNote, addNote, updateNote, delNote } from "@/api/notes/note";
 import { uploadImage } from "@/api/common/common";
 import useUserStore from "@/store/modules/user";
 
-const { proxy } = getCurrentInstance();
+const { proxy } = getCurrentInstance()!;
 const userStore = useUserStore();
 const userId = computed(() => userStore.id);
 
@@ -311,9 +311,9 @@ const isEditingMode = ref(false);
 const searchText = ref('');
 const notebooks = ref<any[]>([]);
 const rawNotebooks = ref<any[]>([]);
-const treeRef = ref(null);
+const treeRef = ref<any>(null);
 const showSelectCategoryDialog = ref(false);
-const selectedCategoryId = ref(null);
+const selectedCategoryId = ref<any>(null);
 const newCategoryName = ref('');
 const isSidebarExpanded = ref(true);
 const creatingNote = ref(false);
@@ -351,13 +351,13 @@ function loadNotes() {
       const categories = categoryRes.data || [];
       const validCategories = new Set();
 
-      categories.forEach(cat => {
+      categories.forEach((cat: any) => {
         validCategories.add(String(cat.id));
       });
 
-      const noteGroups = {};
+      const noteGroups: Record<string, any> = {};
 
-      categories.forEach(cat => {
+      categories.forEach((cat: any) => {
         const idStr = String(cat.id);
         noteGroups[idStr] = {
           id: idStr,
@@ -374,7 +374,7 @@ function loadNotes() {
         isLeaf: false
       };
 
-      (noteRes.rows || []).forEach(note => {
+      (noteRes.rows || []).forEach((note: any) => {
         let targetCategoryId;
         if (note.categoryId != null && validCategories.has(String(note.categoryId))) {
           targetCategoryId = String(note.categoryId);
@@ -391,7 +391,7 @@ function loadNotes() {
       });
 
       rawNotebooks.value = Object.values(noteGroups).filter(
-        group => group.children.length > 0 || group.id !== 'uncategorized'
+        group => (group as any).children.length > 0 || (group as any).id !== 'uncategorized'
       );
       notebooks.value = [...rawNotebooks.value];
       selectedNodes.value = [];
@@ -402,7 +402,7 @@ function loadNotes() {
     });
 }
 
-const handleNoteSelect = (data) => {
+const handleNoteSelect = (data: any) => {
   if (data && data.isLeaf) {
     Object.assign(currentNote, {
       id: data.id,
@@ -422,7 +422,7 @@ const handleNoteSelect = (data) => {
   }
 };
 
-const toggleSelection = (data, checked) => {
+const toggleSelection = (data: any, checked: any) => {
   const isLeaf = data.isLeaf;
   const nodeId = data.id;
 
@@ -461,7 +461,7 @@ const toggleSelection = (data, checked) => {
   });
 };
 
-const isSelectable = (nodeData) => {
+const isSelectable = (nodeData: any) => {
   if (selectedNodes.value.some(n => n.id === nodeData.id)) {
     return true;
   }
@@ -473,9 +473,9 @@ const isSelectable = (nodeData) => {
   }
 };
 
-const handleNodeClick = (node, data) => {
+const handleNodeClick = (node: any, data: any) => {
   if (!data.isLeaf) {
-    treeRef.value.setCurrentKey(null);
+    treeRef.value!.setCurrentKey(null);
   }
 };
 
@@ -490,7 +490,7 @@ const createNewNote = () => {
   showSelectCategoryDialog.value = true;
 };
 
-const onCategoryChange = (val) => {
+const onCategoryChange = (val: any) => {
   if (val !== 'create_new') {
     newCategoryName.value = '';
   }
@@ -623,7 +623,7 @@ const filterNotes = () => {
       const children = Array.isArray(group.children) ? group.children : [];
       const categoryMatches = typeof group.label === 'string' &&
                               group.label.toLowerCase().includes(keyword);
-      const matchedChildren = children.filter(child =>
+      const matchedChildren = children.filter((child: any) =>
         typeof child.label === 'string' &&
         child.label.toLowerCase().includes(keyword)
       );
@@ -663,9 +663,9 @@ function onNoteMathInsert(latex: string) {
   }
 }
 
-const handleUploadImg = (files, callback) => {
+const handleUploadImg = (files: any, callback: any) => {
   Promise.all(
-    files.map(file => {
+    files.map((file: any) => {
       const formData = new FormData();
       formData.append('file', file);
       return uploadImage(formData);
@@ -698,11 +698,11 @@ if (userId.value) {
 }
 
 // ====== 右键菜单逻辑 ======
-const contextMenuRef = ref(null);
-const contextTarget = ref(null);
+const contextMenuRef = ref<any>(null);
+const contextTarget = ref<any>(null);
 const contextType = ref('');
 
-const openContextMenu = (event, data, type) => {
+const openContextMenu = (event: any, data: any, type: any) => {
   if (!selectedNodes.value.some(n => n.id === data.id)) {
     selectedNodes.value = [{ ...data }];
   }
@@ -729,14 +729,14 @@ const onEditItem = () => {
 
   if (contextType.value === 'category') {
     proxy.$prompt('修改分类名称', '请输入新名称', {
-      inputValue: contextTarget.value.label
+      inputValue: contextTarget.value!.label
     }).then(({ value }) => {
       if (!value?.trim()) {
         proxy.$message.error('名称不能为空');
         return;
       }
       updateNoteCategory({
-        id: Number(contextTarget.value.id),
+        id: Number(contextTarget.value!.id),
         name: value.trim()
       }).then(res => {
         if (res.code === 200) {
@@ -751,25 +751,25 @@ const onEditItem = () => {
     }).catch(() => {});
   } else {
     proxy.$prompt('修改笔记标题', '请输入新标题', {
-      inputValue: contextTarget.value.label
+      inputValue: contextTarget.value!.label
     }).then(({ value }) => {
       if (!value?.trim()) {
         proxy.$message.error('标题不能为空');
         return;
       }
       updateNote({
-        id: contextTarget.value.id,
+        id: contextTarget.value!.id,
         title: value.trim(),
-        categoryId: contextTarget.value.categoryId,
+        categoryId: contextTarget.value!.categoryId,
         filename: value.trim() + '.md',
-        markdownContent: contextTarget.value.markdownContent,
-        htmlContent: contextTarget.value.htmlContent,
+        markdownContent: contextTarget.value!.markdownContent,
+        htmlContent: contextTarget.value!.htmlContent,
         userId: userId.value
       }).then(res => {
         if (res.code === 200) {
           proxy.$message.success('修改成功');
           loadNotes();
-          if (currentnote.noteId === contextTarget.value.id) {
+          if (currentnote.noteId === contextTarget.value!.id) {
             currentNote.title = value.trim();
           }
         } else {
@@ -790,7 +790,7 @@ const onDeleteItem = () => {
 
   if (contextType.value === 'category') {
     const hasNotes = rawNotebooks.value.some(cat =>
-      String(cat.id) === String(contextTarget.value.id) && cat.children && cat.children.length > 0
+      String(cat.id) === String(contextTarget.value!.id) && cat.children && cat.children.length > 0
     );
     if (hasNotes) {
       proxy.$message.warning('该分类下存在笔记，无法删除！');
@@ -802,7 +802,7 @@ const onDeleteItem = () => {
     type: 'warning'
   }).then(() => {
     if (contextType.value === 'category') {
-      delNoteCategory(Number(contextTarget.value.id))
+      delNoteCategory(Number(contextTarget.value!.id))
         .then(res => {
           if (res.code === 200) {
             proxy.$message.success('删除成功');
@@ -815,12 +815,12 @@ const onDeleteItem = () => {
           proxy.$message.error('删除失败');
         });
     } else {
-      delNote(contextTarget.value.id)
+      delNote(contextTarget.value!.id)
         .then(res => {
           if (res.code === 200) {
             proxy.$message.success('删除成功');
             loadNotes();
-            if (currentnote.noteId === contextTarget.value.id) {
+            if (currentnote.noteId === contextTarget.value!.id) {
               Object.keys(currentNote).forEach(key => {
                 currentNote[key] = null;
               });
@@ -838,7 +838,7 @@ const onDeleteItem = () => {
   }).catch(() => {});
 };
 
-const handleRowClick = (node, data, event) => {
+const handleRowClick = (node: any, data: any, event: any) => {
   const isCtrl = event.ctrlKey || event.metaKey;
   const isSelected = selectedNodes.value.some(n => n.id === data.id);
 
@@ -879,7 +879,7 @@ const batchDeleteSelected = () => {
   proxy.$confirm(`确定要删除选中的 ${selectedNodes.value.length} 项吗？`, '删除确认', {
     type: 'warning'
   }).then(() => {
-    const deletePromises = [];
+    const deletePromises: any[] = [];
 
     notesToDelete.forEach(note => {
       deletePromises.push(delNote(note.noteId));

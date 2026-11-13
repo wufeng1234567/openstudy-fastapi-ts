@@ -460,7 +460,7 @@ import { checkQuestionExists, getQuestionSimpleInfo, checkUserExists, checkQuest
 import { listQuestionBankAll } from "@/api/questionBank/questionBank"
 import dayjs from 'dayjs'
 
-const { proxy } = getCurrentInstance()
+const { proxy } = getCurrentInstance()!
 
 const questionMarkedList = ref<any[]>([])
 const open = ref(false)
@@ -581,12 +581,12 @@ function validateUserId() {
   
   // 调用后端API验证用户是否存在
   checkUserExists(userId).then(response => {
-    if (response.code === 200 && response.data && response.data.exists) {
+    if (response.code === 200 && response.data && (response.data as any).exists) {
       userIdValid.value = true
       userIdError.value = ""
       // 如果有用户信息，显示用户名
-      if (response.data.userName) {
-        userName.value = `用户：${response.data.nickName || response.data.userName}`
+      if ((response.data as any).userName) {
+        userName.value = `用户：${(response.data as any).nickName || (response.data as any).userName}`
       } else {
         userName.value = "用户ID验证通过"
       }
@@ -632,27 +632,27 @@ function validateQuestionId() {
   checkQuestionExists(questionId).then(response => {
     if (response.code === 200 && response.data) {
       // 检查题目是否存在
-      if (response.data.exists === true || response.data.exists === 'true') {
+      if ((response.data as any).exists === true || (response.data as any).exists === 'true') {
         questionValid.value = true
         questionError.value = ""
         
         // 构建显示信息
-        if (response.data.questionText) {
-          questionTitle.value = `题目：${response.data.questionText.substring(0, 50)}${response.data.questionText.length > 50 ? '...' : ''} (ID: ${questionId})`
+        if ((response.data as any).questionText) {
+          questionTitle.value = `题目：${(response.data as any).questionText.substring(0, 50)}${(response.data as any).questionText.length > 50 ? '...' : ''} (ID: ${questionId})`
         } else {
           questionTitle.value = `题目ID: ${questionId} 验证成功`
         }
         
         // 自动填充题库信息
-        if (response.data.bankId) {
-          form.value.bankId = response.data.bankId
+        if ((response.data as any).bankId) {
+          form.value.bankId = (response.data as any).bankId
           // 加载题库名称
-          loadBankName(response.data.bankId)
+          loadBankName((response.data as any).bankId)
         }
         
         // 自动填充难度信息（仅在未设置时兜底：编辑既有记录时不要用题目难度
         // 覆盖用户已保存的斩题难度，否则「修改」对话框一开一存难度就被改掉）
-        if (response.data.difficulty && !form.value.difficultyLevel) {
+        if ((response.data as any).difficulty && !form.value.difficultyLevel) {
           // 将题目难度转换为斩题难度等级
           const difficultyMap = {
             1: 1, // 简单
@@ -660,7 +660,7 @@ function validateQuestionId() {
             3: 3, // 困难
             4: 4  // 极难
           }
-          form.value.difficultyLevel = difficultyMap[response.data.difficulty] || 2
+          form.value.difficultyLevel = difficultyMap[(response.data as any).difficulty] || 2
         }
       } else {
         questionValid.value = false
@@ -987,8 +987,8 @@ async function submitForm() {
     
   } catch (error) {
     console.error('提交失败:', error)
-    if (error.response && error.response.data && error.response.data.msg) {
-      proxy.$modal.msgError(error.response.data.msg)
+    if ((error as any).response && (error as any).response.data && (error as any).response.data.msg) {
+      proxy.$modal.msgError((error as any).response.data.msg)
     } else {
       proxy.$modal.msgError('提交失败，请检查数据')
     }

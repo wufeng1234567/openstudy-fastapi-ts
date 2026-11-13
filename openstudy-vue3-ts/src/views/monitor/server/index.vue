@@ -172,7 +172,7 @@
 <script setup lang="ts">
 import { getServer } from '@/api/monitor/server'
 
-const server = ref<any[]>([]);
+const server = ref<any>([]);
 const { proxy } = getCurrentInstance() as any;
 
 function getList() {
