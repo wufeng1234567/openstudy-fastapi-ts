@@ -59,6 +59,7 @@ from .question_export_rows import (
     bank_rows as export_bank_rows, question_rows, favorite_bank_rows, favorite_question_rows,
     error_rows, marked_rows, FAVORITE_STATUS_TEXT,
 )
+from .question_patch_helpers import _apply_question_fields, _apply_error_optional_fields
 
 
 # ========== 辅助函数 ==========
@@ -951,12 +952,7 @@ async def report_practice(
             err.last_error_time = now
             err.status = 1
             err.is_mastered = 0
-            if payload.notes is not None:
-                err.notes = payload.notes
-            if payload.tags is not None:
-                err.tags = payload.tags
-            if payload.difficultyRating is not None:
-                err.difficulty_rating = payload.difficultyRating
+            _apply_error_optional_fields(err, payload)
             error_id = err.error_id
         else:
             err = UserQuestionError(
@@ -1079,28 +1075,7 @@ async def update_question(
     old_bank_id = question.bank_id
 
     # 更新主题字段
-    if payload.bankId is not None:
-        question.bank_id = payload.bankId
-    if payload.questionType is not None:
-        question.question_type = payload.questionType
-    if payload.questionText is not None:
-        question.question_text = payload.questionText
-    if payload.content is not None:
-        question.content = payload.content
-    if payload.options is not None:
-        question.options = payload.options
-    if payload.answer is not None:
-        question.answer = payload.answer
-    if payload.questionAnalysis is not None:
-        question.analysis = payload.questionAnalysis
-    if payload.difficulty is not None:
-        question.difficulty = payload.difficulty
-    if payload.sortOrder is not None:
-        question.sort_order = payload.sortOrder
-    if payload.score is not None:
-        question.score = payload.score
-    if payload.status is not None:
-        question.status = payload.status
+    _apply_question_fields(question, payload)
 
     # 子题全量替换：先删除旧子题，再插入新子题（与 SpringBoot 一致）
     if payload.questionSubList is not None:
@@ -2646,12 +2621,7 @@ async def record_error(
         error_record.status = 1
         error_record.is_mastered = 0
         # 更新可选字段（如果传了）
-        if payload.notes is not None:
-            error_record.notes = payload.notes
-        if payload.tags is not None:
-            error_record.tags = payload.tags
-        if payload.difficultyRating is not None:
-            error_record.difficulty_rating = payload.difficultyRating
+        _apply_error_optional_fields(error_record, payload)
     else:
         # 新建错题记录
         error_record = UserQuestionError(
@@ -2662,12 +2632,7 @@ async def record_error(
             error_time=now,
             last_error_time=now,
         )
-        if payload.notes is not None:
-            error_record.notes = payload.notes
-        if payload.tags is not None:
-            error_record.tags = payload.tags
-        if payload.difficultyRating is not None:
-            error_record.difficulty_rating = payload.difficultyRating
+        _apply_error_optional_fields(error_record, payload)
         db.add(error_record)
 
     # 如果传了 isMastered=1，则标记为已掌握
@@ -2746,12 +2711,7 @@ async def update_error_question(
         if denied:
             return denied
 
-    if payload.notes is not None:
-        err.notes = payload.notes
-    if payload.tags is not None:
-        err.tags = payload.tags
-    if payload.difficultyRating is not None:
-        err.difficulty_rating = payload.difficultyRating
+    _apply_error_optional_fields(err, payload)
     if payload.reviewCount is not None:
         err.review_count = payload.reviewCount
     if payload.isMastered is not None:

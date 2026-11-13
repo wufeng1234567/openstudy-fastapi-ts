@@ -18,7 +18,6 @@ SpringBoot 版 `/rag/**` 是 permit-all + `userId` 参数默认 1 + 无归属校
 from __future__ import annotations
 
 import asyncio
-import json
 import re
 import uuid
 from pathlib import Path
@@ -68,6 +67,9 @@ from .rag_helpers import (
 from .rag_formatters import _attach_kb_names, _group_hits_by_file
 from .rag_payload_formatters import _upload_failure, _standalone_image_payload, _pptx_filename, _doc_status_payload
 from .rag_config_formatters import build_rag_config_payload, REINDEX_HINT
+from .rag_sse_formatters import (
+    SSE_STUDY_PACK_HEADERS, SSE_ORGANIZE_HEADERS, _sse_data, _organize_stage_payload,
+)
 
 # ============================================================ 知识库
 
@@ -731,11 +733,7 @@ async def stream_workspace_study_pack(
         return StreamingResponse(
             event_stream(),
             media_type="text/plain; charset=utf-8",
-            headers={
-                "Cache-Control": "no-cache, no-transform",
-                "X-Accel-Buffering": "no",
-                "Connection": "keep-alive",
-            },
+            headers=dict(SSE_STUDY_PACK_HEADERS),
         )
     except Exception as e:
         return _fail(e)
@@ -2234,31 +2232,23 @@ async def stream_workspace_organize_plan(
             if stage_key != last_stage:
                 last_stage = stage_key
                 yield "event: stage\n"
-                yield "data: " + json.dumps(
-                    {
-                        "status": payload["status"],
-                        "stage": payload["stage"],
-                        "progress": payload["progress"],
-                        "summary": payload["summary"],
-                    },
-                    ensure_ascii=False,
-                ) + "\n\n"
+                yield _sse_data(_organize_stage_payload(payload))
             changes = payload.get("changes") or []
             if len(changes) > last_change_count:
                 for change in changes[last_change_count:]:
                     yield "event: change\n"
-                    yield "data: " + json.dumps(change, ensure_ascii=False) + "\n\n"
+                    yield _sse_data(change)
                 last_change_count = len(changes)
             if payload["status"] in {"ready", "applied", "rejected", "failed", "rolled_back"}:
                 yield "event: done\n"
-                yield "data: " + json.dumps(payload, ensure_ascii=False) + "\n\n"
+                yield _sse_data(payload)
                 return
             await asyncio.sleep(0.35)
 
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers=dict(SSE_ORGANIZE_HEADERS),
     )
 
 

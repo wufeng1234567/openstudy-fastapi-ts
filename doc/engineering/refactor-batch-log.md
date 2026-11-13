@@ -214,3 +214,24 @@
 新增模块：
 - `question_export_rows.py` / `rag_config_formatters.py`
 - `wiki_view_helpers.py`
+
+## Batch 9（2026-11-13，已完成）
+
+- 基线 commit：`0a50c84`
+- 快照目录：`_scratch_refactor_batch9_0a50c84/`
+- 授权：hy4 = questions.py + rag.py；minimax3.1f = KnowledgeWikiPanel.vue
+- 测试：build 4,014 modules / unit 29 项 / wiki runtime 无报错 / compileall / ruff / 13 项定向 pytest
+- 备注：batch9 发现并修复 `export_bank_rows` 别名导入错误（`bank_rows as export_bank_rows`）
+- 提交：`[pending]`
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `app/api/v1/questions.py` | 2,859 | 2,819 | -40 |
+| `app/api/v1/rag.py` | 2,387 | 2,377 | -10 |
+| `KnowledgeWikiPanel.vue` | 2,339 | 2,270 | -69 |
+
+新增模块：
+- `question_patch_helpers.py` / `rag_sse_formatters.py`
+- `wikiMapGeometry.ts`

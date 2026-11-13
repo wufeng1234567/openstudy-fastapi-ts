@@ -466,6 +466,14 @@ import { useWikiMapViewControls } from './useWikiMapViewControls'
 import { useWikiGraphDerived } from './useWikiGraphDerived'
 import { useWikiGraphHulls } from './useWikiGraphHulls'
 import { useWikiLearningDisplay } from './useWikiLearningDisplay'
+import {
+  buildMapEdge,
+  computeRepulsion,
+  computeSpringForces,
+  computeWheelZoom,
+  integrateNodes,
+  pickNonOverlappingLabelIds
+} from './wikiMapGeometry'
 import { WIKI_VIEW_KEY, WIKI_LEARN_KEY, WIKI_GUIDE_KEY, WIKI_ROUTE_KEY, readWikiView, readWikiLearnMode, readRouteQuery } from './wikiPanelStorage'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -975,25 +983,7 @@ const mapEdges = computed(() => {
       const source = positions.get(sourceId)
       const target = positions.get(targetId)
       if (!source || !target) return null
-      const dx = target.x - source.x
-      const dy = target.y - source.y
-      const distance = Math.hypot(dx, dy) || 1
-      const ux = dx / distance
-      const uy = dy / distance
-      const startPad = Number(source.r || 5) + 5
-      const endPad = Number(target.r || 5) + 7
-      return {
-        key: `${sourceId}-${targetId}-${edge.type}`,
-        source: sourceId,
-        target: targetId,
-        x1: source.x + ux * startPad,
-        y1: source.y + uy * startPad,
-        x2: target.x - ux * endPad,
-        y2: target.y - uy * endPad,
-        type: edge.type || 'related',
-        label: edge.label || edge.type || '关系',
-        cross: isCrossSourceEdge(edge)
-      }
+      return buildMapEdge(source, target, sourceId, targetId, edge, isCrossSourceEdge)
     })
     .filter(Boolean) as any[]
   const unique = new Map<string, any>()
@@ -1008,7 +998,6 @@ const mapEdges = computed(() => {
 })
 
 const visibleLabelIds = computed(() => {
-  const result = new Set<string>()
   const candidates = [...mapNodes.value]
     .filter((node: any) => {
       const kind = normalizeEntityKind(node.kind)
@@ -1029,20 +1018,7 @@ const visibleLabelIds = computed(() => {
       }
       return priority(a) - priority(b) || Number(b.degree || 0) - Number(a.degree || 0)
     })
-  const occupied: Array<{ left: number; right: number; top: number; bottom: number }> = []
-  for (const node of candidates) {
-    const title = mapNodeLabel(node)
-    if (!title) continue
-    const screenX = Number(node.x) * Number(mapView.scale) + Number(mapView.x)
-    const screenY = Number(node.y) * Number(mapView.scale) + Number(mapView.y) + Number(node.r) + 14
-    const width = Math.max(34, title.length * 11)
-    const box = { left: screenX - width / 2, right: screenX + width / 2, top: screenY - 12, bottom: screenY + 4 }
-    const overlaps = occupied.some((item) => !(box.right < item.left || box.left > item.right || box.bottom < item.top || box.top > item.bottom))
-    if (overlaps) continue
-    occupied.push(box)
-    result.add(String(node.id))
-  }
-  return result
+  return pickNonOverlappingLabelIds(candidates, mapNodeLabel, Number(mapView.scale), Number(mapView.x), Number(mapView.y))
 })
 
 // 学习态展示 computed（抽到同目录 composable；均为惰性纯展示，不含任何计时/轮询）
@@ -1560,50 +1536,9 @@ function startMapAnimation() {
       mapAnimFrame = 0
       return
     }
-    for (let i = 0; i < mapSimNodes.length; i++) {
-      const a = mapSimNodes[i]!
-      for (let j = i + 1; j < mapSimNodes.length; j++) {
-        const b = mapSimNodes[j]!
-        const dx = b.x - a.x
-        const dy = b.y - a.y
-        const distance = Math.hypot(dx, dy) || 1
-        const force = (12000 * mapSimAlpha) / Math.max(distance * distance, 100)
-        const fx = (dx / distance) * force
-        const fy = (dy / distance) * force
-        a.vx -= fx
-        a.vy -= fy
-        b.vx += fx
-        b.vy += fy
-      }
-    }
-    for (const edge of mapEdges.value) {
-      const source = byId.get(edge.source)
-      const target = byId.get(edge.target)
-      if (!source || !target) continue
-      const dx = target.x - source.x
-      const dy = target.y - source.y
-      const distance = Math.hypot(dx, dy) || 1
-      const degree = Math.max(1, Math.sqrt(Math.max(1, (source.degree || 0) + (target.degree || 0))))
-      const force = ((distance - 140) * 0.003 * mapSimAlpha) / degree
-      const fx = (dx / distance) * force
-      const fy = (dy / distance) * force
-      source.vx += fx
-      source.vy += fy
-      target.vx -= fx
-      target.vy -= fy
-    }
-    for (const node of mapSimNodes) {
-      node.vx *= 0.6
-      node.vy *= 0.6
-      const speed = Math.hypot(node.vx, node.vy)
-      if (speed > 20) {
-        node.vx *= 20 / speed
-        node.vy *= 20 / speed
-      }
-      node.x = Math.max(40, Math.min(960, node.x + node.vx))
-      node.y = Math.max(40, Math.min(600, node.y + node.vy))
-      mapSimPositions[node.id] = { x: node.x, y: node.y }
-    }
+    computeRepulsion(mapSimNodes, mapSimAlpha)
+    computeSpringForces(mapEdges.value, byId, mapSimAlpha)
+    integrateNodes(mapSimNodes, mapSimPositions)
     mapAnimFrame = requestAnimationFrame(tick)
   }
   mapAnimFrame = requestAnimationFrame(tick)
@@ -2313,11 +2248,7 @@ function onMapWheel(event: WheelEvent) {
   const px = event.clientX - rect.left
   const py = event.clientY - rect.top
   const current = mapWheelPending || { x: mapView.x, y: mapView.y, scale: mapView.scale }
-  const old = current.scale
-  const next = Math.max(0.35, Math.min(3, old * (event.deltaY < 0 ? 1.12 : 1 / 1.12)))
-  const wx = (px - current.x) / old
-  const wy = (py - current.y) / old
-  mapWheelPending = { x: px - wx * next, y: py - wy * next, scale: next }
+  mapWheelPending = computeWheelZoom(current, px, py, event.deltaY)
   // 滚轮期间只直接改 SVG transform，不触发几百个节点/边的 Vue 重渲染。
   if (!mapWheelRaf) mapWheelRaf = requestAnimationFrame(renderMapZoom)
   if (mapWheelCommitTimer) clearTimeout(mapWheelCommitTimer)
