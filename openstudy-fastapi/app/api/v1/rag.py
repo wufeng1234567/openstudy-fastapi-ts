@@ -76,6 +76,7 @@ from .rag_upload_formatters import upload_summary_payload
 from .rag_query_params import parse_csv_ints
 from .rag_download_response import document_download_response
 from .rag_upload_context import prepare_upload_assets
+from .rag_value_errors import value_error_400
 
 # ============================================================ 知识库
 
@@ -1560,7 +1561,7 @@ async def edit_micro_course_slide(
         patch = data.model_dump(exclude_none=True)
         return success(await edit_micro_course_slide(db, _uid(current_user), record_id, slide_index, patch))
     except ValueError as e:
-        return error(str(e), code=400)
+        return value_error_400(e)
     except Exception as e:
         return _fail(e)
 
@@ -1581,7 +1582,7 @@ async def reorder_micro_course_slides(
             )
         )
     except ValueError as e:
-        return error(str(e), code=400)
+        return value_error_400(e)
     except Exception as e:
         return _fail(e)
 
@@ -1603,7 +1604,7 @@ async def regenerate_micro_course_slide(
             )
         )
     except ValueError as e:
-        return error(str(e), code=400)
+        return value_error_400(e)
     except Exception as e:
         return _fail(e)
 
@@ -1624,7 +1625,7 @@ async def insert_micro_course_slide(
             )
         )
     except ValueError as e:
-        return error(str(e), code=400)
+        return value_error_400(e)
     except Exception as e:
         return _fail(e)
 
@@ -1647,7 +1648,7 @@ async def import_micro_course_html(
             )
         )
     except ValueError as e:
-        return error(str(e), code=400)
+        return value_error_400(e)
     except Exception as e:
         return _fail(e)
 

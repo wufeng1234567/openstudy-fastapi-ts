@@ -419,3 +419,24 @@
 新增模块：
 - `question_record_filters.py` / `rag_upload_context.py`
 - `loop_tool_events.py`
+
+## Batch 19（2026-11-13，已完成）
+
+- 基线 commit：`706aee3`
+- 快照目录：`_scratch_refactor_batch19_706aee3/`
+- 授权：hy4 = questions.py + rag.py；minimax3.1f = wiki_service.py
+- 测试：compileall / ruff / questions+rag+wiki 导入 / 13 项定向 pytest
+- 备注：本轮以消除重复实现为主；questions.py 34 处 by-id 查询收敛，wiki_service 11 处页面查询收敛
+- 提交：`[pending]`
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `app/api/v1/questions.py` | 2,595 | 2,592 | -3 |
+| `app/api/v1/rag.py` | 2,281 | 2,282 | +1 |
+| `app/services/rag/wiki_service.py` | 1,737 | 1,668 | -69 |
+
+新增模块：
+- `question_query_builders.py` / `rag_value_errors.py`
+- `wiki_page_queries.py`

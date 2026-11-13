@@ -88,6 +88,10 @@ from app.services.rag.wiki_link_edit import (
     replace_link_with_text,
 )
 
+from app.services.rag.wiki_page_queries import (
+    load_page,
+)
+
 from app.services.rag.wiki_page_state import (
     mark_page_manual,
     refresh_page_derived,
@@ -967,14 +971,7 @@ async def _wiki_practice_bank(
 
 async def record_wiki_page_view(db: AsyncSession, user_id: int, page_id: int) -> dict:
     """记录一次真实打开主题页；重复打开累加次数，不编造阅读时长。"""
-    page = (
-        await db.execute(
-            select(RagWikiPage).where(
-                RagWikiPage.id == int(page_id),
-                RagWikiPage.user_id == int(user_id),
-            )
-        )
-    ).scalar_one_or_none()
+    page = await load_page(db, user_id, page_id)
     if not page:
         raise ValueError("知识主题页不存在或无权访问")
     row = (
@@ -1093,14 +1090,7 @@ async def _page_link_payload(db: AsyncSession, user_id: int, page: RagWikiPage) 
 
 
 async def get_wiki_page(db: AsyncSession, user_id: int, page_id: int) -> dict:
-    page = (
-        await db.execute(
-            select(RagWikiPage).where(
-                RagWikiPage.id == int(page_id),
-                RagWikiPage.user_id == int(user_id),
-            )
-        )
-    ).scalar_one_or_none()
+    page = await load_page(db, user_id, page_id)
     if not page:
         raise ValueError("知识主题页不存在或无权访问")
     if page.merged_into_page_id and int(page.merged_into_page_id) != int(page.id):
@@ -1331,14 +1321,7 @@ async def update_wiki_page(
     expected_version: Optional[int] = None,
 ) -> dict:
     """手动编辑主题页；先保存旧版本，再更新并重建 Wiki 检索块。"""
-    page = (
-        await db.execute(
-            select(RagWikiPage).where(
-                RagWikiPage.id == int(page_id),
-                RagWikiPage.user_id == int(user_id),
-            )
-        )
-    ).scalar_one_or_none()
+    page = await load_page(db, user_id, page_id)
     if not page:
         raise ValueError("知识主题页不存在或无权访问")
     if expected_version is not None and int(page.version or 1) != int(expected_version):
@@ -1417,14 +1400,7 @@ async def add_wiki_page_link(
     section_index: Optional[int] = None,
 ) -> dict:
     """手动添加页面内链：只允许链接同资料夹页面，锚文本必须真实出现在正文。"""
-    page = (
-        await db.execute(
-            select(RagWikiPage).where(
-                RagWikiPage.id == int(page_id),
-                RagWikiPage.user_id == int(user_id),
-            )
-        )
-    ).scalar_one_or_none()
+    page = await load_page(db, user_id, page_id)
     if not page:
         raise ValueError("知识主题页不存在或无权访问")
     target = (
@@ -1473,14 +1449,7 @@ async def remove_wiki_page_link(
     section_index: Optional[int] = None,
 ) -> dict:
     """手动移除页面内链：把 [[page:id|锚文本]] 还原成普通文字，保留正文。"""
-    page = (
-        await db.execute(
-            select(RagWikiPage).where(
-                RagWikiPage.id == int(page_id),
-                RagWikiPage.user_id == int(user_id),
-            )
-        )
-    ).scalar_one_or_none()
+    page = await load_page(db, user_id, page_id)
     if not page:
         raise ValueError("知识主题页不存在或无权访问")
     pattern = page_link_pattern(target_page_id)
@@ -1503,14 +1472,7 @@ async def remove_wiki_page_link(
 
 async def refresh_wiki_page_links(db: AsyncSession, user_id: int, page_id: int) -> dict:
     """重新扫描当前资料夹页面标题/别名，给所有页面补链。"""
-    page = (
-        await db.execute(
-            select(RagWikiPage).where(
-                RagWikiPage.id == int(page_id),
-                RagWikiPage.user_id == int(user_id),
-            )
-        )
-    ).scalar_one_or_none()
+    page = await load_page(db, user_id, page_id)
     if not page:
         raise ValueError("知识主题页不存在或无权访问")
     stats = await linkify_wiki_pages(db, int(user_id), int(page.kb_id), add_missing=True)
@@ -1523,13 +1485,7 @@ async def refresh_wiki_page_links(db: AsyncSession, user_id: int, page_id: int) 
 
 
 async def list_wiki_revisions(db: AsyncSession, user_id: int, page_id: int) -> list[dict]:
-    page = (
-        await db.execute(
-            select(RagWikiPage).where(
-                RagWikiPage.id == int(page_id), RagWikiPage.user_id == int(user_id)
-            )
-        )
-    ).scalar_one_or_none()
+    page = await load_page(db, user_id, page_id)
     if not page:
         raise ValueError("知识主题页不存在或无权访问")
     rows = (
@@ -1557,13 +1513,7 @@ async def list_wiki_revisions(db: AsyncSession, user_id: int, page_id: int) -> l
 async def restore_wiki_revision(
     db: AsyncSession, user_id: int, page_id: int, revision_id: int
 ) -> dict:
-    page = (
-        await db.execute(
-            select(RagWikiPage).where(
-                RagWikiPage.id == int(page_id), RagWikiPage.user_id == int(user_id)
-            )
-        )
-    ).scalar_one_or_none()
+    page = await load_page(db, user_id, page_id)
     revision = (
         await db.execute(
             select(RagWikiPageRevision).where(
@@ -1592,13 +1542,7 @@ async def restore_wiki_revision(
 
 
 async def delete_wiki_page(db: AsyncSession, user_id: int, page_id: int) -> dict:
-    page = (
-        await db.execute(
-            select(RagWikiPage).where(
-                RagWikiPage.id == int(page_id), RagWikiPage.user_id == int(user_id)
-            )
-        )
-    ).scalar_one_or_none()
+    page = await load_page(db, user_id, page_id)
     if not page:
         raise ValueError("知识主题页不存在或无权访问")
     await db.execute(delete(RagWikiChunk).where(RagWikiChunk.page_id == int(page.id)))
@@ -1636,13 +1580,7 @@ async def attach_wiki_image(
     asset_key: str,
     quote: str = "",
 ) -> dict:
-    page = (
-        await db.execute(
-            select(RagWikiPage).where(
-                RagWikiPage.id == int(page_id), RagWikiPage.user_id == int(user_id)
-            )
-        )
-    ).scalar_one_or_none()
+    page = await load_page(db, user_id, page_id)
     if not page:
         raise ValueError("知识主题页不存在或无权访问")
     asset = (
@@ -1678,13 +1616,7 @@ async def attach_wiki_image(
 async def detach_wiki_image(
     db: AsyncSession, user_id: int, page_id: int, reference_id: int
 ) -> dict:
-    page = (
-        await db.execute(
-            select(RagWikiPage).where(
-                RagWikiPage.id == int(page_id), RagWikiPage.user_id == int(user_id)
-            )
-        )
-    ).scalar_one_or_none()
+    page = await load_page(db, user_id, page_id)
     ref = (
         await db.execute(
             select(ContentReference).where(

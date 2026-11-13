@@ -70,6 +70,7 @@ from .question_list_filters import apply_favorite_bank_filters, apply_favorite_q
 from .question_batch_check import batch_check_result
 from .question_query_scope import apply_owner_scope
 from .question_record_filters import apply_error_filters, apply_marked_filters
+from .question_query_builders import bank_by_id_query, question_by_id_query, user_id_query
 
 
 # ========== 辅助函数 ==========
@@ -184,7 +185,7 @@ async def get_bank(
     current_user: dict = Depends(get_current_user),
 ):
     """查询题库详情"""
-    query = select(QuestionBank).where(QuestionBank.id == bank_id)
+    query = bank_by_id_query(bank_id)
     result = await db.execute(query)
     bank = result.scalar_one_or_none()
 
@@ -291,7 +292,7 @@ async def save_bank_with_questions(
     try:
         if payload.bankId:
             bank = (await db.execute(
-                select(QuestionBank).where(QuestionBank.id == payload.bankId)
+                bank_by_id_query(payload.bankId)
             )).scalar_one_or_none()
             if not bank:
                 return error("题库不存在", code=404)
@@ -417,7 +418,7 @@ async def copy_bank(
     """
     user_id = current_user.get("user_id")
 
-    src_result = await db.execute(select(QuestionBank).where(QuestionBank.id == bank_id))
+    src_result = await db.execute(bank_by_id_query(bank_id))
     bank = src_result.scalar_one_or_none()
     if not bank:
         return error("题库不存在")
@@ -455,7 +456,7 @@ async def update_bank(
     if not payload.bankId:
         return error("题库ID不能为空")
 
-    query = select(QuestionBank).where(QuestionBank.id == payload.bankId)
+    query = bank_by_id_query(payload.bankId)
     result = await db.execute(query)
     bank = result.scalar_one_or_none()
 
@@ -594,7 +595,7 @@ async def list_questions(
 ):
     """查询题目列表（按 sort_order, id 排序）"""
     if bankId:
-        bank_row = await db.execute(select(QuestionBank).where(QuestionBank.id == bankId))
+        bank_row = await db.execute(bank_by_id_query(bankId))
         bank_obj = bank_row.scalar_one_or_none()
         if bank_obj and not await _can_view_bank(db, bank_obj, current_user.get("user_id")):
             return error("无权访问该题库的题目", code=403)
@@ -673,7 +674,7 @@ async def list_all_questions(
     供练习页在作答前安全加载；作答后由 `/questionPractice/session/*` 返回。
     """
     if bankId:
-        bank_row = await db.execute(select(QuestionBank).where(QuestionBank.id == bankId))
+        bank_row = await db.execute(bank_by_id_query(bankId))
         bank_obj = bank_row.scalar_one_or_none()
         if bank_obj and not await _can_view_bank(db, bank_obj, current_user.get("user_id")):
             return error("无权访问该题库的题目", code=403)
@@ -785,7 +786,7 @@ async def get_question(
 
     # 可见性：题目归属在题库上，私密题库的题目只对题库主/已领取分享者开放
     bank = (await db.execute(
-        select(QuestionBank).where(QuestionBank.id == question.bank_id)
+        bank_by_id_query(question.bank_id)
     )).scalar_one_or_none()
     if not await _can_view_bank(db, bank, current_user.get("user_id")):
         return error("无权访问该题目（所属题库为私密题库）", code=403)
@@ -816,13 +817,13 @@ async def get_question_source_api(
     uid = int(current_user.get("user_id") or 0)
     try:
         question = (
-            await db.execute(select(QuestionMain).where(QuestionMain.id == question_id))
+            await db.execute(question_by_id_query(question_id))
         ).scalar_one_or_none()
         if not question:
             return error("题目不存在", code=404)
         bank = (
             await db.execute(
-                select(QuestionBank).where(QuestionBank.id == question.bank_id)
+                bank_by_id_query(question.bank_id)
             )
         ).scalar_one_or_none()
         if not await _can_view_bank(db, bank, uid):
@@ -1006,7 +1007,7 @@ async def create_question(
     3. 重算题库 total_questions
     """
     # 验证题库是否存在
-    bank_query = select(QuestionBank).where(QuestionBank.id == payload.bankId)
+    bank_query = bank_by_id_query(payload.bankId)
     bank_result = await db.execute(bank_query)
     bank = bank_result.scalar_one_or_none()
 
@@ -1068,7 +1069,7 @@ async def update_question(
     4. 更新主题
     5. 题库变更时重算新旧题库总数
     """
-    query = select(QuestionMain).where(QuestionMain.id == payload.id)
+    query = question_by_id_query(payload.id)
     result = await db.execute(query)
     question = result.scalar_one_or_none()
 
@@ -1186,7 +1187,7 @@ async def check_question_exists(
 
     # 可见性：私密题库的题干不对不可见用户泄露（匿名请求已被 get_current_user 拦下）
     bank = (await db.execute(
-        select(QuestionBank).where(QuestionBank.id == question.bank_id)
+        bank_by_id_query(question.bank_id)
     )).scalar_one_or_none()
     if not await _can_view_bank(db, bank, current_user.get("user_id")):
         return error("无权访问该题目（所属题库为私密题库）", code=403)
@@ -1229,7 +1230,7 @@ async def get_question_simple_info(
     current_user: dict = Depends(get_current_user),
 ):
     """获取题目简单信息"""
-    query = select(QuestionMain).where(QuestionMain.id == question_id)
+    query = question_by_id_query(question_id)
     result = await db.execute(query)
     question = result.scalar_one_or_none()
 
@@ -1238,7 +1239,7 @@ async def get_question_simple_info(
 
     # 可见性：题干/解析属私密题库时不对外泄露
     bank = (await db.execute(
-        select(QuestionBank).where(QuestionBank.id == question.bank_id)
+        bank_by_id_query(question.bank_id)
     )).scalar_one_or_none()
     if not await _can_view_bank(db, bank, current_user.get("user_id")):
         return error("无权访问该题目（所属题库为私密题库）", code=403)
@@ -1270,7 +1271,7 @@ async def check_question_and_user(
     # 可见性：私密题库的题目信息不对不可见用户回填
     if question_exists:
         bank = (await db.execute(
-            select(QuestionBank).where(QuestionBank.id == question.bank_id)
+            bank_by_id_query(question.bank_id)
         )).scalar_one_or_none()
         if not await _can_view_bank(db, bank, current_user.get("user_id")):
             return error("无权访问该题目（所属题库为私密题库）", code=403)
@@ -1491,7 +1492,7 @@ async def check_favorite_bank_exists(
     另外参考版只校验「题库是否存在」，不额外限制 status，这里保持一致。
     """
     bank = (await db.execute(
-        select(QuestionBank).where(QuestionBank.id == bank_id)
+        bank_by_id_query(bank_id)
     )).scalar_one_or_none()
 
     if not bank:
@@ -1572,13 +1573,13 @@ async def add_favorite_bank(
 
     # 目标用户必须存在（否则 FK 约束会在 commit 时抛 IntegrityError → 500）
     target_user = (await db.execute(
-        select(SysUser.user_id).where(SysUser.user_id == user_id)
+        user_id_query(user_id)
     )).scalar_one_or_none()
     if not target_user:
         return error("用户ID %s 不存在，请输入有效的用户ID" % user_id)
 
     # 检查题库是否存在
-    bank_query = select(QuestionBank).where(QuestionBank.id == bank_id)
+    bank_query = bank_by_id_query(bank_id)
     bank_result = await db.execute(bank_query)
     if not bank_result.scalar_one_or_none():
         return error("题库ID %s 不存在，请输入有效的题库ID" % bank_id)
@@ -1637,7 +1638,7 @@ async def update_favorite_bank(
 
     if new_user_id != fav.user_id or new_bank_id != fav.bank_id:
         owner = (await db.execute(
-            select(SysUser.user_id).where(SysUser.user_id == new_user_id)
+            user_id_query(new_user_id)
         )).scalar_one_or_none()
         if not owner:
             return error("用户ID %s 不存在，请输入有效的用户ID" % new_user_id)
@@ -1683,7 +1684,7 @@ async def get_favorite_bank(
         if denied:
             return denied
 
-    bank_query = select(QuestionBank).where(QuestionBank.id == fav.bank_id)
+    bank_query = bank_by_id_query(fav.bank_id)
     bank_result = await db.execute(bank_query)
     bank = bank_result.scalar_one_or_none()
     if not bank:
@@ -1907,7 +1908,7 @@ async def check_favorite_question_exists(
     → 对话框会误报「题目ID不存在，请检查输入」。
     """
     q = (await db.execute(
-        select(QuestionMain).where(QuestionMain.id == question_id)
+        question_by_id_query(question_id)
     )).scalar_one_or_none()
     if not q:
         return success({"exists": False, "questionId": question_id})
@@ -1964,14 +1965,13 @@ async def add_favorite_question(
 
     # 目标用户必须存在（否则 FK 约束会在 commit 时抛 IntegrityError → 500）
     target_user = (await db.execute(
-        select(SysUser.user_id).where(SysUser.user_id == user_id)
+        user_id_query(user_id)
     )).scalar_one_or_none()
     if not target_user:
         return error("用户ID %s 不存在，请输入有效的用户ID" % user_id)
 
     # 获取题目信息（含 bank_id，DB 要求非空）
-    q_query = select(QuestionMain).where(QuestionMain.id == question_id)
-    q_result = await db.execute(q_query)
+    q_result = await db.execute(question_by_id_query(question_id))
     question = q_result.scalar_one_or_none()
     if not question:
         return error("题目ID %s 不存在，请输入有效的题目ID" % question_id)
@@ -2056,12 +2056,12 @@ async def update_favorite_question(
 
     if new_user_id != fav.user_id or new_question_id != fav.question_id:
         owner = (await db.execute(
-            select(SysUser.user_id).where(SysUser.user_id == new_user_id)
+            user_id_query(new_user_id)
         )).scalar_one_or_none()
         if not owner:
             return error("用户ID %s 不存在，请输入有效的用户ID" % new_user_id)
         question = (await db.execute(
-            select(QuestionMain).where(QuestionMain.id == new_question_id)
+            question_by_id_query(new_question_id)
         )).scalar_one_or_none()
         if not question:
             return error("题目ID %s 不存在，请输入有效的题目ID" % new_question_id)
@@ -2241,8 +2241,7 @@ async def create_error_question(
         return error("题目ID不能为空")
 
     # 验证题目是否存在
-    q_query = select(QuestionMain).where(QuestionMain.id == question_id)
-    q_result = await db.execute(q_query)
+    q_result = await db.execute(question_by_id_query(question_id))
     question = q_result.scalar_one_or_none()
     if not question:
         return error("题目不存在")
@@ -2428,8 +2427,7 @@ async def record_error(
     question_id = payload.questionId
 
     # 获取题目信息（含 bank_id，DB 要求非空）
-    q_query = select(QuestionMain).where(QuestionMain.id == question_id)
-    q_result = await db.execute(q_query)
+    q_result = await db.execute(question_by_id_query(question_id))
     question = q_result.scalar_one_or_none()
     if not question:
         return error("题目不存在")
@@ -2789,14 +2787,13 @@ async def add_marked(
 
     # 目标用户必须存在（否则 FK 约束会在 commit 时抛 IntegrityError → 500）
     target_user = (await db.execute(
-        select(SysUser.user_id).where(SysUser.user_id == user_id)
+        user_id_query(user_id)
     )).scalar_one_or_none()
     if not target_user:
         return error("用户不存在")
 
     # 获取题目信息（含 bank_id，DB 要求非空）
-    q_query = select(QuestionMain).where(QuestionMain.id == question_id)
-    q_result = await db.execute(q_query)
+    q_result = await db.execute(question_by_id_query(question_id))
     question = q_result.scalar_one_or_none()
     if not question:
         return error("题目不存在")
@@ -2886,12 +2883,12 @@ async def update_marked_question(
 
     if new_user_id != m.user_id or new_question_id != m.question_id:
         owner = (await db.execute(
-            select(SysUser.user_id).where(SysUser.user_id == new_user_id)
+            user_id_query(new_user_id)
         )).scalar_one_or_none()
         if not owner:
             return error("用户不存在")
         question = (await db.execute(
-            select(QuestionMain).where(QuestionMain.id == new_question_id)
+            question_by_id_query(new_question_id)
         )).scalar_one_or_none()
         if not question:
             return error("题目不存在")
