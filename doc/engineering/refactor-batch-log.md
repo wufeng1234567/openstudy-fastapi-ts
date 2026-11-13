@@ -618,3 +618,11 @@
 - 测试：build 4,032 modules / unit 29 项 / type-check exit 2（未清零）
 - 备注：questionError 余约 2 条未定位；所有修改均为编译期类型标注
 - 提交：`adf75bf`（GitHub/Gitee/GitCode 三远端已同步）
+## Batch 31（2026-11-13，已完成）
+
+- 基线 commit：`c57927f`；快照：`_scratch_refactor_batch31_c57927f/`
+- 类型债务批次：studio/create（40 条）、Crontab/result（39 条）、questionBuilderAi.ts（38 条）；minimax 负责前两个，hy4 负责 TS 文件
+- 结果：`npm run type-check` 1,384 → **1,272 条**（-112）；`npm run lint` 3,992 → **4,064 warnings**（+72，warn-only）
+- 测试：build 4,032 modules / unit 29 项 / type-check exit 2（未清零）
+- 备注：Crontab 余 1 条 formatDate 参数数未改；所有修改均为编译期类型标注
+- 提交：`95261a7`（GitHub/Gitee/GitCode 三远端已同步）
