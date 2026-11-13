@@ -116,6 +116,40 @@ export function layoutTopicGraph(
     }
   }
 
+  // 最后做几轮硬碰撞消解：节点圆点之间始终保留可点击/可读的空白，
+  // 避免力导向参数偏差时出现“两个节点叠在一起”的情况。
+  const entries = [...positions.entries()]
+  for (let pass = 0; pass < 18; pass += 1) {
+    for (let i = 0; i < entries.length; i += 1) {
+      const [idA, a] = entries[i]!
+      const nodeA = byId.get(idA)!
+      for (let j = i + 1; j < entries.length; j += 1) {
+        const [idB, b] = entries[j]!
+        const nodeB = byId.get(idB)!
+        const minDistance =
+          Math.max(10, Number(nodeA.r || 10)) +
+          Math.max(10, Number(nodeB.r || 10)) +
+          34
+        let dx = b.x - a.x
+        let dy = b.y - a.y
+        let distance = Math.hypot(dx, dy)
+        if (distance >= minDistance) continue
+        if (distance < 0.01) {
+          dx = 1
+          dy = 0.35
+          distance = Math.hypot(dx, dy)
+        }
+        const push = (minDistance - distance) / 2
+        const ux = dx / distance
+        const uy = dy / distance
+        a.x -= ux * push
+        a.y -= uy * push
+        b.x += ux * push
+        b.y += uy * push
+      }
+    }
+  }
+
   // 统一缩放到画布安全区，保留边距；不改变相对距离。
   const list = topics.map((node) => {
     const point = positions.get(String(node.id))!
@@ -128,9 +162,11 @@ export function layoutTopicGraph(
   const contentW = Math.max(1, maxX - minX)
   const contentH = Math.max(1, maxY - minY)
   const pad = 72
+  // 保留可读尺寸：节点数量多时允许图谱超出视口，由拖拽/缩放查看，
+  // 不把整张图压成看不清的小点。
   const scale = Math.min(
     1,
-    Math.max(0.18, Math.min((width - pad * 2) / contentW, (height - pad * 2) / contentH))
+    Math.max(0.55, Math.min((width - pad * 2) / contentW, (height - pad * 2) / contentH))
   )
   const offsetX = (width - contentW * scale) / 2 - minX * scale
   const offsetY = (height - contentH * scale) / 2 - minY * scale

@@ -94,10 +94,6 @@
             </marker>
           </defs>
           <g :transform="`translate(${mapView.x} ${mapView.y}) scale(${mapView.scale})`">
-            <path v-for="hull in mapHulls" :key="hull.key" :d="hull.path" class="kw-map-hull"
-              :class="{ 'is-hovered': mapHoveredId && hull.ids.includes(String(mapHoveredId)) }" />
-            <text v-for="hull in mapHulls" v-show="mapShowEntitySetLabels" :key="`label-${hull.key}`" :x="hull.labelX" :y="hull.labelY"
-              class="kw-map-hull-label">{{ hull.label }}</text>
             <line v-for="edge in mapEdges" :key="edge.key" :x1="edge.x1" :y1="edge.y1" :x2="edge.x2" :y2="edge.y2"
               :data-edge-source="edge.source" :data-edge-target="edge.target"
               class="kw-map-edge" :class="[`is-${edge.type}`, { 'is-cross': edge.cross, 'is-active': isMapEdgeActive(edge), 'is-dimmed': isMapEdgeDimmed(edge), 'is-current-route': isRouteEdge(edge), 'is-hidden': mapDraggingId && edge.source !== mapDraggingId && edge.target !== mapDraggingId }]"
@@ -172,11 +168,6 @@
               <button type="button" class="kw-graph-action" :class="{ 'is-active': !mapShowArrows }" @click="toggleMapArrows">
                 <OsIcon name="check" :size="14" />
                 <span>{{ mapShowArrows ? '隐藏箭头' : '显示箭头' }}</span>
-              </button>
-              <button type="button" class="kw-graph-action" :class="{ 'is-active': !mapShowEntitySetLabels }"
-                @click="mapShowEntitySetLabels = !mapShowEntitySetLabels">
-                <OsIcon name="eye-off" :size="14" />
-                <span>{{ mapShowEntitySetLabels ? '隐藏实体集名称' : '显示实体集名称' }}</span>
               </button>
               <button type="button" class="kw-graph-action" @click="resetGraphView">
                 <OsIcon name="refresh" :size="14" />
@@ -474,7 +465,6 @@ import { useWikiMapDisplay } from './useWikiMapDisplay'
 import { useWikiPlanState } from './useWikiPlanState'
 import { useWikiMapViewControls } from './useWikiMapViewControls'
 import { useWikiGraphDerived } from './useWikiGraphDerived'
-import { useWikiGraphHulls } from './useWikiGraphHulls'
 import { useWikiLearningDisplay } from './useWikiLearningDisplay'
 import { useWikiMapEdges } from './useWikiMapEdges'
 import { useWikiMapNodes } from './useWikiMapNodes'
@@ -644,7 +634,6 @@ const mapImageExpanded = ref(false)
 const searchSuppressed = ref(false)
 const mapHideUnlinked = ref(false)
 const mapShowArrows = ref(true)
-const mapShowEntitySetLabels = ref(true)
 const mapLearnMode = ref(true)
 const mapLearningPath = ref<string[]>([])
 const learningRoute = ref<any>(null)
@@ -679,10 +668,39 @@ const buildProgress = computed(() => {
 const activeLegend = computed(() => ENTITY_TYPE_META.filter((item) => item.type === 'topic'))
 
 // 首层只画知识主题；资料/网页/图片/题库/笔记统一收进主题详情里的「来源」。
-const allMapNodes = computed(() =>
-  (mapGraph.value?.nodes || []).filter(
-    (node: any) => normalizeEntityKind(node.kind || node.pageType) === 'topic'
+// sourceKinds 是从完整图谱的真实边反推出来的来源类型，供筛选使用。
+const topicSourceKinds = computed(() => {
+  const result = new Map<string, Set<string>>()
+  const nodes = mapGraph.value?.nodes || []
+  const topicIds = new Set(
+    nodes
+      .filter((node: any) => normalizeEntityKind(node.kind || node.pageType) === 'topic')
+      .map((node: any) => String(node.id))
   )
+  const byId = new Map(nodes.map((node: any) => [String(node.id), node]))
+  for (const edge of mapGraph.value?.edges || []) {
+    const sourceId = String(edge.source || '')
+    const targetId = String(edge.target || '')
+    const sourceTopic = topicIds.has(sourceId)
+    const targetTopic = topicIds.has(targetId)
+    if (sourceTopic === targetTopic) continue
+    const topicId = sourceTopic ? sourceId : targetId
+    const sourceNode = byId.get(sourceTopic ? targetId : sourceId)
+    if (!sourceNode) continue
+    const kind = normalizeEntityKind(sourceNode.kind || sourceNode.pageType)
+    if (kind === 'topic') continue
+    if (!result.has(topicId)) result.set(topicId, new Set())
+    result.get(topicId)!.add(kind)
+  }
+  return result
+})
+const allMapNodes = computed(() =>
+  (mapGraph.value?.nodes || [])
+    .filter((node: any) => normalizeEntityKind(node.kind || node.pageType) === 'topic')
+    .map((node: any) => ({
+      ...node,
+      sourceKinds: [...(topicSourceKinds.value.get(String(node.id)) || [])]
+    }))
 )
 // 图谱派生展示数据（类型统计/连通性/分组/桥接/搜索建议/学习理由，抽到同目录 composable）
 const {
@@ -753,19 +771,24 @@ const { mapNodes: baseMapNodes } = useWikiMapNodes({
   mapLayoutScale, mapImageExpanded, mapTypeVisible, mapSize,
   mapNodeOffsets, mapSimPositions, IMAGE_CLUSTER_ID
 })
-const mapNodes = computed(() => {
-  const baseById = new Map(baseMapNodes.value.map((node: any) => [String(node.id), node]))
-  return layoutTopicGraph(
-    baseMapNodes.value,
+const topicLayout = computed(() =>
+  layoutTopicGraph(
+    allMapNodes.value,
     mapGraph.value?.edges || [],
     mapSize.width,
     mapSize.height
-  ).map((node: any) => {
-    // 用户拖拽过的节点保留手动位置，避免下一次图谱刷新把布局重置。
-    const offset = mapNodeOffsets[String(node.id)]
-    const base = baseById.get(String(node.id)) as any
-    return offset && base ? { ...node, x: base.x, y: base.y } : node
-  })
+  )
+)
+const mapNodes = computed(() => {
+  const baseById = new Map(baseMapNodes.value.map((node: any) => [String(node.id), node]))
+  return topicLayout.value
+    .filter((node: any) => baseById.has(String(node.id)))
+    .map((node: any) => {
+      // 用户拖拽过的节点保留手动位置，避免下一次图谱刷新把布局重置。
+      const offset = mapNodeOffsets[String(node.id)]
+      const base = baseById.get(String(node.id)) as any
+      return offset && base ? { ...node, x: base.x, y: base.y } : node
+    })
 })
 
 watch(
@@ -1337,9 +1360,6 @@ function startMapAnimation() {
   mapAnimFrame = requestAnimationFrame(tick)
 }
 
-
-// 分组外轮廓（抽到同目录 composable）
-const { mapHulls } = useWikiGraphHulls({ mapNodes, mapComponents, mapLayoutScale })
 
 async function reload() {
   loading.value = true

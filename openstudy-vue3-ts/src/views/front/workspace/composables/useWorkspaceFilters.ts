@@ -84,15 +84,14 @@ export function useWorkspaceFilters(options: WorkspaceFilterOptions) {
       return [
         {
           key: 'sourceType',
-          label: '实体集类型',
+          label: '知识点来源',
           type: 'checkbox',
           options: [
-            { value: 'topic', label: '知识主题' },
             { value: 'bank', label: '题库' },
             { value: 'document', label: '资料' },
             { value: 'web', label: '网页' },
-            { value: 'note', label: '笔记' },
-            { value: 'image', label: '图片' }
+            { value: 'image', label: '图片 / 图库' },
+            { value: 'note', label: '笔记' }
           ]
         },
         {

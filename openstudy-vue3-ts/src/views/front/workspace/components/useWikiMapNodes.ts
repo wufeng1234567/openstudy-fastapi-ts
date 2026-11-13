@@ -40,7 +40,12 @@ export function useWikiMapNodes(options: {
     const visibleIds = new Set(
       allMapNodes.value
         .filter((node: any) => routeActive.value || mapTypeVisible[normalizeEntityKind(node.kind || node.pageType)] !== false)
-        .filter((node: any) => !sourceTypes.length || sourceTypes.includes(normalizeEntityKind(node.kind || node.pageType)))
+        .filter((node: any) => {
+          if (!sourceTypes.length) return true
+          // 兼容旧版筛选值：topic 代表“全部主题”。
+          if (sourceTypes.includes('topic')) return true
+          return sourceTypes.some((kind: string) => (node.sourceKinds || []).includes(kind))
+        })
         .filter((node: any) => {
           if (!pageTypes.length || normalizeEntityKind(node.kind) !== 'topic') return true
           return pageTypes.includes(normalizePageType(node.pageType))

@@ -88,8 +88,6 @@
 .kw-map.is-map-ready .kw-map__svg { opacity: 1; visibility: visible; }
 .kw-page--graph .kw-map__svg { height: 100%; }
 .kw-map-purpose { position: absolute; z-index: 7; top: 14px; left: 16px; padding: 6px 9px; border: 1px solid rgba(15, 23, 42, 0.05); border-radius: 6px; color: #7d8596; background: rgba(255, 255, 255, 0.86); font-size: 11px; pointer-events: none; }
-.kw-map-hull { fill: #f1f3f7; fill-opacity: 0.72; stroke: #e5e8ef; stroke-width: 1; vector-effect: non-scaling-stroke; transition: fill 0.2s ease, stroke 0.2s ease; }
-.kw-map-hull.is-hovered { fill: #ebeef5; stroke: #dce2ed; }
 .kw-map-edge { stroke: #9fb3cc; stroke-width: 1.2; opacity: 0.72; vector-effect: non-scaling-stroke; transition: stroke 0.2s, stroke-width 0.2s, stroke-opacity 0.2s; }
 .kw-map-edge.is-part_of { stroke: #c7d0e0; }
 .kw-map-edge.is-prerequisite { stroke: #73a6dd; stroke-dasharray: 4 4; }
@@ -107,13 +105,11 @@
 .kw-map-edge.is-dimmed { opacity: 0.08; }
 .kw-map-edge.is-hidden { display: none; }
 .kw-map__svg > g { will-change: transform; }
-.kw-map-hull-label { fill: #7d8596; font-size: 10px; font-weight: 600; pointer-events: none; paint-order: stroke; stroke: #f8faff; stroke-width: 3px; stroke-linejoin: round; }
 .kw-map-advice-ray { stroke: #2f5fce; stroke-width: 2; opacity: .78; pointer-events: none; stroke-dasharray: 1; stroke-dashoffset: 1; animation: kw-advice-draw .58s ease-out forwards; filter: drop-shadow(0 0 3px rgba(47, 95, 206, .35)); }
 .kw-map-advice-dot { fill: #2f5fce; pointer-events: none; filter: drop-shadow(0 0 5px rgba(47, 95, 206, .8)); }
 .kw-map-advice-dot circle { pointer-events: none; }
 .kw-map.is-advice-focus .kw-map-edge,
 .kw-map.is-advice-focus .kw-map-learning-path { display: none; }
-.kw-map.is-advice-focus .kw-map-hull { opacity: .18; }
 .kw-map.is-advice-focus .kw-map-node:not(.is-selected):not(.is-advice-visited) { opacity: .18; }
 .kw-map.is-advice-focus .kw-map-node.is-advice-visited { opacity: 1; }
 @keyframes kw-advice-draw { to { stroke-dashoffset: 0; } }
