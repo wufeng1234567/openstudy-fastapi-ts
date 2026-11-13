@@ -48,12 +48,16 @@ import json
 
 router = APIRouter()
 
-from .question_helpers import (_infer_subject, _generate_description, _score_to_float, _begin_of_date, _end_of_date, format_bank, format_sub_question, format_question, _format_error_record, _format_favorite_question, _fetch_banks_map, _apply_favorite_question_fields, _format_marked_record, _share_effective, _enrich_share_source, _format_favorite_bank, _fetch_questions_map, _get_question_type_text, _get_marked_type_text, _get_difficulty_text, _recalc_bank_total, _insert_sub_questions, _shared_bank_ids, _can_view_bank, _is_bank_owner, _visibility_condition, _deny_if_not_owner, _deny_path_owner, _deny_foreign_ids, _is_admin_user, _parse_id_list)
+from .question_helpers import (_infer_subject, _generate_description, _score_to_float, _begin_of_date, _end_of_date, format_bank, format_sub_question, format_question, _format_error_record, _format_favorite_question, _fetch_banks_map, _apply_favorite_question_fields, _format_marked_record, _share_effective, _enrich_share_source, _format_favorite_bank, _fetch_questions_map, _recalc_bank_total, _insert_sub_questions, _shared_bank_ids, _can_view_bank, _is_bank_owner, _visibility_condition, _deny_if_not_owner, _deny_path_owner, _deny_foreign_ids, _is_admin_user, _parse_id_list)
 from .question_schemas import QuestionBankSaveRequest
 from .question_field_helpers import _apply_favorite_bank_fields, _apply_marked_fields
 from .question_export_headers import (
     BANK_HEADERS, QUESTION_HEADERS, FAVORITE_BANK_HEADERS,
     FAVORITE_QUESTION_HEADERS, ERROR_HEADERS, MARKED_HEADERS,
+)
+from .question_export_rows import (
+    bank_rows as export_bank_rows, question_rows, favorite_bank_rows, favorite_question_rows,
+    error_rows, marked_rows, FAVORITE_STATUS_TEXT,
 )
 
 
@@ -552,15 +556,7 @@ async def export_banks(
     result = await db.execute(query)
     banks = list(result.scalars().all())
 
-    rows = [{
-        "id": b.id,
-        "bankName": b.bank_name,
-        "subject": b.subject,
-        "description": b.description,
-        "totalQuestions": b.total_questions,
-        "isPublic": b.is_public,
-        "createTime": b.create_time.isoformat() if b.create_time else "",
-    } for b in banks]
+    rows = export_bank_rows(banks)
 
     headers = BANK_HEADERS
 
@@ -1426,17 +1422,7 @@ async def export_questions(
     result = await db.execute(query)
     questions = list(result.scalars().all())
 
-    rows = [{
-        "id": q.id,
-        "bankId": q.bank_id,
-        "questionType": _get_question_type_text(q.question_type),
-        "questionText": q.question_text,
-        "options": str(q.options) if q.options else "",
-        "answer": q.answer,
-        "analysis": q.analysis,
-        "difficulty": q.difficulty,
-        "sortOrder": q.sort_order,
-    } for q in questions]
+    rows = question_rows(questions)
 
     headers = QUESTION_HEADERS
 
@@ -1904,24 +1890,7 @@ async def export_favorite_banks(
         bank_result = await db.execute(select(QuestionBank).where(QuestionBank.id.in_(bank_ids)))
         bank_map = {b.id: b for b in bank_result.scalars().all()}
 
-    rows = []
-    for fav in favorites:
-        bank = bank_map.get(fav.bank_id)
-        rows.append({
-            "favoriteId": fav.favorite_id,
-            "userId": fav.user_id,
-            "bankId": fav.bank_id,
-            "bankName": bank.bank_name if bank else "",
-            "subject": bank.subject if bank else "",
-            "notes": fav.notes or "",
-            "tags": fav.tags or "",
-            "sortOrder": fav.sort_order if fav.sort_order is not None else 0,
-            "isStarred": "是" if fav.is_starred else "否",
-            "lastStudyTime": fav.last_study_time.isoformat() if fav.last_study_time else "",
-            "studyCount": fav.study_count or 0,
-            "favoriteStatus": "有效" if fav.favorite_status == 1 else "失效",
-            "createTime": fav.create_time.isoformat() if fav.create_time else "",
-        })
+    rows = favorite_bank_rows(favorites, bank_map)
 
     headers = FAVORITE_BANK_HEADERS
 
@@ -2416,31 +2385,7 @@ async def export_favorite_questions(
     rows = []
     if question_ids:
         q_map = await _fetch_questions_map(db, question_ids)
-        status_map = {1: "正常收藏", 2: "已掌握", 3: "待复习", 0: "取消收藏"}
-        for fav in favorites:
-            q = q_map.get(fav.question_id)
-            bank = b_map.get(fav.bank_id)
-            rows.append({
-                "favoriteId": fav.favorite_id,
-                "userId": fav.user_id,
-                "questionId": fav.question_id,
-                "bankId": fav.bank_id,
-                "bankName": bank.bank_name if bank else "",
-                "questionType": _get_question_type_text(q.question_type) if q else "",
-                "questionText": q.question_text if q else "",
-                "answer": q.answer if q else "",
-                "notes": fav.notes or "",
-                "tags": fav.tags or "",
-                "difficultyRating": fav.difficulty_rating if fav.difficulty_rating is not None else "",
-                "errorTimes": fav.error_times or 0,
-                "correctTimes": fav.correct_times or 0,
-                "reviewCount": fav.review_count or 0,
-                "lastReviewTime": fav.last_review_time.isoformat() if fav.last_review_time else "",
-                "nextReviewTime": fav.next_review_time.isoformat() if fav.next_review_time else "",
-                "isStarred": "是" if fav.is_starred else "否",
-                "favoriteStatus": status_map.get(fav.favorite_status, fav.favorite_status),
-                "createTime": fav.create_time.isoformat() if fav.create_time else "",
-            })
+        rows = favorite_question_rows(favorites, q_map, b_map, FAVORITE_STATUS_TEXT)
 
     headers = FAVORITE_QUESTION_HEADERS
 
@@ -2930,19 +2875,7 @@ async def export_errors(
     rows = []
     if question_ids:
         q_map = await _fetch_questions_map(db, question_ids)
-        for e in errors:
-            q = q_map.get(e.question_id)
-            rows.append({
-                "errorId": e.error_id,
-                "questionId": e.question_id,
-                "questionText": q.question_text if q else "",
-                "questionType": _get_question_type_text(q.question_type) if q else "",
-                "answer": q.answer if q else "",
-                "errorCount": e.error_count,
-                "isMastered": "是" if e.is_mastered else "否",
-                "lastErrorTime": e.last_error_time.isoformat() if e.last_error_time else "",
-                "notes": e.notes or "",
-            })
+        rows = error_rows(errors, q_map)
 
     headers = ERROR_HEADERS
 
@@ -3383,25 +3316,7 @@ async def export_marked(
     rows = []
     if question_ids:
         q_map = await _fetch_questions_map(db, question_ids)
-        for m in marked:
-            q = q_map.get(m.question_id)
-            rows.append({
-                "markedId": m.marked_id,
-                "userId": m.user_id,
-                "questionId": m.question_id,
-                "questionText": q.question_text if q else "",
-                "questionType": _get_question_type_text(q.question_type) if q else "",
-                "answer": q.answer if q else "",
-                "markedType": _get_marked_type_text(m.marked_type),
-                "difficultyLevel": _get_difficulty_text(m.difficulty_level),
-                "errorTimesBeforeMark": m.error_times_before_mark,
-                "reviewCount": m.review_count,
-                "isMastered": "是" if m.is_mastered else "否",
-                "lastReviewTime": m.last_review_time.isoformat() if m.last_review_time else "",
-                "notes": m.notes or "",
-                "tags": m.tags or "",
-                "createTime": m.create_time.isoformat() if m.create_time else "",
-            })
+        rows = marked_rows(marked, q_map)
 
     headers = MARKED_HEADERS
 

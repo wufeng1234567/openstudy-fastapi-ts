@@ -68,6 +68,19 @@ from app.services.rag.wiki_content_helpers import (
     _wiki_hit,
 )
 
+from app.services.rag.wiki_view_helpers import (
+    build_graph_edges,
+    build_graph_node,
+    build_in_links,
+    build_link_stats,
+    build_mention_edges,
+    build_out_links,
+    build_page_list_item,
+    count_by_page_type,
+    count_learning_stats,
+    count_link_degree,
+)
+
 
 async def _load_entity_chunks(
     db: AsyncSession, user_id: int, kb_id: int, entity: RagGraphEntity
@@ -1028,45 +1041,23 @@ async def list_wiki_pages(
                 )
             )
         ).scalars().all()
-        for link in links:
-            link_counts[int(link.from_page_id)] = link_counts.get(int(link.from_page_id), 0) + 1
-            link_counts[int(link.to_page_id)] = link_counts.get(int(link.to_page_id), 0) + 1
-    items = []
-    for page in pages:
-        items.append(
-            {
-                "pageId": int(page.id),
-                "kbId": int(page.kb_id),
-                "title": page.title,
-                "pageType": page.page_type,
-                "aliases": page.aliases or [],
-                "summary": strip_wiki_tokens(page.summary),
-                "status": page.status,
-                "version": int(page.version or 1),
-                "sourceCount": len(page.source_chunk_ids or page.source_refs or []),
-                "docCount": len(page.source_doc_ids or []),
-                "sectionCount": len(page.sections or []),
-                "relatedCount": link_counts.get(int(page.id), 0),
-                "entityIds": page.entity_ids or [],
-                "generatedBy": page.generated_by or "llm",
-                "learning": learning_by_page.get(int(page.id)),
-                "updateTime": page.update_time.isoformat(sep=" ") if page.update_time else None,
-            }
-        )
+        link_counts = count_link_degree(links)
+    items = [
+        build_page_list_item(page, link_counts, learning_by_page.get(int(page.id)))
+        for page in pages
+    ]
+    learning_stats = count_learning_stats(items)
     stats = {
         "pageCount": len(items),
         "readyCount": sum(1 for item in items if item["status"] == WIKI_READY),
         "staleCount": sum(1 for item in items if item["status"] == WIKI_STALE),
         "docCount": len({doc_id for page in pages for doc_id in (page.source_doc_ids or [])}),
         "linkCount": sum(1 for link in (links if page_ids else []) if str(link.link_type) == "mention"),
-        "readCount": sum(1 for item in items if item["learning"]["viewCount"] > 0),
-        "practicedCount": sum(1 for item in items if item["learning"]["practiceCount"] > 0),
-        "masteredCount": sum(1 for item in items if item["learning"]["level"] == "mastered"),
-        "typeCounts": {},
+        "readCount": learning_stats["readCount"],
+        "practicedCount": learning_stats["practicedCount"],
+        "masteredCount": learning_stats["masteredCount"],
+        "typeCounts": count_by_page_type(items),
     }
-    for item in items:
-        key = str(item.get("pageType") or "concept")
-        stats["typeCounts"][key] = stats["typeCounts"].get(key, 0) + 1
     return {"pages": items, "stats": stats}
 
 
@@ -1088,67 +1079,12 @@ async def _page_link_payload(db: AsyncSession, user_id: int, page: RagWikiPage) 
     page_by_id = {int(item.id): item for item in pages}
     page_by_id[int(page.id)] = page
 
-    out_links: list[dict] = []
-    seen_out: set[tuple[int, int, str]] = set()
-    for block in page_text_blocks(str(page.summary or ""), page.sections or []):
-        for item in extract_wiki_links(str(block.get("text") or ""), int(block.get("sectionIndex", -1))):
-            target = page_by_id.get(int(item["pageId"]))
-            if not target or int(target.id) == int(page.id):
-                continue
-            key = (int(target.id), int(item["sectionIndex"]), str(item["anchorText"]))
-            if key in seen_out:
-                continue
-            seen_out.add(key)
-            out_links.append(
-                {
-                    "pageId": int(target.id),
-                    "title": target.title,
-                    "pageType": target.page_type,
-                    "anchorText": item["anchorText"],
-                    "sectionIndex": int(item["sectionIndex"]),
-                    "startOffset": int(item["startOffset"]),
-                    "endOffset": int(item["endOffset"]),
-                    "source": "content",
-                }
-            )
-
-    in_links: list[dict] = []
-    seen_in: set[tuple[int, int, str]] = set()
-    for other in pages:
-        if int(other.id) == int(page.id):
-            continue
-        for block in page_text_blocks(str(other.summary or ""), other.sections or []):
-            for item in extract_wiki_links(str(block.get("text") or ""), int(block.get("sectionIndex", -1))):
-                if int(item["pageId"]) != int(page.id):
-                    continue
-                key = (int(other.id), int(item["sectionIndex"]), str(item["anchorText"]))
-                if key in seen_in:
-                    continue
-                seen_in.add(key)
-                in_links.append(
-                    {
-                        "pageId": int(other.id),
-                        "title": other.title,
-                        "pageType": other.page_type,
-                        "anchorText": item["anchorText"],
-                        "sectionIndex": int(item["sectionIndex"]),
-                    }
-                )
-
-    def sort_key(item: dict) -> tuple[str, int, str]:
-        return (str(item.get("title") or ""), int(item.get("sectionIndex") or -1), str(item.get("anchorText") or ""))
-
-    out_links.sort(key=sort_key)
-    in_links.sort(key=sort_key)
+    out_links = build_out_links(page, page_by_id)
+    in_links = build_in_links(page, pages)
     return {
         "outLinks": out_links,
         "inLinks": in_links,
-        "linkStats": {
-            "outCount": len(out_links),
-            "inCount": len(in_links),
-            "outPageCount": len({int(item["pageId"]) for item in out_links}),
-            "inPageCount": len({int(item["pageId"]) for item in in_links}),
-        },
+        "linkStats": build_link_stats(out_links, in_links),
     }
 
 
@@ -1877,74 +1813,16 @@ async def get_wiki_graph(db: AsyncSession, user_id: int, kb_id: int) -> dict:
         for link in links
         if int(link.from_page_id) in page_ids and int(link.to_page_id) in page_ids
     ]
-    degree: dict[int, int] = {}
-    for link in links:
-        degree[int(link.from_page_id)] = degree.get(int(link.from_page_id), 0) + 1
-        degree[int(link.to_page_id)] = degree.get(int(link.to_page_id), 0) + 1
-    nodes = []
-    for page in pages:
-        meta = page.generation_meta or {}
-        source_type = str(meta.get("sourceType") or "").strip()
-        try:
-            source_id = int(meta.get("sourceId") or 0)
-        except (TypeError, ValueError):
-            source_id = 0
-        source_name = str(meta.get("sourceName") or "").strip()
-        page_doc_ids = [int(x) for x in (page.source_doc_ids or []) if str(x).isdigit()]
-        if not source_type and page_doc_ids:
-            source_type = "document"
-            source_id = page_doc_ids[0]
-            source_name = doc_names.get(page_doc_ids[0], "")
-        nodes.append(
-            {
-                "id": str(page.id),
-                "pageId": int(page.id),
-                "title": page.title,
-                "pageType": page.page_type,
-                "aliases": page.aliases or [],
-                "docIds": page.source_doc_ids or [],
-                "sourceType": source_type or "unknown",
-                "sourceId": source_id,
-                "sourceName": source_name,
-                "summary": strip_wiki_tokens(page.summary),
-                "status": page.status,
-                "degree": degree.get(int(page.id), 0),
-                "sectionCount": len(page.sections or []),
-                "learning": learning_by_page.get(int(page.id)),
-            }
-        )
-    edges = [
-        {
-            "id": int(link.id),
-            "source": str(link.from_page_id),
-            "target": str(link.to_page_id),
-            "type": link.link_type,
-            "weight": int(link.weight or 5),
-        }
-        for link in links
+    degree = count_link_degree(links)
+    nodes = [
+        build_graph_node(page, doc_names, degree, learning_by_page.get(int(page.id)))
+        for page in pages
     ]
+    edges = build_graph_edges(links)
     # 即使页面图还没重建，也把正文里的内链即时画出来；前端不需要等一次写库。
-    known_edges = {(str(edge["source"]), str(edge["target"])) for edge in edges}
-    for page in pages:
-        for block in page_text_blocks(str(page.summary or ""), page.sections or []):
-            for item in extract_wiki_links(str(block.get("text") or "")):
-                source_id, target_id = str(page.id), str(item["pageId"])
-                if target_id not in {str(x) for x in page_ids} or (source_id, target_id) in known_edges:
-                    continue
-                known_edges.add((source_id, target_id))
-                edges.append(
-                    {
-                        "id": f"mention-{source_id}-{target_id}",
-                        "source": source_id,
-                        "target": target_id,
-                        "type": "mention",
-                        "weight": 5,
-                    }
-                )
-    type_counts: dict[str, int] = {}
-    for node in nodes:
-        key = str(node.get("pageType") or "concept")
-        type_counts[key] = type_counts.get(key, 0) + 1
+    edges = build_mention_edges(pages, page_ids, edges)
+    type_counts = count_by_page_type(nodes)
+    learning_stats = count_learning_stats(nodes)
     return {
         "nodes": nodes,
         "edges": edges,
@@ -1952,9 +1830,9 @@ async def get_wiki_graph(db: AsyncSession, user_id: int, kb_id: int) -> dict:
             "pageCount": len(nodes),
             "linkCount": len(edges),
             "typeCounts": type_counts,
-            "readCount": sum(1 for node in nodes if node["learning"]["viewCount"] > 0),
-            "practicedCount": sum(1 for node in nodes if node["learning"]["practiceCount"] > 0),
-            "masteredCount": sum(1 for node in nodes if node["learning"]["level"] == "mastered"),
+            "readCount": learning_stats["readCount"],
+            "practicedCount": learning_stats["practicedCount"],
+            "masteredCount": learning_stats["masteredCount"],
         },
     }
 

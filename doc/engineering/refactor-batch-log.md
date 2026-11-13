@@ -194,3 +194,23 @@
 新增模块：
 - `useQuestionBuilderState.ts` / `useWikiLearningDisplay.ts`
 - `questionPracticeBatch.ts`
+
+## Batch 8（2026-11-13，已完成）
+
+- 基线 commit：`49a3632`
+- 快照目录：`_scratch_refactor_batch8_49a3632/`
+- 授权：hy4 = questions.py + rag.py；minimax3.1f = wiki_service.py
+- 测试：compileall / ruff / questions+rag+wiki 导入 / 13 项定向 pytest
+- 提交：`[pending]`
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `app/api/v1/questions.py` | 2,944 | 2,859 | -85 |
+| `app/api/v1/rag.py` | 2,411 | 2,387 | -24 |
+| `app/services/rag/wiki_service.py` | 1,928 | 1,808 | -120 |
+
+新增模块：
+- `question_export_rows.py` / `rag_config_formatters.py`
+- `wiki_view_helpers.py`

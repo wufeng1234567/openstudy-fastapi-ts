@@ -67,6 +67,7 @@ from .rag_helpers import (
 )
 from .rag_formatters import _attach_kb_names, _group_hits_by_file
 from .rag_payload_formatters import _upload_failure, _standalone_image_payload, _pptx_filename, _doc_status_payload
+from .rag_config_formatters import build_rag_config_payload, REINDEX_HINT
 
 # ============================================================ 知识库
 
@@ -2001,28 +2002,7 @@ async def update_rag_config(
             return error(f"不支持的后端：{data.backend}，可选 {rag_config_service.BACKENDS}", code=400)
 
         old = await rag_config_service.get_config_map(db)
-        payload = {
-            rag_config_service.KEY_BACKEND: data.backend,
-            rag_config_service.KEY_MODEL: data.model,
-            rag_config_service.KEY_CHUNK_SIZE: data.chunkSize,
-            rag_config_service.KEY_CHUNK_OVERLAP: data.chunkOverlap,
-            rag_config_service.KEY_TOP_K: data.topK,
-            rag_config_service.KEY_RRF_K: data.rrfK,
-            rag_config_service.KEY_CLOUD_MODEL: data.cloudModel,
-            rag_config_service.KEY_AUTO_FALLBACK: data.autoFallback,
-        }
-
-        # ── 云端 API Key（2026-10-22 新增）───────────────────────────
-        # 语义：不传 / 传空串 = 保持原值；传 "__CLEAR__" = 清空。
-        # 为什么不接受「空串即清空」：前端回填的是掩码，用户没动就原样提交，
-        # 若把空串当清空，用户只是改个分块大小就会把 Key 清掉。
-        if data.cloudApiKey is not None:
-            v = data.cloudApiKey.strip()
-            if v == "__CLEAR__":
-                payload[rag_config_service.KEY_CLOUD_API_KEY] = ""
-            elif v and "••••" not in v:
-                # 前端把掩码回传时（含 ••••）视为未修改
-                payload[rag_config_service.KEY_CLOUD_API_KEY] = v
+        payload = build_rag_config_payload(data, rag_config_service)
 
         await rag_config_service.set_configs(db, payload)
         await db.commit()
@@ -2051,12 +2031,7 @@ async def update_rag_config(
 
         status = await rag_config_service.get_status(db)
         status["needReindex"] = need_reindex
-        status["reindexHint"] = (
-            "向量化模型已变更。已有文档的向量是用旧模型算的，与新向量不在同一空间，"
-            "检索结果会不准。请到「我的资料」页面点「重建索引」，或重新上传文档。"
-            if need_reindex
-            else ""
-        )
+        status["reindexHint"] = REINDEX_HINT if need_reindex else ""
         return success(status)
     except Exception as e:
         return _fail(e)
