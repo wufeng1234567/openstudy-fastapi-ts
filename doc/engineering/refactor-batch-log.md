@@ -364,7 +364,7 @@
 - 授权：hy4 = questions.py + rag.py；minimax3.1f = loop.py
 - 测试：compileall / ruff / questions+rag+loop 导入 / 13 项定向 pytest
 - 备注：loop.py 的「低风险纯辅助面」已接近抽干；本批只抽 1 个 ToolMessage 构造，减少 7 行
-- 提交：`[pending]`
+- 提交：`bff2471`（Gitee/GitCode 已推送；GitHub 重试中）
 
 ### 结果（非空行口径）
 
