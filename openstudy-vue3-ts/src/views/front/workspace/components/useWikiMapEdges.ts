@@ -13,6 +13,7 @@ export function useWikiMapEdges(options: {
   mapHoveredId: any
   mapSelectedNodeId: any
   routeActive: any
+  adviceAnimating?: any
   mapNodes: any
   allMapNodes: any
   mapImageExpanded: any
@@ -21,11 +22,13 @@ export function useWikiMapEdges(options: {
   isCrossSourceEdge: (edge: any) => boolean
 }) {
   const {
-    mapHoveredId, mapSelectedNodeId, routeActive, mapNodes, allMapNodes,
+    mapHoveredId, mapSelectedNodeId, routeActive, adviceAnimating, mapNodes, allMapNodes,
     mapImageExpanded, mapGraph, IMAGE_CLUSTER_ID, isCrossSourceEdge
   } = options
 
   const mapEdges = computed(() => {
+    // 建议射线动画播放期间，hover 边必须让位，避免两套连线叠在同一张图上。
+    if (adviceAnimating?.value) return []
     // 首屏只显示节点：避免资料/主题/题库之间的大量连线把结构盖住。
     // 只有悬停、选中节点，或进入学习路线后，才显示相关连线。
     const focusId = mapHoveredId.value || mapSelectedNodeId.value

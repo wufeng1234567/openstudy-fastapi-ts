@@ -84,6 +84,9 @@
         @wheel.prevent="onMapWheel" @pointerdown="onMapDown"
         @pointermove="onMapMove" @pointerup="onMapUp" @pointerleave="onMapUp">
         <div class="kw-map-purpose">知识图谱：先看懂知识结构，再让系统帮你排下一步。</div>
+        <button v-if="adviceAnimationActive" type="button" class="kw-map-stop-animation" @click.stop="stopAdviceAnimation">
+          停止连线动画
+        </button>
         <svg class="kw-map__svg" :viewBox="mapViewBox" preserveAspectRatio="xMidYMid meet" aria-label="知识图谱：知识主题节点">
           <defs>
             <marker id="kw-arrow" viewBox="0 0 10 6" refX="10" refY="3" markerWidth="10" markerHeight="7" orient="auto">
@@ -100,11 +103,11 @@
               :marker-end="mapShowArrows ? (isMapEdgeActive(edge) ? 'url(#kw-arrow-hl)' : 'url(#kw-arrow)') : undefined">
               <title>{{ mapEdgeTitle(edge) }}</title>
             </line>
-            <line v-for="line in adviceVisibleLines" :key="`advice-${line.key}`" :x1="line.x1" :y1="line.y1" :x2="line.x2" :y2="line.y2"
+            <line v-for="line in adviceVisibleLinePositions" :key="`advice-${line.key}`" :x1="line.x1" :y1="line.y1" :x2="line.x2" :y2="line.y2"
               pathLength="1" class="kw-map-advice-ray" />
-            <circle v-if="adviceActiveLine" :key="`advice-dot-${adviceActiveLine.key}`" r="3" class="kw-map-advice-dot">
+            <circle v-if="adviceActiveLinePosition" :key="`advice-dot-${adviceActiveLinePosition.key}`" r="3" class="kw-map-advice-dot">
               <animateMotion
-                :path="`M ${adviceActiveLine.x1} ${adviceActiveLine.y1} L ${adviceActiveLine.x2} ${adviceActiveLine.y2}`"
+                :path="`M ${adviceActiveLinePosition.x1} ${adviceActiveLinePosition.y1} L ${adviceActiveLinePosition.x2} ${adviceActiveLinePosition.y2}`"
                 dur="1.5s"
                 begin="0s"
                 repeatCount="1"
@@ -685,21 +688,27 @@ const { adviceNodeTitles, adviceTraceLines } = useWikiAdviceDisplay({
 const ADVICE_DOT_MS = 1500
 const adviceVisibleLines = ref<any[]>([])
 const adviceActiveLine = ref<any>(null)
+const adviceAnimationActive = ref(false)
 let adviceLineTimers: ReturnType<typeof setTimeout>[] = []
 watch(adviceTrace, (trace) => {
   adviceLineTimers.forEach((timer) => clearTimeout(timer))
   adviceLineTimers = []
   adviceVisibleLines.value = []
   adviceActiveLine.value = null
+  adviceAnimationActive.value = Boolean(trace?.steps?.length)
   adviceLitPageIds.value = mapSelectedPageId.value ? [String(mapSelectedPageId.value)] : []
   const lines = adviceTraceLines.value
-  if (!trace?.steps?.length || !lines.length) return
+  if (!trace?.steps?.length || !lines.length) {
+    adviceAnimationActive.value = false
+    return
+  }
   const reduced = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
   if (reduced) {
     adviceVisibleLines.value = lines
     adviceLitPageIds.value = Array.from(
       new Set(lines.flatMap((line: any) => [line.fromPageId, line.toPageId]).filter(Boolean))
     )
+    adviceAnimationActive.value = false
     return
   }
   lines.forEach((line: any, index: number) => {
@@ -723,6 +732,16 @@ watch(adviceTrace, (trace) => {
     )
   })
 })
+
+function stopAdviceAnimation() {
+  adviceLineTimers.forEach((timer) => clearTimeout(timer))
+  adviceLineTimers = []
+  adviceVisibleLines.value = []
+  adviceActiveLine.value = null
+  adviceLitPageIds.value = []
+  adviceAnimationActive.value = false
+  adviceTrace.value = null
+}
 
 onBeforeUnmount(() => {
   adviceLineTimers.forEach((timer) => clearTimeout(timer))
@@ -761,6 +780,25 @@ const mapNodes = computed(() => {
     })
 })
 
+/** 动画线坐标跟随当前节点位置实时重算，拖拽节点时不会留在原地。 */
+function adviceLinePosition(line: any) {
+  if (!line) return null
+  const from = mapNodes.value.find((node: any) =>
+    String(node.id) === String(line.fromId) ||
+    String(node.pageId) === String(line.fromPageId)
+  )
+  const to = mapNodes.value.find((node: any) =>
+    String(node.id) === String(line.toId) ||
+    String(node.pageId) === String(line.toPageId)
+  )
+  if (!from || !to) return null
+  return { ...line, x1: from.x, y1: from.y, x2: to.x, y2: to.y }
+}
+const adviceVisibleLinePositions = computed(() =>
+  adviceVisibleLines.value.map(adviceLinePosition).filter(Boolean) as any[]
+)
+const adviceActiveLinePosition = computed(() => adviceLinePosition(adviceActiveLine.value))
+
 watch(
   () => mapGraph.value,
   () => resetMapNodeOffsets(),
@@ -794,8 +832,8 @@ const { syncMapSize, fitMapView, onMapResize } = useWikiMapLayout({
 
 // 图谱连线（抽到同目录 composable；纯惰性 computed，不含任何交互或计时）
 const { mapEdges } = useWikiMapEdges({
-  mapHoveredId, mapSelectedNodeId, routeActive, mapNodes, allMapNodes,
-  mapImageExpanded, mapGraph, IMAGE_CLUSTER_ID, isCrossSourceEdge
+  mapHoveredId, mapSelectedNodeId, routeActive, adviceAnimating: adviceAnimationActive,
+  mapNodes, allMapNodes, mapImageExpanded, mapGraph, IMAGE_CLUSTER_ID, isCrossSourceEdge
 })
 
 // 图谱标签可见性（抽到同目录 composable；display helpers 以惰性 getter 传入，保持原声明顺序）
@@ -1620,6 +1658,7 @@ function closeDetail() {
   }
   detailPanel.value = 'page'
   linksExpanded.value = false
+  stopAdviceAnimation()
   detailVisible.value = false
   mapSelectedPageId.value = null
   mapSelectedNodeId.value = null

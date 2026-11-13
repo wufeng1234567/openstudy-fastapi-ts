@@ -88,6 +88,8 @@
 .kw-map.is-map-ready .kw-map__svg { opacity: 1; visibility: visible; }
 .kw-page--graph .kw-map__svg { height: 100%; }
 .kw-map-purpose { position: absolute; z-index: 7; top: 14px; left: 16px; padding: 6px 9px; border: 1px solid rgba(15, 23, 42, 0.05); border-radius: 6px; color: #7d8596; background: rgba(255, 255, 255, 0.86); font-size: 11px; pointer-events: none; }
+.kw-map-stop-animation { position: absolute; z-index: 9; bottom: 18px; left: 16px; padding: 6px 10px; border: 1px solid #c9d9f8; border-radius: 7px; color: #2f5fce; background: rgba(255, 255, 255, 0.94); box-shadow: 0 4px 12px rgba(29, 43, 70, 0.08); cursor: pointer; font: inherit; font-size: 10px; }
+.kw-map-stop-animation:hover { background: #f4f7ff; border-color: #9ebced; }
 .kw-map-edge { stroke: #9fb3cc; stroke-width: 1.2; opacity: 0.72; vector-effect: non-scaling-stroke; transition: stroke 0.2s, stroke-width 0.2s, stroke-opacity 0.2s; }
 .kw-map-edge.is-part_of { stroke: #c7d0e0; }
 .kw-map-edge.is-prerequisite { stroke: #73a6dd; stroke-dasharray: 4 4; }
@@ -129,7 +131,7 @@
 .kw-map-node__learn-ring { fill: none; stroke-width: 2.4; stroke-linecap: round; pointer-events: none; transition: stroke-dashoffset .35s ease, stroke .2s ease; }
 .kw-map-node.is-weak .kw-map-node__halo { fill: #fff8f5; }
 .kw-map-node.is-weak .kw-map-node__learn-ring { filter: drop-shadow(0 0 2px rgba(224, 122, 95, .28)); }
-.kw-map-node__dot { stroke: #fff; stroke-width: 1.5; transition: r 0.2s ease, stroke-width 0.2s ease, opacity 0.2s ease; }
+.kw-map-node__dot { stroke: #fff; stroke-width: 1.5; transition: r 0.12s ease, stroke-width 0.12s ease, stroke 0.12s ease, opacity 0.12s ease; will-change: stroke-width; }
 .kw-map.is-route-mode .kw-map-node.is-route .kw-map-node__dot { stroke: #2f5fce; stroke-width: 2.2; }
 .kw-map-node.is-next-stop .kw-map-node__halo { fill: #edf3fe; }
 .kw-map-node__active { fill: none; stroke-width: 2; pointer-events: none; transform-box: fill-box; transform-origin: center; animation: kw-node-pulse 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite; }

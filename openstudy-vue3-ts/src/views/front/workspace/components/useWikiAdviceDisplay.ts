@@ -35,6 +35,8 @@ export function useWikiAdviceDisplay(options: {
         if (!from || !to) return null
         return {
           key: `${rawFromId}-${rawToId}-${index}`,
+          fromId: String(from.id),
+          toId: String(to.id),
           fromPageId: String(from.pageId || from.id),
           toPageId: String(to.pageId || to.id),
           x1: from.x,
