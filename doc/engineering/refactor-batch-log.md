@@ -634,3 +634,11 @@
 - 测试：build 4,032 modules / unit 29 项 / type-check exit 2（未清零）
 - 备注：system/user 余约 4 条（含 `getUser()` 少传参，未猜参数）；CommentModal 余约 1 条
 - 提交：`8f5d72b`（GitHub/Gitee/GitCode 三远端已同步）
+## Batch 33（2026-11-13，已完成）
+
+- 基线 commit：`60bf4be`；快照：`_scratch_refactor_batch33_60bf4be/`
+- 类型债务批次：system/role（33 条）、notesEditor（31 条）、MyQuestion（31 条）；minimax 负责前两个，hy4 负责 MyQuestion
+- 结果：`npm run type-check` 1,169 → **1,080 条**（-89）；`npm run lint` 4,131 → **4,156 warnings**（+25，warn-only）
+- 测试：build 4,032 modules / unit 29 项 / type-check exit 2（未清零）
+- 备注：notesEditor 余 4 条 `currentnote` 未声明（产品语义不确定，未改）；system/role 余约 3 条
+- 提交：`752f3c5`（GitHub/Gitee/GitCode 三远端已同步）
