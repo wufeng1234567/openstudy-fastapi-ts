@@ -71,6 +71,7 @@ from .rag_sse_formatters import (
     SSE_STUDY_PACK_HEADERS, SSE_ORGANIZE_HEADERS, _sse_data, _organize_stage_payload,
 )
 from .rag_kb_formatters import kb_created_payload, kb_detail_payload, kb_updated_payload
+from .rag_document_formatters import outline_payload, outline_rebuild_payload, workspace_search_payload
 
 # ============================================================ 知识库
 
@@ -1429,18 +1430,7 @@ async def get_document_outline(
         max_nodes=max_nodes,
     )
 
-    return success(
-        {
-            "docId": doc.id,
-            "fileName": doc.file_name,
-            "hasOutline": len(sections) > 1,
-            "tree": tree,
-            "sections": sections,
-            "needsAiOutline": bool(needs_ai),
-            "reason": "" if tree else "这份资料没有可识别的章节标题，已按分块生成可导航的分段目录。",
-            "chunkCount": getattr(doc, "chunk_count", 0) or 0,
-        }
-    )
+    return success(outline_payload(doc, sections, tree, needs_ai))
 
 
 @router.post("/document/outline/{doc_id}/rebuild")
@@ -1455,15 +1445,7 @@ async def rebuild_document_outline(
 
         doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
         sections = await rebuild_sections(db, _uid(current_user), doc)
-        return success(
-            {
-                "docId": doc.id,
-                "fileName": doc.file_name,
-                "sections": sections,
-                "count": len(sections),
-            },
-            "AI 目录整理完成",
-        )
+        return success(outline_rebuild_payload(doc, sections), "AI 目录整理完成")
     except Exception as e:
         return _fail(e)
 
@@ -2649,16 +2631,6 @@ async def search_workspace(
         hits = result.get("hits") or []
         _attach_kb_names(hits, result.get("knowledgeBases") or [])
 
-        return success(
-            {
-                "query": q,
-                "hits": hits,
-                "knowledgeBases": result.get("knowledgeBases") or [],
-                "files": _group_hits_by_file(hits, limit),
-                "reason": result.get("reason") or "",
-                # 两路都没关键词命中 = 结果可能不相关（见 rag_query_service.search 的说明）
-                "lowConfidence": bool(result.get("lowConfidence")),
-            }
-        )
+        return success(workspace_search_payload(q, hits, result, limit, _group_hits_by_file))
     except Exception as e:
         return _fail(e)

@@ -63,6 +63,9 @@ from .question_patch_helpers import _apply_question_fields, _apply_error_optiona
 from .question_check_formatters import (
     check_question_payload, check_user_payload, check_question_and_user_payload,
 )
+from .question_lookup_formatters import (
+    simple_question_info_payload, favorite_bank_exists_payload, favorite_question_payload,
+)
 
 
 # ========== 辅助函数 ==========
@@ -1238,15 +1241,7 @@ async def get_question_simple_info(
 
     bank_name = bank.bank_name if bank else None
 
-    return success({
-        "questionId": question.id,
-        "questionText": question.question_text,
-        "questionType": question.question_type,
-        "bankId": question.bank_id,
-        "bankName": bank_name,
-        "difficulty": question.difficulty,
-        "analysis": question.analysis,
-    })
+    return success(simple_question_info_payload(question, bank_name))
 
 
 @router.get("/questionMain/questionMain/checkQuestionAndUser/{question_id}/{user_id}")
@@ -1521,16 +1516,7 @@ async def check_favorite_bank_exists(
     if not bank:
         return success({"exists": False, "bankId": bank_id})
 
-    return success({
-        "exists": True,
-        "bankId": bank.id,
-        "bankName": bank.bank_name,
-        "description": bank.description,
-        "subject": bank.subject,
-        "totalQuestions": bank.total_questions,
-        "isPublic": bank.is_public,
-        "userId": bank.user_id,
-    })
+    return success(favorite_bank_exists_payload(bank))
 
 
 @router.get("/favoriteBank/favoriteBank/checkFavorite/{user_id}/{bank_id}")
@@ -2002,15 +1988,7 @@ async def check_favorite_question_exists(
         select(QuestionBank.bank_name).where(QuestionBank.id == q.bank_id)
     )).scalar_one_or_none()
     text = q.question_text or ""
-    return success({
-        "exists": True,
-        "questionId": q.id,
-        "title": (text[:50] + "...") if len(text) > 50 else text,
-        "questionText": text,
-        "bankId": q.bank_id,
-        "bankName": bank_name,
-        "difficulty": q.difficulty,
-    })
+    return success(favorite_question_payload(q, text, bank_name))
 
 
 @router.get("/favoriteQuestion/favoriteQuestion/checkFavorite/{user_id}/{question_id}")

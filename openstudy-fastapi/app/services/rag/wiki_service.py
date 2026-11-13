@@ -10,7 +10,6 @@
 from __future__ import annotations
 
 import json
-import re
 from datetime import datetime
 from typing import Any, Awaitable, Callable, Dict, Optional, Sequence
 
@@ -79,6 +78,14 @@ from app.services.rag.wiki_view_helpers import (
     count_by_page_type,
     count_learning_stats,
     count_link_degree,
+)
+from app.services.rag.wiki_link_edit import (
+    apply_block_text,
+    find_anchor_block,
+    find_link_match,
+    insert_link_marker,
+    page_link_pattern,
+    replace_link_with_text,
 )
 
 
@@ -1430,29 +1437,14 @@ async def add_wiki_page_link(
         raise ValueError("sectionIndex 只能是 -1（摘要）或小节序号")
 
     blocks = page_text_blocks(str(page.summary or ""), page.sections or [])
-    chosen: Optional[dict] = None
-    for block in blocks:
-        if section_index is not None and int(block["sectionIndex"]) != int(section_index):
-            continue
-        if _find_anchor_position(str(block["text"]), anchor) >= 0:
-            chosen = block
-            break
+    chosen = find_anchor_block(blocks, section_index, anchor)
     if chosen is None:
         raise ValueError("正文中没有找到这段文字，请先在正文里写上锚文本再添加链接")
     text = str(chosen["text"])
     pos = _find_anchor_position(text, anchor)
-    replacement = f"[[page:{int(target.id)}|{anchor}]]"
-    new_text = text[:pos] + replacement + text[pos + len(anchor) :]
+    new_text = insert_link_marker(text, pos, int(target.id), anchor)
     db.add(_page_revision_snapshot(page, "before_manual_link", "user"))
-    if int(chosen["sectionIndex"]) == -1:
-        page.summary = new_text
-    else:
-        sections = [dict(item) if isinstance(item, dict) else item for item in (page.sections or [])]
-        idx = int(chosen["sectionIndex"])
-        if idx >= len(sections) or not isinstance(sections[idx], dict):
-            raise ValueError("小节不存在，请刷新后重试")
-        sections[idx]["body"] = new_text
-        page.sections = sections
+    apply_block_text(page, chosen, new_text)
     page.content_md = _render_markdown(str(page.summary or ""), page.sections or [])
     page.version = int(page.version or 1) + 1
     page.update_time = datetime.now()
@@ -1493,38 +1485,17 @@ async def remove_wiki_page_link(
     ).scalar_one_or_none()
     if not page:
         raise ValueError("知识主题页不存在或无权访问")
-    pattern = re.compile(rf"\[\[page:{int(target_page_id)}(?:\|([^\[\]]+))?\]\]")
+    pattern = page_link_pattern(target_page_id)
     desired_anchor = _clean(anchor_text, 120)
     blocks = page_text_blocks(str(page.summary or ""), page.sections or [])
-    chosen: Optional[dict] = None
-    match_to_replace: Optional[re.Match[str]] = None
-    for block in blocks:
-        if section_index is not None and int(block["sectionIndex"]) != int(section_index):
-            continue
-        for match in pattern.finditer(str(block["text"])):
-            label = str(match.group(1) or "").strip()
-            if desired_anchor and label != desired_anchor:
-                continue
-            chosen = block
-            match_to_replace = match
-            break
-        if chosen:
-            break
+    chosen, match_to_replace = find_link_match(blocks, section_index, pattern, desired_anchor)
     if chosen is None or match_to_replace is None:
         raise ValueError("没有找到这条页面链接，可能已被删除")
     text = str(chosen["text"])
     label = str(match_to_replace.group(1) or "").strip()
-    new_text = text[: match_to_replace.start()] + (label or "链接") + text[match_to_replace.end() :]
+    new_text = replace_link_with_text(text, match_to_replace, label)
     db.add(_page_revision_snapshot(page, "before_manual_unlink", "user"))
-    if int(chosen["sectionIndex"]) == -1:
-        page.summary = new_text
-    else:
-        sections = [dict(item) if isinstance(item, dict) else item for item in (page.sections or [])]
-        idx = int(chosen["sectionIndex"])
-        if idx >= len(sections) or not isinstance(sections[idx], dict):
-            raise ValueError("小节不存在，请刷新后重试")
-        sections[idx]["body"] = new_text
-        page.sections = sections
+    apply_block_text(page, chosen, new_text)
     page.content_md = _render_markdown(str(page.summary or ""), page.sections or [])
     page.version = int(page.version or 1) + 1
     page.update_time = datetime.now()
