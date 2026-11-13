@@ -35,10 +35,7 @@ import {
 } from './questionPracticeTransform'
 import {
   applyServerGrade,
-  generateErrorNote,
-  generateErrorTags,
-  hasAnswerValue,
-  stringifyAnswerForLog
+  hasAnswerValue
 } from './questionPracticeAnswer'
 import {
   buildRandomPlan,
@@ -52,6 +49,11 @@ import {
   isCompositeType,
   toggleSelection
 } from './questionPracticeRules'
+import {
+  buildPracticeReportPayload,
+  buildPracticeResultText,
+  practiceSessionSignature,
+} from './questionPracticeStatus'
 import {
   answerStateCacheKey,
   buildInitialAnswers,
@@ -184,7 +186,7 @@ export function useQuestionPractice(
     // 模拟考试会话由 PracticeComponent 带着分值快照创建，绝不能被这里的
     // 「顺序练习」默认会话覆盖（否则 _mockScore 丢失、交卷满分错误）。
     if (props.moduleType === 'mock' && practiceSessionId.value) return true
-    const signature = `${props.bankId}:${ids.join(',')}`
+    const signature = `practiceSessionSignature(props.bankId, ids)`
     if (practiceSessionId.value && practiceSessionSignature.value === signature) return true
     try {
       const res: any = await startPracticeSession({
@@ -213,16 +215,9 @@ export function useQuestionPractice(
     isCorrect: boolean
   ): Promise<void> {
     try {
-      await reportPractice({
-        questionId: question.id,
-        bankId: question.bankId || props.bankId,
-        isCorrect,
-        answer: stringifyAnswerForLog(userAnswer),
-        // 错因备注 / 标签只在答错时有意义
-        notes: isCorrect ? null : generateErrorNote(question, userAnswer),
-        tags: isCorrect ? null : generateErrorTags(question.type, userAnswer),
-        difficultyRating: question.difficulty || 3,
-      })
+      await reportPractice(
+        buildPracticeReportPayload(question, userAnswer, isCorrect, props.bankId)
+      )
 
       // 答错才把题目标记进"当前错题"集合；答对不改动（答对一次不等于已掌握）
       if (!isCorrect) {
@@ -1421,7 +1416,7 @@ export function useQuestionPractice(
 
   function viewResult(): void {
     proxy.$modal.alert(
-      `本次练习完成！\n答对 ${correctCount.value} 题，答错 ${wrongCount.value} 题，正确率 ${accuracy.value}%`
+      buildPracticeResultText(correctCount.value, wrongCount.value, accuracy.value)
     )
   }
 

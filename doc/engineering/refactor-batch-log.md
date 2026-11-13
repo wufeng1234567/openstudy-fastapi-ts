@@ -275,3 +275,23 @@
 新增模块：
 - `question_check_formatters.py` / `rag_kb_formatters.py`
 - `loop_events.py`
+
+## Batch 12（2026-11-13，已完成）
+
+- 基线 commit：`237cf45`
+- 快照目录：`_scratch_refactor_batch12_237cf45/`
+- 授权：hy4 = KnowledgeWikiPanel；minimax3.1f = useAgentChat + useQuestionPractice
+- 测试：build 4,020 modules / unit 29 项 / studio+wiki+practice+agent smoke 通过
+- 提交：`[pending]`
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `KnowledgeWikiPanel.vue` | 2,241 | 2,036 | -205 |
+| `useAgentChat.ts` | 1,413 | 1,405 | -8 |
+| `useQuestionPractice.ts` | 1,449 | 1,444 | -5 |
+
+新增模块：
+- `useWikiMapNodes.ts`
+- `agentChatLifecycle.ts` / `questionPracticeStatus.ts`

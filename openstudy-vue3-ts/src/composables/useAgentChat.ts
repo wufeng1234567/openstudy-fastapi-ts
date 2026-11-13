@@ -69,6 +69,16 @@ import {
   buildToolResultMessage,
   buildUserMessage,
 } from './agentChatMessages'
+import {
+  buildTurnEndMessage,
+  createRollbackOutcome,
+  elapsedSeconds,
+  expertDoneStatus,
+  newLocalConfirmId,
+  sumTurnDurations,
+  toolResultStatus,
+  turnDurationMs,
+} from './agentChatLifecycle'
 
 /**
  * **对外出口保持不变** —— 类型与「快照复原」辅助仍旧从本文件 import，
@@ -382,10 +392,10 @@ export function useAgentChat() {
         const i = messages.value.indexOf(turnReasoning)
         if (i >= 0) {
           messages.value[i].content = (messages.value[i].content || '') + delta
-          messages.value[i].secs = Math.max(1, Math.round((Date.now() - reasoningStartedAt) / 1000))
+          messages.value[i].secs = elapsedSeconds(reasoningStartedAt, Date.now())
         } else {
           turnReasoning.content += delta
-          turnReasoning.secs = Math.max(1, Math.round((Date.now() - reasoningStartedAt) / 1000))
+          turnReasoning.secs = elapsedSeconds(reasoningStartedAt, Date.now())
         }
         return
       }
@@ -423,7 +433,7 @@ export function useAgentChat() {
   const closeReasoning = () => {
     if (!openReasoning) return
     // 至少 1 秒：秒级取整会把「0.4 秒」显示成 0，看着像坏了
-    const secs = Math.max(1, Math.round((Date.now() - reasoningStartedAt) / 1000))
+    const secs = elapsedSeconds(reasoningStartedAt, Date.now())
     // ⚠️ 改**数组里的代理消息**（`openReasoning` 是 raw 引用，直接改不触发更新）
     const i = messages.value.indexOf(openReasoning)
     if (i >= 0) messages.value[i].secs = secs
@@ -532,7 +542,7 @@ export function useAgentChat() {
     closeText()
     clearPlaceholder()
     closeReasoning()
-    const confirmId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    const confirmId = `newLocalConfirmId()`
     messages.value.push(buildConfirmMessage(info, confirmId))
     return new Promise<boolean>((resolve) => {
       pendingConfirms.set(confirmId, resolve)
@@ -673,7 +683,7 @@ export function useAgentChat() {
     for (let i = messages.value.length - 1; i >= 0; i--) {
       const m = messages.value[i]
       if (m.type === 'tool_result' && m.status === 'running' && m.tool === event.tool) {
-        m.status = event.success ? 'ok' : (event.cancelled ? 'cancelled' : 'fail')
+        m.status = toolResultStatus(event)
         m.detail = detail
         m.errors = errs
         m.data = event.data
@@ -782,7 +792,7 @@ export function useAgentChat() {
       // 正常不会撞号；这里再挡一道，避免异常情况下把已完成的行重复回填、让真正的那行留在转圈。
       const row = findExpertRow(card.experts, idx, String(ag.id || ''))
       if (row) {
-        row.status = event.success ? 'ok' : 'fail'
+        row.status = expertDoneStatus(event.success)
         row.summary = stripMarkdown(String(event.summary || ''))
         return
       }
@@ -1223,19 +1233,11 @@ export function useAgentChat() {
        *    后者本身就是累计值，把它再加一遍等于平方级膨胀
        *    （两轮各 10s，第二轮会算成 10+20=30s 而不是 20s）。
        */
-      const _turnMs = runStartedAt.value ? Math.max(0, Date.now() - runStartedAt.value) : 0
-      const _prevTotal = messages.value.reduce(
-        (sum, m) => sum + (m.type === 'turn_end' ? (m.durationMs || 0) : 0),
-        0
+      const _turnMs = turnDurationMs(runStartedAt.value, Date.now())
+      const _prevTotal = sumTurnDurations(messages.value)
+      messages.value.push(
+        buildTurnEndMessage(turnId, _turnMs, _prevTotal + _turnMs)
       )
-      messages.value.push({
-        role: 'assistant',
-        type: 'turn_end',
-        turnId,
-        content: '',
-        durationMs: _turnMs,
-        totalDurationMs: _prevTotal + _turnMs
-      })
       // 持久化「完整时间线」（含工具卡片）—— 刷新后才能复原卡片视图。
       // 放在 finally：成功 / 报错 / 主动停止都会存下当前这一版（含已跑过的过程卡片）。
       if (opts.sessionId) {
@@ -1331,17 +1333,7 @@ export function useAgentChat() {
     // 显式入参优先（页面手上就有），兜底才是「最近一次 `send()` 用过的那个」
     // （见 `lastSessionId` / 本函数头部注释里那段线上 bug 的说明）。
     const sid = String(sessionId || lastSessionId.value || '')
-    const outcome: TurnRollbackOutcome = {
-      ok: false,
-      reason: '',
-      reverted: 0,
-      skipped: [],
-      failed: [],
-      partial: [],
-      userText: '',
-      dropped: false,
-      historyMatched: 0
-    }
+    const outcome: TurnRollbackOutcome = createRollbackOutcome()
 
     // ---- ⓪ 不知道这一轮属于哪个会话：**一个请求都不发** ----
     // 空会话 id 发出去服务端只会回一句 `code:200` 的假成功（按 `session_id=''` 过滤命中 0 行），
