@@ -364,8 +364,8 @@ doc/
 
 ### P2 执行记录（2026-11-12）
 
-- ✅ `QuestionBuilder.vue` 从 2,337 行降到 **1,627 行**：AI 结果解析/预览/导入/丢弃抽入 `useQuestionBuilderAiResult.ts`，AI 生成执行链抽入 `useQuestionBuilderAiGenerate.ts`，提示词历史抽入 `useQuestionBuilderPromptHistory.ts`，AI 配置/资料上下文抽入 `useQuestionBuilderAiConfig.ts`，题目编辑动作抽入 `useQuestionBuilderEdit.ts`，AI 弹窗打开/快捷键抽入 `useQuestionBuilderAiDialog.ts`；build 通过，studio 页面 `.question-panel`/`.edit-panel` 正常，console/pageerror 0；
-- 🟡 `KnowledgeWikiPanel.vue` 2,657 行、`useAgentChat.ts` 2,102 行，已抽 `agentChatText.ts`、`useQuestionPractice.ts` 2,161 行仍待拆；
+- ✅ `QuestionBuilder.vue` 从 2,337 行降到 **1,475 行**（Batch 1）：AI 结果解析/预览/导入/丢弃抽入 `useQuestionBuilderAiResult.ts`，AI 生成执行链抽入 `useQuestionBuilderAiGenerate.ts`，提示词历史抽入 `useQuestionBuilderPromptHistory.ts`，AI 配置/资料上下文抽入 `useQuestionBuilderAiConfig.ts`，题目编辑动作抽入 `useQuestionBuilderEdit.ts`，AI 弹窗打开/快捷键抽入 `useQuestionBuilderAiDialog.ts`；build 通过，studio 页面 `.question-panel`/`.edit-panel` 正常，console/pageerror 0；
+- 🟡 `KnowledgeWikiPanel.vue` 2,586 行（Batch 1）、`useAgentChat.ts` 1,537 行（Batch 1），已抽 `agentChatText.ts`、`useQuestionPractice.ts` 2,161 行仍待拆；
 - 🟡 后端 `questions.py` 已降到 3,084 行；`rag.py` 已降到 2,665 行；`wiki_service.py` 已降到 2,133 行；`loop.py` 仍超 2,000 行，按技术债务登记继续。
 
 ---

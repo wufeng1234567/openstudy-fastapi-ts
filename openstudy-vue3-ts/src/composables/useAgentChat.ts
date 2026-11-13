@@ -4,15 +4,66 @@ import {
   postAgentStream,
   confirmAgentTool,
   rollbackAgentTurn,
-  type AgentRollbackItem,
-  type AgentEvent,
-  type AgentImageInput
+  type AgentEvent
 } from '@/api/ai/agent'
 import { runDsFreeAgentStream } from '@/api/ai/agentDsFree'
 import { saveAgentTimeline, dropAgentTurn } from '@/api/ai/ai'
 import { running as selfCheckRunning } from '@/devtools/dfSelfCheck/store'
 import { stripMarkdown } from './agentChatText'
 export { stripMarkdown } from './agentChatText'
+
+/*
+ * ── 抽离出去的**纯逻辑**模块（2026-11 可读性重构）────────────────────
+ *
+ * 本文件只留**流式状态机**（事件 → 消息流）与 Vue 响应式状态；
+ * 下列模块都是无副作用的纯函数 / 纯类型，可以独立理解与复用：
+ *   · `./agentChatTypes`      —— 消息流、专家行、回退结果等**类型**
+ *   · `./agentChatTimeline`   —— 落库瘦身、推理截断、快照复原修正、轮次 id
+ *   · `./agentChatReferences` —— 知识库 / 文档 / 图库 / 网页的**引用收集**
+ *   · `./agentChatMetrics`    —— 执行统计的累加口径与投影
+ *
+ * ⚠️ 依赖方向单向（本文件 → 上面四个），它们**不反向依赖**本文件，
+ *    因此不会形成循环依赖。
+ */
+import {
+  type AgentChatMessage,
+  type AgentExpertProgress,
+  type AgentMetrics,
+  type AgentProgressStep,
+  type AgentRunOptions,
+  type TurnRollbackOutcome,
+  type TurnRollbackState
+} from './agentChatTypes'
+import { slimTimeline, newTurnId } from './agentChatTimeline'
+import {
+  collectDocumentReferences,
+  collectGalleryReferences,
+  collectKnowledgeReferences,
+  collectWebReferences,
+  mergeKnowledgeReferences
+} from './agentChatReferences'
+import {
+  applyMetricsDelta,
+  createMetricsAccumulator,
+  metricsSnapshotOf,
+  projectMetrics,
+  restoreSessionAgg
+} from './agentChatMetrics'
+
+/**
+ * **对外出口保持不变** —— 类型与「快照复原」辅助仍旧从本文件 import，
+ * 老调用方（`AiAssistant` / 大屏智能体页）一个字都不用改。
+ */
+export type {
+  AgentChatMessage,
+  AgentExpertProgress,
+  AgentMetrics,
+  AgentProgressStep,
+  AgentRunOptions,
+  TurnRollbackOutcome,
+  TurnRollbackState
+} from './agentChatTypes'
+export { normalizeRestoredMessages } from './agentChatTimeline'
 
 /** ds-free（DeepSeek 网页版）走前端工具调用循环，与 api-paid 后端循环共用同一套事件流 */
 export const isDsFreeModel = (model?: string) => model === 'deepseek-free'
@@ -43,214 +94,6 @@ export const isDsFreeModel = (model?: string) => model === 'deepseek-free'
  */
 const DELEGATE_TOOL_NAME = 'delegate_task'
 
-/** 专家工作组里的**一行**（一个专家的一次派活） */
-export interface AgentExpertProgress {
-  /** 后端 `delegate_start`/`delegate_done` 的 `index`（本轮第 N 个委派）——用它定位行 */
-  index: number
-  /** 专家 key（bank/note/kb/stats 或 user:<id>） */
-  key: string
-  /** 专家显示名（后端已给中文名，如「题库专家」） */
-  name: string
-  /** 进行中 / 完成 / 失败 */
-  status: 'running' | 'ok' | 'fail'
-  /** 派给它的任务摘要（后端截断到 200 字） */
-  task?: string
-  /** 完成后的结论摘要 */
-  summary?: string
-  /**
-   * 进行中的**最近一行**进展文案（`subagent_event` 的 `message`）—— 进行中时优先于 `task`
-   * 显示，让用户看到它「现在」在干嘛，而不是只看到派给它的原始任务。
-   */
-  progress?: string
-  /**
-   * 子代理的阶段步骤（`subagent_event` 累积）。**只留最近若干条**（见
-   * `SUBAGENT_STEPS_LIMIT`）：一轮子代理可能有几十次工具往返，全留会让快照与界面都膨胀。
-   */
-  steps?: Array<{
-    /** 阶段：`start` / `round` / `tool_call` / `tool_result` / `wrapup` / `error` */
-    phase: string
-    /** 面向用户的一句话 */
-    message: string
-    /** 该步涉及的工具（`tool_call` / `tool_result` 有） */
-    tool?: string
-    /** 结果：`null` = 进行中 / `true` 成功 / `false` 失败 */
-    success?: boolean | null
-    /** 第几轮思考 */
-    round?: number
-  }>
-}
-
-/**
- * 一条**处理进度步骤**（用户 2026-10-11 方案 C：文档解析等的"干等转圈"→"步骤清单"）。
- *
- * ⚠️ 与 `thinking`（推理正文，已不再展示）**不是一回事**：这是**进度/阶段提示**，
- *    面向用户展示"后台在处理什么"，不含任何思维链内容。
- * 由后端 `progress` 事件驱动：同 `id` 重复发 = 更新该步（running → done/failed）。
- */
-export interface AgentProgressStep {
-  /** 步骤唯一 id（后端给，如 `doc_parse` / `save_images`） */
-  id: string
-  /** 面向用户的文案（中文） */
-  message: string
-  /** 进行中 / 完成 / 失败 */
-  state: 'running' | 'done' | 'failed'
-  /** 可选 emoji 图标 */
-  icon?: string
-}
-
-/** 消息流里的一条（AiChatStream 认识 role / type / content） */
-export interface AgentChatMessage {
-  role: 'user' | 'assistant'
-  /**
-   * tool_result=工具卡片；agent_note=纠正/告警/错误提示；thinking=等待占位；
-   * **reasoning=深度思考的推理块（可折叠）**；tool_confirm=写操作二次确认卡片；
-   * **turn_end=轮末标记（一轮的最后一条，回退组件挂在这里）**；其余为普通正文
-   *
-   * ⚠️ 别把 `reasoning` 和 `thinking` 合并：`thinking` 是**等待占位**（三点抖动，
-   * 见 `pendingPlaceholder`），它早就在用了，两者语义完全不同。
-   *
-   * ⚠️ `turn_end` 是**结构**、不是内容：`content` 恒为空串，它唯一的载荷是 `turnId`
-   * （见 `send()` 的 finally —— 那是两条链路**都必然经过**的轮末点）。
-   *
-   * ⚠️ **`experts` = 专家工作组卡片**（多专家并行干活的进度条）：一行一个专家，
-   *    `content` 恒空、载荷在 `experts` 数组。指挥家同一轮并发派多个专家时产出。
-   */
-  type?: 'tool_result' | 'agent_note' | 'thinking' | 'reasoning' | 'tool_confirm' | 'turn_end' | 'experts' | 'progress'
-  content: string
-  /**
-   * 这条消息属于**哪一轮**（一次用户提问）—— 目前只有 `turn_end` 标记用。
-   *
-   * 它是「回退」的**唯一凭据**：服务端按 `turnId` 查本轮的写操作账本，
-   * 所以这个字段必须原样落库（`slimTimeline` 白名单）+ 原样传给 `rollbackTurn()`。
-   */
-  turnId?: string
-  /**
-   * `turn_end` 专用：**本轮耗时（毫秒）**（2026-10-27 新增）
-   *
-   * 用户要求「做一个记录，记录了本次对话共耗时多少时间，每轮聊天的底部都可以看到」。
-   *
-   * 用 `send()` 的 finally 里 `Date.now() - runStartedAt` 算出来落在这条标记上。
-   * 它必须随 `turn_end` 一起**落库**（`slimTimeline` 白名单），
-   * 否则刷新后历史轮次的耗时就丢了 —— 那正是用户说的"记录"要解决的问题。
-   */
-  durationMs?: number
-  /**
-   * `turn_end` 专用：**到这里为止的会话累计耗时（毫秒）**
-   *
-   * 单轮耗时只说明"这次等了多久"；用户更想要的是"这段对话一共花了多久"。
-   * 累计值在轮末由前面的累计 + 本轮耗时得出，同样落库。
-   */
-  totalDurationMs?: number
-  /** agent_note 的子类型（决定图标与配色） */
-  noteKind?: 'correct' | 'warning' | 'error'
-  /** tool_result 专用 */
-  tool?: string
-  action?: string
-  status?: 'running' | 'ok' | 'fail'
-  detail?: string
-  /** 助手回答引用到的知识库片段（文档 chip + hover 切片） */
-  references?: any[]
-  errors?: string[]
-  params?: Record<string, any>
-  /** 工具返回的完整结构化结果（卡片里「查看详情」用；仅内存，不落库） */
-  data?: Record<string, any>
-  /** tool_confirm 专用：本次确认的 id（后端链路用于唤醒后端，前端链路用于本地 resolve） */
-  confirmId?: string
-  /** tool_confirm：是否为破坏性操作（删除类） */
-  destructive?: boolean
-  /** tool_confirm：确认前展示的信息（题库名 / 题量…） */
-  preview?: Record<string, any>
-  /** 自我纠正序号 */
-  attempt?: number
-  /**
-   * `experts` 专用：专家工作组的各行（一行一个专家）。
-   * 由 `delegate_start` 建行（status='running'）、`delegate_done` 回填（status='ok'|'fail'）。
-   */
-  experts?: AgentExpertProgress[]
-  /**
-   * `progress` 专用：处理步骤清单（**文档解析等耗时环节的进度**，用户 2026-10-11 方案 C）。
-   *
-   * 一条 `progress` 消息承载**整份步骤列表**；每次收到 `progress` 事件按 `id` 更新
-   * 对应步骤（不存在则追加）。**非思维链**——只是"正在解析文档 / 已提取 X 字 Y 图"这类进度提示。
-   * 该消息在**本轮结束**（`turn_end`）时若还有 running 步骤，应收口（见 `closeProgress`）。
-   */
-  steps?: AgentProgressStep[]
-  /**
-   * `reasoning` 专用：这一段思考花了多少秒。
-   * **`secs == null` 就表示它还在跑** —— 没有另设 `status` 字段，理由见 `closeReasoning()`。
-   */
-  secs?: number
-  /** 已发送的附件（仅 user 消息） */
-  attachments?: any[]
-}
-
-export interface AgentRunOptions {
-  message: string
-  /** 图片附件；传 `{name,type,base64}` 对象可以保留原始文件名 */
-  images?: AgentImageInput[]
-  files?: Array<{ name: string; type: string; base64: string }>
-  attachments?: any[]
-  model?: string
-  provider?: string
-  sessionId?: string
-  userId?: string | number
-  /** 写操作是否自动执行 */
-  autoConfirm?: boolean
-  maxLoops?: number
-  /** 官方智能体角色 key（多智能体协同）；空 = 后端规则路由 */
-  role?: string
-  /** 用户自定义智能体 id（优先于 role） */
-  agentId?: number
-  /** 「注入历史记忆」开关（仅 ds-free-nb 有意义）：历史作为附件投递给 DS 网页 */
-  injectHistory?: boolean
-}
-
-/** 单条消息里 `data` 的落库上限（超过就只留摘要），避免快照被题目数组撑爆 */
-const TIMELINE_DATA_LIMIT = 20000
-
-/**
- * 思考块的落库上限
- *
- * 深度思考的推理动辄几千字，**不能像正文那样无上限地存** —— 快照被撑大会拖慢会话加载，
- * 而推理只是过程信息、不是用户要留的记录。超长就截断并注明。
- */
-const TIMELINE_REASONING_LIMIT = 4000
-
-/**
- * 截断推理正文，但**不切断公式**
- *
- * ── 为什么不能直接 slice（2026-10-27）────────────────────────
- * 推理正文里常有 LaTeX（`$\lim_{x\to 0}\frac{\sin 3x}{x}$`）。
- * 直接 `slice(0, 4000)` 有可能正好切在 `$\frac{\sin 3x}` 中间，
- * 于是页面上出现半截公式 —— 要么原样露出反斜杠，要么 KaTeX 报错。
- *
- * 处理：若切断点落在某个成对定界符内部，就把切断点**后退到该公式的开头**。
- * 宁可少显示一个公式，也不要在末尾留一坨坏掉的 LaTeX。
- */
-function truncateReasoning(text: string, limit: number): string {
-  const SUFFIX = '…（推理较长，已截断）'
-  let cut = limit
-
-  // 找出 [0, limit] 区间内最后一个未闭合的 `$`（或 `$$`）
-  // 简单做法：从 limit 往前找最近的 `$`，看它前面有几个 `$`
-  const head = text.slice(0, cut)
-  const ddCount = head.split('$$').length - 1
-  const singleCount = head.replace(/\$\$/g, '').split('$').length - 1
-
-  // `$$` 必须是偶数对；奇数说明切在了块级公式内部
-  if (ddCount % 2 === 1) {
-    const i = head.lastIndexOf('$$')
-    if (i > 0) cut = i
-  } else if (singleCount % 2 === 1) {
-    // 行内公式：同理，奇数说明切在公式内部
-    const stripped = head.replace(/\$\$/g, '\u0000\u0000')
-    const i = stripped.lastIndexOf('$')
-    if (i > 0) cut = i
-  }
-
-  return text.slice(0, cut) + SUFFIX
-}
-
 /**
  * 每个专家行最多保留的**子代理步骤**条数（`subagent_event` 累积）。
  *
@@ -258,213 +101,6 @@ function truncateReasoning(text: string, limit: number): string {
  * 就够表达「它现在做到哪、刚做完什么」，也让落库快照不至于被步骤撑大。
  */
 const SUBAGENT_STEPS_LIMIT = 20
-
-/**
- * 落库前给消息流瘦身
- *
- * 只保留渲染需要的字段；`data`（工具原始返回，可能含整批题目）超过上限时
- * 退化成 `{message, _truncated}`，既留住「结果摘要」又不让快照无限膨胀。
- */
-function slimTimeline(msgs: AgentChatMessage[]): any[] {
-  return msgs.map((m) => {
-    const out: any = { role: m.role, content: m.content || '' }
-    if (m.type) out.type = m.type
-    // 轮次 id：`turn_end` 标记必须带上它 —— **刷新之后「最近一轮还能回退」全靠这一个字段**
-    //（账本在后端库里，前端只要把 id 带回来）。白名单的语义是「不在名单里的字段刷新后就没了」，
-    // 所以漏掉这一行 = 刷新一次回退按钮就成了摆设。
-    // ⚠️ 放在 `reasoning` 的提前 return **之前**：那条分支同样受白名单约束。
-    if (m.turnId) out.turnId = m.turnId
-    // 思考块单独处理：内容截断，但 `secs` 照存（刷新后收起态还得显示「已思考 X 秒」）。
-    // ⚠️ 截断要放在 `out.type` 赋值之后 —— 提前 return 会把 type 丢掉，
-    //    刷新后这团文本就变成一条普通正文了。
-    if (m.type === 'reasoning') {
-      if (out.content.length > TIMELINE_REASONING_LIMIT) {
-        out.content = truncateReasoning(out.content, TIMELINE_REASONING_LIMIT)
-      }
-      if (m.secs != null) out.secs = m.secs
-      return out
-    }
-    if (m.noteKind) out.noteKind = m.noteKind
-    if (m.references?.length) out.references = m.references
-    if (m.tool) out.tool = m.tool
-    if (m.action) out.action = m.action
-    if (m.status) out.status = m.status
-    if (m.detail) out.detail = m.detail
-    if (m.errors?.length) out.errors = m.errors
-    if (m.params) out.params = m.params
-    // 二次确认卡片的三件套：漏了哪个刷新后卡片都会走样 ——
-    //   · `confirmId` 是身份（本地 resolve / 后端唤醒都靠它）；
-    //   · `destructive` 决定标题与配色（漏了「批量删除」会显示成普通确认）；
-    //   · `preview` 是「将影响什么」的清单（漏了用户不知道自己在确认什么）。
-    if (m.confirmId) out.confirmId = m.confirmId
-    if (m.destructive != null) out.destructive = m.destructive
-    if (m.preview) out.preview = m.preview
-    if (m.attempt != null) out.attempt = m.attempt
-    if (m.attachments?.length) out.attachments = m.attachments
-    /*
-     * 轮耗时（2026-10-27 新增，必须落库）
-     *
-     * 用户要的是「记录」—— 刷新页面后历史轮次的耗时还得在。
-     * 白名单语义是"不在名单里的字段刷新后就没了"，所以这两行不能省。
-     */
-    if (m.durationMs != null) out.durationMs = m.durationMs
-    if (m.totalDurationMs != null) out.totalDurationMs = m.totalDurationMs
-    // 专家工作组卡片：整条 `experts` 数组落库，刷新后仍能看到「这轮请了哪些专家、结果如何」。
-    // （行内容短、行数=专家数，无需像 data 那样截断。）
-    if (m.type === 'experts' && Array.isArray(m.experts)) {
-      out.experts = m.experts
-    }
-    if (m.data) {
-      try {
-        const s = JSON.stringify(m.data)
-        out.data =
-          s.length > TIMELINE_DATA_LIMIT
-            ? { message: (m.data as any)?.message, _truncated: true, _bytes: s.length }
-            : m.data
-      } catch {
-        // 循环引用等无法序列化 → 丢弃 data（卡片仍能显示标题与状态）
-      }
-    }
-    return out
-  })
-}
-
-/**
- * 复原落库快照时**修正「没有收口」的卡片**（刷新后不该看到永远转圈 / 永远待确认的卡片）。
- *
- * 快照可能是在**一轮没跑完**时写下的（用户点了「停止」、或取消了确认后又立刻刷新）：
- *   · `tool_confirm` 仍是 `running` → 刷新后冒出一张**还能点**的确认卡，点下去却没人应答
- *     （后端那一轮早就不在了）；
- *   · `tool_result` 仍是 `running` → 永远转圈的工具卡片。
- * 这两类在快照里都**不可信**，复原时统一收口成 `fail`（与 `stop()` 的口径一致，文案中性）。
- *
- * ⚠️ 只修正「running」这一个状态：已 `ok` / `fail` / `cancelled` 的都是用户或后端**明确
- * 给出过**的结论，不许覆盖。
- */
-export function normalizeRestoredMessages(msgs: any[]): any[] {
-  if (!Array.isArray(msgs)) return []
-  return msgs.map((m) => {
-    if (!m || typeof m !== 'object' || m.status !== 'running') return m
-    if (m.type === 'tool_confirm') {
-      return { ...m, status: 'fail', content: '已取消 / 已中断' }
-    }
-    if (m.type === 'tool_result') {
-      return { ...m, status: 'fail' }
-    }
-    return m
-  })
-}
-
-/**
- * 执行统计（`metrics` 事件）
- *
- * 口径与后端 `loop.py` 的 `_metrics_event()` **逐字一致**（双链路同口径是红线）：
- *   · `rounds` = 完成的 LLM 往返次数
- *   · `steps`  = 模型请求过的工具调用条目数（含「工具不存在 / 参数校验不过」这些没执行的）
- *   · `llmMs` / `toolMs` = 累计耗时（毫秒）
- *   · `firstTokenMs` = 各轮「发起 LLM 调用 → 第一个非空可读内容」的平均毫秒；
- *     **没有样本时是 `null`**，UI 显示 `—`（给 0 会被读成「瞬间返回」）
- */
-export interface AgentMetrics {
-  rounds: number
-  steps: number
-  llmMs: number
-  toolMs: number
-  firstTokenMs: number | null
-}
-
-/**
- * 一次「回退」的**结果**（UI 直接照它渲染）
- *
- * 前面五个字段就是 `rollbackAgentTurn()` 的返回值，**字段名一个字都没改**
- * （`ok` / `reason` / `reverted` / `skipped` / `failed` / `partial`）—— UI 要按它逐条渲染
- * 「哪些没退成、为什么」，改名等于让组件渲染不出东西。
- *
- * 后两个字段是「回退」这次要做的**另外两件事**的结果：
- *   · `userText` —— 这一轮用户提问的正文（消息已被摘掉，界面拿它回填输入框）；
- *   · `dropped` —— 这一轮的**对话**是否真的从「本地消息流 + 落库快照」里移除了。
- */
-export interface TurnRollbackOutcome {
-  /** 后端**写操作**回退成功（判据见 `rollbackAgentTurn`：`code===200` 且 `data` 形状对） */
-  ok: boolean
-  /** `ok = false` 时的原因（服务端原话，前端不编文案；`ok = true` 时是空串） */
-  reason: string
-  /** 真正回退掉的写操作条数（可能是 0 —— 比如这一轮只有查询） */
-  reverted: number
-  /** 明确**没回退**的条目（工具不支持、已被删掉…） */
-  skipped: AgentRollbackItem[]
-  /** 回退**报错**的条目 */
-  failed: AgentRollbackItem[]
-  /** 只退回了一部分的条目（如批量导入只撤掉了一部分题） */
-  partial: AgentRollbackItem[]
-  /**
-   * 这一轮用户提问的正文（消息被移除后交给界面回填输入框；没找到则空串）
-   *
-   * ⚠️ 取的是**被摘掉的那条 user 消息的 `content`**（不是 `send()` 的入参）：
-   * 纯图片 / 纯附件的那一轮，`send()` 会把它落成 `[图片]` / `[附件]`，
-   * 回填输入框时也要跟用户当时看到的那条一致。
-   */
-  userText: string
-  /**
-   * 这一轮的对话是否真的从「本地消息流 + 落库快照」里移除了
-   *
-   * 判据是**服务端那半步成了没有**（`dropAgentTurn().ok`），不是「删掉了几行」——
-   * 接口是幂等的，重试时服务端回 `dropped: 0` 同样是成功。
-   *
-   * ⚠️ 它与 `ok` **不是一回事**：`dropped=true` 只说明服务端的历史行删掉了，
-   * 而整次回退还可能因为「时间线快照没写成功」被判成 `ok=false`（那时**本地消息一条不动**，
-   * 见 `rollbackTurn` 的顺序说明）。界面要分开读这两个字段。
-   */
-  dropped: boolean
-  /**
-   * 服务端「按 `(user_id, session_id, turn_id)` 命中的行数」——**不考虑 `del_flag`**
-   *
-   * 它回答的是一个 `dropped` 回答不了的问题：**这一轮在服务端历史里到底有没有轮次标记**。
-   *   · `historyMatched === 0` → 那一轮的行 `turn_id` 是空串（历史数据，ds-free 补写
-   *     历史时前端还没带 `turnId`）→ 服务端**一行都匹配不到**；
-   *   · `historyMatched > 0` + 服务端回的行数 `0` → **已经删过了**（接口幂等，重试的正常回执）。
-   *
-   * ⚠️⚠️ 上面那句里的「行数」是 **`AgentDropTurnResult.dropped`**（`api/ai/ai.ts`，
-   *    那是**数字**），**不是**本接口上的 `outcome.dropped` —— 本接口的 `dropped` 是
-   *    **布尔**（见上一条字段说明：只表示「服务端那半步成了」）。两者的名字撞了，
-   *    把 `outcome.dropped === 0` 当行数写会永远读成「一行都没删」（布尔 `false` 也不是 0）。
-   *    本接口**没有**把行数透出去 —— 界面要区分「删掉了」与「已经删过了」时先说一声。
-   *
-   * ⚠️ 界面**不许**因为它是 0 就以为「没什么可删的」而跳过本地移除 ——
-   *    旧数据在服务端删不动，本地消息照样要从消息流与快照里摘掉（否则用户点了没反应）。
-   * 服务端没给这个字段（老后端）时归 0，形状恒定，UI 不用写判空分支。
-   */
-  historyMatched: number
-}
-
-/**
- * **某一轮**的回退状态（UI 直接照 `status` + `outcome` 渲染）
- *
- * ⚠️ 这里**只有两个字段**：轮次 id 是**外层记录的键**（`rollbackStates[turnId]`）。
- * 旧版是一份「最近一次回退」的扁平状态（`{turnId, status, summary}`），
- * 那**存不下两轮的结果** —— 用户先回退第 1 轮、再回退第 2 轮，第一轮的结果就被覆盖了，
- * 而界面上两个回退组件都还在、各自显示同一份（后一次）结果。
- */
-export interface TurnRollbackState {
-  /**
-   * `idle` = 没点过；`busy` = 请求在飞（按钮要禁用，否则连点会打两次账本）；
-   * `done` = 两件事都成了；`fail` = 被服务端拒了 / 网络挂了 / 只成了一半（看 `outcome.reason`）
-   */
-  status: 'idle' | 'busy' | 'done' | 'fail'
-  /** 回退结果（`busy` 时是 null，其余状态都有值） */
-  outcome: TurnRollbackOutcome | null
-}
-
-/**
- * 生成一个**轮次 id**
- *
- * 形状 `t_<毫秒>_<随机 6 位>`：
- *   · 毫秒时间戳 —— 日志 / 库里一眼看出先后，几个轮次之间能按时间排；
- *   · 随机后缀 —— 同一毫秒内连点两次发送也不会撞车（撞了就会把两轮的账本混在一起）。
- * 与 `requestConfirm` 里的 `local_<ms>_<rand>` 是同一套写法，刻意保持一致。
- */
-const newTurnId = () =>
-  `t_${Date.now()}_${Math.random().toString(36).slice(2, 8).padEnd(6, '0')}`
 
 export function useAgentChat() {
   const messages = ref<AgentChatMessage[]>([])
@@ -569,16 +205,10 @@ export function useAgentChat() {
    *   而这条状态条长在整段对话下方、形态上就是「这次会话一共做了多少」。
    *   所以这里做成**跨提问累加，只在 `reset()`（新对话 / 切换会话）时清零**。
    */
-  const metrics = ref<AgentMetrics>({
-    rounds: 0,
-    steps: 0,
-    llmMs: 0,
-    toolMs: 0,
-    firstTokenMs: null
-  })
+  const metrics = ref<AgentMetrics>(projectMetrics(createMetricsAccumulator()))
 
   /** 会话累计的原始累加器（`metrics` 是它的展示投影） */
-  const sessionAgg = { rounds: 0, steps: 0, llmMs: 0, toolMs: 0, ftSum: 0, ftSamples: 0 }
+  const sessionAgg = createMetricsAccumulator()
 
   /**
    * 本轮（单次提问）上一次收到的快照
@@ -586,7 +216,7 @@ export function useAgentChat() {
    * 事件里带的是**本轮累计值**，所以增量 = 本次值 − 上次值。每次 `send()` 必须归零，
    * 否则新一轮算出负增量、把会话总量往回拉。
    */
-  let runSnapshot = { rounds: 0, steps: 0, llmMs: 0, toolMs: 0, ftSum: 0, ftSamples: 0 }
+  let runSnapshot = createMetricsAccumulator()
 
   /**
    * 把会话累加器投影到 `metrics`
@@ -596,15 +226,7 @@ export function useAgentChat() {
    * 用 `rounds` 当权重是错的：只吐 `tool_calls`、没有正文的轮**不进样本**。
    */
   const syncMetrics = () => {
-    metrics.value = {
-      rounds: sessionAgg.rounds,
-      steps: sessionAgg.steps,
-      llmMs: sessionAgg.llmMs,
-      toolMs: sessionAgg.toolMs,
-      firstTokenMs: sessionAgg.ftSamples
-        ? Math.round(sessionAgg.ftSum / sessionAgg.ftSamples)
-        : null
-    }
+    metrics.value = projectMetrics(sessionAgg)
   }
 
   /**
@@ -614,14 +236,7 @@ export function useAgentChat() {
    *    `firstTokenMs` 是平均值，跨会话恢复必须靠「总和 + 样本数」才能正确接着累加，
    *    直接存平均值会在下一次还原时算错（平均值不能相加）。
    */
-  const metricsSnapshot = () => ({
-    rounds: sessionAgg.rounds,
-    steps: sessionAgg.steps,
-    llmMs: sessionAgg.llmMs,
-    toolMs: sessionAgg.toolMs,
-    ftSum: sessionAgg.ftSum,
-    ftSamples: sessionAgg.ftSamples
-  })
+  const metricsSnapshot = () => metricsSnapshotOf(sessionAgg)
 
   /**
    * 从落库快照**还原会话累计统计**（刷新 / 切换会话后调）
@@ -630,22 +245,15 @@ export function useAgentChat() {
    * 非法 / 缺失（老会话无统计）→ 全部归零（与升级前行为一致，不倒退）。
    */
   const restoreMetrics = (snap?: Record<string, number> | null) => {
-    const n = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0)
-    sessionAgg.rounds = n(snap?.rounds)
-    sessionAgg.steps = n(snap?.steps)
-    sessionAgg.llmMs = n(snap?.llmMs)
-    sessionAgg.toolMs = n(snap?.toolMs)
-    sessionAgg.ftSum = n(snap?.ftSum)
-    sessionAgg.ftSamples = n(snap?.ftSamples)
+    const restored = restoreSessionAgg(snap)
+    sessionAgg.rounds = restored.rounds
+    sessionAgg.steps = restored.steps
+    sessionAgg.llmMs = restored.llmMs
+    sessionAgg.toolMs = restored.toolMs
+    sessionAgg.ftSum = restored.ftSum
+    sessionAgg.ftSamples = restored.ftSamples
     // 还原后本轮快照也归零 —— 下一轮 `send` 的增量从「已还原的会话量」起算，才不会被顶掉
-    runSnapshot = {
-      rounds: sessionAgg.rounds,
-      steps: sessionAgg.steps,
-      llmMs: sessionAgg.llmMs,
-      toolMs: sessionAgg.toolMs,
-      ftSum: sessionAgg.ftSum,
-      ftSamples: sessionAgg.ftSamples
-    }
+    runSnapshot = metricsSnapshotOf(sessionAgg)
     syncMetrics()
   }
 
@@ -661,189 +269,6 @@ export function useAgentChat() {
    * 「文档 chip + hover 切片」。
    */
   let pendingReferences: any[] = []
-
-  function collectKnowledgeReferences(data: any): any[] {
-    const hits = Array.isArray(data?.hits)
-      ? data.hits
-      : Array.isArray(data?.data?.hits)
-        ? data.data.hits
-        : []
-    return hits
-      .map((hit: any) => ({
-        chunkId: hit?.chunkId ?? null,
-        docId: hit?.docId ?? null,
-        docName: String(hit?.docName || hit?.wikiPageTitle || hit?.source || '').trim(),
-        chunkIndex: Number.isFinite(Number(hit?.chunkIndex)) ? Number(hit.chunkIndex) : null,
-        source: String(hit?.source || '').trim(),
-        sourceType: String(hit?.sourceType || 'document'),
-        wikiPageId: hit?.wikiPageId ?? null,
-        wikiPageTitle: String(hit?.wikiPageTitle || '').trim(),
-        content: String(hit?.content || hit?.preview || '').trim(),
-        images: Array.isArray(hit?.images) ? hit.images.slice(0, 4) : []
-      }))
-      .filter((ref: any) => ref.docName || ref.wikiPageTitle || ref.source)
-  }
-
-  /**
-   * 网页搜索/抓取的引用：保留真实 url、站点与日期。
-   * `ChatSourceList` 会把它渲染成 chip；点击直接打开外部网页。
-   */
-  function collectWebReferences(data: any): any[] {
-    const business = data?.data && typeof data.data === 'object' ? data.data : data
-    const action = String(business?.action || data?.action || '')
-    if (action === 'fetch' && typeof business?.url === 'string') {
-      return [{
-        sourceType: 'web',
-        docName: String(business.title || business.siteName || business.url).trim(),
-        webTitle: String(business.title || '').trim(),
-        url: String(business.url).trim(),
-        source: String(business.siteName || '').trim(),
-        siteIcon: String(business.siteIcon || business.site_icon || '').trim(),
-        content: String(business.content || '').slice(0, 1200),
-        date: ''
-      }].filter((ref) => ref.url && /^https?:\/\//i.test(ref.url))
-    }
-    const list = Array.isArray(business?.results)
-      ? business.results
-      : Array.isArray(business?.hits)
-        ? business.hits
-        : []
-    return list
-      .map((item: any, index: number) => ({
-        sourceType: 'web',
-        index: Number(item?.index || index + 1),
-        docName: String(item?.title || item?.siteName || item?.url || '').trim(),
-        webTitle: String(item?.title || '').trim(),
-        url: String(item?.url || '').trim(),
-        source: String(item?.siteName || item?.site_name || '').trim(),
-        siteIcon: String(item?.siteIcon || item?.site_icon || '').trim(),
-        content: String(item?.snippet || item?.summary || '').trim(),
-        date: String(item?.date || '').trim()
-      }))
-      .filter((ref: any) => ref.url && /^https?:\/\//i.test(ref.url))
-  }
-
-  function mergeKnowledgeReferences(list: any[]): any[] {
-    const seen = new Set<string>()
-    return [...pendingReferences, ...list].filter((ref: any) => {
-      const key = String(
-        ref.chunkId ?? ref.url ?? `${ref.docId || ref.docName}:${ref.chunkIndex ?? ''}:${String(ref.content || '').slice(0, 40)}`
-      )
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    }).slice(0, 24)
-  }
-
-  /** 整篇文档读取结果没有 chunk 列表，按段落切成可展示的知识切片。 */
-  function isDocumentHeading(line: string): boolean {
-    const text = line.trim()
-    if (!text) return false
-    return (
-      /^#{1,2}\s+/.test(text) ||
-      /^[一二三四五六七八九十百]+[、.]/.test(text) ||
-      /^\d+[.、](?!\d)\s*\S/.test(text)
-    )
-  }
-
-  function splitDocumentContent(content: string): string[] {
-    const text = String(content || '').replace(/\r\n/g, '\n').trim()
-    if (!text) return []
-    const sections: string[] = []
-    let current: string[] = []
-    let inFence = false
-    const flush = () => {
-      const value = current.join('\n').trim()
-      if (value) sections.push(value)
-      current = []
-    }
-    for (const line of text.split('\n')) {
-      if (/^\s*```/.test(line)) {
-        inFence = !inFence
-        current.push(line)
-        continue
-      }
-      // 文档引用按「大点」切，不要把一个 chunk 切成跨章节的 900 字片段；
-      // 否则「四、数据清洗」可能命中包含前面「二、流程」的同一块，浮层显示错内容。
-      if (!inFence && isDocumentHeading(line) && current.some((item) => item.trim())) {
-        flush()
-        current = [line]
-        continue
-      }
-      current.push(line)
-    }
-    flush()
-    const chunks: string[] = []
-    for (const section of sections) {
-      if (section.length <= 1400) {
-        chunks.push(section)
-        continue
-      }
-      // 超长章节再按段落/长度切，避免单块过大。
-      let rest = section
-      while (rest.length > 1400) {
-        let cut = rest.lastIndexOf('\n\n', 1400)
-        if (cut < 500) cut = 1400
-        chunks.push(rest.slice(0, cut).trim())
-        rest = rest.slice(cut).trim()
-      }
-      if (rest) chunks.push(rest)
-    }
-    return chunks
-  }
-
-  function collectDocumentReferences(data: any): any[] {
-    if (!data?.content || !(data?.fileName || data?.docName)) return []
-    const docName = String(data.fileName || data.docName)
-    const docId = data.docId ?? null
-    return splitDocumentContent(String(data.content)).map((content, index) => ({
-      chunkId: null,
-      docId,
-      docName,
-      chunkIndex: index,
-      source: `${docName} 第 ${index + 1} 段`,
-      sourceType: 'document',
-      content
-    }))
-  }
-
-  /**
-   * gallery_manage 命中的图片资产 → 可点击的文档来源 chip。
-   *
-   * 图片描述本身不在文档 chunk 里；只有 asset.offset 能精确回到原文的图片位置。
-   * 因此这里把 caption/OCR 作为浮层内容，把 offset / imageSeq 带到阅读器，
-   * 点击后由 DocumentAnatomyPanel 滚动到对应图片并闪烁高亮。
-   */
-  function collectGalleryReferences(data: any): any[] {
-    const images = Array.isArray(data?.images) ? data.images : []
-    return images.map((img: any) => {
-      const docId = Number(img?.docId || 0)
-      if (!docId) return null
-      const assetKey = String(img?.assetKey || '')
-      const lastPart = assetKey.startsWith('doc:') ? Number(assetKey.split(':').pop()) : null
-      const imageSeq = Number.isFinite(lastPart as number) ? Number(lastPart) : null
-      const docName = String(img?.sourceName || img?.source || '资料').trim()
-      const section = String(img?.sectionTitle || '').trim()
-      const caption = String(img?.caption || '').trim()
-      const keywords = Array.isArray(img?.keywords) ? img.keywords.filter(Boolean).join('、') : ''
-      const content = [caption, keywords].filter(Boolean).join('；') || section || String(img?.imageName || '')
-      return {
-        chunkId: null,
-        docId,
-        docName,
-        chunkIndex: null,
-        source: `${docName}${section ? ` · ${section}` : ''}${imageSeq != null ? ` · 图片 ${imageSeq + 1}` : ''}`,
-        sourceType: 'image',
-        content,
-        snippet: content,
-        highlightText: '',
-        imageSeq,
-        offset: Number.isFinite(Number(img?.offset)) ? Number(img.offset) : null,
-        assetKey,
-        images: img?.url ? [String(img.url)] : []
-      }
-    }).filter(Boolean)
-  }
 
   /** 一次运行里所有工具调用（含运行中）—— 供页面做统计/折叠用 */
   const toolCalls = computed(() =>
@@ -880,13 +305,8 @@ export function useAgentChat() {
     // 会话级复位：新对话 / 切换会话才清空统计（发新提问**不**清 —— 见 `send()` 里的说明）。
     // 直接重置累加器再投影，不要只写 `metrics.value`：那样累加器还留着旧值，
     // 下一次事件会把旧账又加回来。
-    sessionAgg.rounds = 0
-    sessionAgg.steps = 0
-    sessionAgg.llmMs = 0
-    sessionAgg.toolMs = 0
-    sessionAgg.ftSum = 0
-    sessionAgg.ftSamples = 0
-    runSnapshot = { rounds: 0, steps: 0, llmMs: 0, toolMs: 0, ftSum: 0, ftSamples: 0 }
+    Object.assign(sessionAgg, createMetricsAccumulator())
+    runSnapshot = createMetricsAccumulator()
     syncMetrics()
   }
 
@@ -1293,7 +713,7 @@ export function useAgentChat() {
           ['knowledge_search', 'search_knowledge', 'workspace_search'].includes(event.tool || '')
         ) {
           const refs = collectKnowledgeReferences(event.data)
-          if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
+          if (refs.length) pendingReferences = mergeKnowledgeReferences(pendingReferences, refs)
         }
         if (
           event.success &&
@@ -1301,15 +721,15 @@ export function useAgentChat() {
           ['read_document', 'get_document', 'read'].includes(String(event.action || event.data?.action || ''))
         ) {
           const refs = collectDocumentReferences(event.data)
-          if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
+          if (refs.length) pendingReferences = mergeKnowledgeReferences(pendingReferences, refs)
         }
         if (event.success && event.tool === 'gallery_manage') {
           const refs = collectGalleryReferences(event.data)
-          if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
+          if (refs.length) pendingReferences = mergeKnowledgeReferences(pendingReferences, refs)
         }
         if (event.success && event.tool === 'web_search') {
           const refs = collectWebReferences(event.data)
-          if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
+          if (refs.length) pendingReferences = mergeKnowledgeReferences(pendingReferences, refs)
         }
         return
       }
@@ -1334,7 +754,7 @@ export function useAgentChat() {
       ['knowledge_search', 'search_knowledge', 'workspace_search'].includes(event.tool || '')
     ) {
       const refs = collectKnowledgeReferences(event.data)
-      if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
+      if (refs.length) pendingReferences = mergeKnowledgeReferences(pendingReferences, refs)
     }
     if (
       event.success &&
@@ -1342,15 +762,15 @@ export function useAgentChat() {
       ['read_document', 'get_document', 'read'].includes(String(event.action || event.data?.action || ''))
     ) {
       const refs = collectDocumentReferences(event.data)
-      if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
+      if (refs.length) pendingReferences = mergeKnowledgeReferences(pendingReferences, refs)
     }
     if (event.success && event.tool === 'gallery_manage') {
       const refs = collectGalleryReferences(event.data)
-      if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
+      if (refs.length) pendingReferences = mergeKnowledgeReferences(pendingReferences, refs)
     }
     if (event.success && event.tool === 'web_search') {
       const refs = collectWebReferences(event.data)
-      if (refs.length) pendingReferences = mergeKnowledgeReferences(refs)
+      if (refs.length) pendingReferences = mergeKnowledgeReferences(pendingReferences, refs)
     }
   }
 
@@ -1656,13 +1076,7 @@ export function useAgentChat() {
         // 只影响显示、可忽略。
         const curFtSum =
           typeof event.firstTokenMs === 'number' ? event.firstTokenMs * cur.ftSamples : 0
-        sessionAgg.rounds += cur.rounds - runSnapshot.rounds
-        sessionAgg.steps += cur.steps - runSnapshot.steps
-        sessionAgg.llmMs += cur.llmMs - runSnapshot.llmMs
-        sessionAgg.toolMs += cur.toolMs - runSnapshot.toolMs
-        sessionAgg.ftSum += curFtSum - runSnapshot.ftSum
-        sessionAgg.ftSamples += cur.ftSamples - runSnapshot.ftSamples
-        runSnapshot = { ...cur, ftSum: curFtSum }
+        runSnapshot = applyMetricsDelta(sessionAgg, runSnapshot, cur, curFtSum)
         syncMetrics()
         break
       }
@@ -1790,7 +1204,7 @@ export function useAgentChat() {
     //    不归零的话，新一轮的增量会算成负数（本轮小值 − 上轮大值），
     //    把会话累计往回拉 —— 那正是「状态条被刷新掉」的另一种表现。
     //    注意：只归零**快照**，会话累加器 `sessionAgg` 不动（它要跨提问保留）。
-    runSnapshot = { rounds: 0, steps: 0, llmMs: 0, toolMs: 0, ftSum: 0, ftSamples: 0 }
+    runSnapshot = createMetricsAccumulator()
     // 立即放一个「等待中」占位（首轮模型思考前 ds-free 还要先拉工具清单 / 加载扩展）。
     // 之后每一轮由 `waiting` 事件重新显示，真实内容一到就摘掉。
     showPlaceholder('正在理解你的需求…')

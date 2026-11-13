@@ -1123,9 +1123,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount, markRaw } from 'vue'
+import { ref, computed, watch } from 'vue'
 import draggable from 'vuedraggable'
-import { Rank, InfoFilled, Delete, Search, MagicStick, Plus, Loading, Close, CircleCheck, Check, QuestionFilled, EditPen, ChatDotRound, FolderOpened, DocumentCopy, ArrowDown, Clock, Setting, FullScreen, Grid, RefreshLeft, Upload, Document, Picture } from '@element-plus/icons-vue'
+import { Rank, InfoFilled, Delete, Search, MagicStick, Plus, Loading, Close, Check, EditPen, FolderOpened, DocumentCopy, ArrowDown, Clock, Setting, FullScreen, Grid, RefreshLeft, Upload, Document, Picture } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AiThinkingToggle from '@/components/AiThinkingToggle/index.vue'
 import AiModelSelector from '@/components/AiModelSelector/index.vue'
@@ -1141,6 +1141,9 @@ import { useQuestionBuilderMaterials } from './useQuestionBuilderMaterials'
 import { useQuestionBuilderEditor } from './useQuestionBuilderEditor'
 import { useQuestionBuilderAiResult } from './useQuestionBuilderAiResult'
 import { useQuestionBuilderAiGenerate } from './useQuestionBuilderAiGenerate'
+import { useQuestionBuilderTypes } from './useQuestionBuilderTypes'
+import { useQuestionBuilderTypePopover } from './useQuestionBuilderTypePopover'
+import { useQuestionBuilderAiStream } from './useQuestionBuilderAiStream'
 import TiptapEditor from '@/components/TiptapEditor/index.vue'
 import ImageViewer from '@/components/PracticeComponent/ImageViewer.vue'
 // 公式编辑（2026-10-27）：Tiptap 是富文本编辑器，不能直接塞输入框组件，
@@ -1153,64 +1156,8 @@ const userStore = useUserStore()
 const userId = computed(() => userStore.id)
 
 
-// 题型定义
-// 题型库数据：图标为 Vue 组件，必须用 markRaw 避免被响应式 Proxy 包装导致渲染失败
-const questionTypes = ref([
-  { type: 'single', name: '单选题', icon: markRaw(CircleCheck) },
-  { type: 'multiple', name: '多选题', icon: markRaw(Check) },
-  { type: 'judge', name: '判断题', icon: markRaw(QuestionFilled) },
-  { type: 'fill', name: '填空题', icon: markRaw(EditPen) },
-  { type: 'essay', name: '简答题', icon: markRaw(ChatDotRound) },
-  { type: 'composite', name: '组合题（含子题）', icon: markRaw(FolderOpened) }
-])
-
-// 题型库悬浮层状态
-const typePopoverVisible = ref(false)
-const typePopoverTriggerRef = ref<HTMLElement | null>(null)
-const typePopoverRef = ref<HTMLElement | null>(null)
-
-const toggleTypePopover = (e?: Event) => {
-  const before = typePopoverVisible.value
-  typePopoverVisible.value = !typePopoverVisible.value
-}
-
-// 点击外部关闭悬浮层
-const handleOutsideClick = (e: MouseEvent) => {
-  const target = e.target as Node
-  if (!typePopoverVisible.value) {
-    return
-  }
-  const triggerEl = typePopoverTriggerRef.value
-  const popoverEl = typePopoverRef.value
-  // 判断点击是否在悬浮层和触发按钮之外
-  const inTrigger = triggerEl ? triggerEl.contains(target) : false
-  const inPopover = popoverEl ? popoverEl.contains(target) : false
-  if (!inTrigger && !inPopover) {
-    typePopoverVisible.value = false
-  }
-}
-
-// 监听悬浮层 visible 变化（无论何时改变都打印）
-watch(typePopoverVisible, (newVal, oldVal) => {
-  if (newVal) {
-    // 打开后下一帧检查 DOM 是否真的渲染
-    nextTick(() => {
-      const el = typePopoverRef.value
-      if (!el) {
-        return
-      }
-      const rect = el.getBoundingClientRect()
-      const style = window.getComputedStyle(el)
-    })
-  }
-})
-
-onMounted(() => {
-  document.addEventListener('mousedown', handleOutsideClick)
-})
-onBeforeUnmount(() => {
-  document.removeEventListener('mousedown', handleOutsideClick)
-})
+// 题型库悬浮层状态（显隐、点击外部关闭、生命周期监听已抽到同目录 composable）
+const { typePopoverVisible, typePopoverTriggerRef, typePopoverRef, toggleTypePopover } = useQuestionBuilderTypePopover()
 
 const props = defineProps({
   bankId: {
@@ -1268,88 +1215,21 @@ const rawJsonContent = ref('') // 原始 JSON 内容
 const questions = ref<any[]>([])
 const currentId = ref(null)
 
-// AI 生成相关状态
-const aiGenerating = ref(false)
-/**
- * 深度思考的**实时正文**（2026-10-20）
- *
- * 来源是后端 `\x1e@@THINK@@…\x1e` 标记里的增量（见 `chat_engine.THINK_OPEN`），
- * 经 `generateQuestionsStreamFull` 的 `onThinking` 回调送达。
- *
- * ⚠️ 它**不是**题目内容，绝不能拼进 `rawJsonContent` ——
- *    那样 JSON 前面会多出一大段推理，解析必失败。
- */
-const aiThinking = ref('')
-/** 思考卡片是否展开：默认展开（用户要看"在动"），一旦出现正文就自动收起 */
-const aiThinkingOpen = ref(true)
-/** 思考内容容器：用于**自动滚到底**，否则用户只能看到最早那一屏 */
-const thinkBoxRef = ref<HTMLElement | null>(null)
-/**
- * 是否「自动跟随」思考流（2026-10-20）
- *
- * 用户口径：「滚动条会不断自动往下面压 用户鼠标无法自由控制滚动…
- *   要既可以让用户自由控制滚动条 又要保证用户滚动到底部可以一直看到最新输出」
- *
- * `true`  —— 新内容到达时自动滚到底（默认；首次开始思考时就是这种）
- * `false` —— 用户已经往上翻去看历史了，**绝不打扰他**，视图停在原处
- *
- * 状态由 `onThinkScroll` 根据"是否贴底"自动切换，用户不需要点任何按钮：
- * 滚到底 → 恢复跟随；往上翻 → 停止跟随。
- */
-const thinkAutoFollow = ref(true)
-/** 判定"贴底"的容差（px）：留 24px 是因为小数像素/行高取整会有 1-2px 误差，
- *  卡得太死会让"明明滚到底了却不跟随"的 bug 反复出现 */
-const THINK_STICKY_THRESHOLD = 24
-
-/**
- * 用户手动滚动思考区时的处理
- *
- * ⚠️ 这个函数是"自由控制"与"自动跟随"不打架的关键：
- *   只有它在用户手势后更新 `thinkAutoFollow`，
- *   程序性的 `scrollTop` 赋值也会触发 scroll 事件 —— 但那时算出来
- *   仍然是"贴底"，因此 `thinkAutoFollow` 保持 true，不会误判成"用户想停下"。
- */
-const onThinkScroll = () => {
-  const el = thinkBoxRef.value
-  if (!el) return
-  const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-  thinkAutoFollow.value = distanceToBottom <= THINK_STICKY_THRESHOLD
-}
-/**
- * 已等待秒数（2026-10-20）
- *
- * 模型推理启动约 2.5s（实测，本地也躲不掉 —— 是模型侧耗时，不是代理）。
- * 原来这段时间界面只有一行静态文字，用户无法判断"在等"还是"卡死"。
- * 显示秒数把"不确定的等待"变成"看得见的进度"。
- */
-const aiWaitSeconds = ref(0)
-let aiWaitTimer: ReturnType<typeof setInterval> | null = null
-
-/*
- * 等待计时器的收尾（2026-10-20）
- *
- * ⚠️ 用 watch 而不是在每个结束路径里手动 clearInterval：
- *    `aiGenerating.value = false` 在文件里有 **9 处**
- *    （成功 / 解析失败 / 格式错误 / onError / 外层 catch…），
- *    逐处加一行必然漏改 —— 漏掉的那条路径会让计时器永远在跑，
- *    下次打开弹窗秒数从上次的数值继续涨，看着像"卡了几百秒"。
- *
- *    监听状态本身，无论从哪条路结束都能收尾 —— 一处覆盖全部。
- *
- * ⚠️ 必须放在 `aiGenerating` 声明**之后**：
- *    watch 在 setup 阶段立即求值，放在声明前会命中 TDZ
- *    直接抛 ReferenceError 白屏，而 `vite build` **抓不到这类错误**。
- */
-watch(aiGenerating, (running) => {
-  if (!running && aiWaitTimer) {
-    clearInterval(aiWaitTimer)
-    aiWaitTimer = null
-  }
-})
-const streamBoxRef = ref(null)
-const generatedCount = ref(0)
-const pendingImportData = ref<any>(null) // 暂存待导入的数据
-const currentGeneratingType = ref({ isComposite: false, questionType: 'single' })
+// AI 生成相关状态（流式正文、思考跟随、等待计时已抽到同目录 composable）
+const {
+  aiGenerating,
+  aiThinking,
+  aiThinkingOpen,
+  thinkBoxRef,
+  thinkAutoFollow,
+  onThinkScroll,
+  aiWaitSeconds,
+  restartWaitTimer,
+  streamBoxRef,
+  generatedCount,
+  pendingImportData,
+  currentGeneratingType
+} = useQuestionBuilderAiStream()
 
 // 可编辑预览数据（深拷贝，用于用户编辑）
 const editablePreviewData = ref<any>(null)
@@ -1363,37 +1243,8 @@ const searchKeyword = ref('')
 const currentPage = ref(1)
 const pageSize = ref(10)
 
-// 题型筛选（支持多选）
-const activeTypeFilters = ref(new Set(['all']))
-
-// 设置题型筛选（多选模式）
-const setTypeFilter = (type) => {
-  if (type === 'all') {
-    // 点击"全部" = 清除所有筛选
-    activeTypeFilters.value = new Set(['all'])
-  } else {
-    // 移除"全部"
-    activeTypeFilters.value.delete('all')
-    // 切换选中状态
-    if (activeTypeFilters.value.has(type)) {
-      activeTypeFilters.value.delete(type)
-      // 如果没有选中任何类型，自动选中"全部"
-      if (activeTypeFilters.value.size === 0) {
-        activeTypeFilters.value.add('all')
-      }
-    } else {
-      activeTypeFilters.value.add(type)
-    }
-    // 触发响应式更新
-    activeTypeFilters.value = new Set(activeTypeFilters.value)
-  }
-  currentPage.value = 1
-}
-
-// 判断是否选中
-const isTypeSelected = (type) => {
-  return activeTypeFilters.value.has(type)
-}
+// 题型定义、名称映射与多选筛选（抽到同目录 composable；questionTypes / getTypeName 也在此返回）
+const { questionTypes, getTypeName, activeTypeFilters, setTypeFilter, isTypeSelected } = useQuestionBuilderTypes(currentPage)
 
 // 选项 JSON 高级编辑对话框
 const showOptionsJsonDialog = ref(false)
@@ -1633,15 +1484,6 @@ const onOptionChange = () => {
   if (q) q.optionsJson = JSON.stringify(q.options)
 }
 
-const getTypeName = (type) => {
-  if (typeof type === 'number') {
-    const map = { 1: '单选题', 2: '多选题', 3: '判断题', 4: '填空题', 5: '简答题', 6: '组合题' }
-    return map[type] || '未知'
-  }
-  const found = questionTypes.value.find(t => t.type === type)
-  return found?.name || type
-}
-
 const {
   allFilteredQuestions,
   filteredQuestions,
@@ -1728,11 +1570,7 @@ const { handleAiGenerate } = useQuestionBuilderAiGenerate({
   buildMaterialContext,
   MATERIAL_MAX_CHARS,
   finishAiGenerate,
-  restartWaitTimer: () => {
-    aiWaitSeconds.value = 0
-    if (aiWaitTimer) clearInterval(aiWaitTimer)
-    aiWaitTimer = setInterval(() => { aiWaitSeconds.value += 1 }, 1000)
-  }
+  restartWaitTimer,
 })
 
 const { handleKeydown, openAiDialog } = useQuestionBuilderAiDialog({
