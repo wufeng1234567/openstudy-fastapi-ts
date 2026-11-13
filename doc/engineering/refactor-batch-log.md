@@ -546,7 +546,7 @@
 - 授权：hy4 = QuestionBuilder.vue（评估后保持原样）；minimax3.1f = KnowledgeWikiPanel + useQuestionPractice，第三文件 wiki_service
 - 说明：QuestionBuilder 因 scoped SCSS 拆子组件会丢失样式、模板动态绑定过密，安全评估后不改；questions.py 的收藏题库查询因位于循环体内，4 稿均被 AST 守卫拦下，保持原样。
 - 测试：build 4,032 modules / unit 29 项 / wiki+practice smoke 通过 / compileall / ruff / 全量 pytest 109 passed
-- 提交：`[pending]`
+- 提交：`8ccb96d`（Gitee/GitCode 已推送；GitHub 重试中）
 
 ### 结果（非空行口径）
 
