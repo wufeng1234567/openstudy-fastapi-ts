@@ -67,6 +67,7 @@ from .question_lookup_formatters import (
     simple_question_info_payload, favorite_bank_exists_payload, favorite_question_payload,
 )
 from .question_list_filters import apply_favorite_bank_filters, apply_favorite_question_filters
+from .question_batch_check import batch_check_result
 
 
 # ========== 辅助函数 ==========
@@ -2032,10 +2033,7 @@ async def batch_check_favorite_question(
         UserQuestionFavorite.favorite_status == 1,
     )
     result = await db.execute(query)
-    existing_ids = {row[0] for row in result.all()}
-
-    data = {str(qid): (qid in existing_ids) for qid in payload.questionIds}
-    return success(data)
+    return success(batch_check_result(result.all(), payload.questionIds))
 
 
 @router.put("/favoriteQuestion/favoriteQuestion")
@@ -2532,10 +2530,7 @@ async def batch_check_error(
         UserQuestionError.status == 1,
     )
     result = await db.execute(query)
-    existing_ids = {row[0] for row in result.all()}
-
-    data = {str(qid): (qid in existing_ids) for qid in payload.questionIds}
-    return success(data)
+    return success(batch_check_result(result.all(), payload.questionIds))
 
 
 @router.post("/questionError/questionError/markMastered")
@@ -2930,10 +2925,7 @@ async def batch_check_marked(
         UserQuestionMarked.marked_status == 1,
     )
     result = await db.execute(query)
-    existing_ids = {row[0] for row in result.all()}
-
-    data = {str(qid): (qid in existing_ids) for qid in payload.questionIds}
-    return success(data)
+    return success(batch_check_result(result.all(), payload.questionIds))
 
 
 @router.put("/questionMarked/questionMarked")

@@ -73,6 +73,7 @@ from .rag_sse_formatters import (
 from .rag_kb_formatters import kb_created_payload, kb_detail_payload, kb_updated_payload
 from .rag_document_formatters import outline_payload, outline_rebuild_payload, workspace_search_payload
 from .rag_upload_formatters import upload_summary_payload
+from .rag_query_params import parse_csv_ints
 
 # ============================================================ 知识库
 
@@ -958,12 +959,10 @@ async def get_study_graph(
     from app.services.rag.study_graph_service import build_study_graph
 
     try:
-        bank_list = []
-        if bankIds.strip():
-            try:
-                bank_list = [int(x) for x in bankIds.split(",") if x.strip()]
-            except ValueError:
-                return error("bankIds 格式应为逗号分隔的整数", code=400)
+        try:
+            bank_list = parse_csv_ints(bankIds)
+        except ValueError:
+            return error("bankIds 格式应为逗号分隔的整数", code=400)
         return success(
             await build_study_graph(
                 db,
@@ -1007,24 +1006,18 @@ async def get_study_plan(
                 target = _dt.strptime(examDate.strip(), "%Y-%m-%d").date()
             except ValueError:
                 return error("考试日期格式应为 YYYY-MM-DD", code=400)
-        rest_list = []
-        if restDays.strip():
-            try:
-                rest_list = [int(x) for x in restDays.split(",") if x.strip()]
-            except ValueError:
-                return error("restDays 格式应为逗号分隔的 1-7", code=400)
-        section_list = []
-        if sectionIndexes.strip():
-            try:
-                section_list = [int(x) for x in sectionIndexes.split(",") if x.strip()]
-            except ValueError:
-                return error("sectionIndexes 格式应为逗号分隔的整数", code=400)
-        bank_list = []
-        if bankIds.strip():
-            try:
-                bank_list = [int(x) for x in bankIds.split(",") if x.strip()]
-            except ValueError:
-                return error("bankIds 格式应为逗号分隔的整数", code=400)
+        try:
+            rest_list = parse_csv_ints(restDays)
+        except ValueError:
+            return error("restDays 格式应为逗号分隔的 1-7", code=400)
+        try:
+            section_list = parse_csv_ints(sectionIndexes)
+        except ValueError:
+            return error("sectionIndexes 格式应为逗号分隔的整数", code=400)
+        try:
+            bank_list = parse_csv_ints(bankIds)
+        except ValueError:
+            return error("bankIds 格式应为逗号分隔的整数", code=400)
         return success(
             await build_study_plan(
                 db,

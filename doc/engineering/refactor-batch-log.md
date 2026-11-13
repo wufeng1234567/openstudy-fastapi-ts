@@ -356,3 +356,24 @@
 新增模块：
 - `question_list_filters.py` / `rag_upload_formatters.py`
 - `wiki_page_state.py`
+
+## Batch 16（2026-11-13，已完成）
+
+- 基线 commit：`c105366`
+- 快照目录：`_scratch_refactor_batch16_c105366/`
+- 授权：hy4 = questions.py + rag.py；minimax3.1f = loop.py
+- 测试：compileall / ruff / questions+rag+loop 导入 / 13 项定向 pytest
+- 备注：loop.py 的「低风险纯辅助面」已接近抽干；本批只抽 1 个 ToolMessage 构造，减少 7 行
+- 提交：`[pending]`
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `app/api/v1/questions.py` | 2,692 | 2,687 | -5 |
+| `app/api/v1/rag.py` | 2,301 | 2,294 | -7 |
+| `app/services/ai/agent/loop.py` | 1,893 | 1,886 | -7 |
+
+新增模块：
+- `question_batch_check.py` / `rag_query_params.py`
+- `loop_tool_result.py`

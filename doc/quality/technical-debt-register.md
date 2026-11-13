@@ -32,10 +32,10 @@
 
 | 行数 | 文件 | 风险/备注 |
 |---:|---|---|
-| 2,692 | `app/api/v1/questions.py` | 路由/业务混杂，P2 下沉 service |
-| 2,301 | `app/api/v1/rag.py` | 资料/RAG 巨型路由 |
+| 2,687 | `app/api/v1/questions.py` | 路由/业务混杂，P2 下沉 service |
+| 2,294 | `app/api/v1/rag.py` | 资料/RAG 巨型路由 |
 | 1,737 | `app/services/rag/wiki_service.py` | 百科服务 |
-| 1,893 | `app/services/ai/agent/loop.py` | Agent 循环，已拆部分 helper |
+| 1,886 | `app/services/ai/agent/loop.py` | Agent 循环，已拆部分 helper |
 | 1,976 | `app/services/rag/workspace_service.py` | 资料空间服务 |
 | 1,817 | `app/services/bank_export_service.py` | 题库导出 |
 | 1,731 | `app/api/v1/ai.py` | AI 路由 |

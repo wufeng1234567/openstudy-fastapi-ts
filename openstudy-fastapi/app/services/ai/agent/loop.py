@@ -99,6 +99,10 @@ from app.services.ai.agent.loop_events import (
     warning_event,
     waiting_event,
 )
+
+from app.services.ai.agent.loop_tool_result import (
+    tool_result_message,
+)
 # 抽离出去的**纯辅助 / 常量 / 类型**模块（2026-11 可读性重构）
 #
 # 下面这些名字**原本就定义在 loop.py 里**，现在从配套模块 import 回来 ——
@@ -1554,9 +1558,7 @@ async def run_agent_stream(
                     f"工具不存在：{tool_name}",
                     f"可用工具只有：{', '.join(registry.names())}",
                 )
-                lc_messages.append(
-                    ToolMessage(content=_dumps(result), tool_call_id=call_id)
-                )
+                lc_messages.append(tool_result_message(result, call_id))
                 state.corrections += 1
                 yield _event(
                     self_correct_event(
@@ -1580,9 +1582,7 @@ async def run_agent_stream(
                         f"工具 {tool_name} 不在当前智能体「{role_spec.name}」的可用范围内",
                         f"当前角色可用工具：{', '.join(sorted(registry.names() - excluded_tools))}",
                     )
-                lc_messages.append(
-                    ToolMessage(content=_dumps(result), tool_call_id=call_id)
-                )
+                lc_messages.append(tool_result_message(result, call_id))
                 state.corrections += 1
                 yield _event(
                     self_correct_event(
@@ -1615,9 +1615,7 @@ async def run_agent_stream(
                 )
                 state.corrections += 1
                 state.errors.extend(errors)
-                lc_messages.append(
-                    ToolMessage(content=_dumps(result), tool_call_id=call_id)
-                )
+                lc_messages.append(tool_result_message(result, call_id))
                 yield _event(
                     self_correct_event(
                         state.corrections, tool_name, "；".join(errors)
@@ -1710,9 +1708,7 @@ async def run_agent_stream(
                         "用户取消了这次操作",
                         "不要重复尝试同一个操作；若仍需完成目标，请换一种方式或先询问用户",
                     )
-                    lc_messages.append(
-                        ToolMessage(content=_dumps(result), tool_call_id=call_id)
-                    )
+                    lc_messages.append(tool_result_message(result, call_id))
                     # 取消导入时清掉「本轮刚建、且仍为空」的题库（避免留垃圾库）
                     await _rollback_empty_created_bank(
                         ctx, tool_name, params, created_banks
@@ -1739,9 +1735,7 @@ async def run_agent_stream(
                             "用户取消了这次操作（没有勾选任何要删除的对象）",
                             "不要重复尝试同一个操作；若仍需完成目标，请先询问用户",
                         )
-                        lc_messages.append(
-                            ToolMessage(content=_dumps(result), tool_call_id=call_id)
-                        )
+                        lc_messages.append(tool_result_message(result, call_id))
                         yield _event(
                             tool_result_cancelled_event(
                                 tool_name,
