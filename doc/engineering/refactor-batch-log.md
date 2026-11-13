@@ -508,7 +508,7 @@
 - 授权：minimax3.1f = questions.py + rag.py；hy4 = loop.py
 - 事故与修复：questions.py 的 `_question_page_payload` 函数体首次生成时整体顶格（await outside function，compileall 失败）；已按快照内容补 4 空格缩进并复验 compile/ruff/import。
 - 测试：compileall / ruff / questions+rag+loop 导入 / 13 项定向 pytest
-- 提交：`[pending]`
+- 提交：`ac8c90f`（GitHub/Gitee/GitCode 三远端已同步）
 
 ### 结果（非空行口径）
 
