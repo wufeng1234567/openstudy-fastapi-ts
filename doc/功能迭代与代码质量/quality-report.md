@@ -7,7 +7,7 @@
 
 ## 0. 2026-11-12 当前复核（优先于下方历史基线）
 
-> 代码基线：`main @ 7d17bb4`（P2 Batch 1–34 类型/结构债务收敛已提交；后续提交见 `git log`）
+> 代码基线：`main @ bccf68a`（P2 Batch 1–34 + 前端组件目录规范化已提交；后续提交见 `git log`）
 > 说明：下方 1–5 节保留 2026-11-09 历史基线，本节是当前可复跑结果。
 
 | 检查项 | 命令 | 本次结果 | 结论 |
@@ -17,7 +17,7 @@
 | 后端测试 | `pytest tests -q` | exit 0；**109 passed**（旧报告 102） | ✅ |
 | 前端 lint | `npm run lint` | 0 errors / 4,156 warnings | 🟡 warn-only |
 | 前端类型检查 | `npm run type-check` | exit 2；1,080 条 `error TS`（旧报告 1,808） | 🟡 存量债务 |
-| 前端构建 | `npm run build:prod` | exit 0；4,032 modules | ✅ |
+| 前端构建 | `npm run build:prod` | exit 0；3,945 modules | ✅ |
 | 前端单测 | `npm run test:unit` | 29 项断言通过（mindmap 15 + table 14） | ✅ |
 | 工作区 | `git status --short` | 干净；用户本地素材已被 `.gitignore` 忽略 | ✅ |
 
@@ -82,7 +82,7 @@
 2. **lint 是 warn-only 基线**：4,156 warnings 是存量债务台账，不是 0 告警。
 3. **覆盖率只有 19%**：这是基线数字，不是质量目标；不设阈值。
 4. **CI 已在 GitHub Actions runner 实跑成功**：run `42630095384`，后端/前端/仓库卫生 3 jobs 全绿；其中 type-check 是 `continue-on-error` 的报告步骤，不代表类型检查已通过。
-5. **本轮代码/文档已提交并推送**：最新代码提交 `7d17bb4`（文档提交紧随其后）；工作区干净，用户本地素材已由 `.gitignore` 忽略。
+5. **本轮代码/文档已提交并推送**：最新代码提交 `bccf68a`（文档提交紧随其后）；工作区干净，用户本地素材已由 `.gitignore` 忽略。
 
 ---
 
