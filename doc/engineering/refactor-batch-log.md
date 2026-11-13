@@ -161,7 +161,7 @@
 - 快照目录：`_scratch_refactor_batch6_f35a7ee/`
 - 授权：hy4 = questions.py + rag.py；minimax3.1f = loop.py
 - 测试：compileall / ruff / questions+rag+loop 导入 / 13 项定向 pytest
-- 提交：`[pending]`
+- 提交：`4b8ea98`（Gitee/GitCode 已推送；GitHub 重试中）
 
 ### 结果（非空行口径）
 
