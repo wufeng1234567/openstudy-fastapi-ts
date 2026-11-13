@@ -140,7 +140,7 @@
 - [x] 三个文件全部修改完成
 - [x] 主代理 review diff（`git diff --check` 通过）
 - [x] 批次级自动测试（build 4,010 modules / unit 29 项 / studio+workspace+practice smoke 通过；agent-chat 无 console/pageerror）
-- [ ] 提交并同步三仓库（本记录随批次提交）
+- [x] 提交并同步三仓库（Gitee/GitCode 已推送；GitHub 重试中）
 
 ### 结果（非空行口径）
 
