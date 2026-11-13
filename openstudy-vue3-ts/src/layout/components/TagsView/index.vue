@@ -6,7 +6,7 @@
         :key="tag.path"
         :data-path="tag.path"
         :class="isActive(tag) ? 'active' : ''"
-        :to="{ path: tag.path, query: tag.query, fullPath: tag.fullPath }"
+        :to="({ path: tag.path, query: tag.query, fullPath: tag.fullPath } as any)"
         class="tags-view-item"
         :style="activeStyle(tag)"
         @click.middle="!isAffix(tag) ? closeSelectedTag(tag) : ''"
@@ -42,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import ScrollPane from './ScrollPane'
+import ScrollPane from './ScrollPane.vue'
 import { getNormalPath } from '@/utils/legacy'
 import useTagsViewStore from '@/store/modules/tagsView'
 import useSettingsStore from '@/store/modules/settings'
@@ -55,7 +55,7 @@ const selectedTag = ref<any>({});
 const affixTags = ref<any[]>([]);
 const scrollPaneRef = ref(null);
 
-const { proxy } = getCurrentInstance();
+const { proxy } = getCurrentInstance()!;
 const route = useRoute();
 const router = useRouter();
 
@@ -79,14 +79,14 @@ onMounted(() => {
   addTags()
 })
 
-function isActive(r) {
+function isActive(r: any) {
   return r.path === route.path
 }
-function activeStyle(tag) {
+function activeStyle(tag: any) {
   if (!isActive(tag)) return {};
   return {};
 }
-function isAffix(tag) {
+function isAffix(tag: any) {
   return tag.meta && tag.meta.affix
 }
 function isFirstView() {
@@ -103,9 +103,9 @@ function isLastView() {
     return false
   }
 }
-function filterAffixTags(routes, basePath = '') {
-  let tags = []
-  routes.forEach(route => {
+function filterAffixTags(routes: any[], basePath = '') {
+  let tags: any[] = []
+  routes.forEach((route: any) => {
     if (route.meta && route.meta.affix) {
       const tagPath = getNormalPath(basePath + '/' + route.path)
       tags.push({
@@ -137,9 +137,9 @@ function initTags() {
 function addTags() {
   const { name } = route
   if (name) {
-    useTagsViewStore().addView(route)
+    useTagsViewStore().addView(route as any)
     if (route.meta.link) {
-      useTagsViewStore().addIframeView(route);
+      useTagsViewStore().addIframeView(route as any);
     }
   }
   return false
@@ -148,39 +148,39 @@ function moveToCurrentTag() {
   nextTick(() => {
     for (const r of visitedViews.value) {
       if (r.path === route.path) {
-        scrollPaneRef.value.moveToTarget(r);
+        scrollPaneRef.value!.moveToTarget(r);
         // when query is different then update
         if (r.fullPath !== route.fullPath) {
-          useTagsViewStore().updateVisitedView(route)
+          useTagsViewStore().updateVisitedView(route as any)
         }
       }
     }
   })
 }
-function refreshSelectedTag(view) {
+function refreshSelectedTag(view: any) {
   proxy.$tab.refreshPage(view);
   if (route.meta.link) {
-    useTagsViewStore().delIframeView(route);
+    useTagsViewStore().delIframeView(route as any);
   }
 }
-function closeSelectedTag(view) {
-  proxy.$tab.closePage(view).then(({ visitedViews }) => {
+function closeSelectedTag(view: any) {
+  proxy.$tab.closePage(view).then(({ visitedViews }: { visitedViews: any[] }) => {
     if (isActive(view)) {
       toLastView(visitedViews, view)
     }
   })
 }
 function closeRightTags() {
-  proxy.$tab.closeRightPage(selectedTag.value).then(visitedViews => {
-    if (!visitedViews.find(i => i.fullPath === route.fullPath)) {
-      toLastView(visitedViews)
+  proxy.$tab.closeRightPage(selectedTag.value).then((visitedViews: any[]) => {
+    if (!visitedViews.find((i: any) => i.fullPath === route.fullPath)) {
+      toLastView(visitedViews, undefined)
     }
   })
 }
 function closeLeftTags() {
-  proxy.$tab.closeLeftPage(selectedTag.value).then(visitedViews => {
-    if (!visitedViews.find(i => i.fullPath === route.fullPath)) {
-      toLastView(visitedViews)
+  proxy.$tab.closeLeftPage(selectedTag.value).then((visitedViews: any[]) => {
+    if (!visitedViews.find((i: any) => i.fullPath === route.fullPath)) {
+      toLastView(visitedViews, undefined)
     }
   })
 }
@@ -190,15 +190,15 @@ function closeOthersTags() {
     moveToCurrentTag()
   })
 }
-function closeAllTags(view) {
-  proxy.$tab.closeAllPage().then(({ visitedViews }) => {
+function closeAllTags(view: any) {
+  proxy.$tab.closeAllPage().then(({ visitedViews }: { visitedViews: any[] }) => {
     if (affixTags.value.some(tag => tag.path === route.path)) {
       return
     }
     toLastView(visitedViews, view)
   })
 }
-function toLastView(visitedViews, view) {
+function toLastView(visitedViews: any[], view: any) {
   const latestView = visitedViews.slice(-1)[0]
   if (latestView) {
     router.push(latestView.fullPath)
@@ -213,7 +213,7 @@ function toLastView(visitedViews, view) {
     }
   }
 }
-function openMenu(tag, e) {
+function openMenu(tag: any, e: any) {
   const menuMinWidth = 105
   const offsetLeft = proxy.$el.getBoundingClientRect().left // container margin left
   const offsetWidth = proxy.$el.offsetWidth // container width

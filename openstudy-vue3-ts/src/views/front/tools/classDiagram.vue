@@ -120,14 +120,14 @@ import { useDiagramExport } from '@/composables/useDiagramExport'
 const javaCode = ref('')
 const isParsing = ref(false)
 const hasDiagram = ref(false)
-const canvasContainer = ref(null)
-const canvasArea = ref(null)
+const canvasContainer = ref<HTMLElement | null>(null)
+const canvasArea = ref<HTMLElement | null>(null)
 
 const contextMenu = ref({
   visible: false,
   x: 0,
   y: 0,
-  nodeId: null
+  nodeId: null as string | null
 })
 
 // ---- 解析器和导出 ----
@@ -135,9 +135,9 @@ const { parse } = useJavaParser()
 const { exportSvg, exportPng, exportJpg, exportVisx } = useDiagramExport()
 
 // ---- LogicFlow 实例 ----
-let lf = null
-let currentClasses = []
-let currentRelations = []
+let lf: any = null
+let currentClasses: any[] = []
+let currentRelations: any[] = []
 
 // ---- LogicFlow 初始化 ----
 function initLogicFlow() {
@@ -154,7 +154,7 @@ function initLogicFlow() {
     LogicFlow.use(SelectionSelect)
 
     lf = new LogicFlow({
-      container: canvasArea.value,
+      container: canvasArea.value!,
       grid: {
         visible: true,
         size: 20,
@@ -170,7 +170,7 @@ function initLogicFlow() {
         max: 3,
         step: 0.1
       },
-      keyboard: false
+      keyboard: false as any
     })
 
     // 注册自定义 UML 类节点
@@ -191,8 +191,8 @@ function initLogicFlow() {
       e.stopPropagation()
       contextMenu.value = {
         visible: true,
-        x: e.clientX - canvasContainer.value.getBoundingClientRect().left,
-        y: e.clientY - canvasContainer.value.getBoundingClientRect().top,
+        x: e.clientX - canvasContainer.value!.getBoundingClientRect().left,
+        y: e.clientY - canvasContainer.value!.getBoundingClientRect().top,
         nodeId: data.id
       }
     })
@@ -209,7 +209,7 @@ function initLogicFlow() {
 }
 
 // ---- 注册 UML 类节点（使用 HtmlNode） ----
-function registerUmlClassNode(HtmlNode, HtmlNodeModel) {
+function registerUmlClassNode(HtmlNode: any, HtmlNodeModel: any) {
   class UmlClassModel extends HtmlNodeModel {
     setAttributes() {
       const { properties } = this
@@ -257,7 +257,7 @@ function registerUmlClassNode(HtmlNode, HtmlNodeModel) {
   }
 
   class UmlClassView extends HtmlNode {
-    setHtml(rootEl) {
+    setHtml(rootEl: any) {
       const { properties } = this.props.model
       const attrCount = (properties.attributes || []).length
       const methodCount = (properties.methods || []).length
@@ -304,7 +304,7 @@ function registerUmlClassNode(HtmlNode, HtmlNodeModel) {
       attrs.style.lineHeight = lineHeight + 'px'
       attrs.style.color = '#303133'
       if (properties.attributes && properties.attributes.length > 0) {
-        attrs.innerHTML = properties.attributes.map(a => `<div>${escapeHtml(a)}</div>`).join('')
+        attrs.innerHTML = properties.attributes.map((a: any) => `<div>${escapeHtml(a)}</div>`).join('')
       } else {
         attrs.innerHTML = '&nbsp;'
       }
@@ -316,7 +316,7 @@ function registerUmlClassNode(HtmlNode, HtmlNodeModel) {
       methods.style.lineHeight = lineHeight + 'px'
       methods.style.color = '#303133'
       if (properties.methods && properties.methods.length > 0) {
-        methods.innerHTML = properties.methods.map(m => `<div>${escapeHtml(m)}</div>`).join('')
+        methods.innerHTML = properties.methods.map((m: any) => `<div>${escapeHtml(m)}</div>`).join('')
       } else {
         methods.innerHTML = '&nbsp;'
       }
@@ -334,14 +334,14 @@ function registerUmlClassNode(HtmlNode, HtmlNodeModel) {
   })
 }
 
-function escapeHtml(str) {
+function escapeHtml(str: any) {
   const div = document.createElement('div')
   div.textContent = str
   return div.innerHTML
 }
 
 // ---- 注册自定义边 ----
-function registerEdges(PolylineEdge, PolylineEdgeModel) {
+function registerEdges(PolylineEdge: any, PolylineEdgeModel: any) {
   class BaseEdge extends PolylineEdgeModel {
     getEdgeStyle() {
       return {
@@ -505,7 +505,7 @@ function handleParse() {
 }
 
 // ---- 渲染类图到画布 ----
-function renderDiagram({ classes, relations }) {
+function renderDiagram({ classes, relations }: { classes: any[]; relations: any[] }) {
   if (!lf) {
     console.error('lf 实例不存在')
     return
@@ -515,7 +515,7 @@ function renderDiagram({ classes, relations }) {
   lf.clearData()
 
   // 添加节点
-  const nodeIdMap = {}
+  const nodeIdMap: Record<string, any> = {}
   for (const cls of classes) {
     try {
       const nodeData = lf.addNode({
@@ -537,7 +537,7 @@ function renderDiagram({ classes, relations }) {
   }
 
   // 统计每个目标节点的入边数量
-  const targetEdgeCount = {}
+  const targetEdgeCount: Record<string, any> = {}
   for (const rel of relations) {
     const targetId = nodeIdMap[rel.to]
     if (targetId) {
@@ -546,7 +546,7 @@ function renderDiagram({ classes, relations }) {
   }
 
   // 记录每个目标节点已分配的边索引
-  const targetEdgeIndex = {}
+  const targetEdgeIndex: Record<string, any> = {}
   for (const targetId in targetEdgeCount) {
     targetEdgeIndex[targetId] = 0
   }
@@ -561,7 +561,7 @@ function renderDiagram({ classes, relations }) {
         const sourceNode = lf.graphModel.getNodeModelById(sourceId)
         const targetNode = lf.graphModel.getNodeModelById(targetId)
 
-        let edgeConfig = {
+        let edgeConfig: Record<string, any> = {
           type: rel.type,
           sourceNodeId: sourceId,
           targetNodeId: targetId
@@ -670,7 +670,7 @@ function deleteNode() {
 }
 
 // ---- 导出 ----
-async function handleExport(format) {
+async function handleExport(format: string) {
   if (!hasDiagram.value) {
     ElMessage.warning('请先生成类图')
     return
@@ -682,10 +682,10 @@ async function handleExport(format) {
         exportSvg(lf)
         break
       case 'png':
-        await exportPng(canvasArea.value)
+        await exportPng(canvasArea.value!)
         break
       case 'jpg':
-        await exportJpg(canvasArea.value)
+        await exportJpg(canvasArea.value!)
         break
       case 'vsdx':
         await exportVisx(currentClasses, currentRelations)
@@ -694,7 +694,7 @@ async function handleExport(format) {
     ElMessage.success('导出成功')
   } catch (err) {
     console.error('导出失败:', err)
-    ElMessage.error('导出失败: ' + (err.message || '未知错误'))
+    ElMessage.error('导出失败: ' + ((err as Error).message || '未知错误'))
   }
 }
 
@@ -704,7 +704,7 @@ function loadExample() {
 }
 
 // ---- 点击其他区域关闭菜单 ----
-function handleClickOutside(e) {
+function handleClickOutside(e: MouseEvent) {
   if (contextMenu.value.visible) {
     contextMenu.value.visible = false
   }

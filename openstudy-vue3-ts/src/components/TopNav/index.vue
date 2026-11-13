@@ -40,7 +40,7 @@ import useSettingsStore from '@/store/modules/settings'
 import usePermissionStore from '@/store/modules/permission'
 
 // 顶部栏初始数
-const visibleNumber = ref(null);
+const visibleNumber = ref<number>(null as any);
 // 当前激活菜单的 index
 const currentIndex = ref(null);
 // 隐藏侧边栏路由
@@ -59,8 +59,8 @@ const routers = computed(() => permissionStore.topbarRouters);
 
 // 顶部显示菜单
 const topMenus = computed(() => {
-  let topMenus = [];
-  routers.value.map((menu) => {
+  let topMenus: any[] = [];
+  routers.value.map((menu: any) => {
     if (menu.hidden !== true) {
       // 兼容顶部栏一级菜单内部跳转
       if (menu.path === "/") {
@@ -75,8 +75,8 @@ const topMenus = computed(() => {
 
 // 设置子路由
 const childrenMenus = computed(() => {
-  let childrenMenus = [];
-  routers.value.map((router) => {
+  let childrenMenus: any[] = [];
+  routers.value.map((router: any) => {
     for (let item in router.children) {
       if (router.children[item].parentPath === undefined) {
         if(router.path === "/") {
@@ -104,7 +104,7 @@ const activeMenu = computed(() => {
     if (!route.meta.link) {
         appStore.toggleSideBarHide(false);
     }
-  } else if(!route.children) {
+  } else if(!(route as any).children) {
     activePath = path;
     appStore.toggleSideBarHide(true);
   }
@@ -114,10 +114,10 @@ const activeMenu = computed(() => {
 
 function setVisibleNumber() {
   const width = document.body.getBoundingClientRect().width / 3;
-  visibleNumber.value = parseInt(width / 85);
+  visibleNumber.value = parseInt(width / 85 as any);
 }
 
-function handleSelect(key, keyPath) {
+function handleSelect(key: any, keyPath: any) {
   currentIndex.value = key;
   const route = routers.value.find(item => item.path === key);
   if (isHttp(key)) {
@@ -126,8 +126,8 @@ function handleSelect(key, keyPath) {
   } else if (!route || !route.children) {
     // 没有子路由路径内部打开
     const routeMenu = childrenMenus.value.find(item => item.path === key);
-    if (routeMenu && routeMenu.query) {
-      let query = JSON.parse(routeMenu.query);
+    if (routeMenu && (routeMenu as any).query) {
+      let query = JSON.parse((routeMenu as any).query);
       router.push({ path: key, query: query });
     } else {
       router.push({ path: key });
@@ -140,11 +140,11 @@ function handleSelect(key, keyPath) {
   }
 }
 
-function activeRoutes(key) {
-  let routes = [];
+function activeRoutes(key: any) {
+  let routes: any[] = [];
   if (childrenMenus.value && childrenMenus.value.length > 0) {
-    childrenMenus.value.map((item) => {
-      if (key == item.parentPath || (key == "index" && "" == item.path)) {
+    childrenMenus.value.map((item: any) => {
+      if (key == (item as any).parentPath || (key == "index" && "" == item.path)) {
         routes.push(item);
       }
     });
