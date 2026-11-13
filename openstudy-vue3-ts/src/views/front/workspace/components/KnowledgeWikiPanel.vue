@@ -80,7 +80,7 @@
         </div>
       </div>
 
-      <div v-else ref="mapCanvasRef" class="kw-map" :class="{ 'is-advice-focus': adviceMode && !!mapSelectedPageId, 'is-map-ready': mapReady }"
+      <div v-else ref="mapCanvasRef" class="kw-map" :class="{ 'is-map-ready': mapReady }"
         @wheel.prevent="onMapWheel" @pointerdown="onMapDown"
         @pointermove="onMapMove" @pointerup="onMapUp" @pointerleave="onMapUp">
         <div class="kw-map-purpose">知识图谱：先看懂知识结构，再让系统帮你排下一步。</div>
@@ -113,7 +113,7 @@
             </circle>
 
             <g v-for="node in mapNodes" :key="node.id" class="kw-map-node" :data-node-id="String(node.id)"
-              :class="{ 'is-selected': isMapSelected(node), 'is-hovered': mapHoveredId === String(node.id), 'is-dimmed': isMapNodeDimmed(node), 'is-bridge': bridgeNodeIds.has(String(node.id)), 'is-learned': Number(node.learning?.viewCount || 0) > 0, 'is-weak': Number(node.learning?.practiceCount || 0) > 0 && Number(node.learning?.accuracy || 0) < 60, 'is-route': isRouteNode(node), 'is-next-stop': isNextStopNode(node), 'is-advice-visited': adviceLitPageIds.includes(String(node.pageId)), 'is-advice-dimmed': adviceMode && adviceLitPageIds.length > 0 && !adviceLitPageIds.includes(String(node.pageId)) }"
+              :class="{ 'is-selected': isMapSelected(node), 'is-hovered': mapHoveredId === String(node.id), 'is-dimmed': isMapNodeDimmed(node), 'is-bridge': bridgeNodeIds.has(String(node.id)), 'is-learned': Number(node.learning?.viewCount || 0) > 0, 'is-weak': Number(node.learning?.practiceCount || 0) > 0 && Number(node.learning?.accuracy || 0) < 60, 'is-route': isRouteNode(node), 'is-next-stop': isNextStopNode(node), 'is-advice-visited': adviceLitPageIds.includes(String(node.pageId)), 'is-advice-dimmed': adviceLitPageIds.length > 0 && !adviceLitPageIds.includes(String(node.pageId)) }"
               :transform="`translate(${node.x} ${node.y})`"
               @mouseenter="onMapNodeEnter(node)" @mouseleave="onMapNodeLeave(node)"
               @pointerdown.stop="onMapNodeDown($event, node)" @pointerup.stop="onMapNodeUp"
@@ -132,62 +132,27 @@
             </g>
           </g>
         </svg>
-        <aside class="kw-graph-panel" @pointerdown.stop>
-          <div class="kw-graph-mode-row">
-            <span>规划建议模式</span>
-            <button type="button" class="kw-mode-switch" :class="{ 'is-on': adviceMode }" :aria-pressed="adviceMode"
-              @click="toggleAdviceMode">
-              <i></i>
+        <aside v-if="!graphPanelCollapsed" class="kw-graph-panel" @pointerdown.stop>
+          <button type="button" class="kw-graph-panel__collapse" title="收起操作面板" @click="graphPanelCollapsed = true">×</button>
+          <div class="kw-graph-panel__actions">
+            <button type="button" class="kw-graph-action" :class="{ 'is-active': !mapShowArrows }" @click="toggleMapArrows">
+              <OsIcon name="check" :size="14" />
+              <span>{{ mapShowArrows ? '隐藏箭头' : '显示箭头' }}</span>
+            </button>
+            <button type="button" class="kw-graph-action" @click="resetGraphView">
+              <OsIcon name="refresh" :size="14" />
+              <span>适配视图</span>
+            </button>
+            <button type="button" class="kw-graph-action" @click="showRouteGuide">
+              <OsIcon name="circle-help" :size="14" />
+              <span>使用说明</span>
             </button>
           </div>
-          <template v-if="!adviceMode">
-            <div class="kw-graph-panel__legend">
-              <button v-for="item in activeLegend" :key="item.type" type="button" class="kw-graph-type"
-                :class="{ 'is-disabled': mapTypeVisible[item.type] === false }"
-                @click="toggleMapType(item.type)">
-                <i :style="{ background: item.color }"></i>
-                <span>{{ item.label }}</span>
-                <em>{{ mapTypeCounts[item.type] || 0 }}</em>
-              </button>
-            </div>
-            <div class="kw-graph-panel__divider"></div>
-            <div class="kw-graph-relations">
-              <div class="kw-graph-relations__title">连线方向：源 → 目标</div>
-              <div><i class="is-doc-image"></i><span>文档 → 图片 · 包含图片</span></div>
-              <div><i class="is-image-knowledge"></i><span>图片 → 知识主题 · 图片知识点</span></div>
-              <div><i class="is-topic-doc"></i><span>知识主题 → 资料 · 文档/图片知识点</span></div>
-              <div><i class="is-bank-topic"></i><span>知识主题 → 题库 · 题源关系</span></div>
-            </div>
-            <div class="kw-graph-panel__divider"></div>
-            <div class="kw-graph-panel__actions">
-              <button type="button" class="kw-graph-action" :class="{ 'is-active': mapHideUnlinked }"
-                :disabled="!unlinkedCount" @click="toggleHideUnlinked">
-                <OsIcon name="eye-off" :size="14" />
-                <span>隐藏无关联页面（{{ unlinkedCount }}）</span>
-              </button>
-              <button type="button" class="kw-graph-action" :class="{ 'is-active': !mapShowArrows }" @click="toggleMapArrows">
-                <OsIcon name="check" :size="14" />
-                <span>{{ mapShowArrows ? '隐藏箭头' : '显示箭头' }}</span>
-              </button>
-              <button type="button" class="kw-graph-action" @click="resetGraphView">
-                <OsIcon name="refresh" :size="14" />
-                <span>适配视图</span>
-              </button>
-              <button type="button" class="kw-graph-action" @click="showRouteGuide">
-                <OsIcon name="circle-help" :size="14" />
-                <span>使用说明</span>
-              </button>
-            </div>
-          </template>
-          <template v-else>
-            <p class="kw-advice-mode-tip">点一个节点作为起点，生成可反复调整的规划建议；不会打开知识百科抽屉。</p>
-            <button type="button" class="kw-graph-action kw-route-action" :disabled="adviceLoading" @click="generateAdvice">
-              <OsIcon name="sparkles" :size="14" />
-              <span>{{ adviceLoading ? '正在生成…' : '生成规划建议' }}</span>
-            </button>
-          </template>
         </aside>
-        <div v-if="!adviceMode" class="kw-graph-hint"><span>悬停/点击节点查看相关连线 · 点知识主题打开详情，来源类型与资料/网页/图片/题库/笔记都在详情里 · 右侧可开启规划建议</span></div>
+        <button v-else type="button" class="kw-graph-panel-open" title="打开操作面板" @click="graphPanelCollapsed = false">
+          ☰
+        </button>
+        <div class="kw-graph-hint"><span>悬停/点击节点查看相关连线 · 点知识主题打开详情，来源类型与资料/网页/图片/题库/笔记都在详情里 · 规划建议入口在详情页</span></div>
       </div>
       <KnowledgeAdviceHost
         ref="adviceHostRef"
@@ -236,6 +201,7 @@
           <div class="kw-detail__head-actions">
             <el-button size="small" plain @click="openEditor">编辑</el-button>
             <el-button size="small" plain @click="openRevisions">历史版本</el-button>
+            <el-button size="small" plain :loading="adviceLoading" @click="openAdviceForPage">规划建议</el-button>
             <el-button v-if="activePage.practice?.bankId" size="small" plain @click="goPractice">
               去练 {{ activePage.practice.questionCount }} 题
             </el-button>
@@ -549,7 +515,6 @@ const linkForm = reactive<{ targetPageId: number | null; anchorText: string; sec
 })
 const router = useRouter()
 const view = ref<'pages' | 'map'>(readWikiView())
-const adviceMode = ref(false)
 const adviceHostRef = ref<any>(null)
 const adviceLoading = ref(false)
 const adviceTrace = ref<any>(null)
@@ -634,6 +599,7 @@ const mapImageExpanded = ref(false)
 const searchSuppressed = ref(false)
 const mapHideUnlinked = ref(false)
 const mapShowArrows = ref(true)
+const graphPanelCollapsed = ref(false)
 const mapLearnMode = ref(true)
 const mapLearningPath = ref<string[]>([])
 const learningRoute = ref<any>(null)
@@ -664,8 +630,6 @@ const buildProgress = computed(() => {
   const done = Number(buildJob.value?.done || 0)
   return total ? Math.min(100, Math.round((done / total) * 100)) : 0
 })
-
-const activeLegend = computed(() => ENTITY_TYPE_META.filter((item) => item.type === 'topic'))
 
 // 首层只画知识主题；资料/网页/图片/题库/笔记统一收进主题详情里的「来源」。
 // sourceKinds 是从完整图谱的真实边反推出来的来源类型，供筛选使用。
@@ -704,7 +668,7 @@ const allMapNodes = computed(() =>
 )
 // 图谱派生展示数据（类型统计/连通性/分组/桥接/搜索建议/学习理由，抽到同目录 composable）
 const {
-  mapTypeCounts, mapConnectedNodeIds, unlinkedCount, graphSearchSuggestions,
+  mapConnectedNodeIds, graphSearchSuggestions,
   mapComponents, groupKeyByNode, isCrossSourceEdge, bridgeNodeIds, learningReason
 } = useWikiGraphDerived({
   allMapNodes, mapGraph, props, searchSuppressed, view, learningRoute
@@ -954,26 +918,12 @@ async function planToPage(pageId: number) {
   await generateRoute(Number(pageId))
 }
 
-function toggleAdviceMode() {
-  adviceMode.value = !adviceMode.value
-  if (adviceMode.value) {
-    view.value = 'map'
-    detailVisible.value = false
-  } else {
-    resetAdviceState()
-  }
-}
-
-function generateAdvice() {
-  if (!adviceMode.value) {
-    adviceMode.value = true
-    view.value = 'map'
-  }
-  if (mapSelectedPageId.value) {
-    nextTick(() => adviceHostRef.value?.generateForPage?.(Number(mapSelectedPageId.value)))
-  } else {
-    nextTick(() => adviceHostRef.value?.open?.())
-  }
+/** 从当前 KNOWLEDGE PAGE 详情进入规划建议（不再使用图谱侧栏建议模式）。 */
+function openAdviceForPage() {
+  const pageId = Number(activePage.value?.pageId || activePage.value?.id || 0)
+  if (!pageId) return
+  detailVisible.value = false
+  nextTick(() => adviceHostRef.value?.generateForPage?.(pageId))
 }
 
 function onAdviceUpdate(payload: any) {
@@ -989,13 +939,6 @@ function focusAdvicePage(pageId: number) {
   } else {
     mapSelectedPageId.value = Number(pageId)
   }
-}
-
-/** 旧入口：不再跳学习计划页，直接在当前知识图谱里开启建议模式。 */
-function openStudyPlan() {
-  adviceMode.value = true
-  view.value = 'map'
-  detailVisible.value = false
 }
 
 function exitRoute() {
@@ -1132,23 +1075,6 @@ function onMapNodeClick(node: any) {
   if (suppressMapNodeClick || mapNodeDrag?.moved) {
     suppressMapNodeClick = false
     mapNodeDrag = null
-    return
-  }
-  if (adviceMode.value) {
-    const pageId = Number(node.pageId)
-    // 再次点击同一个节点 = 取消选中，恢复图谱原状。
-    if (mapSelectedNodeId.value === String(node.id) || (pageId > 0 && Number(mapSelectedPageId.value) === pageId)) {
-      mapSelectedPageId.value = null
-      mapSelectedNodeId.value = null
-      detailVisible.value = false
-      adviceHostRef.value?.clear?.()
-      resetAdviceState()
-      return
-    }
-    // 建议模式只选中节点并把它移到视野中央，不打开知识百科详情抽屉。
-    detailVisible.value = false
-    selectMapNode(node, false)
-    adviceHostRef.value?.generateForNode?.(node)
     return
   }
   selectMapNode(node)
@@ -1603,7 +1529,7 @@ async function build() {
 
 // 图谱视图开关与重置（抽到同目录 composable）
 const {
-  resetMapNodeOffsets, toggleMapType, toggleHideUnlinked, toggleMapArrows, resetGraphView
+  resetMapNodeOffsets, toggleMapArrows, resetGraphView
 } = useWikiMapViewControls({
   mapNodeOffsets, mapSimPositions, mapLearningPath, mapTypeVisible,
   mapHideUnlinked, mapShowArrows, mapImageExpanded,
