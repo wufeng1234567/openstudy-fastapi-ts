@@ -225,7 +225,7 @@ OpenStudy 的面向对象是**用户**。学生、教师、内容创作者、知
 - `openstudy-vue3-ts/README.md:22` 仍写「与 Spring Boot 3 后端配合」，实际后端为 FastAPI。
 - `openstudy-vue3-ts/package.json:19-22` 的 `repository` 仍指向 `https://gitee.com/y_project/RuoYi-Vue.git`。
 - `openstudy-vue3-ts/type-errors.txt` 是提交进仓库的 npm `EPERM` 错误日志；`ts_errors.txt` 为空文件。
-- `doc/代码质量提升实施方案.md` 是 2026-10-21 的历史方案，其中「156 个文件 / 无 pytest」等基线已过时，且方案本身未真正落地。
+- 旧版《代码质量提升实施方案》（2026-10-21）的「156 个文件 / 无 pytest」基线已过时，该历史方案已从仓库移除；当前以 P0–P2 执行方案为准。
 
 **建议：版本号以 0.8.0 为准，但下一轮应统一升到 0.9.0 或 0.8.1，并建立单一版本源（构建时注入或读取 `VERSION`）。**
 

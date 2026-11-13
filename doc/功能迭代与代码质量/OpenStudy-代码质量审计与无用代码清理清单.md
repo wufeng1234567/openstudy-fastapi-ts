@@ -126,7 +126,7 @@
 | `openstudy-vue3-ts/src/views/dictation/dictation/index.vue` + `components/Dictation/DictationPractice.vue` | 约 1,919 + 全局注册组件 | 旧听写链路；C 端实际用 `english/listening`（3,166 行独立实现），`DictationPractice` 只在孤儿页使用 |
 | `openstudy-vue3-ts/src/views/front/messages/chats.vue` | 1,342 行 | 路由组件已注释（`router/index.ts:361-366`），菜单 `v-if=false` |
 | `openstudy-fastapi/test_notice.py` | 15 行 | 引用不存在的 `async_session`，裸 pytest 收集报错的直接原因之一 |
-| `openstudy-fastapi/test_ds_free.py` | 旧 DeepSeek 网页反代验证脚本 | `doc/代码质量提升实施方案.md:51-52` 自标「陈旧脚本 / 手写验证脚本」；反代已废弃 |
+| `openstudy-fastapi/test_ds_free.py` | 旧 DeepSeek 网页反代验证脚本 | 旧版《代码质量提升实施方案》曾自标「陈旧脚本 / 手写验证脚本」，该历史方案已移除；反代已废弃 |
 | `openstudy-fastapi/app/api/v1/favorites.py` | 7 行空 router | 自述「收藏 API 已合并到 questions.py，此处保留空 router」；`main.py` 未导入 |
 | `openstudy-fastapi/app/repositories/notice_repo.py` | 53 行，0 消费者 | 全仓 grep `notice_repo|NoticeRepository` 仅命中自身 |
 | `openstudy-fastapi/check_images.py` | 旧 MySQL 检查脚本 | 含硬编码本地数据库口令、`aiomysql` 依赖；与当前 PG 架构不符 |
@@ -432,7 +432,7 @@ node tests/check_agent_dsfree.mjs
 - README 0.8.0 段落未覆盖 2026-11-08～09 的规划建议/实体集/题库关联/资料智能报告；
 - `openstudy-vue3-ts/README.md:22` 仍写 Spring Boot 3；
 - `package.json:19-22` repository 指向 RuoYi 上游；
-- `doc/代码质量提升实施方案.md` 是 2026-10-21 的历史方案，基线已过时（当时 156 个文件、无 pytest），与当前 245 个 py、102 个 pytest 测试不符；建议更新或重命名为「历史方案」。
+- 旧版《代码质量提升实施方案》（2026-10-21）基线已过时（当时 156 个文件、无 pytest），已从仓库移除；当前质量方案以 [OpenStudy-技术实现质量20%-P0-P2执行方案.md](OpenStudy-技术实现质量20%-P0-P2执行方案.md) 为准。
 
 ---
 
