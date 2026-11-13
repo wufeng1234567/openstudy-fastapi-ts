@@ -1116,10 +1116,11 @@ function onMapNodeClick(node: any) {
     mapNodeDrag = null
     return
   }
-  // 同一节点再次点击：关闭详情、停止建议动画、回到未选中状态。
+  // 同一节点再次点击：关闭详情、取消尚未触发的打开定时器、停止建议动画。
+  // 不能只看 detailVisible：第一次点击后有 260ms 的延迟打开窗口，第二次点击也要能取消。
   const samePage = Number(node.pageId) > 0 && Number(mapSelectedPageId.value) === Number(node.pageId)
   const sameNode = String(mapSelectedNodeId.value || '') === String(node.id)
-  if (detailVisible.value && (samePage || sameNode)) {
+  if ((samePage || sameNode) && mapSelectedNodeId.value) {
     stopAdviceAnimation()
     closeDetail()
     return
