@@ -371,28 +371,13 @@ async def linkify_wiki_pages(
     - 只改正文，不重算向量：`RagWikiChunk` 索引的是去掉链接标记后的文字，
       链接标记不改变锚文本，所以向量内容等价。
     """
-    pages = (
-        await db.execute(
-            select(RagWikiPage).where(
-                RagWikiPage.user_id == int(user_id),
-                RagWikiPage.kb_id == int(kb_id),
-                RagWikiPage.status.in_([WIKI_READY, WIKI_STALE]),
-            )
-        )
-    ).scalars().all()
+    pages = await _load_kb_pages(db, int(user_id), int(kb_id))
     if not pages:
         return {"pages": 0, "links": 0}
     page_ids = {int(page.id) for page in pages}
     page_by_id = {int(page.id): page for page in pages}
 
-    entities = (
-        await db.execute(
-            select(RagGraphEntity).where(
-                RagGraphEntity.user_id == int(user_id),
-                RagGraphEntity.kb_id == int(kb_id),
-            )
-        )
-    ).scalars().all()
+    entities = await _load_kb_entities(db, int(user_id), int(kb_id))
     entity_by_id = {int(entity.id): entity for entity in entities}
     relation_rows = (
         await db.execute(
@@ -545,14 +530,7 @@ async def build_wiki_pages(
     doc_names = {int(doc.id): str(doc.file_name or "资料") for doc in docs}
     valid_doc_ids = set(doc_names)
 
-    entities = (
-        await db.execute(
-            select(RagGraphEntity).where(
-                RagGraphEntity.user_id == int(user_id),
-                RagGraphEntity.kb_id == int(kb_id),
-            )
-        )
-    ).scalars().all()
+    entities = await _load_kb_entities(db, int(user_id), int(kb_id))
     entities = [
         entity
         for entity in entities
@@ -787,15 +765,7 @@ async def mark_wiki_pages_stale(
     wanted = {int(x) for x in doc_ids}
     if not wanted:
         return 0
-    pages = (
-        await db.execute(
-            select(RagWikiPage).where(
-                RagWikiPage.user_id == int(user_id),
-                RagWikiPage.kb_id == int(kb_id),
-                RagWikiPage.status.in_([WIKI_READY, WIKI_STALE]),
-            )
-        )
-    ).scalars().all()
+    pages = await _load_kb_pages(db, int(user_id), int(kb_id))
     changed = 0
     for page in pages:
         source_ids = {int(x) for x in (page.source_doc_ids or []) if str(x).isdigit()}
@@ -1297,6 +1267,22 @@ async def _load_kb_pages(db: AsyncSession, user_id: int, kb_id: int) -> list:
     ).scalars().all()
 
 
+async def _load_kb_entities(db: AsyncSession, user_id: int, kb_id: int) -> list:
+    """该资料夹下的**实体**（页面图谱的节点来源）。
+
+    ⚠ 这段查询原本在**两处**逐字相同 —— 现在收敛到一处，
+    「按 user + kb 取实体」的筛选口径不会再各处漂。
+    """
+    return (
+        await db.execute(
+            select(RagGraphEntity).where(
+                RagGraphEntity.user_id == int(user_id),
+                RagGraphEntity.kb_id == int(kb_id),
+            )
+        )
+    ).scalars().all()
+
+
 async def _finalize_page_edit(db: AsyncSession, user_id: int, page: RagWikiPage) -> None:
     """页面改动后的收尾：重建该资料夹的页面链接图并提交。
 
@@ -1648,15 +1634,7 @@ async def get_wiki_page_by_entity(db: AsyncSession, user_id: int, entity_id: int
 
 
 async def get_wiki_graph(db: AsyncSession, user_id: int, kb_id: int) -> dict:
-    pages = (
-        await db.execute(
-            select(RagWikiPage).where(
-                RagWikiPage.user_id == int(user_id),
-                RagWikiPage.kb_id == int(kb_id),
-                RagWikiPage.status.in_([WIKI_READY, WIKI_STALE]),
-            )
-        )
-    ).scalars().all()
+    pages = await _load_kb_pages(db, int(user_id), int(kb_id))
     page_ids = {int(page.id) for page in pages}
     doc_ids = sorted({int(doc_id) for page in pages for doc_id in (page.source_doc_ids or []) if str(doc_id).isdigit()})
     doc_names: dict[int, str] = {}

@@ -481,3 +481,22 @@
 - `questionPracticeQuestionShape.ts`
 - `agentDsFreeResponse.ts`
 - `latexBraceScan.ts`
+
+## Batch 22（2026-11-13，已完成）
+
+- 基线 commit：`2b8b66b`
+- 快照目录：`_scratch_refactor_batch22_2b8b66b/`
+- 授权过程：hy4 超时停止（未落盘）；minimax3.1f 完成 wiki_service 并接手 questions/rag
+- 测试：compileall / ruff / questions+rag+wiki 导入 / 13 项定向 pytest
+- 备注：`rag.py` 非空行 +6，是用带文档的 8 参数 helper 收敛上传收尾；questions.py 建题库两接口收敛
+- 提交：`[pending]`
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `app/api/v1/questions.py` | 2,592 | 2,579 | -13 |
+| `app/api/v1/rag.py` | 2,282 | 2,288 | +6 |
+| `app/services/rag/wiki_service.py` | 1,668 | 1,643 | -25 |
+
+新增模块：无（均为文件内本地 helper）

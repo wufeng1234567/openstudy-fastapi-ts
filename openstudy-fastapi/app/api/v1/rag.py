@@ -157,6 +157,34 @@ async def delete_knowledge_base(
 
 # ============================================================ 文档
 
+def _collect_uploaded_document(
+    background: BackgroundTasks,
+    documents: list[dict],
+    doc,
+    kb_id: int,
+    image_map,
+    content_length: int,
+    ocr_applied: bool,
+    **extra,
+) -> None:
+    """上传成功后的收尾：排后台解析 + 收集回给前端的文档条目。
+
+    ⚠ 这段原本在**两处**逐字相同（工作空间上传 / 独立工作空间上传）——
+    现在收敛到一处，两条链路的「回给前端的文档条目」形状不会再漂。
+    """
+    background.add_task(document_pipeline.process_document, doc.id)
+    documents.append(
+        _upload_doc_payload(
+            doc,
+            kb_id,
+            image_count=len(image_map),
+            content_length=content_length,
+            ocr_applied=ocr_applied,
+            **extra,
+        )
+    )
+
+
 async def _create_standalone_image_asset(
     db: AsyncSession,
     *,
@@ -292,16 +320,7 @@ async def upload_document(
         except Exception as e:  # noqa: BLE001 - 多文件允许部分成功
             failed.append(_upload_failure(filename, e))
             continue
-        background.add_task(document_pipeline.process_document, doc.id)
-        documents.append(
-            _upload_doc_payload(
-                doc,
-                kb_id,
-                image_count=len(image_map),
-                content_length=content_length,
-                ocr_applied=ocr_applied,
-            )
-        )
+        _collect_uploaded_document(background, documents, doc, kb_id, image_map, content_length, ocr_applied)
 
     if not documents and not images:
         reason = failed[0]["error"] if failed else "没有可上传的文件"
@@ -2036,17 +2055,7 @@ async def upload_to_workspace(
         except Exception as e:  # noqa: BLE001 - 多文件允许部分成功
             failed.append(_upload_failure(filename, e))
             continue
-        background.add_task(document_pipeline.process_document, doc.id)
-        documents.append(
-            _upload_doc_payload(
-                doc,
-                kb.id,
-                image_count=len(image_map),
-                content_length=content_length,
-                note=note_text,
-                ocr_applied=ocr_applied,
-            )
-        )
+        _collect_uploaded_document(background, documents, doc, kb.id, image_map, content_length, ocr_applied, note=note_text)
 
     if not documents:
         reason = failed[0]["error"] if failed else "没有可上传的文件"

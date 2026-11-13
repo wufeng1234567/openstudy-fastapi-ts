@@ -77,6 +77,39 @@ from .question_query_builders import bank_by_id_query, question_by_id_query, use
 
 # ========== 题库 API
 
+async def _create_bank(db: AsyncSession, payload: QuestionBankCreate, bank_name: str, user_id: int) -> dict:
+    """建题库：自动推断科目、自动生成描述，落库后返回格式化结果。
+
+    ⚠ 这段原本在**两个接口**里**逐字相同**（`/create` 与 `/createWithReturn`）——
+    现在收敛到一处，两条链路的「默认值推断 + 落库」口径不会再漂。
+    """
+    # 智能推断：未传 subject 时自动推断
+    final_subject = payload.subject
+    if not final_subject:
+        final_subject = _infer_subject(bank_name)
+
+    # 智能生成：未传 description 时自动生成
+    final_description = payload.description
+    if not final_description:
+        final_description = _generate_description(bank_name, final_subject)
+
+    bank = QuestionBank(
+        bank_name=bank_name,
+        subject=final_subject,
+        description=final_description,
+        cover_image=payload.coverImage,
+        is_public=payload.isPublic or 0,
+        allow_fork=payload.allowFork if payload.allowFork is not None else 1,
+        status=payload.status or "0",
+        user_id=user_id,
+    )
+    db.add(bank)
+    await db.flush()
+    await db.refresh(bank)
+
+    return success(format_bank(bank))
+
+
 @router.get("/questionBank/questionBank/list")
 async def list_banks(
     bankName: Optional[str] = Query(None),
@@ -211,31 +244,7 @@ async def create_bank(
     if not bank_name:
         return error("题库名称不能为空")
 
-    # 智能推断：未传 subject 时自动推断
-    final_subject = payload.subject
-    if not final_subject:
-        final_subject = _infer_subject(bank_name)
-
-    # 智能生成：未传 description 时自动生成
-    final_description = payload.description
-    if not final_description:
-        final_description = _generate_description(bank_name, final_subject)
-
-    bank = QuestionBank(
-        bank_name=bank_name,
-        subject=final_subject,
-        description=final_description,
-        cover_image=payload.coverImage,
-        is_public=payload.isPublic or 0,
-        allow_fork=payload.allowFork if payload.allowFork is not None else 1,
-        status=payload.status or "0",
-        user_id=user_id,
-    )
-    db.add(bank)
-    await db.flush()
-    await db.refresh(bank)
-
-    return success(format_bank(bank))
+    return await _create_bank(db, payload, bank_name, user_id)
 
 
 @router.post("/questionBank/questionBank/createWithReturn")
@@ -250,29 +259,7 @@ async def create_bank_with_return(
     if not bank_name:
         return error("题库名称不能为空")
 
-    final_subject = payload.subject
-    if not final_subject:
-        final_subject = _infer_subject(bank_name)
-
-    final_description = payload.description
-    if not final_description:
-        final_description = _generate_description(bank_name, final_subject)
-
-    bank = QuestionBank(
-        bank_name=bank_name,
-        subject=final_subject,
-        description=final_description,
-        cover_image=payload.coverImage,
-        is_public=payload.isPublic or 0,
-        allow_fork=payload.allowFork if payload.allowFork is not None else 1,
-        status=payload.status or "0",
-        user_id=user_id,
-    )
-    db.add(bank)
-    await db.flush()
-    await db.refresh(bank)
-
-    return success(format_bank(bank))
+    return await _create_bank(db, payload, bank_name, user_id)
 
 
 @router.post("/questionBank/questionBank/saveWithQuestions")
