@@ -427,7 +427,7 @@
 - 授权：hy4 = questions.py + rag.py；minimax3.1f = wiki_service.py
 - 测试：compileall / ruff / questions+rag+wiki 导入 / 13 项定向 pytest
 - 备注：本轮以消除重复实现为主；questions.py 34 处 by-id 查询收敛，wiki_service 11 处页面查询收敛
-- 提交：`[pending]`
+- 提交：`8c84857`（Gitee/GitCode 已推送；GitHub 重试中）
 
 ### 结果（非空行口径）
 
