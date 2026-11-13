@@ -558,3 +558,21 @@
 
 新增模块：
 - `questionPracticeResponse.ts`
+## Batch 26（2026-11-13，已完成）
+
+- 基线 commit：`6b0d58b`
+- 快照目录：`_scratch_refactor_batch26_6b0d58b/`
+- 授权：minimax3.1f = rag.py + wiki_service；hy4 超时后由 minimax 接手 loop.py
+- 测试：compileall / ruff / rag+loop+wiki_service 导入 / 全量 pytest 109 passed
+- 备注：rag.py +6、loop.py +17 是本地 helper 的文档/签名成本，换 12 处取文档与 3 处 ToolContext 构造的收敛；wiki_service 复用已有 helper
+- 提交：`[pending]`
+
+### 结果（非空行口径）
+
+| 文件 | 批次前 | 批次后 | 变化 |
+|---|---:|---:|---:|
+| `app/api/v1/rag.py` | 2,293 | 2,299 | +6 |
+| `app/services/ai/agent/loop.py` | 1,865 | 1,882 | +17 |
+| `app/services/rag/wiki_service.py` | 1,642 | 1,628 | -14 |
+
+新增模块：无（均为文件内本地 helper）

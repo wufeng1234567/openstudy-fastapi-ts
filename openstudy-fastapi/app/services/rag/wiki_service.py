@@ -104,14 +104,7 @@ async def _load_kb_relations(db: AsyncSession, user_id: int, kb_id: int) -> list
     ⚠ 这段查询原本在**两处**逐字相同 —— 现在收敛到一处，
     「关系边」的筛选口径（按 user + kb）不会再各处漂。
     """
-    return (
-        await db.execute(
-            select(RagGraphRelation).where(
-                RagGraphRelation.user_id == int(user_id),
-                RagGraphRelation.kb_id == int(kb_id),
-            )
-        )
-    ).scalars().all()
+    return await _load_kb_relations(db, int(user_id), int(kb_id))
 
 
 async def _load_entity_chunks(
@@ -327,14 +320,7 @@ async def _rebuild_links(
             except (TypeError, ValueError):
                 continue
     if len(entity_to_page) >= 2:
-        relations = (
-            await db.execute(
-                select(RagGraphRelation).where(
-                    RagGraphRelation.user_id == int(user_id),
-                    RagGraphRelation.kb_id == int(kb_id),
-                )
-            )
-        ).scalars().all()
+        relations = await _load_kb_relations(db, int(user_id), int(kb_id))
         for rel in relations:
             source_page = entity_to_page.get(int(rel.source_id))
             target_page = entity_to_page.get(int(rel.target_id))

@@ -175,6 +175,26 @@ from app.services.ai.agent.loop_validation_formatters import params_validation_f
 # ============================================================
 
 
+def build_tool_context(
+    db: AsyncSession,
+    user_id: int,
+    session_id: str,
+    extra: Dict[str, Any],
+) -> ToolContext:
+    """工具执行上下文。
+
+    ⚠ 这三个基本字段（db / user_id / session_id）原本在**三处**各写一遍 ——
+    尤其 `session_id or None` 这个归一化，新增调用点时很容易漏掉，
+    结果就是「有的地方传空串、有的地方传 None」。收敛到一处就不会再漂。
+    """
+    return ToolContext(
+        db=db,
+        user_id=user_id,
+        session_id=session_id or None,
+        extra=extra,
+    )
+
+
 async def persist_agent_images(data_urls: List[str]) -> List[str]:
     """把图片 data URL 落盘，返回可访问 URL（规则与 `/common/upload` 完全一致）
 
@@ -400,11 +420,11 @@ async def execute_agent_tool(
                 needsConfirm=True,
             )
 
-    ctx = ToolContext(
-        db=db,
-        user_id=user_id,
-        session_id=session_id or None,
-        extra={
+    ctx = build_tool_context(
+        db,
+        user_id,
+        session_id,
+        {
             "image_urls": image_urls or [],
             "tool_registry": registry,
             # 回退账本的归组键（每个工具调用都从 ctx 里读，见 rollback_service.record_op）
@@ -464,14 +484,14 @@ async def preview_agent_tool(
     if not tool.needs_confirmation(params):
         return {"preview": {}}
 
-    ctx = ToolContext(
-        db=db,
-        user_id=user_id,
-        session_id=session_id or None,
+    ctx = build_tool_context(
+        db,
+        user_id,
+        session_id,
         # 同 execute_agent_tool：ds-free 单步链路没有附件解析上下文，给空列表，
         # 让 `knowledge_ingest.from_attachment` 的 preview 落到「没有可用附件」分支
         # （而不是 KeyError / 假装有附件）。
-        extra={"image_urls": [], "tool_registry": registry, "attachments": []},
+        {"image_urls": [], "tool_registry": registry, "attachments": []},
     )
     try:
         preview: Dict[str, Any] = await tool.preview(params, ctx)
@@ -1331,11 +1351,11 @@ async def run_agent_stream(
             },
         }
 
-    ctx = ToolContext(
-        db=db,
-        user_id=user_id,
-        session_id=session_id or None,
-        extra={
+    ctx = build_tool_context(
+        db,
+        user_id,
+        session_id,
+        {
             "image_urls": image_urls,
             "tool_registry": registry,
             # 回退账本的归组键。⚠️ 这个 ctx 在**循环外**创建一次，所以一整轮里所有

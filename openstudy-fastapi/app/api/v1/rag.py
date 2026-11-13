@@ -157,6 +157,15 @@ async def delete_knowledge_base(
 
 # ============================================================ 文档
 
+async def _get_document(db: AsyncSession, current_user: dict, doc_id):
+    """取当前用户可见的资料文档。
+
+    ⚠ 这段「按当前用户取文档」原本在**多处**逐字相同 —— 现在收敛到一处，
+    用户与文档的取法不会再各处漂。
+    """
+    return await rag_write_service.get_document(db, _uid(current_user), doc_id)
+
+
 async def _document_health_report(doc):
     """资料体检报告。
 
@@ -605,7 +614,7 @@ async def export_document(
 ):
     """导出当前正文为 Markdown 或 Word。"""
     try:
-        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        doc = await _get_document(db, current_user, doc_id)
         from app.services.document_export_service import export_document
 
         body, filename, media_type = export_document(
@@ -628,7 +637,7 @@ async def export_document_with_content(
 ):
     """导出编辑器里的当前内容（未保存也可以直接导出 Word/Markdown）。"""
     try:
-        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        doc = await _get_document(db, current_user, doc_id)
         from app.services.document_export_service import export_document
 
         body, filename, media_type = export_document(
@@ -650,7 +659,7 @@ async def get_document_content(
 ):
     """取文档全文（给「查看原文」用）。"""
     try:
-        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        doc = await _get_document(db, current_user, doc_id)
         return success(
             {
                 "docId": doc.id,
@@ -1351,7 +1360,7 @@ async def export_workspace_study_prescription(
     try:
         from app.services.study_prescription_export_service import export_prescription
 
-        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        doc = await _get_document(db, current_user, doc_id)
         body, filename, media_type = export_prescription(
             doc_name=str(getattr(doc, "file_name", "") or data.meta.get("docName") or "资料"),
             plan=data.plan,
@@ -1376,7 +1385,7 @@ async def get_workspace_document_health(
     """
     try:
 
-        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        doc = await _get_document(db, current_user, doc_id)
         # 体检是同步 CPU 计算（可能几十万字符），放到线程池，避免阻塞事件循环。
         report = await _document_health_report(doc)
         return success(report)
@@ -1421,7 +1430,7 @@ async def get_document_outline(
     from app.services.outline_tree_service import build_outline_tree
 
     try:
-        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        doc = await _get_document(db, current_user, doc_id)
     except Exception as e:
         return _fail(e)
 
@@ -1447,7 +1456,7 @@ async def rebuild_document_outline(
     try:
         from app.services.document_section_service import rebuild_sections
 
-        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        doc = await _get_document(db, current_user, doc_id)
         sections = await rebuild_sections(db, _uid(current_user), doc)
         return success(outline_rebuild_payload(doc, sections), "AI 目录整理完成")
     except Exception as e:
@@ -1468,7 +1477,7 @@ async def get_document_micro_course(
     from app.services.micro_course_service import build_micro_course
 
     try:
-        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        doc = await _get_document(db, current_user, doc_id)
         return success(await build_micro_course(db, _uid(current_user), doc))
     except Exception as e:
         return _fail(e)
@@ -1669,7 +1678,7 @@ async def import_micro_course_html(
     from app.services.micro_course_export_service import import_micro_course_html
 
     try:
-        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        doc = await _get_document(db, current_user, doc_id)
         return success(
             await import_micro_course_html(
                 db, _uid(current_user), doc, data.html, title=data.title or ""
@@ -1697,7 +1706,7 @@ async def download_micro_course_pptx(
     )
 
     try:
-        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        doc = await _get_document(db, current_user, doc_id)
         record = None
         record_payload = None
         if data.recordId:
@@ -1762,7 +1771,7 @@ async def get_document_status_batch(
     result = []
     for doc_id in list(dict.fromkeys(int(x) for x in data.docIds))[:50]:
         try:
-            doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+            doc = await _get_document(db, current_user, doc_id)
         except Exception:
             continue
         result.append(_doc_status_payload(doc, DOC_STATUS_TEXT))
@@ -1779,7 +1788,7 @@ async def get_document_status(
     from app.models.rag import DOC_STATUS_TEXT
 
     try:
-        doc = await rag_write_service.get_document(db, _uid(current_user), doc_id)
+        doc = await _get_document(db, current_user, doc_id)
         return success(_doc_status_payload(doc, DOC_STATUS_TEXT))
     except Exception as e:
         return _fail(e)
