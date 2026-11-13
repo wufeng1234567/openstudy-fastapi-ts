@@ -447,7 +447,7 @@
 - 快照目录：`_scratch_refactor_batch20_dde5ce0/`
 - 授权：hy4 = english/listening + english/ocr；minimax3.1f = agent/chat
 - 测试：build 4,028 modules / unit 29 项 / listening+ocr+agent smoke 通过（ocr 在 3168 临时 Vite `--force` 验证，3167 旧缓存 504 已确认非代码问题）
-- 提交：`[pending]`
+- 提交：`f30f1c0`（Gitee/GitCode 已推送；GitHub 重试中）
 
 ### 结果（非空行口径）
 
