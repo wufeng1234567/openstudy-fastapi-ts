@@ -18,7 +18,7 @@ const props = defineProps({
     }
 })
 const dayRule = ref('')
-const dayRuleSup = ref('')
+const dayRuleSup = ref<any>('')
 const dateArr = ref<any[]>([])
 const resultList = ref<any[]>([])
 const isShow = ref(false)
@@ -342,7 +342,7 @@ function getIndex(arr: number[], value: number): number {
     return 0;
 }
 // 获取"年"数组
-function getYearArr(rule, year) {
+function getYearArr(rule: any, year: any) {
     dateArr.value[5] = getOrderArr(year, year + 100);
     if (rule !== undefined) {
         if (rule.indexOf('-') >= 0) {
@@ -355,7 +355,7 @@ function getYearArr(rule, year) {
     }
 }
 // 获取"月"数组
-function getMonthArr(rule) {
+function getMonthArr(rule: any) {
     dateArr.value[4] = getOrderArr(1, 12);
     if (rule.indexOf('-') >= 0) {
         dateArr.value[4] = getCycleArr(rule, 12, false)
@@ -366,7 +366,7 @@ function getMonthArr(rule) {
     }
 }
 // 获取"日"数组-主要为日期规则
-function getWeekArr(rule) {
+function getWeekArr(rule: any) {
     // 只有当日期规则的两个值均为“”时则表达日期是有选项的
     if (dayRule.value === '' && dayRuleSup.value === '') {
         if (rule.indexOf('-') >= 0) {
@@ -394,7 +394,7 @@ function getWeekArr(rule) {
     }
 }
 // 获取"日"数组-少量为日期规则
-function getDayArr(rule) {
+function getDayArr(rule: any) {
     dateArr.value[3] = getOrderArr(1, 31);
     dayRule.value = '';
     dayRuleSup.value = '';
@@ -420,7 +420,7 @@ function getDayArr(rule) {
     }
 }
 // 获取"时"数组
-function getHourArr(rule) {
+function getHourArr(rule: any) {
     dateArr.value[2] = getOrderArr(0, 23);
     if (rule.indexOf('-') >= 0) {
         dateArr.value[2] = getCycleArr(rule, 24, true)
@@ -431,7 +431,7 @@ function getHourArr(rule) {
     }
 }
 // 获取"分"数组
-function getMinArr(rule) {
+function getMinArr(rule: any) {
     dateArr.value[1] = getOrderArr(0, 59);
     if (rule.indexOf('-') >= 0) {
         dateArr.value[1] = getCycleArr(rule, 60, true)
@@ -442,7 +442,7 @@ function getMinArr(rule) {
     }
 }
 // 获取"秒"数组
-function getSecondArr(rule) {
+function getSecondArr(rule: any) {
     dateArr.value[0] = getOrderArr(0, 59);
     if (rule.indexOf('-') >= 0) {
         dateArr.value[0] = getCycleArr(rule, 60, true)
@@ -453,7 +453,7 @@ function getSecondArr(rule) {
     }
 }
 // 根据传进来的min-max返回一个顺序的数组
-function getOrderArr(min, max) {
+function getOrderArr(min: any, max: any) {
     let arr = [];
     for (let i = min; i <= max; i++) {
         arr.push(i);
@@ -461,7 +461,7 @@ function getOrderArr(min, max) {
     return arr;
 }
 // 根据规则中指定的零散值返回一个数组
-function getAssignArr(rule) {
+function getAssignArr(rule: any) {
     let arr = [];
     let assiginArr = rule.split(',');
     for (let i = 0; i < assiginArr.length; i++) {
@@ -471,7 +471,7 @@ function getAssignArr(rule) {
     return arr;
 }
 // 根据一定算术规则计算返回一个数组
-function getAverageArr(rule, limit) {
+function getAverageArr(rule: any, limit: any) {
     let arr = [];
     let agArr = rule.split('/');
     let min = Number(agArr[0]);
@@ -483,7 +483,7 @@ function getAverageArr(rule, limit) {
     return arr;
 }
 // 根据规则返回一个具有周期性的数组
-function getCycleArr(rule, limit, status) {
+function getCycleArr(rule: any, limit: any, status: any) {
     // status--表示是否从0开始（则从1开始）
     let arr = [];
     let cycleArr = rule.split('-');
@@ -503,7 +503,7 @@ function getCycleArr(rule, limit, status) {
     return arr;
 }
 // 比较数字大小（用于Array.sort）
-function compare(value1, value2) {
+function compare(value1: any, value2: any) {
     if (value2 - value1 > 0) {
         return -1;
     } else {
@@ -511,7 +511,7 @@ function compare(value1, value2) {
     }
 }
 // 格式化日期格式如：2017-9-19 18:04:33
-function formatDate(value, type) {
+function formatDate(value: any, type: any) {
     // 计算日期相关值
     let time = typeof value == 'number' ? new Date(value) : value;
     let Y = time.getFullYear();
@@ -530,7 +530,7 @@ function formatDate(value, type) {
     }
 }
 // 检查日期是否存在
-function checkDate(value) {
+function checkDate(value: any) {
     let time = new Date(value);
     let format = formatDate(time)
     return value === format;

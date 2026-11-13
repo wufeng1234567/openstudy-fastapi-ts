@@ -2,7 +2,7 @@
 
 import { textToHtml } from '@/utils/questionUtils'
 
-export const extractJsonFromAiResponse = (text) => {
+export const extractJsonFromAiResponse = (text: any) => {
   if (!text) { console.warn('【extractJson】text 为空'); return null }
   if (typeof text === 'object') return text
 
@@ -38,7 +38,7 @@ export const extractJsonFromAiResponse = (text) => {
   try {
     const result = JSON.parse(cleaned)
     return result
-  } catch (e) {
+  } catch (e: any) {
     console.warn('【extractJson】清理后解析失败:', e.message)
     const fallback = text.substring(
       text.indexOf('[') !== -1 ? text.indexOf('[') : text.indexOf('{'),
@@ -46,7 +46,7 @@ export const extractJsonFromAiResponse = (text) => {
     )
     try {
       return JSON.parse(fallback)
-    } catch (e2) {
+    } catch (e2: any) {
       console.error('【extractJson】JSON解析完全失败:', e2.message)
       console.error('【extractJson】最终尝试解析的内容前500字符:', fallback.substring(0, 500))
       return null
@@ -56,12 +56,12 @@ export const extractJsonFromAiResponse = (text) => {
 
 // 把 AI 返回的字段名统一成「美化预览 / 导入」需要的结构
 // AI 通常返回 questionText / answer，而预览与导入使用 question / correctAnswer
-export const toOptionIndex = (item, options) => {
+export const toOptionIndex = (item: any, options: any) => {
   if (typeof item === 'number') return item
   const text = String(item ?? '').trim()
   if (text === '') return item
   // 1) 直接是选项文本（如 answer: "class"）
-  const byText = options.findIndex(opt => String(opt).trim().toLowerCase() === text.toLowerCase())
+  const byText = options.findIndex((opt: any) => String(opt).trim().toLowerCase() === text.toLowerCase())
   if (byText >= 0) return byText
   // 2) A/B/C/D 形式
   const letter = text.replace(/[.、:：)\s]/g, '').toUpperCase()
@@ -78,10 +78,10 @@ export const toOptionIndex = (item, options) => {
 }
 
 // 选择题答案归一化：支持 选项文本 / A-D / 数字下标 / 逗号分隔多选
-export const normalizeAiAnswer = (answer, options, questionType) => {
+export const normalizeAiAnswer = (answer: any, options: any, questionType: any) => {
   if (!Array.isArray(options) || options.length === 0) return answer
   const isMultiple = questionType === 'multiple' || questionType === 2
-  const toArray = (val) => {
+  const toArray = (val: any) => {
     if (Array.isArray(val)) return val.map(v => toOptionIndex(v, options)).filter(v => typeof v === 'number')
     if (typeof val === 'string' && /[,，]/.test(val)) {
       return val.split(/[,，]/).map(v => toOptionIndex(v.trim(), options)).filter(v => typeof v === 'number')
@@ -99,7 +99,7 @@ export const normalizeAiAnswer = (answer, options, questionType) => {
   return toOptionIndex(answer, options)
 }
 
-export const normalizeAiQuestion = (q, defaultScore = 5, questionType = '') => {
+export const normalizeAiQuestion = (q: any, defaultScore = 5, questionType = '') => {
   if (!q || typeof q !== 'object') return q
   const normalized = { ...q }
 
@@ -155,7 +155,7 @@ export const normalizeAiQuestion = (q, defaultScore = 5, questionType = '') => {
   return normalized
 }
 
-export const convertAiQuestionToInternal = (aiQuestion, questionType) => {
+export const convertAiQuestionToInternal = (aiQuestion: any, questionType: any) => {
   const newId = Date.now() + Math.random() + Math.floor(Math.random() * 1000)
   /*
    * ⚠️ 题型取值优先级（2026-10-20 修）：
@@ -200,7 +200,7 @@ export const convertAiQuestionToInternal = (aiQuestion, questionType) => {
     })
   }
 
-  const base = {
+  const base: any = {
     id: newId,
     type: resolvedType,
     title: textToHtml(aiQuestion.question || aiQuestion.questionText || aiQuestion.title || ''),
@@ -209,14 +209,14 @@ export const convertAiQuestionToInternal = (aiQuestion, questionType) => {
   }
   if (resolvedType === 'single' || resolvedType === 'multiple') {
     let rawOptions = aiQuestion.options
-    let options = []
+    let options: any[] = []
     if (Array.isArray(rawOptions)) options = rawOptions.map(opt => String(opt).trim())
     else if (typeof rawOptions === 'string') {
       try { options = JSON.parse(rawOptions) } catch { options = rawOptions.split(',').map(s => s.trim().replace(/^["']|["']$/g, '')) }
     }
-    options = options.filter(opt => opt !== '')
+    options = options.filter((opt: any) => opt !== '')
     if (options.length === 0) options = ['选项A', '选项B']
-    options = options.map(opt => opt.replace(/^[A-Z][\.\:]\s*/, ''))
+    options = options.map((opt: any) => opt.replace(/^[A-Z][\.\:]\s*/, ''))
     base.options = options
     base.optionsJson = JSON.stringify(options)
     let ans = aiQuestion.correctAnswer ?? aiQuestion.answer
@@ -243,7 +243,7 @@ export const convertAiQuestionToInternal = (aiQuestion, questionType) => {
   return base
 }
 
-export const convertCompositeFromAi = (aiData) => {
+export const convertCompositeFromAi = (aiData: any) => {
   const newId = Date.now() + Math.random()
   const composite = {
     id: newId,
@@ -255,9 +255,9 @@ export const convertCompositeFromAi = (aiData) => {
     subQuestions: []
   }
   const questions = aiData.questions || []
-  composite.subQuestions = questions.map((q, index) => {
+  composite.subQuestions = questions.map((q: any, index: any) => {
     const subType = mapAiTypeToInternal(q.type)
-    const sub = {
+    const sub: any = {
       id: Date.now() + Math.random() + index,
       type: subType,
       question: textToHtml(q.question || q.questionText || ''),
@@ -268,7 +268,7 @@ export const convertCompositeFromAi = (aiData) => {
     if (subType === 'single' || subType === 'multiple') {
       let opts = q.options || []
       if (typeof opts === 'string') { try { opts = JSON.parse(opts) } catch { opts = [] } }
-      opts = opts.map(opt => String(opt).trim()).filter(opt => opt)
+      opts = opts.map((opt: any) => String(opt).trim()).filter((opt: any) => opt)
       if (opts.length === 0) opts = ['选项A', '选项B']
       sub.options = opts
       sub.optionsJson = JSON.stringify(opts)
@@ -298,7 +298,7 @@ export const convertCompositeFromAi = (aiData) => {
   return composite
 }
 
-export const mapAiTypeToInternal = (typeStr) => {
+export const mapAiTypeToInternal = (typeStr: any) => {
   /*
    * ⚠️ `composite` 必须显式列出（2026-10-20 方案 B）。
    *
@@ -307,7 +307,7 @@ export const mapAiTypeToInternal = (typeStr) => {
    * passage 和子题全部丢失，用户只看到一道内容像材料的选择题。
    * 这种"悄悄改对成错"比报错更难发现。
    */
-  const map = {
+  const map: Record<string, string> = {
     single: 'single',
     multiple: 'multiple',
     judge: 'judge',

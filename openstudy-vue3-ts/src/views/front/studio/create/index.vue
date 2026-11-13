@@ -172,17 +172,17 @@ const router = useRouter()
 const cacheStore = useFrontPageCacheStore()
 
 const isEditMode = computed(() => !!route.query.bankId)
-const bankId = computed(() => route.query.bankId ? parseInt(route.query.bankId) : null)
+const bankId = computed<any>(() => route.query.bankId ? parseInt(route.query.bankId as string) : null)
 const autoOpenAi = computed(() => route.query.autoOpenAi === 'true')
 const newBank = computed(() => route.query.newBank === 'true')
 
 const saving = ref(false)
-const basicFormRef = ref(null)
-const builderRef = ref(null)
+const basicFormRef = ref<any>(null)
+const builderRef = ref<any>(null)
 const questionsLoading = ref(false)
 const editLoadError = ref(false)
 const myBanks = ref<any[]>([])
-const selectedBankId = ref(null)
+const selectedBankId = ref<any>(null)
 
 /*
  * 「AI 搭建」tab 已下线（用户 2026-10-18）。
@@ -228,7 +228,7 @@ const loadMyBanks = async () => {
 }
 
 // 选中题库变化处理
-const onBankChange = async (bankId) => {
+const onBankChange = async (bankId: any) => {
   if (!bankId) return
   selectedBankId.value = bankId
   cacheStore.clearCachedForm('studioCreateForm')
@@ -319,24 +319,24 @@ onBeforeUnmount(() => {
 
 
 // ========== 题型转换（保持原有逻辑） ==========
-const mapTypeToNumber = (type) => {
+const mapTypeToNumber = (type: any) => {
   const map = { single: 1, multiple: 2, judge: 3, fill: 4, essay: 5, composite: 6, readingComprehension: 6, cloze: 6 }
   return map[type] || 1
 }
 
-const mapBackendType = (typeNum) => {
+const mapBackendType = (typeNum: any) => {
   const map = { 1: 'single', 2: 'multiple', 3: 'judge', 4: 'fill', 5: 'essay', 6: 'composite' }
   return map[typeNum] || 'single'
 }
 
-const formatOptions = (options) => {
+const formatOptions = (options: any) => {
   if (!options || !Array.isArray(options) || options.length === 0) return null
   // 后端 options 是 JSON 列（数组），直接返回数组，不要再 JSON.stringify
   return options.map(opt => typeof opt === 'string' ? opt : (opt.text ?? opt.value ?? ''))
 }
 
 // 兼容后端返回数组 / 旧数据返回 JSON 字符串两种情况
-const parseOptions = (options) => {
+const parseOptions = (options: any) => {
   if (!options) return []
   try {
     const parsed = typeof options === 'string' ? JSON.parse(options) : options
@@ -345,7 +345,7 @@ const parseOptions = (options) => {
   return []
 }
 
-const formatAnswer = (answer, type) => {
+const formatAnswer = (answer: any, type: any) => {
   if (answer === undefined || answer === null || answer === '') {
     if (type === 'composite') return ''
     if (type === 'fill' || type === 'essay') return ''
@@ -369,7 +369,7 @@ const formatAnswer = (answer, type) => {
   }
 }
 
-const parseAnswer = (answerStr, typeNum) => {
+const parseAnswer = (answerStr: any, typeNum: any) => {
   if (!answerStr || answerStr === 'null' || answerStr === '') {
     if (typeNum === 3) return false
     if (typeNum === 2) return []
@@ -381,7 +381,7 @@ const parseAnswer = (answerStr, typeNum) => {
       return answerStr === 'true' || answerStr === '1' || answerStr === '√'
     case 2: // 多选题
       // 支持 "0,1,2" 或 "A,B,C" 格式
-      return answerStr.split(',').map(s => s.trim()).map(item => {
+      return answerStr.split(',').map((s: any) => s.trim()).map(item => {
         if (/^\d+$/.test(item)) return parseInt(item)  // 数字格式
         return item.charCodeAt(0) - 65  // 字母格式
       })
@@ -421,7 +421,7 @@ const loadEditData = async () => {
     // 后端 list_all_questions 已通过 selectinload 一次性返回所有题目（含子题）
     // 直接使用列表数据，避免对每个题目再调 getQuestionMain 导致 N+1 请求
     const questions = questionRes.data.map(fullQ => {
-      const base = {
+      const base: Record<string, any> = {
         id: fullQ.id,
         backendId: fullQ.id,
         type: mapBackendType(fullQ.questionType),
@@ -481,7 +481,7 @@ const resetQuestions = async () => {
   }
 }
 
-const validateQuestionContent = (questions) => {
+const validateQuestionContent = (questions: any) => {
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i]
     if (!String(q.title || '').trim()) {
@@ -489,7 +489,7 @@ const validateQuestionContent = (questions) => {
       return false
     }
     if (['single', 'multiple'].includes(q.type)) {
-      if (!Array.isArray(q.options) || q.options.length < 2 || q.options.some(o => !String(o ?? '').trim())) {
+      if (!Array.isArray(q.options) || q.options.length < 2 || q.options.some((o: any) => !String(o ?? '').trim())) {
         ElMessage.error(`第${i + 1}题至少需要两个非空选项`)
         return false
       }
@@ -511,7 +511,7 @@ const validateQuestionContent = (questions) => {
   return true
 }
 
-const validateAnswers = (questions) => {
+const validateAnswers = (questions: any) => {
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i]
     if (q.type === 'composite' && q.subQuestions) {
@@ -583,8 +583,8 @@ const handleSave = async () => {
   }
 
   const rawQuestions = builderRef.value?.questions || []
-  const currentQuestions = JSON.parse(JSON.stringify(rawQuestions.map((q, index) => {
-    const base = {
+  const currentQuestions = JSON.parse(JSON.stringify(rawQuestions.map((q: any, index: any) => {
+    const base: Record<string, any> = {
       ...q,
       sortOrder: index,
       title: q.title || '',
@@ -596,7 +596,7 @@ const handleSave = async () => {
       answer: q.answer
     }
     if (q.type === 'composite' && q.subQuestions) {
-      base.subQuestions = q.subQuestions.map((sub, subIdx) => ({
+      base.subQuestions = q.subQuestions.map((sub: any, subIdx: any) => ({
         ...sub,
         sortOrder: subIdx,
         score: Number(sub.score) || 2,
@@ -642,7 +642,7 @@ const handleSave = async () => {
 
     // 单次请求提交整份题库：后端在一个事务里完成题库信息 + 全部题目 + 子题，
     // 失败整体回滚，不再出现「新增成功一半 / 删除已执行」的半成品。
-    const questionPayload = currentQuestions.map((q, index) => ({
+    const questionPayload = currentQuestions.map((q: any, index: any) => ({
       id: q.backendId || undefined,
       questionType: mapTypeToNumber(q.type),
       difficulty: 2,
@@ -712,7 +712,7 @@ const handleSave = async () => {
     }
   } catch (error) {
     console.error('保存失败:', error)
-    ElMessage.error(error.message || '保存失败，请重试')
+    ElMessage.error((error as any).message || '保存失败，请重试')
   } finally {
     saving.value = false
   }
