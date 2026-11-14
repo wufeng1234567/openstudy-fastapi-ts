@@ -306,6 +306,7 @@ def _facts_from_graph(
                 "detail": {
                     "summary": (node.get("detail") or {}).get("summary", ""),
                     "pageType": (node.get("detail") or {}).get("pageType", ""),
+                    "pageIds": list((node.get("detail") or {}).get("pageIds") or []),
                 },
             }
             for node in nodes

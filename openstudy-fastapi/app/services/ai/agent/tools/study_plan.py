@@ -74,6 +74,24 @@ def _compact_graph(graph: Dict[str, Any], trace: Dict[str, Any]) -> Dict[str, An
     return {"nodes": nodes[:30], "edges": edges[:40], "stats": graph.get("stats") or {}}
 
 
+def _has_practice_evidence(facts: Dict[str, Any]) -> bool:
+    """规划建议必须建立在「真实知识节点 + 至少一道真实题目」上。
+
+    没有知识主题时，题库节点会变成孤立的点，生成的只是一张“空规划”；
+    没有题目时，用户看到的是无法验证的学习路线。两种情况都跳过，避免
+    增加心智负担。题库题量不要求已绑定到图谱（题源锚点可以后续补）。
+    """
+    stats = facts.get("stats") or {}
+    if int(stats.get("topicCount") or 0) <= 0:
+        return False
+    question_count = sum(
+        int((node.get("metrics") or {}).get("questionCount") or 0)
+        for node in (facts.get("nodes") or [])
+        if node.get("kind") == "bank"
+    )
+    return question_count > 0
+
+
 async def _run_advise(ctx: ToolContext, params: Dict[str, Any], kb_id: int) -> Dict[str, Any]:
     source_types = params.get("source_types") or ["wiki", "bank"]
     if not isinstance(source_types, list):
@@ -96,6 +114,17 @@ async def _run_advise(ctx: ToolContext, params: Dict[str, Any], kb_id: int) -> D
         instruction=instruction,
         seed_hint=seed_hint,
     )
+    if not _has_practice_evidence(preview["facts"]):
+        return ok(
+            action="advise",
+            skipped=True,
+            reason="no_practice_evidence",
+            kbId=kb_id,
+            advice=None,
+            trace=None,
+            graph=None,
+            message="当前没有可用的相关题库习题，未生成规划建议。请先导入或关联与主题相关的题库，再让我生成。",
+        )
     advice = await study_advice_service.generate_advice(
         ctx.db,
         facts=preview["facts"],

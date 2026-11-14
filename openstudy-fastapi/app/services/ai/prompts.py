@@ -1083,7 +1083,11 @@ One concrete next action, grounded in a real node or question bank.
 
 Keep it concise and useful. Every node, edge and count must come from the tool result.
 If the graph has no edges or only a seed node, say that the recommendation uses the
-available topic and its suggested phases, rather than inventing graph relations."""
+available topic and its suggested phases, rather than inventing graph relations.
+If `study_plan` returns `skipped=true` / `reason=no_practice_evidence`, do NOT ask the
+frontend to render an advice card and do NOT invent a plan: tell the user plainly that
+there is no related question bank or exercise for this topic yet, and suggest importing
+or linking a relevant bank first."""
 
 AGENT_OUTPUT_RULES = """## Output Rules
 - Reply in the user's language (see LANGUAGE POLICY) and NEVER use emoji.
