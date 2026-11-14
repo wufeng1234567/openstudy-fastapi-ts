@@ -189,22 +189,37 @@ def _trim_to_limit(
     by_id = {str(node["id"]): node for node in nodes}
     ordered: List[Dict[str, Any]] = []
     seen: Set[str] = set()
+
+    def add(node: Dict[str, Any]) -> bool:
+        node_id = str(node["id"])
+        if node_id in seen or len(ordered) >= limit:
+            return False
+        ordered.append(node)
+        seen.add(node_id)
+        return True
+
     if seed_node_id and seed_node_id in by_id:
         # 先保留 seed + 1 跳邻居，保证用户选中的东西不会被截掉。
-        ordered.append(by_id[seed_node_id])
-        seen.add(seed_node_id)
+        add(by_id[seed_node_id])
         for edge in edges:
             source, target = str(edge.get("source") or ""), str(edge.get("target") or "")
             neighbor = target if source == seed_node_id else source if target == seed_node_id else ""
-            if neighbor and neighbor in by_id and neighbor not in seen:
-                ordered.append(by_id[neighbor])
-                seen.add(neighbor)
+            if neighbor and neighbor in by_id:
+                add(by_id[neighbor])
+
+    # 来源节点（题库/资料/网页/笔记/图片）优先保留：前端的来源筛选依赖它们；
+    # 不应让大量 topic 先把 500 额度吃光。
+    for node in sorted(
+        (item for item in nodes if item.get("kind") != "topic"),
+        key=_node_sort_key,
+    ):
+        add(node)
+
     for node in sorted(nodes, key=_node_sort_key):
         if len(ordered) >= limit:
             break
-        if str(node["id"]) not in seen:
-            ordered.append(node)
-            seen.add(str(node["id"]))
+        add(node)
+
     keep = {str(node["id"]) for node in ordered}
     kept_edges = [
         edge

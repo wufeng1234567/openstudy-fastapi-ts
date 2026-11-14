@@ -1691,8 +1691,9 @@ async function switchMap(preserveView = false) {
     const res: any = await getStudyMap({
       kbId: Number(props.activeKbId),
       sourceTypes: ['wiki', 'bank', 'document', 'web', 'note', 'image'],
-      // 主题最多 300+；不能只取 300，否则题库/资料节点会被截断，来源筛选会误判为空。
-      limit: 1200
+      // 后端 query.limit 上限为 500；保留足够额度给题库/资料等来源节点，
+      // 避免只取 300 时来源节点被截断、来源筛选误判为空。
+      limit: 500
     })
     if (res.code !== 200) {
       view.value = 'pages'
