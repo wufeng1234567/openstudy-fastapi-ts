@@ -17,6 +17,19 @@
         <OsIcon name="circle-help" :size="14" />
         <span>使用说明</span>
       </button>
+      <div class="kg-panel__toggle-row">
+        <span>FPS 监控</span>
+        <button
+          type="button"
+          class="kg-panel__switch"
+          :class="{ 'is-on': performanceVisible }"
+          :aria-pressed="performanceVisible"
+          title="显示/隐藏 FPS 监控"
+          @click="emit('toggle-performance')"
+        >
+          <i></i>
+        </button>
+      </div>
     </div>
   </aside>
   <button v-else type="button" class="kg-panel-open" title="打开图谱操作面板" @click="emit('update:collapsed', false)">
@@ -31,8 +44,9 @@ withDefaults(
   defineProps<{
     collapsed?: boolean
     showArrows?: boolean
+    performanceVisible?: boolean
   }>(),
-  { collapsed: false, showArrows: true }
+  { collapsed: false, showArrows: true, performanceVisible: true }
 )
 
 const emit = defineEmits<{
@@ -40,6 +54,7 @@ const emit = defineEmits<{
   (e: 'toggle-arrows'): void
   (e: 'reset-view'): void
   (e: 'show-guide'): void
+  (e: 'toggle-performance'): void
 }>()
 </script>
 
@@ -112,6 +127,42 @@ const emit = defineEmits<{
 .kg-panel__action.is-active {
   color: #2f5fce;
 }
+.kg-panel__toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 3px;
+  padding: 5px 1px 2px;
+  border-top: 1px solid #edf0f5;
+  color: #6b7280;
+  font-size: 10px;
+}
+.kg-panel__switch {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 99px;
+  background: #dfe5ee;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.kg-panel__switch i {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(20, 34, 60, 0.18);
+  transition: left 0.15s ease;
+}
+.kg-panel__switch.is-on { background: #2f5fce; }
+.kg-panel__switch.is-on i { left: 14px; }
 .kg-panel-open {
   position: absolute;
   z-index: 9;

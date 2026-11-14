@@ -139,11 +139,14 @@
         <KnowledgeGraphPanel
           v-model:collapsed="graphPanelCollapsed"
           :show-arrows="mapShowArrows"
+          :performance-visible="showPerformanceMonitor"
           @toggle-arrows="toggleMapArrows"
           @reset-view="resetGraphView"
           @show-guide="showRouteGuide"
+          @toggle-performance="togglePerformanceMonitor"
         />
         <PerformanceMonitor
+          v-if="showPerformanceMonitor"
           page="knowledge-graph"
           :kb-id="Number(activeKbId || 0)"
           :node-count="mapNodes.length"
@@ -615,6 +618,23 @@ const searchSuppressed = ref(false)
 const mapHideUnlinked = ref(false)
 const mapShowArrows = ref(true)
 const graphPanelCollapsed = ref(false)
+const PERFORMANCE_MONITOR_KEY = 'openstudy.workspace.performanceMonitor'
+const showPerformanceMonitor = ref(readPerformanceMonitorVisible())
+function readPerformanceMonitorVisible() {
+  try {
+    return localStorage.getItem(PERFORMANCE_MONITOR_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+function togglePerformanceMonitor() {
+  showPerformanceMonitor.value = !showPerformanceMonitor.value
+  try {
+    localStorage.setItem(PERFORMANCE_MONITOR_KEY, showPerformanceMonitor.value ? '1' : '0')
+  } catch {
+    // 忽略存储失败
+  }
+}
 const mapLearnMode = ref(true)
 const mapLearningPath = ref<string[]>([])
 const learningRoute = ref<any>(null)
