@@ -85,7 +85,7 @@ OpenStudy 助手固定在侧边栏左上角品牌行，点击后打开右侧抽�
 - 题库和笔记可以通过逻辑关联进入同一资料夹，不复制原始内容。
 
 <p align="center">
-  <img src="doc/screenshots/readme-workspace.png" width="820" alt="我的资料：资料夹、文档与关联内容">
+  <img src="doc/screenshots/readme-workspace-2026-11-14.png" width="820" alt="我的资料：资料夹、文档与关联内容">
 </p>
 
 ### 03 · 资料诊疗室：从体检到智能报告
@@ -157,7 +157,7 @@ OpenStudy 助手固定在侧边栏左上角品牌行，点击后打开右侧抽�
 
 ### 资料空间
 
-![资料空间主区域](doc/screenshots/readme-workspace.png)
+![资料空间主区域](doc/screenshots/readme-workspace-2026-11-14.png)
 
 ### 智能对话
 
