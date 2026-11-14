@@ -7,6 +7,7 @@ export function usePracticeInput(options: {
   currentQuestion: { value: any }
   totalQuestions: { value: number }
   isExamMode: { value: boolean }
+  showExamResult: { value: boolean }
   committedQuestions: { value: Record<number, boolean> }
   isInstantJudgeType: (type: string | undefined) => boolean
   handleAnswerSubmission: (index: number) => void
@@ -15,6 +16,7 @@ export function usePracticeInput(options: {
   nextQuestion: () => void
 }) {
   function handleUpdateAnswer(value: any) {
+    if (options.showExamResult.value) return
     options.selectedAnswer.value = value
     const qIndex = options.currentQuestionIndex.value
     if (qIndex >= 0 && qIndex < options.answers.value.length) options.answers.value[qIndex] = value
@@ -30,6 +32,7 @@ export function usePracticeInput(options: {
   }
 
   function handleSelectOption(index: number) {
+    if (options.showExamResult.value) return
     options.selectOption(index)
     const qIndex = options.currentQuestionIndex.value
     if (qIndex >= 0 && qIndex < options.answers.value.length) {

@@ -39,6 +39,7 @@ export function usePracticeAnswerFlow(options: {
   }
 
   function handleCommitAnswer(qIndex: number) {
+    if (options.showExamResult.value) return
     if (options.currentQuestionIndex.value !== qIndex) options.currentQuestionIndex.value = qIndex
     const q = options.questions.value[qIndex]
     const val = options.answers.value[qIndex]
@@ -53,6 +54,8 @@ export function usePracticeAnswerFlow(options: {
   }
 
   const handleOverviewSelect = (qIndex: number, optIdx: number) => {
+    // 已交卷/浏览成绩时只读，不能再向会话提交答案。
+    if (options.showExamResult.value) return
     if (options.currentQuestionIndex.value !== qIndex) {
       if (
         options.currentQuestion.value &&
@@ -84,6 +87,7 @@ export function usePracticeAnswerFlow(options: {
   }
 
   const handleOverviewUpdateAnswer = (qIndex: number, value: any) => {
+    if (options.showExamResult.value) return
     if (options.currentQuestionIndex.value !== qIndex) options.currentQuestionIndex.value = qIndex
     options.selectedAnswer.value = value
     options.answers.value[qIndex] = value
@@ -103,17 +107,20 @@ export function usePracticeAnswerFlow(options: {
   }
 
   const handleOverviewSelectSubOption = (qIndex: number, subIndex: number, optIdx: number) => {
+    if (options.showExamResult.value) return
     if (options.currentQuestionIndex.value !== qIndex) options.currentQuestionIndex.value = qIndex
     options.selectSubOption(subIndex, optIdx)
     options.answers.value = [...options.answers.value]
   }
 
   const handleOverviewUpdateSubFillBlank = (qIndex: number, subIndex: number, value: any) => {
+    if (options.showExamResult.value) return
     if (options.currentQuestionIndex.value !== qIndex) options.currentQuestionIndex.value = qIndex
     options.updateSubFillBlankAnswer(subIndex, value)
   }
 
   const handleOverviewUpdateSubEssay = (qIndex: number, subIndex: number, value: any) => {
+    if (options.showExamResult.value) return
     if (options.currentQuestionIndex.value !== qIndex) options.currentQuestionIndex.value = qIndex
     options.updateSubEssayAnswer(subIndex, value)
   }

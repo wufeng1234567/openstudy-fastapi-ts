@@ -689,6 +689,13 @@ const topicSourceKinds = computed(() => {
       .filter((node: any) => normalizeEntityKind(node.kind || node.pageType) === 'topic')
       .map((node: any) => String(node.id))
   )
+  // 优先使用后端在截断前写入的来源类型，节点被 limit 截掉也不影响筛选。
+  for (const node of nodes) {
+    const kinds = node.detail?.sourceKinds
+    if (Array.isArray(kinds) && kinds.length) {
+      result.set(String(node.id), new Set(kinds.map(String)))
+    }
+  }
   const byId = new Map(nodes.map((node: any) => [String(node.id), node]))
   for (const edge of mapGraph.value?.edges || []) {
     const sourceId = String(edge.source || '')
@@ -1684,7 +1691,8 @@ async function switchMap(preserveView = false) {
     const res: any = await getStudyMap({
       kbId: Number(props.activeKbId),
       sourceTypes: ['wiki', 'bank', 'document', 'web', 'note', 'image'],
-      limit: 300
+      // 主题最多 300+；不能只取 300，否则题库/资料节点会被截断，来源筛选会误判为空。
+      limit: 1200
     })
     if (res.code !== 200) {
       view.value = 'pages'

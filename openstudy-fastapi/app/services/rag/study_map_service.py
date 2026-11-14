@@ -214,6 +214,44 @@ def _trim_to_limit(
     return ordered, kept_edges
 
 
+async def _load_bank_page_ids(
+    db: AsyncSession, user_id: int, kb_id: int, page_ids: Sequence[int]
+) -> Dict[int, Set[int]]:
+    """从 RagWikiPage.generation_meta 读取题库生成的页面。
+
+    题库知识点页不一定有 QuestionSource（历史题库、计划自动生成题库都可能没有），
+    但它们真实带有 `sourceType=bank/sourceId=bankId`，必须算作题库来源，
+    否则“知识点来源=题库”筛选会误判为空。
+    """
+    ids = [int(page_id) for page_id in page_ids if str(page_id).isdigit()]
+    if not ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(RagWikiPage.id, RagWikiPage.generation_meta).where(
+                RagWikiPage.user_id == int(user_id),
+                RagWikiPage.kb_id == int(kb_id),
+                RagWikiPage.id.in_(ids),
+            )
+        )
+    ).all()
+    result: Dict[int, Set[int]] = defaultdict(set)
+    for page_id, meta in rows:
+        data = meta or {}
+        sources = data.get("sources") if isinstance(data.get("sources"), list) else []
+        for item in sources:
+            if not isinstance(item, dict) or str(item.get("sourceType") or "") != "bank":
+                continue
+            bank_id = _safe_int(item.get("sourceId"))
+            if bank_id > 0:
+                result[bank_id].add(int(page_id))
+        if str(data.get("sourceType") or "") == "bank":
+            bank_id = _safe_int(data.get("sourceId"))
+            if bank_id > 0:
+                result[bank_id].add(int(page_id))
+    return result
+
+
 async def _load_page_docs(
     db: AsyncSession, user_id: int, kb_id: int, page_ids: Sequence[int]
 ) -> Dict[int, Set[int]]:
@@ -465,12 +503,21 @@ async def build_study_map(
             }
         )
 
+    bank_page_ids = await _load_bank_page_ids(
+        db, int(user_id), int(kb_id or 0), core_page_ids
+    )
     for raw in core.get("nodes") or []:
         if str(raw.get("kind") or "") != "bank":
             continue
         bank_id = _safe_int(raw.get("bankId"))
         if bank_id <= 0 or not include_bank:
             continue
+        page_ids = {
+            _safe_int(item)
+            for item in (raw.get("pageIds") or [])
+            if _safe_int(item) > 0
+        }
+        page_ids.update(bank_page_ids.get(bank_id, set()))
         nodes.append(
             {
                 "id": _bank_id(bank_id),
@@ -481,7 +528,7 @@ async def build_study_map(
                 "source": "bank",
                 "ref": {"pageId": 0, "bankId": bank_id, "docId": 0, "noteId": 0, "assetKey": ""},
                 "metrics": {
-                    "degree": len(raw.get("pageIds") or []),
+                    "degree": len(page_ids),
                     "questionCount": _safe_int(raw.get("questionCount")),
                     "weakCount": _safe_int(raw.get("weakCount")),
                     "mappedQuestionCount": _safe_int(raw.get("mappedQuestionCount")),
@@ -489,7 +536,7 @@ async def build_study_map(
                 "detail": {
                     "accuracy": raw.get("accuracy") or 0,
                     "practicedQuestionCount": _safe_int(raw.get("practicedQuestionCount")),
-                    "pageIds": list(raw.get("pageIds") or []),
+                    "pageIds": sorted(page_ids),
                 },
             }
         )
@@ -519,6 +566,25 @@ async def build_study_map(
             weight=_safe_int(edge.get("weight")),
             evidence={"table": "rag_wiki_page_link / question_source", "id": edge.get("id")},
         )
+
+    # 题库生成的主题页可能没有 QuestionSource（历史题库/计划自动生成题库），
+    # 但它们仍有真实的 generation_meta.sourceType=bank，补一条题库 → 主题边。
+    if include_bank:
+        core_page_id_set = set(core_page_ids)
+        for bank_id, page_ids in bank_page_ids.items():
+            for page_id in page_ids:
+                if page_id not in core_page_id_set:
+                    continue
+                _add_edge(
+                    edges,
+                    seen_edges,
+                    source=_bank_id(bank_id),
+                    target=_topic_id(page_id),
+                    kind="question_source",
+                    label="题库知识点",
+                    weight=1,
+                    evidence={"table": "rag_wiki_page.generation_meta", "bankId": bank_id, "pageId": page_id},
+                )
 
     doc_by_id: Dict[int, RagDocument] = {}
     if include_doc:
@@ -783,6 +849,31 @@ async def build_study_map(
         for edge in edges
         if str(edge.get("source") or "") in node_ids and str(edge.get("target") or "") in node_ids
     ]
+    # 在截断前把主题节点的来源类型写入 detail.sourceKinds。
+    # 否则节点很多时题库/文档节点可能被 limit 截掉，前端“知识点来源”筛选
+    # 会因为找不到对应的来源节点而把主题全部过滤掉。
+    node_by_id = {str(node["id"]): node for node in nodes}
+    kinds_by_topic: Dict[str, Set[str]] = defaultdict(set)
+    for edge in edges:
+        source, target = str(edge.get("source") or ""), str(edge.get("target") or "")
+        source_node, target_node = node_by_id.get(source), node_by_id.get(target)
+        if not source_node or not target_node:
+            continue
+        source_is_topic = source_node.get("kind") == "topic"
+        target_is_topic = target_node.get("kind") == "topic"
+        if source_is_topic == target_is_topic:
+            continue
+        topic_node = source_node if source_is_topic else target_node
+        other_node = target_node if source_is_topic else source_node
+        kind = str(other_node.get("kind") or "")
+        if kind and kind != "topic":
+            kinds_by_topic[str(topic_node["id"])].add(kind)
+    for node in nodes:
+        if node.get("kind") != "topic":
+            continue
+        detail = node.setdefault("detail", {})
+        detail["sourceKinds"] = sorted(kinds_by_topic.get(str(node["id"]), set()))
+
     nodes, edges = _trim_to_limit(nodes, edges, seed_node_id=seed_node_id, limit=max(8, int(limit or MAX_NODES)))
     degree_by_id: Dict[str, int] = defaultdict(int)
     for edge in edges:

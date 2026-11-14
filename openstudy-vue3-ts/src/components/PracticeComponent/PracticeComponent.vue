@@ -1062,6 +1062,7 @@ const { handleUpdateAnswer, handleSelectOption } = usePracticeInput({
   currentQuestion,
   totalQuestions,
   isExamMode,
+  showExamResult,
   committedQuestions,
   isInstantJudgeType,
   handleAnswerSubmission,
