@@ -103,9 +103,13 @@
 - [x] 题目管理支持紧凑知识点下拉筛选（搜索、清空、已选提示）
 - [x] 知识图谱「学习模式」：只显示有题库来源的节点
 - [x] 节点详情「相关题目」：默认收起，展开后显示题目并支持跳转到指定题目练习
+- [x] 规划建议卡片：主节点先出现，再逐条射线连接节点；无精确节点时按相关主题/阶段降级，不再只剩一个点
+- [x] 知识图谱 hover：非邻居节点自动淡化，突出当前节点与连线
+- [x] 规划建议正式回复：prompt 约束 `规划结论 / 图谱路径 / 分阶段建议 / 现在先做` 四段格式
 - [x] 演示题库：`OpenStudy 功能演示·人工智能基础题`（12 题，9 题带真实资料来源，3 题无锚点用于空状态）
 - 截图见 `doc/功能迭代与代码质量/screenshots/`：
   - `wiki-learning-mode.png`
+  - `wiki-hover-dimmed.png`
   - `wiki-node-related-questions.png`
   - `wiki-related-questions-expanded.png`
   - `practice-knowledge-top.png`

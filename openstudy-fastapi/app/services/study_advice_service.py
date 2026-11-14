@@ -56,7 +56,52 @@ def _stable_id(payload: Dict[str, Any], prefix: str) -> str:
     return f"{prefix}:{hashlib.sha1(raw.encode('utf-8')).hexdigest()[:16]}"
 
 
-def _pick_seed(nodes: Sequence[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+def _clean_hint(hint: str) -> str:
+    """去掉「规划建议」这类意图词，只留下真正的话题词。"""
+    text = str(hint or "").strip().lower()
+    for phrase in (
+        "学习规划建议", "生成规划建议", "规划建议", "学习规划", "学习计划",
+        "规划方案", "规划", "建议", "方案", "计划", "帮我", "给我", "做一个",
+        "制定", "生成", "学习", "一下", "请", "的", "。", "，", "！", "？",
+    ):
+        text = text.replace(phrase, " ")
+    return " ".join(text.split())
+
+
+def _hint_score(node: Dict[str, Any], hint: str) -> int:
+    """给主题节点与用户目标的字面相关度打分。
+
+    只用真实标题/别名/摘要做匹配，不创建不存在的节点。
+    """
+    text = _clean_hint(hint)
+    if not text:
+        return 0
+    title = str(node.get("title") or "").strip().lower()
+    if not title:
+        return 0
+    score = 0
+    if title in text:
+        score += 100 + min(len(title), 12)
+    elif text in title:
+        score += 60 + min(len(text), 12)
+    title_parts = [part for part in re.split(r"[\s,，。；;、/|:：()（）\-]+", title) if len(part) >= 2]
+    for part in title_parts:
+        if part in text:
+            score += 25
+    # 中文标题常用双字片段匹配，避免只依赖完整标题。
+    for index in range(max(0, len(title) - 1)):
+        pair = title[index:index + 2]
+        if len(pair) == 2 and pair in text:
+            score += 4
+    aliases = (node.get("detail") or {}).get("aliases") or []
+    for alias in aliases:
+        alias_text = str(alias or "").strip().lower()
+        if alias_text and alias_text in text:
+            score += 55
+    return score
+
+
+def _pick_seed(nodes: Sequence[Dict[str, Any]], hint: str = "") -> Optional[Dict[str, Any]]:
     if not nodes:
         return None
     topics = [n for n in nodes if n.get("kind") == "topic"]
@@ -66,9 +111,10 @@ def _pick_seed(nodes: Sequence[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         metrics = node.get("metrics") or {}
         learning = (node.get("detail") or {}).get("learning") or {}
         return (
+            -_hint_score(node, hint),
             -_safe_int(metrics.get("weakCount")),
-            _safe_int(learning.get("viewCount")),
             -_safe_int(metrics.get("degree")),
+            _safe_int(learning.get("viewCount")),
         )
 
     if topics:
@@ -96,13 +142,27 @@ def _trace_from_graph(
     graph: Dict[str, Any],
     *,
     seed_node_id: str = "",
+    seed_hint: str = "",
 ) -> Dict[str, Any]:
     nodes = list(graph.get("nodes") or [])
     edges = list(graph.get("edges") or [])
     by_id = {str(node["id"]): node for node in nodes}
+    adjacency = _build_adjacency(edges)
     seed = by_id.get(seed_node_id) if seed_node_id else None
     if seed is None:
-        seed = _pick_seed(nodes)
+        seed = _pick_seed(nodes, seed_hint)
+    elif not adjacency.get(str(seed.get("id") or "")):
+        # 用户没有指定节点、模型猜到一个孤立节点（常见于题库节点）时，
+        # 回退到有真实关系的主题节点，避免规划卡只剩一个点。
+        fallback = _pick_seed(
+            [node for node in nodes if node.get("kind") == "topic"],
+            seed_hint,
+        )
+        if fallback and (
+            adjacency.get(str(fallback.get("id") or ""))
+            or str(seed.get("kind") or "") == "bank"
+        ):
+            seed = fallback
     if seed is None:
         return {
             "traceId": "tr:empty",
@@ -113,7 +173,6 @@ def _trace_from_graph(
         }
 
     seed_id = str(seed["id"])
-    adjacency = _build_adjacency(edges)
     visited: List[str] = [seed_id]
     seen: Set[str] = {seed_id}
     steps: List[Dict[str, Any]] = []
@@ -653,7 +712,11 @@ async def prepare_trace(
         limit=80,
         now=now,
     )
-    trace = _trace_from_graph(graph, seed_node_id=seed_node_id)
+    trace = _trace_from_graph(
+        graph,
+        seed_node_id=seed_node_id,
+        seed_hint=f"{instruction} {goal}".strip(),
+    )
     facts = _facts_from_graph(
         graph,
         trace,

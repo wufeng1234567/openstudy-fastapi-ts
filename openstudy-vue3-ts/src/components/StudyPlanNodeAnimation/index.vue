@@ -94,11 +94,25 @@ function nodeColor(node: any) {
 const seedId = computed(() => String(props.trace?.seedNodeId || props.trace?.visitedNodeIds?.[0] || ''))
 const graphNodes = computed(() => {
   const nodes = Array.isArray(props.nodes) ? props.nodes : []
+  const phases = props.phases || []
+  // 数据降级：图里只有一个孤立节点时，用真实建议阶段补出可读的后续路径；
+  // 只用于展示建议，不把它伪装成真实图谱边。
+  if (nodes.length <= 1 && phases.length) {
+    const seed = nodes[0] || { id: 'seed:advice', kind: 'topic', title: props.title || '规划建议' }
+    return [
+      seed,
+      ...phases.map((phase: any, index: number) => ({
+        id: `phase:${index}`,
+        kind: 'topic',
+        title: phase.title || '阶段',
+        isFallback: true
+      }))
+    ]
+  }
   if (nodes.length) return nodes
-  // 数据降级：没有图时用建议阶段画一张可读的主节点图，仍不伪造边。
   return [
     { id: 'seed:advice', kind: 'topic', title: props.title || '规划建议', isFallback: true },
-    ...(props.phases || []).map((phase: any, index: number) => ({
+    ...phases.map((phase: any, index: number) => ({
       id: `phase:${index}`,
       kind: 'topic',
       title: phase.title || '阶段',

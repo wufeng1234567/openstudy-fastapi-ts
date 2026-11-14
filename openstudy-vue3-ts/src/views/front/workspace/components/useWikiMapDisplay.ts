@@ -89,8 +89,9 @@ export function useWikiMapDisplay(options: {
 
   function isMapNodeDimmed(node: any) {
     if (routeActive.value && !isRouteNode(node)) return true
-    // 打开详情/单击节点时不再把其余 199 个节点全部灰化：
-    // 这是一次性全图 class 更新 + opacity 过渡，是点节点后卡顿的主要来源之一。
+    // 悬停时只保留「当前节点 + 直接邻居」高亮，其余节点淡化，让连线成为视觉主体。
+    // 单击打开详情仍不整图灰化，避免抽屉动画期间发生 200+ 节点的 class 变更。
+    if (mapHoveredId.value && !mapNeighborIds.value.has(String(node.id))) return true
     return false
   }
 

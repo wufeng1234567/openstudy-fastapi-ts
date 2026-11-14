@@ -1061,6 +1061,30 @@ Do **not** add an extra layer of backslashes when building the `questions` value
 word "overline", which is wrong. The `questions` argument is a real array; the platform
 handles JSON escaping — write the logical text once and do not pre-escape LaTeX by hand."""
 
+AGENT_STUDY_PLAN_REPLY_RULES = """## Planning Advice Reply (study_plan action=advise)
+When `study_plan` returns an advice card, the final reply after that card MUST explain it.
+Do not only say "已生成" and do not duplicate the card as raw JSON.
+
+Use this readable structure (four short blocks at most):
+### 规划结论
+One sentence: what to focus on first and why.
+
+### 图谱路径
+- 起点：<the real seed topic title>
+- 关键关系：<2-4 real relationships from the trace, e.g. 前置/包含/题源>
+- If no exact seed topic exists, say so plainly and name the closest related topic; never pretend a node named by the user exists.
+
+### 分阶段建议
+1. **<phase title>** — what to do, why it follows from the path.
+2. **<phase title>** — what to do, why it follows from the path.
+
+### 现在先做
+One concrete next action, grounded in a real node or question bank.
+
+Keep it concise and useful. Every node, edge and count must come from the tool result.
+If the graph has no edges or only a seed node, say that the recommendation uses the
+available topic and its suggested phases, rather than inventing graph relations."""
+
 AGENT_OUTPUT_RULES = """## Output Rules
 - Reply in the user's language (see LANGUAGE POLICY) and NEVER use emoji.
 - Your response must be exactly one of:
@@ -1094,6 +1118,7 @@ AGENT_CORE_SECTIONS = [
     AGENT_MATERIAL_CLINIC_RULES,
     AGENT_KNOWLEDGE_NETWORK_RULES,
     AGENT_CONFIRM_RULES,
+    AGENT_STUDY_PLAN_REPLY_RULES,
     AGENT_OUTPUT_RULES,
 ]
 
@@ -1122,6 +1147,7 @@ AGENT_SYSTEM_PROMPT_TEMPLATE = "\n\n".join(
         AGENT_MATERIAL_CLINIC_RULES,
         AGENT_KNOWLEDGE_NETWORK_RULES,
         AGENT_CONFIRM_RULES,
+        AGENT_STUDY_PLAN_REPLY_RULES,
         AGENT_QUESTION_TYPES,
         AGENT_BANK_FIELD_RULES,
         AGENT_DOC_BUILD_WORKFLOW,
