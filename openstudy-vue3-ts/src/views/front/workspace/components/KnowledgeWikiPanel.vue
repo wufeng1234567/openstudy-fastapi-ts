@@ -131,7 +131,7 @@
               <circle v-if="isMapSelected(node)" class="kw-map-node__active" :r="node.r + 7" :stroke="node.color" />
               <circle class="kw-map-node__dot" :r="node.r + (isMapSelected(node) || mapHoveredId === String(node.id) ? 3 : 0)" :fill="node.color" />
               <text v-if="showMapLabel(node)" class="kw-map-node__label" text-anchor="middle"
-                :y="node.r + 14" :style="{ fontSize: `${11 / Math.max(0.8, mapView.scale)}px` }">{{ mapNodeLabel(node) }}</text>
+                :y="node.r + 14" :style="{ fontSize: `${Math.min(14, 11 / Math.max(0.8, mapView.scale))}px` }">{{ mapNodeLabel(node) }}</text>
             </g>
           </g>
         </svg>
@@ -627,6 +627,8 @@ let mapViewFrame = 0
 let mapWheelRaf = 0
 let mapWheelCommitTimer: ReturnType<typeof setTimeout> | null = null
 let mapWheelPending: { x: number; y: number; scale: number } | null = null
+let mapWheelRect: DOMRect | null = null
+let mapZoomGroup: SVGGElement | null = null
 let mapOpenTimer: ReturnType<typeof setTimeout> | null = null
 let lastDetailPageId: number | null = null
 
@@ -2025,7 +2027,7 @@ function renderMapZoom() {
     mapWheelRaf = 0
     return
   }
-  const g = mapCanvasRef.value?.querySelector('.kw-map__svg > g')
+  const g = mapZoomGroup || (mapZoomGroup = mapCanvasRef.value?.querySelector('.kw-map__svg > g') || null)
   if (g) {
     g.setAttribute(
       'transform',
@@ -2041,6 +2043,8 @@ function commitMapZoom() {
   mapView.y = mapWheelPending.y
   mapView.scale = mapWheelPending.scale
   mapWheelPending = null
+  mapWheelRect = null
+  mapZoomGroup = null
   mapWheelCommitTimer = null
 }
 
@@ -2054,13 +2058,18 @@ function cancelMapWheel(commit = false) {
     mapWheelCommitTimer = null
   }
   if (commit) commitMapZoom()
-  else mapWheelPending = null
+  else {
+    mapWheelPending = null
+    mapWheelRect = null
+    mapZoomGroup = null
+  }
 }
 
 function onMapWheel(event: WheelEvent) {
   // 缩放时停止初始力导向动画，避免每一帧同时改响应式节点位置造成卡顿。
   if (mapAnimFrame) stopMapAnimation()
-  const rect = mapCanvasRef.value?.getBoundingClientRect()
+  // 连续滚轮共用同一个 rect，避免每个 wheel 事件都触发布局计算。
+  const rect = mapWheelRect || (mapWheelRect = mapCanvasRef.value?.getBoundingClientRect() || null)
   if (!rect) return
   const px = event.clientX - rect.left
   const py = event.clientY - rect.top
@@ -2069,7 +2078,8 @@ function onMapWheel(event: WheelEvent) {
   // 滚轮期间只直接改 SVG transform，不触发几百个节点/边的 Vue 重渲染。
   if (!mapWheelRaf) mapWheelRaf = requestAnimationFrame(renderMapZoom)
   if (mapWheelCommitTimer) clearTimeout(mapWheelCommitTimer)
-  mapWheelCommitTimer = setTimeout(commitMapZoom, 140)
+  // 留出更大的连续滚动窗口：停下后才提交响应式 mapView，避免 140ms 就整图重绘。
+  mapWheelCommitTimer = setTimeout(commitMapZoom, 320)
 }
 
 function onMapDown(event: PointerEvent) {

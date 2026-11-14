@@ -32,6 +32,10 @@ export function useWikiLabelVisibility(options: {
 
   const visibleLabelIds = computed(() => {
     const { isMapSelected, isRouteNode, mapNodeLabel } = getDisplay()
+    const total = mapNodes.value.length
+    // 大图默认只展示更高连接度的主题标签；选中/悬停/路线节点仍然优先保留。
+    const degreeThreshold = total > 120 ? 18 : 12
+    const maxLabels = total > 150 ? 36 : total > 80 ? 48 : 72
     const candidates = [...mapNodes.value]
       .filter((node: any) => {
         const kind = normalizeEntityKind(node.kind)
@@ -42,7 +46,7 @@ export function useWikiLabelVisibility(options: {
           const component = mapComponents.value.components.find((item) => item.ids.includes(String(node.id)))
           return !(component?.kind === 'image' && component.ids.length > 8)
         }
-        return mapView.scale >= 1.25 || Number(node.degree || 0) >= 12
+        return mapView.scale >= 1.25 || Number(node.degree || 0) >= degreeThreshold
       })
       .sort((a: any, b: any) => {
         const priority = (node: any) => {
@@ -52,7 +56,14 @@ export function useWikiLabelVisibility(options: {
         }
         return priority(a) - priority(b) || Number(b.degree || 0) - Number(a.degree || 0)
       })
-    return pickNonOverlappingLabelIds(candidates, mapNodeLabel, Number(mapView.scale), Number(mapView.x), Number(mapView.y))
+    return pickNonOverlappingLabelIds(
+      candidates,
+      mapNodeLabel,
+      Number(mapView.scale),
+      Number(mapView.x),
+      Number(mapView.y),
+      maxLabels
+    )
   })
 
   return { visibleLabelIds }

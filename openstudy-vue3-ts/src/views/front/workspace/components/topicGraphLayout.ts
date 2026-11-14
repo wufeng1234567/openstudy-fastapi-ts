@@ -12,7 +12,7 @@
 import { normalizeEntityKind } from '../utils/knowledgeGraphMeta'
 
 const IDEAL_EDGE_DISTANCE = 170
-const MIN_NODE_DISTANCE = 64
+const MIN_NODE_DISTANCE = 78
 const REPULSION_RADIUS = 280
 const ITERATIONS = 80
 const LARGE_GRAPH_THRESHOLD = 120
@@ -134,7 +134,7 @@ export function layoutTopicGraph(
         const minDistance =
           Math.max(10, Number(nodeA.r || 10)) +
           Math.max(10, Number(nodeB.r || 10)) +
-          34
+          46
         let dx = b.x - a.x
         let dy = b.y - a.y
         let distance = Math.hypot(dx, dy)

@@ -62,17 +62,22 @@ export function pickNonOverlappingLabelIds(
   getTitle: (node: any) => string,
   scale: number,
   viewX: number,
-  viewY: number
+  viewY: number,
+  maxLabels = Number.POSITIVE_INFINITY
 ): Set<string> {
   const result = new Set<string>()
   const occupied: Array<{ left: number; right: number; top: number; bottom: number }> = []
+  const fontSize = Math.min(14, 11 / Math.max(0.8, Number(scale) || 1))
   for (const node of candidates) {
+    if (result.size >= maxLabels) break
     const title = getTitle(node)
     if (!title) continue
     const screenX = Number(node.x) * Number(scale) + Number(viewX)
     const screenY = Number(node.y) * Number(scale) + Number(viewY) + Number(node.r) + 14
-    const width = Math.max(34, title.length * 11)
-    const box = { left: screenX - width / 2, right: screenX + width / 2, top: screenY - 12, bottom: screenY + 4 }
+    // 中文按字号估算，额外留 8px 横向间隙；之前固定 11px 会低估放大后的标签宽度。
+    const width = Math.max(34, title.length * fontSize + 8)
+    const height = Math.max(16, fontSize * 1.3)
+    const box = { left: screenX - width / 2, right: screenX + width / 2, top: screenY - height + 4, bottom: screenY + 4 }
     const overlaps = occupied.some((item) => !(box.right < item.left || box.left > item.right || box.bottom < item.top || box.top > item.bottom))
     if (overlaps) continue
     occupied.push(box)
