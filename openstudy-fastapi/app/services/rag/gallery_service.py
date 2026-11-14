@@ -17,7 +17,7 @@ import re
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chat_upload import ChatUploadImage
@@ -123,8 +123,19 @@ async def sync_image_assets(db: AsyncSession, user_id: int) -> None:
     """把当前用户的文档图片和聊天图片补进索引。
 
     幂等：按 `(user_id, asset_key)` upsert；已描述状态不因为再次同步回退。
+
+    ⚠️ 同一用户进入「我的资料」时，文档列表 / 画廊 / 知识图谱可能并发调用
+    `sync_image_assets`。两个事务同时看到“不存在”后都会 INSERT，第二个就会撞
+    `uk_rag_image_asset_key`。这里用 PostgreSQL 事务级 advisory lock 按用户串行化，
+    锁在请求事务结束时自动释放；不同用户互不阻塞。
     """
     uid = int(user_id)
+    bind = db.get_bind()
+    if bind is not None and bind.dialect.name == "postgresql":
+        await db.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_key)"),
+            {"lock_key": 1_000_000_000 + uid},
+        )
     existing = await _existing_map(db, uid)
     docs = (
         await db.execute(select(RagDocument).where(RagDocument.user_id == uid))
