@@ -78,6 +78,8 @@ async def _run_advise(ctx: ToolContext, params: Dict[str, Any], kb_id: int) -> D
     source_types = params.get("source_types") or ["wiki", "bank"]
     if not isinstance(source_types, list):
         source_types = ["wiki", "bank"]
+    instruction = str(params.get("instruction") or "").strip()
+    seed_hint = instruction or str((ctx.extra or {}).get("user_message") or "").strip()
     preview = await study_advice_service.prepare_trace(
         ctx.db,
         int(ctx.user_id),
@@ -88,7 +90,8 @@ async def _run_advise(ctx: ToolContext, params: Dict[str, Any], kb_id: int) -> D
         goal=str(params.get("goal") or "weakness"),
         daily_minutes=_to_int(params.get("daily_minutes")) or 30,
         horizon_days=_to_int(params.get("horizon_days")) or 14,
-        instruction=str(params.get("instruction") or ""),
+        instruction=instruction,
+        seed_hint=seed_hint,
     )
     advice = await study_advice_service.generate_advice(
         ctx.db,

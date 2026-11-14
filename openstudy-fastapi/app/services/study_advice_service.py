@@ -699,6 +699,7 @@ async def prepare_trace(
     daily_minutes: int = 30,
     horizon_days: int = 14,
     instruction: str = "",
+    seed_hint: str = "",
     now: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     graph = await study_map_service.build_study_map(
@@ -715,7 +716,7 @@ async def prepare_trace(
     trace = _trace_from_graph(
         graph,
         seed_node_id=seed_node_id,
-        seed_hint=f"{instruction} {goal}".strip(),
+        seed_hint=(seed_hint or f"{instruction} {goal}").strip(),
     )
     facts = _facts_from_graph(
         graph,

@@ -1336,6 +1336,9 @@ async def run_agent_stream(
             # 本轮附件正文（结构化），供 `knowledge_ingest.from_attachment` 取用：
             # [{"name": ..., "text": ...}]。没有附件时是空列表。
             "attachments": attachments,
+            # 用户原话：`study_plan` 等工具用它做主题种子匹配（没有精确节点时也能
+            # 从「人工智能」这样的描述找到最近的相关主题）。
+            "user_message": typed,
             **delegate_env,
         },
     )
