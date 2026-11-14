@@ -112,12 +112,17 @@ def _pick_seed(nodes: Sequence[Dict[str, Any]], hint: str = "") -> Optional[Dict
         learning = (node.get("detail") or {}).get("learning") or {}
         return (
             -_hint_score(node, hint),
-            -_safe_int(metrics.get("weakCount")),
             -_safe_int(metrics.get("degree")),
+            -_safe_int(metrics.get("weakCount")),
             _safe_int(learning.get("viewCount")),
         )
 
     if topics:
+        # 只有「完整标题/别名」或较强的词段命中才采信 hint；
+        # 仅靠“智能”这类双字片段命中时，宁可回退到图中心节点，
+        # 也不要把「智能报告」误当成用户说的「人工智能」。
+        if hint and max((_hint_score(node, hint) for node in topics), default=0) <= 0:
+            hint = ""
         return sorted(topics, key=topic_key)[0]
     if banks:
         return sorted(banks, key=lambda n: -_safe_int((n.get("metrics") or {}).get("weakCount")))[0]

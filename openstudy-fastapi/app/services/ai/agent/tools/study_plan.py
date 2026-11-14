@@ -80,6 +80,9 @@ async def _run_advise(ctx: ToolContext, params: Dict[str, Any], kb_id: int) -> D
         source_types = ["wiki", "bank"]
     instruction = str(params.get("instruction") or "").strip()
     seed_hint = instruction or str((ctx.extra or {}).get("user_message") or "").strip()
+    # 没有单独调整指令时，把用户原话作为建议生成的上下文，避免 LLM 只看图统计。
+    if not instruction:
+        instruction = seed_hint
     preview = await study_advice_service.prepare_trace(
         ctx.db,
         int(ctx.user_id),
@@ -97,7 +100,7 @@ async def _run_advise(ctx: ToolContext, params: Dict[str, Any], kb_id: int) -> D
         ctx.db,
         facts=preview["facts"],
         trace=preview["trace"],
-        instruction=str(params.get("instruction") or ""),
+        instruction=instruction,
         use_llm=True,
     )
     # 用独立会话保存快照，避免在 Agent 的工具事务里 commit 污染外层。
