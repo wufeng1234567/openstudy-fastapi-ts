@@ -362,6 +362,7 @@
       :bank-import-loading-id="bankImportLoadingId"
       :bank-knowledge="bankKnowledge"
       :bank-knowledge-loading="bankKnowledgeLoading"
+      :bank-knowledge-pending="bankKnowledgePending"
       :bank-knowledge-title="bankKnowledgeTitle"
       :filtered-bank-knowledge-questions="filteredBankKnowledgeQuestions"
       :question-jump-data="questionJumpData"
@@ -793,6 +794,7 @@ const {
   linkedNotes,
   bankKnowledgeVisible,
   bankKnowledgeLoading,
+  bankKnowledgePending,
   bankKnowledgeTitle,
   bankKnowledge,
   questionJumpVisible,

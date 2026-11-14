@@ -4,14 +4,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.response import error, success
 from app.core.security import get_current_user
 from app.database import get_db
-from app.models.question import QuestionMain
-from app.services import question_bank_link_service, source_entity_service
+from app.services import bank_knowledge_service, question_bank_link_service
 from app.services.rag import source_graph_service
 
 router = APIRouter(prefix="/rag")
@@ -25,12 +23,19 @@ class LinkBankRequest(BaseModel):
     bankId: int = 0
 
 
+_EXTRACTING: set[tuple[int, int, int]] = set()
+
+
 async def _extract_bank_knowledge(user_id: int, kb_id: int, bank_id: int) -> None:
-    """后台抽取题库知识点，避免阻塞关联操作。"""
+    """后台抽取题库知识点，避免阻塞关联操作或首次打开。"""
     from app.database import async_session_factory
 
-    async with async_session_factory() as db:
-        try:
+    key = (int(user_id), int(kb_id), int(bank_id))
+    if key in _EXTRACTING:
+        return
+    _EXTRACTING.add(key)
+    try:
+        async with async_session_factory() as db:
             await source_graph_service.sync_bank_graph(
                 db,
                 user_id=int(user_id),
@@ -38,9 +43,11 @@ async def _extract_bank_knowledge(user_id: int, kb_id: int, bank_id: int) -> Non
                 bank_id=int(bank_id),
                 source_name="题库",
             )
-        except Exception:
-            # 抽取失败不反向影响关联关系，后续可在更新知识百科里重试。
-            pass
+    except Exception:
+        # 抽取失败不反向影响关联关系，后续可在更新知识百科里重试。
+        pass
+    finally:
+        _EXTRACTING.discard(key)
 
 
 @router.get("/workspace/kbs/{kb_id}/question-banks")
@@ -89,43 +96,39 @@ async def link_kb_question_bank(
 async def get_bank_knowledge(
     kb_id: int,
     bank_id: int,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """读取题库已抽取的知识点，并附上可回看的题目样例。"""
+    """读取题库已落库的知识点；没有缓存时快速返回 pending 并后台抽取。"""
     try:
-        result = await source_entity_service.extract_bank_entities(
+        result = await bank_knowledge_service.load_bank_knowledge(
             db,
             user_id=_uid(current_user),
+            kb_id=int(kb_id),
             bank_id=int(bank_id),
-            limit=80,
-            chunk_size=20,
-            use_llm=True,
         )
-        rows = (
-            await db.execute(
-                select(QuestionMain.id, QuestionMain.question_text, QuestionMain.analysis)
-                .where(QuestionMain.bank_id == int(bank_id), QuestionMain.status == "0")
-                .order_by(QuestionMain.id.asc())
-                .limit(200)
-            )
-        ).all()
+        if result is not None:
+            return success(result)
+
+        # 不在请求里调用 LLM：首次点击也立即返回，由后台 sync_bank_graph 落库，
+        # 前端轮询到缓存后显示完整知识点。
+        background_tasks.add_task(
+            _extract_bank_knowledge,
+            _uid(current_user),
+            int(kb_id),
+            int(bank_id),
+        )
         return success(
             {
-                "summary": result.get("summary") or "",
-                "questionCount": result.get("questionCount") or 0,
-                "entities": result.get("entities") or [],
-                "relations": result.get("relations") or [],
-                "questions": [
-                    {
-                        "id": int(row.id),
-                        "text": str(row.question_text or "")[:500],
-                        "analysis": str(row.analysis or "")[:500],
-                    }
-                    for row in rows
-                ],
-                "degraded": result.get("degraded") or {},
-            }
+                "summary": "",
+                "questionCount": 0,
+                "entities": [],
+                "relations": [],
+                "questions": [],
+                "degraded": {"pending": True},
+            },
+            "题库知识点正在后台抽取",
         )
     except Exception as exc:  # noqa: BLE001
         return error(f"读取题库知识点失败：{exc}")

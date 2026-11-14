@@ -275,7 +275,7 @@ async def sync_bank_graph(
         chunk_size=20,
         use_llm=True,
     )
-    return await _sync_entities(
+    result = await _sync_entities(
         db,
         user_id=int(user_id),
         kb_id=int(kb_id),
@@ -284,6 +284,42 @@ async def sync_bank_graph(
         source_name=source_name,
         payload=payload,
     )
+    # 把完整抽取快照挂到该题库的主题页，供「题库知识点」首次打开时秒读，
+    # 不再重复调用 LLM。页面仍保留 sources/entityIds，图谱关系不受影响。
+    if payload.get("entities"):
+        pages = (
+            await db.execute(
+                select(RagWikiPage).where(
+                    RagWikiPage.user_id == int(user_id),
+                    RagWikiPage.kb_id == int(kb_id),
+                    RagWikiPage.status.in_(["ready", "stale"]),
+                )
+            )
+        ).scalars().all()
+        for page in pages:
+            meta = page.generation_meta or {}
+            sources = meta.get("sources") if isinstance(meta.get("sources"), list) else []
+            matches = any(
+                isinstance(item, dict)
+                and str(item.get("sourceType") or "") == "bank"
+                and int(item.get("sourceId") or 0) == int(bank_id)
+                for item in sources
+            )
+            if not matches:
+                continue
+            page.generation_meta = {
+                **meta,
+                "bankKnowledge": {
+                    "summary": payload.get("summary") or "",
+                    "questionCount": int(payload.get("questionCount") or 0),
+                    "entities": payload.get("entities") or [],
+                    "relations": payload.get("relations") or [],
+                    "degraded": {"cached": True},
+                },
+            }
+            break
+        await db.flush()
+    return result
 
 
 __all__ = ["sync_bank_graph", "sync_text_source"]

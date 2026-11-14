@@ -61,7 +61,9 @@
             <span v-if="entity.questionIds?.length">{{ entity.questionIds.length }} 题</span>
           </button>
         </div>
-        <p v-else class="kbp-bank-knowledge__empty">还没有抽取到知识点，关联后会在后台自动抽取。</p>
+        <p v-else class="kbp-bank-knowledge__empty">
+          {{ bankKnowledgePending ? '正在后台抽取题库知识点，完成后会自动显示…' : '还没有抽取到知识点，关联后会在后台自动抽取。' }}
+        </p>
         <div v-if="bankKnowledge.relations?.length" class="kbp-bank-knowledge__relations">
           <span v-for="rel in bankKnowledge.relations" :key="`${rel.source}-${rel.target}-${rel.type}`">
             {{ rel.source }} → {{ rel.target }}<em>（{{ rel.type }}）</em>
@@ -131,6 +133,7 @@ const props = defineProps<{
   bankImportLoadingId: number
   bankKnowledge: any
   bankKnowledgeLoading: boolean
+  bankKnowledgePending: boolean
   bankKnowledgeTitle: string
   filteredBankKnowledgeQuestions: any[]
   questionJumpData: any

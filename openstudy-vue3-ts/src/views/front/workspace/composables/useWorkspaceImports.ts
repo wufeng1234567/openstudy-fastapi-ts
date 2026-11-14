@@ -43,9 +43,12 @@ export function useWorkspaceImports(options: {
   const linkedNotes = ref<any[]>([])
   const bankKnowledgeVisible = ref(false)
   const bankKnowledgeLoading = ref(false)
+  const bankKnowledgePending = ref(false)
   const bankKnowledgeTitle = ref('')
   const bankKnowledge = ref<any>({ summary: '', entities: [], relations: [], questions: [] })
   const bankKnowledgeBankId = ref(0)
+  let bankKnowledgePollTimer: ReturnType<typeof setTimeout> | null = null
+  let bankKnowledgePollAttempts = 0
   const questionJumpVisible = ref(false)
   const questionJumpLoading = ref(false)
   const questionJumpData = ref<any>(null)
@@ -352,20 +355,65 @@ export function useWorkspaceImports(options: {
     }
   }
 
+  function clearBankKnowledgePoll() {
+    if (bankKnowledgePollTimer) clearTimeout(bankKnowledgePollTimer)
+    bankKnowledgePollTimer = null
+  }
+
+  function applyBankKnowledge(data: any) {
+    bankKnowledge.value = data || { summary: '', entities: [], relations: [], questions: [] }
+    bankKnowledgePending.value = Boolean(data?.degraded?.pending)
+  }
+
+  function scheduleBankKnowledgePoll() {
+    clearBankKnowledgePoll()
+    if (!bankKnowledgePending.value || !bankKnowledgeVisible.value) return
+    if (bankKnowledgePollAttempts >= 30) {
+      bankKnowledgePending.value = false
+      return
+    }
+    bankKnowledgePollAttempts += 1
+    bankKnowledgePollTimer = setTimeout(async () => {
+      bankKnowledgePollTimer = null
+      if (!bankKnowledgeVisible.value || !bankKnowledgePending.value) return
+      const kb = options.activeKb.value
+      const bankId = Number(bankKnowledgeBankId.value || 0)
+      if (!kb || !bankId) return
+      try {
+        const res: any = await getKbQuestionBankKnowledge(Number(kb.kbId), bankId)
+        if (res.code === 200) {
+          applyBankKnowledge(res.data)
+          if (bankKnowledgePending.value) scheduleBankKnowledgePoll()
+        } else {
+          scheduleBankKnowledgePoll()
+        }
+      } catch {
+        scheduleBankKnowledgePoll()
+      }
+    }, 2500)
+  }
+
   async function openBankKnowledge(bank: any) {
     const kb = options.activeKb.value
     const bankId = Number(bank?.bankId || bank?.id || 0)
     if (!kb || !bankId || bankKnowledgeLoading.value) return
+    clearBankKnowledgePoll()
+    bankKnowledgePollAttempts = 0
     bankKnowledgeTitle.value = String(bank.bankName || bank.name || '题库知识点')
     bankKnowledgeBankId.value = bankId
     bankKnowledge.value = { summary: '', entities: [], relations: [], questions: [] }
+    bankKnowledgePending.value = false
     selectedBankEntityName.value = ''
     bankKnowledgeVisible.value = true
     bankKnowledgeLoading.value = true
     try {
       const res: any = await getKbQuestionBankKnowledge(Number(kb.kbId), bankId)
-      if (res.code === 200) bankKnowledge.value = res.data || { entities: [], relations: [], questions: [] }
-      else ElMessage.error(res.msg || '读取题库知识点失败')
+      if (res.code === 200) {
+        applyBankKnowledge(res.data)
+        if (bankKnowledgePending.value) scheduleBankKnowledgePoll()
+      } else {
+        ElMessage.error(res.msg || '读取题库知识点失败')
+      }
     } catch (e: any) {
       ElMessage.error('读取题库知识点失败：' + (e?.message || e))
     } finally {
@@ -413,6 +461,7 @@ export function useWorkspaceImports(options: {
     linkedNotes,
     bankKnowledgeVisible,
     bankKnowledgeLoading,
+    bankKnowledgePending,
     bankKnowledgeTitle,
     bankKnowledge,
     bankKnowledgeBankId,
