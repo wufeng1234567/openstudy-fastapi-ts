@@ -23,6 +23,7 @@ GRAPH_DETAIL = os.path.join(SHOTS, "readme-knowledge-graph-detail-2026-11-14.png
 DIAGNOSIS = os.path.join(SHOTS, "readme-diagnosis-2026-11-14.png")
 PLANNING = os.path.join(SHOTS, "readme-planning-advice.png")
 AGENT = os.path.join(SHOTS, "01-agent-chat.png")
+BRUSH = os.path.join(HERE, "brush-math-question-2026-11-14.png")
 
 # ---------------- 设计令牌 ----------------
 INK = RGBColor(0x0B, 0x2B, 0x22)
@@ -233,21 +234,21 @@ def p1():
     s = prs.slides.add_slide(BLANK); bg(s)
     rect(s, 10.6, -2.0, 5.2, 5.2, fill=None, line=RGBColor(0xE3, 0xF4, 0xEC), lw=1.0, radius=0.5)
     rect(s, 11.9, 3.15, 3.6, 3.6, fill=None, line=RGBColor(0xEF, 0xF9, 0xF4), lw=1.0, radius=0.5)
-    text(s, M_L, 0.66, 8.0, 0.24, "OPENSTUDY  ·  0.8.0  ·  知识资产系统", size=10, bold=True, color=MINT_D, spc=160)
-    text(s, M_L, 1.02, 7.30, 1.55, "把信息来源，\n整理成可用的知识资产", size=36, bold=True, color=INK, line_spacing=1.06)
+    text(s, M_L, 0.66, 6.2, 0.24, "OPENSTUDY  ·  0.8.0  ·  知识资产系统", size=10, bold=True, color=MINT_D, spc=160)
+    text(s, M_L, 1.02, 6.05, 1.55, "把信息来源，\n整理成可用的知识资产", size=36, bold=True, color=INK, line_spacing=1.06)
     line(s, M_L, 3.02, M_L + 1.15, 3.02, color=MINT, width=2.5)
-    text(s, M_L, 3.22, 7.00, 0.82,
+    text(s, M_L, 3.22, 5.95, 0.82,
          "网页、文档、图片、题库、笔记和网页收藏，\n不再散落成一次性材料。",
          size=14, color=GRAY, line_spacing=1.45)
-    text(s, M_L, 4.30, 7.0, 0.42, "对话是入口，知识资产是结果。", size=24, bold=True, color=INK)
-    text(s, M_L, 4.82, 7.2, 0.32, "资料诊疗室  /  知识百科  /  知识图谱  /  规划建议", size=13, color=GRAY2)
-    line(s, M_L, 5.52, 7.10, 5.52, color=LINE, width=0.5)
-    text(s, M_L, 5.68, 7.1, 0.24, "华为云码道 CodeArts 开发  ·  GitCode 开源  ·  FastAPI + Vue 3", size=9.5, color=GRAY2)
-    text(s, M_L, 6.18, 7.1, 0.24, "gitcode.com/qi142410131/openstudy-fastapi-ts", size=9, color=MINT_D)
-    pic_contain(s, GRAPH, 7.35, 1.10, 5.25, 3.55, caption="真实运行界面 · 主题之间的关系图（点节点可看详情）")
-    chip(s, 7.35, 4.88, 1.58, 0.34, "看主题关系", MINT_L, MINT_D, 9)
-    chip(s, 9.06, 4.88, 1.86, 0.34, "点节点看来源", MINT_L, MINT_D, 9)
-    chip(s, 11.05, 4.88, 1.55, 0.34, "沿关系做规划", MINT_L, MINT_D, 9)
+    text(s, M_L, 4.30, 6.0, 0.42, "对话是入口，知识资产是结果。", size=24, bold=True, color=INK)
+    text(s, M_L, 4.82, 6.1, 0.32, "资料诊疗室  /  知识百科  /  知识图谱  /  规划建议", size=13, color=GRAY2)
+    line(s, M_L, 5.52, 6.3, 5.52, color=LINE, width=0.5)
+    text(s, M_L, 5.68, 6.2, 0.24, "华为云码道 CodeArts 开发  ·  GitCode 开源  ·  FastAPI + Vue 3", size=9.5, color=GRAY2)
+    text(s, M_L, 6.18, 6.2, 0.24, "gitcode.com/qi142410131/openstudy-fastapi-ts", size=9, color=MINT_D)
+    pic_card(s, GRAPH, 7.00, 0.95, 5.55, 4.15, caption="真实运行界面 · 主题之间的关系图（点节点可看详情）")
+    chip(s, 7.00, 5.50, 1.58, 0.34, "看主题关系", MINT_L, MINT_D, 9)
+    chip(s, 8.70, 5.50, 1.86, 0.34, "点节点看来源", MINT_L, MINT_D, 9)
+    chip(s, 10.70, 5.50, 1.55, 0.34, "沿关系做规划", MINT_L, MINT_D, 9)
     footer(s, 1)
 
 
@@ -291,42 +292,42 @@ def p2():
 # ================= P3 产品主线 =================
 def p3():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "02  /  产品方案", "一条从信息来源到知识资产的链路",
-           "不靠一个万能聊天框：每一步都有真实数据、真实来源和可继续操作的结果。")
+    header(s, "02  /  核心能力 · 资料到题库", "从资料到刷题：公式、图片、知识点都不丢",
+           "一份带公式和插图的 Word/PDF，导入后直接变成可刷的题，原文依据和知识点跟着走。")
     steps = [
-        ("01", "收集", "网页 / 文档 / 图片\n题库 / 笔记"),
-        ("02", "解析", "分块 / 章节\n图片 / 向量"),
-        ("03", "体检", "四维检查\n问题回原文"),
-        ("04", "知识百科", "主题页 / 小节\n来源与版本"),
-        ("05", "知识图谱", "五类来源抽取\n主题关系"),
-        ("06", "规划建议", "沿真实路径\n给出下一步"),
+        ("01", "导入文档", "Word / PDF\n含公式、插图"),
+        ("02", "解析", "公式转 LaTeX\n图片保留"),
+        ("03", "生成题库", "单选 / 多选\n解答题"),
+        ("04", "刷题", "题目 + 图\n原位显示"),
+        ("05", "知识点", "题目 → 主题页\n→ 原文 chunk"),
     ]
-    sw = 1.82; gap = (CW - 6 * sw) / 5
+    sw = 1.82; gap = (CW - 5 * sw) / 4
     x = M_L
-    line(s, M_L + 0.18, 2.30, W - M_L - 0.18, 2.30, color=RGBColor(0xC9, 0xEC, 0xDD), width=1.2)
+    line(s, M_L + 0.18, 2.32, W - M_L - 0.18, 2.32, color=RGBColor(0xC9, 0xEC, 0xDD), width=1.2)
     for i, (n, t, d) in enumerate(steps):
-        active = i in (3, 4, 5)
-        card = rect(s, x, 1.90, sw, 1.38, fill=MINT if active else WHITE, line=None if active else LINE, lw=0.75, radius=0.06)
+        active = i in (2, 3, 4)
+        card = rect(s, x, 1.92, sw, 1.28, fill=MINT if active else WHITE, line=None if active else LINE, lw=0.75, radius=0.06)
         tc = WHITE if active else INK
         dc = RGBColor(0xDD, 0xF7, 0xEC) if active else GRAY
-        text(s, x + 0.14, 2.02, 0.40, 0.22, n, size=9, bold=True, color=dc if active else MINT_D)
-        text(s, x + 0.14, 2.28, sw - 0.28, 0.26, t, size=13.5, bold=True, color=tc)
-        text(s, x + 0.14, 2.62, sw - 0.28, 0.50, d, size=9.2, color=dc, line_spacing=1.25)
+        text(s, x + 0.14, 2.04, 0.40, 0.22, n, size=9, bold=True, color=dc if active else MINT_D)
+        text(s, x + 0.14, 2.30, sw - 0.28, 0.26, t, size=13.5, bold=True, color=tc)
+        text(s, x + 0.14, 2.64, sw - 0.28, 0.42, d, size=9.0, color=dc, line_spacing=1.2)
         x += sw + gap
-    pic_card(s, SCREENSHOT_2026, M_L, 3.62, 5.75, 2.94, caption="我的资料：资料夹、文档、题库与笔记的统一入口")
-    right = rect(s, 6.82, 3.62, 5.72, 2.94, fill=WHITE, line=LINE, lw=0.8, radius=0.05)
-    text(s, 7.05, 3.80, 5.25, 0.26, "智能体贯穿全流程", size=15, bold=True, color=INK)
+    pic_card(s, BRUSH, M_L, 3.40, 7.05, 3.42, caption="真实练习页：题干公式、区域图、知识点和题源同时可见")
+    right = rect(s, 8.02, 3.40, 4.50, 3.42, fill=WHITE, line=LINE, lw=0.8, radius=0.05)
+    text(s, 8.24, 3.58, 4.05, 0.26, "题库不是纯文本", size=15, bold=True, color=INK)
     bullets = [
-        "对话里上传的资料，自动进入我的资料，下一次还能继续用。",
-        "知识百科的每个主题页保留来源、版本和反向链接。",
-        "知识图谱首层只展示知识主题，来源实体在主题详情里展开。",
-        "规划建议读取真实图谱关系，不生成不存在的节点和连线。",
+        ("公式", "Word 公式转 LaTeX，在题目里原样渲染"),
+        ("图片", "文档插图跟着题走，不丢图、不贴错位置"),
+        ("知识点", "题目 → 主题页 → 原文 chunk 三层可查"),
+        ("题源", "来源资料 #693 / 第 2294 段，可回到原文"),
     ]
-    yy = 4.26
-    for b in bullets:
-        text(s, 7.08, yy, 0.16, 0.22, "·", size=13, bold=True, color=MINT)
-        text(s, 7.30, yy, 4.95, 0.42, b, size=10.4, color=GRAY, line_spacing=1.35)
-        yy += 0.48
+    yy = 3.98
+    for t, d in bullets:
+        text(s, 8.24, yy, 0.72, 0.22, t, size=9.8, bold=True, color=MINT_D)
+        text(s, 9.02, yy - 0.01, 3.22, 0.42, d, size=9.5, color=GRAY, line_spacing=1.25)
+        yy += 0.62
+    text(s, 8.24, 6.40, 4.05, 0.22, "演示题库：高等数学 · 综合练习（第三章）", size=8.5, color=GRAY2)
     footer(s, 3)
 
 
