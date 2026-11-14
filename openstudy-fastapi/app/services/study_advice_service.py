@@ -196,7 +196,7 @@ def _trace_from_graph(
                 "to": next_id,
                 "edgeId": str(edge.get("id") or ""),
                 "kind": str(edge.get("kind") or "related"),
-                "label": str(edge.get("label") or "关联"),
+                "label": _relation_label(edge),
                 "reason": reason,
                 "durationMs": 550,
                 "direction": "in" if edge.get("_reverse") else "out",
@@ -217,6 +217,30 @@ def _trace_from_graph(
         "visitedNodeIds": visited,
         "degraded": {"singleNode": not steps, "noEdges": len(edges) == 0},
     }
+
+
+def _relation_label(edge: Dict[str, Any]) -> str:
+    """把“主题关系”这种泛标签翻译成可读的动作关系。"""
+    kind = str(edge.get("kind") or "")
+    reverse = bool(edge.get("_reverse"))
+    if kind == "part_of":
+        return "包含" if reverse else "属于"
+    labels = {
+        "prerequisite": "先学",
+        "question_source": "做题验证",
+        "source_doc": "引自",
+        "reference": "引用",
+        "image_source": "配图",
+        "mention": "延展至",
+        "related": "关联到",
+        "contrast": "对比",
+    }
+    if kind in labels:
+        return labels[kind]
+    raw = str(edge.get("label") or "").strip()
+    if raw and raw not in {"主题关系", "主题关联", "关联"}:
+        return raw
+    return "延展至"
 
 
 def _step_reason(edge: Dict[str, Any], node: Dict[str, Any]) -> str:
