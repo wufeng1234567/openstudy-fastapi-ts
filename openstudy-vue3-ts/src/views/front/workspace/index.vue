@@ -111,10 +111,8 @@
         :selected-doc-count="selectedDocCount"
         :selected-doc-ids="selectedDocIds"
         :organize-report="organizeReport"
-        :linked-banks="linkedBanks"
-        :linked-notes="linkedNotes"
+        :entities="visibleEntities"
         :docs-loading="docsLoading"
-        :visible-files="visibleFiles"
         :jump-target-doc-id="jumpTargetDocId"
         :doc-tag-type="docTagType"
         :workspace-search="workspaceSearch"
@@ -126,6 +124,8 @@
         @open-bank-knowledge="openBankKnowledge"
         @remove-linked-bank="removeLinkedBank"
         @unlink-linked-note="unlinkLinkedNote"
+        @open-note="openWorkspaceNote"
+        @open-image="openWorkspaceImage"
         @toggle-doc="toggleDocSelected"
         @show-anatomy="showAnatomy"
         @toggle-searchable="toggleDocSearchable"
@@ -391,7 +391,7 @@ import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } 
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import OsIcon from '@/components/OsIcon/index.vue'
-import { getWorkspaceOverview, listWorkspaceStandaloneImages, getAssetUsageSummary } from '@/api/ai/workspace'
+import { getWorkspaceOverview, listWorkspaceStandaloneImages, getAssetUsageSummary, listGalleryAssets } from '@/api/ai/workspace'
 import OrganizeDiffDialog from './components/OrganizeDiffDialog.vue'
 import DocumentClinicDialog from './components/DocumentClinicDialog.vue'
 import GalleryPanel from './components/GalleryPanel.vue'
@@ -416,6 +416,8 @@ import { readWorkspaceView } from './utils/helpers'
 import { useImageInsertion } from './composables/useImageInsertion'
 import { useWorkspaceNavigation } from './composables/useWorkspaceNavigation'
 import { useWorkspaceFilters } from './composables/useWorkspaceFilters'
+import { useWorkspaceEntities } from './composables/useWorkspaceEntities'
+import { useWorkspaceGraphSync } from './composables/useWorkspaceGraphSync'
 import { useWorkspaceCascade } from './composables/useWorkspaceCascade'
 import { useWorkspaceUpload } from './composables/useWorkspaceUpload'
 import { useWorkspaceAnatomy } from './composables/useWorkspaceAnatomy'
@@ -557,28 +559,13 @@ const galleryStats = reactive({ total: 0 })
 const mapStats = reactive({ total: 0 })
 const wikiSearchSubmitKey = ref(0)
 const wikiRefreshKey = ref(0)
+const { scheduleGraphSync } = useWorkspaceGraphSync({ activeKbId, wikiRefreshKey })
 const workspaceTabs = [
   { key: 'list' as const, label: '资料夹', icon: 'folder' },
   { key: 'shelf' as const, label: '书架', icon: 'book-open' },
   { key: 'gallery' as const, label: '画廊', icon: 'layout-grid' },
   { key: 'wiki' as const, label: '知识百科', icon: 'book-open' }
 ]
-const {
-  workspaceSearchPlaceholder,
-  workspaceCountLabel,
-  workspaceFilterTitle,
-  workspaceFilterDefault,
-  workspaceFilterGroups,
-  visibleFiles
-} = useWorkspaceFilters({
-  viewMode,
-  activeKb,
-  workspaceSearch,
-  workspaceFilters,
-  stats,
-  galleryStats,
-  mapStats
-})
 
 const {
   isCascadeMode,
@@ -644,12 +631,15 @@ watch(activeKbId, (kbId) => {
   if (kbId) {
     void loadLinkedBanks()
     void loadLinkedNotes()
+    void loadWorkspaceGallery()
   } else {
     linkedBanks.value = []
     linkedNotes.value = []
+    galleryAssets.value = []
   }
 })
 const standaloneImages = ref<any[]>([])
+const galleryAssets = ref<any[]>([])
 const assetUsage = ref<Record<string, number>>({})
 
 const {
@@ -706,6 +696,16 @@ const {
   workspaceSearch,
   wikiSearchSubmitKey
 })
+
+function openWorkspaceNote(note: any) {
+  const noteId = Number(note?.noteId || note?.id || 0)
+  if (noteId) router.push(`/front/notes/detail/${noteId}`)
+}
+
+function openWorkspaceImage(image: any) {
+  galleryFocusAssetKey.value = String(image?.assetKey || '')
+  viewMode.value = 'gallery'
+}
 
 function onWikiOpenSource(payload: { kind: string; id: number; title?: string; assetKey?: string }) {
   const kind = String(payload?.kind || '')
@@ -826,7 +826,35 @@ const {
   activeKb,
   busy,
   load,
-  wikiRefreshKey
+  wikiRefreshKey,
+  onGraphChanged: scheduleGraphSync
+})
+
+const { entities: workspaceEntities } = useWorkspaceEntities({
+  activeKb,
+  linkedBanks,
+  linkedNotes,
+  galleryAssets,
+  standaloneImages
+})
+
+const {
+  workspaceSearchPlaceholder,
+  workspaceCountLabel,
+  workspaceFilterTitle,
+  workspaceFilterDefault,
+  workspaceFilterGroups,
+  visibleEntities,
+  visibleFiles
+} = useWorkspaceFilters({
+  viewMode,
+  activeKb,
+  workspaceSearch,
+  workspaceFilters,
+  stats,
+  galleryStats,
+  mapStats,
+  entities: workspaceEntities
 })
 
 /* ===================== 加载 ===================== */
@@ -863,7 +891,7 @@ async function load(keepActive = true) {
       )
       selectedDocIds.value = selectedDocIds.value.filter((id) => aliveIds.has(id))
       await applyJumpQuery()
-      await Promise.all([loadLinkedBanks(), loadLinkedNotes()])
+      await Promise.all([loadLinkedBanks(), loadLinkedNotes(), loadWorkspaceGallery()])
     } else {
       loadFailed.value = true
     }
@@ -916,6 +944,23 @@ async function loadStandaloneImages() {
     }
   } catch (e: any) {
     console.warn('[我的资料] 加载聊天图片失败', e)
+  }
+}
+
+async function loadWorkspaceGallery() {
+  const kbId = Number(activeKbId.value || 0)
+  if (!kbId) {
+    galleryAssets.value = []
+    return
+  }
+  try {
+    const res: any = await listGalleryAssets({ scope: 'current', kbId, limit: 300 })
+    if (res.code === 200) {
+      galleryAssets.value = Array.isArray(res.data?.items) ? res.data.items : []
+    }
+  } catch (e: any) {
+    console.warn('[我的资料] 加载画廊实体失败', e)
+    galleryAssets.value = []
   }
 }
 
@@ -1009,7 +1054,8 @@ const {
   openTextImport,
   openWebImport,
   openBankImport,
-  openNoteImport
+  openNoteImport,
+  onGraphChanged: scheduleGraphSync
 })
 
 function openClinic(doc: any) {
@@ -1051,6 +1097,7 @@ async function askFromHealth(doc: any, issue: any) {
 onMounted(() => {
   load(false)
   loadStandaloneImages()
+  loadWorkspaceGallery()
   loadAssetUsage()
   refreshOrganizePlans(true)
   // 布局层顶栏的 Teleport 目标在父组件挂载完成后才稳定存在。

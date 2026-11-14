@@ -17,6 +17,7 @@ export function useWorkspaceImports(options: {
   busy: { value: boolean }
   load: () => Promise<void>
   wikiRefreshKey: { value: number }
+  onGraphChanged?: () => void
 }) {
   const router = useRouter()
   const importing = ref(false)
@@ -89,7 +90,11 @@ export function useWorkspaceImports(options: {
         ElMessage.success('已导入，后台正在分块')
         textImportVisible.value = false
         await options.load()
-        setTimeout(() => options.load(), 4000)
+        options.onGraphChanged?.()
+        setTimeout(() => {
+          void options.load()
+          options.onGraphChanged?.()
+        }, 4000)
       } else {
         ElMessage.error(res.msg || '导入失败')
       }
@@ -168,7 +173,11 @@ export function useWorkspaceImports(options: {
         ElMessage.success(res.msg || '网页已导入，后台正在分块')
         webImportVisible.value = false
         await options.load()
-        setTimeout(() => options.load(), 4000)
+        options.onGraphChanged?.()
+        setTimeout(() => {
+          void options.load()
+          options.onGraphChanged?.()
+        }, 4000)
       } else {
         ElMessage.error(res.msg || '网页导入失败')
       }
@@ -224,6 +233,8 @@ export function useWorkspaceImports(options: {
   function onNoteImported() {
     noteImporting.value = false
     void loadLinkedNotes()
+    void options.load()
+    options.onGraphChanged?.()
     options.wikiRefreshKey.value += 1
   }
 
@@ -245,6 +256,7 @@ export function useWorkspaceImports(options: {
       if (res.code === 200) {
         ElMessage.success('已取消关联')
         await loadLinkedNotes()
+        options.onGraphChanged?.()
       } else {
         ElMessage.error(res.msg || '取消关联失败')
       }
@@ -290,6 +302,7 @@ export function useWorkspaceImports(options: {
       if (res.code === 200) {
         ElMessage.success(`已关联题库「${bank.bankName || bank.name || ''}」，知识图谱会自动提取其中的知识点`)
         await refreshBankImportList()
+        options.onGraphChanged?.()
       } else {
         ElMessage.error(res.msg || '关联题库失败')
       }
@@ -369,6 +382,7 @@ export function useWorkspaceImports(options: {
       if (res.code === 200) {
         ElMessage.success('已取消关联')
         await refreshBankImportList()
+        options.onGraphChanged?.()
       }
     } catch (e: any) {
       ElMessage.error('取消关联失败：' + (e?.message || e))

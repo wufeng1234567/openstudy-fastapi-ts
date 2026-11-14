@@ -22,6 +22,7 @@ export function useWorkspaceUpload(options: {
   openWebImport: () => void
   openBankImport: () => void
   openNoteImport: () => void
+  onGraphChanged?: () => void
 }) {
   function onPick() {
     options.fileInputRef.value?.click()
@@ -131,6 +132,7 @@ export function useWorkspaceUpload(options: {
         }
         options.uploadTip.value = '上传完成：资料正在解析、提取图片/公式并建立索引；独立图片已加入画廊并生成名称/描述。'
         await options.load()
+        options.onGraphChanged?.()
         if (uploadedDocIds.length) pollUploadedDocuments(uploadedDocIds)
       } else {
         options.uploadTip.value = ''
@@ -230,6 +232,8 @@ export function useWorkspaceUpload(options: {
     } finally {
       await options.load()
       options.uploadTip.value = ''
+      // 文档解析完成后内容 hash / 分块才稳定，再触发一次图谱增量同步。
+      options.onGraphChanged?.()
       if (failed) ElMessage.error(`${failed} 份资料解析失败，可在文档行点击「更多 → 重新解析」`)
     }
   }

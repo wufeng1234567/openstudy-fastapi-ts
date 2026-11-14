@@ -1,6 +1,6 @@
 import { computed } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
-import { documentStatusKey, documentTypeKey } from '../utils/helpers'
+import { documentTypeKey } from '../utils/helpers'
 
 export type WorkspaceViewMode = 'list' | 'shelf' | 'gallery' | 'wiki'
 
@@ -12,6 +12,8 @@ interface WorkspaceFilterOptions {
   stats: Record<string, any>
   galleryStats: { total: number }
   mapStats: { total: number }
+  /** 文档 / 题库 / 笔记 / 网页 / 图片统一后的实体列表。 */
+  entities: ComputedRef<any[]>
 }
 
 /**
@@ -24,7 +26,7 @@ export function useWorkspaceFilters(options: WorkspaceFilterOptions) {
     if (options.viewMode.value === 'gallery') return '搜索图片描述或文字…'
     if (options.viewMode.value === 'wiki') return '搜索主题、资料、题库或笔记…'
     if (options.viewMode.value === 'shelf') return '搜索资料…'
-    return '搜索资料夹或资料…'
+    return '搜索资料、题库、笔记或图片…'
   })
 
   const workspaceCountLabel = computed(() => {
@@ -123,14 +125,17 @@ export function useWorkspaceFilters(options: WorkspaceFilterOptions) {
     return [
       {
         key: 'fileType',
-        label: '资料类型',
+        label: '实体类型',
         type: 'checkbox',
         options: [
           { value: 'word', label: 'Word' },
           { value: 'pdf', label: 'PDF' },
           { value: 'ppt', label: 'PPT' },
           { value: 'text', label: 'Markdown / TXT' },
-          { value: 'image', label: '图片' }
+          { value: 'image', label: '图片' },
+          { value: 'web', label: '网页' },
+          { value: 'bank', label: '题库' },
+          { value: 'note', label: '笔记' }
         ]
       },
       {
@@ -147,18 +152,24 @@ export function useWorkspaceFilters(options: WorkspaceFilterOptions) {
     ]
   })
 
-  const visibleFiles = computed(() => {
-    const files = options.activeKb.value?.files || []
+  const visibleEntities = computed(() => {
     const query = options.workspaceSearch.value.trim().toLowerCase()
     const types = Array.isArray(options.workspaceFilters.fileType) ? options.workspaceFilters.fileType : []
     const statuses = Array.isArray(options.workspaceFilters.status) ? options.workspaceFilters.status : []
-    return files.filter((doc: any) => {
-      if (query && !`${doc.fileName || ''} ${doc.note || ''}`.toLowerCase().includes(query)) return false
-      if (types.length && !types.includes(documentTypeKey(doc))) return false
-      if (statuses.length && !statuses.includes(documentStatusKey(doc))) return false
+    return (options.entities.value || []).filter((entity: any) => {
+      const text = `${entity.title || ''} ${entity.subtitle || ''} ${entity.metaText || ''}`.toLowerCase()
+      if (query && !text.includes(query)) return false
+      const docType = entity.doc ? documentTypeKey(entity.doc) : ''
+      if (types.length && !types.includes(entity.type) && !types.includes(docType)) return false
+      if (statuses.length && (!entity.statusKey || !statuses.includes(entity.statusKey))) return false
       return true
     })
   })
+
+  // 书架视图仍只需要文档；资料夹列表使用 visibleEntities。
+  const visibleFiles = computed(() =>
+    visibleEntities.value.filter((entity: any) => entity.doc).map((entity: any) => entity.doc)
+  )
 
   return {
     workspaceSearchPlaceholder,
@@ -166,6 +177,7 @@ export function useWorkspaceFilters(options: WorkspaceFilterOptions) {
     workspaceFilterTitle,
     workspaceFilterDefault,
     workspaceFilterGroups,
+    visibleEntities,
     visibleFiles
   }
 }

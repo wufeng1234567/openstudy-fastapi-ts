@@ -178,6 +178,7 @@ async def _files_of_kb(db: AsyncSession, kb_id: int) -> List[Dict[str, Any]]:
             "statusText": _status_text(d.status),
             "disabled": 1 if getattr(d, "disabled", 0) else 0,
             "sourceType": getattr(d, "source_type", "self") or "self",
+            "sourceUrl": getattr(d, "source_url", None) or "",
             "sourceDocId": getattr(d, "source_doc_id", None),
             "shareId": getattr(d, "share_id", None),
             "errorMsg": d.error_msg or "",
