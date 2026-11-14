@@ -136,6 +136,7 @@
 .kw-map.is-advice-focus .kw-map-node.is-advice-visited { opacity: 1; }
 @keyframes kw-advice-draw { to { stroke-dashoffset: 0; } }
 .kw-map-node { cursor: pointer; transition: opacity 0.18s ease; }
+.kw-map-node__hit { fill: transparent; pointer-events: all; }
 .kw-map-node.is-advice-dimmed { opacity: .24; }
 .kw-map-node.is-advice-visited .kw-map-node__dot { stroke: #2f5fce; stroke-width: 2.8; filter: drop-shadow(0 0 5px rgba(47, 95, 206, .55)); }
 .kw-map-node:active { cursor: pointer; }

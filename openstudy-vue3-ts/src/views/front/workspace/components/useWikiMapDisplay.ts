@@ -49,25 +49,27 @@ export function useWikiMapDisplay(options: {
   const mapFocusId = computed(() => mapHoveredId.value || mapSelectedNodeId.value)
   const mapNeighborIds = computed(() => neighborIdsFor(mapFocusId.value))
 
-  // hover 是高频事件：合并到一帧内只提交一次，避免迅速划过多个节点时
-  // 每个 mouseenter 都重算全图边、标签和灰化状态。
-  let hoverFrame = 0
+  // hover 是高频事件：加一个很短的“悬停意图”窗口，并给离开留一点缓冲。
+  // 这样指针擦过节点外圈时不会立刻清空、又立刻重建 hover 层造成闪烁。
+  let hoverTimer: ReturnType<typeof setTimeout> | null = null
   let pendingHoverId: string | null | undefined
 
   function scheduleHover(id: string | null) {
     pendingHoverId = id
-    if (hoverFrame) return
-    hoverFrame = requestAnimationFrame(() => {
-      hoverFrame = 0
-      mapHoveredId.value = pendingHoverId ?? null
-      if (pendingHoverId && typeof window !== 'undefined') {
+    if (hoverTimer) clearTimeout(hoverTimer)
+    const delay = id ? 38 : 110
+    hoverTimer = setTimeout(() => {
+      hoverTimer = null
+      if (mapHoveredId.value === (id ?? null)) return
+      mapHoveredId.value = id ?? null
+      if (id && typeof window !== 'undefined') {
         window.dispatchEvent(
           new CustomEvent('openstudy:performance', {
-            detail: { action: 'graph-hover', nodeId: pendingHoverId }
+            detail: { action: 'graph-hover', nodeId: id }
           })
         )
       }
-    })
+    }, delay)
   }
 
   function onMapNodeEnter(node: any) {

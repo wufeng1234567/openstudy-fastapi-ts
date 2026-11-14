@@ -123,6 +123,8 @@
               @pointerdown.stop="onMapNodeDown($event, node)" @pointerup.stop="onMapNodeUp"
               @click.stop="onMapNodeClick(node)">
               <title>{{ node.title }}{{ node.learning ? ` · ${node.learning.label}` : '' }}</title>
+              <!-- 透明命中圈：覆盖圆点、光环和文字之间的空隙，避免鼠标擦边反复 enter/leave。 -->
+              <circle class="kw-map-node__hit" :r="node.r + 16" />
               <circle class="kw-map-node__halo" :r="node.r + 8" />
               <circle v-if="mapLearnMode" class="kw-map-node__learn-track" :r="node.r + 5" />
               <circle v-if="mapLearnMode && Number(node.learning?.masteryScore || 0) > 0" class="kw-map-node__learn-ring"
