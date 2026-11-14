@@ -116,8 +116,8 @@
               />
             </circle>
 
-            <g v-for="node in mapNodes" :key="node.id" class="kw-map-node" :data-node-id="String(node.id)"
-              :class="{ 'is-selected': isMapSelected(node), 'is-dimmed': isMapNodeDimmed(node), 'is-hover-neighbor': !!mapHoveredId && mapNeighborIds.has(String(node.id)), 'is-bridge': bridgeNodeIds.has(String(node.id)), 'is-learned': Number(node.learning?.viewCount || 0) > 0, 'is-weak': Number(node.learning?.practiceCount || 0) > 0 && Number(node.learning?.accuracy || 0) < 60, 'is-route': isRouteNode(node), 'is-next-stop': isNextStopNode(node), 'is-advice-visited': adviceLitPageIds.includes(String(node.pageId)), 'is-advice-dimmed': adviceLitPageIds.length > 0 && !adviceLitPageIds.includes(String(node.pageId)) }"
+            <g v-for="node in mapNodes" :key="node.id" v-memo="[node, isMapSelected(node), isRouteNode(node), adviceLitPageIds.length]" class="kw-map-node" :data-node-id="String(node.id)"
+              :class="{ 'is-selected': isMapSelected(node), 'is-dimmed': isMapNodeDimmed(node), 'is-bridge': bridgeNodeIds.has(String(node.id)), 'is-learned': Number(node.learning?.viewCount || 0) > 0, 'is-weak': Number(node.learning?.practiceCount || 0) > 0 && Number(node.learning?.accuracy || 0) < 60, 'is-route': isRouteNode(node), 'is-next-stop': isNextStopNode(node), 'is-advice-visited': adviceLitPageIds.includes(String(node.pageId)), 'is-advice-dimmed': adviceLitPageIds.length > 0 && !adviceLitPageIds.includes(String(node.pageId)) }"
               :transform="`translate(${node.x} ${node.y})`"
               @mouseenter="onMapNodeEnter(node)" @mouseleave="onMapNodeLeave(node)"
               @pointerdown.stop="onMapNodeDown($event, node)" @pointerup.stop="onMapNodeUp"
@@ -133,6 +133,19 @@
               <circle class="kw-map-node__dot" :r="node.r + (isMapSelected(node) ? 3 : 0)" :fill="node.color" />
               <text v-if="showMapLabel(node)" class="kw-map-node__label" text-anchor="middle"
                 :y="node.r + 14">{{ mapNodeLabel(node) }}</text>
+            </g>
+
+            <!-- hover 高亮层：只渲染当前节点和少量邻居，避免给 300+ 个基础节点逐个打 class。 -->
+            <g v-if="mapHoveredId" class="kw-map-hover-layer" pointer-events="none">
+              <line v-for="edge in hoverActiveEdges" :key="`hover-edge-${edge.key}`" :x1="edge.x1" :y1="edge.y1"
+                :x2="edge.x2" :y2="edge.y2" class="kw-map-hover-edge"
+                :marker-end="mapShowArrows ? 'url(#kw-arrow-hl)' : undefined" />
+              <g v-for="node in hoverNeighborNodes" :key="`hover-node-${node.id}`" class="kw-map-hover-node"
+                :transform="`translate(${node.x} ${node.y})`">
+                <circle class="kw-map-node__dot" :r="node.r + (node.id === mapHoveredId ? 3 : 0)" :fill="node.color" />
+                <text v-if="hoverNeighborNodes.length <= 8 || node.id === mapHoveredId" class="kw-map-node__label"
+                  text-anchor="middle" :y="node.r + 14">{{ mapNodeLabel(node) }}</text>
+              </g>
             </g>
           </g>
         </svg>
@@ -1171,6 +1184,22 @@ const {
   mapHoveredId, mapSelectedNodeId, mapSelectedPageId, mapEdges, mapDraggingId,
   detailVisible, routeActive, learningRoute, activeRouteStop, visibleLabelIds,
   mapComponents, IMAGE_CLUSTER_ID
+})
+
+/** hover 只更新一个很小的覆盖层，不触碰 300+ 个基础节点。 */
+const hoverNeighborNodes = computed(() => {
+  if (!mapHoveredId.value) return []
+  return mapNodes.value
+    .filter((node: any) => mapNeighborIds.value.has(String(node.id)))
+    .slice(0, 30)
+})
+
+const hoverActiveEdges = computed(() => {
+  const focus = String(mapHoveredId.value || '')
+  if (!focus) return []
+  return mapEdges.value
+    .filter((edge: any) => String(edge.source) === focus || String(edge.target) === focus)
+    .slice(0, 80)
 })
 
 function animateMapViewTo(targetX: number, targetY: number, targetScale = mapView.scale, duration = 360) {

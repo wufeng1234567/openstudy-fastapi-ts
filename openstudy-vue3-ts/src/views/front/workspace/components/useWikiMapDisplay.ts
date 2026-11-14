@@ -95,7 +95,10 @@ export function useWikiMapDisplay(options: {
   }
 
   function isMapEdgeActive(edge: any) {
-    return !!mapFocusId.value && (edge.source === mapFocusId.value || edge.target === mapFocusId.value)
+    // 基础边只跟随“选中”状态；hover 的边由独立高亮层渲染，
+    // 避免每次 hover 都让全部 SVG 边重新计算 class。
+    return !!mapSelectedNodeId.value &&
+      (edge.source === mapSelectedNodeId.value || edge.target === mapSelectedNodeId.value)
   }
 
   function isMapEdgeDimmed(edge: any) {
