@@ -78,6 +78,7 @@ build/
 !.codeartsdoer/skills/**
 # PPT 生成缓存与逐页预览不入库
 doc/competition/_crop_cache_v3/
+doc/competition/_crop_cache_v4/
 doc/competition/_preview_v3/
 _commit_metrics.txt
 openstudy-vue3-ts/_v.cjs
