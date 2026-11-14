@@ -15,6 +15,9 @@ const IDEAL_EDGE_DISTANCE = 170
 const MIN_NODE_DISTANCE = 64
 const REPULSION_RADIUS = 280
 const ITERATIONS = 80
+const LARGE_GRAPH_THRESHOLD = 120
+const LARGE_GRAPH_ITERATIONS = 42
+const LARGE_GRAPH_COLLISION_PASSES = 10
 
 export function layoutTopicGraph(
   nodes: any[],
@@ -59,8 +62,10 @@ export function layoutTopicGraph(
 
   const centerX = (cols * cellW) / 2
   const centerY = (rows * cellH) / 2
-  for (let iteration = 0; iteration < ITERATIONS; iteration += 1) {
-    const alpha = 1 - iteration / ITERATIONS
+  const iterations = topics.length > LARGE_GRAPH_THRESHOLD ? LARGE_GRAPH_ITERATIONS : ITERATIONS
+  const collisionPasses = topics.length > LARGE_GRAPH_THRESHOLD ? LARGE_GRAPH_COLLISION_PASSES : 18
+  for (let iteration = 0; iteration < iterations; iteration += 1) {
+    const alpha = 1 - iteration / iterations
     const entries = [...positions.entries()]
 
     // 节点间斥力：距离越近推力越大，保证不会叠在一起。
@@ -119,7 +124,7 @@ export function layoutTopicGraph(
   // 最后做几轮硬碰撞消解：节点圆点之间始终保留可点击/可读的空白，
   // 避免力导向参数偏差时出现“两个节点叠在一起”的情况。
   const entries = [...positions.entries()]
-  for (let pass = 0; pass < 18; pass += 1) {
+  for (let pass = 0; pass < collisionPasses; pass += 1) {
     for (let i = 0; i < entries.length; i += 1) {
       const [idA, a] = entries[i]!
       const nodeA = byId.get(idA)!

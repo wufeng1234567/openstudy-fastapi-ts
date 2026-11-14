@@ -419,7 +419,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { ENTITY_TYPE_META, entityTypeMeta, normalizeEntityKind, pageTypeLabel, pageTypeMeta } from '../utils/knowledgeGraphMeta'
 import { useWikiPanelFilters } from './useWikiPanelFilters'
 import { useWikiPanelFormatters } from './useWikiPanelFormatters'
@@ -545,7 +545,10 @@ const galleryItems = ref<any[]>([])
 
 const mapCanvasRef = ref<HTMLElement | null>(null)
 const IMAGE_CLUSTER_ID = 'image:cluster'
-const mapGraph = ref<any>({ nodes: [], edges: [], groups: [] })
+// 大图数据不做深响应式：200+ 节点和上千条边若被 Vue 逐层代理，hover/筛选会明显卡顿。
+// 只在整体替换时触发更新，节点局部变化用不可变替换（见 updateMapNodeLearning）。
+const mapGraph = shallowRef<any>({ nodes: [], edges: [], groups: [] })
+let skipNextMapGraphReset = false
 
 /** 当前主题节点在完整图谱里的来源类型（资料/网页/图片/题库/笔记）。 */
 const activePageGraphSources = computed(() => {
@@ -801,7 +804,14 @@ const adviceActiveLinePosition = computed(() => adviceLinePosition(adviceActiveL
 
 watch(
   () => mapGraph.value,
-  () => resetMapNodeOffsets(),
+  () => {
+    // shallowRef 下 learning 回填也会替换 mapGraph；这类更新不能清掉用户拖拽偏移。
+    if (skipNextMapGraphReset) {
+      skipNextMapGraphReset = false
+      return
+    }
+    resetMapNodeOffsets()
+  },
   { deep: false }
 )
 
@@ -1692,8 +1702,17 @@ watch(detailVisible, (visible) => {
 })
 
 function updateMapNodeLearning(pageId: number, learning: any) {
-  const node = (mapGraph.value?.nodes || []).find((item: any) => Number(item.pageId) === Number(pageId))
-  if (node) node.learning = learning
+  const nodes = mapGraph.value?.nodes || []
+  if (nodes.some((item: any) => Number(item.pageId) === Number(pageId))) {
+    // mapGraph 是 shallowRef：用不可变替换节点数组，既更新节点也不让整张图变深响应式。
+    skipNextMapGraphReset = true
+    mapGraph.value = {
+      ...mapGraph.value,
+      nodes: nodes.map((item: any) =>
+        Number(item.pageId) === Number(pageId) ? { ...item, learning } : item
+      )
+    }
+  }
 
   const stops = learningRoute.value?.stops || []
   const stop = stops.find((item: any) => Number(item.pageId) === Number(pageId))

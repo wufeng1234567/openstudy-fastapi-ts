@@ -26,6 +26,18 @@ export function useWikiMapEdges(options: {
     mapImageExpanded, mapGraph, IMAGE_CLUSTER_ID, isCrossSourceEdge
   } = options
 
+  // 这些集合只在节点列表变化时重算；hover 不应重复扫描 200+ 节点。
+  const nodePositions = computed(() =>
+    new Map(mapNodes.value.map((node: any) => [String(node.id), node]))
+  )
+  const imageIds = computed(() =>
+    new Set(
+      allMapNodes.value
+        .filter((node: any) => normalizeEntityKind(node.kind) === 'image')
+        .map((node: any) => String(node.id))
+    )
+  )
+
   const mapEdges = computed(() => {
     // 建议射线动画播放期间，hover 边必须让位，避免两套连线叠在同一张图上。
     if (adviceAnimating?.value) return []
@@ -33,15 +45,19 @@ export function useWikiMapEdges(options: {
     // 只有悬停、选中节点，或进入学习路线后，才显示相关连线。
     const focusId = mapHoveredId.value || mapSelectedNodeId.value
     if (!focusId && !routeActive.value) return []
-    const positions = new Map(mapNodes.value.map((node: any) => [String(node.id), node]))
-    const imageIds = new Set(
-      allMapNodes.value
-        .filter((node: any) => normalizeEntityKind(node.kind) === 'image')
-        .map((node: any) => String(node.id))
-    )
-    const collapseImages = !mapImageExpanded.value && imageIds.size > 8
-    const endpoint = (id: any) => collapseImages && imageIds.has(String(id)) ? IMAGE_CLUSTER_ID : String(id)
-    const edges = (mapGraph.value?.edges || [])
+    const positions = nodePositions.value
+    const collapseImages = !mapImageExpanded.value && imageIds.value.size > 8
+    const endpoint = (id: any) => collapseImages && imageIds.value.has(String(id)) ? IMAGE_CLUSTER_ID : String(id)
+    const allEdges = mapGraph.value?.edges || []
+    // 先按焦点过滤原始边，再做端点映射和坐标计算；否则每次 hover 都要
+    // 遍历整张图（题库边可能上千条），这是 200 节点图谱卡顿的主要来源。
+    const focusedEdges = focusId
+      ? allEdges.filter((edge: any) =>
+          String(edge.source) === String(focusId) ||
+          String(edge.target) === String(focusId)
+        )
+      : allEdges
+    const edges = focusedEdges
       .map((edge: any) => {
         const sourceId = endpoint(edge.source)
         const targetId = endpoint(edge.target)

@@ -49,15 +49,29 @@ export function useWikiMapDisplay(options: {
   const mapFocusId = computed(() => mapHoveredId.value || mapSelectedNodeId.value)
   const mapNeighborIds = computed(() => neighborIdsFor(mapFocusId.value))
 
+  // hover 是高频事件：合并到一帧内只提交一次，避免迅速划过多个节点时
+  // 每个 mouseenter 都重算全图边、标签和灰化状态。
+  let hoverFrame = 0
+  let pendingHoverId: string | null | undefined
+
+  function scheduleHover(id: string | null) {
+    pendingHoverId = id
+    if (hoverFrame) return
+    hoverFrame = requestAnimationFrame(() => {
+      hoverFrame = 0
+      mapHoveredId.value = pendingHoverId ?? null
+    })
+  }
+
   function onMapNodeEnter(node: any) {
     // 拖拽期间冻结悬停态：指针扫过其他节点时不能反复切换高亮/灰化。
     if (mapDraggingId.value || detailVisible.value) return
-    mapHoveredId.value = String(node.id)
+    scheduleHover(String(node.id))
   }
 
   function onMapNodeLeave(node: any) {
     if (mapDraggingId.value || detailVisible.value) return
-    if (mapHoveredId.value === String(node.id)) mapHoveredId.value = null
+    if (mapHoveredId.value === String(node.id) || pendingHoverId === String(node.id)) scheduleHover(null)
   }
 
   function isMapSelected(node: any) {
