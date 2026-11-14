@@ -81,6 +81,7 @@
       </div>
 
       <div v-else ref="mapCanvasRef" class="kw-map" :class="{ 'is-map-ready': mapReady }"
+        :style="{ '--kw-map-scale': mapView.scale }"
         @wheel.prevent="onMapWheel" @pointerdown="onMapDown"
         @pointermove="onMapMove" @pointerup="onMapUp" @pointerleave="onMapUp">
         <div class="kw-map-purpose">知识图谱：先看懂知识结构，再让系统帮你排下一步。</div>
@@ -116,7 +117,7 @@
             </circle>
 
             <g v-for="node in mapNodes" :key="node.id" class="kw-map-node" :data-node-id="String(node.id)"
-              :class="{ 'is-selected': isMapSelected(node), 'is-hovered': mapHoveredId === String(node.id), 'is-dimmed': isMapNodeDimmed(node), 'is-bridge': bridgeNodeIds.has(String(node.id)), 'is-learned': Number(node.learning?.viewCount || 0) > 0, 'is-weak': Number(node.learning?.practiceCount || 0) > 0 && Number(node.learning?.accuracy || 0) < 60, 'is-route': isRouteNode(node), 'is-next-stop': isNextStopNode(node), 'is-advice-visited': adviceLitPageIds.includes(String(node.pageId)), 'is-advice-dimmed': adviceLitPageIds.length > 0 && !adviceLitPageIds.includes(String(node.pageId)) }"
+              :class="{ 'is-selected': isMapSelected(node), 'is-dimmed': isMapNodeDimmed(node), 'is-bridge': bridgeNodeIds.has(String(node.id)), 'is-learned': Number(node.learning?.viewCount || 0) > 0, 'is-weak': Number(node.learning?.practiceCount || 0) > 0 && Number(node.learning?.accuracy || 0) < 60, 'is-route': isRouteNode(node), 'is-next-stop': isNextStopNode(node), 'is-advice-visited': adviceLitPageIds.includes(String(node.pageId)), 'is-advice-dimmed': adviceLitPageIds.length > 0 && !adviceLitPageIds.includes(String(node.pageId)) }"
               :transform="`translate(${node.x} ${node.y})`"
               @mouseenter="onMapNodeEnter(node)" @mouseleave="onMapNodeLeave(node)"
               @pointerdown.stop="onMapNodeDown($event, node)" @pointerup.stop="onMapNodeUp"
@@ -129,9 +130,9 @@
                 :stroke-dashoffset="100 - Number(node.learning?.masteryScore || 0)"
                 :stroke="learningColor(node.learning)" transform="rotate(-90)" />
               <circle v-if="isMapSelected(node)" class="kw-map-node__active" :r="node.r + 7" :stroke="node.color" />
-              <circle class="kw-map-node__dot" :r="node.r + (isMapSelected(node) || mapHoveredId === String(node.id) ? 3 : 0)" :fill="node.color" />
+              <circle class="kw-map-node__dot" :r="node.r + (isMapSelected(node) ? 3 : 0)" :fill="node.color" />
               <text v-if="showMapLabel(node)" class="kw-map-node__label" text-anchor="middle"
-                :y="node.r + 14" :style="{ fontSize: `${Math.min(14, 11 / Math.max(0.8, mapView.scale))}px` }">{{ mapNodeLabel(node) }}</text>
+                :y="node.r + 14">{{ mapNodeLabel(node) }}</text>
             </g>
           </g>
         </svg>
@@ -141,6 +142,12 @@
           @toggle-arrows="toggleMapArrows"
           @reset-view="resetGraphView"
           @show-guide="showRouteGuide"
+        />
+        <PerformanceMonitor
+          page="knowledge-graph"
+          :kb-id="Number(activeKbId || 0)"
+          :node-count="mapNodes.length"
+          :edge-count="mapGraph.edges?.length || 0"
         />
         <div class="kw-graph-hint"><span>悬停/点击节点查看相关连线 · 点知识主题打开详情，来源类型与资料/网页/图片/题库/笔记都在详情里 · 规划建议入口在详情页</span></div>
       </div>
@@ -448,6 +455,7 @@ import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
 import OsIcon from '@/components/OsIcon/index.vue'
 import ResizableDrawer from '@/components/ResizableDrawer/index.vue'
 import KnowledgeGraphPanel from './KnowledgeGraphPanel.vue'
+import PerformanceMonitor from './PerformanceMonitor.vue'
 import { readStudyPlanConfig } from '@/utils/studyPlanState'
 import { getStudyMap } from '@/api/ai/studyPlan'
 import { listKbNotes } from '@/api/ai/noteKbLink'
@@ -845,7 +853,8 @@ const { syncMapSize, fitMapView, onMapResize } = useWikiMapLayout({
 
 // 图谱连线（抽到同目录 composable；纯惰性 computed，不含任何交互或计时）
 const { mapEdges } = useWikiMapEdges({
-  mapHoveredId, mapSelectedNodeId, routeActive, adviceAnimating: adviceAnimationActive,
+  mapHoveredId, mapSelectedNodeId, routeActive, detailVisible,
+  adviceAnimating: adviceAnimationActive,
   mapNodes, allMapNodes, mapImageExpanded, mapGraph, IMAGE_CLUSTER_ID, isCrossSourceEdge
 })
 
@@ -1059,19 +1068,27 @@ const {
 function animateMapViewTo(targetX: number, targetY: number, targetScale = mapView.scale, duration = 360) {
   cancelMapWheel(true)
   if (mapViewFrame) cancelAnimationFrame(mapViewFrame)
+  const group = mapZoomGroup || (mapZoomGroup = mapCanvasRef.value?.querySelector('.kw-map__svg > g') || null)
   const from = { x: Number(mapView.x), y: Number(mapView.y), scale: Number(mapView.scale) }
   const to = { x: Number(targetX), y: Number(targetY), scale: Number(targetScale) }
   const start = performance.now()
   const tick = (now: number) => {
     const progress = Math.min(1, (now - start) / Math.max(1, duration))
     const eased = 1 - Math.pow(1 - progress, 3)
-    mapView.x = from.x + (to.x - from.x) * eased
-    mapView.y = from.y + (to.y - from.y) * eased
-    mapView.scale = from.scale + (to.scale - from.scale) * eased
+    const x = from.x + (to.x - from.x) * eased
+    const y = from.y + (to.y - from.y) * eased
+    const scale = from.scale + (to.scale - from.scale) * eased
+    // 镜头动画期间直接写 DOM transform，不逐帧修改 200 个节点的响应式状态。
+    setMapGroupTransform(group, x, y, scale)
     if (progress < 1) {
       mapViewFrame = requestAnimationFrame(tick)
     } else {
       mapViewFrame = 0
+      mapView.x = to.x
+      mapView.y = to.y
+      mapView.scale = to.scale
+      mapZoomGroup = null
+      nextTick(() => clearMapGroupTransform(group))
     }
   }
   mapViewFrame = requestAnimationFrame(tick)
@@ -2050,6 +2067,7 @@ function commitMapZoom() {
   mapZoomGroup = null
   mapWheelCommitTimer = null
   mapCanvasRef.value?.classList.remove('is-zooming')
+  markPerformance('graph-wheel-end', { scale: mapView.scale })
   // 等 Vue 把 mapView 写回 SVG transform 后再移除内联样式，避免一帧闪烁。
   nextTick(() => clearMapGroupTransform(group))
 }
@@ -2074,9 +2092,15 @@ function cancelMapWheel(commit = false) {
   }
 }
 
+function markPerformance(action: string, detail: Record<string, any> = {}) {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent('openstudy:performance', { detail: { action, ...detail } }))
+}
+
 function onMapWheel(event: WheelEvent) {
   // 缩放时停止初始力导向动画，避免每一帧同时改响应式节点位置造成卡顿。
   if (mapAnimFrame) stopMapAnimation()
+  if (!mapWheelPending) markPerformance('graph-wheel-start', { scale: mapView.scale })
   // 滚轮期间隐藏文字标签：200+ 节点时文字重绘是连续滚动最明显的瓶颈。
   mapCanvasRef.value?.classList.add('is-zooming')
   // 连续滚轮共用同一个 rect，避免每个 wheel 事件都触发布局计算。
@@ -2098,6 +2122,7 @@ function onMapDown(event: PointerEvent) {
   stopMapAnimation()
   cancelMapWheel(true)
   mapPanGroup = null
+  markPerformance('graph-pan-start')
   if (mapViewFrame) {
     cancelAnimationFrame(mapViewFrame)
     mapViewFrame = 0
@@ -2141,6 +2166,7 @@ function onMapUp() {
     // 抽屉打开时仍允许拖动图谱；只有“按下后没移动”的空白点击才关闭抽屉。
     closeDetail()
   }
+  if (state.moved) markPerformance('graph-pan-end', { moved: true })
   nextTick(() => clearMapGroupTransform(group))
 }
 

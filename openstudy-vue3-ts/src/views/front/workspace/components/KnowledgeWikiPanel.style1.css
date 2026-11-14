@@ -80,7 +80,7 @@
 .kw-card__meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; color: #a0a6b2; font-size: 9.5px; }
 .kw-filter-empty { grid-column: 1 / -1; padding: 60px 0; color: #9aa1af; text-align: center; font-size: 12px; }
 .kw-page--graph { height: calc(100vh - 138px); min-height: 0; gap: 0; padding: 0; overflow: hidden; }
-.kw-map { position: relative; min-height: 590px; overflow: hidden; border: 1px solid #e6ebf4; border-radius: 13px; background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.1) 1px, transparent 0), #fbfcfe; background-size: 20px 20px; cursor: default; touch-action: none; user-select: none; }
+.kw-map { position: relative; contain: layout paint style; min-height: 590px; overflow: hidden; border: 1px solid #e6ebf4; border-radius: 13px; background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.1) 1px, transparent 0), #fbfcfe; background-size: 20px 20px; cursor: default; touch-action: none; user-select: none; }
 .kw-page--graph .kw-map { flex: 1; min-height: 0; height: 100%; border: 0; border-radius: 0; background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.1) 1px, transparent 0), #fbfcfe; background-size: 20px 20px; }
 .kw-map.is-route-mode { background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.1) 1px, transparent 0), #fbfcfe; background-size: 20px 20px; }
 .kw-map:active { cursor: default; }
@@ -145,12 +145,12 @@
 .kw-map-node__active { fill: none; stroke-width: 2; pointer-events: none; transform-box: fill-box; transform-origin: center; animation: kw-node-pulse 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite; }
 .kw-map-learning-path { fill: none; stroke: #2f5fce; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; opacity: .8; pointer-events: none; }
 .kw-map-learning-path.is-fallback { stroke: #c7d0e0; stroke-width: 1.5; stroke-dasharray: 5 4; opacity: .75; }
-.kw-map-node__label { fill: #4b5563; font-size: 11px; pointer-events: none; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
+.kw-map-node__label { fill: #4b5563; font-size: clamp(1.5px, calc(11px / var(--kw-map-scale, 1)), 14px); pointer-events: none; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
 .kw-map.is-route-mode .kw-map-node.is-route .kw-map-node__label { fill: #1f3f8f; font-weight: 700; }
 .kw-map-node.is-bridge .kw-map-node__dot { stroke: #d38a42; stroke-width: 2.4; }
 .kw-map-node.is-bridge .kw-map-node__label { fill: #a96322; }
-.kw-map-node.is-hovered .kw-map-node__dot { stroke: #253247; stroke-width: 2.5; }
-.kw-map-node.is-hovered .kw-map-node__label { fill: #1f2937; font-weight: 600; }
+.kw-map-node:hover .kw-map-node__dot { stroke: #253247; stroke-width: 2.5; }
+.kw-map-node:hover .kw-map-node__label { fill: #1f2937; font-weight: 600; }
 @keyframes kw-node-pulse {
   0% { opacity: 0.8; transform: scale(1); }
   100% { opacity: 0; transform: scale(1.6); }

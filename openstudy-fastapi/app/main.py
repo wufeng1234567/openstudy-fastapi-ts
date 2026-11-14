@@ -258,6 +258,8 @@ from app.api.v1 import (
     monitor,
     # 操作日志 / 登录日志 / 定时任务 / 调度日志（2026-11-04）
     monitor_admin,
+    # 前端 FPS / 长任务采样（知识图谱性能排查）
+    performance,
     # 2026-10-27 文档编排：把「内容 → 排版好的 Word/PDF」暴露成 REST，
     # 供独立编辑器页面用（聊天侧走 document_compose 工具，共用同一渲染引擎）。
     doc_compose,
@@ -313,6 +315,7 @@ app.include_router(rag.router, tags=["RAG知识库"])
 app.include_router(rate_limit_admin.router, tags=["AI限流管理"])
 app.include_router(monitor.router, tags=["系统监控"])
 app.include_router(monitor_admin.router, tags=["系统监控-日志与任务"])
+app.include_router(performance.router, tags=["性能采样"])
 # 服务端语音合成：浏览器 speechSynthesis 在部分环境会静默失效（详见 app/api/v1/tts.py）
 app.include_router(tts.router, tags=["语音合成"])
 # Catch-all 路由必须最后注册

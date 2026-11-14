@@ -60,6 +60,13 @@ export function useWikiMapDisplay(options: {
     hoverFrame = requestAnimationFrame(() => {
       hoverFrame = 0
       mapHoveredId.value = pendingHoverId ?? null
+      if (pendingHoverId && typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('openstudy:performance', {
+            detail: { action: 'graph-hover', nodeId: pendingHoverId }
+          })
+        )
+      }
     })
   }
 
@@ -82,8 +89,9 @@ export function useWikiMapDisplay(options: {
 
   function isMapNodeDimmed(node: any) {
     if (routeActive.value && !isRouteNode(node)) return true
-    if (isMapSelected(node)) return false
-    return !!mapFocusId.value && !mapNeighborIds.value.has(String(node.id))
+    // 打开详情/单击节点时不再把其余 199 个节点全部灰化：
+    // 这是一次性全图 class 更新 + opacity 过渡，是点节点后卡顿的主要来源之一。
+    return false
   }
 
   function isMapEdgeActive(edge: any) {
@@ -117,6 +125,7 @@ export function useWikiMapDisplay(options: {
 
   function showMapLabel(node: any) {
     if (node.id === IMAGE_CLUSTER_ID) return true
+    if (mapHoveredId.value === String(node.id)) return true
     if (!visibleLabelIds.value.has(String(node.id))) return false
     if (normalizeEntityKind(node.kind) === 'topic') return true
     const component = mapComponents.value.components.find((item: any) => item.ids.includes(String(node.id)))

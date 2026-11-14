@@ -968,3 +968,33 @@ export function searchWorkspaceCascade(query: string, folderLimit = 50, document
     params: { q: query, folderLimit, documentLimit }
   }) as unknown as Promise<{ code: number; msg?: string; data: any }>
 }
+
+/** 性能采样上报：知识图谱卡顿排查（FPS / 长任务 / 节点规模）。 */
+export function reportPerformance(data: {
+  sessionId: string
+  page: string
+  kbId: number
+  nodeCount: number
+  edgeCount: number
+  fps: number
+  avgFrameMs: number
+  minFps: number
+  longTasks: number
+  action?: string
+  samples?: Array<{ t: number; fps: number; frameMs: number; longTasks: number }>
+}) {
+  return request({
+    url: '/rag/performance/log',
+    method: 'post',
+    data
+  }) as unknown as Promise<{ code: number; msg?: string; data: any }>
+}
+
+/** 读取当前用户最近的性能采样，便于回看某次 hover/缩放场景。 */
+export function getPerformanceLogs(limit = 100) {
+  return request({
+    url: '/rag/performance/logs',
+    method: 'get',
+    params: { limit }
+  }) as unknown as Promise<{ code: number; msg?: string; data: any }>
+}

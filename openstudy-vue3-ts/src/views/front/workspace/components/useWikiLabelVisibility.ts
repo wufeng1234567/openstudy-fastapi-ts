@@ -40,7 +40,8 @@ export function useWikiLabelVisibility(options: {
       .filter((node: any) => {
         const kind = normalizeEntityKind(node.kind)
         if (node.id === IMAGE_CLUSTER_ID) return true
-        if (isMapSelected(node) || isRouteNode(node) || mapHoveredId.value === String(node.id)) return true
+        // hover 节点由 showMapLabel 单独处理，不参与标签避让重算。
+        if (isMapSelected(node) || isRouteNode(node)) return true
         if (adviceLitPageIds.value.includes(String(node.pageId))) return true
         if (kind !== 'topic') {
           const component = mapComponents.value.components.find((item) => item.ids.includes(String(node.id)))
@@ -50,7 +51,7 @@ export function useWikiLabelVisibility(options: {
       })
       .sort((a: any, b: any) => {
         const priority = (node: any) => {
-          if (isMapSelected(node) || mapHoveredId.value === String(node.id)) return 0
+          if (isMapSelected(node)) return 0
           if (normalizeEntityKind(node.kind) !== 'topic') return 1
           return 2
         }

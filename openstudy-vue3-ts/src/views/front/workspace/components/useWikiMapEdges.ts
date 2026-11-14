@@ -13,6 +13,7 @@ export function useWikiMapEdges(options: {
   mapHoveredId: any
   mapSelectedNodeId: any
   routeActive: any
+  detailVisible?: any
   adviceAnimating?: any
   mapNodes: any
   allMapNodes: any
@@ -22,7 +23,7 @@ export function useWikiMapEdges(options: {
   isCrossSourceEdge: (edge: any) => boolean
 }) {
   const {
-    mapHoveredId, mapSelectedNodeId, routeActive, adviceAnimating, mapNodes, allMapNodes,
+    mapHoveredId, mapSelectedNodeId, routeActive, detailVisible, adviceAnimating, mapNodes, allMapNodes,
     mapImageExpanded, mapGraph, IMAGE_CLUSTER_ID, isCrossSourceEdge
   } = options
 
@@ -37,8 +38,25 @@ export function useWikiMapEdges(options: {
         .map((node: any) => String(node.id))
     )
   )
+  // 邻接索引只在图数据变化时重建；hover 时直接从索引取边，避免扫描全图。
+  const edgesByNode = computed(() => {
+    const index = new Map<string, any[]>()
+    for (const edge of mapGraph.value?.edges || []) {
+      const source = String(edge.source || '')
+      const target = String(edge.target || '')
+      if (!source || !target) continue
+      if (!index.has(source)) index.set(source, [])
+      if (!index.has(target)) index.set(target, [])
+      index.get(source)!.push(edge)
+      index.get(target)!.push(edge)
+    }
+    return index
+  })
 
   const mapEdges = computed(() => {
+    // 详情抽屉打开时不再渲染选中节点周边连线，避免 200+ 节点场景下
+    // 抽屉滑入和全图连线同时重绘造成 2-3 秒掉帧。
+    if (detailVisible?.value) return []
     // 建议射线动画播放期间，hover 边必须让位，避免两套连线叠在同一张图上。
     if (adviceAnimating?.value) return []
     // 首屏只显示节点：避免资料/主题/题库之间的大量连线把结构盖住。
@@ -51,8 +69,9 @@ export function useWikiMapEdges(options: {
     const allEdges = mapGraph.value?.edges || []
     // 先按焦点过滤原始边，再做端点映射和坐标计算；否则每次 hover 都要
     // 遍历整张图（题库边可能上千条），这是 200 节点图谱卡顿的主要来源。
+    const indexed = focusId ? edgesByNode.value.get(String(focusId)) : null
     const focusedEdges = focusId
-      ? allEdges.filter((edge: any) =>
+      ? indexed || allEdges.filter((edge: any) =>
           String(edge.source) === String(focusId) ||
           String(edge.target) === String(focusId)
         )
