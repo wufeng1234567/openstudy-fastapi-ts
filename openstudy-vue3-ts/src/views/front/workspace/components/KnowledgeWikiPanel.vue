@@ -861,6 +861,9 @@ const mapNodes = computed(() => {
     })
 })
 
+// 学习模式/来源筛选后，顶栏计数与画布实际节点保持一致。
+watch(() => mapNodes.value.length, (count) => emit('stats', { total: count }), { immediate: true })
+
 /** 动画线坐标跟随当前节点位置实时重算，拖拽节点时不会留在原地。 */
 function adviceLinePosition(line: any) {
   if (!line) return null
