@@ -149,7 +149,8 @@ export function integrateNodes(nodes: any[], positions: Record<string, any>): vo
 /**
  * 滚轮缩放：**以指针位置为锚点**（指针下的图谱内容保持在指针下）
  *
- * ⚠️ 缩放区间 [0.35, 3]、每格 1.12 倍是原实现的口径，逐字照搬。
+ * 缩放区间 [0.35, 8]：大图需要放大到单个知识点阅读，不能停在 3 倍。
+ * 每格 1.12 倍，保持滚轮手感。
  */
 export function computeWheelZoom(
   current: { x: number; y: number; scale: number },
@@ -158,7 +159,7 @@ export function computeWheelZoom(
   deltaY: number
 ): { x: number; y: number; scale: number } {
   const old = current.scale
-  const next = Math.max(0.35, Math.min(3, old * (deltaY < 0 ? 1.12 : 1 / 1.12)))
+  const next = Math.max(0.35, Math.min(8, old * (deltaY < 0 ? 1.12 : 1 / 1.12)))
   const wx = (px - current.x) / old
   const wy = (py - current.y) / old
   return { x: px - wx * next, y: py - wy * next, scale: next }
