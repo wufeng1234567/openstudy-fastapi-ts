@@ -26,9 +26,6 @@
         <g v-for="edge in visibleEdges" :key="`edge-${edge.index}`" class="spna__edge-group">
           <line class="spna__ray-glow" :x1="edge.x1" :y1="edge.y1" :x2="edge.x2" :y2="edge.y2" />
           <line class="spna__ray" :x1="edge.x1" :y1="edge.y1" :x2="edge.x2" :y2="edge.y2" marker-end="url(#spna-arrow)" />
-          <text v-if="edge.label" class="spna__edge-label" text-anchor="middle" :x="edge.midX" :y="edge.midY - 8">
-            {{ edge.label }}
-          </text>
         </g>
 
         <g v-for="node in visibleNodes" :key="node.id" class="spna__node" :class="{ 'is-seed': node.isSeed }"
@@ -92,24 +89,7 @@ function shortLabel(value: any, max = 11) {
   return text.length > max ? `${text.slice(0, max)}…` : text
 }
 
-const RELATION_LABELS: Record<string, string> = {
-  prerequisite: '先学',
-  question_source: '做题验证',
-  source_doc: '引自',
-  reference: '引用',
-  image_source: '配图',
-  mention: '延展至',
-  related: '关联到',
-  contrast: '对比'
-}
 
-function relationLabel(edge: any) {
-  const kind = String(edge?.kind || '')
-  const raw = String(edge?.label || '').trim()
-  if (raw && !['主题关系', '主题关联', '关联'].includes(raw)) return raw
-  if (kind === 'part_of') return '包含'
-  return RELATION_LABELS[kind] || '延展至'
-}
 
 function nodeColor(node: any) {
   const kind = normalizeEntityKind(node?.kind)
@@ -143,7 +123,6 @@ const pathData = computed(() => {
       index,
       from: String(previous.id),
       to: String(next.id),
-      label: relationLabel(step),
       kind: String(step?.kind || '')
     })
     pathNodes.push(next)
@@ -164,7 +143,6 @@ const pathData = computed(() => {
         index: pathEdges.length,
         from: String(from.id),
         to: String(to.id),
-        label: relationLabel(edge),
         kind: String(edge.kind || '')
       })
       pathNodes.push(to)
@@ -259,7 +237,6 @@ onBeforeUnmount(() => timers.forEach((timer) => clearTimeout(timer)))
 .spna__edge-group { pointer-events: none; }
 .spna__ray-glow { stroke: #f08a24; stroke-width: 7; opacity: .07; }
 .spna__ray { stroke: url(#spna-ray); stroke-width: 1.8; stroke-dasharray: 5 4; animation: spna-ray-in .48s ease-out both; }
-.spna__edge-label { fill: #8994a5; font-size: 9.5px; font-weight: 500; paint-order: stroke; stroke: #fbfcff; stroke-width: 3px; stroke-linejoin: round; }
 .spna__node { animation: spna-node-in .34s cubic-bezier(.2,.8,.2,1) both; }
 .spna__node-dot { stroke: #fff; stroke-width: 2; }
 .spna__node-ring { fill: none; stroke-width: 1; opacity: .32; }
