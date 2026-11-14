@@ -78,6 +78,10 @@ OpenStudy 的核心不是把资料堆成一个列表，而是把资料之间的�
   <img src="doc/screenshots/readme-knowledge-graph-focus-2026-11-14.png" width="920" alt="OpenStudy 知识图谱：围绕主题展开真实关系">
 </p>
 
+<p align="center">
+  <img src="doc/screenshots/readme-knowledge-graph-detail-2026-11-14.png" width="560" alt="知识主题详情：来源、相关主题与页面链接">
+</p>
+
 ## 核心能力
 
 ### 01 · 智能对话与工具编排
