@@ -65,7 +65,11 @@ let observer: PerformanceObserver | null = null
 function onAction(event: Event) {
   const detail = (event as CustomEvent<any>).detail || {}
   const action = String(detail.action || detail.name || '').trim()
-  if (action) lastAction.value = action
+  if (!action) return
+  const durationMs = Number(detail.durationMs || 0)
+  lastAction.value = durationMs > 0
+    ? `${action} ${Math.round(durationMs)}ms`
+    : action
 }
 
 function observeLongTasks() {

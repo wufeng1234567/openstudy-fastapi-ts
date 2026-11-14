@@ -1247,18 +1247,30 @@ function selectMapNode(node: any, openDetail = true) {
   mapSelectedPageId.value = Number(node.pageId)
   mapSelectedNodeId.value = String(node.id)
   if (openDetail) mapDetailOpening.value = true
-  // 把选中节点移到画布左侧中央，右侧留给详情抽屉。
-  // 用 rAF 做镜头移动，而不是瞬移；节点选中环和周围灰化同时生效。
+  // 打开详情时不做 360ms 镜头动画：镜头、抽屉入场和页面加载同时跑
+  // 会让点击后的第一帧卡顿。这里一次性把画布放到目标位置，抽屉立即打开。
   const targetScale = Math.max(0.9, Math.min(1.25, Number(mapView.scale) || 1))
-  animateMapViewTo(
-    mapSize.width * 0.32 - Number(node.x) * targetScale,
-    mapSize.height * 0.5 - Number(node.y) * targetScale,
-    targetScale,
-    360
-  )
+  if (openDetail) {
+    mapView.x = mapSize.width * 0.32 - Number(node.x) * targetScale
+    mapView.y = mapSize.height * 0.5 - Number(node.y) * targetScale
+    mapView.scale = targetScale
+    mapZoomGroup = null
+    nextTick(() => {
+      const group = mapCanvasRef.value?.querySelector('.kw-map__svg > g') as SVGGElement | null
+      if (group) clearMapGroupTransform(group)
+    })
+  } else {
+    animateMapViewTo(
+      mapSize.width * 0.32 - Number(node.x) * targetScale,
+      mapSize.height * 0.5 - Number(node.y) * targetScale,
+      targetScale,
+      360
+    )
+  }
   if (mapOpenTimer) clearTimeout(mapOpenTimer)
   mapOpenTimer = null
   if (!openDetail) return
+  const detailClickAt = performance.now()
   const pageId = Number(node.pageId)
   if (!pageId) {
     mapDetailOpening.value = false
@@ -1281,8 +1293,11 @@ function selectMapNode(node: any, openDetail = true) {
   }
   mapOpenTimer = setTimeout(() => {
     mapOpenTimer = null
-    openPage(pageId)
-  }, 260)
+    markPerformance('graph-detail-open', {
+      durationMs: Math.round(performance.now() - detailClickAt)
+    })
+    void openPage(pageId)
+  }, 0)
 }
 
 function onMapNodeClick(node: any) {
@@ -1951,6 +1966,7 @@ function updateMapNodeLearning(pageId: number, learning: any) {
 }
 
 async function openPage(pageId: number) {
+  const openedAt = performance.now()
   mapSelectedPageId.value = Number(pageId)
   lastDetailPageId = Number(pageId)
   mapDetailOpening.value = true
@@ -1983,6 +1999,9 @@ async function openPage(pageId: number) {
   } finally {
     pageLoading.value = false
     mapDetailOpening.value = false
+    markPerformance('graph-detail-loaded', {
+      durationMs: Math.round(performance.now() - openedAt)
+    })
   }
 }
 
