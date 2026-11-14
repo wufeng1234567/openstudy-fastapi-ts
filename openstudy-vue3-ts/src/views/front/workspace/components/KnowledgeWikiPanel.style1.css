@@ -327,6 +327,15 @@
 .kw-detail__mode-tabs button { padding: 5px 10px; border: 0; border-radius: 6px; color: #8a94a6; background: transparent; cursor: pointer; font: inherit; font-size: 10px; font-weight: 600; letter-spacing: .02em; }
 .kw-detail__mode-tabs button.is-active { color: #2f5fce; background: #fff; box-shadow: 0 1px 3px rgba(29, 43, 70, .1); }
 .kw-detail__advice { min-height: 240px; padding-top: 8px; }
+.kw-practice-toggle { margin-left: auto; padding: 0 2px; border: 0; color: #2f5fce; background: transparent; cursor: pointer; font: inherit; font-size: 10px; }
+.kw-practice-summary { margin-bottom: 6px; color: #6b7280; font-size: 11px; }
+.kw-practice-list { display: flex; max-height: 210px; flex-direction: column; gap: 5px; overflow-y: auto; }
+.kw-practice-item { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 8px; border: 1px solid #edf1f7; border-radius: 6px; color: #4b5563; background: #fbfcff; cursor: pointer; font: inherit; font-size: 10.5px; text-align: left; }
+.kw-practice-item:hover { border-color: #c9d8f2; background: #f5f8ff; }
+.kw-practice-item__index { flex: none; color: #9aa1af; font-size: 9px; }
+.kw-practice-item__text { overflow: hidden; flex: 1; text-overflow: ellipsis; white-space: nowrap; }
+.kw-practice-item em { flex: none; color: #2f5fce; font-size: 9px; font-style: normal; }
+.kw-practice-actions { display: flex; gap: 6px; margin-top: 8px; }
 .kw-detail__provenance { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
 .kw-provenance-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border: 1px solid #e5ebf5; border-radius: 99px; color: #697386; background: #f8faff; font-size: 10px; }
 .kw-provenance-chip i, .kw-provenance-row__label i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }

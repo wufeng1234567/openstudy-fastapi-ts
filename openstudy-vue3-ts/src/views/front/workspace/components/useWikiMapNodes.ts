@@ -21,6 +21,7 @@ export function useWikiMapNodes(options: {
   mapImageExpanded: any
   mapTypeVisible: any
   mapSize: any
+  learningMode?: any
   mapNodeOffsets: any
   mapSimPositions: any
   IMAGE_CLUSTER_ID: string
@@ -29,7 +30,7 @@ export function useWikiMapNodes(options: {
     mapComponents, graphSourceTypeFilter, graphPageTypeFilter, graphLearningFilter,
     allMapNodes, routeActive, mapHideUnlinked, mapConnectedNodeIds,
     mapLayoutScale, mapImageExpanded, mapTypeVisible, mapSize,
-    mapNodeOffsets, mapSimPositions, IMAGE_CLUSTER_ID
+    learningMode, mapNodeOffsets, mapSimPositions, IMAGE_CLUSTER_ID
   } = options
 
   const mapNodes = computed(() => {
@@ -39,6 +40,7 @@ export function useWikiMapNodes(options: {
     const learningLevels = graphLearningFilter.value
     const visibleIds = new Set(
       allMapNodes.value
+        .filter((node: any) => !learningMode?.value || (node.sourceKinds || []).includes('bank'))
         .filter((node: any) => routeActive.value || mapTypeVisible[normalizeEntityKind(node.kind || node.pageType)] !== false)
         .filter((node: any) => {
           if (!sourceTypes.length) return true

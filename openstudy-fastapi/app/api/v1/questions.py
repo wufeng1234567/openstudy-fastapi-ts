@@ -42,6 +42,7 @@ from app.schemas.question import (
 from app.utils.excel_util import export_to_excel
 from app.services.bank_copy_service import copy_bank_to_user
 from app.services import question_write_service
+from app.services.question_knowledge_service import load_question_knowledge
 from app.services.question_grading_service import grade_question
 from datetime import datetime
 import json
@@ -744,6 +745,24 @@ async def search_questions(
     total = await db.scalar(count_query)
 
     return await _question_page_payload(db, base, current_user, total, pageNum, pageSize, withAnswer)
+
+
+@router.get("/questionMain/questionMain/knowledge-points")
+async def get_question_knowledge_points(
+    questionIds: str = Query("", description="逗号分隔的题目 ID"),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """批量读取题目关联的知识点（知识主题页），用于刷题/题目详情展示。"""
+    ids = [int(item) for item in str(questionIds or "").split(",") if item.strip().isdigit()]
+    if not ids:
+        return success([])
+    uid = int(current_user.get("userId") or current_user.get("user_id") or 0)
+    try:
+        data = await load_question_knowledge(db, user_id=uid, question_ids=ids)
+        return success([data[qid] for qid in ids if qid in data])
+    except Exception as exc:  # noqa: BLE001
+        return error(f"读取题目知识点失败：{str(exc)[:200]}", code=500)
 
 
 @router.get("/questionMain/questionMain/{question_id}")

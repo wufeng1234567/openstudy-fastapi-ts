@@ -29,6 +29,12 @@
       <span class="truefalse-hint" v-if="currentQuestion?.type === 'truefalse'">（判断对错）</span>
     </div>
 
+    <QuestionKnowledgePoints
+      v-if="showKnowledgePoints && currentQuestion"
+      :question-id="currentQuestion.id"
+      :exam-mode="examMode"
+    />
+
     <!-- 题库和难度标签 -->
     <div v-if="currentQuestion && (currentQuestion.bankName || currentQuestion.difficulty)" class="question-meta-tags">
       <el-tag v-if="currentQuestion.bankName" size="small" class="bank-tag">
@@ -229,6 +235,7 @@ import ReadingComprehensionDisplay from './ReadingComprehensionDisplay.vue'
 import QuestionAnalysis from './QuestionAnalysis.vue'
 import LatexRenderer from '@/components/LatexRenderer/LatexRenderer.vue'
 import QuestionSourceButton from '@/components/QuestionSourceButton/index.vue'
+import QuestionKnowledgePoints from '@/components/QuestionKnowledgePoints/index.vue'
 import type { TransformedQuestion } from '@/types'
 
 const props = defineProps({
@@ -299,6 +306,15 @@ const props = defineProps({
    *    正是逐题模式被漏掉的原因之一，故改名为中性的 `needSubmit`。
    */
   needSubmit: {
+    type: Boolean,
+    default: false
+  },
+  /** 是否显示题目顶部的知识点（考试模式隐藏）。 */
+  showKnowledgePoints: {
+    type: Boolean,
+    default: true
+  },
+  examMode: {
     type: Boolean,
     default: false
   },

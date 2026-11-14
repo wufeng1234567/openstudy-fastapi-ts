@@ -140,10 +140,12 @@
           v-model:collapsed="graphPanelCollapsed"
           :show-arrows="mapShowArrows"
           :performance-visible="showPerformanceMonitor"
+          :learning-mode="learningMode"
           @toggle-arrows="toggleMapArrows"
           @reset-view="resetGraphView"
           @show-guide="showRouteGuide"
           @toggle-performance="togglePerformanceMonitor"
+          @toggle-learning="learningMode = !learningMode"
         />
         <PerformanceMonitor
           v-if="showPerformanceMonitor"
@@ -292,6 +294,30 @@
               <span class="kw-source__index">第 {{ Number(source.chunkIndex || 0) + 1 }} 段</span>
               <span class="kw-source__quote">{{ source.quote }}</span>
             </button>
+          </div>
+        </section>
+
+        <section v-if="activePage.practice?.questionIds?.length" class="kw-detail__block kw-practice-block">
+          <div class="kw-detail__block-head">
+            <span>相关题目</span>
+            <b>{{ activePage.practice.questionCount || activePage.practice.questionIds.length }} 道同源题</b>
+            <button type="button" class="kw-practice-toggle" @click="practiceExpanded = !practiceExpanded">
+              {{ practiceExpanded ? '收起' : '展开' }}
+            </button>
+          </div>
+          <div class="kw-practice-summary">
+            {{ activePage.practice.bankName || '同源题库' }} · 可练 {{ activePage.practice.questionCount || activePage.practice.questionIds.length }} 题
+          </div>
+          <div v-show="practiceExpanded" class="kw-practice-list">
+            <button v-for="item in pagePracticeQuestions" :key="item.questionId" type="button"
+              class="kw-practice-item" @click="startPracticeFromPage(item.questionId)">
+              <span class="kw-practice-item__index">#{{ item.questionId }}</span>
+              <span class="kw-practice-item__text">{{ item.questionText || '未命名题目' }}</span>
+              <em v-if="item.points?.length">{{ item.points[0].title }}</em>
+            </button>
+          </div>
+          <div class="kw-practice-actions">
+            <el-button size="small" type="primary" plain @click="startPracticeFromPage()">练本主题题</el-button>
           </div>
         </section>
 
@@ -463,6 +489,7 @@ import { readStudyPlanConfig } from '@/utils/studyPlanState'
 import { getStudyMap } from '@/api/ai/studyPlan'
 import { listKbNotes } from '@/api/ai/noteKbLink'
 import KnowledgeAdviceHost from './KnowledgeAdviceHost.vue'
+import { getQuestionKnowledgePoints } from '@/api/questionMain/questionMain'
 import KnowledgeWikiEditor from './KnowledgeWikiEditor.vue'
 import {
   addWikiPageLink,
@@ -538,6 +565,8 @@ const activePage = ref<any>(null)
 const detailPanel = ref<'page' | 'advice'>('page')
 /** 页面链接默认收起，避免长链接列表占满详情页。 */
 const linksExpanded = ref(false)
+const practiceExpanded = ref(false)
+const pagePracticeQuestions = ref<any[]>([])
 const {
   graphSourceTypeFilter,
   graphPageTypeFilter,
@@ -646,6 +675,7 @@ function togglePerformanceMonitor() {
   }
 }
 const mapLearnMode = ref(true)
+const learningMode = ref(false)
 const mapLearningPath = ref<string[]>([])
 const learningRoute = ref<any>(null)
 const studyPlan = ref<any>(null)
@@ -803,7 +833,7 @@ onBeforeUnmount(() => {
 const { mapNodes: baseMapNodes } = useWikiMapNodes({
   mapComponents, graphSourceTypeFilter, graphPageTypeFilter, graphLearningFilter,
   allMapNodes, routeActive, mapHideUnlinked, mapConnectedNodeIds,
-  mapLayoutScale, mapImageExpanded, mapTypeVisible, mapSize,
+  mapLayoutScale, mapImageExpanded, mapTypeVisible, mapSize, learningMode,
   mapNodeOffsets, mapSimPositions, IMAGE_CLUSTER_ID
 })
 const topicLayout = computed(() =>
@@ -1016,6 +1046,44 @@ async function planToPage(pageId: number) {
 }
 
 /** 从当前 KNOWLEDGE PAGE 详情进入规划建议（不再使用图谱侧栏建议模式）。 */
+function startPracticeFromPage(questionId?: number) {
+  const practice = activePage.value?.practice
+  if (!practice?.bankId || !practice?.questionIds?.length) return
+  const ids = questionId ? [questionId] : practice.questionIds
+  router.push({
+    path: `/front/questionPractice/${practice.bankId}/practice/sequential`,
+    query: {
+      bankName: practice.bankName || '题库',
+      from: 'wiki',
+      pageId: String(activePage.value?.pageId || ''),
+      questionIds: ids.join(',')
+    }
+  })
+}
+
+async function loadPagePracticeQuestions() {
+  const ids = activePage.value?.practice?.questionIds || []
+  if (!ids.length) {
+    pagePracticeQuestions.value = []
+    return
+  }
+  try {
+    const res: any = await getQuestionKnowledgePoints(ids)
+    pagePracticeQuestions.value = Array.isArray(res.data) ? res.data : []
+  } catch {
+    pagePracticeQuestions.value = []
+  }
+}
+
+watch(
+  () => activePage.value?.pageId,
+  () => {
+    practiceExpanded.value = false
+    void loadPagePracticeQuestions()
+  },
+  { immediate: true }
+)
+
 function openAdviceForPage() {
   const pageId = Number(activePage.value?.pageId || activePage.value?.id || 0)
   if (!pageId) return

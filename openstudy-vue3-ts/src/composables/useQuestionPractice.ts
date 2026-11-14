@@ -99,6 +99,8 @@ interface UseQuestionPracticeOptions {
 interface UseQuestionPracticeProps {
   bankId: number | string
   moduleType: string
+  /** 从知识图谱/知识点进入时只练指定题目。 */
+  questionIds?: number[]
 }
 
 export function useQuestionPractice(
@@ -1046,7 +1048,11 @@ return
         // 练习入口不拿答案/解析；判分与参考答析由服务端会话在作答后返回
         withAnswer: false
       })
-      const data = pickArray(response)
+      const sourceData = pickArray(response)
+      const wantedIds = new Set((props.questionIds || []).map((item) => Number(item)).filter(Boolean))
+      const data = wantedIds.size
+        ? sourceData.filter((item: any) => wantedIds.has(Number(item.id)))
+        : sourceData
 
       // 调试日志：API返回数据
       debugFetchComplete(props.moduleType, data)
@@ -1097,7 +1103,11 @@ return
         status: "0",
         withAnswer: false
       })
-      const data = pickArray(response)
+      const sourceData = pickArray(response)
+      const wantedIds = new Set((props.questionIds || []).map((item) => Number(item)).filter(Boolean))
+      const data = wantedIds.size
+        ? sourceData.filter((item: any) => wantedIds.has(Number(item.id)))
+        : sourceData
 
       if (data.length === 0) {
         questions.value = []

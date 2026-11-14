@@ -44,6 +44,23 @@
 
       <!-- 右侧内容区域 -->
       <div class="content-main">
+          <div v-if="knowledgePointOptions.length" class="knowledge-filter-row">
+            <el-select
+              v-model="knowledgePointFilter"
+              size="small"
+              clearable
+              filterable
+              placeholder="知识点筛选"
+              class="knowledge-filter-select"
+              @change="applySearchAndFilter"
+            >
+              <el-option v-for="item in knowledgePointOptions" :key="item.value" :label="item.label" :value="item.value" />
+            </el-select>
+            <span v-if="knowledgePointFilter" class="knowledge-filter-hint">
+              已选：{{ knowledgePointFilter }}
+            </span>
+          </div>
+
           <!-- 加载状态 -->
           <div v-if="loading" class="loading-container">
             <el-skeleton :rows="6" animated />
@@ -98,6 +115,7 @@ import QuestionHeader from './components/QuestionHeader.vue'
 import CommonFilterSidebar from '@/components/CommonFilterSidebar/index.vue'
 import QuestionCard from './components/QuestionCard.vue'
 import AiAnalysisDialog from '@/components/AiAnalysisDialog/index.vue'
+import { getQuestionKnowledgePoints } from '@/api/questionMain/questionMain'
 
 const { proxy } = getCurrentInstance() as any
 const router = useRouter()
@@ -274,6 +292,38 @@ const loading = ref(true)
 const total = ref(0)
 const allQuestions = ref<any[]>([])
 const questions = ref<any[]>([])
+const knowledgePointFilter = ref('')
+const knowledgePointOptions = ref<Array<{ value: string; label: string }>>([])
+const knowledgePointMap = ref<Record<number, string[]>>({})
+
+async function loadKnowledgePoints() {
+  const ids = allQuestions.value
+    .map((item: any) => Number(item.questionId || item.id || 0))
+    .filter(Boolean)
+  if (!ids.length) {
+    knowledgePointMap.value = {}
+    knowledgePointOptions.value = []
+    return
+  }
+  try {
+    const res: any = await getQuestionKnowledgePoints(ids)
+    const map: Record<number, string[]> = {}
+    for (const entry of Array.isArray(res.data) ? res.data : []) {
+      const titles = (entry.points || []).map((point: any) => String(point.title || '')).filter(Boolean)
+      if (titles.length) map[Number(entry.questionId)] = titles
+    }
+    knowledgePointMap.value = map
+    knowledgePointOptions.value = Array.from(new Set(Object.values(map).flat()))
+      .sort((a, b) => a.localeCompare(b))
+      .map((title) => ({ value: title, label: title }))
+  } catch (error) {
+    console.warn('[myquestion] load knowledge points failed', error)
+    knowledgePointMap.value = {}
+    knowledgePointOptions.value = []
+  }
+}
+
+watch(allQuestions, () => { void loadKnowledgePoints() }, { deep: false })
 const detailDialogVisible = ref(false)
 const isFullscreen = ref(false)
 const uncollectLoading = ref<any>({})
@@ -469,6 +519,7 @@ const initMarkedData = async () => {
     })
     if (response.code === 200) {
       allQuestions.value = response.rows || []
+      void loadKnowledgePoints()
       total.value = allQuestions.value.length
       if (allQuestions.value.length > 0) {
         questions.value = [...allQuestions.value]
@@ -500,6 +551,7 @@ const initFavoriteData = async () => {
     })
     if (response.code === 200) {
       allQuestions.value = response.rows || []
+      void loadKnowledgePoints()
       total.value = allQuestions.value.length
       if (allQuestions.value.length > 0) {
         questions.value = [...allQuestions.value]
@@ -533,6 +585,7 @@ const initWrongData = async () => {
     })
     if (response.code === 200) {
       allQuestions.value = response.rows || []
+      void loadKnowledgePoints()
       total.value = allQuestions.value.length
       if (allQuestions.value.length > 0) {
         questions.value = [...allQuestions.value]
@@ -591,6 +644,11 @@ const buildFilteredList = () => {
   }
   if (filterForm.bankId) {
     filtered = filtered.filter(item => item.bankId === filterForm.bankId)
+  }
+  if (knowledgePointFilter.value) {
+    filtered = filtered.filter(item =>
+      (knowledgePointMap.value[Number(item.questionId)] || []).includes(knowledgePointFilter.value)
+    )
   }
   if (filterForm.isStarred?.length > 0 && props.questionType === 'favorite') {
     filtered = filtered.filter(item => filterForm.isStarred.includes(item.isStarred ? 1 : 0))
@@ -765,6 +823,7 @@ const handleRefresh = () => {
   filterForm.isMastered = props.questionType === 'wrong' ? [0] : []
   filterForm.markedType = []
   filterForm.createRange = null
+  knowledgePointFilter.value = ''
   hasAutoAppliedFilter.value = false
   if (props.questionType === 'favorite' && props.apiConfig.listApi) {
     initFavoriteData()
@@ -1231,3 +1290,8 @@ defineExpose({
 </script>
 
 <style scoped lang="scss" src="./styles/MyQuestion.style1.scss"></style>
+<style scoped>
+.knowledge-filter-row { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; }
+.knowledge-filter-select { width: 190px; }
+.knowledge-filter-hint { overflow: hidden; color: #2f5fce; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+</style>

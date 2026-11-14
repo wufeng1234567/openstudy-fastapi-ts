@@ -18,6 +18,19 @@
         <span>使用说明</span>
       </button>
       <div class="kg-panel__toggle-row">
+        <span>学习模式</span>
+        <button
+          type="button"
+          class="kg-panel__switch"
+          :class="{ 'is-on': learningMode }"
+          :aria-pressed="learningMode"
+          title="只看包含题库的知识点"
+          @click="emit('toggle-learning')"
+        >
+          <i></i>
+        </button>
+      </div>
+      <div class="kg-panel__toggle-row">
         <span>FPS 监控</span>
         <button
           type="button"
@@ -45,8 +58,9 @@ withDefaults(
     collapsed?: boolean
     showArrows?: boolean
     performanceVisible?: boolean
+    learningMode?: boolean
   }>(),
-  { collapsed: false, showArrows: true, performanceVisible: true }
+  { collapsed: false, showArrows: true, performanceVisible: true, learningMode: false }
 )
 
 const emit = defineEmits<{
@@ -55,6 +69,7 @@ const emit = defineEmits<{
   (e: 'reset-view'): void
   (e: 'show-guide'): void
   (e: 'toggle-performance'): void
+  (e: 'toggle-learning'): void
 }>()
 </script>
 

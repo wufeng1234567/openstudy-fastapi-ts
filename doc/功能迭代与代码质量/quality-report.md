@@ -17,7 +17,7 @@
 | 后端测试 | `pytest tests -q` | exit 0；**109 passed**（旧报告 102） | ✅ |
 | 前端 lint | `npm run lint` | 0 errors / 4,077 warnings | 🟡 warn-only |
 | 前端类型检查 | `npm run type-check` | exit 2；1,080 条 `error TS`（旧报告 1,808） | 🟡 存量债务 |
-| 前端构建 | `npm run build:prod` | exit 0；3,952 modules | ✅ |
+| 前端构建 | `npm run build:prod` | exit 0；3,956 modules | ✅ |
 | 前端单测 | `npm run test:unit` | 29 项断言通过（mindmap 15 + table 14） | ✅ |
 | 工作区 | `git status --short` | 干净；用户本地素材已被 `.gitignore` 忽略 | ✅ |
 
@@ -93,3 +93,22 @@
 - [x] 写工具元数据核对完成（5 个产物/快照工具 write_operation=True）
 - [x] GitHub Actions 实际跑一次（run `42630095384`，3 jobs 全绿）
 - [x] P2 笔记导入资料夹：后端 + Agent 工具 + 前端「加入资料夹」入口
+
+---
+
+## 6. 2026-11-14 知识点与学习模式验收
+
+- [x] 刷题详情顶部知识点：默认收起、`+N`、展开/收起，考试模式隐藏
+- [x] 题目详情复用同一知识点组件，并显示原文来源
+- [x] 题目管理支持紧凑知识点下拉筛选（搜索、清空、已选提示）
+- [x] 知识图谱「学习模式」：只显示有题库来源的节点
+- [x] 节点详情「相关题目」：默认收起，展开后显示题目并支持跳转到指定题目练习
+- [x] 演示题库：`OpenStudy 功能演示·人工智能基础题`（12 题，9 题带真实资料来源，3 题无锚点用于空状态）
+- 截图见 `doc/功能迭代与代码质量/screenshots/`：
+  - `wiki-learning-mode.png`
+  - `wiki-node-related-questions.png`
+  - `wiki-related-questions-expanded.png`
+  - `practice-knowledge-top.png`
+  - `question-detail-knowledge.png`
+  - `question-manage-filter-open.png`
+  - `question-manage-filter-applied.png`

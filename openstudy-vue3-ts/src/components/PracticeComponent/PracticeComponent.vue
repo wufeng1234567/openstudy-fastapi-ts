@@ -184,6 +184,7 @@
               :selected-answer="answers[index]" :sub-fill-blank-answers="subFillBlankAnswers"
               :sub-essay-answers="subEssayAnswers" :answers="answers"
               :show-analysis-immediately="showAnalysisImmediately" :show-question-index="false"
+              :show-knowledge-points="!isExamMode" :exam-mode="isExamMode"
               :shuffle-options="effectiveShuffleOptions"
               :need-submit="!isExamMode && needsSubmit(item) && !committedQuestions[index]"
               :committed="!!committedQuestions[index]"
@@ -286,7 +287,9 @@
         <QuestionDisplay :current-question="currentQuestion" :current-question-index="currentQuestionIndex"
           :total-questions="totalQuestions" :number-offset="numberBase" :selected-answer="selectedAnswer"
           :sub-fill-blank-answers="subFillBlankAnswers" :sub-essay-answers="subEssayAnswers" :answers="answers"
-          :show-analysis-immediately="showAnalysisImmediately" @select-option="handleSelectOption"
+          :show-analysis-immediately="showAnalysisImmediately"
+          :show-knowledge-points="!isExamMode" :exam-mode="isExamMode"
+          @select-option="handleSelectOption"
           :shuffle-options="effectiveShuffleOptions"
           :need-submit="!isExamMode && needsSubmit(currentQuestion) && !committedQuestions[currentQuestionIndex]"
           :committed="!!committedQuestions[currentQuestionIndex]"
@@ -434,6 +437,11 @@ const props = defineProps({
     type: String,
     default: 'sequential',
     validator: (val: any) => !val || ['sequential', 'random', 'custom', 'mock'].includes(val)
+  },
+  /** 从知识图谱/知识点进入时只练指定题目。 */
+  questionIds: {
+    type: Array,
+    default: () => []
   }
 })
 

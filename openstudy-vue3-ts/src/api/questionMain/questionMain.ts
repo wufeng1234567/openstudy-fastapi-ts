@@ -36,6 +36,15 @@ export function getQuestionSource(questionId: number | string): Promise<ApiResul
   }) as unknown as Promise<ApiResult<any>>
 }
 
+/** 批量读取题目关联的知识点（知识主题页）。 */
+export function getQuestionKnowledgePoints(questionIds: Array<number | string>): Promise<ApiResult<any[]>> {
+  return request({
+    url: '/questionMain/questionMain/knowledge-points',
+    method: 'get',
+    params: { questionIds: questionIds.join(',') }
+  }) as unknown as Promise<ApiResult<any[]>>
+}
+
 // 新增一级题目
 export function addQuestionMain(data: Partial<QuestionMain>): Promise<ApiResult> {
   return request({

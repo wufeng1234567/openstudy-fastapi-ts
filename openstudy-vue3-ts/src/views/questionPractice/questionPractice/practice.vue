@@ -12,7 +12,7 @@
     -->
     <div v-if="!isReady" v-loading="true" class="loading-container" element-loading-text="正在加载题库…"></div>
     <PracticeComponent v-show="isReady" :bank-id="Number(bankId)" :bank-name="bankName" :module-type="moduleType"
-      @close="goBack" />
+      :question-ids="questionIds" @close="goBack" />
   </div>
 </template>
 
@@ -30,12 +30,17 @@ const cacheStore = useFrontPageCacheStore()
 const bankId = ref<string | number | null>(null)
 const bankName = ref('题库')
 const moduleType = ref<string | null>(null)
+const questionIds = ref<number[]>([])
 
 const isReady = computed(() => bankId.value && moduleType.value)
 
 const loadParams = () => {
   bankId.value = route.params.bankId as string
   moduleType.value = route.params.moduleType as string
+  questionIds.value = String(route.query.questionIds || '')
+    .split(',')
+    .map((item) => Number(item))
+    .filter((item) => item > 0)
   if (moduleType.value === 'wrong') moduleType.value = 'custom'
   if (route.query.bankName) {
     bankName.value = route.query.bankName as string
@@ -57,6 +62,7 @@ const goBack = () => {
 
 watch(() => route.params.bankId, () => loadParams())
 watch(() => route.params.moduleType, () => loadParams())
+watch(() => route.query.questionIds, () => loadParams())
 
 onMounted(() => {
   loadParams()

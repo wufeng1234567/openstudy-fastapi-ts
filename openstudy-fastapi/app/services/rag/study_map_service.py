@@ -521,6 +521,17 @@ async def build_study_map(
     bank_page_ids = await _load_bank_page_ids(
         db, int(user_id), int(kb_id or 0), core_page_ids
     )
+    # QuestionSource 已经能给出题库 → 资料页的真实关系；与题库自身生成的页面合并。
+    for raw in core.get("nodes") or []:
+        if str(raw.get("kind") or "") != "bank":
+            continue
+        bank_id = _safe_int(raw.get("bankId"))
+        if bank_id <= 0:
+            continue
+        for page_id in raw.get("pageIds") or []:
+            page_id_int = _safe_int(page_id)
+            if page_id_int > 0:
+                bank_page_ids.setdefault(bank_id, set()).add(page_id_int)
     for raw in core.get("nodes") or []:
         if str(raw.get("kind") or "") != "bank":
             continue
