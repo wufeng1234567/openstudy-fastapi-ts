@@ -80,7 +80,7 @@
         </div>
       </div>
 
-      <div v-else ref="mapCanvasRef" class="kw-map" :class="{ 'is-map-ready': mapReady, 'is-hovering': !!mapHoveredId, 'is-large-graph': mapNodes.length > 180 }"
+      <div v-else ref="mapCanvasRef" class="kw-map" :class="{ 'is-map-ready': mapReady, 'is-hovering': !!mapHoveredId, 'is-dragging': !!mapDraggingId, 'is-large-graph': mapNodes.length > 180 }"
         :style="{ '--kw-map-scale': mapView.scale }"
         @wheel.prevent="onMapWheel" @pointerdown="onMapDown"
         @pointermove="onMapMove" @pointerup="onMapUp" @pointerleave="onMapUp">
@@ -1254,6 +1254,8 @@ function selectMapNode(node: any, openDetail = true) {
     mapView.x = mapSize.width * 0.32 - Number(node.x) * targetScale
     mapView.y = mapSize.height * 0.5 - Number(node.y) * targetScale
     mapView.scale = targetScale
+    // `clientToGraphPoint` 用同步快照算拖拽起点；不能等 Vue 的 deep watcher 下一拍。
+    mapVisualTransform = { x: mapView.x, y: mapView.y, scale: mapView.scale }
     mapZoomGroup = null
     nextTick(() => {
       const group = mapCanvasRef.value?.querySelector('.kw-map__svg > g') as SVGGElement | null
@@ -1363,7 +1365,15 @@ function clientToGraphPoint(clientX: number, clientY: number) {
 }
 
 function onMapNodeDown(event: PointerEvent, node: any) {
-  if (event.button !== 0 || detailVisible.value) return
+  // 详情抽屉是 non-modal / 可穿透的：打开抽屉后仍允许拖动图谱节点。
+  if (event.button !== 0) return
+  event.preventDefault()
+  try {
+    // 让 pointermove/up 始终发到当前节点，避免拖动时被 hover 覆盖层或文字打断。
+    ;(event.currentTarget as any)?.setPointerCapture?.(event.pointerId)
+  } catch {
+    // 不支持 pointer capture 的浏览器退化为 window pointermove 监听。
+  }
   stopMapAnimation()
   suppressMapNodeClick = false
   mapDraggingId.value = String(node.id)
@@ -1373,7 +1383,6 @@ function onMapNodeDown(event: PointerEvent, node: any) {
   const relatedEdges = Array.from(
     mapCanvasRef.value?.querySelectorAll(`[data-edge-source="${String(node.id)}"], [data-edge-target="${String(node.id)}"]`) || []
   ) as SVGLineElement[]
-  const startPoint = clientToGraphPoint(event.clientX, event.clientY)
   mapNodeDrag = {
     node,
     nodeId: String(node.id),
@@ -1382,8 +1391,8 @@ function onMapNodeDown(event: PointerEvent, node: any) {
     positions: new Map(mapNodes.value.map((item: any) => [String(item.id), item])),
     startX: event.clientX,
     startY: event.clientY,
-    startGraphX: startPoint?.x,
-    startGraphY: startPoint?.y,
+    // 拖拽期间镜头不会移动，缓存当前缩放即可把屏幕位移精确换算成图谱位移。
+    scale: Number(mapVisualTransform.scale) || 1,
     origX: Number(node.x),
     origY: Number(node.y),
     x: Number(node.x),
@@ -1420,18 +1429,11 @@ function renderDraggedNode() {
 
 function onMapNodeMove(event: PointerEvent) {
   if (!mapNodeDrag) return
-  if (detailVisible.value) {
-    stopMapNodeDrag()
-    return
-  }
-  const current = clientToGraphPoint(event.clientX, event.clientY)
-  const hasStart = mapNodeDrag.startGraphX != null && mapNodeDrag.startGraphY != null
-  const dx = current && hasStart
-    ? current.x - Number(mapNodeDrag.startGraphX)
-    : (event.clientX - mapNodeDrag.startX) / (Number(mapVisualTransform.scale) || 1)
-  const dy = current && hasStart
-    ? current.y - Number(mapNodeDrag.startGraphY)
-    : (event.clientY - mapNodeDrag.startY) / (Number(mapVisualTransform.scale) || 1)
+  // 只使用拖拽开始时缓存的缩放和屏幕位移，避免每个 pointermove 读 SVG rect，
+  // 也避免相机快照与起点快照不一致造成“拖到 B 点却落在 B+10”。
+  const scale = Number(mapNodeDrag.scale) || 1
+  const dx = (event.clientX - mapNodeDrag.startX) / scale
+  const dy = (event.clientY - mapNodeDrag.startY) / scale
   if (Math.abs(dx) + Math.abs(dy) > 4) mapNodeDrag.moved = true
   // 不再限制在固定 1000×640 内：允许拖到任意方向，拖出视图后画布自动扩展，
   // 实体集轮廓会跟随节点形成新的边界。
@@ -1456,27 +1458,12 @@ function onMapNodeUp() {
   window.removeEventListener('pointerup', onMapNodeUp)
   if (state.raf) cancelAnimationFrame(state.raf)
   if (state.moved) {
+    // 拖拽结束后不再保留 hover 覆盖层，避免鼠标仍在节点上时又出现一层高亮。
+    mapHoveredId.value = null
     mapNodeOffsets[state.nodeId] = { x: state.x, y: state.y }
-    // 拖出当前画布时扩展世界尺寸，保证节点与实体集轮廓不会被 viewBox 裁成直线。
-    const margin = 180
-    if (state.x > mapSize.width - margin) mapSize.width = Math.ceil(state.x + margin)
-    if (state.y > mapSize.height - margin) mapSize.height = Math.ceil(state.y + margin)
-    if (state.x < margin) {
-      const shift = margin - state.x
-      mapSize.width = Math.ceil(mapSize.width + shift)
-      Object.keys(mapNodeOffsets).forEach((key) => {
-        mapNodeOffsets[key] = { x: mapNodeOffsets[key].x + shift, y: mapNodeOffsets[key].y }
-      })
-      mapView.x += shift
-    }
-    if (state.y < margin) {
-      const shift = margin - state.y
-      mapSize.height = Math.ceil(mapSize.height + shift)
-      Object.keys(mapNodeOffsets).forEach((key) => {
-        mapNodeOffsets[key] = { x: mapNodeOffsets[key].x, y: mapNodeOffsets[key].y + shift }
-      })
-      mapView.y += shift
-    }
+    // 拖拽结束后不再根据节点位置改动 mapView/mapSize：
+    // 那会让整张画布在松手瞬间平移/缩放，产生“拖到 B 点却落到 B+10”的错觉。
+    // 节点超出当前 viewBox 时由下一次“适配视图”统一处理。
     // 拖拽结束后浏览器仍会补发一次 click；暂时压掉，避免误打开详情。
     suppressMapNodeClick = true
     window.setTimeout(() => { suppressMapNodeClick = false }, 80)

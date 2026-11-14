@@ -109,9 +109,14 @@
 /* hover 只切根节点 class：CSS 统一淡化非邻居节点与非活动边，避免 300+ 节点逐个 patch。 */
 .kw-map.is-hovering .kw-map-base-nodes { opacity: 0.16; }
 .kw-map.is-hovering .kw-map-base-edges { opacity: 0.06; }
+/* 拖拽期间恢复完整底图，并彻底隐藏 hover 覆盖层，避免边/节点重绘和视觉错位。 */
+.kw-map.is-dragging .kw-map-base-nodes,
+.kw-map.is-dragging .kw-map-base-edges { opacity: 1; }
+.kw-map.is-dragging .kw-map-hover-layer { display: none; }
 .kw-map-base-nodes { transition: opacity 0.08s ease; }
 .kw-map-base-edges { transition: opacity 0.08s ease; }
-.kw-map-hover-layer { pointer-events: none; }
+.kw-map-hover-layer,
+.kw-map-hover-layer * { pointer-events: none; }
 .kw-map-hover-edge { stroke: #7e94bf; stroke-width: 1.8; opacity: 0.92; }
 .kw-map-hover-node .kw-map-node__dot { stroke: #fff; stroke-width: 2; }
 /* 345 节点时 hover 期间隐藏装饰环，减少大量 SVG 重绘。 */
