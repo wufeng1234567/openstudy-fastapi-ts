@@ -106,11 +106,13 @@
 - [x] 规划建议卡片：按真实 trace 画成线性路径，主节点先出现再逐段连接；无真实路径时显示空态，不用孤立点冒充图谱
 - [x] 无相关题库习题时 `study_plan` 直接跳过，不生成规划卡，避免增加用户心智负担
 - [x] 知识图谱 hover：非邻居节点自动淡化，突出当前节点与连线
+- [x] 345 节点大图 hover 性能：根节点统一 CSS 淡化 + 大图隐藏装饰环，实测 FPS 37 → 61
 - [x] 规划建议正式回复：prompt 约束 `规划结论 / 图谱路径 / 分阶段建议 / 现在先做` 四段格式
 - [x] 演示题库：`OpenStudy 功能演示·人工智能基础题`（12 题，9 题带真实资料来源，3 题无锚点用于空状态）
 - 截图见 `doc/功能迭代与代码质量/screenshots/`：
   - `wiki-learning-mode.png`
   - `wiki-hover-dimmed.png`
+  - `wiki-hover-large-graph.png`
   - `wiki-node-related-questions.png`
   - `wiki-related-questions-expanded.png`
   - `practice-knowledge-top.png`

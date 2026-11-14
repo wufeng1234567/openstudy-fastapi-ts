@@ -80,7 +80,7 @@
         </div>
       </div>
 
-      <div v-else ref="mapCanvasRef" class="kw-map" :class="{ 'is-map-ready': mapReady }"
+      <div v-else ref="mapCanvasRef" class="kw-map" :class="{ 'is-map-ready': mapReady, 'is-hovering': !!mapHoveredId, 'is-large-graph': mapNodes.length > 180 }"
         :style="{ '--kw-map-scale': mapView.scale }"
         @wheel.prevent="onMapWheel" @pointerdown="onMapDown"
         @pointermove="onMapMove" @pointerup="onMapUp" @pointerleave="onMapUp">
@@ -117,7 +117,7 @@
             </circle>
 
             <g v-for="node in mapNodes" :key="node.id" class="kw-map-node" :data-node-id="String(node.id)"
-              :class="{ 'is-selected': isMapSelected(node), 'is-dimmed': isMapNodeDimmed(node), 'is-bridge': bridgeNodeIds.has(String(node.id)), 'is-learned': Number(node.learning?.viewCount || 0) > 0, 'is-weak': Number(node.learning?.practiceCount || 0) > 0 && Number(node.learning?.accuracy || 0) < 60, 'is-route': isRouteNode(node), 'is-next-stop': isNextStopNode(node), 'is-advice-visited': adviceLitPageIds.includes(String(node.pageId)), 'is-advice-dimmed': adviceLitPageIds.length > 0 && !adviceLitPageIds.includes(String(node.pageId)) }"
+              :class="{ 'is-selected': isMapSelected(node), 'is-dimmed': isMapNodeDimmed(node), 'is-hover-neighbor': !!mapHoveredId && mapNeighborIds.has(String(node.id)), 'is-bridge': bridgeNodeIds.has(String(node.id)), 'is-learned': Number(node.learning?.viewCount || 0) > 0, 'is-weak': Number(node.learning?.practiceCount || 0) > 0 && Number(node.learning?.accuracy || 0) < 60, 'is-route': isRouteNode(node), 'is-next-stop': isNextStopNode(node), 'is-advice-visited': adviceLitPageIds.includes(String(node.pageId)), 'is-advice-dimmed': adviceLitPageIds.length > 0 && !adviceLitPageIds.includes(String(node.pageId)) }"
               :transform="`translate(${node.x} ${node.y})`"
               @mouseenter="onMapNodeEnter(node)" @mouseleave="onMapNodeLeave(node)"
               @pointerdown.stop="onMapNodeDown($event, node)" @pointerup.stop="onMapNodeUp"

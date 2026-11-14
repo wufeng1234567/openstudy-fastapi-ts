@@ -106,6 +106,16 @@
 .kw-map.is-route-mode .kw-map-edge.is-current-route { stroke: #7e94bf; opacity: 0.82; }
 .kw-map-edge.is-dimmed { opacity: 0.08; }
 .kw-map-edge.is-hidden { display: none; }
+/* hover 只切根节点 class：CSS 统一淡化非邻居节点与非活动边，避免 300+ 节点逐个 patch。 */
+.kw-map.is-hovering .kw-map-node { opacity: 0.16; }
+.kw-map.is-hovering .kw-map-node.is-hover-neighbor { opacity: 1; }
+.kw-map.is-hovering .kw-map-edge { opacity: 0.06; }
+.kw-map.is-hovering .kw-map-edge.is-active { opacity: 0.9; }
+/* 345 节点时 hover 期间隐藏装饰环，减少大量 SVG 重绘。 */
+.kw-map.is-large-graph.is-hovering .kw-map-node__halo,
+.kw-map.is-large-graph.is-hovering .kw-map-node__learn-track,
+.kw-map.is-large-graph.is-hovering .kw-map-node__learn-ring { display: none; }
+.kw-map.is-large-graph.is-hovering .kw-map-node { transition: none; }
 .kw-map__svg > g { will-change: transform; }
 /* 连续滚轮时先隐藏文字/连线，避免 200+ 节点的重绘拖慢 SVG 缩放。 */
 .kw-map.is-zooming .kw-map-node__label,
