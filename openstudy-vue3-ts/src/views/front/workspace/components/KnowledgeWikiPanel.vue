@@ -1393,6 +1393,8 @@ function onMapNodeDown(event: PointerEvent, node: any) {
     startY: event.clientY,
     // 拖拽期间镜头不会移动，缓存当前缩放即可把屏幕位移精确换算成图谱位移。
     scale: Number(mapVisualTransform.scale) || 1,
+    // 松手时恢复拖拽前的视角，防止任何布局/选中副作用带动整张画布平移。
+    viewSnapshot: { x: mapView.x, y: mapView.y, scale: mapView.scale },
     origX: Number(node.x),
     origY: Number(node.y),
     x: Number(node.x),
@@ -1464,6 +1466,15 @@ function onMapNodeUp() {
     // 拖拽结束后不再根据节点位置改动 mapView/mapSize：
     // 那会让整张画布在松手瞬间平移/缩放，产生“拖到 B 点却落到 B+10”的错觉。
     // 节点超出当前 viewBox 时由下一次“适配视图”统一处理。
+    const snapshot = state.viewSnapshot
+    if (snapshot) {
+      nextTick(() => {
+        mapView.x = snapshot.x
+        mapView.y = snapshot.y
+        mapView.scale = snapshot.scale
+        mapVisualTransform = { x: snapshot.x, y: snapshot.y, scale: snapshot.scale }
+      })
+    }
     // 拖拽结束后浏览器仍会补发一次 click；暂时压掉，避免误打开详情。
     suppressMapNodeClick = true
     window.setTimeout(() => { suppressMapNodeClick = false }, 80)
