@@ -166,20 +166,6 @@ OpenStudy 的核心不是把资料堆成一个列表，而是把资料之间的�
 - 笔记支持富文本、题库关联、资料夹关联和知识图谱来源同步；
 - 学习统计展示正确率、趋势、错因和薄弱点，为规划建议提供事实依据。
 
-## 核心界面
-
-### 知识图谱
-
-![知识图谱主画布](doc/screenshots/readme-knowledge-graph-focus-2026-11-14.png)
-
-### 资料空间
-
-![资料空间主区域](doc/screenshots/readme-workspace-2026-11-14.png)
-
-### 智能对话
-
-![OpenStudy 智能对话](doc/screenshots/readme-agent-chat.png)
-
 ## 技术栈
 
 | 层 | 技术 |
