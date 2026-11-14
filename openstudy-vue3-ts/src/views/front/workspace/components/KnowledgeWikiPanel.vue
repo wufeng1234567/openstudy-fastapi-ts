@@ -528,6 +528,7 @@ const adviceTrace = ref<any>(null)
 const adviceVisitedPageIds = ref<string[]>([])
 const adviceLitPageIds = ref<string[]>([])
 const detailVisible = ref(false)
+const mapDetailOpening = ref(false)
 const pageLoading = ref(false)
 const activePage = ref<any>(null)
 /** KNOWLEDGE PAGE 与规划建议面板在同一个右侧抽屉内切换。 */
@@ -853,7 +854,7 @@ const { syncMapSize, fitMapView, onMapResize } = useWikiMapLayout({
 
 // 图谱连线（抽到同目录 composable；纯惰性 computed，不含任何交互或计时）
 const { mapEdges } = useWikiMapEdges({
-  mapHoveredId, mapSelectedNodeId, routeActive, detailVisible,
+  mapHoveredId, mapSelectedNodeId, routeActive, detailVisible, detailOpening: mapDetailOpening,
   adviceAnimating: adviceAnimationActive,
   mapNodes, allMapNodes, mapImageExpanded, mapGraph, IMAGE_CLUSTER_ID, isCrossSourceEdge
 })
@@ -1103,6 +1104,7 @@ function selectMapNode(node: any, openDetail = true) {
   stopMapNodeDrag()
   mapSelectedPageId.value = Number(node.pageId)
   mapSelectedNodeId.value = String(node.id)
+  if (openDetail) mapDetailOpening.value = true
   // 把选中节点移到画布左侧中央，右侧留给详情抽屉。
   // 用 rAF 做镜头移动，而不是瞬移；节点选中环和周围灰化同时生效。
   const targetScale = Math.max(0.9, Math.min(1.25, Number(mapView.scale) || 1))
@@ -1117,6 +1119,7 @@ function selectMapNode(node: any, openDetail = true) {
   if (!openDetail) return
   const pageId = Number(node.pageId)
   if (!pageId) {
+    mapDetailOpening.value = false
     const kind = normalizeEntityKind(node.kind)
     if (kind === 'image' && node.ref?.assetKey) {
       emit('open-source', Object.freeze({
@@ -1697,6 +1700,7 @@ function closeDetail() {
   }
   detailPanel.value = 'page'
   linksExpanded.value = false
+  mapDetailOpening.value = false
   stopAdviceAnimation()
   detailVisible.value = false
   mapSelectedPageId.value = null
@@ -1785,6 +1789,7 @@ function updateMapNodeLearning(pageId: number, learning: any) {
 async function openPage(pageId: number) {
   mapSelectedPageId.value = Number(pageId)
   lastDetailPageId = Number(pageId)
+  mapDetailOpening.value = true
   detailPanel.value = 'page'
   linksExpanded.value = false
   detailVisible.value = true
@@ -1813,6 +1818,7 @@ async function openPage(pageId: number) {
     closeDetail()
   } finally {
     pageLoading.value = false
+    mapDetailOpening.value = false
   }
 }
 

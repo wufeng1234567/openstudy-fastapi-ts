@@ -14,6 +14,7 @@ export function useWikiMapEdges(options: {
   mapSelectedNodeId: any
   routeActive: any
   detailVisible?: any
+  detailOpening?: any
   adviceAnimating?: any
   mapNodes: any
   allMapNodes: any
@@ -23,7 +24,8 @@ export function useWikiMapEdges(options: {
   isCrossSourceEdge: (edge: any) => boolean
 }) {
   const {
-    mapHoveredId, mapSelectedNodeId, routeActive, detailVisible, adviceAnimating, mapNodes, allMapNodes,
+    mapHoveredId, mapSelectedNodeId, routeActive, detailVisible, detailOpening,
+    adviceAnimating, mapNodes, allMapNodes,
     mapImageExpanded, mapGraph, IMAGE_CLUSTER_ID, isCrossSourceEdge
   } = options
 
@@ -54,9 +56,9 @@ export function useWikiMapEdges(options: {
   })
 
   const mapEdges = computed(() => {
-    // 详情抽屉打开时不再渲染选中节点周边连线，避免 200+ 节点场景下
+    // 详情抽屉打开/准备打开时不再渲染选中节点周边连线，避免 200+ 节点场景下
     // 抽屉滑入和全图连线同时重绘造成 2-3 秒掉帧。
-    if (detailVisible?.value) return []
+    if (detailVisible?.value || detailOpening?.value) return []
     // 建议射线动画播放期间，hover 边必须让位，避免两套连线叠在同一张图上。
     if (adviceAnimating?.value) return []
     // 首屏只显示节点：避免资料/主题/题库之间的大量连线把结构盖住。
