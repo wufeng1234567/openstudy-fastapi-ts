@@ -98,12 +98,14 @@
             </marker>
           </defs>
           <g :transform="`translate(${mapView.x} ${mapView.y}) scale(${mapView.scale})`">
-            <line v-for="edge in mapEdges" :key="edge.key" :x1="edge.x1" :y1="edge.y1" :x2="edge.x2" :y2="edge.y2"
-              :data-edge-source="edge.source" :data-edge-target="edge.target"
-              class="kw-map-edge" :class="[`is-${edge.type}`, { 'is-cross': edge.cross, 'is-active': isMapEdgeActive(edge), 'is-dimmed': isMapEdgeDimmed(edge), 'is-current-route': isRouteEdge(edge), 'is-hidden': mapDraggingId && edge.source !== mapDraggingId && edge.target !== mapDraggingId }]"
-              :marker-end="mapShowArrows ? (isMapEdgeActive(edge) ? 'url(#kw-arrow-hl)' : 'url(#kw-arrow)') : undefined">
-              <title>{{ mapEdgeTitle(edge) }}</title>
-            </line>
+            <g class="kw-map-base-edges">
+              <line v-for="edge in mapEdges" :key="edge.key" :x1="edge.x1" :y1="edge.y1" :x2="edge.x2" :y2="edge.y2"
+                :data-edge-source="edge.source" :data-edge-target="edge.target"
+                class="kw-map-edge" :class="[`is-${edge.type}`, { 'is-cross': edge.cross, 'is-active': isMapEdgeActive(edge), 'is-dimmed': isMapEdgeDimmed(edge), 'is-current-route': isRouteEdge(edge), 'is-hidden': mapDraggingId && edge.source !== mapDraggingId && edge.target !== mapDraggingId }]"
+                :marker-end="mapShowArrows ? (isMapEdgeActive(edge) ? 'url(#kw-arrow-hl)' : 'url(#kw-arrow)') : undefined">
+                <title>{{ mapEdgeTitle(edge) }}</title>
+              </line>
+            </g>
             <line v-for="line in adviceVisibleLinePositions" :key="`advice-${line.key}`" :x1="line.x1" :y1="line.y1" :x2="line.x2" :y2="line.y2"
               pathLength="1" class="kw-map-advice-ray" />
             <circle v-if="adviceActiveLinePosition" :key="`advice-dot-${adviceActiveLinePosition.key}`" r="3" class="kw-map-advice-dot">
@@ -116,6 +118,7 @@
               />
             </circle>
 
+            <g class="kw-map-base-nodes">
             <g v-for="node in mapNodes" :key="node.id" v-memo="[node, isMapSelected(node), isRouteNode(node), adviceLitPageIds.length]" class="kw-map-node" :data-node-id="String(node.id)"
               :class="{ 'is-selected': isMapSelected(node), 'is-dimmed': isMapNodeDimmed(node), 'is-bridge': bridgeNodeIds.has(String(node.id)), 'is-learned': Number(node.learning?.viewCount || 0) > 0, 'is-weak': Number(node.learning?.practiceCount || 0) > 0 && Number(node.learning?.accuracy || 0) < 60, 'is-route': isRouteNode(node), 'is-next-stop': isNextStopNode(node), 'is-advice-visited': adviceLitPageIds.includes(String(node.pageId)), 'is-advice-dimmed': adviceLitPageIds.length > 0 && !adviceLitPageIds.includes(String(node.pageId)) }"
               :transform="`translate(${node.x} ${node.y})`"
@@ -135,6 +138,7 @@
               <circle class="kw-map-node__dot" :r="node.r + (isMapSelected(node) ? 3 : 0)" :fill="node.color" />
               <text v-if="showMapLabel(node)" class="kw-map-node__label" text-anchor="middle"
                 :y="node.r + 14">{{ mapNodeLabel(node) }}</text>
+            </g>
             </g>
 
             <!-- hover 高亮层：只渲染当前节点和少量邻居，避免给 300+ 个基础节点逐个打 class。 -->
