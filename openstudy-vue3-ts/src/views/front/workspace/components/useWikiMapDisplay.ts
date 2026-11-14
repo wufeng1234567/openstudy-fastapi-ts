@@ -49,38 +49,58 @@ export function useWikiMapDisplay(options: {
   const mapFocusId = computed(() => mapHoveredId.value || mapSelectedNodeId.value)
   const mapNeighborIds = computed(() => neighborIdsFor(mapFocusId.value))
 
-  // hover 是高频事件：加一个很短的“悬停意图”窗口，并给离开留一点缓冲。
-  // 这样指针擦过节点外圈时不会立刻清空、又立刻重建 hover 层造成闪烁。
-  let hoverTimer: ReturnType<typeof setTimeout> | null = null
-  let pendingHoverId: string | null | undefined
+  // hover 进入必须跟手：下一帧直接提交，不再等“意图窗口”。
+  // 离开保留约 70ms 缓冲，解决鼠标擦过节点外圈时 enter/leave 抖动；
+  // activePointerNodeId 用于识别 enter(B) 先于 leave(A) 的事件顺序，避免误清 B。
+  let hoverFrame = 0
+  let leaveTimer: ReturnType<typeof setTimeout> | null = null
+  let activePointerNodeId: string | null = null
+
+  function commitHover(id: string | null) {
+    if (mapHoveredId.value === (id ?? null)) return
+    mapHoveredId.value = id ?? null
+    if (id && typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('openstudy:performance', {
+          detail: { action: 'graph-hover', nodeId: id }
+        })
+      )
+    }
+  }
 
   function scheduleHover(id: string | null) {
-    pendingHoverId = id
-    if (hoverTimer) clearTimeout(hoverTimer)
-    const delay = id ? 38 : 110
-    hoverTimer = setTimeout(() => {
-      hoverTimer = null
-      if (mapHoveredId.value === (id ?? null)) return
-      mapHoveredId.value = id ?? null
-      if (id && typeof window !== 'undefined') {
-        window.dispatchEvent(
-          new CustomEvent('openstudy:performance', {
-            detail: { action: 'graph-hover', nodeId: id }
-          })
-        )
-      }
-    }, delay)
+    if (leaveTimer) {
+      clearTimeout(leaveTimer)
+      leaveTimer = null
+    }
+    if (id) {
+      activePointerNodeId = id
+      if (hoverFrame) cancelAnimationFrame(hoverFrame)
+      hoverFrame = requestAnimationFrame(() => {
+        hoverFrame = 0
+        commitHover(id)
+      })
+      return
+    }
+    activePointerNodeId = null
+    leaveTimer = setTimeout(() => {
+      leaveTimer = null
+      if (activePointerNodeId === null) commitHover(null)
+    }, 70)
   }
 
   function onMapNodeEnter(node: any) {
     // 拖拽期间冻结悬停态：指针扫过其他节点时不能反复切换高亮/灰化。
     if (mapDraggingId.value || detailVisible.value) return
+    activePointerNodeId = String(node.id)
     scheduleHover(String(node.id))
   }
 
   function onMapNodeLeave(node: any) {
     if (mapDraggingId.value || detailVisible.value) return
-    if (mapHoveredId.value === String(node.id) || pendingHoverId === String(node.id)) scheduleHover(null)
+    // 已经进入新节点时，旧节点的 leave 不能清掉新节点。
+    if (activePointerNodeId !== String(node.id)) return
+    scheduleHover(null)
   }
 
   function isMapSelected(node: any) {
