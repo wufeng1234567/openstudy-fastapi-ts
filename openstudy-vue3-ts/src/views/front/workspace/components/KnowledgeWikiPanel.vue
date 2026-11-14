@@ -604,6 +604,16 @@ const mapSwitching = ref(false)
 const mapLayoutScale = computed(() => Math.min(1.8, Math.max(1, Math.min(mapSize.width / 1200, mapSize.height / 760))))
 const mapViewBox = computed(() => `0 0 ${mapSize.width} ${mapSize.height}`)
 const mapView = reactive({ x: 0, y: 0, scale: 1 })
+// 镜头动画/滚轮会先写 DOM transform、后提交 mapView；拖拽坐标必须用这个“当前视觉基准”，
+// 否则动画或缩放进行中拖拽会把屏幕位移按旧 scale 换算，松手后节点就会跑偏。
+let mapVisualTransform = { x: 0, y: 0, scale: 1 }
+watch(
+  mapView,
+  () => {
+    mapVisualTransform = { x: mapView.x, y: mapView.y, scale: mapView.scale }
+  },
+  { deep: true }
+)
 const { mapViewCacheKey, readMapViewCache, saveMapViewCache } = useWikiMapViewCache({
   activeKbId: props.activeKbId,
   mapSize,
@@ -807,10 +817,9 @@ const mapNodes = computed(() => {
       // 布局只负责 x/y；半径、颜色、学习态和详情字段来自原 mapNodes。
       const merged = { ...node, ...base }
       const offset = mapNodeOffsets[String(node.id)]
-      if (!offset) {
-        merged.x = node.x
-        merged.y = node.y
-      }
+      // offset 是松手后的绝对图谱坐标；明确覆盖布局坐标，避免布局重算把它抢回去。
+      merged.x = offset ? Number(offset.x) : node.x
+      merged.y = offset ? Number(offset.y) : node.y
       return merged
     })
 })
@@ -1214,6 +1223,17 @@ function startNextRouteStop() {
   if (stop.node) selectMapNode(stop.node)
 }
 
+function clientToGraphPoint(clientX: number, clientY: number) {
+  const svg = mapCanvasRef.value?.querySelector('.kw-map__svg') as SVGSVGElement | null
+  const rect = svg?.getBoundingClientRect() || mapCanvasRef.value?.getBoundingClientRect()
+  if (!rect) return null
+  const scale = Number(mapVisualTransform.scale) || 1
+  return {
+    x: (clientX - rect.left - Number(mapVisualTransform.x)) / scale,
+    y: (clientY - rect.top - Number(mapVisualTransform.y)) / scale
+  }
+}
+
 function onMapNodeDown(event: PointerEvent, node: any) {
   if (event.button !== 0 || detailVisible.value) return
   stopMapAnimation()
@@ -1225,6 +1245,7 @@ function onMapNodeDown(event: PointerEvent, node: any) {
   const relatedEdges = Array.from(
     mapCanvasRef.value?.querySelectorAll(`[data-edge-source="${String(node.id)}"], [data-edge-target="${String(node.id)}"]`) || []
   ) as SVGLineElement[]
+  const startPoint = clientToGraphPoint(event.clientX, event.clientY)
   mapNodeDrag = {
     node,
     nodeId: String(node.id),
@@ -1233,6 +1254,8 @@ function onMapNodeDown(event: PointerEvent, node: any) {
     positions: new Map(mapNodes.value.map((item: any) => [String(item.id), item])),
     startX: event.clientX,
     startY: event.clientY,
+    startGraphX: startPoint?.x,
+    startGraphY: startPoint?.y,
     origX: Number(node.x),
     origY: Number(node.y),
     x: Number(node.x),
@@ -1273,8 +1296,14 @@ function onMapNodeMove(event: PointerEvent) {
     stopMapNodeDrag()
     return
   }
-  const dx = (event.clientX - mapNodeDrag.startX) / mapView.scale
-  const dy = (event.clientY - mapNodeDrag.startY) / mapView.scale
+  const current = clientToGraphPoint(event.clientX, event.clientY)
+  const hasStart = mapNodeDrag.startGraphX != null && mapNodeDrag.startGraphY != null
+  const dx = current && hasStart
+    ? current.x - Number(mapNodeDrag.startGraphX)
+    : (event.clientX - mapNodeDrag.startX) / (Number(mapVisualTransform.scale) || 1)
+  const dy = current && hasStart
+    ? current.y - Number(mapNodeDrag.startGraphY)
+    : (event.clientY - mapNodeDrag.startY) / (Number(mapVisualTransform.scale) || 1)
   if (Math.abs(dx) + Math.abs(dy) > 4) mapNodeDrag.moved = true
   // 不再限制在固定 1000×640 内：允许拖到任意方向，拖出视图后画布自动扩展，
   // 实体集轮廓会跟随节点形成新的边界。
@@ -2055,6 +2084,7 @@ function goPractice() {
 }
 
 function setMapGroupTransform(g: SVGGElement | null, x: number, y: number, scale: number) {
+  mapVisualTransform = { x, y, scale }
   if (!g) return
   // CSS transform 走合成层，连续滚轮/拖拽时不必重算 SVG transform 属性。
   g.style.transformOrigin = '0 0'
@@ -2063,6 +2093,7 @@ function setMapGroupTransform(g: SVGGElement | null, x: number, y: number, scale
 
 function clearMapGroupTransform(g: SVGGElement | null) {
   g?.style.removeProperty('transform')
+  mapVisualTransform = { x: mapView.x, y: mapView.y, scale: mapView.scale }
 }
 
 function renderMapPan() {
