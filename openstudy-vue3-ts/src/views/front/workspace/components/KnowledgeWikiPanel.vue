@@ -629,6 +629,7 @@ let mapWheelCommitTimer: ReturnType<typeof setTimeout> | null = null
 let mapWheelPending: { x: number; y: number; scale: number } | null = null
 let mapWheelRect: DOMRect | null = null
 let mapZoomGroup: SVGGElement | null = null
+let mapPanGroup: SVGGElement | null = null
 let mapOpenTimer: ReturnType<typeof setTimeout> | null = null
 let lastDetailPageId: number | null = null
 
@@ -2010,15 +2011,21 @@ function goPractice() {
   })
 }
 
+function setMapGroupTransform(g: SVGGElement | null, x: number, y: number, scale: number) {
+  if (!g) return
+  // CSS transform 走合成层，连续滚轮/拖拽时不必重算 SVG transform 属性。
+  g.style.transformOrigin = '0 0'
+  g.style.transform = `translate(${x}px, ${y}px) scale(${scale})`
+}
+
+function clearMapGroupTransform(g: SVGGElement | null) {
+  g?.style.removeProperty('transform')
+}
+
 function renderMapPan() {
   if (!mapDrag) return
-  const g = mapCanvasRef.value?.querySelector('.kw-map__svg > g')
-  if (g) {
-    g.setAttribute(
-      'transform',
-      `translate(${mapDrag.nextX} ${mapDrag.nextY}) scale(${mapView.scale})`
-    )
-  }
+  const g = mapPanGroup || (mapPanGroup = mapCanvasRef.value?.querySelector('.kw-map__svg > g') || null)
+  setMapGroupTransform(g, mapDrag.nextX, mapDrag.nextY, mapView.scale)
   mapDrag.raf = 0
 }
 
@@ -2028,17 +2035,13 @@ function renderMapZoom() {
     return
   }
   const g = mapZoomGroup || (mapZoomGroup = mapCanvasRef.value?.querySelector('.kw-map__svg > g') || null)
-  if (g) {
-    g.setAttribute(
-      'transform',
-      `translate(${mapWheelPending.x} ${mapWheelPending.y}) scale(${mapWheelPending.scale})`
-    )
-  }
+  setMapGroupTransform(g, mapWheelPending.x, mapWheelPending.y, mapWheelPending.scale)
   mapWheelRaf = 0
 }
 
 function commitMapZoom() {
   if (!mapWheelPending) return
+  const group = mapZoomGroup
   mapView.x = mapWheelPending.x
   mapView.y = mapWheelPending.y
   mapView.scale = mapWheelPending.scale
@@ -2046,6 +2049,9 @@ function commitMapZoom() {
   mapWheelRect = null
   mapZoomGroup = null
   mapWheelCommitTimer = null
+  mapCanvasRef.value?.classList.remove('is-zooming')
+  // 等 Vue 把 mapView 写回 SVG transform 后再移除内联样式，避免一帧闪烁。
+  nextTick(() => clearMapGroupTransform(group))
 }
 
 function cancelMapWheel(commit = false) {
@@ -2059,15 +2065,20 @@ function cancelMapWheel(commit = false) {
   }
   if (commit) commitMapZoom()
   else {
+    const group = mapZoomGroup
     mapWheelPending = null
     mapWheelRect = null
     mapZoomGroup = null
+    mapCanvasRef.value?.classList.remove('is-zooming')
+    nextTick(() => clearMapGroupTransform(group))
   }
 }
 
 function onMapWheel(event: WheelEvent) {
   // 缩放时停止初始力导向动画，避免每一帧同时改响应式节点位置造成卡顿。
   if (mapAnimFrame) stopMapAnimation()
+  // 滚轮期间隐藏文字标签：200+ 节点时文字重绘是连续滚动最明显的瓶颈。
+  mapCanvasRef.value?.classList.add('is-zooming')
   // 连续滚轮共用同一个 rect，避免每个 wheel 事件都触发布局计算。
   const rect = mapWheelRect || (mapWheelRect = mapCanvasRef.value?.getBoundingClientRect() || null)
   if (!rect) return
@@ -2086,6 +2097,7 @@ function onMapDown(event: PointerEvent) {
   if (event.button !== 0) return
   stopMapAnimation()
   cancelMapWheel(true)
+  mapPanGroup = null
   if (mapViewFrame) {
     cancelAnimationFrame(mapViewFrame)
     mapViewFrame = 0
@@ -2119,6 +2131,8 @@ function onMapUp() {
   const state = mapDrag
   if (!state) return
   if (state.raf) cancelAnimationFrame(state.raf)
+  const group = mapPanGroup
+  mapPanGroup = null
   mapDrag = null
   if (state.moved) {
     mapView.x = state.nextX
@@ -2127,6 +2141,7 @@ function onMapUp() {
     // 抽屉打开时仍允许拖动图谱；只有“按下后没移动”的空白点击才关闭抽屉。
     closeDetail()
   }
+  nextTick(() => clearMapGroupTransform(group))
 }
 
 let mapSearchTimer: ReturnType<typeof setTimeout> | null = null
