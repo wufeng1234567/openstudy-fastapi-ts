@@ -259,68 +259,74 @@ def p1():
 # ================= P2 用户与问题 =================
 def p2():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "01  /  用户与问题", "不是资料不够，是资料回不到题上",
-           "以一个理工科备考者为样本：一份带公式和插图的资料，看起来完整，却很难直接变成练习。")
-    pic_card(s, WORD, M_L, 1.90, 4.50, 3.20, caption="原始资料：Word 里的公式、区域图与章节")
-    x = 5.45
-    text(s, x, 1.90, 6.95, 0.24, "一个典型场景", size=9.5, bold=True, color=MINT_D, spc=60)
-    text(s, x, 2.22, 6.95, 0.64, "理工科备考者：\n资料看起来完整，题却做不起来", size=20, bold=True, color=INK, line_spacing=1.12)
-    failures = [
-        ("01", "公式进题库变乱码", "Word 里的二重积分公式，导入后失去结构，题目无法直接刷。"),
-        ("02", "图片和题目分家", "区域图还在原文里，刷题页看不到，题目就少了一半信息。"),
-        ("03", "题目找不到知识点", "做完题也不知道对应哪一节、哪段原文，下一次仍然从零开始。"),
+    header(s, "01  /  一个真实用户", "高数 Word 导进题库，一晚上一道题没刷成",
+           "理工科备考者，周六晚上想先刷二重积分：公式全乱码，区域图留在原文，题目对不上知识点。")
+    pic_card(s, WORD, M_L, 1.86, 4.20, 3.10, caption="演示资料：高等数学·综合练习（第三章）")
+    x = 5.35
+    text(s, x, 1.88, 7.00, 0.24, "一个晚上，一条因果链", size=9.5, bold=True, color=MINT_D, spc=60)
+    text(s, x, 2.18, 7.00, 0.28, "资料进不了题，存多少都没用。", size=15.5, bold=True, color=INK)
+    chain = [
+        ("01", "公式丢结构", "二重积分公式进题库就变乱码"),
+        ("02", "图题分家", "区域图还留在原文，题干旁边看不到"),
+        ("03", "题找不到知识点", "做错也不知道对应哪一节、哪段原文"),
+        ("04", "这道题刷不了", "一晚上过去，一道题没刷成"),
     ]
-    yy = 3.06
-    for n, t, d in failures:
-        card = rect(s, x, yy, 6.95, 0.74, fill=WHITE, line=LINE, lw=0.75, radius=0.05)
-        fill_text(card, [(f"{n}  {t}", 12.0, True, INK), (d, 9.5, False, GRAY)],
-                  margins=(0.20, 0.14, 0.08, 0.06), spacing=2)
-        yy += 0.86
-    quote = rect(s, x, 5.72, 6.95, 0.58, fill=AMBER_L, line=None, radius=0.06)
-    text(s, x + 0.20, 5.82, 6.60, 0.34, "资料存着，学习动作没有发生。", size=13, bold=True, color=AMBER)
+    yy = 2.78
+    for i, (n, t, d) in enumerate(chain):
+        card = rect(s, x, yy, 7.00, 0.62, fill=AMBER_L if i == 3 else WHITE, line=AMBER if i == 3 else LINE, lw=0.75, radius=0.05)
+        text(s, x + 0.16, yy + 0.10, 0.38, 0.24, n, size=9, bold=True, color=AMBER if i == 3 else MINT_D)
+        text(s, x + 0.58, yy + 0.08, 2.35, 0.24, t, size=11.6, bold=True, color=AMBER if i == 3 else INK)
+        text(s, x + 2.95, yy + 0.10, 3.78, 0.30, d, size=9.2, color=AMBER if i == 3 else GRAY)
+        if i < 3:
+            text(s, x + 3.28, yy + 0.58, 0.30, 0.16, "↓", size=11, bold=True, color=MINT)
+        yy += 0.76
+    strip = rect(s, M_L, 5.24, 4.20, 0.38, fill=MINT_L, line=None, radius=0.06)
+    text(s, M_L + 0.14, 5.33, 3.90, 0.20, "一晚上，一道题没刷成。", size=9.2, bold=True, color=MINT_D)
     footer(s, 2)
 
 
 # ================= P3 产品主线 =================
 def p3():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "05  /  核心能力 · 资料到题库", "从资料到刷题：公式、图片、知识点都不丢",
-           "一份带公式和插图的 Word/PDF，导入后直接变成可刷的题，原文依据和知识点跟着走。")
+    header(s, "02  /  收进来 · 资料到题库", "同一份 Word，导进题库就能刷",
+           "公式转 LaTeX、区域图随题、题目挂知识点、题源回到第 2294 段——四样都在。")
+    strip = rect(s, M_L, 1.82, CW, 0.36, fill=MINT_L, line=None, radius=0.06)
+    text(s, M_L + 0.16, 1.89, CW - 0.32, 0.20,
+         "先看体检结论：3 章 · 3 题 · 1 图 · 第三章缺练习，先补 2 题。", size=9.2, bold=True, color=MINT_D)
     steps = [
-        ("01", "导入文档", "Word / PDF\n含公式、插图"),
+        ("01", "导入", "Word / PDF\n公式 + 插图"),
         ("02", "解析", "公式转 LaTeX\n图片保留"),
-        ("03", "生成题库", "单选 / 多选\n解答题"),
-        ("04", "刷题", "题目 + 图\n原位显示"),
-        ("05", "知识点", "题目 → 主题页\n→ 原文 chunk"),
+        ("03", "结构化", "题目 + 选项\n题干结构"),
+        ("04", "入库", "3/3 入库\n可刷题"),
+        ("05", "回源", "题源 #693\n第 2294 段"),
     ]
-    sw = 1.82; gap = (CW - 5 * sw) / 4
+    sw = 1.78; gap = (CW - 5 * sw) / 4
     x = M_L
-    line(s, M_L + 0.18, 2.32, W - M_L - 0.18, 2.32, color=RGBColor(0xC9, 0xEC, 0xDD), width=1.2)
     for i, (n, t, d) in enumerate(steps):
         active = i in (2, 3, 4)
-        card = rect(s, x, 1.92, sw, 1.28, fill=MINT if active else WHITE, line=None if active else LINE, lw=0.75, radius=0.06)
+        card = rect(s, x, 2.36, sw, 0.96, fill=MINT if active else WHITE, line=None if active else LINE, lw=0.75, radius=0.06)
         tc = WHITE if active else INK
         dc = RGBColor(0xDD, 0xF7, 0xEC) if active else GRAY
-        text(s, x + 0.14, 2.04, 0.40, 0.22, n, size=9, bold=True, color=dc if active else MINT_D)
-        text(s, x + 0.14, 2.30, sw - 0.28, 0.26, t, size=13.5, bold=True, color=tc)
-        text(s, x + 0.14, 2.64, sw - 0.28, 0.42, d, size=9.0, color=dc, line_spacing=1.2)
+        text(s, x + 0.12, 2.45, 0.34, 0.20, n, size=8.5, bold=True, color=dc if active else MINT_D)
+        text(s, x + 0.12, 2.68, sw - 0.24, 0.24, t, size=12.0, bold=True, color=tc)
+        text(s, x + 0.12, 2.97, sw - 0.24, 0.32, d, size=8.2, color=dc, line_spacing=1.15)
         x += sw + gap
-    pic_card(s, BRUSH, M_L, 3.40, 7.05, 3.42, caption="真实练习页：题干公式、区域图、知识点和题源同时可见")
-    right = rect(s, 8.02, 3.40, 4.50, 3.42, fill=WHITE, line=LINE, lw=0.8, radius=0.05)
-    text(s, 8.24, 3.58, 4.05, 0.26, "题库不是纯文本", size=15, bold=True, color=INK)
+    pic_card(s, BRUSH, M_L, 3.56, 7.05, 3.30, caption="真实练习页：同一道二重积分，公式、区域图、知识点和题源同时可见")
+    right = rect(s, 8.02, 3.56, 4.50, 3.30, fill=WHITE, line=LINE, lw=0.8, radius=0.05)
+    text(s, 8.24, 3.72, 4.05, 0.26, "这份题为什么能刷？", size=15, bold=True, color=INK)
     bullets = [
         ("公式", "Word 公式转 LaTeX，在题目里原样渲染"),
-        ("图片", "文档插图跟着题走，不丢图、不贴错位置"),
-        ("知识点 / 图谱", "题目挂到知识主题，知识图谱展示主题关系、相关题目与原文"),
-        ("题源", "来源资料 #693 / 第 2294 段，可回到原文"),
+        ("图片", "区域图跟着题走，不丢图、不贴错位置"),
+        ("知识点", "题目挂到「二重积分」主题，下面能继续回原文"),
+        ("题源", "来源资料 #693 / 第 2294 段，可点开原文"),
     ]
-    yy = 3.98
+    yy = 4.12
     for t, d in bullets:
         text(s, 8.24, yy, 0.72, 0.22, t, size=9.8, bold=True, color=MINT_D)
-        text(s, 9.02, yy - 0.01, 3.22, 0.42, d, size=9.5, color=GRAY, line_spacing=1.25)
-        yy += 0.62
-    text(s, 8.24, 6.40, 4.05, 0.22, "演示题库：高等数学 · 综合练习（第三章）", size=8.5, color=GRAY2)
-    footer(s, 6)
+        text(s, 9.02, yy - 0.01, 3.22, 0.40, d, size=9.3, color=GRAY, line_spacing=1.2)
+        yy += 0.60
+    text(s, 8.24, 6.52, 4.05, 0.20, "演示题库：高等数学 · 综合练习（第三章）", size=8.4, color=GRAY2)
+    footer(s, 3)
 
 
 # ================= P4 资料诊疗室 =================
@@ -356,105 +362,121 @@ def p4():
 # ================= P5 知识百科 + 图谱 =================
 def p5():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "03  /  核心能力 · 知识百科与知识图谱", "知识百科 × 知识图谱：节点有类型，来源有落点",
-           "主题页按概念/方法/综合分色；点开节点，来源、相关题目和原文都能继续追。")
-    pic_card(s, GRAPH_FULL, M_L, 1.82, 5.95, 3.18, caption="当前图谱：中心节点「导数」悬停，周围关系展开")
-    pic_contain(s, GRAPH_DETAIL_REAL, 6.95, 1.82, 3.02, 3.55, caption="主题详情：1 条来源 · 8 个出链 · 19 个反链")
-    right = rect(s, 10.18, 1.82, 2.38, 3.55, fill=MINT_L2, line=None, radius=0.06)
-    fill_text(right, [
-        ("五类来源", 12.5, True, MINT_D),
-        ("题库", 10.8, False, INK),
-        ("资料", 10.8, False, INK),
-        ("网页", 10.8, False, INK),
-        ("笔记", 10.8, False, INK),
-        ("图片", 10.8, False, INK),
-        ("→ 归并成知识主题", 9.4, True, MINT_D),
-    ], margins=(0.20, 0.14, 0.18, 0.10), spacing=5)
-    left_bottom = rect(s, M_L, 5.72, 5.95, 0.92, fill=WHITE, line=LINE, lw=0.8, radius=0.05)
-    text(s, M_L + 0.20, 5.86, 5.55, 0.24, "知识百科", size=12.5, bold=True, color=INK)
-    text(s, M_L + 0.20, 6.14, 5.55, 0.24, "主题页有来源、版本、出链与反链；点来源回到原文。", size=9.6, color=GRAY)
-    right_bottom = rect(s, 6.95, 5.72, 5.61, 0.92, fill=WHITE, line=LINE, lw=0.8, radius=0.05)
-    text(s, 7.15, 5.86, 5.20, 0.24, "知识图谱", size=12.5, bold=True, color=INK)
-    text(s, 7.15, 6.14, 5.20, 0.24, "首层只画知识主题；详情里展开来源、相关题目和相邻关系。", size=9.6, color=GRAY)
+    header(s, "03  /  连起来 · 知识百科与知识图谱", "做错一道题，点回知识点和原文",
+           "题目 → 知识点 → 同名主题页 → 原文段落；一条链能走到底。")
+    pic_card(s, GRAPH_FULL, M_L, 1.82, 6.05, 3.25, caption="演示资料夹：26 个微积分主题，选中「导数」")
+    x, y, w, h = 7.05, 1.82, 5.45, 3.25
+    card = rect(s, x, y, w, h, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
+    text(s, x + 0.22, y + 0.18, w - 0.44, 0.34, "导数", size=19, bold=True, color=INK)
+    text(s, x + 0.22, y + 0.62, w - 0.44, 0.24, "1 份来源 · 6 个出链 · 12 个反链", size=10.2, bold=True, color=MINT_D)
+    rows = [
+        ("来源", "微积分知识地图 · 3 个原文片段"),
+        ("相关题目", "点开题目，能回到这道二重积分"),
+        ("相邻主题", "极限 / 微分 / 连续性 / 泰勒公式"),
+    ]
+    yy = y + 1.10
+    for t, d in rows:
+        text(s, x + 0.22, yy, 1.02, 0.22, t, size=9.8, bold=True, color=MINT_D)
+        text(s, x + 1.30, yy, w - 1.52, 0.26, d, size=9.5, color=GRAY)
+        yy += 0.48
+    text(s, x + 0.22, y + 2.84, w - 0.44, 0.24, "「导数」与左图选中节点一致，来源/关系能对上。", size=8.8, color=GRAY2)
+    strip = rect(s, M_L, 5.42, CW, 0.68, fill=MINT_L, line=None, radius=0.06)
+    text(s, M_L + 0.24, 5.56, CW - 0.48, 0.24,
+         "做错题不只记一个错号：它还能告诉你考的是哪一节、原文在哪一段。", size=11.2, bold=True, color=MINT_D)
+    text(s, M_L, 6.34, CW, 0.22, "知识百科讲清一个主题，知识图谱把题目、来源和关系连起来。", size=9.4, color=GRAY)
     footer(s, 4)
 
 
 # ================= P6 规划建议 + Agent =================
 def p6():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "04  /  核心能力 · 规划建议", "规划建议：把下一步拆成每天能做的动作",
-           "不是让模型凭空写计划：先看资料和题库证据，再按天拆成精读、练习、复习。")
-    pic_card(s, PLANNING, M_L, 1.82, 6.78, 4.72, caption="真实界面：概率论 7 天学习处方，按天拆到精读 / 练习 / 复习")
-    x, y, w, h = 7.78, 1.82, 4.75, 4.72
-    card = rect(s, x, y, w, h, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
-    text(s, x + 0.22, y + 0.18, w - 0.44, 0.24, "建议从哪里来", size=15.5, bold=True, color=INK)
-    items = [
-        ("证据起点", "从资料体检和题库薄弱点出发"),
-        ("按天拆解", "把薄弱章节拆成精读、练习、复习"),
-        ("可回看", "每项都能查看原文、回到练习"),
-        ("不是任务清单", "不强制打卡，只给下一步建议"),
+    header(s, "04  /  用起来 · 规划建议", "接下来 7 天，每天先做什么？",
+           "按这份高数资料的缺口和错题排：每天 30 分钟，先看哪段、再做哪几题。")
+    left = rect(s, M_L, 1.82, 7.25, 4.55, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
+    text(s, M_L + 0.24, 1.98, 3.0, 0.26, "7 天处方", size=15, bold=True, color=INK)
+    text(s, M_L + 0.24, 2.28, 6.7, 0.22, "每天都从这道题的错因和第三章缺口开始。", size=9.5, color=GRAY)
+    days = [
+        ("Day 1", "第三章 · 二重积分", "精读 20 分钟 + 2 题"),
+        ("Day 2", "极限与连续", "1 题 + 回看公式"),
+        ("Day 3", "偏导数", "1 题 + 订正错题"),
+        ("Day 4", "二重积分错题", "重做 + 回原文"),
+        ("Day 5", "变上限积分求导", "精读 + 2 题"),
+        ("Day 6", "第三章综合", "3 题混合练习"),
+        ("Day 7", "复盘", "错题 + 自测"),
     ]
-    yy = y + 0.66
+    yy = 2.62
+    for i, (d, t, r) in enumerate(days):
+        if i == 0:
+            row = rect(s, M_L + 0.24, yy - 0.04, 6.72, 0.44, fill=MINT_L, line=None, radius=0.04)
+        text(s, M_L + 0.36, yy, 0.68, 0.20, d, size=8.6, bold=True, color=MINT_D)
+        text(s, M_L + 1.10, yy, 2.80, 0.20, t, size=9.4, bold=True, color=INK)
+        text(s, M_L + 4.18, yy, 2.62, 0.20, r, size=8.5, color=GRAY)
+        yy += 0.48
+    right = rect(s, 8.25, 1.82, 4.27, 4.55, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
+    text(s, 8.47, 1.98, 3.85, 0.26, "这份计划从哪里来？", size=15, bold=True, color=INK)
+    items = [
+        ("资料体检", "第三章缺练习，先补缺得最多的一章"),
+        ("题库", "第 3 题错 1 次，今天先重做同型题"),
+        ("时间", "每天 30 分钟，排得下再排"),
+        ("可回看", "每一项都能点回原文和练习"),
+    ]
+    yy = 2.52
     for t, d in items:
-        line(s, x + 0.22, yy + 0.28, x + 0.56, yy + 0.28, color=MINT, width=1.2)
-        text(s, x + 0.70, yy, w - 0.92, 0.24, t, size=11.3, bold=True, color=INK)
-        text(s, x + 0.70, yy + 0.24, w - 0.92, 0.26, d, size=9.3, color=GRAY, line_spacing=1.2)
-        yy += 0.70
-    strip = rect(s, x + 0.22, y + 3.66, w - 0.44, 0.64, fill=AMBER_L, line=None, radius=0.06)
-    text(s, x + 0.36, y + 3.76, w - 0.70, 0.44,
-         "建议不是任务清单；每条都能回到资料与题目。", size=9.6, bold=True, color=AMBER)
+        line(s, 8.47, yy + 0.22, 8.78, yy + 0.22, color=MINT, width=1.2)
+        text(s, 8.90, yy, 3.30, 0.22, t, size=10.2, bold=True, color=INK)
+        text(s, 8.90, yy + 0.22, 3.30, 0.32, d, size=8.7, color=GRAY, line_spacing=1.2)
+        yy += 0.72
+    strip = rect(s, 8.47, 5.52, 3.80, 0.44, fill=AMBER_L, line=None, radius=0.05)
+    text(s, 8.60, 5.62, 3.55, 0.24, "明晚打开，第一道题已经排好。", size=9.2, bold=True, color=AMBER)
+    text(s, M_L, 6.55, CW, 0.22, "演示计划基于高等数学·综合练习（第三章）生成；按本题库和资料缺口排序。", size=8.8, color=GRAY2)
     footer(s, 5)
 
 
 # ================= P7 技术架构 =================
 def p7():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "06  /  技术实现", "轻量自研，把可信写进架构",
-           "没有重型编排框架：路由尽量不花模型调用，检索用 RRF，所有结果尽量回到来源。")
-    layers = [
-        ("前端", "Vue 3 · TypeScript · Vite", "资料空间 / 知识百科 / 知识图谱 / 对话", MINT),
-        ("Agent Runtime", "Orchestrator + 多专家 + 29 个工具", "规则路由 · 工具回执 · 写操作确认", MINT_D),
-        ("RAG", "解析 / 分块 / bge-m3 / HNSW", "向量 + 关键词 → RRF（k=60）", RGBColor(0x5B, 0x7C, 0xD6)),
-        ("图谱", "五类来源抽取 → 知识主题", "主题首层 · 来源详情 · 真实边", AMBER),
-        ("数据层", "PostgreSQL + pgvector · Redis", "文档、题库、笔记、来源、会话", GRAY),
+    header(s, "05  /  技术可信", "四个“不丢”，靠一条可核对的技术链路",
+           "公式不丢、图片不丢、知识点不丢、题源不丢；每一步都有回执，失败有降级。")
+    cards = [
+        ("公式不丢", "OMML / Word 公式解析", "转成 LaTeX，进题库仍原样渲染"),
+        ("图片不丢", "图片锚点绑定题干", "图随题走，不丢图、不贴错位置"),
+        ("知识点不丢", "题目 → 知识点", "挂到主题页，能看关系和相邻概念"),
+        ("题源不丢", "chunk → 原文", "题源 #693 / 第 2294 段，可回查"),
     ]
-    y = 1.90
-    for i, (name, tech, role, col) in enumerate(layers):
-        card = rect(s, M_L, y, 8.40, 0.84, fill=MINT_L2 if i in (1, 3) else WHITE, line=LINE, lw=0.75, radius=0.05)
-        rect(s, M_L, y, 0.07, 0.84, fill=col, line=None, radius=0.2)
-        text(s, M_L + 0.22, y + 0.10, 1.80, 0.24, name, size=11.2, bold=True, color=col)
-        text(s, M_L + 1.98, y + 0.08, 3.70, 0.28, tech, size=10.0, bold=True, color=INK)
-        text(s, M_L + 1.98, y + 0.40, 6.10, 0.26, role, size=9.0, color=GRAY)
-        y += 0.92
-    text(s, 9.50, 1.90, 3.0, 0.24, "三个取舍", size=10, bold=True, color=GRAY2, spc=60)
-    choices = [
-        ("01", "路由零 LLM", "关键词规则先分流，少一次模型调用就少一份不确定性。"),
-        ("02", "检索用 RRF", "只看排名，不拍脑袋定「向量 0.8、关键词 0.6」。"),
-        ("03", "来源优先", "主题小节、题目依据、对话引用都回到真实数据。"),
-    ]
-    yy = 2.26
-    for n, t, d in choices:
-        text(s, 9.50, yy, 0.40, 0.22, n, size=9, bold=True, color=MINT, spc=40)
-        text(s, 9.90, yy - 0.02, 2.62, 0.24, t, size=11.2, bold=True, color=INK)
-        text(s, 9.90, yy + 0.26, 2.62, 0.68, d, size=9.0, color=GRAY, line_spacing=1.35)
-        yy += 1.08
-    line(s, M_L, 6.46, W - M_L, 6.46, color=LINE, width=0.5)
-    text(s, M_L, 6.56, 4.2, 0.22, "可核对的工程证据", size=9.5, bold=True, color=MINT_D)
-    text(s, M_L + 1.95, 6.55, 7.8, 0.24, "pytest 109 项 · ruff 通过 · 前端 build 通过 · 关键链路有探针", size=9.2, color=GRAY)
-    footer(s, 7)
+    cw = (CW - 3 * 0.16) / 4
+    for i, (t, tech, d) in enumerate(cards):
+        x = M_L + i * (cw + 0.16)
+        card = rect(s, x, 1.92, cw, 1.72, fill=MINT_L2 if i == 0 else WHITE, line=LINE, lw=0.8, radius=0.06)
+        text(s, x + 0.18, 2.08, cw - 0.36, 0.26, t, size=14.0, bold=True, color=INK)
+        text(s, x + 0.18, 2.44, cw - 0.36, 0.22, tech, size=9.5, bold=True, color=MINT_D)
+        text(s, x + 0.18, 2.74, cw - 0.36, 0.54, d, size=8.8, color=GRAY, line_spacing=1.25)
+    line(s, M_L, 4.10, W - M_L, 4.10, color=LINE, width=0.6)
+    steps = ["Word", "解析", "结构化", "入库", "刷题"]
+    sx = M_L
+    for i, label in enumerate(steps):
+        if i:
+            text(s, sx - 0.16, 4.30, 0.30, 0.24, "→", size=13, bold=True, color=MINT)
+        text(s, sx, 4.28, 1.9, 0.26, label, size=10.2, bold=True, color=INK)
+        sx += 2.35
+    text(s, M_L, 5.12, 5.40, 0.24, "轻量自研：Vue 3 · FastAPI · PostgreSQL + pgvector · Redis", size=9.5, color=GRAY2)
+    text(s, M_L, 5.50, 7.5, 0.22, "路由零 LLM 先分流；检索用 RRF；所有结果回到真实来源。", size=9.2, color=GRAY)
+    evidence = rect(s, M_L, 5.92, CW, 0.52, fill=MINT_L, line=None, radius=0.06)
+    text(s, M_L + 0.22, 6.04, CW - 0.44, 0.24,
+         "可核对：pytest 109 项 · ruff 通过 · 前端 build 通过 · 关键链路有探针", size=9.4, bold=True, color=MINT_D)
+    footer(s, 6)
 
 
 # ================= P8 码道开发 =================
 def p8():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "07  /  怎么用码道做出来", "码道不是补全插件，是把工程流程带进系统",
-           "不是让它“生成一段代码”，而是让它读仓库、拆任务、跑测试、做 review，再交付到系统。")
+    header(s, "06  /  码道 · 方法", "码道把工程流程带进系统",
+           "让它读仓库、拆任务、跑测试、做 review，再把改动交付到系统。")
     chip(s, W - M_L - 2.20, 0.45, 2.20, 0.34, "华为云 · 码道 CodeArts", MINT_L, MINT_D, 9)
     pic_contain(s, CODEARTS_PLAN, M_L, 1.82, 6.70, 2.35,
                 caption="真实工作区：需求被拆成 4 个可验收步骤，当前正在修改 hover 覆盖层")
     text(s, M_L, 4.48, 6.70, 0.24, "读码定位：KnowledgeWikiPanel.vue / useWikiMapDisplay.ts / style1.css", size=9.8, bold=True, color=MINT_D)
     text(s, M_L, 4.80, 6.70, 0.24, "验证路径：build:prod + 只读 review（P0/P1/P2）", size=9.8, color=GRAY)
-    text(s, M_L, 5.24, 6.70, 0.28, "结果不是一段代码，而是一块能演示的系统能力。", size=11.2, bold=True, color=INK)
+    text(s, M_L, 5.24, 6.70, 0.28, "结果：一块能演示的系统能力。", size=11.2, bold=True, color=INK)
     x, y, w, h = 7.55, 1.82, 5.00, 4.20
     card = rect(s, x, y, w, h, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
     text(s, x + 0.22, y + 0.18, w - 0.44, 0.24, "码道的优点，用在了哪里", size=15.0, bold=True, color=INK)
@@ -477,38 +499,72 @@ def p8():
     text(s, M_L + 0.24, 6.37, CW - 0.48, 0.24,
          "评委不需要看工具次数，只需要看到：码道把复杂改动变成可拆解、可验证、可复用的工程过程。",
          size=9.8, bold=True, color=MINT_D)
+    footer(s, 7)
+
+
+# ================= P8b 码道真实证据 =================
+def p8b():
+    s = prs.slides.add_slide(BLANK); bg(s)
+    header(s, "07  /  码道 · 真实证据", "一次真实改动，能看到每一步证据",
+           "从 prompt 到 file:line、4 个 todos、测试和只读 review：每一步都能对上。")
+    pic_contain(s, CODEARTS_FILELINE, M_L, 1.82, 7.10, 2.18,
+                caption="文件定位：KnowledgeWikiPanel.vue:83 / 144–155 / 1195–1209；useWikiMapDisplay.ts:52–104")
+    note = rect(s, M_L, 4.48, 7.10, 1.10, fill=MINT_L2, line=LINE, lw=0.7, radius=0.05)
+    text(s, M_L + 0.20, 4.64, 6.70, 0.24, "读码结论", size=11.0, bold=True, color=MINT_D)
+    text(s, M_L + 0.20, 4.92, 6.70, 0.46, "覆盖层上限 30 节点 / 80 边，当前节点可能被裁；先定位问题，再改 CSS 和显示层。",
+         size=9.0, color=GRAY, line_spacing=1.2)
+    x, y, w, h = 8.10, 1.82, 4.42, 4.42
+    card = rect(s, x, y, w, h, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
+    text(s, x + 0.22, y + 0.18, w - 0.44, 0.24, "四类证据", size=15.0, bold=True, color=INK)
+    rows = [
+        ("Prompt", "一句话说清目标、验收标准和不要动的地方"),
+        ("File:line", "先读后写，定位到具体文件和行"),
+        ("Todos", "拆成 4 个可验收步骤，改完逐项检查"),
+        ("Review", "只读审查 P0/P1/P2，修复后再交付"),
+    ]
+    yy = y + 0.62
+    for t, d in rows:
+        rect(s, x + 0.22, yy, 0.07, 0.50, fill=MINT, line=None, radius=0.2)
+        text(s, x + 0.42, yy, w - 0.62, 0.24, t, size=10.8, bold=True, color=INK)
+        text(s, x + 0.42, yy + 0.24, w - 0.62, 0.32, d, size=8.8, color=GRAY, line_spacing=1.2)
+        yy += 0.82
+    line(s, x + 0.22, y + 3.76, x + w - 0.22, y + 3.76, color=LINE, width=0.5)
+    text(s, x + 0.22, y + 3.86, w - 0.44, 0.22, "输出：一次可复核的真实改动。", size=9.0, color=GRAY2)
+    strip = rect(s, M_L, 6.30, CW, 0.42, fill=MINT_L, line=None, radius=0.08)
+    text(s, M_L + 0.24, 6.37, CW - 0.48, 0.24,
+         "结果：能指到文件、能跑测试、能被 review 的真实工程改动。",
+         size=9.8, bold=True, color=MINT_D)
     footer(s, 8)
 
 
 # ================= P9 现场演示 =================
 def p9():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "08  /  现场演示", "3 分钟，走完一条真实链路",
-           "不巡游功能，只让评委看见：一份资料怎样变成可检查、可追溯、可继续使用的知识资产。")
+    header(s, "08  /  现场演示", "3 分钟，重走一份 Word 的真实链路",
+           "不巡游功能，只让评委看见：同一条链路从问题走到今天能做什么。")
     stages = [
-        ("0:00 – 0:40", "先看问题", "打开资料诊疗室", "体检报告：四维检查、问题清单、章节覆盖；每条都能回到原文。"),
-        ("0:40 – 1:40", "再看知识", "打开知识百科主题页", "看主题页的摘要、小节、来源和反向链接；点来源回到原文 chunk。"),
-        ("1:40 – 2:30", "看关系", "切到知识图谱，点一个主题", "首层只显示知识主题；节点详情展开五类来源、相关题目和相邻关系。"),
-        ("2:30 – 3:00", "看下一步", "在主题详情里生成规划建议", "沿真实图谱路径给出阶段建议；保存、导出，不生成假节点。"),
+        ("0:00–0:20", "打开 Word", "3 小问 · 3 公式 · 1 张区域图"),
+        ("0:20–0:50", "看体检", "3 题 · 1 图 · 第三章缺练习"),
+        ("0:50–1:30", "变成题", "3/3 入库；公式、图、题源都在"),
+        ("1:30–2:15", "追原文", "第 3 题 → 导数 → 第 2294 段"),
+        ("2:15–2:50", "排计划", "Day1 第三章 + 2 题"),
     ]
-    cw = (CW - 3 * 0.16) / 4
-    for i, (t, h, act, res) in enumerate(stages):
-        x = M_L + i * (cw + 0.16)
-        card = rect(s, x, 1.94, cw, 3.42, fill=WHITE, line=LINE, lw=0.75, radius=0.05)
-        text(s, x + 0.20, 2.10, cw - 0.40, 0.22, t, size=9, bold=True, color=MINT_D, spc=30)
-        text(s, x + 0.20, 2.42, cw - 0.40, 0.34, h, size=15, bold=True, color=INK)
-        text(s, x + 0.20, 2.88, cw - 0.40, 0.62, act, size=10.8, bold=True, color=INK2, line_spacing=1.3)
-        line(s, x + 0.20, 3.64, x + cw - 0.20, 3.64, color=LINE, width=0.5)
-        text(s, x + 0.20, 3.80, cw - 0.40, 1.20, res, size=9.8, color=GRAY, line_spacing=1.45)
+    cw = (CW - 4 * 0.12) / 5
+    for i, (t, h, res) in enumerate(stages):
+        x = M_L + i * (cw + 0.12)
+        card = rect(s, x, 1.94, cw, 2.96, fill=WHITE, line=LINE, lw=0.75, radius=0.05)
+        text(s, x + 0.16, 2.10, cw - 0.32, 0.20, t, size=8.8, bold=True, color=MINT_D)
+        text(s, x + 0.16, 2.40, cw - 0.32, 0.52, h, size=13.2, bold=True, color=INK)
+        text(s, x + 0.16, 3.18, cw - 0.32, 1.16, res, size=9.2, color=GRAY, line_spacing=1.4)
+    strip = rect(s, M_L, 5.22, CW, 0.44, fill=MINT_L, line=None, radius=0.06)
+    text(s, M_L + 0.20, 5.33, CW - 0.40, 0.24,
+         "2:50–3:00 收束：一份资料从“能看”变成“能刷、能追、能计划”。", size=9.8, bold=True, color=MINT_D)
     guards = [("预置数据", "资料、题库、笔记和作答记录提前准备"), ("提前热身", "模型与检索预热，首字等待压到 3 秒内"), ("双保险", "网络异常切本地录屏，关键探针提前跑")]
     x = M_L; gw = (CW - 2 * 0.18) / 3
     for t, d in guards:
-        text(s, x, 5.72, gw, 0.24, "· " + t, size=10.5, bold=True, color=INK)
-        text(s, x + 0.16, 6.02, gw - 0.16, 0.44, d, size=9.2, color=GRAY, line_spacing=1.3)
+        text(s, x, 5.86, gw, 0.24, "· " + t, size=10.0, bold=True, color=INK)
+        text(s, x + 0.16, 6.14, gw - 0.16, 0.40, d, size=8.8, color=GRAY, line_spacing=1.3)
         x += gw + 0.18
-    strip = rect(s, M_L, 6.58, CW, 0.32, fill=MINT_L, line=None, radius=0.08)
-    text(s, M_L + 0.20, 6.64, CW - 0.4, 0.22, "一句话记住：先给结果，再讲技术；每按一次按钮，都要有一处数据变化被看见。",
-         size=9.0, bold=True, color=MINT_D)
     footer(s, 9)
 
 
@@ -551,9 +607,10 @@ def p10():
     footer(s, 10)
 
 
-for fn in (p1, p2, p4, p5, p6, p3, p7, p8, p9, p10):
+for fn in (p1, p2, p3, p5, p6, p7, p8, p8b, p9, p10):
     fn()
 
 out = os.path.join(HERE, "OpenStudy-10页-码道版.pptx")
 prs.save(out)
 print("saved:", out, os.path.getsize(out))
+
