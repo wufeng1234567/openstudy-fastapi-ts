@@ -25,10 +25,11 @@ PLANNING = os.path.join(SHOTS, "28-study-prescription.png")
 AGENT = os.path.join(SHOTS, "01-agent-chat.png")
 BRUSH = os.path.join(HERE, "brush-math-question-core-2026-11-15.png")
 WORD = os.path.join(HERE, "word-source-math-v2-core-2026-11-15.png")
-GRAPH_FULL = os.path.join(HERE, "user-graph-hover-2026-11-15.png")
+GRAPH_FULL = os.path.join(HERE, "graph-pian-daoshu-core-2026-11-15.png")
 GRAPH_TYPES = os.path.join(HERE, "user-graph-all-labels-2026-11-15.png")
 CHAT_HOME = os.path.join(HERE, "chat-home-2026-11-15.png")
 EXAM_MATERIALS = os.path.join(HERE, "exam-week-materials-dense-2026-11-15.png")
+P3_QUESTION = os.path.join(HERE, "question-knowledge-core-2026-11-15.png")
 GRAPH_DETAIL_REAL = os.path.join(HERE, "graph-detail-real-2026-11-15.png")
 CODEARTS_PLAN = os.path.join(HERE, "codearts-plan-clean-2026-11-15.png")
 CODEARTS_FILELINE = os.path.join(HERE, "codearts-fileline-2026-11-15.png")
@@ -310,8 +311,11 @@ def p3():
         text(s, x + 0.12, 2.45, 0.34, 0.20, n, size=8.5, bold=True, color=dc if active else MINT_D)
         text(s, x + 0.12, 2.68, sw - 0.24, 0.24, t, size=12.0, bold=True, color=tc)
         text(s, x + 0.12, 2.97, sw - 0.24, 0.32, d, size=8.2, color=dc, line_spacing=1.15)
+        if i < 4:
+            text(s, x + sw + 0.18, 2.70, 0.30, 0.24, "→", size=16, bold=True, color=MINT)
         x += sw + gap
-    pic_card(s, BRUSH, M_L, 3.56, 7.05, 3.30, caption="真实练习页：同一道二重积分，公式、区域图、知识点和题源同时可见")
+    pic_contain(s, P3_QUESTION, M_L, 3.56, 7.05, 3.30,
+                caption="真实题目：顶部知识点 chips、来源 #693 / 第 2294 段和题干在同一屏")
     right = rect(s, 8.02, 3.56, 4.50, 3.30, fill=WHITE, line=LINE, lw=0.8, radius=0.05)
     text(s, 8.24, 3.72, 4.05, 0.26, "题库里有什么？", size=15, bold=True, color=INK)
     bullets = [
@@ -363,23 +367,23 @@ def p4():
 def p5():
     s = prs.slides.add_slide(BLANK); bg(s)
     header(s, "03  /  连起来 · 知识百科与知识图谱", "做错一道题，点回知识点和原文",
-           "题目 → 知识点 → 同名主题页 → 原文段落；一条链能走到底。")
-    pic_card(s, GRAPH_FULL, M_L, 1.82, 6.05, 3.25, caption="演示资料夹：26 个微积分主题，选中「导数」")
+           "每道错题都有落点：考什么、和谁相关、原文在哪。")
+    pic_card(s, GRAPH_FULL, M_L, 1.82, 6.05, 3.25, caption="演示资料夹：26 个微积分主题，选中「偏导数」")
     x, y, w, h = 7.05, 1.82, 5.45, 3.25
     card = rect(s, x, y, w, h, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
-    text(s, x + 0.22, y + 0.18, w - 0.44, 0.34, "导数", size=19, bold=True, color=INK)
-    text(s, x + 0.22, y + 0.62, w - 0.44, 0.24, "1 份来源 · 6 个出链 · 12 个反链", size=10.2, bold=True, color=MINT_D)
+    text(s, x + 0.22, y + 0.18, w - 0.44, 0.34, "偏导数", size=19, bold=True, color=INK)
+    text(s, x + 0.22, y + 0.62, w - 0.44, 0.24, "题目 4810 → 知识点 → 主题页 → 原文", size=10.0, bold=True, color=MINT_D)
     rows = [
-        ("来源", "微积分知识地图 · 3 个原文片段"),
-        ("相关题目", "点开题目，能回到这道二重积分"),
-        ("相邻主题", "极限 / 微分 / 连续性 / 泰勒公式"),
+        ("来源", "微积分知识地图 · 1 段原文"),
+        ("相关题目", "第 4810 题的知识点里就有它"),
+        ("相邻主题", "导数 / 全微分 / 极限 / 连续性"),
     ]
     yy = y + 1.10
     for t, d in rows:
         text(s, x + 0.22, yy, 1.02, 0.22, t, size=9.8, bold=True, color=MINT_D)
         text(s, x + 1.30, yy, w - 1.52, 0.26, d, size=9.5, color=GRAY)
         yy += 0.48
-    text(s, x + 0.22, y + 2.84, w - 0.44, 0.24, "「导数」与左图选中节点一致，来源/关系能对上。", size=8.8, color=GRAY2)
+    text(s, x + 0.22, y + 2.64, w - 0.44, 0.48, "知识图谱的作用：把题目、知识点、主题页和原文串成一条可点开的路径。", size=9.2, color=GRAY2, line_spacing=1.2)
     strip = rect(s, M_L, 5.42, CW, 0.68, fill=MINT_L, line=None, radius=0.06)
     text(s, M_L + 0.24, 5.56, CW - 0.48, 0.24,
          "做错题不只记一个错号：它还能告诉你考的是哪一节、原文在哪一段。", size=11.2, bold=True, color=MINT_D)
