@@ -20,7 +20,7 @@ SHOTS = os.path.join(ROOT, "doc", "screenshots")
 SCREENSHOT_2026 = os.path.join(SHOTS, "readme-workspace-2026-11-14.png")
 GRAPH = os.path.join(SHOTS, "readme-knowledge-graph-focus-2026-11-14.png")
 GRAPH_DETAIL = os.path.join(SHOTS, "readme-knowledge-graph-detail-2026-11-14.png")
-DIAGNOSIS = os.path.join(SHOTS, "readme-diagnosis-2026-11-14.png")
+DIAGNOSIS = os.path.join(HERE, "diagnosis-health-2026-11-15.png")
 PLANNING = os.path.join(SHOTS, "readme-planning-advice.png")
 AGENT = os.path.join(SHOTS, "01-agent-chat.png")
 BRUSH = os.path.join(HERE, "brush-math-question-2026-11-14.png")
@@ -336,28 +336,28 @@ def p4():
     s = prs.slides.add_slide(BLANK); bg(s)
     header(s, "02  /  核心能力 · 资料诊疗室", "资料诊疗室：先看问题，再回原文",
            "同一份资料只有一个入口：体检、原文阅读、智能报告都在同一间诊疗室完成。")
-    pic_card(s, DIAGNOSIS, M_L, 1.84, 7.55, 3.74, caption="真实运行界面：章节导航、原文阅读、问题清单与报告入口")
+    pic_card(s, DIAGNOSIS, M_L, 1.84, 7.55, 3.74, caption="真实运行界面：综合分、四维评分、问题清单与章节覆盖热力图")
     x, y, w, h = 8.58, 1.84, 3.96, 4.58
     card = rect(s, x, y, w, h, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
-    text(s, x + 0.22, y + 0.18, w - 0.44, 0.24, "资料先被看懂，再被使用", size=15.5, bold=True, color=INK)
+    text(s, x + 0.22, y + 0.18, w - 0.44, 0.24, "先看问题，再决定怎么整理", size=15.0, bold=True, color=INK)
     metrics = [
-        ("四维体检", "结构 / 图文 / 知识覆盖 / 可学习化"),
-        ("问题清单", "按优先级列出，每条回到原文"),
-        ("章节覆盖", "热力图定位内容过薄章节"),
-        ("智能报告", "目标 / 优势 / 改进项 / 下一步"),
+        ("四维体检", "结构 90 · 图文 100 · 知识 63 · 可学习 48"),
+        ("问题清单", "2 项待处理：25 章缺练习 / 10 章内容过薄"),
+        ("章节覆盖", "热力图区分讲解、练习与内容过薄"),
+        ("智能报告", "把问题转成整理目标、改进项和下一步"),
     ]
     yy = y + 0.62
     for t, d in metrics:
-        rect(s, x + 0.22, yy, 0.07, 0.49, fill=MINT, line=None, radius=0.2)
-        text(s, x + 0.42, yy, w - 0.62, 0.24, t, size=11.5, bold=True, color=INK)
-        text(s, x + 0.42, yy + 0.24, w - 0.62, 0.32, d, size=9.0, color=GRAY, line_spacing=1.2)
-        yy += 0.66
-    note = rect(s, x + 0.22, y + 3.50, w - 0.44, 0.70, fill=MINT_L2, line=None, radius=0.06)
-    fill_text(note, [("原文是事实来源", 11, True, MINT_D), ("AI 只做整理、解释和下一步建议", 9.2, False, GRAY)],
+        rect(s, x + 0.22, yy, 0.07, 0.52, fill=MINT, line=None, radius=0.2)
+        text(s, x + 0.42, yy, w - 0.62, 0.24, t, size=11.3, bold=True, color=INK)
+        text(s, x + 0.42, yy + 0.24, w - 0.62, 0.36, d, size=8.8, color=GRAY, line_spacing=1.2)
+        yy += 0.68
+    note = rect(s, x + 0.22, y + 3.54, w - 0.44, 0.64, fill=MINT_L2, line=None, radius=0.06)
+    fill_text(note, [("综合分 75 · 基本可用", 10.8, True, MINT_D), ("原文是事实来源，AI 只做整理和解释", 9.0, False, GRAY)],
               margins=(0.18, 0.12, 0.10, 0.06), spacing=3)
     text(s, M_L, 6.00, 7.4, 0.26, "体检 → 读原文 → 智能报告：一个入口完成，不用在三个功能间来回找。",
          size=12.5, bold=True, color=MINT_D)
-    text(s, M_L, 6.32, 7.4, 0.22, "问题、证据、下一步都在同一份资料上。", size=10.2, color=GRAY)
+    text(s, M_L, 6.32, 7.4, 0.22, "综合分、问题清单和章节热力图，最终都落到可执行的整理动作。", size=10.2, color=GRAY)
     footer(s, 3)
 
 
