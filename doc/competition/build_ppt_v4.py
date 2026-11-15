@@ -21,9 +21,14 @@ SCREENSHOT_2026 = os.path.join(SHOTS, "readme-workspace-2026-11-14.png")
 GRAPH = os.path.join(SHOTS, "readme-knowledge-graph-focus-2026-11-14.png")
 GRAPH_DETAIL = os.path.join(SHOTS, "readme-knowledge-graph-detail-2026-11-14.png")
 DIAGNOSIS = os.path.join(HERE, "diagnosis-health-2026-11-15.png")
-PLANNING = os.path.join(SHOTS, "readme-planning-advice.png")
+PLANNING = os.path.join(SHOTS, "28-study-prescription.png")
 AGENT = os.path.join(SHOTS, "01-agent-chat.png")
 BRUSH = os.path.join(HERE, "brush-math-question-2026-11-14.png")
+WORD = os.path.join(HERE, "码道架构图", "word-source-math-v2-1.png")
+GRAPH_FULL = os.path.join(SHOTS, "81-wiki-graph.png")
+GRAPH_DETAIL_REAL = os.path.join(HERE, "graph-detail-real-2026-11-15.png")
+CODEARTS_PLAN = os.path.join(HERE, "codearts-plan-clean-2026-11-15.png")
+CODEARTS_FILELINE = os.path.join(HERE, "codearts-fileline-2026-11-15.png")
 
 # ---------------- 设计令牌 ----------------
 INK = RGBColor(0x0B, 0x2B, 0x22)
@@ -235,57 +240,47 @@ def p1():
     rect(s, 10.6, -2.0, 5.2, 5.2, fill=None, line=RGBColor(0xE3, 0xF4, 0xEC), lw=1.0, radius=0.5)
     rect(s, 11.9, 3.15, 3.6, 3.6, fill=None, line=RGBColor(0xEF, 0xF9, 0xF4), lw=1.0, radius=0.5)
     text(s, M_L, 0.66, 6.2, 0.24, "OPENSTUDY  ·  0.8.0  ·  知识资产系统", size=10, bold=True, color=MINT_D, spc=160)
-    text(s, M_L, 1.02, 6.05, 1.55, "把信息来源，\n整理成可用的知识资产", size=36, bold=True, color=INK, line_spacing=1.06)
-    line(s, M_L, 3.02, M_L + 1.15, 3.02, color=MINT, width=2.5)
-    text(s, M_L, 3.22, 5.95, 0.82,
-         "网页、文档、图片、题库、笔记和网页收藏，\n不再散落成一次性材料。",
+    text(s, M_L, 1.02, 6.05, 1.42, "一张带公式和图的高数 Word，\n进来就能刷", size=31, bold=True, color=INK, line_spacing=1.08)
+    line(s, M_L, 3.00, M_L + 1.15, 3.00, color=MINT, width=2.5)
+    text(s, M_L, 3.20, 5.95, 0.88,
+         "公式没丢、图没丢，知识点和原文\n都能回到同一份资料。",
          size=14, color=GRAY, line_spacing=1.45)
-    text(s, M_L, 4.30, 6.0, 0.42, "对话是入口，知识资产是结果。", size=24, bold=True, color=INK)
-    text(s, M_L, 4.82, 6.1, 0.32, "资料诊疗室  /  知识百科  /  知识图谱  /  规划建议", size=13, color=GRAY2)
+    text(s, M_L, 4.35, 6.0, 0.42, "别人给答案，OpenStudy 给证据链。", size=23, bold=True, color=INK)
+    text(s, M_L, 4.88, 6.1, 0.32, "资料诊疗室  /  知识百科  /  知识图谱  /  规划建议", size=13, color=GRAY2)
     line(s, M_L, 5.52, 6.3, 5.52, color=LINE, width=0.5)
     text(s, M_L, 5.68, 6.2, 0.24, "华为云码道 CodeArts 开发  ·  GitCode 开源  ·  FastAPI + Vue 3", size=9.5, color=GRAY2)
     text(s, M_L, 6.18, 6.2, 0.24, "gitcode.com/qi142410131/openstudy-fastapi-ts", size=9, color=MINT_D)
-    pic_card(s, GRAPH, 7.00, 0.95, 5.55, 4.15, caption="真实运行界面 · 主题之间的关系图（点节点可看详情）")
-    chip(s, 7.00, 5.50, 1.58, 0.34, "看主题关系", MINT_L, MINT_D, 9)
-    chip(s, 8.70, 5.50, 1.86, 0.34, "点节点看来源", MINT_L, MINT_D, 9)
-    chip(s, 10.70, 5.50, 1.55, 0.34, "沿关系做规划", MINT_L, MINT_D, 9)
+    pic_contain(s, WORD, 7.00, 1.02, 2.25, 3.55, caption="原始 Word：公式 + 区域图")
+    text(s, 9.35, 2.38, 0.26, 0.30, "→", size=20, bold=True, color=MINT)
+    pic_card(s, BRUSH, 9.62, 1.08, 3.18, 3.24, caption="刷题页：公式、图、知识点、题源")
+    chip(s, 7.00, 5.02, 1.55, 0.34, "公式保留", MINT_L, MINT_D, 9)
+    chip(s, 8.62, 5.02, 1.55, 0.34, "图片保留", MINT_L, MINT_D, 9)
+    chip(s, 10.24, 5.02, 1.95, 0.34, "知识点可追", MINT_L, MINT_D, 9)
     footer(s, 1)
 
 
 # ================= P2 用户与问题 =================
 def p2():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "01  /  用户与问题", "不是缺工具，是信息来源用不起来",
-           "先服务三类人：他们手里都有资料，但资料没有变成可复用的知识资产。")
-    people = [
-        ("01", "边工作边学习、\n需要持续产出的人", "产品 / 研发 / 运营 / 设计 / 研究",
-         "资料散在网盘、浏览器和笔记里；写方案找不到原文，AI 回答没出处。", MINT),
-        ("02", "高强度备考者", "考研 / 考证 / 公考 / 专业课",
-         "题库、错题和资料分家；练完不知道错在哪里，更不知道该补哪一章。", AMBER),
-        ("03", "管理团队共享资料的人", "小团队负责人 / 教研 / 项目负责人",
-         "版本混乱、重复资料多；新人找不到上下文，关键知识只存在某个人脑子里。", RGBColor(0x5B, 0x7C, 0xD6)),
+    header(s, "01  /  用户与问题", "不是资料不够，是资料回不到题上",
+           "以一个理工科备考者为样本：一份带公式和插图的资料，看起来完整，却很难直接变成练习。")
+    pic_contain(s, WORD, M_L, 1.82, 4.05, 4.40, caption="原始资料：Word 里的公式、区域图与章节")
+    x = 5.20
+    text(s, x, 1.90, 7.2, 0.24, "一个典型场景", size=9.5, bold=True, color=MINT_D, spc=60)
+    text(s, x, 2.22, 7.2, 0.64, "理工科备考者：\n资料看起来完整，题却做不起来", size=20, bold=True, color=INK, line_spacing=1.12)
+    failures = [
+        ("01", "公式进题库变乱码", "Word 里的二重积分公式，导入后失去结构，题目无法直接刷。"),
+        ("02", "图片和题目分家", "区域图还在原文里，刷题页看不到，题目就少了一半信息。"),
+        ("03", "题目找不到知识点", "做完题也不知道对应哪一节、哪段原文，下一次仍然从零开始。"),
     ]
-    x = M_L; cw = (CW - 2 * 0.22) / 3
-    for i, (num, title, roles, pain, col) in enumerate(people):
-        card = rect(s, x, 1.94, cw, 2.98, fill=WHITE, line=LINE, lw=0.75, radius=0.05)
-        text(s, x + 0.24, 2.12, 0.40, 0.28, num, size=12, bold=True, color=col, spc=60)
-        text(s, x + 0.24, 2.50, cw - 0.48, 0.58, title, size=16.5, bold=True, color=INK, line_spacing=1.12)
-        text(s, x + 0.24, 3.28, cw - 0.48, 0.28, roles, size=9.4, bold=True, color=col, line_spacing=1.15)
-        text(s, x + 0.24, 3.70, cw - 0.48, 0.82, pain, size=10.8, color=GRAY, line_spacing=1.4)
-        x += cw + 0.22
-    quote = rect(s, M_L, 5.10, CW, 0.78, fill=MINT_L2, line=None, radius=0.06)
-    rect(s, M_L, 5.10, 0.07, 0.78, fill=MINT)
-    text(s, M_L + 0.30, 5.24, 2.0, 0.22, "共同问题", size=9.5, bold=True, color=MINT_D, spc=60)
-    text(s, M_L + 1.32, 5.20, CW - 1.65, 0.48,
-         "他们不是缺一个聊天框，而是缺一条「获取信息 → 整理 → 验证 → 继续使用」的稳定路径。",
-         size=14, bold=True, color=INK, line_spacing=1.2)
-    outs = [("可检查", "每条结论能回到原文"), ("可追溯", "每个主题有真实来源"), ("可复用", "资料能进入下一次工作")]
-    x = M_L; ow = (CW - 2 * 0.20) / 3
-    for t, d in outs:
-        line(s, x, 6.24, x + ow - 0.22, 6.24, color=MINT, width=1.2)
-        text(s, x, 6.32, ow - 0.22, 0.24, t, size=12, bold=True, color=INK)
-        text(s, x, 6.60, ow - 0.22, 0.22, d, size=10, color=GRAY2)
-        x += ow + 0.20
+    yy = 3.06
+    for n, t, d in failures:
+        card = rect(s, x, yy, 7.15, 0.74, fill=WHITE, line=LINE, lw=0.75, radius=0.05)
+        fill_text(card, [(f"{n}  {t}", 12.0, True, INK), (d, 9.5, False, GRAY)],
+                  margins=(0.20, 0.14, 0.08, 0.06), spacing=2)
+        yy += 0.86
+    quote = rect(s, x, 5.72, 7.15, 0.58, fill=AMBER_L, line=None, radius=0.06)
+    text(s, x + 0.20, 5.82, 6.80, 0.34, "资料存着，学习动作没有发生。", size=13, bold=True, color=AMBER)
     footer(s, 2)
 
 
@@ -336,7 +331,7 @@ def p4():
     s = prs.slides.add_slide(BLANK); bg(s)
     header(s, "02  /  核心能力 · 资料诊疗室", "资料诊疗室：先看问题，再回原文",
            "同一份资料只有一个入口：体检、原文阅读、智能报告都在同一间诊疗室完成。")
-    pic_card(s, DIAGNOSIS, M_L, 1.84, 7.55, 3.74, caption="真实运行界面：综合分、四维评分、问题清单与章节覆盖热力图")
+    pic_card(s, DIAGNOSIS, M_L, 1.84, 7.55, 3.74, caption="演示样例（文本型资料）：综合分、四维评分、问题清单与章节覆盖热力图")
     x, y, w, h = 8.58, 1.84, 3.96, 4.58
     card = rect(s, x, y, w, h, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
     text(s, x + 0.22, y + 0.18, w - 0.44, 0.24, "先看问题，再决定怎么整理", size=15.0, bold=True, color=INK)
@@ -364,10 +359,10 @@ def p4():
 # ================= P5 知识百科 + 图谱 =================
 def p5():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "03  /  核心能力 · 知识百科与知识图谱", "知识百科 × 知识图谱：让知识看得见关系",
+    header(s, "03  /  核心能力 · 知识百科与知识图谱", "知识百科 × 知识图谱：点开主题，来源和关系都在",
            "知识百科负责读、改、追溯；知识图谱负责把主题之间的关系变成可操作的地图。")
-    pic_card(s, GRAPH, M_L, 1.82, 5.95, 3.18, caption="知识主题图：首层只展示知识主题")
-    pic_card(s, GRAPH_DETAIL, 6.95, 1.82, 3.02, 3.55, caption="主题详情：来源、相关主题、页面链接")
+    pic_card(s, GRAPH_FULL, M_L, 1.82, 5.95, 3.18, caption="知识主题图：从主题进入，看到真实来源与关系")
+    pic_contain(s, GRAPH_DETAIL_REAL, 6.95, 1.82, 3.02, 3.55, caption="主题详情：1 条来源 · 8 个出链 · 19 个反链")
     right = rect(s, 10.18, 1.82, 2.38, 3.55, fill=MINT_L2, line=None, radius=0.06)
     fill_text(right, [
         ("五类来源", 12.5, True, MINT_D),
@@ -380,37 +375,37 @@ def p5():
     ], margins=(0.20, 0.14, 0.18, 0.10), spacing=5)
     left_bottom = rect(s, M_L, 5.72, 5.95, 0.92, fill=WHITE, line=LINE, lw=0.8, radius=0.05)
     text(s, M_L + 0.20, 5.86, 5.55, 0.24, "知识百科", size=12.5, bold=True, color=INK)
-    text(s, M_L + 0.20, 6.14, 5.55, 0.24, "主题页可编辑、有版本、有反链；点开一节能回到原文 chunk。", size=9.6, color=GRAY)
+    text(s, M_L + 0.20, 6.14, 5.55, 0.24, "主题页有来源、版本、出链与反链；点来源回到原文。", size=9.6, color=GRAY)
     right_bottom = rect(s, 6.95, 5.72, 5.61, 0.92, fill=WHITE, line=LINE, lw=0.8, radius=0.05)
     text(s, 7.15, 5.86, 5.20, 0.24, "知识图谱", size=12.5, bold=True, color=INK)
-    text(s, 7.15, 6.14, 5.20, 0.24, "首层只画知识主题；点击节点查看来源、相关题目和相邻关系。", size=9.6, color=GRAY)
+    text(s, 7.15, 6.14, 5.20, 0.24, "首层只画知识主题；详情里展开来源、相关题目和相邻关系。", size=9.6, color=GRAY)
     footer(s, 4)
 
 
 # ================= P6 规划建议 + Agent =================
 def p6():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "04  /  核心能力 · 规划建议", "从真实图谱路径，给出下一步",
-           "不是让模型凭空写计划：先沿真实主题关系形成路径，再解释为什么这样建议。")
-    pic_card(s, PLANNING, M_L, 1.82, 6.78, 4.72, caption="真实界面：左侧知识图谱路径，右侧可调整的阶段建议")
+    header(s, "04  /  核心能力 · 规划建议", "规划建议：把下一步拆成每天能做的动作",
+           "不是让模型凭空写计划：先看资料和题库证据，再按天拆成精读、练习、复习。")
+    pic_card(s, PLANNING, M_L, 1.82, 6.78, 4.72, caption="真实界面：概率论 7 天学习处方，按天拆到精读 / 练习 / 复习")
     x, y, w, h = 7.78, 1.82, 4.75, 4.72
     card = rect(s, x, y, w, h, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
     text(s, x + 0.22, y + 0.18, w - 0.44, 0.24, "建议从哪里来", size=15.5, bold=True, color=INK)
     items = [
-        ("真实关系", "先读取主题节点之间的语义关系与来源关联"),
-        ("事实路径", "把路径节点、边和起点写进 trace"),
-        ("可调整", "建议可保存、查看历史、导出"),
-        ("不强迫", "不排打卡任务，不强制跳转刷题"),
+        ("证据起点", "从资料体检和题库薄弱点出发"),
+        ("按天拆解", "把薄弱章节拆成精读、练习、复习"),
+        ("可回看", "每项都能查看原文、回到练习"),
+        ("不是任务清单", "不强制打卡，只给下一步建议"),
     ]
     yy = y + 0.66
     for t, d in items:
         line(s, x + 0.22, yy + 0.28, x + 0.56, yy + 0.28, color=MINT, width=1.2)
         text(s, x + 0.70, yy, w - 0.92, 0.24, t, size=11.3, bold=True, color=INK)
-        text(s, x + 0.70, yy + 0.24, w - 0.92, 0.26, d, size=9.5, color=GRAY, line_spacing=1.2)
+        text(s, x + 0.70, yy + 0.24, w - 0.92, 0.26, d, size=9.3, color=GRAY, line_spacing=1.2)
         yy += 0.70
     strip = rect(s, x + 0.22, y + 3.66, w - 0.44, 0.64, fill=AMBER_L, line=None, radius=0.06)
     text(s, x + 0.36, y + 3.76, w - 0.70, 0.44,
-         "没有题库证据时，不生成规划建议。", size=9.8, bold=True, color=AMBER)
+         "建议不是任务清单；每条都能回到资料与题目。", size=9.6, bold=True, color=AMBER)
     footer(s, 5)
 
 
@@ -455,51 +450,36 @@ def p7():
 # ================= P8 码道开发 =================
 def p8():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "07  /  怎么用码道做出来", "码道不是补全插件，是一条可核对的开发流水线",
-           "需求进对话，先读后写，改完自测，失败自修，最后按规范提交。")
+    header(s, "07  /  怎么用码道做出来", "码道不是补全插件，是把工程流程带进系统",
+           "不是让它“生成一段代码”，而是让它读仓库、拆任务、跑测试、做 review，再交付到系统。")
     chip(s, W - M_L - 2.20, 0.45, 2.20, 0.34, "华为云 · 码道 CodeArts", MINT_L, MINT_D, 9)
-    steps = [
-        ("①", "需求", "一句话目标\n+ 验收标准"),
-        ("②", "接入", "git status\n分支确认"),
-        ("③", "读码", "grep / read\n先定位再动手"),
-        ("④", "写测", "developer-test-agent\n补测试"),
-        ("⑤", "审查", "diff / 安全审查\nP0-P2 报告"),
-        ("⑥", "修复", "/bugfix\n回归通过再提交"),
-        ("⑦", "提交", "git commit / push\n中文提交信息"),
-        ("⑧", "沉淀", "experience / export\n可复用记忆"),
+    pic_contain(s, CODEARTS_PLAN, M_L, 1.82, 6.70, 2.35,
+                caption="真实工作区：需求被拆成 4 个可验收步骤，当前正在修改 hover 覆盖层")
+    text(s, M_L, 4.48, 6.70, 0.24, "读码定位：KnowledgeWikiPanel.vue / useWikiMapDisplay.ts / style1.css", size=9.8, bold=True, color=MINT_D)
+    text(s, M_L, 4.80, 6.70, 0.24, "验证路径：build:prod + 只读 review（P0/P1/P2）", size=9.8, color=GRAY)
+    text(s, M_L, 5.24, 6.70, 0.28, "结果不是一段代码，而是一块能演示的系统能力。", size=11.2, bold=True, color=INK)
+    x, y, w, h = 7.55, 1.82, 5.00, 4.20
+    card = rect(s, x, y, w, h, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
+    text(s, x + 0.22, y + 0.18, w - 0.44, 0.24, "码道的优点，用在了哪里", size=15.0, bold=True, color=INK)
+    rows = [
+        ("先读后写", "CodeSemanticSearch / grep / read 定位 file:line，不靠猜 API"),
+        ("计划拆解", "todowrite 把复杂改动拆成可验收步骤，避免一次性改崩"),
+        ("子代理安排", "developer-test-agent 补测试；bug-fix-agent 修复；review 只读审查"),
+        ("真实执行", "bash / pytest / build 自己跑验证，失败就修到通过"),
     ]
-    nw = 1.31; gap = 0.16
-    total = 8 * nw + 7 * gap
-    x = M_L + (CW - total) / 2
-    y = 1.94
-    for i, (num, t, d) in enumerate(steps):
-        active = i in (4, 5)
-        card = rect(s, x, y, nw, 1.66, fill=AMBER_L if active else WHITE, line=AMBER if active else LINE, lw=1.0, radius=0.06)
-        text(s, x + 0.10, y + 0.12, 0.32, 0.28, num, size=14, bold=True, color=AMBER if active else MINT)
-        text(s, x + 0.10, y + 0.46, nw - 0.20, 0.28, t, size=13, bold=True, color=INK)
-        text(s, x + 0.10, y + 0.86, nw - 0.20, 0.62, d, size=8.0, color=GRAY, line_spacing=1.25)
-        x += nw + gap
-    sup = rect(s, M_L, 3.88, CW, 0.60, fill=MINT_L2, line=None, radius=0.08)
-    text(s, M_L + 0.28, 4.03, CW - 0.56, 0.26,
-         "支撑能力：规则 AGENTS.md  ·  技能 SKILL.md  ·  经验 experience  ·  沙箱 / 权限  ·  checkpoint / undo",
-         size=11.2, bold=True, color=MINT_D)
-    text(s, M_L, 4.72, CW, 0.28,
-         "真实开发窗口：2026-10-08 → 10-12  ·  11 个项目会话  ·  134 轮需求  ·  3,248 次工具调用  ·  186 个文件改写  ·  50 次 Git 提交",
-         size=10.3, bold=True, color=AMBER)
-    ev = rect(s, M_L, 5.24, CW, 1.28, fill=WHITE, line=LINE, lw=0.8, radius=0.06)
-    text(s, M_L + 0.26, 5.40, 4.0, 0.24, "过程记录可核对", size=11.5, bold=True, color=INK)
-    evidence = [
-        ("会话", "11 个项目会话，可导出原始对话"),
-        ("工具", "629 次读 / 476 次改 / 1,658 次命令"),
-        ("产物", "doc/dev-process/ 日志、决策、diff、提交"),
-    ]
-    x = M_L + 0.26
-    for t, d in evidence:
-        text(s, x, 5.76, 0.50, 0.22, t, size=9.3, bold=True, color=MINT_D)
-        text(s, x + 0.54, 5.75, 3.30, 0.38, d, size=9.2, color=GRAY, line_spacing=1.2)
-        x += 3.68
-    text(s, M_L, 6.72, CW, 0.24, "人负责「对不对」：场景、判断、真机验收；码道负责「快不快」：读码、改写、自测、提交。",
-         size=9.5, color=GRAY2)
+    yy = y + 0.58
+    for t, d in rows:
+        rect(s, x + 0.22, yy, 0.07, 0.50, fill=MINT, line=None, radius=0.2)
+        text(s, x + 0.42, yy, w - 0.62, 0.24, t, size=10.8, bold=True, color=INK)
+        text(s, x + 0.42, yy + 0.24, w - 0.62, 0.34, d, size=8.7, color=GRAY, line_spacing=1.2)
+        yy += 0.84
+    line(s, x + 0.22, y + 3.72, x + w - 0.22, y + 3.72, color=LINE, width=0.5)
+    text(s, x + 0.22, y + 3.82, w - 0.44, 0.24, "输出：Agent Runtime / 知识图谱 / 题库，都能落到真实系统。",
+         size=8.8, color=GRAY2)
+    strip = rect(s, M_L, 6.30, CW, 0.42, fill=MINT_L, line=None, radius=0.08)
+    text(s, M_L + 0.24, 6.37, CW - 0.48, 0.24,
+         "评委不需要看工具次数，只需要看到：码道把复杂改动变成可拆解、可验证、可复用的工程过程。",
+         size=9.8, bold=True, color=MINT_D)
     footer(s, 8)
 
 
