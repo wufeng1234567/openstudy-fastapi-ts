@@ -306,6 +306,7 @@ openstudy-fastapi-ts/
 | [知航活计划实施记录](doc/planning/知航活计划-统一学习闭环-实施记录.md) | 规划建议与学习计划统一闭环 |
 | [部署说明](doc/deploy/SKILL.md) | Docker / Linux / Windows / 公网访问 |
 | [常见问题](doc/deploy/TROUBLESHOOTING.md) | 部署排查 |
+| [视频演示](视频演示/README.md) | 5 分钟演示脚本、录制前检查清单、导入素材与智能体提示词 |
 | [质量证据索引](doc/功能迭代与代码质量/README.md) | 质量文档、死代码、测试与复跑命令 |
 | [质量验收报告](doc/功能迭代与代码质量/quality-report.md) | 可复核的 pytest/ruff/lint/build 结果与债务边界 |
 | [技术实现质量 P0–P2 方案](doc/功能迭代与代码质量/OpenStudy-技术实现质量20%-P0-P2执行方案.md) | 比赛 20% 评分对应的整改路线与完整工程结构 |
