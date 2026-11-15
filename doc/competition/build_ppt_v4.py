@@ -28,6 +28,7 @@ WORD = os.path.join(HERE, "word-source-math-v2-core-2026-11-15.png")
 GRAPH_FULL = os.path.join(HERE, "user-graph-hover-2026-11-15.png")
 GRAPH_TYPES = os.path.join(HERE, "user-graph-all-labels-2026-11-15.png")
 CHAT_HOME = os.path.join(HERE, "chat-home-2026-11-15.png")
+EXAM_MATERIALS = os.path.join(HERE, "exam-week-materials-2026-11-15.png")
 GRAPH_DETAIL_REAL = os.path.join(HERE, "graph-detail-real-2026-11-15.png")
 CODEARTS_PLAN = os.path.join(HERE, "codearts-plan-clean-2026-11-15.png")
 CODEARTS_FILELINE = os.path.join(HERE, "codearts-fileline-2026-11-15.png")
@@ -260,29 +261,26 @@ def p1():
 # ================= P2 用户与问题 =================
 def p2():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "01  /  考试周的真实场景", "高数错题存成 Word，考试周却“无题可刷”",
-           "学生把错题、公式和区域图整理进 Word，想复习时只有一份文档：不能刷、公式不能算、知识点也找不到。")
-    pic_card(s, WORD, M_L, 1.86, 4.20, 3.10, caption="考试周错题整理：高等数学·错题本（Word）")
-    x = 5.35
-    text(s, x, 1.88, 7.00, 0.24, "一个复习晚上，四个断点", size=9.5, bold=True, color=MINT_D, spc=60)
-    text(s, x, 2.18, 7.00, 0.28, "错题都在文档里，复习时却用不上。", size=15.5, bold=True, color=INK)
-    chain = [
-        ("01", "错题只在 Word 里", "题目、答案、截图散在文档里"),
-        ("02", "公式不能直接算", "公式只是文字或截图，复习时不能交互"),
-        ("03", "图题对不上", "区域图在原文，题干旁边没有"),
-        ("04", "无题可刷", "只能看，不能练，也不知道考哪个知识点"),
+    header(s, "01  /  考试周的真实场景", "考试周，资料存了一堆，却凑不出一套能刷的题",
+           "手头有笔记、课件截图、概念清单和聊天记录里的答案；想复习时，能翻的很多，能练的很少。")
+    pic_card(s, EXAM_MATERIALS, M_L, 1.86, 4.30, 3.20, caption="考试周资料：笔记、截图、公式、图表散在不同文档里")
+    x = 5.42
+    text(s, x, 1.88, 6.95, 0.24, "手头有资料，复习却没有练习", size=9.5, bold=True, color=MINT_D, spc=60)
+    text(s, x, 2.18, 6.95, 0.28, "资料很多，题很少。", size=16.0, bold=True, color=INK)
+    cards = [
+        ("01", "手头是资料", "笔记、课件截图、概念清单、聊天答案散在不同地方。"),
+        ("02", "题目要自己拼", "从聊天网站拿答案，只能截图或复制，再手动整理成题。"),
+        ("03", "学完串不起来", "每道题是孤立的，换一道就不会，也没法按知识点复习。"),
     ]
-    yy = 2.78
-    for i, (n, t, d) in enumerate(chain):
-        card = rect(s, x, yy, 7.00, 0.62, fill=AMBER_L if i == 3 else WHITE, line=AMBER if i == 3 else LINE, lw=0.75, radius=0.05)
-        text(s, x + 0.16, yy + 0.10, 0.38, 0.24, n, size=9, bold=True, color=AMBER if i == 3 else MINT_D)
-        text(s, x + 0.58, yy + 0.08, 2.45, 0.24, t, size=11.6, bold=True, color=AMBER if i == 3 else INK)
-        text(s, x + 3.05, yy + 0.10, 3.68, 0.30, d, size=9.2, color=AMBER if i == 3 else GRAY)
-        if i < 3:
-            text(s, x + 3.28, yy + 0.58, 0.30, 0.16, "↓", size=11, bold=True, color=MINT)
-        yy += 0.76
-    strip = rect(s, M_L, 5.24, 4.20, 0.38, fill=AMBER_L, line=None, radius=0.06)
-    text(s, M_L + 0.14, 5.33, 3.90, 0.20, "想复习，却连一道能刷的题都没有。", size=9.2, bold=True, color=AMBER)
+    yy = 2.82
+    for n, t, d in cards:
+        card = rect(s, x, yy, 6.95, 0.88, fill=WHITE, line=LINE, lw=0.75, radius=0.05)
+        text(s, x + 0.16, yy + 0.14, 0.38, 0.24, n, size=9, bold=True, color=MINT_D)
+        text(s, x + 0.62, yy + 0.10, 2.65, 0.24, t, size=11.8, bold=True, color=INK)
+        text(s, x + 0.62, yy + 0.38, 5.95, 0.32, d, size=9.2, color=GRAY, line_spacing=1.2)
+        yy += 0.98
+    strip = rect(s, x, 5.82, 6.95, 0.56, fill=MINT_L, line=None, radius=0.06)
+    text(s, x + 0.20, 5.93, 6.55, 0.30, "资料在，能反复练的题不在。", size=12.0, bold=True, color=MINT_D)
     footer(s, 2)
 
 
