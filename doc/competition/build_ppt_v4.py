@@ -241,17 +241,18 @@ def p1():
     rect(s, 10.6, -2.0, 5.2, 5.2, fill=None, line=RGBColor(0xE3, 0xF4, 0xEC), lw=1.0, radius=0.5)
     rect(s, 11.9, 3.15, 3.6, 3.6, fill=None, line=RGBColor(0xEF, 0xF9, 0xF4), lw=1.0, radius=0.5)
     text(s, M_L, 0.66, 6.2, 0.24, "OPENSTUDY  ·  0.8.0  ·  知识资产系统", size=10, bold=True, color=MINT_D, spc=160)
-    text(s, M_L, 1.02, 6.10, 1.55, "知识不是一堆文件，\n是一张能继续用的地图", size=31, bold=True, color=INK, line_spacing=1.08)
-    line(s, M_L, 3.00, M_L + 1.15, 3.00, color=MINT, width=2.5)
-    text(s, M_L, 3.20, 5.95, 0.88,
-         "主题有类型，节点有来源；\n点开一个主题，关系、题目和原文都还在。",
+    text(s, M_L, 1.02, 6.10, 1.90, "告别“赛博仓鼠”\n把吃灰的资料\n变成随时能用的知识资产", size=30, bold=True, color=INK, line_spacing=1.08)
+    line(s, M_L, 3.16, M_L + 1.15, 3.16, color=MINT, width=2.5)
+    text(s, M_L, 3.36, 5.95, 0.88,
+         "能查、能练、能追到原文——\n不是再建一个收藏夹。",
          size=14, color=GRAY, line_spacing=1.45)
-    text(s, M_L, 4.38, 6.0, 0.42, "一张图，从主题追到来源和下一步。", size=23, bold=True, color=INK)
-    text(s, M_L, 4.90, 6.1, 0.32, "概念/实体 · 方法/公式 · 综合/概览 · 对比", size=13, color=GRAY2)
+    chip(s, M_L, 4.38, 1.55, 0.36, "收进来", MINT_L, MINT_D, 9.5)
+    chip(s, M_L + 1.75, 4.38, 1.55, 0.36, "连起来", MINT_L, MINT_D, 9.5)
+    chip(s, M_L + 3.50, 4.38, 1.55, 0.36, "用起来", MINT_L, MINT_D, 9.5)
     line(s, M_L, 5.52, 6.3, 5.52, color=LINE, width=0.5)
     text(s, M_L, 5.68, 6.2, 0.24, "华为云码道 CodeArts 开发  ·  GitCode 开源  ·  FastAPI + Vue 3", size=9.5, color=GRAY2)
     text(s, M_L, 6.18, 6.2, 0.24, "gitcode.com/qi142410131/openstudy-fastapi-ts", size=9, color=MINT_D)
-    pic_contain(s, GRAPH_TYPES, 7.00, 1.02, 5.70, 3.95, caption="当前演示图谱：主题节点按类型着色，关系可追踪")
+    pic_contain(s, GRAPH_TYPES, 7.00, 1.02, 5.70, 3.95, caption="当前演示图谱：26 个主题各有类型、来源和原文")
     chip(s, 7.00, 5.24, 1.65, 0.34, "主题有类型", MINT_L, MINT_D, 9)
     chip(s, 8.82, 5.24, 1.80, 0.34, "节点有来源", MINT_L, MINT_D, 9)
     chip(s, 10.80, 5.24, 1.55, 0.34, "关系可追踪", MINT_L, MINT_D, 9)
