@@ -246,19 +246,22 @@ def p1():
     s = prs.slides.add_slide(BLANK); bg(s)
     rect(s, 10.6, -2.0, 5.2, 5.2, fill=None, line=RGBColor(0xE3, 0xF4, 0xEC), lw=1.0, radius=0.5)
     rect(s, 11.9, 3.15, 3.6, 3.6, fill=None, line=RGBColor(0xEF, 0xF9, 0xF4), lw=1.0, radius=0.5)
-    text(s, M_L, 0.66, 6.2, 0.24, "OPENSTUDY  ·  0.8.0  ·  知识资产系统", size=10, bold=True, color=MINT_D, spc=160)
+    text(s, M_L, 0.66, 6.2, 0.24, "OPENSTUDY  ·  0.8.0  ·  AI+ 智能体知识资产系统", size=10, bold=True, color=MINT_D, spc=160)
     text(s, M_L, 1.02, 6.10, 1.90, "告别“赛博仓鼠”\n把吃灰的资料\n变成随时能用的知识资产", size=30, bold=True, color=INK, line_spacing=1.08)
     line(s, M_L, 3.16, M_L + 1.15, 3.16, color=MINT, width=2.5)
     text(s, M_L, 3.36, 5.95, 0.88,
-         "能查、能练、能追到原文——\n不是再建一个收藏夹。",
+         "能查、能练、能追到原文——\n一个会调用工具的 Agent。",
          size=14, color=GRAY, line_spacing=1.45)
     chip(s, M_L, 4.38, 1.55, 0.36, "收进来", MINT_L, MINT_D, 9.5)
     chip(s, M_L + 1.75, 4.38, 1.55, 0.36, "连起来", MINT_L, MINT_D, 9.5)
     chip(s, M_L + 3.50, 4.38, 1.55, 0.36, "用起来", MINT_L, MINT_D, 9.5)
+    agent = rect(s, M_L, 4.88, 5.05, 0.42, fill=MINT_L2, line=None, radius=0.06)
+    text(s, M_L + 0.16, 4.98, 4.80, 0.24, "Agent：读资料 · 建题库 · 连图谱 · 排计划", size=10.4, bold=True, color=MINT_D)
     line(s, M_L, 5.52, 6.3, 5.52, color=LINE, width=0.5)
     text(s, M_L, 5.68, 6.2, 0.24, "团队：码上有为  ·  华为云码道 CodeArts 开发  ·  GitCode 开源", size=10.2, bold=True, color=MINT_D)
     text(s, M_L, 6.18, 6.2, 0.24, "FastAPI + Vue 3  ·  gitcode.com/qi142410131/openstudy-fastapi-ts", size=8.8, color=GRAY2)
-    pic_contain(s, CHAT_HOME, 7.00, 1.02, 5.70, 3.95, caption="进入 OpenStudy：把资料交给它，也可以直接问一个问题")
+    pic_contain(s, CHAT_HOME, 7.00, 1.02, 5.70, 3.95,
+                caption="Agent 入口：把资料交给它，也可以在对话里调用题库、图谱和计划")
     footer(s, 1)
 
 
