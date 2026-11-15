@@ -27,6 +27,7 @@ BRUSH = os.path.join(HERE, "brush-math-question-core-2026-11-15.png")
 WORD = os.path.join(HERE, "word-source-math-v2-core-2026-11-15.png")
 GRAPH_FULL = os.path.join(HERE, "user-graph-hover-2026-11-15.png")
 GRAPH_TYPES = os.path.join(HERE, "user-graph-all-labels-2026-11-15.png")
+CHAT_HOME = os.path.join(HERE, "chat-home-2026-11-15.png")
 GRAPH_DETAIL_REAL = os.path.join(HERE, "graph-detail-real-2026-11-15.png")
 CODEARTS_PLAN = os.path.join(HERE, "codearts-plan-clean-2026-11-15.png")
 CODEARTS_FILELINE = os.path.join(HERE, "codearts-fileline-2026-11-15.png")
@@ -252,7 +253,7 @@ def p1():
     line(s, M_L, 5.52, 6.3, 5.52, color=LINE, width=0.5)
     text(s, M_L, 5.68, 6.2, 0.24, "华为云码道 CodeArts 开发  ·  GitCode 开源  ·  FastAPI + Vue 3", size=9.5, color=GRAY2)
     text(s, M_L, 6.18, 6.2, 0.24, "gitcode.com/qi142410131/openstudy-fastapi-ts", size=9, color=MINT_D)
-    pic_contain(s, GRAPH_TYPES, 7.00, 1.02, 5.70, 3.95, caption="当前演示图谱：26 个主题各有类型、来源和原文")
+    pic_contain(s, CHAT_HOME, 7.00, 1.02, 5.70, 3.95, caption="进入 OpenStudy：把资料交给它，也可以直接问一个问题")
     footer(s, 1)
 
 
