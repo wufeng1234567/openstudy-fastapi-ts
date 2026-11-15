@@ -253,9 +253,6 @@ def p1():
     text(s, M_L, 5.68, 6.2, 0.24, "华为云码道 CodeArts 开发  ·  GitCode 开源  ·  FastAPI + Vue 3", size=9.5, color=GRAY2)
     text(s, M_L, 6.18, 6.2, 0.24, "gitcode.com/qi142410131/openstudy-fastapi-ts", size=9, color=MINT_D)
     pic_contain(s, GRAPH_TYPES, 7.00, 1.02, 5.70, 3.95, caption="当前演示图谱：26 个主题各有类型、来源和原文")
-    chip(s, 7.00, 5.24, 1.65, 0.34, "主题有类型", MINT_L, MINT_D, 9)
-    chip(s, 8.82, 5.24, 1.80, 0.34, "节点有来源", MINT_L, MINT_D, 9)
-    chip(s, 10.80, 5.24, 1.55, 0.34, "关系可追踪", MINT_L, MINT_D, 9)
     footer(s, 1)
 
 
