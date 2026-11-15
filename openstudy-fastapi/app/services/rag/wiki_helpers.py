@@ -19,8 +19,9 @@ _ENTITY_PAGE_TYPES = {
     "作品": "entity",
     "其他": "entity",
     "概念": "concept",
-    "定理/公式": "concept",
-    "方法": "concept",
+    # 方法与公式单独成组，避免所有主题页都落成橙色 concept。
+    "定理/公式": "method",
+    "方法": "method",
     "术语": "concept",
     "变量/符号": "concept",
 }

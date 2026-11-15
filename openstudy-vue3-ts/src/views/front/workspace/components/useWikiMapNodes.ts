@@ -1,5 +1,5 @@
 import { computed } from 'vue'
-import { normalizeEntityKind, normalizePageType, entityTypeMeta } from '../utils/knowledgeGraphMeta'
+import { normalizeEntityKind, entityTypeMeta, pageTypeMeta, inferPageType } from '../utils/knowledgeGraphMeta'
 
 /**
  * 知识图谱节点布局：把实体分组、过滤、排布成可渲染的节点数组。
@@ -50,7 +50,7 @@ export function useWikiMapNodes(options: {
         })
         .filter((node: any) => {
           if (!pageTypes.length || normalizeEntityKind(node.kind) !== 'topic') return true
-          return pageTypes.includes(normalizePageType(node.pageType))
+          return pageTypes.includes(inferPageType(node.pageType, node.title, node.degree))
         })
         .filter((node: any) => {
           if (!learningLevels.length || normalizeEntityKind(node.kind) !== 'topic') return true
@@ -239,14 +239,16 @@ export function useWikiMapNodes(options: {
         const simulatedY = Number(simulated?.y)
         const resolvedX = Number.isFinite(offsetX) ? offsetX : Number.isFinite(simulatedX) ? simulatedX : x
         const resolvedY = Number.isFinite(offsetY) ? offsetY : Number.isFinite(simulatedY) ? simulatedY : y
+        const pageType = inferPageType(node.pageType, node.title, degree)
         result.push({
           ...node,
           kind,
-          pageType: normalizePageType(node.pageType),
+          pageType,
           x: resolvedX,
           y: resolvedY,
           r: Math.max(kind === 'topic' ? 5 : 9, Math.min(kind === 'topic' ? 14 : 16, 4 + Math.sqrt(Math.max(0, degree)) * 1.35)) * Math.min(1.35, layoutScale),
-          color: entityTypeMeta(kind).color
+          // 主题节点按主题页类型着色（概念/实体 · 综合/概览 · 对比），来源节点仍按实体集着色。
+          color: kind === 'topic' ? pageTypeMeta(pageType).color : entityTypeMeta(kind).color
         })
       }
     })

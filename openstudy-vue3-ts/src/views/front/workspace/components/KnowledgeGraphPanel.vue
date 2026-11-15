@@ -44,6 +44,13 @@
         </button>
       </div>
     </div>
+    <div class="kg-panel__legend">
+      <div class="kg-panel__legend-title">主题页类型</div>
+      <div v-for="item in pageTypeLegend" :key="item.type" class="kg-panel__legend-row">
+        <i :style="{ background: item.color }"></i>
+        <span>{{ item.label }}</span>
+      </div>
+    </div>
   </aside>
   <button v-else type="button" class="kg-panel-open" title="打开图谱操作面板" @click="emit('update:collapsed', false)">
     ☰
@@ -52,6 +59,9 @@
 
 <script setup lang="ts">
 import OsIcon from '@/components/OsIcon/index.vue'
+import { PAGE_TYPE_META } from '../utils/knowledgeGraphMeta'
+
+const pageTypeLegend = PAGE_TYPE_META
 
 withDefaults(
   defineProps<{
@@ -152,6 +162,31 @@ const emit = defineEmits<{
   border-top: 1px solid #edf0f5;
   color: #6b7280;
   font-size: 10px;
+}
+.kg-panel__legend {
+  margin-top: 5px;
+  padding-top: 6px;
+  border-top: 1px solid #edf0f5;
+}
+.kg-panel__legend-title {
+  margin-bottom: 4px;
+  color: #8a94a6;
+  font-size: 9px;
+  font-weight: 700;
+}
+.kg-panel__legend-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  color: #66758b;
+  font-size: 9.5px;
+}
+.kg-panel__legend-row i {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
 }
 .kg-panel__switch {
   position: relative;

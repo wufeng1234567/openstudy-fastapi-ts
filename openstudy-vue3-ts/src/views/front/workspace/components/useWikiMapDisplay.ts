@@ -1,5 +1,5 @@
 import { computed } from 'vue'
-import { normalizeEntityKind, entityTypeMeta } from '../utils/knowledgeGraphMeta'
+import { normalizeEntityKind, entityTypeMeta, pageTypeMeta, inferPageType } from '../utils/knowledgeGraphMeta'
 
 /**
  * 知识图谱节点/边的展示判定与标签格式化。
@@ -30,7 +30,10 @@ export function useWikiMapDisplay(options: {
 
   function entitySetLabel(node: any) {
     const type = normalizeEntityKind(node?.kind || node?.sourceType)
-    const typeLabel = entityTypeMeta(type).label
+    // 主题节点展示“概念/实体 · 综合/概览 · 对比”，来源节点仍展示实体集名称。
+    const typeLabel = type === 'topic'
+      ? pageTypeMeta(inferPageType(node?.pageType, node?.title, node?.degree)).label
+      : entityTypeMeta(type).label
     const name = String(node?.title || node?.sourceName || '').trim()
     return name ? `${typeLabel}：${name}` : typeLabel
   }

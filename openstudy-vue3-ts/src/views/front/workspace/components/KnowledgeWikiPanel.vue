@@ -4,12 +4,12 @@
       <div v-if="view === 'map' && graphSearchSuggestions.length" class="kw-graph-search-dropdown">
         <button v-for="item in graphSearchSuggestions" :key="item.pageId" type="button"
           class="kw-graph-search-item" @click="selectSearchSuggestion(item)">
-          <span class="kw-graph-search-item__dot" :style="{ background: entityTypeMeta(item.kind || item.pageType).color }"></span>
+          <span class="kw-graph-search-item__dot" :style="{ background: mapNodeAccent(item).color }"></span>
           <span class="kw-graph-search-item__main">
             <b>{{ item.title }}</b>
             <em>{{ item.summary || '打开主题页查看内容' }}</em>
           </span>
-          <span class="kw-graph-search-item__type">{{ entityTypeMeta(item.kind || item.pageType).label }}</span>
+          <span class="kw-graph-search-item__type">{{ mapNodeAccent(item).label }}</span>
         </button>
       </div>
     </Teleport>
@@ -125,7 +125,7 @@
               @mouseenter="onMapNodeEnter(node)" @mouseleave="onMapNodeLeave(node)"
               @pointerdown.stop="onMapNodeDown($event, node)" @pointerup.stop="onMapNodeUp"
               @click.stop="onMapNodeClick(node)">
-              <title>{{ node.title }}{{ node.learning ? ` · ${node.learning.label}` : '' }}</title>
+              <title>{{ mapNodeAccent(node).label }} · {{ node.title }}{{ node.learning ? ` · ${node.learning.label}` : '' }}</title>
               <!-- 透明命中圈：覆盖圆点、光环和文字之间的空隙，避免鼠标擦边反复 enter/leave。 -->
               <circle class="kw-map-node__hit" :r="node.r + 16" />
               <circle class="kw-map-node__halo" :r="node.r + 8" />
@@ -475,7 +475,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
-import { ENTITY_TYPE_META, entityTypeMeta, normalizeEntityKind, pageTypeLabel, pageTypeMeta } from '../utils/knowledgeGraphMeta'
+import { ENTITY_TYPE_META, entityTypeMeta, inferPageType, normalizeEntityKind, pageTypeLabel, pageTypeMeta } from '../utils/knowledgeGraphMeta'
 import { useWikiPanelFilters } from './useWikiPanelFilters'
 import { useWikiPanelFormatters } from './useWikiPanelFormatters'
 import { useWikiMapViewCache } from './wikiMapViewCache'
@@ -550,6 +550,14 @@ const emit = defineEmits<{
 const mapTypeVisible = reactive<Record<string, boolean>>(
   Object.fromEntries(ENTITY_TYPE_META.map((item) => [item.type, true]))
 )
+
+/** 主题节点按主题页类型着色，来源节点按实体集着色。 */
+function mapNodeAccent(node: any) {
+  const kind = normalizeEntityKind(node?.kind || node?.pageType)
+  return kind === 'topic'
+    ? pageTypeMeta(inferPageType(node?.pageType, node?.title, node?.degree))
+    : entityTypeMeta(kind)
+}
 
 const loading = ref(false)
 const building = ref(false)

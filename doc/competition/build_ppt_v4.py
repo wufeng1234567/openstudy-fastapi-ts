@@ -23,9 +23,9 @@ GRAPH_DETAIL = os.path.join(SHOTS, "readme-knowledge-graph-detail-2026-11-14.png
 DIAGNOSIS = os.path.join(HERE, "diagnosis-health-2026-11-15.png")
 PLANNING = os.path.join(SHOTS, "28-study-prescription.png")
 AGENT = os.path.join(SHOTS, "01-agent-chat.png")
-BRUSH = os.path.join(HERE, "brush-math-question-2026-11-14.png")
-WORD = os.path.join(HERE, "码道架构图", "word-source-math-v2-1.png")
-GRAPH_FULL = os.path.join(SHOTS, "81-wiki-graph.png")
+BRUSH = os.path.join(HERE, "brush-math-question-core-2026-11-15.png")
+WORD = os.path.join(HERE, "word-source-math-v2-core-2026-11-15.png")
+GRAPH_FULL = os.path.join(HERE, "demo-graph-hover-2026-11-15.png")
 GRAPH_DETAIL_REAL = os.path.join(HERE, "graph-detail-real-2026-11-15.png")
 CODEARTS_PLAN = os.path.join(HERE, "codearts-plan-clean-2026-11-15.png")
 CODEARTS_FILELINE = os.path.join(HERE, "codearts-fileline-2026-11-15.png")
@@ -250,12 +250,12 @@ def p1():
     line(s, M_L, 5.52, 6.3, 5.52, color=LINE, width=0.5)
     text(s, M_L, 5.68, 6.2, 0.24, "华为云码道 CodeArts 开发  ·  GitCode 开源  ·  FastAPI + Vue 3", size=9.5, color=GRAY2)
     text(s, M_L, 6.18, 6.2, 0.24, "gitcode.com/qi142410131/openstudy-fastapi-ts", size=9, color=MINT_D)
-    pic_contain(s, WORD, 7.00, 1.02, 2.25, 3.55, caption="原始 Word：公式 + 区域图")
-    text(s, 9.35, 2.38, 0.26, 0.30, "→", size=20, bold=True, color=MINT)
-    pic_card(s, BRUSH, 9.62, 1.08, 3.18, 3.24, caption="刷题页：公式、图、知识点、题源")
-    chip(s, 7.00, 5.02, 1.55, 0.34, "公式保留", MINT_L, MINT_D, 9)
-    chip(s, 8.62, 5.02, 1.55, 0.34, "图片保留", MINT_L, MINT_D, 9)
-    chip(s, 10.24, 5.02, 1.95, 0.34, "知识点可追", MINT_L, MINT_D, 9)
+    pic_card(s, WORD, 7.00, 1.15, 2.45, 2.20, caption="原始 Word：公式 + 区域图")
+    text(s, 9.55, 2.02, 0.28, 0.30, "→", size=20, bold=True, color=MINT)
+    pic_card(s, BRUSH, 9.85, 0.95, 3.40, 4.15, caption="刷题页：公式、图、知识点、题源")
+    chip(s, 7.00, 5.45, 1.55, 0.34, "公式保留", MINT_L, MINT_D, 9)
+    chip(s, 8.62, 5.45, 1.55, 0.34, "图片保留", MINT_L, MINT_D, 9)
+    chip(s, 10.24, 5.45, 1.95, 0.34, "知识点可追", MINT_L, MINT_D, 9)
     footer(s, 1)
 
 
@@ -264,10 +264,10 @@ def p2():
     s = prs.slides.add_slide(BLANK); bg(s)
     header(s, "01  /  用户与问题", "不是资料不够，是资料回不到题上",
            "以一个理工科备考者为样本：一份带公式和插图的资料，看起来完整，却很难直接变成练习。")
-    pic_contain(s, WORD, M_L, 1.82, 4.05, 4.40, caption="原始资料：Word 里的公式、区域图与章节")
-    x = 5.20
-    text(s, x, 1.90, 7.2, 0.24, "一个典型场景", size=9.5, bold=True, color=MINT_D, spc=60)
-    text(s, x, 2.22, 7.2, 0.64, "理工科备考者：\n资料看起来完整，题却做不起来", size=20, bold=True, color=INK, line_spacing=1.12)
+    pic_card(s, WORD, M_L, 1.90, 4.50, 3.20, caption="原始资料：Word 里的公式、区域图与章节")
+    x = 5.45
+    text(s, x, 1.90, 6.95, 0.24, "一个典型场景", size=9.5, bold=True, color=MINT_D, spc=60)
+    text(s, x, 2.22, 6.95, 0.64, "理工科备考者：\n资料看起来完整，题却做不起来", size=20, bold=True, color=INK, line_spacing=1.12)
     failures = [
         ("01", "公式进题库变乱码", "Word 里的二重积分公式，导入后失去结构，题目无法直接刷。"),
         ("02", "图片和题目分家", "区域图还在原文里，刷题页看不到，题目就少了一半信息。"),
@@ -275,12 +275,12 @@ def p2():
     ]
     yy = 3.06
     for n, t, d in failures:
-        card = rect(s, x, yy, 7.15, 0.74, fill=WHITE, line=LINE, lw=0.75, radius=0.05)
+        card = rect(s, x, yy, 6.95, 0.74, fill=WHITE, line=LINE, lw=0.75, radius=0.05)
         fill_text(card, [(f"{n}  {t}", 12.0, True, INK), (d, 9.5, False, GRAY)],
                   margins=(0.20, 0.14, 0.08, 0.06), spacing=2)
         yy += 0.86
-    quote = rect(s, x, 5.72, 7.15, 0.58, fill=AMBER_L, line=None, radius=0.06)
-    text(s, x + 0.20, 5.82, 6.80, 0.34, "资料存着，学习动作没有发生。", size=13, bold=True, color=AMBER)
+    quote = rect(s, x, 5.72, 6.95, 0.58, fill=AMBER_L, line=None, radius=0.06)
+    text(s, x + 0.20, 5.82, 6.60, 0.34, "资料存着，学习动作没有发生。", size=13, bold=True, color=AMBER)
     footer(s, 2)
 
 
@@ -359,9 +359,9 @@ def p4():
 # ================= P5 知识百科 + 图谱 =================
 def p5():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "03  /  核心能力 · 知识百科与知识图谱", "知识百科 × 知识图谱：点开主题，来源和关系都在",
-           "知识百科负责读、改、追溯；知识图谱负责把主题之间的关系变成可操作的地图。")
-    pic_card(s, GRAPH_FULL, M_L, 1.82, 5.95, 3.18, caption="知识主题图：从主题进入，看到真实来源与关系")
+    header(s, "03  /  核心能力 · 知识百科与知识图谱", "知识百科 × 知识图谱：节点有类型，来源有落点",
+           "主题页按概念/方法/综合分色；点开节点，来源、相关题目和原文都能继续追。")
+    pic_card(s, GRAPH_FULL, M_L, 1.82, 5.95, 3.18, caption="当前图谱：概念/实体 · 方法/公式 · 综合/概览按颜色区分")
     pic_contain(s, GRAPH_DETAIL_REAL, 6.95, 1.82, 3.02, 3.55, caption="主题详情：1 条来源 · 8 个出链 · 19 个反链")
     right = rect(s, 10.18, 1.82, 2.38, 3.55, fill=MINT_L2, line=None, radius=0.06)
     fill_text(right, [
