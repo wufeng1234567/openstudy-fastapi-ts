@@ -31,6 +31,7 @@ CHAT_HOME = os.path.join(HERE, "chat-home-2026-11-15.png")
 EXAM_MATERIALS = os.path.join(HERE, "exam-week-materials-dense-2026-11-15.png")
 P3_QUESTION = os.path.join(HERE, "question-knowledge-core-2026-11-15.png")
 PLANNING_GRAPH = os.path.join(HERE, "planning-graph-2026-11-15.png")
+ENCYCLOPEDIA = os.path.join(HERE, "knowledge-encyclopedia-pian-daoshu-2026-11-15.png")
 GRAPH_DETAIL_REAL = os.path.join(HERE, "graph-detail-real-2026-11-15.png")
 CODEARTS_PLAN = os.path.join(HERE, "codearts-plan-clean-2026-11-15.png")
 CODEARTS_FILELINE = os.path.join(HERE, "codearts-fileline-2026-11-15.png")
@@ -178,6 +179,7 @@ def header(slide, kicker, title, lede=None):
 def footer(slide, idx):
     line(slide, M_L, 7.02, W - M_L, 7.02, color=LINE, width=0.5)
     text(slide, M_L, 7.10, 7.5, 0.18, "OpenStudy · 把信息来源，整理成可用的知识资产", size=8, color=GRAY2)
+    text(slide, W - M_L - 3.95, 7.10, 2.25, 0.18, "Agent · 理解 → 工具 → 回执", size=7.2, color=GRAY2, align=PP_ALIGN.RIGHT)
     text(slide, W - M_L - 1.3, 7.10, 1.3, 0.18, f"{idx:02d} / 10", size=8, color=GRAY2, align=PP_ALIGN.RIGHT)
 
 
@@ -367,64 +369,66 @@ def p4():
 # ================= P5 知识百科 + 图谱 =================
 def p5():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "03  /  连起来 · 知识图谱串联你的每个知识点", "知识点不是孤岛，点一下就能连起来",
-           "知识图谱把主题之间的关系摊开，也保留来源和原文入口。")
-    pic_card(s, GRAPH_FULL, M_L, 1.82, 6.05, 3.25, caption="选中「偏导数」：相邻主题、来源和原文入口在同一屏")
-    x, y, w, h = 7.05, 1.82, 5.45, 3.25
+    header(s, "03  /  连起来 · 知识图谱自动抽取节点", "资料进来，Agent 先长出一张知识图谱",
+           "自动抽取知识节点、关系和来源；图谱是题库的上游，也是知识百科的骨架。")
+    pic_card(s, GRAPH_FULL, M_L, 1.82, 6.00, 3.35, caption="选中「偏导数」：节点、相邻关系和来源入口在同一屏")
+    x, y, w, h = 7.02, 1.82, 5.48, 4.30
     card = rect(s, x, y, w, h, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
-    text(s, x + 0.22, y + 0.18, w - 0.44, 0.34, "偏导数", size=19, bold=True, color=INK)
-    text(s, x + 0.22, y + 0.62, w - 0.44, 0.24, "和 4 个相邻主题直接相连", size=10.0, bold=True, color=MINT_D)
+    text(s, x + 0.22, y + 0.18, w - 0.44, 0.28, "知识图谱做了什么？", size=14.8, bold=True, color=INK)
     rows = [
-        ("来源", "微积分知识地图 · 1 段原文"),
-        ("相邻主题", "导数 / 全微分 / 极限 / 方向导数"),
-        ("继续追", "点开主题，查看相关题目和原文"),
+        ("自动抽取", "从 Word / PDF / 网页 / 图片里识别概念、方法、实体"),
+        ("关系连线", "前置 / 相关 / 对比 / 包含，自动建立主题关系"),
+        ("类型分层", "概念·实体 / 方法·公式 / 综合·概览 / 对比"),
+        ("来源回查", "每个节点保留 source chunk，能回到原文"),
+        ("承接题库", "题目的知识点落到同一张图，后续可继续追题"),
     ]
-    yy = y + 1.10
+    yy = y + 0.66
     for t, d in rows:
-        text(s, x + 0.22, yy, 1.02, 0.22, t, size=9.8, bold=True, color=MINT_D)
-        text(s, x + 1.30, yy, w - 1.52, 0.26, d, size=9.5, color=GRAY)
-        yy += 0.48
-    text(s, x + 0.22, y + 2.64, w - 0.44, 0.48, "知识图谱的作用：把知识点之间的关系摊开，下一步不用靠猜。", size=9.2, color=GRAY2, line_spacing=1.2)
-    strip = rect(s, M_L, 5.42, CW, 0.68, fill=MINT_L, line=None, radius=0.06)
-    text(s, M_L + 0.24, 5.56, CW - 0.48, 0.24,
-         "知识图谱不只是一张图：它把主题、关系和原文入口放在同一屏。", size=11.2, bold=True, color=MINT_D)
-    text(s, M_L, 6.34, CW, 0.22, "从任意知识点出发，都能顺着关系走到相关主题和原文。", size=9.4, color=GRAY)
+        rect(s, x + 0.22, yy, 0.07, 0.48, fill=MINT, line=None, radius=0.2)
+        text(s, x + 0.42, yy, 1.05, 0.22, t, size=10.2, bold=True, color=INK)
+        text(s, x + 1.52, yy, w - 1.70, 0.44, d, size=9.8, color=GRAY, line_spacing=1.2)
+        yy += 0.66
+    text(s, x + 0.22, y + 4.02, w - 0.44, 0.22, "下一步：每个节点交给 LLM 整理成知识百科。", size=9.5, bold=True, color=MINT_D)
+    strip = rect(s, M_L, 6.20, CW, 0.38, fill=MINT_L, line=None, radius=0.06)
+    text(s, M_L + 0.24, 6.28, CW - 0.48, 0.22,
+         "题库解决“能刷”，知识图谱解决“为什么错、和谁相关、原文在哪”。", size=10.4, bold=True, color=MINT_D)
     footer(s, 4)
 
 
 # ================= P6 规划建议 + Agent =================
 def p6():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "04  /  用起来 · 规划建议", "接下来 7 天，每天先做什么？",
-           "左侧是知识图谱，右侧是系统生成的 7 天规划：3 个阶段、7 个节点、每天 30 分钟。")
-    pic_contain(s, PLANNING_GRAPH, M_L, 1.82, 7.15, 4.55,
-                caption="真实界面：左侧知识图谱 + 右侧 7 天规划；建议沿图谱关系生成")
-    x, y, w, h = 8.15, 1.82, 4.38, 4.55
+    header(s, "04  /  知识百科 · LLM 扩写", "每个知识节点，都有一页能用的知识百科",
+           "图谱只给关系；LLM 自动整理定义、要点、例子、相关题和来源，生成用户能读能问的知识页。")
+    pic_card(s, ENCYCLOPEDIA, M_L, 1.82, 7.25, 4.55,
+             caption="真实界面：左侧知识图谱 + 右侧「偏导数」知识详情；来源和相关主题都在同一页")
+    x, y, w, h = 8.25, 1.82, 4.28, 4.55
     card = rect(s, x, y, w, h, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
-    text(s, x + 0.22, y + 0.18, w - 0.44, 0.26, "规划从哪里来？", size=15, bold=True, color=INK)
+    text(s, x + 0.22, y + 0.18, w - 0.44, 0.26, "知识百科能做什么？", size=14.5, bold=True, color=INK)
     items = [
-        ("图谱节点", "从「偏导数」等薄弱节点出发"),
-        ("前置关系", "先补极限与连续，再学可导与连续"),
-        ("分配到天", "3 个阶段 / 7 个节点 / 每天 30 分钟"),
-        ("可回看", "每条建议能回到原文和练习"),
+        ("读懂", "定义、核心要点、例子，不用反复翻原文"),
+        ("看关系", "前置 / 相关 / 对比，一眼知道接在哪"),
+        ("做题", "相关题目和题源，学完就能练"),
+        ("追问", "在智能对话里继续问，Agent 调用工具"),
     ]
-    yy = y + 0.64
+    yy = y + 0.66
     for t, d in items:
         line(s, x + 0.22, yy + 0.22, x + 0.54, yy + 0.22, color=MINT, width=1.2)
-        text(s, x + 0.68, yy, w - 0.90, 0.22, t, size=10.4, bold=True, color=INK)
-        text(s, x + 0.68, yy + 0.22, w - 0.90, 0.34, d, size=9.0, color=GRAY, line_spacing=1.2)
+        text(s, x + 0.68, yy, w - 0.90, 0.24, t, size=11.0, bold=True, color=INK)
+        text(s, x + 0.68, yy + 0.24, w - 0.90, 0.34, d, size=9.8, color=GRAY, line_spacing=1.2)
         yy += 0.78
-    strip = rect(s, x + 0.22, y + 3.66, w - 0.44, 0.52, fill=AMBER_L, line=None, radius=0.06)
-    text(s, x + 0.36, y + 3.76, w - 0.70, 0.30, "图里的关系，直接变成下一步。", size=9.8, bold=True, color=AMBER)
+    strip = rect(s, x + 0.22, y + 3.64, w - 0.44, 0.58, fill=AMBER_L, line=None, radius=0.06)
+    text(s, x + 0.34, y + 3.74, w - 0.64, 0.38, "图谱给结构，百科给内容；只有节点没有解释，用户还是学不会。",
+         size=8.9, bold=True, color=AMBER, line_spacing=1.2)
     footer(s, 5)
 
 
 # ================= P7 技术架构 =================
 def p7():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "05  /  系统基石 · Agent Runtime", "Agent 是 OpenStudy 的基石",
+    header(s, "05  /  系统基石 · Agent Runtime", "Agent 是 OpenStudy 的基石：一切皆对话",
            "把一句话拆成：角色选择 → 工具调用 → 结果回执 → 记忆与回滚。")
-    left = rect(s, M_L, 1.82, 5.55, 4.55, fill=MINT_L2, line=None, radius=0.06)
+    left = rect(s, M_L, 1.82, 5.55, 4.35, fill=MINT_L2, line=None, radius=0.06)
     text(s, M_L + 0.24, 1.98, 4.8, 0.26, "一条 Agent Loop", size=15.0, bold=True, color=INK)
     steps = [
         ("01", "理解意图", "判断你在问题库、资料、图谱还是计划"),
@@ -453,10 +457,13 @@ def p7():
         card = rect(s, cx, cy, cw, ch, fill=WHITE, line=LINE, lw=0.8, radius=0.06)
         text(s, cx + 0.18, cy + 0.18, cw - 0.36, 0.28, t, size=12.8, bold=True, color=INK)
         text(s, cx + 0.18, cy + 0.60, cw - 0.36, 1.16, d, size=9.1, color=GRAY, line_spacing=1.35)
-    strip = rect(s, M_L, 6.42, CW, 0.32, fill=MINT_L, line=None, radius=0.06)
-    text(s, M_L + 0.22, 6.47, CW - 0.44, 0.22,
-         "29 个工具 · 5 类官方专家 + 自定义智能体 · 6 步子代理 · 180 秒写确认",
+    strip = rect(s, M_L, 6.30, CW, 0.58, fill=MINT_L, line=None, radius=0.06)
+    text(s, M_L + 0.22, 6.36, CW - 0.44, 0.20,
+         "一切皆对话：在智能对话里进入题库 / 资料 / 知识图谱 / 规划，系统数据都能被 Agent 调用。",
          size=8.8, bold=True, color=MINT_D)
+    text(s, M_L + 0.22, 6.58, CW - 0.44, 0.20,
+         "29 个工具 · 5 类官方专家 + 自定义智能体 · 6 步子代理 · 180 秒写确认",
+         size=8.2, color=GRAY)
     footer(s, 6)
 
 
