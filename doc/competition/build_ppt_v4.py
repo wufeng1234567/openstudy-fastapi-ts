@@ -30,6 +30,7 @@ GRAPH_TYPES = os.path.join(HERE, "user-graph-all-labels-2026-11-15.png")
 CHAT_HOME = os.path.join(HERE, "chat-home-2026-11-15.png")
 EXAM_MATERIALS = os.path.join(HERE, "exam-week-materials-dense-2026-11-15.png")
 P3_QUESTION = os.path.join(HERE, "question-knowledge-core-2026-11-15.png")
+PLANNING_GRAPH = os.path.join(HERE, "planning-graph-2026-11-15.png")
 GRAPH_DETAIL_REAL = os.path.join(HERE, "graph-detail-real-2026-11-15.png")
 CODEARTS_PLAN = os.path.join(HERE, "codearts-plan-clean-2026-11-15.png")
 CODEARTS_FILELINE = os.path.join(HERE, "codearts-fileline-2026-11-15.png")
@@ -366,28 +367,28 @@ def p4():
 # ================= P5 知识百科 + 图谱 =================
 def p5():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "03  /  连起来 · 知识百科与知识图谱", "做错一道题，点回知识点和原文",
-           "每道错题都有落点：考什么、和谁相关、原文在哪。")
-    pic_card(s, GRAPH_FULL, M_L, 1.82, 6.05, 3.25, caption="演示资料夹：26 个微积分主题，选中「偏导数」")
+    header(s, "03  /  连起来 · 知识图谱串联你的每个知识点", "知识点不是孤岛，点一下就能连起来",
+           "知识图谱把主题之间的关系摊开，也保留来源和原文入口。")
+    pic_card(s, GRAPH_FULL, M_L, 1.82, 6.05, 3.25, caption="选中「偏导数」：相邻主题、来源和原文入口在同一屏")
     x, y, w, h = 7.05, 1.82, 5.45, 3.25
     card = rect(s, x, y, w, h, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
     text(s, x + 0.22, y + 0.18, w - 0.44, 0.34, "偏导数", size=19, bold=True, color=INK)
-    text(s, x + 0.22, y + 0.62, w - 0.44, 0.24, "题目 4810 → 知识点 → 主题页 → 原文", size=10.0, bold=True, color=MINT_D)
+    text(s, x + 0.22, y + 0.62, w - 0.44, 0.24, "和 4 个相邻主题直接相连", size=10.0, bold=True, color=MINT_D)
     rows = [
         ("来源", "微积分知识地图 · 1 段原文"),
-        ("相关题目", "第 4810 题的知识点里就有它"),
-        ("相邻主题", "导数 / 全微分 / 极限 / 连续性"),
+        ("相邻主题", "导数 / 全微分 / 极限 / 方向导数"),
+        ("继续追", "点开主题，查看相关题目和原文"),
     ]
     yy = y + 1.10
     for t, d in rows:
         text(s, x + 0.22, yy, 1.02, 0.22, t, size=9.8, bold=True, color=MINT_D)
         text(s, x + 1.30, yy, w - 1.52, 0.26, d, size=9.5, color=GRAY)
         yy += 0.48
-    text(s, x + 0.22, y + 2.64, w - 0.44, 0.48, "知识图谱的作用：把题目、知识点、主题页和原文串成一条可点开的路径。", size=9.2, color=GRAY2, line_spacing=1.2)
+    text(s, x + 0.22, y + 2.64, w - 0.44, 0.48, "知识图谱的作用：把知识点之间的关系摊开，下一步不用靠猜。", size=9.2, color=GRAY2, line_spacing=1.2)
     strip = rect(s, M_L, 5.42, CW, 0.68, fill=MINT_L, line=None, radius=0.06)
     text(s, M_L + 0.24, 5.56, CW - 0.48, 0.24,
-         "做错题不只记一个错号：它还能告诉你考的是哪一节、原文在哪一段。", size=11.2, bold=True, color=MINT_D)
-    text(s, M_L, 6.34, CW, 0.22, "知识百科讲清一个主题，知识图谱把题目、来源和关系连起来。", size=9.4, color=GRAY)
+         "知识图谱不只是一张图：它把主题、关系和原文入口放在同一屏。", size=11.2, bold=True, color=MINT_D)
+    text(s, M_L, 6.34, CW, 0.22, "从任意知识点出发，都能顺着关系走到相关主题和原文。", size=9.4, color=GRAY)
     footer(s, 4)
 
 
@@ -395,44 +396,26 @@ def p5():
 def p6():
     s = prs.slides.add_slide(BLANK); bg(s)
     header(s, "04  /  用起来 · 规划建议", "接下来 7 天，每天先做什么？",
-           "按这份高数资料的缺口和错题排：每天 30 分钟，先看哪段、再做哪几题。")
-    left = rect(s, M_L, 1.82, 7.25, 4.55, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
-    text(s, M_L + 0.24, 1.98, 3.0, 0.26, "7 天处方", size=15, bold=True, color=INK)
-    text(s, M_L + 0.24, 2.28, 6.7, 0.22, "每天都从这道题的错因和第三章缺口开始。", size=9.5, color=GRAY)
-    days = [
-        ("Day 1", "第三章 · 二重积分", "精读 20 分钟 + 2 题"),
-        ("Day 2", "极限与连续", "1 题 + 回看公式"),
-        ("Day 3", "偏导数", "1 题 + 订正错题"),
-        ("Day 4", "二重积分错题", "重做 + 回原文"),
-        ("Day 5", "变上限积分求导", "精读 + 2 题"),
-        ("Day 6", "第三章综合", "3 题混合练习"),
-        ("Day 7", "复盘", "错题 + 自测"),
-    ]
-    yy = 2.62
-    for i, (d, t, r) in enumerate(days):
-        if i == 0:
-            row = rect(s, M_L + 0.24, yy - 0.04, 6.72, 0.44, fill=MINT_L, line=None, radius=0.04)
-        text(s, M_L + 0.36, yy, 0.68, 0.20, d, size=8.6, bold=True, color=MINT_D)
-        text(s, M_L + 1.10, yy, 2.80, 0.20, t, size=9.4, bold=True, color=INK)
-        text(s, M_L + 4.18, yy, 2.62, 0.20, r, size=8.5, color=GRAY)
-        yy += 0.48
-    right = rect(s, 8.25, 1.82, 4.27, 4.55, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
-    text(s, 8.47, 1.98, 3.85, 0.26, "这份计划从哪里来？", size=15, bold=True, color=INK)
+           "左侧是知识图谱，右侧是系统生成的 7 天规划：3 个阶段、7 个节点、每天 30 分钟。")
+    pic_contain(s, PLANNING_GRAPH, M_L, 1.82, 7.15, 4.55,
+                caption="真实界面：左侧知识图谱 + 右侧 7 天规划；建议沿图谱关系生成")
+    x, y, w, h = 8.15, 1.82, 4.38, 4.55
+    card = rect(s, x, y, w, h, fill=WHITE, line=LINE, lw=0.9, radius=0.06)
+    text(s, x + 0.22, y + 0.18, w - 0.44, 0.26, "规划从哪里来？", size=15, bold=True, color=INK)
     items = [
-        ("资料体检", "第三章缺练习，先补缺得最多的一章"),
-        ("题库", "第 3 题错 1 次，今天先重做同型题"),
-        ("时间", "每天 30 分钟，排得下再排"),
-        ("可回看", "每一项都能点回原文和练习"),
+        ("图谱节点", "从「偏导数」等薄弱节点出发"),
+        ("前置关系", "先补极限与连续，再学可导与连续"),
+        ("分配到天", "3 个阶段 / 7 个节点 / 每天 30 分钟"),
+        ("可回看", "每条建议能回到原文和练习"),
     ]
-    yy = 2.52
+    yy = y + 0.64
     for t, d in items:
-        line(s, 8.47, yy + 0.22, 8.78, yy + 0.22, color=MINT, width=1.2)
-        text(s, 8.90, yy, 3.30, 0.22, t, size=10.2, bold=True, color=INK)
-        text(s, 8.90, yy + 0.22, 3.30, 0.32, d, size=8.7, color=GRAY, line_spacing=1.2)
-        yy += 0.72
-    strip = rect(s, 8.47, 5.52, 3.80, 0.44, fill=AMBER_L, line=None, radius=0.05)
-    text(s, 8.60, 5.62, 3.55, 0.24, "明晚打开，第一道题已经排好。", size=9.2, bold=True, color=AMBER)
-    text(s, M_L, 6.55, CW, 0.22, "演示计划基于高等数学·综合练习（第三章）生成；按本题库和资料缺口排序。", size=8.8, color=GRAY2)
+        line(s, x + 0.22, yy + 0.22, x + 0.54, yy + 0.22, color=MINT, width=1.2)
+        text(s, x + 0.68, yy, w - 0.90, 0.22, t, size=10.4, bold=True, color=INK)
+        text(s, x + 0.68, yy + 0.22, w - 0.90, 0.34, d, size=9.0, color=GRAY, line_spacing=1.2)
+        yy += 0.78
+    strip = rect(s, x + 0.22, y + 3.66, w - 0.44, 0.52, fill=AMBER_L, line=None, radius=0.06)
+    text(s, x + 0.36, y + 3.76, w - 0.70, 0.30, "图里的关系，直接变成下一步。", size=9.8, bold=True, color=AMBER)
     footer(s, 5)
 
 
