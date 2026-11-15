@@ -259,46 +259,46 @@ def p1():
 # ================= P2 用户与问题 =================
 def p2():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "01  /  一个真实用户", "高数 Word 导进题库，一晚上一道题没刷成",
-           "理工科备考者，周六晚上想先刷二重积分：公式全乱码，区域图留在原文，题目对不上知识点。")
-    pic_card(s, WORD, M_L, 1.86, 4.20, 3.10, caption="演示资料：高等数学·综合练习（第三章）")
+    header(s, "01  /  考试周的真实场景", "高数错题存成 Word，考试周却“无题可刷”",
+           "学生把错题、公式和区域图整理进 Word，想复习时只有一份文档：不能刷、公式不能算、知识点也找不到。")
+    pic_card(s, WORD, M_L, 1.86, 4.20, 3.10, caption="考试周错题整理：高等数学·错题本（Word）")
     x = 5.35
-    text(s, x, 1.88, 7.00, 0.24, "一个晚上，一条因果链", size=9.5, bold=True, color=MINT_D, spc=60)
-    text(s, x, 2.18, 7.00, 0.28, "资料进不了题，存多少都没用。", size=15.5, bold=True, color=INK)
+    text(s, x, 1.88, 7.00, 0.24, "一个复习晚上，四个断点", size=9.5, bold=True, color=MINT_D, spc=60)
+    text(s, x, 2.18, 7.00, 0.28, "错题都在文档里，复习时却用不上。", size=15.5, bold=True, color=INK)
     chain = [
-        ("01", "公式丢结构", "二重积分公式进题库就变乱码"),
-        ("02", "图题分家", "区域图还留在原文，题干旁边看不到"),
-        ("03", "题找不到知识点", "做错也不知道对应哪一节、哪段原文"),
-        ("04", "这道题刷不了", "一晚上过去，一道题没刷成"),
+        ("01", "错题只在 Word 里", "题目、答案、截图散在文档里"),
+        ("02", "公式不能直接算", "公式只是文字或截图，复习时不能交互"),
+        ("03", "图题对不上", "区域图在原文，题干旁边没有"),
+        ("04", "无题可刷", "只能看，不能练，也不知道考哪个知识点"),
     ]
     yy = 2.78
     for i, (n, t, d) in enumerate(chain):
         card = rect(s, x, yy, 7.00, 0.62, fill=AMBER_L if i == 3 else WHITE, line=AMBER if i == 3 else LINE, lw=0.75, radius=0.05)
         text(s, x + 0.16, yy + 0.10, 0.38, 0.24, n, size=9, bold=True, color=AMBER if i == 3 else MINT_D)
-        text(s, x + 0.58, yy + 0.08, 2.35, 0.24, t, size=11.6, bold=True, color=AMBER if i == 3 else INK)
-        text(s, x + 2.95, yy + 0.10, 3.78, 0.30, d, size=9.2, color=AMBER if i == 3 else GRAY)
+        text(s, x + 0.58, yy + 0.08, 2.45, 0.24, t, size=11.6, bold=True, color=AMBER if i == 3 else INK)
+        text(s, x + 3.05, yy + 0.10, 3.68, 0.30, d, size=9.2, color=AMBER if i == 3 else GRAY)
         if i < 3:
             text(s, x + 3.28, yy + 0.58, 0.30, 0.16, "↓", size=11, bold=True, color=MINT)
         yy += 0.76
-    strip = rect(s, M_L, 5.24, 4.20, 0.38, fill=MINT_L, line=None, radius=0.06)
-    text(s, M_L + 0.14, 5.33, 3.90, 0.20, "一晚上，一道题没刷成。", size=9.2, bold=True, color=MINT_D)
+    strip = rect(s, M_L, 5.24, 4.20, 0.38, fill=AMBER_L, line=None, radius=0.06)
+    text(s, M_L + 0.14, 5.33, 3.90, 0.20, "想复习，却连一道能刷的题都没有。", size=9.2, bold=True, color=AMBER)
     footer(s, 2)
 
 
 # ================= P3 产品主线 =================
 def p3():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "02  /  收进来 · 资料到题库", "同一份 Word，导进题库就能刷",
-           "公式转 LaTeX、区域图随题、题目挂知识点、题源回到第 2294 段——四样都在。")
+    header(s, "02  /  导入后 · 题库生成", "把 Word、PDF、网页、图片，变成能刷的题库",
+           "导入后自动解析：公式能渲染、图文能混排、每道题能关联知识点，题库可导出、可分享。")
     strip = rect(s, M_L, 1.82, CW, 0.36, fill=MINT_L, line=None, radius=0.06)
     text(s, M_L + 0.16, 1.89, CW - 0.32, 0.20,
-         "先看体检结论：3 章 · 3 题 · 1 图 · 第三章缺练习，先补 2 题。", size=9.2, bold=True, color=MINT_D)
+         "支持格式：Word / PDF / Markdown / 网页 / 图片；导入后进入同一条题库生产线。", size=9.2, bold=True, color=MINT_D)
     steps = [
-        ("01", "导入", "Word / PDF\n公式 + 插图"),
+        ("01", "导入", "Word / PDF\n网页 / 图片"),
         ("02", "解析", "公式转 LaTeX\n图片保留"),
         ("03", "结构化", "题目 + 选项\n题干结构"),
-        ("04", "入库", "3/3 入库\n可刷题"),
-        ("05", "回源", "题源 #693\n第 2294 段"),
+        ("04", "知识点", "自动挂主题\n可筛选"),
+        ("05", "题库", "可刷 / 可导出\n可分享"),
     ]
     sw = 1.78; gap = (CW - 5 * sw) / 4
     x = M_L
@@ -313,17 +313,17 @@ def p3():
         x += sw + gap
     pic_card(s, BRUSH, M_L, 3.56, 7.05, 3.30, caption="真实练习页：同一道二重积分，公式、区域图、知识点和题源同时可见")
     right = rect(s, 8.02, 3.56, 4.50, 3.30, fill=WHITE, line=LINE, lw=0.8, radius=0.05)
-    text(s, 8.24, 3.72, 4.05, 0.26, "这份题为什么能刷？", size=15, bold=True, color=INK)
+    text(s, 8.24, 3.72, 4.05, 0.26, "题库里有什么？", size=15, bold=True, color=INK)
     bullets = [
-        ("公式", "Word 公式转 LaTeX，在题目里原样渲染"),
-        ("图片", "区域图跟着题走，不丢图、不贴错位置"),
-        ("知识点", "题目挂到「二重积分」主题，下面能继续回原文"),
-        ("题源", "来源资料 #693 / 第 2294 段，可点开原文"),
+        ("图文混排", "题干、选项、解析、图片保持原版排版"),
+        ("公式渲染", "OMML / LaTeX 原样显示，公式能看能算"),
+        ("知识点", "每道题挂到「二重积分」主题，可按知识点筛选"),
+        ("导出", "题库可导出、可分享，不只停在本机"),
     ]
     yy = 4.12
     for t, d in bullets:
-        text(s, 8.24, yy, 0.72, 0.22, t, size=9.8, bold=True, color=MINT_D)
-        text(s, 9.02, yy - 0.01, 3.22, 0.40, d, size=9.3, color=GRAY, line_spacing=1.2)
+        text(s, 8.24, yy, 0.96, 0.22, t, size=9.8, bold=True, color=MINT_D)
+        text(s, 9.26, yy - 0.01, 3.00, 0.40, d, size=9.3, color=GRAY, line_spacing=1.2)
         yy += 0.60
     text(s, 8.24, 6.52, 4.05, 0.20, "演示题库：高等数学 · 综合练习（第三章）", size=8.4, color=GRAY2)
     footer(s, 3)
