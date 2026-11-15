@@ -254,8 +254,8 @@ def p1():
     chip(s, M_L + 1.75, 4.38, 1.55, 0.36, "连起来", MINT_L, MINT_D, 9.5)
     chip(s, M_L + 3.50, 4.38, 1.55, 0.36, "用起来", MINT_L, MINT_D, 9.5)
     line(s, M_L, 5.52, 6.3, 5.52, color=LINE, width=0.5)
-    text(s, M_L, 5.68, 6.2, 0.24, "华为云码道 CodeArts 开发  ·  GitCode 开源  ·  FastAPI + Vue 3", size=9.5, color=GRAY2)
-    text(s, M_L, 6.18, 6.2, 0.24, "gitcode.com/qi142410131/openstudy-fastapi-ts", size=9, color=MINT_D)
+    text(s, M_L, 5.68, 6.2, 0.24, "团队：码上有为  ·  华为云码道 CodeArts 开发  ·  GitCode 开源", size=10.2, bold=True, color=MINT_D)
+    text(s, M_L, 6.18, 6.2, 0.24, "FastAPI + Vue 3  ·  gitcode.com/qi142410131/openstudy-fastapi-ts", size=8.8, color=GRAY2)
     pic_contain(s, CHAT_HOME, 7.00, 1.02, 5.70, 3.95, caption="进入 OpenStudy：把资料交给它，也可以直接问一个问题")
     footer(s, 1)
 
@@ -422,34 +422,41 @@ def p6():
 # ================= P7 技术架构 =================
 def p7():
     s = prs.slides.add_slide(BLANK); bg(s)
-    header(s, "05  /  技术可信", "四个“不丢”，靠一条可核对的技术链路",
-           "公式不丢、图片不丢、知识点不丢、题源不丢；每一步都有回执，失败有降级。")
-    cards = [
-        ("公式不丢", "OMML / Word 公式解析", "转成 LaTeX，进题库仍原样渲染"),
-        ("图片不丢", "图片锚点绑定题干", "图随题走，不丢图、不贴错位置"),
-        ("知识点不丢", "题目 → 知识点", "挂到主题页，能看关系和相邻概念"),
-        ("题源不丢", "chunk → 原文", "题源 #693 / 第 2294 段，可回查"),
+    header(s, "05  /  系统基石 · Agent Runtime", "Agent 是 OpenStudy 的基石",
+           "把一句话拆成：角色选择 → 工具调用 → 结果回执 → 记忆与回滚。")
+    left = rect(s, M_L, 1.82, 5.55, 4.55, fill=MINT_L2, line=None, radius=0.06)
+    text(s, M_L + 0.24, 1.98, 4.8, 0.26, "一条 Agent Loop", size=15.0, bold=True, color=INK)
+    steps = [
+        ("01", "理解意图", "判断你在问题库、资料、图谱还是计划"),
+        ("02", "选择角色", "题库 / 笔记 / 资料 / 统计 / 自定义专家"),
+        ("03", "调用工具", "29 个真实业务工具，不只是回文字"),
+        ("04", "执行回执", "tool_start / tool_result / 失败自纠正"),
+        ("05", "记忆与回滚", "写操作落记忆；可回滚、可追踪"),
     ]
-    cw = (CW - 3 * 0.16) / 4
-    for i, (t, tech, d) in enumerate(cards):
-        x = M_L + i * (cw + 0.16)
-        card = rect(s, x, 1.92, cw, 1.72, fill=MINT_L2 if i == 0 else WHITE, line=LINE, lw=0.8, radius=0.06)
-        text(s, x + 0.18, 2.08, cw - 0.36, 0.26, t, size=14.0, bold=True, color=INK)
-        text(s, x + 0.18, 2.44, cw - 0.36, 0.22, tech, size=9.5, bold=True, color=MINT_D)
-        text(s, x + 0.18, 2.74, cw - 0.36, 0.54, d, size=8.8, color=GRAY, line_spacing=1.25)
-    line(s, M_L, 4.10, W - M_L, 4.10, color=LINE, width=0.6)
-    steps = ["Word", "解析", "结构化", "入库", "刷题"]
-    sx = M_L
-    for i, label in enumerate(steps):
-        if i:
-            text(s, sx - 0.16, 4.30, 0.30, 0.24, "→", size=13, bold=True, color=MINT)
-        text(s, sx, 4.28, 1.9, 0.26, label, size=10.2, bold=True, color=INK)
-        sx += 2.35
-    text(s, M_L, 5.12, 5.40, 0.24, "轻量自研：Vue 3 · FastAPI · PostgreSQL + pgvector · Redis", size=9.5, color=GRAY2)
-    text(s, M_L, 5.50, 7.5, 0.22, "路由零 LLM 先分流；检索用 RRF；所有结果回到真实来源。", size=9.2, color=GRAY)
-    evidence = rect(s, M_L, 5.92, CW, 0.52, fill=MINT_L, line=None, radius=0.06)
-    text(s, M_L + 0.22, 6.04, CW - 0.44, 0.24,
-         "可核对：pytest 109 项 · ruff 通过 · 前端 build 通过 · 关键链路有探针", size=9.4, bold=True, color=MINT_D)
+    yy = 2.42
+    for n, t, d in steps:
+        text(s, M_L + 0.26, yy, 0.34, 0.22, n, size=9, bold=True, color=MINT_D)
+        text(s, M_L + 0.66, yy - 0.02, 1.42, 0.24, t, size=11.6, bold=True, color=INK)
+        text(s, M_L + 2.05, yy, 3.08, 0.46, d, size=8.9, color=GRAY, line_spacing=1.2)
+        yy += 0.76
+    x = 6.65
+    cards = [
+        ("角色编排", "关键词 / 显式指定\n零 LLM 路由 · 可关闭专家"),
+        ("29 个真实工具", "建题库 / 查资料 / 读图谱\n排计划 / 导出 / 搜索 / 写文档"),
+        ("指挥家 + 子代理", "delegate_task 分派任务\n子代理独立上下文，最多 6 轮"),
+        ("可控执行", "写操作 confirmTicket 180 秒\n角色白名单 · 可回滚"),
+    ]
+    cw = 2.83; ch = 2.05
+    for i, (t, d) in enumerate(cards):
+        col = i % 2; row = i // 2
+        cx = x + col * (cw + 0.20); cy = 1.82 + row * (ch + 0.16)
+        card = rect(s, cx, cy, cw, ch, fill=WHITE, line=LINE, lw=0.8, radius=0.06)
+        text(s, cx + 0.18, cy + 0.18, cw - 0.36, 0.28, t, size=12.8, bold=True, color=INK)
+        text(s, cx + 0.18, cy + 0.60, cw - 0.36, 1.16, d, size=9.1, color=GRAY, line_spacing=1.35)
+    strip = rect(s, M_L, 6.42, CW, 0.32, fill=MINT_L, line=None, radius=0.06)
+    text(s, M_L + 0.22, 6.47, CW - 0.44, 0.22,
+         "29 个工具 · 5 类官方专家 + 自定义智能体 · 6 步子代理 · 180 秒写确认",
+         size=8.8, bold=True, color=MINT_D)
     footer(s, 6)
 
 
