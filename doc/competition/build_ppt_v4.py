@@ -246,7 +246,7 @@ def p1():
     s = prs.slides.add_slide(BLANK); bg(s)
     rect(s, 10.6, -2.0, 5.2, 5.2, fill=None, line=RGBColor(0xE3, 0xF4, 0xEC), lw=1.0, radius=0.5)
     rect(s, 11.9, 3.15, 3.6, 3.6, fill=None, line=RGBColor(0xEF, 0xF9, 0xF4), lw=1.0, radius=0.5)
-    text(s, M_L, 0.66, 6.2, 0.24, "OPENSTUDY  ·  0.8.0  ·  AI+ 智能体知识资产系统", size=10, bold=True, color=MINT_D, spc=160)
+    text(s, M_L, 0.66, 6.2, 0.24, "OPENSTUDY  ·  0.8.0  ·  AI+ 知识资产系统", size=10, bold=True, color=MINT_D, spc=160)
     text(s, M_L, 1.02, 6.10, 1.90, "告别“赛博仓鼠”\n把吃灰的资料\n变成随时能用的知识资产", size=30, bold=True, color=INK, line_spacing=1.08)
     line(s, M_L, 3.16, M_L + 1.15, 3.16, color=MINT, width=2.5)
     text(s, M_L, 3.36, 5.95, 0.88,
