@@ -105,5 +105,45 @@ export function useWikiMapEdges(options: {
     return visible
   })
 
-  return { mapEdges }
+  /**
+   * 首屏“星座线”：只取两端连接度最高的少量真实主题关系，静态渲染。
+   * 不参与 hover 更新，节点拖动时不重算，因此不会破坏拖拽/缩放性能。
+   */
+  const ambientEdges = computed(() => {
+    if (mapHoveredId.value || mapSelectedNodeId.value || detailVisible?.value || detailOpening?.value || routeActive.value) return []
+    const positions = nodePositions.value
+    const candidates: Array<{ edge: any; source: any; target: any; score: number }> = []
+    for (const edge of mapGraph.value?.edges || []) {
+      const sourceId = String(edge.source || '')
+      const targetId = String(edge.target || '')
+      const source = positions.get(sourceId)
+      const target = positions.get(targetId)
+      if (!source || !target || sourceId === targetId) continue
+      // 只取主题之间的真实关系，来源节点不进入首屏主题图。
+      if (normalizeEntityKind(source.kind || source.pageType) !== 'topic') continue
+      if (normalizeEntityKind(target.kind || target.pageType) !== 'topic') continue
+      const score = Number(source.degree || 0) + Number(target.degree || 0)
+      if (score < 10) continue
+      candidates.push({ edge, source, target, score })
+    }
+    const seen = new Set<string>()
+    return candidates
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 64)
+      .map(({ edge, source, target }) => buildMapEdge(
+        source,
+        target,
+        String(source.id),
+        String(target.id),
+        edge,
+        isCrossSourceEdge
+      ))
+      .filter((edge: any) => {
+        if (seen.has(edge.key)) return false
+        seen.add(edge.key)
+        return true
+      })
+  })
+
+  return { mapEdges, ambientEdges }
 }

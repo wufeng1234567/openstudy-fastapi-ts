@@ -166,7 +166,8 @@ export function useWikiMapDisplay(options: {
 
   function mapNodeLabel(node: any) {
     const title = String(node?.title || '')
-    const limit = normalizeEntityKind(node?.kind) === 'topic' ? 12 : 14
+    // 小图需要完整名字；大图保留截断，避免长标签互相遮挡。
+    const limit = normalizeEntityKind(node?.kind) === 'topic' ? 20 : 20
     return title.length > limit ? `${title.slice(0, limit)}…` : title
   }
 

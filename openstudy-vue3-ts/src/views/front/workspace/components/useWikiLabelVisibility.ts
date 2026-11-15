@@ -33,9 +33,13 @@ export function useWikiLabelVisibility(options: {
   const visibleLabelIds = computed(() => {
     const { isMapSelected, isRouteNode, mapNodeLabel } = getDisplay()
     const total = mapNodes.value.length
+    // 小图（少于 30 个节点）全部显示名字，保证演示图谱一眼看懂。
+    if (total < 30) {
+      return new Set(mapNodes.value.map((node: any) => String(node.id)))
+    }
     // 大图默认只展示更高连接度的主题标签；选中/悬停/路线节点仍然优先保留。
-    const degreeThreshold = total > 120 ? 18 : 12
-    const maxLabels = total > 150 ? 36 : total > 80 ? 48 : 72
+    const degreeThreshold = total > 120 ? 10 : 12
+    const maxLabels = total > 150 ? 48 : total > 80 ? 56 : 72
     const candidates = [...mapNodes.value]
       .filter((node: any) => {
         const kind = normalizeEntityKind(node.kind)

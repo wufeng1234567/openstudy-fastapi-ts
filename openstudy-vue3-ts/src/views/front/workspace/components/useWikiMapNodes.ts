@@ -246,7 +246,7 @@ export function useWikiMapNodes(options: {
           pageType,
           x: resolvedX,
           y: resolvedY,
-          r: Math.max(kind === 'topic' ? 5 : 9, Math.min(kind === 'topic' ? 14 : 16, 4 + Math.sqrt(Math.max(0, degree)) * 1.35)) * Math.min(1.35, layoutScale),
+          r: Math.max(kind === 'topic' ? 6 : 9, Math.min(kind === 'topic' ? 16 : 18, 5 + Math.sqrt(Math.max(0, degree)) * 1.6)) * Math.min(1.35, layoutScale),
           // 主题节点按主题页类型着色（概念/实体 · 综合/概览 · 对比），来源节点仍按实体集着色。
           color: kind === 'topic' ? pageTypeMeta(pageType).color : entityTypeMeta(kind).color
         })

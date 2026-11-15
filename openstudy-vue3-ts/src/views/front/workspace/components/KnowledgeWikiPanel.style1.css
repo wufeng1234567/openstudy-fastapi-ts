@@ -80,14 +80,13 @@
 .kw-card__meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; color: #a0a6b2; font-size: 9.5px; }
 .kw-filter-empty { grid-column: 1 / -1; padding: 60px 0; color: #9aa1af; text-align: center; font-size: 12px; }
 .kw-page--graph { height: calc(100vh - 138px); min-height: 0; gap: 0; padding: 0; overflow: hidden; }
-.kw-map { position: relative; contain: layout paint style; min-height: 590px; overflow: hidden; border: 1px solid #e6ebf4; border-radius: 13px; background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.1) 1px, transparent 0), #fbfcfe; background-size: 20px 20px; cursor: default; touch-action: none; user-select: none; }
-.kw-page--graph .kw-map { flex: 1; min-height: 0; height: 100%; border: 0; border-radius: 0; background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.1) 1px, transparent 0), #fbfcfe; background-size: 20px 20px; }
+.kw-map { position: relative; contain: layout paint style; min-height: 590px; overflow: hidden; border: 1px solid #e6ebf4; border-radius: 13px; background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.08) 1px, transparent 0), radial-gradient(circle at 54% 44%, rgba(47, 95, 206, 0.055), transparent 52%), linear-gradient(180deg, #fcfdff 0%, #f7faff 100%); background-size: 20px 20px, 100% 100%, 100% 100%; cursor: default; touch-action: none; user-select: none; }
+.kw-page--graph .kw-map { flex: 1; min-height: 0; height: 100%; border: 0; border-radius: 0; background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.08) 1px, transparent 0), radial-gradient(circle at 54% 44%, rgba(47, 95, 206, 0.055), transparent 52%), linear-gradient(180deg, #fcfdff 0%, #f7faff 100%); background-size: 20px 20px, 100% 100%, 100% 100%; }
 .kw-map.is-route-mode { background: radial-gradient(circle at 1px 1px, rgba(95, 111, 150, 0.1) 1px, transparent 0), #fbfcfe; background-size: 20px 20px; }
 .kw-map:active { cursor: default; }
 .kw-map__svg { width: 100%; height: 590px; opacity: 0; visibility: hidden; transition: opacity .12s ease; }
 .kw-map.is-map-ready .kw-map__svg { opacity: 1; visibility: visible; }
 .kw-page--graph .kw-map__svg { height: 100%; }
-.kw-map-purpose { position: absolute; z-index: 7; top: 14px; left: 16px; padding: 6px 9px; border: 1px solid rgba(15, 23, 42, 0.05); border-radius: 6px; color: #7d8596; background: rgba(255, 255, 255, 0.86); font-size: 11px; pointer-events: none; }
 .kw-map-stop-animation { position: absolute; z-index: 9; bottom: 18px; left: 16px; padding: 6px 10px; border: 1px solid #c9d9f8; border-radius: 7px; color: #2f5fce; background: rgba(255, 255, 255, 0.94); box-shadow: 0 4px 12px rgba(29, 43, 70, 0.08); cursor: pointer; font: inherit; font-size: 10px; }
 .kw-map-stop-animation:hover { background: #f4f7ff; border-color: #9ebced; }
 .kw-map-edge { stroke: #9fb3cc; stroke-width: 1.2; opacity: 0.72; vector-effect: non-scaling-stroke; transition: stroke 0.2s, stroke-width 0.2s, stroke-opacity 0.2s; }
@@ -107,8 +106,8 @@
 .kw-map-edge.is-dimmed { opacity: 0.08; }
 .kw-map-edge.is-hidden { display: none; }
 /* hover 只切根节点 class：CSS 统一淡化非邻居节点与非活动边，避免 300+ 节点逐个 patch。 */
-.kw-map.is-hovering .kw-map-base-nodes { opacity: 0.16; }
-.kw-map.is-hovering .kw-map-base-edges { opacity: 0.06; }
+.kw-map.is-hovering .kw-map-base-nodes { opacity: 0.34; }
+.kw-map.is-hovering .kw-map-base-edges { opacity: 0.14; }
 /* 拖拽期间恢复完整底图，并彻底隐藏 hover 覆盖层，避免边/节点重绘和视觉错位。 */
 .kw-map.is-dragging .kw-map-base-nodes,
 .kw-map.is-dragging .kw-map-base-edges { opacity: 1; }
@@ -127,7 +126,8 @@
 .kw-map__svg > g { will-change: transform; }
 /* 连续滚轮时先隐藏文字/连线，避免 200+ 节点的重绘拖慢 SVG 缩放。 */
 .kw-map.is-zooming .kw-map-node__label,
-.kw-map.is-zooming .kw-map-edge { visibility: hidden; }
+.kw-map.is-zooming .kw-map-edge,
+.kw-map.is-zooming .kw-map-ambient-edge { visibility: hidden; }
 .kw-map.is-zooming .kw-map-node__halo,
 .kw-map.is-zooming .kw-map-node__learn-track,
 .kw-map.is-zooming .kw-map-node__learn-ring { visibility: hidden; }
@@ -152,6 +152,8 @@
 .kw-map-node.is-selected .kw-map-node__dot { stroke: #253247; stroke-width: 2.5; }
 .kw-map-node.is-selected .kw-map-node__label,
 .kw-map-node.is-advice-visited .kw-map-node__label { fill: #1f2937; font-size: 12px; font-weight: 700; }
+.kw-map-ambient-edge { stroke: #9fb5d8; stroke-width: 1.1; opacity: 0.42; stroke-dasharray: 2 5; vector-effect: non-scaling-stroke; pointer-events: none; }
+.kw-map-node__aura { opacity: 0.2; pointer-events: none; }
 .kw-map-node__halo { fill: rgba(255, 255, 255, 0.86); }
 .kw-map.is-route-mode .kw-map-node.is-route .kw-map-node__halo { fill: #f4f8ff; }
 .kw-map-node__learn-track { fill: none; stroke: #e5eaf2; stroke-width: 1.8; pointer-events: none; }
@@ -166,6 +168,7 @@
 .kw-map-learning-path.is-fallback { stroke: #c7d0e0; stroke-width: 1.5; stroke-dasharray: 5 4; opacity: .75; }
 .kw-map-node__label { fill: #4b5563; font-size: clamp(1.5px, calc(11px / var(--kw-map-scale, 1)), 14px); pointer-events: none; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
 .kw-map.is-route-mode .kw-map-node.is-route .kw-map-node__label { fill: #1f3f8f; font-weight: 700; }
+.kw-map-node.is-hub .kw-map-node__dot { stroke-width: 2.1; }
 .kw-map-node.is-bridge .kw-map-node__dot { stroke: #d38a42; stroke-width: 2.4; }
 .kw-map-node.is-bridge .kw-map-node__label { fill: #a96322; }
 .kw-map-node:hover .kw-map-node__dot { stroke: #253247; stroke-width: 2.5; }

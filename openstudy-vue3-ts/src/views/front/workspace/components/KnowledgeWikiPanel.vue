@@ -84,7 +84,6 @@
         :style="{ '--kw-map-scale': mapView.scale }"
         @wheel.prevent="onMapWheel" @pointerdown="onMapDown"
         @pointermove="onMapMove" @pointerup="onMapUp" @pointerleave="onMapUp">
-        <div class="kw-map-purpose">知识图谱：先看懂知识结构，再让系统帮你排下一步。</div>
         <button v-if="adviceAnimationActive" type="button" class="kw-map-stop-animation" @click.stop="stopAdviceAnimation">
           停止连线动画
         </button>
@@ -98,6 +97,10 @@
             </marker>
           </defs>
           <g :transform="`translate(${mapView.x} ${mapView.y}) scale(${mapView.scale})`">
+            <g v-if="!mapHoveredId && !mapSelectedNodeId && !mapDraggingId && !detailVisible && !mapDetailOpening && !routeActive" class="kw-map-ambient-edges">
+              <line v-for="edge in ambientEdges" :key="`ambient-${edge.key}`" :x1="edge.x1" :y1="edge.y1" :x2="edge.x2" :y2="edge.y2"
+                class="kw-map-ambient-edge" />
+            </g>
             <g class="kw-map-base-edges">
               <line v-for="edge in mapEdges" :key="edge.key" :x1="edge.x1" :y1="edge.y1" :x2="edge.x2" :y2="edge.y2"
                 :data-edge-source="edge.source" :data-edge-target="edge.target"
@@ -120,7 +123,7 @@
 
             <g class="kw-map-base-nodes">
             <g v-for="node in mapNodes" :key="node.id" v-memo="[node, isMapSelected(node), isRouteNode(node), adviceLitPageIds.length]" class="kw-map-node" :data-node-id="String(node.id)"
-              :class="{ 'is-selected': isMapSelected(node), 'is-dimmed': isMapNodeDimmed(node), 'is-bridge': bridgeNodeIds.has(String(node.id)), 'is-learned': Number(node.learning?.viewCount || 0) > 0, 'is-weak': Number(node.learning?.practiceCount || 0) > 0 && Number(node.learning?.accuracy || 0) < 60, 'is-route': isRouteNode(node), 'is-next-stop': isNextStopNode(node), 'is-advice-visited': adviceLitPageIds.includes(String(node.pageId)), 'is-advice-dimmed': adviceLitPageIds.length > 0 && !adviceLitPageIds.includes(String(node.pageId)) }"
+              :class="{ 'is-selected': isMapSelected(node), 'is-hub': Number(node.degree || 0) >= 5, 'is-dimmed': isMapNodeDimmed(node), 'is-bridge': bridgeNodeIds.has(String(node.id)), 'is-learned': Number(node.learning?.viewCount || 0) > 0, 'is-weak': Number(node.learning?.practiceCount || 0) > 0 && Number(node.learning?.accuracy || 0) < 60, 'is-route': isRouteNode(node), 'is-next-stop': isNextStopNode(node), 'is-advice-visited': adviceLitPageIds.includes(String(node.pageId)), 'is-advice-dimmed': adviceLitPageIds.length > 0 && !adviceLitPageIds.includes(String(node.pageId)) }"
               :transform="`translate(${node.x} ${node.y})`"
               @mouseenter="onMapNodeEnter(node)" @mouseleave="onMapNodeLeave(node)"
               @pointerdown.stop="onMapNodeDown($event, node)" @pointerup.stop="onMapNodeUp"
@@ -128,7 +131,8 @@
               <title>{{ mapNodeAccent(node).label }} · {{ node.title }}{{ node.learning ? ` · ${node.learning.label}` : '' }}</title>
               <!-- 透明命中圈：覆盖圆点、光环和文字之间的空隙，避免鼠标擦边反复 enter/leave。 -->
               <circle class="kw-map-node__hit" :r="node.r + 16" />
-              <circle class="kw-map-node__halo" :r="node.r + 8" />
+              <circle class="kw-map-node__halo" :r="node.r + 7" />
+              <circle v-if="Number(node.degree || 0) >= 5" class="kw-map-node__aura" :r="node.r + 12" :fill="node.color" />
               <circle v-if="mapLearnMode" class="kw-map-node__learn-track" :r="node.r + 5" />
               <circle v-if="mapLearnMode && Number(node.learning?.masteryScore || 0) > 0" class="kw-map-node__learn-ring"
                 :r="node.r + 5" pathLength="100" stroke-dasharray="100"
@@ -949,7 +953,7 @@ const { syncMapSize, fitMapView, onMapResize } = useWikiMapLayout({
 })
 
 // 图谱连线（抽到同目录 composable；纯惰性 computed，不含任何交互或计时）
-const { mapEdges } = useWikiMapEdges({
+const { mapEdges, ambientEdges } = useWikiMapEdges({
   mapHoveredId, mapSelectedNodeId, routeActive, detailVisible, detailOpening: mapDetailOpening,
   adviceAnimating: adviceAnimationActive,
   mapNodes, allMapNodes, mapImageExpanded, mapGraph, IMAGE_CLUSTER_ID, isCrossSourceEdge
