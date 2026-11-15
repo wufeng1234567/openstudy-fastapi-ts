@@ -593,6 +593,9 @@ def p10():
             text(s, x + 0.24, y, 0.16, 0.22, "·", size=13, bold=True, color=col)
             text(s, x + 0.46, y, cw - 0.72, 0.44, it, size=10.8, color=GRAY, line_spacing=1.3)
             y += 0.42
+    text(s, M_L, 4.82, CW, 0.22,
+         "后续评估：Agent 编排从自研 Loop → LangGraph / 更成熟框架；工具协议、确认和回滚边界保持不变。",
+         size=8.6, bold=True, color=MINT_D)
     text(s, M_L, 5.12, 5.6, 0.24, "团队分工（按真实职责，可一人多岗）", size=10, bold=True, color=GRAY2, spc=40)
     roles = [
         ("产品 / 后端", "场景定义、Agent 与 RAG 后端、数据与部署"),
