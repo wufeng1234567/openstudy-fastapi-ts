@@ -28,7 +28,7 @@ WORD = os.path.join(HERE, "word-source-math-v2-core-2026-11-15.png")
 GRAPH_FULL = os.path.join(HERE, "user-graph-hover-2026-11-15.png")
 GRAPH_TYPES = os.path.join(HERE, "user-graph-all-labels-2026-11-15.png")
 CHAT_HOME = os.path.join(HERE, "chat-home-2026-11-15.png")
-EXAM_MATERIALS = os.path.join(HERE, "exam-week-materials-2026-11-15.png")
+EXAM_MATERIALS = os.path.join(HERE, "exam-week-materials-dense-2026-11-15.png")
 GRAPH_DETAIL_REAL = os.path.join(HERE, "graph-detail-real-2026-11-15.png")
 CODEARTS_PLAN = os.path.join(HERE, "codearts-plan-clean-2026-11-15.png")
 CODEARTS_FILELINE = os.path.join(HERE, "codearts-fileline-2026-11-15.png")
@@ -263,10 +263,11 @@ def p2():
     s = prs.slides.add_slide(BLANK); bg(s)
     header(s, "01  /  考试周的真实场景", "考试周，资料存了一堆，却凑不出一套能刷的题",
            "手头有笔记、课件截图、概念清单和聊天记录里的答案；想复习时，能翻的很多，能练的很少。")
-    pic_card(s, EXAM_MATERIALS, M_L, 1.86, 4.30, 3.20, caption="考试周资料：笔记、截图、公式、图表散在不同文档里")
-    x = 5.42
-    text(s, x, 1.88, 6.95, 0.24, "手头有资料，复习却没有练习", size=9.5, bold=True, color=MINT_D, spc=60)
-    text(s, x, 2.18, 6.95, 0.28, "资料很多，题很少。", size=16.0, bold=True, color=INK)
+    pic_card(s, EXAM_MATERIALS, M_L, 1.86, 4.55, 4.50)
+    text(s, M_L, 6.42, 4.55, 0.42, "这份资料：文字、截图、公式、图表混在一起，章节顺序和图题位置也没有统一。", size=10.5, color=GRAY, line_spacing=1.2)
+    x = 5.55
+    text(s, x, 1.88, 6.80, 0.24, "手头有资料，复习却没有练习", size=10.5, bold=True, color=MINT_D, spc=60)
+    text(s, x, 2.18, 6.80, 0.32, "资料很多，题很少。", size=18.0, bold=True, color=INK)
     cards = [
         ("01", "手头是资料", "笔记、课件截图、概念清单、聊天答案散在不同地方。"),
         ("02", "题目要自己拼", "从聊天网站拿答案，只能截图或复制，再手动整理成题。"),
@@ -274,13 +275,13 @@ def p2():
     ]
     yy = 2.82
     for n, t, d in cards:
-        card = rect(s, x, yy, 6.95, 0.88, fill=WHITE, line=LINE, lw=0.75, radius=0.05)
-        text(s, x + 0.16, yy + 0.14, 0.38, 0.24, n, size=9, bold=True, color=MINT_D)
-        text(s, x + 0.62, yy + 0.10, 2.65, 0.24, t, size=11.8, bold=True, color=INK)
-        text(s, x + 0.62, yy + 0.38, 5.95, 0.32, d, size=9.2, color=GRAY, line_spacing=1.2)
-        yy += 0.98
-    strip = rect(s, x, 5.82, 6.95, 0.56, fill=MINT_L, line=None, radius=0.06)
-    text(s, x + 0.20, 5.93, 6.55, 0.30, "资料在，能反复练的题不在。", size=12.0, bold=True, color=MINT_D)
+        card = rect(s, x, yy, 6.80, 0.92, fill=WHITE, line=LINE, lw=0.75, radius=0.05)
+        text(s, x + 0.16, yy + 0.14, 0.38, 0.24, n, size=10, bold=True, color=MINT_D)
+        text(s, x + 0.64, yy + 0.10, 2.80, 0.26, t, size=12.5, bold=True, color=INK)
+        text(s, x + 0.64, yy + 0.40, 5.80, 0.34, d, size=10.0, color=GRAY, line_spacing=1.2)
+        yy += 1.02
+    strip = rect(s, x, 5.95, 6.80, 0.62, fill=MINT_L, line=None, radius=0.06)
+    text(s, x + 0.20, 6.06, 6.40, 0.32, "资料在，能反复练的题不在。", size=14.0, bold=True, color=MINT_D)
     footer(s, 2)
 
 
